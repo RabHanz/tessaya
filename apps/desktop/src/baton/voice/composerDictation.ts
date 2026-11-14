@@ -4,9 +4,9 @@
  * dictation, the composer draws the words at its caret and takes the cleaned ones itself. No floating pill shows and
  * nothing is pasted. A composer that does not answer in time gets today's pill and paste, so nothing is ever lost.
  */
-import type { ComposerDictationMessage, ComposerDictationReply } from "@t3tools/baton-contracts";
-import type { TurnEvent } from "@t3tools/baton-shared/voiceTurn";
-import { waveEngine } from "@t3tools/baton-shared/waveform";
+import type { ComposerDictationMessage, ComposerDictationReply } from "@t3tools/tessaya-contracts";
+import type { TurnEvent } from "@t3tools/tessaya-shared/voiceTurn";
+import { waveEngine } from "@t3tools/tessaya-shared/waveform";
 
 const WAVE = waveEngine();
 

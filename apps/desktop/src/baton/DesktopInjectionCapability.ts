@@ -15,11 +15,11 @@
  * `process` at call time: the interesting cases are other people's machines,
  * and the only way to test them here is to be handed their facts.
  */
-import type { BatonInjectionReport } from "@t3tools/baton-contracts";
+import type { BatonInjectionReport } from "@t3tools/tessaya-contracts";
 import {
   describeInjectionCapabilities,
   type InjectionHostFacts,
-} from "@t3tools/baton-shared/injection";
+} from "@t3tools/tessaya-shared/injection";
 
 export interface DesktopHostEnvironment {
   /** `process.platform`. */

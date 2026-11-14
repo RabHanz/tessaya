@@ -1,5 +1,5 @@
-import { parseTextCommand } from "@t3tools/baton-shared/textCommand";
-import { DEFAULT_TRANSFORMS } from "@t3tools/baton-shared/transforms";
+import { parseTextCommand } from "@t3tools/tessaya-shared/textCommand";
+import { DEFAULT_TRANSFORMS } from "@t3tools/tessaya-shared/transforms";
 import { describe, expect, it } from "vite-plus/test";
 
 import { tabOf } from "../home/tabs.ts";

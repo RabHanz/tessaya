@@ -1,10 +1,10 @@
 /**
  * Cloud tasks in the desktop: picks the providers for the transport chosen (this computer, a hub, or the
  * shared-computer way), keeps what the window shows (requests, usage, what each harness can do) and runs
- * the approval card's clicks. The rules are in `@t3tools/baton-shared/cloud`; this holds state and I/O.
+ * the approval card's clicks. The rules are in `@t3tools/tessaya-shared/cloud`; this holds state and I/O.
  */
-import { buildLocalProviders } from "@t3tools/baton-shared/cloud/build";
-import type { LocalSettings } from "@t3tools/baton-shared/cloud/local";
+import { buildLocalProviders } from "@t3tools/tessaya-shared/cloud/build";
+import type { LocalSettings } from "@t3tools/tessaya-shared/cloud/local";
 import {
   CARD_START,
   fromSpoken,
@@ -12,11 +12,11 @@ import {
   reduceCard,
   type CardEvent,
   type CardState,
-} from "@t3tools/baton-shared/cloud/card";
-import { sshProviders } from "@t3tools/baton-shared/cloud/sshShell";
-import { hubProvider, type CloudOp, type Described } from "@t3tools/baton-shared/cloud/hub";
-import { providerChoices, type ProviderChoice } from "@t3tools/baton-shared/cloud/registry";
-import { STUBS } from "@t3tools/baton-shared/cloud/stubs";
+} from "@t3tools/tessaya-shared/cloud/card";
+import { sshProviders } from "@t3tools/tessaya-shared/cloud/sshShell";
+import { hubProvider, type CloudOp, type Described } from "@t3tools/tessaya-shared/cloud/hub";
+import { providerChoices, type ProviderChoice } from "@t3tools/tessaya-shared/cloud/registry";
+import { STUBS } from "@t3tools/tessaya-shared/cloud/stubs";
 import {
   BRIEF_MAX,
   type CloudProvider,
@@ -27,8 +27,8 @@ import {
   type ProviderId,
   type TransportKind,
   type Usage,
-} from "@t3tools/baton-shared/cloud/types";
-import { fileStores } from "@t3tools/baton-shared/cloud/nodeExec";
+} from "@t3tools/tessaya-shared/cloud/types";
+import { fileStores } from "@t3tools/tessaya-shared/cloud/nodeExec";
 import { text } from "../home/strings.ts";
 
 export interface CloudSettings {

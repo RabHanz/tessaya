@@ -10,7 +10,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { createOpenWakeWordScorer } from "../../../packages/baton-voice/src/providers/onnx.ts";
+import { createOpenWakeWordScorer } from "../../../packages/tessaya-voice/src/providers/onnx.ts";
 
 export const THRESHOLDS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95];
 const REFRACTORY_CHUNKS = 12;

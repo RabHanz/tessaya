@@ -1,4 +1,4 @@
-import { PALETTES, paletteThemeFile, type Palette } from "@t3tools/baton-shared/palettes";
+import { PALETTES, paletteThemeFile, type Palette } from "@t3tools/tessaya-shared/palettes";
 import { getThemeColorsForAppearance } from "@t3tools/shared/themePalettes";
 import { describe, expect, it } from "vite-plus/test";
 

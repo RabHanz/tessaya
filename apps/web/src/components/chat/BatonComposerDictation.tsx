@@ -10,8 +10,8 @@ import {
   type ComposerDictation,
   type PillDesign,
   type WaveName,
-} from "@t3tools/baton-shared/composerDictation";
-import { waveEngine, type Rgb } from "@t3tools/baton-shared/waveform";
+} from "@t3tools/tessaya-shared/composerDictation";
+import { waveEngine, type Rgb } from "@t3tools/tessaya-shared/waveform";
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 import "./BatonComposerDictation.css";

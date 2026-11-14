@@ -2,7 +2,7 @@ import {
   accountForInstance,
   setClaudeAccountInstances,
   type BatonAccount,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { accountDisplayName, limitsFromAccount, withAccount } from "./ClaudeProbeLimits.ts";

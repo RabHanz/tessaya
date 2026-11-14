@@ -1,5 +1,9 @@
 /** The Skills and tools area of Baton's window (D146): the harnesses' own plugins, skills and servers. */
-import { CONNECTOR_INFO, CONNECTOR_KINDS, connectorKindOf } from "@t3tools/baton-shared/connectors";
+import {
+  CONNECTOR_INFO,
+  CONNECTOR_KINDS,
+  connectorKindOf,
+} from "@t3tools/tessaya-shared/connectors";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import type { HarnessItem } from "./harnessInventory.ts";

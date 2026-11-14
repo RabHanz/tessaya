@@ -14,18 +14,18 @@
  * shortcut: a poll, not a subscription to the limit event. Upgrade when provider runtime events
  * carry the limit to a reactor.
  */
-import { BATON_DEFAULT_CLAUDE_INSTANCE, ProviderDriverKind } from "@t3tools/baton-contracts";
+import { BATON_DEFAULT_CLAUDE_INSTANCE, ProviderDriverKind } from "@t3tools/tessaya-contracts";
 import {
   activeAccount,
   decideRotation,
   type BatonOnLimitPolicy,
   type RotationDecision,
-} from "@t3tools/baton-shared/accountRotation";
+} from "@t3tools/tessaya-shared/accountRotation";
 import {
   instanceAccount,
   type BatonAccount,
   type BatonAccountPool,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   isListedThreadLineage,
   isLiveSubagentShell,
@@ -41,14 +41,14 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { BatonEngine } from "./BatonEngine.ts";
-import { isLiveThreadId } from "@t3tools/baton-shared/liveThread";
+import { isLiveThreadId } from "@t3tools/tessaya-shared/liveThread";
 import {
   isThreadConfigDir,
   readAllProfileLiveSessions,
   readClaudeLiveSessions,
   threadDirSlot,
 } from "./ClaudeLiveSessions.ts";
-import { liveLimitHit } from "@t3tools/baton-shared/liveTranscript";
+import { liveLimitHit } from "@t3tools/tessaya-shared/liveTranscript";
 import { liveSetAccount, readSessionTail } from "./LiveActions.ts";
 import { respawnClaudeInPane } from "./HerdrRespawn.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";

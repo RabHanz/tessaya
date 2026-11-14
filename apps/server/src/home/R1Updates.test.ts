@@ -5,7 +5,11 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { it } from "@effect/vitest";
-import type { R1FirmwarePin, R1KwsPin, R1ReleaseManifest } from "@t3tools/baton-shared/r1Firmware";
+import type {
+  R1FirmwarePin,
+  R1KwsPin,
+  R1ReleaseManifest,
+} from "@t3tools/tessaya-shared/r1Firmware";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";

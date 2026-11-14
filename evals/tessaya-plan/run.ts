@@ -8,9 +8,9 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
-import { DEFAULT_JOB_LIMITS } from "../../packages/baton-contracts/src/jobs.ts";
-import { permissionsSummary, workerFirstMessage } from "../../packages/baton-shared/src/jobs.ts";
-import { DEFAULT_OS_PACK, packPrompt } from "../../packages/baton-shared/src/osPack.ts";
+import { DEFAULT_JOB_LIMITS } from "../../packages/tessaya-contracts/src/jobs.ts";
+import { permissionsSummary, workerFirstMessage } from "../../packages/tessaya-shared/src/jobs.ts";
+import { DEFAULT_OS_PACK, packPrompt } from "../../packages/tessaya-shared/src/osPack.ts";
 import { CASES } from "./cases.ts";
 import { gradePlan } from "./grade.ts";
 

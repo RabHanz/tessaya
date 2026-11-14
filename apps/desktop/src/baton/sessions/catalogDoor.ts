@@ -3,8 +3,11 @@
  * translation the sidebar uses. Acting on another machine stays on T3's own session to it, so that is refused in a
  * sentence rather than opening the window.
  */
-import type { BatonSessionRequest } from "@t3tools/baton-contracts";
-import { answerCatalogRequest, type CatalogCommands } from "@t3tools/baton-shared/catalogRequests";
+import type { BatonSessionRequest } from "@t3tools/tessaya-contracts";
+import {
+  answerCatalogRequest,
+  type CatalogCommands,
+} from "@t3tools/tessaya-shared/catalogRequests";
 
 const METHODS: Readonly<Record<keyof CatalogCommands, string>> = {
   list: "baton.sessions.list",

@@ -61,7 +61,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
-import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;

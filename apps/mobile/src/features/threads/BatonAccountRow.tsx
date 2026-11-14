@@ -4,12 +4,12 @@
  * session's own login, a move to another while it runs, and the change queued for when its turn ends.
  */
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { accountForInstance, type BatonAccountRecord } from "@t3tools/baton-contracts";
-import { keepsDraft, liveChangeRoute } from "@t3tools/baton-shared/liveModel";
-import { accountPickHint, accountPickTarget, accountTicks } from "@t3tools/baton-shared/accounts";
-import { maskedEmail, queuedText, roomText, roomTone } from "@t3tools/baton-shared/accountRoom";
-import { rankRotationTargets } from "@t3tools/baton-shared/accountRotation";
-import { isLiveThreadId, LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
+import { accountForInstance, type BatonAccountRecord } from "@t3tools/tessaya-contracts";
+import { keepsDraft, liveChangeRoute } from "@t3tools/tessaya-shared/liveModel";
+import { accountPickHint, accountPickTarget, accountTicks } from "@t3tools/tessaya-shared/accounts";
+import { maskedEmail, queuedText, roomText, roomTone } from "@t3tools/tessaya-shared/accountRoom";
+import { rankRotationTargets } from "@t3tools/tessaya-shared/accountRotation";
+import { isLiveThreadId, LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/tessaya-shared/liveThread";
 import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";

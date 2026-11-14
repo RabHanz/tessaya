@@ -33,7 +33,7 @@ import {
   type BatonAccountRotation,
   type BatonAccountRotationReason,
   type WorkSessionId,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";

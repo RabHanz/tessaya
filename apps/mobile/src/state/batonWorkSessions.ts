@@ -1,4 +1,4 @@
-import { createBatonWorkSessionAtoms } from "@t3tools/baton-shared/workSessionAtoms";
+import { createBatonWorkSessionAtoms } from "@t3tools/tessaya-shared/workSessionAtoms";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 

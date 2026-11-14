@@ -15,7 +15,7 @@ import {
   isAcceptedAudio,
   isWavFile,
   MAX_SECONDS,
-} from "@t3tools/baton-shared/audioFile";
+} from "@t3tools/tessaya-shared/audioFile";
 
 import { parseWav, toVoicePcm } from "../voice/pcm.ts";
 import { VOICE_SAMPLE_RATE } from "../voice/voiceTypes.ts";

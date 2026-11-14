@@ -11,8 +11,8 @@ import {
   escalationDecision,
   escalationRulesLine,
   type EscalationAsk,
-} from "@t3tools/baton-shared/brainEscalation";
-import { isNarration, withoutSelfIntro } from "@t3tools/baton-shared/narration";
+} from "@t3tools/tessaya-shared/brainEscalation";
+import { isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";

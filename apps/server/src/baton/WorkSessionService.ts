@@ -18,7 +18,7 @@
  * rows. the maintainers' decision log D11 explains why Baton keeps its events out
  * of T3's orchestration event store.
  */
-import { applySynopsisSignals, type SynopsisSignal } from "@t3tools/baton-shared/synopsis";
+import { applySynopsisSignals, type SynopsisSignal } from "@t3tools/tessaya-shared/synopsis";
 import {
   DEFAULT_WORK_SESSION_PRIORITY,
   DEFAULT_WORK_SESSION_PROVIDER_ROLE,
@@ -43,7 +43,7 @@ import {
   type WorkSessionSynopsis,
   type WorkSessionUpdateInput,
   type ThreadId,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

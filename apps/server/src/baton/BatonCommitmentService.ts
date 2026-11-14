@@ -1,9 +1,9 @@
 /**
  * The commitments ledger on the server (D149), so every device he uses sees the same list. The
- * rules are the pure ones in `@t3tools/baton-shared/commitments`; this keeps rows. One rule lives
+ * rules are the pure ones in `@t3tools/tessaya-shared/commitments`; this keeps rows. One rule lives
  * here because two devices race: a closed row is never reopened by a stale open copy.
  */
-import { BatonCommitmentError, type BatonCommitment } from "@t3tools/baton-contracts";
+import { BatonCommitmentError, type BatonCommitment } from "@t3tools/tessaya-contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

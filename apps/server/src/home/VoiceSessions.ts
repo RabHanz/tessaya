@@ -10,7 +10,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
-import { startBatonMcp, type BatonMcp, type ToolOutput } from "@t3tools/baton-shared/sessionMcp";
+import { startBatonMcp, type BatonMcp, type ToolOutput } from "@t3tools/tessaya-shared/sessionMcp";
 import type { BrainRole } from "@t3tools/contracts";
 
 /** What one line of the session's stream-json says, as far as a spoken turn cares. */

@@ -12,7 +12,7 @@
  * available right now. The main process supplies the half the OS knows. Neither
  * half is invented.
  */
-import { BatonInjectionReport } from "@t3tools/baton-contracts";
+import { BatonInjectionReport } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Electron from "electron";

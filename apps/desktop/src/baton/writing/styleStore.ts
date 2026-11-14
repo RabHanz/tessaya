@@ -8,7 +8,7 @@ import {
   type StyleCategory,
   type StyleChoices,
   type WritingStyle,
-} from "@t3tools/baton-shared/writingStyle";
+} from "@t3tools/tessaya-shared/writingStyle";
 
 import { createJsonStore } from "./jsonStore.ts";
 

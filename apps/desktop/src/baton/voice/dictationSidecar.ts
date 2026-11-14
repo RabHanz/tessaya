@@ -12,9 +12,9 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
-import type { CaretContext } from "@t3tools/baton-shared/dictationFit";
-import { outsideLanguages } from "@t3tools/baton-shared/dictationLanguages";
-import { encodeWav, SET_ASIDE, type SttProvider } from "@t3tools/baton-voice";
+import type { CaretContext } from "@t3tools/tessaya-shared/dictationFit";
+import { outsideLanguages } from "@t3tools/tessaya-shared/dictationLanguages";
+import { encodeWav, SET_ASIDE, type SttProvider } from "@t3tools/tessaya-voice";
 
 import { makeFramer } from "./pcm.ts";
 import type { CaretGeometry } from "./pillGhost.ts";

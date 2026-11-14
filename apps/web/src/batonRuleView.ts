@@ -12,7 +12,7 @@ import {
   describeRule,
   type OrchestrationFiring,
   type OrchestrationRuleWithFirings,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 
 export interface RuleRow {
   readonly ruleId: string;

@@ -3,7 +3,7 @@
  * Everything a paired device's or an agent's turn runs with, fixed when the slot is built. Nothing here reads which
  * turn is current, so his sentence arriving mid-turn cannot lend this turn his trust, his memory view or his plan.
  */
-import { detectSecret } from "@t3tools/baton-shared/memory";
+import { detectSecret } from "@t3tools/tessaya-shared/memory";
 
 import { createDesktopMemory } from "../memory/memoryClient.ts";
 import type { MemoryCall } from "../memory/memoryClient.ts";

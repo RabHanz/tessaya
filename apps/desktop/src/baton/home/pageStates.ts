@@ -4,7 +4,7 @@
  * Returns what a person would see that no person should: 'undefined', 'NaN', '[object Object]', a raw
  * stack or error code.
  */
-import { capabilities } from "@t3tools/baton-shared/degraded";
+import { capabilities } from "@t3tools/tessaya-shared/degraded";
 
 import { approvalControls } from "../sessions/approvalRows.ts";
 import { helpControls } from "../help/helpRows.ts";

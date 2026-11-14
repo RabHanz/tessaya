@@ -1,4 +1,4 @@
-import { T3_SETTINGS_PLACES } from "@t3tools/baton-contracts";
+import { T3_SETTINGS_PLACES } from "@t3tools/tessaya-contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
   EnvironmentId,

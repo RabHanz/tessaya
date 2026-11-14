@@ -14,7 +14,7 @@
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodePath from "node:path";
 
-import { setClaudeAccountInstances } from "@t3tools/baton-contracts";
+import { setClaudeAccountInstances } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import { ThreadId } from "@t3tools/contracts";
 import * as Layer from "effect/Layer";
@@ -93,7 +93,7 @@ import * as TessayaPackRoutes from "../tessaya/TessayaPackRoutes.ts";
 import * as CurrentPersona from "../tessaya/CurrentPersona.ts";
 import * as PersonaLayers from "../tessaya/PersonaLayers.ts";
 import * as PromptLab from "../tessaya/PromptLab.ts";
-import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
+import { adoptTessayaEnv } from "@t3tools/tessaya-shared/tessayaEnv";
 
 const readClaudeAccountInstances = Layer.effectDiscard(
   Effect.gen(function* () {

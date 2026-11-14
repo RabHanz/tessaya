@@ -2,7 +2,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { EMPTY_GUARD, type GuardFile } from "@t3tools/baton-shared/startGuard";
+import { EMPTY_GUARD, type GuardFile } from "@t3tools/tessaya-shared/startGuard";
 
 export const readGuard = (file: string): GuardFile => {
   try {

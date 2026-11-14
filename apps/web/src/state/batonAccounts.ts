@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { BatonAccountRecord } from "@t3tools/baton-contracts";
+import type { BatonAccountRecord } from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";

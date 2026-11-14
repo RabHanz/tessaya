@@ -7,10 +7,10 @@
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { AGENT_PROMPT } from "@t3tools/baton-shared/agentPrompt";
-import { recordText } from "@t3tools/baton-shared/audit";
-import { templateFrame } from "@t3tools/baton-shared/jobTemplates";
-import { assistantFrame } from "@t3tools/baton-shared/osPack";
+import { AGENT_PROMPT } from "@t3tools/tessaya-shared/agentPrompt";
+import { recordText } from "@t3tools/tessaya-shared/audit";
+import { templateFrame } from "@t3tools/tessaya-shared/jobTemplates";
+import { assistantFrame } from "@t3tools/tessaya-shared/osPack";
 import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -27,7 +27,7 @@ import { brainTurn, type ActOutcome, type TurnNotes } from "./TessayaBrain.ts";
 import { TessayaTurn, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { VesselHands, vesselTools } from "./VesselHands.ts";
 import { replyFor } from "../tessaya/PersonaLayers.ts";
-import type { HandsBroker } from "@t3tools/baton-shared/remoteHands";
+import type { HandsBroker } from "@t3tools/tessaya-shared/remoteHands";
 
 const Speaker = Schema.Struct({
   kind: Schema.Literals(["owner", "saved", "guest", "unverified"]),

@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest";
-import { connectPacket } from "@t3tools/baton-shared/mqtt";
+import { connectPacket } from "@t3tools/tessaya-shared/mqtt";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { expect } from "vite-plus/test";

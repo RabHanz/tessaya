@@ -18,7 +18,7 @@ import {
   type SpeakerGate,
   type SpeakerIdentity,
   type SpeakerPolicy,
-} from "@t3tools/baton-voice";
+} from "@t3tools/tessaya-voice";
 
 import type { VoiceId } from "./voiceId.ts";
 import type { VoiceIdSettings } from "./voiceIdRows.ts";

@@ -12,15 +12,15 @@ import {
   type PreferenceKey,
   vesselSubject,
   voiceAssurance,
-} from "@t3tools/baton-shared/household";
-import { memoryBlock } from "@t3tools/baton-shared/memory";
-import { comingUp, whenSaid } from "@t3tools/baton-shared/memoryDates";
-import { foldSpelling, spellBack } from "@t3tools/baton-shared/spelling";
+} from "@t3tools/tessaya-shared/household";
+import { memoryBlock } from "@t3tools/tessaya-shared/memory";
+import { comingUp, whenSaid } from "@t3tools/tessaya-shared/memoryDates";
+import { foldSpelling, spellBack } from "@t3tools/tessaya-shared/spelling";
 import {
   privatePersonOf,
   type PrivateTurn,
   type SpeakerLike,
-} from "@t3tools/baton-shared/privateMemory";
+} from "@t3tools/tessaya-shared/privateMemory";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -31,16 +31,16 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { BatonMemoryLearning, type LearnResult } from "./BatonMemoryLearning.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
 import { HOME_KEY, HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
-import { BatonMemoryRefusedError, type BatonHouseholdCallInput } from "@t3tools/baton-contracts";
+import { BatonMemoryRefusedError, type BatonHouseholdCallInput } from "@t3tools/tessaya-contracts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { TessayaComms } from "./TessayaComms.ts";
-import { commsWaitingLine } from "@t3tools/baton-shared/comms";
+import { commsWaitingLine } from "@t3tools/tessaya-shared/comms";
 import { TurnPools } from "./TurnPools.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { personasList } from "./OperatingSystemPack.ts";
-import type { RegisteredDevice } from "@t3tools/baton-contracts";
+import type { RegisteredDevice } from "@t3tools/tessaya-contracts";
 
 export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
 

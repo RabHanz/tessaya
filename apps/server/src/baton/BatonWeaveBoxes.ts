@@ -9,7 +9,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
+import type { ClaudeLiveSession } from "@t3tools/tessaya-contracts";
 
 import { AdoptedRuntimeAdapter } from "./AdoptedSessionService.ts";
 import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";

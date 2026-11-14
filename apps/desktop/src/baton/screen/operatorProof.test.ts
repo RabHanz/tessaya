@@ -8,14 +8,14 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { textIsFromConversation } from "@t3tools/baton-shared/conversation";
+import { textIsFromConversation } from "@t3tools/tessaya-shared/conversation";
 import {
   gatePrompt,
   judgeToolCall,
   spokenOutcome,
   announceTool,
   type ToolCall,
-} from "@t3tools/baton-shared/operator";
+} from "@t3tools/tessaya-shared/operator";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";

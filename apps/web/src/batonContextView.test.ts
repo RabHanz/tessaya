@@ -1,4 +1,4 @@
-import type { BatonFleetEntry, BatonInjectionReport } from "@t3tools/baton-contracts";
+import type { BatonFleetEntry, BatonInjectionReport } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {

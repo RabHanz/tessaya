@@ -1,5 +1,5 @@
 /** The Approvals area of Baton's window (D146): one row per thing waiting for his yes. */
-import type { Approval } from "@t3tools/baton-shared/approvals";
+import type { Approval } from "@t3tools/tessaya-shared/approvals";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

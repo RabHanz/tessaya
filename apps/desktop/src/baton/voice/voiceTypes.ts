@@ -4,7 +4,7 @@
  *
  * The desktop owns the microphone, the HUD and where a finished utterance goes.
  * Everything between — wake, VAD, STT, the conversation window — is the voice
- * core's (`packages/baton-voice`, a parallel lane). `VoiceCore` below is the
+ * core's (`packages/tessaya-voice`, a parallel lane). `VoiceCore` below is the
  * whole of what the desktop needs from it, so the core can land behind it
  * without this side changing. D65.
  */

@@ -11,7 +11,7 @@ import {
   LIVE_INSTANCE,
   liveSessionIdOf,
   movedIntoTessaya,
-} from "@t3tools/baton-shared/liveThread";
+} from "@t3tools/tessaya-shared/liveThread";
 import { useAtomValue } from "@effect/atom-react";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import {

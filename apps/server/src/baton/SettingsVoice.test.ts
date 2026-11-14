@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { DesktopVoiceSettingsPatch } from "@t3tools/baton-contracts";
+import { DesktopVoiceSettingsPatch } from "@t3tools/tessaya-contracts";
 import { ServerSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

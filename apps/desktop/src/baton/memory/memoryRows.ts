@@ -6,7 +6,7 @@ import {
   type MemoryItem,
   type MemoryKind,
   type MemoryVersion,
-} from "@t3tools/baton-shared/memory";
+} from "@t3tools/tessaya-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import type { SyncPeer } from "./memorySync.ts";

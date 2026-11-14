@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /** WAV joins, file names and a pitch guess for the voice-lab scripts that save audio for a person to listen to. */
-import { encodeWav } from "../../../packages/baton-voice/src/providers/speech.ts";
+import { encodeWav } from "../../../packages/tessaya-voice/src/providers/speech.ts";
 import { parseWav } from "../../../apps/desktop/src/baton/voice/pcm.ts";
 
 /**

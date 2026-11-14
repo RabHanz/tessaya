@@ -9,8 +9,8 @@ import {
   WorkSessionId,
   type AdoptedRegisterInput,
   type AdoptedSessionId,
-} from "@t3tools/baton-contracts";
-import { HERDR_CAPABILITIES } from "@t3tools/baton-shared/adoptedSession";
+} from "@t3tools/tessaya-contracts";
+import { HERDR_CAPABILITIES } from "@t3tools/tessaya-shared/adoptedSession";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

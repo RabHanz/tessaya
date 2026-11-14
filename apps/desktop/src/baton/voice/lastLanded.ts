@@ -2,7 +2,7 @@
  * The last dictated words that landed (pasted, kept, on the clipboard, or left by a crash), for paste-last and Copy
  * last transcript. A spoken command or discarded words never land; words that look like a secret are never held.
  */
-import { detectSecret } from "@t3tools/baton-shared/memory";
+import { detectSecret } from "@t3tools/tessaya-shared/memory";
 
 export const createLastLanded = () => {
   let last: string | null = null;

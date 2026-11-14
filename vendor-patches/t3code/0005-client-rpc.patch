@@ -3,11 +3,11 @@ Subject: client-runtime: Baton's RPC group on the client protocol
 The fabric.* group rides the same socket, and its work-session stream is a subscription tag.
 
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index ee70400ca47a548493f4d002e2db2ef1d4a6e498..9473f82076d3d53f8d2d2ee12fdcbb342b547e2d 100644
+index ee70400ca47a548493f4d002e2db2ef1d4a6e498..7c4bd519c9c58565154a535a9287cab2b2389c78 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
 @@ -1,3 +1,4 @@
-+import { BATON_WS_METHODS } from "@t3tools/baton-contracts";
++import { BATON_WS_METHODS } from "@t3tools/tessaya-contracts";
  import {
    EnvironmentAuthorizationError,
    clientRpcRequiredScopes,
@@ -21,11 +21,11 @@ index ee70400ca47a548493f4d002e2db2ef1d4a6e498..9473f82076d3d53f8d2d2ee12fdcbb34
    | typeof WS_METHODS.pullRequestsSubscribeLinkedThreadRefreshes
    | typeof WS_METHODS.subscribeVcsStatus
 diff --git a/packages/client-runtime/src/rpc/protocol.ts b/packages/client-runtime/src/rpc/protocol.ts
-index e8aea66d3d897d19cbc5a8a5dbb79c5642602eeb..49490d5542856898889747cebc6a3b34c9f83342 100644
+index e8aea66d3d897d19cbc5a8a5dbb79c5642602eeb..d9211e948b5837e50915e123f57d3f436ac6876b 100644
 --- a/packages/client-runtime/src/rpc/protocol.ts
 +++ b/packages/client-runtime/src/rpc/protocol.ts
 @@ -1,8 +1,10 @@
-+import { BatonRpcGroup } from "@t3tools/baton-contracts";
++import { BatonRpcGroup } from "@t3tools/tessaya-contracts";
  import { WsRpcGroup } from "@t3tools/contracts";
  import * as Effect from "effect/Effect";
  import { RpcClient } from "effect/rpc";

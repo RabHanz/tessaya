@@ -1,4 +1,4 @@
-import { BATON_TOOLS, REMOTE_ONLY_TOOLS, ROOM_ONLY_TOOLS } from "@t3tools/baton-shared/operator";
+import { BATON_TOOLS, REMOTE_ONLY_TOOLS, ROOM_ONLY_TOOLS } from "@t3tools/tessaya-shared/operator";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {

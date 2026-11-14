@@ -1,6 +1,6 @@
 # Tessaya lines
 
-Checks the spoken lines Tessaya writes ahead for each moment: acknowledgements, fillers, confirmations, notices, the step-up and enrolment lines, and the lines she says when someone moves her R1. It uses the server's real prompt, `linesPrompt` in `packages/baton-shared/src/expression.ts`, and grades with the same gate the server applies, `lineProblem`. A wording that fails the gate is never said.
+Checks the spoken lines Tessaya writes ahead for each moment: acknowledgements, fillers, confirmations, notices, the step-up and enrolment lines, and the lines she says when someone moves her R1. It uses the server's real prompt, `linesPrompt` in `packages/tessaya-shared/src/expression.ts`, and grades with the same gate the server applies, `lineProblem`. A wording that fails the gate is never said.
 
 For each persona and moment it reports:
 

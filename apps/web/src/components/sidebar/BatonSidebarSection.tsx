@@ -20,8 +20,8 @@ import {
   type ProjectId,
   type ScopedThreadRef,
   type ThreadId,
-} from "@t3tools/baton-contracts";
-import { homeOf, resolveRunOn } from "@t3tools/baton-shared/runOn";
+} from "@t3tools/tessaya-contracts";
+import { homeOf, resolveRunOn } from "@t3tools/tessaya-shared/runOn";
 import {
   AuthAccessTokenType,
   AuthBatonMemorySyncScope,
@@ -48,7 +48,7 @@ import { environmentCatalog } from "../../connection/catalog";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { readPreparedConnection } from "../../state/session";
 import { syncFailureLine, syncPeerUrl } from "../../batonMemorySync";
-import { batonProjectKey } from "@t3tools/baton-shared/jobPlacement";
+import { batonProjectKey } from "@t3tools/tessaya-shared/jobPlacement";
 import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonSessionRequests } from "./BatonSessionRequests";
 import { LearnTip } from "./LearnTip";

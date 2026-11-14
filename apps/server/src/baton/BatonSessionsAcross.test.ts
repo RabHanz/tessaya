@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import type { BatonFleet, ClaudeLiveSession } from "@t3tools/baton-contracts";
+import type { BatonFleet, ClaudeLiveSession } from "@t3tools/tessaya-contracts";
 import {
   EnvironmentId,
   OrchestratorMcpFailure,

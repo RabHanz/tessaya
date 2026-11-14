@@ -3,9 +3,9 @@
  * own account, and the Herdr pane behind a ⋯ menu.
  */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { threadAccount } from "@t3tools/baton-shared/accounts";
-import { maskedEmail, roomDetail, roomText, roomTone } from "@t3tools/baton-shared/accountRoom";
-import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { threadAccount } from "@t3tools/tessaya-shared/accounts";
+import { maskedEmail, roomDetail, roomText, roomTone } from "@t3tools/tessaya-shared/accountRoom";
+import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { EllipsisIcon, GaugeIcon, SquareTerminalIcon } from "lucide-react";
 

@@ -9,7 +9,7 @@ import type {
   PersonaVoiceRow,
   VoiceClip,
   VoiceLibraryView,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { LoaderIcon, PauseIcon, PlayIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";

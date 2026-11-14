@@ -9,7 +9,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { summariseChecks, type SyncPr } from "@t3tools/baton-shared/syncState";
+import { summariseChecks, type SyncPr } from "@t3tools/tessaya-shared/syncState";
 
 import type { RunGh } from "./nightlyRead.ts";
 

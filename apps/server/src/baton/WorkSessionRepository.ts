@@ -28,7 +28,7 @@ import {
   WorkSessionProviderRole,
   WorkSessionRiskClass,
   WorkSessionSynopsis,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

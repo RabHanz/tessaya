@@ -4,7 +4,7 @@
  * going unmentioned.
  */
 import type { HomeControl } from "../home/batonHome.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 /** Tool name -> what he might say and what it gets him. */
 export const SAY: Readonly<Record<string, readonly [string, string]>> = {

@@ -12,10 +12,10 @@ import {
   BatonMemorySyncPullResult,
   BatonMemorySyncPushResult,
   type BatonMemorySyncPeer,
-} from "@t3tools/baton-contracts";
-import { NOT_HERE } from "@t3tools/baton-shared/historyIndex";
-import type { MemoryChange } from "@t3tools/baton-shared/memory";
-import { syncOriginAllowed } from "@t3tools/baton-shared/syncOrigin";
+} from "@t3tools/tessaya-contracts";
+import { NOT_HERE } from "@t3tools/tessaya-shared/historyIndex";
+import type { MemoryChange } from "@t3tools/tessaya-shared/memory";
+import { syncOriginAllowed } from "@t3tools/tessaya-shared/syncOrigin";
 import * as Context from "effect/Context";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";

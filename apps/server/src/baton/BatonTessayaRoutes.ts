@@ -12,10 +12,10 @@ import {
   CommsCallInput,
   BatonPrivateCallResult,
   BatonRpcGroup,
-} from "@t3tools/baton-contracts";
-import { buildPhoneState } from "@t3tools/baton-shared/phone";
+} from "@t3tools/tessaya-contracts";
+import { buildPhoneState } from "@t3tools/tessaya-shared/phone";
 import { AuthBatonHandsHostScope } from "@t3tools/contracts";
-import { watchFleet } from "@t3tools/baton-shared/watch";
+import { watchFleet } from "@t3tools/tessaya-shared/watch";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Option from "effect/Option";
@@ -49,12 +49,12 @@ import { SessionMember } from "./TessayaTurn.ts";
 import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
 import { runAskWorker } from "./AskWorker.ts";
 import { peerTurnHands, PeerTurnBody, relayDeskTurn, servePeerTurn } from "./DeskRelay.ts";
-import { memberOfSubject } from "@t3tools/baton-shared/household";
+import { memberOfSubject } from "@t3tools/tessaya-shared/household";
 import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import * as PersonaLayers from "../tessaya/PersonaLayers.ts";
-import { approvalRefusal } from "@t3tools/baton-shared/trust";
+import { approvalRefusal } from "@t3tools/tessaya-shared/trust";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { handleHands } from "./BatonHandsApi.ts";

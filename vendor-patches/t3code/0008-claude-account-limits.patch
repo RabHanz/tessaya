@@ -39,11 +39,11 @@ index b46614a8b418d6adcf03846f6aa336519934e834..b4568bba2a8e1d336a60ed7a11b9fe35
                  <Button
                    size="sm"
 diff --git a/apps/web/src/components/chat/ThreadDetailsUsage.tsx b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
-index 0d6c0129484ed794111d5e6c3eb3d3b9e1f085eb..00ec75357a85e944ff9fe7156514c2f937de8a3f 100644
+index 0d6c0129484ed794111d5e6c3eb3d3b9e1f085eb..bc82f206f195d8d6235cab401de4f13510836525 100644
 --- a/apps/web/src/components/chat/ThreadDetailsUsage.tsx
 +++ b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
 @@ -1,3 +1,4 @@
-+import { absentSessionWindow, NOT_APPLICABLE } from "@t3tools/baton-shared/limitWindows";
++import { absentSessionWindow, NOT_APPLICABLE } from "@t3tools/tessaya-shared/limitWindows";
  import type {
    ProviderInstanceId,
    ServerProvider,
@@ -82,11 +82,11 @@ index 0d6c0129484ed794111d5e6c3eb3d3b9e1f085eb..00ec75357a85e944ff9fe7156514c2f9
        </div>
      </ThreadDetailsSection>
 diff --git a/apps/web/src/components/usage/UsageLimits.tsx b/apps/web/src/components/usage/UsageLimits.tsx
-index e41aa20998b1cfd632da6145925062c1ad02c96d..75c915eb920dd62a129b21b96a0f78e58676ae00 100644
+index e41aa20998b1cfd632da6145925062c1ad02c96d..f38cc9cc3818ddec6f9dcfa0820050d4341b37e9 100644
 --- a/apps/web/src/components/usage/UsageLimits.tsx
 +++ b/apps/web/src/components/usage/UsageLimits.tsx
 @@ -1,3 +1,4 @@
-+import { absentSessionWindow, NOT_APPLICABLE } from "@t3tools/baton-shared/limitWindows";
++import { absentSessionWindow, NOT_APPLICABLE } from "@t3tools/tessaya-shared/limitWindows";
  import {
    AuthProvidersManageScope,
    type EnvironmentId,
@@ -104,11 +104,11 @@ index e41aa20998b1cfd632da6145925062c1ad02c96d..75c915eb920dd62a129b21b96a0f78e5
          const pace = paceOf(window, now);
          const resetsIn = formatResetsIn(window, now);
 diff --git a/apps/web/src/components/usage/UsageLimitsPooled.tsx b/apps/web/src/components/usage/UsageLimitsPooled.tsx
-index 8ec1c7a02afcd109490c82f4c16be2f757c79ac9..02e5bd6d6eb882266dacf14154e5953225d22d96 100644
+index 8ec1c7a02afcd109490c82f4c16be2f757c79ac9..b325d6785a2ec0bce43de6060268c9319741ba7c 100644
 --- a/apps/web/src/components/usage/UsageLimitsPooled.tsx
 +++ b/apps/web/src/components/usage/UsageLimitsPooled.tsx
 @@ -1,3 +1,4 @@
-+import { absentSessionWindow } from "@t3tools/baton-shared/limitWindows";
++import { absentSessionWindow } from "@t3tools/tessaya-shared/limitWindows";
  import {
    CHATGPT_USAGE_URL,
    collectLimitAccounts,

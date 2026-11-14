@@ -16,7 +16,7 @@ import {
   type VaultItem,
   type VaultListing,
   type VaultPolicy,
-} from "@t3tools/baton-shared/vault";
+} from "@t3tools/tessaya-shared/vault";
 
 import {
   DEFAULT_KDF,
@@ -28,7 +28,7 @@ import {
   seal,
   type KdfParams,
   type Sealed,
-} from "@t3tools/baton-shared/vaultCrypto";
+} from "@t3tools/tessaya-shared/vaultCrypto";
 
 // @effect-diagnostics-next-line extendsNativeError:off -- a Promise API, never in an Effect failure channel.
 export class VaultError extends Error {

@@ -1,5 +1,5 @@
 /**
- * A spoken sentence (packages/baton-voice/test/fixtures/dictate.wav, 7.5 s) as WebM Opus, for the Cloud recognition Test
+ * A spoken sentence (packages/tessaya-voice/test/fixtures/dictate.wav, 7.5 s) as WebM Opus, for the Cloud recognition Test
  * button: the same clip every time, so the time it shows can be compared between providers and models.
  */
 export const CLOUD_TEST_CLIP_WEBM_BASE64 =

@@ -7,7 +7,7 @@ import {
   commitmentsToPush,
   mergeCommitments,
   type Commitment,
-} from "@t3tools/baton-shared/commitments";
+} from "@t3tools/tessaya-shared/commitments";
 
 import type { CommitmentStore } from "./commitmentStore.ts";
 

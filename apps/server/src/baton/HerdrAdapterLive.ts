@@ -33,8 +33,11 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";
 
-import { type AdoptedDiscoverResult, type AdoptedSessionCandidate } from "@t3tools/baton-contracts";
-import { mapHerdrPaneState } from "@t3tools/baton-shared/adoptedSession";
+import {
+  type AdoptedDiscoverResult,
+  type AdoptedSessionCandidate,
+} from "@t3tools/tessaya-contracts";
+import { mapHerdrPaneState } from "@t3tools/tessaya-shared/adoptedSession";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

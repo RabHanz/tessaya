@@ -3,8 +3,8 @@
  * The server owns the keys and every rule; this only asks. Every request goes to this machine's server, never through
  * T3's window, because the stores live here.
  */
-import type { BatonPrivateStore } from "@t3tools/baton-contracts";
-import type { PrivateTurn } from "@t3tools/baton-shared/privateMemory";
+import type { BatonPrivateStore } from "@t3tools/tessaya-contracts";
+import type { PrivateTurn } from "@t3tools/tessaya-shared/privateMemory";
 
 /** One request to `/tessaya/private`; rejects with the server's reason in plain words. */
 export type PrivateCall = (op: string, args?: Record<string, unknown>) => Promise<unknown>;

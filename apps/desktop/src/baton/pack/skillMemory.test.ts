@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { LearnedSkill } from "@t3tools/baton-shared/skillLearning";
+import type { LearnedSkill } from "@t3tools/tessaya-shared/skillLearning";
 
 import { syncSkillsToMemory } from "./skillMemory.ts";
 

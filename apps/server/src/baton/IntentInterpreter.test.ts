@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from "vite-plus/test";
 
-import type { IntentProvider, IntentVocabulary } from "@t3tools/baton-shared/intentParser";
+import type { IntentProvider, IntentVocabulary } from "@t3tools/tessaya-shared/intentParser";
 
 import { chooseInterpreterInstance } from "./IntentInterpreter.ts";
 

@@ -4,8 +4,8 @@
  * safe: the server's upsert keeps the newer edit by id and never reopens a closed commitment. It runs once per own
  * server, from the first linked server seen, so a different server that later connects first is never copied in.
  */
-import type { BatonCommitment } from "@t3tools/baton-contracts";
-import { commitmentsToPush } from "@t3tools/baton-shared/commitments";
+import type { BatonCommitment } from "@t3tools/tessaya-contracts";
+import { commitmentsToPush } from "@t3tools/tessaya-shared/commitments";
 
 const stamp = (c: BatonCommitment): number => c.updatedAt ?? c.closedAt ?? c.createdAt;
 

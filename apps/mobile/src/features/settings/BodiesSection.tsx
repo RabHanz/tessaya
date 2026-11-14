@@ -1,7 +1,7 @@
 /**
  * Settings → Hardware → Bodies: the Docks, plushes and stands his vessels sit in (VesselBodies), and writing their NFC
  * tags. The phone reads the tag's UID, the server signs a link for it, and the phone writes the link and locks the
- * tag with its password (react-native-nfc-manager, raw NTAG commands from `@t3tools/baton-shared/bodyTag`).
+ * tag with its password (react-native-nfc-manager, raw NTAG commands from `@t3tools/tessaya-shared/bodyTag`).
  */
 import {
   VESSEL_BODY_TYPES,
@@ -9,8 +9,8 @@ import {
   type VesselBody,
   type VesselBodyMint,
   type VesselBodyType,
-} from "@t3tools/baton-contracts";
-import { bodyTagCommands, configPageOf, GET_VERSION, read } from "@t3tools/baton-shared/bodyTag";
+} from "@t3tools/tessaya-contracts";
+import { bodyTagCommands, configPageOf, GET_VERSION, read } from "@t3tools/tessaya-shared/bodyTag";
 import { useEffect, useState } from "react";
 import { Platform, TextInput, View } from "react-native";
 import NfcManager, { Ndef, NfcTech } from "react-native-nfc-manager";
@@ -19,7 +19,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { Menu } from "../../components/ui/Menu";
 import { SettingsSection } from "./components/SettingsSection";
-import { PLUSH_BODY } from "@t3tools/baton-shared/productNames";
+import { PLUSH_BODY } from "@t3tools/tessaya-shared/productNames";
 
 const INPUT_CLASS = "rounded-lg border border-border-subtle px-3 py-2 text-base text-foreground";
 

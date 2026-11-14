@@ -3,8 +3,8 @@
  * assistant, agents and the watch read it back. Every text is stored as one capped line and shown to
  * a model only as quoted data (`describeAuditTrail`).
  */
-import type { BatonRecordEntry } from "@t3tools/baton-contracts";
-import { recordText } from "@t3tools/baton-shared/audit";
+import type { BatonRecordEntry } from "@t3tools/tessaya-contracts";
+import { recordText } from "@t3tools/tessaya-shared/audit";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";

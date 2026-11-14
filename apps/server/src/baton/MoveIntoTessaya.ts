@@ -5,7 +5,7 @@
  * confirmed; refused while either side is working, and the thread is switched only after the terminal process is gone,
  * so two processes never write the same conversation.
  */
-import { LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
+import { LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/tessaya-shared/liveThread";
 import {
   EventId,
   ProviderDriverKind,

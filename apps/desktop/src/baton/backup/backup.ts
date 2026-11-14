@@ -8,7 +8,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { detectSecret, type MemoryChange, type MemoryItem } from "@t3tools/baton-shared/memory";
+import { detectSecret, type MemoryChange, type MemoryItem } from "@t3tools/tessaya-shared/memory";
 
 import { makeZip, readZip, type ZipEntry } from "./zip.ts";
 

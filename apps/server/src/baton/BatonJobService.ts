@@ -19,7 +19,7 @@ import {
   type WorkSessionId,
   type ProjectId,
   type WorkSessionError,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   jobGroupFor,
   jobLimits,
@@ -28,7 +28,7 @@ import {
   permissionsSummary,
   withGrant,
   withRevoked,
-} from "@t3tools/baton-shared/jobs";
+} from "@t3tools/tessaya-shared/jobs";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";

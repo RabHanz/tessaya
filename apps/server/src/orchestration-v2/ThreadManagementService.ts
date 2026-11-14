@@ -1,4 +1,4 @@
-import { pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
+import { pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -77,7 +77,7 @@ import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
-import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
 import { hotSwapProvider, isSelectionCommand } from "../baton/ProviderHotSwap.ts";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";

@@ -21,9 +21,9 @@ import {
   type R1KeySlot,
   type BatonDevicesCallInput,
   type BatonDevicesCallResult,
-} from "@t3tools/baton-contracts";
-import { itemsView, readView } from "@t3tools/baton-shared/deviceItems";
-import type { R1UpdatesView } from "@t3tools/baton-shared/r1Firmware";
+} from "@t3tools/tessaya-contracts";
+import { itemsView, readView } from "@t3tools/tessaya-shared/deviceItems";
+import type { R1UpdatesView } from "@t3tools/tessaya-shared/r1Firmware";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -39,7 +39,7 @@ import { R1Reach } from "./R1Reach.ts";
 import { R1Loop } from "./R1Loop.ts";
 import { R1Updates } from "./R1Updates.ts";
 import { VesselBodies } from "./VesselBodies.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const Id = Text(60);

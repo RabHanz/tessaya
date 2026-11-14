@@ -4,7 +4,7 @@
  * The tree is known only on this machine: a send forwarded from another one always gets the line.
  * A title or label is set by the sender, so it reaches the model quoted, never as bare text.
  */
-import { recordText } from "@t3tools/baton-shared/audit";
+import { recordText } from "@t3tools/tessaya-shared/audit";
 
 /** What the sender named, as one capped line, quoted. */
 const named = (text: string): string => JSON.stringify(recordText(text, 200));

@@ -4,9 +4,9 @@
  * says what the session itself answered, never what was only typed. A session not in Herdr offers to be brought in.
  */
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { accountForInstance, type BatonAccount } from "@t3tools/baton-contracts";
-import { keepsDraft, liveChangeRoute, withRealEffort } from "@t3tools/baton-shared/liveModel";
-import { LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
+import { accountForInstance, type BatonAccount } from "@t3tools/tessaya-contracts";
+import { keepsDraft, liveChangeRoute, withRealEffort } from "@t3tools/tessaya-shared/liveModel";
+import { LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/tessaya-shared/liveThread";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type {
@@ -15,7 +15,7 @@ import type {
   ProviderOptionSelection,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { rankRotationTargets } from "@t3tools/baton-shared/accountRotation";
+import { rankRotationTargets } from "@t3tools/tessaya-shared/accountRotation";
 import { useNavigate } from "@tanstack/react-router";
 import { GaugeIcon } from "lucide-react";
 import * as Option from "effect/Option";

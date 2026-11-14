@@ -5,7 +5,7 @@ import {
   RuntimeRequestId,
   ThreadId,
   type OrchestrationV2DomainEvent,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { at } from "./__fixtures__/v2ThreadShell.ts";

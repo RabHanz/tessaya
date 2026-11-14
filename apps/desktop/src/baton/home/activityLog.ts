@@ -4,7 +4,7 @@
  * Dictations and spoken turns come from History's own store; this file only adds the commands and the
  * assistant's actions, and never shows a tool's name.
  */
-import { batonToolName, isOwnTool } from "@t3tools/baton-shared/operator";
+import { batonToolName, isOwnTool } from "@t3tools/tessaya-shared/operator";
 
 import type { HistoryTurn } from "../voice/history.ts";
 import { rowText } from "../voice/historyRetry.ts";

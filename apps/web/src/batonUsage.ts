@@ -3,7 +3,7 @@
  * found the way T3's pooled tile finds it. Differing readings take the freshest check, else the
  * higher used percent.
  */
-import type { BatonUsageSummary } from "@t3tools/baton-contracts";
+import type { BatonUsageSummary } from "@t3tools/tessaya-contracts";
 import { accountKeyResolver, type AccountReport } from "@t3tools/shared/usageLimits";
 
 interface ProviderLike {

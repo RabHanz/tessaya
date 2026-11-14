@@ -13,7 +13,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { BatonLearnCallInput, type EnrolCard } from "@t3tools/baton-contracts";
+import { BatonLearnCallInput, type EnrolCard } from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
 
 import { guestLinkOut, isEmbedSrc } from "./links.ts";

@@ -3,7 +3,7 @@
  * at a time (`LEARN_ITEMS`). No step is required; it reopens where it was left. A fresh install opens it; an
  * existing one is offered it once on Home.
  */
-import { DESKTOP_HOLD_KEYS } from "@t3tools/baton-contracts";
+import { DESKTOP_HOLD_KEYS } from "@t3tools/tessaya-contracts";
 import type { HomeControl } from "../home/batonHome.ts";
 import { text } from "../home/strings.ts";
 

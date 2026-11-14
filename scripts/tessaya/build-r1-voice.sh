@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build the R1 voice loop bundle a server fetches when its first R1 pairs (apps/server/src/home/R1Loop.ts): Node, the
-# loop (packages/baton-voice/src/room), its own recogniser, Pocket TTS and the small models that live in git. The large
+# loop (packages/tessaya-voice/src/room), its own recogniser, Pocket TTS and the small models that live in git. The large
 # models are pinned in R1VoiceInstall.ts and fetched by the server itself.
 #
 #   scripts/tessaya/build-r1-voice.sh <version> <tessaya-recognizer binary> [out dir]
@@ -47,17 +47,17 @@ node -e '
 install -m 755 "$recognizer" "$root/bin/tessaya-recognizer"
 cp native/baton-dictation/models/{silero_vad,melspectrogram,embedding_model,tessaya,alfred,freya}.onnx native/baton-dictation/models/LICENSE "$root/models/"
 
-scripts/node_modules/.bin/esbuild packages/baton-voice/src/room/main.ts packages/baton-voice/src/room/replay.ts \
+scripts/node_modules/.bin/esbuild packages/tessaya-voice/src/room/main.ts packages/tessaya-voice/src/room/replay.ts \
   --bundle --platform=node --format=esm --target=node24 --outdir="$root/app" --out-extension:.js=.mjs \
   --external:onnxruntime-node --log-level=warning \
   --banner:js="import { createRequire as __r1Require } from 'node:module'; const require = __r1Require(import.meta.url);"
 # onnxruntime-node for this platform only (the package carries every OS's binaries).
-ort="$(readlink -f packages/baton-voice/node_modules/onnxruntime-node)"
+ort="$(readlink -f packages/tessaya-voice/node_modules/onnxruntime-node)"
 mkdir -p "$root/app/node_modules/onnxruntime-node/bin/napi-v6/linux"
 cp -r "$ort/package.json" "$ort/dist" "$root/app/node_modules/onnxruntime-node/"
 cp -r "$ort/bin/napi-v6/linux/x64" "$root/app/node_modules/onnxruntime-node/bin/napi-v6/linux/"
 cp -rL "$(readlink -f "$ort/../onnxruntime-common")" "$root/app/node_modules/onnxruntime-common"
-cp packages/baton-voice/LICENSE "$root/app/LICENSE"
+cp packages/tessaya-voice/LICENSE "$root/app/LICENSE"
 # Attribution travels with the bundle (Parakeet and Pocket are CC BY 4.0).
 cp docs/baton/THIRD_PARTY_NOTICES.md "$root/NOTICE.md"
 

@@ -1,4 +1,4 @@
-import type { DesktopVoiceSettings } from "@t3tools/baton-contracts";
+import type { DesktopVoiceSettings } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { HomeControl } from "../home/batonHome.ts";

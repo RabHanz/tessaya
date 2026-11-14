@@ -1,4 +1,4 @@
-import { buildNightly } from "@t3tools/baton-shared/nightly";
+import { buildNightly } from "@t3tools/tessaya-shared/nightly";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createNightlyCache, readNightly } from "./nightlyRead.ts";

@@ -8,7 +8,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { distilPrompt, parseDistilled } from "../../packages/baton-shared/src/osImport.ts";
+import { distilPrompt, parseDistilled } from "../../packages/tessaya-shared/src/osImport.ts";
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {

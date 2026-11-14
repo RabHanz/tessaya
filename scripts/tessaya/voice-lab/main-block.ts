@@ -13,7 +13,7 @@ import { createOnnxHost, type OnnxReply } from "../../../apps/desktop/src/baton/
 import {
   createOpenWakeWordProvider,
   createSileroVad,
-} from "../../../packages/baton-voice/src/providers/onnx.ts";
+} from "../../../packages/tessaya-voice/src/providers/onnx.ts";
 
 const LIMIT_MS = 100;
 const args = process.argv.slice(2);

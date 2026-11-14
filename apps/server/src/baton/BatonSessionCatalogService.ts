@@ -11,7 +11,7 @@ import type {
   BatonCatalogWaitingResult,
   BatonTurnsInFlightResult,
   WatchFinding,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   CommandId,
   DEFAULT_MODEL_BY_PROVIDER,
@@ -66,7 +66,7 @@ import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import { isTessayaOwnFolder, sessionHolderPid } from "./ClaudeLiveSessions.ts";
-import { claudeProjectSlug } from "@t3tools/baton-shared/liveTranscript";
+import { claudeProjectSlug } from "@t3tools/tessaya-shared/liveTranscript";
 import { ServerSettingsService } from "../serverSettings.ts";
 import {
   autoResumeAllowed,
@@ -85,7 +85,7 @@ import {
 } from "./AutoResume.ts";
 import { classifyHelperThread } from "./HelperThreads.ts";
 import * as ProviderInstanceRegistryModule from "../provider/ProviderInstanceRegistry.ts";
-import { isProviderAvailable } from "@t3tools/baton-contracts";
+import { isProviderAvailable } from "@t3tools/tessaya-contracts";
 import { herdrSend } from "./HerdrSend.ts";
 import {
   OUTCOME_MEMORY_MS,
@@ -93,8 +93,8 @@ import {
   outcomesFromRecord,
   watchLiveSessions,
   type WatchdogOutcome,
-} from "@t3tools/baton-shared/watch";
-import { turnsInFlight } from "@t3tools/baton-shared/turnsInFlight";
+} from "@t3tools/tessaya-shared/watch";
+import { turnsInFlight } from "@t3tools/tessaya-shared/turnsInFlight";
 import {
   createSessionCatalog,
   newSessionSelection,

@@ -2,7 +2,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { MemoryDraft } from "@t3tools/baton-shared/memory";
+import type { MemoryDraft } from "@t3tools/tessaya-shared/memory";
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";

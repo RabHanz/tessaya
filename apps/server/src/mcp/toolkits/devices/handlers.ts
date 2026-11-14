@@ -2,7 +2,7 @@
  * The device tools' handlers: each goes through the one devices door (`serveDevicesCall`) as "an agent", so the
  * camera and a restart wait for his yes on the phone exactly as they do from his desktop assistant.
  */
-import type { BatonDevicesCallResult } from "@t3tools/baton-contracts";
+import type { BatonDevicesCallResult } from "@t3tools/tessaya-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 

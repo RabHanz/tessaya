@@ -3,7 +3,7 @@
  * ✕ / waveform / ✓ centred in the toolbar, coloured from the phone's theme. Only colour and opacity change between
  * states, nothing reflows, and the waveform is the one thing that moves, from the microphone's level on the UI thread.
  */
-import type { PillDesign, PillTokens, WaveName } from "@t3tools/baton-shared/composerDictation";
+import type { PillDesign, PillTokens, WaveName } from "@t3tools/tessaya-shared/composerDictation";
 import { BlurView } from "expo-blur";
 import { memo } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";

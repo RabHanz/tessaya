@@ -10,9 +10,9 @@ const dirs = [
   "apps/server",
   "apps/desktop",
   "apps/web",
-  "packages/baton-shared",
-  "packages/baton-voice",
-  "packages/baton-contracts",
+  "packages/tessaya-shared",
+  "packages/tessaya-voice",
+  "packages/tessaya-contracts",
   "scripts/tessaya",
 ];
 const baselineFile = NodePath.join(root, "scripts/tessaya/typecheck-baseline.txt");

@@ -3,8 +3,8 @@
  * the people he saved, and one switch per open decision (D1-D8 in voiceid-plan.md), each at the plan's default
  * until he changes it.
  */
-import type { EnrolCard } from "@t3tools/baton-contracts";
-import type { SpeakerProfile } from "@t3tools/baton-voice";
+import type { EnrolCard } from "@t3tools/tessaya-contracts";
+import type { SpeakerProfile } from "@t3tools/tessaya-voice";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

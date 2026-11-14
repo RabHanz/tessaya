@@ -39,7 +39,7 @@ import {
   type OrchestrationRuleWithFirings,
   type ThreadId,
   type WorkSessionId,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

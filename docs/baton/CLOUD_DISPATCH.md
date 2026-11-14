@@ -3,7 +3,7 @@
 Send a coding task to a harness's cloud (Claude, Codex, later Gemini, Cursor, OpenCode, Grok) and have
 the Director approve each one on a card. Two separate choices: which **harness** does the work, and
 which **transport** reaches the computer that holds its login. Both are interfaces in
-`packages/baton-shared/src/cloud/`; the card, the Cloud panel, the usage cap and the ledger do not
+`packages/tessaya-shared/src/cloud/`; the card, the Cloud panel, the usage cap and the ledger do not
 know either.
 
 ## Transports

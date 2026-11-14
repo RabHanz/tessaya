@@ -2,15 +2,15 @@
  * The thread settings sheet's providers as web's picker groups them (ACCOUNTS-2): one section per provider, not per
  * login, with Terminal its own group. The other logins of a provider become account rows under its header.
  */
-import type { BatonAccountRecord } from "@t3tools/baton-contracts";
+import type { BatonAccountRecord } from "@t3tools/tessaya-contracts";
 import {
   accountPickTarget,
   oneEntryPerProvider,
   pickModelFor,
   sessionLoginKey,
-} from "@t3tools/baton-shared/accounts";
-import { withRealEffort } from "@t3tools/baton-shared/liveModel";
-import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+} from "@t3tools/tessaya-shared/accounts";
+import { withRealEffort } from "@t3tools/tessaya-shared/liveModel";
+import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 import type { ModelCapabilities, ModelSelection } from "@t3tools/contracts";
 
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";

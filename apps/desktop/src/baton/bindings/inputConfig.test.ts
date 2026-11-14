@@ -1,4 +1,4 @@
-import { parseInputBindings } from "@t3tools/baton-shared/inputBindings";
+import { parseInputBindings } from "@t3tools/tessaya-shared/inputBindings";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ACTIONS } from "./bindings.ts";

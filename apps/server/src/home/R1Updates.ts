@@ -23,7 +23,7 @@ import {
   type R1ReleaseIndex,
   type R1ReleaseManifest,
   type R1UpdatesView,
-} from "@t3tools/baton-shared/r1Firmware";
+} from "@t3tools/tessaya-shared/r1Firmware";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -35,12 +35,12 @@ import * as Semaphore from "effect/Semaphore";
 import { FetchHttpClient, HttpClient } from "effect/http";
 
 import * as ServerConfig from "../config.ts";
-import { sayPayload } from "@t3tools/baton-shared/expression";
+import { sayPayload } from "@t3tools/tessaya-shared/expression";
 import { expressOr } from "../baton/TessayaExpression.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 export const ROLLBACK_AFTER_MS = 420_000;
 /** In use: anything it did in the last 5 minutes (a voice turn, a press). */

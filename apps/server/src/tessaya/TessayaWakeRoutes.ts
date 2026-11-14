@@ -4,8 +4,8 @@
  * their own session or an R1's device key; rollback and cancel need a session that may change settings.
  */
 import { AuthSettingsWriteScope, AuthTessayaWakeTrainerScope } from "@t3tools/contracts";
-import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
-import { WAKE_TARGETS, type WakeTarget } from "@t3tools/baton-shared/wakeModels";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { WAKE_TARGETS, type WakeTarget } from "@t3tools/tessaya-shared/wakeModels";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";

@@ -51,7 +51,7 @@ nice -n 10 pnpm -s lint
 if [ "$tests" -eq 1 ]; then
   # Every package the series patches or Baton adds code to. Not the whole monorepo: marketing,
   # mobile's native checks and the reference repos are upstream's and untouched.
-  for pkg in packages/baton-contracts packages/baton-shared packages/client-runtime packages/baton-voice \
+  for pkg in packages/tessaya-contracts packages/tessaya-shared packages/client-runtime packages/tessaya-voice \
     apps/web apps/desktop apps/server; do
     step "test $pkg"
     extra=()

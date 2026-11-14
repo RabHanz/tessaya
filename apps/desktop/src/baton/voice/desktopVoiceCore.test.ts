@@ -10,15 +10,15 @@
  */
 import * as NodePath from "node:path";
 
-import type { BatonFocusTarget } from "@t3tools/baton-contracts";
+import type { BatonFocusTarget } from "@t3tools/tessaya-contracts";
 import {
   createVoiceCore,
   createVoiceRouter,
   createWhisperCppStt,
   DEFAULT_TIMINGS,
-} from "@t3tools/baton-voice";
-import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
-import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/baton-shared/intentParser";
+} from "@t3tools/tessaya-voice";
+import { emptyContextBus } from "@t3tools/tessaya-shared/contextBus";
+import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/tessaya-shared/intentParser";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -212,7 +212,7 @@ const ready =
   missingVoiceAssets(assets).length === 0;
 const fixtures = NodePath.resolve(
   import.meta.dirname,
-  "../../../../../packages/baton-voice/test/fixtures",
+  "../../../../../packages/tessaya-voice/test/fixtures",
 );
 const wav = (name: string) => NodePath.join(fixtures, `${name}.wav`);
 

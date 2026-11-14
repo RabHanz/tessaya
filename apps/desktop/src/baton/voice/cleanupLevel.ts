@@ -1,5 +1,5 @@
 // @effect-diagnostics globalTimers:off -- one timer bounds a helper question on the release path
-import { strictestCleanup } from "@t3tools/baton-shared/dictationCleanup";
+import { strictestCleanup } from "@t3tools/tessaya-shared/dictationCleanup";
 
 type App = { readonly exe: string; readonly title: string };
 

@@ -2,7 +2,7 @@
 import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
 
-import { addNote, removeNote, type ScratchNote } from "@t3tools/baton-shared/scratchpad";
+import { addNote, removeNote, type ScratchNote } from "@t3tools/tessaya-shared/scratchpad";
 
 import { createJsonStore } from "./jsonStore.ts";
 

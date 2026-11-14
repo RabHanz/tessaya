@@ -13,7 +13,7 @@ import {
   useDecision,
   type VaultAuditEntry,
   type VaultCategory,
-} from "@t3tools/baton-shared/vault";
+} from "@t3tools/tessaya-shared/vault";
 
 import type { HelloResult } from "./hello.ts";
 import { pendingSecret, type PendingSecret } from "./pendingSecret.ts";

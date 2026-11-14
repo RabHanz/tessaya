@@ -4,7 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { assert, it } from "@effect/vitest";
-import { ProjectId, WorkSessionId } from "@t3tools/baton-contracts";
+import { ProjectId, WorkSessionId } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 

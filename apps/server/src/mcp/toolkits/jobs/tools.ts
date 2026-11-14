@@ -3,8 +3,8 @@
  * job flow (BatonJobFlow), so a job asked on the R1 opens the same plan-first thread. Only the R1's own Tessaya lists
  * or calls them; an outside agent asks for a job with tessaya_ask.
  */
-import { BatonJobTool, WorkSessionId } from "@t3tools/baton-contracts";
-import { JOB_TOOL_TEXT } from "@t3tools/baton-shared/jobTools";
+import { BatonJobTool, WorkSessionId } from "@t3tools/tessaya-contracts";
+import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Fiber from "effect/Fiber";

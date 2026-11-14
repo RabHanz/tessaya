@@ -34,12 +34,12 @@ import {
   type AdoptedSessionError,
   type AdoptedSessionId,
   type WorkSessionId,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   ADOPTED_MINIMUM_CAPABILITIES,
   mapHerdrPaneState,
   refuseCapability,
-} from "@t3tools/baton-shared/adoptedSession";
+} from "@t3tools/tessaya-shared/adoptedSession";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

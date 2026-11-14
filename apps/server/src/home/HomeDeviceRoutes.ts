@@ -25,10 +25,10 @@ import {
   runHubSocket,
 } from "./R1Hub.ts";
 import { OLD_FIRMWARE_PATH, R1_FIRMWARE_PATH, R1Updates } from "./R1Updates.ts";
-import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import * as Schema from "effect/Schema";
 import { HouseholdCaller, TessayaHousehold } from "../baton/TessayaHousehold.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 /**
  * What the room loop sends after enrolling: the profile less what the server decides (the member, the version). A post

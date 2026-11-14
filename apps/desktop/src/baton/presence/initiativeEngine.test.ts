@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { DEFAULT_POLICY, type Answer, type Trigger } from "@t3tools/baton-shared/initiative";
+import { DEFAULT_POLICY, type Answer, type Trigger } from "@t3tools/tessaya-shared/initiative";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createInitiative } from "./initiativeEngine.ts";

@@ -1,5 +1,9 @@
 /** The Transforms area of the window. */
-import { formatTransform, parseTransform, type Transform } from "@t3tools/baton-shared/transforms";
+import {
+  formatTransform,
+  parseTransform,
+  type Transform,
+} from "@t3tools/tessaya-shared/transforms";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import type { TransformSettings } from "./transformStore.ts";

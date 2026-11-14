@@ -15,13 +15,13 @@ import {
   type PrincipalRole,
   roleCeiling,
   withinCeiling,
-} from "@t3tools/baton-shared/household";
+} from "@t3tools/tessaya-shared/household";
 import {
   BatonHouseholdCallResult,
   type BatonHouseholdCallInput,
   type BatonHouseholdMember,
   type BatonVoiceProfile,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import type { AuthClientSession, AuthEnvironmentScope } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -42,7 +42,7 @@ import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 import { VoiceForgets } from "./VoiceForgets.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
-import { foldSpelling, spellBack } from "@t3tools/baton-shared/spelling";
+import { foldSpelling, spellBack } from "@t3tools/tessaya-shared/spelling";
 import {
   keyFromJson,
   keyToJson,

@@ -10,7 +10,7 @@ import {
   HOME_TIERS,
   type BatonHomeCallInput,
   type BatonHomeCallResult,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 

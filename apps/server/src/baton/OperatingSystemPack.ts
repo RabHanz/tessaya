@@ -7,14 +7,14 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { parseRouting, type Routing } from "@t3tools/baton-shared/costRouting";
+import { parseRouting, type Routing } from "@t3tools/tessaya-shared/costRouting";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
-import { mergeTemplates, type JobTemplate } from "@t3tools/baton-shared/jobTemplates";
-import { mergePack, packPrompt, type OsPack } from "@t3tools/baton-shared/osPack";
-import { parseWakeStore, wakeModelOf } from "@t3tools/baton-shared/wakeModels";
+import { mergeTemplates, type JobTemplate } from "@t3tools/tessaya-shared/jobTemplates";
+import { mergePack, packPrompt, type OsPack } from "@t3tools/tessaya-shared/osPack";
+import { parseWakeStore, wakeModelOf } from "@t3tools/tessaya-shared/wakeModels";
 import * as Clock from "effect/Clock";
 
 export const PACK_DIR_NAME = "operating-system";

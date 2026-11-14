@@ -1,5 +1,5 @@
 {
-  "about": "The double-tap push-to-talk timing table. packages/baton-voice/src/doubleTap.ts is the executable spec; native/baton-dictation/src/main.rs (DoubleTap) is what runs. Both test suites replay these cases and must agree on the outputs and the final phase. Times are milliseconds.",
+  "about": "The double-tap push-to-talk timing table. packages/tessaya-voice/src/doubleTap.ts is the executable spec; native/baton-dictation/src/main.rs (DoubleTap) is what runs. Both test suites replay these cases and must agree on the outputs and the final phase. Times are milliseconds.",
   "timings": {
     "shortTapMs": 200,
     "firstPressMs": 350,

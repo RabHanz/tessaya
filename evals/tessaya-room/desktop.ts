@@ -11,8 +11,8 @@ import {
   type SharedToolSpec,
   type ToolHost,
 } from "../../apps/desktop/src/baton/agent/batonTools.ts";
-import { DEFAULT_OS_PACK, modelOf } from "../../packages/baton-shared/src/osPack.ts";
-import { chooseTurnBrain } from "../../packages/baton-shared/src/turnTier.ts";
+import { DEFAULT_OS_PACK, modelOf } from "../../packages/tessaya-shared/src/osPack.ts";
+import { chooseTurnBrain } from "../../packages/tessaya-shared/src/turnTier.ts";
 import type { LiveCall } from "./liveCases.ts";
 
 /** The server's shared tools as the desktop's caller, each call recorded as the suite's trace reads it. */

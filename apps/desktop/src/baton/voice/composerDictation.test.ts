@@ -1,7 +1,7 @@
-import type { ComposerDictationMessage } from "@t3tools/baton-contracts";
+import type { ComposerDictationMessage } from "@t3tools/tessaya-contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { waveEngine } from "@t3tools/baton-shared/waveform";
+import { waveEngine } from "@t3tools/tessaya-shared/waveform";
 
 import { COMMIT_MS, createComposerDictation, routePill } from "./composerDictation.ts";
 

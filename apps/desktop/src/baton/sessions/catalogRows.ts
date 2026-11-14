@@ -5,7 +5,7 @@
  * Resume, and New session in a folder on a machine. The rows come from a CatalogService (the server's session
  * catalog); this file holds the shape the window needs, the pure rows, and the small state machine for a resume.
  */
-import { bindingOf } from "@t3tools/baton-shared/liveThread";
+import { bindingOf } from "@t3tools/tessaya-shared/liveThread";
 
 import type { HomeControl, HomeOption } from "../home/batonHome.ts";
 

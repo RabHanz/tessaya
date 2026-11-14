@@ -4,14 +4,18 @@
  * in-process through their own handlers as `ROOM_CLIENT`, so McpToolAccess and the house's gate apply as on /mcp. Plus
  * laptop_ask, which asks his laptop's Tessaya. No file, shell or screen tools: the room only reads and asks.
  */
-import { BatonHomeCallResult } from "@t3tools/baton-contracts";
-import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
-import { foldSpelling, spellOut } from "@t3tools/baton-shared/spelling";
-import { type Assurance, type MemberRole, OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
-import { principalRefusal, reachAssurance, toolReach } from "@t3tools/baton-shared/trust";
-import { BATON_TOOL_PREFIX, judgeToolCall } from "@t3tools/baton-shared/operator";
-import { recordText } from "@t3tools/baton-shared/audit";
-import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
+import { BatonHomeCallResult } from "@t3tools/tessaya-contracts";
+import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
+import { foldSpelling, spellOut } from "@t3tools/tessaya-shared/spelling";
+import {
+  type Assurance,
+  type MemberRole,
+  OWNER_MEMBER_ID,
+} from "@t3tools/tessaya-shared/household";
+import { principalRefusal, reachAssurance, toolReach } from "@t3tools/tessaya-shared/trust";
+import { BATON_TOOL_PREFIX, judgeToolCall } from "@t3tools/tessaya-shared/operator";
+import { recordText } from "@t3tools/tessaya-shared/audit";
+import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";

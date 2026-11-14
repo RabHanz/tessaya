@@ -3,8 +3,8 @@
  * on 2026-11-11 (she knew no one else, did not know the status of things, and ended every reply on the house), or is
  * a control.
  */
-import { commsWaitingLine } from "../../packages/baton-shared/src/comms.ts";
-import { DEFAULT_OS_PACK } from "../../packages/baton-shared/src/osPack.ts";
+import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
+import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
 
 export interface RoomCase {
   readonly id: string;

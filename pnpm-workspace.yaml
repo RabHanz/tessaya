@@ -21,7 +21,7 @@ allowBuilds:
   # Ships prebuilds; its host-architecture probe triggers source builds during cross-packaging.
   koffi: false
   node-pty: true
-  # Baton voice (packages/baton-voice) uses the prebuilt CPU binaries it ships.
+  # Baton voice (packages/tessaya-voice) uses the prebuilt CPU binaries it ships.
   onnxruntime-node: false
   # Ships N-API prebuilds; its install script only rebuilds from source.
   objc-js: false

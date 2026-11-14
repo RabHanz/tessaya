@@ -31,7 +31,7 @@ import {
   type OrchestrationRuleId,
   type ThreadId,
   type WorkSessionId,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

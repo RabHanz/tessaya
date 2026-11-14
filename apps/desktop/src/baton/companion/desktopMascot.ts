@@ -2,7 +2,7 @@
 /**
  * The desktop mascot: one character in a see-through window her own size, on top of everything. She stands on the top
  * edge of the window he is in or on a screen's floor above the taskbar (mascotDock.ts), takes the mouse only over her
- * body, and reacts to Tessaya's turn and jobs with one cue per change (baton-shared/companion). At rest nothing draws.
+ * body, and reacts to Tessaya's turn and jobs with one cue per change (tessaya-shared/companion). At rest nothing draws.
  */
 import * as Electron from "electron";
 import * as NodeFS from "node:fs";
@@ -15,9 +15,9 @@ import {
   wanders,
   type CompanionMoment,
   type CompanionMotion,
-} from "@t3tools/baton-shared/companion";
-import type { TurnPhase } from "@t3tools/baton-shared/voiceTurn";
-import type { Persona } from "@t3tools/baton-shared/osPack";
+} from "@t3tools/tessaya-shared/companion";
+import type { TurnPhase } from "@t3tools/tessaya-shared/voiceTurn";
+import type { Persona } from "@t3tools/tessaya-shared/osPack";
 
 import { protectFromCapture } from "../captureProtection.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";

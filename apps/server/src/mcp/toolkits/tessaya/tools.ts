@@ -28,14 +28,14 @@ import {
   OrchestrationRuleListResult,
   WatchResult,
   BatonPreferenceKey,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   OrchestratorMcpEnvironmentTarget,
   OrchestratorMcpFailure,
   ThreadId,
   VoicePronounce,
 } from "@t3tools/contracts";
-import { DESKTOP_STATE_SECTIONS } from "@t3tools/baton-contracts";
+import { DESKTOP_STATE_SECTIONS } from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
 import * as Fiber from "effect/Fiber";
@@ -50,7 +50,7 @@ import { MembersTools } from "../members/tools.ts";
 import { CommsTools } from "../comms/tools.ts";
 import { AccountTools } from "../accounts/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 const shared = {
   failure: OrchestratorMcpFailure,

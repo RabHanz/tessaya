@@ -8,7 +8,7 @@ import type {
   BatonSessionRequest,
   BatonSessionSummary,
   BatonUsageSummary,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as Electron from "electron";
 
 import {

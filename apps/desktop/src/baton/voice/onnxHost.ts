@@ -12,7 +12,7 @@ import {
   type OpenWakeWordPaths,
   type OpenWakeWordScorer,
   type SileroScorer,
-} from "@t3tools/baton-voice";
+} from "@t3tools/tessaya-voice";
 
 export type OnnxRequest =
   | { readonly op: "open-wake"; readonly id: number; readonly paths: OpenWakeWordPaths }

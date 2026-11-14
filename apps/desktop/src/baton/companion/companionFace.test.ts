@@ -5,7 +5,7 @@ import * as NodeVM from "node:vm";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { DEFAULT_OS_PACK, mergePack } from "@t3tools/baton-shared/osPack";
+import { DEFAULT_OS_PACK, mergePack } from "@t3tools/tessaya-shared/osPack";
 
 import { bodyOf } from "./desktopMascot.ts";
 
@@ -90,7 +90,16 @@ describe("the companion's eyes", () => {
 describe("the body a persona wears (SPINE-UNIFY §10, P3)", () => {
   it("is the persona record's, which for the default pack is the studio's own; a custom persona gets one too", () => {
     for (const p of DEFAULT_OS_PACK.personas) {
-      const preset = TCS.PERSONAS[p.name.toLowerCase()]!;
+      const preset = TCS.PERSONAS[p.name.toLowerCase()];
+      // A default persona the studio has no rig for yet (Onyx, 14 Nov roster) wears its record's look, like a custom one.
+      if (preset === undefined) {
+        expect(bodyOf(DEFAULT_OS_PACK.personas, p.name)).toEqual({
+          persona: "custom",
+          character: p.character,
+          traits: p.traits,
+        });
+        continue;
+      }
       expect(bodyOf(DEFAULT_OS_PACK.personas, p.name)).toEqual({
         persona: p.name.toLowerCase(),
         character: preset.character,

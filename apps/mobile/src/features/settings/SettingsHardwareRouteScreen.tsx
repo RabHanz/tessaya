@@ -3,8 +3,8 @@
  * and live controls, all through the server's `baton.devices.call`. Camera and restart are the owner kind.
  */
 import { useAtomValue } from "@effect/atom-react";
-import { phoneManifest, phoneValues } from "@t3tools/baton-shared/phoneDevice";
-import { r1EasyAction, type R1UpdatesView } from "@t3tools/baton-shared/r1Firmware";
+import { phoneManifest, phoneValues } from "@t3tools/tessaya-shared/phoneDevice";
+import { r1EasyAction, type R1UpdatesView } from "@t3tools/tessaya-shared/r1Firmware";
 import * as Device from "expo-device";
 import {
   DEVICE_SPEAKER_OUTPUTS,
@@ -16,7 +16,7 @@ import {
   type DeviceView,
   type DevicesOverview,
   type R1Mood,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   DISPLAY_CHOICES,
   EYE_SCREENS,
@@ -43,7 +43,7 @@ import {
   displaySupported,
   outputLabels,
   scanLine,
-} from "@t3tools/baton-shared/deviceView";
+} from "@t3tools/tessaya-shared/deviceView";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useState, type ReactNode } from "react";
 import { Alert, Image, StyleSheet, TextInput, View } from "react-native";
@@ -66,7 +66,7 @@ import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 import { BodiesSection } from "./BodiesSection";
 import { R1SetupSection } from "./R1SetupSection";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
-import { DEVICE, FLASH_TOOL } from "@t3tools/baton-shared/productNames";
+import { DEVICE, FLASH_TOOL } from "@t3tools/tessaya-shared/productNames";
 
 const QUIET = { reportFailure: false } as const;
 const INPUT_CLASS = "rounded-lg border border-border-subtle px-3 py-2 text-base text-foreground";

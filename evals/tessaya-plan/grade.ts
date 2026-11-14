@@ -1,4 +1,4 @@
-import { planActs } from "../../packages/baton-shared/src/planLease.ts";
+import { planActs } from "../../packages/tessaya-shared/src/planLease.ts";
 import type { PlanCase } from "./cases.ts";
 
 /** A plan passes when its lease covers the case's site with no risky act, or leases nothing for a control. */

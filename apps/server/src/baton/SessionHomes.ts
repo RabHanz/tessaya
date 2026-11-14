@@ -5,7 +5,7 @@
  * the thread on the live instance, so it keeps working as a Terminal thread, and puts it back on its own instance
  * when the terminal closes. The thread → session map is kept in a file (TessayaSessionsFile) for the CLI.
  */
-import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
+import type { ClaudeLiveSession } from "@t3tools/tessaya-contracts";
 import { BATON_LIVE_INSTANCE, liveSendingUnavailableReason } from "./BatonLiveInstance.ts";
 import { ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";

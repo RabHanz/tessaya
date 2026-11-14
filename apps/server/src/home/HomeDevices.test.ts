@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import type { R1KeyBinding, R1KeySlot } from "@t3tools/baton-contracts";
+import type { R1KeyBinding, R1KeySlot } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";

@@ -1,4 +1,4 @@
-import { absentSessionWindow, NOT_APPLICABLE } from "@t3tools/baton-shared/limitWindows";
+import { absentSessionWindow, NOT_APPLICABLE } from "@t3tools/tessaya-shared/limitWindows";
 import {
   AuthProvidersManageScope,
   type EnvironmentId,

@@ -8,13 +8,13 @@ import type {
   HomeActionRow,
   HomeAutomationRow,
   HomeStatus,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   actionLine,
   automationActions,
   automationLine,
   homeStatusLine,
-} from "@t3tools/baton-shared/homeView";
+} from "@t3tools/tessaya-shared/homeView";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useState, type ReactNode } from "react";
 import { TextInput, View } from "react-native";

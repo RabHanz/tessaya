@@ -6,7 +6,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 
-import { REDACTED } from "@t3tools/baton-shared/memory";
+import { REDACTED } from "@t3tools/tessaya-shared/memory";
 
 import { flaggedReport, openHistory } from "./history.ts";
 

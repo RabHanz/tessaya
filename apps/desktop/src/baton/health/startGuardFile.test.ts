@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { beginStart, EMPTY_GUARD, markHealthy } from "@t3tools/baton-shared/startGuard";
+import { beginStart, EMPTY_GUARD, markHealthy } from "@t3tools/tessaya-shared/startGuard";
 import { describe, expect, it } from "vite-plus/test";
 
 import { readGuard, writeGuard } from "./startGuardFile.ts";

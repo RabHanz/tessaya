@@ -3,7 +3,7 @@
  * he changes in Settings, not an env var. The env var is read once, so a box that ran with it keeps
  * rotating after the upgrade; from then on the setting rules.
  */
-import type { BatonOnLimitSetting } from "@t3tools/baton-contracts";
+import type { BatonOnLimitSetting } from "@t3tools/tessaya-contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

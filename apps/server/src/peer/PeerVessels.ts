@@ -13,7 +13,7 @@ import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { vesselOf } from "../mcp/toolkits/home/handlers.ts";
 import * as PeerLinks from "./PeerLinks.ts";
 import * as PeerMcpClient from "./PeerMcpClient.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 /** What a forwarded call adds: where the turn was heard, and his verified voice as that server's own turn heard it. */
 export const PeerOrigin = {

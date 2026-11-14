@@ -15,7 +15,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
 
 export const SteeringExecutionPolicyV2 = Schema.Literals(["active_steering", "interrupt_restart"]);
 export type SteeringExecutionPolicyV2 = typeof SteeringExecutionPolicyV2.Type;

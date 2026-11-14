@@ -12,7 +12,7 @@ import * as Scope from "effect/Scope";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import { ProviderAdapterDriverCreateError } from "@t3tools/provider-core/server/adapterDriver";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
 
 const isProviderSetupError = Schema.is(ProviderSetupError);
 

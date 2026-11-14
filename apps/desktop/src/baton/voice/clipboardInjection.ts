@@ -10,7 +10,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 
-import type { TextInjectionAdapter } from "@t3tools/baton-shared/injection";
+import type { TextInjectionAdapter } from "@t3tools/tessaya-shared/injection";
 
 export interface Clipboard {
   // Electron 44's clipboard is asynchronous; a plain object in a test is not.

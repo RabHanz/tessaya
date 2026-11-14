@@ -16,8 +16,8 @@ import {
   type DictationContext,
   type DictationMode,
   type DictionaryEntry,
-} from "@t3tools/baton-shared/dictationCleanup";
-import type { StylePair } from "@t3tools/baton-shared/stylePairs";
+} from "@t3tools/tessaya-shared/dictationCleanup";
+import type { StylePair } from "@t3tools/tessaya-shared/stylePairs";
 
 import {
   biasTranscript,
@@ -26,7 +26,7 @@ import {
   type NeverList,
   type VocabularyEntry,
   type WisprRow,
-} from "@t3tools/baton-shared/vocabulary";
+} from "@t3tools/tessaya-shared/vocabulary";
 import { startVisionSession, type VisionSession } from "../screen/claudeVision.ts";
 import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
 

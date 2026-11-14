@@ -9,7 +9,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
-import type { ToolCall } from "@t3tools/baton-shared/operator";
+import type { ToolCall } from "@t3tools/tessaya-shared/operator";
 
 export type VisionContent =
   | { readonly type: "text"; readonly text: string }

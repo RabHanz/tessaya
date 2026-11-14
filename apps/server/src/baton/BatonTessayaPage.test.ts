@@ -1,4 +1,4 @@
-import { PRIVATE_ASSISTANT_OPS } from "@t3tools/baton-contracts";
+import { PRIVATE_ASSISTANT_OPS } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./BatonTessayaPage.ts";

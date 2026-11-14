@@ -4,14 +4,14 @@
  * peer link (direct, tailnet or relay: whatever `PeerLinks.resolve` finds now), and runs the home server's calls to
  * the desktop's hands here, by a long poll it makes itself, so the home server needs no link back.
  */
-import { readDeskTurn } from "@t3tools/baton-shared/deskTurnStream";
+import { readDeskTurn } from "@t3tools/tessaya-shared/deskTurnStream";
 import {
   createHandsBroker,
   publishedSpecs,
   type HandsBroker,
   type HandsCall,
   type HandsResult,
-} from "@t3tools/baton-shared/remoteHands";
+} from "@t3tools/tessaya-shared/remoteHands";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";

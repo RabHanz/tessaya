@@ -1,6 +1,6 @@
 import { it as effectIt } from "@effect/vitest";
-import { AGENT_PROMPT } from "@t3tools/baton-shared/agentPrompt";
-import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
+import { AGENT_PROMPT } from "@t3tools/tessaya-shared/agentPrompt";
+import { createHandsBroker } from "@t3tools/tessaya-shared/remoteHands";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";

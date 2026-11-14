@@ -2,14 +2,14 @@ Live instance label (Tessaya rename): errors that name a provider instance call 
 its display name, not its internal id baton-live.
 
 diff --git a/apps/server/src/orchestration-v2/CommandPolicy.ts b/apps/server/src/orchestration-v2/CommandPolicy.ts
-index cd56460369bd64c958448413c1d9b51e402272f1..87e3e24affa2f8d128cc37d914827797e94935d9 100644
+index cd56460369bd64c958448413c1d9b51e402272f1..1e697ddb967937197841d8b2a4bbc5a9ef6cc9e7 100644
 --- a/apps/server/src/orchestration-v2/CommandPolicy.ts
 +++ b/apps/server/src/orchestration-v2/CommandPolicy.ts
 @@ -15,6 +15,7 @@ import * as Context from "effect/Context";
  import * as Effect from "effect/Effect";
  import * as Layer from "effect/Layer";
  import * as Schema from "effect/Schema";
-+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
++import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
  
  export const SteeringExecutionPolicyV2 = Schema.Literals(["active_steering", "interrupt_restart"]);
  export type SteeringExecutionPolicyV2 = typeof SteeringExecutionPolicyV2.Type;
@@ -23,14 +23,14 @@ index cd56460369bd64c958448413c1d9b51e402272f1..87e3e24affa2f8d128cc37d914827797
  }
  
 diff --git a/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts b/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts
-index a04c1df8872779c19f2d2aecad2e767433365671..c253c25eb148723470e7b174ebc50bac5a2a427d 100644
+index a04c1df8872779c19f2d2aecad2e767433365671..ae089046c210f01bd53c60e7a6883e4e28506edb 100644
 --- a/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts
 +++ b/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts
 @@ -12,6 +12,7 @@ import * as Scope from "effect/Scope";
  import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
  import { ProviderAdapterDriverCreateError } from "@t3tools/provider-core/server/adapterDriver";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
++import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
  
  const isProviderSetupError = Schema.is(ProviderSetupError);
  
@@ -44,14 +44,14 @@ index a04c1df8872779c19f2d2aecad2e767433365671..c253c25eb148723470e7b174ebc50bac
  }
  
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-index c2f7eb767945dca9f8bba21bc620b585b5740a74..62b00c007abc90d9a886733ce5f6bc36f815f8b7 100644
+index c2f7eb767945dca9f8bba21bc620b585b5740a74..8e85f2fb33d0e85ce9dbbb1b53fceffc7591ba3c 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 @@ -61,6 +61,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
  import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
  import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
  import * as ProjectionStore from "./ProjectionStore.ts";
-+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
++import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
  
  const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
  const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
@@ -100,12 +100,12 @@ index c2f7eb767945dca9f8bba21bc620b585b5740a74..62b00c007abc90d9a886733ce5f6bc36
                { concurrency: "unbounded" },
              );
 diff --git a/apps/server/src/provider/Errors.ts b/apps/server/src/provider/Errors.ts
-index b1ef6192faf3be6b65f1dca2a10706d55b3907a7..bef64d54763cebea2bc353cfbc4fea13453cc6c3 100644
+index b1ef6192faf3be6b65f1dca2a10706d55b3907a7..f6658abc37c2c5b64c2d9b4718975f075be015b4 100644
 --- a/apps/server/src/provider/Errors.ts
 +++ b/apps/server/src/provider/Errors.ts
 @@ -1,4 +1,5 @@
  import * as Schema from "effect/Schema";
-+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
++import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
  
  export class ProviderInstanceNotFoundError extends Schema.TaggedError<ProviderInstanceNotFoundError>()(
    "ProviderInstanceNotFoundError",

@@ -7,7 +7,7 @@ import {
   parseLearnedSkill,
   skillsBlock,
   type LearnedSkill,
-} from "@t3tools/baton-shared/skillLearning";
+} from "@t3tools/tessaya-shared/skillLearning";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";

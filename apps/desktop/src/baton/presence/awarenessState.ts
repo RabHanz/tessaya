@@ -9,7 +9,7 @@ import {
   redactWindow,
   type AwarenessSample,
   type AwarenessSwitches,
-} from "@t3tools/baton-shared/awareness";
+} from "@t3tools/tessaya-shared/awareness";
 
 export interface AwarenessSources {
   readonly switches: () => AwarenessSwitches;

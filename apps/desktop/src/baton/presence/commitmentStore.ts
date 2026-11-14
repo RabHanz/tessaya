@@ -11,7 +11,7 @@ import {
   pruneCommitments,
   type Commitment,
   type CommitmentInput,
-} from "@t3tools/baton-shared/commitments";
+} from "@t3tools/tessaya-shared/commitments";
 
 const isCommitment = (v: unknown): v is Commitment =>
   typeof v === "object" &&

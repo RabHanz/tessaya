@@ -21,7 +21,7 @@ import {
   learnFromOutcome,
   playbookDomain,
 } from "../../apps/server/src/baton/BatonPlaybook.ts";
-import { instructionLike } from "../../packages/baton-shared/src/playbook.ts";
+import { instructionLike } from "../../packages/tessaya-shared/src/playbook.ts";
 import { runClaude } from "./agent.ts";
 import type { Arm } from "./arms.ts";
 

@@ -2,7 +2,7 @@
  * Settings → Hardware → Bodies: the Docks, plushes and stands his vessels sit in (VesselBodies). Tags are written from
  * the phone app, which can hold one; here he names them, gives each a room, retires one, and sets the link host.
  */
-import type { VesselBodiesView, VesselBody } from "@t3tools/baton-contracts";
+import type { VesselBodiesView, VesselBody } from "@t3tools/tessaya-contracts";
 import { useEffect, useState } from "react";
 
 import { Badge } from "../ui/badge";

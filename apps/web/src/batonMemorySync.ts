@@ -1,5 +1,5 @@
 /** Where the window may send another server's memory-sync credential (MEMORY.md section 6). */
-import { syncOriginAllowed } from "@t3tools/baton-shared/syncOrigin";
+import { syncOriginAllowed } from "@t3tools/tessaya-shared/syncOrigin";
 
 /**
  * That server's URL for `path`, keeping any base path a relay puts it under. Null when the credential must not go

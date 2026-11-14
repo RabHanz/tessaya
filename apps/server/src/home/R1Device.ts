@@ -21,17 +21,17 @@ import {
   SELF,
   TOOL_FAILED,
   WAKE_WORD,
-} from "@t3tools/baton-shared/assistantPrompt";
-import { recordText } from "@t3tools/baton-shared/audit";
-import { clockStyleOf, spokenTime, type ClockStyle } from "@t3tools/baton-shared/brain";
-import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
+} from "@t3tools/tessaya-shared/assistantPrompt";
+import { recordText } from "@t3tools/tessaya-shared/audit";
+import { clockStyleOf, spokenTime, type ClockStyle } from "@t3tools/tessaya-shared/brain";
+import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
 import {
   DEFAULT_OS_PACK,
   rosterLine,
   type OsPack,
   type Persona,
-} from "@t3tools/baton-shared/osPack";
-import { biasTranscript, type VocabularyEntry } from "@t3tools/baton-shared/vocabulary";
+} from "@t3tools/tessaya-shared/osPack";
+import { biasTranscript, type VocabularyEntry } from "@t3tools/tessaya-shared/vocabulary";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -64,7 +64,7 @@ import {
   brainFailure,
 } from "../baton/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../baton/TessayaExpression.ts";
-import { isLineEvent } from "@t3tools/baton-shared/expression";
+import { isLineEvent } from "@t3tools/tessaya-shared/expression";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -86,7 +86,7 @@ import {
   type HomeActor,
   type R1Device,
 } from "./HomeAssistantService.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 const R1: HomeActor = { who: "Tessaya", surface: "r1" };
 

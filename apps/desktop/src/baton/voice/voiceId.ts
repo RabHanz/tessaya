@@ -11,7 +11,7 @@ import {
   type EnrolGuide,
   type SpeakerEmbedder,
   type SpeakerProfile,
-} from "@t3tools/baton-voice";
+} from "@t3tools/tessaya-voice";
 
 import { enrolOwner, enrolSaved, personId, SAVED_PERSON_LINES } from "./speakerEnrolment.ts";
 import type { VoiceIdModelState, VoiceIdSettings, VoiceIdView } from "./voiceIdRows.ts";

@@ -1,4 +1,4 @@
-import { LIVE_INSTANCE, isLiveThreadId } from "@t3tools/baton-shared/liveThread";
+import { LIVE_INSTANCE, isLiveThreadId } from "@t3tools/tessaya-shared/liveThread";
 import { useSyncExternalStore } from "react";
 
 // T3's thread list with only live sessions (P5): one switch shared by the iOS pills, the Android menu and the list.

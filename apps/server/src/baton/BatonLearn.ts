@@ -1,18 +1,18 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalJsonInEffect:off
 /**
  * Learning Tessaya's progress for the person this server serves, in `<userdata>/tessaya-learn.json`, so a tip seen
- * on the phone is not shown again on the desktop. The rules are `@t3tools/baton-shared/learn`'s.
+ * on the phone is not shown again on the desktop. The rules are `@t3tools/tessaya-shared/learn`'s.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { BatonLearnCallInput, BatonLearnCallResult } from "@t3tools/baton-contracts";
+import type { BatonLearnCallInput, BatonLearnCallResult } from "@t3tools/tessaya-contracts";
 import {
   applyLearnOp,
   readLearnProgress,
   type LearnOp,
   type LearnProgress,
-} from "@t3tools/baton-shared/learn";
+} from "@t3tools/tessaya-shared/learn";
 import * as Effect from "effect/Effect";
 
 import * as ServerConfig from "../config.ts";

@@ -44,7 +44,7 @@ jobs:
         run: |
           choco install ffmpeg --no-progress -y > /dev/null || echo "ffmpeg did not install: no clips this run"
           ffmpeg -version | head -1 || true
-      # The tool table imports workspace packages (baton-shared, baton-contracts, effect), so the run needs an install.
+      # The tool table imports workspace packages (tessaya-shared, tessaya-contracts, effect), so the run needs an install.
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:

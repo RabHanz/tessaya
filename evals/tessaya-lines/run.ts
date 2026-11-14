@@ -2,7 +2,7 @@
 /**
  * tessaya-lines: the wordings her brain writes ahead for each moment (`linesPrompt`, the server's TessayaExpression),
  * on the subscription through `claude -p`, graded by the server's own gate and for variety. `--write-pool` also folds
- * the kept wordings into the shipped offline pool (packages/baton-shared/src/expressionPool.json).
+ * the kept wordings into the shipped offline pool (packages/tessaya-shared/src/expressionPool.json).
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -12,7 +12,7 @@ import * as NodeUtil from "node:util";
 import {
   EXPRESSION_GESTURES,
   EXPRESSION_MOODS,
-} from "../../packages/baton-contracts/src/expression.ts";
+} from "../../packages/tessaya-contracts/src/expression.ts";
 import {
   LINE_EVENT_IDS,
   isLineEvent,
@@ -20,8 +20,8 @@ import {
   linesPrompt,
   type Line,
   type LineEvent,
-} from "../../packages/baton-shared/src/expression.ts";
-import { DEFAULT_OS_PACK } from "../../packages/baton-shared/src/osPack.ts";
+} from "../../packages/tessaya-shared/src/expression.ts";
+import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
 import { gradeMoment, summarize, type MomentGrade, type Written } from "./grade.ts";
 
 const { values } = NodeUtil.parseArgs({
@@ -48,7 +48,7 @@ const personas = DEFAULT_OS_PACK.personas.filter((p) =>
 const events = (values.event ?? LINE_EVENT_IDS).filter(isLineEvent);
 const POOL_FILE = NodePath.join(
   import.meta.dirname,
-  "../../packages/baton-shared/src/expressionPool.json",
+  "../../packages/tessaya-shared/src/expressionPool.json",
 );
 // Her words are persona speech: the subscription, never a metered key (BRAIN-DESIGN §13).
 const METERED =

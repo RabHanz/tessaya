@@ -57,7 +57,7 @@ import {
   type OrchestrationV2RuntimeRequest,
   RunId,
 } from "@t3tools/contracts";
-import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
+import type { ClaudeLiveSession } from "@t3tools/tessaya-contracts";
 import {
   claudeProjectSlug,
   isComposerEcho,
@@ -67,7 +67,7 @@ import {
   type LiveToolStep,
   type LiveTranscriptImage,
   type LiveTranscriptMessage,
-} from "@t3tools/baton-shared/liveTranscript";
+} from "@t3tools/tessaya-shared/liveTranscript";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as DateTime from "effect/DateTime";
@@ -114,8 +114,8 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
 import { projectRefFor } from "./ProjectRef.ts";
-import { stateFile } from "@t3tools/baton-shared/stateDir";
-import { wentIdle } from "@t3tools/baton-shared/liveModel";
+import { stateFile } from "@t3tools/tessaya-shared/stateDir";
+import { wentIdle } from "@t3tools/tessaya-shared/liveModel";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make(BATON_LIVE_INSTANCE);

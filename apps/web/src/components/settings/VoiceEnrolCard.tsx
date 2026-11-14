@@ -1,4 +1,4 @@
-import type { EnrolCard } from "@t3tools/baton-contracts";
+import type { EnrolCard } from "@t3tools/tessaya-contracts";
 
 import { cn } from "~/lib/utils";
 

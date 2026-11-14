@@ -9,8 +9,8 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { redactText } from "@t3tools/baton-shared/diagnostics";
-import { batonToolName } from "@t3tools/baton-shared/operator";
+import { redactText } from "@t3tools/tessaya-shared/diagnostics";
+import { batonToolName } from "@t3tools/tessaya-shared/operator";
 import {
   matchSkills,
   nightlyGroups,
@@ -29,7 +29,7 @@ import {
   type Replay,
   type SkillStates,
   type TurnTrace,
-} from "@t3tools/baton-shared/skillLearning";
+} from "@t3tools/tessaya-shared/skillLearning";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

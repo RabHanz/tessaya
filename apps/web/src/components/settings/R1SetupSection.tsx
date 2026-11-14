@@ -1,7 +1,7 @@
 /**
  * Settings → Hardware → Add an R1: the pairing QR's text and Wi-Fi, then over Bluetooth
  * where the browser has it (Chrome, the desktop app), or as a setup code for the R1's own Wi-Fi page anywhere else. Then, once per server,
- * the away-from-home question. The steps are shared with the phone (`@t3tools/baton-shared/r1Setup`).
+ * the away-from-home question. The steps are shared with the phone (`@t3tools/tessaya-shared/r1Setup`).
  */
 import {
   parsePairingQr,
@@ -9,15 +9,15 @@ import {
   runR1Setup,
   type R1SetupPort,
   type R1SetupStep,
-} from "@t3tools/baton-shared/r1Setup";
-import { batonDesktopBridge } from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-shared/r1Setup";
+import { batonDesktopBridge } from "@t3tools/tessaya-contracts";
 import { useState } from "react";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { SecretInput } from "./SecretInput";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 type Reply = { readonly ok: boolean; readonly value?: unknown; readonly error?: string } | null;
 export type R1Call = (

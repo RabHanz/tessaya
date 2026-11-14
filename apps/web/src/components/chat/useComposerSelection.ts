@@ -17,8 +17,8 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type SetStateAction } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { toastManager } from "../ui/toast";
-import { liveChangeRoute } from "@t3tools/baton-shared/liveModel";
-import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { liveChangeRoute } from "@t3tools/tessaya-shared/liveModel";
+import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 import {
   liveLoginOf,
   useContinueInNewThread,

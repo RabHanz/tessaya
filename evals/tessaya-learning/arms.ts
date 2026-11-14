@@ -13,7 +13,7 @@ import {
   WRITER_SYSTEM,
   writerInput,
   type Playbook,
-} from "../../packages/baton-shared/src/playbook.ts";
+} from "../../packages/tessaya-shared/src/playbook.ts";
 import { runClaude, type Run } from "./agent.ts";
 import type { Job, Outcome } from "./families.ts";
 
@@ -43,7 +43,7 @@ export const noLearning = (): Arm => ({
   memoryText: () => "",
 });
 
-/** Tessaya's loop as `packages/baton-shared/src/playbook.ts` ships it: one playbook per domain. */
+/** Tessaya's loop as `packages/tessaya-shared/src/playbook.ts` ships it: one playbook per domain. */
 export const tessaya = (model: string, cwd: string): Arm & { readonly held: () => string } => {
   const books = new Map<string, Playbook>();
   const held: string[] = [];

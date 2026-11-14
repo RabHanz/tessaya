@@ -12,8 +12,8 @@ import {
   AdoptedSessionId,
   type BatonHerdrSendInput,
   type BatonHerdrSendResult,
-} from "@t3tools/baton-contracts";
-import { HERDR_CAPABILITIES } from "@t3tools/baton-shared/adoptedSession";
+} from "@t3tools/tessaya-contracts";
+import { HERDR_CAPABILITIES } from "@t3tools/tessaya-shared/adoptedSession";
 import * as Effect from "effect/Effect";
 
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";

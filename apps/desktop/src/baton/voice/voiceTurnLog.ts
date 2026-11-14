@@ -4,7 +4,7 @@
  * machine. Dictated words are not written here: they are often someone else's business, so a
  * dictation records its length only.
  */
-import { OVER_HER_VOICE, type VoiceCoreEvent } from "@t3tools/baton-voice";
+import { OVER_HER_VOICE, type VoiceCoreEvent } from "@t3tools/tessaya-voice";
 
 /** Stage times are for the turn that follows its words, not one typed a minute later. */
 const STAGES_KEPT_MS = 60_000;

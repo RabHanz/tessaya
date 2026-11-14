@@ -1,7 +1,7 @@
 # tessaya-learning
 
 Whether a learning loop makes the same kind of job go better each time it comes back. The loops are Tessaya's domain
-playbook (`packages/baton-shared/src/playbook.ts`), a Hermes Agent rebuild, and no learning.
+playbook (`packages/tessaya-shared/src/playbook.ts`), a Hermes Agent rebuild, and no learning.
 
 ## What it does
 

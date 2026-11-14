@@ -3,8 +3,8 @@
  * one value for the sidebar block.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { BatonFleet, EnvironmentId } from "@t3tools/baton-contracts";
-import { createBatonWorkSessionAtoms } from "@t3tools/baton-shared/workSessionAtoms";
+import type { BatonFleet, EnvironmentId } from "@t3tools/tessaya-contracts";
+import { createBatonWorkSessionAtoms } from "@t3tools/tessaya-shared/workSessionAtoms";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";
 

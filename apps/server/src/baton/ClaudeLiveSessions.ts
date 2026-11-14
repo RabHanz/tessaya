@@ -9,7 +9,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
+import type { ClaudeLiveSession } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 
 const DEFAULT_SESSIONS_DIR = NodePath.join(NodeOS.homedir(), ".claude", "sessions");

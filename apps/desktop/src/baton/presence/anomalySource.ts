@@ -13,8 +13,8 @@ import {
   type JobSeen,
   type JobTrack,
   type Pressure,
-} from "@t3tools/baton-shared/anomalies";
-import type { CiRun, Trigger } from "@t3tools/baton-shared/initiative";
+} from "@t3tools/tessaya-shared/anomalies";
+import type { CiRun, Trigger } from "@t3tools/tessaya-shared/initiative";
 
 export const readPressure = (dir: string): Pressure | null => {
   try {

@@ -1,4 +1,4 @@
-import { batonDesktopBridge } from "@t3tools/baton-contracts";
+import { batonDesktopBridge } from "@t3tools/tessaya-contracts";
 
 type Draft = {
   readonly text: string;

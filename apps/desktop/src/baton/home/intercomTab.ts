@@ -11,7 +11,7 @@ import type {
   CommsEmergencyKind,
   CommsSettings,
   BatonHouseholdMember,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 
 import type { HomeControl } from "./batonHome.ts";
 import { text } from "./strings.ts";

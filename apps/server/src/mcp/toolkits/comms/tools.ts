@@ -2,8 +2,8 @@
  * Messages and announcements between the people of this home, for every vessel and agent: send, read, play, react,
  * and do-not-disturb. TessayaComms decides who may reach whom; these only carry the request.
  */
-import { CommsAddress, CommsForms } from "@t3tools/baton-contracts";
-import { COMMS_TOOL_TEXT } from "@t3tools/baton-shared/commsTools";
+import { CommsAddress, CommsForms } from "@t3tools/tessaya-contracts";
+import { COMMS_TOOL_TEXT } from "@t3tools/tessaya-shared/commsTools";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool } from "effect/ai";

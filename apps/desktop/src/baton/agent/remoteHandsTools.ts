@@ -7,7 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { REMOTE_HANDS_TOOLS, createHandleRegistry } from "@t3tools/baton-shared/remoteHands";
+import { REMOTE_HANDS_TOOLS, createHandleRegistry } from "@t3tools/tessaya-shared/remoteHands";
 
 import type {
   FocusState,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import type { DictionaryEntry } from "@t3tools/baton-shared/dictationCleanup";
+import type { DictionaryEntry } from "@t3tools/tessaya-shared/dictationCleanup";
 
 import type { VisionSession } from "../screen/claudeVision.ts";
 import { dictationPieces, makeRewriter } from "./dictationRewriter.ts";

@@ -8,7 +8,7 @@
  * folder name, which is weaker and is marked `dir:` so it never collides with
  * a repository key.
  */
-import type { BatonProjectRef } from "@t3tools/baton-contracts";
+import type { BatonProjectRef } from "@t3tools/tessaya-contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";

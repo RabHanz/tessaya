@@ -6,7 +6,7 @@ This file covers Tessaya's own layer. For the upstream T3 Code rules (one proble
 
 The repository root is upstream T3 Code at a pinned commit plus a patch series plus files Tessaya adds.
 
-- **Tessaya code goes in new files** (`apps/*/src/baton`, `packages/baton-*`, `docs/baton`, `scripts/tessaya`). Prefer a new file plus a one-line hook to a bigger edit of an upstream file.
+- **Tessaya code goes in new files** (`apps/*/src/baton`, `packages/tessaya-*`, `docs/baton`, `scripts/tessaya`). Prefer a new file plus a one-line hook to a bigger edit of an upstream file.
 - **An edit to an upstream path goes through the patch series.** Edit it in place, then `bash scripts/tessaya/patches.sh refresh` (the first edit to a path no patch owns needs `--assign <patch> <path>`). `bash scripts/tessaya/patches.sh verify` must pass; CI checks it.
 - Do not change the logo or the colour tokens in a feature PR.
 

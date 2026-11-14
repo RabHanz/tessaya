@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copy ~/.t3/baton to ~/.t3/tessaya. Never deletes, never overwrites a file that is already there,
-# so it is safe to run again. Readers take the newer of the two copies (packages/baton-shared stateDir).
+# so it is safe to run again. Readers take the newer of the two copies (packages/tessaya-shared stateDir).
 #
 #   state-migrate.sh            copy everything except live-queue/
 #   state-migrate.sh --queue    also copy live-queue/. Only once the server and the live agent

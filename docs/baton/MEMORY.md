@@ -25,7 +25,7 @@ them all, because retrieval must rank across them in one query ("what do you rem
 
 ## 2. The record
 
-Shared type: `packages/baton-shared/src/memory.ts` (`MemoryItem`). Fields:
+Shared type: `packages/tessaya-shared/src/memory.ts` (`MemoryItem`). Fields:
 
 - `id` (a UUID, made where the item is born), `kind`, `text` (one short statement, at most 500 characters, the same cap
   as a note today; a `skill` keeps its whole file, lines included, up to 8,000).

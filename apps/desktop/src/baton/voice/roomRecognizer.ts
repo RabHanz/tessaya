@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off nodeBuiltinImport:off
 /**
- * The R1's room loop (packages/baton-voice/src/room) may hear his speech through this computer's recogniser, the
+ * The R1's room loop (packages/tessaya-voice/src/room) may hear his speech through this computer's recogniser, the
  * one dictation already keeps loaded (on the graphics card when he chose it), as one more of his recognisers. It
  * speaks native/tessaya-recognizer's protocol, listens only on his Tailscale address, asks for a token, and turns
  * the room away while he dictates or talks to Tessaya here: the room then uses its own host.

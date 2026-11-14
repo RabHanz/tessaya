@@ -8,11 +8,11 @@ import {
   parseDecision,
   WAV_MAX_BYTES,
   type PhoneState,
-} from "@t3tools/baton-shared/phone";
+} from "@t3tools/tessaya-shared/phone";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
-import { askLine, type PhoneAsk } from "@t3tools/baton-shared/phoneRelay";
+import { askLine, type PhoneAsk } from "@t3tools/tessaya-shared/phoneRelay";
 
 import type { PostResult } from "./BatonPhoneInbox.ts";
 import type { Transcription } from "./BatonPhoneVoice.ts";

@@ -19,7 +19,7 @@ import {
   parseFaceEngineLine,
   recordBiometricAttempt,
   walkedAway,
-} from "@t3tools/baton-shared/biometrics";
+} from "@t3tools/tessaya-shared/biometrics";
 
 export type FaceRun = (
   args: ReadonlyArray<string>,

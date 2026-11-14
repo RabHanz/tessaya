@@ -3,7 +3,7 @@
  * model, put the result in its place, and remember how to take it back. The ports are the platform:
  * a clipboard copy of the selection, a paste over it, and a key press.
  */
-import { deleteLastUnit, type TextCommand } from "@t3tools/baton-shared/textCommand";
+import { deleteLastUnit, type TextCommand } from "@t3tools/tessaya-shared/textCommand";
 import {
   checkTransformOutput,
   refuseTransformInput,
@@ -12,7 +12,7 @@ import {
   undoable,
   type Transform,
   type UndoSlot,
-} from "@t3tools/baton-shared/transforms";
+} from "@t3tools/tessaya-shared/transforms";
 
 export interface EditPorts {
   /** The selected text, or null when nothing is selected. */

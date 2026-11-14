@@ -2,8 +2,8 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
-import type { VoiceRouter } from "@t3tools/baton-voice";
+import { emptyContextBus } from "@t3tools/tessaya-shared/contextBus";
+import type { VoiceRouter } from "@t3tools/tessaya-voice";
 import { describe, expect, it } from "vite-plus/test";
 
 import { withBrainRoutes } from "../voice/desktopVoiceCore.ts";
@@ -123,7 +123,7 @@ describe("claudeVision", () => {
     process.env["BATON_REAL_CLAUDE"] === "1" && process.env["BATON_REAL_SCREENSHOT"] !== undefined,
   )("answers a screenshot question with a point on the right element", async () => {
     const png = NodeFS.readFileSync(process.env["BATON_REAL_SCREENSHOT"]!);
-    const { LOOK_PROMPT, parseReply } = await import("@t3tools/baton-shared/screenCompanion");
+    const { LOOK_PROMPT, parseReply } = await import("@t3tools/tessaya-shared/screenCompanion");
     const session = startVisionSession({
       claudeBinary: "claude",
       model: "sonnet",

@@ -2,7 +2,7 @@
  * The desktop's account of itself for `tessaya_state` (BatonDesktopState). Each field is copied by name and cut to
  * its cap, so whatever else his settings hold (keys, binary paths, his account, prompts) never leaves this file.
  */
-import type { BatonDesktopState } from "@t3tools/baton-contracts";
+import type { BatonDesktopState } from "@t3tools/tessaya-contracts";
 
 const cut = (value: unknown, max = 80): string => String(value ?? "").slice(0, max);
 const some = <A>(items: ReadonlyArray<A> | undefined, max: number): ReadonlyArray<A> =>

@@ -1,4 +1,4 @@
-import type { BatonJob } from "@t3tools/baton-contracts";
+import type { BatonJob } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { describeJobs, describeTeam } from "./jobText.ts";

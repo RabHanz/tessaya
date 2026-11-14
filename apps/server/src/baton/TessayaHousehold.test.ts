@@ -1,7 +1,7 @@
 import * as NodePlatformCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { memberSubject } from "@t3tools/baton-shared/household";
+import { memberSubject } from "@t3tools/tessaya-shared/household";
 import { AuthStandardClientScopes } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

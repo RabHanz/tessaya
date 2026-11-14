@@ -3,7 +3,7 @@
  * the session list is read every 30 s, and a stopped session offers Resume (the same session id comes back).
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { bindingBanner, bindingOf } from "@t3tools/baton-shared/liveThread";
+import { bindingBanner, bindingOf } from "@t3tools/tessaya-shared/liveThread";
 import { useEffect, useState } from "react";
 
 import { batonWorkSessions } from "../../state/batonWorkSessions";

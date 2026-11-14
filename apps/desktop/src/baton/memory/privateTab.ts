@@ -4,8 +4,8 @@
  * clicks to `act`. A PIN only passes through to the server; what a store holds stays in memory here while it is open
  * and on show, and goes when it locks, when another store is picked, or when the tab closes.
  */
-import type { BatonPrivateStore } from "@t3tools/baton-contracts";
-import type { MemoryItem } from "@t3tools/baton-shared/memory";
+import type { BatonPrivateStore } from "@t3tools/tessaya-contracts";
+import type { MemoryItem } from "@t3tools/tessaya-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import { text } from "../home/strings.ts";

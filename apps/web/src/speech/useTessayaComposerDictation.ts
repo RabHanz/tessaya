@@ -1,9 +1,9 @@
 /**
  * Dictation drawn inside the chat box (Tessaya's composer dictation), from either source: T3's own voice input
  * (its server's speech stream) or, on the desktop, Tessaya's dictation, which streams here instead of pasting.
- * The state machine is shared with mobile (`@t3tools/baton-shared/composerDictation`); this only feeds it.
+ * The state machine is shared with mobile (`@t3tools/tessaya-shared/composerDictation`); this only feeds it.
  */
-import { batonDesktopBridge, type ComposerDictationMessage } from "@t3tools/baton-contracts";
+import { batonDesktopBridge, type ComposerDictationMessage } from "@t3tools/tessaya-contracts";
 import {
   CANCEL_MS,
   IDLE_DICTATION,
@@ -14,8 +14,8 @@ import {
   stepDictation,
   type ComposerDictation,
   type DictationDraft,
-} from "@t3tools/baton-shared/composerDictation";
-import { waveEngine } from "@t3tools/baton-shared/waveform";
+} from "@t3tools/tessaya-shared/composerDictation";
+import { waveEngine } from "@t3tools/tessaya-shared/waveform";
 import type { VoiceInputState } from "@t3tools/client-runtime/voice-input";
 import type { SpeechStreamText } from "@t3tools/contracts";
 import { useEffect, useReducer, useRef, useSyncExternalStore, type RefObject } from "react";

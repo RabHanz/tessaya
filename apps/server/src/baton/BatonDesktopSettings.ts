@@ -10,7 +10,7 @@ import type {
   DesktopVoiceSettings,
   DesktopSettingsControl,
   DesktopVoiceSettingsPatch,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";

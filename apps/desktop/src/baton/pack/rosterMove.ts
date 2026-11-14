@@ -7,7 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { rosterMoves } from "@t3tools/baton-shared/osPack";
+import { rosterMoves } from "@t3tools/tessaya-shared/osPack";
 
 import { writeJsonFile } from "../writing/jsonStore.ts";
 import { PACK_FOLDER } from "./packRows.ts";

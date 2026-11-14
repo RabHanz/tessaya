@@ -3,8 +3,8 @@
  * them, until he picks it. Pure, so the menu, the no-recording path and the versions are tested
  * without Electron.
  */
-import { cleanupLevelFor, strictestCleanup } from "@t3tools/baton-shared/dictationCleanup";
-import { detectSecret } from "@t3tools/baton-shared/memory";
+import { cleanupLevelFor, strictestCleanup } from "@t3tools/tessaya-shared/dictationCleanup";
+import { detectSecret } from "@t3tools/tessaya-shared/memory";
 
 import type { HiddenReason, HistoryTurn, HistoryVersion } from "./history.ts";
 

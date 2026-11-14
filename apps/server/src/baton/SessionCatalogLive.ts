@@ -6,7 +6,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { askHistory } from "@t3tools/baton-shared/historyIndex";
+import { askHistory } from "@t3tools/tessaya-shared/historyIndex";
 import * as Effect from "effect/Effect";
 
 import {

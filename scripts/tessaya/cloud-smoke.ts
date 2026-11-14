@@ -3,8 +3,8 @@
  * Live check of the shared computer's dispatch shell with the app's own code: usage, then a dummy request that
  * is looked at and denied. Needs --host --user --machine-key --approver-key --repo --branch. Prints no key.
  */
-import { sshProviders } from "../../packages/baton-shared/src/cloud/sshShell.ts";
-import { nodeExec } from "../../packages/baton-shared/src/cloud/nodeExec.ts";
+import { sshProviders } from "../../packages/tessaya-shared/src/cloud/sshShell.ts";
+import { nodeExec } from "../../packages/tessaya-shared/src/cloud/nodeExec.ts";
 
 const flag = (name: string): string => {
   const at = process.argv.indexOf(name);

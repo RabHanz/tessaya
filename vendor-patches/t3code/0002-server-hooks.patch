@@ -100,7 +100,7 @@ index 14f12059ce5ce64748987735835cfa3d3a1a9356..aa2c4d91db931b33c62819321e30f5c1
        "preserves a rejected MCP pairing code for exactly one concurrent lower-access retry",
        () =>
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..8e3eb2271b8310dfa55169ccfbf9a2c443b21ed7 100644
+index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..f267eba873fef394bdda0fe1e3f158e8cc9d5ed1 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
 @@ -1,5 +1,6 @@
@@ -114,7 +114,7 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..8e3eb2271b8310dfa55169ccfbf9a2c4
  import * as ManagedLimits from "../policy/managedLimits.ts";
  import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
  import { MCP_APPROVAL_SUBJECT_PREFIX } from "../persistence/AuthPairingLinks.ts";
-+import { isMemberSubject } from "@t3tools/baton-shared/household";
++import { isMemberSubject } from "@t3tools/tessaya-shared/household";
  import { requestUrl } from "../requestUrl.ts";
  
  const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
@@ -464,16 +464,16 @@ index 7f2a3cb3a753a727d591a540591b456e2070bc1a..51fcb18d39e01c9cdad55f3752e2e97f
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 00f9dfae8d9e10d8865a07bf74f9883da31566d6..10348b32b6a6e96169eebb2379f0cb6fe57ba02e 100644
+index 00f9dfae8d9e10d8865a07bf74f9883da31566d6..c4f4372bdced5956b4ae624cbc52b491469643b4 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -1,3 +1,9 @@
-+import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
++import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
 +import {
 +  instanceName,
 +  providerChangeRefusal,
 +  providerIdentity,
-+} from "@t3tools/baton-shared/providerChange";
++} from "@t3tools/tessaya-shared/providerChange";
  import type {
    OrchestrationV2ThreadLinkMetadata,
    GuestShareId,
@@ -1295,11 +1295,11 @@ index d2f21a772ac9921992736dbc2cd04d28c5af0daa..24f3840b63f268ba0af2677bf1bd33c9
            type: "provider-runtime.continue",
            sourceRunId: runId,
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 00e81061f7a13cfbc9172395ab4c9a54d523bf31..22b39265ba17500b53f303cddfeb671800d90321 100644
+index 00e81061f7a13cfbc9172395ab4c9a54d523bf31..5a93b856288d0de6e22d38d1a653ecca24980b5a 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -1,7 +1,13 @@
-+import { pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
++import { pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
  import type {
    OrchestrationV2SearchThreadInput,
    OrchestrationV2SearchThreadResult,
@@ -1323,7 +1323,7 @@ index 00e81061f7a13cfbc9172395ab4c9a54d523bf31..22b39265ba17500b53f303cddfeb6718
  import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
  import * as ServerSettings from "../serverSettings.ts";
  import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
-+import { instanceLabel } from "@t3tools/baton-shared/liveThread";
++import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
 +import { hotSwapProvider, isSelectionCommand } from "../baton/ProviderHotSwap.ts";
  
  export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
@@ -1924,7 +1924,7 @@ index 6fee790bc4bdaea8920685ef9894451f717f8046..31d144e287edd19cb9ff95428931cfbf
      }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
    );
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..8da42394dd0eaa4114c722ad187a22d5ccd381a9 100644
+index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..4178865cd392fc245d60ff0452d8b0806ca12e42 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -235,6 +235,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -1932,7 +1932,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..8da42394dd0eaa4114c722ad187a22d5
  import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
  import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 +// Baton (vendor-patches/t3code/0002-server-hooks.patch): its own RPC group, handlers and scopes.
-+import { BatonRpcGroup } from "@t3tools/baton-contracts";
++import { BatonRpcGroup } from "@t3tools/tessaya-contracts";
 +import * as BatonRpcAuthorization from "./baton/BatonRpcAuthorization.ts";
 +import * as BatonRpcHandlers from "./baton/BatonRpcHandlers.ts";
  import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
@@ -2072,7 +2072,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..0f9d04b29a1b31cb2c940eb6f1dc98c956084c20 100644
+index 49470541d90be695ad24df030ca6522682a82611..aa77c071c8df9c7f3c3522c3faa103c9fe5e7b48 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2099,7 +2099,7 @@ index 49470541d90be695ad24df030ca6522682a82611..0f9d04b29a1b31cb2c940eb6f1dc98c9
 +export const RoomBrain = Schema.Literals(["api", "subscription", "auto"]);
 +export type RoomBrain = typeof RoomBrain.Type;
 +
-+/** Word → how the voice says it, in plain letters (`pronounce` in baton-shared). */
++/** Word → how the voice says it, in plain letters (`pronounce` in tessaya-shared). */
 +export const VoicePronounce = Schema.Record(
 +  Schema.String.check(Schema.isMaxLength(60)),
 +  Schema.String.check(Schema.isMaxLength(80)),
@@ -2138,7 +2138,7 @@ index 49470541d90be695ad24df030ca6522682a82611..0f9d04b29a1b31cb2c940eb6f1dc98c9
 +  brainDeferNearLimit: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 +  // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
 +  voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-+  // Tessaya: her lines written by her brain, varied and in character (baton-shared expression.ts); off plays the fixed ones.
++  // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
 +  tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 +  // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
 +  companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(

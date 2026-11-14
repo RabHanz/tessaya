@@ -14,7 +14,7 @@ import * as NodePath from "node:path";
 import * as NodeStreamPromises from "node:stream/promises";
 import * as NodeUtil from "node:util";
 
-import { POCKET_VOICE_FILES, pocketVoiceUrl } from "@t3tools/baton-shared/voiceLibrary";
+import { POCKET_VOICE_FILES, pocketVoiceUrl } from "@t3tools/tessaya-shared/voiceLibrary";
 
 export interface Pinned {
   /** Where it goes, relative to the install folder. */

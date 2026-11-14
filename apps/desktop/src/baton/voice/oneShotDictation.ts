@@ -1,4 +1,4 @@
-import { settleOneShot } from "@t3tools/baton-shared/dictationOneShot";
+import { settleOneShot } from "@t3tools/tessaya-shared/dictationOneShot";
 
 /**
  * Spoken dictation all at once, however long: chunks are kept (and saved after each one, so a

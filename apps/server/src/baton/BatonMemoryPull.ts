@@ -16,9 +16,9 @@ import {
   PEER_ASK_TIMEOUT_MS,
   parseLearnings,
   type HistoryAnswer,
-} from "@t3tools/baton-shared/historyIndex";
-import { redactSecretLines, sharesPrivateText } from "@t3tools/baton-shared/memory";
-import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
+} from "@t3tools/tessaya-shared/historyIndex";
+import { redactSecretLines, sharesPrivateText } from "@t3tools/tessaya-shared/memory";
+import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 

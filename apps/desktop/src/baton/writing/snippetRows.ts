@@ -1,5 +1,5 @@
 /** The Snippets area of the window: the list with add and remove, import and export. */
-import { formatSnippet, parseSnippet, type Snippet } from "@t3tools/baton-shared/snippets";
+import { formatSnippet, parseSnippet, type Snippet } from "@t3tools/tessaya-shared/snippets";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

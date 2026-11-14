@@ -1,7 +1,7 @@
 // @effect-diagnostics globalTimers:off
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { queueSpeech } from "@t3tools/baton-shared/companionPacing";
+import { queueSpeech } from "@t3tools/tessaya-shared/companionPacing";
 
 import { pocketPlan } from "./pocketVoice.ts";
 import {

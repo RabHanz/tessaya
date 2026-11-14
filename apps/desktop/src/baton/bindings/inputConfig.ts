@@ -3,7 +3,7 @@ import {
   type BindableAction,
   type InputBindingsConfig,
   type Trigger,
-} from "@t3tools/baton-shared/inputBindings";
+} from "@t3tools/tessaya-shared/inputBindings";
 
 import type { BindingInput } from "./bindings.ts";
 
@@ -37,7 +37,7 @@ const trigger = (input: BindingInput): Trigger | null => {
 
 /**
  * What the Windows mouse hook is told: only the mouse bindings of the Keyboard and mouse page,
- * under the schema in baton-shared. Keys stay with the keyboard hook; an unbound button is not
+ * under the schema in tessaya-shared. Keys stay with the keyboard hook; an unbound button is not
  * listed, so the hook lets it through untouched.
  */
 export const mouseHookConfig = (

@@ -1,4 +1,4 @@
-import type { DesktopVoiceSettings } from "@t3tools/baton-contracts";
+import type { DesktopVoiceSettings } from "@t3tools/tessaya-contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";

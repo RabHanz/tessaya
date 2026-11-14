@@ -7,7 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { MemoryItem, MemoryVersion } from "@t3tools/baton-shared/memory";
+import type { MemoryItem, MemoryVersion } from "@t3tools/tessaya-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import type { MemoryCall } from "./memoryClient.ts";

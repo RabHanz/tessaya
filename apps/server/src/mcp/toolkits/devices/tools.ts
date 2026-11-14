@@ -11,8 +11,8 @@ import {
   R1_LEDS,
   R1_MOODS,
   type R1KeySlot,
-} from "@t3tools/baton-contracts";
-import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
+} from "@t3tools/tessaya-contracts";
+import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool } from "effect/ai";
@@ -20,7 +20,7 @@ import { Tool } from "effect/ai";
 import { On, PeerOrigin } from "../../../peer/PeerVessels.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 const shared = {
   failure: OrchestratorMcpFailure,

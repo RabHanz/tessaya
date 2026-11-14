@@ -2,10 +2,10 @@
  * Settings → Accounts & providers (ACCOUNTS-4): one card per real account above T3's own provider list, merged by
  * email. Pausing, signing in and removing stay on the provider instance below, which "Open" selects.
  */
-import { maskedEmail, roomDetail, roomTone } from "@t3tools/baton-shared/accountRoom";
-import { pickModelFor } from "@t3tools/baton-shared/accounts";
+import { maskedEmail, roomDetail, roomTone } from "@t3tools/tessaya-shared/accountRoom";
+import { pickModelFor } from "@t3tools/tessaya-shared/accounts";
 import { createModelSelection } from "@t3tools/shared/model";
-import type { BatonAccountRecord, BatonSignInMethod } from "@t3tools/baton-contracts";
+import type { BatonAccountRecord, BatonSignInMethod } from "@t3tools/tessaya-contracts";
 import {
   type EnvironmentId,
   PROVIDER_DISPLAY_NAMES,

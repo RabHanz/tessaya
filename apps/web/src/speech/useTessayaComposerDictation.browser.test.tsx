@@ -1,4 +1,4 @@
-import type { ComposerDictationMessage, ComposerDictationReply } from "@t3tools/baton-contracts";
+import type { ComposerDictationMessage, ComposerDictationReply } from "@t3tools/tessaya-contracts";
 import type { VoiceInputState } from "@t3tools/client-runtime/voice-input";
 import type { SpeechStreamText } from "@t3tools/contracts";
 import { useRef, useState } from "react";

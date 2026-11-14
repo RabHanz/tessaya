@@ -1,4 +1,4 @@
-import { BATON_WS_METHODS } from "@t3tools/baton-contracts";
+import { BATON_WS_METHODS } from "@t3tools/tessaya-contracts";
 import {
   EnvironmentAuthorizationError,
   clientRpcRequiredScopes,

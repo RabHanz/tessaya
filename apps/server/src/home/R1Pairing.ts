@@ -16,7 +16,7 @@ import { DeviceRefusedError } from "./DeviceRegistry.ts";
 import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach, type R1Endpoints } from "./R1Reach.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 const DEVICE_ID = /^[A-Za-z0-9_-]{1,60}$/;
 /** A key use from another machine this recent makes a rotation ask first. */

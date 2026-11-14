@@ -3,7 +3,7 @@
  * `desktopBridge` object stays upstream's. Called once from `preload.ts`
  * (`vendor-patches/t3code/0007-desktop.patch`); read through `batonDesktopBridge()`.
  */
-import type { BatonDesktopBridge } from "@t3tools/baton-contracts";
+import type { BatonDesktopBridge } from "@t3tools/tessaya-contracts";
 import { contextBridge, ipcRenderer } from "electron";
 
 import * as Channels from "./channels.ts";

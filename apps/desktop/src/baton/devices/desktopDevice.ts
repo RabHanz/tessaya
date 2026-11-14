@@ -7,7 +7,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 
-import type { DeviceItem, DeviceManifest, DeviceWrite } from "@t3tools/baton-contracts";
+import type { DeviceItem, DeviceManifest, DeviceWrite } from "@t3tools/tessaya-contracts";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

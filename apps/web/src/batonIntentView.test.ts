@@ -3,10 +3,10 @@ import {
   WorkSessionId,
   type BatonIntentRecord,
   type BatonIntentResolution,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { BAR_ASK_TTL_MS } from "@t3tools/baton-shared/phoneRelay";
+import { BAR_ASK_TTL_MS } from "@t3tools/tessaya-shared/phoneRelay";
 
 import { buildIntentRows, leadAskSettled, previewResolution } from "./batonIntentView";
 

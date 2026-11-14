@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off
 /** The Insights area of the window, from what the turn log already holds. */
-import { describeSpeed, type DeepInsights } from "@t3tools/baton-shared/insightsDeep";
-import { describeProfile, type VoiceProfile } from "@t3tools/baton-shared/voiceProfile";
+import { describeSpeed, type DeepInsights } from "@t3tools/tessaya-shared/insightsDeep";
+import { describeProfile, type VoiceProfile } from "@t3tools/tessaya-shared/voiceProfile";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

@@ -27,10 +27,10 @@ import {
   type BatonLiveSetAccountResult,
   type BatonLiveSetModelInput,
   type BatonLiveSetModelResult,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
-import { claudeProjectSlug, liveLimitHit } from "@t3tools/baton-shared/liveTranscript";
-import { sessionEffort, setLiveModel, transcriptModel } from "@t3tools/baton-shared/liveModel";
+import { claudeProjectSlug, liveLimitHit } from "@t3tools/tessaya-shared/liveTranscript";
+import { sessionEffort, setLiveModel, transcriptModel } from "@t3tools/tessaya-shared/liveModel";
 import { herdrSend } from "./HerdrSend.ts";
 import { TESSAYA_CLI } from "./SessionCatalogLive.ts";
 
@@ -38,7 +38,7 @@ import {
   ProviderDriverKind,
   type BatonLiveQueued,
   type ServerProvider,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";

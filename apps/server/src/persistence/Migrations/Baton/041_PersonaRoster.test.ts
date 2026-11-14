@@ -4,7 +4,7 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
+import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

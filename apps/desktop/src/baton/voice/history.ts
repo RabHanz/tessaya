@@ -8,7 +8,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 
-import { REDACTED, detectSecret } from "@t3tools/baton-shared/memory";
+import { REDACTED, detectSecret } from "@t3tools/tessaya-shared/memory";
 
 import { redactForHistory } from "../vault/redact.ts";
 

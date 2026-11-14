@@ -1,5 +1,5 @@
-import { privatePersonOf, type SpeakerLike } from "@t3tools/baton-shared/privateMemory";
-import type { LearnInput } from "@t3tools/baton-shared/memoryLearning";
+import { privatePersonOf, type SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
+import type { LearnInput } from "@t3tools/tessaya-shared/memoryLearning";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -17,7 +17,7 @@ import type {
   BatonHouseholdCallInput,
   DeviceItem,
   RegisteredDevice,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,

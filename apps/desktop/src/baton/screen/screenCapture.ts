@@ -3,7 +3,7 @@
  * first, each scaled so its long edge is at most 1280 px (farzaa/clicky's size), as JPEG.
  * Nothing is captured unless the companion asks, and the companion asks only after his approval.
  */
-import { captureSize, pickSource, type ScreenShot } from "@t3tools/baton-shared/screenCompanion";
+import { captureSize, pickSource, type ScreenShot } from "@t3tools/tessaya-shared/screenCompanion";
 
 type Rect = {
   readonly x: number;

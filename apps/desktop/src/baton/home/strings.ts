@@ -1,4 +1,4 @@
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 /**
  * Every piece of user-facing text the window draws, in one table per language. English is the only
  * one today; a second language is a second object with the same keys, and any key it leaves out falls

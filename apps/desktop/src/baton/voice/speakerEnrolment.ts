@@ -6,7 +6,7 @@
  */
 import * as NodePath from "node:path";
 
-import { enrol, type SpeakerProfile } from "@t3tools/baton-voice";
+import { enrol, type SpeakerProfile } from "@t3tools/tessaya-voice";
 
 const RATE = 16_000;
 /** Wispr clips shorter than this say too little about a voice; longer ones cost time and add nothing. */

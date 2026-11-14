@@ -1,7 +1,7 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * The real voice core (`@t3tools/baton-voice`) behind the desktop's
+ * The real voice core (`@t3tools/tessaya-voice`) behind the desktop's
  * `makeCore` seam: openWakeWord → Silero VAD → whisper.cpp → the §12.3 mode
  * machine → the core's router, whose four intent calls are answered here.
  *
@@ -12,7 +12,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { BatonFocusTarget, BatonIntentResolution } from "@t3tools/baton-contracts";
+import type { BatonFocusTarget, BatonIntentResolution } from "@t3tools/tessaya-contracts";
 import {
   createOpenWakeWordProvider,
   createOsTts,
@@ -33,15 +33,15 @@ import {
   type VoiceIntentClient,
   type VoiceRouter,
   type WakeWordModel,
-} from "@t3tools/baton-voice";
-import type { CutIn } from "@t3tools/baton-shared/endOfTurn";
+} from "@t3tools/tessaya-voice";
+import type { CutIn } from "@t3tools/tessaya-shared/endOfTurn";
 import {
   applyContextSnapshot,
   emptyContextBus,
   resolveContextWorkSession,
   type ContextBusState,
-} from "@t3tools/baton-shared/contextBus";
-import type { TextInjectionAdapter } from "@t3tools/baton-shared/injection";
+} from "@t3tools/tessaya-shared/contextBus";
+import type { TextInjectionAdapter } from "@t3tools/tessaya-shared/injection";
 
 const VOICE_FEATURE_FILES = ["melspectrogram.onnx", "embedding_model.onnx", "silero_vad.onnx"];
 

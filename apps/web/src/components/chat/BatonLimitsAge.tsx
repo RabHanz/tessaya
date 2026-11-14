@@ -2,7 +2,7 @@
  * How old a limits reading is (D92). A setup token's windows come from Baton's five-minute probe, so
  * they lag the account, and a stopped probe would otherwise look like a quiet account.
  */
-import { limitsAge } from "@t3tools/baton-shared/accountRoom";
+import { limitsAge } from "@t3tools/tessaya-shared/accountRoom";
 import { cn } from "~/lib/utils";
 
 export function BatonLimitsAge(props: {

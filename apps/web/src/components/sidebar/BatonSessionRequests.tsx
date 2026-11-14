@@ -9,9 +9,9 @@ import {
   type ProjectId,
   type ThreadId,
   type BatonProjectRef,
-} from "@t3tools/baton-contracts";
-import { buildBatonProjects, paneWaiting } from "@t3tools/baton-shared/batonProjects";
-import { answerCatalogRequest } from "@t3tools/baton-shared/catalogRequests";
+} from "@t3tools/tessaya-contracts";
+import { buildBatonProjects, paneWaiting } from "@t3tools/tessaya-shared/batonProjects";
+import { answerCatalogRequest } from "@t3tools/tessaya-shared/catalogRequests";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";

@@ -1,10 +1,10 @@
-import type { PhoneState } from "@t3tools/baton-shared/phone";
+import type { PhoneState } from "@t3tools/tessaya-shared/phone";
 import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { PhoneAsk } from "@t3tools/baton-shared/phoneRelay";
+import type { PhoneAsk } from "@t3tools/tessaya-shared/phoneRelay";
 
 import {
   CLOUD_APPROVE_SCOPE,

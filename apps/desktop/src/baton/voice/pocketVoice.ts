@@ -17,7 +17,7 @@ import {
   pocketVoiceUrl,
   voiceLibrary,
   type PocketVoiceName,
-} from "@t3tools/baton-shared/voiceLibrary";
+} from "@t3tools/tessaya-shared/voiceLibrary";
 
 import { POCKET_CONFIG_FULL, POCKET_CONFIG_QUICK } from "./pocketConfigs.ts";
 import type { Synthesise } from "./voiceSpeaker.ts";

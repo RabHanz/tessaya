@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fails when something Tessaya's own code ships or downloads has no licence entry (public release checklist).
-// Looks at: the dependencies of packages/baton-*, apps/desktop, the Rust crates of native/baton-dictation, tessel-flash's Go
+// Looks at: the dependencies of packages/tessaya-*, apps/desktop, the Rust crates of native/baton-dictation, tessel-flash's Go
 // modules, the model files it ships, and the fonts in the window. Each must be in docs/baton/notices.json, named in
 // THIRD_PARTY_NOTICES.md, and point at a licence text that exists.  Plain Node:  node scripts/tessaya/check-notices.mjs
 import * as NodeFS from "node:fs";
@@ -17,9 +17,9 @@ const read = (root, file) => {
 
 /** The npm packages Tessaya's own workspaces add (not workspace links, not upstream's). */
 const BATON_PACKAGES = [
-  "packages/baton-voice",
-  "packages/baton-shared",
-  "packages/baton-contracts",
+  "packages/tessaya-voice",
+  "packages/tessaya-shared",
+  "packages/tessaya-contracts",
 ];
 /** apps/desktop mixes upstream's dependencies with ours; only these are ours to account for. */
 const DESKTOP_OURS = ["electron"];

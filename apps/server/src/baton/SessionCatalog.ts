@@ -8,7 +8,7 @@ import type {
   BatonCatalogSession,
   BatonCatalogState,
   ClaudeLiveSession,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 
 export interface TranscriptInfo {
   readonly sessionId: string;

@@ -16,7 +16,7 @@ import { rescueMainWindow } from "./mainWindowRescue.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { createOsTts } from "@t3tools/baton-voice";
+import { createOsTts } from "@t3tools/tessaya-voice";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -29,7 +29,7 @@ import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
 import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
-import { readDeskTurn } from "@t3tools/baton-shared/deskTurnStream";
+import { readDeskTurn } from "@t3tools/tessaya-shared/deskTurnStream";
 import { conversationsIn } from "./conversation/conversationLog.ts";
 import { moveRoster } from "./pack/rosterMove.ts";
 import {
@@ -37,18 +37,18 @@ import {
   failedStartMessage,
   isBad,
   markHealthy,
-} from "@t3tools/baton-shared/startGuard";
+} from "@t3tools/tessaya-shared/startGuard";
 import {
   BATON_SESSIONS_WS_METHODS,
   type BatonHouseholdCallResult,
   type CommsCallResult,
   tessayaPlaceOf,
-} from "@t3tools/baton-contracts";
-import { approvalRecord } from "@t3tools/baton-shared/approvals";
-import { DEFAULT_POCKET_VOICE } from "@t3tools/baton-shared/voiceLibrary";
-import { inFlightLine } from "@t3tools/baton-shared/turnsInFlight";
-import { releasesUrl } from "@t3tools/baton-shared/repo";
-import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
+} from "@t3tools/tessaya-contracts";
+import { approvalRecord } from "@t3tools/tessaya-shared/approvals";
+import { DEFAULT_POCKET_VOICE } from "@t3tools/tessaya-shared/voiceLibrary";
+import { inFlightLine } from "@t3tools/tessaya-shared/turnsInFlight";
+import { releasesUrl } from "@t3tools/tessaya-shared/repo";
+import { adoptTessayaEnv } from "@t3tools/tessaya-shared/tessayaEnv";
 import { readGuard, writeGuard } from "./health/startGuardFile.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { markPhase, startStallWatch } from "./lifecycle/mainStall.ts";

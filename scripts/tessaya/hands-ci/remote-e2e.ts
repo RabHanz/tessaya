@@ -8,8 +8,8 @@ import * as NodeHttp from "node:http";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { BATON_TOOL_PREFIX } from "../../../packages/baton-shared/src/operator.ts";
-import { createHandsBroker } from "../../../packages/baton-shared/src/remoteHands.ts";
+import { BATON_TOOL_PREFIX } from "../../../packages/tessaya-shared/src/operator.ts";
+import { createHandsBroker } from "../../../packages/tessaya-shared/src/remoteHands.ts";
 import { handleHands } from "../../../apps/server/src/baton/BatonHandsApi.ts";
 import { createAgentGate, createTaint } from "../../../apps/desktop/src/baton/agent/agentGate.ts";
 import { createRemoteHandsLoop } from "../../../apps/desktop/src/baton/agent/remoteHandsLoop.ts";

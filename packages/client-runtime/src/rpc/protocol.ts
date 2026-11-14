@@ -1,4 +1,4 @@
-import { BatonRpcGroup } from "@t3tools/baton-contracts";
+import { BatonRpcGroup } from "@t3tools/tessaya-contracts";
 import { WsRpcGroup } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { RpcClient } from "effect/rpc";

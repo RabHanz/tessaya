@@ -2,7 +2,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { rosterMoves } from "@t3tools/baton-shared/osPack";
+import { rosterMoves } from "@t3tools/tessaya-shared/osPack";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";

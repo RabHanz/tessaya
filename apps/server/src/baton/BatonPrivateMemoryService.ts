@@ -10,7 +10,7 @@ import {
   type BatonPrivateCallInput,
   type BatonPrivateDraft,
   type BatonPrivateStore,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   exportMarkdown,
   memoryBlock,
@@ -19,7 +19,7 @@ import {
   tokens,
   type MemoryItem,
   type MemoryKind,
-} from "@t3tools/baton-shared/memory";
+} from "@t3tools/tessaya-shared/memory";
 import {
   afterWrongPin,
   OWNER_PERSON_ID,
@@ -29,7 +29,7 @@ import {
   relockAfter,
   type PrivateStoreKind,
   type PrivateTurn,
-} from "@t3tools/baton-shared/privateMemory";
+} from "@t3tools/tessaya-shared/privateMemory";
 import {
   adminAad,
   auditHash,
@@ -51,9 +51,9 @@ import {
   type Boxed,
   type KdfParams,
   type Sealed,
-} from "@t3tools/baton-shared/privateCrypto";
-import { HOUSEHOLD_DEFAULTS } from "@t3tools/baton-shared/household";
-import { newRecoveryKey, parseRecoveryKey } from "@t3tools/baton-shared/vaultCrypto";
+} from "@t3tools/tessaya-shared/privateCrypto";
+import { HOUSEHOLD_DEFAULTS } from "@t3tools/tessaya-shared/household";
+import { newRecoveryKey, parseRecoveryKey } from "@t3tools/tessaya-shared/vaultCrypto";
 import * as NodeCrypto from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";

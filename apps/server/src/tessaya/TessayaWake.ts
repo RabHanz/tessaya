@@ -26,7 +26,7 @@ import {
   type WakeStore,
   type WakeTarget,
   type WakeWordView,
-} from "@t3tools/baton-shared/wakeModels";
+} from "@t3tools/tessaya-shared/wakeModels";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -34,7 +34,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 
-import { wakeTrainingOn } from "@t3tools/baton-shared/household";
+import { wakeTrainingOn } from "@t3tools/tessaya-shared/household";
 
 import * as ServerConfig from "../config.ts";
 import { MemberPreferences } from "../baton/MemberPreferences.ts";

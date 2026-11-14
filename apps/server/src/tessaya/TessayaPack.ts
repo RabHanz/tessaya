@@ -14,7 +14,7 @@ import {
   planPackSync,
   type PackBase,
   type PackFiles,
-} from "@t3tools/baton-shared/packSync";
+} from "@t3tools/tessaya-shared/packSync";
 import * as Effect from "effect/Effect";
 
 import { homeLink } from "../baton/TessayaHousehold.ts";

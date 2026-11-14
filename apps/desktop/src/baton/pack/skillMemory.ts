@@ -6,7 +6,7 @@ import {
   skillFileText,
   type LearnedSkill,
   type SkillStates,
-} from "@t3tools/baton-shared/skillLearning";
+} from "@t3tools/tessaya-shared/skillLearning";
 
 /** One call to the server's `baton.memory.*`. */
 export type MemoryCall = (op: string, args: Record<string, unknown>) => Promise<unknown>;

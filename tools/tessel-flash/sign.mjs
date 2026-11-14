@@ -5,7 +5,7 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 
 const file = process.argv[2];
-const source = NodeFS.readFileSync("packages/baton-shared/src/r1Firmware.ts", "utf8");
+const source = NodeFS.readFileSync("packages/tessaya-shared/src/r1Firmware.ts", "utf8");
 const publicHex = /R1_FIRMWARE_PUBLIC_KEY =\s*"([0-9a-f]{130})"/.exec(source)[1];
 const jwkOf = (d) => ({
   kty: "EC",

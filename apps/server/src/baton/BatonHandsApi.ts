@@ -9,7 +9,7 @@ import {
   type HandsBroker,
   type HandsAudit,
   type HandsResult,
-} from "@t3tools/baton-shared/remoteHands";
+} from "@t3tools/tessaya-shared/remoteHands";
 
 export const HANDS_SCOPE = AuthBatonHandsScope;
 export const HANDS_HOST_SCOPE = AuthBatonHandsHostScope;

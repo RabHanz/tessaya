@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { inApprovedSteps } from "@t3tools/baton-shared/trust";
+import { inApprovedSteps } from "@t3tools/tessaya-shared/trust";
 
 import {
   answeredWithWords,

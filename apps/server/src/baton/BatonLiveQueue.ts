@@ -9,7 +9,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { stateSubdir } from "@t3tools/baton-shared/stateDir";
+import { stateSubdir } from "@t3tools/tessaya-shared/stateDir";
 
 export const liveQueueDir = (): string =>
   process.env["BATON_LIVE_QUEUE_DIR"] ?? stateSubdir(NodeOS.homedir(), "live-queue");

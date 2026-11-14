@@ -1,6 +1,6 @@
 //! The click and chord rules of Baton's mouse hook. Pure, so they run (and are tested) on any
 //! platform; `mouse_windows.rs` feeds them from a low-level hook. Mirrors `reduceMouse` in
-//! `packages/baton-shared/src/inputBindings.ts`: the vectors in the tests below are the same ones.
+//! `packages/tessaya-shared/src/inputBindings.ts`: the vectors in the tests below are the same ones.
 //! The promise: an unbound button always reaches the app untouched, and a chord never leaks a click.
 
 use serde_json::Value;

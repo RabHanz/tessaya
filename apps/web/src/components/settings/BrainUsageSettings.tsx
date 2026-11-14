@@ -2,8 +2,8 @@
  * Settings → Usage's brain section (BRAIN-DESIGN §13.3): what each kind of her work used on which login, by day in
  * the reader's own zone, and his API spend alerts against what the key spent.
  */
-import type { BrainUsageResult, EnvironmentId } from "@t3tools/baton-contracts";
-import { BRAIN_ROLE_LABELS, credentialLabel } from "@t3tools/baton-shared/brainRoutes";
+import type { BrainUsageResult, EnvironmentId } from "@t3tools/tessaya-contracts";
+import { BRAIN_ROLE_LABELS, credentialLabel } from "@t3tools/tessaya-shared/brainRoutes";
 import type { BrainCredential, BrainRole, BrainSpendLimit } from "@t3tools/contracts";
 import { useEffect, useState } from "react";
 

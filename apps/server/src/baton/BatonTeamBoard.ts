@@ -6,8 +6,8 @@
  */
 import * as NodePath from "node:path";
 
-import type { BatonTeamBoardInput, BatonTeamMember } from "@t3tools/baton-contracts";
-import { mayRecall, type Persona } from "@t3tools/baton-shared/osPack";
+import type { BatonTeamBoardInput, BatonTeamMember } from "@t3tools/tessaya-contracts";
+import { mayRecall, type Persona } from "@t3tools/tessaya-shared/osPack";
 import * as Effect from "effect/Effect";
 
 import * as ServerConfig from "../config.ts";

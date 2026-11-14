@@ -5,7 +5,7 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { buildNightly, type NightlyRef } from "../../packages/baton-shared/src/nightly.ts";
+import { buildNightly, type NightlyRef } from "../../packages/tessaya-shared/src/nightly.ts";
 
 const env = (name: string): string => process.env[name] ?? "";
 const needs = JSON.parse(env("NEEDS") || "{}") as Record<string, { result?: string }>;

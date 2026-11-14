@@ -10,7 +10,7 @@ import {
   publishOnce,
   publishPacket,
   subscribePacket,
-} from "@t3tools/baton-shared/mqtt";
+} from "@t3tools/tessaya-shared/mqtt";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

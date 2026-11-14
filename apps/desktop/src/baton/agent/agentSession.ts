@@ -4,14 +4,14 @@
  * the whole conversation, so a turn moved to another model never waits for a start. Each starts before he speaks, is seeded from the conversation file when it starts or
  * is recycled, and puts every turn back into that file. A new session loses nothing.
  */
-import { cutInLine, type CutIn } from "@t3tools/baton-shared/endOfTurn";
+import { cutInLine, type CutIn } from "@t3tools/tessaya-shared/endOfTurn";
 import {
   RECENT_TURNS,
   conversationBlock,
   type ConversationTurn,
-} from "@t3tools/baton-shared/conversation";
-import type { Brain } from "@t3tools/baton-shared/osPack";
-import { PRIVATE_TURN_STUB } from "@t3tools/baton-shared/privateMemory";
+} from "@t3tools/tessaya-shared/conversation";
+import type { Brain } from "@t3tools/tessaya-shared/osPack";
+import { PRIVATE_TURN_STUB } from "@t3tools/tessaya-shared/privateMemory";
 
 import type { ConversationLog } from "../conversation/conversationLog.ts";
 import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
@@ -21,7 +21,7 @@ import {
   greetingLine,
   sinceLine,
   type TurnPersona,
-} from "@t3tools/baton-shared/agentPrompt";
+} from "@t3tools/tessaya-shared/agentPrompt";
 
 /** About this many turns, and the session is replaced and re-seeded; a long one gets slow and costly. */
 export const RECYCLE_TURNS = 40;

@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { skillFileText } from "@t3tools/baton-shared/skillLearning";
+import { skillFileText } from "@t3tools/tessaya-shared/skillLearning";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 

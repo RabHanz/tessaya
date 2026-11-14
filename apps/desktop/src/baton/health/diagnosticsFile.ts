@@ -10,7 +10,7 @@ import {
   scrubLog,
   scrubSettings,
   type Section,
-} from "@t3tools/baton-shared/diagnostics";
+} from "@t3tools/tessaya-shared/diagnostics";
 
 const tail = (file: string, bytes = 200_000): string => {
   try {

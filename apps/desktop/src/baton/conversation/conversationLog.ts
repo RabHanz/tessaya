@@ -16,7 +16,7 @@ import {
   type ConversationRoute,
   type ConversationTarget,
   type ConversationTurn,
-} from "@t3tools/baton-shared/conversation";
+} from "@t3tools/tessaya-shared/conversation";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 /** Turns kept in memory to search; the file keeps everything. */
