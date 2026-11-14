@@ -34,7 +34,7 @@ function BodyRow(props: {
       description={`${b.type}${b.madeFor === null ? "" : ` for ${b.madeFor}`} · ${b.room ?? "no room"} · ${kept} kept setting${kept === 1 ? "" : "s"}`}
       status={b.retired ? <Badge variant="outline">Retired</Badge> : null}
     >
-      <div className="flex flex-wrap gap-2 pt-2">
+      <div className="grid gap-2 pt-2 sm:grid-cols-2">
         <Input
           value={name}
           maxLength={60}
@@ -48,6 +48,8 @@ function BodyRow(props: {
           aria-label="Room"
           onChange={(e) => setRoom(e.target.value)}
         />
+      </div>
+      <div className="flex flex-wrap gap-2 pt-2">
         <Button
           size="xs"
           disabled={props.busy || !changed || name.trim() === ""}
