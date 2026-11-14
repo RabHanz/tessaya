@@ -572,10 +572,10 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
                   ? `${firmware.version} is larger than the R1 takes.`
                   : w.hold !== null
                     ? `Kept on ${w.hold}; automatic updates are paused.`
-                  : firmware === null ||
-                      (w.fw !== null && (compareR1Firmware(firmware.version, w.fw) ?? 0) <= 0)
-                    ? "Up to date."
-                    : "An update installs when it has been idle for 5 minutes.";
+                    : firmware === null ||
+                        (w.fw !== null && (compareR1Firmware(firmware.version, w.fw) ?? 0) <= 0)
+                      ? "Up to date."
+                      : "An update installs when it has been idle for 5 minutes.";
           return {
             id: d.deviceId!,
             firmware: w.fw,
