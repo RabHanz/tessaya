@@ -110,6 +110,8 @@ const KNOWN_SHOWN = 8;
 export interface LearnResult {
   readonly stored: number;
   readonly held: number;
+  /** How many of the kept items are his corrections of her (they move her mood, CS6). */
+  readonly corrections?: number;
   /** For a conversation's episode: whether the desktop moves on past these turns ("kept", "skip") or sends them again. */
   readonly episode?: "kept" | "skip" | "retry";
 }
@@ -284,6 +286,7 @@ export const make = Effect.gen(function* () {
       );
     let stored = 0;
     let held = 0;
+    let corrections = 0;
     for (const { draft, replaces } of drafts) {
       // Only an id it was shown, and never his own note from a turn that read outside content.
       const older = known.find(
@@ -295,8 +298,9 @@ export const make = Effect.gen(function* () {
       if (item === null) continue;
       if (item.proposed) held++;
       else stored++;
+      if (!item.proposed && draft.kind === "correction") corrections++;
     }
-    return { stored, held };
+    return { stored, held, ...(corrections > 0 ? { corrections } : {}) };
   });
 
   /**

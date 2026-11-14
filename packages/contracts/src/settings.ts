@@ -1422,6 +1422,14 @@ export const ServerSettings = Schema.Struct({
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
   tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Tessaya: her working mood per persona (baton-shared affect.ts), moved only by the owner's turns; others see the face.
+  tessayaMood: Schema.Struct({
+    enabled: Schema.Boolean,
+    intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+    bondCap: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
+  }).pipe(
+    Schema.withDecodingDefault(Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15 })),
+  ),
   // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
   companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("calm" as const)),
@@ -1878,6 +1886,17 @@ export const ServerSettingsPatch = Schema.Struct({
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
   tessayaExpression: Schema.optionalKey(Schema.Boolean),
+  tessayaMood: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      intensity: Schema.optionalKey(
+        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+      ),
+      bondCap: Schema.optionalKey(
+        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
+      ),
+    }),
+  ),
   companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   cloudSpeechCredentials: Schema.optionalKey(

@@ -52,6 +52,8 @@ import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
 import { MemoryViewer } from "../baton/BatonMemoryService.ts";
 import { personasList, readPack } from "../baton/OperatingSystemPack.ts";
 import { TessayaTurn, type TurnEnvelope } from "../baton/TessayaTurn.ts";
+import { TessayaMood } from "../tessaya/TessayaMood.ts";
+import type { R1Mood as ContractR1Mood } from "@t3tools/tessaya-contracts";
 import {
   type ActOutcome,
   brainTurn,
@@ -64,7 +66,7 @@ import {
   brainFailure,
 } from "../baton/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../baton/TessayaExpression.ts";
-import { isLineEvent } from "@t3tools/tessaya-shared/expression";
+import { isLineEvent, r1MoodOf } from "@t3tools/tessaya-shared/expression";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -90,7 +92,7 @@ import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 const R1: HomeActor = { who: "Tessaya", surface: "r1" };
 
-export type R1Mood = "thinking" | "happy" | "curious" | "sad" | "worried" | "sleepy" | "neutral";
+export type R1Mood = ContractR1Mood | "worried";
 
 /** The room loop's inbox for eye moods (`roomVoice.ts`); it writes `cmd/eye/set` itself. */
 const eyeIntentTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/intent/eye`;
@@ -845,12 +847,17 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
           .pipe(Effect.ignore, Effect.forkDetach),
       { discard: true },
     );
+  // A turn that went fine shows her mood when she has one (CS6), the same label her other bodies show.
+  const affect = yield* Effect.serviceOption(TessayaMood);
+  const felt = Option.isNone(affect) ? null : yield* affect.value.view(turn.persona, turn.timeZone);
   const mood: R1Mood = outcomes.some((o) => o.status === "asked")
     ? "curious"
     : outcomes.some((o) => !o.ok || o.status === "failed")
       ? "sad"
-      : "happy";
-  yield* eyes(device, mood, 4000, "the turn's outcome");
+      : felt === null || felt.label === "neutral"
+        ? "happy"
+        : (r1MoodOf(felt.label) ?? "happy");
+  yield* eyes(device, mood, 4000, felt === null ? "the turn's outcome" : `her mood: ${felt.label}`);
   const record = yield* Effect.serviceOption(BatonRecordService);
   if (record._tag === "Some")
     yield* record.value.append({

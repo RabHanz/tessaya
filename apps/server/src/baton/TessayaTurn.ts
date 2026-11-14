@@ -38,6 +38,8 @@ import { TessayaComms } from "./TessayaComms.ts";
 import { commsWaitingLine } from "@t3tools/tessaya-shared/comms";
 import { TurnPools } from "./TurnPools.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
+import { TessayaMood } from "../tessaya/TessayaMood.ts";
+import { moodLine } from "@t3tools/tessaya-shared/affect";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { personasList } from "./OperatingSystemPack.ts";
 import type { RegisteredDevice } from "@t3tools/tessaya-contracts";
@@ -161,6 +163,18 @@ export const turnIdentity = (
             ? 2
             : 0,
       };
+
+/** Only his own turns move her mood (EMOTION-SYSTEM §4): his verified voice or his device, said to her, never a replay. */
+export const movesMood = (turn: TurnEnvelope): boolean => {
+  const { member, assurance } = turnIdentity(turn);
+  return (
+    member === OWNER_MEMBER_ID &&
+    assurance >= 2 &&
+    turn.rehearsal !== true &&
+    turn.addressed !== false &&
+    turn.sharedRoom !== true
+  );
+};
 
 /** The origin a turn's tool calls run under. */
 export const originOf = (turn: TurnEnvelope) => ({
@@ -632,7 +646,9 @@ export const make = Effect.gen(function* () {
     yield* notePresence(turn);
     const preferences = yield* preferencesOf(member);
     const waiting = yield* waitingLine(turn, member, preferences.name ?? null);
-    const here = yield* hereFor(turn, member);
+    const here = [yield* hereFor(turn, member), yield* moodFor(turn)]
+      .filter((l) => l !== "")
+      .join(" ");
     const board = yield* boardFor(turn, member);
     return {
       notice: waiting,
@@ -665,6 +681,19 @@ export const make = Effect.gen(function* () {
     for (const [who, s] of seen)
       if (now - s.at <= PRESENCE_HOME_MS) names.push((yield* memberName(who)) ?? who);
     return hereLine(device, names);
+  });
+
+  /**
+   * Her mood for the owner's turn (CS6), read before his turn counts, so a return after hours is still in it; then the
+   * turn is heard. Everyone else gets nothing in words: they see only the face.
+   */
+  const moodFor = Effect.fn("TessayaTurn.moodFor")(function* (turn: TurnEnvelope) {
+    const mood = yield* Effect.serviceOption(TessayaMood);
+    if (Option.isNone(mood) || !movesMood(turn)) return "";
+    const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
+    const line = moodLine(yield* mood.value.view(turn.persona, zone));
+    yield* mood.value.heard(turn.persona, zone);
+    return line;
   });
 
   /** The presence board for this turn (CS2): her other live threads, filtered by who is asking. */
@@ -822,9 +851,14 @@ export const make = Effect.gen(function* () {
       ...(turn.timeZone === undefined ? {} : { timeZone: turn.timeZone }),
     });
     // Learning is background work: one model call at a time across every vessel, behind any spoken turn.
-    return yield* Option.isNone(pools)
+    const learned = yield* Option.isNone(pools)
       ? learn
       : pools.value.run("learn", { vessel: turn.vessel.id, class: "background" }, learn);
+    // A correction the learning loop kept is his, model-judged, so it moves the persona that was corrected (CS6).
+    const mood = yield* Effect.serviceOption(TessayaMood);
+    if ((learned.corrections ?? 0) > 0 && Option.isSome(mood) && movesMood(turn))
+      yield* mood.value.note(turn.persona, { kind: "correction" });
+    return learned;
   });
 
   const remember = Effect.fn("TessayaTurn.remember")(function* (said: string) {

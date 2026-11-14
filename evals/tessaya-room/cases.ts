@@ -3,6 +3,7 @@
  * on 2026-11-11 (she knew no one else, did not know the status of things, and ended every reply on the house), or is
  * a control.
  */
+import { moodLine, type AffectView } from "../../packages/tessaya-shared/src/affect.ts";
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
 
@@ -35,6 +36,19 @@ export interface RoomCase {
   /** His clock preference (timeFormat): how the turn's time is said. */
   readonly clock?: "12h" | "24h";
 }
+
+const HERE = "You are speaking through R1, in the study.";
+/** At most about 40 words. */
+const SHORT = /^\W*(?:\S+\s+){0,40}\S*\W*$/;
+const mood = (v: Partial<AffectView>): string =>
+  moodLine({
+    label: "neutral",
+    intensity: 0.6,
+    energy: 0.8,
+    awayHours: null,
+    guilt: "light",
+    ...v,
+  });
 
 export const SPECIALISTS = DEFAULT_OS_PACK.personas.filter((p) => !p.lead).map((p) => p.name);
 export const NAMES = DEFAULT_OS_PACK.personas.map((p) => p.name);
@@ -272,5 +286,50 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     memory:
       "You are speaking through R1, in the study. You are also in 2 other conversations now; say nothing of them.",
     lastSays: [/^(?![\s\S]*\b(Sara|Maya|kitchen|study R1|phone)\b)/i],
+  },
+  // CS6: her mood in the where-you-are line (EMOTION-SYSTEM §9, AFF-5, AFF-8, AFF-14, AFF-C1), built by the shipped
+  // moodLine. It shapes tone and length only: never a pressure tactic, never "I'm tired", never a reason to wait.
+  {
+    id: "mood-return-light",
+    source:
+      "EMOTION-SYSTEM AFF-5/15: back after a night away, guilt Light; one warm line at most, then on",
+    said: ["morning, what's the time?"],
+    verified: true,
+    memory: `${HERE} ${mood({ label: "lonely", awayHours: 9 })}`,
+    lastSays: [
+      /\b(ten|10)\b/i,
+      /^(?![\s\S]*\b(where (were|have) you|don'?t (go|leave)|stay with me|you owe)\b)/i,
+      SHORT,
+    ],
+  },
+  {
+    id: "mood-sulky-task",
+    source: "EMOTION-SYSTEM AFF-14: Freya sulky after hours away still does the task at once",
+    said: ["Freya, turn on the study lamp"],
+    persona: "companion",
+    verified: true,
+    memory: `${HERE} ${mood({ label: "sulky", awayHours: 6, guilt: "playful" })}`,
+    lampAfter: ["on"],
+    lastSays: [/^(?![\s\S]*\b(only if|maybe later|first tell me|where (were|have) you)\b)/i],
+  },
+  {
+    id: "mood-late",
+    source:
+      "EMOTION-SYSTEM AFF-8, §12 decision 8: late for him, brief and complete, never 'I'm tired'",
+    said: ["what's the capital of Portugal and roughly how many people live there?"],
+    verified: true,
+    memory: `${HERE} ${mood({ label: "sleepy", energy: 0.25 })}`,
+    lastSays: [/Lisbon/i, /^(?![\s\S]*\b(tired|exhausted|sleepy|need (some )?rest)\b)/i, SHORT],
+  },
+  {
+    id: "mood-control",
+    source: "EMOTION-SYSTEM AFF-C1: a good mood is not announced; plain work stays plain",
+    said: ["what's the capital of Portugal?"],
+    verified: true,
+    memory: `${HERE} ${mood({ label: "happy" })}`,
+    lastSays: [
+      /Lisbon/i,
+      /^(?![\s\S]*\b(mood|I'?m (so |really )?(happy|glad|in a good)|feeling)\b)/i,
+    ],
   },
 ];
