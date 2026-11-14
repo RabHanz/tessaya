@@ -9,6 +9,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
 import {
+  compareR1Firmware,
   R1_KWS_MAX_BYTES,
   R1_RELEASE,
   r1Release,
@@ -87,9 +88,14 @@ export const otaStep = (
   if (w.update !== null) {
     if (w.fw === w.update.version) return "done";
     if (now - w.update.startedAt < ROLLBACK_AFTER_MS) return "wait";
-    return w.update.rollback || previous === null ? "give-up" : "rollback";
+    // The way back never goes below what the R1 last reported running.
+    const back =
+      previous !== null && w.fw !== null && (compareR1Firmware(previous.version, w.fw) ?? -1) >= 0;
+    return w.update.rollback || !back ? "give-up" : "rollback";
   }
-  if (pin === null || !w.online || w.fw === null || w.fw === pin.version) return "wait";
+  if (pin === null || !w.online || w.fw === null) return "wait";
+  // Only ever forward: an R1 already on this pin or newer (or an unknown version) is never reinstalled.
+  if ((compareR1Firmware(pin.version, w.fw) ?? 0) <= 0) return "wait";
   if (w.stopped?.version === pin.version) return "wait";
   // The R1 takes one transfer at a time: a wake model load in flight finishes first.
   if (w.modelLoad !== null) return "wait";
@@ -115,7 +121,7 @@ export const kwsStep = (
     w.modelStopped?.version === kws.version
   )
     return "wait";
-  if (firmware !== null && w.fw !== firmware.version) return "wait";
+  if (firmware !== null && (compareR1Firmware(w.fw, firmware.version) ?? -1) < 0) return "wait";
   if (w.enrolling || w.bluetoothAudio || now - w.lastUse < IDLE_MS) return "wait";
   return "start";
 };
@@ -423,7 +429,8 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
               ? `Updating to ${w.update.version}…`
               : w.stopped !== null
                 ? w.stopped.why
-                : firmware === null || w.fw === firmware.version
+                : firmware === null ||
+                    (w.fw !== null && (compareR1Firmware(firmware.version, w.fw) ?? 0) <= 0)
                   ? "Up to date."
                   : "An update installs when it has been idle for 5 minutes.";
           return {
