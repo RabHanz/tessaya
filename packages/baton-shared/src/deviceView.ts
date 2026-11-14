@@ -359,3 +359,36 @@ export const MOOD_EYES: Readonly<Record<R1Mood, ReadonlyArray<EyeMark>>> = {
   surprise: both((cx) => ({ d: circle(cx, Y, 10), fill: false })),
   thinking: both((cx) => ({ d: circle(cx + 4, Y - 5, 5), fill: true })),
 };
+
+export interface TesselSeen {
+  readonly id: string;
+  readonly online: boolean | null;
+  readonly configured: boolean;
+}
+
+/**
+ * One row per physical device when several servers hear it (a bridged broker, a paired laptop): it sits on the
+ * server that has it set up and hears it now, else one that hears it, else the first; the rest are where else it is
+ * reachable. Recomputed on every read, so a device that moves follows.
+ */
+export const tesselHosts = <H>(
+  reports: ReadonlyArray<{ readonly host: H; readonly devices: ReadonlyArray<TesselSeen> }>,
+): ReadonlyMap<string, { readonly primary: H; readonly reachable: ReadonlyArray<H> }> => {
+  const rank = (d: TesselSeen) => (d.online === true ? 2 : 0) + (d.configured ? 1 : 0);
+  const best = new Map<string, { host: H; rank: number; all: Array<H> }>();
+  for (const { host, devices } of reports)
+    for (const d of devices) {
+      const was = best.get(d.id);
+      if (was === undefined) best.set(d.id, { host, rank: rank(d), all: [host] });
+      else {
+        if (!was.all.includes(host)) was.all.push(host);
+        if (rank(d) > was.rank) Object.assign(was, { host, rank: rank(d) });
+      }
+    }
+  return new Map(
+    [...best].map(([id, b]) => [
+      id,
+      { primary: b.host, reachable: b.all.filter((h) => h !== b.host) },
+    ]),
+  );
+};

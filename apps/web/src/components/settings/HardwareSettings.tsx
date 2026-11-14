@@ -44,6 +44,8 @@ import {
   displaySupported,
   outputLabels,
   scanLine,
+  tesselHosts,
+  type TesselSeen,
 } from "@t3tools/baton-shared/deviceView";
 import { Link } from "@tanstack/react-router";
 import {
@@ -102,16 +104,24 @@ export function HardwareSettingsPanel() {
     .filter((e) => e.connection.phase === "connected")
     .map((e) => e.environmentId)
     .toSorted((a, b) => (a === primary ? -1 : b === primary ? 1 : 0));
-  const [withR1, setWithR1] = useState<ReadonlySet<EnvironmentId>>(new Set());
-  const home = connected.find((id) => withR1.has(id)) ?? connected[0] ?? null;
-  const report = (id: EnvironmentId, has: boolean) =>
-    setWithR1((was) => {
-      if (was.has(id) === has) return was;
-      const next = new Set(was);
-      if (has) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+  // What each server hears, so a Tessel several servers reach (a bridged broker) shows once, on its primary host.
+  const [seen, setSeen] = useState<ReadonlyMap<EnvironmentId, ReadonlyArray<TesselSeen>>>(
+    new Map(),
+  );
+  const hosts = tesselHosts(
+    connected.flatMap((host) => {
+      const devices = seen.get(host);
+      return devices === undefined ? [] : [{ host, devices }];
+    }),
+  );
+  const home =
+    connected.find((id) => seen.get(id)?.some((d) => d.configured)) ?? connected[0] ?? null;
+  const report = (id: EnvironmentId, devices: ReadonlyArray<TesselSeen>) =>
+    setSeen((was) =>
+      JSON.stringify(was.get(id)) === JSON.stringify(devices) ? was : new Map(was).set(id, devices),
+    );
+  const labelOf = (id: EnvironmentId) =>
+    environments.find((e) => e.environmentId === id)?.label ?? id;
   return (
     <SettingsPageContainer>
       {connected.length === 0 ? (
@@ -120,7 +130,15 @@ export function HardwareSettingsPanel() {
         </p>
       ) : (
         connected.map((id) => (
-          <HardwareSections key={id} environmentId={id} home={id === home} onR1={report} />
+          <HardwareSections
+            key={id}
+            environmentId={id}
+            label={connected.length > 1 ? labelOf(id) : null}
+            home={id === home}
+            onSeen={report}
+            owns={(deviceId) => (hosts.get(deviceId)?.primary ?? id) === id}
+            alsoOn={(deviceId) => (hosts.get(deviceId)?.reachable ?? []).map(labelOf)}
+          />
         ))
       )}
     </SettingsPageContainer>
@@ -149,13 +167,21 @@ function MoodEyes({ mood }: { readonly mood: R1Mood }) {
 
 function HardwareSections({
   environmentId,
+  label,
   home,
-  onR1,
+  onSeen,
+  owns,
+  alsoOn,
 }: {
   readonly environmentId: EnvironmentId;
+  /** This server's name, when the page shows more than one. */
+  readonly label: string | null;
   /** The server whose R1 setup and room brain this page shows. */
   readonly home: boolean;
-  readonly onR1: (environmentId: EnvironmentId, has: boolean) => void;
+  readonly onSeen: (environmentId: EnvironmentId, devices: ReadonlyArray<TesselSeen>) => void;
+  /** Whether this server is the device's primary host; another server's devices show there only. */
+  readonly owns: (deviceId: string) => boolean;
+  readonly alsoOn: (deviceId: string) => ReadonlyArray<string>;
 }) {
   const quiet = { reportFailure: false } as const;
   const devicesCall = useAtomCommand(batonWorkSessions.devicesCall, quiet);
@@ -169,7 +195,6 @@ function HardwareSections({
   // Read once and after each change, not on every refresh: it asks the tunnel for its address.
   // Firmware updates from this server (R1Updates): each R1's line, including why one stopped.
   const [updatesView, setUpdatesView] = useState<R1UpdatesView | null>(null);
-  const updates = updatesView?.devices ?? [];
   // The R1's room voice on this server (R1Loop): its download, then whether it runs.
   const [voice, setVoice] = useState<string | null>(null);
   const readReach = async () => {
@@ -196,6 +221,14 @@ function HardwareSections({
     if (result._tag === "Success" && result.value.ok) {
       const next = result.value.value as DevicesOverview;
       setView(next);
+      onSeen(environmentId, [
+        ...next.devices.map((d) => ({ id: d.id, online: d.online, configured: d.configured })),
+        ...(next.registry ?? []).map((r) => ({
+          id: r.deviceId,
+          online: r.online,
+          configured: false,
+        })),
+      ]);
       const loop = await devicesCall({
         environmentId,
         input: { kind: "read", op: "voice", args: {} },
@@ -204,10 +237,6 @@ function HardwareSections({
         setVoice((loop.value.value as { line: string } | null)?.line ?? null);
       // In memory on the server: cheap, and an install's progress shows as it goes.
       await readUpdates();
-      onR1(
-        environmentId,
-        next.devices.some((d) => d.configured),
-      );
     }
   };
   const reading =
@@ -245,14 +274,17 @@ function HardwareSections({
     return reply?.ok === true ? reply.value : null;
   };
 
-  const devices = view?.devices ?? [];
+  const heard = view?.devices ?? [];
+  const devices = heard.filter((d) => owns(d.id));
+  const registry = (view?.registry ?? []).filter((d) => owns(d.deviceId));
+  const updates = (updatesView?.devices ?? []).filter((u) => owns(u.id));
   // A server with nothing on it says nothing; the household's page lists devices, not servers.
-  if (!home && devices.length === 0 && (view?.registry ?? []).length === 0) return null;
+  if (!home && devices.length === 0 && registry.length === 0) return null;
   return (
     <>
       <SettingsSection {...searchableSetting("hardware-devices")}>
         <SettingsRow
-          title="Broker"
+          title={label === null ? "Broker" : `Broker · ${label}`}
           description={
             view === null
               ? "Reading…"
@@ -271,7 +303,7 @@ function HardwareSections({
                 disabled={busy}
                 aria-label="Away from home"
                 onCheckedChange={(enabled) => {
-                  const id = devices.find((d) => d.configured)?.id;
+                  const id = heard.find((d) => d.configured)?.id;
                   if (id !== undefined)
                     void run("owner", "away", { id, enabled }).then(() => readReach());
                 }}
@@ -330,7 +362,7 @@ function HardwareSections({
                 {d.camera.armedUntil === null ? null : <Badge variant="error">Camera on</Badge>}
               </span>
             }
-            description={deviceStatusLine(d)}
+            description={deviceStatusLine(d) + reachableLine(alsoOn(d.id))}
           />
         ))}
         {view?.pending.map((p) => (
@@ -360,7 +392,7 @@ function HardwareSections({
 
       <DeviceUtilitySection
         devices={devices}
-        registry={view?.registry ?? []}
+        registry={registry}
         updates={updatesView}
         busy={busy}
         run={run}
@@ -370,7 +402,7 @@ function HardwareSections({
         }}
       />
 
-      {(view?.registry ?? []).map((d) => (
+      {registry.map((d) => (
         <ManifestDevice
           key={d.deviceId}
           device={d}
@@ -410,7 +442,7 @@ function HardwareSections({
       {home ? (
         <SetupSection
           busy={busy}
-          configured={devices.some((d) => d.configured)}
+          configured={heard.some((d) => d.configured)}
           onShowBus={() =>
             run("owner", "busLogin", {}, (v) => {
               const login = v as { user: string; key: string; path: string };
@@ -438,6 +470,9 @@ function HardwareSections({
     </>
   );
 }
+
+const reachableLine = (others: ReadonlyArray<string>) =>
+  others.length === 0 ? "" : ` Also reachable from ${others.join(", ")}.`;
 
 const lineOf = (v: unknown) =>
   typeof v === "object" && v !== null && "line" in v
