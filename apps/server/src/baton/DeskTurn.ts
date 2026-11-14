@@ -168,6 +168,7 @@ export const deskTurnStream = (
             return {
               turn,
               names: pack.personas.map((p) => p.name),
+              allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
               user: (notes: TurnNotes) =>
                 deskData({
                   body,
