@@ -81,9 +81,10 @@ if (!secret) {
 const privateKey = secret.startsWith("-----BEGIN")
   ? NodeCrypto.createPrivateKey(secret)
   : NodeCrypto.createPrivateKey({ key: jwkOf(secret.padStart(64, "0")), format: "jwk" });
-const sig = crypto
-  .sign("sha256", list, { key: privateKey, dsaEncoding: "ieee-p1363" })
-  .toString("hex");
+const sig = NodeCrypto.sign("sha256", list, {
+  key: privateKey,
+  dsaEncoding: "ieee-p1363",
+}).toString("hex");
 if (!verify(list, sig)) throw new Error("the signing key is not the R1 release key");
 NodeFS.writeFileSync(NodePath.join(outDir, "r1-releases.json.sig"), `${sig}\n`);
 console.log(`signed list of ${releases.length}; recommended ${recommended}`);
