@@ -16,25 +16,52 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 
-function useAccountSwitch(environmentId: EnvironmentId) {
+type Machine = { readonly environmentId: EnvironmentId; readonly label: string };
+type Login = { readonly key: string; readonly email?: string | null; readonly label: string };
+
+/** A Claude login on the named machines, each through its own environment's command, with one toast for all. */
+export function useLoginOnMachines() {
   const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
   const [busy, setBusy] = useState(false);
-  const switchTo = (account: BatonAccount) => {
+  const switchOn = (machines: ReadonlyArray<Machine>, login: Login) => {
     setBusy(true);
-    void use({ environmentId, input: { key: account.key, reason: "manual" } }).then((result) => {
+    void Promise.all(
+      machines.map((machine) =>
+        use({
+          environmentId: machine.environmentId,
+          input: {
+            key: login.key,
+            reason: "manual",
+            ...(login.email ? { email: login.email } : {}),
+          },
+        }).then((result) => (result._tag === "Success" ? result.value.sessions : machine.label)),
+      ),
+    ).then((results) => {
       setBusy(false);
-      toastManager.add(
-        result._tag === "Success"
-          ? {
-              type: "success",
-              title: `This machine now runs as ${account.label}`,
-              description: machineSwitchDetail(result.value.sessions),
-            }
-          : { type: "error", title: `Could not switch to ${account.label}` },
-      );
+      const failed = results.filter((result) => typeof result === "string");
+      const [only] = results;
+      if (failed.length === 0)
+        toastManager.add({
+          type: "success",
+          title:
+            results.length === 1
+              ? `${machines[0]!.label} now runs as ${login.label}`
+              : `${results.length} machines now run as ${login.label}`,
+          ...(results.length === 1 && typeof only !== "string"
+            ? { description: machineSwitchDetail(only) }
+            : {}),
+        });
+      else if (results.length === 1)
+        toastManager.add({ type: "error", title: `Could not switch to ${login.label}` });
+      else
+        toastManager.add({
+          type: "warning",
+          title: `${login.label} on ${results.length - failed.length} of ${results.length} machines`,
+          description: `Not switched: ${failed.join(", ")}`,
+        });
     });
   };
-  return { busy, switchTo };
+  return { busy, switchOn };
 }
 
 /** What moved with the machine login: sessions on it follow at once, those in their own dirs were moved. */
@@ -69,7 +96,7 @@ function SwitchRow({
   const pool = useAtomValue(
     batonWorkSessions.accountPoolQuery({ environmentId: environment.environmentId, input: {} }),
   );
-  const { busy, switchTo } = useAccountSwitch(environment.environmentId);
+  const { busy, switchOn } = useLoginOnMachines();
   const accounts = Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [];
   const target = accounts.find((account) => account.key === accountKey);
   if (target === undefined) return null;
@@ -85,7 +112,7 @@ function SwitchRow({
         className="ms-auto shrink-0"
         disabled={busy || blocked !== null}
         data-testid="tile-switch-account"
-        onClick={() => switchTo(target)}
+        onClick={() => switchOn([environment], target)}
       >
         Use on this machine
       </Button>
@@ -93,42 +120,14 @@ function SwitchRow({
   );
 }
 
-/** The same switch on every paired machine that has this login, each through its own environment's command. */
+/** The same switch on every paired machine that has this login. */
 function UseEverywhere(props: {
   readonly environments: LimitAccount["environments"];
   readonly accountKey: string;
   readonly email: string | undefined;
   readonly label: string;
 }) {
-  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
-  const [busy, setBusy] = useState(false);
-  const switchAll = () => {
-    setBusy(true);
-    void Promise.all(
-      props.environments.map((environment) =>
-        use({
-          environmentId: environment.environmentId,
-          input: {
-            key: props.accountKey,
-            reason: "manual",
-            ...(props.email === undefined ? {} : { email: props.email }),
-          },
-        }).then((result) => (result._tag === "Success" ? null : environment.label)),
-      ),
-    ).then((missed) => {
-      setBusy(false);
-      const failed = missed.filter((label) => label !== null);
-      toastManager.add(
-        failed.length === 0
-          ? { type: "success", title: `Every machine now runs as ${props.label}` }
-          : {
-              type: "warning",
-              title: `${props.label} on ${props.environments.length - failed.length} of ${props.environments.length} machines`,
-              description: `Not switched: ${failed.join(", ")}`,
-            },
-      );
-    });
-  };
+  const { busy, switchOn } = useLoginOnMachines();
   return (
     <Button
       size="xs"
@@ -136,7 +135,13 @@ function UseEverywhere(props: {
       className="self-end"
       disabled={busy}
       data-testid="tile-switch-account-everywhere"
-      onClick={switchAll}
+      onClick={() =>
+        switchOn(props.environments, {
+          key: props.accountKey,
+          email: props.email ?? null,
+          label: props.label,
+        })
+      }
     >
       Use on every machine
     </Button>

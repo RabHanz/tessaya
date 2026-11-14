@@ -434,3 +434,31 @@ export const accountPickHint = (
     : target === null && !current
       ? "No instance here: add one in Settings"
       : null;
+
+/** The machines a login can be switched on: this one first, then each other one with a switchable login at its address. */
+export const machinesWithLogin = <M extends { readonly environmentId: string }>(
+  here: M,
+  others: ReadonlyArray<M>,
+  loginsOf: (machine: M) => ReadonlyArray<{
+    readonly driver: string;
+    readonly email: string | null;
+    readonly liveSwitchKey: string | null;
+  }>,
+  email: string | null,
+): ReadonlyArray<M> => {
+  const address = email?.trim().toLowerCase() || null;
+  return [
+    here,
+    ...others.filter(
+      (machine) =>
+        machine.environmentId !== here.environmentId &&
+        address !== null &&
+        loginsOf(machine).some(
+          (login) =>
+            login.driver === "claudeAgent" &&
+            login.liveSwitchKey !== null &&
+            login.email?.trim().toLowerCase() === address,
+        ),
+    ),
+  ];
+};

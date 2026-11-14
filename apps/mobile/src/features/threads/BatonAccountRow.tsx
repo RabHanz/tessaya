@@ -25,6 +25,7 @@ import { useNowMinuteMs } from "../../lib/clock";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { BatonAccountReach, BatonAccountReachToggle } from "./BatonAccountReach";
 import { accountPickOption, loadedLoginKey, type SessionLogin } from "./batonCatalog";
 
 const NOTHING = Atom.make(AsyncResult.initial<never, never>(false));
@@ -245,61 +246,72 @@ function AccountRow(props: {
   readonly isLast: boolean;
   readonly hint: string | null;
   readonly onPick: (() => void) | null;
+  /** Where its machine choices go (BatonAccountReach). */
+  readonly environmentId: EnvironmentId;
 }) {
   const { account } = props;
   const now = useNowMinuteMs();
   const room = roomText(account, now);
   const paused = account.health === "paused";
+  const [reach, setReach] = useState(false);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={[account.label, room].filter(Boolean).join(", ")}
-      accessibilityState={{ selected: props.current, disabled: props.onPick === null || paused }}
-      disabled={props.onPick === null || paused}
-      onPress={props.onPick ?? undefined}
-      className={cn(
-        "min-h-11 flex-row items-center gap-2 px-4 py-1.5 active:opacity-60",
-        !props.isLast && "border-b border-border-subtle",
-      )}
-    >
-      <View className="min-w-0 flex-1 gap-0.5">
-        <View className="flex-row flex-wrap items-center gap-1">
-          <Text className="shrink text-sm font-t3-medium text-foreground" numberOfLines={1}>
-            {account.label}
-          </Text>
-          {account.methods.map((method) => (
-            <Badge key={method.kind} label={METHOD_LABEL[method.kind]} />
-          ))}
-          {props.next ? <Badge label="Next" tone="info" /> : null}
-          {paused ? (
-            <Badge label="Paused · resume in Settings" tone="warn" />
-          ) : account.health === "signed-out" ? (
-            <Badge label="Signed out" tone="error" />
+    <View className={cn(!props.isLast && "border-b border-border-subtle")}>
+      <View className="flex-row items-center pe-2">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={[account.label, room].filter(Boolean).join(", ")}
+          accessibilityState={{
+            selected: props.current,
+            disabled: props.onPick === null || paused,
+          }}
+          disabled={props.onPick === null || paused}
+          onPress={props.onPick ?? undefined}
+          className="min-h-11 flex-1 flex-row items-center gap-2 py-1.5 ps-4 active:opacity-60"
+        >
+          <View className="min-w-0 flex-1 gap-0.5">
+            <View className="flex-row flex-wrap items-center gap-1">
+              <Text className="shrink text-sm font-t3-medium text-foreground" numberOfLines={1}>
+                {account.label}
+              </Text>
+              {account.methods.map((method) => (
+                <Badge key={method.kind} label={METHOD_LABEL[method.kind]} />
+              ))}
+              {props.next ? <Badge label="Next" tone="info" /> : null}
+              {paused ? (
+                <Badge label="Paused · resume in Settings" tone="warn" />
+              ) : account.health === "signed-out" ? (
+                <Badge label="Signed out" tone="error" />
+              ) : null}
+            </View>
+            {account.email === null ? null : (
+              <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
+                {maskedEmail(account.email)}
+              </Text>
+            )}
+            {props.hint === null ? null : (
+              <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
+                {props.hint}
+              </Text>
+            )}
+          </View>
+          {room === null ? null : (
+            <Text className={cn("text-xs tabular-nums", TONE_CLASS[roomTone(account)])}>
+              {room}
+            </Text>
+          )}
+          {props.current ? (
+            <SymbolView
+              name="checkmark"
+              size={13}
+              tintColorClassName="accent-primary"
+              type="monochrome"
+            />
           ) : null}
-        </View>
-        {account.email === null ? null : (
-          <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
-            {maskedEmail(account.email)}
-          </Text>
-        )}
-        {props.hint === null ? null : (
-          <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
-            {props.hint}
-          </Text>
-        )}
+        </Pressable>
+        <BatonAccountReachToggle account={account} open={reach} onToggle={() => setReach(!reach)} />
       </View>
-      {room === null ? null : (
-        <Text className={cn("text-xs tabular-nums", TONE_CLASS[roomTone(account)])}>{room}</Text>
-      )}
-      {props.current ? (
-        <SymbolView
-          name="checkmark"
-          size={13}
-          tintColorClassName="accent-primary"
-          type="monochrome"
-        />
-      ) : null}
-    </Pressable>
+      {reach ? <BatonAccountReach account={account} environmentId={props.environmentId} /> : null}
+    </View>
   );
 }
 
@@ -390,6 +402,7 @@ function LiveAccounts(props: {
                 ? null
                 : () => moveTo(account.liveSwitchKey!)
             }
+            environmentId={props.environmentId}
           />
         );
       })}
@@ -465,7 +478,8 @@ export function BatonAccountRow(props: {
 }) {
   const accounts = useBatonAccounts(props.environmentId);
   const loginKey = useSessionLoginKey(props.environmentId, props.threadId);
-  if (props.environmentId === null) return null;
+  const { environmentId } = props;
+  if (environmentId === null) return null;
   const sessionId = props.threadId === null ? null : liveSessionIdOf(props.threadId);
   const terminal = props.provider.key === LIVE_INSTANCE ? <TerminalNote /> : null;
   if (sessionId !== null && props.appliedInstanceId === LIVE_INSTANCE) {
@@ -475,7 +489,7 @@ export function BatonAccountRow(props: {
       <>
         {terminal}
         <LiveAccounts
-          environmentId={props.environmentId}
+          environmentId={environmentId}
           sessionId={sessionId}
           loginKey={loginKey}
           accounts={accounts}
@@ -516,6 +530,7 @@ export function BatonAccountRow(props: {
               isLast={index === mine.length - 1 && !pinnable && !signIn}
               hint={accountPickHint(target, current)}
               onPick={current || option === null ? null : () => props.onPick(option)}
+              environmentId={environmentId}
             />
             {/* Its instance lists no models (signed out or not probed), so a tap would land nowhere. */}
             {!signIn ? null : (
@@ -527,7 +542,7 @@ export function BatonAccountRow(props: {
         );
       })}
       {pinnable && props.threadId !== null ? (
-        <KeepSwitch environmentId={props.environmentId} threadId={props.threadId} />
+        <KeepSwitch environmentId={environmentId} threadId={props.threadId} />
       ) : null}
     </Card>
   );

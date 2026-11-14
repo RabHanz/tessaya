@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   liveSwitchRefusal,
+  machinesWithLogin,
   oneEntryPerProvider,
   pickModelFor,
   sessionLoginKey,
@@ -421,5 +422,37 @@ describe("his real logins", () => {
     );
     expect(filled.get("claudeAgent_work")).toEqual(["opus", "sonnet"]);
     expect(filled.get("acp_grok")).toEqual([]);
+  });
+});
+
+describe("machinesWithLogin", () => {
+  it("puts this machine first and adds only others with a switchable login at the same address", () => {
+    const here = { environmentId: "desk" };
+    const login = (email: string | null, liveSwitchKey: string | null = "1") => ({
+      driver: "claudeAgent" as const,
+      email,
+      liveSwitchKey,
+    });
+    const logins: Record<string, ReadonlyArray<ReturnType<typeof login>>> = {
+      studio: [login("Work@example.com", "3")],
+      laptop: [login("work@example.com", null)],
+      spare: [login("home@example.com")],
+    };
+    const others = [
+      { environmentId: "studio" },
+      { environmentId: "laptop" },
+      { environmentId: "spare" },
+    ];
+    expect(
+      machinesWithLogin(
+        here,
+        [here, ...others],
+        (m) => logins[m.environmentId] ?? [],
+        "work@example.com",
+      ),
+    ).toEqual([here, { environmentId: "studio" }]);
+    expect(machinesWithLogin(here, others, (m) => logins[m.environmentId] ?? [], null)).toEqual([
+      here,
+    ]);
   });
 });

@@ -49,6 +49,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { BatonAccountReach } from "./BatonAccountReach";
 import { useLiveAccounts, useLiveAccountSwitch, useLiveState } from "./BatonLiveModel";
 
 /** An instance's account, when it reports a login or limits; null for one that reports neither. */
@@ -172,58 +173,63 @@ function AccountRow(props: {
   readonly next: boolean;
   readonly hint: string | null;
   readonly onPick: (() => void) | null;
+  /** Where its machine choices go (BatonAccountReach); null for none. */
+  readonly environmentId: EnvironmentId | null;
 }) {
   const { account } = props;
   const paused = account.health === "paused";
   const signedOut = account.health === "signed-out";
   return (
-    <button
-      type="button"
-      data-testid="model-picker-account"
-      data-account-id={account.id}
-      aria-pressed={props.current}
-      disabled={props.onPick === null || paused}
-      onClick={props.onPick ?? undefined}
-      className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-start text-xs hover:bg-accent disabled:cursor-default disabled:hover:bg-transparent aria-pressed:bg-accent/60"
-    >
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-center gap-1">
-          <span className="truncate font-medium text-foreground">{account.label}</span>
-          {account.methods.map((method) => (
-            <Badge key={method.kind} size="sm" variant="outline">
-              {METHOD_LABEL[method.kind]}
-            </Badge>
-          ))}
-          {props.next ? (
-            <Badge size="sm" variant="info">
-              Next
-            </Badge>
-          ) : null}
-          {paused ? (
-            <Badge size="sm" variant="warning">
-              Paused · resume in Settings
-            </Badge>
-          ) : signedOut ? (
-            <Badge size="sm" variant="error">
-              Signed out
-            </Badge>
-          ) : null}
-        </span>
-        {account.email === null ? null : (
-          <span className="truncate text-2xs text-muted-foreground">
-            {props.current && props.next ? "Current · " : ""}
-            {maskedEmail(account.email)}
+    <div className="flex flex-wrap items-center">
+      <button
+        type="button"
+        data-testid="model-picker-account"
+        data-account-id={account.id}
+        aria-pressed={props.current}
+        disabled={props.onPick === null || paused}
+        onClick={props.onPick ?? undefined}
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-start text-xs hover:bg-accent disabled:cursor-default disabled:hover:bg-transparent aria-pressed:bg-accent/60"
+      >
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="truncate font-medium text-foreground">{account.label}</span>
+            {account.methods.map((method) => (
+              <Badge key={method.kind} size="sm" variant="outline">
+                {METHOD_LABEL[method.kind]}
+              </Badge>
+            ))}
+            {props.next ? (
+              <Badge size="sm" variant="info">
+                Next
+              </Badge>
+            ) : null}
+            {paused ? (
+              <Badge size="sm" variant="warning">
+                Paused · resume in Settings
+              </Badge>
+            ) : signedOut ? (
+              <Badge size="sm" variant="error">
+                Signed out
+              </Badge>
+            ) : null}
           </span>
-        )}
-        {props.hint === null ? null : (
-          <span className="truncate text-2xs text-muted-foreground">{props.hint}</span>
-        )}
-      </span>
-      <BatonRoom account={account} />
-      {props.current ? (
-        <CheckIcon aria-hidden className="size-3.5 shrink-0 text-foreground" />
-      ) : null}
-    </button>
+          {account.email === null ? null : (
+            <span className="truncate text-2xs text-muted-foreground">
+              {props.current && props.next ? "Current · " : ""}
+              {maskedEmail(account.email)}
+            </span>
+          )}
+          {props.hint === null ? null : (
+            <span className="truncate text-2xs text-muted-foreground">{props.hint}</span>
+          )}
+        </span>
+        <BatonRoom account={account} />
+        {props.current ? (
+          <CheckIcon aria-hidden className="size-3.5 shrink-0 text-foreground" />
+        ) : null}
+      </button>
+      <BatonAccountReach account={account} environmentId={props.environmentId} />
+    </div>
   );
 }
 
@@ -307,6 +313,7 @@ function LiveAccounts(props: {
             next={queued?.accountKey !== undefined && queued.accountKey === account.liveSwitchKey}
             hint={null}
             onPick={current || login === undefined ? null : () => switchTo(login)}
+            environmentId={props.threadRef.environmentId}
           />
         );
       })}
@@ -378,6 +385,7 @@ export function BatonPickerAccount(props: {
 
 function InstanceAccounts(props: {
   readonly entry: ProviderInstanceEntry;
+  readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   readonly threadInstanceId: ProviderInstanceId;
   readonly onPickInstance: (instanceId: ProviderInstanceId) => void;
@@ -412,6 +420,7 @@ function InstanceAccounts(props: {
                 ? null
                 : () => props.onPickInstance(ProviderInstanceId.make(target.instanceId))
             }
+            environmentId={props.environmentId}
           />
         );
       })}
