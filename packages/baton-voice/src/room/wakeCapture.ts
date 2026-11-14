@@ -29,7 +29,7 @@ export interface WakeCapture {
   ) => void;
   /** The R1's verdict arriving after the segment ended. */
   readonly kws: (id: string, event: KwsEvent) => void;
-  /** A session opened on this R1 (`event/session/start`): marks its last segment if it ended within `followMs`. */
+  /** A session opened on this R1 (`cmd/voice/start`, `event/session/start` or `event/wake`): marks its last segment if it ended within `followMs`. */
   readonly session: (id: string) => void;
 }
 
