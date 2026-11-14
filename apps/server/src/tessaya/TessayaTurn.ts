@@ -46,6 +46,9 @@ import { TessayaMood } from "./TessayaMood.ts";
 import { moodLine } from "@t3tools/tessaya-shared/affect";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { personasList } from "./OperatingSystemPack.ts";
+import { TessayaJobService } from "./TessayaJobService.ts";
+import { WorkSessionService } from "./WorkSessionService.ts";
+import { leadFitLine } from "@t3tools/tessaya-shared/jobs";
 import type { RegisteredDevice } from "@t3tools/tessaya-contracts";
 
 export { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
@@ -425,6 +428,8 @@ export const make = Effect.gen(function* () {
   const memory = yield* TessayaMemoryService;
   const learning = yield* TessayaMemoryLearning;
   const stores = yield* Effect.serviceOption(TessayaPrivateMemoryService);
+  const jobService = yield* Effect.serviceOption(TessayaJobService);
+  const workSessionService = yield* Effect.serviceOption(WorkSessionService);
   const preferences = yield* MemberPreferences;
   const sql = yield* SqlClient.SqlClient;
 
@@ -700,7 +705,9 @@ export const make = Effect.gen(function* () {
     const here = [yield* hereFor(turn, member), yield* moodFor(turn)]
       .filter((l) => l !== "")
       .join(" ");
-    const board = yield* boardFor(turn, member);
+    const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
+      .filter((l) => l !== "")
+      .join(" ");
     const key = conversationKey(turn);
     const pending = handedTo.get(key);
     const handed =
@@ -755,6 +762,44 @@ export const make = Effect.gen(function* () {
   });
 
   /** The presence board for this turn (CS2): her other live threads, filtered by who is asking. */
+  /** The jobs this turn's persona leads, told only to the owner: his jobs are his. */
+  const leadFor = Effect.fn("TessayaTurn.leadFor")(function* (
+    turn: TurnEnvelope,
+    member: string | null,
+  ) {
+    if (
+      turn.persona === undefined ||
+      member !== OWNER_MEMBER_ID ||
+      turn.sharedRoom === true ||
+      turnIdentity(turn).assurance < 2 ||
+      Option.isNone(jobService) ||
+      Option.isNone(workSessionService)
+    )
+      return "";
+    const mine = (yield* jobService.value.allTerms()).filter((t) => t.lead === turn.persona);
+    if (mine.length === 0) return "";
+    const active = new Map(
+      (yield* workSessionService.value
+        .list({ includeArchived: false })
+        .pipe(Effect.orElseSucceed(() => [])))
+        .filter((s) => s.status === "active")
+        .map((s) => [s.id as string, s.title]),
+    );
+    const { personas } = yield* personasList;
+    return leadFitLine(
+      mine.flatMap((t) => {
+        const title = active.get(t.workSessionId);
+        if (title === undefined) return [];
+        const kept = (t.leadMoves ?? []).flatMap((m) =>
+          m.declined === undefined
+            ? []
+            : [personas.find((p) => p.id === m.declined)?.name ?? m.declined],
+        );
+        return [{ title, kept: [...new Set(kept)] }];
+      }),
+    );
+  });
+
   const boardFor = Effect.fn("TessayaTurn.boardFor")(function* (
     turn: TurnEnvelope,
     member: string | null,

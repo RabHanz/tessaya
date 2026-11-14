@@ -234,6 +234,36 @@ export const TessayaTeamMember = Schema.Struct({
   recent: Schema.Array(
     Schema.Struct({ at: Schema.String, subject: Schema.String, outcome: Schema.String }),
   ),
+  /** Its whole pack role: what it is for and how it sounds. Absent from an older server. */
+  duties: Schema.optionalKey(Schema.String),
+  /** The job templates it usually leads, each with what its playbook has learned so far. */
+  templates: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        title: Schema.String,
+        jobs: Schema.Number,
+        lessons: Schema.Number,
+      }),
+    ),
+  ),
+  /** Jobs it has led, and how the ones that ended went (from the Record). */
+  track: Schema.optionalKey(
+    Schema.Struct({ led: Schema.Number, done: Schema.Number, failed: Schema.Number }),
+  ),
+  /** Its newest lead moves to or from it, and suggestions he turned down (`declined`). */
+  moves: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        job: Schema.String,
+        title: Schema.String,
+        from: Schema.String,
+        to: Schema.String,
+        at: Schema.String,
+        declined: Schema.optionalKey(Schema.String),
+      }),
+    ),
+  ),
 });
 export type TessayaTeamMember = typeof TessayaTeamMember.Type;
 

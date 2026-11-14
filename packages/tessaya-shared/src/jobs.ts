@@ -237,6 +237,20 @@ const GROUP_WORDS: Readonly<Record<TessayaJobGroup, string>> = {
   failed: "failed",
 };
 
+/** A persona's ended jobs from its Record lines (newest first): each job counts once, by its latest line. */
+export const trackOf = (
+  lines: ReadonlyArray<{ readonly ref: string | null; readonly outcome: string }>,
+): { readonly done: number; readonly failed: number } => {
+  const latest = new Map<string, string>();
+  for (const l of lines) if (l.ref !== null && !latest.has(l.ref)) latest.set(l.ref, l.outcome);
+  const outcomes = [...latest.values()];
+  return {
+    done: outcomes.filter((o) => o === GROUP_WORDS.done).length,
+    failed: outcomes.filter((o) => o === GROUP_WORDS.failed || o.startsWith("stopped at its"))
+      .length,
+  };
+};
+
 /** Where a job stands, in the words the Record keeps. */
 const jobOutcome = (j: Pick<TessayaJob, "phase" | "group" | "limitReached">): string =>
   j.phase === "drafting_plan"
@@ -387,3 +401,22 @@ export const leadHandoffNote = (input: {
 /** The worker's one note: who it reports to now and what that lead cares about. */
 export const workerLeadNote = (lead: Face): string =>
   `${lead.name} leads this job now (${lead.role.split(";")[0]!.trim().replace(/\.$/, "")}). Carry on with the same plan and permissions; report to ${lead.name}. Nothing else changes, so do not start over.`;
+
+/**
+ * The jobs a persona leads, for its own turns, and when to point him at a teammate: only on a real mismatch or
+ * blocker, never switching by itself, and never again for a job where he kept it (`kept`, by name). Empty with no jobs.
+ */
+export const leadFitLine = (
+  jobs: ReadonlyArray<{ readonly title: string; readonly kept: ReadonlyArray<string> }>,
+): string => {
+  if (jobs.length === 0) return "";
+  const listed = jobs
+    .slice(0, 5)
+    .map((j) =>
+      j.kept.length === 0
+        ? `"${j.title}"`
+        : `"${j.title}" (he kept you on it over ${j.kept.join(" and ")}: never suggest a hand-over for it again)`,
+    )
+    .join("; ");
+  return `You lead these jobs: ${listed}. If what he asks about one of them is clearly outside what you do, or you are stuck where a teammate is clearly stronger (tessaya_team_board has each one's strengths and record), say so once, plainly, with the reason, and offer both: hand it to them, or he gives you more to go on and you carry on. Never move it yourself, and never for work you can do. On his yes, tessaya_job_lead moves it. If he says you carry on, call tessaya_job_lead with declined, then treat the job as wholly yours: do what you can, say plainly what you cannot do, and never name that teammate for it again.`;
+};

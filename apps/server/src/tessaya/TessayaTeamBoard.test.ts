@@ -93,6 +93,7 @@ layer("the team board (P4)", (it) => {
           kind: "job",
           actor: "Alfred",
           project: "shop",
+          ref: "j-1",
           subject: "Ship the shop",
           outcome: "done",
         });
@@ -103,6 +104,20 @@ layer("the team board (P4)", (it) => {
           subject: "Rotate the vault keys",
           outcome: "started",
         });
+
+        // Onyx took the shop job and gave it back; later he kept Alfred on it over Freya.
+        const move = (at: string, from: string, to: string, declined?: string) =>
+          jobs.moveLead(WorkSessionId.make("j-1"), {
+            at,
+            from,
+            to,
+            by: "him",
+            via: "voice",
+            ...(declined === undefined ? {} : { declined }),
+          });
+        yield* move("2026-11-15T01:00:00.000Z", "butler", "engineering");
+        yield* move("2026-11-15T01:05:00.000Z", "engineering", "butler");
+        yield* move("2026-11-15T01:10:00.000Z", "butler", "butler", "companion");
 
         // An outside agent's view (the MCP tool): walls hold, and no persona can be named.
         const outside = yield* teamBoard({ agent: "executive", admin: true }).pipe(
@@ -122,7 +137,23 @@ layer("the team board (P4)", (it) => {
           alfred.role,
           "life, home and admin: his calendar, errands, bookings, bills and paperwork",
         );
+        // The team record: its duties, a track record of what it may see (j-1 done, j-3; the vault job is walled),
+        // and its newest lead moves first, the declined suggestion included.
+        assert.include(alfred.duties ?? "", "life, home and admin");
+        assert.deepEqual(alfred.track, { led: 2, done: 1, failed: 0 });
+        assert.deepEqual(
+          alfred.moves?.map((m) => [m.from, m.to, m.declined ?? null]),
+          [
+            ["butler", "butler", "companion"],
+            ["engineering", "butler", null],
+            ["butler", "engineering", null],
+          ],
+        );
+        const onyx = outside.members.find((m) => m.id === "engineering")!;
+        assert.deepEqual(onyx.track, { led: 1, done: 0, failed: 0 });
+        assert.lengthOf(onyx.moves ?? [], 2);
         const freya = outside.members.find((m) => m.id === "companion")!;
+        assert.lengthOf(freya.moves ?? [], 1);
         assert.include(freya.episode?.text ?? "", "dinner for eight");
         // A project it cannot name counts as walled, and work it may not see does not show as busy either.
         assert.deepEqual(freya.jobs, []);

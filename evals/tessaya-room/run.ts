@@ -139,8 +139,26 @@ const WORK = {
   tessaya_in_flight: {
     turns: [{ session: "acme/app", title: "checkout refactor", agent: "Codex", minutes: 14 }],
   },
+  // Shaped as TessayaTeamBoardResult, from the default pack's roles.
   tessaya_team_board: {
-    rows: [{ project: "acme/app", job: "checkout refactor", state: "working", by: "Codex" }],
+    members: DEFAULT_OS_PACK.personas.map((p) => ({
+      id: p.id,
+      name: p.name,
+      role: p.role.split(";")[0]!.trim(),
+      duties: p.role,
+      private: false,
+      busy: p.id === "engineering",
+      jobs: p.id === "engineering" ? [{ id: "job-acme-1", title: "checkout refactor" }] : [],
+      episode: null,
+      recent: [],
+      templates: [],
+      track: {
+        led: p.id === "engineering" ? 6 : 2,
+        done: p.id === "engineering" ? 5 : 2,
+        failed: 0,
+      },
+      moves: [],
+    })),
   },
   tessaya_sessions: { sessions: [{ title: "checkout refactor", folder: "/home/user/acme/app" }] },
   // Shaped as BrainUsageResult: cleanup on the API key, talking on the plan, one alert.
@@ -201,6 +219,19 @@ const WORK = {
         phase: "approved",
         group: "done",
       },
+      // Onyx leads these (the referral cases).
+      ...[
+        ["job-dinner-1", "Mum's birthday dinner", "home"],
+        ["job-checkout-bug", "fix the checkout bug", "acme/app"],
+        ["job-vat-1", "file the quarterly VAT return", "home"],
+      ].map(([workSessionId, title, project]) => ({
+        workSessionId,
+        title,
+        project,
+        phase: "approved",
+        group: "running",
+        terms: { lead: "engineering" },
+      })),
     ],
   },
   // Nova wakes her on v2 (v1 kept); Maya's v1 missed the bar and v2 is training; Freya ships trained.
@@ -265,6 +296,10 @@ const WORK = {
     ],
   },
   tessaya_wake_word_change: { ok: true, line: "nova is back on version 1 on every device." },
+  // The cases only decline a suggestion here (the server's line for `declined`).
+  tessaya_job_lead: {
+    line: "Noted: the lead stays, and it is not suggested again for this job.",
+  },
   tessaya_persona_handoff: {
     line: "Freya has this conversation now: say so in a few words.",
     persona: "companion",
@@ -352,7 +387,7 @@ const context = (
     : [],
   lastAction: house.last(),
   automations: null,
-  memory: c.memory ?? "",
+  memory: c.memoryByTurn?.[turn] ?? c.memory ?? "",
   ...(c.notice === undefined ? {} : { notice: c.notice }),
   preferences: {},
   voice:
@@ -364,7 +399,10 @@ const context = (
   // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.
   persona: c.persona === undefined ? null : calledPersona(DEFAULT_OS_PACK, { persona: c.persona }),
   switched: c.persona !== undefined && turn === 0,
-  roster: rosterLine(DEFAULT_OS_PACK.personas, c.persona ?? ""),
+  roster: rosterLine(
+    [...DEFAULT_OS_PACK.personas, ...(c.team ?? []).map((p) => ({ ...p, lead: false }))],
+    c.persona ?? "",
+  ),
 });
 
 const claude = (args: ReadonlyArray<string>, cwd: string) =>
