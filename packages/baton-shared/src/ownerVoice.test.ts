@@ -13,7 +13,7 @@ import {
 } from "./ownerVoice.ts";
 
 const sources: ReadonlyArray<VoiceSource> = [
-  { id: "ros", kind: "document", label: "ROS.md", on: true, readAt: 1 },
+  { id: "ros", kind: "document", label: "operating document", on: true, readAt: 1 },
   { id: "site", kind: "document", label: "his site", on: false, readAt: null },
 ];
 const FILE = `# How he writes

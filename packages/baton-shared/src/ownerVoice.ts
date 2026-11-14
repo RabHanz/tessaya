@@ -12,7 +12,7 @@ export type VoiceSourceKind = (typeof VOICE_SOURCE_KINDS)[number];
 export interface VoiceSource {
   readonly id: string;
   readonly kind: VoiceSourceKind;
-  /** What he sees in Settings: "ROS.md", "rabee.dev", "sent posts he picked". */
+  /** What he sees in Settings: "my operating document", "my site", "sent posts I picked". */
   readonly label: string;
   readonly on: boolean;
   /** Epoch ms it was last read; null never. */

@@ -54,8 +54,8 @@ describe("Sebastian sending as him", () => {
     expect(mayGrantStanding(4, false)).toBe(false);
   });
   it("names itself by his chosen label and says on whose authority it sent", () => {
-    expect(disclosureOf("digital-owner", "Rabee")).toBe("digital Rabee");
-    expect(disclosureOf(undefined, "Rabee")).toBe("Rabee's alter ego");
+    expect(disclosureOf("digital-owner", "Sam")).toBe("digital Sam");
+    expect(disclosureOf(undefined, "Sam")).toBe("Sam's alter ego");
     expect(provenanceLine({ act: "send", grant: "posts", undoSeconds: 300 })).toContain("posts");
     expect(provenanceLine({ approvedAt: 3, how: "passkey, your phone" })).toBe(
       "Sent by Sebastian as you, approved by you (A3, passkey, your phone).",
