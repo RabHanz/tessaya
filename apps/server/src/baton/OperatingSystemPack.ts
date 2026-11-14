@@ -29,7 +29,10 @@ const readText = (file: string): string | undefined => {
   }
 };
 
-export const readPack = (userdata: string): OsPack => {
+/** His own files as he wrote them, before the defaults. */
+export const readPackFiles = (
+  userdata: string,
+): { readonly executive?: string; readonly roles: Record<string, string> } => {
   const dir = NodePath.join(userdata, PACK_DIR_NAME);
   let names: string[] = [];
   try {
@@ -44,8 +47,10 @@ export const readPack = (userdata: string): OsPack => {
     if (text !== undefined) roles[name.slice(0, -3)] = text;
   }
   const executive = readText(NodePath.join(dir, "executive.md"));
-  return mergePack({ ...(executive === undefined ? {} : { executive }), roles });
+  return { ...(executive === undefined ? {} : { executive }), roles };
 };
+
+export const readPack = (userdata: string): OsPack => mergePack(readPackFiles(userdata));
 
 /** The pack's own files as he wrote them (no defaults), so memory's door can refuse their text. */
 export const packFileTexts = (userdata: string): ReadonlyArray<string> => {

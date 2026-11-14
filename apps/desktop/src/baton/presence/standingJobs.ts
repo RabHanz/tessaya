@@ -64,7 +64,7 @@ export const BUILT_INS: ReadonlyArray<StandingJobDef> = [
     id: "waiting_remind",
     title: "When a session has waited on me for an hour",
     what: "Says one line aloud about it, once per session.",
-    owner: "operations",
+    owner: "engineering",
     trigger: { kind: "event", event: "a session waited an hour" },
     tool: "watch_report",
     model: "no model",

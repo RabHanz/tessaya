@@ -361,9 +361,9 @@ describe("answering only when he is talking to her", () => {
     await turn(t);
     await turn(t);
     expect(t.brainCalls.map((c) => [c.tessaya.persona, c.tessaya.switched])).toEqual([
-      ["engineering", true],
-      ["engineering", undefined],
-      ["engineering", undefined],
+      ["butler", true],
+      ["butler", undefined],
+      ["butler", undefined],
       ["executive", true],
     ]);
     expect(new Set(voices)).toEqual(new Set(["peter_yearsley", "eve"]));
@@ -831,7 +831,7 @@ describe("waking by name with no session open", () => {
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     await t.feed(true, 20);
     await t.feed(false, 60);
-    expect(t.brainCalls[0]?.tessaya.persona).toBe("engineering");
+    expect(t.brainCalls[0]?.tessaya.persona).toBe("butler");
     // The R1 only streams wake audio between sessions: once its mic has been quiet a while, the session here is stale.
     await t.deps.sleep(3_000);
     t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
@@ -1054,7 +1054,7 @@ describe("what Tessaya's Devices page can ask of the room", () => {
     );
     await t.metrics;
     expect(t.brainCalls.map((c) => [c.messages.at(-1)?.content, c.tessaya.persona])).toEqual([
-      ["What's next?", "engineering"],
+      ["What's next?", "butler"],
     ]);
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"freya"}'));
     expect(spoken.at(-1)).toEqual(["Fray-uh here.", "azelma"]);
@@ -1102,7 +1102,7 @@ describe("what Tessaya's Devices page can ask of the room", () => {
         personas: [
           { id: "executive", name: "Tessaya", wake: "Tessaya", voice: "eve", lead: true },
           {
-            id: "operations",
+            id: "companion",
             name: "Maya",
             wake: "Maya",
             voice: "azelma",
@@ -1112,7 +1112,7 @@ describe("what Tessaya's Devices page can ask of the room", () => {
         ],
       })!,
     );
-    renamed.room.woken(DEV, "operations");
+    renamed.room.woken(DEV, "companion");
     renamed.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     expect(
       renamed.published
@@ -2164,7 +2164,7 @@ describe("recognising who she is talking to across a session (recognition.ts)", 
     ).toEqual(["button"]);
     t.room.message(
       `freya/r1/${DEV}/voice/prefs/member-1`,
-      Buffer.from('{"persona":"research","voice":"alba"}'),
+      Buffer.from('{"persona":"alter-ego","voice":"alba"}'),
     );
     // Who he last talked to elsewhere counts only with personaFollows on (P5).
     t.room.message(
@@ -2173,23 +2173,23 @@ describe("recognising who she is talking to across a session (recognition.ts)", 
     );
     await t.feed(true, 20);
     await t.feed(false, 40);
-    expect(t.brainCalls.at(-1)!.tessaya.persona).toBe("research");
+    expect(t.brainCalls.at(-1)!.tessaya.persona).toBe("alter-ego");
     const follows = setup(
       { recognise: lines(["What's on today?"]), speaker: async () => owner(0.7, true) },
       { ...QUIET, personaFollows: true },
     );
     follows.room.message(
       `freya/r1/${DEV}/voice/prefs/member-1`,
-      Buffer.from('{"persona":"research"}'),
+      Buffer.from('{"persona":"alter-ego"}'),
     );
     follows.room.message(
       `freya/r1/${DEV}/voice/current/member-1`,
-      Buffer.from('{"persona":"engineering"}'),
+      Buffer.from('{"persona":"butler"}'),
     );
     follows.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     await follows.feed(true, 20);
     await follows.feed(false, 40);
-    expect(follows.brainCalls.at(-1)!.tessaya.persona).toBe("engineering");
+    expect(follows.brainCalls.at(-1)!.tessaya.persona).toBe("butler");
   });
 });
 

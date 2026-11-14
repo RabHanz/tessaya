@@ -238,7 +238,7 @@ describe("One Trust", () => {
 
   it("a persona's tools come from its file's front-matter", () => {
     const pack = mergePack({
-      roles: { operations: "---\ntools: type_text, Read\n---\nbrief" },
+      roles: { companion: "---\ntools: type_text, Read\n---\nbrief" },
     });
     expect(pack.personas.find((p) => p.name === "Freya")?.tools).toEqual(["type_text", "Read"]);
   });

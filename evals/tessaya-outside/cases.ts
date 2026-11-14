@@ -206,9 +206,9 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
       tessaya_team_board: {
         members: [
           {
-            id: "engineering",
+            id: "butler",
             name: "Alfred",
-            role: "sessions, builds and releases",
+            role: "life, home and admin: his calendar, errands, bookings, bills and paperwork",
             private: false,
             busy: true,
             jobs: [{ id: "j-1", title: "Ship the shop" }],
@@ -216,9 +216,9 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
             recent: [],
           },
           {
-            id: "operations",
+            id: "companion",
             name: "Freya",
-            role: "his day, his messages and his reminders",
+            role: "his wellbeing, check-ins and habits, and the home's comfort",
             private: false,
             busy: false,
             jobs: [],

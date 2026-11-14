@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   DEFAULT_OS_PACK,
+  rosterMoves,
   leadsProject,
   mergePack,
   modelOf,
@@ -27,11 +28,11 @@ describe("the operating-system pack", () => {
   it("reads a persona's `private: yes`, never for the lead", () => {
     const pack = mergePack({
       roles: {
-        research: "---\nname: Sebastian\nprivate: yes\n---\nResearch.",
+        "alter-ego": "---\nname: Sebastian\nprivate: yes\n---\nAs him.",
         executive: "---\nprivate: yes\n---\nLead.",
       },
     });
-    expect(pack.personas.find((p) => p.id === "research")?.private).toBe(true);
+    expect(pack.personas.find((p) => p.id === "alter-ego")?.private).toBe(true);
     expect(pack.personas.find((p) => p.lead)?.private).toBeUndefined();
   });
   it("carries each persona's body, temperament, eyes and model, and drops what it cannot read", () => {
@@ -74,14 +75,14 @@ describe("the roster", () => {
     return `${p.name}/${p.voice}`;
   };
   it("tells each persona who the others are and what they do, in one line, leaving out a private one (PRESENCE)", () => {
-    expect(rosterLine(DEFAULT_OS_PACK.personas, "operations")).toBe(
-      "Tessaya leads and hands out the work; Alfred handles sessions, builds and releases; Sebastian handles research and analysis",
+    expect(rosterLine(DEFAULT_OS_PACK.personas, "companion")).toBe(
+      "Tessaya leads and hands out the work; Alfred handles life, home and admin: his calendar, errands, bookings, bills and paperwork; Onyx handles sessions, builds, releases, deploys and servers; Sebastian handles writing as him: his posts, replies and messages in his voice",
     );
     expect(rosterLine(DEFAULT_OS_PACK.personas, "executive")).not.toContain("Tessaya");
     const hidden = DEFAULT_OS_PACK.personas.map((p) =>
-      p.id === "research" ? { ...p, private: true } : p,
+      p.id === "alter-ego" ? { ...p, private: true } : p,
     );
-    expect(rosterLine(hidden, "operations")).not.toContain("Sebastian");
+    expect(rosterLine(hidden, "companion")).not.toContain("Sebastian");
   });
   it("answers a wake word with that persona's name and voice", () => {
     expect(who(DEFAULT_OS_PACK, "Freya")).toBe("Freya/azelma");
@@ -89,7 +90,7 @@ describe("the roster", () => {
     expect(who(DEFAULT_OS_PACK, "Tessaya")).toBe("Tessaya/eve");
   });
   it("falls back to the lead for an unknown wake word, a hotkey or a typed ask", () => {
-    expect(who(DEFAULT_OS_PACK, "Onyx")).toBe("Tessaya/eve");
+    expect(who(DEFAULT_OS_PACK, "Nova")).toBe("Tessaya/eve");
     expect(who(DEFAULT_OS_PACK, null)).toBe("Tessaya/eve");
     // Sebastian has no wake word yet, so his word wakes the lead; his name in the sentence reaches him.
     expect(who(DEFAULT_OS_PACK, "Sebastian")).toBe("Tessaya/eve");
@@ -98,22 +99,20 @@ describe("the roster", () => {
   it("lets his file override the default field by field, and add a face of his own", () => {
     const pack = mergePack({
       roles: {
-        operations: "---\nvoice: anna\n---\nMy operator.",
-        legal: "---\nname: Lex\nwake: Onyx\nvoice: paul\nrole: contracts\n---\nA lawyer.",
+        companion: "---\nvoice: anna\n---\nMy companion.",
+        legal: "---\nname: Lex\nwake: Nova\nvoice: paul\nrole: contracts\n---\nA lawyer.",
       },
     });
     expect(who(pack, "Freya")).toBe("Freya/anna");
-    expect(pack.roles["operations"]).toBe("My operator.");
-    expect(who(pack, "Onyx")).toBe("Lex/paul");
+    expect(pack.roles["companion"]).toBe("My companion.");
+    expect(who(pack, "Nova")).toBe("Lex/paul");
     // A file with no front-matter keeps the default face.
-    expect(who(mergePack({ roles: { engineering: "Mine." } }), "Alfred")).toBe(
-      "Alfred/peter_yearsley",
-    );
+    expect(who(mergePack({ roles: { butler: "Mine." } }), "Alfred")).toBe("Alfred/peter_yearsley");
   });
   it("reads each persona's team and the projects it leads, telling apart two projects with one title", () => {
     const pack = mergePack({
       executive: "---\nwalled: shop, tax\n---\n",
-      roles: { engineering: "---\nprojects: shop, site\nleads: Site, shop@studio\n---\n" },
+      roles: { butler: "---\nprojects: shop, site\nleads: Site, shop@studio\n---\n" },
     });
     const alfred = pack.personas.find((p) => p.name === "Alfred")!;
     expect(pack.walled).toEqual(["shop", "tax"]);
@@ -135,7 +134,7 @@ describe("the roster", () => {
     const opus = { model: "opus", effort: "medium" };
     const sonnet = { model: "sonnet", effort: "medium" };
     expect(modelOf(DEFAULT_OS_PACK, "executive")).toEqual(opus);
-    expect(modelOf(DEFAULT_OS_PACK, "operations")).toEqual(sonnet);
+    expect(modelOf(DEFAULT_OS_PACK, "companion")).toEqual(sonnet);
     // A role with no face of its own is still a specialist.
     expect(modelOf(DEFAULT_OS_PACK, "marketing")).toEqual(sonnet);
     const pack = mergePack({
@@ -151,5 +150,32 @@ describe("the roster", () => {
     expect(modelOf(pack, "legal")).toEqual(sonnet);
     expect(modelOf(pack, "operations")).toEqual(sonnet);
     expect(modelOf(pack, "nobody")).toEqual(sonnet);
+  });
+
+  it("moves each old default face's records by name, and leaves a face his own file names where it is", () => {
+    const moves = (roles: Record<string, string>) => {
+      const m = rosterMoves(roles);
+      return { ids: Object.fromEntries(m.ids), files: Object.fromEntries(m.files) };
+    };
+    expect(moves({})).toEqual({
+      ids: { engineering: "butler", operations: "companion", research: "alter-ego" },
+      files: {},
+    });
+    // His nameless edits to Alfred's file go with Alfred; his own Alfred on engineering stays his.
+    expect(moves({ engineering: "---\nvoice: anna\n---\nMine." }).files).toEqual({
+      engineering: "butler",
+    });
+    const his = { engineering: "---\nname: Alfred\n---\nMine." };
+    expect(moves(his).ids).toEqual({ operations: "companion", research: "alter-ego" });
+    // ...and it merges over Alfred's default, not Onyx's, and Alfred's default stem is gone.
+    const pack = mergePack({ roles: his });
+    expect(pack.personas.find((p) => p.id === "engineering")).toMatchObject({
+      name: "Alfred",
+      voice: "peter_yearsley",
+    });
+    expect(pack.personas.filter((p) => p.name === "Alfred")).toHaveLength(1);
+    expect(pack.roles["butler"]).toBeUndefined();
+    // A face he renamed on an old stem was never the default's, so nothing moves from it.
+    expect(moves({ operations: "---\nname: Juno\n---\nx" }).ids.operations).toBeUndefined();
   });
 });

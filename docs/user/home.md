@@ -110,7 +110,7 @@ without the name. Anything else said in the room, such as your dictation, a call
 "dismissed" or "that's all" to end the conversation; her name or S2 wakes her again. After 15 quiet minutes the
 R1 stops listening, and S2 starts it again.
 
-**Other personas.** Start with another persona's name ("Alfred, …", "Freya, …", "Sebastian, …") and that persona
+**Other personas.** Start with another persona's name ("Alfred, …", "Onyx, …", "Freya, …", "Sebastian, …") and that persona
 answers in its own voice, with its own eyes on the R1 and its own memories. It stays on for follow-ups in the 8-second
 window; once the R1 rests, Tessaya answers again.
 
