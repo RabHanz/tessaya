@@ -681,15 +681,19 @@ describe("answering only when he is talking to her", () => {
       ]);
     });
 
-    it("is dismissed over her voice, and nothing else he says over her is taken", async () => {
+    it("is dismissed over her voice, and with nobody enrolled anything else he says over her is answered", async () => {
       const sent = await overHer(["Turn the office fan on.", "Dismissed."], "his");
       expect(sent.flushed).toBe(true);
       await sent.t.feed(false, 20);
       expect(sent.t.published.some((p) => p.payload === '{"mood":"sleepy"}')).toBe(true);
+      // 14 Nov, 18:57: "Yes?", then his request over her tail got a glance.
       const other = await overHer(["Turn the office fan on.", "Turn the lamp on as well."], "his");
-      expect(other.flushed).toBe(false);
-      expect(other.t.brainCalls).toHaveLength(1);
-      expect(other.logs.some((l) => l.includes("over her voice and not a stop"))).toBe(true);
+      expect(other.flushed).toBe(true);
+      expect(other.t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+        "Turn the office fan on.",
+        "Turn the lamp on as well.",
+      ]);
+      expect(other.logs.some((l) => l.includes("not answered"))).toBe(false);
     });
 
     it("stops on the R1's own stop (S2 or a tap), and a turn on its way then is not answered", async () => {
@@ -1556,11 +1560,12 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     });
     // Keyword mode (the default): over her voice only a stop phrase or her name counts.
     expect((await run("keyword", true)).asked).toEqual(["What time is it?"]);
-    // Nobody enrolled: open talk-over stays keyword.
-    expect(await run("open", true, 0.6, false)).toMatchObject({
-      flushed: false,
-      asked: ["What time is it?"],
-    });
+    // Nobody enrolled (14 Nov, 18:57): what the person who woke her says over her is answered, in either mode.
+    for (const mode of ["open", "keyword"] as const)
+      expect(await run(mode, true, 0.6, false)).toMatchObject({
+        flushed: true,
+        asked: ["What time is it?", "No, I meant in London."],
+      });
   });
 
   it("never says her reasoning, nor keeps it in the conversation (07:17:55, 07:38:34, 07:44:27)", async () => {
