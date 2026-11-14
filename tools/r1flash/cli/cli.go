@@ -338,7 +338,7 @@ func (a *app) backupPath(name string) string {
 
 // preflight asks a running firmware whether it is busy: never flash during a conversation or a call.
 func (a *app) preflight(p *realPort) error {
-	lines, err := core.ConsoleLines(p, realClock{}, "r1cfg status", 1500*time.Millisecond)
+	lines, err := core.ConsoleLines(p, realClock{}, core.AP("r1cfg status"), 1500*time.Millisecond)
 	if err != nil {
 		return err
 	}
@@ -495,24 +495,24 @@ func (a *app) config(args []string) int {
 	var line string
 	switch args[0] {
 	case "get":
-		line = "r1cfg status"
+		line = core.AP("r1cfg status")
 	case "wifi":
 		if len(args) != 3 {
 			return a.usage("config wifi SSID PASS")
 		}
-		line = "r1cfg wifi " + core.QuoteArg(args[1]) + " " + core.QuoteArg(args[2])
+		line = core.AP("r1cfg wifi " + core.QuoteArg(args[1]) + " " + core.QuoteArg(args[2]))
 	case "endpoints":
 		if len(args) < 2 {
 			return a.usage("config endpoints URL...")
 		}
-		line = "r1ep set " + strings.Join(args[1:], " ")
+		line = core.AP("r1ep set " + strings.Join(args[1:], " "))
 	case "key":
 		if len(args) != 2 {
 			return a.usage("config key HEX")
 		}
-		line = "r1cfg key " + args[1]
+		line = core.AP("r1cfg key " + args[1])
 	case "setup":
-		line = "r1cfg setup"
+		line = core.AP("r1cfg setup")
 	default:
 		return a.usage("unknown config " + args[0])
 	}
@@ -540,7 +540,7 @@ func (a *app) config(args []string) int {
 	case st == nil:
 		return a.out.result(result{Code: "failed", Msg: "the console did not understand: this firmware may predate the r1cfg command (" + lines[len(lines)-1] + ")"})
 	case st["ok"] == false:
-		return a.out.result(result{Code: "failed", Msg: fmt.Sprintf("the R1 refused: %v", st["err"])})
+		return a.out.result(result{Code: "failed", Msg: fmt.Sprintf("the R1 refused: %v", st["error"])})
 	}
 	return a.out.result(result{OK: true, Code: "ok", Msg: "Done."})
 }
