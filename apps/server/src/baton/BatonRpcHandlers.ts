@@ -106,6 +106,7 @@ import {
   liveAdopt,
   liveAttach,
   liveEffort,
+  liveLimit,
   liveSetAccount,
   switchOwnDirSessions,
   liveSetModel,
@@ -494,7 +495,7 @@ export const makeHandlers = Effect.gen(function* () {
           const { queued, applying, failure } = yield* (yield* ThreadAccountMoves).liveQueued(
             input.sessionId,
           );
-          return { effort, queued, applying, failure };
+          return { effort, queued, applying, failure, limit: yield* liveLimit(input.sessionId) };
         }),
       ),
     [BATON_LIVE_WS_METHODS.liveCancelQueued]: (input) =>

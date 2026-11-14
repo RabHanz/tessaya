@@ -283,3 +283,38 @@ export const parseLiveToolSteps = (line: string): ReadonlyArray<LiveToolStep> =>
     return [];
   });
 };
+
+/**
+ * The usage limit a terminal session last stopped on, from its transcript's tail: Claude writes the 429 as an assistant
+ * line with `isApiErrorMessage` ("You've hit your weekly limit · resets …"). Null once anything later was said.
+ */
+export const liveLimitHit = (
+  tail: string,
+): { readonly text: string; readonly at: string } | null => {
+  const lines = tail.split("\n");
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    let entry: Record<string, unknown>;
+    try {
+      entry = JSON.parse(lines[i]!) as Record<string, unknown>;
+    } catch {
+      continue; // the tail's first line is usually cut
+    }
+    if (entry["type"] !== "assistant" && entry["type"] !== "user") continue;
+    if (entry["isApiErrorMessage"] !== true) return null;
+    const content = (entry["message"] as { content?: unknown } | undefined)?.content;
+    const text = Array.isArray(content)
+      ? content
+          .map((part) => (part as { text?: unknown }).text)
+          .filter((part): part is string => typeof part === "string")
+          .join(" ")
+      : "";
+    const limited =
+      entry["error"] === "rate_limit" ||
+      entry["apiErrorStatus"] === 429 ||
+      /\b(usage|weekly|session) limit\b|hit your (\w+ )?limit/i.test(text);
+    return limited
+      ? { text: text.trim() || "Usage limit reached.", at: String(entry["timestamp"] ?? "") }
+      : null;
+  }
+  return null;
+};

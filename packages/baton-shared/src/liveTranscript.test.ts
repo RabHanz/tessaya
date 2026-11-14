@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   claudeProjectSlug,
   isComposerEcho,
+  liveLimitHit,
   stripT3Wrappers,
   labelAttachmentPaths,
   parseLiveToolSteps,
@@ -232,5 +233,40 @@ describe("a message sent from a T3 composer with a pasted image", () => {
   it("is not an echo of a different message, and an image alone is not a message to match on words", () => {
     expect(isComposerEcho("Something else entirely.", composer)).toBe(false);
     expect(isComposerEcho("anything", "![a.png](t3-context://v1/image/x)")).toBe(false);
+  });
+});
+
+describe("liveLimitHit", () => {
+  const line = (entry: object) => JSON.stringify(entry);
+  const hit = line({
+    type: "assistant",
+    timestamp: "2026-11-14T13:55:59.191Z",
+    isApiErrorMessage: true,
+    error: "rate_limit",
+    apiErrorStatus: 429,
+    message: {
+      content: [{ type: "text", text: "You've hit your weekly limit · resets Nov 16, 6pm" }],
+    },
+  });
+  it("reads the 429 a session stopped on, and nothing once it went on", () => {
+    expect(
+      liveLimitHit(`{"cut":\n${line({ type: "user", message: { content: "go" } })}\n${hit}\n`),
+    ).toEqual({
+      text: "You've hit your weekly limit · resets Nov 16, 6pm",
+      at: "2026-11-14T13:55:59.191Z",
+    });
+    const later = line({ type: "assistant", message: { content: [{ type: "text", text: "ok" }] } });
+    expect(liveLimitHit(`${hit}\n${later}`)).toBeNull();
+    // Another API error is not a limit.
+    expect(
+      liveLimitHit(
+        line({
+          type: "assistant",
+          isApiErrorMessage: true,
+          error: "overloaded",
+          message: { content: [{ type: "text", text: "Overloaded" }] },
+        }),
+      ),
+    ).toBeNull();
   });
 });

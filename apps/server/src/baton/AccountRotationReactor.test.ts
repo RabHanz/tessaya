@@ -236,6 +236,21 @@ describe("live sessions in their own config dirs (LIVE-ACCOUNT)", () => {
     });
     expect(moves.map((move) => [move.sessionId, move.target.key])).toEqual([["spent", "b"]]);
   });
+
+  it("moves a session that stopped on a 429 although the reading still shows room", () => {
+    const sessions = [
+      { sessionId: "stopped", slot: "a", limited: true },
+      { sessionId: "fine", slot: "a" },
+    ];
+    const moves = planLiveSessionMoves({
+      pool: pool(40),
+      sessions,
+      kept: () => false,
+      lastAutoRotationAt: new Map(),
+      now,
+    });
+    expect(moves.map((move) => move.sessionId)).toEqual(["stopped"]);
+  });
 });
 
 describe("the respawn plan after a rotation (D69)", () => {

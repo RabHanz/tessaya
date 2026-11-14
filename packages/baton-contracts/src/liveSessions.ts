@@ -130,6 +130,10 @@ export const BatonLiveStateResult = Schema.Struct({
   queued: Schema.NullOr(BatonLiveQueued),
   /** The queued change is being applied now: for an account move, the one restart and the switch. */
   applying: Schema.optionalKey(Schema.Boolean),
+  /** The usage limit the session last stopped on, in Claude's words, until it says anything else. */
+  limit: Schema.optionalKey(
+    Schema.NullOr(Schema.Struct({ text: Schema.String, at: Schema.String })),
+  ),
   /** Why the last queued change was not applied, until the next one is queued. */
   failure: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });

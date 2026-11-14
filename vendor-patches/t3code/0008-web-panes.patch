@@ -4,10 +4,18 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d02201c91 100644
+index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..ab4f6b12659ace29e8b67d3422106619c1dd2eb9 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -353,7 +353,7 @@ import {
+@@ -37,6 +37,7 @@ import { ThreadFind, ThreadFindCanvas } from "./chat/ThreadFindProvider";
+ import { closeThreadFind, openThreadFind, useThreadFindOpen } from "./chat/threadFindStore";
+ import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
+ import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
++import { useLiveLimitBanner } from "./chat/BatonLiveModel";
+ import { isThreadEnvironmentLocked, resolveDraftHeroState } from "./ChatView.logic";
+ import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
+ import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
+@@ -353,7 +354,7 @@ import {
    shouldRefocusComposerOnWindowFocus,
  } from "./ChatView.logic";
  import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -16,7 +24,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
  import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
  import { appAtomRegistry } from "../rpc/atomRegistry";
  import { assetEnvironment } from "../state/assets";
-@@ -404,6 +404,8 @@ type ChatViewProps =
+@@ -404,6 +405,8 @@ type ChatViewProps =
        threadId: ThreadId;
        onDiffPanelOpen?: () => void;
        reserveTitleBarControlInset?: boolean;
@@ -25,7 +33,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
        forceExpandedMobileComposer?: boolean;
        /** A side chat in its parent's right panel; the parent keeps the keyboard and workspace UI. */
        embedded?: SideChatParentPanel;
-@@ -415,6 +417,7 @@ type ChatViewProps =
+@@ -415,6 +418,7 @@ type ChatViewProps =
        threadId: ThreadId;
        onDiffPanelOpen?: () => void;
        reserveTitleBarControlInset?: boolean;
@@ -33,7 +41,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
        forceExpandedMobileComposer?: boolean;
        embedded?: never;
        routeKind: "draft";
-@@ -432,6 +435,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -432,6 +436,7 @@ export default function ChatView(props: ChatViewProps) {
      routeKind,
      onDiffPanelOpen,
      reserveTitleBarControlInset = true,
@@ -41,7 +49,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
      forceExpandedMobileComposer = false,
      embedded: parentPanel,
    } = props;
-@@ -509,7 +513,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -509,7 +514,10 @@ export default function ChatView(props: ChatViewProps) {
          });
    const promptRef = useRef("");
    const localComposerRef = useRef<ChatComposerHandle | null>(null);
@@ -53,7 +61,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
    const queuedRunEdit = useQueuedRunEdit({
      environmentId,
      routeThreadRef,
-@@ -1341,6 +1348,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1341,6 +1349,10 @@ export default function ChatView(props: ChatViewProps) {
      ],
      lockedProvider,
      lockedInstanceId: activeRuntime?.providerInstanceId ?? activeThreadModelInstanceId,
@@ -64,7 +72,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
    });
    const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
    const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
-@@ -1834,7 +1845,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1834,7 +1846,7 @@ export default function ChatView(props: ChatViewProps) {
    });
  
    const focusComposer = () => {
@@ -73,7 +81,26 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
    };
    const focusComposerStable = useStableCallback(focusComposer);
    const canInterruptRunningThread =
-@@ -2789,12 +2800,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2573,6 +2585,7 @@ export default function ChatView(props: ChatViewProps) {
+     });
+     return item ? [item] : [];
+   });
++  const liveLimitBanner = useLiveLimitBanner(routeThreadRef);
+   const limitRecoveryBanner =
+     limitRecoveryRun !== null && activeThreadShell !== null
+       ? usageLimitRecoveryBannerItem({
+@@ -2640,7 +2653,9 @@ export default function ChatView(props: ChatViewProps) {
+             }),
+           ]
+         : [];
+-    const limitRecoveryItems = limitRecoveryBanner === null ? [] : [limitRecoveryBanner];
++    const limitRecoveryItems = [limitRecoveryBanner, liveLimitBanner].filter(
++      (item) => item !== null,
++    );
+     const extensionStatusBanner = extensionStatusBannerItem(
+       deriveProviderExtensionStatuses(serverProjection),
+     );
+@@ -2789,12 +2804,13 @@ export default function ChatView(props: ChatViewProps) {
    useEffect(() => {
      if (embedded) return;
      return window.desktopBridge?.onMenuAction((action) => {
@@ -89,7 +116,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3289,8 +3301,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3289,8 +3305,10 @@ export default function ChatView(props: ChatViewProps) {
      />
    );
    const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
@@ -101,7 +128,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
        showMaximizeControl={!shouldUsePlanSidebarSheet}
        rightPanelOpen={rightPanelOpen}
        animationsActive={panelAnimationsActive}
-@@ -3318,7 +3332,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3318,7 +3336,9 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -112,7 +139,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3345,13 +3361,12 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3345,13 +3365,12 @@ export default function ChatView(props: ChatViewProps) {
                COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
              )}
            >
@@ -127,7 +154,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
              {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
-@@ -3369,6 +3384,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3369,6 +3388,9 @@ export default function ChatView(props: ChatViewProps) {
                  : {})}
                {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
              />
@@ -137,7 +164,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
            </header>
          )}
  
-@@ -3696,6 +3714,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3696,6 +3718,7 @@ export default function ChatView(props: ChatViewProps) {
                                  runtimeMode={runtimeMode}
                                  defaultRuntimeMode={defaultRuntimeMode}
                                  lockedProvider={modelPickerLockedProvider}
@@ -145,7 +172,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..8244c3229b02e4a9be94a1c9baa5840d
                                  providerStatuses={providerStatuses as ServerProvider[]}
                                  providerCatalogKnown={serverConfig !== null}
                                  activeProjectDefaultModelSelection={
-@@ -4049,7 +4068,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -4049,7 +4072,7 @@ export default function ChatView(props: ChatViewProps) {
        cwd={activeWorkspaceRoot}
        checkpoints={serverProjection?.checkpoints}
      >
