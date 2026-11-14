@@ -634,6 +634,25 @@ export function BatonPanes(props: {
       }),
     [],
   );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a drag released outside the window can skip the bar's dragend, which left the drop targets over every pane
+  useEffect(() => {
+    if (dragging === null) return;
+    // No pointer events fire during a native drag, so any of these means it is over.
+    const end = () => setDragging(null);
+    const onKey = (event: globalThis.KeyboardEvent) => event.key === "Escape" && end();
+    const onHidden = () => document.hidden && end();
+    const ends = ["pointermove", "pointerdown"] as const;
+    for (const type of ends) window.addEventListener(type, end, true);
+    window.addEventListener("blur", end);
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      for (const type of ends) window.removeEventListener(type, end, true);
+      window.removeEventListener("blur", end);
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("visibilitychange", onHidden);
+    };
+  }, [dragging]);
 
   const goTo = async (target: ThreadRouteTarget) => {
     const key = paneTargetKey(target);

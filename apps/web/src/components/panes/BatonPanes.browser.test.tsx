@@ -38,7 +38,7 @@ vi.mock(import("~/rpc/requestLatencyState"), async (original) => ({
   trackRpcRequestSent: () => {},
 }));
 
-it("opening the route's pane focuses its own composer, and each pane's terminal toggle opens its own terminal", async () => {
+it("opening the route's pane focuses its own composer, each pane's terminal toggle opens its own terminal, and a pane drag always ends", async () => {
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   await page.viewport(1400, 800);
   await using _viewport = {
@@ -98,4 +98,23 @@ it("opening the route's pane focuses its own composer, and each pane's terminal 
     expect(selectThreadTerminalUiState(terminals, bRef).terminalOpen).toBe(true);
     expect(selectThreadTerminalUiState(terminals, aRef).terminalOpen).toBe(false);
   });
+
+  // Released outside the window, or the bar re-rendered mid-drag: the bar never hears dragend.
+  const [first] = useBatonPanesStore.getState().slots;
+  const bar = page.getByTestId(`baton-pane-bar-${first!.id}`).element();
+  const dropTargets = () => document.querySelectorAll('[data-testid^="baton-pane-drop-"]');
+  const endings: ReadonlyArray<() => void> = [
+    () => window.dispatchEvent(new PointerEvent("pointermove")),
+    () => window.dispatchEvent(new PointerEvent("pointerdown")),
+    () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })),
+    () => window.dispatchEvent(new FocusEvent("blur")),
+  ];
+  for (const endDrag of endings) {
+    bar.dispatchEvent(
+      new DragEvent("dragstart", { bubbles: true, dataTransfer: new DataTransfer() }),
+    );
+    await vi.waitFor(() => expect(dropTargets().length).toBe(1));
+    endDrag();
+    await vi.waitFor(() => expect(dropTargets().length).toBe(0));
+  }
 });
