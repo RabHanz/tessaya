@@ -10,6 +10,8 @@ export const BatonPersona = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   wake: Schema.NullOr(Schema.String),
+  /** Whether a model wakes to `wake` yet: until it is trained he reaches her by "switch to <name>". */
+  wakeModel: Schema.optionalKey(Schema.Literals(["trained", "training", "none"])),
   voice: Schema.String,
   cloudVoice: Schema.optionalKey(Schema.String),
   role: Schema.String,

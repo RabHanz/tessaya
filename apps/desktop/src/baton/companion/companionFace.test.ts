@@ -5,6 +5,10 @@ import * as NodeVM from "node:vm";
 
 import { describe, expect, it } from "vite-plus/test";
 
+import { DEFAULT_OS_PACK, mergePack } from "@t3tools/baton-shared/osPack";
+
+import { bodyOf } from "./desktopMascot.ts";
+
 /** The shipped Character Studio rig (apps/web/public/companion), loaded as the stage page loads it. */
 const loadRig = () => {
   const dir = NodePath.join(__dirname, "..", "..", "..", "..", "web", "public", "companion");
@@ -22,7 +26,7 @@ const loadRig = () => {
     drawFace: (R: object, F: object, pal: object, time: number, spinT: number) => { svg: string };
     NEUTRAL: Record<string, number>;
     CHARACTERS: Record<string, { face: Record<string, number>; pal: object }>;
-    PERSONAS: Record<string, { character: string }>;
+    PERSONAS: Record<string, { character: string; traits: Record<string, number> }>;
   };
 };
 
@@ -81,4 +85,29 @@ describe("the companion's eyes", () => {
       expect(worst).toBeLessThan(Number(f["ew"]) * 0.12);
     },
   );
+});
+
+describe("the body a persona wears (SPINE-UNIFY §10, P3)", () => {
+  it("is the persona record's, which for the default pack is the studio's own; a custom persona gets one too", () => {
+    for (const p of DEFAULT_OS_PACK.personas) {
+      const preset = TCS.PERSONAS[p.name.toLowerCase()]!;
+      expect(bodyOf(DEFAULT_OS_PACK.personas, p.name)).toEqual({
+        persona: p.name.toLowerCase(),
+        character: preset.character,
+        traits: preset.traits,
+      });
+    }
+    const pack = mergePack({
+      roles: {
+        nova: "---\nname: Nova\nvoice: eve\ncharacter: loom\ntraits: warmth 0.2\n---\nbrief",
+      },
+    });
+    expect(bodyOf(pack.personas, "nova")).toEqual({
+      persona: "custom",
+      character: "loom",
+      traits: { warmth: 0.2 },
+    });
+    expect(TCS.CHARACTERS["loom"]).toBeDefined();
+    expect(bodyOf(pack.personas, "nobody")).toEqual({ persona: "custom" });
+  });
 });

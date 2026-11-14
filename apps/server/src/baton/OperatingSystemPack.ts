@@ -12,7 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
-import { mergePack, packPrompt, type OsPack } from "@t3tools/baton-shared/osPack";
+import { mergePack, packPrompt, wakeModelOf, type OsPack } from "@t3tools/baton-shared/osPack";
 
 export const PACK_DIR_NAME = "operating-system";
 const MAX_FILE_BYTES = 64 * 1024;
@@ -66,11 +66,24 @@ export const planningFrame = (userdata: string): string => packPrompt(readPack(u
 export const readRouting = (userdata: string): Routing =>
   parseRouting(readText(NodePath.join(userdata, PACK_DIR_NAME, "routing.json")));
 
+/** The wake-word training pipeline's record (`{"nova": "training"}`); a word it lacks is one for it to train. */
+const readWakeModels = (userdata: string): unknown => {
+  try {
+    return JSON.parse(
+      readText(NodePath.join(userdata, PACK_DIR_NAME, "wake-models.json")) ?? "null",
+    );
+  } catch {
+    return null;
+  }
+};
+
 /** Her personas as this server's pack resolves them: the one registry every body reads (SPINE-UNIFY §10). */
 export const personasList = Effect.gen(function* () {
   const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
-  const pack = Option.isNone(config)
-    ? mergePack({})
-    : readPack(NodePath.dirname(config.value.dbPath));
-  return { personas: pack.personas };
+  const userdata = Option.isNone(config) ? null : NodePath.dirname(config.value.dbPath);
+  const pack = userdata === null ? mergePack({}) : readPack(userdata);
+  const trained = userdata === null ? null : readWakeModels(userdata);
+  return {
+    personas: pack.personas.map((p) => ({ ...p, wakeModel: wakeModelOf(p.wake, trained) })),
+  };
 }).pipe(Effect.withSpan("OperatingSystemPack.personasList"));

@@ -14,6 +14,7 @@ import {
   mergePack,
   modelOf,
   splitFront,
+  wakeModelOf,
   type OsPack,
 } from "@t3tools/baton-shared/osPack";
 import { setPersonaField } from "@t3tools/baton-shared/personaFile";
@@ -181,8 +182,23 @@ const fileIdOf = (personaId: string) =>
 const capital = (word: string) => `${word[0]!.toUpperCase()}${word.slice(1)}`;
 
 /** The roster on the Voice tab: each face, its wake word, and its voice to change or put back. */
+/** His persona's wake word and whether a model wakes to it yet (the training pipeline's `wake-models.json`). */
+const wakeLine = (wake: string | null, trained: unknown) => {
+  if (wake === null) return "No wake word yet: say or type the name.";
+  const model = wakeModelOf(wake, trained);
+  return model === "trained"
+    ? `Wake word: ${wake}.`
+    : `Wake word: ${wake}, ${model === "training" ? "being trained" : "not trained yet"}; until then say "switch to ${wake}".`;
+};
+
 export const rosterControls = (dir: string): ReadonlyArray<HomeControl> => {
   const pack = readPack(dir);
+  let trained: unknown = null;
+  try {
+    trained = JSON.parse(NodeFS.readFileSync(NodePath.join(dir, "wake-models.json"), "utf8"));
+  } catch {
+    // none trained here beyond the shipped words
+  }
   return pack.personas.map((persona) => {
     const id = fileIdOf(persona.id);
     const model = modelOf(pack, persona.id);
@@ -197,7 +213,7 @@ export const rosterControls = (dir: string): ReadonlyArray<HomeControl> => {
       id: `v.persona:${persona.id}`,
       section: "Personas",
       label: persona.lead ? `${persona.name} (lead)` : persona.name,
-      hint: `${persona.wake === null ? "No wake word yet: say or type the name." : `Wake word: ${persona.wake}.`} Thinks on ${model.model} at most, ${model.effort} effort. ${persona.role}`.trim(),
+      hint: `${wakeLine(persona.wake, trained)} Thinks on ${model.model} at most, ${model.effort} effort. ${persona.role}`.trim(),
       kind: "choice",
       value: own === undefined || own === "" ? "default" : own.toLowerCase(),
       options: [

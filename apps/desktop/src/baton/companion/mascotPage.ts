@@ -37,9 +37,13 @@ export const MASCOT_SCRIPT = String.raw`(() => {
  svg.addEventListener("contextmenu", (e) => { e.preventDefault(); ipc.send("baton-mascot:menu"); });
  window.mascot = {
   init(o) {
-   const P = TCS.PERSONAS[o.persona] || TCS.PERSONAS.tessaya;
-   if (rig && persona === o.persona) return;
-   persona = o.persona;
+   // Her persona record's body over the studio's preset (desktopMascot.ts bodyOf).
+   const b = typeof o.persona === "string" ? { persona: o.persona } : o.persona;
+   const B = TCS.PERSONAS[b.persona] || TCS.PERSONAS.custom;
+   const P = { character: b.character || B.character, traits: Object.assign({}, B.traits, b.traits) };
+   const key = JSON.stringify(P);
+   if (rig && persona === key) return;
+   persona = key;
    if (rig) { rig.setCharacter(P.character); rig.setPersonality(P.traits); return; }
    rig = TCS.create(svg, { character: P.character, personality: P.traits, expression: "neutral", intensity: 0.85, quiet: o.quiet, reduced: o.reduced });
   },

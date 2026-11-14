@@ -74,6 +74,7 @@ import {
   type WaveMode,
 } from "@t3tools/baton-shared/voiceTurn";
 import { cueFor, momentOf } from "@t3tools/baton-shared/companion";
+import type { PersonaBody } from "../companion/desktopMascot.ts";
 import { PILL_FACE_SCRIPT, studioScripts } from "../companion/pillFace.ts";
 
 // As wide as the island's words; outside the capsule the window is click-through (hitTest).
@@ -460,7 +461,7 @@ export const createVoicePill = (input: {
   readonly holdEscape: (onPress: () => void) => () => void;
   readonly onChange?: (state: TurnState) => void;
   /** The persona whose face goes in place of the mark for this phase, or null for the mark (baton-shared/companion). */
-  readonly face?: (phase: TurnPhase) => string | null;
+  readonly face?: (phase: TurnPhase) => PersonaBody | null;
   /** The verified speaker's initial beside her mark (`pillWho`): null for none, "" for a person with no name yet. */
   readonly who?: () => string | null;
   /** Her characters' folder (COMPANION_DIR): the face needs the studio's scripts. */
@@ -976,7 +977,7 @@ export const createVoicePill = (input: {
   };
 
   /** The persona whose face is in the pill now, or null for the mark. */
-  let faceOf: string | null = null;
+  let faceOf: PersonaBody | null = null;
   /** Pill pages that have the studio's scripts: a rebuilt window loads them again. */
   const faceLoaded = new WeakSet<object>();
   const showFace = (was: TurnPhase) => {
