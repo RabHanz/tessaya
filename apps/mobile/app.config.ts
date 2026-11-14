@@ -120,6 +120,11 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 const variant = VARIANT_CONFIG[APP_VARIANT];
 // Copied thread links open the app. app.t3.codes/.well-known lists every variant's identifiers.
 const HOSTED_APP_HOST = "app.t3.codes";
+// Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
+const nfcPlugin: [string, { nfcPermission: string }] = [
+  "react-native-nfc-manager",
+  { nfcPermission: "Tessaya writes the NFC tag that tells your devices which body they are in." },
+];
 /** The domain body tags link to: configuration, never hard-coded (Director, 14 Nov). */
 const tagLinksHost = repoEnv.TESSAYA_TAG_LINKS_HOST?.trim() || undefined;
 const iosBundleIdentifier = isIosPersonalTeamBuild
@@ -366,17 +371,7 @@ const config: ExpoConfig = {
       },
     ],
     // Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
-    ...(isIosPersonalTeamBuild
-      ? []
-      : [
-          [
-            "react-native-nfc-manager",
-            {
-              nfcPermission:
-                "Tessaya writes the NFC tag that tells your devices which body they are in.",
-            },
-          ],
-        ]),
+    ...(isIosPersonalTeamBuild ? [] : [nfcPlugin]),
     ...(isIosPersonalTeamBuild
       ? [sharingPlugin]
       : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),
