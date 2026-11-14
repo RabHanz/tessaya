@@ -1,0 +1,28 @@
+/**
+ * Her personas as the home server's pack resolves them (SPINE-UNIFY §10): one registry every body reads, the room
+ * loop, the device menu, Character Studio, the mascot and the desktop's wake words.
+ */
+import * as Schema from "effect/Schema";
+
+export const BATON_PERSONAS_WS_METHODS = { list: "baton.personas.list" } as const;
+
+export const BatonPersona = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  wake: Schema.NullOr(Schema.String),
+  voice: Schema.String,
+  cloudVoice: Schema.optionalKey(Schema.String),
+  role: Schema.String,
+  lead: Schema.Boolean,
+  private: Schema.optionalKey(Schema.Boolean),
+  character: Schema.optionalKey(Schema.String),
+  traits: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)),
+  eyes: Schema.optionalKey(Schema.String),
+  guilt: Schema.optionalKey(Schema.Number),
+  brain: Schema.optionalKey(Schema.Struct({ model: Schema.String, effort: Schema.String })),
+});
+export type BatonPersona = typeof BatonPersona.Type;
+
+export const BatonPersonasListInput = Schema.Struct({});
+export const BatonPersonasListResult = Schema.Struct({ personas: Schema.Array(BatonPersona) });
+export type BatonPersonasListResult = typeof BatonPersonasListResult.Type;

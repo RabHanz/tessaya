@@ -50,7 +50,7 @@ import { BatonOneShot } from "../baton/BatonOneShot.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
 import { MemoryViewer } from "../baton/BatonMemoryService.ts";
-import { readPack } from "../baton/OperatingSystemPack.ts";
+import { personasList, readPack } from "../baton/OperatingSystemPack.ts";
 import { TessayaTurn, type TurnEnvelope } from "../baton/TessayaTurn.ts";
 import {
   type ActOutcome,
@@ -1194,6 +1194,20 @@ export const routes = HttpRouter.use((router) =>
       return HttpServerResponse.jsonUnsafe({ committed: found });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     yield* router.add("POST", "/api/devices/r1/v1/turns/played", played);
+    // The home server's personas, for the room loop's roster, voices, wake words and eyes (SPINE-UNIFY §10, P2).
+    const personas = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      return HttpServerResponse.jsonUnsafe(
+        yield* personasList.pipe(Effect.provideContext(context)),
+      );
+    }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
+    yield* router.add("GET", "/api/devices/r1/v1/personas", personas);
     // His final words matched a guess: the writes it held go ahead.
     const confirm = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;

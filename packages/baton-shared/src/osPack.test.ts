@@ -34,6 +34,30 @@ describe("the operating-system pack", () => {
     expect(pack.personas.find((p) => p.id === "research")?.private).toBe(true);
     expect(pack.personas.find((p) => p.lead)?.private).toBeUndefined();
   });
+  it("carries each persona's body, temperament, eyes and model, and drops what it cannot read", () => {
+    const tessaya = DEFAULT_OS_PACK.personas.find((p) => p.lead)!;
+    expect(tessaya).toMatchObject({
+      character: "selvedge",
+      traits: { energy: 0.5, warmth: 0.6, sass: 0.3 },
+      guilt: 1,
+      brain: { model: "opus", effort: "medium" },
+    });
+    const pack = mergePack({
+      roles: {
+        nova: "---\nname: Nova\nwake: Nova\nvoice: eve\ncharacter: purl\neyes: curious\ntraits: energy 0.9, warmth 2, play x, sass .25\nguilt: 7\n---\nbrief",
+      },
+    });
+    const nova = pack.personas.find((p) => p.id === "nova")!;
+    expect(nova).toMatchObject({
+      character: "purl",
+      eyes: "curious",
+      traits: { energy: 0.9, sass: 0.25 },
+    });
+    expect(nova.traits).not.toHaveProperty("warmth");
+    expect(nova.guilt).toBeUndefined();
+    expect(nova.brain).toEqual({ model: "sonnet", effort: "medium" });
+  });
+
   it("frames the planning turn and stays within its cap", () => {
     expect(packPrompt(DEFAULT_OS_PACK)).toContain("job brief");
     expect(packPrompt(mergePack({ executive: "x".repeat(20_000) })).length).toBe(PACK_PROMPT_CHARS);
