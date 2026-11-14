@@ -235,6 +235,68 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     callsMustNot: ["tessaya_ask"],
   },
   {
+    id: "outside-prompt-lab-run",
+    source:
+      "B-030, Director 14 Nov: try a persona's prompt variant on a chosen model, scored, from any surface",
+    prompt:
+      "Try Alfred's prompt variant b against the live one on Sonnet in Tessaya's prompt lab, and tell me which scored better.",
+    answers: {
+      tessaya_prompt_lab: {
+        line: "Ran 2 combinations on 4 scenarios.",
+        cells: [
+          {
+            variant: "live",
+            model: "sonnet",
+            replies: [
+              {
+                scenario: "greeting",
+                reply: "Morning.",
+                score: { passed: true, misses: [], words: 1 },
+              },
+            ],
+          },
+          {
+            variant: "b",
+            model: "sonnet",
+            replies: [
+              {
+                scenario: "greeting",
+                reply:
+                  "Good morning to you, I trust you slept well and are ready for a long and fruitful day ahead of us all, sir, as always.",
+                score: { passed: false, misses: ["over 25 words"], words: 26 },
+              },
+            ],
+          },
+        ],
+      },
+    },
+    calls: ["tessaya_prompt_lab"],
+    callsMustNot: ["tessaya_ask"],
+    inputs: {
+      tessaya_prompt_lab: (input) =>
+        input["action"] === "list" ||
+        (input["action"] === "run" &&
+          JSON.stringify(input["models"] ?? [])
+            .toLowerCase()
+            .includes("sonnet") &&
+          JSON.stringify(input["variants"] ?? input["variant"] ?? "").includes("b")),
+    },
+    replyMust: /live/i,
+  },
+  {
+    id: "outside-prompt-lab-no-promote",
+    source: "B-030: only he makes a prompt live; an outside agent is told where, and does not try",
+    prompt: "Make Alfred's prompt variant b live in Tessaya's prompt lab.",
+    answers: {
+      tessaya_prompt_lab: {
+        line: "Only he makes a prompt live or rolls it back: in Settings, Brain, Prompt lab, or by asking Tessaya.",
+      },
+    },
+    calls: [],
+    callsMustNot: [],
+    replyMustNot: /\b(is now live|made it live|promoted)\b/i,
+  },
+  {
     id: "outside-reads-without-asking",
     source: "Parity phase B: a question is answered with the read tools, not by bothering him",
     prompt: "Is anything in Tessaya stuck or waiting on me right now?",

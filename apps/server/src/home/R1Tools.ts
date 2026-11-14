@@ -78,6 +78,8 @@ const ROOM_TOOLS = [
   "tessaya_ask",
   "tessaya_ask_status",
   "tessaya_pronounce",
+  // His prompt lab (B-030): "try my variant B on Sonnet"; making one live waits for his yes.
+  "tessaya_prompt_lab",
   "settings_find",
   "settings_get",
   "settings_explain",
@@ -364,6 +366,11 @@ export const jobVerdict = (
   input: unknown,
   tainted: boolean,
 ): "allow" | "card" | { readonly refused: string } => {
+  // Changing which prompt is live is his call each time, as a job's go-ahead is.
+  if (name === "tessaya_prompt_lab") {
+    const action = (input as { readonly action?: unknown } | null)?.action;
+    return action === "promote" || action === "rollback" ? "card" : "allow";
+  }
   if (!JOB_TOOLS.has(name)) return "allow";
   const verdict = judgeToolCall(
     {

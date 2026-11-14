@@ -199,6 +199,11 @@ import {
   BatonPersonasListInput,
   BatonPersonasListResult,
 } from "./personas.ts";
+import {
+  BATON_PROMPT_LAB_WS_METHODS,
+  BatonPromptLabInput,
+  BatonPromptLabResult,
+} from "./promptLab.ts";
 import { BATON_LEARN_WS_METHODS, BatonLearnCallInput, BatonLearnCallResult } from "./learnCall.ts";
 import {
   BATON_DEVICES_WS_METHODS,
@@ -800,6 +805,12 @@ const WsBatonPersonasListRpc = Rpc.make(BATON_PERSONAS_WS_METHODS.list, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsBatonPromptLabRpc = Rpc.make(BATON_PROMPT_LAB_WS_METHODS.call, {
+  payload: BatonPromptLabInput,
+  success: BatonPromptLabResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonRecordAppendRpc = Rpc.make(BATON_RECORD_WS_METHODS.append, {
   payload: BatonRecordAppendInput,
   success: BatonRecordAppendResult,
@@ -1020,6 +1031,7 @@ const BATON_RPCS = [
   WsBatonRecordAppendRpc,
   WsBatonBrainUsageRpc,
   WsBatonPersonasListRpc,
+  WsBatonPromptLabRpc,
   WsBatonDictationCleanupApiRpc,
   WsBatonDictationCleanupApiStatusRpc,
   WsBatonDesktopSettingsGetRpc,

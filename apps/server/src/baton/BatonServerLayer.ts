@@ -92,6 +92,7 @@ import * as TessayaWakeRoutes from "../tessaya/TessayaWakeRoutes.ts";
 import * as TessayaPackRoutes from "../tessaya/TessayaPackRoutes.ts";
 import * as CurrentPersona from "../tessaya/CurrentPersona.ts";
 import * as PersonaLayers from "../tessaya/PersonaLayers.ts";
+import * as PromptLab from "../tessaya/PromptLab.ts";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 
 const readClaudeAccountInstances = Layer.effectDiscard(
@@ -303,6 +304,8 @@ const servicesInner = IntentService.layer.pipe(
       expressionLayer,
       CurrentPersona.layer,
       PersonaLayers.layer,
+      // The prompt lab (B-030): its runs are one-shots on his subscription.
+      PromptLab.layer.pipe(Layer.provide(BatonOneShot.layer)),
     ),
   ),
   Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
