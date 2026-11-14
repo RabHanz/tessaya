@@ -1,7 +1,7 @@
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { batonProjectKey, handoffTarget, placeJob } from "./jobPlacement.ts";
+import { tessayaProjectKey, handoffTarget, placeJob } from "./jobPlacement.ts";
 
 const provider = (instanceId: string, driver: string, extra: Record<string, unknown> = {}) =>
   ({
@@ -44,7 +44,7 @@ describe("placing a job from his words", () => {
       ],
     );
     expect(placeJob("shop", projects, providers).ok).toBe(true);
-    expect(batonProjectKey(projects[0]!)).toEqual({ key: "dir:shop-site", label: "shop-site" });
+    expect(tessayaProjectKey(projects[0]!)).toEqual({ key: "dir:shop-site", label: "shop-site" });
   });
 
   it("says what is there when the project or a worker is missing", () => {

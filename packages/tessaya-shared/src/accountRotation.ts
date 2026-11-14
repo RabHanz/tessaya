@@ -12,17 +12,17 @@
  */
 import {
   instanceAccount,
-  type BatonAccount,
-  type BatonAccountPool,
+  type TessayaAccount,
+  type TessayaAccountPool,
 } from "@t3tools/tessaya-contracts";
 import type { ServerProvider } from "@t3tools/contracts";
 
 /** What a work session does when the account it runs on nears its limit. */
-export type BatonOnLimitPolicy = "auto" | "ask" | "hold";
+export type TessayaOnLimitPolicy = "auto" | "ask" | "hold";
 
-export const DEFAULT_ON_LIMIT_POLICY: BatonOnLimitPolicy = "ask";
+export const DEFAULT_ON_LIMIT_POLICY: TessayaOnLimitPolicy = "ask";
 
-export interface BatonRotationThresholds {
+export interface TessayaRotationThresholds {
   /** Headroom at which the surface starts saying the account is nearly spent. */
   readonly warnHeadroomPercent: number;
   /** Headroom at which rotation fires. */
@@ -36,7 +36,7 @@ export interface BatonRotationThresholds {
 }
 
 /** His rotator's settings, which are the ones that survived contact with use. */
-export const DEFAULT_ROTATION_THRESHOLDS: BatonRotationThresholds = {
+export const DEFAULT_ROTATION_THRESHOLDS: TessayaRotationThresholds = {
   warnHeadroomPercent: 15,
   rotateHeadroomPercent: 5,
   minimumTargetHeadroomPercent: 20,
@@ -56,13 +56,13 @@ export type RotationRefusal =
 export type RotationDecision =
   | {
       readonly outcome: "rotate";
-      readonly target: BatonAccount;
-      readonly from: BatonAccount | null;
+      readonly target: TessayaAccount;
+      readonly from: TessayaAccount | null;
       readonly reason: "limit" | "policy";
     }
   | { readonly outcome: "hold"; readonly reason: RotationRefusal };
 
-export const activeAccount = (pool: BatonAccountPool): BatonAccount | null =>
+export const activeAccount = (pool: TessayaAccountPool): TessayaAccount | null =>
   pool.accounts.find((account) => account.active) ?? null;
 
 /**
@@ -74,9 +74,9 @@ export const activeAccount = (pool: BatonAccountPool): BatonAccount | null =>
  * still pick it — this is the automatic path's rule, not the UI's.
  */
 export function rankRotationTargets(
-  pool: Pick<BatonAccountPool, "accounts">,
+  pool: Pick<TessayaAccountPool, "accounts">,
   minimumHeadroomPercent: number,
-): ReadonlyArray<BatonAccount> {
+): ReadonlyArray<TessayaAccount> {
   return pool.accounts
     .filter(
       (account) =>
@@ -102,9 +102,9 @@ export function rankRotationTargets(
  * second time inside the same window, it holds and asks.
  */
 export function decideRotation(input: {
-  readonly pool: BatonAccountPool;
-  readonly policy: BatonOnLimitPolicy;
-  readonly thresholds?: BatonRotationThresholds;
+  readonly pool: TessayaAccountPool;
+  readonly policy: TessayaOnLimitPolicy;
+  readonly thresholds?: TessayaRotationThresholds;
   /** When this work session last rotated automatically, if it has. */
   readonly lastAutoRotationAt: string | null;
   /** The window that is running out, when the provider named one. */
@@ -206,8 +206,8 @@ export function rotationRefusalLine(reason: RotationRefusal): string {
 
 /** How a surface describes the account in use, at a glance. */
 export function accountStanding(
-  account: BatonAccount | null,
-  thresholds: BatonRotationThresholds = DEFAULT_ROTATION_THRESHOLDS,
+  account: TessayaAccount | null,
+  thresholds: TessayaRotationThresholds = DEFAULT_ROTATION_THRESHOLDS,
 ): { readonly label: string; readonly tone: "ok" | "warn" | "spent" } | null {
   if (account === null) return null;
   const headroom = account.headroomPercent;
@@ -230,8 +230,8 @@ export function accountStanding(
  * `until` is the tightest window's reset when the provider named one. Null: go on, or let rotation move it.
  */
 export function deferNearLimit(
-  pool: Pick<BatonAccountPool, "accounts">,
-  thresholds: BatonRotationThresholds = DEFAULT_ROTATION_THRESHOLDS,
+  pool: Pick<TessayaAccountPool, "accounts">,
+  thresholds: TessayaRotationThresholds = DEFAULT_ROTATION_THRESHOLDS,
 ): { readonly until: string | null; readonly headroomPercent: number } | null {
   const from = pool.accounts.find((account) => account.active) ?? null;
   const headroom = from?.headroomPercent ?? null;
@@ -244,7 +244,7 @@ export function deferNearLimit(
 // An automatic pick needs a fresh reading: a target read longer ago than this counts as unknown.
 const TARGET_FRESH_MS = 30 * 60_000;
 
-const freshOrUnknown = (account: BatonAccount, nowMs: number): BatonAccount =>
+const freshOrUnknown = (account: TessayaAccount, nowMs: number): TessayaAccount =>
   account.active ||
   account.usageCheckedAt === null ||
   nowMs - Date.parse(account.usageCheckedAt) <= TARGET_FRESH_MS
@@ -260,7 +260,7 @@ export const instancePool = (
   instanceId: string,
   now: string,
   exclude: ReadonlySet<string> = new Set(),
-): BatonAccountPool | null => {
+): TessayaAccountPool | null => {
   const source = providers.find((provider) => provider.instanceId === instanceId);
   if (source === undefined) return null;
   const group = source.continuation?.groupKey;
@@ -283,5 +283,5 @@ export const instancePool = (
       freshOrUnknown(instanceAccount(provider, provider.instanceId === instanceId), nowMs),
     ),
     checkedAt: now,
-  } as BatonAccountPool;
+  } as TessayaAccountPool;
 };

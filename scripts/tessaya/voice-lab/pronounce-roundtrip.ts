@@ -9,13 +9,13 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { encodeWav } from "../../../packages/tessaya-voice/src/providers/speech.ts";
-import { parseWav, toVoicePcm } from "../../../apps/desktop/src/baton/voice/pcm.ts";
+import { parseWav, toVoicePcm } from "../../../apps/desktop/src/tessaya/voice/pcm.ts";
 import {
   createPocketEngine,
   type PocketVoice,
-} from "../../../apps/desktop/src/baton/voice/pocketVoice.ts";
+} from "../../../apps/desktop/src/tessaya/voice/pocketVoice.ts";
 import { pronounce } from "../../../packages/tessaya-shared/src/pronounce.ts";
-import { speakableText } from "../../../apps/desktop/src/baton/voice/voiceSpeaker.ts";
+import { speakableText } from "../../../apps/desktop/src/tessaya/voice/voiceSpeaker.ts";
 import { candidateFile, joinWavs, TESSAYA_CANDIDATES } from "./voiceLabAudio.ts";
 
 /**

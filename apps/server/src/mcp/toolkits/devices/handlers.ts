@@ -2,12 +2,12 @@
  * The device tools' handlers: each goes through the one devices door (`serveDevicesCall`) as "an agent", so the
  * camera and a restart wait for his yes on the phone exactly as they do from his desktop assistant.
  */
-import type { BatonDevicesCallResult } from "@t3tools/tessaya-contracts";
+import type { TessayaDevicesCallResult } from "@t3tools/tessaya-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
-import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
-import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
+import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { serveDevicesCall, type DevicesCallKind } from "../../../home/HomeDeviceCalls.ts";
 import type { DeviceActor } from "../../../home/HomeDevices.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -24,7 +24,7 @@ type Args = Readonly<Record<string, unknown>>;
 
 /** Handler declarations for `DeviceTools`, spread into Tessaya's toolkit layer. */
 export const make = Effect.gen(function* () {
-  const context = yield* BatonRuntime;
+  const context = yield* TessayaRuntime;
   const devices = Effect.fn("DevicesMcp.call")(function* (
     kind: DevicesCallKind,
     op: string,
@@ -62,7 +62,7 @@ export const make = Effect.gen(function* () {
         const there =
           on === undefined ? null : yield* onPeer(tool, input, { on, takes: () => true });
         if (there === null) return yield* here;
-        const answer = there.value as BatonDevicesCallResult;
+        const answer = there.value as TessayaDevicesCallResult;
         return { ...answer, value: { on: there.on, ...(answer.value as object | undefined) } };
       }),
     );
@@ -82,7 +82,7 @@ export const make = Effect.gen(function* () {
               here: here.value,
               elsewhere: elsewhere.map(({ on, value }) => ({
                 on,
-                devices: (value as BatonDevicesCallResult).value,
+                devices: (value as TessayaDevicesCallResult).value,
               })),
             },
           };

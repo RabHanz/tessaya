@@ -1,4 +1,4 @@
-import type { BatonJob, WatchFinding } from "@t3tools/tessaya-contracts";
+import type { TessayaJob, WatchFinding } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildPhoneState, checkWav, decisionLabel, parseDecision } from "./phone.ts";
@@ -21,7 +21,7 @@ const job = (over: Record<string, unknown>) =>
       permissions: { projects: [] },
     },
     ...over,
-  }) as unknown as BatonJob;
+  }) as unknown as TessayaJob;
 
 describe("buildPhoneState", () => {
   const state = buildPhoneState({

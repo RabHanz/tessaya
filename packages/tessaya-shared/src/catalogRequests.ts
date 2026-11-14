@@ -4,54 +4,54 @@
  * its commands, so it is tested without a connection.
  */
 import type {
-  BatonCatalogCreateInput,
-  BatonCatalogCreateResult,
-  BatonCatalogAutoResumeInput,
-  BatonCatalogAutoResumeResult,
-  BatonCatalogCleanupInput,
-  BatonCatalogCleanupResult,
-  BatonCatalogFoldersInput,
-  BatonCatalogFoldersResult,
-  BatonCatalogListInput,
-  BatonCatalogListResult,
-  BatonCatalogResumeInput,
-  BatonCatalogResumeResult,
-  BatonCatalogWaitingInput,
-  BatonCatalogWaitingResult,
-  BatonReattachInput,
-  BatonReattachResult,
-  BatonSessionRequest,
+  TessayaCatalogCreateInput,
+  TessayaCatalogCreateResult,
+  TessayaCatalogAutoResumeInput,
+  TessayaCatalogAutoResumeResult,
+  TessayaCatalogCleanupInput,
+  TessayaCatalogCleanupResult,
+  TessayaCatalogFoldersInput,
+  TessayaCatalogFoldersResult,
+  TessayaCatalogListInput,
+  TessayaCatalogListResult,
+  TessayaCatalogResumeInput,
+  TessayaCatalogResumeResult,
+  TessayaCatalogWaitingInput,
+  TessayaCatalogWaitingResult,
+  TessayaReattachInput,
+  TessayaReattachResult,
+  TessayaSessionRequest,
 } from "@t3tools/tessaya-contracts";
 
 type Answer<T> = { readonly _tag: string; readonly value?: T };
 type Command<I, O> = (args: { environmentId: never; input: I }) => Promise<Answer<O>>;
 
 export interface CatalogCommands {
-  readonly list: Command<typeof BatonCatalogListInput.Type, typeof BatonCatalogListResult.Type>;
+  readonly list: Command<typeof TessayaCatalogListInput.Type, typeof TessayaCatalogListResult.Type>;
   readonly resume: Command<
-    typeof BatonCatalogResumeInput.Type,
-    typeof BatonCatalogResumeResult.Type
+    typeof TessayaCatalogResumeInput.Type,
+    typeof TessayaCatalogResumeResult.Type
   >;
-  readonly reattach: Command<typeof BatonReattachInput.Type, typeof BatonReattachResult.Type>;
+  readonly reattach: Command<typeof TessayaReattachInput.Type, typeof TessayaReattachResult.Type>;
   readonly create: Command<
-    typeof BatonCatalogCreateInput.Type,
-    typeof BatonCatalogCreateResult.Type
+    typeof TessayaCatalogCreateInput.Type,
+    typeof TessayaCatalogCreateResult.Type
   >;
   readonly autoResume: Command<
-    typeof BatonCatalogAutoResumeInput.Type,
-    typeof BatonCatalogAutoResumeResult.Type
+    typeof TessayaCatalogAutoResumeInput.Type,
+    typeof TessayaCatalogAutoResumeResult.Type
   >;
   readonly cleanup: Command<
-    typeof BatonCatalogCleanupInput.Type,
-    typeof BatonCatalogCleanupResult.Type
+    typeof TessayaCatalogCleanupInput.Type,
+    typeof TessayaCatalogCleanupResult.Type
   >;
   readonly folders: Command<
-    typeof BatonCatalogFoldersInput.Type,
-    typeof BatonCatalogFoldersResult.Type
+    typeof TessayaCatalogFoldersInput.Type,
+    typeof TessayaCatalogFoldersResult.Type
   >;
   readonly waiting: Command<
-    typeof BatonCatalogWaitingInput.Type,
-    typeof BatonCatalogWaitingResult.Type
+    typeof TessayaCatalogWaitingInput.Type,
+    typeof TessayaCatalogWaitingResult.Type
   >;
 }
 
@@ -72,7 +72,7 @@ const env = (id: string) => id as never;
 
 /** The catalog requests of Baton's window; null when the request is not one of them. */
 export const answerCatalogRequest = async (
-  request: BatonSessionRequest,
+  request: TessayaSessionRequest,
   deps: {
     readonly commands: CatalogCommands;
     readonly environmentIds: ReadonlyArray<string>;

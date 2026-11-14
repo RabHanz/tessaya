@@ -1,4 +1,4 @@
-import { TurnOrigin } from "../baton/TessayaTurn.ts";
+import { TurnOrigin } from "../tessaya/TessayaTurn.ts";
 import { it as effectIt } from "@effect/vitest";
 import { BAR_NOT_CONNECTED } from "@t3tools/tessaya-shared/phoneRelay";
 import { EnvironmentId, type PeerLinkSummary } from "@t3tools/contracts";
@@ -16,11 +16,11 @@ import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
-import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
-import { BatonOneShot } from "../baton/BatonOneShot.ts";
+import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
 import { R1Brain, R1BrainError, toolLoop } from "./R1Brain.ts";
-import { sessionTools, speakableSentences } from "../baton/TessayaBrain.ts";
+import { sessionTools, speakableSentences } from "../tessaya/TessayaBrain.ts";
 import type { ConversePart, ConverseRequest } from "../speech/DictationCleanupApi.ts";
 import {
   calledPersona,
@@ -278,7 +278,7 @@ effectIt.effect(
         find: () => Effect.succeed([]),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
-      const record = Layer.mock(BatonRecordService)({
+      const record = Layer.mock(TessayaRecordService)({
         append: () =>
           Effect.sync(() => {
             recorded += 1;
@@ -292,7 +292,7 @@ effectIt.effect(
       ).pipe(
         Stream.runForEach((words) => Effect.sync(() => said.push(words))),
         // The one-shot fallback never runs: the brain answered before he cut in.
-        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
         Effect.forkChild,
       );
       yield* Deferred.await(findStarted);
@@ -335,7 +335,7 @@ effectIt.effect(
         find: () => Effect.succeed([lamp] as never),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
-      const record = Layer.mock(BatonRecordService)({ append: () => Effect.void as never });
+      const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
       yield* r1TurnStream({ heard: "is the study lamp on?", history: [] }, brain, {
         specs: [],
         run: (name) =>
@@ -345,7 +345,7 @@ effectIt.effect(
           }),
       }).pipe(
         Stream.runDrain,
-        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
       );
       expect(sent).toMatch(
         /In the house matching his words, live as of this turn: .*light\.desk_lamp.*"on"/,
@@ -367,7 +367,7 @@ effectIt.effect(
             : Effect.succeed({ text: '{"threads":[]}', isError: false }),
       }).pipe(
         Stream.runDrain,
-        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
         Effect.forkChild,
       );
       yield* TestClock.adjust("300 millis");
@@ -404,13 +404,13 @@ effectIt.effect(
         find: () => Effect.succeed([] as never),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
-      const record = Layer.mock(BatonRecordService)({ append: () => Effect.void as never });
+      const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
       const said = yield* r1TurnStream({ heard: "what time is it?", history: [] }, brain, {
         specs: [],
         run: () => Effect.succeed({ text: "{}", isError: false }),
       }).pipe(
         Stream.runCollect,
-        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
       );
       expect(said.join("")).toBe(
         "My accounts are out of capacity until Nov 16, 6pm, so I can't think that through now.",
@@ -452,7 +452,7 @@ effectIt.effect(
         find: () => Effect.succeed([]),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
-      const record = Layer.mock(BatonRecordService)({
+      const record = Layer.mock(TessayaRecordService)({
         append: (entry) =>
           Effect.sync(() => {
             details.push(entry.detail ?? "");
@@ -464,7 +464,7 @@ effectIt.effect(
         run: () => Effect.succeed({ text: "", isError: false }),
       }).pipe(
         Stream.runForEach((words) => Effect.sync(() => said.push(words))),
-        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
       );
       expect(said.join("")).toBe("Let me look that up. It is 23 degrees and hazy. ");
       expect(details).toEqual(["It is 23 degrees and hazy."]);
@@ -510,8 +510,8 @@ effectIt.effect(
         Effect.provide(
           Layer.mergeAll(
             home,
-            Layer.mock(BatonRecordService)({ append: () => Effect.void as never }),
-            Layer.mock(BatonOneShot)({}),
+            Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
+            Layer.mock(TessayaOneShot)({}),
           ),
         ),
         Effect.forkChild,
@@ -556,7 +556,7 @@ effectIt.effect(
         find: () => Effect.succeed([]),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
-      const record = Layer.mock(BatonRecordService)({ append: () => Effect.void as never });
+      const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
       const turn = (heard: string) => {
         const said: Array<string> = [];
         return r1TurnStream(
@@ -565,7 +565,7 @@ effectIt.effect(
           { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
         ).pipe(
           Stream.runForEach((words) => Effect.sync(() => said.push(words))),
-          Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+          Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
           Effect.map(() => said.join("")),
         );
       };
@@ -626,8 +626,8 @@ effectIt.effect(
         Effect.provide(
           Layer.mergeAll(
             home,
-            Layer.mock(BatonRecordService)({ append: () => Effect.void as never }),
-            Layer.mock(BatonOneShot)({}),
+            Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
+            Layer.mock(TessayaOneShot)({}),
             ServerSettingsService.layerTest({
               brainEscalation: { rules: [{ when: "coding questions", then: "opus" }] },
             }),
@@ -662,13 +662,13 @@ effectIt.effect(
         find: () => Effect.succeed([]),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
-      const record = Layer.mock(BatonRecordService)({
+      const record = Layer.mock(TessayaRecordService)({
         append: (entry: { readonly detail?: string }) =>
           Effect.sync(() => {
             recorded = [...recorded, entry.detail ?? ""];
           }) as never,
       });
-      const services = Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}));
+      const services = Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}));
       const guess = (callId: string) =>
         r1TurnStream(
           { heard: "what time is it", history: [], voice: { speculative: true, callId } },
@@ -733,8 +733,8 @@ effectIt.effect(
       });
       const services = Layer.mergeAll(
         home,
-        Layer.mock(BatonRecordService)({ append: () => Effect.void as never }),
-        Layer.mock(BatonOneShot)({}),
+        Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
+        Layer.mock(TessayaOneShot)({}),
       );
       const turn = (voice?: object) =>
         r1TurnStream({ heard: "turn off the fan", history: [], voice }, brain, tools).pipe(

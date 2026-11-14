@@ -1,16 +1,16 @@
 diff --git a/apps/mobile/src/features/home/HomeRouteScreen.tsx b/apps/mobile/src/features/home/HomeRouteScreen.tsx
-index cc66e114d21be7514f5e8a6a2bc44d33c6d4fcd6..b7372938c997c2c7b924acef58f94e57379530a4 100644
+index cc66e114d21be7514f5e8a6a2bc44d33c6d4fcd6..186c26da6f6cc801d54ec403627b2aaf8129bc45 100644
 --- a/apps/mobile/src/features/home/HomeRouteScreen.tsx
 +++ b/apps/mobile/src/features/home/HomeRouteScreen.tsx
 @@ -37,9 +37,11 @@ import { useSelectWorkspaceTab } from "../layout/workspace/useSelectWorkspaceTab
  import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
  import { WorkspaceListEmptyDetail } from "../layout/workspace/WorkspaceListEmptyDetail";
  import { WorkspaceListHeader } from "../layout/workspace/WorkspaceListHeader";
-+import { useBatonLiveOnly } from "../threads/batonLiveOnly";
++import { useTessayaLiveOnly } from "../threads/tessayaLiveOnly";
  import { buildHomeListFilterMenuItems } from "./home-list-filter-menu";
  
  export function HomeRouteScreen() {
-+  const batonLiveOnly = useBatonLiveOnly();
++  const tessayaLiveOnly = useTessayaLiveOnly();
    const nativePrimaryColumn = use(NativePrimaryColumnContext);
    const { layout, setPrimarySidebarSearchQuery, startNewTask } = useAdaptiveWorkspaceLayout();
    const { primarySidebarSearchQuery } = useWorkspacePaneState();
@@ -20,7 +20,7 @@ index cc66e114d21be7514f5e8a6a2bc44d33c6d4fcd6..b7372938c997c2c7b924acef58f94e57
            filter={{
 -            customized: selectedEnvironmentId !== null || selectedProjectKey !== null,
 +            customized:
-+              selectedEnvironmentId !== null || selectedProjectKey !== null || batonLiveOnly,
++              selectedEnvironmentId !== null || selectedProjectKey !== null || tessayaLiveOnly,
              items: buildHomeListFilterMenuItems({
                environments,
                projects: projectFilterOptions,
@@ -28,12 +28,12 @@ index cc66e114d21be7514f5e8a6a2bc44d33c6d4fcd6..b7372938c997c2c7b924acef58f94e57
                selectedProjectKey,
                onEnvironmentChange: setSelectedEnvironmentId,
                onProjectChange: setSelectedProjectKey,
-+              liveOnly: batonLiveOnly,
++              liveOnly: tessayaLiveOnly,
              }),
            }}
          />
 diff --git a/apps/mobile/src/features/home/HomeScreen.tsx b/apps/mobile/src/features/home/HomeScreen.tsx
-index af25be18bb46f430e8cd003a66f74e56deaa29a9..df99eed9592676fab94a8e1d45a5410030848f92 100644
+index af25be18bb46f430e8cd003a66f74e56deaa29a9..30f4c4b0e2a7a142aaf711e7623236c239d90036 100644
 --- a/apps/mobile/src/features/home/HomeScreen.tsx
 +++ b/apps/mobile/src/features/home/HomeScreen.tsx
 @@ -100,6 +100,12 @@ import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-
@@ -44,8 +44,8 @@ index af25be18bb46f430e8cd003a66f74e56deaa29a9..df99eed9592676fab94a8e1d45a54100
 +  isRunningLive,
 +  liveThreadsOnly,
 +  runningLiveThreads,
-+  useBatonLiveOnly,
-+} from "../threads/batonLiveOnly";
++  useTessayaLiveOnly,
++} from "../threads/tessayaLiveOnly";
  
  interface HomeScreenProps {
    /** Whether this list is the one on screen; see `useHomeRouteVisible`. */
@@ -53,7 +53,7 @@ index af25be18bb46f430e8cd003a66f74e56deaa29a9..df99eed9592676fab94a8e1d45a54100
    } = listEnvironments;
    const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
    const pendingOrder = usePendingThreadOrder();
-+  const batonLiveOnly = useBatonLiveOnly();
++  const tessayaLiveOnly = useTessayaLiveOnly();
 +  const batonRunningLive = useMemo(() => runningLiveThreads(props.threads), [props.threads]);
    const {
      layout: threadListV2Layout,
@@ -62,7 +62,7 @@ index af25be18bb46f430e8cd003a66f74e56deaa29a9..df99eed9592676fab94a8e1d45a54100
      olderSettledShelf,
    } = useThreadListV2({
 -    threads: props.threads,
-+    threads: liveThreadsOnly(props.threads, batonLiveOnly),
++    threads: liveThreadsOnly(props.threads, tessayaLiveOnly),
      pendingTasks: props.pendingTasks,
      environmentId: props.selectedEnvironmentId,
      projectRefs: v2ScopedProjectGroup === null ? null : v2ScopedProjectGroup.projectRefs,
@@ -75,14 +75,14 @@ index af25be18bb46f430e8cd003a66f74e56deaa29a9..df99eed9592676fab94a8e1d45a54100
          selected={scopedThreadKey(thread.environmentId, thread.id) === selectedThreadKey}
          fullSwipeWidth={fullSwipeWidth}
 diff --git a/apps/mobile/src/features/home/ThreadListFilters.tsx b/apps/mobile/src/features/home/ThreadListFilters.tsx
-index 196e6a86480b561b1c9efa0a41b54a56791b843c..9217b45117f09971cc16ae5356e9c3375b134230 100644
+index 196e6a86480b561b1c9efa0a41b54a56791b843c..521e878ab184cc0842792e561d314d1d37aa17fd 100644
 --- a/apps/mobile/src/features/home/ThreadListFilters.tsx
 +++ b/apps/mobile/src/features/home/ThreadListFilters.tsx
 @@ -1,6 +1,7 @@
  import { Pressable, ScrollView } from "react-native";
  import { SymbolView } from "../../components/ui/AppSymbol";
  import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
-+import { setBatonLiveOnly, useBatonLiveOnly } from "../threads/batonLiveOnly";
++import { setTessayaLiveOnly, useTessayaLiveOnly } from "../threads/tessayaLiveOnly";
  import type { EnvironmentId } from "@t3tools/contracts";
  import type {
    HomeListFilterMenuEnvironment,
@@ -90,7 +90,7 @@ index 196e6a86480b561b1c9efa0a41b54a56791b843c..9217b45117f09971cc16ae5356e9c337
    /** List padding the scroller bleeds through so pills start where row content does. */
    readonly gutter: number;
  }) {
-+  const liveOnly = useBatonLiveOnly();
++  const liveOnly = useTessayaLiveOnly();
    const selectedEnvironment = props.environments.find(
      (environment) => environment.environmentId === props.selectedEnvironmentId,
    );
@@ -106,20 +106,20 @@ index 196e6a86480b561b1c9efa0a41b54a56791b843c..9217b45117f09971cc16ae5356e9c337
 +          { id: "all", title: "All threads", state: liveOnly ? "off" : "on" },
 +          { id: "live", title: "Live only", state: liveOnly ? "on" : "off" },
 +        ]}
-+        onSelect={(id) => setBatonLiveOnly(id === "live")}
++        onSelect={(id) => setTessayaLiveOnly(id === "live")}
 +      />
      </ScrollView>
    );
  }
 diff --git a/apps/mobile/src/features/home/home-list-filter-menu.ts b/apps/mobile/src/features/home/home-list-filter-menu.ts
-index 617c3fa0988ef6c84236de5282f79e423c840695..a8229738b4e3316a8091ccb88c1e4a6fdb65a609 100644
+index 617c3fa0988ef6c84236de5282f79e423c840695..ec83b56803040ef97c4d6af4ca87ce9b96a5cac2 100644
 --- a/apps/mobile/src/features/home/home-list-filter-menu.ts
 +++ b/apps/mobile/src/features/home/home-list-filter-menu.ts
 @@ -2,6 +2,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
  
  import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
  
-+import { setBatonLiveOnly } from "../threads/batonLiveOnly";
++import { setTessayaLiveOnly } from "../threads/tessayaLiveOnly";
 +
  export interface HomeListFilterMenuEnvironment {
    readonly environmentId: EnvironmentId;
@@ -145,14 +145,14 @@ index 617c3fa0988ef6c84236de5282f79e423c840695..a8229738b4e3316a8091ccb88c1e4a6f
 +        id: "live:all",
 +        title: "All threads",
 +        selected: !props.liveOnly,
-+        onPress: () => setBatonLiveOnly(false),
++        onPress: () => setTessayaLiveOnly(false),
 +      },
 +      {
 +        id: "live:only",
 +        title: "Live only",
 +        subtitle: "Claude Code sessions running in a terminal",
 +        selected: props.liveOnly,
-+        onPress: () => setBatonLiveOnly(true),
++        onPress: () => setTessayaLiveOnly(true),
 +      },
 +    ],
 +  });
@@ -241,7 +241,7 @@ index 3d186f9e9830cb8fa4ee2119f17a6b1ff6d47b17..94f5dadeef195f2da6cebae34e1a16d3
            ...current,
            expandedTurnIds: new Set(current.expandedTurnIds).add(latest.runId),
 diff --git a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
-index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..0524e5c215c1a8875c2b3939f01bdd4397645f46 100644
+index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..d26d53e5e4e7d3f433bfc902ce73ef626c1160b8 100644
 --- a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
 +++ b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
 @@ -44,6 +44,12 @@ import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
@@ -252,8 +252,8 @@ index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..0524e5c215c1a8875c2b3939f01bdd43
 +  isRunningLive,
 +  liveThreadsOnly,
 +  runningLiveThreads,
-+  useBatonLiveOnly,
-+} from "./batonLiveOnly";
++  useTessayaLiveOnly,
++} from "./tessayaLiveOnly";
  import { buildHomeListFilterMenuItems } from "../home/home-list-filter-menu";
  import { buildHomeProjectScopes, resolveHomeProjectFilterScope } from "../home/homeThreadList";
  import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
@@ -261,7 +261,7 @@ index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..0524e5c215c1a8875c2b3939f01bdd43
  }
  
  function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
-+  const batonLiveOnly = useBatonLiveOnly();
++  const tessayaLiveOnly = useTessayaLiveOnly();
    const floatingTabsEnabled = useAndroidFloatingTabs();
    const { themeVariables: materialTheme } = useAppearancePreferences();
    const drawerColor = materialTheme["--color-drawer"];
@@ -277,7 +277,7 @@ index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..0524e5c215c1a8875c2b3939f01bdd43
      olderSettledShelf,
    } = useThreadListV2({
 -    threads: launchingThreads,
-+    threads: liveThreadsOnly(launchingThreads, batonLiveOnly),
++    threads: liveThreadsOnly(launchingThreads, tessayaLiveOnly),
      pendingTasks,
      environmentId: options.selectedEnvironmentId,
      projectRefs: selectedProjectScope === null ? null : selectedProjectScope.projectRefs,
@@ -295,7 +295,7 @@ index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..0524e5c215c1a8875c2b3939f01bdd43
        filter={{
 -        customized: options.selectedEnvironmentId !== null || selectedProjectKey !== null,
 +        customized:
-+          options.selectedEnvironmentId !== null || selectedProjectKey !== null || batonLiveOnly,
++          options.selectedEnvironmentId !== null || selectedProjectKey !== null || tessayaLiveOnly,
          items: buildHomeListFilterMenuItems({
            environments,
            projects: projectFilterOptions,
@@ -303,19 +303,19 @@ index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..0524e5c215c1a8875c2b3939f01bdd43
            selectedProjectKey,
            onEnvironmentChange: setSelectedEnvironmentId,
            onProjectChange: setSelectedProjectKey,
-+          liveOnly: batonLiveOnly,
++          liveOnly: tessayaLiveOnly,
          }),
        }}
        sidebar={{
 diff --git a/apps/mobile/src/features/threads/thread-list-v2-items.tsx b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
-index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..99cba7f681ec33031ec6713760238d46187f3ff3 100644
+index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..46c86974760c41f7ee60c3e35de6ae7eb9b569d5 100644
 --- a/apps/mobile/src/features/threads/thread-list-v2-items.tsx
 +++ b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
 @@ -38,6 +38,7 @@ import type { ThreadListProvider } from "../../state/thread-list-environments";
  import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
  import { AppText as Text } from "../../components/ui/AppText";
  import { Menu } from "../../components/ui/Menu";
-+import { BatonLiveTag } from "./BatonLiveTag";
++import { TessayaLiveTag } from "./TessayaLiveTag";
  import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
  import { ProjectFavicon } from "../../components/ProjectFavicon";
  import {
@@ -346,7 +346,7 @@ index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..99cba7f681ec33031ec6713760238d46
 -            {thread.runtime.lastError}
 -          </Text>
 +          <>
-+            <BatonLiveTag live={props.batonLive === true} />
++            <TessayaLiveTag live={props.batonLive === true} />
 +            <Text
 +              className={cn(
 +                "flex-1 text-xs",
@@ -363,7 +363,7 @@ index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..99cba7f681ec33031ec6713760238d46
 +          </>
          ) : props.environmentLabel ? (
            <View className="min-w-0 flex-1 flex-row items-center gap-1">
-+            <BatonLiveTag live={props.batonLive === true} />
++            <TessayaLiveTag live={props.batonLive === true} />
              {props.environmentMachine ? (
                <EnvironmentMachineSymbol
                  kind={props.environmentMachine}
@@ -373,7 +373,7 @@ index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..99cba7f681ec33031ec6713760238d46
          ) : (
 -          <View className="flex-1" />
 +          <View className="flex-1 flex-row">
-+            <BatonLiveTag live={props.batonLive === true} />
++            <TessayaLiveTag live={props.batonLive === true} />
 +          </View>
          )}
          {pr ? (
@@ -616,7 +616,7 @@ index b1bcc650bdf9f3820c31d570cbd5af04ecdfc117..3f65d81fadafccdd52a5fbc6838b0872
      <MediaVideoPlayer
        key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
 diff --git a/apps/web/src/components/chat/ComposerControlsBar.tsx b/apps/web/src/components/chat/ComposerControlsBar.tsx
-index 302330f29156b6be2a36fe78bf477d593dc93b29..5da83d93e2c75434b705f3727073a17ee2389ddd 100644
+index 302330f29156b6be2a36fe78bf477d593dc93b29..3df3741ebe094fc5d0b0f31532b3c3468671907a 100644
 --- a/apps/web/src/components/chat/ComposerControlsBar.tsx
 +++ b/apps/web/src/components/chat/ComposerControlsBar.tsx
 @@ -28,6 +28,16 @@ import {
@@ -624,15 +624,15 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..5da83d93e2c75434b705f3727073a17e
    describeComposerEffort,
  } from "./ComposerModelEffort";
 +import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
-+import { useLiveTraits } from "./BatonLiveModel";
++import { useLiveTraits } from "./TessayaLiveModel";
 +import {
-+  BatonLimitMark,
-+  BatonPickerAccount,
-+  BatonUsageDetails,
-+  batonPickModel,
-+  batonModelOptions,
-+  batonRailEntries,
-+} from "./BatonPickerAccount";
++  TessayaLimitMark,
++  TessayaPickerAccount,
++  TessayaUsageDetails,
++  tessayaPickModel,
++  tessayaModelOptions,
++  tessayaRailEntries,
++} from "./TessayaPickerAccount";
  import type { useComposerProviderModel } from "./useComposerProviderModel";
  import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
  
@@ -662,9 +662,9 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..5da83d93e2c75434b705f3727073a17e
 -    promptUltrathink,
 -    onPromptEdit,
 -  });
-+  const batonThreadRef = routeKind === "server" ? routeThreadRef : null;
++  const tessayaThreadRef = routeKind === "server" ? routeThreadRef : null;
 +  const traitsInput = useLiveTraits(
-+    batonThreadRef,
++    tessayaThreadRef,
 +    resolveComposerTraitsInput({
 +      provider: selectedProvider,
 +      instanceId: selectedInstanceId,
@@ -681,7 +681,7 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..5da83d93e2c75434b705f3727073a17e
 +    }),
 +  );
    const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
-+  const railEntries = batonRailEntries(providerInstanceEntries, selectedInstanceId);
++  const railEntries = tessayaRailEntries(providerInstanceEntries, selectedInstanceId);
    const restingBlockDefs = showModeBlock
      ? [
          {
@@ -707,7 +707,7 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..5da83d93e2c75434b705f3727073a17e
 +      instanceEntries={railEntries}
        keybindings={keybindings}
 -      modelOptionsByInstance={modelOptionsByInstance}
-+      modelOptionsByInstance={batonModelOptions(modelOptionsByInstance, providerInstanceEntries)}
++      modelOptionsByInstance={tessayaModelOptions(modelOptionsByInstance, providerInstanceEntries)}
        size={controlSize}
        triggerClassName={cn(
          "group/model-trigger",
@@ -718,9 +718,9 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..5da83d93e2c75434b705f3727073a17e
 +      triggerSuffix={
 +        <>
 +          {effort.suffix}
-+          <BatonLimitMark
++          <TessayaLimitMark
 +            entry={providerInstanceEntries.find((entry) => entry.instanceId === selectedInstanceId)}
-+            threadRef={batonThreadRef}
++            threadRef={tessayaThreadRef}
 +          />
 +        </>
 +      }
@@ -733,7 +733,7 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..5da83d93e2c75434b705f3727073a17e
            onRuntimeModeChange={handleRuntimeModeChange}
 -        />
 +        >
-+          <BatonUsageDetails
++          <TessayaUsageDetails
 +            onOpen={
 +              props.onUsageLimitsCommand
 +                ? () => {
@@ -746,15 +746,15 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..5da83d93e2c75434b705f3727073a17e
 +        </ComposerPickerFooter>
        }
 +      renderInstanceDetail={(entry) => (
-+        <BatonPickerAccount
++        <TessayaPickerAccount
 +          entry={entry}
-+          threadRef={batonThreadRef}
++          threadRef={tessayaThreadRef}
 +          environmentId={environmentId}
 +          threadInstanceId={selectedInstanceId}
 +          onPickInstance={(instanceId) =>
 +            onProviderModelSelect(
 +              instanceId,
-+              batonPickModel(entry, selectedProvider, selectedModel),
++              tessayaPickModel(entry, selectedProvider, selectedModel),
 +            )
 +          }
 +        />
@@ -1688,7 +1688,7 @@ index 6a298fd6de0499eb8dd2531aa6ff07b3554edc3b..fb38a72daf06a79889307f4747e7abbc
    onWorkEntryContentReady?: (anchorKey: string, entryId: string) => void;
    onCancelWorktreeSetup: (() => void) | null;
 diff --git a/apps/web/src/components/chat/useComposerSelection.ts b/apps/web/src/components/chat/useComposerSelection.ts
-index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..313fdcbf459b32278f1602bad9bb4299def22ed2 100644
+index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..9b3c482af107f8608d82de2e604dcf4ac12e4246 100644
 --- a/apps/web/src/components/chat/useComposerSelection.ts
 +++ b/apps/web/src/components/chat/useComposerSelection.ts
 @@ -17,6 +17,15 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -1703,7 +1703,7 @@ index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..313fdcbf459b32278f1602bad9bb4299
 +  useLiveAccounts,
 +  useLiveAccountSwitch,
 +  useLiveSessionChange,
-+} from "./BatonLiveModel";
++} from "./TessayaLiveModel";
  import { resolveAppModelSelectionForInstance } from "../../modelSelection";
  import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
  import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
@@ -1763,14 +1763,14 @@ index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..313fdcbf459b32278f1602bad9bb4299
      if (
        !supportsProviderSwitchingViaHandoff &&
 diff --git a/apps/web/src/components/chat/useComposerSend.ts b/apps/web/src/components/chat/useComposerSend.ts
-index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..917b92eca6e9336063a33810980b24ecb27fde1d 100644
+index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c0c1e8553 100644
 --- a/apps/web/src/components/chat/useComposerSend.ts
 +++ b/apps/web/src/components/chat/useComposerSend.ts
 @@ -130,6 +130,7 @@ import {
    prepareTurnAttachments,
    restoreComposerDraft,
  } from "./chatViewSend";
-+import { forgetStaleLiveSelection } from "./batonLiveSend";
++import { forgetStaleLiveSelection } from "./tessayaLiveSend";
  import type {
    EnvironmentProject,
    EnvironmentThreadShell,

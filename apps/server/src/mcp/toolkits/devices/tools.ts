@@ -3,7 +3,7 @@
  * go to his phone for a yes, and the reply says so.
  */
 import {
-  BatonDevicesCallResult,
+  TessayaDevicesCallResult,
   DeviceTagAction,
   DeviceWatchInput,
   R1_KEY_SLOTS,
@@ -29,7 +29,7 @@ const shared = {
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
   ],
-  success: BatonDevicesCallResult,
+  success: TessayaDevicesCallResult,
 };
 const Id = Schema.String.check(Schema.isMaxLength(60)).annotate({
   description: "The device id from device_list, e.g. r1-3d57b3.",

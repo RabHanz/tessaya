@@ -97,7 +97,7 @@ UI Automation now snaps on real elements on the 125 % display; the 175 % display
 
 ## Windows lab
 
-`src/baton/screen/smoke/overlayLab.ts`: the real companion and pill, a scripted `claude`, silent speech,
+`src/tessaya/screen/smoke/overlayLab.ts`: the real companion and pill, a scripted `claude`, silent speech,
 no global keys, and `timeline.jsonl` with what the overlay really showed, every 50 ms, per display. The
 overlay is excluded from capture, so set `LAB_VISIBLE=1` to see it in screenshots.
 

@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off
-import type { BatonJob, BatonRecordEntry, WatchFinding } from "@t3tools/tessaya-contracts";
+import type { TessayaJob, TessayaRecordEntry, WatchFinding } from "@t3tools/tessaya-contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -46,7 +46,7 @@ describe("the morning brief", () => {
       title,
       group,
       lastActivityAt: DateTime.formatIso(DateTime.makeUnsafe(NOW - hoursAgo * 3_600_000)),
-    }) as unknown as BatonJob;
+    }) as unknown as TessayaJob;
   it("reports the last day only, and says so when nothing happened", () => {
     const text = morningBrief({
       jobs: [
@@ -91,7 +91,7 @@ describe("the morning brief", () => {
         actor,
         at: DateTime.formatIso(DateTime.makeUnsafe(NOW - hoursAgo * 3_600_000)),
         subject: `${actor} has used ${n} background turns today, past the guide of 40. Nothing was stopped.`,
-      }) as unknown as BatonRecordEntry;
+      }) as unknown as TessayaRecordEntry;
     expect(
       morningBrief({
         jobs: [],

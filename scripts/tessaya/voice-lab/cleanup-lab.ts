@@ -19,7 +19,7 @@ import {
   importWispr,
   makeRewriter,
   readDictionary,
-} from "../../../apps/desktop/src/baton/voice/dictationRewriter.ts";
+} from "../../../apps/desktop/src/tessaya/voice/dictationRewriter.ts";
 import {
   biasTranscript,
   parseVocabulary,

@@ -5,15 +5,15 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
-import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
+import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
-import { SessionMember } from "../baton/TessayaTurn.ts";
+import { SessionMember } from "../tessaya/TessayaTurn.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import { HomeDevices } from "./HomeDevices.ts";
 
 // The door's R1 ops need HomeDevices; a vessel's report never reaches it.
 const layer = Layer.mergeAll(registryLayer, Layer.mock(HomeDevices)({})).pipe(
-  Layer.provideMerge(BatonDatabaseMemory),
+  Layer.provideMerge(TessayaDatabaseMemory),
 );
 const vessel = { who: "the desktop", surface: "settings" } as const;
 const DESK = "desk-laptop";
@@ -133,7 +133,7 @@ it.effect(
       assert.strictEqual(desk.items.length, 3);
       yield* fresh((r) => r.forget(DESK));
       assert.isNull(yield* fresh((r) => r.get(DESK)));
-    }).pipe(Effect.provide(BatonDatabaseMemory));
+    }).pipe(Effect.provide(TessayaDatabaseMemory));
   },
 );
 
@@ -167,6 +167,6 @@ it.effect(
       assert.strictEqual(rows[0]!.n, 1);
       yield* TestClock.adjust("15 days");
       assert.isTrue((yield* fresh((r) => r.get(DESK)))?.stale);
-    }).pipe(Effect.provide(BatonDatabaseMemory));
+    }).pipe(Effect.provide(TessayaDatabaseMemory));
   },
 );

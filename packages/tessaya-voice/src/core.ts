@@ -161,7 +161,7 @@ export interface SpokenQuestion {
   readonly cancel: () => void;
 }
 
-export interface BatonVoiceCore extends VoiceCore {
+export interface TessayaVoiceCore extends VoiceCore {
   readonly snapshot: () => VoiceCoreSnapshot;
   readonly subscribe: (listener: (event: VoiceCoreEvent) => void) => () => void;
   readonly setDirectSession: (enabled: boolean) => void;
@@ -324,7 +324,7 @@ export const createVoiceCore = (input: {
     /** Speech over her voice needed before a cut-in is judged by voice; null cuts in at once, as before. */
     readonly bargeMs: () => number | null;
   };
-}): BatonVoiceCore => {
+}): TessayaVoiceCore => {
   const timings = input.timings ?? DEFAULT_TIMINGS;
   const seg = input.segmenter ?? DEFAULT_SEGMENTER;
   const origin = input.origin ?? Date.now();

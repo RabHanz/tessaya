@@ -4,9 +4,9 @@
  */
 import {
   accountReturnsAt,
-  type BatonAccount,
-  type BatonAccountRecord,
-  type BatonLiveQueued,
+  type TessayaAccount,
+  type TessayaAccountRecord,
+  type TessayaLiveQueued,
 } from "@t3tools/tessaya-contracts";
 
 /** Three missed five-minute ticks: the same point at which cswap's hold on the reading lapses. */
@@ -41,7 +41,7 @@ export const returnsLabel = (returnsAt: string) =>
     minute: "2-digit",
   });
 
-export function accountRow(account: BatonAccount, now: number): string {
+export function accountRow(account: TessayaAccount, now: number): string {
   const returnsAt = accountReturnsAt(account);
   if (returnsAt !== null) return `out until ${returnsLabel(returnsAt)}`;
   const room =
@@ -68,7 +68,7 @@ export function resetLabel(resetsAt: string, now: number): string {
   return `${time} (GMT+5)`;
 }
 
-type Room = Pick<BatonAccountRecord, "fiveHour" | "weekly">;
+type Room = Pick<TessayaAccountRecord, "fiveHour" | "weekly">;
 
 /** Amber from 80% used, red at the limit. */
 export function roomTone(room: Room): "ok" | "warn" | "limit" {
@@ -117,8 +117,8 @@ export const maskedEmail = (email: string): string => {
  * "…now" while it is applied (an account move may restart the session once in its pane first).
  */
 export const queuedText = (
-  queued: BatonLiveQueued,
-  accounts: ReadonlyArray<Pick<BatonAccountRecord, "label" | "liveSwitchKey">>,
+  queued: TessayaLiveQueued,
+  accounts: ReadonlyArray<Pick<TessayaAccountRecord, "label" | "liveSwitchKey">>,
   applying = false,
 ): string => {
   const parts = [

@@ -1,4 +1,4 @@
-import type { BatonContextSnapshot } from "@t3tools/tessaya-contracts";
+import type { TessayaContextSnapshot } from "@t3tools/tessaya-contracts";
 import { applyContextSnapshot, emptyContextBus } from "@t3tools/tessaya-shared/contextBus";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -7,7 +7,7 @@ import { createVoiceRouter } from "./router.ts";
 
 const NOW = Date.parse("2026-10-26T12:00:00.000Z");
 
-const snapshot = (over: Partial<BatonContextSnapshot>): BatonContextSnapshot =>
+const snapshot = (over: Partial<TessayaContextSnapshot>): TessayaContextSnapshot =>
   ({
     producer: "fabric",
     observedAt: "2026-10-26T11:59:59.000Z",
@@ -20,7 +20,7 @@ const snapshot = (over: Partial<BatonContextSnapshot>): BatonContextSnapshot =>
     editableTarget: null,
     recentVoiceTarget: null,
     ...over,
-  }) as BatonContextSnapshot;
+  }) as TessayaContextSnapshot;
 
 const focused = applyContextSnapshot(
   emptyContextBus,

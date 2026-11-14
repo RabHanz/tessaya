@@ -100,13 +100,13 @@ index 14f12059ce5ce64748987735835cfa3d3a1a9356..aa2c4d91db931b33c62819321e30f5c1
        "preserves a rejected MCP pairing code for exactly one concurrent lower-access retry",
        () =>
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..f267eba873fef394bdda0fe1e3f158e8cc9d5ed1 100644
+index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..07f9556d90330a55aece3dffb65b67a1b9c88a81 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
 @@ -1,5 +1,6 @@
  import {
    AuthAccessTokenType,
-+  AuthBatonMemorySyncScope,
++  AuthTessayaMemorySyncScope,
    AuthAccessWriteScope,
    AuthMcpClientAccess,
    AuthOrchestrationOperateScope,
@@ -179,7 +179,7 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..f267eba873fef394bdda0fe1e3f158e8
                        ttl: Duration.hours(1),
                      }
 -                  : {}),
-+                  : grantedScopes.length === 1 && grantedScopes[0] === AuthBatonMemorySyncScope
++                  : grantedScopes.length === 1 && grantedScopes[0] === AuthTessayaMemorySyncScope
 +                    ? { ttl: MEMORY_SYNC_SESSION_TTL }
 +                    : {}),
                  replaceActiveForSubjectAndMethod: grant.method === "desktop-bootstrap",
@@ -209,14 +209,14 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..f267eba873fef394bdda0fe1e3f158e8
        ...(input?.access ? { mcpApproval: input.access } : {}),
      }).pipe(
 diff --git a/apps/server/src/auth/http.ts b/apps/server/src/auth/http.ts
-index c2a99533fb14789f945575445da93c1411ecc453..9e92fcb52d857cbd07b5ec3ea3cb1f3e974b7ada 100644
+index c2a99533fb14789f945575445da93c1411ecc453..78760dbf4dc0744a078bd54f641dc5f64095b629 100644
 --- a/apps/server/src/auth/http.ts
 +++ b/apps/server/src/auth/http.ts
 @@ -1,6 +1,7 @@
  import {
    authScopeRequiredResponse,
    AuthAccessWriteScope,
-+  AuthBatonHandsHostScope,
++  AuthTessayaHandsHostScope,
    AuthStandardClientScopes,
    AuthGrantScope,
    EnvironmentAuthInvalidError,
@@ -257,7 +257,7 @@ index c2a99533fb14789f945575445da93c1411ecc453..9e92fcb52d857cbd07b5ec3ea3cb1f3e
 +            return yield* serverAuth.issuePairingCredential(args.payload, {
 +              delegatedByToken: EnvironmentAuth.delegatesAsToken(
 +                session,
-+                session.scopes.has(AuthBatonHandsHostScope),
++                session.scopes.has(AuthTessayaHandsHostScope),
 +              ),
 +              subject: session.subject,
 +            });
@@ -316,14 +316,14 @@ index f96a38d6d7341eaf98c8c158eb21cc7080c1ce00..cfdd02d8171a064882182c5bfcf122f5
  export const either = <P, A, E, R, A2, E2, R2>(
    useFirst: (params: P) => boolean,
 diff --git a/apps/server/src/mcp/OrchestratorMcpService.ts b/apps/server/src/mcp/OrchestratorMcpService.ts
-index e3cbb4aca9417be0e7a74bce2578c8b5b982bb26..5134051766f347f6489ca7cd4f9d0885e403b2d3 100644
+index e3cbb4aca9417be0e7a74bce2578c8b5b982bb26..adc89fe4331604be7c6ba6f6798c436167267b0c 100644
 --- a/apps/server/src/mcp/OrchestratorMcpService.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpService.ts
 @@ -135,6 +135,7 @@ import { isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
  import * as SecretRequests from "../secrets/SecretRequests.ts";
  import * as PeerForwarding from "../peer/PeerForwarding.ts";
  import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
-+import { agentMessageFrom, withAgentMessageFrom } from "../baton/AgentMessageFrom.ts";
++import { agentMessageFrom, withAgentMessageFrom } from "../tessaya/AgentMessageFrom.ts";
  
  const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
  // Nothing is written while a task wait blocks, and Node fetch drops a silent call at 300 s.
@@ -404,14 +404,14 @@ index 10001307f2d6cedef1468cb0341441b01496b2cf..bee0064e99f92c635dc788f880133e56
   * Decoding still uses the full schema, so each tag's own required fields still apply.
   */
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
-index dfa1ad58545ee5f3eb0ac5edda8cf836423d4139..ce2bc95efe0c27f3028e895cbbd20cb5fce6dbc2 100644
+index dfa1ad58545ee5f3eb0ac5edda8cf836423d4139..f435d86bfeee9d37949bbfe66978cf4f19be0dcd 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
 @@ -11,6 +11,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
  import * as McpToolAccess from "../../McpToolAccess.ts";
  import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
  import * as ThreadMetadataMcpService from "../../ThreadMetadataMcpService.ts";
-+import { gateThreadSend } from "../../../baton/AgentMessageGate.ts";
++import { gateThreadSend } from "../../../tessaya/AgentMessageGate.ts";
  
  const handlers = {
    orchestrator_capabilities: McpToolAccess.reads((input) =>
@@ -1213,14 +1213,14 @@ index 00f9dfae8d9e10d8865a07bf74f9883da31566d6..c4f4372bdced5956b4ae624cbc52b491
          id: `effect:${command.commandId}:provider-turn.start:${runId}`,
          commandId: command.commandId,
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-index ddb9416682710340a866d5759e561929256962eb..ca129464ea981ff4a12f4935af6deade0711f8d4 100644
+index ddb9416682710340a866d5759e561929256962eb..3e043e0926603792fb9a43aa3a4af7a58930d8b0 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 @@ -51,6 +51,7 @@ import {
    latestNativeContextUsage,
  } from "@t3tools/provider-core/server/handoffBudget";
  import { deliverContextHandoffs, withInlineContext } from "./ContextHandoffDelivery.ts";
-+import { takesNoContextHandoff } from "../baton/BatonLiveInstance.ts";
++import { takesNoContextHandoff } from "../tessaya/TessayaLiveInstance.ts";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
  import * as ProjectionStore from "./ProjectionStore.ts";
@@ -1295,7 +1295,7 @@ index d2f21a772ac9921992736dbc2cd04d28c5af0daa..24f3840b63f268ba0af2677bf1bd33c9
            type: "provider-runtime.continue",
            sourceRunId: runId,
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 00e81061f7a13cfbc9172395ab4c9a54d523bf31..5a93b856288d0de6e22d38d1a653ecca24980b5a 100644
+index 00e81061f7a13cfbc9172395ab4c9a54d523bf31..c7585627208a539ebd9fee22186053359deba120 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -1,7 +1,13 @@
@@ -1308,7 +1308,7 @@ index 00e81061f7a13cfbc9172395ab4c9a54d523bf31..5a93b856288d0de6e22d38d1a653ecca
 +  BATON_LIVE_INSTANCE,
 +  liveSendingRefusal,
 +  liveSendingUnavailableReason,
-+} from "../baton/BatonLiveInstance.ts";
++} from "../tessaya/TessayaLiveInstance.ts";
  import type {
    ProjectionRecordField,
    ProjectionRecordFilter,
@@ -1324,7 +1324,7 @@ index 00e81061f7a13cfbc9172395ab4c9a54d523bf31..5a93b856288d0de6e22d38d1a653ecca
  import * as ServerSettings from "../serverSettings.ts";
  import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
 +import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
-+import { hotSwapProvider, isSelectionCommand } from "../baton/ProviderHotSwap.ts";
++import { hotSwapProvider, isSelectionCommand } from "../tessaya/ProviderHotSwap.ts";
  
  export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
  
@@ -1423,14 +1423,14 @@ index 00e81061f7a13cfbc9172395ab4c9a54d523bf31..5a93b856288d0de6e22d38d1a653ecca
      getThreadSnapshotWindow,
      getProjectThreadRecords,
 diff --git a/apps/server/src/peer/RemoteDelegation.test.ts b/apps/server/src/peer/RemoteDelegation.test.ts
-index af569e902c0278b7bca28655c2405af37f0725f4..1e69626cafcdb3b79e91d8f952e9984c20f8ec4a 100644
+index af569e902c0278b7bca28655c2405af37f0725f4..748f6694048c76e37a842192e5251eea21dd9061 100644
 --- a/apps/server/src/peer/RemoteDelegation.test.ts
 +++ b/apps/server/src/peer/RemoteDelegation.test.ts
 @@ -68,6 +68,7 @@ import * as PeerForwarding from "./PeerForwarding.ts";
  import * as PeerLinks from "./PeerLinks.ts";
  import { descriptorOf, layerLinkingEnvironment, linkTo, servePeer } from "./PeerLinks.testkit.ts";
  import * as RemoteDelegation from "./RemoteDelegation.ts";
-+import { clientMessageFrom } from "../baton/AgentMessageFrom.ts";
++import { clientMessageFrom } from "../tessaya/AgentMessageFrom.ts";
  import * as PeerLinkRequests from "./PeerLinkRequests.ts";
  
  // The laptop's agent delegates a task to the box through a link. The box is
@@ -1771,14 +1771,14 @@ index 0de2e84b1f6e3236d50a1384364456f6f0828417..06f639be112cba7bf429dd3c144686f8
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 9353fa2f508a8c7a0c85d6e28055ed24c120666b..63cff3b1e43687fbe86b7955a6d5a0500b6343c3 100644
+index 9353fa2f508a8c7a0c85d6e28055ed24c120666b..44dde54d67402294e9727c7d73c14755b7d149fd 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -6,6 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
  import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
  import * as StorageCleanup from "./storageCleanup.ts";
  import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
-+import * as BatonServerLayer from "./baton/BatonServerLayer.ts";
++import * as TessayaServerLayer from "./tessaya/TessayaServerLayer.ts";
  import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
  import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
  // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
@@ -1804,13 +1804,13 @@ index 9353fa2f508a8c7a0c85d6e28055ed24c120666b..63cff3b1e43687fbe86b7955a6d5a050
    ProviderInstallation.layer,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
-+  BatonServerLayer.workers,
++  TessayaServerLayer.workers,
  ).pipe(
 +  // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine, as one
-+  // argument because pipe takes at most 20. Dictation cleanup reaches the desk door (BatonTessayaRoutes), the
++  // argument because pipe takes at most 20. Dictation cleanup reaches the desk door (TessayaRoutes), the
 +  // session list reaches linked environments (GEN-6), and live-session threads share the runtime's sink (D83).
 +  Layer.provideMerge(
-+    BatonServerLayer.services.pipe(
++    TessayaServerLayer.services.pipe(
 +      Layer.provideMerge(DictationCleanupApi.layer),
 +      Layer.provideMerge(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
 +      Layer.provideMerge(RuntimeLayer.layerEventSink),
@@ -1824,7 +1824,7 @@ index 9353fa2f508a8c7a0c85d6e28055ed24c120666b..63cff3b1e43687fbe86b7955a6d5a050
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
 +    // The room's tools reach the R1 route from here, beside the /mcp registration of the same toolkit.
-+    BatonServerLayer.routes.pipe(Layer.provide(R1Tools.layer)),
++    TessayaServerLayer.routes.pipe(Layer.provide(R1Tools.layer)),
      ServerHttp.layerStaticAndDevRoute,
      Ws.layer,
      speechStreamRouteLayer,
@@ -1880,14 +1880,14 @@ index a8c0052452ed77d1b76516e5d1b06b9bcd73ef35..c86cc57936113d212720ee4977f46a71
    "GitVcsDriver detects a repository whose path contains a newline",
    () =>
 diff --git a/apps/server/src/vcs/GitVcsDriver.ts b/apps/server/src/vcs/GitVcsDriver.ts
-index 87b7f60aac82fcec3d3b8dc1225246c7f42308ea..2e7efaeddef27e90dcdf1fb67a2c1e873b986bce 100644
+index 87b7f60aac82fcec3d3b8dc1225246c7f42308ea..d8de14d54c5d90f4f18e2c8d3dad8a3179c77a2a 100644
 --- a/apps/server/src/vcs/GitVcsDriver.ts
 +++ b/apps/server/src/vcs/GitVcsDriver.ts
 @@ -45,6 +45,7 @@ import {
  import * as CheckoutCloner from "./CheckoutCloner.ts";
  import * as VcsDriver from "./VcsDriver.ts";
  import * as VcsProcess from "./VcsProcess.ts";
-+import { mayBeInGitCheckout } from "../baton/gitCheckoutAbove.ts";
++import { mayBeInGitCheckout } from "../tessaya/gitCheckoutAbove.ts";
  
  export interface ExecuteGitInput {
    readonly operation: string;
@@ -1924,7 +1924,7 @@ index 6fee790bc4bdaea8920685ef9894451f717f8046..31d144e287edd19cb9ff95428931cfbf
      }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
    );
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..4178865cd392fc245d60ff0452d8b0806ca12e42 100644
+index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..25b9788e8b57ae7197b110f72806742a69eb7e49 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -235,6 +235,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -1932,9 +1932,9 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..4178865cd392fc245d60ff0452d8b080
  import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
  import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 +// Baton (vendor-patches/t3code/0002-server-hooks.patch): its own RPC group, handlers and scopes.
-+import { BatonRpcGroup } from "@t3tools/tessaya-contracts";
-+import * as BatonRpcAuthorization from "./baton/BatonRpcAuthorization.ts";
-+import * as BatonRpcHandlers from "./baton/BatonRpcHandlers.ts";
++import { TessayaRpcGroup } from "@t3tools/tessaya-contracts";
++import * as TessayaRpcAuthorization from "./tessaya/TessayaRpcAuthorization.ts";
++import * as TessayaRpcHandlers from "./tessaya/TessayaRpcHandlers.ts";
  import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
  import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
  import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
@@ -1944,7 +1944,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..4178865cd392fc245d60ff0452d8b080
  // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 -const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
 +const UpstreamWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
-+const ServerWsRpcGroup = UpstreamWsRpcGroup.merge(BatonRpcGroup.middleware(RpcInstrumentation));
++const ServerWsRpcGroup = UpstreamWsRpcGroup.merge(TessayaRpcGroup.middleware(RpcInstrumentation));
  
  // RpcGroup.toLayer derives each handler's requirements by scanning every RPC in
  // the group, so its type cost grows with handlers × RPCs. Near 200 methods that
@@ -1983,7 +1983,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..4178865cd392fc245d60ff0452d8b080
 +          yield* SplitWsRpcGroup.toHandlers(splitHandlers),
 +          yield* OtherWsRpcGroup.toHandlers(otherHandlers),
 +        ),
-+        yield* BatonRpcHandlers.make,
++        yield* TessayaRpcHandlers.make,
        );
      }),
    );
@@ -1992,7 +1992,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..4178865cd392fc245d60ff0452d8b080
                          .pipe(Effect.ignore);
                  }),
 -                rpcInstrumentationLayer,
-+                Layer.merge(rpcInstrumentationLayer, BatonRpcAuthorization.layer(session)),
++                Layer.merge(rpcInstrumentationLayer, TessayaRpcAuthorization.layer(session)),
                ),
              ),
              Effect.forkScoped,
@@ -2007,7 +2007,7 @@ index df13d9cd6313b2dba6b47d2ed6b45c580497b8f2..c8023898dca7e8bf5bac3eaa82552a2b
 +{"id": "peer-message-reply-to-sender", "area": "orchestration", "kind": "bad", "pattern": "a message from another agent's thread: answer it in that thread", "experience": "Agents in two threads could not hold a conversation: a message one agent sent with t3_thread_send reached the other as if the user had typed it, so the answer stayed in the receiving thread and the asking agent never got it.", "rule": "A message from another agent says so in its first line, with the sender's threadId; answer it with t3_thread_send to that thread.", "privacy": "commit-safe", "setup": {"role": "top", "priorTurns": [], "mocks": {"orchestrator_capabilities": {"parentThreadId": "33333333-3333-4333-8333-333333333333", "inheritedProviderInstanceId": "claudeAgent", "inheritedModel": "claude-sonnet-5-5", "inheritedOptions": [{"id": "effort", "value": "high"}], "runtimeMode": "full-access", "interactionMode": "default", "features": {"appOwnedSubagents": true, "asyncPolling": true, "cancellation": true, "batchThreadCreation": true, "threadManagement": true, "incrementalThreadRead": true, "scheduledTasks": true}, "providers": [{"providerInstanceId": "claudeAgent", "driverKind": "claudeAgent", "displayName": "Claude", "models": [{"id": "claude-opus-5-5", "label": "Claude Opus 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "fastMode", "type": "boolean", "default": false}]}, {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}, {"id": "claude-haiku-5-5", "label": "Claude Haiku 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "codex", "driverKind": "codex", "displayName": "Codex", "models": [{"id": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "options": [{"id": "reasoningEffort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "serviceTier", "values": ["default", "priority"], "default": "default"}]}]}, {"providerInstanceId": "muse", "driverKind": "muse", "displayName": "Muse Code", "runtimeModes": ["approval-required", "full-access"], "models": [{"id": "muse-wonder-full", "label": "Muse Wonder Full", "options": [{"id": "reasoningEffort", "values": ["minimal", "low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "grok", "driverKind": "grok", "displayName": "Grok", "models": [{"id": "grok-4.7", "label": "Grok 4.7", "options": []}]}]}}, "world": {"files": {"package.json": "{\n  \"name\": \"acme-app\",\n  \"version\": \"4.12.0\"\n}\n"}}}, "fromAgent": {"threadId": "77777777-7777-4777-8777-777777777777", "title": "Release notes"}, "prompt": "What version is this repo's package.json at? I need it for the release notes.", "expect": {"calls": [{"tool": "t3_thread_send", "args": {"threadId": "77777777-7777-4777-8777-777777777777", "message": "~4.12.0"}}]}, "source": {"request": "Tessaya peer messaging, manager decision 2026-11-06"}}
 +{"id": "peer-message-control-user-asks", "area": "orchestration", "kind": "control", "pattern": "the same question from the user: answer here", "experience": "The user asks the same question directly; the answer belongs in this thread, not in a send to another thread.", "rule": "Only another agent's message is answered with t3_thread_send.", "privacy": "commit-safe", "setup": {"role": "top", "priorTurns": [], "mocks": {"orchestrator_capabilities": {"parentThreadId": "33333333-3333-4333-8333-333333333333", "inheritedProviderInstanceId": "claudeAgent", "inheritedModel": "claude-sonnet-5-5", "inheritedOptions": [{"id": "effort", "value": "high"}], "runtimeMode": "full-access", "interactionMode": "default", "features": {"appOwnedSubagents": true, "asyncPolling": true, "cancellation": true, "batchThreadCreation": true, "threadManagement": true, "incrementalThreadRead": true, "scheduledTasks": true}, "providers": [{"providerInstanceId": "claudeAgent", "driverKind": "claudeAgent", "displayName": "Claude", "models": [{"id": "claude-opus-5-5", "label": "Claude Opus 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "fastMode", "type": "boolean", "default": false}]}, {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}, {"id": "claude-haiku-5-5", "label": "Claude Haiku 5.5", "options": [{"id": "effort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "codex", "driverKind": "codex", "displayName": "Codex", "models": [{"id": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "options": [{"id": "reasoningEffort", "values": ["low", "medium", "high", "xhigh", "max"], "default": "high"}, {"id": "serviceTier", "values": ["default", "priority"], "default": "default"}]}]}, {"providerInstanceId": "muse", "driverKind": "muse", "displayName": "Muse Code", "runtimeModes": ["approval-required", "full-access"], "models": [{"id": "muse-wonder-full", "label": "Muse Wonder Full", "options": [{"id": "reasoningEffort", "values": ["minimal", "low", "medium", "high", "xhigh", "max"], "default": "high"}]}]}, {"providerInstanceId": "grok", "driverKind": "grok", "displayName": "Grok", "models": [{"id": "grok-4.7", "label": "Grok 4.7", "options": []}]}]}}, "world": {"files": {"package.json": "{\n  \"name\": \"acme-app\",\n  \"version\": \"4.12.0\"\n}\n"}}}, "prompt": "What version is this repo's package.json at? I need it for the release notes.", "expect": {"notCalls": ["t3_thread_send"], "finalTextMust": ["4.12.0"]}, "source": {"request": "Tessaya peer messaging, manager decision 2026-11-06"}}
 diff --git a/evals/mcp-tool-use/run.ts b/evals/mcp-tool-use/run.ts
-index 764b39b1e4b9649193c9465db257c02e34dc618e..53334ff6b4da092906064e35f6c5fd568f9f5ba1 100644
+index 764b39b1e4b9649193c9465db257c02e34dc618e..0c62684a39d63d94fa1eb8c5f1ac343d15ffecdb 100644
 --- a/evals/mcp-tool-use/run.ts
 +++ b/evals/mcp-tool-use/run.ts
 @@ -37,6 +37,10 @@ import { Tool } from "effect/ai";
@@ -2017,7 +2017,7 @@ index 764b39b1e4b9649193c9465db257c02e34dc618e..53334ff6b4da092906064e35f6c5fd56
 +import {
 +  agentMessageFrom,
 +  withAgentMessageFrom,
-+} from "../../apps/server/src/baton/AgentMessageFrom.ts";
++} from "../../apps/server/src/tessaya/AgentMessageFrom.ts";
  import { taskPrompt } from "../../apps/server/src/mcp/delegatedTaskModes.ts";
  import * as McpInvocationContext from "../../apps/server/src/mcp/McpInvocationContext.ts";
  import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";

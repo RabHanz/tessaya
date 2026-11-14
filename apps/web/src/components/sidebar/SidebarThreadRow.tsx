@@ -113,8 +113,8 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
-import { BatonLiveBadge } from "./BatonLiveBadge";
-import { BatonThreadTitleText } from "../chat/BatonThreadTitle";
+import { TessayaLiveBadge } from "./TessayaLiveBadge";
+import { TessayaThreadTitleText } from "../chat/TessayaThreadTitle";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
 import { InlineButton } from "../ui/button";
@@ -1070,7 +1070,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       )}
       dir={textDirection(thread.title)}
     >
-      <BatonThreadTitleText
+      <TessayaThreadTitleText
         environmentId={thread.environmentId}
         threadId={thread.id}
         title={thread.title}
@@ -1205,7 +1205,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         aria-hidden
         className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
       >
-        <BatonLiveBadge live={props.batonLive === true} />
+        <TessayaLiveBadge live={props.batonLive === true} />
         {remoteMachineIcon}
         <SidebarProviderStack
           thread={thread}
@@ -1216,7 +1216,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   );
   const titleLineIcons = metaLineEmpty ? (
     <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
-      <BatonLiveBadge live={props.batonLive === true} />
+      <TessayaLiveBadge live={props.batonLive === true} />
       {remoteMachineIcon}
       <SidebarProviderStack
         thread={thread}

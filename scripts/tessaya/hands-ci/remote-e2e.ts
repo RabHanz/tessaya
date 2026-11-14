@@ -10,10 +10,10 @@ import * as NodePath from "node:path";
 
 import { BATON_TOOL_PREFIX } from "../../../packages/tessaya-shared/src/operator.ts";
 import { createHandsBroker } from "../../../packages/tessaya-shared/src/remoteHands.ts";
-import { handleHands } from "../../../apps/server/src/baton/BatonHandsApi.ts";
-import { createAgentGate, createTaint } from "../../../apps/desktop/src/baton/agent/agentGate.ts";
-import { createRemoteHandsLoop } from "../../../apps/desktop/src/baton/agent/remoteHandsLoop.ts";
-import { buildRemoteHandsTools } from "../../../apps/desktop/src/baton/agent/remoteHandsTools.ts";
+import { handleHands } from "../../../apps/server/src/tessaya/TessayaHandsApi.ts";
+import { createAgentGate, createTaint } from "../../../apps/desktop/src/tessaya/agent/agentGate.ts";
+import { createRemoteHandsLoop } from "../../../apps/desktop/src/tessaya/agent/remoteHandsLoop.ts";
+import { buildRemoteHandsTools } from "../../../apps/desktop/src/tessaya/agent/remoteHandsTools.ts";
 import { ps, startSidecar } from "./sidecarClient.ts";
 
 const OUT = process.env["HANDS_OUT"] ?? NodePath.join(process.cwd(), "remote-out");

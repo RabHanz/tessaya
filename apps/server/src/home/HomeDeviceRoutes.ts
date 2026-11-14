@@ -10,7 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
-import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
+import { TessayaRuntime } from "../tessaya/TessayaRpcHandlers.ts";
 import { requestUrl } from "../requestUrl.ts";
 import { StepUps } from "./StepUps.ts";
 import { HomeAssistantService, r1ById, r1ByKey } from "./HomeAssistantService.ts";
@@ -27,7 +27,7 @@ import {
 import { OLD_FIRMWARE_PATH, R1_FIRMWARE_PATH, R1Updates } from "./R1Updates.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import * as Schema from "effect/Schema";
-import { HouseholdCaller, TessayaHousehold } from "../baton/TessayaHousehold.ts";
+import { HouseholdCaller, TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 /**
@@ -69,7 +69,7 @@ const LOOP_OPS: ReadonlySet<string> = new Set(["claim", "speaking", "ended", "ar
 
 export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
-    const context = yield* BatonRuntime;
+    const context = yield* TessayaRuntime;
     if (context === null) return;
     const upload = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;

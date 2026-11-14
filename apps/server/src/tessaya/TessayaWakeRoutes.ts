@@ -15,7 +15,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import { HomeAssistantService, r1ByKey } from "../home/HomeAssistantService.ts";
 import { requestUrl } from "../requestUrl.ts";
-import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
+import { TessayaRuntime } from "./TessayaRpcHandlers.ts";
 import { TessayaWake } from "./TessayaWake.ts";
 
 const WAKE_PATH = "/api/tessaya/wake/";
@@ -89,7 +89,7 @@ export const wakeAccess = (
 
 export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
-    const context = yield* BatonRuntime;
+    const context = yield* TessayaRuntime;
     const auth = yield* EnvironmentAuth.EnvironmentAuth;
     if (context === null) return;
     const wake = Context.getOption(context, TessayaWake);

@@ -130,7 +130,7 @@ import {
   prepareTurnAttachments,
   restoreComposerDraft,
 } from "./chatViewSend";
-import { forgetStaleLiveSelection } from "./batonLiveSend";
+import { forgetStaleLiveSelection } from "./tessayaLiveSend";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,

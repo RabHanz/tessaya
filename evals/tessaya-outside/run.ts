@@ -13,8 +13,8 @@ import * as NodeUtil from "node:util";
 
 import { Tool } from "effect/ai";
 
-import { startBatonMcp } from "../../apps/desktop/src/baton/agent/batonMcp.ts";
-import { toolUsesOf } from "../../apps/desktop/src/baton/screen/claudeVision.ts";
+import { startTessayaMcp } from "../../apps/desktop/src/tessaya/agent/tessayaMcp.ts";
+import { toolUsesOf } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
 import { TessayaToolkit } from "../../apps/server/src/mcp/toolkits/tessaya/tools.ts";
 import { outsideCases, type OutsideCase } from "./cases.ts";
@@ -40,7 +40,7 @@ interface Sample {
 
 const sample = async (c: OutsideCase): Promise<Sample> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-outside-"));
-  const mcp = await startBatonMcp({
+  const mcp = await startTessayaMcp({
     tools: Object.values(TessayaToolkit.tools).map((tool: Tool.Any) => ({
       name: tool.name,
       description: Tool.getDescription(tool) ?? "",

@@ -35,7 +35,7 @@ import { alsoReads } from "./renamed.ts";
  * one slot per producer rather than one global snapshot: VS Code going quiet
  * must not erase what the browser just said.
  */
-export const BatonContextProducer = Schema.Union([
+export const TessayaContextProducer = Schema.Union([
   /** The Baton client itself: which work session the user is looking at. */
   // Legacy name (D71): producers already publish as "fabric".
   alsoReads("fabric", "tessaya"),
@@ -48,18 +48,23 @@ export const BatonContextProducer = Schema.Union([
     "voice",
   ]),
 ]);
-export type BatonContextProducer = typeof BatonContextProducer.Type;
+export type TessayaContextProducer = typeof TessayaContextProducer.Type;
 
-export const BatonFocusTargetKind = Schema.Literals(["editable", "editor", "terminal", "unknown"]);
-export type BatonFocusTargetKind = typeof BatonFocusTargetKind.Type;
+export const TessayaFocusTargetKind = Schema.Literals([
+  "editable",
+  "editor",
+  "terminal",
+  "unknown",
+]);
+export type TessayaFocusTargetKind = typeof TessayaFocusTargetKind.Type;
 
 /**
  * Somewhere text could go. Deliberately thin: what it is, who owns it, whether
  * it will accept text right now, and enough to name it out loud.
  */
-export const BatonFocusTarget = Schema.Struct({
-  producer: BatonContextProducer,
-  kind: BatonFocusTargetKind,
+export const TessayaFocusTarget = Schema.Struct({
+  producer: TessayaContextProducer,
+  kind: TessayaFocusTargetKind,
   /** "Gmail compose", "the editor", "the terminal" — for the read-back. */
   label: TrimmedNonEmptyString,
   /** The producer's own answer to "can I insert here, now?". */
@@ -70,10 +75,10 @@ export const BatonFocusTarget = Schema.Struct({
    */
   origin: Schema.NullOr(TrimmedNonEmptyString),
 });
-export type BatonFocusTarget = typeof BatonFocusTarget.Type;
+export type TessayaFocusTarget = typeof TessayaFocusTarget.Type;
 
 /** §16: what the extension observes. Nothing here is a provider bypass. */
-export const BatonVsCodeContext = Schema.Struct({
+export const TessayaVsCodeContext = Schema.Struct({
   workspaceFolder: Schema.NullOr(TrimmedNonEmptyString),
   /** `ssh-remote`, `wsl`, `dev-container`; null when the window is local. */
   remoteAuthority: Schema.NullOr(TrimmedNonEmptyString),
@@ -86,10 +91,10 @@ export const BatonVsCodeContext = Schema.Struct({
   /** The work session this window is already linked to, when it is. */
   workSessionId: Schema.NullOr(WorkSessionId),
 });
-export type BatonVsCodeContext = typeof BatonVsCodeContext.Type;
+export type TessayaVsCodeContext = typeof TessayaVsCodeContext.Type;
 
 /** §17: focus and editability, and nothing that would be surveillance. */
-export const BatonBrowserContext = Schema.Struct({
+export const TessayaBrowserContext = Schema.Struct({
   /** Which browser profile, so two accounts are distinguishable. */
   profile: Schema.NullOr(TrimmedNonEmptyString),
   /** Origin only: `https://mail.google.com`, never the path or the query. */
@@ -106,22 +111,22 @@ export const BatonBrowserContext = Schema.Struct({
    */
   fieldLabel: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
 });
-export type BatonBrowserContext = typeof BatonBrowserContext.Type;
+export type TessayaBrowserContext = typeof TessayaBrowserContext.Type;
 
 /** §15's snapshot, from one producer, at one instant. */
-export const BatonContextSnapshot = Schema.Struct({
-  producer: BatonContextProducer,
+export const TessayaContextSnapshot = Schema.Struct({
+  producer: TessayaContextProducer,
   observedAt: IsoDateTime,
   foregroundApplication: Schema.NullOr(TrimmedNonEmptyString),
   activeWindowTitle: Schema.NullOr(TrimmedNonEmptyString),
   activeWorkSessionId: Schema.NullOr(WorkSessionId),
   activeThreadId: Schema.NullOr(ThreadId),
-  vscode: Schema.NullOr(BatonVsCodeContext),
-  browser: Schema.NullOr(BatonBrowserContext),
-  editableTarget: Schema.NullOr(BatonFocusTarget),
+  vscode: Schema.NullOr(TessayaVsCodeContext),
+  browser: Schema.NullOr(TessayaBrowserContext),
+  editableTarget: Schema.NullOr(TessayaFocusTarget),
   recentVoiceTarget: Schema.NullOr(WorkSessionId),
 });
-export type BatonContextSnapshot = typeof BatonContextSnapshot.Type;
+export type TessayaContextSnapshot = typeof TessayaContextSnapshot.Type;
 
 /**
  * How long a producer's snapshot stays authoritative.
@@ -143,23 +148,23 @@ export const CONTEXT_SNAPSHOT_TTL_MS = 30_000;
  * an application that knows how to insert text does it properly, and simulated
  * keystrokes are what you reach for when everything else has failed.
  */
-export const BatonInjectionMethod = Schema.Literals([
+export const TessayaInjectionMethod = Schema.Literals([
   "application",
   "accessibility",
   "clipboard",
   "keystrokes",
 ]);
-export type BatonInjectionMethod = typeof BatonInjectionMethod.Type;
+export type TessayaInjectionMethod = typeof TessayaInjectionMethod.Type;
 
-export const BATON_INJECTION_PREFERENCE: ReadonlyArray<BatonInjectionMethod> = [
+export const BATON_INJECTION_PREFERENCE: ReadonlyArray<TessayaInjectionMethod> = [
   "application",
   "accessibility",
   "clipboard",
   "keystrokes",
 ];
 
-export const BatonInjectionCapability = Schema.Struct({
-  method: BatonInjectionMethod,
+export const TessayaInjectionCapability = Schema.Struct({
+  method: TessayaInjectionMethod,
   available: Schema.Boolean,
   /**
    * Why not, in words the user can act on: a permission to grant, a display
@@ -169,24 +174,24 @@ export const BatonInjectionCapability = Schema.Struct({
    */
   reason: TrimmedString,
 });
-export type BatonInjectionCapability = typeof BatonInjectionCapability.Type;
+export type TessayaInjectionCapability = typeof TessayaInjectionCapability.Type;
 
-export const BatonDisplayServer = Schema.Literals(["wayland", "x11", "unknown"]);
-export type BatonDisplayServer = typeof BatonDisplayServer.Type;
+export const TessayaDisplayServer = Schema.Literals(["wayland", "x11", "unknown"]);
+export type TessayaDisplayServer = typeof TessayaDisplayServer.Type;
 
-export const BatonPlatform = Schema.Literals(["darwin", "win32", "linux", "unknown"]);
-export type BatonPlatform = typeof BatonPlatform.Type;
+export const TessayaPlatform = Schema.Literals(["darwin", "win32", "linux", "unknown"]);
+export type TessayaPlatform = typeof TessayaPlatform.Type;
 
-export const BatonInjectionReport = Schema.Struct({
-  platform: BatonPlatform,
+export const TessayaInjectionReport = Schema.Struct({
+  platform: TessayaPlatform,
   /** Linux only. Wayland restricts global injection; X11 does not. */
-  displayServer: Schema.NullOr(BatonDisplayServer),
-  capabilities: Schema.Array(BatonInjectionCapability),
+  displayServer: Schema.NullOr(TessayaDisplayServer),
+  capabilities: Schema.Array(TessayaInjectionCapability),
 });
-export type BatonInjectionReport = typeof BatonInjectionReport.Type;
+export type TessayaInjectionReport = typeof TessayaInjectionReport.Type;
 
 /** True when at least one method can actually put text somewhere. */
-export const canInjectAnywhere = (report: BatonInjectionReport): boolean =>
+export const canInjectAnywhere = (report: TessayaInjectionReport): boolean =>
   report.capabilities.some((capability) => capability.available);
 
 /**
@@ -195,7 +200,7 @@ export const canInjectAnywhere = (report: BatonInjectionReport): boolean =>
  * Never "no": always which method is missing and why, because a user told only
  * "no" will try again, and a user told "Wayland does not allow it" will stop.
  */
-export const describeInjection = (report: BatonInjectionReport): string => {
+export const describeInjection = (report: TessayaInjectionReport): string => {
   const available = report.capabilities.filter((capability) => capability.available);
   if (available.length > 0) {
     return `I can type into the focused field here (${available[0]?.method}).`;
@@ -207,7 +212,7 @@ export const describeInjection = (report: BatonInjectionReport): string => {
 };
 
 /** One account's limits as T3 reports them, for the Usage tab. */
-export interface BatonUsageSummary {
+export interface TessayaUsageSummary {
   readonly account: string;
   /** The machines it is on, in plain words: "laptop + build-server". */
   readonly box: string;
@@ -221,7 +226,7 @@ export interface BatonUsageSummary {
   }>;
 }
 
-export type BatonSessionRequest =
+export type TessayaSessionRequest =
   | { readonly kind: "open"; readonly environmentId: string; readonly threadId: string }
   /** The thread list with only live sessions shown (its Live only filter on), from the Sessions tab. */
   | { readonly kind: "showLive" }
@@ -272,12 +277,12 @@ export type BatonSessionRequest =
  * than patched into it or into `@t3tools/contracts`. Every member is optional: a desktop build without
  * Baton voice simply lacks them.
  */
-export interface BatonDesktopBridge {
+export interface TessayaDesktopBridge {
   /** What this machine can type into, for §18's "capability must be reported honestly". */
   readonly getBatonInjectionReport?: (request: {
     readonly applicationIntegrationConnected: boolean;
     readonly keystrokeSimulationAllowed: boolean;
-  }) => Promise<BatonInjectionReport>;
+  }) => Promise<TessayaInjectionReport>;
   /**
    * The desktop voice core's intent calls (`@t3tools/tessaya-voice` router), answered with this
    * window's own `fabric.intent.resolve` / `run`, so spoken sentences meet the same grammar and
@@ -297,16 +302,16 @@ export interface BatonDesktopBridge {
             readonly text: string;
             readonly focusedWorkSessionId: string | null;
           }
-        | BatonJobBridgeRequest
-        | BatonMemoryBridgeRequest
-        | BatonCommitmentBridgeRequest
-        | BatonWeaveBridgeRequest
-        | BatonCloudBridgeRequest
-        | BatonPhoneBridgeRequest,
+        | TessayaJobBridgeRequest
+        | TessayaMemoryBridgeRequest
+        | TessayaCommitmentBridgeRequest
+        | TessayaWeaveBridgeRequest
+        | TessayaCloudBridgeRequest
+        | TessayaPhoneBridgeRequest,
     ) => Promise<unknown>,
   ) => () => void;
   /** The accounts' limits, pushed when they change, for Baton's own window. */
-  readonly setBatonUsage?: (usage: ReadonlyArray<BatonUsageSummary>) => void;
+  readonly setBatonUsage?: (usage: ReadonlyArray<TessayaUsageSummary>) => void;
   /**
    * Add an R1 over Bluetooth: the desktop's pairing asks the page, which asks him for the 6 digits on the R1's eyes
    * (`providePin`) or whether the shown ones match (`confirmPin`). Returns a stop.
@@ -320,7 +325,7 @@ export interface BatonDesktopBridge {
   /** Open a thread or send to a session on behalf of Baton's window; the answer is the result. */
   readonly onBatonSessionRequest?: (
     handler: (
-      request: BatonSessionRequest,
+      request: TessayaSessionRequest,
     ) => Promise<{ readonly ok: boolean; readonly detail: string }>,
   ) => () => void;
   /** §14 rung 3 for the voice core: the work session on screen, or null. */
@@ -379,11 +384,11 @@ export type ComposerDictationReply =
   | { readonly type: "action"; readonly id: number; readonly insert: boolean };
 
 /** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */
-export const batonDesktopBridge = (): BatonDesktopBridge | undefined =>
-  (globalThis as { batonDesktopBridge?: BatonDesktopBridge }).batonDesktopBridge;
+export const batonDesktopBridge = (): TessayaDesktopBridge | undefined =>
+  (globalThis as { batonDesktopBridge?: TessayaDesktopBridge }).batonDesktopBridge;
 
 /** The desktop's job tools (D145), answered by the window with the job RPCs; arguments are checked server-side. */
-export interface BatonJobBridgeRequest {
+export interface TessayaJobBridgeRequest {
   readonly kind: "job";
   readonly op:
     | "list"
@@ -404,7 +409,7 @@ export interface BatonJobBridgeRequest {
 }
 
 /** The desktop's memory calls (D150), answered by the window with `baton.memory.*`; the server checks every argument. */
-export interface BatonMemoryBridgeRequest {
+export interface TessayaMemoryBridgeRequest {
   readonly kind: "memory";
   readonly op:
     | "list"
@@ -430,21 +435,21 @@ export interface BatonMemoryBridgeRequest {
 }
 
 /** The desktop's commitments ledger calls (D149), answered by the window with `baton.commitments.*`. */
-export interface BatonCommitmentBridgeRequest {
+export interface TessayaCommitmentBridgeRequest {
   readonly kind: "commitments";
   readonly op: "list" | "upsert";
   readonly args: Readonly<Record<string, unknown>>;
 }
 
 /** The desktop assistant's weave calls (D149), answered by the window with `baton.weave.*`. */
-export interface BatonWeaveBridgeRequest {
+export interface TessayaWeaveBridgeRequest {
   readonly kind: "weave";
   readonly op: "send" | "list" | "tick";
   readonly args: Readonly<Record<string, unknown>>;
 }
 
 /** Cloud tasks on the computer that runs them (transport 2): which environments are connected, and a read or an act call to one. */
-export interface BatonCloudBridgeRequest {
+export interface TessayaCloudBridgeRequest {
   readonly kind: "cloud";
   readonly op: "environments" | "read" | "act" | "approve";
   /** The connected environment to ask; absent means the one this window is on. */
@@ -453,7 +458,7 @@ export interface BatonCloudBridgeRequest {
 }
 
 /** The desktop assistant's phone relay calls, answered by the window with `baton.phone.call`. */
-export interface BatonPhoneBridgeRequest {
+export interface TessayaPhoneBridgeRequest {
   readonly kind: "phone";
   readonly op: (typeof BATON_PHONE_OPS)[number];
   readonly args: Readonly<Record<string, unknown>>;

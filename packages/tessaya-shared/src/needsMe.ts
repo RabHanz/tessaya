@@ -3,7 +3,7 @@
  * adapter turns what a source reported into NeedItems, `rankNeeds` orders them, `describeNeeds`
  * says them. Nothing here sends, posts or spends; a source that cannot be read is named, not hidden.
  */
-import type { BatonJob, WatchFinding } from "@t3tools/tessaya-contracts";
+import type { TessayaJob, WatchFinding } from "@t3tools/tessaya-contracts";
 
 import type { Approval } from "./approvals.ts";
 
@@ -95,7 +95,7 @@ export const needsFromFindings = (findings: ReadonlyArray<WatchFinding>): Readon
 
 /** A job that ended and nobody has opened. Same id as the fleet's finding, so it is listed once. */
 export const needsFromJobs = (
-  jobs: ReadonlyArray<BatonJob>,
+  jobs: ReadonlyArray<TessayaJob>,
   now: number,
   /** Finished this long ago and still unseen. */
   unseenAfterMinutes = 30,

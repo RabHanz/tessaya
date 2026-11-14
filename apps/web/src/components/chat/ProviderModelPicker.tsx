@@ -23,7 +23,7 @@ import { cn } from "~/lib/utils";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { retainedModelWhileProviderLocked } from "./ProviderModelPicker.logic";
 import { ChatGptSharingControl } from "./ChatGptSharingControl";
-import { useBatonPickerAnchor } from "./BatonPickerAccount";
+import { useTessayaPickerAnchor } from "./TessayaPickerAccount";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
@@ -149,7 +149,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     if (isMenuOpen) refreshModelCatalog();
   }, [isMenuOpen]);
   // Opened from the header's account chip, it hangs under that chip instead of the composer.
-  const batonAnchor = useBatonPickerAnchor(isMenuOpen);
+  const tessayaAnchor = useTessayaPickerAnchor(isMenuOpen);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
@@ -457,7 +457,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         {...(docked
           ? { side: "top" as const, collisionAvoidance: { side: "shift", align: "shift" } as const }
           : {})}
-        {...batonAnchor}
+        {...tessayaAnchor}
         className="before:hidden"
         padding="none"
         touchBackdrop

@@ -19,7 +19,7 @@
  */
 import type { SpeakerIdentity } from "./speaker.ts";
 import type { CutIn } from "@t3tools/tessaya-shared/endOfTurn";
-import type { BatonIntentResolution } from "@t3tools/tessaya-contracts";
+import type { TessayaIntentResolution } from "@t3tools/tessaya-contracts";
 import {
   resolveContextWorkSession,
   resolveInjectionTarget,
@@ -35,11 +35,11 @@ export interface VoiceIntentClient {
     readonly text: string;
     readonly focusedWorkSessionId: string | null;
     readonly allowModel: boolean;
-  }) => Promise<BatonIntentResolution>;
+  }) => Promise<TessayaIntentResolution>;
   readonly run: (input: {
     readonly text: string;
     readonly focusedWorkSessionId: string | null;
-  }) => Promise<{ readonly resolution: BatonIntentResolution; readonly reply: string }>;
+  }) => Promise<{ readonly resolution: TessayaIntentResolution; readonly reply: string }>;
   /** Direct-session mode: a user message to the session, verbatim. */
   readonly sendToSession: (input: {
     readonly workSessionId: string;

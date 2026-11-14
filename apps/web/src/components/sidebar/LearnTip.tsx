@@ -10,7 +10,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 
@@ -19,7 +19,7 @@ import { Button } from "../ui/button";
  * seen anywhere is not shown again here. Picked once when the sidebar mounts, never on a redraw.
  */
 export function LearnTip(props: { readonly environmentId: EnvironmentId }): ReactNode {
-  const learnCall = useAtomCommand(batonWorkSessions.learnCall, { reportFailure: false });
+  const learnCall = useAtomCommand(tessayaWorkSessions.learnCall, { reportFailure: false });
   const navigate = useNavigate();
   const [tip, setTip] = useState<LearnItem | null>(null);
   const act = (change: LearnOp) =>

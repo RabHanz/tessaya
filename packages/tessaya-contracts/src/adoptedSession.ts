@@ -23,10 +23,10 @@
  */
 import * as Schema from "effect/Schema";
 
-import { BatonProjectRef } from "./liveSessions.ts";
+import { TessayaProjectRef } from "./liveSessions.ts";
 
 import { IsoDateTime, TrimmedNonEmptyString, TrimmedString } from "@t3tools/contracts";
-import { BatonSessionState } from "./sessionState.ts";
+import { TessayaSessionState } from "./sessionState.ts";
 import { WorkSessionId } from "./workSession.ts";
 
 // Legacy names (D71): wire method names keep "fabric." so installed clients keep working.
@@ -111,7 +111,7 @@ export const AdoptedSession = Schema.Struct({
    */
   agentKind: Schema.NullOr(TrimmedNonEmptyString),
   /** Mapped from the runtime's own state by the rules in §9. */
-  state: BatonSessionState,
+  state: TessayaSessionState,
   capabilities: AdoptedSessionCapabilities,
   /** When the runtime last told us any of this. */
   observedAt: IsoDateTime,
@@ -152,7 +152,7 @@ export const AdoptedSessionCandidate = Schema.Struct({
    */
   foreground: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
   /** What that word maps to, or null when Baton does not know the word. */
-  state: Schema.NullOr(BatonSessionState),
+  state: Schema.NullOr(TessayaSessionState),
   /**
    * The last lines of a pane whose agent is blocked: the question it is asking,
    * surfaced where the fleet is read rather than only inside the terminal.
@@ -160,7 +160,7 @@ export const AdoptedSessionCandidate = Schema.Struct({
   blockedPrompt: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** The pane's working directory and the project it belongs to (D72). */
   cwd: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  project: Schema.optionalKey(BatonProjectRef),
+  project: Schema.optionalKey(TessayaProjectRef),
 });
 export type AdoptedSessionCandidate = typeof AdoptedSessionCandidate.Type;
 

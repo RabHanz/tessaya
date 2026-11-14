@@ -5,14 +5,14 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import type {
-  BatonPromptLabInput,
-  BatonPromptLabResult,
+  TessayaPromptLabInput,
+  TessayaPromptLabResult,
   EnvironmentId,
 } from "@t3tools/tessaya-contracts";
 import { labSummary, LAB_MODELS } from "@t3tools/tessaya-shared/promptLab";
 import { useEffect, useState } from "react";
 
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -21,8 +21,8 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Textarea } from "../ui/textarea";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 
-type Personas = NonNullable<BatonPromptLabResult["personas"]>;
-type Cells = NonNullable<BatonPromptLabResult["cells"]>;
+type Personas = NonNullable<TessayaPromptLabResult["personas"]>;
+type Cells = NonNullable<TessayaPromptLabResult["cells"]>;
 
 const MODEL_LABELS: Readonly<Record<string, string>> = {
   haiku: "Haiku",
@@ -31,8 +31,8 @@ const MODEL_LABELS: Readonly<Record<string, string>> = {
 };
 
 export function PromptLab({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  const allowed = useAtomValue(batonWorkSessions.promptLab.permissionAtom(environmentId));
-  const lab = useAtomCommand(batonWorkSessions.promptLab, { reportFailure: false });
+  const allowed = useAtomValue(tessayaWorkSessions.promptLab.permissionAtom(environmentId));
+  const lab = useAtomCommand(tessayaWorkSessions.promptLab, { reportFailure: false });
   const [personas, setPersonas] = useState<Personas>([]);
   const [pick, setPick] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -44,7 +44,7 @@ export function PromptLab({ environmentId }: { readonly environmentId: Environme
   const [line, setLine] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const send = async (input: BatonPromptLabInput) => {
+  const send = async (input: TessayaPromptLabInput) => {
     setBusy(true);
     const result = await lab({ environmentId, input });
     setBusy(false);
@@ -80,7 +80,7 @@ export function PromptLab({ environmentId }: { readonly environmentId: Environme
         ? list
         : [...list, item]
       : list.filter((x) => x !== item);
-  const after = async (input: BatonPromptLabInput) => {
+  const after = async (input: TessayaPromptLabInput) => {
     await send(input);
     await reload();
   };

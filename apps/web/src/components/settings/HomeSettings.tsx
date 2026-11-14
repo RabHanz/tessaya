@@ -4,7 +4,7 @@
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 import type {
-  BatonHomeCallResult,
+  TessayaHomeCallResult,
   HomeActionRow,
   HomeAutomationRow,
   HomeStatus,
@@ -17,7 +17,7 @@ import {
 } from "@t3tools/tessaya-shared/homeView";
 import { useEffect, useState } from "react";
 
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -54,7 +54,7 @@ export function HomeSettingsPanel() {
 
 function HomeSections({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const quiet = { reportFailure: false } as const;
-  const homeCall = useAtomCommand(batonWorkSessions.homeCall, quiet);
+  const homeCall = useAtomCommand(tessayaWorkSessions.homeCall, quiet);
   // One method; the kind sets its scope on the server (act is operate, answer is the approval scope).
   const via =
     (kind: "read" | "act" | "answer") =>
@@ -110,7 +110,7 @@ function HomeSections({ environmentId }: { readonly environmentId: EnvironmentId
     setBusy(true);
     setNote("");
     const result = await command({ environmentId, input: { op, args } });
-    const reply: BatonHomeCallResult | null = result._tag === "Success" ? result.value : null;
+    const reply: TessayaHomeCallResult | null = result._tag === "Success" ? result.value : null;
     setNote(
       reply === null
         ? "Couldn’t reach this environment. Try again."

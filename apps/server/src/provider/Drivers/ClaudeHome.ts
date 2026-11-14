@@ -9,7 +9,7 @@ import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import { readClaudeSettingsEnv } from "./ClaudeSkills.ts";
-import * as BatonClaudeAccountHome from "./ClaudeAccountHome.ts";
+import * as TessayaClaudeAccountHome from "./ClaudeAccountHome.ts";
 
 const quotePath = Schema.encodeSync(Schema.fromJsonString(Schema.String));
 
@@ -107,7 +107,7 @@ export const makeClaudeContinuationGroupKey = Effect.fn("makeClaudeContinuationG
     environment?: NodeJS.ProcessEnv,
   ): Effect.fn.Return<string, never, Path.Path> {
     // Baton (D95): an account overlay links the primary's projects/, so its sessions resume anywhere.
-    const layout = yield* BatonClaudeAccountHome.resolveClaudeAccountHomeLayout(config);
+    const layout = yield* TessayaClaudeAccountHome.resolveClaudeAccountHomeLayout(config);
     if (layout.mode === "accountOverlay") return `claude:home:${layout.sharedHomePath}`;
     const resolvedHomePath = yield* resolveClaudeHomePath(config, environment);
     return `claude:home:${resolvedHomePath}`;

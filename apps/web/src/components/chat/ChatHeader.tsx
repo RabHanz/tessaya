@@ -20,8 +20,8 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
-import { BatonLiveStatus } from "./BatonLiveStatus";
-import { useDisplayThreadTitle } from "./BatonThreadTitle";
+import { TessayaLiveStatus } from "./TessayaLiveStatus";
+import { useDisplayThreadTitle } from "./TessayaThreadTitle";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
@@ -400,7 +400,7 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {isServerThread ? <BatonLiveStatus threadRef={activeThreadRef} /> : null}
+      {isServerThread ? <TessayaLiveStatus threadRef={activeThreadRef} /> : null}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
     </div>
   );

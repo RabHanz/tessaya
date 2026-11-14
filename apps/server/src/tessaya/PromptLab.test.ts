@@ -8,14 +8,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
-import { BatonOneShot, BatonOneShotError } from "../baton/BatonOneShot.ts";
+import { TessayaOneShot, TessayaOneShotError } from "./TessayaOneShot.ts";
 import { layer as labLayer, PromptLab, PromptLabSources } from "./PromptLab.ts";
 
 const asked: Array<{ prompt: string; model?: string; system?: string }> = [];
-const oneShot = Layer.succeed(BatonOneShot, {
+const oneShot = Layer.succeed(TessayaOneShot, {
   run: (input: { prompt: string; model?: string; system?: string }) =>
     input.prompt.includes("revenue")
-      ? Effect.fail(new BatonOneShotError({ detail: "limit reached" }))
+      ? Effect.fail(new TessayaOneShotError({ detail: "limit reached" }))
       : Effect.sync(() => {
           asked.push(input);
           return { reply: `${input.model}: hello` };

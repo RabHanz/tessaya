@@ -1,6 +1,6 @@
 import {
   AuthAccessTokenType,
-  AuthBatonMemorySyncScope,
+  AuthTessayaMemorySyncScope,
   AuthAccessWriteScope,
   AuthMcpClientAccess,
   AuthOrchestrationOperateScope,
@@ -1022,7 +1022,7 @@ export const make = Effect.gen(function* () {
                       proofKeyThumbprint: input.proofKeyThumbprint,
                       ttl: Duration.hours(1),
                     }
-                  : grantedScopes.length === 1 && grantedScopes[0] === AuthBatonMemorySyncScope
+                  : grantedScopes.length === 1 && grantedScopes[0] === AuthTessayaMemorySyncScope
                     ? { ttl: MEMORY_SYNC_SESSION_TTL }
                     : {}),
                 replaceActiveForSubjectAndMethod: grant.method === "desktop-bootstrap",

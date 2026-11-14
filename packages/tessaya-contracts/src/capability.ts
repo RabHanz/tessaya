@@ -14,7 +14,7 @@ import * as Schema from "effect/Schema";
  * sentence, every rule firing — are useful for days and are a liability for
  * ever, so they have a horizon and it is a setting rather than a habit.
  */
-export const BatonRetentionPolicy = Schema.Struct({
+export const TessayaRetentionPolicy = Schema.Struct({
   /** Days to keep the intent log. Zero means keep nothing beyond today. */
   intentDays: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 3650 })),
   /** Days to keep orchestration firings. */
@@ -25,9 +25,9 @@ export const BatonRetentionPolicy = Schema.Struct({
    */
   keepRefusals: Schema.Boolean,
 });
-export type BatonRetentionPolicy = typeof BatonRetentionPolicy.Type;
+export type TessayaRetentionPolicy = typeof TessayaRetentionPolicy.Type;
 
-export const DEFAULT_RETENTION: BatonRetentionPolicy = {
+export const DEFAULT_RETENTION: TessayaRetentionPolicy = {
   intentDays: 30,
   firingDays: 90,
   keepRefusals: true,

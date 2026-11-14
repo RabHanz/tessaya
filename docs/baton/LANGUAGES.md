@@ -1,6 +1,6 @@
 # Words in the window
 
-All text the window draws belongs in `apps/desktop/src/baton/home/strings.ts`: one table per language,
+All text the window draws belongs in `apps/desktop/src/tessaya/home/strings.ts`: one table per language,
 English only for now. A second language is a second object with the same keys; a key it leaves out falls
 back to English. A gap in a sentence is written `{name}` and filled by `text(key, { name })`.
 

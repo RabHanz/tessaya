@@ -7,10 +7,10 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
-import { TessayaComms } from "../../../baton/TessayaComms.ts";
-import { HouseholdCaller } from "../../../baton/TessayaHousehold.ts";
-import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
+import { TessayaComms } from "../../../tessaya/TessayaComms.ts";
+import { HouseholdCaller } from "../../../tessaya/TessayaHousehold.ts";
+import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 
 const unavailable = new OrchestratorMcpFailure({
@@ -21,7 +21,7 @@ const decode = Schema.decodeUnknownOption(CommsCallInput);
 type Args = Readonly<Record<string, unknown>>;
 
 export const make = Effect.gen(function* () {
-  const context = yield* BatonRuntime;
+  const context = yield* TessayaRuntime;
   const run = Effect.fn("CommsMcp.run")(function* (raw: unknown) {
     if (context === null) return yield* unavailable;
     const input = decode(raw);

@@ -21,16 +21,16 @@
  */
 import {
   BATON_STATE_LABELS,
-  batonStateNeedsUser,
+  tessayaStateNeedsUser,
   isSynopsisStale,
-  type BatonSessionState,
+  type TessayaSessionState,
   type WorkSessionSynopsis,
 } from "@t3tools/tessaya-contracts";
 
 export interface SpokenWorkSession {
   readonly title: string;
   readonly projectLabel: string | null;
-  readonly state: BatonSessionState;
+  readonly state: TessayaSessionState;
   /** The account currently running it, as the user names it. */
   readonly providerLabel: string | null;
   readonly hostLabel: string | null;
@@ -92,7 +92,7 @@ export function speakWorkSessionStatus(workSession: SpokenWorkSession, now: numb
     return null;
   })();
 
-  const need = batonStateNeedsUser(state)
+  const need = tessayaStateNeedsUser(state)
     ? state === "needs_approval"
       ? "It needs you to approve."
       : state === "needs_input"
@@ -117,7 +117,7 @@ export function speakWorkSessionStatus(workSession: SpokenWorkSession, now: numb
  * limits, then a count of what is still running.
  */
 export function speakFleetNeedsUser(workSessions: ReadonlyArray<SpokenWorkSession>): string {
-  const by = (state: BatonSessionState) => workSessions.filter((entry) => entry.state === state);
+  const by = (state: TessayaSessionState) => workSessions.filter((entry) => entry.state === state);
   const approvals = by("needs_approval");
   const questions = by("needs_input");
   const failures = by("failed");

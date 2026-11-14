@@ -42,12 +42,12 @@ index 4cd276c51133bbcc1d88b59421dad9e4856037c4..26428138788f74d9787bfb63e2ba84b5
 +  ),
 +);
 diff --git a/apps/server/src/auth/PairingGrantStore.test.ts b/apps/server/src/auth/PairingGrantStore.test.ts
-index 5184beb09680728f6a28aee95cd95d9e124a21ad..3d541da989a67bf14618ea14f3ec7fb06d9a8fed 100644
+index 5184beb09680728f6a28aee95cd95d9e124a21ad..8297f3b19cb99a5f6690af876db0850b94364427 100644
 --- a/apps/server/src/auth/PairingGrantStore.test.ts
 +++ b/apps/server/src/auth/PairingGrantStore.test.ts
 @@ -1,4 +1,4 @@
 -import { AuthStandardClientScopes } from "@t3tools/contracts";
-+import { AuthBatonCloudApproveScope, AuthStandardClientScopes } from "@t3tools/contracts";
++import { AuthTessayaCloudApproveScope, AuthStandardClientScopes } from "@t3tools/contracts";
  import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
  import * as NodeServices from "@effect/platform-node/NodeServices";
  import { expect, it } from "@effect/vitest";
@@ -55,7 +55,7 @@ index 5184beb09680728f6a28aee95cd95d9e124a21ad..3d541da989a67bf14618ea14f3ec7fb0
  
        expect(first.method).toBe("one-time-token");
        expect(first.scopes).toEqual(AuthStandardClientScopes);
-+      expect(first.scopes).not.toContain(AuthBatonCloudApproveScope);
++      expect(first.scopes).not.toContain(AuthTessayaCloudApproveScope);
        expect(first.subject).toBe("one-time-token");
        expect(first.label).toBe("Julius iPhone");
        expect(issued.label).toBe("Julius iPhone");
@@ -64,19 +64,19 @@ index 5184beb09680728f6a28aee95cd95d9e124a21ad..3d541da989a67bf14618ea14f3ec7fb0
  
        expect(exact.method).toBe("desktop-bootstrap");
 +      // Only the desktop app's own session may approve cloud tasks; a paired client never does by default.
-+      expect(exact.scopes).toContain(AuthBatonCloudApproveScope);
++      expect(exact.scopes).toContain(AuthTessayaCloudApproveScope);
        expect(otherCase._tag).toBe("UnknownBootstrapCredentialError");
      }).pipe(
        Effect.provide(
 diff --git a/apps/server/src/auth/PairingGrantStore.ts b/apps/server/src/auth/PairingGrantStore.ts
-index bf9eccee8c51ba5aa4718808f4ac9396267cd725..4567f2d1ae33ae6294adeefc4623cbc966546bad 100644
+index bf9eccee8c51ba5aa4718808f4ac9396267cd725..9106249368d8d2a5908cf0ff09a4d1fa3e32041c 100644
 --- a/apps/server/src/auth/PairingGrantStore.ts
 +++ b/apps/server/src/auth/PairingGrantStore.ts
 @@ -1,4 +1,7 @@
  import {
-+  AuthBatonCloudApproveScope,
-+  AuthBatonHandsHostScope,
-+  AuthBatonMemorySyncScope,
++  AuthTessayaCloudApproveScope,
++  AuthTessayaHandsHostScope,
++  AuthTessayaMemorySyncScope,
    AuthStandardClientScopes,
    type AuthEnvironmentScope,
    type AuthMcpClientAccess,
@@ -87,10 +87,10 @@ index bf9eccee8c51ba5aa4718808f4ac9396267cd725..4567f2d1ae33ae6294adeefc4623cbc9
 +/** The desktop app's own session may also approve cloud tasks; a paired client never gets that by default. */
 +const DESKTOP_SCOPES = [
 +  ...AuthStandardClientScopes,
-+  AuthBatonCloudApproveScope,
-+  AuthBatonHandsHostScope,
++  AuthTessayaCloudApproveScope,
++  AuthTessayaHandsHostScope,
 +  // So the desktop can hand out a sync-only credential for this server ("Pair for memory sync").
-+  AuthBatonMemorySyncScope,
++  AuthTessayaMemorySyncScope,
 +] as const;
  const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
  const DEV_STARTUP_TTL_HOURS = Duration.hours(24);
@@ -114,13 +114,13 @@ index bf9eccee8c51ba5aa4718808f4ac9396267cd725..4567f2d1ae33ae6294adeefc4623cbc9
            expiresAt: DateTime.add(now, {
              milliseconds: DESKTOP_BOOTSTRAP_TOKEN_WINDOW_MS,
 diff --git a/apps/server/src/cli/authScopes.ts b/apps/server/src/cli/authScopes.ts
-index 9294cc1a12ba7b4f84940632177d42110fc3231c..0356d7a985d24e5f4732167c3e8089b58837f572 100644
+index 9294cc1a12ba7b4f84940632177d42110fc3231c..c04425b8d60e29690f02f33b293cf108d6609ec8 100644
 --- a/apps/server/src/cli/authScopes.ts
 +++ b/apps/server/src/cli/authScopes.ts
 @@ -1,11 +1,20 @@
 -import { AuthGrantScope } from "@t3tools/contracts";
 +import {
-+  AuthBatonMemorySyncScope,
++  AuthTessayaMemorySyncScope,
 +  type AuthGrantScope,
 +  AuthGrantScopeNames,
 +  mixesMemorySync,
@@ -137,7 +137,7 @@ index 9294cc1a12ba7b4f84940632177d42110fc3231c..0356d7a985d24e5f4732167c3e8089b5
      Flag.map((scopes) => [...new Set(scopes.length > 0 ? scopes : defaults)]),
 +    Flag.filter(
 +      (scopes) => !mixesMemorySync(scopes),
-+      () => `${AuthBatonMemorySyncScope} is a sync-only credential: give it alone.`,
++      () => `${AuthTessayaMemorySyncScope} is a sync-only credential: give it alone.`,
 +    ),
    );
 diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
@@ -188,14 +188,14 @@ index 718a9dda93c0ed95020cf66522eaf2a06d05f7a7..b9bffd69b222f73bab87bd192869285e
      Effect.gen(function* () {
        const registry = yield* setup;
 diff --git a/packages/contracts/src/auth.test.ts b/packages/contracts/src/auth.test.ts
-index d18a827c14228c32d19c9fbef9511422fc1e706f..afea59780296fe24b6e5a6de9e838d15a3aedb1d 100644
+index d18a827c14228c32d19c9fbef9511422fc1e706f..94093d26f96bd96c43d8ef2464c7cd414ab92e0a 100644
 --- a/packages/contracts/src/auth.test.ts
 +++ b/packages/contracts/src/auth.test.ts
 @@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
  import * as Schema from "effect/Schema";
  
  import {
-+  AuthBatonCloudApproveScope,
++  AuthTessayaCloudApproveScope,
 +  AuthOrchestrationOperateScope,
    AuthEnvironmentScopes,
    AuthEnvironmentScope,
@@ -268,28 +268,28 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..afea59780296fe24b6e5a6de9e838d15
    );
  
 +  it("never gives the cloud approval scope to a standard client, or to a session that only holds operate", () => {
-+    expect(AuthStandardClientScopes).not.toContain(AuthBatonCloudApproveScope);
++    expect(AuthStandardClientScopes).not.toContain(AuthTessayaCloudApproveScope);
 +    expect(
 +      sessionGrantsScope(
 +        { authenticated: true, scopes: [AuthOrchestrationOperateScope] },
-+        AuthBatonCloudApproveScope,
++        AuthTessayaCloudApproveScope,
 +      ),
 +    ).toBe(false);
 +    expect(
 +      sessionGrantsScope(
 +        { authenticated: true, permissions: [...AuthStandardClientScopes] },
-+        AuthBatonCloudApproveScope,
++        AuthTessayaCloudApproveScope,
 +      ),
 +    ).toBe(false);
 +    expect(
 +      sessionGrantsScope(
-+        { authenticated: true, permissions: [AuthBatonCloudApproveScope] },
-+        AuthBatonCloudApproveScope,
++        { authenticated: true, permissions: [AuthTessayaCloudApproveScope] },
++        AuthTessayaCloudApproveScope,
 +      ),
 +    ).toBe(true);
-+    expect(authScopeRequiredResponse(AuthBatonCloudApproveScope)).toEqual({
++    expect(authScopeRequiredResponse(AuthTessayaCloudApproveScope)).toEqual({
 +      requiredScope: AuthOrchestrationOperateScope,
-+      requiredPermission: AuthBatonCloudApproveScope,
++      requiredPermission: AuthTessayaCloudApproveScope,
 +    });
 +  });
 +
@@ -297,7 +297,7 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..afea59780296fe24b6e5a6de9e838d15
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..79f5b82ec20c396dd8d3453c95ff5077a34fb3d4 100644
+index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfbaf8645eba 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
 @@ -1,4 +1,5 @@
@@ -316,21 +316,21 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..79f5b82ec20c396dd8d3453c95ff5077
 + * session and a client the Director paired on purpose with this scope hold it, so no assistant, tool or
 + * session client can approve its own request.
 + */
-+export const AuthBatonCloudApproveScope = "baton:cloud-approve" as const;
++export const AuthTessayaCloudApproveScope = "baton:cloud-approve" as const;
 +/**
 + * Driving this computer's apps from a remote session (docs/baton/REMOTE_HANDS.md). Never in the standard scopes: the
 + * Director issues it to one session's token on his own machine (`auth token --scopes baton:hands`), and revoking that
 + * session ends it.
 + */
-+export const AuthBatonHandsScope = "baton:hands" as const;
++export const AuthTessayaHandsScope = "baton:hands" as const;
 +/** The desktop app's own session takes the remote calls and answers them; no client holds it. */
-+export const AuthBatonHandsHostScope = "baton:hands-host" as const;
++export const AuthTessayaHandsHostScope = "baton:hands-host" as const;
 +/**
 + * Tessaya memory sync with another of the Director's servers, walls included, and a search of that server's history
 + * index (secrets marked, walled hits left out). A credential holding it holds nothing else (`AuthGrantScopes`), so it
 + * can do only these; it is minted on the server it reads.
 + */
-+export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
++export const AuthTessayaMemorySyncScope = "baton:memory-sync" as const;
 +/**
 + * A household member's own device (ACCOUNTS-IDENTITY-DESIGN §3.3): Tessaya's member methods, which check the member and
 + * role themselves. Never part of the standard client scopes, and it reaches no thread, terminal or file.
@@ -351,10 +351,10 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..79f5b82ec20c396dd8d3453c95ff5077
    AuthAccessWriteScope,
    AuthRelayReadScope,
    AuthRelayWriteScope,
-+  AuthBatonCloudApproveScope,
-+  AuthBatonHandsScope,
-+  AuthBatonHandsHostScope,
-+  AuthBatonMemorySyncScope,
++  AuthTessayaCloudApproveScope,
++  AuthTessayaHandsScope,
++  AuthTessayaHandsHostScope,
++  AuthTessayaMemorySyncScope,
 +  AuthTessayaMemberScope,
 +  AuthTessayaGuestScope,
 +  AuthTessayaWakeTrainerScope,
@@ -365,10 +365,10 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..79f5b82ec20c396dd8d3453c95ff5077
 + * writes the old one, so a session, token or grant written by the next build (or read after a rollback) still works.
 + */
 +const RENAMED_SCOPES = [
-+  [AuthBatonCloudApproveScope, "tessaya:cloud-approve"],
-+  [AuthBatonHandsScope, "tessaya:hands"],
-+  [AuthBatonHandsHostScope, "tessaya:hands-host"],
-+  [AuthBatonMemorySyncScope, "tessaya:memory-sync"],
++  [AuthTessayaCloudApproveScope, "tessaya:cloud-approve"],
++  [AuthTessayaHandsScope, "tessaya:hands"],
++  [AuthTessayaHandsHostScope, "tessaya:hands-host"],
++  [AuthTessayaMemorySyncScope, "tessaya:memory-sync"],
 +] as const;
 +const SCOPE_OF_RENAMED = new Map<string, string>(
 +  RENAMED_SCOPES.map(([current, renamed]) => [renamed, current]),
@@ -398,7 +398,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..79f5b82ec20c396dd8d3453c95ff5077
 +// Only the desktop's own session holds hands-host, so no grant can hand it to another device.
 +const AuthGrantScopeName = Schema.Literals(
 +  AuthEnvironmentScopeName.literals.filter(
-+    (scope) => scope !== AuthReviewWriteScope && scope !== AuthBatonHandsHostScope,
++    (scope) => scope !== AuthReviewWriteScope && scope !== AuthTessayaHandsHostScope,
 +  ),
  );
 +type AuthGrantScopeName = typeof AuthGrantScopeName.Type;
@@ -421,10 +421,10 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..79f5b82ec20c396dd8d3453c95ff5077
 -export const AuthGrantScopes = Schema.Array(AuthGrantScope);
 +/** A memory-sync credential carries that scope alone: it must never double as a client token. */
 +export const mixesMemorySync = (scopes: ReadonlyArray<string>): boolean =>
-+  scopes.includes(AuthBatonMemorySyncScope) && scopes.length > 1;
++  scopes.includes(AuthTessayaMemorySyncScope) && scopes.length > 1;
 +export const AuthGrantScopes = Schema.Array(AuthGrantScope).check(
 +  Schema.makeFilter(
-+    (scopes) => !mixesMemorySync(scopes) || `${AuthBatonMemorySyncScope} goes alone`,
++    (scopes) => !mixesMemorySync(scopes) || `${AuthTessayaMemorySyncScope} goes alone`,
 +  ),
 +);
  export type AuthGrantScopes = typeof AuthGrantScopes.Type;
@@ -438,10 +438,10 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..79f5b82ec20c396dd8d3453c95ff5077
 +// `legacyParents`, it never grants anything: a session holding "operate" does not hold it.
 +const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>> = {
 +  ...legacyParents,
-+  [AuthBatonCloudApproveScope]: AuthOrchestrationOperateScope,
-+  [AuthBatonHandsScope]: AuthOrchestrationOperateScope,
-+  [AuthBatonHandsHostScope]: AuthOrchestrationOperateScope,
-+  [AuthBatonMemorySyncScope]: AuthOrchestrationOperateScope,
++  [AuthTessayaCloudApproveScope]: AuthOrchestrationOperateScope,
++  [AuthTessayaHandsScope]: AuthOrchestrationOperateScope,
++  [AuthTessayaHandsHostScope]: AuthOrchestrationOperateScope,
++  [AuthTessayaMemorySyncScope]: AuthOrchestrationOperateScope,
 +  [AuthTessayaMemberScope]: AuthOrchestrationReadScope,
 +  [AuthTessayaGuestScope]: AuthOrchestrationReadScope,
 +  [AuthTessayaWakeTrainerScope]: AuthOrchestrationOperateScope,
@@ -456,14 +456,14 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..79f5b82ec20c396dd8d3453c95ff5077
    };
  }
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..c0110b3dc189c493ec3b652674499b4344f85b80 100644
+index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..28d76db5e7ec1ae6e40be8f5a03c15e0851ab5aa 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
 @@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
  import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
  import {
    AuthAccessWriteScope,
-+  AuthBatonCloudApproveScope,
++  AuthTessayaCloudApproveScope,
    AuthEnvironmentMaintainScope,
    AuthOrchestrationOperateScope,
    AuthOrchestrationReadScope,
@@ -483,13 +483,13 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..c0110b3dc189c493ec3b652674499b43
      )
        return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
    }
-+  // Its kind sets the scope, as the server's missingBatonScope does: owner is the camera, reboot and pictures.
++  // Its kind sets the scope, as the server's missingTessayaScope does: owner is the camera, reboot and pictures.
 +  if (method === DEVICES_CALL) {
 +    const kind = (input as { kind?: unknown } | undefined)?.kind;
 +    return kind === "read"
 +      ? [AuthOrchestrationReadScope]
 +      : kind === "owner"
-+        ? [AuthOrchestrationReadScope, AuthBatonCloudApproveScope]
++        ? [AuthOrchestrationReadScope, AuthTessayaCloudApproveScope]
 +        : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
 +  }
 +  if (method === PROMPT_LAB_CALL) return [AuthSettingsWriteScope];

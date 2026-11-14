@@ -3,7 +3,7 @@
  * remove someone (their data waits 7 days for their export) or bring them back. A voice never finishes an admin act on
  * its own: those come back `asked`, sent to the owner's device for a yes.
  */
-import { BatonPreferenceKey } from "@t3tools/tessaya-contracts";
+import { TessayaPreferenceKey } from "@t3tools/tessaya-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool } from "effect/ai";
@@ -121,7 +121,7 @@ const PreferenceSetTool = Tool.make("member_preference_set", {
     "Set or clear another member's preference, which only the owner may do (the speaker's own go through tessaya_preference_set). `key` is name, persona, voice, units, timeFormat, news, music or wakeTraining (on or off: whether their enrolled voice may train her wake words); an empty `value` clears it. Say the line back.",
   parameters: Schema.Struct({
     id: Id,
-    key: BatonPreferenceKey,
+    key: TessayaPreferenceKey,
     value: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   }),
 })

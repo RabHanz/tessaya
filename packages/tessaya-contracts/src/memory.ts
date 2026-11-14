@@ -35,7 +35,7 @@ export const BATON_MEMORY_WS_METHODS = {
   syncRun: "baton.memory.syncRun",
 } as const;
 
-export const BatonMemoryKind = Schema.Literals([
+export const TessayaMemoryKind = Schema.Literals([
   "note",
   "preference",
   "fact",
@@ -45,16 +45,16 @@ export const BatonMemoryKind = Schema.Literals([
   "learning",
   "skill",
 ]);
-export const BatonMemorySource = Schema.Literals(["user", "thread", "job", "import", "sync"]);
-export const BatonMemoryScope = Schema.Literals(["global", "project", "person"]);
+export const TessayaMemorySource = Schema.Literals(["user", "thread", "job", "import", "sync"]);
+export const TessayaMemoryScope = Schema.Literals(["global", "project", "person"]);
 
-export const BatonMemoryItem = Schema.Struct({
+export const TessayaMemoryItem = Schema.Struct({
   id: TrimmedNonEmptyString,
-  kind: BatonMemoryKind,
+  kind: TessayaMemoryKind,
   text: TrimmedNonEmptyString,
-  source: BatonMemorySource,
+  source: TessayaMemorySource,
   sourceRef: Schema.NullOr(Schema.String),
-  scope: BatonMemoryScope,
+  scope: TessayaMemoryScope,
   scopeRef: Schema.NullOr(Schema.String),
   confidence: Schema.Number,
   pinned: Schema.Boolean,
@@ -71,12 +71,12 @@ export const BatonMemoryItem = Schema.Struct({
   surface: Schema.optionalKey(Schema.NullOr(Schema.String)),
   speaker: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
-export type BatonMemoryItem = typeof BatonMemoryItem.Type;
+export type TessayaMemoryItem = typeof TessayaMemoryItem.Type;
 
-export const BatonMemoryQuery = Schema.Struct({
+export const TessayaMemoryQuery = Schema.Struct({
   text: Schema.optionalKey(Schema.String),
-  kinds: Schema.optionalKey(Schema.Array(BatonMemoryKind)),
-  scope: Schema.optionalKey(BatonMemoryScope),
+  kinds: Schema.optionalKey(Schema.Array(TessayaMemoryKind)),
+  scope: Schema.optionalKey(TessayaMemoryScope),
   scopeRef: Schema.optionalKey(Schema.NullOr(Schema.String)),
   includeSuperseded: Schema.optionalKey(Schema.Boolean),
   includeProposed: Schema.optionalKey(Schema.Boolean),
@@ -86,14 +86,14 @@ export const BatonMemoryQuery = Schema.Struct({
   /** His own view: sees walled projects without a persona. Only the desktop app's own session may set it. */
   admin: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonMemoryQuery = typeof BatonMemoryQuery.Type;
+export type TessayaMemoryQuery = typeof TessayaMemoryQuery.Type;
 
-export const BatonMemoryDraft = Schema.Struct({
-  kind: BatonMemoryKind,
+export const TessayaMemoryDraft = Schema.Struct({
+  kind: TessayaMemoryKind,
   text: Schema.String,
-  source: BatonMemorySource,
+  source: TessayaMemorySource,
   sourceRef: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  scope: Schema.optionalKey(BatonMemoryScope),
+  scope: Schema.optionalKey(TessayaMemoryScope),
   scopeRef: Schema.optionalKey(Schema.NullOr(Schema.String)),
   confidence: Schema.optionalKey(Schema.Number),
   pinned: Schema.optionalKey(Schema.Boolean),
@@ -104,50 +104,50 @@ export const BatonMemoryDraft = Schema.Struct({
   /** When an imported item was first written where it came from. Honoured for `source: "import"` only. */
   createdAt: Schema.optionalKey(IsoDateTime),
 });
-export type BatonMemoryDraft = typeof BatonMemoryDraft.Type;
+export type TessayaMemoryDraft = typeof TessayaMemoryDraft.Type;
 
-export const BatonMemoryItemResult = Schema.Struct({ item: BatonMemoryItem });
-export const BatonMemoryListResult = Schema.Struct({ items: Schema.Array(BatonMemoryItem) });
-export const BatonMemorySearchResult = Schema.Struct({
-  hits: Schema.Array(Schema.Struct({ item: BatonMemoryItem, score: Schema.Number })),
+export const TessayaMemoryItemResult = Schema.Struct({ item: TessayaMemoryItem });
+export const TessayaMemoryListResult = Schema.Struct({ items: Schema.Array(TessayaMemoryItem) });
+export const TessayaMemorySearchResult = Schema.Struct({
+  hits: Schema.Array(Schema.Struct({ item: TessayaMemoryItem, score: Schema.Number })),
 });
-export const BatonMemoryEditInput = Schema.Struct({
+export const TessayaMemoryEditInput = Schema.Struct({
   id: TrimmedNonEmptyString,
   text: Schema.optionalKey(Schema.String),
-  kind: Schema.optionalKey(BatonMemoryKind),
+  kind: Schema.optionalKey(TessayaMemoryKind),
   /** "Make household": every persona may recall it; "persona" keeps it to the persona it was learned with. */
   visibility: Schema.optionalKey(Schema.Literals(["household", "persona"])),
 });
 /** One earlier wording of an item (KIRO-4), kept when it changed. */
-export const BatonMemoryVersion = Schema.Struct({
+export const TessayaMemoryVersion = Schema.Struct({
   version: Schema.Number,
   text: Schema.String,
-  kind: BatonMemoryKind,
+  kind: TessayaMemoryKind,
   at: Schema.String,
   by: Schema.Literals(["him", "consolidate", "rewrite", "sync", "import"]),
   why: Schema.String,
 });
 /** `agent` and `admin` as for a list: the desktop's own view, or a persona's walled one. */
-export const BatonMemoryHistoryInput = Schema.Struct({
+export const TessayaMemoryHistoryInput = Schema.Struct({
   id: TrimmedNonEmptyString,
   agent: Schema.optionalKey(Schema.String),
   admin: Schema.optionalKey(Schema.Boolean),
 });
-export const BatonMemoryHistoryResult = Schema.Struct({
-  versions: Schema.Array(BatonMemoryVersion),
+export const TessayaMemoryHistoryResult = Schema.Struct({
+  versions: Schema.Array(TessayaMemoryVersion),
 });
 /** An earlier wording back as a new version; the history is never rewritten. */
-export const BatonMemoryRestoreInput = Schema.Struct({
+export const TessayaMemoryRestoreInput = Schema.Struct({
   id: TrimmedNonEmptyString,
   version: Schema.Number,
 });
-export const BatonMemoryPinInput = Schema.Struct({
+export const TessayaMemoryPinInput = Schema.Struct({
   id: TrimmedNonEmptyString,
   pinned: Schema.Boolean,
 });
-export const BatonMemoryRefInput = Schema.Struct({ id: TrimmedNonEmptyString });
-export const BatonMemoryForgetResult = Schema.Struct({ forgotten: Schema.Boolean });
-export const BatonMemoryRecallInput = Schema.Struct({
+export const TessayaMemoryRefInput = Schema.Struct({ id: TrimmedNonEmptyString });
+export const TessayaMemoryForgetResult = Schema.Struct({ forgotten: Schema.Boolean });
+export const TessayaMemoryRecallInput = Schema.Struct({
   text: Schema.optionalKey(Schema.String),
   scopeRef: Schema.optionalKey(Schema.NullOr(Schema.String)),
   budgetTokens: Schema.optionalKey(Schema.Number),
@@ -158,15 +158,15 @@ export const BatonMemoryRecallInput = Schema.Struct({
   /** His IANA zone, so "yesterday" is his day. */
   timeZone: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
 });
-export const BatonMemoryRecallResult = Schema.Struct({
+export const TessayaMemoryRecallResult = Schema.Struct({
   block: Schema.String,
   ids: Schema.Array(Schema.String),
 });
 /** No `turnRef` means the most recent turn that used any memory. */
-export const BatonMemoryUsedInput = Schema.Struct({
+export const TessayaMemoryUsedInput = Schema.Struct({
   turnRef: Schema.optionalKey(TrimmedNonEmptyString),
 });
-export const BatonMemoryExportResult = Schema.Struct({ markdown: Schema.String });
+export const TessayaMemoryExportResult = Schema.Struct({ markdown: Schema.String });
 
 /** Said in plain words to him: "that looks like a password, so I did not keep it". */
 export class BatonMemoryRefusedError extends Schema.TaggedError<BatonMemoryRefusedError>()(
@@ -180,13 +180,13 @@ export class BatonMemoryRefusedError extends Schema.TaggedError<BatonMemoryRefus
 
 /** After a turn: what he said and what came back, for the extractor (D150). Dictation is never sent. */
 /** Who spoke, as voice ID judged the turn; the private stores' gate reads the same shape. */
-export const BatonTurnSpeaker = Schema.Struct({
+export const TessayaTurnSpeaker = Schema.Struct({
   kind: Schema.Literals(["owner", "saved", "guest", "unverified"]),
   personId: Schema.NullOr(Schema.String),
   verified: Schema.Boolean,
   inherited: Schema.Boolean,
 });
-export const BatonMemoryLearnInput = Schema.Struct({
+export const TessayaMemoryLearnInput = Schema.Struct({
   said: Schema.String,
   reply: Schema.String,
   /** The turn read something from outside, so nothing from it is kept without his yes. */
@@ -207,9 +207,9 @@ export const BatonMemoryLearnInput = Schema.Struct({
   /** Said to her (the turn pipeline's envelope); absent counts as said to her. */
   addressed: Schema.optionalKey(Schema.Boolean),
   /** Who spoke, by voice; null or absent for a typed turn in his own window. */
-  speaker: Schema.optionalKey(Schema.NullOr(BatonTurnSpeaker)),
+  speaker: Schema.optionalKey(Schema.NullOr(TessayaTurnSpeaker)),
 });
-export const BatonMemoryLearnResult = Schema.Struct({
+export const TessayaMemoryLearnResult = Schema.Struct({
   stored: Schema.Number,
   held: Schema.Number,
   /** A conversation episode: "kept" or "skip" moves the desktop past those turns; "retry" sends them again. */
@@ -217,49 +217,49 @@ export const BatonMemoryLearnResult = Schema.Struct({
 });
 
 /** Sync between servers (D150, MEMORY.md section 6): last writer wins, a tombstone beats an older item. */
-export const BatonMemoryTombstone = Schema.Struct({
+export const TessayaMemoryTombstone = Schema.Struct({
   id: TrimmedNonEmptyString,
   deletedAt: IsoDateTime,
   origin: Schema.String,
 });
-export const BatonMemoryChange = Schema.Struct({
-  item: Schema.NullOr(BatonMemoryItem),
-  tombstone: Schema.NullOr(BatonMemoryTombstone),
+export const TessayaMemoryChange = Schema.Struct({
+  item: Schema.NullOr(TessayaMemoryItem),
+  tombstone: Schema.NullOr(TessayaMemoryTombstone),
   writer: Schema.String,
 });
-export type BatonMemoryChange = typeof BatonMemoryChange.Type;
-export const BatonMemorySyncHelloResult = Schema.Struct({
+export type TessayaMemoryChange = typeof TessayaMemoryChange.Type;
+export const TessayaMemorySyncHelloResult = Schema.Struct({
   origin: Schema.String,
   /** For each peer server: the newest change of theirs this one has applied. */
   cursors: Schema.Record(Schema.String, Schema.String),
 });
-export const BatonMemorySyncPullInput = Schema.Struct({ since: Schema.NullOr(Schema.String) });
-export const BatonMemorySyncPullResult = Schema.Struct({
+export const TessayaMemorySyncPullInput = Schema.Struct({ since: Schema.NullOr(Schema.String) });
+export const TessayaMemorySyncPullResult = Schema.Struct({
   origin: Schema.String,
-  changes: Schema.Array(BatonMemoryChange),
+  changes: Schema.Array(TessayaMemoryChange),
   upTo: Schema.String,
 });
-export const BatonMemorySyncPushInput = Schema.Struct({
+export const TessayaMemorySyncPushInput = Schema.Struct({
   from: Schema.String,
-  changes: Schema.Array(BatonMemoryChange),
+  changes: Schema.Array(TessayaMemoryChange),
   upTo: Schema.String,
 });
-export const BatonMemorySyncPushResult = Schema.Struct({ applied: Schema.Number });
+export const TessayaMemorySyncPushResult = Schema.Struct({ applied: Schema.Number });
 
 /** A paired peer as the server keeps it, without its credential. */
-export const BatonMemorySyncPeer = Schema.Struct({
+export const TessayaMemorySyncPeer = Schema.Struct({
   environmentId: Schema.String,
   label: Schema.String,
   expiresAt: Schema.Number,
 });
-export type BatonMemorySyncPeer = typeof BatonMemorySyncPeer.Type;
-export const BatonMemorySyncStateResult = Schema.Struct({
+export type TessayaMemorySyncPeer = typeof TessayaMemorySyncPeer.Type;
+export const TessayaMemorySyncStateResult = Schema.Struct({
   enabled: Schema.Boolean,
-  peers: Schema.Array(BatonMemorySyncPeer),
+  peers: Schema.Array(TessayaMemorySyncPeer),
 });
-export const BatonMemorySyncSetEnabledInput = Schema.Struct({ on: Schema.Boolean });
+export const TessayaMemorySyncSetEnabledInput = Schema.Struct({ on: Schema.Boolean });
 /** A credential a pairing returned; it only ever goes back to `origin`. */
-export const BatonMemorySyncAddPeerInput = Schema.Struct({
+export const TessayaMemorySyncAddPeerInput = Schema.Struct({
   environmentId: TrimmedNonEmptyString,
   label: Schema.String,
   origin: TrimmedNonEmptyString,
@@ -269,7 +269,7 @@ export const BatonMemorySyncAddPeerInput = Schema.Struct({
   expiresAt: Schema.Number,
 });
 /** A change to this server's sync peers that was refused or could not be made; nothing was written. */
-export class BatonMemorySyncError extends Schema.TaggedError<BatonMemorySyncError>()(
+export class TessayaMemorySyncError extends Schema.TaggedError<TessayaMemorySyncError>()(
   "BatonMemorySyncError",
   { detail: Schema.String },
 ) {
@@ -277,16 +277,16 @@ export class BatonMemorySyncError extends Schema.TaggedError<BatonMemorySyncErro
     return this.detail;
   }
 }
-export const BatonMemorySyncForgetInput = Schema.Struct({ environmentId: TrimmedNonEmptyString });
-export const BatonMemorySyncRunResult = Schema.Struct({
+export const TessayaMemorySyncForgetInput = Schema.Struct({ environmentId: TrimmedNonEmptyString });
+export const TessayaMemorySyncRunResult = Schema.Struct({
   servers: Schema.Number,
   applied: Schema.Number,
   refused: Schema.Array(Schema.Struct({ environmentId: Schema.String, label: Schema.String })),
 });
 
 /** A folder of markdown learnings on the server's machine, read and never written (MEMORY.md section 7). */
-export const BatonMemoryImportInput = Schema.Struct({ folder: TrimmedNonEmptyString });
-export const BatonMemoryImportResult = Schema.Struct({
+export const TessayaMemoryImportInput = Schema.Struct({ folder: TrimmedNonEmptyString });
+export const TessayaMemoryImportResult = Schema.Struct({
   files: Schema.Number,
   added: Schema.Number,
   refused: Schema.Number,
@@ -294,21 +294,21 @@ export const BatonMemoryImportResult = Schema.Struct({
 });
 
 /** The scheduled pull of learnings from the history index; what it finds is held for his yes (D150). */
-export const BatonMemoryPullInput = Schema.Struct({
+export const TessayaMemoryPullInput = Schema.Struct({
   action: Schema.Literals(["status", "enable", "disable", "run"]),
 });
-export const BatonMemoryHistorySearchInput = Schema.Struct({
+export const TessayaMemoryHistorySearchInput = Schema.Struct({
   query: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(300))),
   session: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
   /** His own view, through walls: the desktop app only. */
   admin: Schema.optionalKey(Schema.Boolean),
 });
 /** `found` is false when no server with the index answered; `text` then says why in plain words. */
-export const BatonMemoryHistorySearchResult = Schema.Struct({
+export const TessayaMemoryHistorySearchResult = Schema.Struct({
   found: Schema.Boolean,
   text: Schema.String,
 });
-export const BatonMemoryPullResult = Schema.Struct({
+export const TessayaMemoryPullResult = Schema.Struct({
   enabled: Schema.Boolean,
   found: Schema.Number,
   held: Schema.Number,

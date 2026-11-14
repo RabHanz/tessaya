@@ -4,7 +4,7 @@
  * library; a persona's choice is written to its own pack file there.
  */
 import type {
-  BatonVoiceCallResult,
+  TessayaVoiceCallResult,
   LibraryVoiceView,
   PersonaVoiceRow,
   VoiceClip,
@@ -14,7 +14,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { LoaderIcon, PauseIcon, PlayIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -56,12 +56,12 @@ export function VoiceLibrarySections() {
 }
 
 function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  const voiceCall = useAtomCommand(batonWorkSessions.voiceCall, { reportFailure: false });
+  const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
   const call = async (
     kind: "read" | "act",
     op: string,
     args: Record<string, unknown> = {},
-  ): Promise<BatonVoiceCallResult> => {
+  ): Promise<TessayaVoiceCallResult> => {
     const result = await voiceCall({ environmentId, input: { kind, op, args } });
     return result._tag === "Success"
       ? result.value

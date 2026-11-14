@@ -4,14 +4,14 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..ab4f6b12659ace29e8b67d3422106619c1dd2eb9 100644
+index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd298c23eb 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -37,6 +37,7 @@ import { ThreadFind, ThreadFindCanvas } from "./chat/ThreadFindProvider";
  import { closeThreadFind, openThreadFind, useThreadFindOpen } from "./chat/threadFindStore";
  import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
  import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
-+import { useLiveLimitBanner } from "./chat/BatonLiveModel";
++import { useLiveLimitBanner } from "./chat/TessayaLiveModel";
  import { isThreadEnvironmentLocked, resolveDraftHeroState } from "./ChatView.logic";
  import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
  import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
@@ -182,28 +182,28 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..ab4f6b12659ace29e8b67d3422106619
    );
  }
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..51ec24c4f4c2fc98449d8610a163bcc9332afdab 100644
+index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef0f7949ac 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
 @@ -1,6 +1,21 @@
  import { attachSidebarTree } from "../lib/sidebarTree";
  import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
  import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
-+import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
-+import { BatonNoLiveSessions } from "./sidebar/BatonLiveBadge";
++import { TessayaSidebarSection } from "./sidebar/TessayaSidebarSection";
++import { TessayaNoLiveSessions } from "./sidebar/TessayaLiveBadge";
 +import {
 +  isRunningLive,
 +  liveThreadsOnly,
-+  useBatonLiveOnly,
++  useTessayaLiveOnly,
 +  useRunningLiveSessions,
-+} from "./sidebar/batonLiveOnly";
-+import { openThreadInSplit } from "./panes/batonPanesStore";
++} from "./sidebar/tessayaLiveOnly";
++import { openThreadInSplit } from "./panes/tessayaPanesStore";
 +import {
 +  BATON_DETACH_MENU_ITEM,
 +  BATON_SPLIT_MENU_ITEM,
 +  showWithSplitItem,
-+} from "./panes/batonSplitMenu";
-+import { openDetachedWindow } from "./panes/batonWindows";
++} from "./panes/tessayaSplitMenu";
++import { openDetachedWindow } from "./panes/tessayaWindows";
  import {
    dropThreadContext,
    endThreadContextDrag,
@@ -227,10 +227,10 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..51ec24c4f4c2fc98449d8610a163bcc9
    const settledVisibleCount =
      settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
  
-+  const [batonLiveOnly] = useBatonLiveOnly();
++  const [tessayaLiveOnly] = useTessayaLiveOnly();
    const partition = partitionSidebarThreads({
 -    threads,
-+    threads: liveThreadsOnly(threads, batonLiveOnly, batonRunningLive),
++    threads: liveThreadsOnly(threads, tessayaLiveOnly, batonRunningLive),
      scopedProjectKeys,
      delegatedUnderParent,
      serverConfigs,
@@ -239,7 +239,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..51ec24c4f4c2fc98449d8610a163bcc9
    // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
    const olderSettledShelf = useOlderSettledShelf({
 -    scopes: olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
-+    scopes: olderSettledScopes(batonLiveOnly ? [] : [...serverConfigs.keys()], scopedProjectKeys),
++    scopes: olderSettledScopes(tessayaLiveOnly ? [] : [...serverConfigs.keys()], scopedProjectKeys),
      expanded: settledShelfExpanded,
      visibleCount: settledVisibleCount,
    });
@@ -248,7 +248,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..51ec24c4f4c2fc98449d8610a163bcc9
    );
  
 +  const batonRunningLive = useRunningLiveSessions();
-+  const [batonLiveOnly] = useBatonLiveOnly();
++  const [tessayaLiveOnly] = useTessayaLiveOnly();
    const {
      workingShelfEnabled,
      pinnedThreads,
@@ -308,7 +308,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..51ec24c4f4c2fc98449d8610a163bcc9
        >
 +        {/* Baton (vendor-patches/t3code/0006-web-sidebar.patch) */}
 +        {isSearchingThreads ? null : (
-+          <BatonSidebarSection activeThreadKey={routeThreadKey} onOpenThread={navigateToThread} />
++          <TessayaSidebarSection activeThreadKey={routeThreadKey} onOpenThread={navigateToThread} />
 +        )}
          <SidebarGroup className="flex-1" role="presentation">
            {isSearchingThreads ? (
@@ -317,8 +317,8 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..51ec24c4f4c2fc98449d8610a163bcc9
                      Add project
                    </button>
                  </>
-+              ) : batonLiveOnly ? (
-+                <BatonNoLiveSessions />
++              ) : tessayaLiveOnly ? (
++                <TessayaNoLiveSessions />
                ) : scopedProjectGroups.length > 0 ? (
                  <>
                    <span>
@@ -331,7 +331,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..51ec24c4f4c2fc98449d8610a163bcc9
                              navigationParent={
                                folderRow ??
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
-index a7b7da0a6b53b67eba0cd0363be218501dc80f72..2dbd8f7050d4096ab5d514824d67b6a689f0881d 100644
+index a7b7da0a6b53b67eba0cd0363be218501dc80f72..767a8d8b7a29b2d2200c5a76933a024506592b68 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx
 +++ b/apps/web/src/components/ThreadRouteView.tsx
 @@ -8,7 +8,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
@@ -339,7 +339,7 @@ index a7b7da0a6b53b67eba0cd0363be218501dc80f72..2dbd8f7050d4096ab5d514824d67b6a6
  
  import ChatView from "./ChatView";
 -import { BackgroundThreadContext } from "./chat/backgroundThread";
-+import { BatonPanes } from "./panes/BatonPanes";
++import { TessayaPanes } from "./panes/TessayaPanes";
  import { SidebarInset } from "./ui/sidebar";
  import { useComposerDraftStore } from "../composerDraftStore";
  import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
@@ -348,7 +348,7 @@ index a7b7da0a6b53b67eba0cd0363be218501dc80f72..2dbd8f7050d4096ab5d514824d67b6a6
        inert={background}
      >
 -      <BackgroundThreadContext value={background}>{view}</BackgroundThreadContext>
-+      <BatonPanes
++      <TessayaPanes
 +        route={target}
 +        background={background}
 +        pending={renderState === "loading"}
@@ -390,15 +390,15 @@ index 4db623bcbb07d8d70f8c2f4668ce86e56b15e739..312e296b3833491d0495ee22a1af3397
        )}
        data-workspace-titlebar-controls
 diff --git a/apps/web/src/routes/_chat.index.tsx b/apps/web/src/routes/_chat.index.tsx
-index b511be0fa9255d329937ee997809af7c3b687b06..99f03845ea1c190ef82d6209053142883ce31c42 100644
+index b511be0fa9255d329937ee997809af7c3b687b06..24811cdb2cece1c9bc6968c120ea32c9c62ad6bc 100644
 --- a/apps/web/src/routes/_chat.index.tsx
 +++ b/apps/web/src/routes/_chat.index.tsx
 @@ -12,6 +12,8 @@ import { HostedEmptyState } from "../components/HostedEmptyState";
  import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
  import { SidebarInset } from "../components/ui/sidebar";
  import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
-+import { BatonPaneRestore } from "../components/panes/BatonPanes";
-+import { useBatonPanesStore } from "../components/panes/batonPanesStore";
++import { TessayaPaneRestore } from "../components/panes/TessayaPanes";
++import { useTessayaPanesStore } from "../components/panes/tessayaPanesStore";
  import { useNewThreadHandler } from "../hooks/useHandleNewThread";
  import {
    readProject,
@@ -406,13 +406,13 @@ index b511be0fa9255d329937ee997809af7c3b687b06..99f03845ea1c190ef82d620905314288
  function ChatIndexRouteView() {
    const { authGateState } = Route.useRouteContext();
    const { environments, isReady } = useEnvironments();
-+  const restorePending = useBatonPanesStore((state) => state.restorePending);
++  const restorePending = useTessayaPanesStore((state) => state.restorePending);
  
    if (authGateState.status === "hosted-static") {
      if (!isReady) return null;
      if (environments.length === 0) return <HostedEmptyState />;
    }
-+  if (restorePending) return <BatonPaneRestore />;
++  if (restorePending) return <TessayaPaneRestore />;
  
    return <IndexDraftLanding />;
  }

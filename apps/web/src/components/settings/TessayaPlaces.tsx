@@ -12,7 +12,7 @@ import { useState, type ReactNode } from "react";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { Button } from "../ui/button";
 import { ApisSettingsPanel } from "./ApisSettings";
-import { BatonAccountsSettings } from "./BatonAccountsSettings";
+import { TessayaAccountsSettings } from "./TessayaAccountsSettings";
 import { BrainSettingsPanel } from "./BrainSettings";
 import { BrainUsagePanel } from "./BrainUsageSettings";
 import { HardwareSettingsPanel } from "./HardwareSettings";
@@ -27,7 +27,7 @@ function AccountsPage() {
   return (
     <SettingsPageContainer>
       {environment === null ? null : (
-        <BatonAccountsSettings
+        <TessayaAccountsSettings
           key={environment.environmentId}
           environmentId={environment.environmentId}
         />

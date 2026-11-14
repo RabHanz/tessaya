@@ -7,7 +7,7 @@ import {
   BATON_LIVE_INSTANCE,
   liveSendingRefusal,
   liveSendingUnavailableReason,
-} from "../baton/BatonLiveInstance.ts";
+} from "../tessaya/TessayaLiveInstance.ts";
 import type {
   ProjectionRecordField,
   ProjectionRecordFilter,
@@ -78,7 +78,7 @@ import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
 import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
-import { hotSwapProvider, isSelectionCommand } from "../baton/ProviderHotSwap.ts";
+import { hotSwapProvider, isSelectionCommand } from "../tessaya/ProviderHotSwap.ts";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
 

@@ -16,7 +16,7 @@ import {
   type DictationMode,
   type DictionaryEntry,
 } from "../../../packages/tessaya-shared/src/dictationCleanup.ts";
-import { makeRewriter } from "../../../apps/desktop/src/baton/voice/dictationRewriter.ts";
+import { makeRewriter } from "../../../apps/desktop/src/tessaya/voice/dictationRewriter.ts";
 import { biasTranscript } from "../../../packages/tessaya-shared/src/vocabulary.ts";
 import {
   makeStyleIndex,

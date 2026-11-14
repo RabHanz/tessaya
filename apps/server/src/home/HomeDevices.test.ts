@@ -5,9 +5,9 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
-import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
-import { BatonPhoneInbox, layer as inboxLayer } from "../baton/BatonPhoneInbox.ts";
-import { layer as recordLayer } from "../baton/BatonRecordService.ts";
+import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
+import { TessayaPhoneInbox, layer as inboxLayer } from "../tessaya/TessayaPhoneInbox.ts";
+import { layer as recordLayer } from "../tessaya/TessayaRecordService.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
@@ -16,8 +16,11 @@ import { R1Reach } from "./R1Reach.ts";
 import { VesselBodies, layer as VesselBodiesLayer } from "./VesselBodies.ts";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 
-import { VoiceForgets, layer as VoiceForgetsLayer } from "../baton/VoiceForgets.ts";
-import { MemberPreferences, layer as MemberPreferencesLayer } from "../baton/MemberPreferences.ts";
+import { VoiceForgets, layer as VoiceForgetsLayer } from "../tessaya/VoiceForgets.ts";
+import {
+  MemberPreferences,
+  layer as MemberPreferencesLayer,
+} from "../tessaya/MemberPreferences.ts";
 import { StepUps, layer as StepUpsLayer } from "./StepUps.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -84,7 +87,7 @@ const setup = () => {
   const layer = HomeDevices.layer.pipe(
     Layer.provideMerge(bodiesLayer),
     Layer.provideMerge(Layer.mergeAll(broker, home, inboxLayer, recordLayer, registryLayer, reach)),
-    Layer.provideMerge(BatonDatabaseMemory),
+    Layer.provideMerge(TessayaDatabaseMemory),
   );
   const topics = () => sent.map((s) => s.topic);
   return { sent, scenes, topics, layer, record: () => record, away: () => away };
@@ -260,7 +263,7 @@ it.effect(
     const { topics, layer } = setup();
     return Effect.gen(function* () {
       const devices = yield* HomeDevices.HomeDevices;
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       yield* devices.tick;
       yield* devices.receive(`${root}/state/online`, "1");
       const jpeg = new Uint8Array([0xff, 0xd8, 0xff]);
@@ -301,7 +304,7 @@ it.effect("offers away-from-home on his phone when the R1 says it is away from h
   const { layer, away } = setup();
   return Effect.gen(function* () {
     const devices = yield* HomeDevices.HomeDevices;
-    const inbox = yield* BatonPhoneInbox;
+    const inbox = yield* TessayaPhoneInbox;
     yield* devices.tick;
     // Back on its first entry: nothing to offer.
     yield* devices.receive(`${root}/event/net/away`, '{"away":false,"endpoint":0}');
@@ -790,7 +793,7 @@ it.effect(
     const { sent, topics, layer } = setup();
     return Effect.gen(function* () {
       const devices = yield* HomeDevices.HomeDevices;
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       const her = { who: "Tessaya via R1", surface: "assistant" } as const;
       yield* devices.tick;
       yield* devices.receive(`${root}/state/online`, "1");
@@ -953,7 +956,7 @@ it.effect(
     return Effect.gen(function* () {
       const devices = yield* HomeDevices.HomeDevices;
       const stepUps = yield* StepUps;
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       yield* devices.tick;
       const act = yield* stepUps.hold(held("owner"));
       assert.deepStrictEqual(
@@ -996,7 +999,7 @@ it.effect(
       Effect.provide(
         layer.pipe(
           Layer.provideMerge(
-            StepUpsLayer.pipe(Layer.provide(inboxLayer), Layer.provide(BatonDatabaseMemory)),
+            StepUpsLayer.pipe(Layer.provide(inboxLayer), Layer.provide(TessayaDatabaseMemory)),
           ),
         ),
       ),
@@ -1034,7 +1037,9 @@ it.effect(
     }).pipe(
       Effect.provide(
         layer.pipe(
-          Layer.provideMerge(MemberPreferencesLayer.pipe(Layer.provideMerge(BatonDatabaseMemory))),
+          Layer.provideMerge(
+            MemberPreferencesLayer.pipe(Layer.provideMerge(TessayaDatabaseMemory)),
+          ),
         ),
       ),
     );

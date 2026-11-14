@@ -8,7 +8,7 @@ import { chromium } from "playwright-core";
 
 const file =
   process.argv[2] ??
-  fileURLToPath(new URL("../../apps/desktop/src/baton/voice/voicePill.ts", import.meta.url));
+  fileURLToPath(new URL("../../apps/desktop/src/tessaya/voice/voicePill.ts", import.meta.url));
 const { PILL_DOCUMENT } = await import(file);
 const browser = await chromium.launch();
 const page = await (

@@ -19,7 +19,7 @@
 import type {
   AdoptedSessionCapabilities,
   AdoptedSessionCapability,
-  BatonSessionState,
+  TessayaSessionState,
 } from "@t3tools/tessaya-contracts";
 
 /**
@@ -30,7 +30,7 @@ import type {
  * answer or permission. Claiming the stronger of the two would put an approval
  * badge on a session nobody can approve from Baton.
  */
-const HERDR_STATES: Readonly<Record<string, BatonSessionState>> = {
+const HERDR_STATES: Readonly<Record<string, TessayaSessionState>> = {
   blocked: "needs_input",
   working: "working",
   done: "done_unseen",
@@ -38,7 +38,7 @@ const HERDR_STATES: Readonly<Record<string, BatonSessionState>> = {
 };
 
 /** The mapped state, or null when the runtime used a word Baton does not know. */
-export const mapHerdrState = (runtimeState: string): BatonSessionState | null =>
+export const mapHerdrState = (runtimeState: string): TessayaSessionState | null =>
   HERDR_STATES[runtimeState.trim().toLowerCase()] ?? null;
 
 /** Every word this mapping understands, for a refusal that can list them. */
@@ -78,7 +78,7 @@ export const HERDR_UNCLASSIFIED = "unknown";
 export const mapHerdrPaneState = (input: {
   readonly agentStatus: string;
   readonly hasForegroundProcess: boolean;
-}): BatonSessionState | null => {
+}): TessayaSessionState | null => {
   const agentState = mapHerdrState(input.agentStatus);
   if (agentState !== null) return agentState;
   if (input.agentStatus.trim().toLowerCase() !== HERDR_UNCLASSIFIED) return null;

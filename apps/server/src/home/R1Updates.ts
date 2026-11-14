@@ -36,7 +36,7 @@ import { FetchHttpClient, HttpClient } from "effect/http";
 
 import * as ServerConfig from "../config.ts";
 import { sayPayload } from "@t3tools/tessaya-shared/expression";
-import { expressOr } from "../baton/TessayaExpression.ts";
+import { expressOr } from "../tessaya/TessayaExpression.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";

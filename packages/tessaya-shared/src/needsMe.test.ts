@@ -1,4 +1,4 @@
-import type { BatonJob, WatchFinding } from "@t3tools/tessaya-contracts";
+import type { TessayaJob, WatchFinding } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -27,7 +27,7 @@ describe("what needs me", () => {
       phase: "done",
       limitReached: null,
       lastActivityAt: "2026-11-02T10:40:00Z",
-    } as unknown as BatonJob;
+    } as unknown as TessayaJob;
     const ranked = rankNeeds([...needsFromFindings(findings), ...needsFromJobs([job], now)], now);
     expect(ranked.map((n) => n.id)).toEqual(["ws:a", "ws:b"]);
     expect(ranked[1]?.why).toContain("nobody has looked");
@@ -42,7 +42,7 @@ describe("what needs me", () => {
       phase: "done",
       limitReached: null,
       lastActivityAt: "2026-11-02T11:50:00Z",
-    } as unknown as BatonJob;
+    } as unknown as TessayaJob;
     expect(needsFromJobs([job], now)).toEqual([]);
   });
 

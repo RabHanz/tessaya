@@ -9,7 +9,7 @@
  *
  *   1. **A rule fires on an event the environment already reported.** Never on
  *      a model's opinion that something looks finished. The triggers below map
- *      onto the same `BatonSessionState` transitions §10 derives
+ *      onto the same `TessayaSessionState` transitions §10 derives
  *      deterministically, so "done" means what the fleet says it means.
  *   2. **A rule has a hard firing bound.** `maxFirings`, default 3, counted per
  *      work session and per rule, and a rule can never be re-triggered by its

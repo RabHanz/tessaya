@@ -19,16 +19,16 @@ import * as Schema from "effect/Schema";
 import { IsoDateTime, ProjectId, ThreadId, TrimmedNonEmptyString } from "@t3tools/contracts";
 import { ProviderDriverKind, ProviderInstanceId } from "@t3tools/contracts";
 import { AdoptedSessionCandidate } from "./adoptedSession.ts";
-import { BatonProjectRef, ClaudeLiveSession } from "./liveSessions.ts";
-import { BatonSessionState } from "./sessionState.ts";
+import { TessayaProjectRef, ClaudeLiveSession } from "./liveSessions.ts";
+import { TessayaSessionState } from "./sessionState.ts";
 import { WorkSessionSynopsis } from "./synopsis.ts";
 import { WorkSessionId, WorkSessionStatus } from "./workSession.ts";
 
 /** One live provider thread under a work session, with its derived state. */
-export const BatonFleetThread = Schema.Struct({
+export const TessayaFleetThread = Schema.Struct({
   threadId: ThreadId,
   title: TrimmedNonEmptyString,
-  state: BatonSessionState,
+  state: TessayaSessionState,
   providerInstanceId: Schema.NullOr(ProviderInstanceId),
   providerDriver: Schema.NullOr(ProviderDriverKind),
   /** The thread's checkout, for the "which branch" question. */
@@ -37,33 +37,33 @@ export const BatonFleetThread = Schema.Struct({
   /** When the provider last did anything, for ordering and staleness. */
   lastActivityAt: Schema.NullOr(IsoDateTime),
 });
-export type BatonFleetThread = typeof BatonFleetThread.Type;
+export type TessayaFleetThread = typeof TessayaFleetThread.Type;
 
 /**
  * One adopted session under a work session. Thin on purpose: the fleet needs
  * to say it exists, what it is doing, and that it is not one of ours.
  */
-export const BatonFleetAdopted = Schema.Struct({
+export const TessayaFleetAdopted = Schema.Struct({
   id: TrimmedNonEmptyString,
   runtime: TrimmedNonEmptyString,
   label: TrimmedNonEmptyString,
-  state: BatonSessionState,
+  state: TessayaSessionState,
   /** True when Baton may type into it — §9's declared capability, on the row. */
   canSendInput: Schema.Boolean,
 });
-export type BatonFleetAdopted = typeof BatonFleetAdopted.Type;
+export type TessayaFleetAdopted = typeof TessayaFleetAdopted.Type;
 
-export const BatonFleetEntry = Schema.Struct({
+export const TessayaFleetEntry = Schema.Struct({
   workSessionId: WorkSessionId,
   title: TrimmedNonEmptyString,
   projectId: ProjectId,
   /** The work session's lifecycle, which is not the same as its activity. */
   lifecycle: WorkSessionStatus,
   /** The most demanding state among its live threads. */
-  state: BatonSessionState,
+  state: TessayaSessionState,
   needsUser: Schema.Boolean,
   activeThreadId: Schema.NullOr(ThreadId),
-  threads: Schema.Array(BatonFleetThread),
+  threads: Schema.Array(TessayaFleetThread),
   /**
    * Sessions Baton adopted rather than started (§9): a Herdr pane, a terminal
    * somebody else opened. They carry a state like any other row and a declared
@@ -73,17 +73,17 @@ export const BatonFleetEntry = Schema.Struct({
    * that has them, and a server from before Phase 8 decodes into a client that
    * expects them.
    */
-  adopted: Schema.Array(BatonFleetAdopted).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  adopted: Schema.Array(TessayaFleetAdopted).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   synopsis: Schema.NullOr(WorkSessionSynopsis),
   updatedAt: IsoDateTime,
   /** Resolved by the server that runs it, for a linked server, which cannot resolve another's projects or accounts. */
-  project: Schema.optionalKey(BatonProjectRef),
+  project: Schema.optionalKey(TessayaProjectRef),
   account: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
-export type BatonFleetEntry = typeof BatonFleetEntry.Type;
+export type TessayaFleetEntry = typeof TessayaFleetEntry.Type;
 
-export const BatonFleet = Schema.Struct({
-  entries: Schema.Array(BatonFleetEntry),
+export const TessayaFleet = Schema.Struct({
+  entries: Schema.Array(TessayaFleetEntry),
   /**
    * Every agent and terminal Herdr is running on this environment, across its
    * spaces and named sessions, adopted or not (D65). Herdr is where they live;
@@ -95,9 +95,9 @@ export const BatonFleet = Schema.Struct({
   /** When the environment computed this. Every entry is as of this instant. */
   observedAt: IsoDateTime,
 });
-export type BatonFleet = typeof BatonFleet.Type;
+export type TessayaFleet = typeof TessayaFleet.Type;
 
-export const BatonFleetInput = Schema.Struct({
+export const TessayaFleetInput = Schema.Struct({
   /** For an outside agent or a linked environment: state and names only (fleetForOutside). */
   forOutside: Schema.optionalKey(Schema.Boolean),
   /** With forOutside, for a linked server: each entry's project and account are resolved, and accounts kept. */
@@ -107,10 +107,10 @@ export const BatonFleetInput = Schema.Struct({
   /** Only work that cannot move without the user. The §33 top-level filter. */
   needsUserOnly: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonFleetInput = typeof BatonFleetInput.Type;
+export type TessayaFleetInput = typeof TessayaFleetInput.Type;
 
-export const BatonFleetResult = Schema.Struct({ fleet: BatonFleet });
-export type BatonFleetResult = typeof BatonFleetResult.Type;
+export const TessayaFleetResult = Schema.Struct({ fleet: TessayaFleet });
+export type TessayaFleetResult = typeof TessayaFleetResult.Type;
 
 /**
  * Ordering for a fleet list. What needs the user first, then what is running,
@@ -118,9 +118,9 @@ export type BatonFleetResult = typeof BatonFleetResult.Type;
  * is all one state still reads newest-first.
  */
 export const compareFleetEntries = (
-  left: Pick<BatonFleetEntry, "state" | "updatedAt">,
-  right: Pick<BatonFleetEntry, "state" | "updatedAt">,
-  priority: Readonly<Record<BatonSessionState, number>>,
+  left: Pick<TessayaFleetEntry, "state" | "updatedAt">,
+  right: Pick<TessayaFleetEntry, "state" | "updatedAt">,
+  priority: Readonly<Record<TessayaSessionState, number>>,
 ): number => {
   const byState = priority[left.state] - priority[right.state];
   if (byState !== 0) return byState;
@@ -128,18 +128,18 @@ export const compareFleetEntries = (
 };
 
 /** The §11 staleness disclosure, as a wire field rather than a client guess. */
-export const BatonFleetSummary = Schema.Struct({
+export const TessayaFleetSummary = Schema.Struct({
   working: Schema.Int.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
   needsUser: Schema.Int.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
   doneUnseen: Schema.Int.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
   idle: Schema.Int.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
   offline: Schema.Int.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
 });
-export type BatonFleetSummary = typeof BatonFleetSummary.Type;
+export type TessayaFleetSummary = typeof TessayaFleetSummary.Type;
 
 export const summariseFleet = (
-  entries: ReadonlyArray<Pick<BatonFleetEntry, "state" | "needsUser">>,
-): BatonFleetSummary => ({
+  entries: ReadonlyArray<Pick<TessayaFleetEntry, "state" | "needsUser">>,
+): TessayaFleetSummary => ({
   working: entries.filter(
     (entry) =>
       entry.state === "working" || entry.state === "starting" || entry.state === "monitoring",

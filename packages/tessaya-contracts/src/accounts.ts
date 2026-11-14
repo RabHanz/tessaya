@@ -12,28 +12,28 @@ export const BATON_ACCOUNTS_WS_METHODS = {
 } as const;
 
 /** How an instance holds its login: a long-lived setup token, a browser (OAuth) sign-in, or an API key. */
-export const BatonSignInMethodKind = Schema.Literals(["setup-token", "browser", "api-key"]);
-export type BatonSignInMethodKind = typeof BatonSignInMethodKind.Type;
+export const TessayaSignInMethodKind = Schema.Literals(["setup-token", "browser", "api-key"]);
+export type TessayaSignInMethodKind = typeof TessayaSignInMethodKind.Type;
 
-export const BatonSignInMethod = Schema.Struct({
-  kind: BatonSignInMethodKind,
+export const TessayaSignInMethod = Schema.Struct({
+  kind: TessayaSignInMethodKind,
   /** The provider instance that signs in this way; null for a login only the account switcher (cswap) holds. */
   instanceId: Schema.NullOr(TrimmedNonEmptyString),
   /** The method a running terminal session is switched with. At most one per account. */
   liveSwitch: Schema.Boolean,
 });
-export type BatonSignInMethod = typeof BatonSignInMethod.Type;
+export type TessayaSignInMethod = typeof TessayaSignInMethod.Type;
 
-export const BatonAccountLimit = Schema.Struct({
+export const TessayaAccountLimit = Schema.Struct({
   usedPercent: Schema.Number,
   resetsAt: Schema.NullOr(Schema.String),
 });
-export type BatonAccountLimit = typeof BatonAccountLimit.Type;
+export type TessayaAccountLimit = typeof TessayaAccountLimit.Type;
 
-export const BatonAccountHealth = Schema.Literals(["ok", "signed-out", "paused", "error"]);
-export type BatonAccountHealth = typeof BatonAccountHealth.Type;
+export const TessayaAccountHealth = Schema.Literals(["ok", "signed-out", "paused", "error"]);
+export type TessayaAccountHealth = typeof TessayaAccountHealth.Type;
 
-export const BatonAccountRecord = Schema.Struct({
+export const TessayaAccountRecord = Schema.Struct({
   /** `<driver>:<email>`, or `<driver>:<instance id>` for a login with no address. */
   id: TrimmedNonEmptyString,
   driver: ProviderDriverKind,
@@ -45,19 +45,19 @@ export const BatonAccountRecord = Schema.Struct({
   isDefault: Schema.Boolean,
   /** cswap's active login: the one the default Claude instance runs as right now. */
   active: Schema.optional(Schema.Boolean),
-  methods: Schema.Array(BatonSignInMethod),
+  methods: Schema.Array(TessayaSignInMethod),
   /** The account switcher's key a terminal session is moved with (liveSetAccount), or null when it cannot be. */
   liveSwitchKey: Schema.NullOr(TrimmedNonEmptyString),
-  health: BatonAccountHealth,
+  health: TessayaAccountHealth,
   healthDetail: Schema.NullOr(Schema.String),
-  fiveHour: Schema.NullOr(BatonAccountLimit),
-  weekly: Schema.NullOr(BatonAccountLimit),
+  fiveHour: Schema.NullOr(TessayaAccountLimit),
+  weekly: Schema.NullOr(TessayaAccountLimit),
   checkedAt: Schema.NullOr(IsoDateTime),
 });
-export type BatonAccountRecord = typeof BatonAccountRecord.Type;
+export type TessayaAccountRecord = typeof TessayaAccountRecord.Type;
 
-export const BatonAccountsListInput = Schema.Struct({});
-export const BatonAccountsListResult = Schema.Struct({
-  accounts: Schema.Array(BatonAccountRecord),
+export const TessayaAccountsListInput = Schema.Struct({});
+export const TessayaAccountsListResult = Schema.Struct({
+  accounts: Schema.Array(TessayaAccountRecord),
 });
-export type BatonAccountsListResult = typeof BatonAccountsListResult.Type;
+export type TessayaAccountsListResult = typeof TessayaAccountsListResult.Type;

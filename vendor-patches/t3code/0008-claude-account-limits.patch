@@ -1,12 +1,12 @@
 diff --git a/apps/server/src/provider/Drivers/ClaudeDriver.ts b/apps/server/src/provider/Drivers/ClaudeDriver.ts
-index af20b76754943ff781ab718bb83833b08f03984d..0eb61ecd1329d06be50fe96a764b62498fd98c23 100644
+index af20b76754943ff781ab718bb83833b08f03984d..dedc2d23559a5c70c367b4317098dd86d26da609 100644
 --- a/apps/server/src/provider/Drivers/ClaudeDriver.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeDriver.ts
 @@ -41,6 +41,7 @@ import {
    type ProviderDriver,
    type ProviderInstance,
  } from "@t3tools/provider-core/server/driver";
-+import { withProbeLimits } from "../../baton/ClaudeProbeLimits.ts";
++import { withProbeLimits } from "../../tessaya/ClaudeProbeLimits.ts";
  import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
  import { enrichProviderSnapshotWithVersionAdvisory } from "@t3tools/provider-core/server/maintenanceResolver";
  import {
@@ -19,14 +19,14 @@ index af20b76754943ff781ab718bb83833b08f03984d..0eb61ecd1329d06be50fe96a764b6249
          ),
        ),
 diff --git a/apps/web/src/components/chat/ComposerUsageLimits.tsx b/apps/web/src/components/chat/ComposerUsageLimits.tsx
-index b46614a8b418d6adcf03846f6aa336519934e834..b4568bba2a8e1d336a60ed7a11b9fe35289593ef 100644
+index b46614a8b418d6adcf03846f6aa336519934e834..73866c48f0fbb1fc33707a0940bf26856602d539 100644
 --- a/apps/web/src/components/chat/ComposerUsageLimits.tsx
 +++ b/apps/web/src/components/chat/ComposerUsageLimits.tsx
 @@ -1,6 +1,7 @@
  import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
  import type { TimestampFormat } from "@t3tools/contracts/settings";
  import { limitsNotice } from "@t3tools/shared/usageLimits";
-+import { BatonLimitsAge } from "./BatonLimitsAge";
++import { TessayaLimitsAge } from "./TessayaLimitsAge";
  import { GaugeIcon } from "lucide-react";
  
  import { ensureLocalApi } from "../../localApi";
@@ -34,12 +34,12 @@ index b46614a8b418d6adcf03846f6aa336519934e834..b4568bba2a8e1d336a60ed7a11b9fe35
                    now={now}
                  />
                )}
-+              {notice ? null : <BatonLimitsAge checkedAt={account.limits.checkedAt} now={now} />}
++              {notice ? null : <TessayaLimitsAge checkedAt={account.limits.checkedAt} now={now} />}
                {externalUsage ? (
                  <Button
                    size="sm"
 diff --git a/apps/web/src/components/chat/ThreadDetailsUsage.tsx b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
-index 0d6c0129484ed794111d5e6c3eb3d3b9e1f085eb..bc82f206f195d8d6235cab401de4f13510836525 100644
+index 0d6c0129484ed794111d5e6c3eb3d3b9e1f085eb..c146af56776944bb29bd2481f38df25c78438cba 100644
 --- a/apps/web/src/components/chat/ThreadDetailsUsage.tsx
 +++ b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
 @@ -1,3 +1,4 @@
@@ -51,7 +51,7 @@ index 0d6c0129484ed794111d5e6c3eb3d3b9e1f085eb..bc82f206f195d8d6235cab401de4f135
    paceOf,
    remainingPercent,
  } from "@t3tools/shared/usageLimits";
-+import { BatonLimitsAge } from "./BatonLimitsAge";
++import { TessayaLimitsAge } from "./TessayaLimitsAge";
  import type { ReactNode } from "react";
  
  import { usePrimarySettings } from "../../hooks/useSettings";
@@ -76,7 +76,7 @@ index 0d6c0129484ed794111d5e6c3eb3d3b9e1f085eb..bc82f206f195d8d6235cab401de4f135
 +            {limits.windows.map((window) => (
 +              <LimitRow key={window.id} window={window} now={now} />
 +            ))}
-+            <BatonLimitsAge checkedAt={limits.checkedAt} now={now} className="col-span-3" />
++            <TessayaLimitsAge checkedAt={limits.checkedAt} now={now} className="col-span-3" />
 +          </>
          )}
        </div>
@@ -104,7 +104,7 @@ index e41aa20998b1cfd632da6145925062c1ad02c96d..f38cc9cc3818ddec6f9dcfa0820050d4
          const pace = paceOf(window, now);
          const resetsIn = formatResetsIn(window, now);
 diff --git a/apps/web/src/components/usage/UsageLimitsPooled.tsx b/apps/web/src/components/usage/UsageLimitsPooled.tsx
-index 8ec1c7a02afcd109490c82f4c16be2f757c79ac9..b325d6785a2ec0bce43de6060268c9319741ba7c 100644
+index 8ec1c7a02afcd109490c82f4c16be2f757c79ac9..33a16a69b1d3295ae9411105e615b0f64d64ea40 100644
 --- a/apps/web/src/components/usage/UsageLimitsPooled.tsx
 +++ b/apps/web/src/components/usage/UsageLimitsPooled.tsx
 @@ -1,3 +1,4 @@
@@ -116,8 +116,8 @@ index 8ec1c7a02afcd109490c82f4c16be2f757c79ac9..b325d6785a2ec0bce43de6060268c931
  import { usePrimarySettings } from "../../hooks/useSettings";
  import { cn } from "../../lib/utils";
  import { formatUpcomingTimestamp } from "../../timestampFormat";
-+import { BatonOnLimitRow } from "../chat/BatonOnLimitRow";
-+import { BatonTileSwitch } from "../chat/BatonTileSwitch";
++import { TessayaOnLimitRow } from "../chat/TessayaOnLimitRow";
++import { TessayaTileSwitch } from "../chat/TessayaTileSwitch";
  import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
  import { providerClients } from "../settings/providerDriverMeta";
  import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -125,7 +125,7 @@ index 8ec1c7a02afcd109490c82f4c16be2f757c79ac9..b325d6785a2ec0bce43de6060268c931
            ))}
          </div>
        ) : null}
-+      <BatonTileSwitch account={account} />
++      <TessayaTileSwitch account={account} />
      </div>
    );
  }
@@ -143,7 +143,7 @@ index 8ec1c7a02afcd109490c82f4c16be2f757c79ac9..b325d6785a2ec0bce43de6060268c931
            />
          );
        })}
-+      <BatonOnLimitRow pool={pool} />
++      <TessayaOnLimitRow pool={pool} />
      </section>
    );
  }

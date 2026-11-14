@@ -4,10 +4,10 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 
-import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
-import { BatonOneShot } from "../baton/BatonOneShot.ts";
-import { BatonPhoneInbox, layer as inboxLayer } from "../baton/BatonPhoneInbox.ts";
-import { layer as recordLayer } from "../baton/BatonRecordService.ts";
+import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
+import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
+import { TessayaPhoneInbox, layer as inboxLayer } from "../tessaya/TessayaPhoneInbox.ts";
+import { layer as recordLayer } from "../tessaya/TessayaRecordService.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { DeviceTriggers, layer as triggersLayer } from "./DeviceTriggers.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
@@ -26,7 +26,7 @@ const setup = (judge: (prompt: string) => unknown = () => ({ fire: false, action
         return { status: "done" as const, line: "done" };
       }),
   });
-  const oneShot = Layer.mock(BatonOneShot)({
+  const oneShot = Layer.mock(TessayaOneShot)({
     run: ({ prompt, outputSchema }) =>
       Effect.succeed(Schema.decodeUnknownSync(outputSchema as never)(judge(prompt))) as never,
   });
@@ -41,7 +41,7 @@ const setup = (judge: (prompt: string) => unknown = () => ({ fire: false, action
         Layer.mock(HomeAssistantService)({}),
       ),
     ),
-    Layer.provideMerge(BatonDatabaseMemory),
+    Layer.provideMerge(TessayaDatabaseMemory),
   );
   return { commands, layer };
 };
@@ -91,7 +91,7 @@ it.effect(
     return Effect.gen(function* () {
       const registry = yield* manifests;
       const triggers = yield* DeviceTriggers;
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       const fired = yield* triggers.fired;
       const saved = yield* triggers.watch(
         {

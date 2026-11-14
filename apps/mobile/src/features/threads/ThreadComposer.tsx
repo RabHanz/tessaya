@@ -62,7 +62,7 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { scopedThreadKey } from "../../lib/scopedEntities";
-import { useBatonSettingsOpener } from "./BatonThreadHeader";
+import { useTessayaSettingsOpener } from "./TessayaThreadHeader";
 import {
   getComposerDraftSnapshot,
   setComposerDraftText,
@@ -739,7 +739,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const openSettings = () => {
     settingsSheetPresentation.open();
   };
-  useBatonSettingsOpener(composerOwnerKey, openSettings);
+  useTessayaSettingsOpener(composerOwnerKey, openSettings);
 
   useFocusEffect(() => {
     if (!settingsRoutePresentedRef.current) {

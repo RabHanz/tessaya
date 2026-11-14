@@ -242,7 +242,7 @@ export class KeyringNativePackageMissingError extends Schema.TaggedError<Keyring
   }
 }
 
-export class BatonVoiceGpuFileMissingError extends Schema.TaggedError<BatonVoiceGpuFileMissingError>()(
+export class TessayaVoiceGpuFileMissingError extends Schema.TaggedError<TessayaVoiceGpuFileMissingError>()(
   "BatonVoiceGpuFileMissingError",
   { file: Schema.String, searched: Schema.Array(Schema.String) },
 ) {
@@ -2423,7 +2423,7 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
   }
 });
 
-/** A sting and a taskbar icon per palette and theme (apps/desktop/src/baton/home/artFiles.ts). */
+/** A sting and a taskbar icon per palette and theme (apps/desktop/src/tessaya/home/artFiles.ts). */
 export const TESSAYA_ART_PAYLOAD_FILES = ["woad", "damson", "madder"].flatMap((palette) =>
   ["light", "dark"].flatMap((theme) => [
     `sting-${palette}-${theme}.webp`,
@@ -2458,7 +2458,7 @@ export const BATON_VOICE_PAYLOAD_FILES = [
   "models/tessaya.onnx",
 ] as const;
 
-/** The Windows graphics-card build's modules beside tessaya-voice.exe (`batonSidecarBuild` with the Vulkan SDK). */
+/** The Windows graphics-card build's modules beside tessaya-voice.exe (`tessayaSidecarBuild` with the Vulkan SDK). */
 export const BATON_VOICE_GPU_FILES = [
   "transcribe.dll",
   "ggml.dll",
@@ -2472,7 +2472,7 @@ export const BATON_VOICE_GPU_FILES = [
  * the Vulkan SDK on the build machine (`vulkanSdk`) also recognises on the graphics card (native/baton-dictation
  * gpu.rs): its Vulkan backend is then a DLL beside the exe, loaded only where a Vulkan driver exists.
  */
-export function batonSidecarBuild(
+export function tessayaSidecarBuild(
   platform: typeof BuildPlatform.Type,
   arch: typeof BuildArch.Type,
   vulkanSdk?: string,
@@ -2513,7 +2513,7 @@ export function batonSidecarBuild(
 
 // Baton voice: the wake and VAD models everywhere, and the dictation sidecar built for the platform being packaged
 // (Windows, Linux x64, macOS arm64 and x64; a universal mac build joins both with lipo).
-export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
+export const stageTessayaVoice = Effect.fn("stageBatonVoice")(function* (input: {
   readonly repoRoot: string;
   readonly stageResourcesDir: string;
   readonly platform: typeof BuildPlatform.Type;
@@ -2531,7 +2531,7 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
   const built: string[] = [];
   const sdk = yield* Config.String("VULKAN_SDK").pipe(Config.withDefault(""));
   const vulkanSdk = input.platform === "win" && sdk !== "" ? sdk : undefined;
-  const builds = batonSidecarBuild(input.platform, input.arch ?? "x64", vulkanSdk);
+  const builds = tessayaSidecarBuild(input.platform, input.arch ?? "x64", vulkanSdk);
   for (const build of builds) {
     const spawnCommand = yield* resolveSpawnCommand("cargo", [
       "build",
@@ -2592,7 +2592,7 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
         for (const candidate of candidates)
           if (from === undefined && (yield* fs.exists(candidate))) from = candidate;
         if (from === undefined)
-          return yield* new BatonVoiceGpuFileMissingError({
+          return yield* new TessayaVoiceGpuFileMissingError({
             file,
             searched: [
               ...candidates,
@@ -4169,7 +4169,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     arch: options.arch,
     verbose: options.verbose,
   });
-  yield* stageBatonVoice({
+  yield* stageTessayaVoice({
     repoRoot,
     stageResourcesDir,
     platform: options.platform,

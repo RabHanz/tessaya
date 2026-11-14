@@ -36,7 +36,7 @@ import {
   BATON_LIVE_WS_METHODS,
   BATON_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
-  BatonFleetResult,
+  TessayaFleetResult,
   type WorkSession,
   type WorkSessionStreamItem,
 } from "@t3tools/tessaya-contracts";
@@ -85,7 +85,7 @@ export const applyWorkSessionStreamItem = (
   return workSession.archivedAt !== null ? without : [workSession, ...without];
 };
 
-export function createBatonWorkSessionAtoms<R, E>(
+export function createTessayaWorkSessionAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
   const scheduler = createAtomCommandScheduler();
@@ -114,7 +114,7 @@ export function createBatonWorkSessionAtoms<R, E>(
     fleetQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:baton:fleet-query",
       tag: BATON_WS_METHODS.fleetGet,
-      persistence: persistQuery(BatonFleetResult),
+      persistence: persistQuery(TessayaFleetResult),
       staleTimeMs: 5_000,
       refreshIntervalMs: 15_000,
       refreshTrigger: ({ environmentId }) => workSessions({ environmentId, input: {} }),

@@ -12,7 +12,7 @@ import {
   pickResponder,
   type VoiceClaim,
 } from "@t3tools/tessaya-shared/voiceArbiter";
-import { VoiceClaimInput, type BatonVoiceCallResult } from "@t3tools/tessaya-contracts";
+import { VoiceClaimInput, type TessayaVoiceCallResult } from "@t3tools/tessaya-contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -21,14 +21,14 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { DeviceRegistry } from "./DeviceRegistry.ts";
 import { isTestVessel } from "@t3tools/tessaya-shared/deviceItems";
 import { onPeer } from "../peer/PeerVessels.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
-import { conversationKey } from "../baton/TessayaTurn.ts";
+import { conversationKey } from "../tessaya/TessayaTurn.ts";
 
 export type VoiceVerdict =
   | { readonly answer: true; readonly round: string; readonly conversation: string }
@@ -99,7 +99,7 @@ export class VoiceArbiter extends Context.Service<
      * The op on the arbiter of the linked server that has the desk device, when this one has none; null when none
      * answered (or this server has the device, or no links), and this arbiter decides.
      */
-    readonly elsewhere: (op: string, args: unknown) => Effect.Effect<BatonVoiceCallResult | null>;
+    readonly elsewhere: (op: string, args: unknown) => Effect.Effect<TessayaVoiceCallResult | null>;
   }
 >()("t3/home/VoiceArbiter") {}
 
@@ -116,7 +116,7 @@ interface Round {
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const record = yield* Effect.serviceOption(BatonRecordService);
+  const record = yield* Effect.serviceOption(TessayaRecordService);
   const scope = yield* Effect.scope;
   // Found here, where the server's layers are: a device's voice door runs with Baton's services only.
   const home = yield* Effect.serviceOption(HomeAssistantService);
@@ -268,7 +268,7 @@ const make = Effect.gen(function* () {
         Effect.provideService(PeerLinks.PeerLinks, links.value),
         Effect.provideService(PeerMcpClient.PeerMcpClient, peerMcp.value),
       );
-      return there === null ? null : (there.value as BatonVoiceCallResult);
+      return there === null ? null : (there.value as TessayaVoiceCallResult);
     }),
   });
 });
@@ -292,13 +292,16 @@ export const serveArbiter = Effect.fn("VoiceArbiter.serve")(function* (op: strin
 
   const found = yield* Effect.serviceOption(VoiceArbiter);
   if (found._tag === "None")
-    return { ok: false, error: "This server has no voice arbiter." } satisfies BatonVoiceCallResult;
+    return {
+      ok: false,
+      error: "This server has no voice arbiter.",
+    } satisfies TessayaVoiceCallResult;
   const arbiter = found.value;
   // A server with no desk device (his desktop's) defers to the linked one that has it: every claim meets in one round.
   const there = yield* arbiter.elsewhere(op, args);
   if (there !== null) return there;
-  const bad: BatonVoiceCallResult = { ok: false, error: "That is not a voice request." };
-  const ok = (value: unknown): BatonVoiceCallResult => ({ ok: true, value });
+  const bad: TessayaVoiceCallResult = { ok: false, error: "That is not a voice request." };
+  const ok = (value: unknown): TessayaVoiceCallResult => ({ ok: true, value });
   switch (op) {
     case "arbiter":
       return ok(yield* arbiter.state);

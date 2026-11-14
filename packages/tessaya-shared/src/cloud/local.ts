@@ -5,7 +5,7 @@
  * until he approves it; only then is anything started. Each harness says how it is started and how its
  * state is read; everything else is shared here.
  */
-import type { BatonInstanceWeekly } from "@t3tools/tessaya-contracts";
+import type { TessayaInstanceWeekly } from "@t3tools/tessaya-contracts";
 
 import {
   BRIEF_MAX,
@@ -69,7 +69,7 @@ export interface Weekly {
  * default instance; a named one is the instance with that address, name or id suffix.
  */
 export const weeklyForLogin = (
-  instances: ReadonlyArray<BatonInstanceWeekly>,
+  instances: ReadonlyArray<TessayaInstanceWeekly>,
   defaultInstance: string,
   account: string,
   own: boolean,
@@ -321,7 +321,7 @@ export interface LocalSettings {
   /** Extra Claude logins by name, each a CLAUDE_CONFIG_DIR folder. Absent: this computer's own login. */
   readonly claudeHomes?: Readonly<Record<string, string>>;
   /** T3's instances with their weekly figures, for one driver (D2). Absent: no weekly figure here. */
-  readonly weekly?: (driver: string) => Promise<ReadonlyArray<BatonInstanceWeekly>>;
+  readonly weekly?: (driver: string) => Promise<ReadonlyArray<TessayaInstanceWeekly>>;
 }
 
 /** Claude: `claude auth status` for who is signed in; `claude --cloud` to start. Named logins are CLAUDE_CONFIG_DIR folders. */

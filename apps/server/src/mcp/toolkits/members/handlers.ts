@@ -1,18 +1,18 @@
 /** The members tools' handlers: thin; TessayaHousehold decides, by who is speaking on this turn. */
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import { memberOfSpeaker, voiceAssurance } from "@t3tools/tessaya-shared/household";
-import { BatonHouseholdCallInput } from "@t3tools/tessaya-contracts";
+import { TessayaHouseholdCallInput } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
-import { HouseholdCaller, TessayaHousehold } from "../../../baton/TessayaHousehold.ts";
-import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
+import { HouseholdCaller, TessayaHousehold } from "../../../tessaya/TessayaHousehold.ts";
+import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 
-const decodeInput = Schema.decodeUnknownOption(BatonHouseholdCallInput);
+const decodeInput = Schema.decodeUnknownOption(TessayaHouseholdCallInput);
 /** A linked server's caller counts at most this sure: its own desktop session is A3 there, never the root. */
 const PEER_MAX_ASSURANCE = 3;
 
@@ -24,9 +24,9 @@ const unavailable = new OrchestratorMcpFailure({
 type Args = Readonly<Record<string, unknown>>;
 
 export const make = Effect.gen(function* () {
-  const context = yield* BatonRuntime;
+  const context = yield* TessayaRuntime;
   /** A spoken turn is its speaker at their voice's assurance; an agent outside a turn is a service acting for the owner. */
-  const run = Effect.fn("MembersMcp.run")(function* (input: BatonHouseholdCallInput) {
+  const run = Effect.fn("MembersMcp.run")(function* (input: TessayaHouseholdCallInput) {
     if (context === null) return yield* unavailable;
     const origin = yield* TurnOrigin;
     const caller =
