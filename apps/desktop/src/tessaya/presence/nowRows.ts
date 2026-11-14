@@ -5,6 +5,7 @@ import type { WeaveRecord } from "@t3tools/tessaya-shared/weave";
 import type { Commitment } from "@t3tools/tessaya-shared/commitments";
 import type { NeedItem } from "@t3tools/tessaya-shared/needsMe";
 import type { TessayaTeamMember } from "@t3tools/tessaya-contracts";
+import { leadMoveLine, templateLine, trackLine } from "@t3tools/tessaya-shared/teamView";
 
 import type { HomeControl } from "../home/tessayaHome.ts";
 
@@ -180,6 +181,11 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
           ? m.role
           : [
               m.role,
+              trackLine(m.track),
+              (m.templates ?? []).length === 0
+                ? undefined
+                : `Templates: ${(m.templates ?? []).map(templateLine).join(", ")}`,
+              m.moves?.[0] === undefined ? undefined : leadMoveLine(m.moves[0], data.team ?? []),
               m.episode?.text,
               m.recent[0] === undefined
                 ? undefined

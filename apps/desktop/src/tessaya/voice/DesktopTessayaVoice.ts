@@ -6782,7 +6782,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
                 detail: "Nothing is running for you.",
               },
             ]
-          : jobControls(jobsCache)),
+          : jobControls(jobsCache, readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas)),
       // Sessions are T3's thread list (P5): only the rows Ctrl+K opens a session from are still sent.
       ...sessionControls(input.sessions?.rows() ?? []),
       {
@@ -8221,7 +8221,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       }
       void refreshNow().catch(() => undefined);
     } else if (id === "j.load") wantJobs();
-    else if (/^j[as]?:/.test(id)) {
+    else if (/^j[asrkl]?:/.test(id)) {
       const act = jobAction(jobsCache ?? [], id);
       const job = (op: TessayaJobBridgeRequest["op"], args: Record<string, unknown>) =>
         void requestKept({ kind: "job", op, args })
@@ -8237,6 +8237,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           .then((line) => input.extras?.notice(line))
           .then(refreshJobs)
           .catch(() => undefined);
+      } else if (act.kind === "lead") {
+        if (typeof value === "string" && value !== "") job("lead", { id: act.id, to: value });
       } else if (act.kind === "stop") job("stop", { id: act.id });
       else if (act.kind === "schedule") {
         job("schedule", { id: act.id, everyMinutes: act.scheduled ? null : DAILY_MINUTES });

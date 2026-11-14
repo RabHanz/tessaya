@@ -94,6 +94,7 @@ import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsD
 import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
 import { SettingsHomeRouteScreen } from "./features/settings/SettingsHomeRouteScreen";
 import { SettingsHardwareRouteScreen } from "./features/settings/SettingsHardwareRouteScreen";
+import { SettingsTeamRouteScreen } from "./features/settings/SettingsTeamRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
@@ -219,6 +220,11 @@ const SETTINGS_SCREENS = {
     screen: SettingsHardwareRouteScreen,
     linking: "settings/hardware",
     options: settingsPage("Hardware"),
+  }),
+  SettingsTeam: createNativeStackScreen({
+    screen: SettingsTeamRouteScreen,
+    linking: "settings/team",
+    options: settingsPage("Team"),
   }),
   SettingsEnvironmentMaintenance: createNativeStackScreen({
     screen: SettingsEnvironmentMaintenanceRouteScreen,

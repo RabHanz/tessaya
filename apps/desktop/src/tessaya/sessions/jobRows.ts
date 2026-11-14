@@ -7,6 +7,8 @@ import {
   retryRefusal,
 } from "@t3tools/tessaya-shared/jobReport";
 
+import { leadMoveLine, personaName } from "@t3tools/tessaya-shared/teamView";
+
 import type { HomeControl } from "../home/tessayaHome.ts";
 
 const SECTION = {
@@ -50,11 +52,23 @@ export const lastReport = (j: TessayaJob): string => {
 /** Daily is the one schedule the window offers; the assistant can set any other. */
 export const DAILY_MINUTES = 1440;
 
+type Persona = { readonly id: string; readonly name: string };
+
+/** "Led by Onyx. Last: Alfred handed it to Onyx." An older server's job names no lead: nothing. */
+export const leadLine = (j: TessayaJob, team: ReadonlyArray<Persona>): string => {
+  if (j.terms.lead === undefined) return "";
+  const last = j.terms.leadMoves?.at(-1);
+  return `Led by ${personaName(team, j.terms.lead)}.${last === undefined ? "" : ` Last: ${leadMoveLine(last, team)}.`}`;
+};
+
 /**
  * Per job: Approve (or Open T3) with Stop beside it; for a job that needs him, a line to answer or
- * refine in; and, behind More, its schedule.
+ * refine in; and, behind More, who leads it and its schedule.
  */
-export const jobControls = (jobs: ReadonlyArray<TessayaJob>): ReadonlyArray<HomeControl> =>
+export const jobControls = (
+  jobs: ReadonlyArray<TessayaJob>,
+  team: ReadonlyArray<Persona> = [],
+): ReadonlyArray<HomeControl> =>
   ORDER.flatMap((group) =>
     jobs
       .filter((j) => j.group === group)
@@ -65,7 +79,7 @@ export const jobControls = (jobs: ReadonlyArray<TessayaJob>): ReadonlyArray<Home
             id: `j:${j.workSessionId}`,
             section: SECTION[group],
             label: j.title,
-            hint: `${status(j)}${scheduled ? ", scheduled" : ""}. ${usageLine(j)} ${lastReport(j)} May: ${j.permissionsSummary}`.replace(
+            hint: `${status(j)}${scheduled ? ", scheduled" : ""}. ${leadLine(j, team)} ${usageLine(j)} ${lastReport(j)} May: ${j.permissionsSummary}`.replace(
               / {2,}/g,
               " ",
             ),
@@ -115,6 +129,26 @@ export const jobControls = (jobs: ReadonlyArray<TessayaJob>): ReadonlyArray<Home
                 } as const,
               ]
             : []),
+          // Picking another persona hands it the conversation about the job; the worker carries on untouched.
+          ...(j.terms.lead !== undefined && team.length > 1 && group !== "done"
+            ? [
+                {
+                  id: `jl:${j.workSessionId}`,
+                  section: SECTION[group],
+                  label: `${j.title}: who leads it`,
+                  hint: `Hand it to another persona. Its worker, plan and approvals stay. ${(
+                    j.terms.leadMoves ?? []
+                  )
+                    .slice(-3)
+                    .map((m) => `${leadMoveLine(m, team)}.`)
+                    .join(" ")}`.trim(),
+                  kind: "choice",
+                  value: j.terms.lead,
+                  options: team.map((p) => ({ value: p.id, label: p.name })),
+                  more: true,
+                } as const,
+              ]
+            : []),
           ...(j.phase === "approved"
             ? [
                 {
@@ -134,9 +168,9 @@ export const jobControls = (jobs: ReadonlyArray<TessayaJob>): ReadonlyArray<Home
       }),
   );
 
-/** What a row's action is about: approval, stop, the schedule, or an answer typed in. */
+/** What a row's action is about: approval, stop, the schedule, the lead, or an answer typed in. */
 export const jobAction = (jobs: ReadonlyArray<TessayaJob>, id: string) => {
-  const match = /^(j|ja|js|jr|jk):(.+?)(:later)?$/.exec(id);
+  const match = /^(j|ja|js|jr|jk|jl):(.+?)(:later)?$/.exec(id);
   const job = match === null ? undefined : jobs.find((j) => j.workSessionId === match[2]);
   if (match === null || job === undefined) return null;
   const kind = match[1];
@@ -145,15 +179,17 @@ export const jobAction = (jobs: ReadonlyArray<TessayaJob>, id: string) => {
     kind:
       kind === "ja"
         ? "answer"
-        : kind === "jk"
-          ? "draft"
-          : kind === "jr"
-            ? "retry"
-            : kind === "js"
-              ? "schedule"
-              : match[3] === undefined
-                ? "primary"
-                : "stop",
+        : kind === "jl"
+          ? "lead"
+          : kind === "jk"
+            ? "draft"
+            : kind === "jr"
+              ? "retry"
+              : kind === "js"
+                ? "schedule"
+                : match[3] === undefined
+                  ? "primary"
+                  : "stop",
     approve: job.phase === "awaiting_agreement",
     scheduled: job.terms.scheduleTaskId !== null,
   } as const;

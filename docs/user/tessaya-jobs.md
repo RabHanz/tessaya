@@ -23,3 +23,9 @@ Say or type what you want done as a job ("fix the failing build in the shop proj
 ## Run on
 
 Say where a job runs: "start it on the studio computer" (any computer connected to your Tessaya, by the name shown in the sidebar), or leave it out to run it on this computer. The project has to exist on that computer. Later calls about the job (agree, stop, refine) go to the computer it runs on, and the jobs list shows all of them with where each runs.
+
+## Who leads a job
+
+Every job has a lead persona: the one you talk to about it and who reports on it. Say "Alfred, take this over" or "Onyx, take it back", or pick another persona under the job's **More** in the Jobs area (on the web and phone: **Settings → Team**, **Hand to…** beside the job). Only the conversation moves; the worker, its plan and your approvals carry on as they were. A persona may suggest a colleague better suited to the job. Say no and the lead stays, and that suggestion is not raised again for that job.
+
+**Team** (the Now page on the desktop, **Settings → Team** on the web and phone) shows each persona's duties, the templates it usually leads, how the jobs it led went, what it is leading now, and its recent hand-offs and the suggestions you turned down.

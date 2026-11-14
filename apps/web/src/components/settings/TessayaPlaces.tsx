@@ -18,6 +18,7 @@ import { BrainUsagePanel } from "./BrainUsageSettings";
 import { HardwareSettingsPanel } from "./HardwareSettings";
 import { HomeSettingsPanel } from "./HomeSettings";
 import { SettingsScopeProvider, useSettingsScope } from "./SettingsScopeContext";
+import { TeamPanel } from "./TessayaTeam";
 import type { SettingsScopeSearch } from "./settingsScope";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { VoiceLibrarySections } from "./VoiceLibrarySettings";
@@ -53,6 +54,7 @@ const TESSAYA_PAGES = {
   voices: VoicesPage,
   usage: BrainUsagePanel,
   brain: BrainSettingsPanel,
+  team: TeamPanel,
 } as const;
 
 export type TessayaPage = keyof typeof TESSAYA_PAGES;
@@ -144,6 +146,21 @@ export function TessayaPlacesPanel({ moved }: { readonly moved?: TessayaPlaceId 
           />
         </SettingsSection>
       )}
+      <SettingsSection title="Team">
+        <SettingsRow
+          title="The team"
+          description="Who leads which job, what each persona does, and how its work went."
+          control={
+            <Button
+              size="xs"
+              variant="outline"
+              render={<Link to="/tessaya/$page" params={{ page: "team" }} />}
+            >
+              Show here
+            </Button>
+          }
+        />
+      </SettingsSection>
       {TESSAYA_SETTINGS_GROUPS.map((group) => (
         <SettingsSection key={group} title={group}>
           {TESSAYA_PLACES.filter((place) => place.group === group).map((place) => (
