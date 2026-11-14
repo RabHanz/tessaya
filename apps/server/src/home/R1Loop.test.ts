@@ -26,9 +26,9 @@ it("runs the loop against this server's own hub and brain, for every R1 on the h
   expect(plan.env).toMatchObject({
     R1_VOICE: "anna",
     // The server's own hub wins over the folder's.
-    R1_MQTT_URL: "ws://127.0.0.1:3773/api/r1/mqtt",
+    R1_MQTT_URL: "ws://127.0.0.1:3773/api/tessel/mqtt",
     R1_MQTT_USER: "tessaya-bus",
-    R1_BRAIN_URL: "http://127.0.0.1:3773/api/devices/r1/v1/chat/completions",
+    R1_BRAIN_URL: "http://127.0.0.1:3773/api/devices/tessel/v1/chat/completions",
     R1_INHOUSE: "r1-a,r1-b",
   });
   expect(plan.secrets.map((s) => s.value)).toEqual(["bus", "r1-a-key-0123456789abcdef"]);

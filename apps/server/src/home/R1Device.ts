@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off preferSchemaOverJson:off
 /**
  * The Agora R1 desk device as Tessaya's ears and face. Agora's ConvoAI does speech in and out and calls
- * `POST /api/devices/r1/v1/chat/completions` (OpenAI-style, streamed) with the device key; Tessaya answers with one
+ * `POST /api/devices/tessel/v1/chat/completions` (or the old `/api/devices/r1/v1/`) (OpenAI-style, streamed) with the device key; Tessaya answers with one
  * model turn that can act in the house through the same home door as every other surface, as surface "r1" (so a
  * risky act goes to his phone: anyone in the room can talk to it). The eyes follow her over the device's MQTT.
  */
@@ -77,7 +77,7 @@ import {
   type ToolOutcome,
 } from "./R1Brain.ts";
 import { askLaptop } from "./R1Laptop.ts";
-import { noteDeviceKeyUse, publishToDevice } from "./R1Hub.ts";
+import { DEVICE_API_ROOTS, noteDeviceKeyUse, publishToDevice } from "./R1Hub.ts";
 import {
   HomeAssistantService,
   r1ById,
@@ -1266,7 +1266,8 @@ export const routes = HttpRouter.use((router) =>
         headers: { "cache-control": "no-store" },
       });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
-    yield* router.add("POST", "/api/devices/r1/v1/chat/completions", chat);
+    for (const root of DEVICE_API_ROOTS)
+      yield* router.add("POST", `${root}/chat/completions`, chat);
     // The loop played a guess's reply: only now does it reach the Record and learning.
     const played = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
@@ -1283,7 +1284,7 @@ export const routes = HttpRouter.use((router) =>
       const found = yield* r1Played(body.value.callId).pipe(Effect.provideContext(context));
       return HttpServerResponse.jsonUnsafe({ committed: found });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
-    yield* router.add("POST", "/api/devices/r1/v1/turns/played", played);
+    for (const root of DEVICE_API_ROOTS) yield* router.add("POST", `${root}/turns/played`, played);
     // The home server's personas, for the room loop's roster, voices, wake words and eyes (SPINE-UNIFY §10, P2).
     const personas = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
@@ -1297,7 +1298,7 @@ export const routes = HttpRouter.use((router) =>
         yield* personasList.pipe(Effect.provideContext(context)),
       );
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
-    yield* router.add("GET", "/api/devices/r1/v1/personas", personas);
+    for (const root of DEVICE_API_ROOTS) yield* router.add("GET", `${root}/personas`, personas);
     // His final words matched a guess: the writes it held go ahead.
     const confirm = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
@@ -1313,7 +1314,8 @@ export const routes = HttpRouter.use((router) =>
       if (body._tag === "None") return error(400, "That is not a confirmed turn.");
       return HttpServerResponse.jsonUnsafe({ confirmed: yield* r1Confirmed(body.value.callId) });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
-    yield* router.add("POST", "/api/devices/r1/v1/turns/confirm", confirm);
+    for (const root of DEVICE_API_ROOTS)
+      yield* router.add("POST", `${root}/turns/confirm`, confirm);
     // Her next few lines for the room loop's own moments (acknowledgements, step-ups), so it never waits to speak.
     const lines = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
@@ -1336,7 +1338,7 @@ export const routes = HttpRouter.use((router) =>
       );
       return HttpServerResponse.jsonUnsafe(got);
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
-    yield* router.add("POST", "/api/devices/r1/v1/lines", lines);
+    for (const root of DEVICE_API_ROOTS) yield* router.add("POST", `${root}/lines`, lines);
   }),
 );
 

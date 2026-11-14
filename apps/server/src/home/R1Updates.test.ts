@@ -315,7 +315,9 @@ describe("when an R1 updates", () => {
             });
             expect(start).not.toHaveProperty("allow_downgrade");
             expect(
-              start.url.startsWith(`http://192.168.1.20:3773/api/r1/firmware/${PIN.sha256}.rbl?t=`),
+              start.url.startsWith(
+                `http://192.168.1.20:3773/api/tessel/firmware/${PIN.sha256}.rbl?t=`,
+              ),
             ).toBe(true);
             const ticket = new URL(start.url).searchParams.get("t")!;
             expect(yield* updates.image(`${PIN.sha256}.rbl`, ticket)).toEqual(V2);

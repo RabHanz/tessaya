@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * The R1's own routes: its camera upload (`POST /camera/upload?device=<id>`, kept only inside a window he opened), the
- * room loop's wake claims, step-ups and enrolments (the device key), and its MQTT hub (`/api/r1/mqtt`, R1Hub.ts).
+ * room loop's wake claims, step-ups and enrolments (the device key), and its MQTT hub (`/api/tessel/mqtt`, R1Hub.ts).
  */
 import * as NodeCrypto from "node:crypto";
 
@@ -16,8 +16,15 @@ import { StepUps } from "./StepUps.ts";
 import { HomeAssistantService, r1ById, r1ByKey } from "./HomeAssistantService.ts";
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
 import { serveArbiter } from "./VoiceArbiter.ts";
-import { noteDeviceKeyUse, R1_HUB_PATH, R1Hub, runHubSocket } from "./R1Hub.ts";
-import { R1_FIRMWARE_PATH, R1Updates } from "./R1Updates.ts";
+import {
+  DEVICE_API_ROOTS,
+  HUB_PATH,
+  noteDeviceKeyUse,
+  R1_HUB_PATH,
+  R1Hub,
+  runHubSocket,
+} from "./R1Hub.ts";
+import { OLD_FIRMWARE_PATH, R1_FIRMWARE_PATH, R1Updates } from "./R1Updates.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import * as Schema from "effect/Schema";
 import { HouseholdCaller, TessayaHousehold } from "../baton/TessayaHousehold.ts";
@@ -95,36 +102,38 @@ export const routes = HttpRouter.use((router) =>
     yield* router.add("POST", "/camera/upload", upload);
     // The R1's firmware image, on the short-lived link this server gave it (R1Updates).
     const updates = Context.getOption(context, R1Updates);
-    yield* router.add(
-      "GET",
-      `${R1_FIRMWARE_PATH}*`,
-      Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const url = Option.getOrNull(requestUrl(request));
-        const file = url?.pathname.slice(R1_FIRMWARE_PATH.length) ?? "";
-        const bytes = Option.isNone(updates)
-          ? null
-          : yield* updates.value.image(file, url?.searchParams.get("t") ?? "");
-        return bytes === null
-          ? HttpServerResponse.text("No.", { status: 404 })
-          : HttpServerResponse.uint8Array(bytes, { contentType: "application/octet-stream" });
-      }),
-    );
+    for (const root of [R1_FIRMWARE_PATH, OLD_FIRMWARE_PATH] as const)
+      yield* router.add(
+        "GET",
+        `${root}*`,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          const url = Option.getOrNull(requestUrl(request));
+          const file = url?.pathname.slice(root.length) ?? "";
+          const bytes = Option.isNone(updates)
+            ? null
+            : yield* updates.value.image(file, url?.searchParams.get("t") ?? "");
+          return bytes === null
+            ? HttpServerResponse.text("No.", { status: 404 })
+            : HttpServerResponse.uint8Array(bytes, { contentType: "application/octet-stream" });
+        }),
+      );
     // The R1's own MQTT hub. No auth here: the firmware cannot add headers, so the CONNECT's login is the auth.
     const hub = Context.get(context, R1Hub);
-    yield* router.add(
-      "GET",
-      R1_HUB_PATH,
-      Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        // Through the tunnel the peer is cloudflared on loopback; the caller is in the header.
-        const remote =
-          request.headers["cf-connecting-ip"] ?? Option.getOrUndefined(request.remoteAddress);
-        const socket = yield* request.upgrade;
-        yield* runHubSocket(socket, hub, remote).pipe(Effect.scoped);
-        return HttpServerResponse.empty();
-      }).pipe(Effect.catchCause(() => Effect.succeed(HttpServerResponse.empty({ status: 400 })))),
-    );
+    for (const path of [HUB_PATH, R1_HUB_PATH] as const)
+      yield* router.add(
+        "GET",
+        path,
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          // Through the tunnel the peer is cloudflared on loopback; the caller is in the header.
+          const remote =
+            request.headers["cf-connecting-ip"] ?? Option.getOrUndefined(request.remoteAddress);
+          const socket = yield* request.upgrade;
+          yield* runHubSocket(socket, hub, remote).pipe(Effect.scoped);
+          return HttpServerResponse.empty();
+        }).pipe(Effect.catchCause(() => Effect.succeed(HttpServerResponse.empty({ status: 400 })))),
+      );
     const arbiter = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
@@ -154,7 +163,8 @@ export const routes = HttpRouter.use((router) =>
         Effect.succeed(HttpServerResponse.jsonUnsafe({ ok: false }, { status: 500 })),
       ),
     );
-    yield* router.add("POST", "/api/devices/r1/v1/voice/arbiter", arbiter);
+    for (const root of DEVICE_API_ROOTS)
+      yield* router.add("POST", `${root}/voice/arbiter`, arbiter);
     // The loop's answer to a step-up over HTTP, as on `voice/stepup/done` (the live suite's way in, too): whether it ran.
     const stepUp = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
@@ -202,7 +212,7 @@ export const routes = HttpRouter.use((router) =>
         Effect.succeed(HttpServerResponse.jsonUnsafe({ ok: false }, { status: 500 })),
       ),
     );
-    yield* router.add("POST", "/api/devices/r1/v1/voice/stepup", stepUp);
+    for (const root of DEVICE_API_ROOTS) yield* router.add("POST", `${root}/voice/stepup`, stepUp);
     // The room loop's enrolment, or a profile it already had (moving to one profile per member): saved on the home
     // as the owner's, never a member the loop names; it re-enrols only the owner today.
     const decodeVoice = Schema.decodeUnknownOption(VoiceUpload);
@@ -255,6 +265,6 @@ export const routes = HttpRouter.use((router) =>
         Effect.succeed(HttpServerResponse.jsonUnsafe({ ok: false }, { status: 500 })),
       ),
     );
-    yield* router.add("POST", "/api/devices/r1/v1/voice/profile", voice);
+    for (const root of DEVICE_API_ROOTS) yield* router.add("POST", `${root}/voice/profile`, voice);
   }),
 );

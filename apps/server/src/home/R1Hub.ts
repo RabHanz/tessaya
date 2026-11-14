@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * The server's own MQTT hub for R1 topics (`/api/r1/mqtt`): MQTT 3.1.1 over a WebSocket (subprotocol `mqtt`), only the
+ * The server's own MQTT hub for device topics (`/api/tessel/mqtt`, and the old `/api/r1/mqtt`): MQTT 3.1.1 over a WebSocket (subprotocol `mqtt`), only the
  * subset the firmware speaks. An R1 logs in as its device id and may use only `freya/r1/<its id>/`; the bus login (a
  * room loop, a watching server) may use every `freya/r1/`. The server's own code attaches in process.
  */
@@ -30,7 +30,15 @@ import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { isPrivateNetworkAddress } from "../startupAccess.ts";
 import { HomeAssistantService, r1ById, type R1Device } from "./HomeAssistantService.ts";
 
+/**
+ * The hub answers on the renamed path and the old one. Devices are still given (and store) the old one, so a rollback
+ * to a server without the new path keeps them connected; drop it once every paired device was given the new path.
+ */
 export const R1_HUB_PATH = "/api/r1/mqtt";
+export const HUB_PATH = "/api/tessel/mqtt";
+/** The renamed device API, and the old root that every paired device and room loop still calls; drop it once none does. */
+export const DEVICE_API = "/api/devices/tessel/v1";
+export const DEVICE_API_ROOTS = [DEVICE_API, "/api/devices/r1/v1"] as const;
 /** The bus login's user name; its key is the `r1-bus` secret. Checked before device ids, so no R1 can take it. */
 const R1_BUS_USER = "tessaya-bus";
 const BUS_SECRET = "r1-bus";
