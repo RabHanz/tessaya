@@ -6,15 +6,42 @@ voice is in the microphone.
 
 ## What exists now
 
-| Path                                                  | Over speakers                                                             | On headphones                                                 |
-| ----------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Wake word, stop phrase                                | as before                                                                 | as before                                                     |
-| Esc, the pill's stop, the hotkey (the pill builder's) | always                                                                    | always                                                        |
-| Talking over her                                      | the echo guard (setting "Cut in by talking over her", **off by default**) | on: the mic cannot hear her, so speech over her voice cuts in |
+| Path                                                  | Over speakers                                                             | On headphones                                                                  |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Wake word, stop phrase                                | as before                                                                 | as before                                                                      |
+| Esc, the pill's stop, the hotkey (the pill builder's) | always                                                                    | always                                                                         |
+| Talking over her                                      | the echo guard (setting "Cut in by talking over her", **off by default**) | on: the mic cannot hear her, so speech over her voice cuts in                  |
+| On the R1                                             | keyword (stop phrase or her name) by default; open talk-over per R1       | Bluetooth output: not yet covered (the latency below is the onboard speaker's) |
 
 On a cut-in the voice **ducks to 25% at 40 ms** of his speech and **stops at 120 ms**, well inside 300 ms, and the core listens from the
 moment he started (the words since the onset are kept, as for a late wake). If it was only a blip the voice comes back up. Settings, on the
 Settings, Voice and wake words: "Headphones or speakers" (on Windows, Automatic reads the playback device's form factor: headphones and headsets are headphones, anything else, a Bluetooth speaker too, is speakers; `outputDevice.ts`) and "Cut in by talking over her (speakers, experimental)".
+
+## On the R1: open talk-over (`packages/baton-voice/src/talkOver.ts`)
+
+The R1 cancels its own echo (firmware 0.3.93: about 40 dB, her residual near -77 dBFS against a -81 floor), so the server
+does not subtract anything. It only has to tell his voice from what is left of hers. Firmware 0.3.92's uplink header
+(`cmd/voice/upformat {"v":1}`: seq, rx, q, flags) says which of her samples was under the speaker as each mic frame was
+heard: `rx - q - L`, with L = 1972 samples (123 ms) on the onboard speaker. The loop keeps her downlink by sample, lines it
+up with every frame, learns her level per band and the room's decay (kept per R1 across sessions), and flags a voice that
+rises 6 dB over the predicted echo for 128 of 256 ms. A cut also needs Silero to hear speech, the voice to clear the
+room's usual level by 6 dB (a TV or music already on is not him) and -55 dBFS, or his own level less 18 dB once known, and
+her to have sounded for 400 ms (the device's echo cancelling lets a burst through as she starts). Then she stops (flush),
+and his turn goes through the usual echo-by-sound and addressing checks and is answered, not held to a stop phrase.
+
+Open mode is per R1: retained `cmd/voice/talkover {"mode":"open"}` (`"keyword"` or empty goes back), or `R1_TALK_OVER=open`
+for the loop. Without the header (older firmware) the R1 stays on keyword barge-in.
+
+Measured (`scripts/tessaya/talkover-eval.ts`; his recorded voice, high-passed, mixed in at the R1 mic level):
+
+|                                                 | Detected at -41 dBFS (his usual level)  | Detection p50 / p90 | False stops |
+| ----------------------------------------------- | --------------------------------------- | ------------------- | ----------- |
+| Real R1 captures, AEC delay 384 (2 x 80 trials) | 100% / 98.8% (tuning half / check half) | 120-180 / 180 ms    | 0 (4 s)     |
+| Simulated R1 chain, 31 min of her, 4 rooms      | 98.9% (94.7% at -60)                    | 128 / 160 ms        | 0 per hour  |
+
+Through the whole gate (Silero and levels, 12 min of her): coughs at -40 and -30 dBFS stopped her 0 times; music or a TV
+that starts while she talks does stop her once (a TV voice at -50 is as loud as he is), and the 10:40 bench (14 Nov)
+measures her alone on the real device.
 
 ## How the echo guard hears him (`packages/baton-voice/src/echoGuard.ts`)
 
@@ -40,7 +67,9 @@ sharp enough on its own. What would improve it, in order: a longer, frequency-do
 coherence between mic and reference, a second check with the speech detector on the residual, and the real device's delay and gain. The
 harness is synthetic: it proves the plumbing and gives a number to beat; the acoustic test waits for real speakers (the laptop's are broken).
 
-The CI step in `baton-ci` prints the numbers when the voice core or the guard changes; it does not gate.
+The CI step in `baton-ci` prints the numbers when the voice core or the guard changes; it does not gate. The R1's level
+detector behind the same interface (`bargein-eval.ts --talkover`, 60 s per room) gives 0 false barge-ins but recall 0.19 at
+0 dB and 0.57 at +12 dB: without echo cancelling in front of it, a level model is too blunt, so the desktop keeps the echo guard.
 
 ## Not done
 
