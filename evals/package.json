@@ -20,6 +20,7 @@
     "tessaya-brain:tokens": "node --env-file-if-exists=../.env tessaya-brain/tokens.ts",
     "tessaya-brain:subscription": "node tessaya-brain/subscription.ts",
     "tessaya-lines": "node tessaya-lines/run.ts",
+    "tessaya-plan": "node tessaya-plan/run.ts",
     "tessaya-learning": "node tessaya-learning/run.ts"
   },
   "dependencies": {

@@ -83,6 +83,20 @@ export const BatonJobGrant = Schema.Struct({
 });
 export type BatonJobGrant = typeof BatonJobGrant.Type;
 
+/**
+ * His one yes on a job's plan, for the computer and browser acts the plan names (PERSONA-TEAM-DESIGN §6): acts inside it
+ * run without a card, acts outside it ask, risky acts always ask. Cleared when the job leaves "approved" or is stopped.
+ */
+export const BatonPlanLease = Schema.Struct({
+  persona: TrimmedNonEmptyString,
+  sites: Schema.Array(TrimmedNonEmptyString),
+  apps: Schema.Array(TrimmedNonEmptyString),
+  acts: Schema.Array(TrimmedNonEmptyString),
+  issuedAt: IsoDateTime,
+  until: IsoDateTime,
+});
+export type BatonPlanLease = typeof BatonPlanLease.Type;
+
 /** Where a job is before work starts (D145): planning, waiting for his OK, or approved to run. */
 export const BatonJobPhase = Schema.Literals(["drafting_plan", "awaiting_agreement", "approved"]);
 export type BatonJobPhase = typeof BatonJobPhase.Type;
@@ -102,6 +116,8 @@ export const BatonJobTerms = Schema.Struct({
   permissions: BatonJobPermissions,
   limits: BatonJobLimits,
   grants: Schema.Array(BatonJobGrant),
+  /** Absent from an older server, and null while no agreed plan names an act set. */
+  lease: Schema.optionalKey(Schema.NullOr(BatonPlanLease)),
   phase: BatonJobPhase,
   revisions: Schema.Array(BatonJobRevision),
   /** T3's own scheduled task that starts or resumes the worker; null for a job that runs once. */

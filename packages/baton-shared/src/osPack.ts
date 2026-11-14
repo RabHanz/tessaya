@@ -120,6 +120,7 @@ Frame every job before any work starts.
 6. Brief each specialist you use with a persona, the tools it may use, what it should remember, its limits and when to report back.
 7. Ask him only a question whose answer changes the decision.
 Show the result as a job brief before work begins: the job, the outcomes, the leverage point, build or not and why, the steps, the specialists, whether it is reversible, and what the job may do.
+When the job will use a browser or apps on his computer, write three lines under what it may do: "Sites:" the sites by name, "Apps:" the apps, and "Acts:" from open, read, click, type and scroll. His yes on the plan lets those run without asking him each time; paying, sending, submitting and deleting are never listed there, as each asks him.
 Workers report outcomes, not activity: what changed against each outcome, the evidence, what is next, what blocks it.`,
   roles: {
     butler:

@@ -8,6 +8,7 @@ import {
   BatonJobGrant,
   BatonJobLimits,
   BatonJobPermissions,
+  BatonPlanLease,
   BatonJobRevision as BatonJobRevisionSchema,
   type BatonFleetEntry,
   type BatonJob,
@@ -48,6 +49,8 @@ const encodeRevisions = Schema.encodeSync(
 const decodeRevisions = Schema.decodeUnknownSync(
   Schema.fromJsonString(Schema.Array(BatonJobRevisionSchema)),
 );
+const encodeLease = Schema.encodeSync(Schema.fromJsonString(BatonPlanLease));
+const decodeLease = Schema.decodeUnknownSync(Schema.fromJsonString(BatonPlanLease));
 const encodeGrants = Schema.encodeSync(Schema.fromJsonString(Schema.Array(BatonJobGrant)));
 const decodeGrants = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(BatonJobGrant)));
 
@@ -57,6 +60,7 @@ interface TermsRow {
   readonly permissions_json: string;
   readonly limits_json: string;
   readonly grants_json: string;
+  readonly lease_json: string | null;
   readonly phase: string;
   readonly revisions_json: string;
   readonly schedule_task_id: string | null;
@@ -83,6 +87,7 @@ const fromRow = (row: TermsRow): BatonJobTerms =>
     permissions: decodePermissions(row.permissions_json),
     limits: decodeLimits(row.limits_json),
     grants: decodeGrants(row.grants_json),
+    lease: row.lease_json === null ? null : decodeLease(row.lease_json),
     phase: row.phase as BatonJobPhase,
     revisions: decodeRevisions(row.revisions_json),
     scheduleTaskId: row.schedule_task_id,
@@ -142,6 +147,11 @@ export class BatonJobService extends Context.Service<
     readonly planReady: (id: WorkSessionId) => Effect.Effect<BatonJobTerms | null>;
     /** His explicit agreement: spoken, the button, or a reply in the thread. */
     readonly agree: (id: WorkSessionId) => Effect.Effect<BatonJobTerms | null>;
+    /** Issues the plan lease his yes gave, or withdraws it with null. */
+    readonly setLease: (
+      id: WorkSessionId,
+      lease: BatonPlanLease | null,
+    ) => Effect.Effect<BatonJobTerms | null>;
     /** What he or Baton said about the job since: kept as context, and the plan is made again. */
     readonly refine: (
       id: WorkSessionId,
@@ -184,6 +194,7 @@ export const make = Effect.gen(function* () {
         permissions_json = ${encodePermissions(terms.permissions)},
         limits_json = ${encodeLimits(terms.limits)},
         grants_json = ${encodeGrants(terms.grants)},
+        lease_json = ${terms.lease == null ? null : encodeLease(terms.lease)},
         phase = ${terms.phase},
         revisions_json = ${encodeRevisions(terms.revisions)},
         schedule_task_id = ${terms.scheduleTaskId},
@@ -278,7 +289,12 @@ export const make = Effect.gen(function* () {
           phase: terms.phase,
           state: entry.state,
           lastActivityAt: entry.updatedAt,
-          permissionsSummary: permissionsSummary(terms.permissions, terms.limits, terms.grants),
+          permissionsSummary: permissionsSummary(
+            terms.permissions,
+            terms.limits,
+            terms.grants,
+            terms.lease,
+          ),
           limitReached: limitReached(terms.limits, {
             minutes,
             turns: input.turns?.get(terms.workSessionId) ?? 0,
@@ -323,10 +339,17 @@ export const make = Effect.gen(function* () {
   });
 
   const lifecycle = (id: WorkSessionId, event: Parameters<typeof reduceJob>[1]) =>
-    change(id, (t) => ({
-      ...t,
-      ...reduceJob({ phase: t.phase, revisions: t.revisions, grants: t.grants }, event),
-    }));
+    change(id, (t) => {
+      const next = reduceJob({ phase: t.phase, revisions: t.revisions, grants: t.grants }, event);
+      // A plan sent back to wait is no longer the plan he said yes to.
+      return { ...t, ...next, lease: next.phase === "approved" ? (t.lease ?? null) : null };
+    });
+  const setLease = Effect.fn("BatonJobService.setLease")(function* (
+    id: WorkSessionId,
+    lease: BatonPlanLease | null,
+  ) {
+    return yield* change(id, (t) => ({ ...t, lease }));
+  });
   const planReady = Effect.fn("BatonJobService.planReady")(function* (id: WorkSessionId) {
     return yield* lifecycle(id, { type: "plan_ready" });
   });
@@ -344,6 +367,7 @@ export const make = Effect.gen(function* () {
   return BatonJobService.of({
     planReady,
     agree,
+    setLease,
     refine,
     create,
     terms: read,

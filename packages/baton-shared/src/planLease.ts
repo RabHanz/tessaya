@@ -79,3 +79,37 @@ export const leaseDecision = (
 /** Which browser profile an act uses: research never touches his logged-in accounts; acting as him uses his. */
 export const browserProfileFor = (purpose: "research" | "as-him" | "admin"): "research" | "his" =>
   purpose === "research" ? "research" : "his";
+
+/**
+ * The act set a written plan names, from its "Sites:", "Apps:" and "Acts:" lines (a heading, a bullet or bold around the
+ * label is fine). Null when it names no site or app, or names a risky act: then nothing is leased and each act asks.
+ */
+export const planActs = (plan: string): Pick<PlanLease, "sites" | "apps" | "acts"> | null => {
+  const line = (label: string) => {
+    const m = new RegExp(
+      String.raw`^[ \t>*#_-]*(?:\*\*|__)?${label}(?:\*\*|__)?[ \t]*:(?:\*\*|__)?[ \t]*(.*)$`,
+      "im",
+    ).exec(plan);
+    return (m?.[1] ?? "")
+      .replace(/\([^)]*\)/g, "")
+      .split(/[,;]/)
+      .map((s) => s.replace(/`|\*\*|__/g, "").trim())
+      .filter((s) => s !== "" && !/^(none|n\/a|-)\b/i.test(s));
+  };
+  // A note after a site or an act ("github.com for the issues") is not part of it.
+  const first = (s: string) => s.split(/\s+/)[0]!.replace(/[.:]+$/, "");
+  const sites = line("sites").map((s) =>
+    first(s)
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/[/?#].*$/, ""),
+  );
+  const set = {
+    sites,
+    apps: line("apps").map((a) => a.replace(/\.$/, "")),
+    acts: line("acts").map((a) => first(a).toLowerCase()),
+  };
+  return set.acts.length === 0 || leaseProblem({ job: "", persona: "", ...set }) !== null
+    ? null
+    : set;
+};
