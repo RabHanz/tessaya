@@ -44,6 +44,10 @@ import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { TessayaHousehold } from "../baton/TessayaHousehold.ts";
+import { TurnOrigin } from "../baton/TessayaTurn.ts";
+import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
+import { arbitrate, ARBITRATION_MS, type RecentAct } from "./homeArbitration.ts";
 import {
   HomeAssistantConnection,
   isHomeCallError,
@@ -988,6 +992,26 @@ const make = Effect.gen(function* () {
     return lagging();
   });
 
+  // shortcut: in this server's memory for the 90 s window only; a restart forgets who just set what.
+  const recentActs = new Map<string, RecentAct>();
+  const toldAbout = new Map<string, number>();
+  /** Who is asking, by the turn's origin: no origin is the owner (Settings, his outside agents). */
+  const askerOf = Effect.fn("HomeAssistant.askerOf")(function* () {
+    const origin = yield* TurnOrigin;
+    const member = origin === null ? OWNER_MEMBER_ID : (origin.member ?? null);
+    if (member === OWNER_MEMBER_ID) return { member, role: "owner" as const, name: "the owner" };
+    const household = yield* Effect.serviceOption(TessayaHousehold);
+    const grants =
+      member === null || Option.isNone(household)
+        ? null
+        : yield* household.value.grantsOf(member).pipe(Effect.orElseSucceed(() => null));
+    return {
+      member,
+      role: grants?.role ?? ("guest" as const),
+      name: grants?.name ?? "someone she does not know",
+    };
+  });
+
   const call = Effect.fn("HomeAssistant.call")(function* (
     request: HomeCallRequest,
     by: HomeActor,
@@ -1040,7 +1064,28 @@ const make = Effect.gen(function* () {
         });
     }
     const line = lineOf(request, ids);
-    return yield* gate({
+    // Two people, one device (CS4): a different person's opposite ask within the window does not silently win.
+    const asker = yield* askerOf();
+    const now = yield* Clock.currentTimeMillis;
+    const intent = `${request.domain}.${request.service}:${JSON.stringify(request.data ?? {})}`;
+    let note: string | null = null;
+    for (const e of named) {
+      const tellKey = `${asker.member ?? "?"}|${e}|${intent}`;
+      const told = toldAbout.get(tellKey);
+      const verdictFor = arbitrate(nameOf(e), recentActs.get(e), {
+        member: asker.member,
+        role: asker.role,
+        intent,
+        at: now,
+        askedAgain: told !== undefined && now - told <= ARBITRATION_MS,
+      });
+      if (!verdictFor.go) {
+        toldAbout.set(tellKey, now);
+        return yield* new HomeRefusedError({ why: verdictFor.why });
+      }
+      note = verdictFor.note ?? note;
+    }
+    const result = yield* gate({
       by,
       verdict,
       line,
@@ -1090,6 +1135,10 @@ const make = Effect.gen(function* () {
         return outcome("done", actionId, `Done: ${line}.`, undoId, ids);
       }),
     });
+    if (by.dryRun !== true && (result.status === "done" || result.status === "asked"))
+      for (const e of named)
+        recentActs.set(e, { member: asker.member, name: asker.name, intent, at: now });
+    return note === null ? result : { ...result, line: `${result.line} ${note}` };
   });
 
   /** Tried once a run: an HA that cannot delete it is not asked every tick. */
