@@ -1,6 +1,12 @@
 import { expect, it } from "vite-plus/test";
 
-import { R1_FIRMWARE, R1_FIRMWARE_PUBLIC_KEY, R1_RELEASE, r1Release } from "./r1Firmware.ts";
+import {
+  R1_FIRMWARE,
+  R1_FIRMWARE_MAX_BYTES,
+  R1_FIRMWARE_PUBLIC_KEY,
+  R1_RELEASE,
+  r1Release,
+} from "./r1Firmware.ts";
 
 // ECDSA P-256 over a digest as given (the R1 verifies the image's sha256 itself, prehashed); Node's crypto always
 // hashes first, so the check is done here in plain BigInt arithmetic.
@@ -51,6 +57,7 @@ it("pins a firmware whose release signature verifies against the R1's compiled-i
   expect(R1_FIRMWARE).not.toBeNull();
   const pin = R1_FIRMWARE!;
   expect(pin.url).toContain(`/releases/download/r1-firmware-${pin.version}/`);
+  expect(pin.size).toBeLessThanOrEqual(R1_FIRMWARE_MAX_BYTES);
   expect(verifies(pin.sha256, pin.sig, R1_FIRMWARE_PUBLIC_KEY)).toBe(true);
   // The check really checks: another image's hash or a changed signature does not pass.
   expect(verifies(`${pin.sha256.slice(0, 63)}0`, pin.sig, R1_FIRMWARE_PUBLIC_KEY)).toBe(false);

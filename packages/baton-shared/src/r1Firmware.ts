@@ -28,6 +28,9 @@ export interface R1KwsPin {
 /** The largest pack the R1 takes. */
 export const R1_KWS_MAX_BYTES = 476 * 1024;
 
+/** The largest firmware package the R1 takes; the rest of its OTA space is kept for a lines pack. */
+export const R1_FIRMWARE_MAX_BYTES = 2748 * 1024;
+
 /** Everything one release of Tessaya pins for its R1s. Null: that artifact is not updated. */
 export interface R1ReleaseManifest {
   readonly artifacts: { readonly firmware: R1FirmwarePin | null; readonly kws: R1KwsPin | null };
@@ -40,11 +43,11 @@ export const r1Release = (pin: R1ReleaseManifest | R1FirmwarePin | null): R1Rele
 export const R1_RELEASE: R1ReleaseManifest = {
   artifacts: {
     firmware: {
-      version: "smp-0.3.93",
-      url: "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-smp-0.3.93/r1bt-smp-0.3.93.rbl",
-      size: 1639952,
-      sha256: "05e2521dbc0c5086dd1051db411fc2d523e4ec7ac9dff130f0c4988d280b6cce",
-      sig: "5a1754d28adbb4925fe45f18e704ac1b5e78711fffd4b2dfedc428cf238d5fabbc042a81135ad48ca319f015b8fc823fb00903d94f2b7429250dcb8e5c79f011",
+      version: "smp-0.3.95",
+      url: "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-smp-0.3.95/r1bt-smp-0.3.95.rbl",
+      size: 1637776,
+      sha256: "3e5b398a3b5e3d5cec45b4d6944b12d96829771783489b19a51cdab6a77cb187",
+      sig: "3b4db400008e64f6453cc647733f71ca873915af5c33d30e2a88ab27a750b3115185c6f7e20fdb8032f5de3fc6f2fd1571168256cba8532cc026ef448221a5cb",
     },
     kws: {
       version: 1,

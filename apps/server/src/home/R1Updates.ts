@@ -10,6 +10,7 @@ import * as NodePath from "node:path";
 
 import {
   compareR1Firmware,
+  R1_FIRMWARE_MAX_BYTES,
   R1_KWS_MAX_BYTES,
   R1_RELEASE,
   r1Release,
@@ -93,7 +94,7 @@ export const otaStep = (
       previous !== null && w.fw !== null && (compareR1Firmware(previous.version, w.fw) ?? -1) >= 0;
     return w.update.rollback || !back ? "give-up" : "rollback";
   }
-  if (pin === null || !w.online || w.fw === null) return "wait";
+  if (pin === null || pin.size > R1_FIRMWARE_MAX_BYTES || !w.online || w.fw === null) return "wait";
   // Only ever forward: an R1 already on this pin or newer (or an unknown version) is never reinstalled.
   if ((compareR1Firmware(pin.version, w.fw) ?? 0) <= 0) return "wait";
   if (w.stopped?.version === pin.version) return "wait";
@@ -280,6 +281,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
 
   /** The pinned image on disk, checked; downloaded once. Records the one before it for a rollback. */
   const ensureImage = Effect.fn("R1Updates.ensureImage")(function* (pin: R1FirmwarePin) {
+    if (pin.size > R1_FIRMWARE_MAX_BYTES) return false;
     const file = NodePath.join(dir, `${pin.sha256}.rbl`);
     const have = yield* Effect.promise(() => NodeFSP.readFile(file).catch(() => null));
     if (have !== null && sha256(have) === pin.sha256) return true;
@@ -429,10 +431,12 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
               ? `Updating to ${w.update.version}…`
               : w.stopped !== null
                 ? w.stopped.why
-                : firmware === null ||
-                    (w.fw !== null && (compareR1Firmware(firmware.version, w.fw) ?? 0) <= 0)
-                  ? "Up to date."
-                  : "An update installs when it has been idle for 5 minutes.";
+                : firmware !== null && firmware.size > R1_FIRMWARE_MAX_BYTES
+                  ? `${firmware.version} is larger than the R1 takes.`
+                  : firmware === null ||
+                      (w.fw !== null && (compareR1Firmware(firmware.version, w.fw) ?? 0) <= 0)
+                    ? "Up to date."
+                    : "An update installs when it has been idle for 5 minutes.";
           return {
             id: d.deviceId!,
             firmware: w.fw,

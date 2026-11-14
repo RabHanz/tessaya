@@ -127,6 +127,9 @@ describe("when an R1 updates", () => {
       "start",
     );
     expect(otaStep({ ...idle, fw: "custom" }, PIN, null, IDLE_MS)).toBe("wait");
+    // An image larger than the R1's OTA package cap is never offered.
+    expect(otaStep(idle, { ...PIN, size: 2748 * 1024 }, null, IDLE_MS)).toBe("start");
+    expect(otaStep(idle, { ...PIN, size: 2748 * 1024 + 1 }, null, IDLE_MS)).toBe("wait");
     expect(otaStep(idle, null, null, IDLE_MS)).toBe("wait");
     // A version that failed here is not tried again by itself.
     expect(otaStep({ ...idle, stopped: { version: "0.4.0", why: "" } }, PIN, null, IDLE_MS)).toBe(
