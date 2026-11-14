@@ -29,7 +29,8 @@ import {
 import { createTextEdit } from "../writing/textEdit.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
-import { PACK_FOLDER, readPack } from "../pack/packRows.ts";
+import { PACK_FOLDER, readPack, readTemplates } from "../pack/packRows.ts";
+import { templateFrame } from "@t3tools/baton-shared/jobTemplates";
 import { DEFAULT_ROUTING, parseRouting } from "@t3tools/baton-shared/costRouting";
 import {
   standingTurnText,
@@ -3064,7 +3065,9 @@ export const startScreenCompanion = (input: {
       notes: async (persona) => {
         const standing = await memory.standing(persona);
         // His operating-system pack frames the jobs this assistant starts and splits (D148), read fresh.
-        const frame = assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER)));
+        const frame =
+          assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER))) +
+          templateFrame(readTemplates(NodePath.join(input.stateDir, PACK_FOLDER)));
         return `${frame}\n\n${standing === "" ? notesBlock(notes.list()) : standing}`;
       },
       privateAllowed: () => privateWho(),
@@ -3185,7 +3188,9 @@ export const startScreenCompanion = (input: {
       conversation: createConversationLog({ file }),
       clockLine: () => clockLine(new Date()),
       notes: async () => {
-        const frame = assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER)));
+        const frame =
+          assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER))) +
+          templateFrame(readTemplates(NodePath.join(input.stateDir, PACK_FOLDER)));
         // A standing job gets its persona's standing memory, as his own session does; a device gets none.
         const kept = standing === undefined ? "" : await slot.memory.standing(standing.persona.id);
         return kept === "" ? frame : `${frame}\n\n${kept}`;

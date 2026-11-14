@@ -22,7 +22,10 @@ describe("the pack in the window", () => {
   it("lists the framing, each role and the routing, writes the default to edit, and returns to it", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-packwin-"));
     const first = packControls(dir);
-    expect(first.map((c) => c.id)).toEqual([
+    expect(first.filter((c) => c.id.startsWith("p.ed:template:")).length).toBeGreaterThanOrEqual(
+      16,
+    );
+    expect(first.map((c) => c.id).filter((id) => !id.startsWith("p.ed:template:"))).toEqual([
       "p.ed:executive",
       "p.ed:role:butler",
       "p.ed:role:engineering",
@@ -55,6 +58,14 @@ describe("the pack in the window", () => {
     expect(NodeFS.existsSync(`${file}.bak`)).toBe(true);
     expect(useDefault(dir, "executive")).toBe(false);
     expect(fileToEdit(dir, "role:../x")).toBeNull();
+    // A template opens from its default into his templates folder, where the server reads it.
+    const trip = fileToEdit(dir, "template:plan-a-trip")!;
+    expect(trip).toBe(NodePath.join(dir, "templates", "plan-a-trip.md"));
+    expect(NodeFS.readFileSync(trip, "utf8")).toContain("title: Plan a trip");
+    expect(packEdit("p.ed:template:plan-a-trip:save")).toEqual({
+      id: "template:plan-a-trip",
+      save: true,
+    });
     expect(packAction("p:role:legal:later")).toEqual({ id: "role:legal", reset: true });
     expect(packAction("p:executive")).toEqual({ id: "executive", reset: false });
     expect(packAction("p.folder")).toBeNull();

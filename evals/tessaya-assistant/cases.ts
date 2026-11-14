@@ -408,6 +408,33 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["job_start"],
   },
   {
+    id: "assign-by-template",
+    model: "opus",
+    source:
+      "PERSONA-TEAM-DESIGN §2.4, Director 14 Nov: Tessaya picks the persona and template for a job and says the plan in a sentence or two",
+    said: "take on a job in the shop project: fix the broken checkout button and ship it",
+    first: ["job_start"],
+    goal: "job_start",
+    maxCalls: 2,
+    goalArgs: ["Onyx", "ship-a-change"],
+    answers: {
+      job_start:
+        "Opened Fix the checkout button in shop on sonnet, led by Onyx (template ship-a-change). It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.",
+    },
+    says: "Onyx",
+  },
+  {
+    id: "assign-he-names",
+    model: "opus",
+    source: "PERSONA-TEAM-DESIGN §2.4: he can say who does it, and that person leads",
+    said: "take on a job in the shop project, give it to Alfred: renew the shop's domain and pay the bill",
+    first: ["job_start"],
+    goal: "job_start",
+    maxCalls: 2,
+    goalArgs: ["Alfred"],
+    notGoalArgs: ["Onyx"],
+  },
+  {
     id: "project-add",
     source:
       "Director 13 Nov 19:05 GMT+5: start projects by voice; the desktop reaches project_add from the shared table (S2)",

@@ -1,4 +1,5 @@
 import { ProjectId, ThreadId, WorkSessionId } from "@t3tools/baton-contracts";
+import { mergeTemplates } from "@t3tools/baton-shared/jobTemplates";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   ProviderDriverKind,
@@ -489,15 +490,26 @@ layer("BatonJobFlow", (it) => {
         try {
           const jobs = yield* BatonJobService;
           const parent = WorkSessionId.make("job-flow-roster");
-          const { threadId } = yield* startJob({
-            id: parent,
-            projectId: ProjectId.make("project-site"),
-            title: "Roster",
-            goal: "do it",
-            permissions: { folders: [], projects: [], tools: ["read" as const, "edit" as const] },
-            modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "lead-model" },
-            runtimeMode: "approval-required",
-          });
+          const { threadId } = yield* startJob(
+            {
+              id: parent,
+              projectId: ProjectId.make("project-site"),
+              title: "Roster",
+              goal: "do it",
+              permissions: { folders: [], projects: [], tools: ["read" as const, "edit" as const] },
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("claude"),
+                model: "lead-model",
+              },
+              runtimeMode: "approval-required",
+            },
+            { template: mergeTemplates().find((t) => t.id === "research")! },
+          );
+          // The template's brief and report shape join the worker's frame.
+          assert.include(
+            launched.at(-1)?.text ?? "",
+            "Template (Research a question): Separate what is known",
+          );
           shells.push({
             id: threadId,
             status: "completed",
