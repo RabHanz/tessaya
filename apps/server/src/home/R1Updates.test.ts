@@ -115,7 +115,18 @@ describe("when an R1 updates", () => {
     expect(otaStep(idle, PIN, null, IDLE_MS)).toBe("start");
     expect(otaStep({ ...idle, enrolling: true }, PIN, null, IDLE_MS)).toBe("wait");
     expect(otaStep({ ...idle, bluetoothAudio: true }, PIN, null, IDLE_MS)).toBe("wait");
+    // Only ever forward: equal is up to date, a newer R1 is never taken back to an older pin.
     expect(otaStep({ ...idle, fw: "0.4.0" }, PIN, null, IDLE_MS)).toBe("wait");
+    expect(otaStep({ ...idle, fw: "smp-0.4.0" }, PIN, null, IDLE_MS)).toBe("wait");
+    expect(otaStep({ ...idle, fw: "0.4.1" }, PIN, null, IDLE_MS)).toBe("wait");
+    expect(otaStep({ ...idle, fw: "0.10.0" }, PIN, null, IDLE_MS)).toBe("wait");
+    expect(otaStep({ ...idle, fw: "smp-0.3.93" }, pinOf("smp-0.3.76", V2), null, IDLE_MS)).toBe(
+      "wait",
+    );
+    expect(otaStep({ ...idle, fw: "smp-0.3.76" }, pinOf("smp-0.3.93", V2), null, IDLE_MS)).toBe(
+      "start",
+    );
+    expect(otaStep({ ...idle, fw: "custom" }, PIN, null, IDLE_MS)).toBe("wait");
     expect(otaStep(idle, null, null, IDLE_MS)).toBe("wait");
     // A version that failed here is not tried again by itself.
     expect(otaStep({ ...idle, stopped: { version: "0.4.0", why: "" } }, PIN, null, IDLE_MS)).toBe(
@@ -126,6 +137,8 @@ describe("when an R1 updates", () => {
     expect(otaStep({ ...going, fw: "0.4.0" }, PIN, null, 1)).toBe("done");
     expect(otaStep(going, PIN, pinOf("0.3.9", imageOf("old")), ROLLBACK_AFTER_MS)).toBe("rollback");
     expect(otaStep(going, PIN, null, ROLLBACK_AFTER_MS)).toBe("give-up");
+    // The way back never goes below what the R1 last reported running.
+    expect(otaStep(going, PIN, pinOf("0.3.8", imageOf("old")), ROLLBACK_AFTER_MS)).toBe("give-up");
   });
 
   it.effect(
@@ -187,6 +200,7 @@ describe("when an R1 updates", () => {
     expect(kwsStep(idle, KWS, PIN, IDLE_MS - 1)).toBe("wait");
     expect(kwsStep(idle, null, PIN, IDLE_MS)).toBe("wait");
     expect(kwsStep({ ...idle, fw: "0.3.9" }, KWS, PIN, IDLE_MS)).toBe("wait");
+    expect(kwsStep({ ...idle, fw: "0.4.1" }, KWS, PIN, IDLE_MS)).toBe("start");
     // Its retained state/model already names this pack: nothing to send.
     const running = { version: 1, sha256: KWS.sha256, ok: true, why: null };
     expect(kwsStep({ ...idle, model: running }, KWS, PIN, IDLE_MS)).toBe("wait");

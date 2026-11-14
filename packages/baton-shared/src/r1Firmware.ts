@@ -57,6 +57,19 @@ export const R1_RELEASE: R1ReleaseManifest = {
   },
 };
 
+const fwParts = (version: string) =>
+  /^(?:smp-)?(\d+)\.(\d+)\.(\d+)$/.exec(version)?.slice(1).map(Number) ?? null;
+
+/**
+ * Orders two R1 firmware versions (`smp-X.Y.Z`): negative when `a` is older, 0 equal, positive newer. Null when
+ * either does not parse, which callers treat as "do not install".
+ */
+export const compareR1Firmware = (a: string, b: string): number | null => {
+  const [x, y] = [fwParts(a), fwParts(b)];
+  if (x === null || y === null) return null;
+  return x[0]! - y[0]! || x[1]! - y[1]! || x[2]! - y[2]!;
+};
+
 export const R1_FIRMWARE: R1FirmwarePin | null = R1_RELEASE.artifacts.firmware;
 
 /**
