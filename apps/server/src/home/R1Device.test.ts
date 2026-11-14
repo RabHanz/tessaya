@@ -211,7 +211,8 @@ describe("her reasoning is never said aloud (13 Nov audit, R1-P8)", () => {
     const s = speakableSentences((sentence) => said.push(sentence));
     for (const chunk of lines[2]!.match(/.{1,7}/gs)!) s.push(chunk);
     s.flush();
-    expect(said.join("")).toBe("Got it, nothing else is waiting on you.");
+    // The last one ends with a space as well: the R1's loop speaks a sentence once one follows it (14 Nov, 21:40).
+    expect(said.join("")).toBe("Got it, nothing else is waiting on you. ");
   });
 
   it("never speaks, records or learns her own name as an opener", () => {
@@ -230,7 +231,7 @@ describe("her reasoning is never said aloud (13 Nov audit, R1-P8)", () => {
     const s = speakableSentences((sentence) => said.push(sentence), names);
     for (const chunk of "Alfred here. Nothing needs you.".match(/.{1,4}/gs)!) s.push(chunk);
     s.flush();
-    expect(said.join("")).toBe("Nothing needs you.");
+    expect(said.join("")).toBe("Nothing needs you. ");
   });
 });
 
@@ -304,7 +305,7 @@ effectIt.effect(
 );
 
 effectIt.effect(
-  "the house matching his words and what needs him are in the model's message before it starts",
+  "the house matching his words and what needs him are in the model's message before it starts, unless a read is slow",
   () =>
     Effect.gen(function* () {
       let sent = "";
@@ -355,6 +356,24 @@ effectIt.effect(
       expect(sent).toMatch(/tessaya_in_flight\), live as of this turn: \{"threads":\[\]\}/);
       // The R1's warm sessions start with this list: any other and his first turn finds none warm (14 Nov, 20:44).
       expect(offered).toEqual(sessionTools([], [LOOK]).map((t) => t.name));
+
+      // A read of his work that hangs is left out at its deadline; the model is not kept waiting (14 Nov, 21:40).
+      sent = "";
+      const slow = yield* r1TurnStream({ heard: "is the study lamp on?", history: [] }, brain, {
+        specs: [],
+        run: (name) =>
+          name === "tessaya_watch"
+            ? Effect.never
+            : Effect.succeed({ text: '{"threads":[]}', isError: false }),
+      }).pipe(
+        Stream.runDrain,
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+        Effect.forkChild,
+      );
+      yield* TestClock.adjust("300 millis");
+      yield* Fiber.join(slow);
+      expect(sent).not.toMatch(/tessaya_watch/);
+      expect(sent).toMatch(/tessaya_in_flight\), live as of this turn/);
     }),
 );
 
@@ -447,7 +466,7 @@ effectIt.effect(
         Stream.runForEach((words) => Effect.sync(() => said.push(words))),
         Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
       );
-      expect(said.join("")).toBe("Let me look that up. It is 23 degrees and hazy.");
+      expect(said.join("")).toBe("Let me look that up. It is 23 degrees and hazy. ");
       expect(details).toEqual(["It is 23 degrees and hazy."]);
     }),
 );
@@ -499,7 +518,7 @@ effectIt.effect(
       );
       yield* TestClock.adjust("5 seconds");
       yield* Fiber.join(turn);
-      expect(said.join("")).toBe("One moment. Done.");
+      expect(said.join("")).toBe("One moment. Done. ");
     }),
 );
 
@@ -550,8 +569,8 @@ effectIt.effect(
           Effect.map(() => said.join("")),
         );
       };
-      expect(yield* turn("plan my week around the launch")).toBe("Want Opus on it?");
-      expect(yield* turn("yes, go on")).toBe("Putting Opus on this. Here is the plan.");
+      expect(yield* turn("plan my week around the launch")).toBe("Want Opus on it? ");
+      expect(yield* turn("yes, go on")).toBe("Putting Opus on this. Here is the plan. ");
       expect(sent.map((s) => s.role)).toEqual(["voice", "voice", "deep"]);
       expect(sent[2]!.user).toContain('because: "his week"');
     }),
@@ -615,7 +634,7 @@ effectIt.effect(
           ),
         ),
       );
-      expect(said.join("")).toBe("Putting Opus on this. Use backoff.");
+      expect(said.join("")).toBe("Putting Opus on this. Use backoff. ");
       expect(roles).toEqual(["voice", "deep"]);
     }),
 );
