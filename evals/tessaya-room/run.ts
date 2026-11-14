@@ -296,6 +296,35 @@ const WORK = {
     ],
   },
   tessaya_wake_word_change: { ok: true, line: "nova is back on version 1 on every device." },
+  // His prompt lab's `run`: each variant's reply and score side by side (apps/server/src/tessaya/PromptLab.ts).
+  tessaya_prompt_lab: {
+    line: "Ran live and b on sonnet over 1 scenario.",
+    models: ["sonnet"],
+    cells: [
+      {
+        variant: "live",
+        model: "sonnet",
+        replies: [
+          {
+            scenario: "greeting",
+            reply: "Morning. What's first?",
+            score: { passed: true, misses: [], words: 4 },
+          },
+        ],
+      },
+      {
+        variant: "b",
+        model: "sonnet",
+        replies: [
+          {
+            scenario: "greeting",
+            reply: "Morning, Rab. Kettle on?",
+            score: { passed: true, misses: [], words: 5 },
+          },
+        ],
+      },
+    ],
+  },
   // The cases only decline a suggestion here (the server's line for `declined`).
   tessaya_job_lead: {
     line: "Noted: the lead stays, and it is not suggested again for this job.",

@@ -576,6 +576,23 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_persona_handoff", "tessaya_job_lead"],
   },
   {
+    // B-030: trying a persona's prompt variant before it goes live; never promoted unasked.
+    id: "prompt-lab-run",
+    proves: ["tessaya_prompt_lab"],
+    said: ["Try my variant b for Alfred on Sonnet."],
+    uses: [["tessaya_prompt_lab"]],
+    clean: ["tessaya_prompt_lab"],
+    argsOf: "tessaya_prompt_lab",
+    args: (input) => ({ run: input["action"] === "run" }),
+    check: (_last, calls) =>
+      calls.some(
+        (x) =>
+          x.name === "tessaya_prompt_lab" && (x.input as { action?: unknown }).action === "promote",
+      )
+        ? "promoted a variant unasked"
+        : null,
+  },
+  {
     id: "preference-set",
     proves: ["tessaya_preference_set"],
     said: ["Call me Rab from now on."],
