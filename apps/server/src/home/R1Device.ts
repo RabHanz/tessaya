@@ -62,6 +62,7 @@ import {
   type TurnNotes,
   speakableSentences,
   brainFailure,
+  sessionTools,
 } from "../baton/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../baton/TessayaExpression.ts";
 import { isLineEvent } from "@t3tools/tessaya-shared/expression";
@@ -1197,15 +1198,21 @@ export const routes = HttpRouter.use((router) =>
     if (context === null) return;
     // With an R1 set up, the room's brain waits ready from the start, so the first turn is as quick as the rest.
     yield* Effect.gen(function* () {
-      const device = yield* Effect.flatMap(HomeAssistantService, (h) => h.device);
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices);
       const brain = yield* Effect.serviceOption(R1Brain);
       const tools = yield* RoomTools;
-      if (device !== null && Option.isSome(brain) && tools !== null)
-        yield* brain.value.warm({
-          vessel: device.deviceId ?? "r1",
-          system: ROOM_SYSTEM,
-          tools: [...tools.specs, LOOK],
-        });
+      if (Option.isNone(brain) || tools === null) return;
+      // Each R1's turns run in a slot under its own id, with the turn's own tool list (14 Nov: a cold first turn).
+      yield* Effect.forEach(
+        all.flatMap((d) => (d.deviceId === null ? [] : [d.deviceId])),
+        (vessel) =>
+          brain.value.warm({
+            vessel,
+            system: ROOM_SYSTEM,
+            tools: sessionTools(tools.specs, [LOOK]),
+          }),
+        { concurrency: "unbounded", discard: true },
+      );
     }).pipe(Effect.provideContext(context), Effect.ignore);
     yield* publishPronunciations().pipe(
       Effect.provideContext(context),

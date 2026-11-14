@@ -20,7 +20,7 @@ import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonOneShot } from "../baton/BatonOneShot.ts";
 import { R1Brain, R1BrainError, toolLoop } from "./R1Brain.ts";
-import { speakableSentences } from "../baton/TessayaBrain.ts";
+import { sessionTools, speakableSentences } from "../baton/TessayaBrain.ts";
 import type { ConversePart, ConverseRequest } from "../speech/DictationCleanupApi.ts";
 import {
   calledPersona,
@@ -32,6 +32,7 @@ import {
   peopleLines,
   namedIn,
   r1Confirmed,
+  LOOK,
   r1Played,
   r1TurnStream,
   roomData,
@@ -308,6 +309,7 @@ effectIt.effect(
   () =>
     Effect.gen(function* () {
       let sent = "";
+      let offered: Array<string> = [];
       const brain = R1Brain.of({
         route: Effect.succeed("subscription"),
         subscription: () => Stream.empty,
@@ -316,6 +318,7 @@ effectIt.effect(
         session: (turn) =>
           Stream.suspend(() => {
             sent = turn.user;
+            offered = turn.tools.map((t) => t.name);
             return Stream.make("Yes, it's on.");
           }),
       });
@@ -351,6 +354,8 @@ effectIt.effect(
         /What needs him \(tessaya_watch\), live as of this turn: \{"findings":\[\]\}/,
       );
       expect(sent).toMatch(/tessaya_in_flight\), live as of this turn: \{"threads":\[\]\}/);
+      // The R1's warm sessions start with this list: any other and his first turn finds none warm (14 Nov, 20:44).
+      expect(offered).toEqual(sessionTools([], [LOOK]).map((t) => t.name));
 
       // A read of his work that hangs is left out at its deadline; the model is not kept waiting (14 Nov, 21:40).
       sent = "";

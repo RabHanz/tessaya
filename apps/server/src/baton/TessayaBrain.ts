@@ -126,6 +126,13 @@ const ESCALATE: RoomTool = {
   },
 };
 
+/** A session turn's tools. The vessel's warm sessions start with this same list, or the first turn finds none warm. */
+export const sessionTools = (shared: ReadonlyArray<RoomTool>, own: ReadonlyArray<RoomTool>) => [
+  ...shared,
+  ...own,
+  ESCALATE,
+];
+
 /**
  * Per conversation: an open Opus offer, the task Opus last answered, and whether the last turn's tools kept failing.
  * shortcut: held in this server's memory; a restart forgets an open offer, which only means he is asked again.
@@ -397,7 +404,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   const toolTurn: ToolTurn = {
     system: vessel.system,
     user,
-    tools: [...tools.specs, ...ownSpecs, ...(escalating ? [ESCALATE] : [])],
+    tools: escalating ? sessionTools(tools.specs, ownSpecs) : [...tools.specs, ...ownSpecs],
     run: (name, args) =>
       (name === ESCALATE.name
         ? escalate(args)
