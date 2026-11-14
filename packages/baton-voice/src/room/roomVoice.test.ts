@@ -1619,20 +1619,29 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
     ]);
   });
 
-  it("rests at once on 'Dismiss.', never joined to what follows (10:37:43)", async () => {
-    const logs: string[] = [];
-    const t = setup({
-      recognise: heard(["Dismiss.", "So do you know? But yeah, and he checked."]),
-      log: (l) => logs.push(l),
-    });
-    t.s2();
-    await t.feed(true, 20);
-    await t.feed(false, 8);
-    await t.feed(true, 20);
-    await t.feed(false, 40);
-    expect(t.brainCalls).toEqual([]);
-    expect(logs.some((l) => l.includes("dismissed; she rests"))).toBe(true);
-  });
+  it.each([
+    ["Dismiss.", "dismissed; she rests"],
+    ["Stop.", "he said stop with nothing to stop; she rests"],
+  ])(
+    "rests at once on '%s' with nothing of hers playing, and ends the session (10:37:43, 14:11 14 Nov)",
+    async (said, line) => {
+      const logs: string[] = [];
+      const t = setup({
+        recognise: heard([said, "So do you know? But yeah, and he checked."]),
+        log: (l) => logs.push(l),
+      });
+      t.s2();
+      await t.feed(true, 20);
+      await t.feed(false, 8);
+      await t.feed(true, 20);
+      await t.feed(false, 40);
+      expect(t.brainCalls).toEqual([]);
+      expect(logs.some((l) => l.includes(line))).toBe(true);
+      expect(t.published.filter((p) => p.topic === `freya/r1/${DEV}/cmd/voice/stop`)).toHaveLength(
+        1,
+      );
+    },
+  );
 
   it("never holds a room that keeps talking for more than 2.5 s (10:35:22 to 10:35:46: 24 s)", async () => {
     const logs: string[] = [];
