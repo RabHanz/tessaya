@@ -20,7 +20,7 @@ import {
   R1FLASH_STOP_CHANNEL,
 } from "../channels.ts";
 
-export const R1FLASH_VERSION = "0.1.0";
+export const R1FLASH_VERSION = "0.1.1";
 const RELEASE = `https://github.com/RabHanz/tessaya/releases/download/r1flash-v${R1FLASH_VERSION}`;
 
 const PORT = /^(?:COM\d{1,3}|\/dev\/(?:tty|cu)\.?[A-Za-z0-9._-]{1,40})$/;
