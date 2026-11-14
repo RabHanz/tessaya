@@ -46,6 +46,8 @@ export interface RoomCall {
 export const HOLD_ON = "One moment.";
 /** What she says when a web search starts before her first word (B0: the subscription writes no line itself). */
 export const WEB_CUE = "Let me look that up.";
+/** His work's reads before the model starts take 20-180 ms; past this they wait for nobody. */
+const WORK_READ_MS = 300;
 
 /** A turn's brain call takes one of the shared brain slots, so many vessels at once never overload the box (§2.0a). */
 export const inBrainSlot =
@@ -266,7 +268,9 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   const workRead = (name: string) =>
     tools.run(name, {}, vessel.device).pipe(
       Effect.map((o) => (o.isError ? null : { name, text: o.text.slice(0, 800) })),
-      // A read that breaks only leaves the line out: the model can still ask for it.
+      // A read that breaks or is slow only leaves the line out: the model can still ask for it (14 Nov: 2.5-5.4 s).
+      Effect.timeoutOption(WORK_READ_MS),
+      Effect.map(Option.getOrNull),
       Effect.catchCause(() => Effect.succeed(null)),
     );
   const [gathered, needs, inFlight] = yield* Effect.all(
