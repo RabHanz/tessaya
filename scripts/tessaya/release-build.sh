@@ -32,12 +32,16 @@ if [ -z "$monitor" ]; then
 fi
 [ -d "$monitor" ] || { echo "release-build: no resource monitor at $monitor" >&2; exit 1; }
 
-restore() { git diff --name-only -- '*package.json' | xargs -r git checkout -q --; }
+restore() { git diff --name-only -- '*package.json' apps/server/src/home/R1VoiceBundle.ts | xargs -r git checkout -q --; }
 trap restore EXIT
 
 # Memory recall's model (MEM-13): fetched and checked against its pinned sha256, then copied beside the executable.
 node scripts/tessaya/fetch-memory-model.mjs
 node scripts/update-release-package-versions.ts "$version"
+# The R1 voice bundle, pinned into this build (R1Loop fetches it on the first R1's pairing). CI passes the recogniser.
+if [ -n "${BATON_R1_RECOGNIZER:-}" ]; then
+  bash scripts/tessaya/build-r1-voice.sh "$version" "$BATON_R1_RECOGNIZER" "$out"
+fi
 nice -n 10 pnpm exec vp run --filter t3 build
 PATH="$(dirname "$sea_node"):$PATH" nice -n 10 node apps/server/scripts/cli.ts build-exe
 nice -n 10 node scripts/build-cli-archive.ts --platform linux --arch x64 --version "$version" \

@@ -52,6 +52,13 @@ jobs:
           cp native/resource-monitor/target/release/t3-resource-monitor "$RUNNER_TEMP/resource-monitor/linux-x64/"
           echo "BATON_RESOURCE_MONITOR_DIR=$RUNNER_TEMP/resource-monitor" >> "$GITHUB_ENV"
 
+      - name: Build the R1 voice loop's recogniser
+        env:
+          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
+        run: |
+          cargo build --release --locked --manifest-path native/tessaya-recognizer/Cargo.toml
+          echo "BATON_R1_RECOGNIZER=$PWD/native/tessaya-recognizer/target/release/tessaya-recognizer" >> "$GITHUB_ENV"
+
       - name: Build and smoke-test the archive
         run: NODE_ENV=production bash scripts/tessaya/release-build.sh "$VERSION"
 
@@ -61,6 +68,9 @@ jobs:
         run: |
           cd release-cli
           sha256sum "t3-$VERSION-linux-x64.tar.gz" > "t3-$VERSION-linux-x64.tar.gz.sha256"
+          # The R1 voice bundle beside it: the server built above fetches it by the pinned sha256.
           gh release create "server-$VERSION" "t3-$VERSION-linux-x64.tar.gz" "t3-$VERSION-linux-x64.tar.gz.sha256" \
+            "r1-voice-$VERSION-linux-x64.tar.gz" "r1-voice-$VERSION-linux-x64.tar.gz.sha256" \
             --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title "Server $VERSION" --notes "Linux server archive built from $GITHUB_SHA."
+            --title "Server $VERSION" \
+            --notes "Linux server archive built from $GITHUB_SHA. The r1-voice bundle and the models it fetches include Parakeet TDT 0.6B v3 by NVIDIA (CC BY 4.0, https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), Pocket TTS by Kyutai (CC BY 4.0) and Smart Turn by Daily (BSD-2-Clause); see docs/baton/THIRD_PARTY_NOTICES.md."

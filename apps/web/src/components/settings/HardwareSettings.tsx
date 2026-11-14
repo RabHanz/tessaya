@@ -165,6 +165,8 @@ function HardwareSections({
   const [updates, setUpdates] = useState<ReadonlyArray<{ id: string; line: string; kws: string }>>(
     [],
   );
+  // The R1's room voice on this server (R1Loop): its download, then whether it runs.
+  const [voice, setVoice] = useState<string | null>(null);
   const readReach = async () => {
     const result = await devicesCall({
       environmentId,
@@ -191,6 +193,12 @@ function HardwareSections({
     if (result._tag === "Success" && result.value.ok) {
       const next = result.value.value as DevicesOverview;
       setView(next);
+      const loop = await devicesCall({
+        environmentId,
+        input: { kind: "read", op: "voice", args: {} },
+      });
+      if (loop._tag === "Success" && loop.value.ok)
+        setVoice((loop.value.value as { line: string } | null)?.line ?? null);
       onR1(
         environmentId,
         next.devices.some((d) => d.configured),
@@ -266,6 +274,7 @@ function HardwareSections({
             }
           />
         )}
+        {voice === null ? null : <SettingsRow title="Voice" description={voice} />}
         {updates.map((u) => (
           <SettingsRow key={`fw-${u.id}`} title={`Firmware · ${u.id}`} description={u.line} />
         ))}

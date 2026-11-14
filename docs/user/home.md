@@ -50,11 +50,21 @@ seen, with its controls. A home can have several. To add one, give its id and it
 when the R1 connects to this server itself (`ws://<this server>:<port>/api/r1/mqtt`), which needs no broker of its own;
 fill it in only for an R1 on a separate MQTT broker. **Forget** removes all of it from this server again.
 
-**Add an R1.** A new R1 shows a pairing QR on its right eye. In Settings → Hardware → **Add an R1**, paste the QR's
-text (`T3R1:…`, from your phone's camera) with your Wi-Fi name and password. In Chrome, **Set up over Bluetooth** does
-the rest; when asked, type the six digits the R1's eyes show. Anywhere else,
-**Get a setup code**, join the R1's own Wi-Fi (the QR on its left eye) and paste the code into its page. After the first
-R1 you are asked once whether it may work away from home.
+### Set up an R1
+
+1. A new R1 shows a pairing QR on its right eye. On your phone, Settings → **Add an R1** scans it. On the web or
+   desktop, Settings → Hardware → **Add an R1** takes the QR's text (`T3R1:…`).
+2. Give your Wi-Fi name and password, then **Set up over Bluetooth** (phone, desktop, Chrome) and type the six digits
+   the R1's eyes show. Without Bluetooth, **Get a setup code**, join the R1's own Wi-Fi (the QR on its left eye) and
+   paste the code into its page.
+3. After the first R1 you are asked once whether it may work away from home.
+4. Her voice then downloads to this server by itself, about 1 GB, once: Hardware shows **Voice** with its progress,
+   then "The R1's voice runs on this server." It needs a Linux (x64) server from a Tessaya release and about 2 GB free
+   disk. A server where another machine already runs the R1's voice leaves it alone. Set `TESSAYA_R1_LOOP=off` to
+   keep a server from running it.
+
+Her room voice hears you with Parakeet TDT 0.6B v3 by NVIDIA, licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and speaks with Pocket TTS by Kyutai (CC BY 4.0).
 
 **Updates.** An R1 that connects to this server gets the R1 firmware that comes with this Tessaya, from this server,
 once it has been idle for 5 minutes. It says so before and after. If it does not come back on the new version within

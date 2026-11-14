@@ -34,6 +34,7 @@ import { DeviceTriggers } from "./DeviceTriggers.ts";
 import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
 import { R1Pairing } from "./R1Pairing.ts";
 import { R1Reach } from "./R1Reach.ts";
+import { R1Loop } from "./R1Loop.ts";
 import { R1Updates } from "./R1Updates.ts";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
@@ -214,6 +215,11 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   updates: op(Schema.Struct({}), () =>
     Effect.flatMap(Effect.serviceOption(R1Updates), (updates) =>
       Option.isNone(updates) ? Effect.succeed({ pinned: null, devices: [] }) : updates.value.view,
+    ),
+  ),
+  voice: op(Schema.Struct({}), () =>
+    Effect.flatMap(Effect.serviceOption(R1Loop), (loop) =>
+      Option.isNone(loop) ? Effect.succeed(null) : loop.value.status,
     ),
   ),
   claim: op(Schema.Struct({ deviceId: Id, oneTimeKey: Text(32) }), (a) =>

@@ -99,7 +99,14 @@ SOFTWARE.
 ## Speech and wake models
 
 - Parakeet TDT 0.6B v3 (NVIDIA, CC BY 4.0), GGUF conversion `handy-computer/parakeet-tdt-0.6b-v3-gguf`,
-  downloaded on first use.
+  downloaded on first use by the desktop's dictation and by a server's R1 room voice. Attribution: "Parakeet TDT
+  0.6B v3 by NVIDIA, licensed under CC BY 4.0 (https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3); GGUF
+  conversion by handy-computer. Converted to GGUF Q8_0; no other changes."
+- Smart Turn v3.2 (Daily, BSD-2-Clause, `pipecat-ai/smart-turn-v3`): the R1 room voice's end-of-turn model,
+  downloaded by the server when the first R1 pairs. Text: `licences/BSD-2-smart-turn.txt`.
+- The R1 room voice bundle (`r1-voice-<version>-linux-x64.tar.gz`, beside each server release) also carries Node.js
+  (MIT and the notices in its own `node/LICENSE`), onnxruntime-node, the Pocket TTS binary with its `LICENSE`, and the
+  wake and VAD models listed below.
 - Pocket TTS (Kyutai, MIT) binary, and its weights and voice embeddings (CC-BY-4.0), downloaded on
   first use from `kyutai/pocket-tts-without-voice-cloning`. Attribution: "Pocket TTS by Kyutai, CC BY 4.0".
   The embeddings are made from recordings listed in `kyutai/tts-voices`: VCTK (CC BY 4.0: anna, azelma,
@@ -150,7 +157,8 @@ Code's own dependencies are covered by `third-party-licenses.config.json`. Licen
 | `melspectrogram.onnx`                                                                                                                | openWakeWord v0.5.1 feature model                                                                            | CC BY-NC-SA 4.0 (the project's README groups it with its pre-trained models)            | yes                                       |
 | `embedding_model.onnx`                                                                                                               | openWakeWord v0.5.1 embedding model (the README says it re-implements Google's speech embedding, Apache-2.0) | CC BY-NC-SA 4.0, as above                                                               | yes                                       |
 | `sebastian.onnx`, `alfred.onnx`, `freya.onnx`, `onyx.onnx`, `tessaya.onnx`                                                           | Tessaya's wake models, trained here with openWakeWord's trainer                                              | trained on sets that include non-commercial data (below), so treated as CC BY-NC-SA 4.0 | yes                                       |
-| Parakeet TDT 0.6B v3 (NVIDIA), GGUF conversion by handy-computer                                                                     | speech to text for dictation                                                                                 | CC BY 4.0                                                                               | no, downloaded on first use               |
+| Parakeet TDT 0.6B v3 (NVIDIA), GGUF conversion by handy-computer                                                                     | speech to text for dictation and the R1 room voice                                                           | CC BY 4.0                                                                               | no, downloaded on first use               |
+| Smart Turn v3.2 (Daily), `smart-turn-v3.2-cpu.onnx`                                                                                  | the R1 room voice: has he finished his turn                                                                  | BSD-2-Clause                                                                            | no, downloaded when the first R1 pairs    |
 | Pocket TTS (Kyutai) binary and weights; VCTK-derived voices                                                                          | spoken replies                                                                                               | MIT (binary); CC BY 4.0 (weights and voices)                                            | no, downloaded on first use               |
 | 3D-Speaker CAM++ (VoxCeleb), Alibaba DAMO / ModelScope `iic/speech_campplus_sv_en_voxceleb_16k`, ONNX export by sherpa-onnx (k2-fsa) | voice match: whose voice an utterance is                                                                     | Apache-2.0 (code and weights)                                                           | no, downloaded when Voice ID is turned on |
 

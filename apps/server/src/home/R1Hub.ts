@@ -175,7 +175,13 @@ export const makeHub = (
   const subscribers = new Set<Subscriber>();
   const sessions = new Map<
     string,
-    { will: unknown; grant: HubGrant | null; readonly close: () => void }
+    {
+      will: unknown;
+      grant: HubGrant | null;
+      readonly close: () => void;
+      /** A bus client, not a bridge, subscribed to this topic. */
+      readonly hears?: (topic: string) => boolean;
+    }
   >();
 
   /** `from`: the subscriber that published it, skipped when it is a bridge (no echo back to another broker). */
@@ -230,6 +236,8 @@ export const makeHub = (
         ended = true;
         io.close();
       },
+      hears: (topic: string) =>
+        grant?.kind === "bus" && !bridge && sub.filters.some((f) => topicMatches(f, topic)),
     };
     const sub: Subscriber = {
       filters: [],
@@ -394,7 +402,11 @@ export const makeHub = (
   const connected = (id: string) =>
     [...sessions.values()].some((s) => s.grant?.kind === "device" && s.grant.id === id);
 
-  return { attach, open, publish, dropDevice, connected };
+  /** Bus clients hearing this topic: room loops, when the topic is an R1's voice. */
+  const busHears = (topic: string) =>
+    [...sessions.values()].filter((s) => s.hears?.(topic) === true).length;
+
+  return { attach, open, publish, dropDevice, connected, busHears };
 };
 
 export type Hub = ReturnType<typeof makeHub>;

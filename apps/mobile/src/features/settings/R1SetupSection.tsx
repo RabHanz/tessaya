@@ -163,6 +163,10 @@ export function R1SetupSection(props: {
       return false;
     });
     if (ok && !props.awayOffered) setAskAway(pairing.deviceId);
+    // Her voice now downloads to the server (R1Loop); say so where he is looking.
+    const voice = ok ? await props.call("read", "voice", {}) : null;
+    const voiceLine = (voice?.value as { line?: string } | null | undefined)?.line;
+    if (voiceLine !== undefined) setLine(`${STEP_LINE.online} ${voiceLine}`);
     props.onChanged();
     setBusy(false);
   };

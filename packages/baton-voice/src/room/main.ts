@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalFetch:off globalTimers:off globalConsole:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalFetch:off globalTimers:off globalConsole:off cryptoRandomUUID:off
 /**
  * The R1 room loop as a program on the voice host (next to the R1 on his LAN). Everything it needs comes from
  * the environment; secrets are read from files, never from variables or arguments. See deploy/r1-voice/README.md.
@@ -400,9 +400,41 @@ const turnSignal =
       body: JSON.stringify({ callId }),
     }).catch((error: unknown) => log(`${what} ${callId} not sent: ${String(error)}`));
 
+/**
+ * A recogniser of the loop's own (a release install): `R1_RECOGNIZER_BIN` with its model, kept running beside the loop
+ * like Pocket and used as the only recogniser.
+ */
+const startRecogniser = async () => {
+  const bin = process.env["R1_RECOGNIZER_BIN"];
+  // His own recognisers, when named, win over the bundled one.
+  if (bin === undefined || bin === "" || (process.env["R1_RECOGNIZERS"] ?? "") !== "") return;
+  const port = env("R1_RECOGNIZER_PORT", "58233");
+  const tokenFile = NodePath.join(state, "recognizer-token");
+  NodeFS.writeFileSync(tokenFile, crypto.randomUUID(), { mode: 0o600 });
+  const proc = NodeChildProcess.spawn(bin, [], {
+    stdio: ["ignore", "ignore", "inherit"],
+    env: {
+      RECOGNIZER_ADDR: `127.0.0.1:${port}`,
+      RECOGNIZER_MODEL: env("R1_RECOGNIZER_MODEL", model("parakeet-tdt-0.6b-v3-Q8_0.gguf")),
+      RECOGNIZER_TOKEN_FILE: tokenFile,
+      RECOGNIZER_THREADS: env("R1_RECOGNIZER_THREADS", "4"),
+    },
+  });
+  proc.on("exit", (code) => fail(`recogniser exited (${code}); the loop restarts with it`));
+  process.env["R1_RECOGNIZERS"] = `ws://127.0.0.1:${port}=${tokenFile}`;
+  const since = Date.now();
+  const token = NodeFS.readFileSync(tokenFile, "utf8");
+  while ((await health(`ws://127.0.0.1:${port}`, token)) === null) {
+    if (Date.now() - since > 120_000) throw new Error("the recogniser did not start in 120 s");
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  log(`recogniser up in ${Date.now() - since} ms`);
+};
+
 const main = async () => {
   const threads = Number(env("R1_ONNX_THREADS", "2"));
   log("starting: loading models");
+  await startRecogniser();
   const silero = model("silero_vad.onnx");
   const smart = await createSmartTurn(model("smart-turn-v3.2-cpu.onnx"), threads);
   const sense = NodeFS.existsSync(model("sensevoice.int8.onnx"))

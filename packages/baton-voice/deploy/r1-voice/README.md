@@ -8,13 +8,17 @@ The R1's in-house voice loop (`src/room`), run on the voice host next to the R1.
 - **Models:**
   - `silero_vad.onnx` (native/baton-dictation/models).
   - `smart-turn-v3.2-cpu.onnx` (pipecat-ai/smart-turn-v3, BSD-2).
-  - `sensevoice.int8.onnx` and `sensevoice.tokens.txt` (csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17;
-    FunASR model licence, personal use only).
+  - Optional, personal use only: `sensevoice.int8.onnx` and `sensevoice.tokens.txt`
+    (csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17; FunASR model licence). It only tags emotion and
+    sounds; Parakeet writes the words. The loop uses it when the files are here, and no release installs it.
   - `campplus.onnx` (the desktop's Voice ID model, sha256 357a834f…).
   - `pocket/` (the pocket-tts 3.3.0 Linux binary, and `english/` with Tessaya's voice, as the desktop fetches it).
 - **Wake by name between sessions:** `melspectrogram.onnx`, `embedding_model.onnx`, `tessaya.onnx`, `alfred.onnx` and `freya.onnx` from `native/baton-dictation/models`, beside the others. The R1 sends only voiced segments on `voice/wake` (firmware with the wake stream). A model fire is confirmed in text from the 2 s before it, nothing else is recognised, and the segment is dropped.
 - **Camera relay:** `R1_CAMERA_PORT` (unset: off) listens on all interfaces, because the R1 posts pictures to its LAN host. Pictures go on to her server's `/camera/upload`, which keeps one only while a capture it asked for is armed. Point the R1 at it with `cmd/routing/set {"local_url":"http://<LAN ip>:<port>","mode":"auto","enabled":true}`.
-- **Install:** `systemctl --user enable --now r1-voice` with `r1-voice.service` in `~/.config/systemd/user/`.
+- **Release install:** a release server fetches all of this itself into `<T3 home>/userdata/r1-voice` when its first
+  R1 pairs (`apps/server/src/home/R1Loop.ts`, bundle from `scripts/tessaya/build-r1-voice.sh`), with its own
+  recogniser (`R1_RECOGNIZER_BIN`, Parakeet TDT 0.6B v3, CC-BY-4.0) instead of `R1_RECOGNIZERS`.
+- **Install by hand:** `systemctl --user enable --now r1-voice` with `r1-voice.service` in `~/.config/systemd/user/`.
 - **Gate before an R1 is switched to it:** `node app/replay.mjs <his wavs>` with the same env. It plays his recordings
   as a pretend R1 (`replay-1`) and prints the end-of-voice to first-sound time per clip, then p50 and p90.
 - **Switch an R1** (no firmware change): publish `{"mode":"inhouse"}` to `freya/r1/<id>/cmd/voice/mode`. To go back,
