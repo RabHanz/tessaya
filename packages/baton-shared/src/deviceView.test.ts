@@ -78,27 +78,27 @@ describe("where replies play (firmware 0.3.52)", () => {
 
 describe("one Tessel heard by several servers", () => {
   const r1 = (online: boolean | null, configured: boolean) => ({
-    id: "r1-3d57b3",
+    id: "r1-a1b2c3",
     online,
     configured,
   });
   it("is one device on the server that holds it, with the others as where else it is reachable", () => {
     const hosts = tesselHosts([
       {
-        host: "laptop",
-        devices: [r1(true, false), { id: "desk", online: true, configured: false }],
+        host: "desk",
+        devices: [r1(true, false), { id: "phone", online: true, configured: false }],
       },
-      { host: "hetzner", devices: [r1(true, true)] },
-      { host: "onnyx", devices: [r1(true, false)] },
+      { host: "home", devices: [r1(true, true)] },
+      { host: "office", devices: [r1(true, false)] },
     ]);
-    expect(hosts.get("r1-3d57b3")).toEqual({ primary: "hetzner", reachable: ["laptop", "onnyx"] });
-    expect(hosts.get("desk")).toEqual({ primary: "laptop", reachable: [] });
+    expect(hosts.get("r1-a1b2c3")).toEqual({ primary: "home", reachable: ["desk", "office"] });
+    expect(hosts.get("phone")).toEqual({ primary: "desk", reachable: [] });
   });
   it("moves when it goes quiet on its server and is heard on another", () => {
     const hosts = tesselHosts([
-      { host: "hetzner", devices: [r1(false, true)] },
-      { host: "onnyx", devices: [r1(true, false)] },
+      { host: "home", devices: [r1(false, true)] },
+      { host: "office", devices: [r1(true, false)] },
     ]);
-    expect(hosts.get("r1-3d57b3")).toEqual({ primary: "onnyx", reachable: ["hetzner"] });
+    expect(hosts.get("r1-a1b2c3")).toEqual({ primary: "office", reachable: ["home"] });
   });
 });
