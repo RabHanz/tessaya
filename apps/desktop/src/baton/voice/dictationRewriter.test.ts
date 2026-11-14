@@ -66,11 +66,51 @@ describe("makeRewriter", () => {
     rewriter.dispose();
   });
 
-  it("sends only the final clean to the paid API, and rests it a minute after a refused key", async () => {
-    let now = 1_000_000;
-    using _now = vi.spyOn(Date, "now").mockImplementation(() => now);
+  it("cleans the very first dictation through his key: no guess waits on a cold or limited subscription", async () => {
+    vi.useFakeTimers();
+    const sessionAsked: string[] = [];
+    const apiAsked: string[] = [];
+    const rewriter = makeRewriter({
+      claudeBinary: "claude",
+      model: "haiku",
+      workDir: "/tmp",
+      env: {},
+      platform: "linux",
+      dictionary: () => [],
+      always: true,
+      // A session that never answers: Claude Code still starting, or his plan at its limit (14 Nov).
+      start: (): VisionSession => ({
+        ask: (content) => {
+          sessionAsked.push(content[0]?.type === "text" ? content[0].text : "");
+          return new Promise(() => {});
+        },
+        alive: () => true,
+        dispose: () => {},
+      }),
+      api: async (_system, message) => {
+        apiAsked.push(message);
+        return "from the api";
+      },
+    });
+    const said = {
+      raw: "we should go home. And then eat",
+      mode: "default",
+      level: "claude",
+    } as const;
+    rewriter.warm();
+    rewriter.speculate({ ...said, pause: false });
+    const cleaned = rewriter.clean(said);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await cleaned).toMatchObject({ stage: "model" });
+    expect(sessionAsked).toHaveLength(0);
+    expect(apiAsked.length).toBeGreaterThan(0);
+    rewriter.dispose();
+    vi.useRealTimers();
+  });
+
+  it("with a key saved, a failed key inserts the local text and never falls back to the subscription", async () => {
     let refuse = false;
-    let failWith: string | null = null;
+    const sessionAsked: string[] = [];
     const apiAsked: string[] = [];
     const rewriter = makeRewriter({
       claudeBinary: "claude",
@@ -81,45 +121,34 @@ describe("makeRewriter", () => {
       dictionary: () => [],
       always: true,
       start: (): VisionSession => ({
-        ask: async () => "from the session",
+        ask: async (content) => {
+          sessionAsked.push(content[0]?.type === "text" ? content[0].text : "");
+          return "from the session";
+        },
         alive: () => true,
         dispose: () => {},
       }),
       api: async (_system, message) => {
         apiAsked.push(message);
-        if (refuse) throw new Error("invalid-key");
-        if (failWith !== null) throw new Error(failWith);
+        if (refuse) throw new Error("rate-limit");
         return "from the api";
       },
     });
     const said = { raw: "we should go home now please", mode: "default", level: "claude" } as const;
-    // Until his key has answered, a guess while he speaks goes to the subscription session.
-    rewriter.speculate({ ...said, raw: "we should go home" });
-    await vi.waitFor(() => expect(apiAsked).toHaveLength(0));
-    expect((await rewriter.clean(said)).text).toBe("from the api");
-    expect(apiAsked).toHaveLength(1);
-    // Once it has, his finished sentences are cleaned through it while he speaks, so release has only the rest.
+    // His finished sentences are cleaned through the key while he speaks, so release has only the rest.
     rewriter.speculate({ ...said, raw: "we should go home. And then eat", pause: false });
-    await vi.waitFor(() => expect(apiAsked).toHaveLength(2));
+    await vi.waitFor(() => expect(apiAsked).toHaveLength(1));
     expect((await rewriter.clean({ ...said, raw: "we should go home." })).text).toBe(
       "from the api",
     );
-    expect(apiAsked).toHaveLength(2);
-    apiAsked.length = 1;
-    // A refused key: this dictation and the next minute's go through the session, with no paid try.
+    expect(apiAsked).toHaveLength(1);
     refuse = true;
-    expect((await rewriter.clean(said)).text).toBe("from the session");
-    expect((await rewriter.clean(said)).text).toBe("from the session");
-    expect(apiAsked).toHaveLength(2);
-    now += 61_000;
+    expect(await rewriter.clean(said)).toMatchObject({ stage: "fallback", why: "key rate-limit" });
+    // No rest: the next dictation asks the key again.
     refuse = false;
     expect((await rewriter.clean(said)).text).toBe("from the api");
-    // A timeout rests it for 15 s only.
-    failWith = "timeout";
-    expect((await rewriter.clean(said)).text).toBe("from the session");
-    now += 16_000;
-    failWith = null;
-    expect((await rewriter.clean(said)).text).toBe("from the api");
+    expect(apiAsked).toHaveLength(3);
+    expect(sessionAsked).toHaveLength(0);
     rewriter.dispose();
   });
 
@@ -189,7 +218,7 @@ describe("makeRewriter", () => {
     // 0.1.107 cut this one at 0.9 s and pasted the local text (2026-11-12).
     expect(await clean()).toMatchObject({ stage: "model", text: "from the api" });
     refuse = true;
-    expect(await clean()).toMatchObject({ stage: "fallback", why: "timed out after key timeout" });
+    expect(await clean()).toMatchObject({ stage: "fallback", why: "key timeout" });
     rewriter.dispose();
     vi.useRealTimers();
   });

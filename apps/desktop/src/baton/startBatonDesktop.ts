@@ -787,8 +787,8 @@ export const startBatonDesktop = Effect.gen(function* () {
       household,
       wakeServer,
       comms,
-      // His Anthropic key answers first when he saved one; a failure (its reason in the error) falls back to the
-      // subscription session. The wait matches the server's 2.5 s limit, with a little for the hop.
+      // His Anthropic key cleans every dictation when he saved one; a failure (its reason in the error) inserts the
+      // local text, never the subscription. The wait matches the server's 2.5 s limit, with a little for the hop.
       cleanupApi: async (system, message, maxTokens) => {
         const answer = (await direct(
           "baton.dictation.cleanupApi",

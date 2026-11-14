@@ -50,14 +50,12 @@ export const hardLimitMs = (text: string): number => Math.min(45_000, 2_500 + te
 const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
-const API_REST_MS = 60_000;
 /**
  * Once his key answers, release waits this long for what is left, then pastes the local text. On 0.1.107 his key's
  * Haiku answered in 1.05 to 1.3 s and three of four release clean-ups were cut at the old 0.9 and 1.2 s limits
  * (2026-11-12), so this is his p90 with room for the hop to his server.
  */
 const RELEASE_BUDGET_MS = 1_800;
-const API_SLOW_REST_MS = 15_000;
 
 interface CleanInput {
   readonly raw: string;
@@ -94,8 +92,8 @@ export const makeRewriter = (input: {
   readonly start?: typeof startVisionSession;
   readonly always?: boolean;
   /**
-   * The optional direct API path: his own Anthropic key, kept by the server and used for nothing else. It answers null
-   * when no key is saved, and the subscription session answers instead.
+   * The optional direct API path: his own Anthropic key, kept by the server and used for nothing else. With a key
+   * saved, every clean-up goes to it and a failure inserts the local text; only with none (null) does the session answer.
    */
   readonly api?: (system: string, message: string, maxTokens: number) => Promise<string | null>;
   /**
@@ -153,6 +151,8 @@ export const makeRewriter = (input: {
   };
 
   const warm = () => {
+    // With a key, no subscription session is kept for clean-up: it only ever answers when there is no key.
+    if (keyRoute() && keySeen) return;
     try {
       get();
     } catch {
@@ -171,9 +171,12 @@ export const makeRewriter = (input: {
     busy = answer.catch(() => undefined);
     return answer.then((a) => a.trim());
   };
-  /** After a refused key or a rate limit the paid path rests for a minute, so a bad key costs one try, not every one. */
-  let apiRestsUntil = 0;
-  /** His key answered the last paid clean: release then asks it again rather than wait for a running guess. */
+  /** The server said no key is saved: only then does the subscription session clean up. */
+  let noKey = false;
+  const keyRoute = () => input.api !== undefined && !noKey;
+  /** His key has answered or failed at least once, so a key is saved and the session is not needed. */
+  let keySeen = false;
+  /** His key answered the last clean, so release gets the short budget; until then the first call has the full limit. */
   let apiAnswers = false;
   /** Why his key last failed, so a clean that then runs out of time says what took it. */
   let apiWhy: string | null = null;
@@ -182,7 +185,7 @@ export const makeRewriter = (input: {
     mode: DictationMode,
     context?: DictationContext,
   ): Promise<string | null> => {
-    if (input.api === undefined || Date.now() < apiRestsUntil) return null;
+    if (input.api === undefined) return null;
     try {
       const answer = await input.api(
         rewriteSystemPrompt(input.dictionary()),
@@ -190,21 +193,23 @@ export const makeRewriter = (input: {
         64 + Math.ceil(text.length / 2),
       );
       apiAnswers = answer !== null;
+      noKey = answer === null;
+      keySeen = apiAnswers;
       apiWhy = null;
+      if (keySeen) drop();
       return answer;
     } catch (error) {
       apiAnswers = false;
-      // A slow or unreachable API rests too, for less: each try costs his dictation up to 1.5 s before the session.
-      const why = error instanceof Error ? error.message : "";
-      apiWhy = why || "failed";
-      apiRestsUntil =
-        Date.now() + (/invalid-key|rate-limit/.test(why) ? API_REST_MS : API_SLOW_REST_MS);
-      return null;
+      keySeen = true;
+      drop();
+      apiWhy = (error instanceof Error ? error.message : "") || "failed";
+      throw new Error(`key ${apiWhy}`);
     }
   };
   /**
-   * The clean after release goes to his key; the guesses while he speaks too once it has answered (about 0.8 s against
-   * the session's 1.4 s), so release finds his finished sentences already cleaned. Before that, the subscription.
+   * With a key, the clean after release and the guesses while he speaks all go to it, from the first dictation on
+   * (14 Nov: first guesses on a cold or limited session held release past its limit). No key: the subscription, and
+   * each release still asks the server, so a key saved later is used at once.
    */
   const send = async (
     text: string,
@@ -212,7 +217,7 @@ export const makeRewriter = (input: {
     final: boolean,
     context?: DictationContext,
   ): Promise<string> => {
-    const paid = final || apiAnswers ? await viaApi(text, mode, context) : null;
+    const paid = final || keyRoute() ? await viaApi(text, mode, context) : null;
     return paid === null ? viaSession(text, mode, context) : paid.trim();
   };
   const timedOut = () => new Error(apiWhy === null ? "timed out" : `timed out after key ${apiWhy}`);
@@ -344,7 +349,7 @@ export const makeRewriter = (input: {
         // A guess still running is waited for on the subscription, where a new ask would queue behind it anyway; with
         // his key the piece is asked again at once instead, which is faster than the session's turn.
         const guessed =
-          done.get(key) ?? (guess === undefined || apiAnswers ? null : await waitFor(guess));
+          done.get(key) ?? (guess === undefined || keyRoute() ? null : await waitFor(guess));
         if (guessed === null || !usable(guessed)) {
           left.push(piece);
           continue;
