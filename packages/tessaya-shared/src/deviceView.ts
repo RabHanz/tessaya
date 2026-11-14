@@ -14,6 +14,7 @@ import {
   type R1KeyBinding,
   type R1KeySlot,
   type R1Mood,
+  type RegisteredDevice,
 } from "@t3tools/tessaya-contracts";
 
 import { DEFAULT_OS_PACK } from "./osPack.ts";
@@ -154,6 +155,18 @@ export const displayChoiceOf = (d: DeviceView): "auto" | "normal" | "flipped" =>
 export const displaySupported = (display: DeviceView["display"] | undefined): boolean =>
   display !== undefined &&
   (display.mode !== null || display.rotate !== null || display.note !== null);
+
+/** The sound families of the button and volume taps (`tone.family`, SMP 0.3.122), by the names he hears. */
+export const TONE_FAMILIES = [
+  ["marimba", "Soft Marimba"],
+  ["glass", "Glass Drop"],
+  ["felt", "Warm Felt"],
+] as const;
+/** The family a Tessel reports (null until it does), or null for the whole row when its firmware has no families. */
+export const toneFamilyOf = (r: RegisteredDevice | undefined): { value: unknown } | null =>
+  r?.items.some((i) => i.id === "tone.family") === true
+    ? { value: r.values.find((v) => v.itemId === "tone.family")?.value ?? null }
+    : null;
 
 export const displayLine = (d: DeviceView): string =>
   d.display.note ??

@@ -103,6 +103,17 @@ const r1Registry = () => {
               description: "where her voice plays",
             },
             {
+              id: "tone.family",
+              label: "Button sounds",
+              type: "enum",
+              values: ["marimba", "glass", "felt"],
+              access: "read,write",
+              safety: "free",
+              group: "audio",
+              description:
+                "the sound family of the button and volume taps: Soft Marimba, Glass Drop or Warm Felt",
+            },
+            {
               id: "bt.connect",
               label: "Connect Bluetooth",
               type: "action",
@@ -114,6 +125,7 @@ const r1Registry = () => {
           ],
           values: [
             { itemId: "audio.output", value: "speaker", at: "2026-11-13T09:00:00.000Z" },
+            { itemId: "tone.family", value: "marimba", at: "2026-11-13T09:00:00.000Z" },
             {
               itemId: "bt.known",
               value: [
@@ -724,6 +736,21 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
           /speaker|miniso|E8:07/i.test(JSON.stringify(input["value"] ?? ""))) ||
         (input["itemId"] === "audio.output" &&
           /"(bt|auto)"|miniso|E8:07/i.test(JSON.stringify(input["value"] ?? ""))),
+    },
+  },
+  {
+    id: "tone-family-by-name",
+    source:
+      "Button sounds (15 Nov, SMP 0.3.122): he names a family as Settings shows it; the write carries its manifest value",
+    prompt: "Switch the desk device's button sounds to Glass Drop.",
+    answers: {
+      device_list: r1Registry(),
+      device_set: { ok: true, value: { status: "done", line: "Button sounds set to glass." } },
+    },
+    calls: ["device_set"],
+    callsMustNot: ["device_owner"],
+    inputs: {
+      device_set: (input) => input["itemId"] === "tone.family" && input["value"] === "glass",
     },
   },
   {
