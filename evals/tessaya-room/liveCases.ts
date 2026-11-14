@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 /**
  * The room's every tool, said to a running server as a pretend R1 (`live.ts`). Sentences name devices by slot
  * (`{fan}`), filled from the server's own house in a first turn, so the suite runs on any user's install. A case whose

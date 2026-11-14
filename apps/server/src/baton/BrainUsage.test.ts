@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off - one test loads the module in a real Node process.
+import * as NodeChildProcess from "node:child_process";
+import * as NodePath from "node:path";
+
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -140,4 +144,15 @@ it("reads his day and month in his zone, and a zone it doesn't know as not one",
   });
   expect(BrainUsage.knownZone("Asia/Karachi")).toBe(true);
   expect(BrainUsage.knownZone("Mars/Olympus")).toBe(false);
+});
+
+it("loads first in plain Node, as the evals import it", () => {
+  // Vitest evaluates cycles in a different order, so only a real Node load shows a TDZ cycle.
+  const run = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", 'await import("./src/baton/BrainUsage.ts")'],
+    { cwd: NodePath.resolve(import.meta.dirname, "../.."), encoding: "utf8" },
+  );
+  expect(run.stderr).not.toContain("before initialization");
+  expect(run.status).toBe(0);
 });

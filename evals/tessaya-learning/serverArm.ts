@@ -1,3 +1,4 @@
+// @effect-diagnostics globalJsonInEffect:off
 /**
  * Tessaya's loop as a job runs it on the server: `BatonPlaybook.jobPlaybook` for the first message and
  * `learnFromOutcome` on his verdict, through the real memory service on an in-memory database. Only the model call goes

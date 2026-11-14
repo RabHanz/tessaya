@@ -108,6 +108,7 @@ export const summary = (
     readonly model: string;
     readonly perFamily: number;
     readonly seeds: ReadonlyArray<number>;
+    readonly families: number;
   },
 ): string => {
   const stats = armStats(rows, run.perFamily);
