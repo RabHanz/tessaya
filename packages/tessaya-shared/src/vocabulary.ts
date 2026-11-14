@@ -507,8 +507,6 @@ const OWN_HEARD: ReadonlyArray<{
     }),
   ),
   { to: "Baton", form: "Buton" },
-  // His company's product, as Parakeet splits it (15 Nov).
-  { to: "VentureOS", form: "Venture OS" },
   // The dictation app he measures against, as Parakeet writes it.
   ...["WhisperFlow", "Whisper Flow", "Wisper Flow", "WisprFlow"].map((form) => ({
     to: "Wispr Flow",

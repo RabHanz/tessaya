@@ -57,14 +57,9 @@ describe("vocabulary file", () => {
     entries = upsertEntry(entries, { phrase: "baton", replacement: null, source: "added" }, NOW);
     const terms = promptTerms(entries);
     // Her own names come first and carry how they are mis-heard; his words follow, most used first.
-    expect(terms.slice(0, 4).map((t) => t.split(" ")[0])).toEqual([
-      "Tessaya",
-      "VentureOS",
-      "Wispr",
-      "T3",
-    ]);
-    expect(terms[4]).toBe("Tessaya Manager");
-    expect(terms.slice(5)).toEqual(["Parakeet", 'Baton (heard as "Buton")']);
+    expect(terms.slice(0, 3).map((t) => t.split(" ")[0])).toEqual(["Tessaya", "Wispr", "T3"]);
+    expect(terms[3]).toBe("Tessaya Manager");
+    expect(terms.slice(4)).toEqual(["Parakeet", 'Baton (heard as "Buton")']);
     expect(entries.find((e) => e.phrase === "Baton")).toMatchObject({ source: "added", count: 2 });
   });
 });
@@ -478,9 +473,10 @@ describe("applyKnownNames", () => {
     expect(biasTranscript("Tell the Tesla manager I'm done.", [])).toBe(
       "Tell the Tessaya Manager I'm done.",
     );
-    // 15 Nov, as dictated: "Tesia" and "Venture OS".
-    expect(biasTranscript("Venture OS also has a register. So this Tesia content", [])).toBe(
-      "VentureOS also has a register. So this Tessaya content",
+    // 15 Nov, as dictated: "Tesia", and one of his words split in two.
+    const words = [{ phrase: "LaunchPad", replacement: null }];
+    expect(biasTranscript("Launch Pad also has a register. So this Tesia content", words)).toBe(
+      "LaunchPad also has a register. So this Tessaya content",
     );
   });
 });
