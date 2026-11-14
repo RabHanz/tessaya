@@ -19,6 +19,7 @@ export const BATON_DEVICES_READ_OPS = [
   "reach",
   "updates",
   "voice",
+  "bodies",
 ] as const;
 export const BATON_DEVICES_ACT_OPS = [
   "eye",
@@ -41,6 +42,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "speaker",
   "set",
   "watch",
+  "bodyEdit",
 ] as const;
 export const BATON_DEVICES_OWNER_OPS = [
   "reboot",
@@ -57,6 +59,9 @@ export const BATON_DEVICES_OWNER_OPS = [
   // The R1's on-device wake model: off, shadow (it reports, the loop decides) or gate; and unloading its pack.
   "kwsMode",
   "kwsClear",
+  // Bodies (VesselBodies): sign a new body tag (or re-sign a body onto a new tag), and the host its links name.
+  "bodyMint",
+  "bodyLinks",
 ] as const;
 export const BATON_DEVICES_VESSEL_OPS = ["publish"] as const;
 
@@ -480,3 +485,54 @@ export const BatonDevicesCallResult = Schema.Struct({
   value: Schema.optionalKey(Schema.Unknown),
 });
 export type BatonDevicesCallResult = typeof BatonDevicesCallResult.Type;
+
+/**
+ * The bodies a vessel can sit in (VesselBodies): a Dock, a plush, a phone stand. An NFC tag names one with a signed
+ * link; what the body sets lives here, never on the tag.
+ */
+export const VESSEL_BODY_TYPES = [
+  "dock",
+  "perch",
+  "plush",
+  "clip",
+  "car",
+  "peek",
+  "wall",
+  "stand",
+  "cradle",
+  "other",
+] as const;
+export type VesselBodyType = (typeof VESSEL_BODY_TYPES)[number];
+
+export const VesselBody = Schema.Struct({
+  bodyId: Schema.String,
+  name: Schema.String,
+  type: Schema.Literals(VESSEL_BODY_TYPES),
+  /** A room name or Home Assistant area; a vessel in this body is in this room. */
+  room: Schema.NullOr(Schema.String),
+  /** The tags signed for it; a re-tag adds one. */
+  uids: Schema.Array(Schema.String),
+  /** What it sets on a vessel in it, learned from his own changes there. */
+  values: Schema.Record(Schema.String, Schema.Unknown),
+  retired: Schema.Boolean,
+  /** The phone model a fitted body was made for. */
+  madeFor: Schema.NullOr(Schema.String),
+});
+export type VesselBody = typeof VesselBody.Type;
+
+export const VesselBodiesView = Schema.Struct({
+  bodies: Schema.Array(VesselBody),
+  /** The host body tag links name; null until he sets one (Android and the R1 read any host, iPhone needs it). */
+  linksHost: Schema.NullOr(Schema.String),
+});
+export type VesselBodiesView = typeof VesselBodiesView.Type;
+
+/** A new or re-signed body tag: what the phone writes, and the password it locks the tag with. */
+export const VesselBodyMint = Schema.Struct({
+  bodyId: Schema.String,
+  url: Schema.String,
+  /** NTAG21x PWD (4 bytes) and PACK (2 bytes), hex; the same for the same tag every time, so a re-tag can unlock it. */
+  password: Schema.String,
+  pack: Schema.String,
+});
+export type VesselBodyMint = typeof VesselBodyMint.Type;
