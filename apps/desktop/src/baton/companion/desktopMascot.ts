@@ -17,6 +17,7 @@ import {
   type CompanionMotion,
 } from "@t3tools/baton-shared/companion";
 import type { TurnPhase } from "@t3tools/baton-shared/voiceTurn";
+import type { Persona } from "@t3tools/baton-shared/osPack";
 
 import { protectFromCapture } from "../captureProtection.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
@@ -53,22 +54,43 @@ export const MASCOT_SIZES: Readonly<Record<MascotSize, number>> = {
 export const parseMascotSize = (value: unknown): MascotSize =>
   value === "small" || value === "large" ? value : "medium";
 
-/** The studio's personas (bodies.js TCS.PERSONAS); each wears its own character. */
-export const MASCOT_PERSONAS = ["tessaya", "freya", "alfred", "sebastian"] as const;
-export type MascotPersona = (typeof MASCOT_PERSONAS)[number];
-export const MASCOT_PERSONA_LABEL: Readonly<Record<MascotPersona, string>> = {
-  tessaya: "Tessaya",
-  freya: "Freya",
-  alfred: "Alfred",
-  sebastian: "Sebastian",
+/**
+ * The body a persona wears, from her persona record (SPINE-UNIFY §10, P3): `persona` names the studio's preset
+ * (bodies.js TCS.PERSONAS, "custom" for one the studio has no preset for), and the record's character and traits win.
+ */
+export interface PersonaBody {
+  readonly persona: string;
+  readonly character?: string;
+  readonly traits?: Readonly<Record<string, number>>;
+}
+
+const STUDIO_PRESETS = new Set(["tessaya", "freya", "alfred", "sebastian"]);
+
+/** His chosen persona (its name or id, any case) in the roster, as the body the mascot and the pill draw. */
+export const bodyOf = (personas: ReadonlyArray<Persona>, chosen: string): PersonaBody => {
+  const key = chosen.toLowerCase();
+  const p = personas.find((x) => x.id === key || x.name.toLowerCase() === key);
+  const preset = STUDIO_PRESETS.has(key) ? key : "custom";
+  return {
+    persona: preset,
+    ...(p?.character === undefined ? {} : { character: p.character }),
+    ...(p?.traits === undefined ? {} : { traits: p.traits }),
+  };
 };
-export const parseMascotPersona = (value: unknown): MascotPersona =>
-  MASCOT_PERSONAS.includes(value as MascotPersona) ? (value as MascotPersona) : "tessaya";
+
+/** The mascot's persona choices: every persona in his pack, custom ones included. */
+export const mascotChoices = (personas: ReadonlyArray<Persona>) =>
+  personas.map((p) => ({ value: p.name.toLowerCase(), label: p.name }));
+
+export const parseMascotPersona = (value: unknown): string =>
+  typeof value === "string" && /^[a-z][a-z0-9 -]{0,40}$/i.test(value)
+    ? value.toLowerCase()
+    : "tessaya";
 
 export interface MascotOptions {
   readonly on: boolean;
   readonly motion: CompanionMotion;
-  readonly persona: MascotPersona;
+  readonly persona: PersonaBody;
   readonly size: MascotSize;
   readonly reduced: boolean;
 }
@@ -159,7 +181,7 @@ export const createDesktopMascot = (input: {
   let options: MascotOptions = {
     on: false,
     motion: "calm",
-    persona: "tessaya",
+    persona: { persona: "tessaya" },
     size: "medium",
     reduced: false,
   };

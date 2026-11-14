@@ -36,8 +36,12 @@ export const PILL_FACE_SCRIPT = String.raw`(() => {
  };
  const forever = { words: [], syl: [], events: [], vis: [], end: 1e9 };
  window.pillFace = {
-  show(p) {
-   const P = TCS.PERSONAS[p] || TCS.PERSONAS.tessaya;
+  show(o) {
+   // Her persona record's body over the studio's preset (desktopMascot.ts bodyOf).
+   const b = typeof o === "string" ? { persona: o } : o;
+   const B = TCS.PERSONAS[b.persona] || TCS.PERSONAS.custom;
+   const P = { character: b.character || B.character, traits: Object.assign({}, B.traits, b.traits) };
+   const p = JSON.stringify(P);
    if (!rig) {
     mk.innerHTML = '<svg aria-hidden="true"></svg>';
     mk.classList.add("face");

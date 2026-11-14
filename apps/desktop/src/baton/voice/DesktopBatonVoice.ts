@@ -480,13 +480,13 @@ import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, wantsMoving, type VoicePill } from "./voicePill.ts";
 import { parsePillDesign, parsePillWave, type PillDesign, type PillWave } from "./pillLook.ts";
 import {
+  bodyOf,
   createDesktopMascot,
-  MASCOT_PERSONA_LABEL,
-  MASCOT_PERSONAS,
+  mascotChoices,
   parseMascotPersona,
   parseMascotSize,
-  type MascotPersona,
   type MascotSize,
+  type PersonaBody,
 } from "../companion/desktopMascot.ts";
 import {
   islandFaceShows,
@@ -678,7 +678,8 @@ interface VoiceSettings {
   /** Her character on the desktop (Settings → Appearance → Desktop companion), its motion, look and size. */
   readonly mascot: boolean;
   readonly mascotMotion: CompanionMotion;
-  readonly mascotPersona: MascotPersona;
+  /** A persona in his pack, by name in lower case; custom ones too. */
+  readonly mascotPersona: string;
   readonly mascotSize: MascotSize;
   /** Her face in the pill while he talks to her, when the desktop companion is off. */
   readonly pillFace: boolean;
@@ -1379,6 +1380,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   syncPillLook();
   /** Set once the mascot exists; settings changes reach it from here. */
   let syncMascot: (() => void) | null = null;
+  /** The body his chosen persona wears, from its pack record; read again whenever his settings change. */
+  let body: PersonaBody | null = null;
+  const mascotBody = () =>
+    (body ??= bodyOf(
+      readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas,
+      settings.mascotPersona,
+    ));
   const save = (next: Partial<VoiceSettings>) => {
     settings = { ...settings, ...next };
     writeJsonFile(settingsPath, settings);
@@ -4571,7 +4579,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     face: (phase) =>
       islandFaceShows({ phase, faceOn: settings.pillFace, mascotOn: settings.mascot })
-        ? settings.mascotPersona
+        ? mascotBody()
         : null,
     who: () => pillWho(speakerIdentity.session(), (m) => memberNames.get(m) ?? null),
     companionDir: COMPANION_DIR,
@@ -4624,10 +4632,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     })().catch(() => undefined);
   }, 3_000).unref();
   syncMascot = () => {
+    body = null;
     mascot.setOptions({
       on: settings.mascot,
       motion: settings.mascotMotion,
-      persona: settings.mascotPersona,
+      persona: mascotBody(),
       size: settings.mascotSize,
       reduced: settings.motion !== "full",
     });
@@ -6982,7 +6991,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         hint: "Each persona's own character.",
         kind: "choice",
         value: settings.mascotPersona,
-        options: MASCOT_PERSONAS.map((value) => ({ value, label: MASCOT_PERSONA_LABEL[value] })),
+        options: mascotChoices(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas),
         disabled: !settings.mascot,
       },
       {
