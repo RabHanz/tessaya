@@ -52,3 +52,5 @@ node_modules/
 
 /packages/ssh/.ssh-launcher-test-*/
 apps/server/resources/memory-model/model_quantized.onnx
+# An internal build stages an owner-only persona layer here; it is never committed.
+apps/desktop/persona-layers/

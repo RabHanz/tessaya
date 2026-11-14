@@ -72,10 +72,10 @@ index 9568e72dde310e0cdecdbb3196a1b4878ec998a7..83452a5cf4bf45ccc7ef058157981560
            }
          }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
 diff --git a/apps/desktop/src/backend/DesktopBackendConfiguration.ts b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-index e7b8405f8124df01ba5888dd68a033a1bf36f5fe..0bd26f46600e6c54c1f7be44bb3606ce15a30a4f 100644
+index e7b8405f8124df01ba5888dd68a033a1bf36f5fe..2df5313bb5a16a7e96c43581a6bdbff48e75ef83 100644
 --- a/apps/desktop/src/backend/DesktopBackendConfiguration.ts
 +++ b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-@@ -539,6 +539,21 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
+@@ -539,6 +539,27 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
          ...backendChildEnvPatch(),
          ELECTRON_RUN_AS_NODE: "1",
          T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING: "1",
@@ -91,6 +91,12 @@ index e7b8405f8124df01ba5888dd68a033a1bf36f5fe..0bd26f46600e6c54c1f7be44bb3606ce
 +                environment.resourcesPath,
 +                "baton-live",
 +                "baton-live-acp.mjs",
++              ),
++              // Read only by an internal build's server, and only when an internal build staged the file.
++              TESSAYA_PERSONA_LAYERS: environment.path.join(
++                environment.resourcesPath,
++                "persona-layers",
++                "index.mjs",
 +              ),
 +            }
 +          : {}),

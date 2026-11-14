@@ -52,6 +52,7 @@ import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
 import { MemoryViewer } from "../baton/BatonMemoryService.ts";
 import { personasList, readPack } from "../baton/OperatingSystemPack.ts";
 import { TessayaTurn, type TurnEnvelope } from "../baton/TessayaTurn.ts";
+import { replyFor } from "../tessaya/PersonaLayers.ts";
 import {
   type ActOutcome,
   brainTurn,
@@ -592,6 +593,42 @@ export const dictionaryEntries = (
 ): ReadonlyArray<VocabularyEntry> =>
   words.map((w) => ({ phrase: w.term, replacement: null, heard: w.aliases }));
 
+const r1Pack = Effect.map(Effect.serviceOption(ServerConfig.ServerConfig), (config) =>
+  Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath)),
+);
+
+const r1Envelope = (input: R1Heard, pack: OsPack, timeZone: string | undefined): TurnEnvelope => {
+  const persona = calledPersona(pack, input.voice);
+  return {
+    vessel: { kind: "device", id: input.device ?? "room" },
+    origin: DEVICE,
+    text: input.heard,
+    persona: persona?.id ?? pack.personas.find((p) => p.lead)?.id,
+    speaker: speakerOf(input.voice),
+    addressed: addressedOf(input.voice),
+    // The loop recognised this voice for the first time this session (its recognition cue): her name for them, once.
+    ...nameOnceOf(input.voice),
+    // Begun while her own voice could still be heard: what it teaches waits for his yes, and nothing private is read.
+    tainted: taintedOf(input.voice),
+    timeZone,
+    // Each turn is a fresh call, with no session holding standing memory.
+    sessionless: true,
+    rehearsal: isReplay(input),
+    // The arbiter's or loop's conversation, when it names one; else his person's or the household's.
+    ...(conversationOf(input.voice) === undefined
+      ? {}
+      : { conversation: conversationOf(input.voice) }),
+  };
+};
+
+/** A persona layer's whole reply, asked before anything is gathered, so nothing else runs, learns or records. */
+const r1Layer = Effect.fn("R1Device.layer")(function* (input: R1Heard) {
+  const turn = r1Envelope(input, yield* r1Pack, undefined);
+  return yield* replyFor(
+    turnsOf(turn, input.voice).length > 1 ? { ...turn, sharedRoom: true } : turn,
+  );
+});
+
 export const r1Gather = Effect.fn("R1Device.gather")(function* (
   raw: R1Heard,
   withHouse = true,
@@ -635,33 +672,11 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     withHouse && /automation|remind|timer|schedule/i.test(input.heard)
       ? yield* home.automations({}).pipe(Effect.orElseSucceed(() => null))
       : null;
-  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
-  const pack = Option.isNone(config)
-    ? DEFAULT_OS_PACK
-    : readPack(NodePath.dirname(config.value.dbPath));
+  const pack = yield* r1Pack;
   const persona = calledPersona(pack, input.voice);
-  const timeZone = yield* home.timeZone;
   // One pipeline for every vessel: this device is a thin adapter over TessayaTurn (MEMORY-V2-DESIGN.md §2.0).
-  const turn: TurnEnvelope = {
-    vessel: { kind: "device", id: input.device ?? "room" },
-    origin: DEVICE,
-    text: input.heard,
-    persona: persona?.id ?? pack.personas.find((p) => p.lead)?.id,
-    speaker: speakerOf(input.voice),
-    addressed: addressedOf(input.voice),
-    // The loop recognised this voice for the first time this session (its recognition cue): her name for them, once.
-    ...nameOnceOf(input.voice),
-    // Begun while her own voice could still be heard: what it teaches waits for his yes, and nothing private is read.
-    tainted: taintedOf(input.voice),
-    timeZone,
-    // Each turn is a fresh call, with no session holding standing memory.
-    sessionless: true,
-    rehearsal: isReplay(input),
-    // The arbiter's or loop's conversation, when it names one; else his person's or the household's.
-    ...(conversationOf(input.voice) === undefined
-      ? {}
-      : { conversation: conversationOf(input.voice) }),
-  };
+  const timeZone = yield* home.timeZone;
+  const turn = r1Envelope(input, pack, timeZone);
   const pipeline = yield* Effect.serviceOption(TessayaTurn);
   const begun = Option.isNone(pipeline)
     ? {
@@ -864,6 +879,8 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
 
 /** One turn, whatever carried his words: the Agora bridge, or the room voice loop. */
 const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
+  const layered = yield* r1Layer(input);
+  if (layered !== null) return layered.text;
   const { device, context, turn, names } = yield* r1Gather(input);
   const oneShot = yield* BatonOneShot;
   const plan = yield* oneShot
@@ -1008,6 +1025,11 @@ export const r1TurnStream = (
 ) =>
   Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
     Effect.gen(function* () {
+      const layered = yield* r1Layer(input);
+      if (layered !== null) {
+        Queue.offerUnsafe(queue, layered.text);
+        return yield* Queue.end(queue);
+      }
       let offered = false;
       // Her fillers for this turn, picked before a word so the slow path never waits on them.
       const who = lineWho(input);

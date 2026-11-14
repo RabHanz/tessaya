@@ -20,6 +20,7 @@ import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonOneShot } from "../baton/BatonOneShot.ts";
 import { R1Brain, R1BrainError, toolLoop } from "./R1Brain.ts";
+import { PersonaLayers } from "../tessaya/PersonaLayers.ts";
 import { speakableSentences } from "../baton/TessayaBrain.ts";
 import type { ConversePart, ConverseRequest } from "../speech/DictationCleanupApi.ts";
 import {
@@ -299,6 +300,55 @@ effectIt.effect(
       expect(ran.filter((name) => name.startsWith("home_"))).toEqual(["home_find"]);
       expect(recorded).toBe(0);
       expect(said).toEqual([]);
+    }),
+);
+
+effectIt.effect(
+  "a persona layer that answers takes the Tessel's whole turn: no brain, no house, nothing in the Record",
+  () =>
+    Effect.gen(function* () {
+      const touched: Array<string> = [];
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: () => Stream.suspend(() => (touched.push("brain"), Stream.make("no"))),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.sync(() => (touched.push("house"), [])),
+      });
+      const record = Layer.mock(BatonRecordService)({
+        append: () => Effect.sync(() => touched.push("record")) as never,
+      });
+      const said = yield* r1TurnStream({ heard: "hello", history: [], device: "bedroom" }, brain, {
+        specs: [],
+        run: () => Effect.succeed({ text: "", isError: false }),
+      }).pipe(
+        Stream.runCollect,
+        Effect.provide(
+          Layer.mergeAll(
+            home,
+            record,
+            Layer.mock(BatonOneShot)({}),
+            Layer.succeed(PersonaLayers, {
+              all: [
+                {
+                  id: "test",
+                  onTurn: async (t) =>
+                    t.vessel.id === "bedroom"
+                      ? { text: "Only the layer.", mood: "happy", gesture: "none", intensity: 0.5 }
+                      : null,
+                  signal: () => undefined,
+                  http: async () => ({ status: 404 }),
+                },
+              ],
+            }),
+          ),
+        ),
+      );
+      expect([...said].join("")).toBe("Only the layer.");
+      expect(touched).toEqual([]);
     }),
 );
 

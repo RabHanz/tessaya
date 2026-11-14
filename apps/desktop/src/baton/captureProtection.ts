@@ -21,8 +21,9 @@ const windows = new Set<Protectable>();
 // A click-through window says how to become click-through again: toggling protection must never leave it taking the mouse.
 const reassert = new WeakMap<Protectable, () => void>();
 let hideFromCapture = false;
+let shield = false;
 
-const wanted = (): boolean => hideFromCapture && !overlaysVisibleToCapture();
+const wanted = (): boolean => (hideFromCapture || shield) && !overlaysVisibleToCapture();
 
 /** True when content protection is doing the hiding, so a grab need not hide the windows itself. */
 export const protectionOn = (): boolean => wanted();
@@ -44,6 +45,17 @@ export const setHideFromCapture = (on: boolean): void => {
       reassert.get(win)?.();
     }
   }
+};
+
+/**
+ * A private session is on screen: every window, the app's own included (`others`), stays out of screenshots, screen
+ * sharing and recording until it ends, whatever the setting says.
+ */
+export const setPrivateShield = (on: boolean, others: ReadonlyArray<Protectable>): void => {
+  shield = on;
+  for (const win of others)
+    if (!windows.has(win) && win.isDestroyed?.() !== true) win.setContentProtection(on);
+  setHideFromCapture(hideFromCapture);
 };
 
 /**

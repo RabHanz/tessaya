@@ -79,6 +79,8 @@ export interface PersonaLayer {
   readonly onTurn: (turn: LayerTurn) => Promise<LayerReply | null>;
   readonly signal: (signal: LayerSignal) => void;
   readonly http: (request: LayerHttpRequest) => Promise<LayerHttpResponse>;
+  /** Whether a session is open on this vessel, so its client can keep the screen out of capture. Nothing more. */
+  readonly active?: (vessel: string) => boolean;
 }
 
 /** The loaded layers: empty in every public build, filled once at startup in an internal one. */
@@ -98,10 +100,11 @@ export const loadPersonaLayers = async (
   entry = process.env.TESSAYA_PERSONA_LAYERS?.trim(),
 ): Promise<Array<PersonaLayer>> => {
   if (!internalBuild() || entry === undefined || entry === "") return [];
-  const mod = (await import(/* @vite-ignore */ NodeURL.pathToFileURL(entry).href)) as {
-    readonly default: (host: LayerHost) => ReadonlyArray<PersonaLayer>;
-  };
-  return [...mod.default(host)];
+  // An internal build without its staged layer runs as a public one rather than failing to start.
+  const mod = (await import(/* @vite-ignore */ NodeURL.pathToFileURL(entry).href).catch(
+    () => null,
+  )) as { readonly default: (host: LayerHost) => ReadonlyArray<PersonaLayer> } | null;
+  return mod === null ? [] : [...mod.default(host)];
 };
 
 const layerTurnOf = (turn: TurnEnvelope): LayerTurn => {
