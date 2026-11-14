@@ -18,14 +18,11 @@ import { BATON_DEFAULT_CLAUDE_INSTANCE, ProviderDriverKind } from "@t3tools/tess
 import {
   activeAccount,
   decideRotation,
+  instancePool,
   type BatonOnLimitPolicy,
   type RotationDecision,
 } from "@t3tools/tessaya-shared/accountRotation";
-import {
-  instanceAccount,
-  type BatonAccount,
-  type BatonAccountPool,
-} from "@t3tools/tessaya-contracts";
+import { type BatonAccount, type BatonAccountPool } from "@t3tools/tessaya-contracts";
 import {
   isListedThreadLineage,
   isLiveSubagentShell,
@@ -86,48 +83,6 @@ export const rotationTick = (input: {
     now: input.now,
   });
 
-// An automatic pick needs a fresh reading: a target read longer ago than this counts as unknown.
-const TARGET_FRESH_MS = 30 * 60_000;
-
-const freshOrUnknown = (account: BatonAccount, nowMs: number): BatonAccount =>
-  account.active ||
-  account.usageCheckedAt === null ||
-  nowMs - Date.parse(account.usageCheckedAt) <= TARGET_FRESH_MS
-    ? account
-    : { ...account, usable: false, unusableReason: "limits-unknown", headroomPercent: null };
-
-/** The accounts a thread on `instanceId` can resume on: Claude instances sharing its transcripts. */
-export const instancePool = (
-  providers: ReadonlyArray<ServerProvider>,
-  instanceId: string,
-  now: string,
-  exclude: ReadonlySet<string> = new Set(),
-): BatonAccountPool | null => {
-  const source = providers.find((provider) => provider.instanceId === instanceId);
-  if (source === undefined || source.driver !== DRIVER) return null;
-  const group = source.continuation?.groupKey;
-  const peers = providers.filter(
-    (provider) =>
-      provider.instanceId === instanceId ||
-      (provider.driver === DRIVER &&
-        provider.enabled &&
-        provider.installed &&
-        !exclude.has(provider.instanceId) &&
-        group !== undefined &&
-        provider.continuation?.groupKey === group),
-  );
-  const nowMs = Date.parse(now);
-  return {
-    driver: DRIVER,
-    source: "instances",
-    configDir: group ?? instanceId,
-    accounts: peers.map((provider) =>
-      freshOrUnknown(instanceAccount(provider, provider.instanceId === instanceId), nowMs),
-    ),
-    checkedAt: now,
-  } as BatonAccountPool;
-};
-
 /** A thread doing work now, or stopped by a limit; an idle thread keeps the account he chose. */
 export const threadIsWorking = (shell: OrchestrationV2ThreadShell): boolean =>
   shell.archivedAt === null &&
@@ -172,7 +127,8 @@ export const planThreadMoves = (input: {
     )
       return [];
     const pool = poolFor(instanceId);
-    if (pool === null) return [];
+    // ThreadAccountMoves moves Claude threads only; other providers' pools still feed deferral.
+    if (pool === null || pool.driver !== DRIVER) return [];
     const decision = rotationTick({
       pool,
       policy: "auto",

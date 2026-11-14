@@ -5,16 +5,18 @@
  */
 import * as NodePath from "node:path";
 
-import { deferNearLimit } from "@t3tools/tessaya-shared/accountRotation";
+import { deferNearLimit, instancePool } from "@t3tools/tessaya-shared/accountRotation";
 import { brainRoute, credentialLabel, type BrainRoute } from "@t3tools/tessaya-shared/brainRoutes";
-import { ProviderDriverKind } from "@t3tools/tessaya-contracts";
+import { BATON_DEFAULT_CLAUDE_INSTANCE, ProviderDriverKind } from "@t3tools/tessaya-contracts";
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
 import { DEFAULT_SERVER_SETTINGS, type BrainRole } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { readRouting } from "./OperatingSystemPack.ts";
 
@@ -56,6 +58,16 @@ export const onSubscription = (
     : { model: route.model };
 };
 
+/** Any provider's instance as a pool of its own (instancePool), from this server's providers; null when unknown. */
+export const readInstancePool = Effect.fn("BrainRoutes.readInstancePool")(function* (
+  instanceId: string,
+) {
+  const registry = yield* Effect.serviceOption(ProviderRegistry.ProviderRegistry);
+  if (Option.isNone(registry)) return null;
+  const now = DateTime.formatIso(yield* DateTime.now);
+  return instancePool(yield* registry.value.getProviders, instanceId, now);
+});
+
 /** Work nobody is waiting on: it can wait for the reset. Talking, hard tasks and reading a sentence never wait. */
 const DEFERRABLE: ReadonlySet<BrainRole> = new Set(["background", "consolidation"]);
 
@@ -72,8 +84,11 @@ export const deferredRole = Effect.fn("BrainRoutes.deferredRole")(function* (rol
   }
   const pool = yield* Effect.serviceOption(AccountPoolService);
   if (Option.isNone(pool)) return null;
-  const read = yield* pool.value.read(ProviderDriverKind.make("claudeAgent")).pipe(Effect.option);
-  const defer = Option.isNone(read) ? null : deferNearLimit(read.value);
+  // Without cswap (the laptop) the subscription is the default Claude instance and its reported limits.
+  const read = yield* pool.value
+    .read(ProviderDriverKind.make("claudeAgent"))
+    .pipe(Effect.catch(() => readInstancePool(BATON_DEFAULT_CLAUDE_INSTANCE)));
+  const defer = read === null ? null : deferNearLimit(read);
   return defer === null
     ? null
     : `${role} waits for the reset${defer.until === null ? "" : ` at ${defer.until}`}: the subscription has ${Math.round(defer.headroomPercent)}% left and no other login has room`;

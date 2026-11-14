@@ -10,7 +10,12 @@
  *
  * Nothing here talks to a provider or a file. It decides, and says why.
  */
-import type { BatonAccount, BatonAccountPool } from "@t3tools/tessaya-contracts";
+import {
+  instanceAccount,
+  type BatonAccount,
+  type BatonAccountPool,
+} from "@t3tools/tessaya-contracts";
+import type { ServerProvider } from "@t3tools/contracts";
 
 /** What a work session does when the account it runs on nears its limit. */
 export type BatonOnLimitPolicy = "auto" | "ask" | "hold";
@@ -235,3 +240,48 @@ export function deferNearLimit(
   const tightest = from.windows.toSorted((a, b) => b.usedPercent - a.usedPercent)[0];
   return { until: tightest?.resetsAt ?? null, headroomPercent: headroom };
 }
+
+// An automatic pick needs a fresh reading: a target read longer ago than this counts as unknown.
+const TARGET_FRESH_MS = 30 * 60_000;
+
+const freshOrUnknown = (account: BatonAccount, nowMs: number): BatonAccount =>
+  account.active ||
+  account.usageCheckedAt === null ||
+  nowMs - Date.parse(account.usageCheckedAt) <= TARGET_FRESH_MS
+    ? account
+    : { ...account, usable: false, unusableReason: "limits-unknown", headroomPercent: null };
+
+/**
+ * The accounts work on `instanceId` can run on, for any provider: that instance (active) and the instances of the same
+ * driver that share its transcripts (continuation group), each with its own reported limits. One account is a pool too.
+ */
+export const instancePool = (
+  providers: ReadonlyArray<ServerProvider>,
+  instanceId: string,
+  now: string,
+  exclude: ReadonlySet<string> = new Set(),
+): BatonAccountPool | null => {
+  const source = providers.find((provider) => provider.instanceId === instanceId);
+  if (source === undefined) return null;
+  const group = source.continuation?.groupKey;
+  const peers = providers.filter(
+    (provider) =>
+      provider.instanceId === instanceId ||
+      (provider.driver === source.driver &&
+        provider.enabled &&
+        provider.installed &&
+        !exclude.has(provider.instanceId) &&
+        group !== undefined &&
+        provider.continuation?.groupKey === group),
+  );
+  const nowMs = Date.parse(now);
+  return {
+    driver: source.driver,
+    source: "instances",
+    configDir: group ?? instanceId,
+    accounts: peers.map((provider) =>
+      freshOrUnknown(instanceAccount(provider, provider.instanceId === instanceId), nowMs),
+    ),
+    checkedAt: now,
+  } as BatonAccountPool;
+};
