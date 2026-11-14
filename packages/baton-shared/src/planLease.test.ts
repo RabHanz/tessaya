@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { browserProfileFor, leaseDecision, leaseProblem, type PlanLease } from "./planLease.ts";
+import {
+  browserProfileFor,
+  leaseDecision,
+  leaseProblem,
+  planActs,
+  type PlanLease,
+} from "./planLease.ts";
 
 const lease: PlanLease = {
   job: "j1",
@@ -39,5 +45,32 @@ describe("a plan lease for computer use", () => {
   it("keeps research out of his logged-in browser", () => {
     expect(browserProfileFor("research")).toBe("research");
     expect(browserProfileFor("as-him")).toBe("his");
+  });
+});
+
+describe("the act set a plan names", () => {
+  it("reads the sites, apps and act kinds, however the labels are styled", () => {
+    expect(
+      planActs(
+        "## What it may do\n- **Sites:** https://www.Booking.com/search, maps.google.com\n- Apps: none\n- Acts: open, read, click, type",
+      ),
+    ).toEqual({
+      sites: ["www.booking.com", "maps.google.com"],
+      apps: [],
+      acts: ["open", "read", "click", "type"],
+    });
+  });
+  it("drops the notes a plan adds after a site, an app or an act", () => {
+    expect(
+      planActs(
+        "- Sites: github.com (read-only, on the issues pages), docs.github.com for the API\n- Apps: none. This uses no app.\n- Acts: read (pages only), scroll",
+      ),
+    ).toEqual({ sites: ["github.com", "docs.github.com"], apps: [], acts: ["read", "scroll"] });
+  });
+  it("leases nothing for a plan that names no site or app, no act kinds, or a risky act", () => {
+    expect(planActs("Acts: open, read")).toBeNull();
+    expect(planActs("Sites: github.com")).toBeNull();
+    expect(planActs("Sites: github.com\nActs: open, submit")).toBeNull();
+    expect(planActs("Sites: *.github.com\nActs: open")).toBeNull();
   });
 });

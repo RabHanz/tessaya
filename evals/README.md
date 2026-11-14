@@ -15,6 +15,7 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [tessaya-outside](tessaya-outside/)     | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.   |
 | [tessaya-room](tessaya-room/)           | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.   |
 | [tessaya-lines](tessaya-lines/)         | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are. |
+| [tessaya-plan](tessaya-plan/)           | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.     |
 | [tessaya-learning](tessaya-learning/)   | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none. |
 
 ## Run an eval
