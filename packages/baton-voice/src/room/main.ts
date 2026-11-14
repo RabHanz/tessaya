@@ -34,6 +34,7 @@ import { createProfileSync, parseShared } from "./profileSync.ts";
 import { createRoomVoice, ROOM_CONFIG, type RecogniserTurn, type RoomDeps } from "./roomVoice.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
+import { createWakeCapture } from "./wakeCapture.ts";
 import { createWakeStream } from "./wakeStream.ts";
 
 const env = (key: string, fallback?: string): string => {
@@ -490,6 +491,16 @@ const main = async () => {
   for (const p of sharedProfiles.localOnly()) uploadProfile(p, false);
   const metricsFile = NodePath.join(state, "metrics.ndjson");
 
+  // Off unless the host names a private folder (R1_WAKE_CAPTURE_DIR), capped at R1_WAKE_CAPTURE_MB (default 1024).
+  const captureDir = process.env["R1_WAKE_CAPTURE_DIR"] ?? "";
+  const capture =
+    captureDir === ""
+      ? undefined
+      : createWakeCapture({
+          dir: captureDir,
+          capBytes: Number(process.env["R1_WAKE_CAPTURE_MB"] ?? "1024") * 1_048_576,
+          log,
+        });
   let room: ReturnType<typeof createRoomVoice> | null = null;
   const mqtt = connectMqtt({
     // A broker URL (the server's `ws://<host>:<port>/api/r1/mqtt`), or the old host and port.
@@ -537,6 +548,8 @@ const main = async () => {
       "freya/r1/+/event/voice/flush",
     ],
     onMessage: (t, p) => {
+      const started = /^freya\/r1\/([^/]+)\/event\/session\/start$/.exec(t);
+      if (started !== null) capture?.session(started[1]!);
       // voice/profile[/<member>]: a shared profile (retained); empty on a member's topic clears that member.
       const m = /^freya\/r1\/[^/]+\/voice\/profile(?:\/([^/]+))?$/.exec(t);
       if (m !== null) {
@@ -601,6 +614,7 @@ const main = async () => {
           },
           onWake: (id, word, level, score, clip) => room?.woken(id, word, level, score, clip),
           log,
+          ...(capture === undefined ? {} : { capture }),
         });
   startCameraRelay();
   const recognise = recognisers();
