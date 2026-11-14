@@ -300,11 +300,14 @@ export const createRoomLevel = (minDbfs: number, overRoomDb = OVER_ROOM_DB) => {
   const levels: number[] = [];
   let recent = new Int16Array(0);
   return {
-    push: (pcm: Int16Array) => {
-      let sum = 0;
-      for (const v of pcm) sum += v * v;
-      levels.push(10 * Math.log10(sum / Math.max(1, pcm.length) / 32768 ** 2 + 1e-12));
-      if (levels.length > 55) levels.shift();
+    /** A mic frame; `room` when it was heard while she spoke, so his own last question never counts as the room. */
+    push: (pcm: Int16Array, room = true) => {
+      if (room) {
+        let sum = 0;
+        for (const v of pcm) sum += v * v;
+        levels.push(10 * Math.log10(sum / Math.max(1, pcm.length) / 32768 ** 2 + 1e-12));
+        if (levels.length > 55) levels.shift();
+      }
       const kept = recent.subarray(Math.max(0, recent.length - 3 * pcm.length));
       recent = new Int16Array(kept.length + pcm.length);
       recent.set(kept);
@@ -320,3 +323,10 @@ export const createRoomLevel = (minDbfs: number, overRoomDb = OVER_ROOM_DB) => {
     },
   };
 };
+
+/**
+ * While she is paused for a voice: is it time to check whose it is? First at 0.6 s of it, then every 0.3 s, at once
+ * when it has stopped (600 ms quiet, 0.5 s at least), and finally at 2.5 s.
+ */
+export const voiceCheckDue = (seconds: number, checkedSeconds: number, quiet: boolean): boolean =>
+  seconds >= Math.max(0.6, checkedSeconds + 0.3) || (quiet && seconds >= 0.5) || seconds >= 2.5;

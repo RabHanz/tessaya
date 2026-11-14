@@ -323,3 +323,15 @@ export const adaptProfile = (
           : [...profile.sources, "adapted"],
       };
 };
+
+/**
+ * Is a voice that talked over her one of the household's (any enrolled profile), from its first second or so? Short
+ * clips score lower than a turn, so the cut-offs are per length (CAM++, 14 Nov: his 0.6 s clips 0.24 at the 2nd
+ * percentile, 1 s p10 0.38; 109 other speakers 0.6 s p95 0.17, 1 s at most 0.33). "unsure" waits for more of it.
+ */
+export const memberByVoice = (best: number, seconds: number): "member" | "other" | "unsure" => {
+  if (!Number.isFinite(best)) return "other";
+  if (best >= (seconds < 1.25 ? 0.4 : 0.36)) return "member";
+  if (seconds >= 2 || (seconds >= 1 && best < 0.2) || best < 0.15) return "other";
+  return "unsure";
+};

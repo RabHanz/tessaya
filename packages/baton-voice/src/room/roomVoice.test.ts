@@ -1390,11 +1390,13 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     expect(t.brainCalls.map((c) => c.tessaya.tainted)).toEqual([false, true]);
   });
 
-  it("open talk-over: anything he says over her stops her and is answered; her own echo never does", async () => {
+  it("open talk-over: a household voice over her stops her and is answered; another voice or her echo never does", async () => {
     // Her reply as speech-like sound, and the R1's 0.3.92 uplink: each frame says how much of her it has played.
     const her = Int16Array.from(speechLike(6, 3, 190), (v) => v * 32768);
-    const run = async (mode: "open" | "keyword", him: boolean) => {
+    const run = async (mode: "open" | "keyword", him: boolean, likeness = 0.6, enrolled = true) => {
       const t = setup({
+        member: async () => likeness,
+        members: () => enrolled,
         recognise: heardInTurn(["What time is it?", "No, I meant in London."]),
         vad: () => ({
           score: async (w) =>
@@ -1406,7 +1408,8 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
           if (input.messages.at(-1)!.content === "What time is it?") await abortedBy(signal);
         },
         speak: async function* (_text, signal) {
-          yield her;
+          // Streamed as the voice makes it, a frame at a time.
+          for (let at = 0; at < her.length; at += 960) yield her.subarray(at, at + 960);
           await abortedBy(signal);
         },
       });
@@ -1453,16 +1456,32 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       const flushed = t.published.some(
         (p) => p.topic.endsWith("/voice/ctl") && String(p.payload).includes("flush"),
       );
-      return { flushed, asked: t.brainCalls.map((c) => c.messages.at(-1)!.content) };
+      return {
+        flushed,
+        asked: t.brainCalls.map((c) => c.messages.at(-1)!.content),
+        // All of her reply reached the R1 in the end (a pause sends again what the flush dropped).
+        sentAll: sent() >= her.length * 2,
+      };
     };
-    expect(await run("open", true)).toEqual({
+    expect(await run("open", true)).toMatchObject({
       flushed: true,
       asked: ["What time is it?", "No, I meant in London."],
     });
     // Her own voice coming back is not him.
     expect((await run("open", false)).flushed).toBe(false);
+    // Someone not in the household: she pauses, then goes on with all of her reply, and their words are not answered.
+    expect(await run("open", true, 0.05)).toEqual({
+      flushed: true,
+      asked: ["What time is it?"],
+      sentAll: true,
+    });
     // Keyword mode (the default): over her voice only a stop phrase or her name counts.
     expect((await run("keyword", true)).asked).toEqual(["What time is it?"]);
+    // Nobody enrolled: open talk-over stays keyword.
+    expect(await run("open", true, 0.6, false)).toMatchObject({
+      flushed: false,
+      asked: ["What time is it?"],
+    });
   });
 
   it("never says her reasoning, nor keeps it in the conversation (07:17:55, 07:38:34, 07:44:27)", async () => {

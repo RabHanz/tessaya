@@ -10,7 +10,7 @@ import { pronounce, pronounceFrom } from "@t3tools/baton-shared/pronounce";
 import { stopIntent } from "@t3tools/baton-shared/stopPhrases";
 
 import { createEchoGuard } from "../echoGuard.ts";
-import { createRoomLevel, createTalkOver, type TalkOver } from "../talkOver.ts";
+import { createRoomLevel, createTalkOver, voiceCheckDue, type TalkOver } from "../talkOver.ts";
 import { ackLines, pickAck, type Acknowledge } from "./acknowledge.ts";
 import {
   accumulate,
@@ -36,6 +36,7 @@ import { createEnrolGuide, enrolScript, type EnrolGuide } from "../enrolGuide.ts
 import {
   admits,
   CAMPLUS_POLICY,
+  memberByVoice,
   UNVERIFIED,
   type SpeakerGate,
   type SpeakerIdentity,
@@ -218,6 +219,10 @@ export interface RoomDeps {
   ) => Promise<{ readonly saved: boolean; readonly said: string }>;
   /** His voice as a vector, so the enrolment card can tell another voice from his; without it that check is skipped. */
   readonly embed?: (pcm: Int16Array) => Promise<Float32Array | null>;
+  /** How like the household's enrolled voices this is (best cosine over every profile); open talk-over needs it. */
+  readonly member?: (pcm: Int16Array) => Promise<number>;
+  /** Someone in the household has a voice profile here: without one, talking over her stays keyword. */
+  readonly members?: () => boolean;
   readonly now: () => number;
   readonly sleep: (ms: number) => Promise<void>;
   /** His final words matched a guess that is now answered: the house changes it held may now be made. */
@@ -783,6 +788,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       deps.log(`${why}; she stopped`);
     };
     const interrupt = () => {
+      releaseHold();
       reply?.abort();
       reply = null;
       playUntil = deps.now();
@@ -792,34 +798,65 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       echo.reset();
     };
 
+    /**
+     * She paused because a voice rose over hers (open talk-over): the R1's queue is flushed, her reply waits, and the
+     * voice is checked against the household's. `from` is her sample under the speaker when she paused.
+     */
+    let hold: {
+      readonly since: number;
+      readonly from: number;
+      readonly fromSeq: number;
+      readonly release: () => void;
+      readonly released: Promise<void>;
+      checking: boolean;
+      checkedSeconds: number;
+      quietSince: number | null;
+      resuming: boolean;
+    } | null = null;
+    /** A voice over hers that was not the household's: a turn begun then is theirs, not answered. */
+    let otherVoice = { from: Number.POSITIVE_INFINITY, until: Number.NEGATIVE_INFINITY };
+    /** The last 3.6 s of aligned mic frames, for the voice check while she is paused. */
+    let heardLately: Array<{ readonly seq: number; readonly pcm: Int16Array }> = [];
+    const releaseHold = () => {
+      const h = hold;
+      hold = null;
+      h?.release();
+    };
+    /** Where each of her sentences began in the downlink: a long pause resumes from the start of the one it cut. */
+    let phraseStarts: number[] = [];
+    /** Her sample under the R1's speaker as of the latest aligned frame. */
+    let underSpeaker = 0;
+
     /** Paced 60 ms publishes, at most `leadMs` ahead of what the R1 is playing. */
     const send = async (pcm: Int16Array, signal: AbortSignal, onFirst: () => void) => {
       const bytes = toBytes(pcm);
       for (let at = 0; at < bytes.length && !signal.aborted; at += DOWN_FRAME_BYTES) {
-        const frame = bytes.subarray(at, at + DOWN_FRAME_BYTES);
-        const now = deps.now();
-        const ahead = playUntil - now;
-        if (ahead > config.leadMs) await deps.sleep(ahead - config.leadMs);
+        for (let h = hold; h !== null && !signal.aborted; h = hold) await h.released;
+        // Awaits only when ahead: a frame that may go now goes in this same tick.
+        const wait = playUntil - deps.now() - config.leadMs;
+        if (wait > 0) await deps.sleep(wait);
         if (signal.aborted) return;
-        const start = Math.max(deps.now(), playUntil);
-        if (start > playUntil) soundingFrom = start + config.downDelayMs;
-        deps.publish(topic(id, "voice/down"), frame);
-        const samples = fromBytes(frame);
-        echo.reference(samples, start + config.downDelayMs);
-        for (let i = 0; i < samples.length; i += 1)
-          down[(downSamples + i) % DOWN_RING] = samples[i]!;
-        downSamples += samples.length;
-        lastDownAt = deps.now();
-        if (bench.get(id)?.keep === true) {
-          played.push({ at: start, pcm: fromBytes(frame) });
-          while (played.length > 0 && played[0]!.at < start - 20_000) played.shift();
-        }
-        playUntil = start + (frame.length / 2 / RATE) * 1000;
-        if (deps.now() - spokeAt >= 1_000) {
-          spokeAt = deps.now();
-          deps.arbiter?.report("speaking", id, playUntil + config.downDelayMs);
-        }
+        emit(bytes.subarray(at, at + DOWN_FRAME_BYTES));
         onFirst();
+      }
+    };
+    const emit = (frame: Uint8Array) => {
+      const start = Math.max(deps.now(), playUntil);
+      if (start > playUntil) soundingFrom = start + config.downDelayMs;
+      deps.publish(topic(id, "voice/down"), frame);
+      const samples = fromBytes(frame);
+      echo.reference(samples, start + config.downDelayMs);
+      for (let i = 0; i < samples.length; i += 1) down[(downSamples + i) % DOWN_RING] = samples[i]!;
+      downSamples += samples.length;
+      lastDownAt = deps.now();
+      if (bench.get(id)?.keep === true) {
+        played.push({ at: start, pcm: fromBytes(frame) });
+        while (played.length > 0 && played[0]!.at < start - 20_000) played.shift();
+      }
+      playUntil = start + (frame.length / 2 / RATE) * 1000;
+      if (deps.now() - spokeAt >= 1_000) {
+        spokeAt = deps.now();
+        deps.arbiter?.report("speaking", id, playUntil + config.downDelayMs);
       }
     };
 
@@ -832,7 +869,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       let first = false;
       let held: Int16Array[] = [];
       let heldMs = 0;
+      let marked = false;
       const out = async (pcm: Int16Array) => {
+        if (!marked) {
+          marked = true;
+          phraseStarts = [...phraseStarts, downSamples].slice(-12);
+        }
         await send(pcm, signal, () => {
           if (!first) onFirstAudio?.();
           first = true;
@@ -1210,6 +1252,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
       if (dismissedAt >= startedAt) {
         kept?.control.abort();
+        return;
+      }
+      if (given === undefined && startedAt >= otherVoice.from && startedAt <= otherVoice.until) {
+        kept?.control.abort();
+        dropped(turn, "not a household voice over hers", raw);
         return;
       }
       if (over && raw !== "" && !echoed && intent === null && rawCalled === null) {
@@ -1724,13 +1771,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
      * is left of hers stops her at once. The words then go through the same echo and addressing checks as any turn.
      */
     const heardOver = (pcm: Int16Array, seq: number, rx: number, q: number) => {
-      roomLevel.push(pcm);
+      roomLevel.push(pcm, speaking() && hold === null);
+      heardLately = [...heardLately, { seq, pcm }].slice(-60);
       // Nothing in flight and nothing queued: the R1 has every byte sent, so its count and ours differ by a constant.
       if (q === 0 && deps.now() - lastDownAt > 1_000) downBase = rx - downSamples * 2;
       if (downBase === null) return;
       const at = seq * pcm.length;
       // From 32 ms before the device's latency: the detector finds the rest (it only looks later, never earlier).
       const from = (rx - q - downBase) / 2 - R1_LATENCY + 512;
+      underSpeaker = from - 512;
       const ref = new Int16Array(pcm.length);
       for (let i = 0; i < ref.length; i += 1) {
         const n = from + i;
@@ -1738,15 +1787,97 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
       talk.reference(ref, at);
       const heard = talk.process(pcm, at).some((v) => v.ready && v.speech);
+      if (hold !== null) {
+        followHold(hold, heard);
+        return;
+      }
       if (!heard || !speaking() || enrolling() || bench.has(id) || lastProb < config.turn.stopProb)
         return;
       if (deps.now() - cutByVoiceAt < 1_000 || deps.now() - soundingFrom < ONSET_GRACE_MS) return;
       // The room (a TV, someone across it) is far quieter than he is, or was already this loud before he spoke.
       if (!roomLevel.rises(Number.isFinite(hisLevel) ? hisLevel - FAR_DB : TALK_MIN_DBFS)) return;
-      cutByVoiceAt = deps.now();
-      bargedIn = true;
-      deps.log(`[${id}] he talked over her; she stopped`);
-      stopHer(`[${id}] talked over`);
+      // Only a household voice may stop her, so with nobody enrolled it stays keyword.
+      if (deps.member === undefined || deps.members?.() !== true) return;
+      let release = () => undefined as void;
+      const released = new Promise<void>((r) => (release = r));
+      // His first words began about the detector's 256 ms before it was sure, plus a frame.
+      hold = {
+        since: deps.now(),
+        from: Math.max(0, underSpeaker),
+        fromSeq: seq - 5,
+        release,
+        released,
+        checking: false,
+        checkedSeconds: 0,
+        quietSince: null,
+        resuming: false,
+      };
+      playUntil = deps.now();
+      deps.publish(topic(id, "voice/ctl"), JSON.stringify({ ev: "flush" }));
+      deps.log(`[${id}] a voice over hers; she paused`);
+    };
+
+    /** While she is paused: once enough of the voice is in, a household voice stops her, any other lets her go on. */
+    const followHold = (h: NonNullable<typeof hold>, heard: boolean) => {
+      if (h.resuming || h.checking) return;
+      h.quietSince = heard ? null : (h.quietSince ?? deps.now());
+      const quiet = h.quietSince !== null && deps.now() - h.quietSince >= 600;
+      const frames = heardLately.filter((f) => f.seq >= h.fromSeq);
+      const seconds = frames.reduce((n, f) => n + f.pcm.length, 0) / RATE;
+      if (!voiceCheckDue(seconds, h.checkedSeconds, quiet)) return;
+      h.checking = true;
+      h.checkedSeconds = seconds;
+      const clip = new Int16Array(seconds * RATE);
+      let at = 0;
+      for (const f of frames) {
+        clip.set(f.pcm, at);
+        at += f.pcm.length;
+      }
+      void (deps.member?.(clip) ?? Promise.resolve(Number.NEGATIVE_INFINITY))
+        .catch(() => Number.NEGATIVE_INFINITY)
+        .then((best) => {
+          if (hold !== h) return;
+          h.checking = false;
+          // A voice that has stopped is judged on what there is.
+          const verdict = memberByVoice(
+            best,
+            quiet || seconds >= 2.5 ? Math.max(seconds, 2) : seconds,
+          );
+          deps.log(
+            `[${id}] the voice over hers: ${verdict} (${best.toFixed(2)} at ${seconds.toFixed(1)} s)`,
+          );
+          if (verdict === "member") {
+            cutByVoiceAt = deps.now();
+            bargedIn = true;
+            stopHer(`[${id}] talked over`);
+          } else if (verdict === "other") resume(h);
+        });
+    };
+
+    /** Not the household's voice: she goes on from where she paused, or from her sentence's start after a long pause. */
+    const resume = (h: NonNullable<typeof hold>) => {
+      h.resuming = true;
+      const long = deps.now() - h.since > 2_000;
+      const back = long ? (phraseStarts.filter((p) => p <= h.from).at(-1) ?? h.from) : h.from;
+      const from = Math.max(back, downSamples - DOWN_RING + 1);
+      const again = new Int16Array(Math.max(0, downSamples - from));
+      for (let i = 0; i < again.length; i += 1) again[i] = down[(from + i) % DOWN_RING]!;
+      const signal = reply?.signal ?? new AbortController().signal;
+      deps.log(
+        `[${id}] not a household voice; she goes on${long ? " from her sentence's start" : ""}`,
+      );
+      otherVoice = { from: h.since - 1_000, until: deps.now() };
+      void (async () => {
+        const bytes = toBytes(again);
+        for (let at = 0; at < bytes.length; at += DOWN_FRAME_BYTES) {
+          // He or S2 may stop her mid-resume: the hold is gone or the reply cancelled.
+          if (hold !== h || signal.aborted) break;
+          const wait = playUntil - deps.now() - config.leadMs;
+          if (wait > 0) await deps.sleep(wait);
+          emit(bytes.subarray(at, at + DOWN_FRAME_BYTES));
+        }
+        if (hold === h) releaseHold();
+      })();
     };
 
     const onWindow = async (window: Int16Array, arrivedAt: number) => {
