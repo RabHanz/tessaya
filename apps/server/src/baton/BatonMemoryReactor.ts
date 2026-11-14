@@ -20,7 +20,7 @@ import * as ServerConfig from "../config.ts";
 import { forkParked } from "../serverActivation.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BatonJobService } from "./BatonJobService.ts";
-import { dailyEpisode } from "./BatonMemoryEpisode.ts";
+import { dailyEpisode, personaDayEpisodes } from "./BatonMemoryEpisode.ts";
 import { pullIfEnabled } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
@@ -173,6 +173,7 @@ export const layer = Layer.effect(
             Effect.andThen(
               Effect.flatMap(BatonMemoryLearning, (learning) => learning.consolidate).pipe(
                 Effect.andThen(Effect.flatMap(Clock.currentTimeMillis, dailyEpisode)),
+                Effect.andThen(Effect.flatMap(Clock.currentTimeMillis, personaDayEpisodes)),
                 Effect.andThen(weeklyIfDue),
                 Effect.andThen(pullIfEnabled),
                 Effect.ignoreCause({ log: true }),
