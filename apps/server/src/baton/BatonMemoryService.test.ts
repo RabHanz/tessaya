@@ -423,6 +423,25 @@ it.effect(
       assert.isTrue(yield* sees(a, "alfred"));
       assert.isFalse(yield* sees(a, "freya"));
       assert.isFalse(yield* sees(a));
+      // Persona x person (P7): what Alfred learned from Maya reaches his turns with Maya only.
+      const hers = yield* a.add({
+        kind: "preference",
+        text: "Maya likes the butler to read her the weather first",
+        source: "thread",
+        confidence: 0.8,
+        persona: "alfred",
+        visibility: "persona",
+        speaker: "maya",
+      });
+      const recalled = (person: string | null) =>
+        Effect.map(a.recall({ text: "butler weather first", agent: "alfred", person }), (r) => [
+          r.ids.includes(hers.id),
+          r.ids.includes(own.id),
+        ]).pipe(Effect.provideService(MemoryViewer, "desktop"));
+      assert.deepStrictEqual(yield* recalled("maya"), [true, true]);
+      assert.deepStrictEqual(yield* recalled("owner"), [false, true]);
+      // A voice she does not know reads as before: every person's notes stay persona-only, not person-only.
+      assert.deepStrictEqual(yield* recalled(null), [true, true]);
       // Another client (a browser, an agent) never names a persona, so never sees it.
       assert.isFalse(
         (yield* a.search({ text: "butler weather", agent: "alfred" })).some(
