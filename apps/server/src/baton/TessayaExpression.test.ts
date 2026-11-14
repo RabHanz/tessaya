@@ -135,3 +135,26 @@ it.effect("keeps a call site's own plain words, with or without the service", ()
     );
   });
 });
+
+it.effect("hands the room loop its next wordings unfilled, distinct, and nothing while off", () => {
+  const on = setup({ tessayaExpression: true }, [
+    "Say {phrase} for me, please.",
+    "Repeat after me: {phrase}.",
+  ]);
+  const off = setup({});
+  return Effect.gen(function* () {
+    const got = yield* Effect.gen(function* () {
+      const x = yield* TessayaExpression;
+      yield* x.writeAhead("executive", "night", "id.phrase");
+      return yield* x.ahead(["id.phrase"], { person: "owner" }, 3);
+    }).pipe(Effect.provide(on.layer));
+    assert.isTrue(got.on);
+    const texts = (got.lines["id.phrase"] ?? []).map((l) => l.text);
+    assert.strictEqual(new Set(texts).size, texts.length);
+    for (const t of texts) assert.include(t, "{phrase}");
+    const none = yield* Effect.flatMap(TessayaExpression, (x) =>
+      x.ahead(["id.phrase"], {}, 3),
+    ).pipe(Effect.provide(off.layer));
+    assert.deepStrictEqual(none, { on: false, lines: {} });
+  });
+});

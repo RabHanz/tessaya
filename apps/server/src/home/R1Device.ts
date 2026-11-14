@@ -62,7 +62,8 @@ import {
   type TurnNotes,
   speakableSentences,
 } from "../baton/TessayaBrain.ts";
-import { expressOr } from "../baton/TessayaExpression.ts";
+import { TessayaExpression, expressOr } from "../baton/TessayaExpression.ts";
+import { isLineEvent } from "@t3tools/baton-shared/expression";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -1305,5 +1306,39 @@ export const routes = HttpRouter.use((router) =>
       return HttpServerResponse.jsonUnsafe({ confirmed: yield* r1Confirmed(body.value.callId) });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     yield* router.add("POST", "/api/devices/r1/v1/turns/confirm", confirm);
+    // Her next few lines for the room loop's own moments (acknowledgements, step-ups), so it never waits to speak.
+    const lines = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      const body = decodeLinesAsk(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
+      if (body._tag === "None") return error(400, "That is not a lines request.");
+      const expression = yield* Effect.serviceOption(TessayaExpression).pipe(
+        Effect.provideContext(context),
+      );
+      if (Option.isNone(expression)) return HttpServerResponse.jsonUnsafe({ on: false, lines: {} });
+      const got = yield* expression.value.ahead(
+        body.value.events.filter(isLineEvent).slice(0, 16),
+        { persona: body.value.persona, person: body.value.person },
+        Math.min(Math.max(Math.round(body.value.count ?? 3), 1), 4),
+      );
+      return HttpServerResponse.jsonUnsafe(got);
+    }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
+    yield* router.add("POST", "/api/devices/r1/v1/lines", lines);
   }),
+);
+
+const decodeLinesAsk = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      events: Schema.Array(Schema.String),
+      persona: Schema.optionalKey(Schema.String),
+      person: Schema.optionalKey(Schema.String),
+      count: Schema.optionalKey(Schema.Number),
+    }),
+  ),
 );

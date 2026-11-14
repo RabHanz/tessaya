@@ -60,6 +60,11 @@ export const LINE_EVENTS = {
     mood: "happy",
     gesture: "leanIn",
   }),
+  "ack.again": spec(
+    "Still here.",
+    "He said only her name again, minutes after they last spoke; she is still with him.",
+    { maxWords: 5, mood: "happy", gesture: "nodSmall" },
+  ),
   "filler.hold": spec("One moment.", "He asked something and her answer is a few seconds away.", {
     maxWords: 6,
     mood: "focused",
@@ -236,6 +241,31 @@ export const LINE_EVENTS = {
     'Say "{phrase}" for me.',
     "To check his voice she asks him to say a short random phrase, {phrase}, word for word.",
     { slots: ["phrase"], maxWords: 6, mood: "curious", gesture: "leanIn" },
+  ),
+  "id.confirm": spec(
+    "Is that you, {name}?",
+    "To be sure of his voice she asks whether it is really {name} speaking.",
+    {
+      slots: ["name"],
+      maxWords: 6,
+      mood: "curious",
+      gesture: "tilt",
+    },
+  ),
+  "id.phone": spec(
+    "Tap yes on your phone if that's you.",
+    "To be sure it is him, she asks him to confirm with a yes on his phone.",
+    { required: ["phone", "yes"], maxWords: 12, mood: "curious", gesture: "tilt" },
+  ),
+  "id.ok": spec("Thanks, that's you.", "His voice check passed; she is now sure it is him.", {
+    maxWords: 6,
+    mood: "happy",
+    gesture: "nodSmall",
+  }),
+  "id.failed": spec(
+    "I still can't tell it's you, so I've left that.",
+    "His voice check failed, so she has not done what he asked; it stays undone.",
+    { maxWords: 14, mood: "concerned", gesture: "shrug" },
   ),
   "enrol.start": spec(
     "Let's learn your voice. Read the sentences on your screen, one at a time.",

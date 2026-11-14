@@ -3,7 +3,7 @@
  * `voice/up`, asks her server, speaks on `voice/down` and stops when he cuts in. I/O is passed in for tests.
  * @module baton-voice/room/roomVoice
  */
-import { r1MoodOf } from "@t3tools/baton-shared/expression";
+import { r1MoodOf, type LineEvent } from "@t3tools/baton-shared/expression";
 import { mostlyForeign } from "@t3tools/baton-shared/language";
 import { isNarration, withoutSelfIntro } from "@t3tools/baton-shared/narration";
 import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
@@ -13,11 +13,13 @@ import { stopIntent } from "@t3tools/baton-shared/stopPhrases";
 import { createEchoGuard } from "../echoGuard.ts";
 import { createTalkOver, createVoiceLevel, voiceCheckDue, type TalkOver } from "../talkOver.ts";
 import { ackLines, pickAck, type Acknowledge } from "./acknowledge.ts";
+import type { RoomLines } from "./lines.ts";
 import {
   accumulate,
   answersStepUp,
   cueOf,
   stepUpFor,
+  NOT_SURE_YET,
   stepUpLine,
   type RecognitionSession,
   type StepUp,
@@ -277,6 +279,8 @@ export interface RoomDeps {
   readonly sleep: (ms: number) => Promise<void>;
   /** His final words matched a guess that is now answered: the house changes it held may now be made. */
   readonly confirmed?: (callId: string) => void;
+  /** Her own words for the loop's moments, from the server's brain (room/lines.ts); none: the plain lines. */
+  readonly lines?: RoomLines;
   /** A guess's reply was played to him in full: the server may now record it and learn from it. */
   readonly played?: (callId: string) => void;
   readonly log: (line: string) => void;
@@ -1011,6 +1015,30 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const gesture = (name: string) => eye("cmd/eye/gesture", { name });
     /** The persona's own eyes (the eye lane's looks; firmware without them ignores the topic). */
     const look = () => eye("cmd/eye/persona", { name: persona?.eyes ?? GENERIC_EYES });
+    /** Her own words for one of the loop's moments, her eyes showing its mood; `plain` while they are off. */
+    const own = (event: LineEvent, plain: string, facts?: Readonly<Record<string, string>>) => {
+      const said = deps.lines?.take(
+        event,
+        persona?.id ?? "",
+        recog?.member ?? undefined,
+        plain,
+        facts,
+      );
+      const mood = said?.mood == null ? null : r1MoodOf(said.mood);
+      if (mood !== null) face(mood);
+      return said?.text ?? plain;
+    };
+    /** Her step-up ask in her own words; the phrase and his name exact. */
+    const stepUpWords = (step: Parameters<typeof stepUpLine>[0]): string | null => {
+      if (stepUpLine(step) === null || step.kind === "none") return null;
+      const ask =
+        step.kind === "phrase"
+          ? own("id.phrase", `Say "${step.phrase}" for me.`, { phrase: step.phrase })
+          : step.kind === "confirm"
+            ? own("id.confirm", `Is that you, ${step.name}?`, { name: step.name })
+            : own("id.phone", "Tap yes on your phone if that's you.");
+      return step.explain ? `${own("id.unsure", NOT_SURE_YET)} ${ask}` : ask;
+    };
 
     /** Her last "I'm here", so it is never the same twice running, and when it was. */
     // Kept per R1 across sessions: every S2 or wake opens a new one (17:23 replay: "Yes?" twice running).
@@ -1024,6 +1052,28 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       ackRendered.add(voice);
       void (async () => {
         for (const line of ackLines(persona?.id ?? "")) {
+          const chunks: Int16Array[] = [];
+          try {
+            for await (const pcm of deps.speak(spoken(line), new AbortController().signal, voice))
+              chunks.push(pcm);
+            ackAudio.set(`${voice}|${line}`, chunks);
+          } catch {
+            // Not rendered: said live instead when it comes up.
+          }
+        }
+      })();
+    };
+    /** Her own next acknowledgements, rendered ahead like the plain ones so they play at once. */
+    const prerenderOwn = () => {
+      const voice = voiceNow();
+      const lines = deps.lines;
+      if (config.acknowledge !== "voice" || voice === undefined || lines === undefined) return;
+      const next = (["ack.name", "ack.again"] as const).flatMap((event) =>
+        lines.upcoming(persona?.id ?? "", recog?.member ?? undefined, event),
+      );
+      void (async () => {
+        for (const line of next) {
+          if (ackAudio.has(`${voice}|${line}`)) continue;
           const chunks: Int16Array[] = [];
           try {
             for await (const pcm of deps.speak(spoken(line), new AbortController().signal, voice))
@@ -1073,8 +1123,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
       acked.line = line;
       if (name !== null && line.includes(name) && recog !== null) recog = { ...recog, named: true };
-      deps.log(`[${id}] her name alone: "${line}"`);
-      speakNow(line, ackAudio.get(`${voiceNow() ?? ""}|${line}`));
+      const words = own(
+        line === "Still here."
+          ? "ack.again"
+          : name !== null && line.includes(name)
+            ? "ack.named"
+            : "ack.name",
+        line,
+        name === null ? {} : { name },
+      );
+      deps.log(`[${id}] her name alone: "${words}"`);
+      speakNow(words, ackAudio.get(`${voiceNow() ?? ""}|${words}`));
+      prerenderOwn();
     };
 
     const speakNow = (text: string, audio?: ReadonlyArray<Int16Array>) => {
@@ -1485,7 +1545,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         deps.log(
           `[${id}] turn ${turn}: several voices at once (${voices.why}); one at a time (${heldBack(text)})`,
         );
-        speakNow("One at a time, please.");
+        speakNow(own("err.overlap", "One at a time, please."));
         return;
       }
       // Several people: the turn is heard when any one of them would be on their own.
@@ -1531,10 +1591,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         kept?.control.abort();
         if (recog?.verified === true) {
           settleStepUp(true, "voice");
-          speakNow("Thanks, that's you.");
+          speakNow(own("id.ok", "Thanks, that's you."));
         } else {
           settleStepUp(false, "voice");
-          speakNow("I still can't tell it's you, so I've left that.");
+          speakNow(own("id.failed", "I still can't tell it's you, so I've left that."));
         }
         return;
       }
@@ -1652,9 +1712,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           deps.log(
             `[${id}] turn ${turn} failed: ${error instanceof Error ? error.message : String(error)}`,
           );
-          await say("Sorry, I couldn't reach my brain just then.", control.signal).catch(
-            () => undefined,
-          );
+          await say(
+            own("err.brain", "Sorry, I couldn't reach my brain just then."),
+            control.signal,
+          ).catch(() => undefined);
         }
       } finally {
         if (reply === control || reply === null) {
@@ -2012,7 +2073,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         forEnrol = true;
         cardWords = { take: 0, prefix: "", turn: "", skip: 0, seen: 0 };
         card(true);
-        speakNow(ENROL_INTRO);
+        speakNow(own("enrol.start", ENROL_INTRO));
       },
       cancelEnrol: () => {
         guide = null;
@@ -2053,7 +2114,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         look();
         openUntil = deps.now() + config.followMs;
         if (reply !== null) interrupt();
-        speakNow(`${next.name} here.`);
+        speakNow(own("persona.switch", `${next.name} here.`, { persona: next.name }));
       },
       /** An R1 button's prompt: answered as if he had said it to her. */
       ask: (text: string) => void answer(new Int16Array(0), "button", deps.now(), deps.now(), text),
@@ -2068,7 +2129,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         recog = asked.session;
         heldAct = { act, step: asked.step, at: deps.now() };
         if (asked.step.kind === "none") return settleStepUp(true, "session");
-        const line = stepUpLine(asked.step);
+        const line = stepUpWords(asked.step);
         if (line === null) return;
         if (reply !== null) interrupt();
         speakNow(line);
@@ -2102,6 +2163,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           acknowledge();
         });
         prerenderAcks();
+        deps.lines?.prime(persona?.id ?? "", recog?.member ?? undefined);
+        prerenderOwn();
       },
       /** Once a second: past the window she rests (sleepy eyes, name only); long quiet ends the session. */
       tick: (): "stop" | null => {

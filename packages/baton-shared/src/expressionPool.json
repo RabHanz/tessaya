@@ -6846,6 +6846,986 @@
         "mood": "focused",
         "gesture": "nodSmall"
       }
+    ],
+    "ack.again": [
+      {
+        "text": "Still here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes, I'm here.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Right here.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Go on.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I'm listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Didn't go anywhere.",
+        "mood": "steady",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Still with you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Here. What's next?",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mm, still here.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ready when you are.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm still around.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Yes? Go ahead.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still on it.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I'm here.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say the word.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nowhere else to be.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Go ahead, I'm ready.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Still around. Talk to me.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm, I'm here.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Back with you. Go on.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Yes? Go on.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I'm with you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Mm-hm, I'm listening.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Go on, I'm here.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Still on it. Speak.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Tell me.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "All ears.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Here. Say it.",
+        "mood": "focused",
+        "gesture": "none"
+      },
+      {
+        "text": "Go on, then.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I haven't gone anywhere.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Yes? What now?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm. Speak.",
+        "mood": "focused",
+        "gesture": "none"
+      },
+      {
+        "text": "I'm here. Continue.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "What do you need?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      }
+    ],
+    "id.confirm": [
+      {
+        "text": "Is that you, {name}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, is that you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Just checking, {name}?",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Am I speaking with {name}?",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That's {name}, right?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Is this really {name}?",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, can you confirm?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Tell me it's {name}.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Is it {name} talking?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "Sounds like {name}. Right?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm for me, {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Is this {name}?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Quick check: {name}?",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Just to be sure, {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's {name} speaking?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Say yes if you're {name}.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Am I hearing {name}?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{name}, is that really you?",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I think that's {name}. Correct?",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Is it {name} I'm talking to?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Can you confirm you're {name}?",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name}? Just checking.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Just {name}, right?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Tell me you're {name}.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That sounds like {name}. Right?",
+        "mood": "curious",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Am I talking to {name}?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "You're {name}, yes?",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Is this voice {name}'s?",
+        "mood": "focused",
+        "gesture": "think"
+      },
+      {
+        "text": "Let me be sure. {name}?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Is that {name}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, is it you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "This is {name}, correct?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Say it's {name}.",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, am I right?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "I think that's {name}. Yes?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Who's speaking? {name}?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Is {name} there?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Humor me. You're {name}?",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Can you confirm, {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      }
+    ],
+    "id.phone": [
+      {
+        "text": "Tap yes on your phone if that's you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm with a yes on your phone.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say yes on your phone, so I know it's you.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Check your phone and tap yes.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your phone has a question. Tap yes.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Just tap yes on your phone for me.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Pick up your phone and answer yes.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "A quick yes on your phone will do.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I need a yes from your phone.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Phone's got a prompt. Tap yes if it's you.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "To be sure, tap yes on your phone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm it's you. Yes, on your phone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say yes on your phone and we're done.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I've sent a prompt. Answer yes on your phone.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Tap yes on your phone, please.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Your phone will ask. Just say yes.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Quick yes on your phone, if it's you.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Confirm on your phone with a yes.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "One tap on your phone. Yes.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Phone, please. Tap yes.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Reach for your phone and say yes.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I'd like a yes from your phone first.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Just answer yes on your phone.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say yes on your phone to confirm.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Check your phone and answer yes.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Your phone has a question. Answer yes.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Please confirm with a yes on your phone.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Grab your phone and tap yes.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "A yes from your phone, and we're done.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Open your phone and say yes.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Phone in hand? Tap yes.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Just a yes on your phone, please.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Tap yes on your phone to prove it's you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm it on your phone. A yes is enough.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say yes on your phone, please.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Tap yes on your phone for me.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I sent a question to your phone. Tap yes.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Your phone has a yes waiting.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Pick up your phone and tap yes.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "One yes on your phone settles it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      }
+    ],
+    "id.ok": [
+      {
+        "text": "Thanks, that's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirmed. Good.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Got it, it's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "All clear, thanks.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "There you are.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Voice matched. Thank you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, I'm sure now.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's settled, thanks.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Perfect, it's you.",
+        "mood": "happy",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Verified. Carry on.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Thanks, I know it's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Okay, we're good.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Got you. Thanks.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Confirmed.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That's you. Good.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "All clear.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes, it's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Thanks, that's all I needed.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Check passed. Moving on.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good. I'm sure.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Welcome back.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "No doubt left.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's you, all right.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Done. Thank you.",
+        "mood": "neutral",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Good, that's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Verified. Carrying on.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Thanks. All clear.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Got you.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Sure now. Thank you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's settled.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Right, it's really you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good. On with it.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "You're verified.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Thank you. That's enough.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "All good. Carry on.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, it's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's it. Thank you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Verified. Moving on.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes, I know you now.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Check passed.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      }
+    ],
+    "id.failed": [
+      {
+        "text": "I still can't tell it's you, so I've left that.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't confirm it's you, so I haven't done it.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not sure it's you, so that stays undone.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I can't be sure it's you. I've left it alone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The check didn't pass, so I haven't touched it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Sorry, I can't verify you. Nothing was done.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Without being sure it's you, I've held off.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't match your voice, so that waits.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No confirmation, so I've left that untouched.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm not certain it's you, so I didn't do it.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Can't verify it's you. That one stays undone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Voice check failed, so I've left your request.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I couldn't confirm it's you, so I didn't do it.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check failed. Nothing's been done.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Sorry, I'm not sure it's you. I've left it.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Not verified, so your request stays undone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't be sure, so I've held back.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That didn't check out. I've left it alone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No match, so I haven't done it.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'd rather be sure. Nothing was changed.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check didn't go through, so that waits.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Sorry. Without that check, I can't go ahead.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't verify you, so it's untouched.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Not confirmed. I've left your request as it was.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not sure it's you, so that stays as it was.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The check failed. I've done nothing.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Sorry, I can't verify you. Nothing has changed.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Without a match, I won't go ahead.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm not certain, so I held off.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "That didn't pass. Your request is still waiting.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't be sure, so I left it alone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Verification failed. I haven't touched anything.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't do that until I'm sure it's you.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No confirmation, so no action. Try again later.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "It didn't check out, so I stopped there.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't verify you, so nothing was done.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check failed. I've left your request alone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not sure it's you, so I didn't act.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I can't confirm it's you. Nothing changed.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "No match, so I stopped. Try again when you can.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      }
     ]
   },
   "engineering": {
@@ -13943,6 +14923,991 @@
       {
         "text": "I stopped {title} at the {limit} limit, as you set.",
         "mood": "steady",
+        "gesture": "nodSoft"
+      }
+    ],
+    "ack.again": [
+      {
+        "text": "Still here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Right here.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Yes, still with you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I haven't gone anywhere.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Present and listening.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Go ahead.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Still on it.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes? I'm here.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Not going anywhere.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Here, as ever.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Still at your service.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Yes, go on.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'm all ears.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm, I'm with you.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Do continue.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Never left.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "At your disposal.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Yes? Go ahead.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still with you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ready when you are.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Attending, as ever.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Go on, I'm listening.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Yes, still about.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Present and correct.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I haven't wandered off.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Speak freely.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Quite so, carry on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nowhere else to be.",
+        "mood": "happy",
+        "gesture": "shrug"
+      },
+      {
+        "text": "All ears.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Standing by.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Go ahead, then.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Yes, I'm listening.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "At your service.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "I'm with you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not gone anywhere.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Mm, go on.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Listening, as ever.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Attentive, as promised.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      }
+    ],
+    "id.confirm": [
+      {
+        "text": "Is that you, {name}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, is that really you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Just to be sure, {name}?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Am I speaking with {name}?",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, is that you speaking?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Forgive me, {name}, is that you?",
+        "mood": "concerned",
+        "gesture": "bow"
+      },
+      {
+        "text": "Confirm for me, {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That sounds like {name}. Is it?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "{name}, can you confirm it's you?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Is this {name} I hear?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Tell me it's {name}.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "{name}? Just checking.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name}, is it really you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That's {name}, correct?",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Quick check: {name}, is that you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{name}, would you confirm?",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I believe that's {name}. Am I right?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "Tell me, is this {name}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Is {name} the one speaking?",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Forgive the caution. {name}?",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name}, may I ask you to confirm?",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Just so I'm certain, {name}?",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Would that be {name}?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name}, am I right?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I do beg your pardon. {name}?",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Can you confirm you're {name}?",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Is {name} really there?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "One moment. {name}, is that you?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'd like to be sure. {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name}, if you'd be so good?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Just checking: {name}?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "Is this {name} speaking?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Quick check. {name}, yes?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name}? I'd like to be certain.",
+        "mood": "concerned",
+        "gesture": "think"
+      },
+      {
+        "text": "Is it {name} I hear?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Pardon me. {name}, is that right?",
+        "mood": "steady",
+        "gesture": "tilt"
+      }
+    ],
+    "id.phone": [
+      {
+        "text": "Tap yes on your phone if that's you.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm with a yes on your phone, please.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'll need a yes from your phone.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Pop a yes onto your phone for me.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Please answer yes on your phone.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your phone has a yes waiting, if it's you.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Just tap yes on your phone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "A quick yes on your phone will do.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Check your phone and say yes there.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "If it's you, press yes on your phone.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Humour me with a yes on your phone.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Phone, then yes. That settles it.",
+        "mood": "determined",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Say yes on your phone, if it's you.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I've sent a prompt to your phone. Answer yes.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Tap yes on your phone to prove it.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Your phone will ask. A yes will do.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Pick up your phone and confirm with yes.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "A yes on your phone, if you'd be so kind.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Confirm on your phone with a yes.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "One yes on your phone, and we proceed.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "If that's really you, tap yes on your phone.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Your phone, please. Tap yes.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Just a yes on your phone, and we're done.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Reach for your phone and answer yes.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Would you answer yes on your phone, please?",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Take out your phone and tap yes.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your phone should be asking. Say yes there.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Humour me: yes, on your phone.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Check your phone and tap yes to confirm.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "To be certain, press yes on your phone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Over to your phone, then. Yes will do nicely.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your phone has a question. Answer yes.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Tap yes on your phone, and I'll carry on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Kindly send a yes from your phone.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Pop over to your phone and say yes.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "A quick yes on your phone, please.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Your phone is waiting. Just answer yes.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Confirm with a yes on your phone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Would you tap yes on your phone?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Phone, if you would. A yes will do.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      }
+    ],
+    "id.ok": [
+      {
+        "text": "Thanks, that's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirmed. Thank you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ah, there you are.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, I'm sure now.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's settled, thanks.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Verified. Carry on.",
+        "mood": "steady",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Yes, definitely you.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Lovely, all clear.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Thank you, I know you now.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Quite sure now. Thanks.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That's the voice. Thanks.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "All good. It's you.",
+        "mood": "steady",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "There you are.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good, that's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Identity settled. Proceeding.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Splendid, I'm sure now.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Verified. Thank you kindly.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "No doubt left. Thanks.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Ah, it is you.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Recognised. Carry on.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's cleared up, thank you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Satisfied. It's you.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good. Now we can proceed.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, that settles it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Yes, that's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Lovely. All in order.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Identity settled. Onward.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "There we are. Thank you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Quite sure now.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Passed. Do go on.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Knew it, but now I'm certain.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Reassuring. Thank you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's in the clear.",
+        "mood": "steady",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Welcome, then. Proceeding.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Thank you, that's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Confirmed. Carry on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, all verified.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That's settled, thank you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Verified. Proceeding.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Lovely. I'm sure now.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      }
+    ],
+    "id.failed": [
+      {
+        "text": "I still can't tell it's you, so I've left that.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't confirm it's you, so that stays undone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not sure it's you, so I haven't done it.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm afraid I can't verify you. Nothing has been changed.",
+        "mood": "concerned",
+        "gesture": "bow"
+      },
+      {
+        "text": "That check didn't pass, so I've left it alone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Can't be certain it's you. I've held off.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Voice check failed. Your request is untouched.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I didn't trust the match, so I've not done it.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Sorry, I couldn't confirm you. That's still undone.",
+        "mood": "sad",
+        "gesture": "sigh"
+      },
+      {
+        "text": "No match on your voice, so I've left it.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Until I'm sure it's you, that waits.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I couldn't verify you, so nothing was done.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't confirm it was you, so that's undone.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check failed. I've done nothing.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Not sure it's you, so I've held off.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Verification failed. Your request remains undone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't vouch for you yet, so it waits.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That didn't verify, so I've left things as they were.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Apologies, no confirmation, no action.",
+        "mood": "concerned",
+        "gesture": "bow"
+      },
+      {
+        "text": "I wasn't convinced it was you. Nothing's changed.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The voice check failed, so I've not acted.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Better safe than sorry. I've left it undone.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I couldn't be sure of you, so I stopped.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Without a confirmed match, I can't proceed. It's untouched.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That check didn't pass, so nothing's been done.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't confirm it was you. I've left it alone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No match, I'm afraid, so I haven't acted.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Verification failed. Your request stays undone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't be sure it's you, so it stands untouched.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Sorry, the check failed and I've changed nothing.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not verified, so I've held off entirely.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'd rather not guess. Nothing has been done.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The voice didn't match, so I've done nothing.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Without proof it's you, I've left everything as it was.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That didn't go through. Better left undone for now.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm afraid I couldn't verify you, so I've stood down.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't verify it's you, so nothing has changed.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check failed, so I've left it undone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Not confirmed, so I haven't touched a thing.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm sorry, I can't verify you. It stays as it was.",
+        "mood": "sad",
         "gesture": "nodSoft"
       }
     ]

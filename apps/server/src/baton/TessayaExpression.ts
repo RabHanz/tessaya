@@ -63,6 +63,18 @@ export class TessayaExpression extends Context.Service<
   {
     /** The moment as she expresses it now, or null when it stays silent (the chatter dial, quiet hours, no line). */
     readonly express: (event: LineEvent, input?: ExpressInput) => Effect.Effect<Expression | null>;
+    /**
+     * The next few wordings (templates, slots unfilled) for a vessel that speaks without asking each time, the room
+     * loop: counted as said for no-repeat. `on` false: the setting is off, and the vessel says its plain lines.
+     */
+    readonly ahead: (
+      events: ReadonlyArray<LineEvent>,
+      input: { readonly persona?: string | undefined; readonly person?: string | undefined },
+      count: number,
+    ) => Effect.Effect<{
+      readonly on: boolean;
+      readonly lines: Readonly<Partial<Record<LineEvent, ReadonlyArray<Line>>>>;
+    }>;
     /** Writes wordings ahead for a persona's thin moments; one batch at a time, capped per hour. */
     readonly writeAhead: (
       persona: string,
@@ -197,13 +209,48 @@ export const make = Effect.gen(function* () {
     return added;
   });
 
+  /** The next wording for a person, persona and moment, never one of their recent ones while another is left. */
+  const pickTemplate = Effect.fn("TessayaExpression.pickTemplate")(function* (
+    event: LineEvent,
+    persona: string,
+    person: string | undefined,
+    at: number,
+    zone: string,
+  ) {
+    const slot = timeSlot(hourIn(at, zone));
+    const own = written.get(`${persona}|${event}|${slot}`) ?? [];
+    if (own.length < LOW_WATER) yield* Effect.forkIn(writeAhead(persona, slot, event), scope);
+    const who = `${person ?? "household"}|${persona}|${event}`;
+    const recent = history.get(who) ?? [];
+    const random = yield* Random.next;
+    const cached = pickLine(event, own, recent, slot, random);
+    const pooled = pickLine(event, poolLines(persona, event), recent, slot, random);
+    const fresh = (l: Line | null) => l !== null && !recent.includes(lineId(event, l.text));
+    const picked: { readonly line: Line; readonly source: Expression["source"] } | null =
+      cached !== null && fresh(cached)
+        ? { line: cached, source: "cache" }
+        : pooled !== null && (fresh(pooled) || cached === null)
+          ? { line: pooled, source: "pool" }
+          : cached !== null
+            ? { line: cached, source: "cache" }
+            : null;
+    if (picked !== null) history.set(who, remember(recent, lineId(event, picked.line.text)));
+    return picked;
+  });
+
+  const now = Effect.gen(function* () {
+    const current = yield* settings.getSettings.pipe(Effect.orElseSucceed(() => null));
+    const at = yield* Clock.currentTimeMillis;
+    const quiet = yield* quietHours;
+    const zone = (yield* timeZone) ?? quiet?.timeZone ?? "UTC";
+    return { current, at, quiet, zone };
+  });
+
   const express: TessayaExpression["Service"]["express"] = Effect.fn("TessayaExpression.express")(
     function* (event, input = {}) {
       const s: LineSpec = LINE_EVENTS[event];
       const facts = input.facts ?? {};
-      const current = yield* settings.getSettings.pipe(Effect.orElseSucceed(() => null));
-      const at = yield* Clock.currentTimeMillis;
-      const quiet = yield* quietHours;
+      const { current, at, quiet, zone } = yield* now;
       const allowed = mayExpress(s.priority, {
         motion: current?.companionMotion ?? "calm",
         quiet: inQuietHours(at, quiet),
@@ -211,34 +258,37 @@ export const make = Effect.gen(function* () {
       });
       if (!allowed) return null;
       const persona = personaOf(input.persona)?.id ?? "executive";
-      const out = (line: Line, source: Expression["source"]) =>
-        expressionOf(event, persona, line, facts, source);
       const fixed = plainExpression(event, persona, facts, input.plain);
       if (current?.tessayaExpression !== true) return fixed;
-
-      const slot = timeSlot(hourIn(at, (yield* timeZone) ?? quiet?.timeZone ?? "UTC"));
-      const own = written.get(`${persona}|${event}|${slot}`) ?? [];
-      if (own.length < LOW_WATER) yield* Effect.forkIn(writeAhead(persona, slot, event), scope);
-      const who = `${input.person ?? "household"}|${persona}|${event}`;
-      const recent = history.get(who) ?? [];
-      const random = yield* Random.next;
-      const fromWritten = pickLine(event, own, recent, slot, random);
-      const said =
-        (fromWritten !== null && !recent.includes(lineId(event, fromWritten.text))
-          ? out(fromWritten, "cache")
-          : null) ??
-        (() => {
-          const pooled = pickLine(event, poolLines(persona, event), recent, slot, random);
-          return pooled === null ? null : out(pooled, "pool");
-        })() ??
-        (fromWritten === null ? null : out(fromWritten, "cache")) ??
-        fixed;
-      if (said !== null) history.set(who, remember(recent, said.lineId));
-      return said;
+      const picked = yield* pickTemplate(event, persona, input.person, at, zone);
+      return (
+        (picked === null
+          ? null
+          : expressionOf(event, persona, picked.line, facts, picked.source)) ?? fixed
+      );
     },
   );
 
-  return { express, writeAhead } satisfies TessayaExpression["Service"];
+  const ahead: TessayaExpression["Service"]["ahead"] = Effect.fn("TessayaExpression.ahead")(
+    function* (events, input, count) {
+      const { current, at, zone } = yield* now;
+      if (current?.tessayaExpression !== true) return { on: false, lines: {} };
+      const persona = personaOf(input.persona)?.id ?? "executive";
+      const lines: Partial<Record<LineEvent, ReadonlyArray<Line>>> = {};
+      for (const event of events) {
+        const got: Array<Line> = [];
+        for (let i = 0; i < count; i++) {
+          const picked = yield* pickTemplate(event, persona, input.person, at, zone);
+          if (picked !== null && !got.some((g) => g.text === picked.line.text))
+            got.push(picked.line);
+        }
+        lines[event] = got;
+      }
+      return { on: true, lines };
+    },
+  );
+
+  return { express, ahead, writeAhead } satisfies TessayaExpression["Service"];
 });
 
 export const layer = Layer.effect(TessayaExpression, make);
