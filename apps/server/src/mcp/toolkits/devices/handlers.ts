@@ -110,6 +110,15 @@ export const make = Effect.gen(function* () {
         routed("device_set", input, devices("act", "set", split({ ...input, op: "set" })[1])),
       linked,
     ),
+    device_button: McpToolAccess.writes(
+      (input: Args) =>
+        routed(
+          "device_button",
+          input,
+          devices("act", "keyBind", split({ ...input, op: "keyBind" })[1]),
+        ),
+      linked,
+    ),
     device_tag: McpToolAccess.writes((input: Args) => {
       const [op, args] = split(input);
       return routed(

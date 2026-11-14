@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import type { R1KeyBinding, R1KeySlot } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -557,6 +558,67 @@ it.effect(
         .command(ID, { op: "keyBind", slot: "s2.tap", bind: { kind: "mute" } }, me)
         .pipe(Effect.flip);
       assert.include(fixed.why, "cannot be changed");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "keeps a newer Tessel's map in step: Tessaya's presses waited for, triple and headphone presses only once it reports them",
+  () => {
+    const { sent, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      sent.length = 0;
+      const bind = (slot: R1KeySlot, b: R1KeyBinding) =>
+        devices.command(ID, { op: "keyBind", slot, bind: b }, me);
+
+      // Until its map says triple, the newer presses are refused and nothing is saved or sent.
+      const old = yield* bind("play.tap", { kind: "whatsNext" }).pipe(Effect.flip);
+      assert.include(old.why, "firmware update");
+      assert.lengthOf(sent, 0);
+
+      // Its map: S2 double free on the device though Tessaya has it (the next persona), next.tap left to Tessaya
+      // with nothing there. Each is put right, so the device waits for S2's double and not for next.
+      yield* devices.receive(
+        `${root}/state/key/bind`,
+        JSON.stringify({
+          ok: true,
+          s1: { tap: "vol_up", double: "none", triple: "none", long: "mute" },
+          s2: { tap: "talk", double: "none", triple: "none", long: "talk" },
+          s3: { tap: "vol_down", double: "none", triple: "none", long: "sleep" },
+          play: { tap: "talk" },
+          next: { tap: "app" },
+          prev: { tap: "none" },
+        }),
+      );
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/key/bind", payload: { key: "s2", act: "double", do: "app" } },
+        { topic: "cmd/key/bind", payload: { key: "next", act: "tap", do: "none" } },
+      ]);
+
+      // A Tessaya action on a device press binds it as "app"; the device's own action by name.
+      sent.length = 0;
+      yield* bind("play.tap", { kind: "whatsNext" });
+      yield* bind("s1.tap", { kind: "device", do: "vol_down" });
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/key/bind", payload: { key: "play", act: "tap", do: "app" } },
+        { topic: "cmd/key/bind", payload: { key: "s1", act: "tap", do: "vol_down" } },
+      ]);
+      sent.length = 0;
+      yield* devices.receive(
+        `${root}/event/key`,
+        JSON.stringify({ key: "play", act: "tap", ms: 0, did: "none" }),
+      );
+      assert.deepStrictEqual(sent, [{ topic: "voice/ask", payload: { text: "What's next?" } }]);
+
+      // A long touch on the head is Tessaya's; a tap is the device's.
+      yield* bind("head.long", { kind: "prompt", text: "What time is it?" });
+      sent.length = 0;
+      yield* devices.receive(`${root}/event/touch`, '{"pad":"top","gesture":"tap"}');
+      yield* devices.receive(`${root}/event/touch`, '{"pad":"top","gesture":"long"}');
+      assert.deepStrictEqual(sent, [{ topic: "voice/ask", payload: { text: "What time is it?" } }]);
     }).pipe(Effect.provide(layer));
   },
 );

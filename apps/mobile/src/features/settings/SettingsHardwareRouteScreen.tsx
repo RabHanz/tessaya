@@ -20,6 +20,7 @@ import {
 import {
   DISPLAY_CHOICES,
   EYE_SCREENS,
+  KEY_NAMES,
   KEY_ROWS,
   MOOD_EYES,
   clock,
@@ -1020,16 +1021,16 @@ function KeysSection({
   const free = KEY_ROWS.filter((r) => r.fixed === null);
   return (
     <SettingsSection title={`${prefix}Buttons · ${d.id}`}>
-      {(["s1", "s2", "s3"] as const).map((key, i) => (
+      {(Object.keys(KEY_NAMES) as Array<keyof typeof KEY_NAMES>).map((key, i) => (
         <Row
           key={key}
           divider={i > 0}
-          title={key.toUpperCase()}
-          description={KEY_ROWS.filter((r) => r.slot.startsWith(`${key}.`))
+          title={KEY_NAMES[key]}
+          description={KEY_ROWS.filter((r) => r.key === key)
             .map((r) => {
               const b = d.keys[r.slot];
               const what = r.fixed ?? (b === undefined ? "" : keyBindingLine(b));
-              return `${r.title.split(" ")[1]}: ${what}${r.fixed === null ? "" : " (fixed)"}`;
+              return `${r.press}: ${what}${r.fixed === null ? "" : " (fixed)"}`;
             })
             .join("\n")}
         />

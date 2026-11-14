@@ -6,8 +6,11 @@ import {
   BatonDevicesCallResult,
   DeviceTagAction,
   DeviceWatchInput,
+  R1_KEY_SLOTS,
+  R1KeyBinding,
   R1_LEDS,
   R1_MOODS,
+  type R1KeySlot,
 } from "@t3tools/baton-contracts";
 import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
@@ -164,6 +167,22 @@ const SetTool = Tool.make("device_set", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const ButtonTool = Tool.make("device_button", {
+  ...shared,
+  description: DEVICE_TOOL_TEXT.device_button,
+  parameters: Schema.Struct({
+    id: Id,
+    slot: Schema.Literals(Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>),
+    bind: R1KeyBinding,
+    on: Schema.optional(On),
+    ...PeerOrigin,
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const WatchTool = Tool.make("device_watch", {
   ...shared,
   description: DEVICE_TOOL_TEXT.device_watch,
@@ -187,4 +206,5 @@ export const DeviceTools = [
   ReadTool,
   SetTool,
   WatchTool,
+  ButtonTool,
 ] as const;

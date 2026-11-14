@@ -308,6 +308,13 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       volumes.set(house, after);
       return { ok: true, value: volumeLine(before, after) };
     }
+    case "device_list":
+      return {
+        ok: true,
+        value: { devices: [{ id: "r1-3d57b3", online: true, firmware: "smp-0.3.108" }] },
+      };
+    case "device_button":
+      return { ok: true, value: { status: "done", line: "Saved." } };
     case "laptop_ask":
       return { ok: false, error: "your laptop isn't linked to this server, so I can't see it." };
     default:

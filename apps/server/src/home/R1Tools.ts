@@ -87,6 +87,7 @@ const ROOM_TOOLS = [
   "device_read",
   "device_set",
   "device_watch",
+  "device_button",
   "members_list",
   "member_invite",
   "member_set_role",
@@ -316,11 +317,14 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
                   ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
                   : name === "tessaya_memory_forget"
                     ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })
-                    : name === "device_watch"
+                    : name === "device_watch" || name === "device_button"
                       ? // A rule is saved at once, not asked: "it waits for his answer" made her say so (13 Nov suite).
                         JSON.stringify({
                           ok: true,
-                          value: { status: "done", line: "Saved the rule." },
+                          value: {
+                            status: "done",
+                            line: name === "device_watch" ? "Saved the rule." : "Saved.",
+                          },
                         })
                       : JSON.stringify({
                           id: null,

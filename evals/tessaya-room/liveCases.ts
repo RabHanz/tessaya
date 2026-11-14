@@ -820,6 +820,20 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/pairing mode/i],
   },
   {
+    // R-045 (14 Nov): every press is his to remap by voice.
+    id: "device-button",
+    device: true,
+    proves: ["device_button"],
+    said: ["Make a double press of S1 switch to Freya."],
+    voices: [{ speaker: SURE }],
+    uses: [["device_button"]],
+    argsOf: "device_button",
+    args: (input) => ({
+      "S1 double": input["slot"] === "s1.double",
+      "to Freya": JSON.stringify(input["bind"] ?? "").includes('"name":"Freya"'),
+    }),
+  },
+  {
     id: "device-watch",
     device: true,
     proves: ["device_watch"],
