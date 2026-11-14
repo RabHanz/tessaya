@@ -14,6 +14,7 @@ import {
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
 import { decideTrust, type TrustAgent, type TrustPrincipal } from "@t3tools/baton-shared/trust";
+import type { PlanLease } from "@t3tools/baton-shared/planLease";
 import type { ProjectRef } from "@t3tools/baton-shared/osPack";
 import { textIsFromConversation } from "@t3tools/baton-shared/conversation";
 import { namesShell } from "@t3tools/baton-shared/screenCompanion";
@@ -179,6 +180,14 @@ export const forOperator = (input: {
   textIsHis: (text: string) => !input.taint.on() && input.textIsHis(text),
 });
 
+/** Hands tools a plan lease can cover; looked up only for these and his Chrome. */
+const LEASED_HANDS: ReadonlySet<string> = new Set([
+  "click",
+  "click_element",
+  "type_text",
+  "act_batch",
+]);
+
 export const createAgentGate = (input: {
   readonly actWithoutAsking: () => boolean;
   readonly taint: TurnTaint;
@@ -207,6 +216,11 @@ export const createAgentGate = (input: {
   readonly record: (entry: Readonly<Record<string, unknown>>) => void;
   /** He approved a plan for this turn (plan_show): its hands steps need no box each, except what stays risky. */
   readonly inPlan?: () => ReadonlyArray<string> | null;
+  /** The plan leases of his agreed jobs and the persona acting now: what they name runs without a card each. */
+  readonly planLeases?: () => Promise<{
+    readonly leases: ReadonlyArray<PlanLease>;
+    readonly persona: string;
+  } | null>;
   /** The persona this turn answers as: its own tool list narrows the gate, and every card names it. */
   readonly agent?: () => TrustAgent;
   /** Who this turn is from, when not him: their role and how sure. It only narrows (identity I-2). */
@@ -317,10 +331,23 @@ export const createAgentGate = (input: {
         ? ((await input.jobProjects?.(jobId).catch(() => null)) ?? null)
         : null;
     const principal = await input.principal?.();
+    const app = focus?.label.split(" - ").at(-1)?.trim() ?? "";
+    const leased =
+      chromeCall || LEASED_HANDS.has(name) ? await input.planLeases?.().catch(() => null) : null;
     const trusted = decideTrust({
       call,
       context,
       plan: input.inPlan?.() ?? null,
+      // A lease is judged on the gate's clock; a gate without one leases nothing.
+      ...(leased == null || input.chrome === undefined
+        ? {}
+        : {
+            lease: {
+              ...leased,
+              now: input.chrome.now(),
+              ...(app === "" ? {} : { app }),
+            },
+          }),
       jobProjects,
       ...(agent === undefined ? {} : { agent }),
       ...(principal === undefined ? {} : { principal }),
@@ -396,7 +423,6 @@ export const createAgentGate = (input: {
       return { allow: true };
     }
     const project = call.input["project"];
-    const app = focus?.label.split(" - ").at(-1)?.trim() ?? "";
     const standingKey = `${name}|${judged.why}|${app}`;
     // Never for what follows a read or reaches a command line: that is what an injection would ask for.
     const canStand =
