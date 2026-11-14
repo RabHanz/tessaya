@@ -8,8 +8,8 @@ import {
   type BatonDevicesCallResult,
   type DeviceView,
   type RegisteredDevice,
-} from "@t3tools/baton-contracts";
-import { r1EasyAction, type R1UpdatesView } from "@t3tools/baton-shared/r1Firmware";
+} from "@t3tools/tessaya-contracts";
+import { r1EasyAction, type R1UpdatesView } from "@t3tools/tessaya-shared/r1Firmware";
 import * as Schema from "effect/Schema";
 import { useEffect, useState } from "react";
 
@@ -19,7 +19,7 @@ import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { DEVICE, FLASH_TOOL } from "@t3tools/baton-shared/productNames";
+import { DEVICE, FLASH_TOOL } from "@t3tools/tessaya-shared/productNames";
 
 const LEVELS = [
   ["easy", "Easy"],

@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off
-import { computeDeepInsights } from "@t3tools/baton-shared/insightsDeep";
+import { computeDeepInsights } from "@t3tools/tessaya-shared/insightsDeep";
 import { describe, expect, it } from "vite-plus/test";
 
 import { tabOf } from "../home/tabs.ts";
@@ -41,7 +41,7 @@ describe("the Insights area", () => {
 describe("the voice profile rows", () => {
   it("are absent until there is a dictation, and then say how he dictates", async () => {
     const { voiceProfileControls } = await import("./insightRows.ts");
-    const { computeVoiceProfile } = await import("@t3tools/baton-shared/voiceProfile");
+    const { computeVoiceProfile } = await import("@t3tools/tessaya-shared/voiceProfile");
     expect(voiceProfileControls(null)).toEqual([]);
     const p = computeVoiceProfile([
       {

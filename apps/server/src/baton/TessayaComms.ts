@@ -17,7 +17,7 @@ import {
   type CommsNote,
   type CommsReceipt,
   type RegisteredDevice,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   commsCaps,
   fallbackForms,
@@ -27,16 +27,16 @@ import {
   personAddress,
   renderNote,
   trimForms,
-} from "@t3tools/baton-shared/comms";
-import { planDelivery, type DeliveryTarget } from "@t3tools/baton-shared/commsDelivery";
+} from "@t3tools/tessaya-shared/comms";
+import { planDelivery, type DeliveryTarget } from "@t3tools/tessaya-shared/commsDelivery";
 import {
   EMERGENCY_MAX_MS,
   EMERGENCY_REPEAT_MS,
   emergencyRateOk,
   emergencyRefusal,
-} from "@t3tools/baton-shared/commsEmergency";
-import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
-import type { MemberRole } from "@t3tools/baton-shared/household";
+} from "@t3tools/tessaya-shared/commsEmergency";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import type { MemberRole } from "@t3tools/tessaya-shared/household";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";

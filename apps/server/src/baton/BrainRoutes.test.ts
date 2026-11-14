@@ -10,7 +10,7 @@ import { describe, expect, it } from "vite-plus/test";
  * or excluded with the reason.
  */
 const ROOT = NodePath.resolve(import.meta.dirname, "../../../..");
-const SCANNED = ["apps/server/src", "apps/desktop/src/baton", "packages/baton-shared/src"];
+const SCANNED = ["apps/server/src", "apps/desktop/src/baton", "packages/tessaya-shared/src"];
 const REACHES_A_MODEL =
   /api\.anthropic\.com|"--model"|claude-(?:haiku|sonnet|opus)-\d|readRouting\(|\.cheap\b|\bBatonOneShot\b|\bDictationCleanupApi\b/;
 /** What a routed file must contain: it asks the table, or names its role to a service that does. */
@@ -26,7 +26,7 @@ type Site =
 
 const SITES: Readonly<Record<string, Site>> = {
   // The table itself and the one place each credential is spent.
-  "packages/baton-shared/src/brainRoutes.ts": {
+  "packages/tessaya-shared/src/brainRoutes.ts": {
     table: "the rows, their defaults and the spend guard",
   },
   "apps/server/src/baton/BrainRoutes.ts": { routed: "reads the table on the server" },
@@ -69,7 +69,7 @@ const SITES: Readonly<Record<string, Site>> = {
     routed: "dictation cleanup over RPC: the cleanup row",
   },
   "apps/server/src/speech/http.ts": { wiring: "the key's status and test only, no model call" },
-  "packages/baton-shared/src/costRouting.ts": {
+  "packages/tessaya-shared/src/costRouting.ts": {
     table: "routing.json's cheap model, read only to fill the background row's default",
   },
   // Layer wiring, no model call.

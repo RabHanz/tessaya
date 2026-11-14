@@ -10,7 +10,7 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { R1_FIRMWARE_PUBLIC_KEY } from "@t3tools/baton-shared/r1Firmware";
+import { R1_FIRMWARE_PUBLIC_KEY } from "@t3tools/tessaya-shared/r1Firmware";
 import * as Electron from "electron";
 
 import {

@@ -1,4 +1,4 @@
-import { fallbackDraft, notesOf } from "@t3tools/baton-shared/skillDraft";
+import { fallbackDraft, notesOf } from "@t3tools/tessaya-shared/skillDraft";
 import { describe, expect, it } from "vite-plus/test";
 
 import { EMPTY_NOW, nowControls } from "./nowRows.ts";

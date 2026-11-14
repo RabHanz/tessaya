@@ -4,10 +4,10 @@
  * wrong first move. Sources: the 2026-11-04 review (INT-4) and the Help page's examples.
  */
 import { describeJobs } from "../../apps/desktop/src/baton/agent/jobText.ts";
-import type { BatonJob } from "../../packages/baton-contracts/src/jobs.ts";
-import type { BatonRecordEntry } from "../../packages/baton-contracts/src/record.ts";
-import { buildAuditTrail, describeAuditTrail } from "../../packages/baton-shared/src/audit.ts";
-import type { CutIn } from "../../packages/baton-shared/src/endOfTurn.ts";
+import type { BatonJob } from "../../packages/tessaya-contracts/src/jobs.ts";
+import type { BatonRecordEntry } from "../../packages/tessaya-contracts/src/record.ts";
+import { buildAuditTrail, describeAuditTrail } from "../../packages/tessaya-shared/src/audit.ts";
+import type { CutIn } from "../../packages/tessaya-shared/src/endOfTurn.ts";
 import { answeredWithWords } from "../../apps/desktop/src/baton/agent/agentGate.ts";
 import { chooseBrowserRoute } from "../../apps/desktop/src/baton/screen/browserRoute.ts";
 

@@ -4,7 +4,7 @@
  * (the device broker for the room loop) listens. Its own service with no other dependency, so neither side imports
  * the other.
  */
-import type { BatonVoiceProfile } from "@t3tools/baton-contracts";
+import type { BatonVoiceProfile } from "@t3tools/tessaya-contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

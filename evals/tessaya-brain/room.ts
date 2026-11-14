@@ -1,5 +1,5 @@
 import { roomData, type R1Context } from "../../apps/server/src/home/R1Device.ts";
-import { DEFAULT_OS_PACK, rosterLine } from "../../packages/baton-shared/src/osPack.ts";
+import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/osPack.ts";
 
 // A memory block of the size `TessayaTurn.begin` gives a device turn (standing plus this sentence's), so the user
 // message is as long as a real one.

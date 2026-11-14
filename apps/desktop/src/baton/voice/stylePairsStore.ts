@@ -7,13 +7,13 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { modeForApp } from "@t3tools/baton-shared/dictationCleanup";
-import { detectSecret, REDACTED } from "@t3tools/baton-shared/memory";
+import { modeForApp } from "@t3tools/tessaya-shared/dictationCleanup";
+import { detectSecret, REDACTED } from "@t3tools/tessaya-shared/memory";
 import {
   pairsFromWispr,
   type StylePair,
   type WisprHistoryRow,
-} from "@t3tools/baton-shared/stylePairs";
+} from "@t3tools/tessaya-shared/stylePairs";
 
 import { createJsonStore } from "../writing/jsonStore.ts";
 import type { HistoryTurn } from "./history.ts";

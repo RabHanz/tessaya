@@ -8,8 +8,8 @@ import type {
   BatonPromptLabInput,
   BatonPromptLabResult,
   EnvironmentId,
-} from "@t3tools/baton-contracts";
-import { labSummary, LAB_MODELS } from "@t3tools/baton-shared/promptLab";
+} from "@t3tools/tessaya-contracts";
+import { labSummary, LAB_MODELS } from "@t3tools/tessaya-shared/promptLab";
 import { useEffect, useState } from "react";
 
 import { batonWorkSessions } from "../../state/batonWorkSessions";

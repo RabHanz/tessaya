@@ -1,4 +1,4 @@
-import { R1_SETUP_CHARS } from "@t3tools/baton-shared/r1Setup";
+import { R1_SETUP_CHARS } from "@t3tools/tessaya-shared/r1Setup";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 

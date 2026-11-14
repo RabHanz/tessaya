@@ -1,6 +1,6 @@
 /** Puts every source of "what needs me?" together and says it. Read-only. */
-import type { BatonJob, BatonSessionSummary, WatchFinding } from "@t3tools/baton-contracts";
-import { buildApprovals } from "@t3tools/baton-shared/approvals";
+import type { BatonJob, BatonSessionSummary, WatchFinding } from "@t3tools/tessaya-contracts";
+import { buildApprovals } from "@t3tools/tessaya-shared/approvals";
 import {
   describeNeeds,
   needsFromApprovals,
@@ -8,7 +8,7 @@ import {
   needsFromJobs,
   rankNeeds,
   type NeedItem,
-} from "@t3tools/baton-shared/needsMe";
+} from "@t3tools/tessaya-shared/needsMe";
 
 import {
   readExternalNeeds,

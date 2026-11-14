@@ -1,4 +1,4 @@
-import { pathPasses } from "../../packages/baton-shared/src/skillLearning.ts";
+import { pathPasses } from "../../packages/tessaya-shared/src/skillLearning.ts";
 import type { AssistantCase } from "./cases.ts";
 
 /** The tool a sample reached for first, without the MCP server prefix; "none" when it used none. */

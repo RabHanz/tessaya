@@ -13,7 +13,7 @@ import {
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
-import type { VoiceLibraryView } from "@t3tools/baton-contracts";
+import type { VoiceLibraryView } from "@t3tools/tessaya-contracts";
 import { useEffect, useState } from "react";
 
 import { runEnvironmentSpeech } from "../../speech/runEnvironmentSpeech";

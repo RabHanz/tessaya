@@ -4,7 +4,7 @@
  * its own live provider, the twin's session is released by the provider layer (never by killing a pid), and the twin's
  * mirror thread is archived (ids written to an undo file) and then deleted. The main thread keeps every message and run.
  */
-import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 import * as Effect from "effect/Effect";
 
 import type { BatonEngineError } from "./BatonEngine.ts";

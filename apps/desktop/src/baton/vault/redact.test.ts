@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { REDACTED } from "@t3tools/baton-shared/memory";
+import { REDACTED } from "@t3tools/tessaya-shared/memory";
 
 import { redactForHistory } from "./redact.ts";
 

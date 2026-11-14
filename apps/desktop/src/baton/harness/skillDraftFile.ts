@@ -3,7 +3,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { slugOf } from "@t3tools/baton-shared/skillReview";
+import { slugOf } from "@t3tools/tessaya-shared/skillReview";
 
 export const draftsDir = (stateDir: string): string => NodePath.join(stateDir, "skill-drafts");
 

@@ -1,4 +1,4 @@
-import { absentSessionWindow } from "@t3tools/baton-shared/limitWindows";
+import { absentSessionWindow } from "@t3tools/tessaya-shared/limitWindows";
 import {
   CHATGPT_USAGE_URL,
   collectLimitAccounts,

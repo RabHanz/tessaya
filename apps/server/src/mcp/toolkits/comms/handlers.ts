@@ -1,6 +1,6 @@
 /** The comms tools' handlers: thin; TessayaComms decides, as the turn's speaker (or the owner, for an agent). */
-import { CommsCallInput } from "@t3tools/baton-contracts";
-import { memberOfSpeaker, voiceAssurance } from "@t3tools/baton-shared/household";
+import { CommsCallInput } from "@t3tools/tessaya-contracts";
+import { memberOfSpeaker, voiceAssurance } from "@t3tools/tessaya-shared/household";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { parsePillDesign, parsePillWave, waveFor } from "@t3tools/baton-shared/composerDictation";
+import { parsePillDesign, parsePillWave, waveFor } from "@t3tools/tessaya-shared/composerDictation";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";

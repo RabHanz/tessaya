@@ -2,8 +2,8 @@
  * The Director's house through Tessaya (Home Assistant), for agents on T3's /mcp and his desktop assistant alike. Every
  * write is risk-checked on the server; a risky one waits for his yes on his phone, and the reply says so.
  */
-import { BatonHomeCallResult, HOME_AUTOMATION_KINDS } from "@t3tools/baton-contracts";
-import { HOME_TOOL_TEXT } from "@t3tools/baton-shared/homeTools";
+import { BatonHomeCallResult, HOME_AUTOMATION_KINDS } from "@t3tools/tessaya-contracts";
+import { HOME_TOOL_TEXT } from "@t3tools/tessaya-shared/homeTools";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool } from "effect/ai";

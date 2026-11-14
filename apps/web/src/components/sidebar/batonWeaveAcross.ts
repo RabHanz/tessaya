@@ -3,7 +3,7 @@
  * sessions together, exact first, and a name that fits sessions on two computers is refused, never guessed. Each
  * environment's own server types into its own panes, so no machine reaches another over ssh.
  */
-import type { BatonFleet, BatonWeave, BatonWeaveBridgeRequest } from "@t3tools/baton-contracts";
+import type { BatonFleet, BatonWeave, BatonWeaveBridgeRequest } from "@t3tools/tessaya-contracts";
 
 /** The names weave knows a computer's sessions by: its Herdr panes, and Claude sessions outside Herdr. */
 export const weaveSessionsOf = (fleet: BatonFleet | null): ReadonlyArray<string> | null =>

@@ -15,19 +15,19 @@ index 1637f475fbbd0718954fe0f6981e71bb616b6bbd..f520aa8f960223d95125a8ca3b83408a
  /packages/ssh/.ssh-launcher-test-*/
 +apps/server/resources/memory-model/model_quantized.onnx
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 97554fd82320524ccf43a751a45e035823782d2d..a90cbcbdbb2538f21913ab8dfe2f5a4ea3db4a1f 100644
+index 97554fd82320524ccf43a751a45e035823782d2d..dbb4ff743e380abbbdc80428ad648e625d20095b 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
-@@ -15,6 +15,9 @@
-     "@crowecawcaw/xa11y": "0.15.4",
-     "@effect/platform-node": "catalog:",
-     "@napi-rs/keyring": "^1.3.0",
-+    "@t3tools/baton-contracts": "workspace:*",
-+    "@t3tools/baton-shared": "workspace:*",
-+    "@t3tools/baton-voice": "workspace:*",
-     "@t3tools/client-runtime": "workspace:*",
-     "@t3tools/contracts": "workspace:*",
+@@ -20,6 +20,9 @@
      "@t3tools/shared": "workspace:*",
+     "@t3tools/ssh": "workspace:*",
+     "@t3tools/tailscale": "workspace:*",
++    "@t3tools/tessaya-contracts": "workspace:*",
++    "@t3tools/tessaya-shared": "workspace:*",
++    "@t3tools/tessaya-voice": "workspace:*",
+     "dbus-next": "0.10.2",
+     "effect": "catalog:",
+     "electron": "44.10.1",
 @@ -27,6 +30,7 @@
      "electron-updater": "6.8.9",
      "electron-webauthn": "catalog:",
@@ -99,18 +99,18 @@ index 455901299edc31b4c958e7c523eb3faf31563f44..99414dd8ac4b6c84b124e12d79ccc346
    test: {
      // The Windows lane runs workspace suites concurrently; filesystem-heavy
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index 1892b649061f8cc8413805bceea774e7eaf04298..7f4dcb11e7bec4cc9a6149377ae3ca8fd5eb0ac8 100644
+index 1892b649061f8cc8413805bceea774e7eaf04298..cedd6229cb9a76953db0f88dfb2e59971d00a80f 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
-@@ -72,6 +72,8 @@
-     "@react-navigation/elements": "2.9.45",
-     "@react-navigation/native": "7.5.1",
-     "@react-navigation/native-stack": "7.21.0",
-+    "@t3tools/baton-contracts": "workspace:*",
-+    "@t3tools/baton-shared": "workspace:*",
-     "@t3tools/client-runtime": "workspace:*",
-     "@t3tools/contracts": "workspace:*",
-     "@t3tools/mobile-highlights-native": "file:./modules/t3-highlights",
+@@ -79,6 +79,8 @@
+     "@t3tools/mobile-source-text": "file:./modules/t3-source-text",
+     "@t3tools/mobile-terminal-native": "file:./modules/t3-terminal",
+     "@t3tools/shared": "workspace:*",
++    "@t3tools/tessaya-contracts": "workspace:*",
++    "@t3tools/tessaya-shared": "workspace:*",
+     "@tabler/icons-react-native": "^3.44.0",
+     "clsx": "^2.1.1",
+     "diff": "8.0.3",
 @@ -126,10 +128,12 @@
      "react": "catalog:",
      "react-dom": "catalog:",
@@ -125,19 +125,17 @@ index 1892b649061f8cc8413805bceea774e7eaf04298..7f4dcb11e7bec4cc9a6149377ae3ca8f
      "react-native-pdf-jsi": "6.1.0",
      "react-native-reanimated": "4.7.1",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..3aca1ef3560ddb8b4a25a731feb4e379c4f8e807 100644
+index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..3def98f2726707b310db3e23fb21639d6ee2e91c 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
-@@ -43,6 +43,8 @@
-     "@ff-labs/fff-node": "0.11.0",
-     "@muse-code/sdk": "1.4.6",
-     "@napi-rs/keyring": "^1.3.0",
-+    "@t3tools/baton-contracts": "workspace:*",
-+    "@t3tools/baton-shared": "workspace:*",
-     "@t3tools/provider-acp": "workspace:*",
-     "@t3tools/provider-acp-registry": "workspace:*",
-     "@t3tools/provider-core": "workspace:*",
-@@ -67,6 +69,7 @@
+@@ -62,11 +62,14 @@
+     "@t3tools/source-control-gitcafe": "workspace:*",
+     "@t3tools/source-control-github": "workspace:*",
+     "@t3tools/source-control-gitlab": "workspace:*",
++    "@t3tools/tessaya-contracts": "workspace:*",
++    "@t3tools/tessaya-shared": "workspace:*",
+     "character-entities": "2.0.2",
+     "diff": "8.0.3",
      "effect": "catalog:",
      "ffi-rs": "1.3.2",
      "node-pty": "^1.2.0-beta.15",
@@ -159,18 +157,18 @@ index 3291aa304d39553ab8991a9fa8956eda13b17c73..54668b3634756051f4178dddd315326c
          __T3CODE_TELEMETRY_CHANNEL__: JSON.stringify(telemetryChannel),
          __T3CODE_BUILD_RELAY_URL__: JSON.stringify(repoEnv.T3CODE_RELAY_URL?.trim() ?? ""),
 diff --git a/apps/web/package.json b/apps/web/package.json
-index fd3aca76ad247c3101889df922e29f104f8de909..60ea3fbb1d988dc2e9068f09ad489fb5fe43c30c 100644
+index fd3aca76ad247c3101889df922e29f104f8de909..5bc505b36132fc74070b3b7bede32017a407763f 100644
 --- a/apps/web/package.json
 +++ b/apps/web/package.json
-@@ -34,6 +34,8 @@
-     "@noble/hashes": "catalog:",
-     "@pierre/diffs": "catalog:",
-     "@pierre/trees": "1.0.0-beta.6",
-+    "@t3tools/baton-contracts": "workspace:*",
-+    "@t3tools/baton-shared": "workspace:*",
-     "@t3tools/client-runtime": "workspace:*",
-     "@t3tools/contracts": "workspace:*",
-     "@t3tools/provider-core": "workspace:*",
+@@ -40,6 +40,8 @@
+     "@t3tools/secret-provider-definitions": "workspace:*",
+     "@t3tools/secret-provider-onepassword": "workspace:*",
+     "@t3tools/shared": "workspace:*",
++    "@t3tools/tessaya-contracts": "workspace:*",
++    "@t3tools/tessaya-shared": "workspace:*",
+     "@tanstack/react-pacer": "^0.19.4",
+     "@tanstack/react-router": "^1.160.2",
+     "@tiptap/core": "^3.31.3",
 diff --git a/evals/README.md b/evals/README.md
 index 8cfb697373c318c91927adeb4f373d54a7e1922e..5da9b69248fc46a50ddffa6074aca0a9abe1ca60 100644
 --- a/evals/README.md
@@ -225,7 +223,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..60d3f056655deefba9525c7b5dd64c38
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index e3589f643c3259fac880e60fb4b13b9af3c95d39..6bf1eaf6c0fe649aa81bf7bd1570bebdb68b9cd9 100644
+index e3589f643c3259fac880e60fb4b13b9af3c95d39..4ccd8c96952d3522d05ce30c3014a2609796480b 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -41,6 +41,9 @@
@@ -233,7 +231,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..6bf1eaf6c0fe649aa81bf7bd1570bebd
          "smoke-desktop-app.ts",
          "verify-windows-desktop-artifact.ts",
 +        // Baton's labs, proofs and evals are run by hand from the command line.
-+        "baton/**/*.{ts,mjs}",
++        "tessaya-lab/**/*.{ts,mjs}",
 +        "tessaya/**/*.{ts,mjs}",
        ],
        "ignoreDependencies": ["esbuild"],
@@ -331,8 +329,8 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..6bf1eaf6c0fe649aa81bf7bd1570bebd
        "includeEntryExports": true,
      },
 +    // The contracts and shared packages are declared for the types Baton re-exports.
-+    "packages/baton-shared": { "ignoreDependencies": ["@t3tools/contracts"] },
-+    "packages/baton-voice": {
++    "packages/tessaya-shared": { "ignoreDependencies": ["@t3tools/contracts"] },
++    "packages/tessaya-voice": {
 +      // The R1 room loop and its replay harness run as programs on the voice host (deploy/r1-voice).
 +      "entry": ["src/room/main.ts!", "src/room/replay.ts!", "test/segmentsEval.ts"],
 +      "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"],
@@ -341,26 +339,26 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..6bf1eaf6c0fe649aa81bf7bd1570bebd
        "includeEntryExports": true,
        "entry": ["test/fixtures/*.ts"],
 diff --git a/packages/client-runtime/package.json b/packages/client-runtime/package.json
-index d1e74151e53e3a0548407d9744ff97d6732068d7..73b02a228b90f88f241ce087eabef0f6c5d838b6 100644
+index d1e74151e53e3a0548407d9744ff97d6732068d7..6874892d03cb03d7efd5b2ca3b830293a7d4769f 100644
 --- a/packages/client-runtime/package.json
 +++ b/packages/client-runtime/package.json
-@@ -574,6 +574,7 @@
-   },
-   "dependencies": {
-     "@pierre/diffs": "catalog:",
-+    "@t3tools/baton-contracts": "workspace:*",
-     "@t3tools/contracts": "workspace:*",
-     "@t3tools/provider-acp-registry": "workspace:*",
-     "@t3tools/provider-core": "workspace:*",
+@@ -588,6 +588,7 @@
+     "@t3tools/shared": "workspace:*",
+     "@t3tools/source-control-core": "workspace:*",
+     "@t3tools/source-control-definitions": "workspace:*",
++    "@t3tools/tessaya-contracts": "workspace:*",
+     "effect": "catalog:",
+     "jszip": "3.10.1",
+     "three": "0.180.0",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index c93a9b4ad7f4979e6d156ce366ec8e3623ae3916..d2cb8c2b27fce28c4a03cbd7092a6544c0355400 100644
+index c93a9b4ad7f4979e6d156ce366ec8e3623ae3916..03ca8ed86ebeedddf6ee1dfd094d5bc40433e12b 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -21,6 +21,8 @@ allowBuilds:
    # Ships prebuilds; its host-architecture probe triggers source builds during cross-packaging.
    koffi: false
    node-pty: true
-+  # Baton voice (packages/baton-voice) uses the prebuilt CPU binaries it ships.
++  # Baton voice (packages/tessaya-voice) uses the prebuilt CPU binaries it ships.
 +  onnxruntime-node: false
    # Ships N-API prebuilds; its install script only rebuilds from source.
    objc-js: false

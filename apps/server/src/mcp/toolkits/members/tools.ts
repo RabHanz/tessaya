@@ -3,7 +3,7 @@
  * remove someone (their data waits 7 days for their export) or bring them back. A voice never finishes an admin act on
  * its own: those come back `asked`, sent to the owner's device for a yes.
  */
-import { BatonPreferenceKey } from "@t3tools/baton-contracts";
+import { BatonPreferenceKey } from "@t3tools/tessaya-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool } from "effect/ai";

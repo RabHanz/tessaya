@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { LINE_EVENTS, lineId } from "@t3tools/baton-shared/expression";
+import { LINE_EVENTS, lineId } from "@t3tools/tessaya-shared/expression";
 import type { BrainRole } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";

@@ -1,10 +1,10 @@
 // @effect-diagnostics globalDate:off
 /** The Now area of the window (D149): what needs him, what it keeps track of, what it is doing, learned, and held back. */
-import { degradedSummary, type Capability } from "@t3tools/baton-shared/degraded";
-import type { WeaveRecord } from "@t3tools/baton-shared/weave";
-import type { Commitment } from "@t3tools/baton-shared/commitments";
-import type { NeedItem } from "@t3tools/baton-shared/needsMe";
-import type { BatonTeamMember } from "@t3tools/baton-contracts";
+import { degradedSummary, type Capability } from "@t3tools/tessaya-shared/degraded";
+import type { WeaveRecord } from "@t3tools/tessaya-shared/weave";
+import type { Commitment } from "@t3tools/tessaya-shared/commitments";
+import type { NeedItem } from "@t3tools/tessaya-shared/needsMe";
+import type { BatonTeamMember } from "@t3tools/tessaya-contracts";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

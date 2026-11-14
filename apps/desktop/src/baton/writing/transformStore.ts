@@ -6,7 +6,7 @@ import {
   DEFAULT_TRANSFORMS,
   TRANSFORMS_MAX,
   type Transform,
-} from "@t3tools/baton-shared/transforms";
+} from "@t3tools/tessaya-shared/transforms";
 
 import { createJsonStore } from "./jsonStore.ts";
 

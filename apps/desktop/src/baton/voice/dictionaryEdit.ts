@@ -6,7 +6,7 @@
  */
 import * as NodePath from "node:path";
 
-import { removeEntry, type VocabularyEntry } from "@t3tools/baton-shared/vocabulary";
+import { removeEntry, type VocabularyEntry } from "@t3tools/tessaya-shared/vocabulary";
 
 import { writeJsonFile } from "../writing/jsonStore.ts";
 

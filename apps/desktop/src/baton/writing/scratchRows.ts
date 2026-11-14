@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off
 /** The Scratchpad area of the window: add, search, copy and delete quick notes. */
-import { previewOf, searchNotes, type ScratchNote } from "@t3tools/baton-shared/scratchpad";
+import { previewOf, searchNotes, type ScratchNote } from "@t3tools/tessaya-shared/scratchpad";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

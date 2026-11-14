@@ -9,8 +9,8 @@ import {
   type DeviceItem,
   type DeviceWrite,
   type RegisteredDevice,
-} from "@t3tools/baton-contracts";
-import { checkWrite, isTestVessel, withFloor } from "@t3tools/baton-shared/deviceItems";
+} from "@t3tools/tessaya-contracts";
+import { checkWrite, isTestVessel, withFloor } from "@t3tools/tessaya-shared/deviceItems";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";

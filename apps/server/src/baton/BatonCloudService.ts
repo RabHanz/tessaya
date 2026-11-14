@@ -3,7 +3,7 @@
  * Cloud tasks on the computer that holds the logins (the hub, transport 2): other computers ask through
  * `baton.cloud.read` and `baton.cloud.act`; this runs the harness's own program here, with this
  * computer's own login, and keeps the waiting requests in a small file beside the server's state.
- * The rules live in `@t3tools/baton-shared/cloud`; this is only the door.
+ * The rules live in `@t3tools/tessaya-shared/cloud`; this is only the door.
  */
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodePath from "node:path";
@@ -15,11 +15,11 @@ import {
   type BatonCloudCallInput,
   type BatonCloudCallResult,
   instancesWeekly,
-} from "@t3tools/baton-contracts";
-import { buildLocalProviders, settingsFromEnv } from "@t3tools/baton-shared/cloud/build";
-import { serveCloudCall } from "@t3tools/baton-shared/cloud/hub";
-import type { CloudProvider } from "@t3tools/baton-shared/cloud/types";
-import { fileStores, nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
+} from "@t3tools/tessaya-contracts";
+import { buildLocalProviders, settingsFromEnv } from "@t3tools/tessaya-shared/cloud/build";
+import { serveCloudCall } from "@t3tools/tessaya-shared/cloud/hub";
+import type { CloudProvider } from "@t3tools/tessaya-shared/cloud/types";
+import { fileStores, nodeExec } from "@t3tools/tessaya-shared/cloud/nodeExec";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

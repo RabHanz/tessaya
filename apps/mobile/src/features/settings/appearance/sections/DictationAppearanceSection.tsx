@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { PillDesign, PillWave } from "@t3tools/baton-shared/composerDictation";
+import type { PillDesign, PillWave } from "@t3tools/tessaya-shared/composerDictation";
 import { useColorScheme, View } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 

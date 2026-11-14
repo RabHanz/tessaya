@@ -574,7 +574,6 @@
   },
   "dependencies": {
     "@pierre/diffs": "catalog:",
-    "@t3tools/baton-contracts": "workspace:*",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/provider-acp-registry": "workspace:*",
     "@t3tools/provider-core": "workspace:*",
@@ -589,6 +588,7 @@
     "@t3tools/shared": "workspace:*",
     "@t3tools/source-control-core": "workspace:*",
     "@t3tools/source-control-definitions": "workspace:*",
+    "@t3tools/tessaya-contracts": "workspace:*",
     "effect": "catalog:",
     "jszip": "3.10.1",
     "three": "0.180.0",

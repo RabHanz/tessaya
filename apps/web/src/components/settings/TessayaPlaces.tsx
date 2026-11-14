@@ -5,7 +5,7 @@ import {
   tessayaLink,
   tessayaPlaceOf,
   type TessayaPlaceId,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { Link, useLocation } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 

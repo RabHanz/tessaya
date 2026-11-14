@@ -7,7 +7,7 @@ import {
   type OrchestrationFiring,
   type OrchestrationRule,
   type OrchestrationRuleWithFirings,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildRuleRows, describeFiring, rulesByWorkSession } from "./batonRuleView";

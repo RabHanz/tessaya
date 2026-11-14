@@ -10,7 +10,7 @@ import * as NodeURL from "node:url";
 
 import { herdrBin } from "./pane-prompt.mjs";
 
-import { LIVE_EFFORT_CHOICES } from "../../../packages/baton-shared/src/liveModel.ts";
+import { LIVE_EFFORT_CHOICES } from "../../../packages/tessaya-shared/src/liveModel.ts";
 import {
   effortConfigOption,
   LIVE_MODELS,

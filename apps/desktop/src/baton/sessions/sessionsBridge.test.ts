@@ -1,4 +1,4 @@
-import type { BatonSessionSummary } from "@t3tools/baton-contracts";
+import type { BatonSessionSummary } from "@t3tools/tessaya-contracts";
 import { expect, it, vi } from "vite-plus/test";
 
 const ipc = vi.hoisted(() => new Map<string, (event: unknown, message: unknown) => void>());

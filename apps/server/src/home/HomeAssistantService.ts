@@ -12,10 +12,10 @@ import type {
   HomeEntity,
   HomeOutcome,
   HomeStatus,
-} from "@t3tools/baton-contracts";
-import { PROMPT_TTL_MS } from "@t3tools/baton-shared/phoneRelay";
-import { recordText } from "@t3tools/baton-shared/audit";
-import { isDeviceRule } from "@t3tools/baton-shared/deviceRules";
+} from "@t3tools/tessaya-contracts";
+import { PROMPT_TTL_MS } from "@t3tools/tessaya-shared/phoneRelay";
+import { recordText } from "@t3tools/tessaya-shared/audit";
+import { isDeviceRule } from "@t3tools/tessaya-shared/deviceRules";
 import {
   actionCalls,
   higherTier,
@@ -24,7 +24,7 @@ import {
   type HomeOverrides,
   type HomeTier,
   type HomeVerdict,
-} from "@t3tools/baton-shared/homeRisk";
+} from "@t3tools/tessaya-shared/homeRisk";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Context from "effect/Context";
@@ -37,7 +37,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { BatonHomeCallResult } from "@t3tools/baton-contracts";
+import { BatonHomeCallResult } from "@t3tools/tessaya-contracts";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
@@ -46,7 +46,7 @@ import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { TessayaHousehold } from "../baton/TessayaHousehold.ts";
 import { TurnOrigin } from "../baton/TessayaTurn.ts";
-import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { arbitrate, ARBITRATION_MS, type RecentAct } from "./homeArbitration.ts";
 import {
   HomeAssistantConnection,
@@ -54,7 +54,7 @@ import {
   type HomeCallError,
   type HomeLink,
 } from "./HomeAssistantConnection.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 export const TOKEN_SECRET = "home-assistant-token";
 /** Before several R1s: one record. Read when DEVICES_SECRET is missing, and kept as the first R1 for a rollback. */

@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { instanceLabel } from "@t3tools/baton-shared/liveThread";
+import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
 
 export class ProviderInstanceNotFoundError extends Schema.TaggedError<ProviderInstanceNotFoundError>()(
   "ProviderInstanceNotFoundError",

@@ -3,8 +3,8 @@
  * (GEN-6). The arguments are shaped as the sidebar shapes them; the server decodes and checks them. Null for a
  * request only the window can answer; a refusal for acting on another machine, which only T3's own session to it does.
  */
-import type { BatonJobBridgeRequest } from "@t3tools/baton-contracts";
-import { resolveRunOn } from "@t3tools/baton-shared/runOn";
+import type { BatonJobBridgeRequest } from "@t3tools/tessaya-contracts";
+import { resolveRunOn } from "@t3tools/tessaya-shared/runOn";
 
 const MEMORY_OPS = new Set([
   "list",

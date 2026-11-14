@@ -85,7 +85,7 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
 const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
 const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
 
-/** Tessaya's device door (`BATON_DEVICES_WS_METHODS.call`); this package cannot import baton-contracts. */
+/** Tessaya's device door (`BATON_DEVICES_WS_METHODS.call`); this package cannot import tessaya-contracts. */
 const DEVICES_CALL = "baton.devices.call";
 /** Her prompt lab (`BATON_PROMPT_LAB_WS_METHODS.call`): his prompts, the owner's settings. */
 const PROMPT_LAB_CALL = "baton.promptLab.call";

@@ -4,7 +4,7 @@
  * `CLAUDE_CONFIG_DIR` at its directory for the assistant's own `claude` children. Choosing nothing
  * leaves his environment alone. Pure, so the choice is testable without a `claude`.
  */
-import { cswapSessionsRoot } from "@t3tools/baton-shared/providerAccounts";
+import { cswapSessionsRoot } from "@t3tools/tessaya-shared/providerAccounts";
 
 export interface AssistantAccount {
   /** The config directory: what the choice is saved as. */

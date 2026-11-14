@@ -19,11 +19,11 @@ import {
   modelOf,
   personaFor,
   rosterLine,
-} from "../../packages/baton-shared/src/osPack.ts";
-import { mergeTemplates, templateFrame } from "../../packages/baton-shared/src/jobTemplates.ts";
-import { memoryBlock } from "../../packages/baton-shared/src/memory.ts";
+} from "../../packages/tessaya-shared/src/osPack.ts";
+import { mergeTemplates, templateFrame } from "../../packages/tessaya-shared/src/jobTemplates.ts";
+import { memoryBlock } from "../../packages/tessaya-shared/src/memory.ts";
 import { DESK_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
-import { chooseTurnBrain } from "../../packages/baton-shared/src/turnTier.ts";
+import { chooseTurnBrain } from "../../packages/tessaya-shared/src/turnTier.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
 import {
   casePasses,

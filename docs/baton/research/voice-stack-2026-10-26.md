@@ -1,6 +1,6 @@
 # Voice stack snapshot, 2026-10-26
 
-What `packages/baton-voice` runs on, checked against each project's GitHub on
+What `packages/tessaya-voice` runs on, checked against each project's GitHub on
 2026-10-26. Hashes are the files the e2e test ran against.
 
 | Component                                | Version pinned                                                                                                               | Released   | Licence (code / weights)                                     | Files                                                                               |

@@ -9,7 +9,7 @@ import {
   isUserJob,
   type UserJob,
   type UserJobRun,
-} from "@t3tools/baton-shared/userJobs";
+} from "@t3tools/tessaya-shared/userJobs";
 
 import { writeJsonFile } from "../writing/jsonStore.ts";
 

@@ -18,7 +18,7 @@ import {
   type InitiativeState,
   type Policy,
   type Trigger,
-} from "@t3tools/baton-shared/initiative";
+} from "@t3tools/tessaya-shared/initiative";
 
 export interface InitiativeDeps {
   readonly dir: string;

@@ -5,10 +5,10 @@
  * rules that watch its device and item, on the change itself (no polling). A rule in plain words is judged by the
  * brain; every action goes through the gate it has anywhere else.
  */
-import { DeviceRule, DeviceRuleAction, type DeviceWatchInput } from "@t3tools/baton-contracts";
-import { recordText } from "@t3tools/baton-shared/audit";
-import { valueText } from "@t3tools/baton-shared/deviceItems";
-import { DEVICE_RULE_PREFIX, fires, ruleLine, watches } from "@t3tools/baton-shared/deviceRules";
+import { DeviceRule, DeviceRuleAction, type DeviceWatchInput } from "@t3tools/tessaya-contracts";
+import { recordText } from "@t3tools/tessaya-shared/audit";
+import { valueText } from "@t3tools/tessaya-shared/deviceItems";
+import { DEVICE_RULE_PREFIX, fires, ruleLine, watches } from "@t3tools/tessaya-shared/deviceRules";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

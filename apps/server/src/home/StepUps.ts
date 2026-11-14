@@ -4,8 +4,8 @@
  * also waits as a card on the phone inbox, so nothing is lost when the voice can't settle it. Its own service, so the
  * device broker and the tool runner need not import each other.
  */
-import type { Assurance } from "@t3tools/baton-shared/household";
-import { PROMPT_TTL_MS } from "@t3tools/baton-shared/phoneRelay";
+import type { Assurance } from "@t3tools/tessaya-shared/household";
+import { PROMPT_TTL_MS } from "@t3tools/tessaya-shared/phoneRelay";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

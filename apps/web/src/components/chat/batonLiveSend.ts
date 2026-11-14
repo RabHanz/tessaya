@@ -1,4 +1,4 @@
-import { pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
+import { pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { ModelSelection, ScopedThreadRef } from "@t3tools/contracts";
 

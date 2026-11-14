@@ -3,7 +3,7 @@
  * before the device slot's own gate (taint on, no act-without-asking) has its say.
  */
 import type { Gate } from "./agentGate.ts";
-import { batonToolName } from "@t3tools/baton-shared/operator";
+import { batonToolName } from "@t3tools/tessaya-shared/operator";
 
 export const standingGate =
   (

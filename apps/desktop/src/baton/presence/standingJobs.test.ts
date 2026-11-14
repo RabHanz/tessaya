@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
+import type { BatonJob, WatchFinding } from "@t3tools/tessaya-contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {

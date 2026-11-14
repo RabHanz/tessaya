@@ -1,4 +1,4 @@
-import type { BatonAccount, BatonAccountPool } from "@t3tools/baton-contracts";
+import type { BatonAccount, BatonAccountPool } from "@t3tools/tessaya-contracts";
 import { ProviderInstanceId, ThreadId, type ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 

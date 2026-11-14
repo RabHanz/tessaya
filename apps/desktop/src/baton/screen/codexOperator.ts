@@ -7,7 +7,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeReadline from "node:readline";
 
-import type { ToolCall } from "@t3tools/baton-shared/operator";
+import type { ToolCall } from "@t3tools/tessaya-shared/operator";
 
 import { resolveBinary, SessionClosed, type ToolGate, type VisionSession } from "./claudeVision.ts";
 

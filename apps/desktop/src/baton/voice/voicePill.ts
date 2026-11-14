@@ -50,7 +50,7 @@ import {
 } from "./pillIsland.ts";
 import { ICON, LOOK_TOKENS_CSS, applyLookScript as pillLookScript } from "./pillLook.ts";
 import { onPillLook, pillLook, refreshPillTheme } from "./pillTheme.ts";
-import { waveEngine } from "@t3tools/baton-shared/waveform";
+import { waveEngine } from "@t3tools/tessaya-shared/waveform";
 import {
   CUE_TAIL_MS,
   PILL_PARTIAL,
@@ -72,8 +72,8 @@ import {
   type TurnPhase,
   type TurnState,
   type WaveMode,
-} from "@t3tools/baton-shared/voiceTurn";
-import { cueFor, momentOf } from "@t3tools/baton-shared/companion";
+} from "@t3tools/tessaya-shared/voiceTurn";
+import { cueFor, momentOf } from "@t3tools/tessaya-shared/companion";
 import type { PersonaBody } from "../companion/desktopMascot.ts";
 import { PILL_FACE_SCRIPT, studioScripts } from "../companion/pillFace.ts";
 
@@ -460,7 +460,7 @@ export const createVoicePill = (input: {
   readonly stateDir: string;
   readonly holdEscape: (onPress: () => void) => () => void;
   readonly onChange?: (state: TurnState) => void;
-  /** The persona whose face goes in place of the mark for this phase, or null for the mark (baton-shared/companion). */
+  /** The persona whose face goes in place of the mark for this phase, or null for the mark (tessaya-shared/companion). */
   readonly face?: (phase: TurnPhase) => PersonaBody | null;
   /** The verified speaker's initial beside her mark (`pillWho`): null for none, "" for a person with no name yet. */
   readonly who?: () => string | null;

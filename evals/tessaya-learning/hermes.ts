@@ -7,7 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { reviewSkill } from "../../packages/baton-shared/src/skillReview.ts";
+import { reviewSkill } from "../../packages/tessaya-shared/src/skillReview.ts";
 import { runClaude } from "./agent.ts";
 import type { Arm } from "./arms.ts";
 import {

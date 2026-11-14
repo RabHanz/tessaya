@@ -7,13 +7,13 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
-import { instantDecision } from "@t3tools/baton-shared/brain";
+import { instantDecision } from "@t3tools/tessaya-shared/brain";
 import {
   BATON_TOOLS,
   REMOTE_ONLY_TOOLS,
   ROOM_ONLY_TOOLS,
   judgeToolCall,
-} from "@t3tools/baton-shared/operator";
+} from "@t3tools/tessaya-shared/operator";
 
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 

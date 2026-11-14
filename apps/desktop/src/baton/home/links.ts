@@ -1,4 +1,4 @@
-import { tessayaPlaceOf, type TessayaPlaceId } from "@t3tools/baton-contracts";
+import { tessayaPlaceOf, type TessayaPlaceId } from "@t3tools/tessaya-contracts";
 
 export const TESSAYA_SCHEME = "tessaya";
 

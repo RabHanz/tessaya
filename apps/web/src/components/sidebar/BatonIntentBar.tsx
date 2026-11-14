@@ -30,8 +30,8 @@ import {
   type BatonWeaveBridgeRequest,
   type BatonMemoryBridgeRequest,
   type EnvironmentId,
-} from "@t3tools/baton-contracts";
-import { classifyDictation } from "@t3tools/baton-shared/dictation";
+} from "@t3tools/tessaya-contracts";
+import { classifyDictation } from "@t3tools/tessaya-shared/dictation";
 
 import { cn, randomUUID } from "~/lib/utils";
 import { dictationModeLabel, dictationRefusal } from "../../batonContextView";

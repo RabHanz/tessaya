@@ -4,8 +4,8 @@
  * goes to the listeners (the device broker sends persona and voice to the room loop). Its own service, so the turn,
  * the household and the broker need not import each other.
  */
-import { isPreferenceKey, type PreferenceKey } from "@t3tools/baton-shared/household";
-import { foldSpelling, spellBack } from "@t3tools/baton-shared/spelling";
+import { isPreferenceKey, type PreferenceKey } from "@t3tools/tessaya-shared/household";
+import { foldSpelling, spellBack } from "@t3tools/tessaya-shared/spelling";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

@@ -28,7 +28,7 @@ import {
   ComposerPickerFooter,
   describeComposerEffort,
 } from "./ComposerModelEffort";
-import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 import { useLiveTraits } from "./BatonLiveModel";
 import {
   BatonLimitMark,

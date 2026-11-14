@@ -5,7 +5,7 @@
  */
 import * as NodeCrypto from "node:crypto";
 
-import type { ThreadId, WorkSession } from "@t3tools/baton-contracts";
+import type { ThreadId, WorkSession } from "@t3tools/tessaya-contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

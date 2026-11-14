@@ -8,13 +8,13 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { clockLine } from "@t3tools/baton-shared/brain";
-import { batonToolName } from "@t3tools/baton-shared/operator";
-import type { Brain } from "@t3tools/baton-shared/osPack";
+import { clockLine } from "@t3tools/tessaya-shared/brain";
+import { batonToolName } from "@t3tools/tessaya-shared/operator";
+import type { Brain } from "@t3tools/tessaya-shared/osPack";
 
 import { createPersonaConversations } from "../conversation/conversationLog.ts";
 import { startVisionSession } from "../screen/claudeVision.ts";
-import type { TurnPersona } from "@t3tools/baton-shared/agentPrompt";
+import type { TurnPersona } from "@t3tools/tessaya-shared/agentPrompt";
 import { createAssistantAgent, type Where } from "./agentSession.ts";
 import { startBatonMcp } from "./batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "./batonTools.ts";

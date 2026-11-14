@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import { wakeSignatureOk } from "@t3tools/baton-shared/wakeModels";
+import { wakeSignatureOk } from "@t3tools/tessaya-shared/wakeModels";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 

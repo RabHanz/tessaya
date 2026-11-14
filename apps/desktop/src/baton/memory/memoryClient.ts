@@ -4,7 +4,7 @@
  * plain notes folder (D146) when it does not, so "remember that" never silently does nothing. The
  * server owns the rules (what is never kept, decay, conflicts); this only asks and phrases.
  */
-import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
+import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
 import {
   MEMORY_TEXT_MAX,
   detectSecret,
@@ -12,7 +12,7 @@ import {
   type MemoryHit,
   type MemoryItem,
   type MemoryVersion,
-} from "@t3tools/baton-shared/memory";
+} from "@t3tools/tessaya-shared/memory";
 
 import type { NotesStore } from "./memoryNotes.ts";
 

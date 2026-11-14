@@ -9,7 +9,7 @@ import {
   lineProblem,
   type Line,
   type LineEvent,
-} from "../../packages/baton-shared/src/expression.ts";
+} from "../../packages/tessaya-shared/src/expression.ts";
 
 export interface Written {
   readonly text: string;

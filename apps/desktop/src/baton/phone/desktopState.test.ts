@@ -1,4 +1,4 @@
-import { BatonDesktopState } from "@t3tools/baton-contracts";
+import { BatonDesktopState } from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 

@@ -20,7 +20,7 @@ import {
   describeInjection,
   type BatonFleetEntry,
   type BatonInjectionReport,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 
 /**
  * The work session the user is looking at, from the thread the route has open.

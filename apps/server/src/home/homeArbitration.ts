@@ -4,7 +4,7 @@
  * through and is told whose setting it replaced; a child's is refused; anyone else hears who set it and when, and
  * their asking again is their yes. A risky act still goes to the owner's phone through the house's own gate.
  */
-import type { MemberRole } from "@t3tools/baton-shared/household";
+import type { MemberRole } from "@t3tools/tessaya-shared/household";
 
 export const ARBITRATION_MS = 90_000;
 

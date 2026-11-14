@@ -23,8 +23,8 @@ import {
   type OrchestrationRule,
   type ThreadId,
   type WorkSessionId,
-} from "@t3tools/baton-contracts";
-import { standingVerdict } from "@t3tools/baton-shared/trust";
+} from "@t3tools/tessaya-contracts";
+import { standingVerdict } from "@t3tools/tessaya-shared/trust";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

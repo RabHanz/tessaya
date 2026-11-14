@@ -3,7 +3,7 @@
  * setting lives on each server, so a page showing two environments gets a switch for each.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { BatonOnLimitSetting } from "@t3tools/baton-contracts";
+import type { BatonOnLimitSetting } from "@t3tools/tessaya-contracts";
 import type { LimitPool } from "@t3tools/shared/usageLimits";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";

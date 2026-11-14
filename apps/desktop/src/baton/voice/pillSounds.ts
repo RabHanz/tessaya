@@ -1,9 +1,9 @@
 /**
- * When the pill's cues sound and how loud. The notes and their wave live in `@t3tools/baton-voice` (cueSounds.ts), shared
+ * When the pill's cues sound and how loud. The notes and their wave live in `@t3tools/tessaya-voice` (cueSounds.ts), shared
  * with the R1's room loop; scripts/tessaya/voice-lab/sound-score.ts puts the same waves through the wake models and Silero.
  */
 
-import type { TurnPhase } from "@t3tools/baton-shared/voiceTurn";
+import type { TurnPhase } from "@t3tools/tessaya-shared/voiceTurn";
 
 export {
   PILL_PARTIAL,
@@ -12,7 +12,7 @@ export {
   soundMs,
   type PillNote,
   type PillSound,
-} from "@t3tools/baton-voice";
+} from "@t3tools/tessaya-voice";
 
 /**
  * Whether the end cue sounds as the pill goes from `before` to `now` (null: it lowers). Once, when listening ends:

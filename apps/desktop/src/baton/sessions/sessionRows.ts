@@ -2,7 +2,7 @@
  * The Sessions area of Baton's window (D138): the sidebar's own project rows, ordered and turned
  * into window rows. Pure: no new source of sessions, only the one the sidebar already holds.
  */
-import type { BatonSessionSummary } from "@t3tools/baton-contracts";
+import type { BatonSessionSummary } from "@t3tools/tessaya-contracts";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

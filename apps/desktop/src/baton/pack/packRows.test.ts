@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { DEFAULT_PACK_FILES } from "@t3tools/baton-shared/osPack";
+import { DEFAULT_PACK_FILES } from "@t3tools/tessaya-shared/osPack";
 import { describe, expect, it } from "vite-plus/test";
 
 import {

@@ -17,7 +17,7 @@ On a cut-in the voice **ducks to 25% at 40 ms** of his speech and **stops at 120
 moment he started (the words since the onset are kept, as for a late wake). If it was only a blip the voice comes back up. Settings, on the
 Settings, Voice and wake words: "Headphones or speakers" (on Windows, Automatic reads the playback device's form factor: headphones and headsets are headphones, anything else, a Bluetooth speaker too, is speakers; `outputDevice.ts`) and "Cut in by talking over her (speakers, experimental)".
 
-## On the R1: open talk-over (`packages/baton-voice/src/talkOver.ts`)
+## On the R1: open talk-over (`packages/tessaya-voice/src/talkOver.ts`)
 
 The Tessel cancels its own echo (firmware 0.3.93: about 40 dB, her residual near -77 dBFS against a -81 floor), so the server
 does not subtract anything. It only has to tell a voice from what is left of hers, and then whose voice it is.
@@ -53,7 +53,7 @@ clips were calibrated on 30 of his against 109 LibriTTS speakers: at 0.6 s his 2
 95th 0.17. At 1 s his 10th percentile is 0.38 and no other speaker scores above 0.33. In the busy room his own voice is
 louder than the room for only part of each clip, and the voice check is what misses him there.
 
-## How the echo guard hears him (`packages/baton-voice/src/echoGuard.ts`)
+## How the echo guard hears him (`packages/tessaya-voice/src/echoGuard.ts`)
 
 The player hands over each chunk it is about to play and when it will sound. The guard works at 8 kHz: it finds the delay between what is
 played and what the mic hears (envelope correlation, 0 to 600 ms), learns the room with a 96 ms adaptive filter (block NLMS), subtracts the

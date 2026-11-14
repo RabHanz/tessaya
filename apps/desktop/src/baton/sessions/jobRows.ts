@@ -1,11 +1,11 @@
 /** The Jobs area of Baton's window (D145): job cards as window rows, grouped by where each job is. */
-import type { BatonJob } from "@t3tools/baton-contracts";
+import type { BatonJob } from "@t3tools/tessaya-contracts";
 import {
   REPORT_MARK,
   retryBudget,
   retriesUsed,
   retryRefusal,
-} from "@t3tools/baton-shared/jobReport";
+} from "@t3tools/tessaya-shared/jobReport";
 
 import type { HomeControl } from "../home/batonHome.ts";
 

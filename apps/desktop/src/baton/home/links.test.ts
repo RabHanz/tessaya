@@ -1,4 +1,4 @@
-import { tessayaPlaceOf } from "@t3tools/baton-contracts";
+import { tessayaPlaceOf } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { guestLinkOut, isEmbedSrc, placeInArgs } from "./links.ts";

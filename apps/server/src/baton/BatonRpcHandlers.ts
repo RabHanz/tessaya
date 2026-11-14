@@ -48,11 +48,11 @@ import {
   type WorkSessionHandoffInput,
   tessayaSpelling,
   type TessayaSpelling,
-} from "@t3tools/baton-contracts";
-import { fleetForOutside } from "@t3tools/baton-shared/fleetForOutside";
-import { batonProjectKey, handoffTarget } from "@t3tools/baton-shared/jobPlacement";
-import { workAccount } from "@t3tools/baton-shared/batonProjects";
-import { watchFleet } from "@t3tools/baton-shared/watch";
+} from "@t3tools/tessaya-contracts";
+import { fleetForOutside } from "@t3tools/tessaya-shared/fleetForOutside";
+import { batonProjectKey, handoffTarget } from "@t3tools/tessaya-shared/jobPlacement";
+import { workAccount } from "@t3tools/tessaya-shared/batonProjects";
+import { watchFleet } from "@t3tools/tessaya-shared/watch";
 import { DictationCleanupError, type ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
@@ -67,7 +67,7 @@ import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { BatonAccounts } from "./BatonAccounts.ts";
-import { liveSwitchRefusal } from "@t3tools/baton-shared/accounts";
+import { liveSwitchRefusal } from "@t3tools/tessaya-shared/accounts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -111,7 +111,7 @@ import {
   switchOwnDirSessions,
   liveSetModel,
 } from "./LiveActions.ts";
-import { setModelResumingStopped } from "@t3tools/baton-shared/liveModel";
+import { setModelResumingStopped } from "@t3tools/tessaya-shared/liveModel";
 import { BatonOrchestrationReactor } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";

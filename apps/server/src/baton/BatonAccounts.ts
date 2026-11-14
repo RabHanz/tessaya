@@ -3,13 +3,13 @@
 import {
   BATON_CLAUDE_ACCOUNT_INSTANCES,
   type BatonAccountsListResult,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   credentialKind,
   cswapTokenKinds,
   unifyAccounts,
   type CredentialKind,
-} from "@t3tools/baton-shared/accounts";
+} from "@t3tools/tessaya-shared/accounts";
 import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

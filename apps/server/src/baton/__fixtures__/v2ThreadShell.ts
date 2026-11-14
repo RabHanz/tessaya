@@ -5,7 +5,7 @@ import {
   RunId,
   ThreadId,
   type OrchestrationV2ThreadShell,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as DateTime from "effect/DateTime";
 
 export const at = (iso: string) => DateTime.makeUnsafe(iso);

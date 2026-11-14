@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import type { PhonePrompt } from "@t3tools/baton-shared/phoneRelay";
+import type { PhonePrompt } from "@t3tools/tessaya-shared/phoneRelay";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

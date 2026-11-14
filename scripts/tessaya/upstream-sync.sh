@@ -66,7 +66,7 @@ effect_from="$(effect_of "$pin")" effect_to="$(effect_of "$target")"
   printf '| Patched paths upstream also changed | %s |\n\n' "$(printf '%s' "$touched" | grep -c . || true)"
   # Tessaya's own code is written against upstream's Effect; a new Effect version is the usual reason it breaks.
   if [ "$effect_from" != "$effect_to" ]; then
-    printf '**Upstream moves Effect from %s to %s.** Expect Tessaya code (apps/*/src/baton, packages/baton-*) to need\n' "$effect_from" "$effect_to"
+    printf '**Upstream moves Effect from %s to %s.** Expect Tessaya code (apps/*/src/baton, packages/tessaya-*) to need\n' "$effect_from" "$effect_to"
     printf 'changes for its new APIs and diagnostics: a red typecheck or lint in those paths is that, not a conflict.\n\n'
   fi
   if [ -n "$touched" ]; then printf '%s\n' "$touched" | sed 's/^/- `/; s/$/`/'; printf '\n'; fi

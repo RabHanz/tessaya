@@ -28,7 +28,7 @@ import {
   R1_VOICE_MODELS,
   type InstallProgress,
 } from "./R1VoiceInstall.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 /** What a room loop listens to: a bus client hearing it is a loop on another machine. */
 const VOICE_TOPIC = "freya/r1/any/voice/up";

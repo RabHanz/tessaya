@@ -6,8 +6,8 @@
  * Windows first (D97, D106): capture, speech and paste are `tessaya-voice`, which is packaged
  * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
-import { shoulderSurf } from "@t3tools/baton-shared/biometrics";
-import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/baton-shared/household";
+import { shoulderSurf } from "@t3tools/tessaya-shared/biometrics";
+import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/tessaya-shared/household";
 import { createFaceCheck, faceEnginePath } from "../face/faceCheck.ts";
 import { FACE_MEMBER, FACE_ON, FACE_RESUME, faceControls } from "../face/faceRows.ts";
 import * as NodeChildProcess from "node:child_process";
@@ -28,13 +28,13 @@ import type {
   BatonMemoryBridgeRequest,
   BatonRecordEntry,
   WatchFinding,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
   tessayaPlaceOf,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   chooseMode,
   cleanupFromSaved,
@@ -43,7 +43,7 @@ import {
   MODE_LABELS,
   type CleanupLevel,
   type DictationMode,
-} from "@t3tools/baton-shared/dictationCleanup";
+} from "@t3tools/tessaya-shared/dictationCleanup";
 import {
   createEchoGuard,
   createVoiceRouter,
@@ -65,7 +65,7 @@ import {
   profileFromWire,
   profileToWire,
   type SpeakerProfile,
-} from "@t3tools/baton-voice";
+} from "@t3tools/tessaya-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
 import type { ConversationLog } from "../conversation/conversationLog.ts";
 import { homeActivity, mergeFeed, parseLogEntries, todayStats } from "../home/activityLog.ts";
@@ -92,12 +92,12 @@ import {
 } from "../bindings/bindings.ts";
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
-import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
-import { COMMS_SOUND_PLACEHOLDER, noteCardOf } from "@t3tools/baton-shared/comms";
+import { buildApprovals, describeApprovals } from "@t3tools/tessaya-shared/approvals";
+import { COMMS_SOUND_PLACEHOLDER, noteCardOf } from "@t3tools/tessaya-shared/comms";
 import { createIntercomTab, type CommsCall } from "../home/intercomTab.ts";
-import { releasesUrl, repoSlug } from "@t3tools/baton-shared/repo";
+import { releasesUrl, repoSlug } from "@t3tools/tessaya-shared/repo";
 import { answerNeeds } from "../presence/needsAnswer.ts";
-import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
+import { describeWeaves, type WeaveRecord } from "@t3tools/tessaya-shared/weave";
 import {
   HOLD_KEY_CHOICES,
   resumeStep,
@@ -114,32 +114,32 @@ import {
   trustControls,
   type TrustFilter,
 } from "../trust/trustRows.ts";
-import { expandSnippets, exportSnippets } from "@t3tools/baton-shared/snippets";
+import { expandSnippets, exportSnippets } from "@t3tools/tessaya-shared/snippets";
 import {
   checkTransformOutput,
   refuseTransformInput,
   transformMessage,
   transformSystemPrompt,
   type Transform,
-} from "@t3tools/baton-shared/transforms";
+} from "@t3tools/tessaya-shared/transforms";
 import { createModelAsk } from "../writing/modelAsk.ts";
 import {
   applyStyle,
   categoryForApp,
   cleanupSettingOf,
   STYLE_CATEGORIES,
-} from "@t3tools/baton-shared/writingStyle";
-import { computeDeepInsights } from "@t3tools/baton-shared/insightsDeep";
-import { computeVoiceProfile } from "@t3tools/baton-shared/voiceProfile";
+} from "@t3tools/tessaya-shared/writingStyle";
+import { computeDeepInsights } from "@t3tools/tessaya-shared/insightsDeep";
+import { computeVoiceProfile } from "@t3tools/tessaya-shared/voiceProfile";
 import { insightControls, voiceProfileControls } from "../writing/insightRows.ts";
-import { previewOf, searchNotes } from "@t3tools/baton-shared/scratchpad";
+import { previewOf, searchNotes } from "@t3tools/tessaya-shared/scratchpad";
 import { createScratchStore } from "../writing/scratchStore.ts";
 import { SCRATCH_HOTKEY, scratchAction, scratchControls } from "../writing/scratchRows.ts";
 import {
   exportDictionaryCsv,
   IMPORT_MAX_BYTES,
   importDictionary,
-} from "@t3tools/baton-shared/dictionaryIO";
+} from "@t3tools/tessaya-shared/dictionaryIO";
 import {
   LANGUAGE_HINT,
   languageCode,
@@ -147,24 +147,24 @@ import {
   languagesFromSaved,
   outsideLanguages,
   recogniserHint,
-} from "@t3tools/baton-shared/dictationLanguages";
-import { ACCEPTED_EXTENSIONS, baseName, transcriptTitle } from "@t3tools/baton-shared/audioFile";
+} from "@t3tools/tessaya-shared/dictationLanguages";
+import { ACCEPTED_EXTENSIONS, baseName, transcriptTitle } from "@t3tools/tessaya-shared/audioFile";
 import { ffmpegToWav, transcribeFile } from "../writing/fileTranscribe.ts";
 import { makeDiagnosticsFile } from "../health/diagnosticsFile.ts";
-import { capabilities } from "@t3tools/baton-shared/degraded";
+import { capabilities } from "@t3tools/tessaya-shared/degraded";
 import { createProbes } from "../health/probes.ts";
 import {
   normalizeSkillUrl,
   parseSkill,
   reviewCard,
   reviewSkill,
-} from "@t3tools/baton-shared/skillReview";
+} from "@t3tools/tessaya-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
 import { createInOrder } from "./inOrder.ts";
 import { createCommandClips } from "./keyCommands.ts";
-import { beforeSpokenStop, keyDictationCommand } from "@t3tools/baton-shared/dictation";
+import { beforeSpokenStop, keyDictationCommand } from "@t3tools/tessaya-shared/dictation";
 import { createVolumeDuck } from "./volumeDuck.ts";
-import { pronounceFrom } from "@t3tools/baton-shared/pronounce";
+import { pronounceFrom } from "@t3tools/tessaya-shared/pronounce";
 import {
   createOutputWatch,
   outputDeviceFrom,
@@ -172,33 +172,33 @@ import {
   type OutputDevice,
 } from "./outputDevice.ts";
 import { PLACES, type PlaceId } from "./pillPlacement.ts";
-import { createSilenceWatch, DEFAULT_SILENCE_SECONDS } from "@t3tools/baton-shared/silenceWatch";
+import { createSilenceWatch, DEFAULT_SILENCE_SECONDS } from "@t3tools/tessaya-shared/silenceWatch";
 import {
   HIDE_FOR_MS,
   isFullscreenWindow,
   restBarWanted,
-} from "@t3tools/baton-shared/pillVisibility";
+} from "@t3tools/tessaya-shared/pillVisibility";
 import {
   confirmed,
   RESET_LABEL,
   RESET_SCOPES,
   resetPrompt,
   type ResetScope,
-} from "@t3tools/baton-shared/dataReset";
+} from "@t3tools/tessaya-shared/dataReset";
 import {
   jobsDigest,
   retriesUsed,
   retryBudget,
   retryRefusal,
   retryText,
-} from "@t3tools/baton-shared/jobReport";
+} from "@t3tools/tessaya-shared/jobReport";
 import {
   draftMessage,
   draftSystemPrompt,
   fallbackDraft,
   notesOf,
   usableDraft,
-} from "@t3tools/baton-shared/skillDraft";
+} from "@t3tools/tessaya-shared/skillDraft";
 import { draftPath, writeDraft } from "../harness/skillDraftFile.ts";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
@@ -212,11 +212,11 @@ import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { transformAction, transformControls } from "../writing/transformRows.ts";
 import { createSnippetStore } from "../writing/snippetStore.ts";
-import { makeStyleIndex } from "@t3tools/baton-shared/stylePairs";
+import { makeStyleIndex } from "@t3tools/tessaya-shared/stylePairs";
 import { historyPairs, loadStylePairs } from "./stylePairsStore.ts";
 import { snippetAction, snippetControls } from "../writing/snippetRows.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
-import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
+import { briefCommitments, needsFromCommitments } from "@t3tools/tessaya-shared/commitments";
 import { markPhase } from "../lifecycle/mainStall.ts";
 import { taskbarIconFile } from "../home/artFiles.ts";
 import { showTaskbarIcon } from "../taskbarIcon.ts";
@@ -243,9 +243,9 @@ import {
   triggersFromFindings,
   type CiRun,
   type Trigger,
-} from "@t3tools/baton-shared/initiative";
-import { detectSecret, REDACTED, type MemoryItem } from "@t3tools/baton-shared/memory";
-import { comingUp, needsFromMemory, whenSaid } from "@t3tools/baton-shared/memoryDates";
+} from "@t3tools/tessaya-shared/initiative";
+import { detectSecret, REDACTED, type MemoryItem } from "@t3tools/tessaya-shared/memory";
+import { comingUp, needsFromMemory, whenSaid } from "@t3tools/tessaya-shared/memoryDates";
 
 import {
   PRIVATE_MEMORY_NAME,
@@ -280,12 +280,12 @@ import {
   type StandingJobDef,
 } from "../presence/standingJobs.ts";
 import { skillsDirOf, waitingSkillsLine } from "../pack/learnedSkills.ts";
-import { standingVerdict } from "@t3tools/baton-shared/trust";
-import type { BatonInstanceWeekly, OrchestrationRuleWithFirings } from "@t3tools/baton-contracts";
-import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
+import { standingVerdict } from "@t3tools/tessaya-shared/trust";
+import type { BatonInstanceWeekly, OrchestrationRuleWithFirings } from "@t3tools/tessaya-contracts";
+import { nodeExec } from "@t3tools/tessaya-shared/cloud/nodeExec";
 import { terminalPlan } from "../cloud/terminal.ts";
 import { useVaultKey } from "../cloud/vaultKey.ts";
-import type { ProviderId } from "@t3tools/baton-shared/cloud/types";
+import type { ProviderId } from "@t3tools/tessaya-shared/cloud/types";
 import { createCloud, DEFAULT_CLOUD, type CloudSettings } from "../cloud/cloudService.ts";
 import { approvalCardControls, cloudNeeds, cloudPageControls } from "../cloud/cloudRows.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
@@ -295,7 +295,7 @@ import {
   parseConnectorSource,
   reviewConnector,
   type ConnectorKind,
-} from "@t3tools/baton-shared/connectors";
+} from "@t3tools/tessaya-shared/connectors";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import {
   fileToEdit,
@@ -327,9 +327,9 @@ import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "../phone/phoneRe
 import { createNightlyCache, runGh } from "../presence/nightlyRead.ts";
 import { createSyncExtraCache } from "../presence/syncRead.ts";
 import { cloudLoginsFile, readCloudLogins } from "../presence/cloudLoginsRead.ts";
-import { cloudLoginsNeeds, cloudLoginsRow } from "@t3tools/baton-shared/cloudLogins";
-import { syncCapability, syncNeeds, type SyncState } from "@t3tools/baton-shared/syncState";
-import { nightlyRow } from "@t3tools/baton-shared/nightly";
+import { cloudLoginsNeeds, cloudLoginsRow } from "@t3tools/tessaya-shared/cloudLogins";
+import { syncCapability, syncNeeds, type SyncState } from "@t3tools/tessaya-shared/syncState";
+import { nightlyRow } from "@t3tools/tessaya-shared/nightly";
 import { createVaultTab } from "../vault/vaultTab.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { noteAction } from "../memory/noteRows.ts";
@@ -414,7 +414,7 @@ import {
   wakeStatus,
   type WakeServer,
 } from "./wakeSync.ts";
-import type { WakeWordView } from "@t3tools/baton-shared/wakeModels";
+import type { WakeWordView } from "@t3tools/tessaya-shared/wakeModels";
 import { runChecks, type CheckInput, type CheckResult } from "./selfChecks.ts";
 import type { BrainStatus } from "../screen/brainChoice.ts";
 import {
@@ -508,7 +508,7 @@ import {
   parseCompanionMotion,
   type CompanionMotion,
   type JobSnapshot,
-} from "@t3tools/baton-shared/companion";
+} from "@t3tools/tessaya-shared/companion";
 import { setPillSettings } from "./pillTheme.ts";
 import {
   dictationCaption,
@@ -516,7 +516,7 @@ import {
   frameLevel,
   isCancelPhrase,
   type TurnEvent,
-} from "@t3tools/baton-shared/voiceTurn";
+} from "@t3tools/tessaya-shared/voiceTurn";
 import {
   correctionsAtCaret,
   correctionsBetween,
@@ -532,8 +532,8 @@ import {
   upsertEntry,
   type SeenWords,
   type VocabularyEntry,
-} from "@t3tools/baton-shared/vocabulary";
-import { CLEANUP_FAILED_LINE, settleOneShot } from "@t3tools/baton-shared/dictationOneShot";
+} from "@t3tools/tessaya-shared/vocabulary";
+import { CLEANUP_FAILED_LINE, settleOneShot } from "@t3tools/tessaya-shared/dictationOneShot";
 import { createOneShot } from "./oneShotDictation.ts";
 import {
   clipPaths,
@@ -546,8 +546,8 @@ import {
 } from "./audioKeep.ts";
 import { acrylicSupported, createVocabToast } from "./vocabToast.ts";
 import { createPillGhost } from "./pillGhost.ts";
-import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
-import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
+import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/tessaya-shared/endOfTurn";
+import { wakeTrusted, wakeWordHeard } from "@t3tools/tessaya-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import {
   flaggedReport,
@@ -576,14 +576,14 @@ import {
   inSpeechSetup,
   quietThreshold,
   silenceWhile,
-} from "@t3tools/baton-shared/quietSpeech";
+} from "@t3tools/tessaya-shared/quietSpeech";
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { describeJobs, describeTeam } from "../agent/jobText.ts";
 import { deskCall, serverOnly } from "./deskCall.ts";
-import { buildAuditTrail, describeAuditTrail } from "@t3tools/baton-shared/audit";
-import { describeWatch, findingsFromRecord } from "@t3tools/baton-shared/watch";
+import { buildAuditTrail, describeAuditTrail } from "@t3tools/tessaya-shared/audit";
+import { describeWatch, findingsFromRecord } from "@t3tools/tessaya-shared/watch";
 import {
   freshFindings,
   inQuietHours,
@@ -591,14 +591,14 @@ import {
   morningBrief,
   noticeLine,
   planReadyLine,
-} from "@t3tools/baton-shared/attention";
+} from "@t3tools/tessaya-shared/attention";
 import {
   contextFromLastInsert,
   fitInsertion,
   fitWithoutContext,
   closeLastSentence,
   type CaretContext,
-} from "@t3tools/baton-shared/dictationFit";
+} from "@t3tools/tessaya-shared/dictationFit";
 import { createLoginItemState, setLoginItem } from "./loginItem.ts";
 import {
   DICTATION_SETTLE_MS,
@@ -616,7 +616,7 @@ import {
   whenText,
   type UserJob,
   type UserJobSignals,
-} from "@t3tools/baton-shared/userJobs";
+} from "@t3tools/tessaya-shared/userJobs";
 import {
   CLOUD_STT_PROVIDERS,
   PROVIDER_LABEL,
@@ -626,7 +626,7 @@ import {
   transcribeWithFallback,
   type CloudModel,
   type CloudSttProvider,
-} from "@t3tools/baton-shared/cloudStt";
+} from "@t3tools/tessaya-shared/cloudStt";
 import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
@@ -1272,7 +1272,7 @@ export interface DesktopBatonVoiceInput {
   readonly wakeServer?: () => Promise<WakeServer>;
   /** Messages, emergencies and drop-in permissions on this machine's server, for the Intercom page. */
   readonly comms?: CommsCall;
-  /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
+  /** The voice core (`@t3tools/tessaya-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** The voice match model in the voice model worker (VOICE-ID); absent, Voice ID cannot run here. */
   readonly speakerModel?: (path: string, model: string) => Promise<HostedScorer<SpeakerEmbedder>>;

@@ -18,7 +18,7 @@ import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts"
 import { DirectEndpoints } from "../environment/DirectEndpoints.ts";
 import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
 import { deviceSetting, R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 /** The firmware keeps four broker URLs of up to 96 characters (`r1bt_endpoints.c`). */
 const EP_MAX = 4;

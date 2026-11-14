@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
-import { MEMORY_VERSIONS_KEPT } from "@t3tools/baton-shared/memory";
+import { MEMORY_VERSIONS_KEPT } from "@t3tools/tessaya-shared/memory";
 
 import * as ServerConfig from "../config.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";

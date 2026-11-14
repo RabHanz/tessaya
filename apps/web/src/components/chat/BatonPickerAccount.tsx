@@ -8,7 +8,7 @@ import {
   instanceAccount,
   type BatonAccount,
   type BatonAccountRecord,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   accountPickHint,
   accountPickTarget,
@@ -16,7 +16,7 @@ import {
   oneEntryPerProvider,
   pickModelFor,
   withProviderModels,
-} from "@t3tools/baton-shared/accounts";
+} from "@t3tools/tessaya-shared/accounts";
 import {
   accountRow,
   maskedEmail,
@@ -25,8 +25,8 @@ import {
   roomDetail,
   roomText,
   roomTone,
-} from "@t3tools/baton-shared/accountRoom";
-import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+} from "@t3tools/tessaya-shared/accountRoom";
+import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 import { type EnvironmentId, ProviderInstanceId, type ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";

@@ -8,8 +8,8 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeOS from "node:os";
 
-import { brainRoute, credentialOf } from "@t3tools/baton-shared/brainRoutes";
-import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
+import { brainRoute, credentialOf } from "@t3tools/tessaya-shared/brainRoutes";
+import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";

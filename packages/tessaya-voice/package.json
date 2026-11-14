@@ -1,0 +1,26 @@
+{
+  "name": "@t3tools/tessaya-voice",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "effect-tsgo tsrs --noEmit",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "@t3tools/tessaya-contracts": "workspace:*",
+    "@t3tools/tessaya-shared": "workspace:*",
+    "onnxruntime-node": "1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

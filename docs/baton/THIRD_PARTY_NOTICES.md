@@ -7,7 +7,7 @@ carry the adapted code.
 
 Commit `a80fa80721a8`. Adapted: the companion prompt and the `[POINT:x,y:label:screenN]` tag, its
 parser, the screenshot-pixel to display coordinate maths, the 1280 px capture size, and the
-pointer's triangle and quadratic-bezier flight. In `packages/baton-shared/src/screenCompanion.ts` and
+pointer's triangle and quadratic-bezier flight. In `packages/tessaya-shared/src/screenCompanion.ts` and
 `apps/desktop/src/baton/screen/pointerOverlay.ts`.
 
 ```text
@@ -38,7 +38,7 @@ SOFTWARE.
 
 Commit `6c6216b7f80a`. Adapted: Drive's plan shape, `validate_plan`, the stop-on-mouse-movement
 and stale-screen rules, and the "next"/"stop" phrases. In
-`packages/baton-shared/src/screenCompanion.ts`. Its PyQt6 interface (GPL-3.0) is not used.
+`packages/tessaya-shared/src/screenCompanion.ts`. Its PyQt6 interface (GPL-3.0) is not used.
 
 ```text
 MIT License
@@ -114,7 +114,7 @@ SOFTWARE.
   Unmute voice donations (CC0: bill_boerst, caro_davy, peter_yearsley, stuart_bell, javert, marius),
   Common Voice (CC0: giovanni, lola), Kyutai's Unmute recordings (CC0: estelle). alba, daan, juergen and rafael
   carry no licence line of their own there. cosette (Expresso) and jean (EARS) come from CC BY-NC 4.0 recordings.
-  All 27 are offered (`packages/baton-shared/src/voiceLibrary.ts`); those six are marked "personal use" and left out
+  All 27 are offered (`packages/tessaya-shared/src/voiceLibrary.ts`); those six are marked "personal use" and left out
   of a build made with `TESSAYA_COMMERCIAL_BUILD=1`.
 - Gemini TTS (Google), only when the user saves a Google API key in Settings → APIs: speech made by Google's API
   under its terms, not shipped or downloaded.

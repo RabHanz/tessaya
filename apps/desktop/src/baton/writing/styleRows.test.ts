@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { DEFAULT_STYLES } from "@t3tools/baton-shared/writingStyle";
+import { DEFAULT_STYLES } from "@t3tools/tessaya-shared/writingStyle";
 import { describe, expect, it } from "vite-plus/test";
 
 import { tabOf } from "../home/tabs.ts";

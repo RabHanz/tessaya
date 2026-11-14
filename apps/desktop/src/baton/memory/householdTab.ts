@@ -4,7 +4,7 @@
  * code for their phone, removing them (their data waits 7 days for their export) or bringing them back, and enrolling
  * each person's voice with the guided card. The server owns every rule; this only asks and draws.
  */
-import type { BatonHouseholdCallResult, BatonHouseholdMember } from "@t3tools/baton-contracts";
+import type { BatonHouseholdCallResult, BatonHouseholdMember } from "@t3tools/tessaya-contracts";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import { text } from "../home/strings.ts";

@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { PrivateTurn } from "@t3tools/baton-shared/privateMemory";
+import type { PrivateTurn } from "@t3tools/tessaya-shared/privateMemory";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";

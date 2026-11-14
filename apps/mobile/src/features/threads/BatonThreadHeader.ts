@@ -3,9 +3,9 @@
  * thread's own account's % used in the subtitle, and a limit chip (a header button tinted amber from 80% used, red at
  * the limit) that opens the thread settings sheet on its accounts. The native header carries text and icons only.
  */
-import { threadAccount } from "@t3tools/baton-shared/accounts";
-import { roomDetail, roomTone } from "@t3tools/baton-shared/accountRoom";
-import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { threadAccount } from "@t3tools/tessaya-shared/accounts";
+import { roomDetail, roomTone } from "@t3tools/tessaya-shared/accountRoom";
+import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
 
 import type { AppBarAction } from "../../components/ui/AppBar.types";

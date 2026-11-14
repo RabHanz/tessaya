@@ -1,5 +1,5 @@
-import { ProjectId, ThreadId, WorkSessionId } from "@t3tools/baton-contracts";
-import { mergeTemplates } from "@t3tools/baton-shared/jobTemplates";
+import { ProjectId, ThreadId, WorkSessionId } from "@t3tools/tessaya-contracts";
+import { mergeTemplates } from "@t3tools/tessaya-shared/jobTemplates";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   ProviderDriverKind,

@@ -28,7 +28,7 @@ than as "nothing needs you".
 ## What is not trusted
 
 A file with no `asOf`, or one older than 24 hours, is ignored and the answer says so. The reader
-lives in `packages/baton-shared/src/needsFeeds.ts`.
+lives in `packages/tessaya-shared/src/needsFeeds.ts`.
 
 ## Tessaya's own heartbeat
 

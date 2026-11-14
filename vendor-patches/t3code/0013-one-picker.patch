@@ -333,7 +333,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..5fc49c02080906fda02f82e0d0350d07
        runtimeMode={draftSettings.runtimeMode ?? selectedThread.runtimeMode}
        onUpdateRuntimeMode={(runtimeMode) => updateComposerDraftSettings(threadKey, { runtimeMode })}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..29b0ba68927694db735d1470dd0adadf27b08236 100644
+index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..f94bfbcb44f51bf74d7b1777f60b5cec52d07ddb 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
 @@ -138,6 +138,14 @@ import { useDictationShortcut } from "../../speech/useDictationShortcut";
@@ -347,7 +347,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..29b0ba68927694db735d1470dd0adadf
 +  BatonDictationWords,
 +  dictatingAttribute,
 +} from "./BatonComposerDictation";
-+import { placeholderWhile } from "@t3tools/baton-shared/composerDictation";
++import { placeholderWhile } from "@t3tools/tessaya-shared/composerDictation";
  import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
  import { shortcutLabelForCommand } from "../../keybindings";
  import {

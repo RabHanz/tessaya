@@ -16,9 +16,9 @@ import {
   type DeviceItem,
   type DeviceSafety,
   type RegisteredDevice,
-} from "@t3tools/baton-contracts";
-import { accessOf, groupItems, valueText } from "@t3tools/baton-shared/deviceItems";
-import type { R1UpdatesView } from "@t3tools/baton-shared/r1Firmware";
+} from "@t3tools/tessaya-contracts";
+import { accessOf, groupItems, valueText } from "@t3tools/tessaya-shared/deviceItems";
+import type { R1UpdatesView } from "@t3tools/tessaya-shared/r1Firmware";
 import {
   DISPLAY_CHOICES,
   EYE_SCREENS,
@@ -46,7 +46,7 @@ import {
   scanLine,
   tesselHosts,
   type TesselSeen,
-} from "@t3tools/baton-shared/deviceView";
+} from "@t3tools/tessaya-shared/deviceView";
 import { Link } from "@tanstack/react-router";
 import {
   BluetoothIcon,
@@ -85,7 +85,7 @@ import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 const REFRESH_MS = 5000;
 /** While he reads for an R1 enrolment, so the card keeps up with his words. */

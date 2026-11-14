@@ -6,7 +6,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 
-import type { CaretContext } from "@t3tools/baton-shared/dictationFit";
+import type { CaretContext } from "@t3tools/tessaya-shared/dictationFit";
 
 /** How much text either side is read: enough for the last sentence and the next word. */
 const CHARS = 120;

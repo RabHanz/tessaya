@@ -9,14 +9,14 @@ import {
   type BatonFleet,
   type BatonSessionsAcrossResult,
   type WorkSessionError,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   batonSessionSummaries,
   buildBatonProjects,
   workAccount,
   type BatonSessionRow,
-} from "@t3tools/baton-shared/batonProjects";
-import { batonProjectKey } from "@t3tools/baton-shared/jobPlacement";
+} from "@t3tools/tessaya-shared/batonProjects";
+import { batonProjectKey } from "@t3tools/tessaya-shared/jobPlacement";
 import type {
   AuthMcpClientAccess,
   EnvironmentId,

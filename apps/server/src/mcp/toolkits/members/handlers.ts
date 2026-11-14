@@ -1,7 +1,7 @@
 /** The members tools' handlers: thin; TessayaHousehold decides, by who is speaking on this turn. */
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
-import { memberOfSpeaker, voiceAssurance } from "@t3tools/baton-shared/household";
-import { BatonHouseholdCallInput } from "@t3tools/baton-contracts";
+import { memberOfSpeaker, voiceAssurance } from "@t3tools/tessaya-shared/household";
+import { BatonHouseholdCallInput } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";

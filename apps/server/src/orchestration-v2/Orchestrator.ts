@@ -1,9 +1,9 @@
-import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
+import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
 import {
   instanceName,
   providerChangeRefusal,
   providerIdentity,
-} from "@t3tools/baton-shared/providerChange";
+} from "@t3tools/tessaya-shared/providerChange";
 import type {
   OrchestrationV2ThreadLinkMetadata,
   GuestShareId,

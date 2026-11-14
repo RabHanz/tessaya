@@ -3,7 +3,7 @@
  * The desktop's end of remote hands: a long poll to the hub for the next call, run it behind the gate, send the answer back.
  * It never throws, and it polls only while the Director has remote hands on; a hub that does not answer is waited out.
  */
-import type { HandsCall, HandsResult, HandsToolSpec } from "@t3tools/baton-shared/remoteHands";
+import type { HandsCall, HandsResult, HandsToolSpec } from "@t3tools/tessaya-shared/remoteHands";
 
 export type HubPost = (
   path: "take" | "reply",

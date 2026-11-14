@@ -2,9 +2,9 @@
  * The Cloud area of the window: the approval card (in Approvals), the Cloud page (settings, what each
  * assistant can do, my requests) and the 'what needs me' rows. All words come from strings.ts.
  */
-import type { NeedItem } from "@t3tools/baton-shared/needsMe";
-import type { CardState } from "@t3tools/baton-shared/cloud/card";
-import type { CloudRequest } from "@t3tools/baton-shared/cloud/types";
+import type { NeedItem } from "@t3tools/tessaya-shared/needsMe";
+import type { CardState } from "@t3tools/tessaya-shared/cloud/card";
+import type { CloudRequest } from "@t3tools/tessaya-shared/cloud/types";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import { text } from "../home/strings.ts";

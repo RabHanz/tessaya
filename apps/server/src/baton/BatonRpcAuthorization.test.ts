@@ -28,13 +28,13 @@ import {
   BatonRpcGroup,
   BatonRpcScopeAuthorization,
   tessayaSpelling,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { clientRpcRequiredScopes, type AuthEnvironmentScope } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { it as effectIt } from "@effect/vitest";
-import { roleCeiling } from "@t3tools/baton-shared/household";
+import { roleCeiling } from "@t3tools/tessaya-shared/household";
 import { describe, expect, it } from "vite-plus/test";
 
 import { TOKEN_DELEGATED_SUBJECT, type AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
@@ -215,7 +215,7 @@ describe("rename R1: every method also answers as tessaya.*", () => {
       scopes: AuthStandardClientScopes,
       subject: "one-time-token",
     } as const;
-    // Methods added after the rename have one name only (see BatonRpcGroup in baton-contracts).
+    // Methods added after the rename have one name only (see BatonRpcGroup in tessaya-contracts).
     for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES).filter(
       (t) =>
         t !== BATON_HOME_WS_METHODS.call &&
@@ -238,7 +238,7 @@ describe("rename R1: every method also answers as tessaya.*", () => {
       [...AuthStandardClientScopes, AuthBatonHandsHostScope],
     ];
     const payloads = [undefined, { text: "deploy key", admin: true }, { action: "run" }];
-    // Methods added after the rename have one name only (see BatonRpcGroup in baton-contracts).
+    // Methods added after the rename have one name only (see BatonRpcGroup in tessaya-contracts).
     for (const tag of Object.keys(BATON_RPC_REQUIRED_SCOPES).filter(
       (t) =>
         t !== BATON_HOME_WS_METHODS.call &&

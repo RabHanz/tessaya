@@ -8,26 +8,26 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
+import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
 import {
   DEFAULT_PACK_FILES,
   mergePack,
   modelOf,
   splitFront,
   type OsPack,
-} from "@t3tools/baton-shared/osPack";
+} from "@t3tools/tessaya-shared/osPack";
 import {
   DEFAULT_TEMPLATE_FILES,
   mergeTemplates,
   type JobTemplate,
-} from "@t3tools/baton-shared/jobTemplates";
-import { setPersonaField } from "@t3tools/baton-shared/personaFile";
-import { parseWakeStore, wakeModelOf, type WakeStore } from "@t3tools/baton-shared/wakeModels";
+} from "@t3tools/tessaya-shared/jobTemplates";
+import { setPersonaField } from "@t3tools/tessaya-shared/personaFile";
+import { parseWakeStore, wakeModelOf, type WakeStore } from "@t3tools/tessaya-shared/wakeModels";
 import {
   commercialBuild,
   DEFAULT_POCKET_VOICE,
   voiceLibrary,
-} from "@t3tools/baton-shared/voiceLibrary";
+} from "@t3tools/tessaya-shared/voiceLibrary";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES } from "../voice/pocketVoice.ts";

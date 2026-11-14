@@ -4,10 +4,10 @@
  * does through the host. The host is the companion and the voice side; this file holds no Electron
  * and no I/O of its own, so each tool's arguments are checked here, before anything is touched.
  */
-import { DEVICE_TOOL_TEXT } from "@t3tools/baton-shared/deviceTools";
-import { JOB_TOOL_TEXT } from "@t3tools/baton-shared/jobTools";
-import type { VolumeTo } from "@t3tools/baton-shared/speakingVolume";
-import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/baton-shared/operator";
+import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
+import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
+import type { VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
+import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/tessaya-shared/operator";
 
 import type { BatonTool, ToolOutput } from "./batonMcp.ts";
 

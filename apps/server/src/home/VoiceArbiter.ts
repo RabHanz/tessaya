@@ -3,7 +3,7 @@
  * One responder per utterance across every vessel that heard him (R1-P7). A device that hears its wake or her name
  * claims; claims are collected for 250 ms and one is told to answer. The others are told to yield until her reply
  * ends plus 2 s, and a claim from them inside that window yields at once, so her voice from the winner never wakes
- * them. The pick rules are `voiceArbiter.ts` in baton-shared.
+ * them. The pick rules are `voiceArbiter.ts` in tessaya-shared.
  */
 import {
   ACTIVE_MS,
@@ -11,8 +11,8 @@ import {
   QUIET_AFTER_MS,
   pickResponder,
   type VoiceClaim,
-} from "@t3tools/baton-shared/voiceArbiter";
-import { VoiceClaimInput, type BatonVoiceCallResult } from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-shared/voiceArbiter";
+import { VoiceClaimInput, type BatonVoiceCallResult } from "@t3tools/tessaya-contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -23,7 +23,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { DeviceRegistry } from "./DeviceRegistry.ts";
-import { isTestVessel } from "@t3tools/baton-shared/deviceItems";
+import { isTestVessel } from "@t3tools/tessaya-shared/deviceItems";
 import { onPeer } from "../peer/PeerVessels.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";

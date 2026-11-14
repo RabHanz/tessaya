@@ -7,7 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { CloudSttProvider } from "@t3tools/baton-shared/cloudStt";
+import type { CloudSttProvider } from "@t3tools/tessaya-shared/cloudStt";
 
 /** Wraps and unwraps with the OS; null where that is not real encryption (Linux's basic_text). */
 export interface KeyProtection {

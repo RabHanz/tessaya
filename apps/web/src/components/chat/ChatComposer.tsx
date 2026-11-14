@@ -145,7 +145,7 @@ import {
   BatonDictationWords,
   dictatingAttribute,
 } from "./BatonComposerDictation";
-import { placeholderWhile } from "@t3tools/baton-shared/composerDictation";
+import { placeholderWhile } from "@t3tools/tessaya-shared/composerDictation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {

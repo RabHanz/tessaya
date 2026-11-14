@@ -6,8 +6,8 @@
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 
-import { parseCloudLogins, type CloudLogins } from "@t3tools/baton-shared/cloudLogins";
-import { stateFile } from "@t3tools/baton-shared/stateDir";
+import { parseCloudLogins, type CloudLogins } from "@t3tools/tessaya-shared/cloudLogins";
+import { stateFile } from "@t3tools/tessaya-shared/stateDir";
 
 export const cloudLoginsFile = (env: NodeJS.ProcessEnv): string =>
   env["BATON_CLOUD_LOGINS_FILE"] ?? stateFile(NodeOS.homedir(), "cloud-logins.json");

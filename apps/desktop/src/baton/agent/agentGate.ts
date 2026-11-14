@@ -12,20 +12,20 @@ import {
   gatePrompt,
   READS_OUTSIDE,
   type ToolCall,
-} from "@t3tools/baton-shared/operator";
-import { decideTrust, type TrustAgent, type TrustPrincipal } from "@t3tools/baton-shared/trust";
-import type { ProjectRef } from "@t3tools/baton-shared/osPack";
-import { textIsFromConversation } from "@t3tools/baton-shared/conversation";
-import { namesShell } from "@t3tools/baton-shared/screenCompanion";
+} from "@t3tools/tessaya-shared/operator";
+import { decideTrust, type TrustAgent, type TrustPrincipal } from "@t3tools/tessaya-shared/trust";
+import type { ProjectRef } from "@t3tools/tessaya-shared/osPack";
+import { textIsFromConversation } from "@t3tools/tessaya-shared/conversation";
+import { namesShell } from "@t3tools/tessaya-shared/screenCompanion";
 import {
   chromeReads,
   hostForCall,
   isChromeTool,
   isSocialHost,
   socialLogLine,
-} from "@t3tools/baton-shared/webPolicy";
+} from "@t3tools/tessaya-shared/webPolicy";
 
-import type { Gate } from "@t3tools/baton-shared/sessionMcp";
+import type { Gate } from "@t3tools/tessaya-shared/sessionMcp";
 export type { Gate };
 
 /**

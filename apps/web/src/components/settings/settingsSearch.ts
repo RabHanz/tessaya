@@ -1,4 +1,4 @@
-import { TESSAYA_PLACES } from "@t3tools/baton-contracts";
+import { TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
 import { HOSTED_APP_CHANNEL } from "~/branding";
 import { isElectron, isSecretsFeatureEnabled } from "~/env";
 import { isMacPlatform, isWindowsPlatform, normalizeSearchText } from "~/lib/utils";

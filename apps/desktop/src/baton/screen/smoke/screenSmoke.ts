@@ -107,7 +107,7 @@ const main = async () => {
 
   if (only.includes("fingerprint")) {
     const { screenFingerprint } = await import("../screenCapture.ts");
-    const { screensDifference } = await import("@t3tools/baton-shared/screenCompanion");
+    const { screensDifference } = await import("@t3tools/tessaya-shared/screenCompanion");
     const a = await screenFingerprint();
     const a2 = await screenFingerprint();
     await clickOn("n");

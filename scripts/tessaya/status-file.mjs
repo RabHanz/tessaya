@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 /**
- * Writes the status file Tessaya reads for "what needs me" (shape: packages/baton-shared/src/needsFeeds.ts,
+ * Writes the status file Tessaya reads for "what needs me" (shape: packages/tessaya-shared/src/needsFeeds.ts,
  * doc: docs/baton/STATUS_FILES.md). Any system can run it from cron or a hook. Node only, no installs.
  *
  *   status-file.mjs --out /path/cockpit.json --source "Cockpit approvals" \

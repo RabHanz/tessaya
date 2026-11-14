@@ -1,6 +1,6 @@
 import { TurnOrigin } from "../baton/TessayaTurn.ts";
 import { it as effectIt } from "@effect/vitest";
-import { BAR_NOT_CONNECTED } from "@t3tools/baton-shared/phoneRelay";
+import { BAR_NOT_CONNECTED } from "@t3tools/tessaya-shared/phoneRelay";
 import { EnvironmentId, type PeerLinkSummary } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -9,7 +9,7 @@ import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import type { SpeakerLike } from "@t3tools/baton-shared/privateMemory";
+import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
 import { describe, expect, it } from "vite-plus/test";
 
 import * as PeerLinks from "../peer/PeerLinks.ts";
@@ -117,7 +117,7 @@ it("tells her the time on the house's clock, with the zone named", () => {
 });
 
 it("fixes his names in what the room heard, from the shared dictionary, as dictation does", async () => {
-  const { biasTranscript } = await import("@t3tools/baton-shared/vocabulary");
+  const { biasTranscript } = await import("@t3tools/tessaya-shared/vocabulary");
   const entries = dictionaryEntries([
     { term: "Tessaya", aliases: ["Tezaya"] },
     { term: "AcmeCloud", aliases: [] },
@@ -128,7 +128,7 @@ it("fixes his names in what the room heard, from the shared dictionary, as dicta
 });
 
 it("answers as the persona he called by name, and as Tessaya for her own name or an unknown one", async () => {
-  const { DEFAULT_OS_PACK } = await import("@t3tools/baton-shared/osPack");
+  const { DEFAULT_OS_PACK } = await import("@t3tools/tessaya-shared/osPack");
   expect(calledPersona(DEFAULT_OS_PACK, { persona: "butler" })?.name).toBe("Alfred");
   expect(calledPersona(DEFAULT_OS_PACK, { persona: "executive" })).toBeNull();
   expect(calledPersona(DEFAULT_OS_PACK, { persona: "nobody" })).toBeNull();
@@ -137,7 +137,7 @@ it("answers as the persona he called by name, and as Tessaya for her own name or
 
 describe('who answers in the room (13 Nov audit: every reply opened with "Sebastian here.")', () => {
   const context = async (switched: boolean): Promise<R1Context> => {
-    const { DEFAULT_OS_PACK } = await import("@t3tools/baton-shared/osPack");
+    const { DEFAULT_OS_PACK } = await import("@t3tools/tessaya-shared/osPack");
     return {
       heard: "how many days in a week?",
       privateBlock: "",

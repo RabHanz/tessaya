@@ -14,13 +14,16 @@ import {
   localClean,
   needsModel,
   type DictionaryEntry,
-} from "../../../packages/baton-shared/src/dictationCleanup.ts";
+} from "../../../packages/tessaya-shared/src/dictationCleanup.ts";
 import {
   importWispr,
   makeRewriter,
   readDictionary,
 } from "../../../apps/desktop/src/baton/voice/dictationRewriter.ts";
-import { biasTranscript, parseVocabulary } from "../../../packages/baton-shared/src/vocabulary.ts";
+import {
+  biasTranscript,
+  parseVocabulary,
+} from "../../../packages/tessaya-shared/src/vocabulary.ts";
 import {
   ADVERSARIAL_CASES,
   DEFAULT_CASES,

@@ -20,15 +20,15 @@ import {
   type LineEvent,
   type LineSpec,
   type TimeSlot,
-} from "@t3tools/baton-shared/expression";
-import { inQuietHours } from "@t3tools/baton-shared/comms";
-import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
+} from "@t3tools/tessaya-shared/expression";
+import { inQuietHours } from "@t3tools/tessaya-shared/comms";
+import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import {
   CommsQuietHours,
   EXPRESSION_GESTURES,
   EXPRESSION_MOODS,
   type Expression,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";

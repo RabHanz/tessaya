@@ -7,14 +7,14 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 
-import { notConnected, parseFeed, type FeedRead } from "@t3tools/baton-shared/needsFeeds";
+import { notConnected, parseFeed, type FeedRead } from "@t3tools/tessaya-shared/needsFeeds";
 import {
   needsFromDeadlines,
   needsFromLedger,
   type DeadlineRow,
   type LedgerIssue,
   type NeedItem,
-} from "@t3tools/baton-shared/needsMe";
+} from "@t3tools/tessaya-shared/needsMe";
 
 export type Run = (file: string, args: ReadonlyArray<string>) => Promise<string>;
 

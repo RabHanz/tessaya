@@ -1362,7 +1362,7 @@ export const DictationCleanupCredentials = Schema.Struct({ anthropic: CloudSpeec
 export const RoomBrain = Schema.Literals(["api", "subscription", "auto"]);
 export type RoomBrain = typeof RoomBrain.Type;
 
-/** Word → how the voice says it, in plain letters (`pronounce` in baton-shared). */
+/** Word → how the voice says it, in plain letters (`pronounce` in tessaya-shared). */
 export const VoicePronounce = Schema.Record(
   Schema.String.check(Schema.isMaxLength(60)),
   Schema.String.check(Schema.isMaxLength(80)),
@@ -1420,7 +1420,7 @@ export const ServerSettings = Schema.Struct({
   brainDeferNearLimit: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-  // Tessaya: her lines written by her brain, varied and in character (baton-shared expression.ts); off plays the fixed ones.
+  // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
   tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
   companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(

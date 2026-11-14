@@ -31,14 +31,14 @@
  * capability, a failed call — the deterministic synopsis stands. It is the
  * older, plainer answer, and it is never wrong about the facts.
  */
-import type { OrchestrationV2DomainEvent, ThreadId } from "@t3tools/baton-contracts";
+import type { OrchestrationV2DomainEvent, ThreadId } from "@t3tools/tessaya-contracts";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
-import type { SynopsisSignal } from "@t3tools/baton-shared/synopsis";
+import type { SynopsisSignal } from "@t3tools/tessaya-shared/synopsis";
 import {
   buildSynopsisPrompt,
   SYNOPSIS_TURN_WINDOW,
   type SynopsisTurn,
-} from "@t3tools/baton-shared/synopsisModel";
+} from "@t3tools/tessaya-shared/synopsisModel";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

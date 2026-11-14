@@ -7,8 +7,8 @@
  */
 import * as NodeFS from "node:fs";
 
-import { createSpeakerEmbedder } from "../../../packages/baton-voice/src/providers/speakerOnnx.ts";
-import { CAMPLUS_POLICY, cosine, enrol } from "../../../packages/baton-voice/src/speaker.ts";
+import { createSpeakerEmbedder } from "../../../packages/tessaya-voice/src/providers/speakerOnnx.ts";
+import { CAMPLUS_POLICY, cosine, enrol } from "../../../packages/tessaya-voice/src/speaker.ts";
 
 const RATE = 16_000;
 /** Windows quieter than this (about -40 dBFS) are mostly silence and are skipped. */

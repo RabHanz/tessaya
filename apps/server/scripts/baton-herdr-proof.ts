@@ -19,8 +19,8 @@
  * a correct answer, and the one this phase could prove before the binary
  * existed.
  */
-import { WorkSessionId, type AdoptedSessionId } from "@t3tools/baton-contracts";
-import { describeAdoptedSession, HERDR_CAPABILITIES } from "@t3tools/baton-shared/adoptedSession";
+import { WorkSessionId, type AdoptedSessionId } from "@t3tools/tessaya-contracts";
+import { describeAdoptedSession, HERDR_CAPABILITIES } from "@t3tools/tessaya-shared/adoptedSession";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 

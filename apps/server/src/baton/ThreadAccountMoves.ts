@@ -7,8 +7,8 @@ import {
   BATON_DEFAULT_CLAUDE_INSTANCE,
   BatonLiveQueued,
   type BatonThreadAccountUseResult,
-} from "@t3tools/baton-contracts";
-import { liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
+} from "@t3tools/tessaya-contracts";
+import { liveSessionIdOf } from "@t3tools/tessaya-shared/liveThread";
 import { ProviderInstanceId, ThreadId, type ModelSelection } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";

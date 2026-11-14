@@ -1,6 +1,6 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
-import type { VoiceClaimInput } from "@t3tools/baton-contracts";
+import type { VoiceClaimInput } from "@t3tools/tessaya-contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";

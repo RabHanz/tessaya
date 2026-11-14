@@ -1,7 +1,7 @@
 import { Toolbar } from "@base-ui/react/toolbar";
 import { type ProviderInstanceId } from "@t3tools/contracts";
 import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
-import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 import { Fragment, memo, useLayoutEffect, useRef, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";

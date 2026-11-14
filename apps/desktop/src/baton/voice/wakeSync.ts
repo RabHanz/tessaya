@@ -7,7 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { fetchSignedWake, type WakeWordView } from "@t3tools/baton-shared/wakeModels";
+import { fetchSignedWake, type WakeWordView } from "@t3tools/tessaya-shared/wakeModels";
 
 import { wakeModelFile, type WakeWordSetting } from "./desktopVoiceCore.ts";
 

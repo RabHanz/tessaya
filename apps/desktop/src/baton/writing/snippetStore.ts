@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodePath from "node:path";
 
-import { importSnippets, putSnippet, type Snippet } from "@t3tools/baton-shared/snippets";
+import { importSnippets, putSnippet, type Snippet } from "@t3tools/tessaya-shared/snippets";
 
 import { createJsonStore } from "./jsonStore.ts";
 

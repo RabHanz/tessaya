@@ -3,9 +3,9 @@
  * Memory (D150, docs/baton/MEMORY.md): short items about him and his work, searchable, with a
  * single door that refuses what must never be kept. The desktop tools, the windows, a phone and
  * the learning loop all call these methods; the rules themselves are pure and live in
- * `@t3tools/baton-shared/memory`.
+ * `@t3tools/tessaya-shared/memory`.
  */
-import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
+import { BatonMemoryRefusedError } from "@t3tools/tessaya-contracts";
 import {
   EPISODE_TTL_DAYS,
   SAME_ITEM_OVERLAP,
@@ -36,8 +36,8 @@ import {
   LESSONS_CAP,
   isLesson,
   type MemoryQuery,
-} from "@t3tools/baton-shared/memory";
-import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/baton-shared/osPack";
+} from "@t3tools/tessaya-shared/memory";
+import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/tessaya-shared/osPack";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -51,7 +51,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonMemoryEmbedder } from "./BatonMemoryEmbedder.ts";
 import { cosine, nearest, rrf, vectorFromBytes, vectorToBytes } from "./memoryVectors.ts";
-import { entityFacts, mentions } from "@t3tools/baton-shared/memoryEntities";
+import { entityFacts, mentions } from "@t3tools/tessaya-shared/memoryEntities";
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";

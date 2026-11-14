@@ -3,10 +3,10 @@
  * login that pays (his subscription or the API key, interchangeable) and the model; the spend guard lists what the
  * key may pay for; hard tasks go to Opus by his escalation setting. Every call reads this when it is made.
  */
-import type { EnvironmentId } from "@t3tools/baton-contracts";
-import { DEFAULT_DEEP_DAILY_CAP } from "@t3tools/baton-shared/brainEscalation";
-import { BRAIN_ROLE_LABELS, brainRoute, keyRoles } from "@t3tools/baton-shared/brainRoutes";
-import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
+import type { EnvironmentId } from "@t3tools/tessaya-contracts";
+import { DEFAULT_DEEP_DAILY_CAP } from "@t3tools/tessaya-shared/brainEscalation";
+import { BRAIN_ROLE_LABELS, brainRoute, keyRoles } from "@t3tools/tessaya-shared/brainRoutes";
+import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
 import {
   BrainEffort,
   BrainModel,

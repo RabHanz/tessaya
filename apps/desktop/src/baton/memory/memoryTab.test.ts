@@ -5,8 +5,8 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import type { BatonPrivateStore } from "@t3tools/baton-contracts";
-import type { MemoryItem } from "@t3tools/baton-shared/memory";
+import type { BatonPrivateStore } from "@t3tools/tessaya-contracts";
+import type { MemoryItem } from "@t3tools/tessaya-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import type { HelloResult } from "../vault/hello.ts";

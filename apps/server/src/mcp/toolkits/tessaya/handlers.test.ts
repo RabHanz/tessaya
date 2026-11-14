@@ -5,7 +5,7 @@ import {
   ThreadId,
   type AuthMcpClientAccess,
 } from "@t3tools/contracts";
-import type { BatonMemoryQuery } from "@t3tools/baton-contracts";
+import type { BatonMemoryQuery } from "@t3tools/tessaya-contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

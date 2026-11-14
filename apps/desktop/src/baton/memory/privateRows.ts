@@ -4,8 +4,8 @@
  * private store and each person's, each under its PIN. Only an open store's rows are drawn; a locked one shows its
  * name, its count and how to open it.
  */
-import type { BatonPrivateStore } from "@t3tools/baton-contracts";
-import { whyRemembered, type MemoryItem } from "@t3tools/baton-shared/memory";
+import type { BatonPrivateStore } from "@t3tools/tessaya-contracts";
+import { whyRemembered, type MemoryItem } from "@t3tools/tessaya-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import { text } from "../home/strings.ts";

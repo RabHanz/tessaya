@@ -4,11 +4,11 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/SCREEN.md.
  */
-import { volumeAfter, volumeLine } from "@t3tools/baton-shared/speakingVolume";
-import { speakerPath, type SpeakerIdentity, type SpokenAnswer } from "@t3tools/baton-voice";
-import { contextLine } from "@t3tools/baton-shared/agentPrompt";
+import { volumeAfter, volumeLine } from "@t3tools/tessaya-shared/speakingVolume";
+import { speakerPath, type SpeakerIdentity, type SpokenAnswer } from "@t3tools/tessaya-voice";
+import { contextLine } from "@t3tools/tessaya-shared/agentPrompt";
 import { createModelAsk } from "../writing/modelAsk.ts";
-import { appOf, tracedTurns } from "@t3tools/baton-shared/skillLearning";
+import { appOf, tracedTurns } from "@t3tools/tessaya-shared/skillLearning";
 import { replayTurn } from "../agent/replay.ts";
 import { createStandingStore } from "../presence/standingJobs.ts";
 import {
@@ -30,14 +30,14 @@ import { createTextEdit } from "../writing/textEdit.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
 import { PACK_FOLDER, readPack, readTemplates } from "../pack/packRows.ts";
-import { templateFrame } from "@t3tools/baton-shared/jobTemplates";
-import { DEFAULT_ROUTING, parseRouting } from "@t3tools/baton-shared/costRouting";
+import { templateFrame } from "@t3tools/tessaya-shared/jobTemplates";
+import { DEFAULT_ROUTING, parseRouting } from "@t3tools/tessaya-shared/costRouting";
 import {
   standingTurnText,
   userJobCard,
   userJobFromArgs,
   whenText,
-} from "@t3tools/baton-shared/userJobs";
+} from "@t3tools/tessaya-shared/userJobs";
 import { standingGate } from "../agent/standingGate.ts";
 import { runOnceItsTurn } from "../agent/standingRun.ts";
 import {
@@ -47,12 +47,12 @@ import {
   modelCommand,
   tierBrains,
   type ManualBrain,
-} from "@t3tools/baton-shared/turnTier";
-import type { CutIn } from "@t3tools/baton-shared/endOfTurn";
+} from "@t3tools/tessaya-shared/turnTier";
+import type { CutIn } from "@t3tools/tessaya-shared/endOfTurn";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
-import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
-import { DEFAULT_POCKET_VOICE } from "@t3tools/baton-shared/voiceLibrary";
-import { detectSecret } from "@t3tools/baton-shared/memory";
+import { redactFocusLabel } from "@t3tools/tessaya-shared/awareness";
+import { DEFAULT_POCKET_VOICE } from "@t3tools/tessaya-shared/voiceLibrary";
+import { detectSecret } from "@t3tools/tessaya-shared/memory";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -65,7 +65,7 @@ import {
   instantDecision,
   makeSentenceStream,
   type BrainDecision,
-} from "@t3tools/baton-shared/brain";
+} from "@t3tools/tessaya-shared/brain";
 import {
   LOOK_PROMPT,
   TEACH_PROMPT,
@@ -86,13 +86,13 @@ import {
   type CaptureApproval,
   type ScreenMode,
   type ScreenShot,
-} from "@t3tools/baton-shared/screenCompanion";
+} from "@t3tools/tessaya-shared/screenCompanion";
 import {
   describeToolCall,
   spokenOutcome,
   announceTool,
   type ToolCall,
-} from "@t3tools/baton-shared/operator";
+} from "@t3tools/tessaya-shared/operator";
 import * as Electron from "electron";
 
 import {
@@ -100,7 +100,7 @@ import {
   pageText,
   queueSpeech,
   readingMs,
-} from "@t3tools/baton-shared/companionPacing";
+} from "@t3tools/tessaya-shared/companionPacing";
 
 import {
   resolveBinary,
@@ -114,8 +114,11 @@ import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { brainRows, canChoose, type BrainStatus } from "./brainChoice.ts";
 import { detectBrains } from "./brainDetect.ts";
-import { textIsFromConversation, type ConversationRoute } from "@t3tools/baton-shared/conversation";
-import { BATON_TOOL_PREFIX, isOwnTool } from "@t3tools/baton-shared/operator";
+import {
+  textIsFromConversation,
+  type ConversationRoute,
+} from "@t3tools/tessaya-shared/conversation";
+import { BATON_TOOL_PREFIX, isOwnTool } from "@t3tools/tessaya-shared/operator";
 import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
 import {
   createAgentGate,
@@ -127,8 +130,8 @@ import {
   type TurnTaint,
 } from "../agent/agentGate.ts";
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
-import { type MemberRole, voiceAssurance } from "@t3tools/baton-shared/household";
-import type { TrustPrincipal } from "@t3tools/baton-shared/trust";
+import { type MemberRole, voiceAssurance } from "@t3tools/tessaya-shared/household";
+import type { TrustPrincipal } from "@t3tools/tessaya-shared/trust";
 import { createTurnLock, deviceMayLook, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 import type { DesktopStateInput } from "../phone/desktopState.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
@@ -138,7 +141,7 @@ import {
   type HandsOrigin,
   type HandsResult,
   type HandsToolSpec,
-} from "@t3tools/baton-shared/remoteHands";
+} from "@t3tools/tessaya-shared/remoteHands";
 import {
   sessionWithOwnMcp,
   startBatonMcp,
@@ -179,14 +182,14 @@ import {
   PRIVATE_TURN_STUB,
   privatePersonOf,
   type PrivateTurn,
-} from "@t3tools/baton-shared/privateMemory";
+} from "@t3tools/tessaya-shared/privateMemory";
 import { windowsHello } from "../vault/hello.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
 import { redactForHistory } from "../vault/redact.ts";
 import { createVaultHost, type VaultHost } from "../vault/vaultHost.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
-import { errorCode, plainError, stepLine } from "@t3tools/baton-shared/stepLine";
+import { errorCode, plainError, stepLine } from "@t3tools/tessaya-shared/stepLine";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import {
   assistantFrame,
@@ -198,7 +201,7 @@ import {
   type Brain,
   type Persona,
   type ProjectRef,
-} from "@t3tools/baton-shared/osPack";
+} from "@t3tools/tessaya-shared/osPack";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
@@ -217,7 +220,7 @@ import {
   shotOf,
   type CapturedScreen,
 } from "./screenCapture.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 /** Names a step of building the screen's controls for the stall log; adds nothing. */
 const stepMark = (name: string): [] => {

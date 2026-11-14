@@ -7,7 +7,7 @@ import {
   accountForInstance,
   type BatonAccount,
   type BatonAccountPool,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { ProviderDriverKind, type ServerProviderUsageLimits } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";

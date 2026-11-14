@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import type { MemberRole } from "@t3tools/baton-shared/household";
+import type { MemberRole } from "@t3tools/tessaya-shared/household";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";

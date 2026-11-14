@@ -12,7 +12,7 @@ import {
   type AdoptedSession,
   type AdoptedSessionCandidate,
   type BatonWeave,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   extractReply,
   nextStep,
@@ -20,7 +20,7 @@ import {
   refuseWeave,
   resolveTarget,
   type WeaveRecord,
-} from "@t3tools/baton-shared/weave";
+} from "@t3tools/tessaya-shared/weave";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

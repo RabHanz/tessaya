@@ -3,8 +3,8 @@
  * machine that receives it. The Record never decides a send: unreadable, the send goes ahead; unwritable, the send's
  * own answer stands, so a retry never delivers twice.
  */
-import { recordText } from "@t3tools/baton-shared/audit";
-import { decideMessage } from "@t3tools/baton-shared/trust";
+import { recordText } from "@t3tools/tessaya-shared/audit";
+import { decideMessage } from "@t3tools/tessaya-shared/trust";
 import { OrchestratorMcpFailure, type ThreadId } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";

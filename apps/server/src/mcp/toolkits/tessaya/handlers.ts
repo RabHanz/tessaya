@@ -14,7 +14,7 @@ import {
   BATON_WEAVE_WS_METHODS,
   BatonDesktopState,
   type BatonRecordEntry,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Clock from "effect/Clock";
@@ -23,9 +23,9 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { accountByWords } from "@t3tools/baton-shared/accountRoom";
-import { recordText } from "@t3tools/baton-shared/audit";
-import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
+import { accountByWords } from "@t3tools/tessaya-shared/accountRoom";
+import { recordText } from "@t3tools/tessaya-shared/audit";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 
 import { clientMessageFrom, withAgentMessageFrom } from "../../../baton/AgentMessageFrom.ts";
 import { gateMessage } from "../../../baton/AgentMessageGate.ts";

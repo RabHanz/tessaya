@@ -8,7 +8,7 @@ import * as NodePath from "node:path";
 
 const [releasesFile, outDir] = process.argv.slice(2);
 const repo = process.env.REPO ?? "RabHanz/tessaya";
-const firmwareSource = NodeFS.readFileSync("packages/baton-shared/src/r1Firmware.ts", "utf8");
+const firmwareSource = NodeFS.readFileSync("packages/tessaya-shared/src/r1Firmware.ts", "utf8");
 const publicHex = /R1_FIRMWARE_PUBLIC_KEY =\s*"([0-9a-f]{130})"/.exec(firmwareSource)[1];
 const recommended = /firmware: \{\s*version: "([^"]+)"/.exec(firmwareSource)[1];
 const jwkOf = (d) => ({

@@ -5,7 +5,7 @@ import * as NodeVM from "node:vm";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { DEFAULT_OS_PACK, mergePack } from "@t3tools/baton-shared/osPack";
+import { DEFAULT_OS_PACK, mergePack } from "@t3tools/tessaya-shared/osPack";
 
 import { bodyOf } from "./desktopMascot.ts";
 

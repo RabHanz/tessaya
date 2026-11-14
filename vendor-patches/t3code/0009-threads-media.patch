@@ -616,14 +616,14 @@ index b1bcc650bdf9f3820c31d570cbd5af04ecdfc117..3f65d81fadafccdd52a5fbc6838b0872
      <MediaVideoPlayer
        key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
 diff --git a/apps/web/src/components/chat/ComposerControlsBar.tsx b/apps/web/src/components/chat/ComposerControlsBar.tsx
-index 302330f29156b6be2a36fe78bf477d593dc93b29..41504198de67e01b13ce1e5019815e2b5544ae9c 100644
+index 302330f29156b6be2a36fe78bf477d593dc93b29..5da83d93e2c75434b705f3727073a17ee2389ddd 100644
 --- a/apps/web/src/components/chat/ComposerControlsBar.tsx
 +++ b/apps/web/src/components/chat/ComposerControlsBar.tsx
 @@ -28,6 +28,16 @@ import {
    ComposerPickerFooter,
    describeComposerEffort,
  } from "./ComposerModelEffort";
-+import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
++import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 +import { useLiveTraits } from "./BatonLiveModel";
 +import {
 +  BatonLimitMark,
@@ -1688,15 +1688,15 @@ index 6a298fd6de0499eb8dd2531aa6ff07b3554edc3b..fb38a72daf06a79889307f4747e7abbc
    onWorkEntryContentReady?: (anchorKey: string, entryId: string) => void;
    onCancelWorktreeSetup: (() => void) | null;
 diff --git a/apps/web/src/components/chat/useComposerSelection.ts b/apps/web/src/components/chat/useComposerSelection.ts
-index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..f771bd454e3432767f8993fd1ad950ed88e72332 100644
+index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..313fdcbf459b32278f1602bad9bb4299def22ed2 100644
 --- a/apps/web/src/components/chat/useComposerSelection.ts
 +++ b/apps/web/src/components/chat/useComposerSelection.ts
 @@ -17,6 +17,15 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
  import { type SetStateAction } from "react";
  import { useNavigate } from "@tanstack/react-router";
  import { toastManager } from "../ui/toast";
-+import { liveChangeRoute } from "@t3tools/baton-shared/liveModel";
-+import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
++import { liveChangeRoute } from "@t3tools/tessaya-shared/liveModel";
++import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 +import {
 +  liveLoginOf,
 +  useContinueInNewThread,

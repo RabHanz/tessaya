@@ -30,8 +30,8 @@ import {
   type DevicesOverview,
   BT_KINDS,
   type BtKind,
-} from "@t3tools/baton-contracts";
-import { recordText } from "@t3tools/baton-shared/audit";
+} from "@t3tools/tessaya-contracts";
+import { recordText } from "@t3tools/tessaya-shared/audit";
 import {
   btLabel,
   kindOf,
@@ -39,10 +39,10 @@ import {
   mergeKnown,
   resolveBluetooth,
   type BtKnown,
-} from "@t3tools/baton-shared/btNames";
-import { isTestVessel, valueText } from "@t3tools/baton-shared/deviceItems";
-import { displaySupported } from "@t3tools/baton-shared/deviceView";
-import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/baton-shared/speakingVolume";
+} from "@t3tools/tessaya-shared/btNames";
+import { isTestVessel, valueText } from "@t3tools/tessaya-shared/deviceItems";
+import { displaySupported } from "@t3tools/tessaya-shared/deviceView";
+import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -51,7 +51,7 @@ import * as Layer from "effect/Layer";
 import { VoiceForgets } from "../baton/VoiceForgets.ts";
 import { MemberPreferences, type VoiceDefaults } from "../baton/MemberPreferences.ts";
 import { StepUps } from "./StepUps.ts";
-import type { BatonVoiceProfile } from "@t3tools/baton-contracts";
+import type { BatonVoiceProfile } from "@t3tools/tessaya-contracts";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -62,15 +62,15 @@ import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { VesselBodies } from "./VesselBodies.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
-import { connectMqtt } from "@t3tools/baton-shared/mqtt";
+import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { expressOr } from "../baton/TessayaExpression.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
-import { sayPayload, type LineEvent } from "@t3tools/baton-shared/expression";
+import { sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
 import { R1Updates } from "./R1Updates.ts";
-import { R1_FIRMWARE } from "@t3tools/baton-shared/r1Firmware";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { R1_FIRMWARE } from "@t3tools/tessaya-shared/r1Firmware";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 /** settings is him in Settings → Devices (the RPC checked his scope); anyone else asks before camera or reboot. */
 export interface DeviceActor {

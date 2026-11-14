@@ -4,7 +4,7 @@ import {
   BAR_ASK_TTL_MS,
   BAR_NOT_CONNECTED,
   CONNECTED_MS,
-} from "@t3tools/baton-shared/phoneRelay";
+} from "@t3tools/tessaya-shared/phoneRelay";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";

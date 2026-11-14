@@ -1,4 +1,4 @@
-import type { EnrolCard } from "@t3tools/baton-contracts";
+import type { EnrolCard } from "@t3tools/tessaya-contracts";
 import { Modal, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 

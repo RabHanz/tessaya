@@ -4,7 +4,7 @@
  * cswap is per machine, so a tile merged across environments gets a row for each.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { BatonAccount } from "@t3tools/baton-contracts";
+import type { BatonAccount } from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { LimitAccount } from "@t3tools/shared/usageLimits";
 import * as Option from "effect/Option";

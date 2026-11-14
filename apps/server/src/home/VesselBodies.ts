@@ -11,8 +11,8 @@ import type {
   VesselBodyMint,
   VesselBodyType,
   VesselBodiesView,
-} from "@t3tools/baton-contracts";
-import { accessOf } from "@t3tools/baton-shared/deviceItems";
+} from "@t3tools/tessaya-contracts";
+import { accessOf } from "@t3tools/tessaya-shared/deviceItems";
 import {
   BODY_ITEMS,
   BODY_TYPE_DEFAULTS,
@@ -22,7 +22,7 @@ import {
   parseBodyLink,
   postureOf,
   signedText,
-} from "@t3tools/baton-shared/vesselBodies";
+} from "@t3tools/tessaya-shared/vesselBodies";
 import * as NodeCrypto from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -35,7 +35,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
-import { BARE_BOARD, MAIN_BODY } from "@t3tools/baton-shared/productNames";
+import { BARE_BOARD, MAIN_BODY } from "@t3tools/tessaya-shared/productNames";
 
 interface DeviceBody {
   outer: string | null;

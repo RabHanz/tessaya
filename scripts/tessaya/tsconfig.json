@@ -6,7 +6,7 @@
     "lib": ["ESNext", "esnext.disposable"],
     "paths": {
       "onnxruntime-node": [
-        "../../packages/baton-voice/node_modules/onnxruntime-node/dist/index.d.ts"
+        "../../packages/tessaya-voice/node_modules/onnxruntime-node/dist/index.d.ts"
       ]
     }
   },

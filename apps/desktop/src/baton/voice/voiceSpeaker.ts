@@ -8,13 +8,17 @@
  * between two is only what has not been generated yet. Written only is enforced here, so nothing
  * can reach the speakers.
  */
-import type { TtsProvider } from "@t3tools/baton-voice";
+import type { TtsProvider } from "@t3tools/tessaya-voice";
 
-import { hasDirection, speechPieces, withoutDirections } from "@t3tools/baton-shared/interjections";
-import { isNarration } from "@t3tools/baton-shared/narration";
-import { pronounce } from "@t3tools/baton-shared/pronounce";
-import { withProsody } from "@t3tools/baton-shared/prosody";
-import { spliceSpeech } from "@t3tools/baton-shared/speechSplice";
+import {
+  hasDirection,
+  speechPieces,
+  withoutDirections,
+} from "@t3tools/tessaya-shared/interjections";
+import { isNarration } from "@t3tools/tessaya-shared/narration";
+import { pronounce } from "@t3tools/tessaya-shared/pronounce";
+import { withProsody } from "@t3tools/tessaya-shared/prosody";
+import { spliceSpeech } from "@t3tools/tessaya-shared/speechSplice";
 
 /** Plays a WAV as its bytes arrive; resolves false if there was nothing to play. */
 export interface VoicePlayer {

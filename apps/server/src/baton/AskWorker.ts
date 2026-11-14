@@ -3,7 +3,7 @@
  * this server (SPINE-UNIFY S6), with the desktop's hands when it is listening. On only while `brain.asks` is set (the
  * desktop's one-brain setting sets it); otherwise the desktop takes them, as before.
  */
-import type { PhoneAsk } from "@t3tools/baton-shared/phoneRelay";
+import type { PhoneAsk } from "@t3tools/tessaya-shared/phoneRelay";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";

@@ -8,7 +8,7 @@ import {
   WorkSessionId,
   type OrchestrationAction,
   type OrchestrationV2ThreadShell,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

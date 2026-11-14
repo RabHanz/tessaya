@@ -32,7 +32,7 @@ import {
   type RuntimeMode,
   type ThreadId,
 } from "@t3tools/contracts";
-import type { BatonSessionStateInput } from "@t3tools/baton-contracts";
+import type { BatonSessionStateInput } from "@t3tools/tessaya-contracts";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
@@ -246,7 +246,7 @@ const iso = (value: DateTime.Utc | null | undefined): string | null =>
 
 /**
  * A v2 thread shell in the words Baton's §10 state ladder uses. Pure, so the mapping is tested
- * on its own and the ladder in `@t3tools/baton-contracts` stays engine-free.
+ * on its own and the ladder in `@t3tools/tessaya-contracts` stays engine-free.
  */
 export function batonStateInputFromShell(
   shell: OrchestrationV2ThreadShell,

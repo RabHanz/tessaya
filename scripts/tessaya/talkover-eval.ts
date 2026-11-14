@@ -5,16 +5,16 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { rng, room } from "../../packages/baton-voice/src/echoSim.ts";
-import { createSileroScorer } from "../../packages/baton-voice/src/providers/onnx.ts";
-import { createSpeakerEmbedder } from "../../packages/baton-voice/src/providers/speakerOnnx.ts";
-import { cosine, memberByVoice } from "../../packages/baton-voice/src/speaker.ts";
+import { rng, room } from "../../packages/tessaya-voice/src/echoSim.ts";
+import { createSileroScorer } from "../../packages/tessaya-voice/src/providers/onnx.ts";
+import { createSpeakerEmbedder } from "../../packages/tessaya-voice/src/providers/speakerOnnx.ts";
+import { cosine, memberByVoice } from "../../packages/tessaya-voice/src/speaker.ts";
 import {
   createVoiceLevel,
   createTalkOver,
   voiceCheckDue,
   type TalkOverOptions,
-} from "../../packages/baton-voice/src/talkOver.ts";
+} from "../../packages/tessaya-voice/src/talkOver.ts";
 
 const RATE = 16_000;
 const FRAME = 960; // the R1's 60 ms uplink frame

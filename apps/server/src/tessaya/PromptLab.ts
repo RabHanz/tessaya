@@ -8,8 +8,8 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { BatonPromptLabInput, BatonPromptLabResult } from "@t3tools/baton-contracts";
-import { DEFAULT_PACK_FILES, splitFront } from "@t3tools/baton-shared/osPack";
+import type { BatonPromptLabInput, BatonPromptLabResult } from "@t3tools/tessaya-contracts";
+import { DEFAULT_PACK_FILES, splitFront } from "@t3tools/tessaya-shared/osPack";
 import {
   DEFAULT_SCENARIOS,
   LAB_MODELS,
@@ -19,7 +19,7 @@ import {
   variantNameProblem,
   type LabCell,
   type LabScenario,
-} from "@t3tools/baton-shared/promptLab";
+} from "@t3tools/tessaya-shared/promptLab";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

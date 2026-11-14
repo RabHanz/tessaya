@@ -8,8 +8,8 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
-import { parseLearningFile } from "@t3tools/baton-shared/memory";
+import { BatonMemoryRefusedError } from "@t3tools/tessaya-contracts";
+import { parseLearningFile } from "@t3tools/tessaya-shared/memory";
 import * as Effect from "effect/Effect";
 
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";

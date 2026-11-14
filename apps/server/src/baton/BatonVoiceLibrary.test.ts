@@ -6,9 +6,9 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import type { VoiceClip, VoiceLibraryView } from "@t3tools/baton-contracts";
-import { pronounce } from "@t3tools/baton-shared/pronounce";
-import { PREVIEW_LINE } from "@t3tools/baton-shared/voiceLibrary";
+import type { VoiceClip, VoiceLibraryView } from "@t3tools/tessaya-contracts";
+import { pronounce } from "@t3tools/tessaya-shared/pronounce";
+import { PREVIEW_LINE } from "@t3tools/tessaya-shared/voiceLibrary";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";

@@ -46,15 +46,15 @@ import {
   type BatonIntentRecord,
   type BatonIntentResolution,
   type WorkSessionId,
-} from "@t3tools/baton-contracts";
-import { expiredRecords } from "@t3tools/baton-shared/retention";
+} from "@t3tools/tessaya-contracts";
+import { expiredRecords } from "@t3tools/tessaya-shared/retention";
 import {
   normaliseIntentText,
   resolveBatonIntent,
   type IntentGate,
   type IntentProvider,
   type IntentVocabulary,
-} from "@t3tools/baton-shared/intentParser";
+} from "@t3tools/tessaya-shared/intentParser";
 import { Hostname as HostProcessHostname } from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";

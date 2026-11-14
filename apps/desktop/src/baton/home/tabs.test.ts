@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { openState } from "./pageStates.ts";
-import { TESSAYA_PLACES } from "@t3tools/baton-contracts";
+import { TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
 
 import { STRINGS } from "./strings.ts";
 import { AREAS, SETTINGS, TABS, tabOf } from "./tabs.ts";

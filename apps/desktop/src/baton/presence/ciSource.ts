@@ -2,7 +2,7 @@
 /** Recent workflow runs on repositories he lists, read with `gh run list`. Read-only; empty by default. */
 import * as NodeChildProcess from "node:child_process";
 
-import type { CiRun } from "@t3tools/baton-shared/initiative";
+import type { CiRun } from "@t3tools/tessaya-shared/initiative";
 
 import type { Run } from "./needsSources.ts";
 

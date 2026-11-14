@@ -10,8 +10,8 @@ import {
   waveFor,
   type PillDesign,
   type PillWave,
-} from "@t3tools/baton-shared/composerDictation";
-import type { DesktopSettingsView } from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-shared/composerDictation";
+import type { DesktopSettingsView } from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";

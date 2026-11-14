@@ -2,7 +2,7 @@
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { REMOTE_HANDS_TOOLS } from "@t3tools/baton-shared/remoteHands";
+import { REMOTE_HANDS_TOOLS } from "@t3tools/tessaya-shared/remoteHands";
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "./remoteHandsTools.ts";

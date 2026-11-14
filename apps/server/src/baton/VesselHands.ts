@@ -13,7 +13,7 @@ import {
   type HandsOrigin,
   type HandsBroker,
   type HandsResult,
-} from "@t3tools/baton-shared/remoteHands";
+} from "@t3tools/tessaya-shared/remoteHands";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

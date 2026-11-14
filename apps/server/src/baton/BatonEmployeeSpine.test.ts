@@ -4,7 +4,7 @@
  * handoff -> finish, through the real job, work-session and flow services and a fake worker.
  * If this breaks, something between "hand it a job" and "it reports back" broke.
  */
-import { ProjectId, WorkSessionId } from "@t3tools/baton-contracts";
+import { ProjectId, WorkSessionId } from "@t3tools/tessaya-contracts";
 import {
   ProviderInstanceId,
   type OrchestrationV2ThreadShell,

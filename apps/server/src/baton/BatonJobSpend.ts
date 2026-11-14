@@ -15,7 +15,7 @@ import {
   sumUsage,
   tokenCount,
   type ModelUsage,
-} from "@t3tools/baton-shared/jobSpend";
+} from "@t3tools/tessaya-shared/jobSpend";
 
 import { parseRateTable, priceUsage, type RateTable } from "../usage/usagePricing.ts";
 

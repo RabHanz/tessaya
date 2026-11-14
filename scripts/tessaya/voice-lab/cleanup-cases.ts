@@ -71,8 +71,8 @@ export const DEFAULT_CASES: ReadonlyArray<CleanupCase> = [
     keep: ["Why in the world", "5%"],
   },
   {
-    raw: "Check packages/baton-voice/src/router.ts and voiceModels.ts for the old default.",
-    keep: ["packages/baton-voice/src/router.ts", "voiceModels.ts"],
+    raw: "Check packages/tessaya-voice/src/router.ts and voiceModels.ts for the old default.",
+    keep: ["packages/tessaya-voice/src/router.ts", "voiceModels.ts"],
   },
   {
     raw: "Set BATON_THREADS to 4 and run it at below normal priority.",

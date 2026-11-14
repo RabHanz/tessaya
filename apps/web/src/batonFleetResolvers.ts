@@ -1,7 +1,7 @@
 /* oxlint-disable t3code/no-low-value-comments, t3code/no-manual-memo -- Baton file predating upstream's rule (D82) */
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId, ProjectId } from "@t3tools/baton-contracts";
-import type { FleetAccount } from "@t3tools/baton-shared/fleetView";
+import type { EnvironmentId, ProjectId } from "@t3tools/tessaya-contracts";
+import type { FleetAccount } from "@t3tools/tessaya-shared/fleetView";
 import { useCallback, useMemo } from "react";
 
 import { deriveProviderEntriesByEnvironment } from "./providerInstances";

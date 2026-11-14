@@ -29,7 +29,7 @@ import * as NodeOS from "node:os";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - the merge below is one promise run under a directory lock.
 import * as NodePath from "node:path";
 
-import { type ClaudeSettings } from "@t3tools/baton-contracts";
+import { type ClaudeSettings } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";

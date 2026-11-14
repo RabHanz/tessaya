@@ -1,5 +1,5 @@
-import type { TraceCall, TurnTrace } from "@t3tools/baton-shared/skillLearning";
-import type { SpeakerIdentity } from "@t3tools/baton-voice";
+import type { TraceCall, TurnTrace } from "@t3tools/tessaya-shared/skillLearning";
+import type { SpeakerIdentity } from "@t3tools/tessaya-voice";
 
 import { SessionClosed } from "../screen/claudeVision.ts";
 

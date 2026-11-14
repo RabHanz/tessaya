@@ -8,7 +8,7 @@ import {
   T3_SETTINGS_PLACES,
   TESSAYA_PLACES,
   TESSAYA_SETTINGS_GROUPS,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 
 import {
   applyLearnOp,
@@ -16,7 +16,7 @@ import {
   pickTip,
   readLearnProgress,
   WHATS_NEW,
-} from "@t3tools/baton-shared/learn";
+} from "@t3tools/tessaya-shared/learn";
 
 import { tableFor } from "./strings.ts";
 import { AREAS } from "./tabs.ts";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { CAMPLUS_POLICY, type SpeakerProfile } from "@t3tools/baton-voice";
+import { CAMPLUS_POLICY, type SpeakerProfile } from "@t3tools/tessaya-voice";
 
 import { createSpeakerIdentity, pillWho } from "./speakerIdentity.ts";
 import { VOICE_ID_DEFAULTS, type VoiceIdSettings } from "./voiceIdRows.ts";

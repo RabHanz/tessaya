@@ -2,7 +2,7 @@ import {
   displayThreadTitle,
   isLiveThreadId,
   knownTitleSuffixes,
-} from "@t3tools/baton-shared/liveThread";
+} from "@t3tools/tessaya-shared/liveThread";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { useEnvironments } from "../../state/environments";

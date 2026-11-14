@@ -10,7 +10,7 @@ import {
   parseSync,
   type NightlyStatus,
   type SyncStatus,
-} from "@t3tools/baton-shared/nightly";
+} from "@t3tools/tessaya-shared/nightly";
 
 export type RunGh = (args: ReadonlyArray<string>) => Promise<string>;
 

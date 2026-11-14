@@ -10,7 +10,7 @@ remote session --HTTPS bearer (baton:hands)--> hub server /tessaya/hands/call
 hub server --long poll (baton:hands-host)--> desktop app --> gate --> hands tool --> answer back the same way
 ```
 
-- The **server only brokers** (`packages/baton-shared/src/remoteHands.ts`, `apps/server/src/baton/BatonHandsApi.ts`): it allows a fixed list
+- The **server only brokers** (`packages/tessaya-shared/src/remoteHands.ts`, `apps/server/src/baton/BatonHandsApi.ts`): it allows a fixed list
   of tools, holds a call until the desktop takes it (a long poll, so a call arrives at once), and writes an audit line
   (`baton-hands-audit.ndjson` beside the database; typed text is logged as its length, never its content).
 - **The same channel serves the one brain** (`apps/server/src/baton/VesselHands.ts`, SPINE-UNIFY): the desktop publishes the tools it offers

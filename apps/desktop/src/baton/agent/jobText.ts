@@ -1,5 +1,5 @@
 /** What the assistant is told about jobs: plain sentences from the job cards, never raw JSON. */
-import type { BatonJob, BatonTeamBoardResult } from "@t3tools/baton-contracts";
+import type { BatonJob, BatonTeamBoardResult } from "@t3tools/tessaya-contracts";
 
 const GROUP: Record<BatonJob["group"], string> = {
   running: "running",

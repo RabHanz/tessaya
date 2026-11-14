@@ -12,7 +12,7 @@ import {
   auditLine,
   type VaultCategory,
   type VaultPolicy,
-} from "@t3tools/baton-shared/vault";
+} from "@t3tools/tessaya-shared/vault";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import { CLIPBOARD_CLEAR_MS } from "./vaultHost.ts";

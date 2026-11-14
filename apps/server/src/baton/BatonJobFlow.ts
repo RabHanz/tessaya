@@ -13,25 +13,25 @@ import {
   type BatonJobSplitInput,
   type BatonJobStartInput,
   WorkSessionId,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   partsSettled,
   partsSummary,
   MAX_PARTS,
   SUMMARY_MARK,
-} from "@t3tools/baton-shared/coordinator";
-import { BLOCKED_MARK } from "@t3tools/baton-shared/coordinator";
-import { placeJob as placeFromWords } from "@t3tools/baton-shared/jobPlacement";
-import { briefNudge, NUDGE_MARK, parseJobBrief } from "@t3tools/baton-shared/jobBrief";
+} from "@t3tools/tessaya-shared/coordinator";
+import { BLOCKED_MARK } from "@t3tools/tessaya-shared/coordinator";
+import { placeJob as placeFromWords } from "@t3tools/tessaya-shared/jobPlacement";
+import { briefNudge, NUDGE_MARK, parseJobBrief } from "@t3tools/tessaya-shared/jobBrief";
 import {
   buildReport,
   reportCadence,
   reportDue,
   retryRefusal,
   retryText,
-} from "@t3tools/baton-shared/jobReport";
-import { inQuietHours } from "@t3tools/baton-shared/attention";
-import { DEFAULT_POLICY } from "@t3tools/baton-shared/initiative";
+} from "@t3tools/tessaya-shared/jobReport";
+import { inQuietHours } from "@t3tools/tessaya-shared/attention";
+import { DEFAULT_POLICY } from "@t3tools/tessaya-shared/initiative";
 import {
   jobChanges,
   jobMoment,
@@ -39,8 +39,8 @@ import {
   outboundDecision,
   permissionsSummary,
   workerFirstMessage,
-} from "@t3tools/baton-shared/jobs";
-import { watchFleet } from "@t3tools/baton-shared/watch";
+} from "@t3tools/tessaya-shared/jobs";
+import { watchFleet } from "@t3tools/tessaya-shared/watch";
 import {
   DEFAULT_MODEL_BY_PROVIDER,
   type ModelSelection,
@@ -70,9 +70,9 @@ import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack, readTemplates } from "./OperatingSystemPack.ts";
 import { expressOr } from "./TessayaExpression.ts";
 import { routeFor } from "./BrainRoutes.ts";
-import { DEFAULT_ROUTING, ROUTINE_EFFORT } from "@t3tools/baton-shared/costRouting";
-import { modelOf, roleFor, type Brain } from "@t3tools/baton-shared/osPack";
-import { assignJob, templateBrief, type JobTemplate } from "@t3tools/baton-shared/jobTemplates";
+import { DEFAULT_ROUTING, ROUTINE_EFFORT } from "@t3tools/tessaya-shared/costRouting";
+import { modelOf, roleFor, type Brain } from "@t3tools/tessaya-shared/osPack";
+import { assignJob, templateBrief, type JobTemplate } from "@t3tools/tessaya-shared/jobTemplates";
 import { BatonJobService } from "./BatonJobService.ts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { failLastReport, jobPlaybook, playbookDomain, rememberJobDomain } from "./BatonPlaybook.ts";

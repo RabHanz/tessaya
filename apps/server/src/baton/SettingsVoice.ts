@@ -2,7 +2,7 @@
  * Every setting by voice, in plain words with a safety class (free: at once; confirm and owner: his yes on his phone;
  * never: refused, with why). Typed over the schemas' fields: a setting without a voice path does not compile.
  */
-import { type DesktopSettingsControl, DesktopVoiceSettingsPatch } from "@t3tools/baton-contracts";
+import { type DesktopSettingsControl, DesktopVoiceSettingsPatch } from "@t3tools/tessaya-contracts";
 import { ServerSettings, ServerSettingsPatch } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -13,7 +13,7 @@ import * as Schema from "effect/Schema";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonDesktopSettings } from "./BatonDesktopSettings.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
-import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 export type SettingClass = "free" | "confirm" | "owner" | "never";
 

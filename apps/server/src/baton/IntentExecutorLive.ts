@@ -23,14 +23,14 @@ import {
   type BatonIntentCommand,
   type OrchestrationRuleId,
   type WorkSessionId,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import {
   speakFleetCompletions,
   speakFleetNeedsUser,
   speakFleetRunning,
   speakWorkSessionStatus,
   type SpokenWorkSession,
-} from "@t3tools/baton-shared/spokenStatus";
+} from "@t3tools/tessaya-shared/spokenStatus";
 import { Hostname as HostProcessHostname } from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { MAX_USER_JOBS, type UserJob } from "@t3tools/baton-shared/userJobs";
+import { MAX_USER_JOBS, type UserJob } from "@t3tools/tessaya-shared/userJobs";
 
 import { createUserJobStore } from "./userJobStore.ts";
 

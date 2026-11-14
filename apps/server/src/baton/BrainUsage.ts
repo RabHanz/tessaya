@@ -6,7 +6,7 @@
  */
 import * as NodePath from "node:path";
 
-import { credentialOf } from "@t3tools/baton-shared/brainRoutes";
+import { credentialOf } from "@t3tools/tessaya-shared/brainRoutes";
 import type { BrainCredential, BrainRole, BrainSpendAlert } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";

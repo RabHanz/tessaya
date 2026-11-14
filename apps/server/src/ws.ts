@@ -236,7 +236,7 @@ import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
 import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 // Baton (vendor-patches/t3code/0002-server-hooks.patch): its own RPC group, handlers and scopes.
-import { BatonRpcGroup } from "@t3tools/baton-contracts";
+import { BatonRpcGroup } from "@t3tools/tessaya-contracts";
 import * as BatonRpcAuthorization from "./baton/BatonRpcAuthorization.ts";
 import * as BatonRpcHandlers from "./baton/BatonRpcHandlers.ts";
 import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";

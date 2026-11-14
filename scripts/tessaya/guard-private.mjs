@@ -26,7 +26,7 @@ const SKIPPED = [
 const SHIPPED = [
   "apps/desktop/src/baton/",
   "apps/server/src/baton/",
-  "packages/baton-",
+  "packages/tessaya-",
   "apps/web/src/components/sidebar/Baton",
   "apps/web/src/components/chat/Baton",
   "apps/web/src/components/panes/baton",
@@ -79,7 +79,7 @@ const ALLOWED = {
     /-----BEGIN OPENSSH PRIVATE KEY-----/g,
     "a made-up key header, to prove the vault hands it over",
   ],
-  "packages/baton-shared/src/memory.test.ts": [
+  "packages/tessaya-shared/src/memory.test.ts": [
     /ghp_abcdefghijklmnopqrstuvwxyz0123/g,
     "a made-up token, to prove memory refuses secrets",
   ],
@@ -183,7 +183,7 @@ export const run = () => {
   if (markers.size > 0) {
     const own = [
       "docs/baton/",
-      "packages/baton-",
+      "packages/tessaya-",
       "apps/desktop/src/baton/",
       "apps/server/src/baton/",
       "scripts/tessaya/",

@@ -1,5 +1,5 @@
 import { it as effectIt } from "@effect/vitest";
-import { setClaudeAccountInstances } from "@t3tools/baton-contracts";
+import { setClaudeAccountInstances } from "@t3tools/tessaya-contracts";
 import { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";

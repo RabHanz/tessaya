@@ -4,7 +4,7 @@
  * like a typed Ask, and sends the short reply and the card text back. It also mirrors the questions it asks him to the phone.
  * It never throws; a server that does not answer just means the desktop is away.
  */
-import type { AskSource } from "@t3tools/baton-shared/phoneRelay";
+import type { AskSource } from "@t3tools/tessaya-shared/phoneRelay";
 
 import type { PhoneMirror } from "../screen/ScreenCompanion.ts";
 

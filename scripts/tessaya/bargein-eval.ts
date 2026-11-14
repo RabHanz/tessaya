@@ -1,8 +1,8 @@
 // @effect-diagnostics globalConsole:off
 // Measures the barge-in detector in the synthetic room (docs/baton/BARGE_IN.md): false barge-ins on Tessaya's own voice per 10 minutes,
 // and recall of interruptions by how loud he is over the echo. node scripts/tessaya/bargein-eval.ts [seconds-per-room]
-import { evaluateGuard } from "../../packages/baton-voice/src/echoSim.ts";
-import { createTalkOverGuard } from "../../packages/baton-voice/src/talkOver.ts";
+import { evaluateGuard } from "../../packages/tessaya-voice/src/echoSim.ts";
+import { createTalkOverGuard } from "../../packages/tessaya-voice/src/talkOver.ts";
 
 // --talkover: the level detector (talkOver.ts) in place of the NLMS echo guard.
 const result = evaluateGuard({

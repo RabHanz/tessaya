@@ -8134,7 +8134,7 @@ index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..5c567a50d344cffdba5a4575acd300d5
      </div>
    );
 diff --git a/apps/web/src/components/chat/ModelPickerSidebar.tsx b/apps/web/src/components/chat/ModelPickerSidebar.tsx
-index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..618f18cea064815d2ca010f3e7450514895f02f0 100644
+index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..5a12173042aa82b6c624bbe42e5d32bc071e1415 100644
 --- a/apps/web/src/components/chat/ModelPickerSidebar.tsx
 +++ b/apps/web/src/components/chat/ModelPickerSidebar.tsx
 @@ -1,8 +1,12 @@
@@ -8142,7 +8142,7 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..618f18cea064815d2ca010f3e7450514
  import { type ProviderInstanceId } from "@t3tools/contracts";
 -import { memo, useLayoutEffect, useRef, useState } from "react";
 +import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
-+import { LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
++import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 +import { Fragment, memo, useLayoutEffect, useRef, useState } from "react";
  import { StarIcon } from "lucide-react";
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";

@@ -27,13 +27,13 @@
  *   3. **It never reaches a provider that is not there.** No available account
  *      is a refusal by name, not a hang.
  */
-import type { BatonIntentResolution } from "@t3tools/baton-contracts";
+import type { BatonIntentResolution } from "@t3tools/tessaya-contracts";
 import {
   buildIntentModelPrompt,
   interpretIntentModelReply,
   type IntentModelReply,
-} from "@t3tools/baton-shared/intentModel";
-import type { IntentVocabulary } from "@t3tools/baton-shared/intentParser";
+} from "@t3tools/tessaya-shared/intentModel";
+import type { IntentVocabulary } from "@t3tools/tessaya-shared/intentParser";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

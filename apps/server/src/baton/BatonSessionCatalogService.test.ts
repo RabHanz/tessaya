@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/baton-contracts";
+import { ThreadId } from "@t3tools/tessaya-contracts";
 import type { OrchestrationV2ThreadShell } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";

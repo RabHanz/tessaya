@@ -14,8 +14,8 @@ import {
   verdictOf,
   WRITER_SYSTEM,
   writerInput,
-} from "@t3tools/baton-shared/playbook";
-import type { ThreadId, WorkSessionId } from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-shared/playbook";
+import type { ThreadId, WorkSessionId } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";

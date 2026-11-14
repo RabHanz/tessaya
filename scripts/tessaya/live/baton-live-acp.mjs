@@ -54,7 +54,7 @@ export function promptText(blocks) {
   return (at < 0 ? text : text.slice(at + marker.length)).trim();
 }
 
-/** The efforts `/effort` takes; the same list as LIVE_EFFORT_CHOICES in baton-shared's liveModel.ts (the test pins it). */
+/** The efforts `/effort` takes; the same list as LIVE_EFFORT_CHOICES in tessaya-shared's liveModel.ts (the test pins it). */
 export const LIVE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const EFFORT_AS_IS = "session";
 
@@ -364,7 +364,7 @@ export const UNSURE_NOTE = "Herdr did not answer in time.";
 // behind it). The per-session files below are what the server writes for the thread to show (`note` items), and the
 // old queue the drainer still types from, except for a session the server owns (`<id>.server`).
 
-/** The server's `stateSubdir` rule (packages/baton-shared/src/stateDir.ts), so both sides use one folder. */
+/** The server's `stateSubdir` rule (packages/tessaya-shared/src/stateDir.ts), so both sides use one folder. */
 export const liveQueueDir = (home) => {
   const next = NodePath.join(home, ".t3", "tessaya", "live-queue");
   const legacy = NodePath.join(home, ".t3", "baton", "live-queue");

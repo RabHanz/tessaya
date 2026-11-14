@@ -9,7 +9,7 @@ on:
     types: [published]
   push:
     branches: [main]
-    paths: [packages/baton-shared/src/r1Firmware.ts, scripts/tessaya/r1-release-index.mjs]
+    paths: [packages/tessaya-shared/src/r1Firmware.ts, scripts/tessaya/r1-release-index.mjs]
   workflow_dispatch:
 
 permissions:

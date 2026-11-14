@@ -13,7 +13,7 @@ import {
   PALETTES,
   paletteTokens,
   type Palette,
-} from "@t3tools/baton-shared/palettes";
+} from "@t3tools/tessaya-shared/palettes";
 
 export {
   paletteThemeFile,
@@ -21,7 +21,7 @@ export {
   paletteTokens,
   parsePalette,
   type Palette,
-} from "@t3tools/baton-shared/palettes";
+} from "@t3tools/tessaya-shared/palettes";
 
 const block = (tokens: Readonly<Record<string, string>>) =>
   Object.entries(tokens)

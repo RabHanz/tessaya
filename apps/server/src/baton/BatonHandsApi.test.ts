@@ -1,4 +1,4 @@
-import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
+import { createHandsBroker } from "@t3tools/tessaya-shared/remoteHands";
 import { describe, expect, it } from "vite-plus/test";
 
 import { handleHands, HANDS_HOST_SCOPE, HANDS_SCOPE } from "./BatonHandsApi.ts";

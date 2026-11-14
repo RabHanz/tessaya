@@ -5,7 +5,7 @@ import { expect, it } from "vite-plus/test";
 import { uploadAuthorized, VoiceUpload } from "./HomeDeviceRoutes.ts";
 
 it("takes the room loop's enrolment exactly as it sends it, and a copy from before sharing", () => {
-  // packages/baton-voice/src/room/main.ts posts this after an enrolment: no member, sources or `fresh`.
+  // packages/tessaya-voice/src/room/main.ts posts this after an enrolment: no member, sources or `fresh`.
   const loop = {
     profile: {
       name: "Owner",

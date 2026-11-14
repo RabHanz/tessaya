@@ -22,9 +22,9 @@ const copyRoot = () => {
     "native/baton-dictation/Cargo.toml",
     "tools/tessel-flash/go.mod",
     "apps/desktop/src/baton/home/fonts.ts",
-    "packages/baton-voice/package.json",
-    "packages/baton-shared/package.json",
-    "packages/baton-contracts/package.json",
+    "packages/tessaya-voice/package.json",
+    "packages/tessaya-shared/package.json",
+    "packages/tessaya-contracts/package.json",
   ]) {
     put(file, NodeFS.readFileSync(NodePath.join(real, file), "utf8"));
   }
@@ -41,9 +41,9 @@ test("this repository is accounted for", () => {
 
 test("a new npm package, crate or model without an entry fails", () => {
   const r = copyRoot();
-  const voice = JSON.parse(r.read("packages/baton-voice/package.json"));
+  const voice = JSON.parse(r.read("packages/tessaya-voice/package.json"));
   voice.dependencies["some-new-lib"] = "1.0.0";
-  r.put("packages/baton-voice/package.json", JSON.stringify(voice));
+  r.put("packages/tessaya-voice/package.json", JSON.stringify(voice));
   r.put(
     "native/baton-dictation/Cargo.toml",
     `${r.read("native/baton-dictation/Cargo.toml")}`.replace(

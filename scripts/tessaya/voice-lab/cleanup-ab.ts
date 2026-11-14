@@ -15,14 +15,14 @@ import {
   rewriteSystemPrompt,
   type DictationMode,
   type DictionaryEntry,
-} from "../../../packages/baton-shared/src/dictationCleanup.ts";
+} from "../../../packages/tessaya-shared/src/dictationCleanup.ts";
 import { makeRewriter } from "../../../apps/desktop/src/baton/voice/dictationRewriter.ts";
-import { biasTranscript } from "../../../packages/baton-shared/src/vocabulary.ts";
+import { biasTranscript } from "../../../packages/tessaya-shared/src/vocabulary.ts";
 import {
   makeStyleIndex,
   pairsFromWispr,
   type WisprHistoryRow,
-} from "../../../packages/baton-shared/src/stylePairs.ts";
+} from "../../../packages/tessaya-shared/src/stylePairs.ts";
 
 const [rowsPath, outDir, arm, count, dictPath] = process.argv.slice(2);
 if (rowsPath === undefined || outDir === undefined || arm === undefined)

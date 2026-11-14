@@ -1,5 +1,5 @@
 import { it as effectIt } from "@effect/vitest";
-import { createHandsBroker, HIS_YES } from "@t3tools/baton-shared/remoteHands";
+import { createHandsBroker, HIS_YES } from "@t3tools/tessaya-shared/remoteHands";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { expect } from "vite-plus/test";

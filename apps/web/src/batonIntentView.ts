@@ -15,8 +15,8 @@ import type {
   BatonIntentRecord,
   BatonIntentResolution,
   BatonIntentRisk,
-} from "@t3tools/baton-contracts";
-import { BAR_ASK_TTL_MS } from "@t3tools/baton-shared/phoneRelay";
+} from "@t3tools/tessaya-contracts";
+import { BAR_ASK_TTL_MS } from "@t3tools/tessaya-shared/phoneRelay";
 
 export interface IntentPreview {
   /** `will` — pressing enter does this. `refused` — it will not happen. */

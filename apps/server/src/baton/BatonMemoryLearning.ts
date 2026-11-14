@@ -4,7 +4,7 @@
  * cheap model proposes memory items; the pure rules decide which become drafts and the store's door
  * decides which are kept. A failure here never reaches the user: learning is a bonus, never a gate.
  */
-import { detectSecret, type MemoryItem } from "@t3tools/baton-shared/memory";
+import { detectSecret, type MemoryItem } from "@t3tools/tessaya-shared/memory";
 import {
   draftsFromProposals,
   episodePrompt,
@@ -22,7 +22,7 @@ import {
   worthLearningFrom,
   type EpisodeOrigin,
   type LearnInput,
-} from "@t3tools/baton-shared/memoryLearning";
+} from "@t3tools/tessaya-shared/memoryLearning";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -36,7 +36,7 @@ import { BatonOneShot } from "./BatonOneShot.ts";
 import { dayOf } from "./BatonMemoryEpisode.ts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { readPack } from "./OperatingSystemPack.ts";
-import { isWalled } from "@t3tools/baton-shared/osPack";
+import { isWalled } from "@t3tools/tessaya-shared/osPack";
 
 const Proposals = Schema.Struct({
   items: Schema.Array(

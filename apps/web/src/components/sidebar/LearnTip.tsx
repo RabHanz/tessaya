@@ -1,11 +1,11 @@
-import { batonDesktopBridge, tessayaLink, tessayaPlaceOf } from "@t3tools/baton-contracts";
+import { batonDesktopBridge, tessayaLink, tessayaPlaceOf } from "@t3tools/tessaya-contracts";
 import {
   LEARN_ITEMS,
   pickTip,
   readLearnProgress,
   type LearnItem,
   type LearnOp,
-} from "@t3tools/baton-shared/learn";
+} from "@t3tools/tessaya-shared/learn";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";

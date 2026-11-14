@@ -1,4 +1,4 @@
-import { liveSessionKey, runningLiveSessionKeys } from "@t3tools/baton-shared/liveThread";
+import { liveSessionKey, runningLiveSessionKeys } from "@t3tools/tessaya-shared/liveThread";
 import * as Schema from "effect/Schema";
 
 import { useBatonFleet } from "../../batonFleetResolvers";

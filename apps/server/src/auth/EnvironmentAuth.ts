@@ -50,7 +50,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ManagedLimits from "../policy/managedLimits.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { MCP_APPROVAL_SUBJECT_PREFIX } from "../persistence/AuthPairingLinks.ts";
-import { isMemberSubject } from "@t3tools/baton-shared/household";
+import { isMemberSubject } from "@t3tools/tessaya-shared/household";
 import { requestUrl } from "../requestUrl.ts";
 
 const DEFAULT_SESSION_SUBJECT = "cli-issued-session";

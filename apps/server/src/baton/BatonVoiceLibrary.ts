@@ -17,9 +17,9 @@ import {
   type LibraryVoiceView,
   type VoiceClip,
   type VoiceLibraryView,
-} from "@t3tools/baton-contracts";
-import { setPersonaField } from "@t3tools/baton-shared/personaFile";
-import { pronounce } from "@t3tools/baton-shared/pronounce";
+} from "@t3tools/tessaya-contracts";
+import { setPersonaField } from "@t3tools/tessaya-shared/personaFile";
+import { pronounce } from "@t3tools/tessaya-shared/pronounce";
 import {
   commercialBuild,
   isLibraryVoice,
@@ -30,7 +30,7 @@ import {
   resolvePersonaVoice,
   voiceLibrary,
   type LibraryVoice,
-} from "@t3tools/baton-shared/voiceLibrary";
+} from "@t3tools/tessaya-shared/voiceLibrary";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

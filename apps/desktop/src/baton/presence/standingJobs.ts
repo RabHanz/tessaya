@@ -7,8 +7,8 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
-import { triggersFromCi, type CiRun, type Trigger } from "@t3tools/baton-shared/initiative";
+import type { BatonJob, WatchFinding } from "@t3tools/tessaya-contracts";
+import { triggersFromCi, type CiRun, type Trigger } from "@t3tools/tessaya-shared/initiative";
 
 export type BuiltInId =
   | "ci_look"

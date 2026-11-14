@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import type { Commitment } from "@t3tools/baton-shared/commitments";
+import type { Commitment } from "@t3tools/tessaya-shared/commitments";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createCommitmentStore } from "./commitmentStore.ts";

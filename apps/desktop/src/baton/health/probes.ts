@@ -3,8 +3,8 @@
 /** The few facts "what works right now" needs, each checked quickly and remembered for a minute. */
 import * as NodeDns from "node:dns";
 
-import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
-import type { Probe } from "@t3tools/baton-shared/degraded";
+import { nodeExec } from "@t3tools/tessaya-shared/cloud/nodeExec";
+import type { Probe } from "@t3tools/tessaya-shared/degraded";
 
 const withTimeout = <T>(work: Promise<T>, ms: number): Promise<T | null> =>
   new Promise((resolve) => {

@@ -8,7 +8,7 @@ import {
   DesktopSettingsSyncResult,
   type DesktopVoiceSettings,
   type DesktopVoiceSettingsPatch,
-} from "@t3tools/baton-contracts";
+} from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
 
 import type { HomeControl } from "../home/batonHome.ts";

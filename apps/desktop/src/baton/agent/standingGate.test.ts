@@ -1,4 +1,4 @@
-import { standingVerdict } from "@t3tools/baton-shared/trust";
+import { standingVerdict } from "@t3tools/tessaya-shared/trust";
 import { describe, expect, it } from "vite-plus/test";
 
 import { standingGate } from "./standingGate.ts";

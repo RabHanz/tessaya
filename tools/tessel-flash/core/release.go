@@ -14,7 +14,7 @@ import (
 const (
 	IndexURL = "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-index/r1-releases.json"
 	// ReleasePublicKey is the R1 release key's public half (secp256r1, uncompressed), as compiled into the firmware
-	// and R1_FIRMWARE_PUBLIC_KEY in packages/baton-shared/src/r1Firmware.ts.
+	// and R1_FIRMWARE_PUBLIC_KEY in packages/tessaya-shared/src/r1Firmware.ts.
 	ReleasePublicKey = "044a630e15eaf9f58558dbbd8f9519c26349b80e7c94110f159c92824c3470ea16e6aa5da0ee9dc560a62bfbe3b6710d2268855d27a785dfbb040d1b8158c32a14"
 )
 

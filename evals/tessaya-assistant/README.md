@@ -11,7 +11,7 @@ pnpm tessaya-assistant --out runs/assistant-haiku --model haiku --case needs-me 
 ```
 
 - It uses your own `claude` login (subscription; metered API variables are stripped). `--claude <path>` picks the binary.
-- Flags: `--model` and `--effort` (default: what a live turn picks, as `chooseTurnBrain` in `packages/baton-shared/src/turnTier.ts` does: Haiku for a simple turn, Sonnet for most, and the persona's own model from the default pack, at most, for planning; Haiku takes no effort), `--case <id>` (repeatable), `--samples <n>` (default 2). `--extra-notes <file>` adds the file's text to every turn the way a matched learned skill is added, to check a skill against the whole suite.
+- Flags: `--model` and `--effort` (default: what a live turn picks, as `chooseTurnBrain` in `packages/tessaya-shared/src/turnTier.ts` does: Haiku for a simple turn, Sonnet for most, and the persona's own model from the default pack, at most, for planning; Haiku takes no effort), `--case <id>` (repeatable), `--samples <n>` (default 2). `--extra-notes <file>` adds the file's text to every turn the way a matched learned skill is added, to check a skill against the whole suite.
 - A case passes when more than half its samples reach first for a tool in `first` and not one in `not`.
 - A run writes `results.json` and `summary.md`, with the median time a sample took (a cold `claude` start included, so compare runs made one at a time).
 - Cost: about 25k input tokens a sample, mostly cached; a full run is 40 samples.
