@@ -37,6 +37,7 @@ import { BatonPrivateMemoryService, PrivateCaller } from "./BatonPrivateMemorySe
 import { TessayaComms } from "./TessayaComms.ts";
 import { commsWaitingLine } from "@t3tools/baton-shared/comms";
 import { TurnPools } from "./TurnPools.ts";
+import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 
 export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
 
@@ -490,6 +491,7 @@ export const make = Effect.gen(function* () {
 
   // shortcut: in this server's memory like `conversations`; mirror to the Record when the board needs history (CS7).
   const live = new Map<string, LiveThread>();
+  const current = yield* Effect.serviceOption(CurrentPersona);
   const touchThread = Effect.fn("TessayaTurn.touchThread")(function* (turn: TurnEnvelope) {
     if (turn.rehearsal === true || turn.addressed === false) return;
     const conversation = conversationKey(turn);
@@ -503,6 +505,7 @@ export const make = Effect.gen(function* () {
         : typeof turn.member === "string"
           ? turn.member
           : null;
+    if (persona !== null && Option.isSome(current)) yield* current.value.set(conversation, persona);
     live.set(id, {
       persona,
       conversation,
