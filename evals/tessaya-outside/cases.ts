@@ -747,4 +747,88 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     calls: ["tessaya_coming_up"],
     callsMustNot: ["tessaya_ask"],
   },
+  {
+    id: "outside-wake-rollback",
+    source:
+      "WAKE-AUTOTRAIN-DESIGN step 5 (P3c): rollback reachable over MCP; read the versions, then roll back",
+    prompt:
+      "The new wake model for Nova keeps waking Tessaya up by itself. Put Nova back on the version before.",
+    answers: {
+      tessaya_wake_words: {
+        words: [
+          {
+            personaId: "nova",
+            word: "nova",
+            model: "trained",
+            shipped: false,
+            current: 3,
+            cancelled: false,
+            versions: [
+              {
+                version: 2,
+                status: "trained",
+                reason: null,
+                barMet: true,
+                provisional: false,
+                signed: true,
+                at: 1763000000000,
+              },
+              {
+                version: 3,
+                status: "trained",
+                reason: null,
+                barMet: true,
+                provisional: true,
+                signed: true,
+                at: 1763100000000,
+              },
+            ],
+          },
+        ],
+      },
+      tessaya_wake_word_change: { ok: true, line: "nova is back on version 2 on every device." },
+    },
+    calls: ["tessaya_wake_word_change"],
+    callsMustNot: ["tessaya_ask"],
+    inputs: {
+      tessaya_wake_word_change: (input) =>
+        input["change"] === "rollback" &&
+        input["version"] === 2 &&
+        String(input["word"]).toLowerCase() === "nova",
+    },
+  },
+  {
+    id: "outside-wake-status",
+    source:
+      "P3c: why a persona's name does not wake her is the wake record, read without changing anything",
+    prompt: "Why doesn't saying Maya wake Tessaya?",
+    answers: {
+      tessaya_wake_words: {
+        words: [
+          {
+            personaId: "maya",
+            word: "maya",
+            model: "training",
+            shipped: false,
+            current: null,
+            cancelled: false,
+            versions: [
+              {
+                version: 1,
+                status: "rejected",
+                reason: "2.1 false wakes an hour; the bar is 0.5",
+                barMet: false,
+                provisional: false,
+                signed: false,
+                at: 1763100000000,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    calls: ["tessaya_wake_words"],
+    callsMustNot: ["tessaya_wake_word_change", "tessaya_ask"],
+    replyMust: /false wake|training|bar/i,
+  },
 ];

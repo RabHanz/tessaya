@@ -588,6 +588,27 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/Z[-.,\s]+A[-.,\s]+Y[-.,\s]+D/i],
   },
   {
+    // P3c (14 Nov): whether a persona's name wakes her yet is her server's wake record, never a guess.
+    id: "wake-words",
+    proves: ["tessaya_wake_words"],
+    said: ["Does every persona's name wake you yet?"],
+    uses: [["tessaya_wake_words"]],
+    clean: ["tessaya_wake_words"],
+  },
+  {
+    // P3c: stopping a word's training is a change to it, not his voice preference (that is wake-training-off).
+    id: "wake-word-cancel",
+    proves: ["tessaya_wake_word_change"],
+    said: ["Stop training a wake word for Nova."],
+    uses: [["tessaya_wake_word_change"]],
+    clean: ["tessaya_wake_word_change"],
+    argsOf: "tessaya_wake_word_change",
+    args: (input) => ({
+      nova: String(input["word"] ?? "").toLowerCase() === "nova",
+      cancel: input["change"] === "cancel",
+    }),
+  },
+  {
     id: "coming-up",
     proves: ["tessaya_coming_up"],
     said: ["Anything coming up this week I should know about?"],

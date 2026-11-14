@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalFetchInEffect:off globalJsonInEffect:off
 /**
  * Her wake-word models (tessaya-ops research/WAKE-AUTOTRAIN-DESIGN.md, "Interface with the spine (P3b)"): the trainer's
  * requests from the persona registry, its reports and uploads, her server's signature over each model that met its
@@ -14,8 +14,10 @@ import {
   cancelWake,
   EMPTY_WAKE_STORE,
   parseWakeStore,
+  retrainWake,
   rollbackWake,
   wakeKey,
+  wakeOverview,
   wakeRequests,
   WAKE_TARGETS,
   type WakeArtifact,
@@ -23,6 +25,7 @@ import {
   type WakeStatus,
   type WakeStore,
   type WakeTarget,
+  type WakeWordView,
 } from "@t3tools/baton-shared/wakeModels";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -35,6 +38,7 @@ import { wakeTrainingOn } from "@t3tools/baton-shared/household";
 
 import * as ServerConfig from "../config.ts";
 import { MemberPreferences } from "../baton/MemberPreferences.ts";
+import { homeLink } from "../baton/TessayaHousehold.ts";
 import { PACK_DIR_NAME, readPack } from "../baton/OperatingSystemPack.ts";
 
 export type Refused = { readonly refused: string };
@@ -66,8 +70,12 @@ export class TessayaWake extends Context.Service<
     } | null>;
     /** The public half of her signing key, for vessels to check models with. */
     readonly publicKey: Effect.Effect<string>;
+    /** Every persona's wake word: whether it wakes, which version, and each kept one with its numbers. */
+    readonly overview: Effect.Effect<Refused | ReadonlyArray<WakeWordView>>;
     readonly rollback: (word: string, version: number) => Effect.Effect<Refused | { ok: true }>;
     readonly cancel: (word: string) => Effect.Effect<Refused | { ok: true }>;
+    /** The way back from a cancel, or a fresh try at a current word: it is asked for again. */
+    readonly retrain: (word: string) => Effect.Effect<Refused | { ok: true }>;
     /** A member's kept enrolment clips, only while their wakeTraining switch is on (checked on every call). */
     readonly voices: (personId: string) => Effect.Effect<
       | Refused
@@ -196,6 +204,49 @@ const make = Effect.gen(function* () {
           ];
     });
   };
+  /**
+   * The household's home server answers when this server has one: the trainer, the store and the signing key live
+   * there, so every vessel and Settings see one set of models. Null here means "answer locally".
+   */
+  const atHome = <A>(
+    path: string,
+    init: RequestInit,
+    read: (response: Response) => Promise<A>,
+  ): Effect.Effect<A | Refused | null> =>
+    Effect.flatMap(homeLink, (home) =>
+      home === null
+        ? Effect.succeed(null)
+        : Effect.tryPromise({
+            try: async (signal) => {
+              const response = await fetch(new URL(`/api/tessaya/wake/${path}`, home.url), {
+                ...init,
+                headers: { ...init.headers, authorization: `Bearer ${home.token}` },
+                signal,
+              });
+              if (response.ok) return await read(response);
+              const said = (await response.json().catch(() => ({}))) as { message?: unknown };
+              return {
+                refused:
+                  typeof said.message === "string" ? said.message : "Her home server refused that.",
+              };
+            },
+            catch: () => "unreachable" as const,
+          }).pipe(
+            Effect.timeout("20 seconds"),
+            Effect.orElseSucceed((): Refused => ({ refused: "Her home server did not answer." })),
+          ),
+    );
+  const post = (path: string, body: unknown) =>
+    atHome(
+      path,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      (r) => r.json() as Promise<{ ok: true }>,
+    );
+
   const locked = <A>(f: (now: number) => A) =>
     Clock.currentTimeMillis.pipe(
       Effect.flatMap((now) => Effect.sync(() => f(now))),
@@ -244,6 +295,21 @@ const make = Effect.gen(function* () {
   const model = Effect.fn("TessayaWake.model")(function* (word: string, target: WakeTarget) {
     const k = wakeKey(word);
     if (k === null) return null;
+    const there = yield* atHome(`models/${encodeURIComponent(k)}/${target}`, {}, async (r) => {
+      const h = (name: string) => r.headers.get(`x-tessaya-wake-${name}`) ?? "";
+      return {
+        version: Number(h("version")),
+        artifact: {
+          target,
+          format: h("format") as WakeArtifact["format"],
+          sha256: h("sha256"),
+          threshold: Number(h("threshold")),
+          signature: h("signature"),
+        },
+        bytes: new Uint8Array(await r.arrayBuffer()),
+      };
+    });
+    if (there !== null) return "refused" in there ? null : there;
     const r = load().words[k];
     const v = r?.versions.find((x) => x.version === r.current);
     const artifact = v?.artifacts.find((a) => a.target === target && a.signature !== undefined);
@@ -258,11 +324,21 @@ const make = Effect.gen(function* () {
     return bytes === null ? null : { version: v.version, artifact, bytes };
   });
 
-  const publicKey = Effect.sync(() =>
+  const localKey = Effect.sync(() =>
     NodeCrypto.createPublicKey(privateKey()).export({ type: "spki", format: "pem" }).toString(),
-  ).pipe(lock.withPermits(1), Effect.withSpan("TessayaWake.publicKey"));
+  ).pipe(lock.withPermits(1));
+  // A key from an unreachable home is no key: this one's then fails every home model's check, which is the safe way.
+  const publicKey = atHome("key", {}, (r) => r.text()).pipe(
+    Effect.filterOrElse(
+      (there): there is string => typeof there === "string",
+      () => localKey,
+    ),
+    Effect.withSpan("TessayaWake.publicKey"),
+  );
 
   const rollback = Effect.fn("TessayaWake.rollback")(function* (word: string, version: number) {
+    const there = yield* post("rollback", { word, version });
+    if (there !== null) return there;
     return yield* locked((): Refused | { ok: true } => {
       const k = wakeKey(word);
       if (k === null) return { refused: "That is not a wake word." };
@@ -274,6 +350,8 @@ const make = Effect.gen(function* () {
   });
 
   const cancel = Effect.fn("TessayaWake.cancel")(function* (word: string) {
+    const there = yield* post("cancel", { word });
+    if (there !== null) return there;
     return yield* locked((): Refused | { ok: true } => {
       const k = wakeKey(word);
       if (k === null) return { refused: "That is not a wake word." };
@@ -282,6 +360,34 @@ const make = Effect.gen(function* () {
       return { ok: true };
     });
   });
+
+  const retrain = Effect.fn("TessayaWake.retrain")(function* (word: string) {
+    const there = yield* post("retrain", { word });
+    if (there !== null) return there;
+    return yield* locked((now): Refused | { ok: true } => {
+      const k = wakeKey(word);
+      if (k === null) return { refused: "That is not a wake word." };
+      const persona = readPack(userdata).personas.find(
+        (p) => p.wake !== null && wakeKey(p.wake) === k,
+      );
+      if (persona === undefined) return { refused: "No persona answers to that word." };
+      const done = retrainWake(load(), k, persona.id, now);
+      save(done.store);
+      writeFile(NodePath.join(askedDir, `${k}.json`), `${JSON.stringify(done.request)}\n`);
+      return { ok: true };
+    });
+  });
+
+  const overview = Effect.gen(function* () {
+    const there = yield* atHome(
+      "status",
+      {},
+      (r) => r.json() as Promise<ReadonlyArray<WakeWordView>>,
+    );
+    if (there !== null) return there;
+    const now = yield* Clock.currentTimeMillis;
+    return yield* Effect.sync(() => wakeOverview(readPack(userdata).personas, load(), now));
+  }).pipe(Effect.withSpan("TessayaWake.overview"));
 
   const voices = Effect.fn("TessayaWake.voices")(function* (personId: string) {
     if (!PERSON.test(personId) || !(yield* consented(personId))) return noConsent;
@@ -323,6 +429,21 @@ const make = Effect.gen(function* () {
     personId: string,
     clips: ReadonlyArray<Int16Array>,
   ) {
+    const there = yield* atHome(
+      "enrolment",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          personId,
+          clips: clips.map((c) =>
+            Buffer.from(c.buffer, c.byteOffset, c.byteLength).toString("base64"),
+          ),
+        }),
+      },
+      (r) => r.json() as Promise<{ readonly kept: number }>,
+    );
+    if (there !== null) return "refused" in there ? { kept: 0 } : there;
     if (!PERSON.test(personId) || !(yield* consented(personId))) return { kept: 0 };
     return yield* Effect.sync(() => {
       for (const pcm of clips)
@@ -347,6 +468,8 @@ const make = Effect.gen(function* () {
     publicKey,
     rollback,
     cancel,
+    retrain,
+    overview,
   });
 });
 

@@ -1112,4 +1112,21 @@ export const make = Effect.gen(function* () {
   });
 });
 
+/** The household's home server's link, read now: its label is a setting, its address whatever the link finds. */
+export const homeLink = Effect.gen(function* () {
+  const household = yield* Effect.serviceOption(TessayaHousehold);
+  const peers = yield* Effect.serviceOption(PeerLinks.PeerLinks);
+  if (Option.isNone(household) || Option.isNone(peers)) return null;
+  const label = yield* household.value.homeOn;
+  if (label === null) return null;
+  const links = peers.value;
+  if (!(yield* links.enabled)) return null;
+  const link = (yield* links.list.pipe(Effect.orElseSucceed(() => []))).find(
+    (l) => l.status !== "expired" && l.label === label,
+  );
+  return link === undefined
+    ? null
+    : yield* links.resolve(link.environmentId).pipe(Effect.option, Effect.map(Option.getOrNull));
+});
+
 export const layer = Layer.effect(TessayaHousehold, make);

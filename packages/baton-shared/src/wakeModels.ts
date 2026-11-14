@@ -267,6 +267,69 @@ export const cancelWake = (store: WakeStore, word: string): WakeStore => {
   return { ...store, words: { ...store.words, [word]: { ...rest, cancelled: true } } };
 };
 
+/** Train a cancelled word again, or retrain a current one: the cancel ends and the word is asked for. */
+export const retrainWake = (
+  store: WakeStore,
+  word: string,
+  personaId: string,
+  now: number,
+): { readonly store: WakeStore; readonly request: WakeRequest } => {
+  const { cancelled: _undone, ...rest } = store.words[word] ?? { current: null, versions: [] };
+  return {
+    store: { ...store, words: { ...store.words, [word]: rest } },
+    request: { word, personaId, previous: null, requestedAt: now, reason: "retrain" },
+  };
+};
+
+/** One persona's wake word as Settings, voice and MCP show it: whether it wakes, which version, and each kept one. */
+export interface WakeWordView {
+  readonly personaId: string;
+  readonly word: string;
+  readonly model: WakeModel;
+  readonly shipped: boolean;
+  readonly current: number | null;
+  readonly cancelled: boolean;
+  readonly versions: ReadonlyArray<{
+    readonly version: number;
+    readonly status: WakeVersion["status"];
+    readonly reason: string | null;
+    readonly barMet: boolean;
+    readonly provisional: boolean;
+    readonly signed: boolean;
+    readonly at: number;
+  }>;
+}
+
+export const wakeOverview = (
+  personas: ReadonlyArray<{ readonly id: string; readonly wake: string | null }>,
+  store: WakeStore,
+  now: number,
+): ReadonlyArray<WakeWordView> =>
+  personas.flatMap((p) => {
+    const k = p.wake === null ? null : wakeKey(p.wake);
+    if (k === null) return [];
+    const r = store.words[k];
+    return [
+      {
+        personaId: p.id,
+        word: k,
+        model: wakeModelOf(k, store, now),
+        shipped: SHIPPED_WAKE_WORDS.includes(k),
+        current: r?.current ?? null,
+        cancelled: r?.cancelled === true,
+        versions: (r?.versions ?? []).map((v) => ({
+          version: v.version,
+          status: v.status,
+          reason: v.reason ?? null,
+          barMet: v.eval["barMet"] === true,
+          provisional: v.eval["provisional"] === true,
+          signed: v.artifacts.length > 0 && v.artifacts.every((a) => a.signature !== undefined),
+          at: v.at,
+        })),
+      },
+    ];
+  });
+
 /** Her server's check, on every vessel: the bytes are the ones it signed for this word, version and target. */
 export const wakeSignatureOk = (
   publicKeyPem: string,
@@ -288,4 +351,50 @@ export const wakeSignatureOk = (
   } catch {
     return false;
   }
+};
+
+/**
+ * A vessel's fetch of the current model for one word from her server: kept only when her server's signature holds, so
+ * an unsigned or altered model is refused (null), never loaded. `have` skips the download when that version is in hand.
+ */
+export const fetchSignedWake = async (input: {
+  readonly server: string;
+  readonly authorization: string;
+  readonly word: string;
+  readonly target: WakeTarget;
+  readonly have?: number | null;
+  readonly fetch?: typeof fetch;
+}): Promise<
+  | {
+      readonly version: number;
+      readonly format: WakeFormat;
+      readonly threshold: number;
+      readonly bytes: Uint8Array;
+    }
+  | "current"
+  | null
+> => {
+  const get = input.fetch ?? fetch;
+  const headers = { authorization: input.authorization };
+  const k = wakeKey(input.word);
+  if (k === null) return null;
+  const at = (path: string) => new URL(`/api/tessaya/wake/${path}`, input.server);
+  const response = await get(at(`models/${encodeURIComponent(k)}/${input.target}`), { headers });
+  if (!response.ok) return null;
+  const h = (name: string) => response.headers.get(`x-tessaya-wake-${name}`) ?? "";
+  const version = Number(h("version"));
+  if (!Number.isInteger(version)) return null;
+  if (input.have === version) return "current";
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const key = await get(at("key"), { headers }).then((r) => (r.ok ? r.text() : ""));
+  const artifact: WakeArtifact = {
+    target: input.target,
+    format: h("format") as WakeFormat,
+    sha256: h("sha256"),
+    threshold: Number(h("threshold")),
+    ...(h("signature") === "" ? {} : { signature: h("signature") }),
+  };
+  return key !== "" && wakeSignatureOk(key, k, version, artifact, bytes)
+    ? { version, format: artifact.format, threshold: artifact.threshold, bytes }
+    : null;
 };

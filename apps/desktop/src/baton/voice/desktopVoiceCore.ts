@@ -75,6 +75,10 @@ export const resolveVoiceAssets = (input: {
   };
 };
 
+/** A wake word's model file name, in his models folder or the shipped one. */
+export const wakeModelFile = (word: string) =>
+  `${word.toLowerCase().replace(/[^a-z0-9]+/g, "_")}.onnx`;
+
 /** Wake words the app can actually load: a word with no model is dropped, not a startup failure. */
 export const resolveWakeModels = (
   assets: VoiceAssets,
@@ -85,7 +89,7 @@ export const resolveWakeModels = (
   const missing: string[] = [];
   for (const { word, enabled, threshold } of words) {
     if (!enabled) continue;
-    const file = `${word.toLowerCase().replace(/[^a-z0-9]+/g, "_")}.onnx`;
+    const file = wakeModelFile(word);
     const path = [assets.userModelsDir, assets.modelsDir]
       .map((dir) => NodePath.join(dir, file))
       .find(exists);

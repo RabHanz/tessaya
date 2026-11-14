@@ -13,15 +13,13 @@ import {
   type HandsResult,
 } from "@t3tools/baton-shared/remoteHands";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import type { RoomToolSet } from "../home/R1Brain.ts";
-import * as PeerLinks from "../peer/PeerLinks.ts";
 import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
-import { TessayaHousehold } from "./TessayaHousehold.ts";
+import { homeLink } from "./TessayaHousehold.ts";
 
 /** What a server sends the home server: his turn, the desktop's offered hands, and the turn's id for its relay. */
 export const PeerTurnBody = Schema.Struct({
@@ -71,23 +69,6 @@ export const peerTurnHands = async (
       : { status: 404, json: { message: "No such call." } };
   return { status: 404, json: { message: "No such page." } };
 };
-
-/** The household's home server's link, read now: its label is a setting, its address whatever the link finds. */
-const homeLink = Effect.gen(function* () {
-  const household = yield* Effect.serviceOption(TessayaHousehold);
-  const peers = yield* Effect.serviceOption(PeerLinks.PeerLinks);
-  if (Option.isNone(household) || Option.isNone(peers)) return null;
-  const label = yield* household.value.homeOn;
-  if (label === null) return null;
-  const links = peers.value;
-  if (!(yield* links.enabled)) return null;
-  const link = (yield* links.list.pipe(Effect.orElseSucceed(() => []))).find(
-    (l) => l.status !== "expired" && l.label === label,
-  );
-  return link === undefined
-    ? null
-    : yield* links.resolve(link.environmentId).pipe(Effect.option, Effect.map(Option.getOrNull));
-});
 
 /**
  * This server's end: his turn on the home server, her words as they come, and the home server's calls to the desktop

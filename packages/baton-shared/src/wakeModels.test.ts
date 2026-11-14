@@ -9,7 +9,10 @@ import {
   cancelWake,
   CLAIM_LAPSE_MS,
   EMPTY_WAKE_STORE,
+  fetchSignedWake,
+  retrainWake,
   rollbackWake,
+  wakeOverview,
   wakeModelOf,
   wakeRequests,
   wakeSignatureOk,
@@ -71,9 +74,17 @@ describe("wake models for every persona (P3b)", () => {
       [],
     );
     expect(wakeModelOf("Maya", stopped, 30)).toBe("none");
+    expect(wakeOverview([{ id: "operations", wake: "Maya" }], stopped, 30)).toMatchObject([
+      { word: "maya", model: "none", cancelled: true, current: null, shipped: false },
+    ]);
+    // Retrain is the way back from a cancel: the word is asked for again.
+    const again = retrainWake(stopped, "maya", "operations", 40);
+    expect(
+      wakeRequests([{ id: "operations", wake: "Maya" }], again.store, [again.request], 40).requests,
+    ).toMatchObject([{ word: "maya" }]);
   });
 
-  it("signs only matching bytes of a version that met its bar, makes it current when every target is in, keeps three", () => {
+  it("signs only matching bytes of a version that met its bar, makes it current when every target is in, keeps three", async () => {
     let store: WakeStore = EMPTY_WAKE_STORE;
     const report = (version: number, barMet: boolean) =>
       ok(
@@ -138,5 +149,33 @@ describe("wake models for every persona (P3b)", () => {
     expect(wakeSignatureOk(pub, "nova", 4, unsigned, bytes("room4"))).toBe(false);
     expect(ok(rollbackWake(store, "nova", 2)).store.words["nova"]!.current).toBe(2);
     expect(rollbackWake(store, "nova", 1)).toEqual({ refused: "That version is not kept." });
+
+    // A vessel's fetch: kept only with her signature; altered bytes or a missing signature are refused.
+    const served = (body: string, signature = room.signature ?? ""): typeof fetch =>
+      (async (url: URL) =>
+        String(url).endsWith("/key")
+          ? new Response(pub)
+          : new Response(bytes(body), {
+              headers: {
+                "x-tessaya-wake-version": "4",
+                "x-tessaya-wake-format": room.format,
+                "x-tessaya-wake-sha256": room.sha256,
+                "x-tessaya-wake-threshold": "0.9",
+                "x-tessaya-wake-signature": signature,
+              },
+            })) as unknown as typeof fetch;
+    const at = {
+      server: "http://her",
+      authorization: "Bearer k",
+      word: "Nova",
+      target: "room",
+    } as const;
+    expect(await fetchSignedWake({ ...at, fetch: served("room4") })).toMatchObject({
+      version: 4,
+      threshold: 0.9,
+    });
+    expect(await fetchSignedWake({ ...at, fetch: served("room3") })).toBeNull();
+    expect(await fetchSignedWake({ ...at, fetch: served("room4", "") })).toBeNull();
+    expect(await fetchSignedWake({ ...at, have: 4, fetch: served("room4") })).toBe("current");
   });
 });

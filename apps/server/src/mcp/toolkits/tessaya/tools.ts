@@ -342,6 +342,58 @@ const PreferenceSetTool = Tool.make("tessaya_preference_set", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const WakeWordsTool = Tool.make("tessaya_wake_words", {
+  ...shared,
+  description:
+    "Her wake words, one per persona, as her home server trains them: `model` is trained (it wakes her), training (a model is being made now) or none (nothing wakes her by that name yet); `current` is the version every device loads, and `versions` the last three kept, each with whether it met the bar, whether it is provisional (no real-device wakes yet) and the reason a rejected or failed one gave. `cancelled` means training for that word was stopped. Use it when they ask whether a persona's name works yet, why it doesn't, or how training is going. Read only: rolling back, stopping or retraining is tessaya_wake_word_change.",
+  // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
+  success: Schema.Struct({
+    words: Schema.Array(
+      Schema.Struct({
+        personaId: Schema.String,
+        word: Schema.String,
+        model: Schema.Literals(["trained", "training", "none"]),
+        shipped: Schema.Boolean,
+        current: Schema.NullOr(Schema.Number),
+        cancelled: Schema.Boolean,
+        versions: Schema.Array(
+          Schema.Struct({
+            version: Schema.Number,
+            status: Schema.Literals(["trained", "rejected", "failed"]),
+            reason: Schema.NullOr(Schema.String),
+            barMet: Schema.Boolean,
+            provisional: Schema.Boolean,
+            signed: Schema.Boolean,
+            at: Schema.Number,
+          }),
+        ),
+      }),
+    ),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const WakeWordChangeTool = Tool.make("tessaya_wake_word_change", {
+  ...shared,
+  description:
+    "Change how a persona's wake word is trained, on every device: `rollback` goes back to a kept `version` (when the newest model wakes her too often or too rarely), `cancel` stops training that word (no model is made until it is retrained or the persona is renamed), `retrain` trains it again (the way back from a cancel, or a fresh try). Take the word and versions from tessaya_wake_words. Only when they ask for that change; say the line back.",
+  parameters: Schema.Struct({
+    word: Schema.String.check(Schema.isMaxLength(40)),
+    change: Schema.Literals(["rollback", "cancel", "retrain"]),
+    version: Schema.optional(Schema.Int.annotate({ description: "Only for rollback." })),
+  }),
+  success: Schema.Struct({ ok: Schema.Boolean, line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const WhosHomeTool = Tool.make("tessaya_whos_home", {
   ...shared,
   description:
@@ -561,6 +613,8 @@ export const TessayaToolkit = Toolkit.make(
   UsageReportTool,
   WhosHomeTool,
   PreferenceSetTool,
+  WakeWordsTool,
+  WakeWordChangeTool,
   RulesTool,
   SessionsTool,
   InFlightTool,
