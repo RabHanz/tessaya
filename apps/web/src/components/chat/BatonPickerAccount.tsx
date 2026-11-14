@@ -281,7 +281,7 @@ function LiveAccounts(props: {
 }) {
   const logins = useLiveAccounts(props.threadRef);
   const switchTo = useLiveAccountSwitch(props.threadRef);
-  const { queued, failure, cancel } = useLiveState(props.threadRef);
+  const { queued, applying, failure, cancel } = useLiveState(props.threadRef);
   const active = logins.find((login) => login.active);
   // The tick is the login the session runs as, as the header chip says (accountTicks).
   useFocusRequestedRow(props.accounts.map((account) => account.id));
@@ -325,7 +325,7 @@ function LiveAccounts(props: {
       )}
       {queued === null ? null : (
         <div className="flex items-center gap-2 px-1.5 pt-1 text-2xs text-muted-foreground">
-          <span className="min-w-0 flex-1">{queuedText(queued, props.accounts)}</span>
+          <span className="min-w-0 flex-1">{queuedText(queued, props.accounts, applying)}</span>
           <Button size="xs" variant="ghost" data-testid="live-queued-cancel" onClick={cancel}>
             Cancel
           </Button>

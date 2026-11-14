@@ -75,9 +75,10 @@ export interface ThreadAccountMovesShape {
     sessionId: string,
     change: BatonLiveQueued,
   ) => Effect.Effect<BatonLiveQueued>;
-  /** The change waiting, and why the last one could not be applied. */
+  /** The change waiting or being applied now (`applying`), and why the last one could not be applied. */
   readonly liveQueued: (sessionId: string) => Effect.Effect<{
     readonly queued: BatonLiveQueued | null;
+    readonly applying: boolean;
     readonly failure: string | null;
   }>;
   readonly cancelLive: (sessionId: string) => Effect.Effect<boolean>;
@@ -222,7 +223,7 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
   );
   const failures = new Map<string, string>();
   // Taken out while it is being told; a cancel then lands here, so a busy answer does not put it back.
-  const applying = new Map<string, { cancelled: boolean }>();
+  const applying = new Map<string, { cancelled: boolean; change: BatonLiveQueued }>();
   const store = (sessionId: string, change: BatonLiveQueued | null) =>
     change === null
       ? sql`DELETE FROM tessaya_live_queue WHERE session_id = ${sessionId}`
@@ -253,7 +254,7 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
     function* (sessionId: string, change: BatonLiveQueued) {
       if (applying.has(sessionId)) return;
       live.delete(sessionId);
-      const flight = { cancelled: false };
+      const flight = { cancelled: false, change };
       applying.set(sessionId, flight);
       const outcome = yield* applyLive(sessionId, change).pipe(
         Effect.catchCause((cause) =>
@@ -322,10 +323,16 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
     keep,
     queueLive,
     liveQueued: (sessionId: string) =>
-      Effect.sync(() => ({
-        queued: live.get(sessionId) ?? null,
-        failure: failures.get(sessionId) ?? null,
-      })),
+      Effect.sync(() => {
+        const waiting = live.get(sessionId);
+        const inFlight = applying.get(sessionId);
+        const now = waiting === undefined && inFlight !== undefined && !inFlight.cancelled;
+        return {
+          queued: waiting ?? (now ? inFlight.change : null),
+          applying: now,
+          failure: failures.get(sessionId) ?? null,
+        };
+      }),
     cancelLive,
     settleLive,
     pendingThreadIds: () => [...pending.keys()],

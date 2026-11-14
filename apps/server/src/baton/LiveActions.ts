@@ -313,7 +313,7 @@ const switchThreadDir = (dir: string, slot: string): Promise<{ ok: boolean; deta
 /**
  * Move one live Claude session to another account while it runs (LIVE-ACCOUNT). In its own config dir the running
  * claude re-reads the credential on its next request, sub-agents included, so nothing restarts. A session on the
- * machine's shared login first gets its own dir: one restart in its pane, between turns, only when asked.
+ * machine's shared login first gets its own dir: one restart in its pane, same conversation, between turns.
  */
 export const liveSetAccount = (
   input: BatonLiveSetAccountInput,
@@ -346,19 +346,13 @@ export const liveSetAccount = (
             detail:
               "The machine's login signs in with a refresh token, which cannot be copied into one thread. Switch it machine-wide, or re-add it as a setup token.",
           };
-        if (input.restart !== true)
-          return {
-            state: "needs_restart",
-            detail:
-              "This session shares the machine's login. To switch it on its own, it restarts once in its pane, same conversation; after that it switches live.",
-          };
         if (session.herdrPane === null)
           return {
             state: "not_in_herdr",
             detail: "Bring it into Herdr first; then it can restart in its pane.",
           };
         if (session.status === "busy" || session.status === "waiting")
-          return { state: "busy", detail: "It is working. Ask again when this turn ends." };
+          return { state: "busy", detail: "It restarts once and switches when this turn ends." };
         const respawned = await run(
           respawnClaudeInPane({ paneRef: session.herdrPane, sessionId: session.sessionId }),
         );
@@ -393,6 +387,23 @@ export const liveSetAccount = (
     ),
   );
 
+/**
+ * Machine-wide: every session in its own config dir moves to `slot` while it runs. Sessions on the machine's shared
+ * login follow the machine login (cswap's switch) by themselves, so they are not touched.
+ */
+export const switchOwnDirSessions = Effect.fn("LiveActions.switchOwnDirSessions")(function* (
+  slot: string,
+) {
+  const dirs = (yield* readAllProfileLiveSessions()).flatMap((session) =>
+    isThreadConfigDir(session.configDir) ? [session.configDir] : [],
+  );
+  let switched = 0;
+  for (const dir of new Set(dirs)) {
+    if ((yield* Effect.promise(() => switchThreadDir(dir, slot))).ok) switched += 1;
+  }
+  return { switched, failed: new Set(dirs).size - switched };
+});
+
 /** Applies a queued change once its session is idle; "busy" leaves it queued (ThreadAccountMoves). */
 export const makeApplyLive = Effect.gen(function* () {
   const adopted = yield* AdoptedSessionService;
@@ -422,11 +433,7 @@ export const makeApplyLive = Effect.gen(function* () {
           Effect.orElseSucceed(() => []),
         );
         const result = yield* liveSetAccount(
-          {
-            sessionId,
-            accountKey: change.accountKey,
-            ...(change.restart === true ? { restart: true } : {}),
-          },
+          { sessionId, accountKey: change.accountKey },
           accounts,
         );
         if (result.state === "busy") return { state: "busy" as const };

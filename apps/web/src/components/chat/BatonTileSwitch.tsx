@@ -1,5 +1,5 @@
 /**
- * "Use for terminal sessions" in a limits tile (D94). His terminal sessions run on cswap's machine
+ * "Use on this machine" in a limits tile (D94). His terminal sessions run on cswap's machine
  * login, which T3 threads do not need since L-76; this goes when terminal sessions resume natively.
  * cswap is per machine, so a tile merged across environments gets a row for each.
  */
@@ -27,8 +27,8 @@ function useAccountSwitch(environmentId: EnvironmentId) {
         result._tag === "Success"
           ? {
               type: "success",
-              title: `Terminal sessions now run as ${account.label}`,
-              description: "This machine's Claude login. They pick it up when they restart.",
+              title: `This machine now runs as ${account.label}`,
+              description: machineSwitchDetail(result.value.sessions),
             }
           : { type: "error", title: `Could not switch to ${account.label}` },
       );
@@ -36,6 +36,18 @@ function useAccountSwitch(environmentId: EnvironmentId) {
   };
   return { busy, switchTo };
 }
+
+/** What moved with the machine login: sessions on it follow at once, those in their own dirs were moved. */
+const machineSwitchDetail = (sessions?: { readonly switched: number; readonly failed: number }) =>
+  [
+    "Its Claude login and the sessions on it.",
+    sessions === undefined || sessions.switched === 0
+      ? null
+      : `${sessions.switched} session${sessions.switched === 1 ? "" : "s"} with their own login moved too.`,
+    sessions === undefined || sessions.failed === 0 ? null : `${sessions.failed} did not move.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
 function blockedReason(account: BatonAccount): string | null {
   if (account.active) return "In use";
@@ -75,9 +87,59 @@ function SwitchRow({
         data-testid="tile-switch-account"
         onClick={() => switchTo(target)}
       >
-        Use for terminal sessions
+        Use on this machine
       </Button>
     </span>
+  );
+}
+
+/** The same switch on every paired machine that has this login, each through its own environment's command. */
+function UseEverywhere(props: {
+  readonly environments: LimitAccount["environments"];
+  readonly accountKey: string;
+  readonly email: string | undefined;
+  readonly label: string;
+}) {
+  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
+  const [busy, setBusy] = useState(false);
+  const switchAll = () => {
+    setBusy(true);
+    void Promise.all(
+      props.environments.map((environment) =>
+        use({
+          environmentId: environment.environmentId,
+          input: {
+            key: props.accountKey,
+            reason: "manual",
+            ...(props.email === undefined ? {} : { email: props.email }),
+          },
+        }).then((result) => (result._tag === "Success" ? null : environment.label)),
+      ),
+    ).then((missed) => {
+      setBusy(false);
+      const failed = missed.filter((label) => label !== null);
+      toastManager.add(
+        failed.length === 0
+          ? { type: "success", title: `Every machine now runs as ${props.label}` }
+          : {
+              type: "warning",
+              title: `${props.label} on ${props.environments.length - failed.length} of ${props.environments.length} machines`,
+              description: `Not switched: ${failed.join(", ")}`,
+            },
+      );
+    });
+  };
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      className="self-end"
+      disabled={busy}
+      data-testid="tile-switch-account-everywhere"
+      onClick={switchAll}
+    >
+      Use on every machine
+    </Button>
   );
 }
 
@@ -94,6 +156,14 @@ export function BatonTileSwitch({ account }: { readonly account: LimitAccount })
           showEnvironment={account.environments.length > 1}
         />
       ))}
+      {account.environments.length > 1 ? (
+        <UseEverywhere
+          environments={account.environments}
+          accountKey={accountKey}
+          email={account.email}
+          label={account.displayName ?? account.email ?? "this login"}
+        />
+      ) : null}
     </div>
   );
 }

@@ -112,10 +112,14 @@ export const maskedEmail = (email: string): string => {
   return `${local.slice(0, 2)}${"•".repeat(Math.min(5, Math.max(3, local.length - 2)))}@${domain}`;
 };
 
-/** "Switches to Work, effort high when this turn ends": a terminal session's change waiting for it to go idle. */
+/**
+ * "Switches to Work, effort high when this turn ends": a terminal session's change waiting for it to go idle, or
+ * "…now" while it is applied (an account move may restart the session once in its pane first).
+ */
 export const queuedText = (
   queued: BatonLiveQueued,
   accounts: ReadonlyArray<Pick<BatonAccountRecord, "label" | "liveSwitchKey">>,
+  applying = false,
 ): string => {
   const parts = [
     queued.accountKey === undefined
@@ -124,6 +128,6 @@ export const queuedText = (
     queued.model === undefined ? null : `model ${queued.model}`,
     queued.effort === undefined ? null : `effort ${queued.effort}`,
   ].filter((part) => part !== null);
-  const text = `${parts.join(", ")} when this turn ends`;
+  const text = `${parts.join(", ")} ${applying ? "now" : "when this turn ends"}`;
   return text.charAt(0).toUpperCase() + text.slice(1);
 };

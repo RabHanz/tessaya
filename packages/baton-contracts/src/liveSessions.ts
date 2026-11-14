@@ -95,7 +95,7 @@ export const BatonLiveSetAccountInput = Schema.Struct({
   sessionId: TrimmedNonEmptyString,
   /** The cswap slot (the pool account's key). */
   accountKey: TrimmedNonEmptyString.check(Schema.isMaxLength(20)),
-  /** A session on the machine's shared login gets its own dir first: one restart in its pane, only when he asks. */
+  /** Ignored: a session on the machine's shared login always restarts once in its pane. Kept for older clients. */
   restart: Schema.optionalKey(Schema.Boolean),
 });
 export type BatonLiveSetAccountInput = typeof BatonLiveSetAccountInput.Type;
@@ -128,6 +128,8 @@ export const BatonLiveStateResult = Schema.Struct({
   /** The session's own effort: its last /effort, its config dir's setting, else its model's default. */
   effort: Schema.NullOr(Schema.String),
   queued: Schema.NullOr(BatonLiveQueued),
+  /** The queued change is being applied now: for an account move, the one restart and the switch. */
+  applying: Schema.optionalKey(Schema.Boolean),
   /** Why the last queued change was not applied, until the next one is queued. */
   failure: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });

@@ -14,6 +14,8 @@
 set -euo pipefail
 
 root="${TESSAYA_CLAUDE_THREADS:-$HOME/.local/share/tessaya/claude-threads}"
+# It must exist before the first launch: readlink -f of a missing parent is empty, and "/" then matches "/*" below.
+mkdir -p "$root"
 # The login to start from: the machine's, or the profile a caller such as `cswap run` chose.
 home_cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 global_cfg="$HOME/.claude.json"

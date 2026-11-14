@@ -59,6 +59,7 @@ export function useLiveState(threadRef: ScopedThreadRef | null) {
   return {
     effort: state?.effort ?? null,
     queued: state?.queued ?? null,
+    applying: state?.applying === true,
     failure: state?.failure ?? null,
     refresh,
     cancel,

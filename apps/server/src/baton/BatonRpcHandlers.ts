@@ -105,6 +105,7 @@ import {
   liveAttach,
   liveEffort,
   liveSetAccount,
+  switchOwnDirSessions,
   liveSetModel,
 } from "./LiveActions.ts";
 import { setModelResumingStopped } from "@t3tools/baton-shared/liveModel";
@@ -281,21 +282,59 @@ export const makeHandlers = Effect.gen(function* () {
       ),
     [BATON_ACCOUNT_WS_METHODS.accountUse]: (input) =>
       run(
-        Effect.flatMap(AccountPoolService, (pool) =>
-          pool.activate({
-            driver: input.driver ?? DEFAULT_ROTATION_DRIVER,
-            key: input.key,
-            reason: input.reason ?? "manual",
-            workSessionId: input.workSessionId ?? null,
-          }),
-        ).pipe(
+        Effect.gen(function* () {
+          const pool = yield* AccountPoolService;
+          const driver = input.driver ?? DEFAULT_ROTATION_DRIVER;
+          // Slots differ per machine, so a switch sent to several machines names the login by its address.
+          const key =
+            input.email === undefined
+              ? input.key
+              : ((yield* pool.read(driver).pipe(Effect.orElseSucceed(() => null)))?.accounts.find(
+                  (account) => account.email?.toLowerCase() === input.email?.toLowerCase(),
+                )?.key ?? input.key);
+          const used = yield* pool
+            .activate({
+              driver,
+              key,
+              reason: input.reason ?? "manual",
+              workSessionId: input.workSessionId ?? null,
+            })
+            .pipe(
+              // Already the machine's login: still a success, and its sessions with their own login still move.
+              Effect.catchIf(
+                (error) =>
+                  error._tag === "FabricAccountRotationRefusedError" &&
+                  error.reason === "already-active",
+                () =>
+                  Effect.gen(function* () {
+                    const now = yield* pool.read(driver);
+                    const active = now.accounts.find((account) => account.key === key) ?? null;
+                    return {
+                      rotation: {
+                        fromKey: key,
+                        fromLabel: active?.label ?? null,
+                        toKey: key,
+                        toLabel: active?.label ?? key,
+                        reason: input.reason ?? "manual",
+                        workSessionId: input.workSessionId ?? null,
+                        toHeadroomPercent: active?.headroomPercent ?? null,
+                        rotatedAt: yield* nowIso,
+                      },
+                      pool: now,
+                    };
+                  }),
+              ),
+            );
+          // Machine-wide: sessions in their own dirs move too, while they run (shared-login ones follow cswap).
+          const sessions = driver === "claudeAgent" ? yield* switchOwnDirSessions(key) : undefined;
           // The default instance's name and limits follow the switch now, not at the next 5-minute check.
-          Effect.tap(() =>
+          yield* Effect.forkDetach(
             Effect.flatMap(ProviderRegistry.ProviderRegistry, (registry) =>
-              Effect.forkDetach(registry.refresh(input.driver ?? DEFAULT_ROTATION_DRIVER)),
+              registry.refresh(driver),
             ),
-          ),
-        ),
+          );
+          return sessions === undefined ? used : { ...used, sessions };
+        }),
       ),
     [BATON_ACCOUNT_WS_METHODS.onLimit]: () =>
       run(Effect.flatMap(AccountRotationPolicy, (policy) => policy.read)).pipe(
@@ -405,7 +444,6 @@ export const makeHandlers = Effect.gen(function* () {
           if (result.state !== "busy") return result;
           yield* (yield* ThreadAccountMoves).queueLive(input.sessionId, {
             accountKey: input.accountKey,
-            ...(input.restart === true ? { restart: true } : {}),
           });
           return { ...result, queued: true, detail: "Switches when this turn ends." };
         }),
@@ -450,10 +488,10 @@ export const makeHandlers = Effect.gen(function* () {
           const effort = yield* liveEffort(input.sessionId, (model) =>
             defaultEffortOf(providers, model),
           );
-          const { queued, failure } = yield* (yield* ThreadAccountMoves).liveQueued(
+          const { queued, applying, failure } = yield* (yield* ThreadAccountMoves).liveQueued(
             input.sessionId,
           );
-          return { effort, queued, failure };
+          return { effort, queued, applying, failure };
         }),
       ),
     [BATON_LIVE_WS_METHODS.liveCancelQueued]: (input) =>

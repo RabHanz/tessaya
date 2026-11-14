@@ -132,6 +132,8 @@ export type BatonAccountPoolInput = typeof BatonAccountPoolInput.Type;
 
 export const BatonAccountUseInput = Schema.Struct({
   key: BatonAccountKey,
+  /** When set, the login with this address on the receiving machine, whose slot may differ from `key`. */
+  email: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(320))),
   reason: Schema.optional(BatonAccountRotationReason),
   /** Named so the rotation lands on that work's timeline. */
   workSessionId: Schema.optional(WorkSessionId),
@@ -188,6 +190,8 @@ export const instancesWeekly = (
 export const BatonAccountUseResult = Schema.Struct({
   rotation: BatonAccountRotation,
   pool: BatonAccountPool,
+  /** Claude: the sessions in their own config dirs that moved with the machine login, and those that did not. */
+  sessions: Schema.optionalKey(Schema.Struct({ switched: Schema.Number, failed: Schema.Number })),
 });
 export type BatonAccountUseResult = typeof BatonAccountUseResult.Type;
 
