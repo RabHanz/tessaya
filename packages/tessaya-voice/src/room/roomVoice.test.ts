@@ -1591,8 +1591,13 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       asked: ["What time is it?"],
       sentAll: true,
     });
-    // Keyword mode (the default): over her voice only a stop phrase or her name counts.
-    expect((await run("keyword", true)).asked).toEqual(["What time is it?"]);
+    // Keyword mode (the default) never pauses her for a voice, but his whole turn over her is still his: answered
+    // (14 Nov, 21:39), while another voice's is not.
+    expect((await run("keyword", true)).asked).toEqual([
+      "What time is it?",
+      "No, I meant in London.",
+    ]);
+    expect((await run("keyword", true, 0.05)).asked).toEqual(["What time is it?"]);
     // Nobody enrolled (14 Nov, 18:57): what the person who woke her says over her is answered, in either mode.
     for (const mode of ["open", "keyword"] as const)
       expect(await run(mode, true, 0.6, false)).toMatchObject({
