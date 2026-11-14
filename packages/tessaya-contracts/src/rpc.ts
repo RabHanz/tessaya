@@ -16,7 +16,7 @@ import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
-import { BatonFleetInput, BatonFleetResult } from "./fleet.ts";
+import { TessayaFleetInput, TessayaFleetResult } from "./fleet.ts";
 import { tessayaSpelling, type TessayaSpelling } from "./renamed.ts";
 import {
   BATON_ADOPTED_WS_METHODS,
@@ -36,12 +36,12 @@ import {
 } from "./adoptedSession.ts";
 import {
   BATON_INTENT_WS_METHODS,
-  BatonIntentError,
-  BatonIntentInput,
-  BatonIntentListInput,
-  BatonIntentListResult,
-  BatonIntentResolveResult,
-  BatonIntentRunResult,
+  TessayaIntentError,
+  TessayaIntentInput,
+  TessayaIntentListInput,
+  TessayaIntentListResult,
+  TessayaIntentResolveResult,
+  TessayaIntentRunResult,
 } from "./intent.ts";
 import {
   BATON_ORCHESTRATION_WS_METHODS,
@@ -55,26 +55,26 @@ import {
 } from "./orchestrationRule.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
-  BatonAccountPoolInput,
-  BatonAccountPool,
-  BatonAccountPoolUnavailableError,
-  BatonAccountRotationFailedError,
-  BatonAccountRotationRefusedError,
-  BatonAccountUseInput,
-  BatonAccountUseResult,
-  BatonOnLimitInput,
-  BatonOnLimitResult,
-  BatonSetOnLimitInput,
-  BatonAccountWeeklyInput,
-  BatonAccountWeeklyResult,
-  BatonThreadKeepInput,
-  BatonThreadKeepResult,
-  BatonThreadKeptInput,
+  TessayaAccountPoolInput,
+  TessayaAccountPool,
+  TessayaAccountPoolUnavailableError,
+  TessayaAccountRotationFailedError,
+  TessayaAccountRotationRefusedError,
+  TessayaAccountUseInput,
+  TessayaAccountUseResult,
+  TessayaOnLimitInput,
+  TessayaOnLimitResult,
+  TessayaSetOnLimitInput,
+  TessayaAccountWeeklyInput,
+  TessayaAccountWeeklyResult,
+  TessayaThreadKeepInput,
+  TessayaThreadKeepResult,
+  TessayaThreadKeptInput,
 } from "./accountPool.ts";
 import {
   BATON_ACCOUNTS_WS_METHODS,
-  BatonAccountsListInput,
-  BatonAccountsListResult,
+  TessayaAccountsListInput,
+  TessayaAccountsListResult,
 } from "./accounts.ts";
 import {
   BATON_WS_METHODS,
@@ -92,33 +92,33 @@ import {
 } from "./workSession.ts";
 import {
   BATON_LIVE_WS_METHODS,
-  BatonLiveAdoptInput,
-  BatonLiveSetModelInput,
-  BatonLiveSetModelResult,
-  BatonLiveSetAccountInput,
-  BatonLiveSessionInput,
-  BatonLiveStateResult,
-  BatonLiveCancelQueuedResult,
-  BatonLiveSetAccountResult,
-  BatonLiveAdoptResult,
-  BatonLiveAttachInput,
-  BatonLiveAttachResult,
-  BatonHerdrSendInput,
-  BatonHerdrSendResult,
+  TessayaLiveAdoptInput,
+  TessayaLiveSetModelInput,
+  TessayaLiveSetModelResult,
+  TessayaLiveSetAccountInput,
+  TessayaLiveSessionInput,
+  TessayaLiveStateResult,
+  TessayaLiveCancelQueuedResult,
+  TessayaLiveSetAccountResult,
+  TessayaLiveAdoptResult,
+  TessayaLiveAttachInput,
+  TessayaLiveAttachResult,
+  TessayaHerdrSendInput,
+  TessayaHerdrSendResult,
 } from "./liveSessions.ts";
 import {
   BATON_RECORD_WS_METHODS,
-  BatonRecordAppendInput,
-  BatonRecordAppendResult,
-  BatonRecordListInput,
-  BatonRecordListResult,
+  TessayaRecordAppendInput,
+  TessayaRecordAppendResult,
+  TessayaRecordListInput,
+  TessayaRecordListResult,
 } from "./record.ts";
 import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
 import {
   BATON_DICTATION_WS_METHODS,
-  BatonDictationCleanupInput,
-  BatonDictationCleanupResult,
-  BatonDictationCleanupStatus,
+  TessayaDictationCleanupInput,
+  TessayaDictationCleanupResult,
+  TessayaDictationCleanupStatus,
 } from "./dictation.ts";
 import {
   BATON_DESKTOP_SETTINGS_WS_METHODS,
@@ -129,139 +129,143 @@ import {
 } from "./desktopSettings.ts";
 import {
   BATON_JOB_WS_METHODS,
-  BatonJobGrantInput,
-  BatonJobListResult,
-  BatonJobRefInput,
-  BatonJobRefineInput,
-  BatonJobHandoffInput,
-  BatonTeamBoardInput,
-  BatonTeamBoardResult,
-  BatonJobPlaceInput,
-  BatonJobPlacementError,
-  BatonJobStartInput,
-  BatonJobStartResult,
-  BatonJobStopResult,
-  BatonJobScheduleInput,
-  BatonJobSplitInput,
-  BatonJobSplitResult,
-  BatonJobTermsResult,
+  TessayaJobGrantInput,
+  TessayaJobListResult,
+  TessayaJobRefInput,
+  TessayaJobRefineInput,
+  TessayaJobHandoffInput,
+  TessayaTeamBoardInput,
+  TessayaTeamBoardResult,
+  TessayaJobPlaceInput,
+  TessayaJobPlacementError,
+  TessayaJobStartInput,
+  TessayaJobStartResult,
+  TessayaJobStopResult,
+  TessayaJobScheduleInput,
+  TessayaJobSplitInput,
+  TessayaJobSplitResult,
+  TessayaJobTermsResult,
 } from "./jobs.ts";
 import {
   BATON_WEAVE_WS_METHODS,
-  BatonWeaveError,
-  BatonWeaveListInput,
-  BatonWeaveListResult,
-  BatonWeaveSendInput,
-  BatonWeaveSendResult,
-  BatonWeaveTickInput,
-  BatonWeaveTickResult,
+  TessayaWeaveError,
+  TessayaWeaveListInput,
+  TessayaWeaveListResult,
+  TessayaWeaveSendInput,
+  TessayaWeaveSendResult,
+  TessayaWeaveTickInput,
+  TessayaWeaveTickResult,
 } from "./weave.ts";
 import {
   BATON_SESSIONS_WS_METHODS,
-  BatonCatalogCreateInput,
-  BatonCatalogCreateResult,
-  BatonCatalogAutoResumeInput,
-  BatonCatalogAutoResumeResult,
-  BatonRetireHandoffInput,
-  BatonReattachInput,
+  TessayaCatalogCreateInput,
+  TessayaCatalogCreateResult,
+  TessayaCatalogAutoResumeInput,
+  TessayaCatalogAutoResumeResult,
+  TessayaRetireHandoffInput,
+  TessayaReattachInput,
   BatonMoveIntoTessayaInput,
   BatonMoveIntoTessayaResult,
-  BatonOpenInTerminalInput,
-  BatonOpenInTerminalResult,
-  BatonMainSessionInput,
-  BatonSessionDefaultsResult,
-  BatonKeptInput,
-  BatonKeptResult,
-  BatonReattachResult,
-  BatonRetireHandoffResult,
-  BatonCatalogCleanupInput,
-  BatonCatalogCleanupResult,
-  BatonCatalogFoldersInput,
-  BatonCatalogFoldersResult,
-  BatonCatalogListInput,
-  BatonCatalogListResult,
-  BatonCatalogResumeInput,
-  BatonCatalogResumeResult,
-  BatonCatalogSendInput,
-  BatonCatalogSendResult,
-  BatonCatalogWaitingInput,
-  BatonCatalogWaitingResult,
-  BatonTurnsInFlightResult,
-  BatonSessionsAcrossInput,
-  BatonSessionsAcrossResult,
+  TessayaOpenInTerminalInput,
+  TessayaOpenInTerminalResult,
+  TessayaMainSessionInput,
+  TessayaSessionDefaultsResult,
+  TessayaKeptInput,
+  TessayaKeptResult,
+  TessayaReattachResult,
+  TessayaRetireHandoffResult,
+  TessayaCatalogCleanupInput,
+  TessayaCatalogCleanupResult,
+  TessayaCatalogFoldersInput,
+  TessayaCatalogFoldersResult,
+  TessayaCatalogListInput,
+  TessayaCatalogListResult,
+  TessayaCatalogResumeInput,
+  TessayaCatalogResumeResult,
+  TessayaCatalogSendInput,
+  TessayaCatalogSendResult,
+  TessayaCatalogWaitingInput,
+  TessayaCatalogWaitingResult,
+  TessayaTurnsInFlightResult,
+  TessayaSessionsAcrossInput,
+  TessayaSessionsAcrossResult,
 } from "./sessionCatalog.ts";
-import { BATON_CLOUD_WS_METHODS, BatonCloudCallInput, BatonCloudCallResult } from "./cloud.ts";
-import { BATON_HOME_WS_METHODS, BatonHomeCallInput, BatonHomeCallResult } from "./home.ts";
-import { BATON_VOICE_WS_METHODS, BatonVoiceCallInput, BatonVoiceCallResult } from "./voice.ts";
+import { BATON_CLOUD_WS_METHODS, TessayaCloudCallInput, TessayaCloudCallResult } from "./cloud.ts";
+import { BATON_HOME_WS_METHODS, TessayaHomeCallInput, TessayaHomeCallResult } from "./home.ts";
+import { BATON_VOICE_WS_METHODS, TessayaVoiceCallInput, TessayaVoiceCallResult } from "./voice.ts";
 import { BATON_BRAIN_WS_METHODS, BrainUsageInput, BrainUsageResult } from "./brainUsage.ts";
 import {
   BATON_PERSONAS_WS_METHODS,
-  BatonPersonasListInput,
-  BatonPersonasListResult,
+  TessayaPersonasListInput,
+  TessayaPersonasListResult,
 } from "./personas.ts";
 import {
   BATON_PROMPT_LAB_WS_METHODS,
-  BatonPromptLabInput,
-  BatonPromptLabResult,
+  TessayaPromptLabInput,
+  TessayaPromptLabResult,
 } from "./promptLab.ts";
-import { BATON_LEARN_WS_METHODS, BatonLearnCallInput, BatonLearnCallResult } from "./learnCall.ts";
+import {
+  BATON_LEARN_WS_METHODS,
+  TessayaLearnCallInput,
+  TessayaLearnCallResult,
+} from "./learnCall.ts";
 import {
   BATON_DEVICES_WS_METHODS,
-  BatonDevicesCallInput,
-  BatonDevicesCallResult,
+  TessayaDevicesCallInput,
+  TessayaDevicesCallResult,
 } from "./devices.ts";
 import {
   BATON_COMMITMENT_WS_METHODS,
-  BatonCommitmentError,
-  BatonCommitmentListInput,
-  BatonCommitmentListResult,
-  BatonCommitmentUpsertInput,
-  BatonCommitmentUpsertResult,
+  TessayaCommitmentError,
+  TessayaCommitmentListInput,
+  TessayaCommitmentListResult,
+  TessayaCommitmentUpsertInput,
+  TessayaCommitmentUpsertResult,
 } from "./commitments.ts";
 import {
   BATON_PHONE_WS_METHODS,
-  BatonPhoneCallInput,
-  BatonPhoneCallResult,
+  TessayaPhoneCallInput,
+  TessayaPhoneCallResult,
   BatonPhoneError,
 } from "./phone.ts";
 import {
   BATON_MEMORY_WS_METHODS,
-  BatonMemoryDraft,
-  BatonMemoryEditInput,
-  BatonMemoryExportResult,
-  BatonMemoryForgetResult,
-  BatonMemoryImportInput,
-  BatonMemoryImportResult,
-  BatonMemoryItemResult,
-  BatonMemoryLearnInput,
-  BatonMemoryLearnResult,
-  BatonMemoryListResult,
-  BatonMemoryPinInput,
-  BatonMemoryQuery,
-  BatonMemoryHistorySearchInput,
-  BatonMemoryHistorySearchResult,
-  BatonMemoryPullInput,
-  BatonMemoryPullResult,
-  BatonMemoryRecallInput,
-  BatonMemoryRecallResult,
-  BatonMemoryRefInput,
+  TessayaMemoryDraft,
+  TessayaMemoryEditInput,
+  TessayaMemoryExportResult,
+  TessayaMemoryForgetResult,
+  TessayaMemoryImportInput,
+  TessayaMemoryImportResult,
+  TessayaMemoryItemResult,
+  TessayaMemoryLearnInput,
+  TessayaMemoryLearnResult,
+  TessayaMemoryListResult,
+  TessayaMemoryPinInput,
+  TessayaMemoryQuery,
+  TessayaMemoryHistorySearchInput,
+  TessayaMemoryHistorySearchResult,
+  TessayaMemoryPullInput,
+  TessayaMemoryPullResult,
+  TessayaMemoryRecallInput,
+  TessayaMemoryRecallResult,
+  TessayaMemoryRefInput,
   BatonMemoryRefusedError,
-  BatonMemorySyncAddPeerInput,
-  BatonMemorySyncError,
-  BatonMemorySyncForgetInput,
-  BatonMemorySyncHelloResult,
-  BatonMemorySyncRunResult,
-  BatonMemorySyncSetEnabledInput,
-  BatonMemorySyncStateResult,
-  BatonMemorySyncPullInput,
-  BatonMemorySyncPullResult,
-  BatonMemorySyncPushInput,
-  BatonMemorySyncPushResult,
-  BatonMemorySearchResult,
-  BatonMemoryUsedInput,
-  BatonMemoryHistoryInput,
-  BatonMemoryHistoryResult,
-  BatonMemoryRestoreInput,
+  TessayaMemorySyncAddPeerInput,
+  TessayaMemorySyncError,
+  TessayaMemorySyncForgetInput,
+  TessayaMemorySyncHelloResult,
+  TessayaMemorySyncRunResult,
+  TessayaMemorySyncSetEnabledInput,
+  TessayaMemorySyncStateResult,
+  TessayaMemorySyncPullInput,
+  TessayaMemorySyncPullResult,
+  TessayaMemorySyncPushInput,
+  TessayaMemorySyncPushResult,
+  TessayaMemorySearchResult,
+  TessayaMemoryUsedInput,
+  TessayaMemoryHistoryInput,
+  TessayaMemoryHistoryResult,
+  TessayaMemoryRestoreInput,
 } from "./memory.ts";
 import {
   BATON_HANDOFF_WS_METHODS,
@@ -272,92 +276,92 @@ import {
 
 // Baton work sessions. `fabric.*` is the layer above provider threads: the
 // user's work, which outlives the thread and the account running it. See
-// `packages/contracts/src/baton/workSession.ts`.
+// `packages/contracts/src/tessaya/workSession.ts`.
 
-const WsBatonAccountPoolRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountPool, {
-  payload: BatonAccountPoolInput,
-  success: BatonAccountPool,
-  error: Schema.Union([BatonAccountPoolUnavailableError, EnvironmentAuthorizationError]),
+const WsTessayaAccountPoolRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountPool, {
+  payload: TessayaAccountPoolInput,
+  success: TessayaAccountPool,
+  error: Schema.Union([TessayaAccountPoolUnavailableError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonAccountUseRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountUse, {
-  payload: BatonAccountUseInput,
-  success: BatonAccountUseResult,
+const WsTessayaAccountUseRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountUse, {
+  payload: TessayaAccountUseInput,
+  success: TessayaAccountUseResult,
   error: Schema.Union([
-    BatonAccountPoolUnavailableError,
-    BatonAccountRotationRefusedError,
-    BatonAccountRotationFailedError,
+    TessayaAccountPoolUnavailableError,
+    TessayaAccountRotationRefusedError,
+    TessayaAccountRotationFailedError,
     EnvironmentAuthorizationError,
   ]),
 });
 
-const WsBatonOnLimitRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.onLimit, {
-  payload: BatonOnLimitInput,
-  success: BatonOnLimitResult,
+const WsTessayaOnLimitRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.onLimit, {
+  payload: TessayaOnLimitInput,
+  success: TessayaOnLimitResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonSetOnLimitRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.setOnLimit, {
-  payload: BatonSetOnLimitInput,
-  success: BatonOnLimitResult,
+const WsTessayaSetOnLimitRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.setOnLimit, {
+  payload: TessayaSetOnLimitInput,
+  success: TessayaOnLimitResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonThreadKeptRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadKept, {
-  payload: BatonThreadKeptInput,
-  success: BatonThreadKeepResult,
+const WsTessayaThreadKeptRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadKept, {
+  payload: TessayaThreadKeptInput,
+  success: TessayaThreadKeepResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonThreadKeepRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadKeep, {
-  payload: BatonThreadKeepInput,
-  success: BatonThreadKeepResult,
+const WsTessayaThreadKeepRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.threadKeep, {
+  payload: TessayaThreadKeepInput,
+  success: TessayaThreadKeepResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonAccountWeeklyRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.weekly, {
-  payload: BatonAccountWeeklyInput,
-  success: BatonAccountWeeklyResult,
+const WsTessayaAccountWeeklyRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.weekly, {
+  payload: TessayaAccountWeeklyInput,
+  success: TessayaAccountWeeklyResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonAccountsListRpc = Rpc.make(BATON_ACCOUNTS_WS_METHODS.list, {
-  payload: BatonAccountsListInput,
-  success: BatonAccountsListResult,
+const WsTessayaAccountsListRpc = Rpc.make(BATON_ACCOUNTS_WS_METHODS.list, {
+  payload: TessayaAccountsListInput,
+  success: TessayaAccountsListResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonWorkSessionListRpc = Rpc.make(BATON_WS_METHODS.workSessionList, {
+const WsTessayaWorkSessionListRpc = Rpc.make(BATON_WS_METHODS.workSessionList, {
   payload: WorkSessionListInput,
   success: WorkSessionListResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonWorkSessionCreateRpc = Rpc.make(BATON_WS_METHODS.workSessionCreate, {
+const WsTessayaWorkSessionCreateRpc = Rpc.make(BATON_WS_METHODS.workSessionCreate, {
   payload: WorkSessionCreateInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonWorkSessionUpdateRpc = Rpc.make(BATON_WS_METHODS.workSessionUpdate, {
+const WsTessayaWorkSessionUpdateRpc = Rpc.make(BATON_WS_METHODS.workSessionUpdate, {
   payload: WorkSessionUpdateInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonWorkSessionAttachThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionAttachThread, {
+const WsTessayaWorkSessionAttachThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionAttachThread, {
   payload: WorkSessionAttachThreadInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonWorkSessionDetachThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionDetachThread, {
+const WsTessayaWorkSessionDetachThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionDetachThread, {
   payload: WorkSessionDetachThreadInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonWorkSessionStartThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionStartThread, {
+const WsTessayaWorkSessionStartThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionStartThread, {
   payload: WorkSessionStartThreadInput,
   success: WorkSessionResult,
   error: Schema.Union([
@@ -367,7 +371,7 @@ const WsBatonWorkSessionStartThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionSt
   ]),
 });
 
-const WsBatonWorkSessionHandoffRpc = Rpc.make(BATON_HANDOFF_WS_METHODS.workSessionHandoff, {
+const WsTessayaWorkSessionHandoffRpc = Rpc.make(BATON_HANDOFF_WS_METHODS.workSessionHandoff, {
   payload: WorkSessionHandoffInput,
   success: WorkSessionHandoffResult,
   error: Schema.Union([
@@ -378,214 +382,214 @@ const WsBatonWorkSessionHandoffRpc = Rpc.make(BATON_HANDOFF_WS_METHODS.workSessi
   ]),
 });
 
-const WsBatonLiveAttachRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAttach, {
-  payload: BatonLiveAttachInput,
-  success: BatonLiveAttachResult,
+const WsTessayaLiveAttachRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAttach, {
+  payload: TessayaLiveAttachInput,
+  success: TessayaLiveAttachResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonLiveAdoptRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAdopt, {
-  payload: BatonLiveAdoptInput,
-  success: BatonLiveAdoptResult,
+const WsTessayaLiveAdoptRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAdopt, {
+  payload: TessayaLiveAdoptInput,
+  success: TessayaLiveAdoptResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonLiveSetModelRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetModel, {
-  payload: BatonLiveSetModelInput,
-  success: BatonLiveSetModelResult,
+const WsTessayaLiveSetModelRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetModel, {
+  payload: TessayaLiveSetModelInput,
+  success: TessayaLiveSetModelResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonLiveSetAccountRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetAccount, {
-  payload: BatonLiveSetAccountInput,
-  success: BatonLiveSetAccountResult,
+const WsTessayaLiveSetAccountRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetAccount, {
+  payload: TessayaLiveSetAccountInput,
+  success: TessayaLiveSetAccountResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonLiveStateRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveState, {
-  payload: BatonLiveSessionInput,
-  success: BatonLiveStateResult,
+const WsTessayaLiveStateRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveState, {
+  payload: TessayaLiveSessionInput,
+  success: TessayaLiveStateResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonLiveCancelQueuedRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveCancelQueued, {
-  payload: BatonLiveSessionInput,
-  success: BatonLiveCancelQueuedResult,
+const WsTessayaLiveCancelQueuedRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveCancelQueued, {
+  payload: TessayaLiveSessionInput,
+  success: TessayaLiveCancelQueuedResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonHerdrSendRpc = Rpc.make(BATON_LIVE_WS_METHODS.herdrSend, {
-  payload: BatonHerdrSendInput,
-  success: BatonHerdrSendResult,
+const WsTessayaHerdrSendRpc = Rpc.make(BATON_LIVE_WS_METHODS.herdrSend, {
+  payload: TessayaHerdrSendInput,
+  success: TessayaHerdrSendResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonJobListRpc = Rpc.make(BATON_JOB_WS_METHODS.jobList, {
+const WsTessayaJobListRpc = Rpc.make(BATON_JOB_WS_METHODS.jobList, {
   payload: Schema.Struct({}),
-  success: BatonJobListResult,
+  success: TessayaJobListResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
-const WsBatonJobStartRpc = Rpc.make(BATON_JOB_WS_METHODS.jobStart, {
-  payload: BatonJobStartInput,
-  success: BatonJobStartResult,
+const WsTessayaJobStartRpc = Rpc.make(BATON_JOB_WS_METHODS.jobStart, {
+  payload: TessayaJobStartInput,
+  success: TessayaJobStartResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
-const WsBatonJobPlaceRpc = Rpc.make(BATON_JOB_WS_METHODS.jobPlace, {
-  payload: BatonJobPlaceInput,
-  success: BatonJobStartResult,
-  error: Schema.Union([BatonJobPlacementError, WorkSessionError, EnvironmentAuthorizationError]),
+const WsTessayaJobPlaceRpc = Rpc.make(BATON_JOB_WS_METHODS.jobPlace, {
+  payload: TessayaJobPlaceInput,
+  success: TessayaJobStartResult,
+  error: Schema.Union([TessayaJobPlacementError, WorkSessionError, EnvironmentAuthorizationError]),
 });
-const WsBatonJobTeamRpc = Rpc.make(BATON_JOB_WS_METHODS.jobTeam, {
-  payload: BatonTeamBoardInput,
-  success: BatonTeamBoardResult,
+const WsTessayaJobTeamRpc = Rpc.make(BATON_JOB_WS_METHODS.jobTeam, {
+  payload: TessayaTeamBoardInput,
+  success: TessayaTeamBoardResult,
   error: EnvironmentAuthorizationError,
 });
-const WsBatonJobHandoffRpc = Rpc.make(BATON_JOB_WS_METHODS.jobHandoff, {
-  payload: BatonJobHandoffInput,
+const WsTessayaJobHandoffRpc = Rpc.make(BATON_JOB_WS_METHODS.jobHandoff, {
+  payload: TessayaJobHandoffInput,
   success: WorkSessionHandoffResult,
   error: Schema.Union([
-    BatonJobPlacementError,
+    TessayaJobPlacementError,
     WorkSessionError,
     WorkSessionHandoffRefusedError,
     OrchestrationDispatchCommandError,
     EnvironmentAuthorizationError,
   ]),
 });
-const WsBatonJobAgreeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobAgree, {
-  payload: BatonJobRefInput,
-  success: BatonJobTermsResult,
+const WsTessayaJobAgreeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobAgree, {
+  payload: TessayaJobRefInput,
+  success: TessayaJobTermsResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
-const WsBatonJobRefineRpc = Rpc.make(BATON_JOB_WS_METHODS.jobRefine, {
-  payload: BatonJobRefineInput,
-  success: BatonJobTermsResult,
+const WsTessayaJobRefineRpc = Rpc.make(BATON_JOB_WS_METHODS.jobRefine, {
+  payload: TessayaJobRefineInput,
+  success: TessayaJobTermsResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
-const WsBatonJobGrantRpc = Rpc.make(BATON_JOB_WS_METHODS.jobGrant, {
-  payload: BatonJobGrantInput,
-  success: BatonJobTermsResult,
+const WsTessayaJobGrantRpc = Rpc.make(BATON_JOB_WS_METHODS.jobGrant, {
+  payload: TessayaJobGrantInput,
+  success: TessayaJobTermsResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
-const WsBatonJobRevokeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobRevoke, {
-  payload: BatonJobGrantInput,
-  success: BatonJobTermsResult,
-  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
-});
-
-const WsBatonJobStopRpc = Rpc.make(BATON_JOB_WS_METHODS.jobStop, {
-  payload: BatonJobRefInput,
-  success: BatonJobStopResult,
-  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
-});
-const WsBatonJobScheduleRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSchedule, {
-  payload: BatonJobScheduleInput,
-  success: BatonJobTermsResult,
+const WsTessayaJobRevokeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobRevoke, {
+  payload: TessayaJobGrantInput,
+  success: TessayaJobTermsResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonJobSplitRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSplit, {
-  payload: BatonJobSplitInput,
-  success: BatonJobSplitResult,
+const WsTessayaJobStopRpc = Rpc.make(BATON_JOB_WS_METHODS.jobStop, {
+  payload: TessayaJobRefInput,
+  success: TessayaJobStopResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsTessayaJobScheduleRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSchedule, {
+  payload: TessayaJobScheduleInput,
+  success: TessayaJobTermsResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const CommitmentErrors = Schema.Union([BatonCommitmentError, EnvironmentAuthorizationError]);
-const WsBatonCommitmentListRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.list, {
-  payload: BatonCommitmentListInput,
-  success: BatonCommitmentListResult,
+const WsTessayaJobSplitRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSplit, {
+  payload: TessayaJobSplitInput,
+  success: TessayaJobSplitResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const CommitmentErrors = Schema.Union([TessayaCommitmentError, EnvironmentAuthorizationError]);
+const WsTessayaCommitmentListRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.list, {
+  payload: TessayaCommitmentListInput,
+  success: TessayaCommitmentListResult,
   error: CommitmentErrors,
 });
-const WsBatonCommitmentUpsertRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.upsert, {
-  payload: BatonCommitmentUpsertInput,
-  success: BatonCommitmentUpsertResult,
+const WsTessayaCommitmentUpsertRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.upsert, {
+  payload: TessayaCommitmentUpsertInput,
+  success: TessayaCommitmentUpsertResult,
   error: CommitmentErrors,
 });
 
-const WsBatonPhoneCallRpc = Rpc.make(BATON_PHONE_WS_METHODS.call, {
-  payload: BatonPhoneCallInput,
-  success: BatonPhoneCallResult,
+const WsTessayaPhoneCallRpc = Rpc.make(BATON_PHONE_WS_METHODS.call, {
+  payload: TessayaPhoneCallInput,
+  success: TessayaPhoneCallResult,
   error: Schema.Union([BatonPhoneError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonCloudReadRpc = Rpc.make(BATON_CLOUD_WS_METHODS.read, {
-  payload: BatonCloudCallInput,
-  success: BatonCloudCallResult,
+const WsTessayaCloudReadRpc = Rpc.make(BATON_CLOUD_WS_METHODS.read, {
+  payload: TessayaCloudCallInput,
+  success: TessayaCloudCallResult,
   error: EnvironmentAuthorizationError,
 });
-const WsBatonCloudApproveRpc = Rpc.make(BATON_CLOUD_WS_METHODS.approve, {
-  payload: BatonCloudCallInput,
-  success: BatonCloudCallResult,
+const WsTessayaCloudApproveRpc = Rpc.make(BATON_CLOUD_WS_METHODS.approve, {
+  payload: TessayaCloudCallInput,
+  success: TessayaCloudCallResult,
   error: EnvironmentAuthorizationError,
 });
-const WsBatonCloudActRpc = Rpc.make(BATON_CLOUD_WS_METHODS.act, {
-  payload: BatonCloudCallInput,
-  success: BatonCloudCallResult,
-  error: EnvironmentAuthorizationError,
-});
-
-const WsBatonHomeCallRpc = Rpc.make(BATON_HOME_WS_METHODS.call, {
-  payload: BatonHomeCallInput,
-  success: BatonHomeCallResult,
+const WsTessayaCloudActRpc = Rpc.make(BATON_CLOUD_WS_METHODS.act, {
+  payload: TessayaCloudCallInput,
+  success: TessayaCloudCallResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonDevicesCallRpc = Rpc.make(BATON_DEVICES_WS_METHODS.call, {
-  payload: BatonDevicesCallInput,
-  success: BatonDevicesCallResult,
+const WsTessayaHomeCallRpc = Rpc.make(BATON_HOME_WS_METHODS.call, {
+  payload: TessayaHomeCallInput,
+  success: TessayaHomeCallResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonVoiceCallRpc = Rpc.make(BATON_VOICE_WS_METHODS.call, {
-  payload: BatonVoiceCallInput,
-  success: BatonVoiceCallResult,
+const WsTessayaDevicesCallRpc = Rpc.make(BATON_DEVICES_WS_METHODS.call, {
+  payload: TessayaDevicesCallInput,
+  success: TessayaDevicesCallResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonLearnCallRpc = Rpc.make(BATON_LEARN_WS_METHODS.call, {
-  payload: BatonLearnCallInput,
-  success: BatonLearnCallResult,
+const WsTessayaVoiceCallRpc = Rpc.make(BATON_VOICE_WS_METHODS.call, {
+  payload: TessayaVoiceCallInput,
+  success: TessayaVoiceCallResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaLearnCallRpc = Rpc.make(BATON_LEARN_WS_METHODS.call, {
+  payload: TessayaLearnCallInput,
+  success: TessayaLearnCallResult,
   error: EnvironmentAuthorizationError,
 });
 
 const CatalogErrors = EnvironmentAuthorizationError;
-const WsBatonSessionsListRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.list, {
-  payload: BatonCatalogListInput,
-  success: BatonCatalogListResult,
+const WsTessayaSessionsListRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.list, {
+  payload: TessayaCatalogListInput,
+  success: TessayaCatalogListResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsFoldersRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.folders, {
-  payload: BatonCatalogFoldersInput,
-  success: BatonCatalogFoldersResult,
+const WsTessayaSessionsFoldersRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.folders, {
+  payload: TessayaCatalogFoldersInput,
+  success: TessayaCatalogFoldersResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsResumeRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.resume, {
-  payload: BatonCatalogResumeInput,
-  success: BatonCatalogResumeResult,
+const WsTessayaSessionsResumeRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.resume, {
+  payload: TessayaCatalogResumeInput,
+  success: TessayaCatalogResumeResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsCreateRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.create, {
-  payload: BatonCatalogCreateInput,
-  success: BatonCatalogCreateResult,
+const WsTessayaSessionsCreateRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.create, {
+  payload: TessayaCatalogCreateInput,
+  success: TessayaCatalogCreateResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsCleanupRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.cleanup, {
-  payload: BatonCatalogCleanupInput,
-  success: BatonCatalogCleanupResult,
+const WsTessayaSessionsCleanupRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.cleanup, {
+  payload: TessayaCatalogCleanupInput,
+  success: TessayaCatalogCleanupResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsAutoResumeRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.autoResume, {
-  payload: BatonCatalogAutoResumeInput,
-  success: BatonCatalogAutoResumeResult,
+const WsTessayaSessionsAutoResumeRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.autoResume, {
+  payload: TessayaCatalogAutoResumeInput,
+  success: TessayaCatalogAutoResumeResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsRetireHandoffRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.retireHandoff, {
-  payload: BatonRetireHandoffInput,
-  success: BatonRetireHandoffResult,
+const WsTessayaSessionsRetireHandoffRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.retireHandoff, {
+  payload: TessayaRetireHandoffInput,
+  success: TessayaRetireHandoffResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsReattachRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.reattach, {
-  payload: BatonReattachInput,
-  success: BatonReattachResult,
+const WsTessayaSessionsReattachRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.reattach, {
+  payload: TessayaReattachInput,
+  success: TessayaReattachResult,
   error: CatalogErrors,
 });
 const WsBatonSessionsMoveIntoTessayaRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.moveIntoTessaya, {
@@ -593,315 +597,318 @@ const WsBatonSessionsMoveIntoTessayaRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.mov
   success: BatonMoveIntoTessayaResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsOpenInTerminalRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.openInTerminal, {
-  payload: BatonOpenInTerminalInput,
-  success: BatonOpenInTerminalResult,
+const WsTessayaSessionsOpenInTerminalRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.openInTerminal, {
+  payload: TessayaOpenInTerminalInput,
+  success: TessayaOpenInTerminalResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsMainSessionRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.mainSession, {
-  payload: BatonMainSessionInput,
-  success: BatonSessionDefaultsResult,
+const WsTessayaSessionsMainSessionRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.mainSession, {
+  payload: TessayaMainSessionInput,
+  success: TessayaSessionDefaultsResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsDefaultsRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.sessionDefaults, {
+const WsTessayaSessionsDefaultsRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.sessionDefaults, {
   payload: Schema.Struct({}),
-  success: BatonSessionDefaultsResult,
+  success: TessayaSessionDefaultsResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsKeptRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.kept, {
-  payload: BatonKeptInput,
-  success: BatonKeptResult,
+const WsTessayaSessionsKeptRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.kept, {
+  payload: TessayaKeptInput,
+  success: TessayaKeptResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsWaitingRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.waiting, {
-  payload: BatonCatalogWaitingInput,
-  success: BatonCatalogWaitingResult,
+const WsTessayaSessionsWaitingRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.waiting, {
+  payload: TessayaCatalogWaitingInput,
+  success: TessayaCatalogWaitingResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsInFlightRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.inFlight, {
+const WsTessayaSessionsInFlightRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.inFlight, {
   payload: Schema.Struct({}),
-  success: BatonTurnsInFlightResult,
+  success: TessayaTurnsInFlightResult,
   error: CatalogErrors,
 });
-const WsBatonSessionsAcrossRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.across, {
-  payload: BatonSessionsAcrossInput,
-  success: BatonSessionsAcrossResult,
+const WsTessayaSessionsAcrossRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.across, {
+  payload: TessayaSessionsAcrossInput,
+  success: TessayaSessionsAcrossResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
-const WsBatonSessionsSendRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.send, {
-  payload: BatonCatalogSendInput,
-  success: BatonCatalogSendResult,
+const WsTessayaSessionsSendRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.send, {
+  payload: TessayaCatalogSendInput,
+  success: TessayaCatalogSendResult,
   error: CatalogErrors,
 });
 
-const WeaveErrors = Schema.Union([BatonWeaveError, EnvironmentAuthorizationError]);
-const WsBatonWeaveSendRpc = Rpc.make(BATON_WEAVE_WS_METHODS.send, {
-  payload: BatonWeaveSendInput,
-  success: BatonWeaveSendResult,
+const WeaveErrors = Schema.Union([TessayaWeaveError, EnvironmentAuthorizationError]);
+const WsTessayaWeaveSendRpc = Rpc.make(BATON_WEAVE_WS_METHODS.send, {
+  payload: TessayaWeaveSendInput,
+  success: TessayaWeaveSendResult,
   error: WeaveErrors,
 });
-const WsBatonWeaveListRpc = Rpc.make(BATON_WEAVE_WS_METHODS.list, {
-  payload: BatonWeaveListInput,
-  success: BatonWeaveListResult,
+const WsTessayaWeaveListRpc = Rpc.make(BATON_WEAVE_WS_METHODS.list, {
+  payload: TessayaWeaveListInput,
+  success: TessayaWeaveListResult,
   error: WeaveErrors,
 });
-const WsBatonWeaveTickRpc = Rpc.make(BATON_WEAVE_WS_METHODS.tick, {
-  payload: BatonWeaveTickInput,
-  success: BatonWeaveTickResult,
+const WsTessayaWeaveTickRpc = Rpc.make(BATON_WEAVE_WS_METHODS.tick, {
+  payload: TessayaWeaveTickInput,
+  success: TessayaWeaveTickResult,
   error: WeaveErrors,
 });
 
 const MemoryErrors = Schema.Union([BatonMemoryRefusedError, EnvironmentAuthorizationError]);
-const WsBatonMemoryListRpc = Rpc.make(BATON_MEMORY_WS_METHODS.list, {
-  payload: BatonMemoryQuery,
-  success: BatonMemoryListResult,
+const WsTessayaMemoryListRpc = Rpc.make(BATON_MEMORY_WS_METHODS.list, {
+  payload: TessayaMemoryQuery,
+  success: TessayaMemoryListResult,
   error: MemoryErrors,
 });
-const WsBatonMemorySearchRpc = Rpc.make(BATON_MEMORY_WS_METHODS.search, {
-  payload: BatonMemoryQuery,
-  success: BatonMemorySearchResult,
+const WsTessayaMemorySearchRpc = Rpc.make(BATON_MEMORY_WS_METHODS.search, {
+  payload: TessayaMemoryQuery,
+  success: TessayaMemorySearchResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryAddRpc = Rpc.make(BATON_MEMORY_WS_METHODS.add, {
-  payload: BatonMemoryDraft,
-  success: BatonMemoryItemResult,
+const WsTessayaMemoryAddRpc = Rpc.make(BATON_MEMORY_WS_METHODS.add, {
+  payload: TessayaMemoryDraft,
+  success: TessayaMemoryItemResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryEditRpc = Rpc.make(BATON_MEMORY_WS_METHODS.edit, {
-  payload: BatonMemoryEditInput,
-  success: BatonMemoryItemResult,
+const WsTessayaMemoryEditRpc = Rpc.make(BATON_MEMORY_WS_METHODS.edit, {
+  payload: TessayaMemoryEditInput,
+  success: TessayaMemoryItemResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryHistoryRpc = Rpc.make(BATON_MEMORY_WS_METHODS.history, {
-  payload: BatonMemoryHistoryInput,
-  success: BatonMemoryHistoryResult,
+const WsTessayaMemoryHistoryRpc = Rpc.make(BATON_MEMORY_WS_METHODS.history, {
+  payload: TessayaMemoryHistoryInput,
+  success: TessayaMemoryHistoryResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryRestoreRpc = Rpc.make(BATON_MEMORY_WS_METHODS.restore, {
-  payload: BatonMemoryRestoreInput,
-  success: BatonMemoryItemResult,
+const WsTessayaMemoryRestoreRpc = Rpc.make(BATON_MEMORY_WS_METHODS.restore, {
+  payload: TessayaMemoryRestoreInput,
+  success: TessayaMemoryItemResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryPinRpc = Rpc.make(BATON_MEMORY_WS_METHODS.pin, {
-  payload: BatonMemoryPinInput,
-  success: BatonMemoryItemResult,
+const WsTessayaMemoryPinRpc = Rpc.make(BATON_MEMORY_WS_METHODS.pin, {
+  payload: TessayaMemoryPinInput,
+  success: TessayaMemoryItemResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryForgetRpc = Rpc.make(BATON_MEMORY_WS_METHODS.forget, {
-  payload: BatonMemoryRefInput,
-  success: BatonMemoryForgetResult,
+const WsTessayaMemoryForgetRpc = Rpc.make(BATON_MEMORY_WS_METHODS.forget, {
+  payload: TessayaMemoryRefInput,
+  success: TessayaMemoryForgetResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryAcceptRpc = Rpc.make(BATON_MEMORY_WS_METHODS.accept, {
-  payload: BatonMemoryRefInput,
-  success: BatonMemoryItemResult,
+const WsTessayaMemoryAcceptRpc = Rpc.make(BATON_MEMORY_WS_METHODS.accept, {
+  payload: TessayaMemoryRefInput,
+  success: TessayaMemoryItemResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryRecallRpc = Rpc.make(BATON_MEMORY_WS_METHODS.recall, {
-  payload: BatonMemoryRecallInput,
-  success: BatonMemoryRecallResult,
+const WsTessayaMemoryRecallRpc = Rpc.make(BATON_MEMORY_WS_METHODS.recall, {
+  payload: TessayaMemoryRecallInput,
+  success: TessayaMemoryRecallResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryUsedRpc = Rpc.make(BATON_MEMORY_WS_METHODS.used, {
-  payload: BatonMemoryUsedInput,
-  success: BatonMemoryListResult,
+const WsTessayaMemoryUsedRpc = Rpc.make(BATON_MEMORY_WS_METHODS.used, {
+  payload: TessayaMemoryUsedInput,
+  success: TessayaMemoryListResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryLearnRpc = Rpc.make(BATON_MEMORY_WS_METHODS.learn, {
-  payload: BatonMemoryLearnInput,
-  success: BatonMemoryLearnResult,
+const WsTessayaMemoryLearnRpc = Rpc.make(BATON_MEMORY_WS_METHODS.learn, {
+  payload: TessayaMemoryLearnInput,
+  success: TessayaMemoryLearnResult,
   error: MemoryErrors,
 });
-const WsBatonMemorySyncStateRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncState, {
+const WsTessayaMemorySyncStateRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncState, {
   payload: Schema.Struct({}),
-  success: BatonMemorySyncStateResult,
+  success: TessayaMemorySyncStateResult,
   error: MemoryErrors,
 });
-const WsBatonMemorySyncSetEnabledRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncSetEnabled, {
-  payload: BatonMemorySyncSetEnabledInput,
+const WsTessayaMemorySyncSetEnabledRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncSetEnabled, {
+  payload: TessayaMemorySyncSetEnabledInput,
   success: Schema.Struct({}),
   error: MemoryErrors,
 });
-const WsBatonMemorySyncAddPeerRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncAddPeer, {
-  payload: BatonMemorySyncAddPeerInput,
+const WsTessayaMemorySyncAddPeerRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncAddPeer, {
+  payload: TessayaMemorySyncAddPeerInput,
   success: Schema.Struct({}),
   error: Schema.Union([
-    BatonMemorySyncError,
+    TessayaMemorySyncError,
     BatonMemoryRefusedError,
     EnvironmentAuthorizationError,
   ]),
 });
-const WsBatonMemorySyncForgetRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncForget, {
-  payload: BatonMemorySyncForgetInput,
+const WsTessayaMemorySyncForgetRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncForget, {
+  payload: TessayaMemorySyncForgetInput,
   success: Schema.Struct({}),
   error: Schema.Union([
-    BatonMemorySyncError,
+    TessayaMemorySyncError,
     BatonMemoryRefusedError,
     EnvironmentAuthorizationError,
   ]),
 });
-const WsBatonMemorySyncRunRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncRun, {
+const WsTessayaMemorySyncRunRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncRun, {
   payload: Schema.Struct({}),
-  success: BatonMemorySyncRunResult,
+  success: TessayaMemorySyncRunResult,
   error: MemoryErrors,
 });
-const WsBatonMemorySyncHelloRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncHello, {
+const WsTessayaMemorySyncHelloRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncHello, {
   payload: Schema.Struct({}),
-  success: BatonMemorySyncHelloResult,
+  success: TessayaMemorySyncHelloResult,
   error: MemoryErrors,
 });
-const WsBatonMemorySyncPullRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncPull, {
-  payload: BatonMemorySyncPullInput,
-  success: BatonMemorySyncPullResult,
+const WsTessayaMemorySyncPullRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncPull, {
+  payload: TessayaMemorySyncPullInput,
+  success: TessayaMemorySyncPullResult,
   error: MemoryErrors,
 });
-const WsBatonMemorySyncPushRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncPush, {
-  payload: BatonMemorySyncPushInput,
-  success: BatonMemorySyncPushResult,
+const WsTessayaMemorySyncPushRpc = Rpc.make(BATON_MEMORY_WS_METHODS.syncPush, {
+  payload: TessayaMemorySyncPushInput,
+  success: TessayaMemorySyncPushResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryImportRpc = Rpc.make(BATON_MEMORY_WS_METHODS.import, {
-  payload: BatonMemoryImportInput,
-  success: BatonMemoryImportResult,
+const WsTessayaMemoryImportRpc = Rpc.make(BATON_MEMORY_WS_METHODS.import, {
+  payload: TessayaMemoryImportInput,
+  success: TessayaMemoryImportResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryPullRpc = Rpc.make(BATON_MEMORY_WS_METHODS.pull, {
-  payload: BatonMemoryPullInput,
-  success: BatonMemoryPullResult,
+const WsTessayaMemoryPullRpc = Rpc.make(BATON_MEMORY_WS_METHODS.pull, {
+  payload: TessayaMemoryPullInput,
+  success: TessayaMemoryPullResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryHistorySearchRpc = Rpc.make(BATON_MEMORY_WS_METHODS.historySearch, {
-  payload: BatonMemoryHistorySearchInput,
-  success: BatonMemoryHistorySearchResult,
+const WsTessayaMemoryHistorySearchRpc = Rpc.make(BATON_MEMORY_WS_METHODS.historySearch, {
+  payload: TessayaMemoryHistorySearchInput,
+  success: TessayaMemoryHistorySearchResult,
   error: MemoryErrors,
 });
-const WsBatonMemoryExportRpc = Rpc.make(BATON_MEMORY_WS_METHODS.export, {
+const WsTessayaMemoryExportRpc = Rpc.make(BATON_MEMORY_WS_METHODS.export, {
   payload: Schema.Struct({}),
-  success: BatonMemoryExportResult,
+  success: TessayaMemoryExportResult,
   error: MemoryErrors,
 });
 
-const WsBatonWatchGetRpc = Rpc.make(BATON_WATCH_WS_METHODS.watchGet, {
+const WsTessayaWatchGetRpc = Rpc.make(BATON_WATCH_WS_METHODS.watchGet, {
   payload: Schema.Struct({}),
   success: WatchResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonRecordListRpc = Rpc.make(BATON_RECORD_WS_METHODS.list, {
-  payload: BatonRecordListInput,
-  success: BatonRecordListResult,
+const WsTessayaRecordListRpc = Rpc.make(BATON_RECORD_WS_METHODS.list, {
+  payload: TessayaRecordListInput,
+  success: TessayaRecordListResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonBrainUsageRpc = Rpc.make(BATON_BRAIN_WS_METHODS.usage, {
+const WsTessayaBrainUsageRpc = Rpc.make(BATON_BRAIN_WS_METHODS.usage, {
   payload: BrainUsageInput,
   success: BrainUsageResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonPersonasListRpc = Rpc.make(BATON_PERSONAS_WS_METHODS.list, {
-  payload: BatonPersonasListInput,
-  success: BatonPersonasListResult,
+const WsTessayaPersonasListRpc = Rpc.make(BATON_PERSONAS_WS_METHODS.list, {
+  payload: TessayaPersonasListInput,
+  success: TessayaPersonasListResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonPromptLabRpc = Rpc.make(BATON_PROMPT_LAB_WS_METHODS.call, {
-  payload: BatonPromptLabInput,
-  success: BatonPromptLabResult,
+const WsTessayaPromptLabRpc = Rpc.make(BATON_PROMPT_LAB_WS_METHODS.call, {
+  payload: TessayaPromptLabInput,
+  success: TessayaPromptLabResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonRecordAppendRpc = Rpc.make(BATON_RECORD_WS_METHODS.append, {
-  payload: BatonRecordAppendInput,
-  success: BatonRecordAppendResult,
+const WsTessayaRecordAppendRpc = Rpc.make(BATON_RECORD_WS_METHODS.append, {
+  payload: TessayaRecordAppendInput,
+  success: TessayaRecordAppendResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonDictationCleanupApiRpc = Rpc.make(BATON_DICTATION_WS_METHODS.cleanupApi, {
-  payload: BatonDictationCleanupInput,
-  success: BatonDictationCleanupResult,
+const WsTessayaDictationCleanupApiRpc = Rpc.make(BATON_DICTATION_WS_METHODS.cleanupApi, {
+  payload: TessayaDictationCleanupInput,
+  success: TessayaDictationCleanupResult,
   error: Schema.Union([DictationCleanupError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonDictationCleanupApiStatusRpc = Rpc.make(BATON_DICTATION_WS_METHODS.cleanupApiStatus, {
-  payload: Schema.Struct({}),
-  success: BatonDictationCleanupStatus,
-  error: EnvironmentAuthorizationError,
-});
+const WsTessayaDictationCleanupApiStatusRpc = Rpc.make(
+  BATON_DICTATION_WS_METHODS.cleanupApiStatus,
+  {
+    payload: Schema.Struct({}),
+    success: TessayaDictationCleanupStatus,
+    error: EnvironmentAuthorizationError,
+  },
+);
 
-const WsBatonDesktopSettingsGetRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.get, {
+const WsTessayaDesktopSettingsGetRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.get, {
   payload: Schema.Struct({}),
   success: DesktopSettingsView,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonDesktopSettingsSetRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.set, {
+const WsTessayaDesktopSettingsSetRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.set, {
   payload: DesktopSettingsSetInput,
   success: DesktopSettingsView,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonDesktopSettingsSyncRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.sync, {
+const WsTessayaDesktopSettingsSyncRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.sync, {
   payload: DesktopSettingsSyncInput,
   success: DesktopSettingsSyncResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsBatonWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
+const WsTessayaWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonWorkSessionUnsettleRpc = Rpc.make(BATON_WS_METHODS.workSessionUnsettle, {
+const WsTessayaWorkSessionUnsettleRpc = Rpc.make(BATON_WS_METHODS.workSessionUnsettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonWorkSessionArchiveRpc = Rpc.make(BATON_WS_METHODS.workSessionArchive, {
+const WsTessayaWorkSessionArchiveRpc = Rpc.make(BATON_WS_METHODS.workSessionArchive, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonWorkSessionUnarchiveRpc = Rpc.make(BATON_WS_METHODS.workSessionUnarchive, {
+const WsTessayaWorkSessionUnarchiveRpc = Rpc.make(BATON_WS_METHODS.workSessionUnarchive, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonFleetGetRpc = Rpc.make(BATON_WS_METHODS.fleetGet, {
-  payload: BatonFleetInput,
-  success: BatonFleetResult,
+const WsTessayaFleetGetRpc = Rpc.make(BATON_WS_METHODS.fleetGet, {
+  payload: TessayaFleetInput,
+  success: TessayaFleetResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonOrchestrationRuleCreateRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleCreate, {
+const WsTessayaOrchestrationRuleCreateRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleCreate, {
   payload: OrchestrationRuleCreateInput,
   success: OrchestrationRuleResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonOrchestrationRuleListRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleList, {
+const WsTessayaOrchestrationRuleListRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleList, {
   payload: OrchestrationRuleListInput,
   success: OrchestrationRuleListResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonOrchestrationRuleDisableRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleDisable, {
+const WsTessayaOrchestrationRuleDisableRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleDisable, {
   payload: OrchestrationRuleRefInput,
   success: OrchestrationRuleResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonOrchestrationRuleEnableRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleEnable, {
+const WsTessayaOrchestrationRuleEnableRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleEnable, {
   payload: OrchestrationRuleRefInput,
   success: OrchestrationRuleResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonOrchestrationRuleConfirmRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleConfirm, {
+const WsTessayaOrchestrationRuleConfirmRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleConfirm, {
   payload: OrchestrationConfirmInput,
   success: OrchestrationRuleListResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
@@ -911,198 +918,198 @@ const WsBatonOrchestrationRuleConfirmRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHO
 // methods so the scope map can say so: previewing what a sentence would do must
 // not need permission to do it.
 
-const WsBatonIntentResolveRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentResolve, {
-  payload: BatonIntentInput,
-  success: BatonIntentResolveResult,
-  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
+const WsTessayaIntentResolveRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentResolve, {
+  payload: TessayaIntentInput,
+  success: TessayaIntentResolveResult,
+  error: Schema.Union([TessayaIntentError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonIntentRunRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentRun, {
-  payload: BatonIntentInput,
-  success: BatonIntentRunResult,
-  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
+const WsTessayaIntentRunRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentRun, {
+  payload: TessayaIntentInput,
+  success: TessayaIntentRunResult,
+  error: Schema.Union([TessayaIntentError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonIntentListRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentList, {
-  payload: BatonIntentListInput,
-  success: BatonIntentListResult,
-  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
+const WsTessayaIntentListRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentList, {
+  payload: TessayaIntentListInput,
+  success: TessayaIntentListResult,
+  error: Schema.Union([TessayaIntentError, EnvironmentAuthorizationError]),
 });
 
 // Sessions Baton adopted rather than started (§9). Discovery reads; the rest
 // change what an external runtime is doing, or what Baton believes about it.
 
-const WsBatonAdoptedDiscoverRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedDiscover, {
+const WsTessayaAdoptedDiscoverRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedDiscover, {
   payload: AdoptedDiscoverInput,
   success: AdoptedDiscoverResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonAdoptedRegisterRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedRegister, {
+const WsTessayaAdoptedRegisterRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedRegister, {
   payload: AdoptedRegisterInput,
   success: AdoptedSessionResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonAdoptedListRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedList, {
+const WsTessayaAdoptedListRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedList, {
   payload: AdoptedListInput,
   success: AdoptedSessionListResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonAdoptedRefreshRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedRefresh, {
+const WsTessayaAdoptedRefreshRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedRefresh, {
   payload: AdoptedRefreshInput,
   success: AdoptedSessionResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonAdoptedDetachRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedDetach, {
+const WsTessayaAdoptedDetachRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedDetach, {
   payload: AdoptedRefInput,
   success: AdoptedSessionResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonAdoptedSendInputRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedSendInput, {
+const WsTessayaAdoptedSendInputRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedSendInput, {
   payload: AdoptedSendInputInput,
   success: AdoptedSendInputResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonAdoptedReadOutputRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedReadOutput, {
+const WsTessayaAdoptedReadOutputRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedReadOutput, {
   payload: AdoptedReadOutputInput,
   success: AdoptedReadOutputResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsBatonSubscribeWorkSessionsRpc = Rpc.make(BATON_WS_METHODS.subscribeWorkSessions, {
+const WsTessayaSubscribeWorkSessionsRpc = Rpc.make(BATON_WS_METHODS.subscribeWorkSessions, {
   payload: Schema.Struct({}),
   success: WorkSessionStreamItem,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
   stream: true,
 });
 
-export class BatonRpcScopeAuthorization extends RpcMiddleware.Service<BatonRpcScopeAuthorization>()(
+export class TessayaRpcScopeAuthorization extends RpcMiddleware.Service<TessayaRpcScopeAuthorization>()(
   "baton/contracts/BatonRpcScopeAuthorization",
   { error: EnvironmentAuthorizationError },
 ) {}
 
 const BATON_RPCS = [
-  WsBatonAccountPoolRpc,
-  WsBatonAccountUseRpc,
-  WsBatonOnLimitRpc,
-  WsBatonSetOnLimitRpc,
-  WsBatonThreadKeptRpc,
-  WsBatonThreadKeepRpc,
-  WsBatonAccountWeeklyRpc,
-  WsBatonAccountsListRpc,
-  WsBatonWorkSessionListRpc,
-  WsBatonWorkSessionCreateRpc,
-  WsBatonWorkSessionUpdateRpc,
-  WsBatonWorkSessionAttachThreadRpc,
-  WsBatonWorkSessionDetachThreadRpc,
-  WsBatonWorkSessionStartThreadRpc,
-  WsBatonWorkSessionHandoffRpc,
-  WsBatonHerdrSendRpc,
-  WsBatonLiveAttachRpc,
-  WsBatonLiveAdoptRpc,
-  WsBatonLiveSetModelRpc,
-  WsBatonLiveSetAccountRpc,
-  WsBatonLiveStateRpc,
-  WsBatonLiveCancelQueuedRpc,
-  WsBatonWorkSessionSettleRpc,
-  WsBatonWorkSessionUnsettleRpc,
-  WsBatonWorkSessionArchiveRpc,
-  WsBatonWorkSessionUnarchiveRpc,
-  WsBatonFleetGetRpc,
-  WsBatonJobListRpc,
-  WsBatonJobStartRpc,
-  WsBatonJobPlaceRpc,
-  WsBatonJobHandoffRpc,
-  WsBatonJobTeamRpc,
-  WsBatonJobAgreeRpc,
-  WsBatonJobRefineRpc,
-  WsBatonJobGrantRpc,
-  WsBatonJobRevokeRpc,
-  WsBatonJobStopRpc,
-  WsBatonJobScheduleRpc,
-  WsBatonJobSplitRpc,
-  WsBatonWatchGetRpc,
-  WsBatonRecordListRpc,
-  WsBatonRecordAppendRpc,
-  WsBatonBrainUsageRpc,
-  WsBatonPersonasListRpc,
-  WsBatonPromptLabRpc,
-  WsBatonDictationCleanupApiRpc,
-  WsBatonDictationCleanupApiStatusRpc,
-  WsBatonDesktopSettingsGetRpc,
-  WsBatonDesktopSettingsSetRpc,
-  WsBatonDesktopSettingsSyncRpc,
-  WsBatonWeaveSendRpc,
-  WsBatonWeaveListRpc,
-  WsBatonWeaveTickRpc,
-  WsBatonCommitmentListRpc,
-  WsBatonCommitmentUpsertRpc,
-  WsBatonPhoneCallRpc,
-  WsBatonSessionsListRpc,
-  WsBatonSessionsFoldersRpc,
-  WsBatonSessionsCleanupRpc,
-  WsBatonSessionsAutoResumeRpc,
-  WsBatonSessionsRetireHandoffRpc,
-  WsBatonSessionsReattachRpc,
+  WsTessayaAccountPoolRpc,
+  WsTessayaAccountUseRpc,
+  WsTessayaOnLimitRpc,
+  WsTessayaSetOnLimitRpc,
+  WsTessayaThreadKeptRpc,
+  WsTessayaThreadKeepRpc,
+  WsTessayaAccountWeeklyRpc,
+  WsTessayaAccountsListRpc,
+  WsTessayaWorkSessionListRpc,
+  WsTessayaWorkSessionCreateRpc,
+  WsTessayaWorkSessionUpdateRpc,
+  WsTessayaWorkSessionAttachThreadRpc,
+  WsTessayaWorkSessionDetachThreadRpc,
+  WsTessayaWorkSessionStartThreadRpc,
+  WsTessayaWorkSessionHandoffRpc,
+  WsTessayaHerdrSendRpc,
+  WsTessayaLiveAttachRpc,
+  WsTessayaLiveAdoptRpc,
+  WsTessayaLiveSetModelRpc,
+  WsTessayaLiveSetAccountRpc,
+  WsTessayaLiveStateRpc,
+  WsTessayaLiveCancelQueuedRpc,
+  WsTessayaWorkSessionSettleRpc,
+  WsTessayaWorkSessionUnsettleRpc,
+  WsTessayaWorkSessionArchiveRpc,
+  WsTessayaWorkSessionUnarchiveRpc,
+  WsTessayaFleetGetRpc,
+  WsTessayaJobListRpc,
+  WsTessayaJobStartRpc,
+  WsTessayaJobPlaceRpc,
+  WsTessayaJobHandoffRpc,
+  WsTessayaJobTeamRpc,
+  WsTessayaJobAgreeRpc,
+  WsTessayaJobRefineRpc,
+  WsTessayaJobGrantRpc,
+  WsTessayaJobRevokeRpc,
+  WsTessayaJobStopRpc,
+  WsTessayaJobScheduleRpc,
+  WsTessayaJobSplitRpc,
+  WsTessayaWatchGetRpc,
+  WsTessayaRecordListRpc,
+  WsTessayaRecordAppendRpc,
+  WsTessayaBrainUsageRpc,
+  WsTessayaPersonasListRpc,
+  WsTessayaPromptLabRpc,
+  WsTessayaDictationCleanupApiRpc,
+  WsTessayaDictationCleanupApiStatusRpc,
+  WsTessayaDesktopSettingsGetRpc,
+  WsTessayaDesktopSettingsSetRpc,
+  WsTessayaDesktopSettingsSyncRpc,
+  WsTessayaWeaveSendRpc,
+  WsTessayaWeaveListRpc,
+  WsTessayaWeaveTickRpc,
+  WsTessayaCommitmentListRpc,
+  WsTessayaCommitmentUpsertRpc,
+  WsTessayaPhoneCallRpc,
+  WsTessayaSessionsListRpc,
+  WsTessayaSessionsFoldersRpc,
+  WsTessayaSessionsCleanupRpc,
+  WsTessayaSessionsAutoResumeRpc,
+  WsTessayaSessionsRetireHandoffRpc,
+  WsTessayaSessionsReattachRpc,
   WsBatonSessionsMoveIntoTessayaRpc,
-  WsBatonSessionsOpenInTerminalRpc,
-  WsBatonSessionsMainSessionRpc,
-  WsBatonSessionsDefaultsRpc,
-  WsBatonSessionsKeptRpc,
-  WsBatonSessionsWaitingRpc,
-  WsBatonSessionsInFlightRpc,
-  WsBatonSessionsAcrossRpc,
-  WsBatonSessionsResumeRpc,
-  WsBatonSessionsCreateRpc,
-  WsBatonSessionsSendRpc,
-  WsBatonCloudReadRpc,
-  WsBatonCloudActRpc,
-  WsBatonCloudApproveRpc,
-  WsBatonMemoryListRpc,
-  WsBatonMemorySearchRpc,
-  WsBatonMemoryAddRpc,
-  WsBatonMemoryEditRpc,
-  WsBatonMemoryPinRpc,
-  WsBatonMemoryForgetRpc,
-  WsBatonMemoryAcceptRpc,
-  WsBatonMemoryRecallRpc,
-  WsBatonMemoryUsedRpc,
-  WsBatonMemoryHistoryRpc,
-  WsBatonMemoryRestoreRpc,
-  WsBatonMemoryExportRpc,
-  WsBatonMemoryLearnRpc,
-  WsBatonMemoryImportRpc,
-  WsBatonMemoryPullRpc,
-  WsBatonMemoryHistorySearchRpc,
-  WsBatonMemorySyncHelloRpc,
-  WsBatonMemorySyncStateRpc,
-  WsBatonMemorySyncSetEnabledRpc,
-  WsBatonMemorySyncAddPeerRpc,
-  WsBatonMemorySyncForgetRpc,
-  WsBatonMemorySyncRunRpc,
-  WsBatonMemorySyncPullRpc,
-  WsBatonMemorySyncPushRpc,
-  WsBatonOrchestrationRuleCreateRpc,
-  WsBatonOrchestrationRuleListRpc,
-  WsBatonOrchestrationRuleDisableRpc,
-  WsBatonOrchestrationRuleEnableRpc,
-  WsBatonOrchestrationRuleConfirmRpc,
-  WsBatonIntentResolveRpc,
-  WsBatonIntentRunRpc,
-  WsBatonIntentListRpc,
-  WsBatonAdoptedDiscoverRpc,
-  WsBatonAdoptedRegisterRpc,
-  WsBatonAdoptedListRpc,
-  WsBatonAdoptedRefreshRpc,
-  WsBatonAdoptedDetachRpc,
-  WsBatonAdoptedSendInputRpc,
-  WsBatonAdoptedReadOutputRpc,
-  WsBatonSubscribeWorkSessionsRpc,
+  WsTessayaSessionsOpenInTerminalRpc,
+  WsTessayaSessionsMainSessionRpc,
+  WsTessayaSessionsDefaultsRpc,
+  WsTessayaSessionsKeptRpc,
+  WsTessayaSessionsWaitingRpc,
+  WsTessayaSessionsInFlightRpc,
+  WsTessayaSessionsAcrossRpc,
+  WsTessayaSessionsResumeRpc,
+  WsTessayaSessionsCreateRpc,
+  WsTessayaSessionsSendRpc,
+  WsTessayaCloudReadRpc,
+  WsTessayaCloudActRpc,
+  WsTessayaCloudApproveRpc,
+  WsTessayaMemoryListRpc,
+  WsTessayaMemorySearchRpc,
+  WsTessayaMemoryAddRpc,
+  WsTessayaMemoryEditRpc,
+  WsTessayaMemoryPinRpc,
+  WsTessayaMemoryForgetRpc,
+  WsTessayaMemoryAcceptRpc,
+  WsTessayaMemoryRecallRpc,
+  WsTessayaMemoryUsedRpc,
+  WsTessayaMemoryHistoryRpc,
+  WsTessayaMemoryRestoreRpc,
+  WsTessayaMemoryExportRpc,
+  WsTessayaMemoryLearnRpc,
+  WsTessayaMemoryImportRpc,
+  WsTessayaMemoryPullRpc,
+  WsTessayaMemoryHistorySearchRpc,
+  WsTessayaMemorySyncHelloRpc,
+  WsTessayaMemorySyncStateRpc,
+  WsTessayaMemorySyncSetEnabledRpc,
+  WsTessayaMemorySyncAddPeerRpc,
+  WsTessayaMemorySyncForgetRpc,
+  WsTessayaMemorySyncRunRpc,
+  WsTessayaMemorySyncPullRpc,
+  WsTessayaMemorySyncPushRpc,
+  WsTessayaOrchestrationRuleCreateRpc,
+  WsTessayaOrchestrationRuleListRpc,
+  WsTessayaOrchestrationRuleDisableRpc,
+  WsTessayaOrchestrationRuleEnableRpc,
+  WsTessayaOrchestrationRuleConfirmRpc,
+  WsTessayaIntentResolveRpc,
+  WsTessayaIntentRunRpc,
+  WsTessayaIntentListRpc,
+  WsTessayaAdoptedDiscoverRpc,
+  WsTessayaAdoptedRegisterRpc,
+  WsTessayaAdoptedListRpc,
+  WsTessayaAdoptedRefreshRpc,
+  WsTessayaAdoptedDetachRpc,
+  WsTessayaAdoptedSendInputRpc,
+  WsTessayaAdoptedReadOutputRpc,
+  WsTessayaSubscribeWorkSessionsRpc,
 ] as const;
 
 type TessayaAlias<R> =
@@ -1135,11 +1142,11 @@ export const BATON_METHOD_OF: ReadonlyMap<string, string> = new Map(
 );
 
 // Newer methods join without a tessaya.* twin: one more aliased pair tips the group past what the checker can infer.
-export const BatonRpcGroup = RpcGroup.make(
+export const TessayaRpcGroup = RpcGroup.make(
   ...BATON_RPCS,
   ...TESSAYA_ALIASES,
-  WsBatonHomeCallRpc,
-  WsBatonDevicesCallRpc,
-  WsBatonVoiceCallRpc,
-  WsBatonLearnCallRpc,
-).middleware(BatonRpcScopeAuthorization);
+  WsTessayaHomeCallRpc,
+  WsTessayaDevicesCallRpc,
+  WsTessayaVoiceCallRpc,
+  WsTessayaLearnCallRpc,
+).middleware(TessayaRpcScopeAuthorization);

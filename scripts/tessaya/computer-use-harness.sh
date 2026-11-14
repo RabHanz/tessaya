@@ -14,7 +14,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)/apps/desktop"
 case "${1:-}" in
   dry)
-    vp test run src/baton/agent/agentHarness.test.ts src/baton/screen/smoke/agentTasks.test.ts
+    vp test run src/tessaya/agent/agentHarness.test.ts src/tessaya/screen/smoke/agentTasks.test.ts
     ;;
   real)
     out="$(realpath -m "${2:?out dir}")"
@@ -22,7 +22,7 @@ case "${1:-}" in
     case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ;; *) echo "The real run needs the Windows desktop." >&2; exit 2 ;; esac
     mkdir -p "$out" node_modules/.cache/baton-smoke
     esbuild="$(ls -d ../../node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild | tail -1)"
-    "$esbuild" src/baton/screen/smoke/agentLab.ts --bundle --platform=node --format=cjs \
+    "$esbuild" src/tessaya/screen/smoke/agentLab.ts --bundle --platform=node --format=cjs \
       --external:electron --external:onnxruntime-node --log-level=warning \
       --outfile=node_modules/.cache/baton-smoke/agentLab.cjs
     BATON_LAB=1 LAB_OUT="$out" "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/agentLab.cjs

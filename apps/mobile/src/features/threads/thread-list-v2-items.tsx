@@ -38,7 +38,7 @@ import type { ThreadListProvider } from "../../state/thread-list-environments";
 import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Menu } from "../../components/ui/Menu";
-import { BatonLiveTag } from "./BatonLiveTag";
+import { TessayaLiveTag } from "./TessayaLiveTag";
 import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import {
@@ -1295,7 +1295,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       <View className="mt-1 flex-row items-center gap-2" style={{ paddingLeft: titleTextInset }}>
         {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
           <>
-            <BatonLiveTag live={props.batonLive === true} />
+            <TessayaLiveTag live={props.batonLive === true} />
             <Text
               className={cn(
                 "flex-1 text-xs",
@@ -1312,7 +1312,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </>
         ) : props.environmentLabel ? (
           <View className="min-w-0 flex-1 flex-row items-center gap-1">
-            <BatonLiveTag live={props.batonLive === true} />
+            <TessayaLiveTag live={props.batonLive === true} />
             {props.environmentMachine ? (
               <EnvironmentMachineSymbol
                 kind={props.environmentMachine}
@@ -1338,7 +1338,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </View>
         ) : (
           <View className="flex-1 flex-row">
-            <BatonLiveTag live={props.batonLive === true} />
+            <TessayaLiveTag live={props.batonLive === true} />
           </View>
         )}
         {pr ? (

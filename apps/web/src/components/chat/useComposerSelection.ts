@@ -25,7 +25,7 @@ import {
   useLiveAccounts,
   useLiveAccountSwitch,
   useLiveSessionChange,
-} from "./BatonLiveModel";
+} from "./TessayaLiveModel";
 import { resolveAppModelSelectionForInstance } from "../../modelSelection";
 import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
 import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";

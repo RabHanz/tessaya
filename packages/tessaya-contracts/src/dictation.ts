@@ -6,13 +6,13 @@ export const BATON_DICTATION_WS_METHODS = {
   cleanupApiStatus: "baton.dictation.cleanupApiStatus",
 } as const;
 
-export const BatonDictationCleanupInput = Schema.Struct({
+export const TessayaDictationCleanupInput = Schema.Struct({
   system: Schema.String.check(Schema.isMaxLength(50_000)),
   message: Schema.String.check(Schema.isMaxLength(50_000)),
   maxTokens: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 8192 })),
 });
-export const BatonDictationCleanupResult = Schema.Union([
+export const TessayaDictationCleanupResult = Schema.Union([
   Schema.Struct({ configured: Schema.Literal(false) }),
   Schema.Struct({ configured: Schema.Literal(true), text: Schema.String, ms: Schema.Number }),
 ]);
-export const BatonDictationCleanupStatus = Schema.Struct({ configured: Schema.Boolean });
+export const TessayaDictationCleanupStatus = Schema.Struct({ configured: Schema.Boolean });

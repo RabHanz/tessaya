@@ -6,7 +6,7 @@ set -uo pipefail
 cd "$(dirname "$0")/../../apps/desktop"
 out="$(mktemp)"
 trap 'rm -f "$out"' EXIT
-vp test run src/baton/screen/operatorProof.test.ts --reporter=json --outputFile="$out" >/dev/null 2>&1
+vp test run src/tessaya/screen/operatorProof.test.ts --reporter=json --outputFile="$out" >/dev/null 2>&1
 node -e '
 const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 const cases = r.testResults.flatMap((f) => f.assertionResults);

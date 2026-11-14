@@ -37,15 +37,15 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { BatonHomeCallResult } from "@t3tools/tessaya-contracts";
+import { TessayaHomeCallResult } from "@t3tools/tessaya-contracts";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
-import { BatonRecordService } from "../baton/BatonRecordService.ts";
-import { TessayaHousehold } from "../baton/TessayaHousehold.ts";
-import { TurnOrigin } from "../baton/TurnOrigin.ts";
+import { TessayaPhoneInbox } from "../tessaya/TessayaPhoneInbox.ts";
+import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
+import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
+import { TurnOrigin } from "../tessaya/TurnOrigin.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { arbitrate, ARBITRATION_MS, type RecentAct } from "./homeArbitration.ts";
 import {
@@ -402,8 +402,8 @@ const make = Effect.gen(function* () {
     ).pipe(Effect.ignore);
   });
   const connection = yield* HomeAssistantConnection;
-  const record = yield* Effect.serviceOption(BatonRecordService);
-  const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
+  const record = yield* Effect.serviceOption(TessayaRecordService);
+  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
   const peerLinks = yield* Effect.serviceOption(PeerLinks.PeerLinks);
   const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
   const scope = yield* Effect.scope;
@@ -965,7 +965,7 @@ const make = Effect.gen(function* () {
           tool,
           arguments: args,
           limits: { runtimeMode: "approval-required", interactionMode: "default" },
-          success: BatonHomeCallResult,
+          success: TessayaHomeCallResult,
         })
         .pipe(Effect.timeout("20 seconds"), Effect.option);
       if (answer._tag === "None") continue;

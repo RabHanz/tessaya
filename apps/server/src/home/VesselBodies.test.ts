@@ -6,13 +6,13 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
-import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
+import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { VesselBodies, layer as bodiesLayer } from "./VesselBodies.ts";
 
 const layer = bodiesLayer.pipe(
   Layer.provideMerge(registryLayer),
-  Layer.provideMerge(BatonDatabaseMemory),
+  Layer.provideMerge(TessayaDatabaseMemory),
   Layer.provide(
     Layer.mock(ServerSecretStore)({
       getOrCreateRandom: () => Effect.succeed(new Uint8Array(32).fill(7)),

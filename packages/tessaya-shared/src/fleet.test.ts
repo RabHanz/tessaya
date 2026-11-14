@@ -4,13 +4,13 @@ import {
   ProviderInstanceId,
   ThreadId,
   WorkSessionId,
-  type BatonFleetAdopted,
+  type TessayaFleetAdopted,
   type WorkSession,
   type WorkSessionProviderSession,
 } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildBatonFleet, filterFleetNeedsUser, type FleetThreadInput } from "./fleet.ts";
+import { buildTessayaFleet, filterFleetNeedsUser, type FleetThreadInput } from "./fleet.ts";
 
 const projectId = ProjectId.make("vantageos");
 const OBSERVED = "2026-09-18T04:10:00.000Z";
@@ -81,9 +81,9 @@ const build = (input: {
   environmentOnline?: boolean;
   exhausted?: readonly string[];
   lastVisitedAt?: (threadId: string) => string | null;
-  adopted?: ReadonlyMap<string, ReadonlyArray<BatonFleetAdopted>>;
+  adopted?: ReadonlyMap<string, ReadonlyArray<TessayaFleetAdopted>>;
 }) =>
-  buildBatonFleet({
+  buildTessayaFleet({
     workSessions: input.workSessions,
     threads: new Map(input.threads.map((entry) => [entry.threadId, entry])),
     environmentOnline: input.environmentOnline ?? true,
@@ -297,7 +297,7 @@ describe("filterFleetNeedsUser", () => {
 });
 
 describe("adopted sessions in the fleet", () => {
-  const adoptedRow = (state: BatonFleetAdopted["state"]): BatonFleetAdopted => ({
+  const adoptedRow = (state: TessayaFleetAdopted["state"]): TessayaFleetAdopted => ({
     id: "herdr:ops:hermes",
     runtime: "herdr",
     label: "hermes",

@@ -81,4 +81,4 @@ $b = Get-Content $f -Raw -EA 0 | ConvertFrom-Json -EA 0
 $idle = -not (Get-Process Tessaya -EA 0) -or ($b -and $b.busy -eq $false -and ([datetimeoffset]::UtcNow - [datetimeoffset]$b.at).TotalSeconds -lt 20)
 ```
 
-The rule is `safeToReplace` in `apps/desktop/src/baton/lifecycle/busyFile.ts`.
+The rule is `safeToReplace` in `apps/desktop/src/tessaya/lifecycle/busyFile.ts`.

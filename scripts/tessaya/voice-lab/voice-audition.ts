@@ -12,9 +12,9 @@ import {
   createPocketEngine,
   POCKET_ALL_VOICES,
   type PocketVoice,
-} from "../../../apps/desktop/src/baton/voice/pocketVoice.ts";
+} from "../../../apps/desktop/src/tessaya/voice/pocketVoice.ts";
 import { pronounce } from "../../../packages/tessaya-shared/src/pronounce.ts";
-import { speakableText } from "../../../apps/desktop/src/baton/voice/voiceSpeaker.ts";
+import { speakableText } from "../../../apps/desktop/src/tessaya/voice/voiceSpeaker.ts";
 import {
   candidateFile,
   joinWavs,

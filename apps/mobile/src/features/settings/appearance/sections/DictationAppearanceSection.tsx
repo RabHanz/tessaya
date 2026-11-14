@@ -4,7 +4,7 @@ import { useColorScheme, View } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import { SegmentedControl } from "../../../../components/ui/SegmentedControl";
-import { batonWorkSessions } from "../../../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../../../state/tessayaWorkSessions";
 import { useEnvironments } from "../../../../state/environments";
 import { useAtomCommand } from "../../../../state/use-atom-command";
 import {
@@ -39,7 +39,9 @@ export function DictationAppearanceSection() {
   );
   // Shown as the phone holds it, so a change shows at once; the desktop takes it on its next report.
   const choice = useLocalPillChoice();
-  const setDesktop = useAtomCommand(batonWorkSessions.desktopSettingsSet, { reportFailure: false });
+  const setDesktop = useAtomCommand(tessayaWorkSessions.desktopSettingsSet, {
+    reportFailure: false,
+  });
   const look = usePillLook(null);
   const dark = useColorScheme() === "dark";
   const previewLevels = useSharedValue<ReadonlyArray<number>>(PREVIEW);

@@ -1,7 +1,7 @@
 import {
   authScopeRequiredResponse,
   AuthAccessWriteScope,
-  AuthBatonHandsHostScope,
+  AuthTessayaHandsHostScope,
   AuthStandardClientScopes,
   AuthGrantScope,
   EnvironmentAuthInvalidError,
@@ -471,7 +471,7 @@ export const layer = HttpApiBuilder.group(
             return yield* serverAuth.issuePairingCredential(args.payload, {
               delegatedByToken: EnvironmentAuth.delegatesAsToken(
                 session,
-                session.scopes.has(AuthBatonHandsHostScope),
+                session.scopes.has(AuthTessayaHandsHostScope),
               ),
               subject: session.subject,
             });

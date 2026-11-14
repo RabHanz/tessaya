@@ -27,9 +27,9 @@ import * as Layer from "effect/Layer";
 import {
   AdoptedSessionService,
   layer as adoptedSessionLayer,
-} from "../src/baton/AdoptedSessionService.ts";
-import { layer as herdrAdapterLayer } from "../src/baton/HerdrAdapterLive.ts";
-import { layerMemory as SqlitePersistenceMemory } from "../src/baton/BatonDatabase.ts";
+} from "../src/tessaya/AdoptedSessionService.ts";
+import { layer as herdrAdapterLayer } from "../src/tessaya/HerdrAdapterLive.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../src/tessaya/TessayaDatabase.ts";
 
 const line = (text = ""): void => {
   process.stdout.write(`${text}\n`);

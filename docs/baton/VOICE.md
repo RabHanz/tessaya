@@ -2,7 +2,7 @@
 
 The §12.2 pipeline: **audio → wake → VAD → STT → mode machine → router → the
 existing intent path → destination → spoken reply**. The desktop owns the
-microphone, tray and HUD (`apps/desktop/src/baton/voice`, D65/D66); this
+microphone, tray and HUD (`apps/desktop/src/tessaya/voice`, D65/D66); this
 package is the core it plugs in through `makeCore`.
 
 ## Pieces
@@ -85,7 +85,7 @@ const core = createVoiceCore({
 });
 ```
 
-The desktop builds its core in `apps/desktop/src/baton/voice/desktopVoiceCore.ts` and feeds it audio
+The desktop builds its core in `apps/desktop/src/tessaya/voice/desktopVoiceCore.ts` and feeds it audio
 itself; `core.setContext(bus)` pushes the context bus state (§14 ladder, dictation target).
 
 `intentClient` (`VoiceIntentClient`) is four calls the desktop already has: `resolve`
@@ -97,7 +97,7 @@ desktop main process imports this package directly.
 
 ## On the desktop
 
-`apps/desktop/src/baton/voice`. Windows first (D97, D106): macOS and Linux are queued, and there the
+`apps/desktop/src/tessaya/voice`. Windows first (D97, D106): macOS and Linux are queued, and there the
 tray says so and no microphone opens. Everything audio goes through
 `baton-dictation.exe` (`native/baton-dictation`, D97): `serve` over JSON lines for the keys, recording,
 Parakeet and paste; `record` piped in as the wake path's microphone.

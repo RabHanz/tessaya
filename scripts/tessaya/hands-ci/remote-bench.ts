@@ -8,7 +8,7 @@ import * as NodePath from "node:path";
 
 import { ps, startSidecar } from "./sidecarClient.ts";
 import { createHandsBroker } from "../../../packages/tessaya-shared/src/remoteHands.ts";
-import { buildRemoteHandsTools } from "../../../apps/desktop/src/baton/agent/remoteHandsTools.ts";
+import { buildRemoteHandsTools } from "../../../apps/desktop/src/tessaya/agent/remoteHandsTools.ts";
 
 const OUT = process.env["HANDS_OUT"] ?? NodePath.join(process.cwd(), "remote-out");
 NodeFS.mkdirSync(OUT, { recursive: true });

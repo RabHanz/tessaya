@@ -6,7 +6,7 @@
 import {
   BATON_TOOL_PREFIX,
   batchSteps,
-  batonToolName,
+  tessayaToolName,
   isOwnTool,
   judgeToolCall,
   type JudgeContext,
@@ -143,7 +143,7 @@ const REACH: Readonly<Record<string, ToolReach>> = {
     ].map((t) => [t, "household" as const]),
   ),
 };
-export const toolReach = (tool: string): ToolReach => REACH[batonToolName(tool)] ?? "machine";
+export const toolReach = (tool: string): ToolReach => REACH[tessayaToolName(tool)] ?? "machine";
 
 /** What each role may reach at all (HOUSEHOLD-DESIGN §5); "machine" also needs the owner's grant below the owner. */
 const ROLE_REACH: Readonly<Record<MemberRole, ReadonlySet<ToolReach>>> = {
@@ -179,7 +179,7 @@ export const principalRefusal = (principal: TrustPrincipal, tool: string): strin
     !ROLE_REACH[role].has(reach) ||
     (reach === "machine" && role !== "owner" && principal.machine !== true)
   )
-    return `${batonToolName(tool)} is not for a ${role} in this home.`;
+    return `${tessayaToolName(tool)} is not for a ${role} in this home.`;
   // My own things need me, not a likely me: refused rather than asked of someone else.
   if (reach === "personal" && principal.assurance < REACH_ASSURANCE.personal)
     return "I need to be sure it's you for that: try again on your own device.";
@@ -300,7 +300,7 @@ const planCovers = (
         inApprovedSteps(plan, tool, args))
     );
   };
-  const name = batonToolName(call.tool);
+  const name = tessayaToolName(call.tool);
   if (name !== "act_batch") return covered(name, call.input);
   const steps = batchSteps(call.input) ?? [];
   return steps.length > 0 && steps.every((s) => covered(s.tool, s.input));
@@ -356,7 +356,7 @@ const leaseCovers = (ask: TrustAsk): boolean => {
   };
   if (chrome) return covered(ask.call.tool.slice(CHROME_PREFIX.length), ask.call.input);
   if (!isOwnTool(ask.call.tool)) return false;
-  const name = batonToolName(ask.call.tool);
+  const name = tessayaToolName(ask.call.tool);
   if (name !== "act_batch") return covered(name, ask.call.input);
   const steps = batchSteps(ask.call.input) ?? [];
   return steps.length > 0 && steps.every((s) => covered(s.tool, s.input));
@@ -364,7 +364,7 @@ const leaseCovers = (ask: TrustAsk): boolean => {
 
 /** The tools a call uses: a batch uses itself and each of its steps. */
 const toolsUsed = (call: ToolCall): ReadonlyArray<string> => {
-  const name = batonToolName(call.tool);
+  const name = tessayaToolName(call.tool);
   return name === "act_batch" && isOwnTool(call.tool)
     ? [name, ...(batchSteps(call.input) ?? []).map((s) => s.tool)]
     : [name];

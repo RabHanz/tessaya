@@ -208,7 +208,7 @@ index 155370da1757d92a238c41d947a6ef592ca8cf0a..1c5465b099bafee8af91767ea08d9391
          assert.isTrue(yield* hasPendingBackgroundWork);
        }).pipe(
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index b3c1fd1c1fed41ab9a35fa4857efa23618029c83..6558c83c4ab870f8d63ac5377dfbb32530702c5a 100644
+index b3c1fd1c1fed41ab9a35fa4857efa23618029c83..7842fefddaa495966b18bc562f4036bf92943cf4 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 @@ -155,6 +155,7 @@ import * as Option from "effect/Option";
@@ -227,7 +227,7 @@ index b3c1fd1c1fed41ab9a35fa4857efa23618029c83..6558c83c4ab870f8d63ac5377dfbb325
 +  makeClaudeSessionLogin,
 +  pruneClaudeSessionLogins,
 +} from "../../provider/Drivers/ClaudeSessionLogin.ts";
-+import * as BatonClaudeAccountHome from "../../provider/Drivers/ClaudeAccountHome.ts";
++import * as TessayaClaudeAccountHome from "../../provider/Drivers/ClaudeAccountHome.ts";
  import {
    BUNDLED_CLAUDE_MODEL_CATALOG,
    resolveClaudeCatalogContextWindowTokens,
@@ -371,7 +371,7 @@ index b3c1fd1c1fed41ab9a35fa4857efa23618029c83..6558c83c4ab870f8d63ac5377dfbb325
      );
      const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
 +    // Baton (D52): a second account's home shares the primary's skills, memory and settings.
-+    yield* BatonClaudeAccountHome.materializeForConfig(config);
++    yield* TessayaClaudeAccountHome.materializeForConfig(config);
      const path = yield* Path.Path;
 +    const sessionLoginsDir = path.join(serverConfig.stateDir, "claude-session-logins");
 +    yield* pruneClaudeSessionLogins(sessionLoginsDir);
@@ -407,14 +407,14 @@ index c772b79efe18454931dc07aa6a773570168d13a3..4417243509e8c98719eab8e71935562c
            `claude\0${resolved}\0`,
          );
 diff --git a/apps/server/src/provider/Drivers/ClaudeHome.ts b/apps/server/src/provider/Drivers/ClaudeHome.ts
-index 8042a7f16e491313069c61727ad6d985288ab41e..b178b932b4f42a283060652a6b36d3ad4fef3f4f 100644
+index 8042a7f16e491313069c61727ad6d985288ab41e..2165c5b396ef219a309e7bfea5a9d9e13a04edf2 100644
 --- a/apps/server/src/provider/Drivers/ClaudeHome.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeHome.ts
 @@ -9,6 +9,7 @@ import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
  import * as HostProcess from "@t3tools/shared/HostProcess";
  
  import { readClaudeSettingsEnv } from "./ClaudeSkills.ts";
-+import * as BatonClaudeAccountHome from "./ClaudeAccountHome.ts";
++import * as TessayaClaudeAccountHome from "./ClaudeAccountHome.ts";
  
  const quotePath = Schema.encodeSync(Schema.fromJsonString(Schema.String));
  
@@ -423,7 +423,7 @@ index 8042a7f16e491313069c61727ad6d985288ab41e..b178b932b4f42a283060652a6b36d3ad
      environment?: NodeJS.ProcessEnv,
    ): Effect.fn.Return<string, never, Path.Path> {
 +    // Baton (D95): an account overlay links the primary's projects/, so its sessions resume anywhere.
-+    const layout = yield* BatonClaudeAccountHome.resolveClaudeAccountHomeLayout(config);
++    const layout = yield* TessayaClaudeAccountHome.resolveClaudeAccountHomeLayout(config);
 +    if (layout.mode === "accountOverlay") return `claude:home:${layout.sharedHomePath}`;
      const resolvedHomePath = yield* resolveClaudeHomePath(config, environment);
      return `claude:home:${resolvedHomePath}`;

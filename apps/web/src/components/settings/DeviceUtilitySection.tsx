@@ -5,7 +5,7 @@
  */
 import {
   batonDesktopBridge,
-  type BatonDevicesCallResult,
+  type TessayaDevicesCallResult,
   type DeviceView,
   type RegisteredDevice,
 } from "@t3tools/tessaya-contracts";
@@ -43,7 +43,7 @@ type Call = (
   kind: "owner",
   op: string,
   args: Record<string, unknown>,
-) => Promise<BatonDevicesCallResult | null>;
+) => Promise<TessayaDevicesCallResult | null>;
 
 export function DeviceUtilitySection({
   devices,

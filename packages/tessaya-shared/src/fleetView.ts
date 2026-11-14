@@ -29,8 +29,8 @@ import {
   BATON_STATE_LABELS,
   isSynopsisStale,
   type EnvironmentId,
-  type BatonFleetEntry,
-  type BatonSessionState,
+  type TessayaFleetEntry,
+  type TessayaSessionState,
   type ProjectId,
   type WorkSessionId,
 } from "@t3tools/tessaya-contracts";
@@ -43,7 +43,7 @@ export interface FleetRow {
   /** "Storefront / Scheduler reconnect race" */
   readonly heading: string;
   readonly stateLabel: string;
-  readonly state: BatonSessionState;
+  readonly state: TessayaSessionState;
   readonly needsUser: boolean;
   /** "Claude B · home-linux", or null when nothing is attached. */
   readonly attribution: string | null;
@@ -70,7 +70,7 @@ export interface FleetAccount {
 export interface FleetRowInput {
   readonly entries: ReadonlyArray<{
     readonly environmentId: EnvironmentId;
-    readonly entry: BatonFleetEntry;
+    readonly entry: TessayaFleetEntry;
   }>;
   readonly resolveProjectLabel: (
     environmentId: EnvironmentId,

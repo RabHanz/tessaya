@@ -21,7 +21,7 @@ const copyRoot = () => {
     "apps/desktop/package.json",
     "native/baton-dictation/Cargo.toml",
     "tools/tessel-flash/go.mod",
-    "apps/desktop/src/baton/home/fonts.ts",
+    "apps/desktop/src/tessaya/home/fonts.ts",
     "packages/tessaya-voice/package.json",
     "packages/tessaya-shared/package.json",
     "packages/tessaya-contracts/package.json",

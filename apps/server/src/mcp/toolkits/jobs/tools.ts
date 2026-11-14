@@ -3,7 +3,7 @@
  * job flow (BatonJobFlow), so a job asked on the R1 opens the same plan-first thread. Only the R1's own Tessaya lists
  * or calls them; an outside agent asks for a job with tessaya_ask.
  */
-import { BatonJobTool, WorkSessionId } from "@t3tools/tessaya-contracts";
+import { TessayaJobTool, WorkSessionId } from "@t3tools/tessaya-contracts";
 import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -51,7 +51,7 @@ const StartTool = Tool.make("job_start", {
     project: Text(200),
     worker: Schema.optionalKey(Text(60)),
     folders: Schema.optionalKey(Schema.Array(Text(300)).check(Schema.isMaxLength(10))),
-    tools: Schema.optionalKey(Schema.Array(BatonJobTool).check(Schema.isMaxLength(5))),
+    tools: Schema.optionalKey(Schema.Array(TessayaJobTool).check(Schema.isMaxLength(5))),
     report_every_minutes: Schema.optionalKey(
       Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1440 })),
     ),

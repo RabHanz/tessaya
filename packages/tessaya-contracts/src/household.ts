@@ -7,10 +7,10 @@ import * as Schema from "effect/Schema";
 
 import { IsoDateTime, TrimmedNonEmptyString } from "@t3tools/contracts";
 
-export const BatonMemberRole = Schema.Literals(["owner", "admin", "adult", "child", "guest"]);
+export const TessayaMemberRole = Schema.Literals(["owner", "admin", "adult", "child", "guest"]);
 const InviteRole = Schema.Literals(["admin", "adult", "child", "guest"]);
 /** What a member can set for themselves (HOUSEHOLD-DESIGN §4); tessaya-shared's PREFERENCE_KEYS says what each means. */
-export const BatonPreferenceKey = Schema.Literals([
+export const TessayaPreferenceKey = Schema.Literals([
   "name",
   "persona",
   "voice",
@@ -20,13 +20,13 @@ export const BatonPreferenceKey = Schema.Literals([
   "music",
   "wakeTraining",
 ]);
-export type BatonPreferenceKey = typeof BatonPreferenceKey.Type;
+export type TessayaPreferenceKey = typeof TessayaPreferenceKey.Type;
 
-export const BatonHouseholdMember = Schema.Struct({
+export const TessayaHouseholdMember = Schema.Struct({
   /** The same id as their Voice ID profile and their private store. */
   id: TrimmedNonEmptyString,
   name: Schema.String,
-  role: BatonMemberRole,
+  role: TessayaMemberRole,
   /** "invited": nobody has redeemed the invite yet. "leaving": removed, data kept for their export until `purgeAfter`. */
   state: Schema.Literals(["active", "invited", "leaving"]),
   /** Holds the separate "machine" grant: T3's threads, terminals and files, the whole computer. */
@@ -47,13 +47,13 @@ export const BatonHouseholdMember = Schema.Struct({
   /** The Windows account whose Hello confirms them, when one is set. */
   windowsAccount: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
-export type BatonHouseholdMember = typeof BatonHouseholdMember.Type;
+export type TessayaHouseholdMember = typeof TessayaHouseholdMember.Type;
 
 /**
  * One member's shared voice profile (one per member and voice model, kept on the home server): numbers, never audio.
  * `centroid` is base64 float32. `version` rises each time they enrol again.
  */
-export const BatonVoiceProfile = Schema.Struct({
+export const TessayaVoiceProfile = Schema.Struct({
   id: TrimmedNonEmptyString,
   name: Schema.String,
   kind: Schema.Literals(["owner", "saved"]),
@@ -66,13 +66,13 @@ export const BatonVoiceProfile = Schema.Struct({
   version: Schema.Int,
   updatedAt: Schema.String,
 });
-export type BatonVoiceProfile = typeof BatonVoiceProfile.Type;
+export type TessayaVoiceProfile = typeof TessayaVoiceProfile.Type;
 
 const Ref = { id: TrimmedNonEmptyString };
 const op = <const O extends string, F extends Schema.Struct.Fields>(name: O, fields: F) =>
   Schema.Struct({ op: Schema.Literal(name), ...fields });
 
-export const BatonHouseholdCallInput = Schema.Union([
+export const TessayaHouseholdCallInput = Schema.Union([
   op("list", {}),
   /** Who is around now: a member's device connected, or recently. */
   op("home", {}),
@@ -138,7 +138,7 @@ export const BatonHouseholdCallInput = Schema.Union([
   /** One of a member's preferences, set or (null) cleared: by themselves, or the owner. */
   op("setPreference", {
     ...Ref,
-    key: BatonPreferenceKey,
+    key: TessayaPreferenceKey,
     value: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
   }),
   /** Every member's shared voice profile, for a vessel to recognise them. */
@@ -148,21 +148,21 @@ export const BatonHouseholdCallInput = Schema.Union([
    * copy found on a device (moving to one profile), kept only when it has more samples than the home's.
    */
   op("saveVoice", {
-    profile: BatonVoiceProfile.mapFields((f) => {
+    profile: TessayaVoiceProfile.mapFields((f) => {
       const { version: _v, updatedAt: _u, ...rest } = f;
       return rest;
     }),
     fresh: Schema.Boolean,
   }),
 ]);
-export type BatonHouseholdCallInput = typeof BatonHouseholdCallInput.Type;
+export type TessayaHouseholdCallInput = typeof TessayaHouseholdCallInput.Type;
 
-export const BatonHouseholdCallResult = Schema.Struct({
+export const TessayaHouseholdCallResult = Schema.Struct({
   /** done: changed now. asked: sent to the owner's approving device, changes on a yes. refused: with why. */
   status: Schema.Literals(["done", "asked", "refused"]),
   /** What happened, in words she can say. */
   line: Schema.String,
-  members: Schema.optionalKey(Schema.Array(BatonHouseholdMember)),
+  members: Schema.optionalKey(Schema.Array(TessayaHouseholdMember)),
   /** A new pairing code: shown once to whoever asked for it. */
   code: Schema.optionalKey(Schema.String),
   codeExpiresAt: Schema.optionalKey(IsoDateTime),
@@ -171,7 +171,7 @@ export const BatonHouseholdCallResult = Schema.Struct({
   /** With `list`: the linked server the members live on (null: this one), and the linked servers it could be. */
   homeOn: Schema.optionalKey(Schema.NullOr(Schema.String)),
   peers: Schema.optionalKey(Schema.Array(Schema.String)),
-  voices: Schema.optionalKey(Schema.Array(BatonVoiceProfile)),
+  voices: Schema.optionalKey(Schema.Array(TessayaVoiceProfile)),
   /** With `passkeyOptions`: the challenge, the site it is for, and the member's passkeys. */
   passkey: Schema.optionalKey(
     Schema.Struct({
@@ -196,4 +196,4 @@ export const BatonHouseholdCallResult = Schema.Struct({
   /** With `preferences`: that member's, by key. */
   preferences: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
-export type BatonHouseholdCallResult = typeof BatonHouseholdCallResult.Type;
+export type TessayaHouseholdCallResult = typeof TessayaHouseholdCallResult.Type;

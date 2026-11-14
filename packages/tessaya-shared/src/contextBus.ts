@@ -25,14 +25,14 @@
  */
 import {
   CONTEXT_SNAPSHOT_TTL_MS,
-  type BatonContextProducer,
-  type BatonContextSnapshot,
-  type BatonFocusTarget,
+  type TessayaContextProducer,
+  type TessayaContextSnapshot,
+  type TessayaFocusTarget,
 } from "@t3tools/tessaya-contracts";
 
 /** The bus's whole state: the latest snapshot from each producer. */
 export interface ContextBusState {
-  readonly snapshots: ReadonlyMap<BatonContextProducer, BatonContextSnapshot>;
+  readonly snapshots: ReadonlyMap<TessayaContextProducer, TessayaContextSnapshot>;
 }
 
 export const emptyContextBus: ContextBusState = { snapshots: new Map() };
@@ -46,7 +46,7 @@ export const emptyContextBus: ContextBusState = { snapshots: new Map() };
  */
 export const applyContextSnapshot = (
   state: ContextBusState,
-  snapshot: BatonContextSnapshot,
+  snapshot: TessayaContextSnapshot,
 ): ContextBusState => {
   const existing = state.snapshots.get(snapshot.producer);
   if (existing !== undefined && Date.parse(existing.observedAt) > Date.parse(snapshot.observedAt)) {
@@ -60,7 +60,7 @@ export const applyContextSnapshot = (
 /** Forget a producer entirely — the extension disconnected, the window closed. */
 export const dropContextProducer = (
   state: ContextBusState,
-  producer: BatonContextProducer,
+  producer: TessayaContextProducer,
 ): ContextBusState => {
   if (!state.snapshots.has(producer)) return state;
   const next = new Map(state.snapshots);
@@ -73,15 +73,15 @@ export const liveSnapshots = (
   state: ContextBusState,
   now: number,
   ttlMs: number = CONTEXT_SNAPSHOT_TTL_MS,
-): ReadonlyArray<BatonContextSnapshot> =>
+): ReadonlyArray<TessayaContextSnapshot> =>
   [...state.snapshots.values()]
     .filter((snapshot) => now - Date.parse(snapshot.observedAt) <= ttlMs)
     .sort((left, right) => Date.parse(right.observedAt) - Date.parse(left.observedAt));
 
 const snapshotOf = (
-  snapshots: ReadonlyArray<BatonContextSnapshot>,
-  producer: BatonContextProducer,
-): BatonContextSnapshot | null =>
+  snapshots: ReadonlyArray<TessayaContextSnapshot>,
+  producer: TessayaContextProducer,
+): TessayaContextSnapshot | null =>
   snapshots.find((snapshot) => snapshot.producer === producer) ?? null;
 
 /**
@@ -181,7 +181,7 @@ export const resolveContextWorkSession = (
 export const resolveInjectionTarget = (
   state: ContextBusState,
   input: { readonly now: number; readonly ttlMs?: number },
-): BatonFocusTarget | null => {
+): TessayaFocusTarget | null => {
   const snapshots = liveSnapshots(state, input.now, input.ttlMs ?? CONTEXT_SNAPSHOT_TTL_MS);
   // Newest first, and the first producer that says it can take text wins. A
   // producer that reports a field but cannot insert into it is not a target —
@@ -197,7 +197,7 @@ export const resolveInjectionTarget = (
 export const describeInjectionTarget = (
   state: ContextBusState,
   input: { readonly now: number; readonly ttlMs?: number },
-): { readonly target: BatonFocusTarget | null; readonly reason: string } => {
+): { readonly target: TessayaFocusTarget | null; readonly reason: string } => {
   const target = resolveInjectionTarget(state, input);
   if (target !== null) return { target, reason: "" };
   const snapshots = liveSnapshots(state, input.now, input.ttlMs ?? CONTEXT_SNAPSHOT_TTL_MS);

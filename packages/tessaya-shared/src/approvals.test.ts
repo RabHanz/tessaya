@@ -1,4 +1,4 @@
-import type { BatonJob, BatonSessionSummary } from "@t3tools/tessaya-contracts";
+import type { TessayaJob, TessayaSessionSummary } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { approvalRecord, buildApprovals, describeApprovals } from "./approvals.ts";
@@ -14,11 +14,11 @@ describe("the approvals list", () => {
         terms: { permissions: { projects: ["Site"] } },
       },
       { workSessionId: "j2", title: "Audit", phase: "approved", permissionsSummary: "read" },
-    ] as unknown as BatonJob[];
+    ] as unknown as TessayaJob[];
     const sessions = [
       { key: "k1", session: "Fix bug", project: "App", box: "onyx", urgent: true },
       { key: "k2", session: "Idle", project: "App", box: "onyx", urgent: false },
-    ] as unknown as BatonSessionSummary[];
+    ] as unknown as TessayaSessionSummary[];
     const items = buildApprovals({ jobs, sessions });
     expect(items.map((i) => i.id)).toEqual(["p:j1", "s:k1"]);
     expect(items.map((i) => [i.agent, i.project])).toEqual([

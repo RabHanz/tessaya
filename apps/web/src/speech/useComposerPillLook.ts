@@ -4,13 +4,13 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 
-import { batonWorkSessions } from "../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../state/tessayaWorkSessions";
 
 /** The pill design and waveform the environment's desktop uses (Settings → Appearance), Tessaya's own otherwise. */
 export function useComposerPillLook(environmentId: EnvironmentId) {
   const view = Option.getOrNull(
     AsyncResult.value(
-      useAtomValue(batonWorkSessions.desktopSettingsQuery({ environmentId, input: {} })),
+      useAtomValue(tessayaWorkSessions.desktopSettingsQuery({ environmentId, input: {} })),
     ),
   );
   const shared = view?.effective ?? null;

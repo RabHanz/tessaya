@@ -1,4 +1,4 @@
-import type { BatonFleet } from "@t3tools/tessaya-contracts";
+import type { TessayaFleet } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { fleetForOutside } from "./fleetForOutside.ts";
@@ -65,7 +65,7 @@ const fleet = {
       account: "alex@example.com",
     },
   ],
-} as unknown as BatonFleet;
+} as unknown as TessayaFleet;
 
 describe("the fleet an outside agent reads", () => {
   it("carries no words that were said, no folders, no account, and a walled project's work only by its project's name", () => {

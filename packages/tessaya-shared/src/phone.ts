@@ -2,7 +2,7 @@
  * What the phone page shows (docs/baton/MOBILE.md): the same lists the window has, boiled down to rows a small screen can
  * draw, plus the badge count. Pure; the server route reads the services and hands the results here.
  */
-import type { BatonJob, WatchFinding } from "@t3tools/tessaya-contracts";
+import type { TessayaJob, WatchFinding } from "@t3tools/tessaya-contracts";
 
 import { buildApprovals, type Approval } from "./approvals.ts";
 import {
@@ -67,7 +67,7 @@ export interface PhoneState {
 
 const RUNNING = new Set(["starting", "working", "monitoring"]);
 
-const statusOf = (j: BatonJob): string =>
+const statusOf = (j: TessayaJob): string =>
   j.phase === "awaiting_agreement"
     ? "waiting for your OK"
     : j.limitReached !== null
@@ -79,7 +79,7 @@ const statusOf = (j: BatonJob): string =>
           : String(j.state).replaceAll("_", " ");
 
 export const buildPhoneState = (input: {
-  readonly jobs: ReadonlyArray<BatonJob>;
+  readonly jobs: ReadonlyArray<TessayaJob>;
   readonly findings: ReadonlyArray<WatchFinding>;
   readonly weaves: ReadonlyArray<WeaveRecord>;
   readonly now: number;

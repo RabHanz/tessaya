@@ -63,7 +63,7 @@ export const wanted = (root) => {
   // The server's memory recall model (MEM-16): its vocabulary is in git, the model is fetched at build time.
   if (NodeFS.existsSync(NodePath.join(root, "apps/server/resources/memory-model/vocab.txt")))
     keys.add("model:bge-small-en-v1.5");
-  const fonts = read(root, "apps/desktop/src/baton/home/fonts.ts") ?? "";
+  const fonts = read(root, "apps/desktop/src/tessaya/home/fonts.ts") ?? "";
   for (const m of fonts.matchAll(/^\s*"([A-Z][A-Za-z ]+)",\s*$/gm)) keys.add(`font:${m[1]}`);
   return keys;
 };

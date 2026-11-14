@@ -1,10 +1,10 @@
-import type { BatonJob } from "@t3tools/tessaya-contracts";
+import type { TessayaJob } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { partsSettled, partsSummary, SUMMARY_MARK } from "./coordinator.ts";
 
 const part = (id: string, group: string) =>
-  ({ workSessionId: id, title: `Part ${id}`, group }) as unknown as BatonJob;
+  ({ workSessionId: id, title: `Part ${id}`, group }) as unknown as TessayaJob;
 
 describe("the coordinator's summary", () => {
   it("is ready only when every part is done or failed, never for no parts", () => {

@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /** WAV joins, file names and a pitch guess for the voice-lab scripts that save audio for a person to listen to. */
 import { encodeWav } from "../../../packages/tessaya-voice/src/providers/speech.ts";
-import { parseWav } from "../../../apps/desktop/src/baton/voice/pcm.ts";
+import { parseWav } from "../../../apps/desktop/src/tessaya/voice/pcm.ts";
 
 /**
  * Spellings of her name to hear side by side. The aim is tess-AY-uh (tɛsˈeɪə, CMU "T EH0 S EY1 AH0"): the middle

@@ -12,8 +12,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
-import { startBatonMcp } from "../../apps/desktop/src/baton/agent/batonMcp.ts";
-import { toolUsesOf } from "../../apps/desktop/src/baton/screen/claudeVision.ts";
+import { startTessayaMcp } from "../../apps/desktop/src/tessaya/agent/tessayaMcp.ts";
+import { toolUsesOf } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
 import {
   calledPersona,
   houseTime,
@@ -28,7 +28,7 @@ import {
   withoutSelfIntros,
   type R1Context,
 } from "../../apps/server/src/home/R1Device.ts";
-import type { ActOutcome } from "../../apps/server/src/baton/TessayaBrain.ts";
+import type { ActOutcome } from "../../apps/server/src/tessaya/TessayaBrain.ts";
 import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speakingVolume.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/osPack.ts";
@@ -414,7 +414,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   const history: Array<{ role: string; content: string }> = [];
   const mcp =
     values.brain === "tools"
-      ? await startBatonMcp({
+      ? await startTessayaMcp({
           tools: [...ROOM_TOOL_SPECS, LOOK].map((tool) => ({
             name: tool.name,
             description: tool.description,

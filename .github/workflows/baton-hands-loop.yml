@@ -13,8 +13,8 @@ on:
       [
         "scripts/tessaya/hands-ci/**",
         "native/baton-dictation/**",
-        "apps/desktop/src/baton/agent/**",
-        "apps/desktop/src/baton/screen/inputDriver.ts",
+        "apps/desktop/src/tessaya/agent/**",
+        "apps/desktop/src/tessaya/screen/inputDriver.ts",
         ".github/workflows/baton-hands-loop.yml",
       ]
 

@@ -18,25 +18,25 @@
  */
 import {
   BATON_INJECTION_PREFERENCE,
-  type BatonFocusTarget,
-  type BatonInjectionCapability,
-  type BatonInjectionMethod,
-  type BatonInjectionReport,
-  type BatonPlatform,
+  type TessayaFocusTarget,
+  type TessayaInjectionCapability,
+  type TessayaInjectionMethod,
+  type TessayaInjectionReport,
+  type TessayaPlatform,
 } from "@t3tools/tessaya-contracts";
 
 /** §18's interface, verbatim in intent: what any host must implement. */
 export interface TextInjectionAdapter {
-  readonly method: BatonInjectionMethod;
+  readonly method: TessayaInjectionMethod;
   /** Can this adapter put text into that target, right now? */
-  readonly canInject: (target: BatonFocusTarget) => boolean;
+  readonly canInject: (target: TessayaFocusTarget) => boolean;
   readonly insertText: (input: {
-    readonly target: BatonFocusTarget;
+    readonly target: TessayaFocusTarget;
     readonly text: string;
   }) => Promise<void>;
   /** Optional: replace what is selected rather than inserting at the caret. */
   readonly replaceSelection?: (input: {
-    readonly target: BatonFocusTarget;
+    readonly target: TessayaFocusTarget;
     readonly text: string;
   }) => Promise<void>;
 }
@@ -47,7 +47,7 @@ export interface TextInjectionAdapter {
  */
 export const chooseInjectionAdapter = (
   adapters: ReadonlyArray<TextInjectionAdapter>,
-  target: BatonFocusTarget,
+  target: TessayaFocusTarget,
 ): TextInjectionAdapter | null => {
   for (const method of BATON_INJECTION_PREFERENCE) {
     const adapter = adapters.find(
@@ -59,7 +59,7 @@ export const chooseInjectionAdapter = (
 };
 
 export interface InjectionHostFacts {
-  readonly platform: BatonPlatform;
+  readonly platform: TessayaPlatform;
   /** Linux only; null elsewhere. */
   readonly displayServer: "wayland" | "x11" | "unknown" | null;
   /** A host integration — browser extension, VS Code, the client itself — is connected. */
@@ -80,8 +80,10 @@ export interface InjectionHostFacts {
  * application's window, and no amount of wanting it to changes that. The
  * report says so by name rather than offering a method that will fail.
  */
-export const describeInjectionCapabilities = (facts: InjectionHostFacts): BatonInjectionReport => {
-  const capabilities: BatonInjectionCapability[] = [
+export const describeInjectionCapabilities = (
+  facts: InjectionHostFacts,
+): TessayaInjectionReport => {
+  const capabilities: TessayaInjectionCapability[] = [
     {
       method: "application",
       available: facts.applicationIntegrationConnected,
@@ -158,7 +160,7 @@ const keystrokeReason = (facts: InjectionHostFacts): string => {
  * It names the method that would have been used and why it is not available,
  * because "I cannot do that" is the answer that makes people repeat themselves.
  */
-export const describeInjectionRefusal = (report: BatonInjectionReport): string => {
+export const describeInjectionRefusal = (report: TessayaInjectionReport): string => {
   const blocked = report.capabilities.find((capability) => capability.reason.length > 0);
   return blocked === undefined
     ? "There is nowhere to put that text."

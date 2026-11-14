@@ -6,7 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
-import * as BatonServerLayer from "./baton/BatonServerLayer.ts";
+import * as TessayaServerLayer from "./tessaya/TessayaServerLayer.ts";
 import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
 import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
 // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
@@ -700,13 +700,13 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ProviderInstallation.layer,
   ReplayMarkers.layer,
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
-  BatonServerLayer.workers,
+  TessayaServerLayer.workers,
 ).pipe(
   // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine, as one
-  // argument because pipe takes at most 20. Dictation cleanup reaches the desk door (BatonTessayaRoutes), the
+  // argument because pipe takes at most 20. Dictation cleanup reaches the desk door (TessayaRoutes), the
   // session list reaches linked environments (GEN-6), and live-session threads share the runtime's sink (D83).
   Layer.provideMerge(
-    BatonServerLayer.services.pipe(
+    TessayaServerLayer.services.pipe(
       Layer.provideMerge(DictationCleanupApi.layer),
       Layer.provideMerge(PeerMcpClient.layer.pipe(Layer.provideMerge(PeerLinks.layer))),
       Layer.provideMerge(RuntimeLayer.layerEventSink),
@@ -834,7 +834,7 @@ const layerMakeRoutes = Layer.mergeAll(
     DeviceHubProxy.layer,
     ServerBrowserStream.routeLayer,
     // The room's tools reach the R1 route from here, beside the /mcp registration of the same toolkit.
-    BatonServerLayer.routes.pipe(Layer.provide(R1Tools.layer)),
+    TessayaServerLayer.routes.pipe(Layer.provide(R1Tools.layer)),
     ServerHttp.layerStaticAndDevRoute,
     Ws.layer,
     speechStreamRouteLayer,

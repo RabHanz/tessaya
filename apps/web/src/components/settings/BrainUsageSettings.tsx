@@ -8,7 +8,7 @@ import type { BrainCredential, BrainRole, BrainSpendLimit } from "@t3tools/contr
 import { useEffect, useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -79,7 +79,7 @@ export function BrainUsagePanel() {
 }
 
 function BrainUsageSections({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  const read = useAtomCommand(batonWorkSessions.brainUsage, { reportFailure: false });
+  const read = useAtomCommand(tessayaWorkSessions.brainUsage, { reportFailure: false });
   const [days, setDays] = useState<number>(7);
   const [report, setReport] = useState<BrainUsageResult | null>(null);
   const [failed, setFailed] = useState(false);

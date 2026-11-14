@@ -1,4 +1,4 @@
-import type { BatonAccount } from "@t3tools/tessaya-contracts";
+import type { TessayaAccount } from "@t3tools/tessaya-contracts";
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -55,7 +55,7 @@ const provider = (
       : {}),
   }) as unknown as ServerProvider;
 
-const slot = (key: string, email: string, active = false): BatonAccount =>
+const slot = (key: string, email: string, active = false): TessayaAccount =>
   ({
     key,
     label: email.split("@")[0],
@@ -67,7 +67,7 @@ const slot = (key: string, email: string, active = false): BatonAccount =>
     headroomPercent: 60,
     windows: [{ id: "seven_day", label: "7d", usedPercent: 40, resetsAt: null }],
     usageCheckedAt: "2026-11-09T08:00:00.000Z",
-  }) as BatonAccount;
+  }) as TessayaAccount;
 
 describe("unifyAccounts", () => {
   it("merges the machine login and a token for the same address into one account", () => {

@@ -10,8 +10,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
-import { PACK_DIR_NAME } from "../baton/OperatingSystemPack.ts";
-import { MemberPreferences } from "../baton/MemberPreferences.ts";
+import { PACK_DIR_NAME } from "./OperatingSystemPack.ts";
+import { MemberPreferences } from "./MemberPreferences.ts";
 import * as TessayaWake from "./TessayaWake.ts";
 import { wakeAccess } from "./TessayaWakeRoutes.ts";
 

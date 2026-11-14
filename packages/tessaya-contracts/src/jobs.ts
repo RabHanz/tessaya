@@ -14,39 +14,39 @@ import {
   TrimmedString,
 } from "@t3tools/contracts";
 
-import { BatonSessionState } from "./sessionState.ts";
+import { TessayaSessionState } from "./sessionState.ts";
 import { WorkSessionId } from "./workSession.ts";
 import { alsoReads } from "./renamed.ts";
 
 export const JOB_GROUPS = ["running", "needs_you", "done", "failed"] as const;
-export const BatonJobGroup = Schema.Literals(JOB_GROUPS);
-export type BatonJobGroup = typeof BatonJobGroup.Type;
+export const TessayaJobGroup = Schema.Literals(JOB_GROUPS);
+export type TessayaJobGroup = typeof TessayaJobGroup.Type;
 
 /** What a worker thread may touch, in the terms he reads on the card. */
-export const BatonJobTool = Schema.Literals(["read", "edit", "shell", "web", "sessions"]);
-export type BatonJobTool = typeof BatonJobTool.Type;
+export const TessayaJobTool = Schema.Literals(["read", "edit", "shell", "web", "sessions"]);
+export type TessayaJobTool = typeof TessayaJobTool.Type;
 
 /** Where a message could go. Every one of these is public, and none is done without his yes. */
-export const BatonOutboundChannel = Schema.Literals([
+export const TessayaOutboundChannel = Schema.Literals([
   "email",
   "social",
   "chat",
   "pr_comment",
   "other_public",
 ]);
-export type BatonOutboundChannel = typeof BatonOutboundChannel.Type;
+export type TessayaOutboundChannel = typeof TessayaOutboundChannel.Type;
 
-export const BatonJobPermissions = Schema.Struct({
+export const TessayaJobPermissions = Schema.Struct({
   /** Folders the worker may read and change. */
   folders: Schema.Array(TrimmedNonEmptyString),
   /** Projects it may work in, by their names. */
   projects: Schema.Array(TrimmedNonEmptyString),
-  tools: Schema.Array(BatonJobTool),
+  tools: Schema.Array(TessayaJobTool),
 });
-export type BatonJobPermissions = typeof BatonJobPermissions.Type;
+export type TessayaJobPermissions = typeof TessayaJobPermissions.Type;
 
 /** Both caps apply to a subscription; dollars only to a metered API key, which is never set up by default. */
-export const BatonJobLimits = Schema.Struct({
+export const TessayaJobLimits = Schema.Struct({
   wallClockMinutes: Schema.Number,
   workerTurns: Schema.Number,
   dollars: Schema.NullOr(Schema.Number),
@@ -55,16 +55,16 @@ export const BatonJobLimits = Schema.Struct({
   /** How many times a failed worker may be retried. Default 2. */
   retries: Schema.optionalKey(Schema.Number),
 });
-export type BatonJobLimits = typeof BatonJobLimits.Type;
+export type TessayaJobLimits = typeof TessayaJobLimits.Type;
 
-export const DEFAULT_JOB_LIMITS: BatonJobLimits = {
+export const DEFAULT_JOB_LIMITS: TessayaJobLimits = {
   wallClockMinutes: 120,
   workerTurns: 40,
   dollars: null,
 };
 
 /** What a standing permission is for: sending on a channel, starting without waiting for his OK, or retrying a failed worker on its own within the retry budget. */
-export const BatonGrantKind = Schema.Literals([
+export const TessayaGrantKind = Schema.Literals([
   "email",
   "social",
   "chat",
@@ -73,21 +73,21 @@ export const BatonGrantKind = Schema.Literals([
   "start",
   "retry",
 ]);
-export type BatonGrantKind = typeof BatonGrantKind.Type;
+export type TessayaGrantKind = typeof TessayaGrantKind.Type;
 
 /** A standing permission, for one job. Kept after it is revoked, as the log. */
-export const BatonJobGrant = Schema.Struct({
-  channel: BatonGrantKind,
+export const TessayaJobGrant = Schema.Struct({
+  channel: TessayaGrantKind,
   grantedAt: IsoDateTime,
   revokedAt: Schema.NullOr(IsoDateTime),
 });
-export type BatonJobGrant = typeof BatonJobGrant.Type;
+export type TessayaJobGrant = typeof TessayaJobGrant.Type;
 
 /**
  * His one yes on a job's plan, for the computer and browser acts the plan names (PERSONA-TEAM-DESIGN §6): acts inside it
  * run without a card, acts outside it ask, risky acts always ask. Cleared when the job leaves "approved" or is stopped.
  */
-export const BatonPlanLease = Schema.Struct({
+export const TessayaPlanLease = Schema.Struct({
   persona: TrimmedNonEmptyString,
   sites: Schema.Array(TrimmedNonEmptyString),
   apps: Schema.Array(TrimmedNonEmptyString),
@@ -95,31 +95,31 @@ export const BatonPlanLease = Schema.Struct({
   issuedAt: IsoDateTime,
   until: IsoDateTime,
 });
-export type BatonPlanLease = typeof BatonPlanLease.Type;
+export type TessayaPlanLease = typeof TessayaPlanLease.Type;
 
 /** Where a job is before work starts (D145): planning, waiting for his OK, or approved to run. */
-export const BatonJobPhase = Schema.Literals(["drafting_plan", "awaiting_agreement", "approved"]);
-export type BatonJobPhase = typeof BatonJobPhase.Type;
+export const TessayaJobPhase = Schema.Literals(["drafting_plan", "awaiting_agreement", "approved"]);
+export type TessayaJobPhase = typeof TessayaJobPhase.Type;
 
 /** Every word he or Baton added to the job's context after it began: who said what, when, and how. */
-export const BatonJobRevision = Schema.Struct({
+export const TessayaJobRevision = Schema.Struct({
   by: Schema.Union([Schema.Literal("him"), alsoReads("baton", "tessaya")]),
   at: IsoDateTime,
   via: Schema.Literals(["voice", "text", "thread"]),
   text: TrimmedNonEmptyString,
 });
-export type BatonJobRevision = typeof BatonJobRevision.Type;
+export type TessayaJobRevision = typeof TessayaJobRevision.Type;
 
-export const BatonJobTerms = Schema.Struct({
+export const TessayaJobTerms = Schema.Struct({
   workSessionId: WorkSessionId,
   goal: TrimmedString,
-  permissions: BatonJobPermissions,
-  limits: BatonJobLimits,
-  grants: Schema.Array(BatonJobGrant),
+  permissions: TessayaJobPermissions,
+  limits: TessayaJobLimits,
+  grants: Schema.Array(TessayaJobGrant),
   /** Absent from an older server, and null while no agreed plan names an act set. */
-  lease: Schema.optionalKey(Schema.NullOr(BatonPlanLease)),
-  phase: BatonJobPhase,
-  revisions: Schema.Array(BatonJobRevision),
+  lease: Schema.optionalKey(Schema.NullOr(TessayaPlanLease)),
+  phase: TessayaJobPhase,
+  revisions: Schema.Array(TessayaJobRevision),
   /** T3's own scheduled task that starts or resumes the worker; null for a job that runs once. */
   scheduleTaskId: Schema.NullOr(TrimmedNonEmptyString),
   /** The provider instance the worker runs on, chosen from the pool unless he said. */
@@ -137,20 +137,20 @@ export const BatonJobTerms = Schema.Struct({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
-export type BatonJobTerms = typeof BatonJobTerms.Type;
+export type TessayaJobTerms = typeof TessayaJobTerms.Type;
 
 /** What a job card shows. */
-export const BatonJob = Schema.Struct({
+export const TessayaJob = Schema.Struct({
   workSessionId: WorkSessionId,
   title: TrimmedNonEmptyString,
   goal: TrimmedString,
-  group: BatonJobGroup,
-  state: BatonSessionState,
+  group: TessayaJobGroup,
+  state: TessayaSessionState,
   lastActivityAt: IsoDateTime,
   /** The permissions in words, as written on the card. */
   permissionsSummary: TrimmedNonEmptyString,
   /** "time", "turns" or "spend" when a cap has been reached; null while it is within them. */
-  phase: BatonJobPhase,
+  phase: TessayaJobPhase,
   limitReached: Schema.NullOr(Schema.Literals(["time", "turns", "spend"])),
   /** What the job has used so far, against its caps. Absent from an older server. */
   usage: Schema.optionalKey(
@@ -165,9 +165,9 @@ export const BatonJob = Schema.Struct({
       partial: Schema.optionalKey(Schema.Boolean),
     }),
   ),
-  terms: BatonJobTerms,
+  terms: TessayaJobTerms,
 });
-export type BatonJob = typeof BatonJob.Type;
+export type TessayaJob = typeof TessayaJob.Type;
 
 export const BATON_JOB_WS_METHODS = {
   jobList: "baton.job.list",
@@ -187,15 +187,15 @@ export const BATON_JOB_WS_METHODS = {
   jobTeam: "baton.job.team",
 } as const;
 
-export const BatonTeamBoardInput = Schema.Struct({
+export const TessayaTeamBoardInput = Schema.Struct({
   /** The persona asking (its pack id); only his desktop app may name one, and walls apply to it. */
   agent: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
   /** His own view (the Now page): walled projects included. Only his desktop app may ask. */
   admin: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonTeamBoardInput = typeof BatonTeamBoardInput.Type;
+export type TessayaTeamBoardInput = typeof TessayaTeamBoardInput.Type;
 
-export const BatonTeamMember = Schema.Struct({
+export const TessayaTeamMember = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   /** What it does: the part of its pack role before the first ";". */
@@ -211,17 +211,17 @@ export const BatonTeamMember = Schema.Struct({
     Schema.Struct({ at: Schema.String, subject: Schema.String, outcome: Schema.String }),
   ),
 });
-export type BatonTeamMember = typeof BatonTeamMember.Type;
+export type TessayaTeamMember = typeof TessayaTeamMember.Type;
 
-export const BatonTeamBoardResult = Schema.Struct({ members: Schema.Array(BatonTeamMember) });
-export type BatonTeamBoardResult = typeof BatonTeamBoardResult.Type;
+export const TessayaTeamBoardResult = Schema.Struct({ members: Schema.Array(TessayaTeamMember) });
+export type TessayaTeamBoardResult = typeof TessayaTeamBoardResult.Type;
 
 /** His words verbatim become the goal; the worker starts in plan mode (D145). */
-export const BatonJobStartInput = Schema.Struct({
+export const TessayaJobStartInput = Schema.Struct({
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   goal: TrimmedNonEmptyString,
-  permissions: BatonJobPermissions,
+  permissions: TessayaJobPermissions,
   limits: Schema.optionalKey(
     Schema.Struct({
       wallClockMinutes: Schema.optionalKey(Schema.Number),
@@ -236,15 +236,15 @@ export const BatonJobStartInput = Schema.Struct({
   /** A retried start is the same job. */
   id: Schema.optionalKey(WorkSessionId),
 });
-export type BatonJobStartInput = typeof BatonJobStartInput.Type;
+export type TessayaJobStartInput = typeof TessayaJobStartInput.Type;
 
-export const BatonJobPlaceInput = Schema.Struct({
+export const TessayaJobPlaceInput = Schema.Struct({
   project: TrimmedNonEmptyString,
   title: TrimmedNonEmptyString,
   goal: TrimmedNonEmptyString,
   folders: Schema.Array(TrimmedNonEmptyString),
   /** Read only when empty. */
-  tools: Schema.Array(BatonJobTool),
+  tools: Schema.Array(TessayaJobTool),
   reportEveryMinutes: Schema.optionalKey(Schema.Number),
   /** The worker he named: an instance's id or name, or a kind such as codex. Absent: the first ready Claude. */
   worker: Schema.optionalKey(TrimmedNonEmptyString),
@@ -255,17 +255,17 @@ export const BatonJobPlaceInput = Schema.Struct({
   /** The pack template it follows (`plan-a-trip`); its brief joins the worker's frame. */
   template: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(60))),
 });
-export type BatonJobPlaceInput = typeof BatonJobPlaceInput.Type;
+export type TessayaJobPlaceInput = typeof TessayaJobPlaceInput.Type;
 
-export const BatonJobHandoffInput = Schema.Struct({
+export const TessayaJobHandoffInput = Schema.Struct({
   id: WorkSessionId,
   instance: TrimmedNonEmptyString,
   note: Schema.optionalKey(TrimmedNonEmptyString),
 });
-export type BatonJobHandoffInput = typeof BatonJobHandoffInput.Type;
+export type TessayaJobHandoffInput = typeof TessayaJobHandoffInput.Type;
 
 /** His words named no project or worker this server has; the reason says what it does have. */
-export class BatonJobPlacementError extends Schema.TaggedError<BatonJobPlacementError>()(
+export class TessayaJobPlacementError extends Schema.TaggedError<TessayaJobPlacementError>()(
   "BatonJobPlacementError",
   { detail: Schema.String },
 ) {
@@ -274,18 +274,18 @@ export class BatonJobPlacementError extends Schema.TaggedError<BatonJobPlacement
   }
 }
 
-export const BatonJobStartResult = Schema.Struct({
-  terms: BatonJobTerms,
+export const TessayaJobStartResult = Schema.Struct({
+  terms: TessayaJobTerms,
   threadId: ThreadId,
   /** Its account is nearly spent: the work waits for this reset (null when none was named) and then starts. */
   pausedUntil: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
-export type BatonJobStartResult = typeof BatonJobStartResult.Type;
+export type TessayaJobStartResult = typeof TessayaJobStartResult.Type;
 
-export const BatonJobRefInput = Schema.Struct({ id: WorkSessionId });
-export type BatonJobRefInput = typeof BatonJobRefInput.Type;
+export const TessayaJobRefInput = Schema.Struct({ id: WorkSessionId });
+export type TessayaJobRefInput = typeof TessayaJobRefInput.Type;
 
-export const BatonJobRefineInput = Schema.Struct({
+export const TessayaJobRefineInput = Schema.Struct({
   id: WorkSessionId,
   text: TrimmedNonEmptyString,
   via: Schema.Literals(["voice", "text"]),
@@ -294,30 +294,30 @@ export const BatonJobRefineInput = Schema.Struct({
   /** True for a line in the job's record only: the worker is not told and does not take a turn. */
   note: Schema.optionalKey(Schema.Boolean),
 });
-export type BatonJobRefineInput = typeof BatonJobRefineInput.Type;
+export type TessayaJobRefineInput = typeof TessayaJobRefineInput.Type;
 
-export const BatonJobGrantInput = Schema.Struct({ id: WorkSessionId, channel: BatonGrantKind });
-export type BatonJobGrantInput = typeof BatonJobGrantInput.Type;
+export const TessayaJobGrantInput = Schema.Struct({ id: WorkSessionId, channel: TessayaGrantKind });
+export type TessayaJobGrantInput = typeof TessayaJobGrantInput.Type;
 
 /** Null when no such job exists. */
-export const BatonJobTermsResult = Schema.Struct({ terms: Schema.NullOr(BatonJobTerms) });
-export type BatonJobTermsResult = typeof BatonJobTermsResult.Type;
+export const TessayaJobTermsResult = Schema.Struct({ terms: Schema.NullOr(TessayaJobTerms) });
+export type TessayaJobTermsResult = typeof TessayaJobTermsResult.Type;
 
-export const BatonJobListResult = Schema.Struct({ jobs: Schema.Array(BatonJob) });
-export type BatonJobListResult = typeof BatonJobListResult.Type;
+export const TessayaJobListResult = Schema.Struct({ jobs: Schema.Array(TessayaJob) });
+export type TessayaJobListResult = typeof TessayaJobListResult.Type;
 
-export const BatonJobStopResult = Schema.Struct({ stopped: Schema.Boolean });
-export type BatonJobStopResult = typeof BatonJobStopResult.Type;
+export const TessayaJobStopResult = Schema.Struct({ stopped: Schema.Boolean });
+export type TessayaJobStopResult = typeof TessayaJobStopResult.Type;
 
 /** `everyMinutes` of null takes the schedule off. A scheduled job runs again in its own thread and reports there. */
-export const BatonJobScheduleInput = Schema.Struct({
+export const TessayaJobScheduleInput = Schema.Struct({
   id: WorkSessionId,
   everyMinutes: Schema.NullOr(Schema.Number.check(Schema.isGreaterThanOrEqualTo(1))),
 });
-export type BatonJobScheduleInput = typeof BatonJobScheduleInput.Type;
+export type TessayaJobScheduleInput = typeof TessayaJobScheduleInput.Type;
 
 /** One part of a job that has several: its own title and goal (his words), and optionally a pack role. */
-export const BatonJobPart = Schema.Struct({
+export const TessayaJobPart = Schema.Struct({
   title: TrimmedNonEmptyString,
   goal: TrimmedNonEmptyString,
   role: Schema.optionalKey(TrimmedNonEmptyString),
@@ -329,13 +329,13 @@ export const BatonJobPart = Schema.Struct({
   ),
 });
 
-export const BatonJobSplitInput = Schema.Struct({
+export const TessayaJobSplitInput = Schema.Struct({
   id: WorkSessionId,
-  parts: Schema.Array(BatonJobPart).check(Schema.isMinLength(1), Schema.isMaxLength(8)),
+  parts: Schema.Array(TessayaJobPart).check(Schema.isMinLength(1), Schema.isMaxLength(8)),
 });
-export type BatonJobSplitInput = typeof BatonJobSplitInput.Type;
+export type TessayaJobSplitInput = typeof TessayaJobSplitInput.Type;
 
-export const BatonJobSplitResult = Schema.Struct({
+export const TessayaJobSplitResult = Schema.Struct({
   started: Schema.Array(Schema.Struct({ id: WorkSessionId, threadId: ThreadId })),
 });
-export type BatonJobSplitResult = typeof BatonJobSplitResult.Type;
+export type TessayaJobSplitResult = typeof TessayaJobSplitResult.Type;

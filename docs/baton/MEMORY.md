@@ -65,7 +65,7 @@ Shared type: `packages/tessaya-shared/src/memory.ts` (`MemoryItem`). Fields:
 - His own statement beats a model's proposal whatever the dates. Between two of his, the newer wins. Between two
   model proposals, the one with higher confidence wins, then the newer.
 - Two items that merely overlap are merged by the daily pass (the longer text kept, confidences combined), never silently
-  by retrieval. Once a week, items that are about the same thing but worded differently (half or more of their words shared, same kind and scope) become one: the fuller wording survives, his own words are never rewritten, a pinned item is never dropped. Each memory row has a "Why?" that says where it came from, how sure it is and what keeps or ends it. `docs/baton/evals-memory/*.json` holds the retrieval and per-sentence recall cases that `BatonMemoryEval.test.ts` runs on an in-memory database; a case marked `pending` names the finding it waits for and fails the run once it passes.
+  by retrieval. Once a week, items that are about the same thing but worded differently (half or more of their words shared, same kind and scope) become one: the fuller wording survives, his own words are never rewritten, a pinned item is never dropped. Each memory row has a "Why?" that says where it came from, how sure it is and what keeps or ends it. `docs/baton/evals-memory/*.json` holds the retrieval and per-sentence recall cases that `TessayaMemoryEval.test.ts` runs on an in-memory database; a case marked `pending` names the finding it waits for and fails the run once it passes.
 
 ## 3. Privacy: what is never stored
 

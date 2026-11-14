@@ -5,8 +5,8 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
-import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
-import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
+import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { DeviceRegistry } from "../../../home/DeviceRegistry.ts";
 import { serveHomeCall, type HomeCallKind } from "../../../home/HomeCalls.ts";
 import type { HomeActor } from "../../../home/HomeAssistantService.ts";
@@ -82,7 +82,7 @@ export const withCounts = <T extends { readonly ok: boolean; readonly value?: un
 
 /** Handler declarations for `HomeToolkit`, spread into Tessaya's toolkit layer. */
 export const make = Effect.gen(function* () {
-  const context = yield* BatonRuntime;
+  const context = yield* TessayaRuntime;
   const home = Effect.fn("HomeMcp.call")(function* (
     kind: HomeCallKind,
     op: string,

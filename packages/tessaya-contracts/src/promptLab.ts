@@ -8,7 +8,7 @@ export const BATON_PROMPT_LAB_WS_METHODS = { call: "baton.promptLab.call" } as c
 
 const Name = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(60));
 
-export const BatonPromptLabInput = Schema.Union([
+export const TessayaPromptLabInput = Schema.Union([
   Schema.Struct({ op: Schema.Literal("list") }),
   Schema.Struct({
     op: Schema.Literal("save"),
@@ -29,7 +29,7 @@ export const BatonPromptLabInput = Schema.Union([
   Schema.Struct({ op: Schema.Literal("promote"), persona: Name, variant: Name }),
   Schema.Struct({ op: Schema.Literal("rollback"), persona: Name }),
 ]);
-export type BatonPromptLabInput = typeof BatonPromptLabInput.Type;
+export type TessayaPromptLabInput = typeof TessayaPromptLabInput.Type;
 
 const Score = Schema.Struct({
   passed: Schema.Boolean,
@@ -37,7 +37,7 @@ const Score = Schema.Struct({
   words: Schema.Number,
 });
 
-export const BatonPromptLabPersona = Schema.Struct({
+export const TessayaPromptLabPersona = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   /** The live prompt as its turns read it: his file over the default. */
@@ -49,9 +49,9 @@ export const BatonPromptLabPersona = Schema.Struct({
   previous: Schema.Boolean,
 });
 
-export const BatonPromptLabResult = Schema.Struct({
+export const TessayaPromptLabResult = Schema.Struct({
   line: Schema.String,
-  personas: Schema.optionalKey(Schema.Array(BatonPromptLabPersona)),
+  personas: Schema.optionalKey(Schema.Array(TessayaPromptLabPersona)),
   /** Prompt sources another layer adds (names only: their text never crosses this door). */
   sources: Schema.optionalKey(
     Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String })),
@@ -69,4 +69,4 @@ export const BatonPromptLabResult = Schema.Struct({
     ),
   ),
 });
-export type BatonPromptLabResult = typeof BatonPromptLabResult.Type;
+export type TessayaPromptLabResult = typeof TessayaPromptLabResult.Type;

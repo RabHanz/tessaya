@@ -19,7 +19,7 @@ const Line = Schema.String.check(Schema.isMaxLength(200));
 const few = <S extends Schema.Top>(item: S, max: number) =>
   Schema.Array(item).check(Schema.isMaxLength(max));
 
-export const BatonDesktopState = Schema.Struct({
+export const TessayaDesktopState = Schema.Struct({
   settings: Schema.Struct({
     output: Short,
     captureApproval: Short,
@@ -52,4 +52,4 @@ export const BatonDesktopState = Schema.Struct({
     errors: few(Schema.Struct({ code: Short, at: Short }), 20),
   }),
 });
-export type BatonDesktopState = typeof BatonDesktopState.Type;
+export type TessayaDesktopState = typeof TessayaDesktopState.Type;

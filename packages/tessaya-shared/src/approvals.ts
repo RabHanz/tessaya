@@ -3,7 +3,7 @@
  * session that has asked him something. Each says the action, what it belongs to and the permission it
  * would use. Pure; the window and the assistant both read it.
  */
-import type { BatonJob, BatonSessionSummary } from "@t3tools/tessaya-contracts";
+import type { TessayaJob, TessayaSessionSummary } from "@t3tools/tessaya-contracts";
 
 import { redactText } from "./diagnostics.ts";
 
@@ -23,8 +23,8 @@ export interface Approval {
 }
 
 export const buildApprovals = (input: {
-  readonly jobs: ReadonlyArray<BatonJob>;
-  readonly sessions: ReadonlyArray<BatonSessionSummary>;
+  readonly jobs: ReadonlyArray<TessayaJob>;
+  readonly sessions: ReadonlyArray<TessayaSessionSummary>;
 }): ReadonlyArray<Approval> => [
   ...input.jobs
     .filter((j) => j.phase === "awaiting_agreement")

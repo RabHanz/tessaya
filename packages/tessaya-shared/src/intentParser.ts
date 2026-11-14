@@ -28,10 +28,10 @@
  * @module batonIntentParser
  */
 import type {
-  BatonIntentCommand,
-  BatonIntentResolution,
-  BatonIntentRefusalReason,
-  BatonIntentRisk,
+  TessayaIntentCommand,
+  TessayaIntentResolution,
+  TessayaIntentRefusalReason,
+  TessayaIntentRisk,
 } from "@t3tools/tessaya-contracts";
 
 import { parseOrchestrationSentence, type ProviderVocabulary } from "./ruleParser.ts";
@@ -269,18 +269,22 @@ const SWITCH_ACCOUNT: ReadonlyArray<RegExp> = [
 // Resolution
 // ---------------------------------------------------------------------------
 
-type Refusal = Extract<BatonIntentResolution, { outcome: "refused" }>;
-type Resolved = Extract<BatonIntentResolution, { outcome: "resolved" }>;
+type Refusal = Extract<TessayaIntentResolution, { outcome: "refused" }>;
+type Resolved = Extract<TessayaIntentResolution, { outcome: "resolved" }>;
 
-const refuse = (reason: BatonIntentRefusalReason, unplaced: string, message: string): Refusal => ({
+const refuse = (
+  reason: TessayaIntentRefusalReason,
+  unplaced: string,
+  message: string,
+): Refusal => ({
   outcome: "refused",
   refusal: { reason, unplaced, message },
 });
 
 const resolved = (input: {
-  readonly command: BatonIntentCommand;
+  readonly command: TessayaIntentCommand;
   readonly description: string;
-  readonly risk: BatonIntentRisk;
+  readonly risk: TessayaIntentRisk;
   readonly workSessionId: string | null;
 }): Resolved =>
   ({
@@ -602,10 +606,10 @@ export function highRiskSubject(text: string): string | null {
   return null;
 }
 
-export function resolveBatonIntent(
+export function resolveTessayaIntent(
   sentence: string,
   vocabulary: IntentVocabulary,
-): BatonIntentResolution {
+): TessayaIntentResolution {
   const source = sentence.trim();
   const raw = stripTerminator(normalise(source));
   if (raw.length === 0) {
@@ -731,7 +735,7 @@ function resolveGateAnswer(
   text: string,
   source: string,
   vocabulary: IntentVocabulary,
-): BatonIntentResolution | null {
+): TessayaIntentResolution | null {
   const affirmative = AFFIRMATIVE.exec(text);
   const negative = affirmative === null ? NEGATIVE.exec(text) : null;
   const match = affirmative ?? negative;
@@ -799,7 +803,10 @@ function resolveGateAnswer(
   });
 }
 
-function resolveRuleSentence(source: string, vocabulary: IntentVocabulary): BatonIntentResolution {
+function resolveRuleSentence(
+  source: string,
+  vocabulary: IntentVocabulary,
+): TessayaIntentResolution {
   const target = resolveTarget(null, vocabulary);
   if (target.kind !== "one") {
     return refuse(
@@ -835,7 +842,7 @@ function resolveMessage(
   text: string,
   source: string,
   vocabulary: IntentVocabulary,
-): BatonIntentResolution | null {
+): TessayaIntentResolution | null {
   for (const pattern of MESSAGE_PATTERNS) {
     const match = pattern.exec(text);
     if (match === null) continue;
@@ -869,7 +876,7 @@ function resolveMessage(
   return null;
 }
 
-function resolveStart(text: string, vocabulary: IntentVocabulary): BatonIntentResolution | null {
+function resolveStart(text: string, vocabulary: IntentVocabulary): TessayaIntentResolution | null {
   for (const pattern of START_PATTERNS) {
     const match = pattern.exec(text);
     if (match === null) continue;
@@ -912,7 +919,7 @@ function resolveStart(text: string, vocabulary: IntentVocabulary): BatonIntentRe
   return null;
 }
 
-function resolveResume(text: string, vocabulary: IntentVocabulary): BatonIntentResolution | null {
+function resolveResume(text: string, vocabulary: IntentVocabulary): TessayaIntentResolution | null {
   for (const pattern of RESUME_PATTERNS) {
     const match = pattern.exec(text);
     if (match === null) continue;

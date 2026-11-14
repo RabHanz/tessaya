@@ -19,8 +19,8 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-import { onSubscription } from "../baton/BrainRoutes.ts";
-import { BrainUsage, cliTokens, layer as brainUsageLayer } from "../baton/BrainUsage.ts";
+import { onSubscription } from "../tessaya/BrainRoutes.ts";
+import { BrainUsage, cliTokens, layer as brainUsageLayer } from "../tessaya/BrainUsage.ts";
 import type { BrainRole } from "@t3tools/contracts";
 import { createVoiceSessions, type SessionSpec } from "./VoiceSessions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";

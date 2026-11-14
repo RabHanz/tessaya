@@ -7,7 +7,7 @@ import { BAR_NOT_CONNECTED } from "@t3tools/tessaya-shared/phoneRelay";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { TurnOrigin } from "../baton/TessayaTurn.ts";
+import { TurnOrigin } from "../tessaya/TessayaTurn.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";

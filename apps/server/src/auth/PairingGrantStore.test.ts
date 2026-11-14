@@ -1,4 +1,4 @@
-import { AuthBatonCloudApproveScope, AuthStandardClientScopes } from "@t3tools/contracts";
+import { AuthTessayaCloudApproveScope, AuthStandardClientScopes } from "@t3tools/contracts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
@@ -56,7 +56,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("PairingGrantStor
 
       expect(first.method).toBe("one-time-token");
       expect(first.scopes).toEqual(AuthStandardClientScopes);
-      expect(first.scopes).not.toContain(AuthBatonCloudApproveScope);
+      expect(first.scopes).not.toContain(AuthTessayaCloudApproveScope);
       expect(first.subject).toBe("one-time-token");
       expect(first.label).toBe("Julius iPhone");
       expect(issued.label).toBe("Julius iPhone");
@@ -141,7 +141,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("PairingGrantStor
 
       expect(exact.method).toBe("desktop-bootstrap");
       // Only the desktop app's own session may approve cloud tasks; a paired client never does by default.
-      expect(exact.scopes).toContain(AuthBatonCloudApproveScope);
+      expect(exact.scopes).toContain(AuthTessayaCloudApproveScope);
       expect(otherCase._tag).toBe("UnknownBootstrapCredentialError");
     }).pipe(
       Effect.provide(

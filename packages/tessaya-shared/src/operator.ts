@@ -102,7 +102,7 @@ export const BATON_TOOL_PREFIX = "mcp__baton__";
 const OWN_TOOL_PREFIXES = [BATON_TOOL_PREFIX, "mcp__tessaya__"];
 const ownPrefix = (tool: string) => OWN_TOOL_PREFIXES.find((prefix) => tool.startsWith(prefix));
 export const isOwnTool = (tool: string): boolean => ownPrefix(tool) !== undefined;
-export const batonToolName = (tool: string): string => tool.slice(ownPrefix(tool)?.length ?? 0);
+export const tessayaToolName = (tool: string): string => tool.slice(ownPrefix(tool)?.length ?? 0);
 
 /** Look at state, or reversible and local: nothing leaves, nothing is changed. */
 const BATON_QUIET = new Set([
@@ -317,7 +317,7 @@ export const addressBarAfter = (
   step: { readonly tool: string; readonly input: Readonly<Record<string, unknown>> },
   browser: boolean,
 ): string | undefined => {
-  const tool = batonToolName(step.tool);
+  const tool = tessayaToolName(step.tool);
   if (tool === "wait_for") return bar;
   if (tool === "type_text")
     return bar === undefined || typeof step.input["window"] === "string"
@@ -330,7 +330,7 @@ export const addressBarAfter = (
     : undefined;
 };
 
-const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): ToolVerdict => {
+const judgeTessayaTool = (name: string, call: ToolCall, context: JudgeContext): ToolVerdict => {
   // Screen capture asks for its own consent where it runs; looking is not the risk.
   if (BATON_QUIET.has(name)) return { verdict: "allow" };
   const text = actionText(call);
@@ -573,7 +573,7 @@ const DRIVES_APPS =
   /\b(uiautomation\w*|sendkeys|user32(\.dll)?|sendinput|keybd_event|mouse_event|setcursorpos|xdotool)\b/i;
 
 export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdict => {
-  const baton = batonToolName(call.tool);
+  const baton = tessayaToolName(call.tool);
   if (
     (call.tool === "Bash" || call.tool === "PowerShell" || call.tool === "commandExecution") &&
     DRIVES_APPS.test(String(call.input["command"] ?? ""))
@@ -592,7 +592,7 @@ export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdic
       recentSocial: context.chrome?.recentSocial ?? 0,
     });
   }
-  if (BATON_TOOLS.has(baton)) return judgeBatonTool(baton, call, context);
+  if (BATON_TOOLS.has(baton)) return judgeTessayaTool(baton, call, context);
   // The server asks his phone for every risky change itself; here a change that follows something read asks first.
   if (call.shared !== undefined && isOwnTool(call.tool))
     return call.shared === "write" && context.tainted

@@ -1,7 +1,7 @@
 import {
   canInjectAnywhere,
   describeInjection,
-  type BatonFocusTarget,
+  type TessayaFocusTarget,
 } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -13,7 +13,7 @@ import {
   type TextInjectionAdapter,
 } from "./injection.ts";
 
-const target: BatonFocusTarget = {
+const target: TessayaFocusTarget = {
   producer: "browser",
   kind: "editable",
   label: "Gmail compose",

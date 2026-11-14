@@ -9,7 +9,10 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
 
-import { createOnnxHost, type OnnxReply } from "../../../apps/desktop/src/baton/voice/onnxHost.ts";
+import {
+  createOnnxHost,
+  type OnnxReply,
+} from "../../../apps/desktop/src/tessaya/voice/onnxHost.ts";
 import {
   createOpenWakeWordProvider,
   createSileroVad,
@@ -48,7 +51,7 @@ const host = inProcess
   : createOnnxHost({
       fork: () => {
         const child = NodeChildProcess.fork(
-          NodePath.join(root, "apps/desktop/src/baton/voice/onnxWorker.ts"),
+          NodePath.join(root, "apps/desktop/src/tessaya/voice/onnxWorker.ts"),
           { stdio: ["ignore", "inherit", "inherit", "ipc"], serialization: "advanced" },
         );
         return {

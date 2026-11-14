@@ -7,8 +7,8 @@ on:
   pull_request:
     paths:
       - scripts/tessaya/startup-proof.ps1
-      - apps/desktop/src/baton/lifecycle/**
-      - apps/desktop/src/baton/startBatonDesktop.ts
+      - apps/desktop/src/tessaya/lifecycle/**
+      - apps/desktop/src/tessaya/startTessayaDesktop.ts
       - .github/workflows/baton-startup-proof.yml
   workflow_dispatch:
 

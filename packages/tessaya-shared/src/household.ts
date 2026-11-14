@@ -12,7 +12,7 @@ import {
   type AuthEnvironmentScope,
 } from "@t3tools/contracts";
 
-import type { BatonPreferenceKey } from "@t3tools/tessaya-contracts";
+import type { TessayaPreferenceKey } from "@t3tools/tessaya-contracts";
 
 import { OWNER_PERSON_ID, type SpeakerLike } from "./privateMemory.ts";
 
@@ -154,7 +154,7 @@ export const voiceAssurance = (speaker: SpeakerLike | null): Assurance =>
       : 1;
 
 /** What a member can set for themselves (HOUSEHOLD-DESIGN §4), with what each means to her. */
-export const PREFERENCE_KEYS: Readonly<Record<BatonPreferenceKey, string>> = {
+export const PREFERENCE_KEYS: Readonly<Record<TessayaPreferenceKey, string>> = {
   name: "what to call them",
   persona: "which persona answers them by default",
   voice: "the voice she speaks to them in",
@@ -165,7 +165,7 @@ export const PREFERENCE_KEYS: Readonly<Record<BatonPreferenceKey, string>> = {
   wakeTraining:
     "whether their enrolled voice may train her wake words (on or off; on for the owner until he says off)",
 };
-export type PreferenceKey = BatonPreferenceKey;
+export type PreferenceKey = TessayaPreferenceKey;
 /** Whether a member's enrolled voice may train wake words: the owner's yes stands until he says no; others opt in. */
 export const wakeTrainingOn = (member: string, value: string | undefined): boolean =>
   value === undefined

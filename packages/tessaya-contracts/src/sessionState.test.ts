@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  deriveBatonSessionState,
+  deriveTessayaSessionState,
   deriveWorkSessionState,
   hasUnseenCompletion,
-  type BatonSessionStateInput,
+  type TessayaSessionStateInput,
 } from "./sessionState.ts";
 
-const base: BatonSessionStateInput = {
+const base: TessayaSessionStateInput = {
   environmentOnline: true,
   hasPendingApprovals: false,
   hasPendingUserInput: false,
@@ -20,8 +20,8 @@ const base: BatonSessionStateInput = {
   providerQuotaExhausted: false,
 };
 
-const derive = (overrides: Partial<BatonSessionStateInput>) =>
-  deriveBatonSessionState({ ...base, ...overrides });
+const derive = (overrides: Partial<TessayaSessionStateInput>) =>
+  deriveTessayaSessionState({ ...base, ...overrides });
 
 describe("deriveBatonSessionState", () => {
   it("reports offline before anything else, because a cached state from a gone environment misleads", () => {

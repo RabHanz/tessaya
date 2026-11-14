@@ -8,7 +8,7 @@ import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { TurnOrigin } from "../baton/TessayaTurn.ts";
+import { TurnOrigin } from "../tessaya/TessayaTurn.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { vesselOf } from "../mcp/toolkits/home/handlers.ts";
 import * as PeerLinks from "./PeerLinks.ts";

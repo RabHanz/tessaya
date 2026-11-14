@@ -24,8 +24,8 @@ const SKIPPED = [
 ];
 // Without the pin's tree (a shallow clone) only the code Tessaya ships is checked.
 const SHIPPED = [
-  "apps/desktop/src/baton/",
-  "apps/server/src/baton/",
+  "apps/desktop/src/tessaya/",
+  "apps/server/src/tessaya/",
   "packages/tessaya-",
   "apps/web/src/components/sidebar/Baton",
   "apps/web/src/components/chat/Baton",
@@ -55,7 +55,7 @@ const PRIVATE = [
 // file is still checked. Each is an operator step for the maintainer's own machines, not a
 // default for anyone else; the list only shrinks.
 const ALLOWED = {
-  "apps/desktop/src/baton/voice/roomRecognizer.test.ts": [
+  "apps/desktop/src/tessaya/voice/roomRecognizer.test.ts": [
     /100\.101\.2\.3/g,
     "a made-up address in Tailscale's range, to test that the room recogniser finds one",
   ],
@@ -71,11 +71,11 @@ const ALLOWED = {
     /^\$private = '[^']*'$/gm,
     "carries this guard's own pattern, to check a built installer",
   ],
-  "apps/desktop/src/baton/backup/backup.test.ts": [
+  "apps/desktop/src/tessaya/backup/backup.test.ts": [
     /sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789/g,
     "a made-up key, to prove a backup leaves secrets out",
   ],
-  "apps/desktop/src/baton/cloud/vaultKey.test.ts": [
+  "apps/desktop/src/tessaya/cloud/vaultKey.test.ts": [
     /-----BEGIN OPENSSH PRIVATE KEY-----/g,
     "a made-up key header, to prove the vault hands it over",
   ],
@@ -184,8 +184,8 @@ export const run = () => {
     const own = [
       "docs/baton/",
       "packages/tessaya-",
-      "apps/desktop/src/baton/",
-      "apps/server/src/baton/",
+      "apps/desktop/src/tessaya/",
+      "apps/server/src/tessaya/",
       "scripts/tessaya/",
       "vendor-patches/",
     ];
