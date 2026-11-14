@@ -15,12 +15,12 @@ mod engine;
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, sync_channel, Sender, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
-use tungstenite::{accept_hdr, Message};
+use tungstenite::{accept_hdr, Message, WebSocket};
 
 use engine::{Feed, Job, Reply};
 
@@ -89,46 +89,27 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
             Err(refused)
         }
     };
-    let Ok(socket) = accept_hdr(stream, check) else { return };
-    // Reads wait at most 10 ms, so the words going back are never held up behind one.
+    let Ok(mut socket) = accept_hdr(stream, check) else { return };
+    // Reads wait at most 10 ms, then the words waiting go back: one thread owns the socket, so a reply is never held up
+    // behind the reader (a shared lock starved replies for 5 to 25 s, 14 Nov).
     let _ = socket.get_ref().set_read_timeout(Some(Duration::from_millis(10)));
-    let socket = Arc::new(Mutex::new(socket));
-    let send = {
-        let socket = socket.clone();
-        move |line: Value| socket.lock().unwrap().send(Message::text(line.to_string())).is_ok()
-    };
     let (replies, answers) = channel::<Reply>();
-    {
-        let send = send.clone();
-        std::thread::spawn(move || {
-            for reply in answers {
-                let line = match reply {
-                    Reply::Partial { text, pause } => json!({"ev": "partial", "text": text, "pause": pause}),
-                    Reply::Text { text, infer_ms, pieces, reused, release_ms } => json!({
-                        "ev": "text", "text": text, "inferMs": infer_ms, "pieces": pieces, "reused": reused,
-                        "releaseMs": release_ms,
-                    }),
-                    Reply::Error(message) => json!({"ev": "error", "message": message}),
-                };
-                if !send(line) {
-                    return;
-                }
-            }
-        });
-    }
     let mut dictation: Option<(SyncSender<Feed>, usize)> = None;
     let mut heard_at = Instant::now();
-    let stop = |dictation: &mut Option<(SyncSender<Feed>, usize)>, why: &str| {
+    let send = |socket: &mut WebSocket<TcpStream>, line: Value| socket.send(Message::text(line.to_string())).is_ok();
+    let stop = |socket: &mut WebSocket<TcpStream>, dictation: &mut Option<(SyncSender<Feed>, usize)>, why: &str| {
         if let Some((feed, _)) = dictation.take() {
             let _ = feed.try_send(Feed::Abort);
         }
-        send(json!({"ev": "error", "message": why}));
+        send(socket, json!({"ev": "error", "message": why}));
     };
     loop {
-        let message = {
-            let mut s = socket.lock().unwrap();
-            s.read()
-        };
+        while let Ok(reply) = answers.try_recv() {
+            if !send(&mut socket, reply_line(reply)) {
+                return abandon(dictation);
+            }
+        }
+        let message = socket.read();
         let message = match message {
             Ok(message) => {
                 heard_at = Instant::now();
@@ -138,7 +119,7 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                 if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) =>
             {
                 if dictation.is_some() && heard_at.elapsed() >= SILENCE {
-                    stop(&mut dictation, "no audio for 2 s; dictation dropped");
+                    stop(&mut socket, &mut dictation, "no audio for 2 s; dictation dropped");
                     break;
                 }
                 continue;
@@ -150,14 +131,14 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                 let Some((feed, samples)) = &mut dictation else { continue };
                 *samples += bytes.len() / 2;
                 if *samples > MAX_SAMPLES {
-                    stop(&mut dictation, "dictation over 120 s; dropped");
+                    stop(&mut socket, &mut dictation, "dictation over 120 s; dropped");
                     continue;
                 }
                 let pcm: Vec<f32> =
                     bytes.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
                 match feed.try_send(Feed::Audio(pcm)) {
                     Ok(()) => {}
-                    Err(TrySendError::Full(_)) => stop(&mut dictation, "recogniser behind; dictation dropped"),
+                    Err(TrySendError::Full(_)) => stop(&mut socket, &mut dictation, "recogniser behind; dictation dropped"),
                     Err(TrySendError::Disconnected(_)) => dictation = None,
                 }
             }
@@ -166,10 +147,10 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                 match value["cmd"].as_str() {
                     Some("health") => {
                         let busy = queue.load(Ordering::SeqCst);
-                        send(json!({"ev": "health", "queue": busy, "busy": busy > 0}));
+                        send(&mut socket, json!({"ev": "health", "queue": busy, "busy": busy > 0}));
                     }
                     Some("begin") if dictation.is_some() => {
-                        send(json!({"ev": "error", "message": "a dictation is already running on this connection"}));
+                        send(&mut socket, json!({"ev": "error", "message": "a dictation is already running on this connection"}));
                     }
                     Some("begin") => {
                         let (feed, audio) = sync_channel(FEED_BOUND);
@@ -177,7 +158,7 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                         queue.fetch_add(1, Ordering::SeqCst);
                         if jobs.send(Job { audio, replies: replies.clone(), language }).is_err() {
                             queue.fetch_sub(1, Ordering::SeqCst);
-                            send(json!({"ev": "error", "message": "recogniser stopped"}));
+                            send(&mut socket, json!({"ev": "error", "message": "recogniser stopped"}));
                             break;
                         }
                         dictation = Some((feed, 0));
@@ -195,9 +176,24 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
             _ => {}
         }
     }
-    // A connection that drops mid-dictation abandons it; the engine moves on.
+    abandon(dictation);
+}
+
+/// A connection that drops mid-dictation abandons it; the engine moves on.
+fn abandon(dictation: Option<(SyncSender<Feed>, usize)>) {
     if let Some((feed, _)) = dictation {
         let _ = feed.try_send(Feed::Abort);
+    }
+}
+
+fn reply_line(reply: Reply) -> Value {
+    match reply {
+        Reply::Partial { text, pause } => json!({"ev": "partial", "text": text, "pause": pause}),
+        Reply::Text { text, infer_ms, pieces, reused, release_ms } => json!({
+            "ev": "text", "text": text, "inferMs": infer_ms, "pieces": pieces, "reused": reused,
+            "releaseMs": release_ms,
+        }),
+        Reply::Error(message) => json!({"ev": "error", "message": message}),
     }
 }
 
@@ -246,6 +242,21 @@ mod tests {
         let _job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
         socket.send(Message::text(r#"{"cmd":"begin"}"#)).unwrap();
         assert_eq!(next_text(&mut socket)["ev"], "error");
+    }
+
+    #[test]
+    fn sends_the_engine_s_words_back_while_the_client_is_quiet() {
+        let (addr, jobs) = listen();
+        let mut socket = client(&addr, "secret").unwrap();
+        socket.send(Message::text(r#"{"cmd":"begin"}"#)).unwrap();
+        let job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
+        socket.send(Message::text(r#"{"cmd":"end"}"#)).unwrap();
+        let started = Instant::now();
+        let reply = Reply::Text { text: "what time is it".into(), infer_ms: 0, pieces: 1, reused: false, release_ms: 0 };
+        job.replies.send(reply).unwrap();
+        assert_eq!(next_text(&mut socket)["text"], "what time is it");
+        // A shared socket lock held by the reader kept this waiting 5 to 25 s on 14 Nov; well under the 2 s silence limit.
+        assert!(started.elapsed() < Duration::from_millis(500));
     }
 
     #[test]
