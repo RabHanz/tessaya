@@ -1416,6 +1416,8 @@ export const ServerSettings = Schema.Struct({
   brainKeyRoles: BrainKeyRoles.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   brainEscalation: BrainEscalation.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   brainSpendAlert: BrainSpendAlert.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Tessaya (B-031): near the limit with no other login that has room, background learning waits for the reset.
+  brainDeferNearLimit: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: her lines written by her brain, varied and in character (baton-shared expression.ts); off plays the fixed ones.
@@ -1894,6 +1896,7 @@ export const ServerSettingsPatch = Schema.Struct({
   brainKeyRoles: Schema.optionalKey(BrainKeyRoles),
   brainEscalation: Schema.optionalKey(BrainEscalation),
   brainSpendAlert: Schema.optionalKey(BrainSpendAlert),
+  brainDeferNearLimit: Schema.optionalKey(Schema.Boolean),
   voicePronounce: Schema.optionalKey(VoicePronounce),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),

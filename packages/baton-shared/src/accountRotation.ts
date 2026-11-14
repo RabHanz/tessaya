@@ -218,3 +218,20 @@ export function accountStanding(
   }
   return { label: account.label, tone: "ok" };
 }
+
+/**
+ * One account, or none with room (B-031): non-urgent work waits for the reset instead of failing on the limit.
+ * Defer when the account in use is within the warning band and no other usable account has the target's minimum;
+ * `until` is the tightest window's reset when the provider named one. Null: go on, or let rotation move it.
+ */
+export function deferNearLimit(
+  pool: Pick<BatonAccountPool, "accounts">,
+  thresholds: BatonRotationThresholds = DEFAULT_ROTATION_THRESHOLDS,
+): { readonly until: string | null; readonly headroomPercent: number } | null {
+  const from = pool.accounts.find((account) => account.active) ?? null;
+  const headroom = from?.headroomPercent ?? null;
+  if (from === null || headroom === null || headroom > thresholds.warnHeadroomPercent) return null;
+  if (rankRotationTargets(pool, thresholds.minimumTargetHeadroomPercent).length > 0) return null;
+  const tightest = from.windows.toSorted((a, b) => b.usedPercent - a.usedPercent)[0];
+  return { until: tightest?.resetsAt ?? null, headroomPercent: headroom };
+}

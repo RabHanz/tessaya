@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   accountStanding,
   decideRotation,
+  deferNearLimit,
   DEFAULT_ROTATION_THRESHOLDS,
   rankRotationTargets,
   rotationLine,
@@ -206,5 +207,43 @@ describe("accountStanding", () => {
         account({ key: "2", label: "robin", usable: false, unusableReason: "signed-out" }),
       ),
     ).toEqual({ label: "robin — signed out", tone: "spent" });
+  });
+});
+
+describe("deferNearLimit (one account)", () => {
+  const week = (usedPercent: number) => ({
+    id: "weekly",
+    label: "Weekly",
+    usedPercent,
+    resetsAt: "2026-11-16T13:00:00.000Z",
+  });
+  it("waits for the reset when the only account is nearly spent, and not before", () => {
+    const only = (headroomPercent: number) =>
+      pool([
+        account({
+          key: "1",
+          active: true,
+          headroomPercent,
+          windows: [week(100 - headroomPercent)],
+        }),
+      ]);
+    expect(deferNearLimit(only(10))).toEqual({
+      until: "2026-11-16T13:00:00.000Z",
+      headroomPercent: 10,
+    });
+    expect(deferNearLimit(only(40))).toBeNull();
+  });
+  it("lets rotation move the work when another account has room", () => {
+    const two = pool([
+      account({ key: "1", active: true, headroomPercent: 3, windows: [week(97)] }),
+      account({ key: "2", headroomPercent: 60 }),
+    ]);
+    expect(deferNearLimit(two)).toBeNull();
+    // A spare that is itself nearly spent is no way out.
+    const spentSpare = pool([
+      account({ key: "1", active: true, headroomPercent: 3, windows: [week(97)] }),
+      account({ key: "2", headroomPercent: 8 }),
+    ]);
+    expect(deferNearLimit(spentSpare)?.headroomPercent).toBe(3);
   });
 });

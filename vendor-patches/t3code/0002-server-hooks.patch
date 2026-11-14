@@ -2072,7 +2072,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..fb0118936f59b8944c99c88c2107786edda356e3 100644
+index 49470541d90be695ad24df030ca6522682a82611..0f9d04b29a1b31cb2c940eb6f1dc98c956084c20 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2119,7 +2119,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fb0118936f59b8944c99c88c2107786e
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1405,25 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1405,27 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2134,6 +2134,8 @@ index 49470541d90be695ad24df030ca6522682a82611..fb0118936f59b8944c99c88c2107786e
 +  brainKeyRoles: BrainKeyRoles.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  brainEscalation: BrainEscalation.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  brainSpendAlert: BrainSpendAlert.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
++  // Tessaya (B-031): near the limit with no other login that has room, background learning waits for the reset.
++  brainDeferNearLimit: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 +  // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
 +  voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  // Tessaya: her lines written by her brain, varied and in character (baton-shared expression.ts); off plays the fixed ones.
@@ -2145,7 +2147,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fb0118936f59b8944c99c88c2107786e
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1433,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1435,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2159,7 +2161,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fb0118936f59b8944c99c88c2107786e
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +1871,12 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +1873,12 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2172,7 +2174,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fb0118936f59b8944c99c88c2107786e
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +1885,22 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +1887,23 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2185,6 +2187,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fb0118936f59b8944c99c88c2107786e
 +  brainKeyRoles: Schema.optionalKey(BrainKeyRoles),
 +  brainEscalation: Schema.optionalKey(BrainEscalation),
 +  brainSpendAlert: Schema.optionalKey(BrainSpendAlert),
++  brainDeferNearLimit: Schema.optionalKey(Schema.Boolean),
 +  voicePronounce: Schema.optionalKey(VoicePronounce),
    speechModelId: Schema.optionalKey(Schema.String),
    speechAcceleration: Schema.optionalKey(SpeechAcceleration),
@@ -2195,7 +2198,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fb0118936f59b8944c99c88c2107786e
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2150,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2153,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

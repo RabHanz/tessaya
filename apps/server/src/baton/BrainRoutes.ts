@@ -5,7 +5,9 @@
  */
 import * as NodePath from "node:path";
 
+import { deferNearLimit } from "@t3tools/baton-shared/accountRotation";
 import { brainRoute, credentialLabel, type BrainRoute } from "@t3tools/baton-shared/brainRoutes";
+import { ProviderDriverKind } from "@t3tools/baton-contracts";
 import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
 import { DEFAULT_SERVER_SETTINGS, type BrainRole } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -13,6 +15,7 @@ import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { AccountPoolService } from "./AccountPoolService.ts";
 import { readRouting } from "./OperatingSystemPack.ts";
 
 /**
@@ -52,3 +55,26 @@ export const onSubscription = (
       }
     : { model: route.model };
 };
+
+/** Work nobody is waiting on: it can wait for the reset. Talking, hard tasks and reading a sentence never wait. */
+const DEFERRABLE: ReadonlySet<BrainRole> = new Set(["background", "consolidation"]);
+
+/**
+ * Why a role's call waits instead of running now (B-031), or null: background work on the server's own subscription
+ * when it is within the warning band and no other login has room, while `brainDeferNearLimit` is on (the default).
+ */
+export const deferredRole = Effect.fn("BrainRoutes.deferredRole")(function* (role: BrainRole) {
+  if (!DEFERRABLE.has(role)) return null;
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  if (Option.isSome(settings)) {
+    const current = yield* settings.value.getSettings.pipe(Effect.option);
+    if (Option.isSome(current) && !current.value.brainDeferNearLimit) return null;
+  }
+  const pool = yield* Effect.serviceOption(AccountPoolService);
+  if (Option.isNone(pool)) return null;
+  const read = yield* pool.value.read(ProviderDriverKind.make("claudeAgent")).pipe(Effect.option);
+  const defer = Option.isNone(read) ? null : deferNearLimit(read.value);
+  return defer === null
+    ? null
+    : `${role} waits for the reset${defer.until === null ? "" : ` at ${defer.until}`}: the subscription has ${Math.round(defer.headroomPercent)}% left and no other login has room`;
+});

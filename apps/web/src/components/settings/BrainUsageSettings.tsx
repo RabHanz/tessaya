@@ -12,6 +12,7 @@ import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 
@@ -156,8 +157,30 @@ function BrainUsageSections({ environmentId }: { readonly environmentId: Environ
           ))
         )}
       </SettingsSection>
+      <NearLimit environmentId={environmentId} />
       <SpendAlerts environmentId={environmentId} limits={report?.limits ?? []} />
     </>
+  );
+}
+
+/** One subscription near its limit: background learning waits for the reset so talking keeps working (B-031). */
+function NearLimit({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const on = useEnvironmentSettings(environmentId, (settings) => settings.brainDeferNearLimit);
+  const update = useUpdateEnvironmentSettings(environmentId);
+  return (
+    <SettingsSection title="Near the limit">
+      <SettingsRow
+        title="Let background learning wait"
+        description="When the subscription has 15% or less left and no other login has room, background learning and memory upkeep wait for the reset. Talking and hard tasks go on."
+        control={
+          <Switch
+            checked={on}
+            aria-label="Let background learning wait near the limit"
+            onCheckedChange={(checked) => update({ brainDeferNearLimit: Boolean(checked) })}
+          />
+        }
+      />
+    </SettingsSection>
   );
 }
 
