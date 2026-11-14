@@ -2550,12 +2550,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         tail === "event/session/end" ||
         (tail === "state/voice" && ["stop", "end"].includes(String(json()["ev"])))
       ) {
-        // The R1 closed its own session (it no longer says "Bye bye"): her closing sound, then the loop lets it go.
+        // The R1 closed its own session: it refuses audio now ("no session"), so no closing sound is sent (14 Nov, 20:20).
         const s = sessions.get(id);
         if (s === undefined) return;
-        cue(id, "end");
         sessions.delete(id);
-        void deps.sleep(silent(id) ? 0 : soundMs("end") + config.downDelayMs).then(() => s.close());
+        s.close();
       } else if (tail === "cmd/voice/talkover") {
         const mode = json()["mode"];
         if (mode === "open" || mode === "keyword") talkOverFor.set(id, mode);
