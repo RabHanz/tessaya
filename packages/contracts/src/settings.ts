@@ -1422,7 +1422,7 @@ export const ServerSettings = Schema.Struct({
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
   tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  // Tessaya: her working mood per persona (baton-shared affect.ts), moved only by the owner's turns; others see the face.
+  // Tessaya: her working mood per persona (tessaya-shared affect.ts), moved only by the owner's turns; others see the face.
   tessayaMood: Schema.Struct({
     enabled: Schema.Boolean,
     intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
