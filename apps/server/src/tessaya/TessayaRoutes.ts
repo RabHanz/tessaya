@@ -683,7 +683,7 @@ const DESK_SIGNALS = new Set(["screenLocked", "sleep", "call", "screenShared", "
  * Who is near a vessel, for a layer's Tessel rule: "alone" only when the owner is the one member likely home and was
  * just heard on that vessel; another member likely home is "others"; anything less is "unknown", which fails closed.
  */
-const presenceOn = Effect.fn("BatonTessayaRoutes.presenceOn")(function* (vessel: string) {
+const presenceOn = Effect.fn("TessayaRoutes.presenceOn")(function* (vessel: string) {
   const home = (yield* (yield* TessayaTurn).whoIsHome).filter((p) => p.likelyHome);
   if (home.some((p) => p.member !== OWNER_MEMBER_ID)) return "others" as const;
   const owner = home.find((p) => p.member === OWNER_MEMBER_ID);
@@ -692,7 +692,7 @@ const presenceOn = Effect.fn("BatonTessayaRoutes.presenceOn")(function* (vessel:
     : ("unknown" as const);
 });
 
-const personaLayerRoutes = Effect.fn("BatonTessayaRoutes.personaLayers")(function* (
+const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
   router: HttpRouter.HttpRouter,
   context: Context.Context<TessayaRpcHandlers.TessayaServices>,
   auth: EnvironmentAuth.EnvironmentAuth["Service"],
