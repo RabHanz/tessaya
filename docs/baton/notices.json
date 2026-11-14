@@ -161,6 +161,26 @@
       "licence": "BSD-2-Clause-smart-turn",
       "holder": "Daily",
       "mention": "Smart Turn"
+    },
+    "go:go.bug.st/serial": {
+      "name": "go.bug.st/serial",
+      "licence": "BSD-3-Clause",
+      "holder": "Cristian Maglie",
+      "mention": "go.bug.st/serial",
+      "file": "docs/baton/licences/BSD-3-go-serial.txt"
+    },
+    "go:golang.org/x/sys": {
+      "name": "golang.org/x/sys",
+      "licence": "BSD-3-Clause",
+      "holder": "The Go Authors",
+      "mention": "golang.org/x/sys",
+      "file": "docs/baton/licences/BSD-3-go-x-sys.txt"
+    },
+    "port:bk7231tools": {
+      "name": "bk7231tools (protocol ported to Go in tools/r1flash/core)",
+      "licence": "MIT",
+      "holder": "Kuba Szczodrzyński",
+      "mention": "bk7231tools"
     }
   }
 }

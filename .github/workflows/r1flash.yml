@@ -1,0 +1,94 @@
+name: r1flash
+
+on:
+  pull_request:
+    paths: ["tools/r1flash/**", ".github/workflows/r1flash.yml"]
+  push:
+    tags: ["r1flash-v*"]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: tools/r1flash
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/r1flash/go.mod
+          cache-dependency-path: tools/r1flash/go.sum
+      - name: Format
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - run: go test ./...
+      # The protocol core stays usable from a browser (Web Serial) later.
+      - name: Core builds for WebAssembly
+        run: GOOS=js GOARCH=wasm go build ./core/...
+
+  build:
+    if: startsWith(github.ref, 'refs/tags/r1flash-v')
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, goos: linux, goarch: amd64, cgo: "0" }
+          - { os: ubuntu-latest, goos: linux, goarch: arm64, cgo: "0" }
+          - { os: ubuntu-latest, goos: windows, goarch: amd64, cgo: "0", ext: .exe }
+          # cgo on macOS reads USB IDs through IOKit, so the R1 is recognised by its bridge.
+          - { os: macos-latest, goos: darwin, goarch: arm64, cgo: "1" }
+          - { os: macos-latest, goos: darwin, goarch: amd64, cgo: "1", cflags: "-arch x86_64" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/r1flash/go.mod
+          cache-dependency-path: tools/r1flash/go.sum
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+          CGO_CFLAGS: ${{ matrix.cflags }}
+          CGO_LDFLAGS: ${{ matrix.cflags }}
+        run: |
+          version="${GITHUB_REF_NAME#r1flash-v}"
+          go build -trimpath -ldflags "-s -w -X github.com/RabHanz/tessaya/tools/r1flash/cli.Version=${version}" \
+            -o "dist/r1flash-${GOOS}-${GOARCH}${{ matrix.ext }}" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r1flash-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: tools/r1flash/dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: tools/r1flash/dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum r1flash-* > SHA256SUMS
+      # The desktop downloads r1flash on first use and checks SHA256SUMS against the R1 release key.
+      - name: Sign the checksums
+        working-directory: .
+        env:
+          R1_OTA_SIGNING_KEY: ${{ secrets.R1_OTA_SIGNING_KEY }}
+        run: node tools/r1flash/sign.mjs tools/r1flash/dist/SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --title "r1flash ${GITHUB_REF_NAME#r1flash-v}" \
+            --notes-file README.md

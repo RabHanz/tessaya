@@ -20,6 +20,7 @@ const copyRoot = () => {
     "docs/baton/THIRD_PARTY_NOTICES.md",
     "apps/desktop/package.json",
     "native/baton-dictation/Cargo.toml",
+    "tools/r1flash/go.mod",
     "apps/desktop/src/baton/home/fonts.ts",
     "packages/baton-voice/package.json",
     "packages/baton-shared/package.json",
@@ -51,8 +52,13 @@ test("a new npm package, crate or model without an entry fails", () => {
     ),
   );
   r.put("native/baton-dictation/models/newword.onnx", "");
+  r.put(
+    "tools/r1flash/go.mod",
+    `${r.read("tools/r1flash/go.mod")}require example.com/newmod v1.0.0\n`,
+  );
   const problems = check(r.dir);
-  assert.equal(problems.length, 3);
+  assert.equal(problems.length, 4);
+  assert.ok(problems.some((p) => p.startsWith("go:example.com/newmod")));
   assert.ok(problems.some((p) => p.startsWith("npm:some-new-lib")));
   assert.ok(problems.some((p) => p.startsWith("crate:new-crate")));
   assert.ok(problems.some((p) => p.startsWith("model:newword.onnx")));
