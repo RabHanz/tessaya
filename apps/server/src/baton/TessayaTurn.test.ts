@@ -472,6 +472,56 @@ layer("TessayaTurn", (it) => {
       }),
   );
 
+  it.effect(
+    "one persona talking to two people at once holds two live threads, closed when each goes quiet",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const him = owner();
+        const maya = owner({ kind: "saved", personId: "maya" });
+        const phone: TurnEnvelope["vessel"] = { kind: "phone", id: "p" };
+        yield* Effect.all(
+          [
+            turn.begin({ vessel: device, persona: "operations", speaker: him, text: "lights off" }),
+            turn.begin({
+              vessel: phone,
+              persona: "operations",
+              speaker: maya,
+              text: "what's for dinner",
+            }),
+          ],
+          { concurrency: "unbounded" },
+        );
+        yield* TestClock.adjust("1 minute");
+        yield* turn.begin({
+          vessel: desktop,
+          persona: "operations",
+          speaker: him,
+          text: "and the fan",
+        });
+        yield* turn.begin({
+          vessel: device,
+          text: "rehearsed",
+          rehearsal: true,
+          persona: "operations",
+        });
+        const freya = yield* turn.threads("operations");
+        assert.deepStrictEqual(
+          freya.map((t) => [t.person, t.vessel.id, t.lastAt - t.openedAt]),
+          [
+            ["owner", "laptop", 60_000],
+            ["maya", "p", 0],
+          ],
+        );
+        assert.lengthOf(yield* turn.threads("engineering"), 0);
+        yield* TestClock.adjust("10 minutes");
+        assert.deepStrictEqual(
+          (yield* turn.threads()).map((t) => t.person),
+          ["owner"],
+        );
+      }),
+  );
+
   it.effect("every vessel gets the same memory for the same words and persona", () =>
     Effect.gen(function* () {
       const memory = yield* BatonMemoryService;

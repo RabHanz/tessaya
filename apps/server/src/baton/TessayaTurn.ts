@@ -272,6 +272,20 @@ export const notLearnable = (turn: TurnEnvelope): string | null => {
   return null;
 };
 
+/**
+ * One thread of her attention (PERSONA-MODEL-AUDIT, Concurrent self CS1): a persona in one conversation, on the vessel
+ * that heard its last turn. Live while turns keep coming, closed at the conversation's own idle boundary.
+ */
+export interface LiveThread {
+  readonly persona: string | null;
+  readonly conversation: string;
+  readonly vessel: TurnEnvelope["vessel"];
+  /** The verified person or the member's own device; null for a voice she does not know. */
+  readonly person: string | null;
+  readonly openedAt: number;
+  readonly lastAt: number;
+}
+
 export class TessayaTurn extends Context.Service<
   TessayaTurn,
   {
@@ -329,6 +343,8 @@ export class TessayaTurn extends Context.Service<
       turn: TurnEnvelope,
       done: { readonly reply: string; readonly previous?: string | null | undefined },
     ) => Effect.Effect<LearnResult | null>;
+    /** Her live threads, one persona's or all, newest first: the base of the presence board (CS2). */
+    readonly threads: (persona?: string) => Effect.Effect<ReadonlyArray<LiveThread>>;
   }
 >()("t3/baton/TessayaTurn") {}
 
@@ -472,6 +488,39 @@ export const make = Effect.gen(function* () {
     conversations.set(key, { at: now, turns: [...turns, ...said].slice(-CONVERSATION_TURNS) });
   });
 
+  // shortcut: in this server's memory like `conversations`; mirror to the Record when the board needs history (CS7).
+  const live = new Map<string, LiveThread>();
+  const touchThread = Effect.fn("TessayaTurn.touchThread")(function* (turn: TurnEnvelope) {
+    if (turn.rehearsal === true || turn.addressed === false) return;
+    const conversation = conversationKey(turn);
+    const persona = turn.persona ?? null;
+    const id = `${persona ?? ""}|${conversation}`;
+    const now = yield* Clock.currentTimeMillis;
+    const held = live.get(id);
+    const person =
+      turn.speaker?.verified === true && turn.speaker.personId !== null
+        ? turn.speaker.personId
+        : typeof turn.member === "string"
+          ? turn.member
+          : null;
+    live.set(id, {
+      persona,
+      conversation,
+      vessel: turn.vessel,
+      person,
+      openedAt:
+        held === undefined || now - held.lastAt > CONVERSATION_IDLE_MS ? now : held.openedAt,
+      lastAt: now,
+    });
+  });
+  const threads = Effect.fn("TessayaTurn.threads")(function* (persona?: string) {
+    const now = yield* Clock.currentTimeMillis;
+    for (const [id, t] of live) if (now - t.lastAt > CONVERSATION_IDLE_MS) live.delete(id);
+    return [...live.values()]
+      .filter((t) => persona === undefined || t.persona === persona)
+      .toSorted((a, b) => b.lastAt - a.lastAt);
+  });
+
   /** A typed turn takes its session's member when the vessel did not name one. */
   const withMember = Effect.fn("TessayaTurn.member")(function* (turn: TurnEnvelope) {
     if (turn.member !== undefined || (turn.speaker !== null && turn.speaker !== undefined))
@@ -481,6 +530,7 @@ export const make = Effect.gen(function* () {
 
   const begin = Effect.fn("TessayaTurn.begin")(function* (raw: TurnEnvelope) {
     const turn = yield* withMember(raw);
+    yield* touchThread(turn);
     const view = {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
       ...(turn.timeZone === undefined ? {} : { timeZone: turn.timeZone }),
@@ -754,6 +804,7 @@ export const make = Effect.gen(function* () {
     setPreference,
     whoIsHome,
     comingUp: comingUpNow,
+    threads,
   });
 });
 
