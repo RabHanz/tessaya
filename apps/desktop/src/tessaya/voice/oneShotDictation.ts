@@ -11,7 +11,12 @@ export interface OneShotIo<App> {
   readonly clean: (
     raw: string,
     app: App,
-  ) => Promise<{ readonly text: string; readonly stage: string; readonly level?: string } | null>;
+  ) => Promise<{
+    readonly text: string;
+    readonly stage: string;
+    readonly why?: string;
+    readonly level?: string;
+  } | null>;
   readonly fit: (text: string, app: App) => Promise<string>;
   readonly paste: (text: string, app: App) => Promise<boolean>;
   /** Runs just before the paste (the ghost's cleanup in his field); the paste waits for it. */
@@ -24,8 +29,10 @@ export interface OneShotResult {
   readonly status: "empty" | "pasted" | "kept";
   /** What went (or would go) into the field. */
   readonly text: string;
-  /** The tidy-up failed, so this is what was heard. */
+  /** The model's tidy-up failed or was refused, so this is the local tidy, or what was heard. */
   readonly failed: boolean;
+  /** Why, when it failed. */
+  readonly why?: string;
   /** The words as heard, joined. */
   readonly raw: string;
   /** The clean-up level used, when the clean-up said. */
@@ -69,7 +76,7 @@ export const createOneShot = <App>(io: OneShotIo<App>) => {
           return { status: "empty" as const, text: "", raw: "", failed: false, taken };
         }
         const cleaned = await io.clean(raw, app).catch(() => null);
-        const { text, failed } = settleOneShot(raw, cleaned);
+        const { text, failed, why } = settleOneShot(raw, cleaned);
         const fitted = await io.fit(text, app).catch(() => text);
         await io.beforePaste?.(raw, fitted, app).catch(() => undefined);
         const pasted = await io.paste(fitted, app).catch(() => false);
@@ -81,6 +88,7 @@ export const createOneShot = <App>(io: OneShotIo<App>) => {
           text: fitted,
           raw,
           failed,
+          ...(why === undefined ? {} : { why }),
           taken,
           ...(cleaned?.level === undefined ? {} : { level: cleaned.level }),
         };

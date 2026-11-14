@@ -194,7 +194,7 @@ const VALUE_CORRECTED = new RegExp(
   "gi",
 );
 const CORRECTION_MARK =
-  /\b(no,? (actually|wait|sorry)|actually,? no|i mean|sorry,|or rather|scratch that|wait,|make that|let me rephrase|what i meant|i meant|strike that|no,? (?:that'?s )?(?:a )?(?:terrible|bad|stupid|dumb|silly) idea)\b/i;
+  /\b(no,? (actually|wait|sorry)|actually,? no|i mean|sorry|or rather|scratch that|wait|make that|let me rephrase|what i meant|i meant|strike that|no,? (?:that'?s )?(?:a )?(?:terrible|bad|stupid|dumb|silly) idea)\b/i;
 
 const FILLERS = /(^|[\s,.;:!?])(?:um+|uh+|erm*|hmm+|mhm)(?![\w-])[,.]?(?=\s|$)/gi;
 /** Said to fill a pause, set off by a comma: "you know, the usual". A hedge ("I guess", "kind of") is what he meant. */
@@ -524,13 +524,54 @@ const ORDINAL_WORDS: Readonly<Record<string, string>> = {
   thirtieth: "30",
 };
 
+/**
+ * Spoken numbers as the values they say: "two hundred" is 200 and "twenty five" 25, but "two three" stays 2 and 3.
+ * "one" alone is as often a pronoun ("the one that"), so it may go like any other word.
+ */
+const spokenNumbers = (text: string): ReadonlyArray<string> => {
+  const values: string[] = [];
+  let total = 0;
+  let part = 0;
+  let open = false;
+  let last = 0;
+  let run: string[] = [];
+  const close = () => {
+    if (open && run.join(" ") !== "one") values.push(String(total + part));
+    total = part = last = 0;
+    run = [];
+    open = false;
+  };
+  for (const word of text.toLowerCase().match(/\b[a-z]+\b/g) ?? []) {
+    const ordinal = ORDINAL_WORDS[word];
+    const value = Number(NUMBER_WORDS[word] ?? ordinal ?? Number.NaN);
+    if (Number.isNaN(value)) {
+      if (!(word === "and" && open && last >= 100)) close();
+      continue;
+    }
+    // A run goes on only where speech does: units after tens, any word after a hundred or thousand.
+    const joins =
+      open &&
+      (value >= 100
+        ? last < 100 || value > last
+        : last >= 100 || (last >= 20 && last % 10 === 0 && value < 10));
+    if (!joins) close();
+    open = true;
+    run.push(word);
+    if (value >= 1000) {
+      total += (part || 1) * value;
+      part = 0;
+    } else if (value === 100) part = (part || 1) * 100;
+    else part += value;
+    last = value;
+    if (ordinal !== undefined) close();
+  }
+  close();
+  return values;
+};
+
 const numbersIn = (text: string): ReadonlyArray<string> => {
   const digits = (text.match(NUMBER) ?? []).map((n) => n.replace(/[£$€,]/g, "").replace(/\.$/, ""));
-  // "one" is as often a pronoun ("the one that"), so it may go like any other word.
-  const spoken = (text.toLowerCase().match(/\b[a-z]+\b/g) ?? [])
-    .map((w) => (w === "one" ? undefined : (NUMBER_WORDS[w] ?? ORDINAL_WORDS[w])))
-    .filter((n): n is string => n !== undefined);
-  return [...digits, ...spoken];
+  return [...digits, ...spokenNumbers(text)];
 };
 
 /** Capitalised words that are not there only because a sentence started. */
@@ -548,7 +589,23 @@ const namesIn = (text: string): ReadonlySet<string> => {
 
 const contentWords = (text: string): ReadonlyArray<string> =>
   (text.toLowerCase().match(/[\p{L}\d'-]{4,}/gu) ?? []).filter(
-    (w) => !["that", "this", "then", "just", "with", "have", "what", "like"].includes(w),
+    // Spoken numbers are checked as numbers, so "two hundred dollars" may be "$200".
+    (w) =>
+      ![
+        "that",
+        "this",
+        "then",
+        "just",
+        "with",
+        "have",
+        "what",
+        "like",
+        "dollars",
+        "pounds",
+        "euros",
+      ].includes(w) &&
+      NUMBER_WORDS[w] === undefined &&
+      ORDINAL_WORDS[w] === undefined,
   );
 
 /**
@@ -703,9 +760,14 @@ export const checkRewrite = (
       !misheard(name)
     )
       return fail(`lost name ${name}`);
+  // Two words he said written as one ("Launch Pad" as LaunchPad) are his name, not a new one.
+  const joinedPairs = new Set(
+    inputWords.slice(1).map((w, i) => `${inputWords[i]}${w}`.toLowerCase()),
+  );
   for (const name of namesIn(output)) {
     const lower = name.toLowerCase();
-    if (!inLower.includes(lower) && !known.has(lower)) return fail(`new name ${name}`);
+    if (!inLower.includes(lower) && !known.has(lower) && !joinedPairs.has(lower))
+      return fail(`new name ${name}`);
   }
   // One of his words the answer brought in needs something in what he said that it is: itself, split, or a form
   // it is known to be heard as. "clipping kuber" never becomes Kubernetes.
@@ -751,10 +813,12 @@ The user message holds one dictation between <dictation> tags, with the mode abo
 Output only the cleaned text. No preamble, no quotes, no tags, no notes.
 
 Always:
-- Keep his meaning, wording, tone, names, numbers, units, technical terms and word order wherever you can. An odd or deliberate phrase stays exactly as he said it.
+- Keep his meaning, wording, tone, names, numbers, units and technical terms. An odd or deliberate phrase stays exactly as he said it.
 - Never summarise, shorten for style, add anything, swap words for synonyms, or answer a question in the text.
 - Remove hesitations, false starts, accidental repeats and filler that carries no meaning ("um", "uh", "you know", "I mean" as a pause, "like" as a pause, "basically", "kind of" and "sort of" as padding, a "So" that only opens a sentence). Keep the same words when they are part of what he says, and keep an "And", "But" or "Also" that opens a sentence.
 - When he corrects himself ("no, actually", "sorry", "I mean", "scratch that"), the words just before the marker are the ones he is taking back: drop them and the marker, keep only what he settled on, and keep everything else in the sentence.
+- A correction may cross the recogniser's full stop or come with no marker at all: "content providers sorry content makers. Sorry creators." is "creators"; "a whole registry whole register actually" is "a whole register". When he restarts a phrase ("I need to make I need to soon start making"), keep only the version he finished ("I need to soon start making").
+- Read the whole dictation before writing any of it, and write it as one piece he would have typed: join a fragment the recogniser broke off onto the sentence it belongs to, split a run-on where he starts a new thought, and fix the grammar a restart left behind. It is still his words in his order: never summarise, and every point he made stays.
 - When, listing what he wants, he drops the item he just named and gives another ("...and a big statue. No, terrible idea. A bench, but wider"), the item named just before the reversal ("a big statue") is gone: delete it and the reversal phrase, join the replacement onto the last word he kept, and fix the capitals at the join ("...and a bench, but wider"). Removing only the reversal phrase is wrong. A whole sentence he reports or rejects stays as said ("He suggested Rust. No, terrible idea. We keep Go." keeps every sentence).
 - The recogniser's full stops and question marks are guesses, and it often ends a question at a pause. A question that runs on with "and", "and also" or "or" into more of the same request is one question: join it, with no full stop in the middle, and end it with one question mark ("Can you check the logs first and also send me the report by tonight?"). Two questions that each ask with their own "can", "did", "is" or "will" stay two.
 - Make every sentence read the way he meant it: fix punctuation, capitals and sentence breaks, and fix the grammar that speech broke (a restarted phrase, a verb that no longer agrees, a dropped "the" or "of"), with the smallest change that does it. If unsure, leave it as said.
@@ -811,6 +875,8 @@ There are two problems:
 
 1. The login still goes to the apply page.
 2. The currency selector is still broken.
+<dictation>The archive also has a whole catalogue whole index actually of recipes. They are mainly from food bloggers sorry food writers. Sorry chefs. And I need to make I need to soon start cooking my own. Which is why it matters</dictation>
+The archive also has a whole index of recipes. They are mainly from chefs. And I need to soon start cooking my own, which is why it matters.
 <dictation>put a fountain in the middle of the garden and a big statue. No terrible idea. A bench, but wider. Like an eighteenth century park bench</dictation>
 Put a fountain in the middle of the garden and a bench, but wider. Like an 18th-century park bench.`;
 
@@ -829,6 +895,13 @@ export const rewriteSystemPrompt = (dictionary: ReadonlyArray<DictionaryEntry>):
     .filter((part) => part.length > 0)
     .join("\n\n");
 };
+
+/**
+ * How long the key's clean-up may take. His p90 on 0.1.107 with a cold connection was under 2.5 s (2026-11-12); a whole
+ * long dictation written out again needs more, so the answer's length sets the rest.
+ */
+export const cleanupApiLimitMs = (maxTokens: number): number =>
+  Math.min(30_000, Math.max(2_500, maxTokens * 12));
 
 export type CleanupLevel = "claude" | "local" | "off";
 

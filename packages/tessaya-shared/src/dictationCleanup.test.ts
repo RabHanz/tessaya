@@ -498,3 +498,27 @@ describe("the cloud path, closer", () => {
     expect(cleanupFromSaved(chosen)["dictationCleanup"]).toBe("claude");
   });
 });
+
+describe("checkRewrite on his 15 Nov refusals", () => {
+  it("passes spoken amounts written as figures, and still refuses a changed one", () => {
+    const said =
+      "So for three accounts that is two hundred dollars each, total six hundred dollars.";
+    expect(checkRewrite(said, "So for 3 accounts that is $200 each, total $600.")).toEqual({
+      ok: true,
+    });
+    expect(checkRewrite(said, "So for 3 accounts that is $300 each, total $600.").ok).toBe(false);
+    expect(checkRewrite("Pick two three times", "Pick 2, 3 times.")).toEqual({ ok: true });
+    expect(checkRewrite("It took twenty five minutes", "It took 25 minutes.")).toEqual({
+      ok: true,
+    });
+  });
+
+  it("passes two of his words written as one name", () => {
+    expect(
+      checkRewrite(
+        "You can ask the Launch Pad and it will link this",
+        "You can ask LaunchPad and it will link this.",
+      ),
+    ).toEqual({ ok: true });
+  });
+});
