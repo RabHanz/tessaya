@@ -1,0 +1,42 @@
+{
+  "scheme": "ECDSA P-256, SHA-256 over the bytes, signature hex raw r||s",
+  "cases": [
+    {
+      "name": "release key, wake pack r1-kws-v1",
+      "publicKey": "044a630e15eaf9f58558dbbd8f9519c26349b80e7c94110f159c92824c3470ea16e6aa5da0ee9dc560a62bfbe3b6710d2268855d27a785dfbb040d1b8158c32a14",
+      "file": "r1-kws-v1.r1kw",
+      "sha256": "af4cc208dd115f8ead84d310847e34c0867a488b45cf04139fd1ce7e44a937f3",
+      "sig": "ccd09770dcdab708de0ec94bf7d15d4c5d9576a6f2c0104fd69a1777b39eca6adbe58b2d98fd25e82129cdd9dc7e195a41357111affb128dcc602ccabd20741a",
+      "valid": true
+    },
+    {
+      "name": "release key, wake pack with byte 100 flipped",
+      "publicKey": "044a630e15eaf9f58558dbbd8f9519c26349b80e7c94110f159c92824c3470ea16e6aa5da0ee9dc560a62bfbe3b6710d2268855d27a785dfbb040d1b8158c32a14",
+      "file": "r1-kws-v1.r1kw",
+      "flipByte": 100,
+      "sig": "ccd09770dcdab708de0ec94bf7d15d4c5d9576a6f2c0104fd69a1777b39eca6adbe58b2d98fd25e82129cdd9dc7e195a41357111affb128dcc602ccabd20741a",
+      "valid": false
+    },
+    {
+      "name": "test key, short text",
+      "publicKey": "04cdd8444997cc06676c4b4a86c30bcecc3f3ea126f926e6bfe0b787031011785bc299bee929ead585c5a2dc520e3d2b6d6f3e51bfc6828cecdce4137e13a34709",
+      "dataHex": "7231666c617368207465737420766563746f72",
+      "sig": "5fccae2fa659e5586bbb1d0f5d054ee8b747468343387e9f0a52a7724d062092d512f4f5e0675e7b11c59b339ad5fc136705981bdbb5407f6e64d5924a648946",
+      "valid": true
+    },
+    {
+      "name": "test key, signature from the release key",
+      "publicKey": "04cdd8444997cc06676c4b4a86c30bcecc3f3ea126f926e6bfe0b787031011785bc299bee929ead585c5a2dc520e3d2b6d6f3e51bfc6828cecdce4137e13a34709",
+      "dataHex": "7231666c617368207465737420766563746f72",
+      "sig": "ccd09770dcdab708de0ec94bf7d15d4c5d9576a6f2c0104fd69a1777b39eca6adbe58b2d98fd25e82129cdd9dc7e195a41357111affb128dcc602ccabd20741a",
+      "valid": false
+    },
+    {
+      "name": "release key, test signature",
+      "publicKey": "044a630e15eaf9f58558dbbd8f9519c26349b80e7c94110f159c92824c3470ea16e6aa5da0ee9dc560a62bfbe3b6710d2268855d27a785dfbb040d1b8158c32a14",
+      "dataHex": "7231666c617368207465737420766563746f72",
+      "sig": "5fccae2fa659e5586bbb1d0f5d054ee8b747468343387e9f0a52a7724d062092d512f4f5e0675e7b11c59b339ad5fc136705981bdbb5407f6e64d5924a648946",
+      "valid": false
+    }
+  ]
+}
