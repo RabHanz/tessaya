@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off
 /**
  * One `claude -p` run in a job's folder, on his own Claude login, with only file and shell tools and none of this
  * machine's settings, skills or MCP servers. Returns what the graders and the learners need from its stream.
