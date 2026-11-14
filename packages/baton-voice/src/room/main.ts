@@ -477,6 +477,7 @@ const main = async () => {
       "freya/r1/+/event/wake",
       "freya/r1/+/voice/wake",
       "freya/r1/+/voice/wake/end",
+      "freya/r1/+/event/wake/kws",
       "freya/r1/+/state/mic",
       "freya/r1/+/state/voice",
       "freya/r1/+/event/key",

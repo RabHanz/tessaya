@@ -15,6 +15,7 @@ const frame = (v: number) => {
 const rig = (heard: string) => {
   const confirmed: number[] = [];
   const woken: string[] = [];
+  const lines: string[] = [];
   const stream = createWakeStream({
     words: [
       { word: "Tessaya", threshold: 0.99 },
@@ -30,9 +31,9 @@ const rig = (heard: string) => {
       return heard;
     },
     onWake: (id, word) => woken.push(`${id} ${word}`),
-    log: () => undefined,
+    log: (line) => lines.push(line),
   });
-  return { stream, confirmed, woken };
+  return { stream, confirmed, woken, lines };
 };
 
 describe("waking her by name with no session open", () => {
@@ -53,6 +54,27 @@ describe("waking her by name with no session open", () => {
     t.stream.frame("r1", frame(7));
     await t.stream.drained("r1");
     expect(t.woken).toEqual(["r1 Tessaya", "r1 Tessaya"]);
+  });
+
+  it("logs the R1's own wake model beside stage 2 for the same segment, whichever comes first", async () => {
+    const t = rig("Hey Tessaya.");
+    const kws = { score: 0.91, pass: true, name: "tessaya", best: 0.91, ms: 12, n: 40 };
+    // The R1's verdict first, then the segment ends.
+    t.stream.kws("r1", { seg: 4, ...kws });
+    for (let i = 0; i < 3; i += 1) t.stream.frame("r1", frame(7));
+    t.stream.end("r1", 4);
+    await t.stream.drained("r1");
+    expect(t.lines.at(-1)).toMatch(
+      /^\[r1\] seg 4 kws tessaya 0\.910 pass .*; stage 2: woken by Tessaya/,
+    );
+    // Our end first, then the R1's verdict, on a segment that did not fire here.
+    t.stream.frame("r1", frame(1));
+    t.stream.end("r1", 5);
+    await t.stream.drained("r1");
+    t.stream.kws("r1", { seg: 5, ...kws, pass: false, score: 0.2 });
+    expect(t.lines.at(-1)).toMatch(
+      /seg 5 kws tessaya 0\.200 no pass .*stage 2: no fire, best Tessaya 0\.000/,
+    );
   });
 
   it("never sends room speech to the recogniser, and drops a fire the text does not back", async () => {

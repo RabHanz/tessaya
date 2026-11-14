@@ -59,6 +59,9 @@ R1 you are asked once whether it may work away from home.
 **Updates.** An R1 that connects to this server gets the R1 firmware that comes with this Tessaya, from this server,
 once it has been idle for 5 minutes. It says so before and after. If it does not come back on the new version within
 7 minutes it goes back to the one before, and that version is not tried again; Hardware shows why.
+The R1's own wake model pack comes the same way, once it runs this firmware. **Own wake model** in Hardware shows its
+mode and pack: **Shadow** has the R1 report what it hears while Tessaya still decides, **Off** stops it, and **Unload**
+removes the pack until you choose Shadow again.
 
 **Away from home.** At home the R1 connects over your own network. Turn on **Away from home** (in Hardware, by asking
 Tessaya, or from the card your phone gets when the R1 could not reach home) and it can also connect through T3 Connect

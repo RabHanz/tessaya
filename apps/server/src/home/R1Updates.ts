@@ -1,15 +1,21 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalJsonInEffect:off
 /**
- * Firmware updates for the R1s on this server's hub, served by this server (R1-CONNECT-UNIVERSAL §4, §8.3): the pinned
- * image is downloaded once and checked, offered on a short-lived link, and installed only when the R1 is idle, with a
- * spoken notice before and after. An R1 that does not report the new version within 420 s gets the previous image
- * back, and that version is not tried again by itself.
+ * Firmware and wake model updates for the R1s on this server's hub (R1-CONNECT-UNIVERSAL §4, §8.3): pinned, checked,
+ * offered on a short-lived link only when the R1 is idle. Firmware that does not come back in 420 s is rolled back;
+ * a version that failed (firmware or wake model pack) is not tried again by itself.
  */
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
-import { R1_FIRMWARE, type R1FirmwarePin } from "@t3tools/baton-shared/r1Firmware";
+import {
+  R1_KWS_MAX_BYTES,
+  R1_RELEASE,
+  r1Release,
+  type R1FirmwarePin,
+  type R1KwsPin,
+  type R1ReleaseManifest,
+} from "@t3tools/baton-shared/r1Firmware";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -32,6 +38,7 @@ const TICKET_MS = 10 * 60_000;
 export const R1_FIRMWARE_PATH = "/api/r1/firmware/";
 const SAY_BEFORE = "I'm updating; back in a minute.";
 const SAY_AFTER = "I've updated.";
+const UNLOADED = "Unloaded; Shadow loads it again.";
 
 export interface R1Watch {
   online: boolean;
@@ -45,6 +52,12 @@ export interface R1Watch {
   update: { version: string; startedAt: number; rollback: boolean } | null;
   /** A version that failed here: not tried again by itself; he sees why. */
   stopped: { version: string; why: string } | null;
+  /** Its retained `state/model`: the wake model pack it runs (sha256 of the whole file), and `state/voice/kws`. */
+  model: { version: number | null; sha256: string | null; ok: boolean; why: string | null } | null;
+  kwsMode: string | null;
+  /** The `cmd/model/load` in flight, and a pack that failed here (not tried again by itself; he sees why). */
+  modelLoad: { version: number; startedAt: number } | null;
+  modelStopped: { version: number; why: string } | null;
 }
 
 export const blankWatch = (): R1Watch => ({
@@ -56,6 +69,10 @@ export const blankWatch = (): R1Watch => ({
   bluetoothAudio: false,
   update: null,
   stopped: null,
+  model: null,
+  kwsMode: null,
+  modelLoad: null,
+  modelStopped: null,
 });
 
 export type OtaStep = "wait" | "start" | "done" | "rollback" | "give-up";
@@ -74,8 +91,51 @@ export const otaStep = (
   }
   if (pin === null || !w.online || w.fw === null || w.fw === pin.version) return "wait";
   if (w.stopped?.version === pin.version) return "wait";
+  // The R1 takes one transfer at a time: a wake model load in flight finishes first.
+  if (w.modelLoad !== null) return "wait";
   if (w.enrolling || w.bluetoothAudio || now - w.lastUse < IDLE_MS) return "wait";
   return "start";
+};
+
+export type KwsStep = "wait" | "start" | "give-up";
+
+/** What to do about one R1's wake model now: only on the pinned firmware, idle, and never during an update. Pure. */
+export const kwsStep = (
+  w: R1Watch,
+  kws: R1KwsPin | null,
+  firmware: R1FirmwarePin | null,
+  now: number,
+): KwsStep => {
+  if (w.modelLoad !== null)
+    return now - w.modelLoad.startedAt < ROLLBACK_AFTER_MS ? "wait" : "give-up";
+  if (kws === null || kws.size > R1_KWS_MAX_BYTES) return "wait";
+  if (!w.online || w.fw === null || w.update !== null) return "wait";
+  if (
+    (w.model?.ok === true && w.model.sha256 === kws.sha256) ||
+    w.modelStopped?.version === kws.version
+  )
+    return "wait";
+  if (firmware !== null && w.fw !== firmware.version) return "wait";
+  if (w.enrolling || w.bluetoothAudio || now - w.lastUse < IDLE_MS) return "wait";
+  return "start";
+};
+
+/** The R1's own wake model in one line: its mode, and the pack it runs or why not. Pure. */
+const kwsLine = (w: R1Watch, kws: R1KwsPin | null): string => {
+  const mode = `Own wake model: ${w.kwsMode ?? "mode not reported"}`;
+  const pack =
+    w.modelLoad !== null
+      ? `loading pack ${w.modelLoad.version}…`
+      : w.modelStopped !== null && w.modelStopped.version === kws?.version
+        ? w.modelStopped.why
+        : kws !== null && kws.size > R1_KWS_MAX_BYTES
+          ? `pack ${kws.version} is larger than the R1 takes.`
+          : w.model === null
+            ? "no pack reported."
+            : w.model.ok
+              ? `pack ${w.model.version ?? "?"}${kws !== null && w.model.sha256 !== kws.sha256 ? `, pack ${kws.version} loads when it is idle` : ""}.`
+              : `no pack loaded${w.model.why === null ? "" : ` (${w.model.why})`}.`;
+  return `${mode}; ${pack}`;
 };
 
 const sha256 = (bytes: Uint8Array) => NodeCrypto.createHash("sha256").update(bytes).digest("hex");
@@ -86,6 +146,8 @@ export interface R1UpdateView {
     readonly id: string;
     readonly firmware: string | null;
     readonly line: string;
+    /** Its own wake model: mode and pack, for Settings → Hardware. */
+    readonly kws: string;
   }>;
 }
 
@@ -108,7 +170,7 @@ const decodeKept = Schema.decodeUnknownOption(Schema.fromJsonString(Kept));
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 export const make = Effect.fn("R1Updates.make")(function* (options: {
-  readonly pin: R1FirmwarePin | null;
+  readonly pin: R1ReleaseManifest | R1FirmwarePin | null;
   /** The image from our releases; the default is an HTTP GET. Null when it could not be had. */
   readonly download?: (url: string) => Effect.Effect<Uint8Array | null>;
 }) {
@@ -127,8 +189,9 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
         Effect.map((b): Uint8Array | null => new Uint8Array(b)),
         Effect.orElseSucceed(() => null),
       ));
+  const { firmware, kws } = r1Release(options.pin).artifacts;
   const watches = new Map<string, R1Watch>();
-  const tickets = new Map<string, { readonly sha256: string; readonly until: number }>();
+  const tickets = new Map<string, { readonly file: string; readonly until: number }>();
   const watchOf = (id: string) => {
     let w = watches.get(id);
     if (w === undefined) watches.set(id, (w = blankWatch()));
@@ -145,6 +208,9 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
       "freya/r1/+/event/#",
       "freya/r1/+/voice/enrol",
       "freya/r1/+/state/bt",
+      "freya/r1/+/state/model",
+      "freya/r1/+/state/voice/kws",
+      "freya/r1/+/state/net/ack",
     ],
     (topic, payload) => {
       const [, , id, ...rest] = topic.split("/");
@@ -163,7 +229,33 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
       else if (what === "state/caps" && typeof body?.["fw"] === "string") w.fw = body["fw"];
       else if (what === "voice/enrol") w.enrolling = body?.["cancel"] !== true;
       else if (what === "state/bt") w.bluetoothAudio = body?.["streaming"] === true;
-      else w.used = true;
+      else if (what === "state/model")
+        w.model = {
+          version: typeof body?.["version"] === "number" ? body["version"] : null,
+          sha256: typeof body?.["sha256"] === "string" ? body["sha256"] : null,
+          ok: body?.["ok"] === true,
+          why: typeof body?.["why"] === "string" ? body["why"] : null,
+        };
+      else if (what === "state/voice/kws") {
+        w.kwsMode = typeof body?.["mode"] === "string" ? body["mode"] : null;
+        // Turning it back on after an unload loads the pack again.
+        if (w.kwsMode !== "off" && w.modelStopped?.why === UNLOADED) w.modelStopped = null;
+      } else if (what === "state/net/ack") {
+        // He unloaded the pack (cmd/model/clear): it stays unloaded until he turns the wake model on again.
+        if (body?.["op"] === "model.clear" && body["ok"] === true && kws !== null) {
+          w.modelStopped = { version: kws.version, why: UNLOADED };
+          return;
+        }
+        // The one answer to a `cmd/model/load`: loaded, busy (an OTA or another load; tried again later), or why not.
+        if (body?.["op"] !== "model" || w.modelLoad === null) return;
+        const error = typeof body["error"] === "string" ? body["error"] : "no reason given";
+        if (body["ok"] !== true && error !== "busy")
+          w.modelStopped = {
+            version: w.modelLoad.version,
+            why: `The R1 did not load wake model ${w.modelLoad.version}: ${error}.`,
+          };
+        w.modelLoad = null;
+      } else w.used = true;
     },
   );
   yield* Effect.addFinalizer(() => Effect.sync(link.close));
@@ -203,18 +295,40 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
     return true;
   });
 
-  const offer = Effect.fn("R1Updates.offer")(function* (id: string, image: R1FirmwarePin) {
+  /** The wake model pack on disk, checked; downloaded once. */
+  const ensurePack = Effect.fn("R1Updates.ensurePack")(function* (pack: R1KwsPin) {
+    if (pack.size > R1_KWS_MAX_BYTES) return false;
+    const file = NodePath.join(dir, `${pack.sha256}.kws`);
+    const have = yield* Effect.promise(() => NodeFSP.readFile(file).catch(() => null));
+    if (have !== null && sha256(have) === pack.sha256) return true;
+    const bytes = yield* download(pack.url);
+    if (bytes === null || bytes.length !== pack.size || sha256(bytes) !== pack.sha256) {
+      yield* Effect.logWarning("R1 wake model pack did not match its pin", {
+        version: pack.version,
+      });
+      return false;
+    }
+    yield* Effect.promise(async () => {
+      await NodeFSP.mkdir(dir, { recursive: true });
+      await NodeFSP.writeFile(file, bytes);
+    });
+    return true;
+  });
+
+  const offer = Effect.fn("R1Updates.offer")(function* (
+    id: string,
+    image: R1FirmwarePin | R1KwsPin,
+    kind: "ota" | "model" = "ota",
+  ) {
     const base = (yield* reach.status).endpoints.proxy;
     if (base === "") return false;
     const ticket = NodeCrypto.randomBytes(16).toString("hex");
-    tickets.set(ticket, {
-      sha256: image.sha256,
-      until: (yield* Clock.currentTimeMillis) + TICKET_MS,
-    });
+    const file = `${image.sha256}.${kind === "ota" ? "rbl" : "kws"}`;
+    tickets.set(ticket, { file, until: (yield* Clock.currentTimeMillis) + TICKET_MS });
     hub.publish(
-      `freya/r1/${id}/cmd/ota/start`,
+      `freya/r1/${id}/cmd/${kind === "ota" ? "ota/start" : "model/load"}`,
       encodeJson({
-        url: `${base}${R1_FIRMWARE_PATH}${image.sha256}.rbl?t=${ticket}`,
+        url: `${base}${R1_FIRMWARE_PATH}${file}?t=${ticket}`,
         sha256: image.sha256,
         size: image.size,
         // The release pipeline's signature, passed on as it came; the R1 checks it.
@@ -230,7 +344,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
   const lock = yield* Semaphore.make(1);
   const tick = lock.withPermits(1)(
     Effect.gen(function* () {
-      const pin = options.pin;
+      const pin = firmware;
       const now = yield* Clock.currentTimeMillis;
       for (const [t, v] of tickets) if (v.until <= now) tickets.delete(t);
       const kept = yield* readKept;
@@ -272,6 +386,18 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
           };
           w.update = null;
         }
+        const model = kwsStep(w, kws, pin, now);
+        if (model === "start" && kws !== null) {
+          if (!(yield* ensurePack(kws))) continue;
+          if (yield* offer(id, kws, "model"))
+            w.modelLoad = { version: kws.version, startedAt: now };
+        } else if (model === "give-up" && w.modelLoad !== null) {
+          w.modelStopped = {
+            version: w.modelLoad.version,
+            why: `The wake model ${w.modelLoad.version} did not report back within 7 minutes.`,
+          };
+          w.modelLoad = null;
+        }
       }
     }),
   );
@@ -289,7 +415,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
         (d) => d.deviceId !== null && d.mqttUrl === null,
       );
       return {
-        pinned: options.pin?.version ?? null,
+        pinned: firmware?.version ?? null,
         devices: devices.map((d) => {
           const w = watchOf(d.deviceId!);
           const line =
@@ -297,25 +423,30 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
               ? `Updating to ${w.update.version}…`
               : w.stopped !== null
                 ? w.stopped.why
-                : options.pin === null || w.fw === options.pin.version
+                : firmware === null || w.fw === firmware.version
                   ? "Up to date."
                   : "An update installs when it has been idle for 5 minutes.";
-          return { id: d.deviceId!, firmware: w.fw, line };
+          return {
+            id: d.deviceId!,
+            firmware: w.fw,
+            line,
+            kws: kwsLine(w, kws),
+          };
         }),
       };
     }),
     image: Effect.fn("R1Updates.image")(function* (file: string, ticket: string) {
       const t = tickets.get(ticket);
       const now = yield* Clock.currentTimeMillis;
-      if (t === undefined || t.until <= now || file !== `${t.sha256}.rbl`) return null;
+      if (t === undefined || t.until <= now || file !== t.file) return null;
       const bytes = yield* Effect.promise(() =>
         NodeFSP.readFile(NodePath.join(dir, file)).catch(() => null),
       );
-      return bytes === null || sha256(bytes) !== t.sha256 ? null : new Uint8Array(bytes);
+      return bytes === null || sha256(bytes) !== file.split(".")[0] ? null : new Uint8Array(bytes);
     }),
   });
 });
 
-export const layer = Layer.effect(R1Updates, make({ pin: R1_FIRMWARE })).pipe(
+export const layer = Layer.effect(R1Updates, make({ pin: R1_RELEASE })).pipe(
   Layer.provide(FetchHttpClient.layer),
 );

@@ -22,6 +22,17 @@ const TAIL_SAMPLES = 0.5 * RATE;
 /** What the confirm hears: the name and a little before it. */
 const CONFIRM_SAMPLES = 2 * RATE;
 
+/** `event/wake/kws`: the R1's on-device wake model on one segment (firmware contract). */
+export interface KwsEvent {
+  readonly seg?: number;
+  readonly score?: number;
+  readonly pass?: boolean;
+  readonly name?: string;
+  readonly best?: number;
+  readonly ms?: number;
+  readonly n?: number;
+}
+
 export interface WakeScorer {
   /** One score per word (in `words` order) for a chunk of `chunkSamples`. */
   readonly score: (chunk: Int16Array) => Promise<ReadonlyArray<number>>;
@@ -58,8 +69,27 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       /** This segment's samples and each word's best score, for one log line when it ends. */
       samples: number;
       best: number[];
+      /** Stage 2's verdict on this segment, for the line beside the R1's own wake model (`event/wake/kws`). */
+      outcome: string;
     }
   >();
+  /** Per R1 and segment number: the R1's on-device verdict and ours, whichever came first, until both are in. */
+  const pairs = new Map<string, { kws?: KwsEvent; ours?: string }>();
+  const pair = (id: string, seg: number, half: { kws?: KwsEvent; ours?: string }) => {
+    const key = `${id}#${seg}`;
+    const both = { ...pairs.get(key), ...half };
+    if (both.kws === undefined || both.ours === undefined) {
+      pairs.set(key, both);
+      // A segment whose other half never comes is not kept for ever.
+      if (pairs.size > 64) pairs.delete(pairs.keys().next().value!);
+      return;
+    }
+    pairs.delete(key);
+    const k = both.kws;
+    deps.log(
+      `[${id}] seg ${seg} kws ${k.name ?? "?"} ${Number(k.score ?? 0).toFixed(3)} ${k.pass === true ? "pass" : "no pass"} (best ${k.best ?? "?"}, ${k.ms ?? "?"} ms, n ${k.n ?? "?"}); stage 2: ${both.ours}`,
+    );
+  };
   const of = (id: string) => {
     let d = devices.get(id);
     if (d === undefined) {
@@ -71,6 +101,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         chain: Promise.resolve(),
         samples: 0,
         best: [],
+        outcome: "",
       };
       devices.set(id, d);
     }
@@ -104,9 +135,13 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     // The score goes in the line: a segment that fires gets no "wake segment" line of its own (13 Nov audit).
     const at = `${output.toFixed(3)}/${threshold} after ${(d.samples / RATE).toFixed(1)} s`;
     if (trusted || wakeWordHeard(text, word, ratio)) {
+      d.outcome = `woken by ${word} (${at})`;
       deps.log(`[${id}] woken by ${word} (${at})`);
       deps.onWake(id, word, speechLevel(clip), Math.min(1, output), clip);
-    } else deps.log(`[${id}] ${word} fired (${at}), not confirmed (${heldBack(text)})`);
+    } else {
+      d.outcome = `${word} fired (${at}), not confirmed`;
+      deps.log(`[${id}] ${word} fired (${at}), not confirmed (${heldBack(text)})`);
+    }
   };
 
   const scorePending = async (id: string, d: Device, scorer: WakeScorer) => {
@@ -136,8 +171,12 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         await scorePending(id, d, scorer);
       });
     },
-    /** The segment ended: forget it, and listen afresh on the next one. */
-    end: (id: string) => {
+    /** The R1's own wake model's verdict on segment `seg` (`event/wake/kws`), logged beside stage 2's. */
+    kws: (id: string, event: KwsEvent) => {
+      if (typeof event.seg === "number") pair(id, event.seg, { kws: event });
+    },
+    /** The segment ended (`seg`: the R1's number for it): forget it, and listen afresh on the next one. */
+    end: (id: string, seg?: number) => {
       const d = devices.get(id);
       if (d === undefined) return;
       d.chain = d.chain.then(async () => {
@@ -154,6 +193,12 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
               .map((w, i) => `${w.word} ${(d.best[i] ?? 0).toFixed(3)}/${w.threshold}`)
               .join(", ")}`,
           );
+        const ours =
+          d.outcome !== ""
+            ? d.outcome
+            : `no fire, best ${deps.words.map((w, i) => `${w.word} ${(d.best[i] ?? 0).toFixed(3)}`).join(", ")}`;
+        if (seg !== undefined) pair(id, seg, { ours });
+        d.outcome = "";
         d.samples = 0;
         d.best = [];
         drop(d);

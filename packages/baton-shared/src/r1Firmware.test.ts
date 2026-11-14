@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 
-import { R1_FIRMWARE, R1_FIRMWARE_PUBLIC_KEY } from "./r1Firmware.ts";
+import { R1_FIRMWARE, R1_FIRMWARE_PUBLIC_KEY, R1_RELEASE, r1Release } from "./r1Firmware.ts";
 
 // ECDSA P-256 over a digest as given (the R1 verifies the image's sha256 itself, prehashed); Node's crypto always
 // hashes first, so the check is done here in plain BigInt arithmetic.
@@ -55,4 +55,10 @@ it("pins a firmware whose release signature verifies against the R1's compiled-i
   // The check really checks: another image's hash or a changed signature does not pass.
   expect(verifies(`${pin.sha256.slice(0, 63)}0`, pin.sig, R1_FIRMWARE_PUBLIC_KEY)).toBe(false);
   expect(verifies(pin.sha256, `${pin.sig.slice(0, 127)}0`, R1_FIRMWARE_PUBLIC_KEY)).toBe(false);
+  // A pinned wake model pack is signed by the same key.
+  const kws = R1_RELEASE.artifacts.kws;
+  if (kws !== null) expect(verifies(kws.sha256, kws.sig, R1_FIRMWARE_PUBLIC_KEY)).toBe(true);
+  // Today's single-firmware pin still reads as a manifest.
+  expect(r1Release(pin)).toEqual({ artifacts: { firmware: pin, kws: null } });
+  expect(r1Release(R1_RELEASE)).toBe(R1_RELEASE);
 });

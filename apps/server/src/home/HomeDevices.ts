@@ -102,6 +102,10 @@ export type DeviceCommand =
   | { readonly op: "camera" }
   /** "Away from home": the R1 may also connect through T3 Connect (R1Reach); a setting of this server, not the R1. */
   | { readonly op: "away"; readonly on: boolean }
+  /** The R1's on-device wake model (`cmd/voice/kws`); the firmware refuses "gate" until shadow numbers prove out. */
+  | { readonly op: "kws"; readonly mode: "off" | "shadow" | "gate" }
+  /** Unloads the wake model pack (`cmd/model/clear`); the server's pin loads it again unless it is unpinned. */
+  | { readonly op: "kwsClear" }
   /**
    * Any registry item on any vessel, by its manifest. `confirmed`: he said yes to this change in the conversation,
    * which a `confirm` item needs from her; an agent's never counts.
@@ -123,7 +127,13 @@ export interface DeviceOutcome {
 /** The firmware's 0 dB on the DAC (r1bt_volume_get's fallback). */
 const R1_DEFAULT_VOLUME = 71;
 
-const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set(["reboot", "camera", "away"]);
+const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set([
+  "reboot",
+  "camera",
+  "away",
+  "kws",
+  "kwsClear",
+]);
 /** How long a private item's live light shows after it is used. */
 const LIVE_MS = 30_000;
 
@@ -1227,9 +1237,13 @@ const make = Effect.gen(function* () {
           ? c.on
             ? "let the R1 work away from home"
             : "keep the R1 to home only"
-          : c.op === "item"
-            ? `use ${c.itemId}${c.value === null || c.value === undefined ? "" : ` (${recordText(JSON.stringify(c.value), 60)})`}`
-            : c.op;
+          : c.op === "kws"
+            ? `set the R1's own wake model to ${c.mode}`
+            : c.op === "kwsClear"
+              ? "unload the R1's own wake model"
+              : c.op === "item"
+                ? `use ${c.itemId}${c.value === null || c.value === undefined ? "" : ` (${recordText(JSON.stringify(c.value), 60)})`}`
+                : c.op;
 
   /** A registry item and its device, or why there is none. */
   const itemOf = Effect.fn("HomeDevices.itemOf")(function* (id: string, itemId: string) {
@@ -1437,6 +1451,14 @@ const make = Effect.gen(function* () {
         }
         return done("Done.");
       }
+      case "kws":
+        yield* publish(id, "cmd/voice/kws", { mode: c.mode });
+        yield* audit(by, id, `R1 wake model ${c.mode}`, "done");
+        return done(`Asked the R1 to set its own wake model to ${c.mode}.`);
+      case "kwsClear":
+        yield* publish(id, "cmd/model/clear", {});
+        yield* audit(by, id, "R1 wake model unloaded", "done");
+        return done("Asked the R1 to unload its own wake model.");
       case "reboot":
         yield* publish(id, "cmd/reboot", {});
         yield* audit(by, id, "R1 restarted", "done");

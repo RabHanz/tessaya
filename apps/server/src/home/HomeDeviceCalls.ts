@@ -184,6 +184,11 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
     (a, devices, by) => devices.command(a.id, { op: "speaker", ...a }, by),
   ),
   reboot: plain({ op: "reboot" }),
+  kwsMode: op(
+    Schema.Struct({ id: Id, mode: Schema.Literals(["off", "shadow", "gate"]) }),
+    (a, devices, by) => devices.command(a.id, { op: "kws", mode: a.mode }, by),
+  ),
+  kwsClear: plain({ op: "kwsClear" }),
   camera: plain({ op: "camera" }),
   nfcAssign: op(
     Schema.Struct({

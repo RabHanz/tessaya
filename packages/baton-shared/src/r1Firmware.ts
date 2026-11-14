@@ -12,13 +12,46 @@ export interface R1FirmwarePin {
   readonly sig: string;
 }
 
-export const R1_FIRMWARE: R1FirmwarePin | null = {
-  version: "smp-0.3.76",
-  url: "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-smp-0.3.76/r1bt-smp-0.3.76.rbl",
-  size: 1633696,
-  sha256: "1000036051620ba8f716bdd762b04ce0d8b108c7716faeddfeaafa71ac1186df",
-  sig: "b7a9ad19fe173567efb4a0784c1ae09bfcaba021197c4097d789c667b9f410709c2c1addb7f1458c74404d175bd8dd2464e2ef6bbd83f544f3f94bba4a2cdf09",
+/**
+ * The R1's on-device wake model pack (firmware contract): signed like the firmware, over the whole file's sha256. The
+ * version is a counter; `threshold` is informational (the pack carries its own).
+ */
+export interface R1KwsPin {
+  readonly version: number;
+  readonly url: string;
+  readonly sha256: string;
+  readonly size: number;
+  readonly sig: string;
+  readonly threshold: number;
+}
+
+/** The largest pack the R1 takes. */
+export const R1_KWS_MAX_BYTES = 476 * 1024;
+
+/** Everything one release of Tessaya pins for its R1s. Null: that artifact is not updated. */
+export interface R1ReleaseManifest {
+  readonly artifacts: { readonly firmware: R1FirmwarePin | null; readonly kws: R1KwsPin | null };
+}
+
+/** A manifest, or today's single-firmware pin read as one. */
+export const r1Release = (pin: R1ReleaseManifest | R1FirmwarePin | null): R1ReleaseManifest =>
+  pin !== null && "artifacts" in pin ? pin : { artifacts: { firmware: pin, kws: null } };
+
+export const R1_RELEASE: R1ReleaseManifest = {
+  artifacts: {
+    firmware: {
+      version: "smp-0.3.76",
+      url: "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-smp-0.3.76/r1bt-smp-0.3.76.rbl",
+      size: 1633696,
+      sha256: "1000036051620ba8f716bdd762b04ce0d8b108c7716faeddfeaafa71ac1186df",
+      sig: "b7a9ad19fe173567efb4a0784c1ae09bfcaba021197c4097d789c667b9f410709c2c1addb7f1458c74404d175bd8dd2464e2ef6bbd83f544f3f94bba4a2cdf09",
+    },
+    // The firmware lane publishes the first pack.
+    kws: null,
+  },
 };
+
+export const R1_FIRMWARE: R1FirmwarePin | null = R1_RELEASE.artifacts.firmware;
 
 /**
  * The release key's public half, as compiled into the firmware (`r1bt_ota_key.h`, secp256r1, uncompressed). Only for

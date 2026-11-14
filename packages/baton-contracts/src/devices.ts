@@ -47,6 +47,9 @@ export const BATON_DEVICES_OWNER_OPS = [
   "rotate",
   // The R1 hub's bus login, for a room loop or a watching server on another machine.
   "busLogin",
+  // The R1's on-device wake model: off, shadow (it reports, the loop decides) or gate; and unloading its pack.
+  "kwsMode",
+  "kwsClear",
 ] as const;
 export const BATON_DEVICES_VESSEL_OPS = ["publish"] as const;
 
