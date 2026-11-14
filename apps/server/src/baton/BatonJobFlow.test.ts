@@ -44,6 +44,8 @@ import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonRecordService, layer as recordLayer } from "./BatonRecordService.ts";
 import { layer as workSessionLayer } from "./WorkSessionService.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import { PAUSED_MARK } from "@t3tools/tessaya-shared/coordinator";
 
 const launched: BatonThreadLaunch[] = [];
 const sent: Array<{ threadId: ThreadId; text: string }> = [];
@@ -115,6 +117,33 @@ const homeDevices = Layer.succeed(HomeDevices, {
 } as never);
 const house = Layer.succeed(HomeAssistantService, { timeZone: Effect.succeed("UTC") } as never);
 
+/** The one login's headroom: spent holds every job until it has room again. */
+const login = { headroom: 80 };
+const providers = Layer.succeed(ProviderRegistry.ProviderRegistry, {
+  getProviders: Effect.sync(() => [
+    {
+      instanceId: "claude",
+      driver: "claudeAgent",
+      displayName: "claude",
+      enabled: true,
+      installed: true,
+      auth: { status: "authenticated" },
+      usageLimits: {
+        checkedAt: "2026-11-14T16:00:00.000Z",
+        windows: [
+          {
+            id: "five_hour",
+            kind: "session",
+            label: "5h",
+            usedPercent: 100 - login.headroom,
+            resetsAt: "2026-11-14T17:00:00.000Z",
+          },
+        ],
+      },
+    },
+  ]),
+} as never);
+
 const layer = it.layer(
   Layer.mergeAll(
     jobLayer,
@@ -122,6 +151,7 @@ const layer = it.layer(
     serverConfig,
     providerInstances,
     memory,
+    providers,
     layerStatic({
       launch: (launch) => (launched.push(launch), launch.threadId ?? null),
       sent,
@@ -899,6 +929,34 @@ layer("BatonJobFlow", (it) => {
         assert.include(sent.at(-1)?.text ?? "", "Retry 1 of 1");
         assert.strictEqual(sent.length, before + 1);
         assert.deepStrictEqual(yield* autoRetry(failed), [], "the budget of one is spent");
+      }),
+  );
+
+  it.effect(
+    "holds a new job while its only login is spent, says so, and starts it once there is room",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const id = WorkSessionId.make("job-paused-1");
+        const before = launched.length;
+        login.headroom = 4;
+        const started = yield* startJob({
+          id,
+          projectId: ProjectId.make("project-site"),
+          title: "Later",
+          goal: "Tidy the docs",
+          permissions: { folders: [], projects: [], tools: ["read"] },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+          runtimeMode: "approval-required",
+        });
+        assert.strictEqual(started.pausedUntil, "2026-11-14T17:00:00.000Z");
+        assert.strictEqual(launched.length, before, "nothing runs on the spent login");
+        const line = (yield* jobs.terms(id))?.revisions.at(-1)?.text ?? "";
+        assert.isTrue(line.startsWith(PAUSED_MARK), line);
+        login.headroom = 90;
+        yield* TestClock.adjust("5 minutes");
+        assert.strictEqual(launched.length, before + 1);
+        assert.strictEqual(launched.at(-1)?.threadId, started.threadId);
       }),
   );
 });
