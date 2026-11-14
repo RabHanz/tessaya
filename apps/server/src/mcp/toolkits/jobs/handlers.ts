@@ -179,9 +179,17 @@ export const make = Effect.gen(function* () {
               : {}),
           }),
         );
+        const opened = `Opened ${input.title} in ${input.project} on ${started.model}, led by ${started.lead}${started.template === null ? "" : ` (template ${started.template})`}.`;
+        if (started.pausedUntil !== undefined) {
+          const until = yield* houseTime(started.pausedUntil);
+          return {
+            id: started.terms.workSessionId,
+            line: `${opened} Its login is nearly out of usage and no other has room, so it is paused and starts by itself ${until === null ? "once there is room" : `when the limit resets at ${until}`}; tell him that plainly. Talking keeps working meanwhile.`,
+          };
+        }
         return {
           id: started.terms.workSessionId,
-          line: `Opened ${input.title} in ${input.project} on ${started.model}, led by ${started.lead}${started.template === null ? "" : ` (template ${started.template})`}. It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.`,
+          line: `${opened} It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.`,
         };
       }),
     ),

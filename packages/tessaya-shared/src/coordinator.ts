@@ -11,6 +11,8 @@ export const MAX_PARTS = 8;
 
 /** Marks a part that was never started because a part it waited on failed. */
 export const BLOCKED_MARK = "Not started:";
+/** A job held at its account's limit (B-031): the record line that says so, and it starts on its own at the reset. */
+export const PAUSED_MARK = "Paused for the limit:";
 
 /** Every part has finished one way or the other; none is still running or waiting for him. */
 export const partsSettled = (parts: ReadonlyArray<BatonJob>): boolean =>
