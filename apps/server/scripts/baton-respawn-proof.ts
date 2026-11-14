@@ -2,7 +2,7 @@
 /** D69 live proof: restart one Herdr-hosted Claude session in place, same conversation. */
 import * as Effect from "effect/Effect";
 
-import { respawnClaudeInPane } from "../src/baton/HerdrRespawn.ts";
+import { respawnClaudeInPane } from "../src/tessaya/HerdrRespawn.ts";
 
 const [paneRef, sessionId] = process.argv.slice(2);
 if (paneRef === undefined || sessionId === undefined)

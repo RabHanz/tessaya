@@ -10,7 +10,11 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
-import { startBatonMcp, type BatonMcp, type ToolOutput } from "@t3tools/tessaya-shared/sessionMcp";
+import {
+  startTessayaMcp,
+  type TessayaMcp,
+  type ToolOutput,
+} from "@t3tools/tessaya-shared/sessionMcp";
 import type { BrainRole } from "@t3tools/contracts";
 
 /** What one line of the session's stream-json says, as far as a spoken turn cares. */
@@ -164,7 +168,7 @@ export const createVoiceSessions = (
 
   const start = async (spec: SessionSpec): Promise<Session> => {
     let turn: SessionTurn | null = null;
-    const mcp: BatonMcp = await startBatonMcp({
+    const mcp: TessayaMcp = await startTessayaMcp({
       tools: spec.tools.map((tool) => ({
         ...tool,
         run: (args) =>

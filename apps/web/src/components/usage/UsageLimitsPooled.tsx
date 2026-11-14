@@ -35,8 +35,8 @@ import { ensureLocalApi } from "../../localApi";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
-import { BatonOnLimitRow } from "../chat/BatonOnLimitRow";
-import { BatonTileSwitch } from "../chat/BatonTileSwitch";
+import { TessayaOnLimitRow } from "../chat/TessayaOnLimitRow";
+import { TessayaTileSwitch } from "../chat/TessayaTileSwitch";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { providerClients } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -216,7 +216,7 @@ function SegmentPopover({
           ))}
         </div>
       ) : null}
-      <BatonTileSwitch account={account} />
+      <TessayaTileSwitch account={account} />
     </div>
   );
 }
@@ -622,7 +622,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
           />
         );
       })}
-      <BatonOnLimitRow pool={pool} />
+      <TessayaOnLimitRow pool={pool} />
     </section>
   );
 }

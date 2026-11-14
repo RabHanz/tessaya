@@ -1,9 +1,9 @@
 /**
- * A VoiceIntentClient backed by the real grammar (resolveBatonIntent), the
+ * A VoiceIntentClient backed by the real grammar (resolveTessayaIntent), the
  * same fast path IntentService runs before any model. Records every call so a
  * test can assert what left the client and what did not.
  */
-import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/tessaya-shared/intentParser";
+import { resolveTessayaIntent, type IntentVocabulary } from "@t3tools/tessaya-shared/intentParser";
 
 import type { VoiceIntentClient } from "../src/router.ts";
 
@@ -55,7 +55,7 @@ export interface Call {
 export const grammarClient = (vocabulary: IntentVocabulary = fleet) => {
   const calls: Call[] = [];
   const read = (text: string, focused: string | null) =>
-    resolveBatonIntent(text, { ...vocabulary, focusedWorkSessionId: focused });
+    resolveTessayaIntent(text, { ...vocabulary, focusedWorkSessionId: focused });
   const client: VoiceIntentClient = {
     resolve: async ({ text, focusedWorkSessionId }) => {
       calls.push({ kind: "resolve", text, target: focusedWorkSessionId });

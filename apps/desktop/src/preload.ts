@@ -13,7 +13,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
 import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
-import { exposeBatonDesktopBridge } from "./baton/preload.ts";
+import { exposeTessayaDesktopBridge } from "./tessaya/preload.ts";
 
 const SNAP_SHOT_EVENT_TYPES = new Set([
   "requested",
@@ -522,4 +522,4 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   },
 } satisfies DesktopBridge);
 
-exposeBatonDesktopBridge(); // Baton (vendor-patches/t3code/0007-desktop.patch)
+exposeTessayaDesktopBridge(); // Baton (vendor-patches/t3code/0007-desktop.patch)

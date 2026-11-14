@@ -6,7 +6,7 @@ export const memoryEmbedCommand = Command.make("__memory-embed", {}).pipe(
   Command.unlisted,
   Command.withHandler(() =>
     // The child lives on its IPC channel and exits when the server disconnects; the command must not return first.
-    Effect.promise(() => import("../baton/BatonMemoryEmbedder.ts")).pipe(
+    Effect.promise(() => import("../tessaya/TessayaMemoryEmbedder.ts")).pipe(
       Effect.flatMap(({ runMemoryEmbedChild }) => Effect.sync(runMemoryEmbedChild)),
       Effect.andThen(Effect.never),
     ),

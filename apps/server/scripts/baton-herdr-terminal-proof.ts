@@ -17,7 +17,7 @@ import {
   herdrTerminalSessionName,
   terminalShellCandidates,
   type HerdrShellCandidate,
-} from "../src/baton/HerdrTerminal.ts";
+} from "../src/tessaya/HerdrTerminal.ts";
 
 const require = NodeModule.createRequire(import.meta.url);
 const pty = require("node-pty") as typeof import("node-pty");

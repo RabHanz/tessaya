@@ -30,9 +30,9 @@
  * @module batonIntentModel
  */
 import type {
-  BatonIntentCommand,
-  BatonIntentResolution,
-  BatonIntentRisk,
+  TessayaIntentCommand,
+  TessayaIntentResolution,
+  TessayaIntentRisk,
 } from "@t3tools/tessaya-contracts";
 
 import { highRiskSubject, type IntentVocabulary } from "./intentParser.ts";
@@ -255,17 +255,17 @@ const refuse = (
   reason: "unrecognised" | "unknown_target" | "high_risk" | "ambiguous_target",
   unplaced: string,
   message: string,
-): BatonIntentResolution => ({
+): TessayaIntentResolution => ({
   outcome: "refused",
   refusal: { reason, unplaced, message },
 });
 
 const resolved = (input: {
-  readonly command: BatonIntentCommand;
+  readonly command: TessayaIntentCommand;
   readonly description: string;
-  readonly risk: BatonIntentRisk;
+  readonly risk: TessayaIntentRisk;
   readonly workSessionId: string | null;
-}): BatonIntentResolution => ({
+}): TessayaIntentResolution => ({
   outcome: "resolved",
   command: input.command,
   description: input.description,
@@ -283,7 +283,7 @@ export function interpretIntentModelReply(input: {
   readonly sentence: string;
   readonly reply: IntentModelReply;
   readonly vocabulary: IntentVocabulary;
-}): BatonIntentResolution {
+}): TessayaIntentResolution {
   const { sentence, reply, vocabulary } = input;
 
   // §24.1 on the way out. The sentence itself was checked by the grammar before

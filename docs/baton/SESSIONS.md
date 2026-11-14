@@ -1,6 +1,6 @@
 # Sessions on every machine
 
-`baton.sessions.*` (contracts in `sessionCatalog.ts`, logic in `apps/server/src/baton/SessionCatalog.ts`) lists every
+`baton.sessions.*` (contracts in `sessionCatalog.ts`, logic in `apps/server/src/tessaya/SessionCatalog.ts`) lists every
 Claude session on an environment, running or stopped, and brings one back. The client asks each connected
 environment (the same connection the hub uses; nothing tmux, no new transport) and adds its name.
 

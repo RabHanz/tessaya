@@ -18,9 +18,9 @@ import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { BatonOneShot } from "../baton/BatonOneShot.ts";
-import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
-import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
+import { TessayaPhoneInbox } from "../tessaya/TessayaPhoneInbox.ts";
+import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { DeviceRefusedError, DeviceRegistry, type DeviceChange } from "./DeviceRegistry.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
@@ -55,9 +55,9 @@ const make = Effect.gen(function* () {
   const registry = yield* DeviceRegistry;
   const devices = yield* HomeDevices;
   const home = yield* Effect.serviceOption(HomeAssistantService);
-  const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
-  const record = yield* Effect.serviceOption(BatonRecordService);
-  const oneShot = yield* Effect.serviceOption(BatonOneShot);
+  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
+  const record = yield* Effect.serviceOption(TessayaRecordService);
+  const oneShot = yield* Effect.serviceOption(TessayaOneShot);
   const scope = yield* Effect.scope;
   const fired = yield* PubSub.unbounded<RuleFired>();
   const judgedAt = new Map<string, number>();

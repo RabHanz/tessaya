@@ -48,22 +48,22 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { VoiceForgets } from "../baton/VoiceForgets.ts";
-import { MemberPreferences, type VoiceDefaults } from "../baton/MemberPreferences.ts";
+import { VoiceForgets } from "../tessaya/VoiceForgets.ts";
+import { MemberPreferences, type VoiceDefaults } from "../tessaya/MemberPreferences.ts";
 import { StepUps } from "./StepUps.ts";
-import type { BatonVoiceProfile } from "@t3tools/tessaya-contracts";
+import type { TessayaVoiceProfile } from "@t3tools/tessaya-contracts";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
-import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { TessayaPhoneInbox } from "../tessaya/TessayaPhoneInbox.ts";
+import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { VesselBodies } from "./VesselBodies.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
-import { expressOr } from "../baton/TessayaExpression.ts";
+import { expressOr } from "../tessaya/TessayaExpression.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
 import { R1Hub } from "./R1Hub.ts";
@@ -735,7 +735,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const home = yield* HomeAssistantService;
   const broker = yield* HomeDeviceBroker;
-  const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
+  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
   const threads = yield* Effect.serviceOption(HomeDeviceThreads);
   const reach = yield* Effect.serviceOption(R1Reach);
   const hub = yield* Effect.serviceOption(R1Hub);
@@ -751,7 +751,7 @@ const make = Effect.gen(function* () {
     }>
   >();
   let tailSeq = 0;
-  const record = yield* Effect.serviceOption(BatonRecordService);
+  const record = yield* Effect.serviceOption(TessayaRecordService);
   const bodies = yield* Effect.serviceOption(VesselBodies);
   /** His own change (Settings, or asked of her; not a rule's) sticks to the body the vessel is in. */
   const keep = (by: DeviceActor, id: string, itemId: string, value: unknown, previous: unknown) =>
@@ -837,11 +837,11 @@ const make = Effect.gen(function* () {
   const voices = yield* Effect.serviceOption(VoiceForgets);
   // One shared profile per member for every device's voice loop, retained so a loop that starts later has them all.
   // An empty retained message clears a member who is gone.
-  let sharedVoices: ReadonlyArray<BatonVoiceProfile> =
+  let sharedVoices: ReadonlyArray<TessayaVoiceProfile> =
     voices._tag === "Some" ? yield* voices.value.current : [];
   const sendVoices = (
     ids: ReadonlyArray<string>,
-    now: ReadonlyArray<BatonVoiceProfile>,
+    now: ReadonlyArray<TessayaVoiceProfile>,
     gone: ReadonlyArray<string>,
   ) =>
     Effect.forEach(

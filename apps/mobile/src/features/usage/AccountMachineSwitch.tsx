@@ -9,7 +9,7 @@ import { Pressable, View } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
 import { AppText as Text } from "../../components/ui/AppText";
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 
 type Machine = { readonly environmentId: EnvironmentId; readonly label: string };
@@ -17,7 +17,7 @@ type Login = { readonly key: string; readonly email?: string | null; readonly la
 
 /** A login on the named machines, each through its own environment's command, with one alert for all. */
 export function useLoginOnMachines() {
-  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
+  const use = useAtomCommand(tessayaWorkSessions.accountUse, { reportFailure: false });
   const [busy, setBusy] = useState(false);
   const switchOn = (machines: ReadonlyArray<Machine>, login: Login) => {
     setBusy(true);

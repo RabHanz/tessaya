@@ -38,11 +38,11 @@ mv "$stage/node-v$NODE_VERSION-linux-x64/LICENSE" "$root/node/LICENSE"
 fetch "https://github.com/kyutai-labs/pocket-tts/releases/download/v4.0.1/$POCKET.tar.gz" "$POCKET_SHA256" "$stage/pocket.tar.gz"
 tar -xzf "$stage/pocket.tar.gz" -C "$stage"
 mv "$stage/$POCKET/pocket-tts" "$stage/$POCKET/LICENSE" "$root/models/pocket/"
-# Pocket's own config (apps/desktop/src/baton/voice/pocketConfigs.ts) with its weights beside it; Pocket runs there.
+# Pocket's own config (apps/desktop/src/tessaya/voice/pocketConfigs.ts) with its weights beside it; Pocket runs there.
 node -e '
   const [from, to] = process.argv.slice(1);
   import(from).then((m) => require("node:fs").writeFileSync(to, m.POCKET_CONFIG_FULL.replaceAll("{dir}", ".")));
-' "$PWD/apps/desktop/src/baton/voice/pocketConfigs.ts" "$root/models/pocket/english/config.yaml"
+' "$PWD/apps/desktop/src/tessaya/voice/pocketConfigs.ts" "$root/models/pocket/english/config.yaml"
 
 install -m 755 "$recognizer" "$root/bin/tessaya-recognizer"
 cp native/baton-dictation/models/{silero_vad,melspectrogram,embedding_model,tessaya,alfred,freya}.onnx native/baton-dictation/models/LICENSE "$root/models/"

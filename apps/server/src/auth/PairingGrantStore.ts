@@ -1,7 +1,7 @@
 import {
-  AuthBatonCloudApproveScope,
-  AuthBatonHandsHostScope,
-  AuthBatonMemorySyncScope,
+  AuthTessayaCloudApproveScope,
+  AuthTessayaHandsHostScope,
+  AuthTessayaMemorySyncScope,
   AuthStandardClientScopes,
   type AuthEnvironmentScope,
   type AuthMcpClientAccess,
@@ -265,10 +265,10 @@ const DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES = Duration.minutes(5);
 /** The desktop app's own session may also approve cloud tasks; a paired client never gets that by default. */
 const DESKTOP_SCOPES = [
   ...AuthStandardClientScopes,
-  AuthBatonCloudApproveScope,
-  AuthBatonHandsHostScope,
+  AuthTessayaCloudApproveScope,
+  AuthTessayaHandsHostScope,
   // So the desktop can hand out a sync-only credential for this server ("Pair for memory sync").
-  AuthBatonMemorySyncScope,
+  AuthTessayaMemorySyncScope,
 ] as const;
 const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
 const DEV_STARTUP_TTL_HOURS = Duration.hours(24);

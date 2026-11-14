@@ -14,8 +14,8 @@ import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
-import { BatonRuntime } from "../baton/BatonRpcHandlers.ts";
-import { PACK_DIR_NAME } from "../baton/OperatingSystemPack.ts";
+import { TessayaRuntime } from "./TessayaRpcHandlers.ts";
+import { PACK_DIR_NAME } from "./OperatingSystemPack.ts";
 import * as ServerConfig from "../config.ts";
 import { acceptPackPush, readPackFiles, syncPackWithHome } from "./TessayaPack.ts";
 
@@ -29,7 +29,7 @@ const decodePush = Schema.decodeUnknownOption(
 
 export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
-    const context = yield* BatonRuntime;
+    const context = yield* TessayaRuntime;
     const auth = yield* EnvironmentAuth.EnvironmentAuth;
     const config = yield* ServerConfig.ServerConfig;
     if (context === null) return;

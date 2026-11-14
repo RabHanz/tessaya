@@ -13,7 +13,7 @@
  *
  * @module batonRetention
  */
-import type { BatonRetentionPolicy } from "@t3tools/tessaya-contracts";
+import type { TessayaRetentionPolicy } from "@t3tools/tessaya-contracts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -49,7 +49,7 @@ export const expiredRecords = (input: {
 };
 
 /** The two horizons, in words, for the settings screen that will show them. */
-export const describeRetention = (policy: BatonRetentionPolicy): string => {
+export const describeRetention = (policy: TessayaRetentionPolicy): string => {
   const intents =
     policy.intentDays === 0 ? "sentences are not kept" : `sentences for ${policy.intentDays} days`;
   const firings =

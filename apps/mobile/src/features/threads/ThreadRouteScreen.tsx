@@ -109,7 +109,7 @@ import {
   threadRouteIsHydrating,
   threadRouteOpensDraft,
 } from "./thread-route-hydration";
-import { useBatonThreadHeader } from "./BatonThreadHeader";
+import { useTessayaThreadHeader } from "./TessayaThreadHeader";
 import { ThreadHeader } from "./ThreadHeader";
 import { resumeThread } from "./resume-thread";
 import {
@@ -527,9 +527,9 @@ function ThreadRouteContent(
       : scopeThreadRef(delegatedFrom.environmentId, delegatedFrom.threadId);
   // The title it had at delegation, until this client sees the parent itself.
   const delegatedFromThread = useThreadShell(delegatedFromRef);
-  const batonHeader = useBatonThreadHeader(selectedThread);
+  const tessayaHeader = useTessayaThreadHeader(selectedThread);
   const headerSubtitle = [
-    batonHeader.subtitle,
+    tessayaHeader.subtitle,
     selectedThreadProject?.title ?? null,
     selectedEnvironmentConnection?.environmentLabel ?? null,
     // A linked environment's delegated task names its parent; other linked work its origin.
@@ -987,7 +987,7 @@ function ThreadRouteContent(
                 inspectorMode={inspectorMode}
                 onOpenFilesInspector={handleOpenFilesInspector}
                 onReturnToThread={props.onReturnToThread}
-                batonAction={batonHeader.action}
+                batonAction={tessayaHeader.action}
               />
             )
           }

@@ -8,7 +8,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { BatonPromptLabInput, BatonPromptLabResult } from "@t3tools/tessaya-contracts";
+import type { TessayaPromptLabInput, TessayaPromptLabResult } from "@t3tools/tessaya-contracts";
 import { DEFAULT_PACK_FILES, splitFront } from "@t3tools/tessaya-shared/osPack";
 import {
   DEFAULT_SCENARIOS,
@@ -26,8 +26,8 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
-import { BatonOneShot } from "../baton/BatonOneShot.ts";
-import { PACK_DIR_NAME, readPack } from "../baton/OperatingSystemPack.ts";
+import { TessayaOneShot } from "./TessayaOneShot.ts";
+import { PACK_DIR_NAME, readPack } from "./OperatingSystemPack.ts";
 
 /**
  * Prompt sources another layer adds to the lab (an internal build's gated prompts). This door carries their names
@@ -43,13 +43,13 @@ const PREVIOUS = "previous";
 
 export class PromptLab extends Context.Service<
   PromptLab,
-  { readonly call: (input: BatonPromptLabInput) => Effect.Effect<BatonPromptLabResult> }
+  { readonly call: (input: TessayaPromptLabInput) => Effect.Effect<TessayaPromptLabResult> }
 >()("t3/tessaya/PromptLab") {}
 
 const Reply = Schema.Struct({ reply: Schema.String });
 
 const make = Effect.gen(function* () {
-  const oneShot = yield* BatonOneShot;
+  const oneShot = yield* TessayaOneShot;
   const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
   const packDir = NodePath.join(userdata, PACK_DIR_NAME);
   const liveFile = (id: string) =>
@@ -86,7 +86,7 @@ const make = Effect.gen(function* () {
     NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
     NodeFS.writeFileSync(file, text.endsWith("\n") ? text : `${text}\n`);
   };
-  const said = (line: string): BatonPromptLabResult => ({ line });
+  const said = (line: string): TessayaPromptLabResult => ({ line });
 
   const list = Effect.fn("PromptLab.list")(function* () {
     return {
@@ -101,11 +101,11 @@ const make = Effect.gen(function* () {
       })),
       sources: yield* PromptLabSources,
       models: [...LAB_MODELS],
-    } satisfies BatonPromptLabResult;
+    } satisfies TessayaPromptLabResult;
   });
 
   const run = Effect.fn("PromptLab.run")(function* (
-    input: Extract<BatonPromptLabInput, { op: "run" }>,
+    input: Extract<TessayaPromptLabInput, { op: "run" }>,
     persona: { readonly id: string; readonly name: string; readonly role: string },
   ) {
     const bad = input.models.find((m) => !(LAB_MODELS as ReadonlyArray<string>).includes(m));
@@ -156,7 +156,7 @@ const make = Effect.gen(function* () {
     return { line: `Ran ${jobs.length} combinations on ${scenarios.length} scenarios.`, cells };
   });
 
-  const call = Effect.fn("PromptLab.call")(function* (input: BatonPromptLabInput) {
+  const call = Effect.fn("PromptLab.call")(function* (input: TessayaPromptLabInput) {
     if (input.op === "list") return yield* list();
     const persona = faces().find(
       (p) => p.id === input.persona || p.name.toLowerCase() === input.persona.toLowerCase(),

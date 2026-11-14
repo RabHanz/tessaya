@@ -63,9 +63,9 @@ jobs:
             if [ ! -f "apps/server/${file%% *}" ]; then echo "skipped: $file is not in this build"; printf '%s\t%s\n' "$name" skipped >> out/lines; return; fi
             if (cd apps/server && vp test run $file); then printf '%s\t%s\n' "$name" success >> out/lines; else printf '%s\t%s\n' "$name" failure >> out/lines; fi
           }
-          run_one "memory evals" src/baton/BatonMemoryEval.test.ts
-          run_one "employee spine" src/baton/BatonEmployeeSpine.test.ts
-          run_one "intent harness" "src/baton/IntentInterpreter.test.ts src/baton/IntentService.test.ts"
+          run_one "memory evals" src/tessaya/TessayaMemoryEval.test.ts
+          run_one "employee spine" src/tessaya/TessayaEmployeeSpine.test.ts
+          run_one "intent harness" "src/tessaya/IntentInterpreter.test.ts src/tessaya/IntentService.test.ts"
           node -e 'const l=require("fs").readFileSync("out/lines","utf8").trim().split("\n").map(x=>x.split("\t"));require("fs").writeFileSync("out/result.json",JSON.stringify(Object.fromEntries(l)))'
           cat out/result.json
       - uses: actions/upload-artifact@v4

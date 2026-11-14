@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import {
-  AuthBatonCloudApproveScope,
+  AuthTessayaCloudApproveScope,
   AuthOrchestrationOperateScope,
   AuthEnvironmentScopes,
   AuthEnvironmentScope,
@@ -91,28 +91,28 @@ describe("authorization grants", () => {
   );
 
   it("never gives the cloud approval scope to a standard client, or to a session that only holds operate", () => {
-    expect(AuthStandardClientScopes).not.toContain(AuthBatonCloudApproveScope);
+    expect(AuthStandardClientScopes).not.toContain(AuthTessayaCloudApproveScope);
     expect(
       sessionGrantsScope(
         { authenticated: true, scopes: [AuthOrchestrationOperateScope] },
-        AuthBatonCloudApproveScope,
+        AuthTessayaCloudApproveScope,
       ),
     ).toBe(false);
     expect(
       sessionGrantsScope(
         { authenticated: true, permissions: [...AuthStandardClientScopes] },
-        AuthBatonCloudApproveScope,
+        AuthTessayaCloudApproveScope,
       ),
     ).toBe(false);
     expect(
       sessionGrantsScope(
-        { authenticated: true, permissions: [AuthBatonCloudApproveScope] },
-        AuthBatonCloudApproveScope,
+        { authenticated: true, permissions: [AuthTessayaCloudApproveScope] },
+        AuthTessayaCloudApproveScope,
       ),
     ).toBe(true);
-    expect(authScopeRequiredResponse(AuthBatonCloudApproveScope)).toEqual({
+    expect(authScopeRequiredResponse(AuthTessayaCloudApproveScope)).toEqual({
       requiredScope: AuthOrchestrationOperateScope,
-      requiredPermission: AuthBatonCloudApproveScope,
+      requiredPermission: AuthTessayaCloudApproveScope,
     });
   });
 

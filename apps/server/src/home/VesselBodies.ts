@@ -33,7 +33,7 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
-import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { BARE_BOARD, MAIN_BODY } from "@t3tools/tessaya-shared/productNames";
 
@@ -119,7 +119,7 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const registry = yield* DeviceRegistry;
   const secrets = yield* ServerSecretStore;
-  const record = yield* Effect.serviceOption(BatonRecordService);
+  const record = yield* Effect.serviceOption(TessayaRecordService);
   const key = Buffer.from(yield* secrets.getOrCreateRandom(SECRET, 32).pipe(Effect.orDie));
   const lock = yield* Semaphore.make(1);
 

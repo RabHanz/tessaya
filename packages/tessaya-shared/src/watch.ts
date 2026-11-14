@@ -7,8 +7,8 @@
 import { freshFindings } from "./attention.ts";
 import {
   WorkSessionId,
-  type BatonFleetEntry,
-  type BatonRecordEntry,
+  type TessayaFleetEntry,
+  type TessayaRecordEntry,
   type ClaudeLiveSession,
   type WatchFinding,
 } from "@t3tools/tessaya-contracts";
@@ -31,7 +31,7 @@ const SEVERITY: Record<WatchFinding["kind"], number> = {
   unseen: 5,
 };
 
-const lastActivity = (entry: BatonFleetEntry): number => {
+const lastActivity = (entry: TessayaFleetEntry): number => {
   const times = [entry.updatedAt, ...entry.threads.map((t) => t.lastActivityAt)].flatMap((t) => {
     const ms = t === null ? NaN : Date.parse(t);
     return Number.isNaN(ms) ? [] : [ms];
@@ -40,7 +40,7 @@ const lastActivity = (entry: BatonFleetEntry): number => {
 };
 
 export const watchFleet = (
-  entries: ReadonlyArray<BatonFleetEntry>,
+  entries: ReadonlyArray<TessayaFleetEntry>,
   now: number,
   limits: typeof WATCH_LIMITS = WATCH_LIMITS,
 ): ReadonlyArray<WatchFinding> =>
@@ -105,7 +105,7 @@ export const outcomeRecord = (o: Omit<WatchdogOutcome, "at">) => ({
 
 /** The outcomes the Record holds; any other row is ignored. */
 export const outcomesFromRecord = (
-  rows: ReadonlyArray<BatonRecordEntry>,
+  rows: ReadonlyArray<TessayaRecordEntry>,
 ): ReadonlyArray<WatchdogOutcome> =>
   rows.flatMap((r): ReadonlyArray<WatchdogOutcome> => {
     const at = Date.parse(r.at);
@@ -147,7 +147,7 @@ export interface WatchRecordState {
 }
 
 /** From the Record's `watch` rows, newest first: each session's newest row stood when the server stopped, whatever its age. */
-export const watchRecordStart = (rows: ReadonlyArray<BatonRecordEntry>): WatchRecordState => {
+export const watchRecordStart = (rows: ReadonlyArray<TessayaRecordEntry>): WatchRecordState => {
   const written = new Map<string, number>();
   const newest = new Map<string | null, string>();
   for (const r of rows) {
@@ -181,7 +181,7 @@ const KEPT_KINDS: ReadonlySet<string> = new Set(["failed", "stalled"]);
 
 /** The failures and stalls the watch recorded, as findings again, though they have since cleared; any other row is ignored. */
 export const findingsFromRecord = (
-  rows: ReadonlyArray<BatonRecordEntry>,
+  rows: ReadonlyArray<TessayaRecordEntry>,
 ): ReadonlyArray<WatchFinding> =>
   rows.flatMap((r): ReadonlyArray<WatchFinding> =>
     r.kind !== "watch" || r.ref === null || !KEPT_KINDS.has(r.outcome)

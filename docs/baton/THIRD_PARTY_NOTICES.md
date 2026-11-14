@@ -8,7 +8,7 @@ carry the adapted code.
 Commit `a80fa80721a8`. Adapted: the companion prompt and the `[POINT:x,y:label:screenN]` tag, its
 parser, the screenshot-pixel to display coordinate maths, the 1280 px capture size, and the
 pointer's triangle and quadratic-bezier flight. In `packages/tessaya-shared/src/screenCompanion.ts` and
-`apps/desktop/src/baton/screen/pointerOverlay.ts`.
+`apps/desktop/src/tessaya/screen/pointerOverlay.ts`.
 
 ```text
 MIT License
@@ -68,7 +68,7 @@ SOFTWARE.
 
 Handy commit `7bfb2e2c934b`. Adapted: the Windows reliable paste (`src-tauri/src/paste_tx/`) in
 `native/baton-dictation/src/paste_windows.rs`, the paste chords in `keys.rs`, and the pinned Parakeet
-revision and hash in `apps/desktop/src/baton/voice/voiceModels.ts`. Used as dependencies:
+revision and hash in `apps/desktop/src/tessaya/voice/voiceModels.ts`. Used as dependencies:
 `transcribe-cpp` 0.4.1, `handy-recorder` 0.1.0, `handy-keys` 0.3.4 (each MIT; transcribe.cpp vendors
 ggml, Silero VAD and miniz, all MIT). The Handy name and brand assets are not used.
 
@@ -125,7 +125,7 @@ SOFTWARE.
   and en_GB voices (VCTK, aru, semaine, alba, jenny_dioco, northern_english_male,
   southern_english_female) with openWakeWord's published negative features. Those sets carry their own
   terms, some non-commercial. Check them before any packaged or commercial release.
-- Fonts bundled in the window and the pill (inline, `apps/desktop/src/baton/home/fonts.ts`, Latin subset),
+- Fonts bundled in the window and the pill (inline, `apps/desktop/src/tessaya/home/fonts.ts`, Latin subset),
   all SIL Open Font License 1.1, texts in `docs/baton/licences/`: Newsreader (roman and italic, variable
   weight; Copyright 2020 The Newsreader Project Authors), Schibsted Grotesk (variable weight;
   Copyright 2023 The Schibsted-Grotesk Project Authors) and Bricolage Grotesque (variable weight;

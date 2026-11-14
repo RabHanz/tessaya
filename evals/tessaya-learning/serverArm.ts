@@ -10,42 +10,45 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../../apps/server/src/config.ts";
-import { layerMemory as SqlitePersistenceMemory } from "../../apps/server/src/baton/BatonDatabase.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../../apps/server/src/tessaya/TessayaDatabase.ts";
 import {
-  BatonMemoryService,
+  TessayaMemoryService,
   MemoryViewer,
   layer as memoryLayer,
-} from "../../apps/server/src/baton/BatonMemoryService.ts";
-import { BatonOneShot, BatonOneShotError } from "../../apps/server/src/baton/BatonOneShot.ts";
+} from "../../apps/server/src/tessaya/TessayaMemoryService.ts";
+import {
+  TessayaOneShot,
+  TessayaOneShotError,
+} from "../../apps/server/src/tessaya/TessayaOneShot.ts";
 import {
   jobPlaybook,
   learnFromOutcome,
   playbookDomain,
-} from "../../apps/server/src/baton/BatonPlaybook.ts";
+} from "../../apps/server/src/tessaya/TessayaPlaybook.ts";
 import { instructionLike } from "../../packages/tessaya-shared/src/playbook.ts";
 import { runClaude } from "./agent.ts";
 import type { Arm } from "./arms.ts";
 
 export const serverArm = (model: string, cwd: string): Arm => {
   let spent = { tokens: 0, costUsd: 0 };
-  const run: BatonOneShot["Service"]["run"] = ({ prompt, outputSchema }) =>
+  const run: TessayaOneShot["Service"]["run"] = ({ prompt, outputSchema }) =>
     Effect.tryPromise({
       try: async () => {
         const answer = await runClaude({ cwd, model, tools: false, prompt });
         spent = { tokens: spent.tokens + answer.tokens, costUsd: spent.costUsd + answer.costUsd };
         return JSON.parse(/\{[\s\S]*\}/.exec(answer.final)?.[0] ?? "{}") as unknown;
       },
-      catch: () => new BatonOneShotError({ detail: "the writer did not answer" }),
+      catch: () => new TessayaOneShotError({ detail: "the writer did not answer" }),
     }).pipe(
       Effect.flatMap((value) => Schema.decodeUnknownEffect(outputSchema)(value)),
-      Effect.mapError(() => new BatonOneShotError({ detail: "the writer's answer did not fit" })),
+      Effect.mapError(() => new TessayaOneShotError({ detail: "the writer's answer did not fit" })),
     ) as never;
   const config = Layer.succeed(ServerConfig.ServerConfig, {
     dbPath: "/nowhere/statev2.sqlite",
   } as unknown as ServerConfig.ServerConfig["Service"]);
   const runtime = ManagedRuntime.make(
     memoryLayer.pipe(
-      Layer.provideMerge(Layer.succeed(BatonOneShot, { run })),
+      Layer.provideMerge(Layer.succeed(TessayaOneShot, { run })),
       Layer.provideMerge(config),
       Layer.provideMerge(SqlitePersistenceMemory),
     ),
@@ -73,7 +76,7 @@ export const serverArm = (model: string, cwd: string): Arm => {
     memoryText: () =>
       runtime.runPromise(
         Effect.gen(function* () {
-          const items = yield* (yield* BatonMemoryService).list({
+          const items = yield* (yield* TessayaMemoryService).list({
             kinds: ["skill"],
             includeProposed: true,
           });

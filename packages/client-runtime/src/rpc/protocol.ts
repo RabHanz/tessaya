@@ -1,10 +1,10 @@
-import { BatonRpcGroup } from "@t3tools/tessaya-contracts";
+import { TessayaRpcGroup } from "@t3tools/tessaya-contracts";
 import { WsRpcGroup } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { RpcClient } from "effect/rpc";
 
 // Baton (0005-client-rpc.patch): its `fabric.*` group rides the same socket.
-export const makeWsRpcProtocolClient = RpcClient.make(WsRpcGroup.merge(BatonRpcGroup));
+export const makeWsRpcProtocolClient = RpcClient.make(WsRpcGroup.merge(TessayaRpcGroup));
 type RpcClientFactory = typeof makeWsRpcProtocolClient;
 export type WsRpcProtocolClient =
   RpcClientFactory extends Effect.Effect<infer Client, any, any> ? Client : never;

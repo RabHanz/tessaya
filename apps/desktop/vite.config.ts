@@ -168,8 +168,8 @@ export default defineConfig({
       outExtensions: () => ({ js: ".cjs" }),
       // Named, so both land flat beside main.cjs where voicePill.ts and desktopMascot.ts load them; a list keeps folders.
       entry: {
-        pillPreload: "src/baton/voice/pillPreload.ts",
-        mascotPreload: "src/baton/companion/mascotPreload.ts",
+        pillPreload: "src/tessaya/voice/pillPreload.ts",
+        mascotPreload: "src/tessaya/companion/mascotPreload.ts",
       },
     },
     {
@@ -180,7 +180,7 @@ export default defineConfig({
       sourcemap: true,
       outExtensions: () => ({ js: ".cjs" }),
       define: publicConfigDefine,
-      entry: { "baton/voice/onnxWorker": "src/baton/voice/onnxWorker.ts" },
+      entry: { "baton/voice/onnxWorker": "src/tessaya/voice/onnxWorker.ts" },
       clean: false,
       deps: {
         alwaysBundle: (id) => !id.startsWith("node:") && !isMainProcessExternal(id),

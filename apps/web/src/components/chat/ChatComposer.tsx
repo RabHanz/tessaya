@@ -141,10 +141,10 @@ import { ComposerSpeechButton, ComposerSpeechRecordingPill } from "./ComposerSpe
 import { useComposerPillLook } from "../../speech/useComposerPillLook";
 import { useTessayaComposerDictation } from "../../speech/useTessayaComposerDictation";
 import {
-  BatonDictationControl,
-  BatonDictationWords,
+  TessayaDictationControl,
+  TessayaDictationWords,
   dictatingAttribute,
-} from "./BatonComposerDictation";
+} from "./TessayaComposerDictation";
 import { placeholderWhile } from "@t3tools/tessaya-shared/composerDictation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { shortcutLabelForCommand } from "../../keybindings";
@@ -3662,7 +3662,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                   />
                 </ComposerContextActionsContext>
-                <BatonDictationWords state={tessayaDictation.state} />
+                <TessayaDictationWords state={tessayaDictation.state} />
                 {showMobilePendingAnswerActions ? (
                   <div
                     data-chat-composer-mobile-pending-actions="true"
@@ -3707,7 +3707,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 {composerAttachButton && !dictationTakesFooter ? (
                   <div className="me-2">{composerAttachButton}</div>
                 ) : null}
-                <BatonDictationControl
+                <TessayaDictationControl
                   state={tessayaDictation.state}
                   design={pillLook.design}
                   wave={pillLook.wave}

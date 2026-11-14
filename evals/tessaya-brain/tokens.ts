@@ -5,7 +5,10 @@
  */
 import { Tool } from "effect/ai";
 
-import { buildBatonTools, type ToolHost } from "../../apps/desktop/src/baton/agent/batonTools.ts";
+import {
+  buildTessayaTools,
+  type ToolHost,
+} from "../../apps/desktop/src/tessaya/agent/tessayaTools.ts";
 import { LOOK, ROOM_SYSTEM } from "../../apps/server/src/home/R1Device.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
@@ -28,7 +31,7 @@ const tessaya: ReadonlyArray<Spec> = Object.entries(TessayaToolkit.tools).map(([
 }));
 // Every host method answers nothing: only the tool table is read.
 const host = new Proxy({}, { get: () => async () => "" }) as ToolHost;
-const desktop: ReadonlyArray<Spec> = buildBatonTools(host).map((t) => ({
+const desktop: ReadonlyArray<Spec> = buildTessayaTools(host).map((t) => ({
   name: t.name,
   description: t.description,
   input_schema: t.inputSchema,

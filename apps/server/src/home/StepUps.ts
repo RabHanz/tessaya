@@ -14,7 +14,7 @@ import * as Option from "effect/Option";
 import * as Random from "effect/Random";
 import * as Schedule from "effect/Schedule";
 
-import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
+import { TessayaPhoneInbox } from "../tessaya/TessayaPhoneInbox.ts";
 
 /** What raising the turn to `assurance`, as `member`, does: the act runs. */
 export type HeldRun = (raised: {
@@ -75,7 +75,7 @@ export class StepUps extends Context.Service<
 >()("t3/home/StepUps") {}
 
 const make = Effect.gen(function* () {
-  const inbox = yield* Effect.serviceOption(BatonPhoneInbox);
+  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
   const held = new Map<string, HeldAct>();
   const listeners = new Set<(device: string, act: string) => Effect.Effect<void>>();
 

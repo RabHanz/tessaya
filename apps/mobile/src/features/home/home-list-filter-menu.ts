@@ -2,7 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 
-import { setBatonLiveOnly } from "../threads/batonLiveOnly";
+import { setTessayaLiveOnly } from "../threads/tessayaLiveOnly";
 
 export interface HomeListFilterMenuEnvironment {
   readonly environmentId: EnvironmentId;
@@ -76,14 +76,14 @@ export function buildHomeListFilterMenuItems(props: {
         id: "live:all",
         title: "All threads",
         selected: !props.liveOnly,
-        onPress: () => setBatonLiveOnly(false),
+        onPress: () => setTessayaLiveOnly(false),
       },
       {
         id: "live:only",
         title: "Live only",
         subtitle: "Claude Code sessions running in a terminal",
         selected: props.liveOnly,
-        onPress: () => setBatonLiveOnly(true),
+        onPress: () => setTessayaLiveOnly(true),
       },
     ],
   });

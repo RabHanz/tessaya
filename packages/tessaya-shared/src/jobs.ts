@@ -4,23 +4,23 @@
  */
 import {
   DEFAULT_JOB_LIMITS,
-  type BatonJob,
-  type BatonJobGrant,
-  type BatonJobGroup,
-  type BatonJobLimits,
-  type BatonJobPermissions,
-  type BatonJobTool,
-  type BatonGrantKind,
-  type BatonJobPhase,
-  type BatonJobRevision,
-  type BatonPlanLease,
-  type BatonSessionState,
+  type TessayaJob,
+  type TessayaJobGrant,
+  type TessayaJobGroup,
+  type TessayaJobLimits,
+  type TessayaJobPermissions,
+  type TessayaJobTool,
+  type TessayaGrantKind,
+  type TessayaJobPhase,
+  type TessayaJobRevision,
+  type TessayaPlanLease,
+  type TessayaSessionState,
 } from "@t3tools/tessaya-contracts";
 
 import type { LineEvent } from "./expression.ts";
 
 /** running, needs him, done or failed: from the work session's state and whether it was settled. */
-export const jobGroup = (state: BatonSessionState, settled: boolean): BatonJobGroup => {
+export const jobGroup = (state: TessayaSessionState, settled: boolean): TessayaJobGroup => {
   if (state === "failed") return "failed";
   if (state === "needs_approval" || state === "needs_input" || state === "limited")
     return "needs_you";
@@ -30,10 +30,10 @@ export const jobGroup = (state: BatonSessionState, settled: boolean): BatonJobGr
 
 /** The group on the Jobs page: a job waiting for his OK is one that needs him, whatever its thread's state. */
 export const jobGroupFor = (
-  state: BatonSessionState,
+  state: TessayaSessionState,
   settled: boolean,
-  phase: BatonJobPhase,
-): BatonJobGroup =>
+  phase: TessayaJobPhase,
+): TessayaJobGroup =>
   phase === "awaiting_agreement"
     ? "needs_you"
     : phase === "drafting_plan" &&
@@ -43,7 +43,7 @@ export const jobGroupFor = (
       ? "running"
       : jobGroup(state, settled);
 
-const TOOL_WORDS: Readonly<Record<BatonJobTool, string>> = {
+const TOOL_WORDS: Readonly<Record<TessayaJobTool, string>> = {
   read: "read files",
   edit: "change files",
   shell: "run commands",
@@ -61,10 +61,10 @@ const duration = (minutes: number): string =>
 
 /** The permissions, limits and grants as the sentence on the job card. */
 export const permissionsSummary = (
-  permissions: BatonJobPermissions,
-  limits: BatonJobLimits,
-  grants: ReadonlyArray<BatonJobGrant>,
-  lease?: BatonPlanLease | null,
+  permissions: TessayaJobPermissions,
+  limits: TessayaJobLimits,
+  grants: ReadonlyArray<TessayaJobGrant>,
+  lease?: TessayaPlanLease | null,
 ): string => {
   const where = [...permissions.projects.map((p) => `the ${p} project`), ...permissions.folders];
   const parts = [
@@ -96,7 +96,7 @@ export const permissionsSummary = (
 
 /** The job has gone past a cap it was given. Spend only counts when a dollar cap was set. */
 export const limitReached = (
-  limits: BatonJobLimits,
+  limits: TessayaJobLimits,
   used: { readonly minutes: number; readonly turns: number; readonly dollars?: number },
 ): "time" | "turns" | "spend" | null =>
   used.minutes >= limits.wallClockMinutes
@@ -109,29 +109,29 @@ export const limitReached = (
 
 /** A public message always asks, unless this job holds a standing permission for that channel, not revoked. */
 export const outboundDecision = (
-  grants: ReadonlyArray<BatonJobGrant>,
-  channel: BatonGrantKind,
+  grants: ReadonlyArray<TessayaJobGrant>,
+  channel: TessayaGrantKind,
 ): "ask" | "standing" =>
   grants.some((g) => g.channel === channel && g.revokedAt === null) ? "standing" : "ask";
 
 export const withGrant = (
-  grants: ReadonlyArray<BatonJobGrant>,
-  channel: BatonGrantKind,
+  grants: ReadonlyArray<TessayaJobGrant>,
+  channel: TessayaGrantKind,
   at: string,
-): ReadonlyArray<BatonJobGrant> =>
+): ReadonlyArray<TessayaJobGrant> =>
   outboundDecision(grants, channel) === "standing"
     ? grants
     : [...grants, { channel, grantedAt: at, revokedAt: null }];
 
 /** Revoking keeps the row, as the log of what was allowed and when. */
 export const withRevoked = (
-  grants: ReadonlyArray<BatonJobGrant>,
-  channel: BatonGrantKind,
+  grants: ReadonlyArray<TessayaJobGrant>,
+  channel: TessayaGrantKind,
   at: string,
-): ReadonlyArray<BatonJobGrant> =>
+): ReadonlyArray<TessayaJobGrant> =>
   grants.map((g) => (g.channel === channel && g.revokedAt === null ? { ...g, revokedAt: at } : g));
 
-export const jobLimits = (given?: Partial<BatonJobLimits>): BatonJobLimits => ({
+export const jobLimits = (given?: Partial<TessayaJobLimits>): TessayaJobLimits => ({
   ...DEFAULT_JOB_LIMITS,
   ...given,
 });
@@ -159,8 +159,8 @@ export const pickWorkerAccount = (candidates: ReadonlyArray<WorkerCandidate>): s
 
 /** Does an edit give the job more than it had: a new folder, project or tool, or a longer leash? */
 export const permissionsWiden = (
-  before: { readonly permissions: BatonJobPermissions; readonly limits: BatonJobLimits },
-  after: { readonly permissions: BatonJobPermissions; readonly limits: BatonJobLimits },
+  before: { readonly permissions: TessayaJobPermissions; readonly limits: TessayaJobLimits },
+  after: { readonly permissions: TessayaJobPermissions; readonly limits: TessayaJobLimits },
 ): boolean => {
   const grew = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
     b.some((x) => !a.includes(x));
@@ -175,16 +175,16 @@ export const permissionsWiden = (
 };
 
 export interface JobLifecycle {
-  readonly phase: BatonJobPhase;
-  readonly revisions: ReadonlyArray<BatonJobRevision>;
-  readonly grants: ReadonlyArray<BatonJobGrant>;
+  readonly phase: TessayaJobPhase;
+  readonly revisions: ReadonlyArray<TessayaJobRevision>;
+  readonly grants: ReadonlyArray<TessayaJobGrant>;
 }
 
 export type JobEvent =
   /** The worker, in plan mode, has written the plan and its questions into the thread. */
   | { readonly type: "plan_ready" }
   /** He, or Baton for him, said something about the job; `widens` when it gives the job more. */
-  | { readonly type: "refined"; readonly revision: BatonJobRevision; readonly widens: boolean }
+  | { readonly type: "refined"; readonly revision: TessayaJobRevision; readonly widens: boolean }
   /** His explicit agreement: spoken, the button, or a reply in the thread. */
   | { readonly type: "agreed" };
 
@@ -222,14 +222,14 @@ export const reduceJob = (state: JobLifecycle, event: JobEvent): JobLifecycle =>
 export const workerMayExecute = (state: JobLifecycle): boolean => state.phase === "approved";
 
 /** The label on the Jobs page for a job that has not started. */
-export const phaseLabel = (phase: BatonJobPhase): string | null =>
+export const phaseLabel = (phase: TessayaJobPhase): string | null =>
   phase === "drafting_plan"
     ? "Writing the plan"
     : phase === "awaiting_agreement"
       ? "Waiting for your OK"
       : null;
 
-const GROUP_WORDS: Readonly<Record<BatonJobGroup, string>> = {
+const GROUP_WORDS: Readonly<Record<TessayaJobGroup, string>> = {
   running: "running",
   needs_you: "needs him",
   done: "done",
@@ -237,7 +237,7 @@ const GROUP_WORDS: Readonly<Record<BatonJobGroup, string>> = {
 };
 
 /** Where a job stands, in the words the Record keeps. */
-const jobOutcome = (j: Pick<BatonJob, "phase" | "group" | "limitReached">): string =>
+const jobOutcome = (j: Pick<TessayaJob, "phase" | "group" | "limitReached">): string =>
   j.phase === "drafting_plan"
     ? "writing its plan"
     : j.phase === "awaiting_agreement"
@@ -284,7 +284,7 @@ export const jobMoment = (
  * time is only remembered: a restart must not announce every job again.
  */
 export const jobChanges = <
-  J extends Pick<BatonJob, "workSessionId" | "phase" | "group" | "limitReached">,
+  J extends Pick<TessayaJob, "workSessionId" | "phase" | "group" | "limitReached">,
 >(
   jobs: ReadonlyArray<J>,
   seen: Map<string, string>,

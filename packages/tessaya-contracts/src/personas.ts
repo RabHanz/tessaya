@@ -6,7 +6,7 @@ import * as Schema from "effect/Schema";
 
 export const BATON_PERSONAS_WS_METHODS = { list: "baton.personas.list" } as const;
 
-export const BatonPersona = Schema.Struct({
+export const TessayaPersona = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   wake: Schema.NullOr(Schema.String),
@@ -23,8 +23,8 @@ export const BatonPersona = Schema.Struct({
   guilt: Schema.optionalKey(Schema.Number),
   brain: Schema.optionalKey(Schema.Struct({ model: Schema.String, effort: Schema.String })),
 });
-export type BatonPersona = typeof BatonPersona.Type;
+export type TessayaPersona = typeof TessayaPersona.Type;
 
-export const BatonPersonasListInput = Schema.Struct({});
-export const BatonPersonasListResult = Schema.Struct({ personas: Schema.Array(BatonPersona) });
-export type BatonPersonasListResult = typeof BatonPersonasListResult.Type;
+export const TessayaPersonasListInput = Schema.Struct({});
+export const TessayaPersonasListResult = Schema.Struct({ personas: Schema.Array(TessayaPersona) });
+export type TessayaPersonasListResult = typeof TessayaPersonasListResult.Type;

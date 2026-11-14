@@ -1,21 +1,21 @@
 import { attachSidebarTree } from "../lib/sidebarTree";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
-import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
-import { BatonNoLiveSessions } from "./sidebar/BatonLiveBadge";
+import { TessayaSidebarSection } from "./sidebar/TessayaSidebarSection";
+import { TessayaNoLiveSessions } from "./sidebar/TessayaLiveBadge";
 import {
   isRunningLive,
   liveThreadsOnly,
-  useBatonLiveOnly,
+  useTessayaLiveOnly,
   useRunningLiveSessions,
-} from "./sidebar/batonLiveOnly";
-import { openThreadInSplit } from "./panes/batonPanesStore";
+} from "./sidebar/tessayaLiveOnly";
+import { openThreadInSplit } from "./panes/tessayaPanesStore";
 import {
   BATON_DETACH_MENU_ITEM,
   BATON_SPLIT_MENU_ITEM,
   showWithSplitItem,
-} from "./panes/batonSplitMenu";
-import { openDetachedWindow } from "./panes/batonWindows";
+} from "./panes/tessayaSplitMenu";
+import { openDetachedWindow } from "./panes/tessayaWindows";
 import {
   dropThreadContext,
   endThreadContextDrag,
@@ -495,9 +495,9 @@ function useSidebarThreads(input: {
   const settledVisibleCount =
     settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
 
-  const [batonLiveOnly] = useBatonLiveOnly();
+  const [tessayaLiveOnly] = useTessayaLiveOnly();
   const partition = partitionSidebarThreads({
-    threads: liveThreadsOnly(threads, batonLiveOnly, batonRunningLive),
+    threads: liveThreadsOnly(threads, tessayaLiveOnly, batonRunningLive),
     scopedProjectKeys,
     delegatedUnderParent,
     serverConfigs,
@@ -512,7 +512,7 @@ function useSidebarThreads(input: {
     partition;
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const olderSettledShelf = useOlderSettledShelf({
-    scopes: olderSettledScopes(batonLiveOnly ? [] : [...serverConfigs.keys()], scopedProjectKeys),
+    scopes: olderSettledScopes(tessayaLiveOnly ? [] : [...serverConfigs.keys()], scopedProjectKeys),
     expanded: settledShelfExpanded,
     visibleCount: settledVisibleCount,
   });
@@ -1334,7 +1334,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
 
   const batonRunningLive = useRunningLiveSessions();
-  const [batonLiveOnly] = useBatonLiveOnly();
+  const [tessayaLiveOnly] = useTessayaLiveOnly();
   const {
     workingShelfEnabled,
     pinnedThreads,
@@ -3253,7 +3253,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       >
         {/* Baton (vendor-patches/t3code/0006-web-sidebar.patch) */}
         {isSearchingThreads ? null : (
-          <BatonSidebarSection activeThreadKey={routeThreadKey} onOpenThread={navigateToThread} />
+          <TessayaSidebarSection activeThreadKey={routeThreadKey} onOpenThread={navigateToThread} />
         )}
         <SidebarGroup className="flex-1" role="presentation">
           {isSearchingThreads ? (
@@ -3357,8 +3357,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     Add project
                   </button>
                 </>
-              ) : batonLiveOnly ? (
-                <BatonNoLiveSessions />
+              ) : tessayaLiveOnly ? (
+                <TessayaNoLiveSessions />
               ) : scopedProjectGroups.length > 0 ? (
                 <>
                   <span>

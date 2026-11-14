@@ -3,13 +3,13 @@ import { OrchestratorMcpFailure, ScheduledTaskId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
-import { BatonCloudService } from "../../../baton/BatonCloudService.ts";
-import { BatonEngine } from "../../../baton/BatonEngine.ts";
-import * as JobFlow from "../../../baton/BatonJobFlow.ts";
+import { TessayaCloudService } from "../../../tessaya/TessayaCloudService.ts";
+import { TessayaEngine } from "../../../tessaya/TessayaEngine.ts";
+import * as JobFlow from "../../../tessaya/TessayaJobFlow.ts";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import { ScheduledTaskService } from "../../../scheduledTasks/ScheduledTaskService.ts";
-import { BatonRuntime, type BatonServices } from "../../../baton/BatonRpcHandlers.ts";
-import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TessayaRuntime, type TessayaServices } from "../../../tessaya/TessayaRpcHandlers.ts";
+import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { type JobInput, ROOM_SESSIONS } from "./tools.ts";
@@ -18,7 +18,7 @@ const refused = (message: string) =>
   new OrchestratorMcpFailure({ code: "capability_denied", message });
 
 export const make = Effect.gen(function* () {
-  const context = yield* BatonRuntime;
+  const context = yield* TessayaRuntime;
   /** Only a vessel's own runner (R1Tools), which judged the turn and held what needs his yes; the desk's gate asks first. */
   const roomOnly = Effect.flatMap(McpInvocationContext.McpInvocationContext, (scope) =>
     !ROOM_SESSIONS.has(scope.client?.sessionId ?? "")
@@ -27,7 +27,7 @@ export const make = Effect.gen(function* () {
         ? Effect.fail(refused("Jobs are not available on this server."))
         : Effect.succeed(context),
   );
-  const run = <A, E>(effect: Effect.Effect<A, E, BatonServices>) =>
+  const run = <A, E>(effect: Effect.Effect<A, E, TessayaServices>) =>
     Effect.flatMap(roomOnly, (services) =>
       Effect.provideContext(effect, services).pipe(
         Effect.mapError(
@@ -71,7 +71,7 @@ export const make = Effect.gen(function* () {
     cloud_dispatch: act((input: JobInput<"cloud_dispatch">) =>
       Effect.map(
         run(
-          Effect.flatMap(BatonCloudService, (cloud) =>
+          Effect.flatMap(TessayaCloudService, (cloud) =>
             cloud.call(
               {
                 op: "dispatch",
@@ -101,7 +101,7 @@ export const make = Effect.gen(function* () {
     project_add: act((input: JobInput<"project_add">) =>
       Effect.map(
         run(
-          Effect.flatMap(BatonEngine, (engine) =>
+          Effect.flatMap(TessayaEngine, (engine) =>
             engine.addProject({
               tag: "voice",
               title: input.title,

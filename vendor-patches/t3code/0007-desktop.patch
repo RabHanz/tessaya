@@ -4,15 +4,15 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 7ebeaa74a021dc9bae97178cefb8f2e64e9918ae..3853ec925bdc27f91dc5b0926a3879723ca1a781 100644
+index 7ebeaa74a021dc9bae97178cefb8f2e64e9918ae..233133474610a2a80ecad72c40f3f260b1726773 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
 @@ -40,6 +40,8 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
  import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
  import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
  import * as HostProcess from "@t3tools/shared/HostProcess";
-+import { startBatonDesktop } from "../baton/startBatonDesktop.ts";
-+import { mainHeldAtLaunch, takeMainHold } from "../baton/launchWindows.ts";
++import { startTessayaDesktop } from "../tessaya/startTessayaDesktop.ts";
++import { mainHeldAtLaunch, takeMainHold } from "../tessaya/launchWindows.ts";
  
  const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
  const MAX_TCP_PORT = 65_535;
@@ -21,7 +21,7 @@ index 7ebeaa74a021dc9bae97178cefb8f2e64e9918ae..3853ec925bdc27f91dc5b0926a387972
    });
    yield* installDesktopIpcHandlers();
 +  // Baton (vendor-patches/t3code/0007-desktop.patch): a Baton failure never stops T3 starting.
-+  yield* startBatonDesktop.pipe(
++  yield* startTessayaDesktop.pipe(
 +    Effect.catchCause((cause) => Effect.logError("Tessaya desktop did not start", cause)),
 +  );
    yield* logBootstrapInfo("bootstrap ipc handlers registered");
@@ -47,14 +47,14 @@ index 7ebeaa74a021dc9bae97178cefb8f2e64e9918ae..3853ec925bdc27f91dc5b0926a387972
        yield* desktopWindow.ensureMain;
      }
 diff --git a/apps/desktop/src/app/DesktopLifecycle.ts b/apps/desktop/src/app/DesktopLifecycle.ts
-index 9568e72dde310e0cdecdbb3196a1b4878ec998a7..83452a5cf4bf45ccc7ef0581579815603ade52f0 100644
+index 9568e72dde310e0cdecdbb3196a1b4878ec998a7..b95945935871cab75ee4b036e59a1ede039abbba 100644
 --- a/apps/desktop/src/app/DesktopLifecycle.ts
 +++ b/apps/desktop/src/app/DesktopLifecycle.ts
 @@ -22,6 +22,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
  import * as ElectronWindow from "../electron/ElectronWindow.ts";
  import * as DesktopState from "./DesktopState.ts";
  import * as DesktopWindow from "../window/DesktopWindow.ts";
-+import { shouldQuitOnAllClosed } from "../baton/lastAppWindow.ts";
++import { shouldQuitOnAllClosed } from "../tessaya/lastAppWindow.ts";
  
  export class DesktopLifecycleRelaunchError extends Schema.TaggedError<DesktopLifecycleRelaunchError>()(
    "DesktopLifecycleRelaunchError",
@@ -160,14 +160,14 @@ index 8a8389082ce89028af4fe60610c96c66ed173c14..7a14bf97e9eef6dcce03e4fbb68e82a3
      Effect.gen(function* () {
        const spawned = yield* Deferred.make<void>();
 diff --git a/apps/desktop/src/backend/DesktopBackendManager.ts b/apps/desktop/src/backend/DesktopBackendManager.ts
-index 89ebc9e862ecf4d6224cc6c26d25bcd2ee3692b7..8c9ab976e0ab0fd3b4781e1288ebb52d1bd5eda7 100644
+index 89ebc9e862ecf4d6224cc6c26d25bcd2ee3692b7..65f8cf5c8e2fc7146c372c0dff1de493df973783 100644
 --- a/apps/desktop/src/backend/DesktopBackendManager.ts
 +++ b/apps/desktop/src/backend/DesktopBackendManager.ts
 @@ -32,6 +32,7 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
  import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
  import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
  import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
-+import { awaitBackendUnresponsive } from "../baton/lifecycle/backendLiveness.ts";
++import { awaitBackendUnresponsive } from "../tessaya/lifecycle/backendLiveness.ts";
  
  const INITIAL_RESTART_DELAY = Duration.millis(500);
  const MAX_RESTART_DELAY = Duration.seconds(10);
@@ -193,14 +193,14 @@ index 89ebc9e862ecf4d6224cc6c26d25bcd2ee3692b7..8c9ab976e0ab0fd3b4781e1288ebb52d
    const exit = yield* handle.exitCode.pipe(
      Effect.withSpan("desktop.backendProcess.awaitExit"),
 diff --git a/apps/desktop/src/electron/ElectronWindow.test.ts b/apps/desktop/src/electron/ElectronWindow.test.ts
-index 9eb41ed4e240237cbb916230f1a91f6edc42f76d..18e4ddb2cf5dcf36e6f2dba9a747a0ffe27bc212 100644
+index 9eb41ed4e240237cbb916230f1a91f6edc42f76d..9a0672d7a954c9844ad26d3fba25fd65b200353e 100644
 --- a/apps/desktop/src/electron/ElectronWindow.test.ts
 +++ b/apps/desktop/src/electron/ElectronWindow.test.ts
 @@ -65,6 +65,7 @@ vi.mock("electron", () => ({
  }));
  
  import * as ElectronWindow from "./ElectronWindow.ts";
-+import { markCompanionWindow } from "../baton/lastAppWindow.ts";
++import { markCompanionWindow } from "../tessaya/lastAppWindow.ts";
  
  const layerTestFor = (platform: NodeJS.Platform) =>
    ElectronWindow.layer.pipe(Layer.provide(Layer.succeed(HostProcess.Platform, platform)));
@@ -224,14 +224,14 @@ index 9eb41ed4e240237cbb916230f1a91f6edc42f76d..18e4ddb2cf5dcf36e6f2dba9a747a0ff
      Effect.gen(function* () {
        const electronWindow = yield* ElectronWindow.ElectronWindow;
 diff --git a/apps/desktop/src/electron/ElectronWindow.ts b/apps/desktop/src/electron/ElectronWindow.ts
-index 15a117a52b050a82d8834978f3e7077b0c5025ec..c2ff03a701d216fdc423dca5ac5ed2f3e5c206b5 100644
+index 15a117a52b050a82d8834978f3e7077b0c5025ec..f8c34c6ff2eb8a93176fc8170a6a70863d77c66a 100644
 --- a/apps/desktop/src/electron/ElectronWindow.ts
 +++ b/apps/desktop/src/electron/ElectronWindow.ts
 @@ -20,6 +20,7 @@ import {
    loadWindowsForegroundApi,
  } from "./WindowsForeground.ts";
  import { startWindowsForegroundFocusThread } from "./WindowsForegroundFocusThread.ts";
-+import { pickRevealable } from "../baton/lastAppWindow.ts";
++import { pickRevealable } from "../tessaya/lastAppWindow.ts";
  
  function windowsForegroundFocusTarget(window: Electron.BrowserWindow) {
    return {
@@ -314,14 +314,14 @@ index 53e18aaf8c29bb3666e185c5163d2309f97af9fa..fe8cb7021567586b2040ff292bde0cca
    };
  }
 diff --git a/apps/desktop/src/ipc/DesktopIpc.test.ts b/apps/desktop/src/ipc/DesktopIpc.test.ts
-index 1973ab49cefeb0b5f333eb137201c8cb3df61095..7c0a64a8ac403e0b9b29bce20b101f127bb68e71 100644
+index 1973ab49cefeb0b5f333eb137201c8cb3df61095..249c358debf20115fc40fd4b842fae981d0dcd56 100644
 --- a/apps/desktop/src/ipc/DesktopIpc.test.ts
 +++ b/apps/desktop/src/ipc/DesktopIpc.test.ts
 @@ -8,60 +8,93 @@ vi.mock("electron", () => ({}));
  
  import * as ElectronWindow from "../electron/ElectronWindow.ts";
  import * as DesktopIpc from "./DesktopIpc.ts";
-+import { trustRenderer } from "../baton/trustedRenderers.ts";
++import { trustRenderer } from "../tessaya/trustedRenderers.ts";
  
 -it.effect("answers only the main window's top frame", () =>
 -  Effect.gen(function* () {
@@ -464,14 +464,14 @@ index 1973ab49cefeb0b5f333eb137201c8cb3df61095..7c0a64a8ac403e0b9b29bce20b101f12
 +    }),
  );
 diff --git a/apps/desktop/src/ipc/DesktopIpc.ts b/apps/desktop/src/ipc/DesktopIpc.ts
-index 69d4f70c15a0ec16cf0596313a8044b799aa1aaf..924e00834a45c587bc88aaf122553bb230682a82 100644
+index 69d4f70c15a0ec16cf0596313a8044b799aa1aaf..0ce9fdf0d39e7214870ffce5d932994474d118f6 100644
 --- a/apps/desktop/src/ipc/DesktopIpc.ts
 +++ b/apps/desktop/src/ipc/DesktopIpc.ts
 @@ -6,6 +6,7 @@ import * as Schema from "effect/Schema";
  import * as Scope from "effect/Scope";
  
  import * as ElectronWindow from "../electron/ElectronWindow.ts";
-+import { isTrustedBatonRenderer } from "../baton/trustedRenderers.ts";
++import { isTrustedTessayaRenderer } from "../tessaya/trustedRenderers.ts";
  
  export interface DesktopIpcInvokeEvent {
    readonly sender: { readonly id: number };
@@ -486,19 +486,19 @@ index 69d4f70c15a0ec16cf0596313a8044b799aa1aaf..924e00834a45c587bc88aaf122553bb2
 +              main.value.webContents.id === event.sender.id &&
 +              main.value.webContents.mainFrame === event.senderFrame) ||
 +            // Baton (0007-desktop.patch): detached windows and Tessaya's inline T3 pages.
-+            isTrustedBatonRenderer(event),
++            isTrustedTessayaRenderer(event),
          ),
        );
      }),
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index 6414743ac3b2f32c3902593646b017a1bd8822e0..be99205b51745a56f7ec0b76e5d16064868235f7 100644
+index 6414743ac3b2f32c3902593646b017a1bd8822e0..df83d4665acddc1d94ac867c5a2022551499497e 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
 @@ -13,6 +13,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
  
  import * as IpcChannels from "./ipc/channels.ts";
  import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
-+import { exposeBatonDesktopBridge } from "./baton/preload.ts";
++import { exposeTessayaDesktopBridge } from "./tessaya/preload.ts";
  
  const SNAP_SHOT_EVENT_TYPES = new Set([
    "requested",
@@ -507,7 +507,7 @@ index 6414743ac3b2f32c3902593646b017a1bd8822e0..be99205b51745a56f7ec0b76e5d16064
    },
  } satisfies DesktopBridge);
 +
-+exposeBatonDesktopBridge(); // Baton (vendor-patches/t3code/0007-desktop.patch)
++exposeTessayaDesktopBridge(); // Baton (vendor-patches/t3code/0007-desktop.patch)
 diff --git a/apps/desktop/src/snapShot/RegionSnapShot.test.ts b/apps/desktop/src/snapShot/RegionSnapShot.test.ts
 index 24b233b465d53958d18c910d28141d130c1a9a8f..22475b41be342dd32670172cb8e84cd238e2c79e 100644
 --- a/apps/desktop/src/snapShot/RegionSnapShot.test.ts
@@ -734,16 +734,16 @@ index 497b315ef5225b7e3c0cdad7a5ea9ca7ddd02034..bcb9a7aea2db032c5705ee10e547a7eb
        assert.deepEqual(
          DesktopWindow.resolveInitialMainWindowBounds(bounds, displays),
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..d3db11913ddb9507e7cb7acd9865a5aca9036cc3 100644
+index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631f844a29c 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
 @@ -13,6 +13,9 @@ import * as Electron from "electron";
  import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
  
  import * as DesktopAssets from "../app/DesktopAssets.ts";
-+import { installDetachedWindows } from "../baton/detachedWindows.ts";
-+import { setOverlaySafely, syncsWithT3Appearance } from "../baton/lastAppWindow.ts";
-+import { takeMainHold } from "../baton/launchWindows.ts";
++import { installDetachedWindows } from "../tessaya/detachedWindows.ts";
++import { setOverlaySafely, syncsWithT3Appearance } from "../tessaya/lastAppWindow.ts";
++import { takeMainHold } from "../tessaya/launchWindows.ts";
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import * as DesktopPrimaryPaste from "../app/DesktopPrimaryPaste.ts";
  import { makeComponentLogger } from "../app/DesktopObservability.ts";

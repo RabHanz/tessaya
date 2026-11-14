@@ -1,5 +1,5 @@
 import {
-  AuthBatonMemorySyncScope,
+  AuthTessayaMemorySyncScope,
   type AuthGrantScope,
   AuthGrantScopeNames,
   mixesMemorySync,
@@ -15,6 +15,6 @@ export const authScopesFlag = (defaults: ReadonlyArray<AuthGrantScope>) =>
     Flag.map((scopes) => [...new Set(scopes.length > 0 ? scopes : defaults)]),
     Flag.filter(
       (scopes) => !mixesMemorySync(scopes),
-      () => `${AuthBatonMemorySyncScope} is a sync-only credential: give it alone.`,
+      () => `${AuthTessayaMemorySyncScope} is a sync-only credential: give it alone.`,
     ),
   );

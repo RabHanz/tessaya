@@ -27,7 +27,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
-import { readPack } from "../baton/OperatingSystemPack.ts";
+import { readPack } from "./OperatingSystemPack.ts";
 
 export class TessayaMood extends Context.Service<
   TessayaMood,

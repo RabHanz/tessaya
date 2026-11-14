@@ -236,9 +236,9 @@ import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
 import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 // Baton (vendor-patches/t3code/0002-server-hooks.patch): its own RPC group, handlers and scopes.
-import { BatonRpcGroup } from "@t3tools/tessaya-contracts";
-import * as BatonRpcAuthorization from "./baton/BatonRpcAuthorization.ts";
-import * as BatonRpcHandlers from "./baton/BatonRpcHandlers.ts";
+import { TessayaRpcGroup } from "@t3tools/tessaya-contracts";
+import * as TessayaRpcAuthorization from "./tessaya/TessayaRpcAuthorization.ts";
+import * as TessayaRpcHandlers from "./tessaya/TessayaRpcHandlers.ts";
 import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
@@ -712,7 +712,7 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 const UpstreamWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
-const ServerWsRpcGroup = UpstreamWsRpcGroup.merge(BatonRpcGroup.middleware(RpcInstrumentation));
+const ServerWsRpcGroup = UpstreamWsRpcGroup.merge(TessayaRpcGroup.middleware(RpcInstrumentation));
 
 // RpcGroup.toLayer derives each handler's requirements by scanning every RPC in
 // the group, so its type cost grows with handlers × RPCs. Near 200 methods that
@@ -3517,7 +3517,7 @@ export const layerWsRpc = (
           yield* SplitWsRpcGroup.toHandlers(splitHandlers),
           yield* OtherWsRpcGroup.toHandlers(otherHandlers),
         ),
-        yield* BatonRpcHandlers.make,
+        yield* TessayaRpcHandlers.make,
       );
     }),
   );
@@ -3592,7 +3592,7 @@ export const layer = Layer.unwrap(
                         })
                         .pipe(Effect.ignore);
                 }),
-                Layer.merge(rpcInstrumentationLayer, BatonRpcAuthorization.layer(session)),
+                Layer.merge(rpcInstrumentationLayer, TessayaRpcAuthorization.layer(session)),
               ),
             ),
             Effect.forkScoped,

@@ -197,7 +197,7 @@ import {
   makeClaudeSessionLogin,
   pruneClaudeSessionLogins,
 } from "../../provider/Drivers/ClaudeSessionLogin.ts";
-import * as BatonClaudeAccountHome from "../../provider/Drivers/ClaudeAccountHome.ts";
+import * as TessayaClaudeAccountHome from "../../provider/Drivers/ClaudeAccountHome.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   resolveClaudeCatalogContextWindowTokens,
@@ -13800,7 +13800,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     );
     const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);
     // Baton (D52): a second account's home shares the primary's skills, memory and settings.
-    yield* BatonClaudeAccountHome.materializeForConfig(config);
+    yield* TessayaClaudeAccountHome.materializeForConfig(config);
     const path = yield* Path.Path;
     const sessionLoginsDir = path.join(serverConfig.stateDir, "claude-session-logins");
     yield* pruneClaudeSessionLogins(sessionLoginsDir);

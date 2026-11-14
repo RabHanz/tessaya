@@ -40,8 +40,8 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
 import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
 import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import { startBatonDesktop } from "../baton/startBatonDesktop.ts";
-import { mainHeldAtLaunch, takeMainHold } from "../baton/launchWindows.ts";
+import { startTessayaDesktop } from "../tessaya/startTessayaDesktop.ts";
+import { mainHeldAtLaunch, takeMainHold } from "../tessaya/launchWindows.ts";
 
 const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
 const MAX_TCP_PORT = 65_535;
@@ -190,7 +190,7 @@ const bootstrap = Effect.gen(function* () {
   });
   yield* installDesktopIpcHandlers();
   // Baton (vendor-patches/t3code/0007-desktop.patch): a Baton failure never stops T3 starting.
-  yield* startBatonDesktop.pipe(
+  yield* startTessayaDesktop.pipe(
     Effect.catchCause((cause) => Effect.logError("Tessaya desktop did not start", cause)),
   );
   yield* logBootstrapInfo("bootstrap ipc handlers registered");

@@ -19,7 +19,7 @@ import { File, Paths } from "expo-file-system";
 import { useSyncExternalStore } from "react";
 import { useResolveClassNames } from "uniwind";
 
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 
 export interface PillChoice {
   readonly design: PillDesign;
@@ -77,7 +77,7 @@ export const sharedEnvironmentsAtom = Atom.family((key: string) =>
       .flatMap((id) => {
         const environmentId = id as EnvironmentId;
         const choice = sharedChoice(
-          viewOf(get(batonWorkSessions.desktopSettingsQuery({ environmentId, input: {} }))),
+          viewOf(get(tessayaWorkSessions.desktopSettingsQuery({ environmentId, input: {} }))),
         );
         return choice === null ? [] : [{ environmentId, choice }];
       }),
@@ -99,7 +99,7 @@ export function usePillLook(environmentId: EnvironmentId | null) {
   const view = useAtomValue(
     environmentId === null
       ? NOTHING
-      : batonWorkSessions.desktopSettingsQuery({ environmentId, input: {} }),
+      : tessayaWorkSessions.desktopSettingsQuery({ environmentId, input: {} }),
   );
   const choice = sharedChoice(viewOf(view)) ?? mine;
   // The theme's roles as plain colours: the waveform and the pill are drawn with them, not with classes.

@@ -40,7 +40,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import {
   agentMessageFrom,
   withAgentMessageFrom,
-} from "../../apps/server/src/baton/AgentMessageFrom.ts";
+} from "../../apps/server/src/tessaya/AgentMessageFrom.ts";
 import { taskPrompt } from "../../apps/server/src/mcp/delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../apps/server/src/mcp/McpInvocationContext.ts";
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";

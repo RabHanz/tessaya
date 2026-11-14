@@ -17,7 +17,7 @@ import type { VoiceLibraryView } from "@t3tools/tessaya-contracts";
 import { useEffect, useState } from "react";
 
 import { runEnvironmentSpeech } from "../../speech/runEnvironmentSpeech";
-import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useEnvironmentScope, usePreparedConnection } from "../../state/session";
 import { Button } from "../ui/button";
@@ -157,7 +157,7 @@ function AnthropicKeyRow({ environmentId }: { readonly environmentId: Environmen
 /** Google's key turns on cloud voices (Gemini) in Settings → Voice. It is stored on the environment and never sent back. */
 function GoogleKeyRow({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const canManage = useEnvironmentScope(environmentId, AuthSettingsWriteScope);
-  const voiceCall = useAtomCommand(batonWorkSessions.voiceCall, { reportFailure: false });
+  const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
   const call = async (kind: "read" | "act", op: string, args: Record<string, unknown> = {}) => {
     const result = await voiceCall({ environmentId, input: { kind, op, args } });
     return result._tag === "Success" ? result.value : null;

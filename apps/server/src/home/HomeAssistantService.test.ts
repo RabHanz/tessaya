@@ -7,9 +7,9 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
-import { layerMemory as BatonDatabaseMemory } from "../baton/BatonDatabase.ts";
-import { BatonPhoneInbox, layer as inboxLayer } from "../baton/BatonPhoneInbox.ts";
-import { BatonRecordService, layer as recordLayer } from "../baton/BatonRecordService.ts";
+import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
+import { TessayaPhoneInbox, layer as inboxLayer } from "../tessaya/TessayaPhoneInbox.ts";
+import { TessayaRecordService, layer as recordLayer } from "../tessaya/TessayaRecordService.ts";
 import {
   HomeAssistantConnection,
   HomeCallError,
@@ -17,8 +17,8 @@ import {
   type HomeLink,
 } from "./HomeAssistantConnection.ts";
 import * as HomeAssistantService from "./HomeAssistantService.ts";
-import { TessayaHousehold } from "../baton/TessayaHousehold.ts";
-import { TurnOrigin } from "../baton/TessayaTurn.ts";
+import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
+import { TurnOrigin } from "../tessaya/TessayaTurn.ts";
 
 interface Entity {
   s: string;
@@ -202,7 +202,7 @@ const setup = () => {
   const house = makeHouse();
   const layer = HomeAssistantService.layer.pipe(
     Layer.provideMerge(Layer.mergeAll(house.connection, secrets, inboxLayer, recordLayer)),
-    Layer.provideMerge(BatonDatabaseMemory),
+    Layer.provideMerge(TessayaDatabaseMemory),
   );
   return { house, layer };
 };
@@ -290,7 +290,7 @@ it.effect("finds by words and room, toggles a light, and undoes it from the snap
       .pipe(Effect.flip);
     assert.include(ghost.why, "no light.lamp");
     assert.strictEqual(house.calls.length, calls);
-    const record = yield* (yield* BatonRecordService).query({ kind: "home" });
+    const record = yield* (yield* TessayaRecordService).query({ kind: "home" });
     assert.deepStrictEqual(
       record.map((r) => r.outcome),
       ["undone", "done"],
@@ -304,7 +304,7 @@ it.effect(
     const { house, layer } = setup();
     return Effect.gen(function* () {
       const home = yield* connected;
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       const unlock = {
         domain: "lock",
         service: "unlock",
@@ -561,7 +561,7 @@ it.effect(
     const { house, layer } = setup();
     return Effect.gen(function* () {
       const home = yield* connected;
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       const dry: HomeAssistantService.HomeActor = { who: "Tessaya", surface: "r1", dryRun: true };
       const on = yield* home.call(
         { domain: "fan", service: "turn_off", target: { entity_id: "fan.fan" }, why: "x" },

@@ -3,7 +3,7 @@
  * change of state, never a loop, so a surface draws nothing at rest. The names are the Character Studio's
  * (apps/desktop/resources/tessaya/companion/rig.js).
  */
-import type { BatonSessionState } from "@t3tools/tessaya-contracts";
+import type { TessayaSessionState } from "@t3tools/tessaya-contracts";
 
 import type { TurnPhase } from "./voiceTurn.ts";
 
@@ -108,10 +108,10 @@ export const islandFaceShows = (input: {
 export interface JobSnapshot {
   readonly id: string;
   readonly title: string;
-  readonly state: BatonSessionState;
+  readonly state: TessayaSessionState;
 }
 
-const JOB_MOMENT: Partial<Record<BatonSessionState, CompanionMoment>> = {
+const JOB_MOMENT: Partial<Record<TessayaSessionState, CompanionMoment>> = {
   done_unseen: "done",
   failed: "failed",
   needs_approval: "needs",

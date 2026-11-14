@@ -1,4 +1,4 @@
-import { WorkSessionId, type BatonFleetEntry } from "@t3tools/tessaya-contracts";
+import { WorkSessionId, type TessayaFleetEntry } from "@t3tools/tessaya-contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -26,7 +26,7 @@ const entry = (id: string, state: string, minutes: number, over: object = {}) =>
     threads: [],
     synopsis: null,
     ...over,
-  }) as unknown as BatonFleetEntry;
+  }) as unknown as TessayaFleetEntry;
 
 describe("watching the fleet", () => {
   it("flags what state says is wrong or left alone, worst first, and nothing else", () => {

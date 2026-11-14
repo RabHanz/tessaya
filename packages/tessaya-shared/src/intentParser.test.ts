@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveBatonIntent, type IntentVocabulary } from "./intentParser.ts";
+import { resolveTessayaIntent, type IntentVocabulary } from "./intentParser.ts";
 
 /**
  * A fleet that looks like the Director's: two projects, work in both, two
@@ -60,7 +60,7 @@ const vocabulary = (overrides?: Partial<IntentVocabulary>): IntentVocabulary => 
 });
 
 const resolve = (text: string, overrides?: Partial<IntentVocabulary>) =>
-  resolveBatonIntent(text, vocabulary(overrides));
+  resolveTessayaIntent(text, vocabulary(overrides));
 
 describe("resolveBatonIntent — switching the Claude account", () => {
   it("reads the sentence and leaves the label for the live pool", () => {
@@ -476,7 +476,7 @@ describe("resolveBatonIntent — what it will not do", () => {
       "Show me the API key",
       "Rotate the credentials",
     ]) {
-      const result = resolveBatonIntent(text, vocabulary());
+      const result = resolveTessayaIntent(text, vocabulary());
       expect(result.outcome).toBe("refused");
       if (result.outcome !== "refused") continue;
       expect(result.refusal.reason).toBe("high_risk");

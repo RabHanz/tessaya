@@ -11,7 +11,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 import * as ThreadMetadataMcpService from "../../ThreadMetadataMcpService.ts";
-import { gateThreadSend } from "../../../baton/AgentMessageGate.ts";
+import { gateThreadSend } from "../../../tessaya/AgentMessageGate.ts";
 
 const handlers = {
   orchestrator_capabilities: McpToolAccess.reads((input) =>

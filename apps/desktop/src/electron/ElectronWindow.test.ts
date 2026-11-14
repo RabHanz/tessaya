@@ -65,7 +65,7 @@ vi.mock("electron", () => ({
 }));
 
 import * as ElectronWindow from "./ElectronWindow.ts";
-import { markCompanionWindow } from "../baton/lastAppWindow.ts";
+import { markCompanionWindow } from "../tessaya/lastAppWindow.ts";
 
 const layerTestFor = (platform: NodeJS.Platform) =>
   ElectronWindow.layer.pipe(Layer.provide(Layer.succeed(HostProcess.Platform, platform)));

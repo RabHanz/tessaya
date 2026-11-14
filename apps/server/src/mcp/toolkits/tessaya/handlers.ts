@@ -12,8 +12,8 @@ import {
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
-  BatonDesktopState,
-  type BatonRecordEntry,
+  TessayaDesktopState,
+  type TessayaRecordEntry,
 } from "@t3tools/tessaya-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -27,16 +27,16 @@ import { accountByWords } from "@t3tools/tessaya-shared/accountRoom";
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 
-import { clientMessageFrom, withAgentMessageFrom } from "../../../baton/AgentMessageFrom.ts";
-import { gateMessage } from "../../../baton/AgentMessageGate.ts";
-import { AskOwner } from "../../../baton/BatonPhoneInbox.ts";
-import { DesktopSettingsCaller } from "../../../baton/BatonDesktopSettings.ts";
+import { clientMessageFrom, withAgentMessageFrom } from "../../../tessaya/AgentMessageFrom.ts";
+import { gateMessage } from "../../../tessaya/AgentMessageGate.ts";
+import { AskOwner } from "../../../tessaya/TessayaPhoneInbox.ts";
+import { DesktopSettingsCaller } from "../../../tessaya/TessayaDesktopSettings.ts";
 import packageJson from "../../../../package.json" with { type: "json" };
-import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
+import * as TessayaRpcHandlers from "../../../tessaya/TessayaRpcHandlers.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
-import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
+import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
-import { TessayaTurn, TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -67,7 +67,7 @@ const decodeStateReply = Schema.decodeUnknownOption(
   Schema.Struct({
     connected: Schema.Boolean,
     at: Schema.NullOr(Schema.String),
-    state: Schema.NullOr(BatonDesktopState),
+    state: Schema.NullOr(TessayaDesktopState),
   }),
 );
 
@@ -115,7 +115,7 @@ const failed = (cause: unknown) =>
 
 /** The household's time zone: its Home Assistant's, else this machine's. */
 const houseZone = Effect.gen(function* () {
-  const context = yield* BatonRuntime;
+  const context = yield* TessayaRuntime;
   const home = context === null ? Option.none() : Context.getOption(context, HomeAssistantService);
   const zone = Option.isSome(home) ? yield* home.value.timeZone : "UTC";
   return zone === "UTC" ? Intl.DateTimeFormat().resolvedOptions().timeZone : zone;
@@ -167,7 +167,7 @@ export const labRefusal = (
       : null;
 
 export const onHouseClock = (
-  entries: ReadonlyArray<BatonRecordEntry>,
+  entries: ReadonlyArray<TessayaRecordEntry>,
   now: number,
   timeZone: string,
 ) => ({
@@ -184,7 +184,7 @@ export const onHouseClock = (
 export const layer = McpToolAccess.toLayer(
   TessayaToolkit,
   Effect.gen(function* () {
-    const handlers = yield* BatonRpcHandlers.makeHandlers;
+    const handlers = yield* TessayaRpcHandlers.makeHandlers;
     const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
     const random = yield* SecureRandom.SecureRandom;
     // No RPC session here, so the inbox's AskSource stays "device": the desktop's gate asks him before any act.
@@ -214,7 +214,7 @@ export const layer = McpToolAccess.toLayer(
         line: asked?.line ?? "Nothing was asked.",
       };
     });
-    const runtime = yield* BatonRuntime;
+    const runtime = yield* TessayaRuntime;
     /** The turn pipeline's memory tools, or "unavailable" on a server built without Tessaya's services. */
     const withTurn = <A, E>(
       f: (turn: TessayaTurn["Service"]) => Effect.Effect<A, E>,

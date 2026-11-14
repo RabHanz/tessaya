@@ -5,12 +5,12 @@
  * desktop's caller, always a rehearsal (`/tessaya/rehearse`, behind the R1's device key). Its own screen, memory and
  * job tools are refused, so a case that only they could answer is not applicable here.
  */
-import { replayTurn } from "../../apps/desktop/src/baton/agent/replay.ts";
+import { replayTurn } from "../../apps/desktop/src/tessaya/agent/replay.ts";
 import {
-  buildBatonTools,
+  buildTessayaTools,
   type SharedToolSpec,
   type ToolHost,
-} from "../../apps/desktop/src/baton/agent/batonTools.ts";
+} from "../../apps/desktop/src/tessaya/agent/tessayaTools.ts";
 import { DEFAULT_OS_PACK, modelOf } from "../../packages/tessaya-shared/src/osPack.ts";
 import { chooseTurnBrain } from "../../packages/tessaya-shared/src/turnTier.ts";
 import type { LiveCall } from "./liveCases.ts";
@@ -44,7 +44,7 @@ export const desktopVessel = async (input: {
   });
   /** The shared tools her table shows (its own tools cover the rest), for whether a case can run here. */
   const offered = new Set(
-    buildBatonTools({ shared: sharedOf([]) } as ToolHost)
+    buildTessayaTools({ shared: sharedOf([]) } as ToolHost)
       .filter((t) => t.shared !== undefined)
       .map((t) => t.name),
   );

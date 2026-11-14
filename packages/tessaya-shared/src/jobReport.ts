@@ -3,7 +3,7 @@
  * a budget, and a daily digest. A report is written from state (what the worker did, what is next,
  * what is blocked, what it has used), not asked of the worker, so it costs no turn. Pure.
  */
-import type { BatonJob } from "@t3tools/tessaya-contracts";
+import type { TessayaJob } from "@t3tools/tessaya-contracts";
 
 export const DEFAULT_REPORT_MINUTES = 60;
 export const DEFAULT_RETRIES = 2;
@@ -18,7 +18,7 @@ interface Revision {
 const minutesText = (m: number): string => (m >= 120 ? `${Math.round(m / 60)} h` : `${m} min`);
 
 /** The cadence this job asked for, in minutes; 0 turns reports off. */
-export const reportCadence = (job: Pick<BatonJob, "terms">): number => {
+export const reportCadence = (job: Pick<TessayaJob, "terms">): number => {
   const asked = (job.terms.limits as { reportEveryMinutes?: number }).reportEveryMinutes;
   return asked === undefined ? DEFAULT_REPORT_MINUTES : Math.max(0, Math.min(1440, asked));
 };
@@ -82,7 +82,7 @@ export const buildReport = (r: ReportInput): string => {
     .join(" ");
 };
 
-export const retryBudget = (job: Pick<BatonJob, "terms">): number => {
+export const retryBudget = (job: Pick<TessayaJob, "terms">): number => {
   const asked = (job.terms.limits as { retries?: number }).retries;
   return asked === undefined ? DEFAULT_RETRIES : Math.max(0, Math.min(5, asked));
 };
@@ -91,7 +91,7 @@ export const retriesUsed = (revisions: ReadonlyArray<Revision>): number =>
   revisions.filter((r) => r.text.startsWith(`${RETRY_MARK} `)).length;
 
 /** Null when it may be retried; otherwise why not, in words for him. */
-export const retryRefusal = (job: BatonJob): string | null => {
+export const retryRefusal = (job: TessayaJob): string | null => {
   if (job.phase !== "approved") return "Only a job that has been agreed can be retried.";
   if (job.group !== "failed" && job.limitReached === null) {
     return "It has not failed, so there is nothing to retry.";
@@ -104,11 +104,11 @@ export const retryRefusal = (job: BatonJob): string | null => {
 };
 
 /** The message sent to the worker: the reason, what was tried, and an instruction not to repeat it. */
-export const retryText = (job: BatonJob, reason: string, lastDid: string | null): string =>
+export const retryText = (job: TessayaJob, reason: string, lastDid: string | null): string =>
   `${RETRY_MARK} ${retriesUsed(job.terms.revisions) + 1} of ${retryBudget(job)}: ${reason.trim().slice(0, 400)}${lastDid === null ? "" : ` (last it did: ${lastDid.slice(0, 160)})`}. Try again from where it stopped. If the same step failed, take a different approach and say what you changed.`;
 
 /** One line for the morning brief about jobs in the last day. */
-export const jobsDigest = (jobs: ReadonlyArray<BatonJob>, now: number): string | null => {
+export const jobsDigest = (jobs: ReadonlyArray<TessayaJob>, now: number): string | null => {
   const recent = jobs.filter((j) => now - Date.parse(j.lastActivityAt) <= 86_400_000);
   if (recent.length === 0) return null;
   const done = recent.filter((j) => j.group === "done").length;

@@ -47,7 +47,7 @@ describe("Tessaya's guest page", () => {
     const graph = moduleGraph(NodePath.join(SRC, "tessayaGuest.tsx"));
     expect(graph.has("components/settings/HardwareSettings.tsx")).toBe(true);
     for (const owned of [
-      "components/panes/batonPanesStore.ts",
+      "components/panes/tessayaPanesStore.ts",
       "uiStateStore.ts",
       "appInit.tsx",
       "routeTree.gen.ts",

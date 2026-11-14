@@ -5,31 +5,31 @@ import {
   ThreadId,
   type AuthMcpClientAccess,
 } from "@t3tools/contracts";
-import type { BatonMemoryQuery } from "@t3tools/tessaya-contracts";
+import type { TessayaMemoryQuery } from "@t3tools/tessaya-contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
-import { layerMemory as SqlitePersistenceMemory } from "../../../baton/BatonDatabase.ts";
-import { BatonMemoryService, MemoryViewer } from "../../../baton/BatonMemoryService.ts";
-import { BatonDesktopSettings } from "../../../baton/BatonDesktopSettings.ts";
-import { BatonPhoneInbox, layer as inboxLayer } from "../../../baton/BatonPhoneInbox.ts";
-import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
-import { BatonSessionCatalogService } from "../../../baton/BatonSessionCatalogService.ts";
-import { BatonWeaveService } from "../../../baton/BatonWeaveService.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../../../tessaya/TessayaDatabase.ts";
+import { TessayaMemoryService, MemoryViewer } from "../../../tessaya/TessayaMemoryService.ts";
+import { TessayaDesktopSettings } from "../../../tessaya/TessayaDesktopSettings.ts";
+import { TessayaPhoneInbox, layer as inboxLayer } from "../../../tessaya/TessayaPhoneInbox.ts";
+import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
+import { TessayaSessionCatalogService } from "../../../tessaya/TessayaSessionCatalogService.ts";
+import { TessayaWeaveService } from "../../../tessaya/TessayaWeaveService.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistantService.ts";
 import { DeviceRegistry } from "../../../home/DeviceRegistry.ts";
-import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { DESK_REPLAY_CLIENT, ROOM_CLIENT, withCounts } from "../home/handlers.ts";
 import * as TessayaHandlers from "./handlers.ts";
-import { HouseholdCaller, TessayaHousehold } from "../../../baton/TessayaHousehold.ts";
+import { HouseholdCaller, TessayaHousehold } from "../../../tessaya/TessayaHousehold.ts";
 import { TessayaToolkit } from "./tools.ts";
 
 const thread = ThreadId.make("thread:tessaya");
@@ -88,7 +88,7 @@ const callTool = (
             Layer.mock(ThreadManagement.ThreadManagementService)({
               getThreadShell: () => Effect.succeed(liveThreadShell(thread)),
             }),
-            Layer.succeed(BatonRuntime, runtime as never),
+            Layer.succeed(TessayaRuntime, runtime as never),
             Layer.succeed(
               SecureRandom.SecureRandom,
               SecureRandom.make((size) => new Uint8Array(size).fill(7)),
@@ -103,9 +103,9 @@ it.effect(
   "an outside agent searches memory as a client, so walls hold and it names no persona",
   () =>
     Effect.gen(function* () {
-      const asked: Array<[BatonMemoryQuery, string]> = [];
-      const memory = BatonMemoryService.of({
-        search: (query: BatonMemoryQuery) =>
+      const asked: Array<[TessayaMemoryQuery, string]> = [];
+      const memory = TessayaMemoryService.of({
+        search: (query: TessayaMemoryQuery) =>
           Effect.gen(function* () {
             asked.push([query, yield* MemoryViewer]);
             return [];
@@ -113,7 +113,7 @@ it.effect(
       } as never);
       const result = yield* callTool(
         "read-only",
-        Context.make(BatonMemoryService, memory) as never,
+        Context.make(TessayaMemoryService, memory) as never,
         "tessaya_memory_search",
         { text: "deploy key" },
       );
@@ -146,12 +146,12 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const found = { threads: [{ threadId: "t1", title: "Fix the build" }], live: [] };
-      const catalog = BatonSessionCatalogService.of({
+      const catalog = TessayaSessionCatalogService.of({
         inFlight: () => Effect.succeed(found),
       } as never);
       const result = yield* callTool(
         "read-only",
-        Context.make(BatonSessionCatalogService, catalog) as never,
+        Context.make(TessayaSessionCatalogService, catalog) as never,
         "tessaya_in_flight",
         {},
       );
@@ -164,10 +164,10 @@ it.effect(
   "refuses T3's own thread agents: Tessaya's tools are for agents signed in from outside",
   () =>
     Effect.gen(function* () {
-      const memory = BatonMemoryService.of({ search: () => Effect.succeed([]) } as never);
+      const memory = TessayaMemoryService.of({ search: () => Effect.succeed([]) } as never);
       const result = yield* callTool(
         "thread",
-        Context.make(BatonMemoryService, memory) as never,
+        Context.make(TessayaMemoryService, memory) as never,
         "tessaya_memory_search",
         { text: "deploy key" },
       );
@@ -179,10 +179,10 @@ it.effect(
   "an outside agent's ask reaches the desktop as a device's words; read-only agents cannot ask, and only its own asks can be read",
   () =>
     Effect.gen(function* () {
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       // The desktop has taken from the queue, so it counts as connected.
       yield* inbox.take;
-      const runtime = Context.make(BatonPhoneInbox, inbox) as never;
+      const runtime = Context.make(TessayaPhoneInbox, inbox) as never;
 
       const refused = yield* callTool("read-only", runtime, "tessaya_ask", { text: "stop job 3" });
       expect(refused.isFailure).toBe(true);
@@ -221,9 +221,9 @@ it.effect(
   "a linked server's ask is taken as a device's words, which the desktop's gate asks him to act on; it still cannot move his threads",
   () =>
     Effect.gen(function* () {
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       yield* inbox.take;
-      const runtime = Context.make(BatonPhoneInbox, inbox) as never;
+      const runtime = Context.make(TessayaPhoneInbox, inbox) as never;
 
       const asked = yield* callTool("linked", runtime, "tessaya_ask", {
         text: "what's on my screen?",
@@ -256,9 +256,9 @@ it.effect(
   "an agent has one request open at a time, agents three in all, and none reads another's",
   () =>
     Effect.gen(function* () {
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       yield* inbox.take;
-      const runtime = Context.make(BatonPhoneInbox, inbox) as never;
+      const runtime = Context.make(TessayaPhoneInbox, inbox) as never;
       const ask = (sessionId: string) =>
         callTool("auto", runtime, "tessaya_ask", { text: "stop job 3" }, sessionId).pipe(
           Effect.map((r) => r.result as { id: string | null; line: string }),
@@ -295,7 +295,7 @@ const weaveFrom = (
 ) =>
   Effect.gen(function* () {
     const sent: unknown[] = [];
-    const weave = BatonWeaveService.of({
+    const weave = TessayaWeaveService.of({
       send: (input: unknown) =>
         Effect.sync(() => {
           sent.push(input);
@@ -327,7 +327,7 @@ const weaveFrom = (
         issuedAt: 0,
       }),
       Layer.mock(ThreadManagement.ThreadManagementService)({}),
-      Layer.succeed(BatonRuntime, Context.make(BatonWeaveService, weave) as never),
+      Layer.succeed(TessayaRuntime, Context.make(TessayaWeaveService, weave) as never),
       Layer.succeed(
         SecureRandom.SecureRandom,
         SecureRandom.make((size) => new Uint8Array(size).fill(7)),
@@ -421,8 +421,8 @@ it.effect(
   "tells an agent how she is set up, one section at a time, and says so when her desktop is away",
   () =>
     Effect.gen(function* () {
-      const inbox = yield* BatonPhoneInbox;
-      const runtime = Context.make(BatonPhoneInbox, inbox) as never;
+      const inbox = yield* TessayaPhoneInbox;
+      const runtime = Context.make(TessayaPhoneInbox, inbox) as never;
       const away = yield* callTool("read-only", runtime, "tessaya_state", { section: "voice" });
       expect(away.result).toMatchObject({ connected: false, section: "voice" });
       expect(String((away.result as { value: unknown }).value)).toContain("isn't connected");
@@ -473,15 +473,15 @@ it.effect(
   "an agent's move only files a request he answers: it cannot approve itself, and nothing moves",
   () =>
     Effect.gen(function* () {
-      const inbox = yield* BatonPhoneInbox;
+      const inbox = yield* TessayaPhoneInbox;
       yield* inbox.take;
       const moved: Array<unknown> = [];
-      const catalog = BatonSessionCatalogService.of({
+      const catalog = TessayaSessionCatalogService.of({
         moveIntoTessaya: (input: unknown) => Effect.sync(() => (moved.push(input), {})),
       } as never);
       const runtime = Context.mergeAll(
-        Context.make(BatonPhoneInbox, inbox),
-        Context.make(BatonSessionCatalogService, catalog),
+        Context.make(TessayaPhoneInbox, inbox),
+        Context.make(TessayaSessionCatalogService, catalog),
       ) as never;
       const asked = yield* callTool("thread", runtime, "tessaya_move_into_tessaya", {
         threadId: thread,
@@ -502,13 +502,13 @@ it.effect(
   "an agent opens its own thread in a terminal at once; anyone else's thread is a request he answers",
   () =>
     Effect.gen(function* () {
-      const catalog = BatonSessionCatalogService.of({
+      const catalog = TessayaSessionCatalogService.of({
         openInTerminal: () =>
           Effect.succeed({ state: "busy", pane: null, detail: "A turn is running." }),
       } as never);
       const result = yield* callTool(
         "thread",
-        Context.make(BatonSessionCatalogService, catalog) as never,
+        Context.make(TessayaSessionCatalogService, catalog) as never,
         "tessaya_open_in_terminal",
         { threadId: thread },
       );
@@ -521,7 +521,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       let mainThreadId: string | null = null;
-      const catalog = BatonSessionCatalogService.of({
+      const catalog = TessayaSessionCatalogService.of({
         mainSession: (input: { threadId: string; main: boolean }) =>
           Effect.sync(() => {
             mainThreadId = input.main ? input.threadId : null;
@@ -529,7 +529,7 @@ it.effect(
           }),
         sessionDefaults: Effect.sync(() => ({ newSessionsRun: "tessaya", mainThreadId })),
       } as never);
-      const runtime = Context.make(BatonSessionCatalogService, catalog) as never;
+      const runtime = Context.make(TessayaSessionCatalogService, catalog) as never;
       const marked = yield* callTool("thread", runtime, "tessaya_main_session", {
         threadId: thread,
         main: true,
@@ -543,15 +543,15 @@ it.effect(
 
 it.effect("an outside agent's open in terminal on a thread files a request and opens nothing", () =>
   Effect.gen(function* () {
-    const inbox = yield* BatonPhoneInbox;
+    const inbox = yield* TessayaPhoneInbox;
     yield* inbox.take;
     const opened: Array<unknown> = [];
-    const catalog = BatonSessionCatalogService.of({
+    const catalog = TessayaSessionCatalogService.of({
       openInTerminal: (input: unknown) => Effect.sync(() => (opened.push(input), {})),
     } as never);
     const runtime = Context.mergeAll(
-      Context.make(BatonPhoneInbox, inbox),
-      Context.make(BatonSessionCatalogService, catalog),
+      Context.make(TessayaPhoneInbox, inbox),
+      Context.make(TessayaSessionCatalogService, catalog),
     ) as never;
     const asked = yield* callTool("full-access", runtime, "tessaya_open_in_terminal", {
       threadId: thread,
@@ -663,7 +663,7 @@ it.effect("an agent's desktop settings change never lets devices look at his scr
   Effect.gen(function* () {
     const sent: Array<unknown> = [];
     const view = { connected: true, at: null, effective: null, pending: null };
-    const desktop = BatonDesktopSettings.of({
+    const desktop = TessayaDesktopSettings.of({
       get: Effect.succeed(view),
       set: (patch) => Effect.sync(() => (sent.push(patch), view)),
       setControls: () => Effect.die("unused"),
@@ -671,7 +671,7 @@ it.effect("an agent's desktop settings change never lets devices look at his scr
     });
     yield* callTool(
       "full-access",
-      Context.make(BatonDesktopSettings, desktop) as never,
+      Context.make(TessayaDesktopSettings, desktop) as never,
       "tessaya_desktop_settings",
       { set: { devicesMayLook: true, showWords: false } },
     );

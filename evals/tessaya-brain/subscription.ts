@@ -12,7 +12,7 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeUtil from "node:util";
 
-import { startBatonMcp } from "../../apps/desktop/src/baton/agent/batonMcp.ts";
+import { startTessayaMcp } from "../../apps/desktop/src/tessaya/agent/tessayaMcp.ts";
 import { LOOK, ROOM_SYSTEM } from "../../apps/server/src/home/R1Device.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { percentile } from "./api.ts";
@@ -26,7 +26,7 @@ interface CliArm {
   readonly env: Readonly<Record<string, string>>;
   /** Claude Code's own tools on top of the room's (web search). */
   readonly builtins: string;
-  /** Thinking off, as `BatonOneShot` runs it: the CLI's equivalent of the API's `between_tools`. */
+  /** Thinking off, as `TessayaOneShot` runs it: the CLI's equivalent of the API's `between_tools`. */
   readonly noThinking?: boolean;
 }
 
@@ -96,7 +96,7 @@ const sentences =
   flags.sentence ?? SENTENCES.slice(0, flags.limit === undefined ? undefined : Number(flags.limit));
 const PREFIX = "mcp__room__";
 
-const mcp = await startBatonMcp({
+const mcp = await startTessayaMcp({
   tools: [...ROOM_TOOL_SPECS, LOOK].map((tool) => ({
     name: tool.name,
     description: tool.description,

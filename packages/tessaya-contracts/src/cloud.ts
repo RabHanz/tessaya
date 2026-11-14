@@ -25,17 +25,17 @@ export const BATON_CLOUD_READ_OPS = [
 export const BATON_CLOUD_ACT_OPS = ["dispatch", "cancel"] as const;
 export const BATON_CLOUD_APPROVE_OPS = ["approve", "deny", "apply"] as const;
 
-export const BatonCloudCallInput = Schema.Struct({
+export const TessayaCloudCallInput = Schema.Struct({
   op: Schema.String.check(Schema.isMaxLength(40)),
   provider: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(40))),
   args: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
-export type BatonCloudCallInput = typeof BatonCloudCallInput.Type;
+export type TessayaCloudCallInput = typeof TessayaCloudCallInput.Type;
 
 /** ok with a value, or not ok with a sentence for a person. */
-export const BatonCloudCallResult = Schema.Struct({
+export const TessayaCloudCallResult = Schema.Struct({
   ok: Schema.Boolean,
   error: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.Unknown),
 });
-export type BatonCloudCallResult = typeof BatonCloudCallResult.Type;
+export type TessayaCloudCallResult = typeof TessayaCloudCallResult.Type;

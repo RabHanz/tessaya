@@ -20,9 +20,9 @@ import type {
 } from "@t3tools/tessaya-contracts";
 
 /** What a work session does when the account it runs on reaches its limit. */
-export type BatonOnLimitPolicy = "ask" | "auto" | "hold";
+export type TessayaOnLimitPolicy = "ask" | "auto" | "hold";
 
-export const DEFAULT_ON_LIMIT_POLICY: BatonOnLimitPolicy = "ask";
+export const DEFAULT_ON_LIMIT_POLICY: TessayaOnLimitPolicy = "ask";
 
 /** One account a handoff could move to, as the chooser sees it. */
 export interface HandoffCandidate {
@@ -240,7 +240,7 @@ export function handoffRefusalLine(reason: HandoffTargetRefusal): string {
  * asks instead.
  */
 export function shouldAutoHandoff(input: {
-  readonly policy: BatonOnLimitPolicy;
+  readonly policy: TessayaOnLimitPolicy;
   readonly lastAutoHandoffAt: string | null;
   /** When the limit that fired this is expected to reset. */
   readonly windowResetsAt: string | null;
