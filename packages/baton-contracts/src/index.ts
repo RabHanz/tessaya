@@ -36,3 +36,4 @@ export * from "./places.ts";
 export * from "./learnCall.ts";
 export * from "./brainUsage.ts";
 export * from "./comms.ts";
+export * from "./expression.ts";

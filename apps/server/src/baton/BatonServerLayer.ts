@@ -71,6 +71,7 @@ import * as BatonPrivateMemoryService from "./BatonPrivateMemoryService.ts";
 import * as BatonVoiceLibrary from "./BatonVoiceLibrary.ts";
 import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
+import * as TessayaExpression from "./TessayaExpression.ts";
 import * as BatonPhoneInbox from "./BatonPhoneInbox.ts";
 import * as BatonDesktopSettings from "./BatonDesktopSettings.ts";
 import * as BatonTessayaRoutes from "./BatonTessayaRoutes.ts";
@@ -280,7 +281,13 @@ const servicesInner = IntentService.layer.pipe(
   // Voices to forget, between the household and every vessel's owner: under both, so each sees it.
   Layer.provideMerge(VoiceForgets.layer),
   // Members' voice defaults and acts held for a step-up, between the turn and runner and every vessel's owner.
-  Layer.provideMerge(MemberPreferences.layer),
+  // Her lines for every vessel beside them: written ahead on her voice route, picked without waiting on a model.
+  Layer.provideMerge(
+    Layer.mergeAll(
+      MemberPreferences.layer,
+      TessayaExpression.layer.pipe(Layer.provide(BatonOneShot.layer), Layer.provide(homeLayer)),
+    ),
+  ),
   Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
   // Every brain call's usage row, for the Usage page and her usage report.
   Layer.provideMerge(BrainUsage.layer),

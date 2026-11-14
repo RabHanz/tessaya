@@ -1418,6 +1418,12 @@ export const ServerSettings = Schema.Struct({
   brainSpendAlert: BrainSpendAlert.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Tessaya: her lines written by her brain, varied and in character (baton-shared expression.ts); off plays the fixed ones.
+  tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
+  companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("calm" as const)),
+  ),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
   ),
@@ -1869,6 +1875,8 @@ export const ServerSettingsPatch = Schema.Struct({
   mainThreadId: Schema.optionalKey(Schema.NullOr(TrimmedString)),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
+  tessayaExpression: Schema.optionalKey(Schema.Boolean),
+  companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   cloudSpeechCredentials: Schema.optionalKey(
     Schema.Struct({

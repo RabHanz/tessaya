@@ -239,7 +239,49 @@ function BrainSections({ environmentId }: { readonly environmentId: EnvironmentI
       </SettingsSection>
 
       <Escalation environmentId={environmentId} />
+      <Lines environmentId={environmentId} />
     </>
+  );
+}
+
+const MOTION_LABELS: Readonly<Record<string, string>> = {
+  lively: "Lively",
+  calm: "Calm",
+  important: "Important only",
+};
+
+/** Her lines on every device: written by her brain or the plain ones, and how much she says unprompted. */
+function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const written = useEnvironmentSettings(environmentId, (s) => s.tessayaExpression);
+  const motion = useEnvironmentSettings(environmentId, (s) => s.companionMotion);
+  const update = useUpdateEnvironmentSettings(environmentId);
+  return (
+    <SettingsSection title="Her lines">
+      <SettingsRow
+        title="Her own words"
+        description="Acknowledgements, confirmations and notices in her voice, varied and never the same twice. Off says the plain lines."
+        control={
+          <Switch
+            aria-label="Her own words"
+            checked={written}
+            onCheckedChange={(on) => update({ tessayaExpression: on })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Chatter"
+        description="What she says and does unprompted. Answers to you and safety alerts always play."
+        control={
+          <Choice
+            label="Chatter"
+            value={motion}
+            options={["lively", "calm", "important"] as const}
+            labels={MOTION_LABELS}
+            onChange={(next) => update({ companionMotion: next })}
+          />
+        }
+      />
+    </SettingsSection>
   );
 }
 
