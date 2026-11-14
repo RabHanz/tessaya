@@ -131,3 +131,27 @@ export const queuedText = (
   const text = `${parts.join(", ")} ${applying ? "now" : "when this turn ends"}`;
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
+
+/**
+ * The login his words name ("the rabee account", an address): an exact address, else the one login whose address or
+ * label contains the words. Null when none or several do, so a vague name never switches the wrong login.
+ */
+export const accountByWords = <A extends { readonly label: string; readonly email: string | null }>(
+  accounts: ReadonlyArray<A>,
+  words: string,
+): A | null => {
+  const said = words
+    .trim()
+    .toLowerCase()
+    .replace(/\b(the|account|login)\b/g, "")
+    .trim();
+  if (said === "") return null;
+  const exact = accounts.find((account) => account.email?.toLowerCase() === said);
+  if (exact !== undefined) return exact;
+  const named = accounts.filter((account) =>
+    [account.email?.split("@")[0], account.label].some((name) =>
+      name?.toLowerCase().includes(said),
+    ),
+  );
+  return named.length === 1 ? named[0]! : null;
+};

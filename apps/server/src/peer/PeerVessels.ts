@@ -122,17 +122,18 @@ export const onPeer = Effect.fn("PeerVessels.onPeer")(function* (
   return null;
 });
 
-/** The same read on every peer at once, each answer with the machine it came from; a quiet peer is left out. */
+/** The same call on every peer at once, each answer with the machine it came from; a quiet peer is left out. */
 export const fromPeers = Effect.fn("PeerVessels.fromPeers")(function* (
   tool: string,
   args: Readonly<Record<string, unknown>>,
+  wait: Duration.Input = "4 seconds",
 ) {
   const peers = yield* peersToAsk;
   if (peers === null) return [];
   const answers = yield* Effect.forEach(
     peers.linked,
     (link) =>
-      Effect.map(peers.call(link.environmentId, tool, args, "4 seconds"), (answer) =>
+      Effect.map(peers.call(link.environmentId, tool, args, wait), (answer) =>
         answer._tag === "Some" ? [{ on: link.label, value: answer.value }] : [],
       ),
     { concurrency: "unbounded" },

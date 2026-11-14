@@ -47,6 +47,7 @@ import { HomeTools } from "../home/tools.ts";
 import { JobTools } from "../jobs/tools.ts";
 import { MembersTools } from "../members/tools.ts";
 import { CommsTools } from "../comms/tools.ts";
+import { AccountTools } from "../accounts/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
 import { DEVICE } from "@t3tools/baton-shared/productNames";
 
@@ -600,6 +601,7 @@ export const TessayaToolkit = Toolkit.make(
   ...MembersTools,
   ...CommsTools,
   ...JobTools,
+  ...AccountTools,
   JobsTool,
   WatchTool,
   RecordTool,

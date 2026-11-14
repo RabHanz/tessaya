@@ -4,6 +4,7 @@ import {
   limitsAge,
   maskedEmail,
   queuedText,
+  accountByWords,
   roomDetail,
   roomText,
   roomTone,
@@ -70,5 +71,22 @@ describe("a terminal session's queued change", () => {
       "Switches to another account when this turn ends",
     );
     expect(queuedText({ accountKey: "1" }, accounts, true)).toBe("Switches to Work now");
+  });
+});
+
+describe("the login his words name", () => {
+  it("takes an address, or a name only one login has", () => {
+    const accounts = [
+      { label: "Rabee", email: "rabee@example.com" },
+      { label: "Optima", email: "optimapacifist@example.com" },
+      { label: "Signzart", email: "signzartco@example.com" },
+    ];
+    expect(accountByWords(accounts, "the rabee account")?.label).toBe("Rabee");
+    expect(accountByWords(accounts, "OPTIMAPACIFIST@example.com")?.label).toBe("Optima");
+    expect(accountByWords(accounts, "signz")?.label).toBe("Signzart");
+    // Several match, or none: never a guess.
+    expect(accountByWords(accounts, "a")).toBeNull();
+    expect(accountByWords(accounts, "work")).toBeNull();
+    expect(accountByWords(accounts, "account")).toBeNull();
   });
 });
