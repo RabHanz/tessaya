@@ -3496,6 +3496,13 @@ export const startScreenCompanion = (input: {
         speaker: heardFromLabel(),
         firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
         totalMs: Date.now() - started,
+        // Where the turn ran, for the placement A/B (SPINE-UNIFY §3): this app, this server, or the home server.
+        placement:
+          !settings.serverBrain || input.deskTurn === undefined
+            ? "app"
+            : settings.serverBrainHome
+              ? "home"
+              : "here",
         tools: [...record().tools],
         toolResults: [...record().results],
         route: "agent",
