@@ -13,6 +13,7 @@ import {
   R1_DEVICE_DEFAULTS,
   R1_DEVICE_DOS,
   R1_KEY_SLOTS,
+  R1_KEY_SLOTS_V2,
   R1_MOODS,
   type R1DeviceDo,
   type R1KeyBinding,
@@ -184,6 +185,8 @@ export interface Heard {
   display: DeviceView["display"];
   /** The R1 answered the last `cmd/key/bind` with `{"ok":false}`. */
   keyRefused: boolean;
+  /** Its map has `triple`: the smp-0.3.108 press grammar (R1_KEY_SLOTS_V2, bind `do:"app"`). */
+  keyV2: boolean;
   /** Set once the firmware's state/caps says it drives a Bluetooth speaker; the speaker controls stay off until then. */
   speaker: {
     state: DeviceSpeaker["state"];
@@ -207,6 +210,7 @@ const blank = (): Heard => ({
   camera: null,
   lastTag: null,
   keyRefused: false,
+  keyV2: false,
   display: { rotate: null, mode: null, note: null },
   speaker: null,
   samples: {},
@@ -1043,16 +1047,31 @@ const make = Effect.gen(function* () {
     if (d === undefined || body === null) return;
     d.keyRefused = body["ok"] === false;
     if (d.keyRefused) return;
-    const device: Partial<Record<R1KeySlot, R1DeviceDo>> = {};
-    for (const [slot, spec] of Object.entries(R1_KEY_SLOTS)) {
-      if (spec !== "device") continue;
+    const at = (slot: string) => {
       const [key, act] = slot.split(".") as [string, string];
-      const v = (body[key] as Record<string, unknown> | undefined)?.[act];
-      if (R1_DEVICE_DOS.includes(v as R1DeviceDo)) device[slot as R1KeySlot] = v as R1DeviceDo;
+      return (body[key] as Record<string, unknown> | undefined)?.[act];
+    };
+    d.keyV2 = at("s1.triple") !== undefined;
+    const device: Partial<Record<R1KeySlot, R1DeviceDo>> = {};
+    const wrong: Array<[R1KeySlot, "app" | "none"]> = [];
+    const saved = yield* readSaved;
+    for (const slot of Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>) {
+      if (R1_KEY_SLOTS[slot] !== "device") continue;
+      const v = at(slot);
+      // "app": the device leaves the press to Tessaya; for the map that is the device doing nothing.
+      if (v === "app") device[slot] = "none";
+      else if (R1_DEVICE_DOS.includes(v as R1DeviceDo)) device[slot] = v as R1DeviceDo;
+      // The device waits for a double or triple only when it knows Tessaya has one, so a lone tap stays instant.
+      const want = tessayaOf(saved, id, slot) === null ? "none" : "app";
+      if (d.keyV2 && (v === "app" || v === "none") && v !== want) wrong.push([slot, want]);
     }
     yield* change((s) => {
       s.keys[id] = { device, tessaya: s.keys[id]?.tessaya ?? {} };
     });
+    for (const [slot, want] of wrong) {
+      const [key, act] = slot.split(".");
+      yield* publish(id, "cmd/key/bind", { key, act, do: want });
+    }
   });
 
   /**
@@ -1100,6 +1119,9 @@ const make = Effect.gen(function* () {
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
     if (tail === "event/key") yield* runKey(result.id, json(payload));
+    // A long touch on the head is Tessaya's (the firmware stops her on a tap itself).
+    else if (tail === "event/touch" && json(payload)?.["gesture"] === "long")
+      yield* runKey(result.id, { key: "head", act: "long", did: "none" });
     // On every change the R1 says whether it is on an entry other than its first (firmware 0.3.66).
     else if (tail === "event/net/away" && json(payload)?.["away"] === true)
       yield* offerAway(result.id);
@@ -1439,6 +1461,11 @@ const make = Effect.gen(function* () {
           return yield* new DeviceRefusedError({
             why: `The ${DEVICE} does that press itself; it cannot be changed.`,
           });
+        const v2 = heard.get(id)?.keyV2 === true;
+        if (R1_KEY_SLOTS_V2.has(c.slot) && !v2)
+          return yield* new DeviceRefusedError({
+            why: `This ${DEVICE}'s firmware does not report that press yet; it needs a firmware update. Nothing was saved.`,
+          });
         yield* change((s) => {
           const k = (s.keys[id] ??= { device: {}, tessaya: {} });
           k.tessaya[c.slot] = c.bind.kind === "device" ? null : c.bind;
@@ -1447,7 +1474,11 @@ const make = Effect.gen(function* () {
         });
         if (spec === "tessaya") return done("Saved.");
         const [key, act] = c.slot.split(".");
-        yield* publish(id, "cmd/key/bind", { key, act, do: device });
+        yield* publish(id, "cmd/key/bind", {
+          key,
+          act,
+          do: v2 && c.bind.kind !== "device" ? "app" : device,
+        });
         return done(`Saved. The ${DEVICE} confirms it in a moment.`);
       }
       case "display":
@@ -1746,7 +1777,10 @@ const make = Effect.gen(function* () {
       volume: n("audio.volume"),
       keys: Object.fromEntries(
         (Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>)
-          .filter((slot) => typeof R1_KEY_SLOTS[slot] !== "object")
+          .filter(
+            (slot) =>
+              typeof R1_KEY_SLOTS[slot] !== "object" && (d.keyV2 || !R1_KEY_SLOTS_V2.has(slot)),
+          )
           .map((slot) => [slot, keyBindingOf(saved, id, slot)]),
       ),
       keyNote: d.keyRefused ? `The ${DEVICE} refused the last button change.` : null,

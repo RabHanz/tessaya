@@ -2,7 +2,7 @@
 /**
  * The R1's room voice loop as this server's child process (R1-CONNECT-UNIVERSAL §1, L1), run against its own hub and
  * brain from `<T3 home>/r1-voice` once an R1 is on the hub; a release build installs it there itself (R1VoiceInstall).
- * A loop on another machine already hearing the R1s, or `TESSAYA_R1_LOOP=off`, keeps this server out of it.
+ * A loop on another machine already hearing the R1s, or `TESSAYA_TESSEL_LOOP=off` (or the old `TESSAYA_R1_LOOP`), keeps this server out of it.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -10,7 +10,6 @@ import * as NodePath from "node:path";
 
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
-import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -18,7 +17,7 @@ import * as Schedule from "effect/Schedule";
 
 import * as ServerConfig from "../config.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
-import { DEVICE_API, HUB_PATH, R1Hub } from "./R1Hub.ts";
+import { DEVICE_API, deviceSetting, HUB_PATH, R1Hub } from "./R1Hub.ts";
 import { R1_VOICE_BUNDLE } from "./R1VoiceBundle.ts";
 import {
   BUNDLE_MARK,
@@ -122,7 +121,7 @@ export const voiceLine = (input: {
 }): string | null => {
   if (!input.onHub) return null;
   if (input.setting === "off")
-    return `The ${DEVICE}'s voice is turned off on this server (TESSAYA_R1_LOOP=off).`;
+    return `The ${DEVICE}'s voice is turned off on this server (TESSAYA_TESSEL_LOOP=off).`;
   if (input.elsewhere) return `The ${DEVICE}'s voice runs on another machine.`;
   if (input.install.kind === "fetching") {
     const { done, total } = input.install.progress;
@@ -160,10 +159,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig.ServerConfig;
     const home = yield* HomeAssistantService;
     const hub = yield* R1Hub;
-    const setting = yield* Config.String("TESSAYA_R1_LOOP").pipe(
-      Config.withDefault(""),
-      Effect.orDie,
-    );
+    const setting = yield* deviceSetting("LOOP").pipe(Effect.orDie);
     const dir = NodePath.join(NodePath.dirname(config.dbPath), "r1-voice");
     let child: NodeChildProcess.ChildProcess | null = null;
     let planned: string | null = null;

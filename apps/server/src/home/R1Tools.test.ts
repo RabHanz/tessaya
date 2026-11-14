@@ -135,6 +135,10 @@ describe("the room's tools for a replay", () => {
     expect(jobVerdict("schedule_delete", { id: "t1" }, false)).toBe("card");
     expect(jobVerdict("schedule_run_now", { id: "t1" }, false)).toBe("allow");
     expect(jobVerdict("cloud_dispatch", { repo: "acme/app" }, false)).toBe("allow");
+    // The prompt lab: trying variants is free to ask for; making one live, or rolling back, waits for his yes.
+    expect(jobVerdict("tessaya_prompt_lab", { action: "run" }, false)).toBe("allow");
+    expect(jobVerdict("tessaya_prompt_lab", { action: "promote" }, false)).toBe("card");
+    expect(jobVerdict("tessaya_prompt_lab", { action: "rollback" }, false)).toBe("card");
     // Starting work is the owner's (machine reach, A2): a lower voice is held for a step-up.
     expect(stepUpNeeds("job_start", 1)).toBe(2);
     expect(stepUpNeeds("job_stop", 2)).toBeNull();

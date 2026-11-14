@@ -191,16 +191,37 @@ export const keyBindingLine = (b: R1KeyBinding): string => {
   }
 };
 
+/** The buttons in the order Settings shows them: the device's, its head, then his Bluetooth headphones' or speaker's. */
+export const KEY_NAMES = {
+  s1: "S1",
+  s2: "S2",
+  s3: "S3",
+  head: "Head",
+  play: "Headphones play/pause",
+  next: "Headphones next",
+  prev: "Headphones previous",
+} as const;
+export const KEY_PRESSES = ["tap", "double", "triple", "hold", "long"] as const;
+
 /** One press per row, in button order; `fixed` is the firmware's own, shown read-only. */
 export const KEY_ROWS = (Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>).map((slot) => {
   const spec = R1_KEY_SLOTS[slot];
-  const [key, press] = slot.split(".") as [string, string];
+  const [key, press] = slot.split(".") as [keyof typeof KEY_NAMES, (typeof KEY_PRESSES)[number]];
   return {
     slot,
-    title: `${key.toUpperCase()} ${press}`,
+    key,
+    press,
+    title: `${KEY_NAMES[key]} ${press}`,
     fixed: typeof spec === "object" ? spec.fixed : null,
   };
 });
+
+/** Ready-made asks: what she does for them is the same as when he says it. */
+const KEY_PROMPTS = {
+  time: ["Read the time", "What time is it?"],
+  repeat: ["Repeat her last reply", "Say your last reply again."],
+  dnd: ["Do Not Disturb on or off", "Turn Do Not Disturb on if it is off, or off if it is on."],
+} as const;
 
 /** What a free press may be set to. `home`, `thread:*` and `prompt` need a detail before they save. */
 export const keyChoices = (
@@ -221,8 +242,16 @@ export const keyChoices = (
   ["home", "Toggle a lamp or run a scene"],
   ["thread:continue", "Continue a thread"],
   ["thread:stop", "Stop a thread"],
+  ...Object.entries(KEY_PROMPTS).map(([id, [label]]) => [`prompt:${id}`, label] as const),
   ["prompt", "Ask her something"],
 ];
+
+const promptChoice = (text: string) => {
+  const id = (Object.keys(KEY_PROMPTS) as Array<keyof typeof KEY_PROMPTS>).find(
+    (k) => KEY_PROMPTS[k][1] === text,
+  );
+  return id === undefined ? "prompt" : `prompt:${id}`;
+};
 
 export const keyChoiceOf = (b: R1KeyBinding): string =>
   b.kind === "device"
@@ -231,7 +260,9 @@ export const keyChoiceOf = (b: R1KeyBinding): string =>
       ? `persona:${b.name ?? ""}`
       : b.kind === "thread"
         ? `thread:${b.do}`
-        : b.kind;
+        : b.kind === "prompt"
+          ? promptChoice(b.text)
+          : b.kind;
 
 /** The binding a choice makes, or null while its detail (entity, thread or words) is missing. */
 export const keyBindingFrom = (
@@ -262,8 +293,12 @@ export const keyBindingFrom = (
             title: thread.title.slice(0, 120),
             do: rest === "stop" ? "stop" : "continue",
           };
-    case "prompt":
-      return t === "" ? null : { kind: "prompt", text: t.slice(0, 400) };
+    case "prompt": {
+      const preset = Object.hasOwn(KEY_PROMPTS, rest)
+        ? KEY_PROMPTS[rest as keyof typeof KEY_PROMPTS][1]
+        : t;
+      return preset === "" ? null : { kind: "prompt", text: preset.slice(0, 400) };
+    }
   }
   return null;
 };

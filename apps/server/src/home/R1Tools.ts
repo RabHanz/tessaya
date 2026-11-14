@@ -78,6 +78,8 @@ const ROOM_TOOLS = [
   "tessaya_ask",
   "tessaya_ask_status",
   "tessaya_pronounce",
+  // His prompt lab (B-030): "try my variant B on Sonnet"; making one live waits for his yes.
+  "tessaya_prompt_lab",
   "settings_find",
   "settings_get",
   "settings_explain",
@@ -88,6 +90,7 @@ const ROOM_TOOLS = [
   "device_read",
   "device_set",
   "device_watch",
+  "device_button",
   "members_list",
   "member_invite",
   "member_set_role",
@@ -318,11 +321,14 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
                   ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
                   : name === "tessaya_memory_forget"
                     ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })
-                    : name === "device_watch"
+                    : name === "device_watch" || name === "device_button"
                       ? // A rule is saved at once, not asked: "it waits for his answer" made her say so (13 Nov suite).
                         JSON.stringify({
                           ok: true,
-                          value: { status: "done", line: "Saved the rule." },
+                          value: {
+                            status: "done",
+                            line: name === "device_watch" ? "Saved the rule." : "Saved.",
+                          },
                         })
                       : JSON.stringify({
                           id: null,
@@ -364,6 +370,11 @@ export const jobVerdict = (
   input: unknown,
   tainted: boolean,
 ): "allow" | "card" | { readonly refused: string } => {
+  // Changing which prompt is live is his call each time, as a job's go-ahead is.
+  if (name === "tessaya_prompt_lab") {
+    const action = (input as { readonly action?: unknown } | null)?.action;
+    return action === "promote" || action === "rollback" ? "card" : "allow";
+  }
   if (!JOB_TOOLS.has(name)) return "allow";
   const verdict = judgeToolCall(
     {

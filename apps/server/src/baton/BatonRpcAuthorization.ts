@@ -15,6 +15,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthAccessReadScope,
   AuthOrchestrationReadScope,
+  AuthSettingsWriteScope,
   AuthTessayaGuestScope,
   AuthTessayaMemberScope,
   BATON_ACCOUNT_WS_METHODS,
@@ -42,6 +43,7 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
+  BATON_PROMPT_LAB_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonRpcScopeAuthorization,
@@ -105,6 +107,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_BRAIN_WS_METHODS.usage]: AuthOrchestrationReadScope,
   [BATON_PERSONAS_WS_METHODS.list]: AuthOrchestrationReadScope,
+  // His prompts, and runs on his subscription: settings:write, which only the owner and admins hold.
+  [BATON_PROMPT_LAB_WS_METHODS.call]: AuthSettingsWriteScope,
   // Rows name their actor, so only the desktop app's own session (hands-host, which no grant can give) writes them.
   [BATON_RECORD_WS_METHODS.append]: [AuthOrchestrationOperateScope, AuthBatonHandsHostScope],
   // It spends his saved Anthropic key: the desktop app's own session only.

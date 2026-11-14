@@ -32,6 +32,7 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
+  BATON_PROMPT_LAB_WS_METHODS,
   BATON_DICTATION_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -72,6 +73,7 @@ import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BrainUsage, brainUsageReport } from "./BrainUsage.ts";
 import { personasList } from "./OperatingSystemPack.ts";
+import { PromptLab } from "../tessaya/PromptLab.ts";
 import { VesselHands } from "./VesselHands.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import * as ServerConfig from "../config.ts";
@@ -182,7 +184,8 @@ export type BatonServices =
   | ScheduledTaskService
   | ThreadAccountMoves
   | ProviderInstanceRegistry.ProviderInstanceRegistry
-  | ProviderRegistry.ProviderRegistry;
+  | ProviderRegistry.ProviderRegistry
+  | PromptLab;
 
 /** The vessel a memory call comes from: the desktop app's own session, or another client (a browser, the phone page). */
 const vesselOf = (viewer: "server" | "desktop" | "client"): TurnEnvelope["vessel"] =>
@@ -664,6 +667,8 @@ export const makeHandlers = Effect.gen(function* () {
       ),
     [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input)),
     [BATON_PERSONAS_WS_METHODS.list]: () => run(personasList),
+    [BATON_PROMPT_LAB_WS_METHODS.call]: (input) =>
+      run(Effect.flatMap(PromptLab, (lab) => lab.call(input))),
     [BATON_RECORD_WS_METHODS.append]: (input) =>
       run(
         Effect.flatMap(BatonRecordService, (record) =>

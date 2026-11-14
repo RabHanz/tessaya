@@ -1,7 +1,7 @@
 /**
  * Tessaya's loop as a job runs it on the server: `BatonPlaybook.jobPlaybook` for the first message and
- * `learnFromVerdict` on his reply, through the real memory service on an in-memory database. Only the model call goes
- * through this eval's `claude -p` runner instead of BrainRoutes. His reply is "Thanks…" or "No, " and the correction.
+ * `learnFromOutcome` on his verdict, through the real memory service on an in-memory database. Only the model call goes
+ * through this eval's `claude -p` runner instead of BrainRoutes. His verdict is the grade; his correction the feedback.
  */
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -16,7 +16,11 @@ import {
   layer as memoryLayer,
 } from "../../apps/server/src/baton/BatonMemoryService.ts";
 import { BatonOneShot, BatonOneShotError } from "../../apps/server/src/baton/BatonOneShot.ts";
-import { jobPlaybook, learnFromVerdict } from "../../apps/server/src/baton/BatonPlaybook.ts";
+import {
+  jobPlaybook,
+  learnFromOutcome,
+  playbookDomain,
+} from "../../apps/server/src/baton/BatonPlaybook.ts";
 import { instructionLike } from "../../packages/baton-shared/src/playbook.ts";
 import { runClaude } from "./agent.ts";
 import type { Arm } from "./arms.ts";
@@ -52,12 +56,14 @@ export const serverArm = (model: string, cwd: string): Arm => {
     learn: async (job, done, outcome) => {
       spent = { tokens: 0, costUsd: 0 };
       await runtime.runPromise(
-        learnFromVerdict({
-          domain: job.family,
+        learnFromOutcome({
+          domain: playbookDomain({ project: job.family })!,
           job: `${job.family}-${job.index}`,
           goal: job.goal,
           report: done.final,
-          reply: outcome.pass ? "Thanks, that's right." : `No, ${outcome.feedback}`,
+          passed: outcome.pass,
+          why: outcome.feedback,
+          his: true,
           tainted: done.results.some(instructionLike),
         }).pipe(Effect.ignoreCause({ log: false })),
       );

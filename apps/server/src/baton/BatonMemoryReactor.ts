@@ -10,10 +10,13 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Schedule from "effect/Schedule";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
+import * as ServerConfig from "../config.ts";
 import { forkParked } from "../serverActivation.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BatonJobService } from "./BatonJobService.ts";
@@ -23,7 +26,7 @@ import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
-import { learnFromJobReply } from "./BatonPlaybook.ts";
+import { checkJobReport, learnFromJobReply } from "./BatonPlaybook.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 export class BatonMemoryReactor extends Context.Service<
@@ -135,6 +138,9 @@ export const layer = Layer.effect(
       | BatonMemoryLearning
       | BatonMemorySync
       | BatonOneShot
+      | ChildProcessSpawner.ChildProcessSpawner
+      | Path.Path
+      | ServerConfig.ServerConfig
     >();
     return {
       start: Effect.fn("BatonMemoryReactor.start")(function* () {
@@ -142,6 +148,7 @@ export const layer = Layer.effect(
           Stream.runForEach(engine.changedThreads, (threadId) =>
             learnFromJobThread(threadId).pipe(
               Effect.andThen(learnFromJobReply(threadId)),
+              Effect.andThen(checkJobReport(threadId)),
               Effect.provideContext(context),
               Effect.ignoreCause({ log: true }),
             ),

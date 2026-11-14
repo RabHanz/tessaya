@@ -4,6 +4,7 @@ import {
   BATON_JOB_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
+  BATON_PROMPT_LAB_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
@@ -24,6 +25,7 @@ import * as Schema from "effect/Schema";
 
 import { accountByWords } from "@t3tools/baton-shared/accountRoom";
 import { recordText } from "@t3tools/baton-shared/audit";
+import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 
 import { clientMessageFrom, withAgentMessageFrom } from "../../../baton/AgentMessageFrom.ts";
 import { gateMessage } from "../../../baton/AgentMessageGate.ts";
@@ -150,6 +152,20 @@ const agoOf = (ms: number): string => {
 };
 
 /** The Record on the house's clock, each row with its age, so no model reads UTC as local (13 Nov). */
+/**
+ * Who may use the prompt lab from a tool: the owner only. Making a variant live or rolling back is his, by voice (the
+ * room asks his yes first) or in Settings; an agent from outside may look, save and run, never change what is live.
+ */
+export const labRefusal = (
+  action: string,
+  origin: { readonly member?: string | null } | null,
+): string | null =>
+  origin !== null && origin.member !== undefined && origin.member !== OWNER_MEMBER_ID
+    ? "The prompt lab is the owner's."
+    : origin === null && (action === "promote" || action === "rollback")
+      ? "Only he makes a prompt live or rolls it back: in Settings, Brain, Prompt lab, or by asking Tessaya."
+      : null;
+
 export const onHouseClock = (
   entries: ReadonlyArray<BatonRecordEntry>,
   now: number,
@@ -453,6 +469,34 @@ export const layer = McpToolAccess.toLayer(
             timeZone: "",
           }),
         ),
+      ),
+      tessaya_prompt_lab: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          const origin = yield* TurnOrigin;
+          const refused = labRefusal(input.action, origin);
+          if (refused !== null) return { line: refused };
+          const persona = input.persona ?? "";
+          const variant = input.variant ?? "";
+          return yield* call(
+            handlers[BATON_PROMPT_LAB_WS_METHODS.call](
+              input.action === "list"
+                ? { op: "list" }
+                : input.action === "save"
+                  ? { op: "save", persona, variant, text: input.text ?? "" }
+                  : input.action === "run"
+                    ? {
+                        op: "run",
+                        persona,
+                        variants: input.variants ?? (variant === "" ? ["live"] : [variant]),
+                        models: input.models ?? ["sonnet"],
+                        ...(input.message === undefined ? {} : { message: input.message }),
+                      }
+                    : input.action === "promote"
+                      ? { op: "promote", persona, variant }
+                      : { op: "rollback", persona },
+            ),
+          );
+        }),
       ),
       tessaya_memory_about: McpToolAccess.reads((input) =>
         call(withTurn((turn) => Effect.map(turn.about(input.subject), (items) => ({ items })))),

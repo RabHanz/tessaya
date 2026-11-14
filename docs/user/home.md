@@ -62,7 +62,7 @@ fill it in only for a Tessel on a separate MQTT broker. **Forget** removes all o
 3. After the first Tessel you are asked once whether it may work away from home.
 4. Her voice then downloads to this server by itself, about 1 GB, once: Hardware shows **Voice** with its progress,
    then "The Tessel's voice runs on this server." It needs a Linux (x64) server from a Tessaya release and about 2 GB free
-   disk. A server where another machine already runs the Tessel's voice leaves it alone. Set `TESSAYA_R1_LOOP=off` to
+   disk. A server where another machine already runs the Tessel's voice leaves it alone. Set `TESSAYA_TESSEL_LOOP=off` (or the old `TESSAYA_R1_LOOP=off`) to
    keep a server from running it.
 
 Her room voice hears you with Parakeet TDT 0.6B v3 by NVIDIA, licensed under
@@ -123,12 +123,19 @@ most three times an hour. Say "go ahead", pass on changes, split it across the t
 voice; these need your recognised voice. Putting a job on a schedule always asks for a yes on your phone first.
 
 **Buttons** (firmware 3.32 and later). Some presses are the Tessel's own and cannot change: S2 tap starts or stops
-talking, holding S2 is push-to-talk, a long S2 press wakes it, S1 and S3 taps turn the volume up and down, and holding
-S1 and S3 together for 5 seconds starts Wi-Fi setup. The rest are yours under **Buttons** in Settings → Hardware: the
-double presses, the 3-second long presses of S1 (mic mute by default) and S3 (deep sleep by default), and holding S1
-or S3 for under 3 seconds. Each can do one of the Tessel's own actions or one of Tessaya's: switch persona (announced in
-the new voice), tell you what's next, toggle a lamp or run a scene (risky ones still ask first), mute her, continue or
-stop a thread, or ask her something you write. A double press of S2 switches to the next persona until you change it.
+talking, holding S2 is push-to-talk, a long S2 press wakes it, a tap on its head stops her while she speaks, and holding
+S1 and S3 together for 5 seconds starts Wi-Fi setup. The rest are yours under **Buttons** in Settings → Hardware, or by
+asking Tessaya ("make double-press S1 switch to Freya"): double and long presses, holding S1 or S3 for under 3 seconds,
+and a long touch on the head. With firmware 0.3.108 and later also the S1 and S3 taps (volume up and down by default),
+triple presses, and the play/pause, next and previous buttons of Bluetooth headphones or a speaker playing from the
+Tessel. Play/pause starts a conversation or ends it by default, and while she speaks it stops her; the headphones'
+volume buttons are the Tessel's volume. A press can do one of the Tessel's own actions (talk, mic mute, volume, deep
+sleep) or one of Tessaya's: switch persona (announced in the new voice), tell you what's next, read the time, repeat her
+last reply, Do Not Disturb, toggle a lamp or run a scene (risky ones still ask first), mute her, continue or stop a
+thread, or ask her something you write. A double press of S2 switches to the next persona until you change it. A tap
+acts at once unless that button has a double or triple set, when it waits a third of a second for the next tap. When
+the Tessel cannot reach this server, a press set to one of Tessaya's actions does its default instead, so volume and
+talking still work.
 
 **Screen** (firmware 3.32). Auto turns the screen with the Tessel; Normal or Upside down pins it. If Auto has it the
 wrong way up, stand the Tessel the way you use it and press **Set upright**.

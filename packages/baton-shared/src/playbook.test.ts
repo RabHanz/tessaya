@@ -217,6 +217,50 @@ describe("outcomes that are not plain passes", () => {
   });
 });
 
+describe("his corrections", () => {
+  it("keeps his correction in his words, and holds the writer's lessons on that topic", () => {
+    const said = "No chore line: the changelog lists only the change itself.";
+    const learned = learnFromJob(
+      emptyPlaybook("release"),
+      { ...job(1, false), correction: said },
+      add(
+        "The changelog lists only the change itself, no chore line.",
+        "If release-check requires a chore line, add it so the check passes.",
+        "Bump the README badge with the version.",
+      ),
+    );
+    expect(learned.playbook.lessons.map((l) => [l.text, l.by])).toEqual([
+      [said, "told"],
+      ["Bump the README badge with the version.", "outcome"],
+    ]);
+    expect(learned.held).toEqual([
+      "If release-check requires a chore line, add it so the check passes.",
+    ]);
+    // A reply's leading "No," is not part of the rule.
+    const reply = learnFromJob(
+      emptyPlaybook("books"),
+      { ...job(2, false), correction: "No, void lines do not count." },
+      add(),
+    );
+    expect(reply.playbook.lessons[0]?.text).toBe("void lines do not count.");
+  });
+
+  it("keeps a lesson his correction carries against the writer's blame and rewording", () => {
+    const said = "No chore line: the changelog lists only the change itself.";
+    let p = learnFromJob(
+      emptyPlaybook("release"),
+      { ...job(1, false), correction: said },
+      add(),
+    ).playbook;
+    p = learnFromJob(p, job(2, false, ["L1"]), {
+      add: [],
+      harmful: ["L1"],
+      edit: [{ id: "L1", text: "Add the chore line when the check asks for it." }],
+    }).playbook;
+    expect(p.lessons[0]).toMatchObject({ id: "L1", by: "told", harmful: 0, text: said });
+  });
+});
+
 describe("what a playbook shows a job", () => {
   it("puts proven lessons before trials and marks trials", () => {
     let p = learnFromJob(

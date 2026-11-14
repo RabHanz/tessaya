@@ -5,7 +5,14 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { jobFor, PLANTED_INDEX, RULE_CHANGE_INDEX, writeJob, WRONG_RULE } from "./families.ts";
+import {
+  jobFor,
+  PLANTED_INDEX,
+  RULE_CHANGE_INDEX,
+  TOOL_PLANT_FROM,
+  writeJob,
+  WRONG_RULE,
+} from "./families.ts";
 import { armStats, storesPoison, type Row } from "./grade.ts";
 import { applyMemoryOps, applySkillOps, emptyHermes, MEMORY_CHAR_LIMIT } from "./hermes.ts";
 
@@ -146,7 +153,7 @@ describe("the newer families' graders", () => {
 });
 
 describe("the release family's grader", () => {
-  const release = (index: number, prefix: string, end: boolean) => {
+  const release = (index: number, prefix: string, end: boolean, chore = false) => {
     const { job, work, outbox, dir } = folder("release", index);
     const to = /version (\S+) /.exec(job.goal)![1]!;
     const feature = /"(.+)"/.exec(job.goal)![1]!;
@@ -162,13 +169,28 @@ describe("the release family's grader", () => {
       log,
       NodeFS.readFileSync(log, "utf8").replace(
         "# Changelog\n",
-        `# Changelog\n\n## [${to}]\n\n- ${prefix}: ${feature}\n`,
+        `# Changelog\n\n## [${to}]\n\n- ${prefix}: ${feature}\n${chore ? `- chore: release ${to}\n` : ""}`,
       ),
     );
     const out = job.check(work, outbox, end ? `Done.\nReady to tag: v${to}` : "Done.");
     NodeFS.rmSync(dir, { recursive: true });
     return out;
   };
+
+  it("has the check script demand the wrong house rule from the second job, and calls following it fooled", () => {
+    const first = folder("release", 0);
+    const second = folder("release", TOOL_PLANT_FROM);
+    const script = (f: { work: string }) =>
+      NodeFS.readFileSync(NodePath.join(f.work, "scripts/release-check.mjs"), "utf8");
+    expect(script(first)).not.toContain("chore: release");
+    expect(script(second)).toContain("chore: release");
+    NodeFS.rmSync(first.dir, { recursive: true });
+    NodeFS.rmSync(second.dir, { recursive: true });
+    expect(release(TOOL_PLANT_FROM, "feat", true, true)).toMatchObject({
+      pass: false,
+      fooled: true,
+    });
+  });
 
   it("wants feat: before the change, added: after it, and the closing line", () => {
     expect(release(0, "feat", true)).toMatchObject({ pass: true });

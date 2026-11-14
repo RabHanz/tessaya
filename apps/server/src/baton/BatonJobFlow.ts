@@ -75,7 +75,7 @@ import { modelOf, roleFor, type Brain } from "@t3tools/baton-shared/osPack";
 import { assignJob, templateBrief, type JobTemplate } from "@t3tools/baton-shared/jobTemplates";
 import { BatonJobService } from "./BatonJobService.ts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
-import { jobPlaybook } from "./BatonPlaybook.ts";
+import { failLastReport, jobPlaybook, playbookDomain, rememberJobDomain } from "./BatonPlaybook.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -199,10 +199,14 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
       Effect.catchCause(() => Effect.succeed({ block: "" })),
     );
   // What earlier jobs in this project taught (LEARNING-LOOP-DESIGN §3); slow or missing memory never holds a job.
+  const domain = playbookDomain({ template: options.template?.id, project: projectTitle });
   const playbook =
-    projectTitle === undefined
+    domain === null
       ? ""
-      : yield* jobPlaybook(projectTitle).pipe(
+      : yield* Effect.gen(function* () {
+          yield* rememberJobDomain(id, domain);
+          return yield* jobPlaybook(domain.domain);
+        }).pipe(
           Effect.timeout("2 seconds"),
           Effect.catchCause(() => Effect.succeed("")),
         );
@@ -247,6 +251,23 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
 
 /** The plan stands and the work begins: out of plan mode, and told to go. */
 
+/** The same goal placed again within a day: the earlier job's last report did not do it (§3.2, a late failure). */
+const failRepeatedJob = Effect.fn("BatonJobFlow.failRepeatedJob")(function* (goal: string) {
+  const now = yield* Clock.currentTimeMillis;
+  const same = (a: string) => a.trim().toLowerCase().replace(/\s+/g, " ");
+  const earlier = (yield* (yield* BatonJobService).allTerms()).find(
+    (t) =>
+      t.parentId === null &&
+      same(t.goal) === same(goal) &&
+      now - DateTime.toEpochMillis(DateTime.makeUnsafe(t.createdAt)) < 86_400_000,
+  );
+  if (earlier === undefined) return;
+  yield* failLastReport(earlier.workSessionId, "He asked for the same job again.").pipe(
+    Effect.ignoreCause({ log: true }),
+    Effect.forkDetach,
+  );
+});
+
 /** A job from his words: the project he named here and the first ready Claude, then an ordinary start. */
 export const placeJob = Effect.fn("BatonJobFlow.place")(function* (input: BatonJobPlaceInput) {
   const engine = yield* BatonEngine;
@@ -262,6 +283,7 @@ export const placeJob = Effect.fn("BatonJobFlow.place")(function* (input: BatonJ
   const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
   const pack = readPack(userdata);
   const { persona, template } = assignJob(pack.personas, readTemplates(userdata), input);
+  yield* failRepeatedJob(input.goal);
   const started = yield* startJob(
     {
       projectId: project.id,
@@ -610,6 +632,11 @@ export const retryJob = Effect.fn("BatonJobFlow.retry")(function* (id: WorkSessi
   if (threadId === null) return "That job has no worker to ask.";
   const entry = fleet.entries.find((e) => e.workSessionId === id);
   const text = retryText(card, "he asked for another try", entry?.synopsis?.currentAction ?? null);
+  // Asking again says the last report was not good enough; learning from that never holds the retry.
+  yield* failLastReport(id, "He asked for another try.").pipe(
+    Effect.ignoreCause({ log: true }),
+    Effect.forkDetach,
+  );
   const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
   yield* jobs.refine(id, { by: "him", at, via: "text", text });
   yield* (yield* BatonEngine).sendMessage({ tag: "job", threadId, text });
