@@ -8,6 +8,7 @@ import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 
 import { heldBack } from "./addressing.ts";
 import { speechLevel } from "./audio.ts";
+import type { WakeCapture } from "./wakeCapture.ts";
 
 const RATE = 16_000;
 /** The R1 caps a wake segment at 6 s; a little more never needs keeping. */
@@ -55,6 +56,8 @@ export interface WakeStreamDeps {
     clip: Int16Array,
   ) => void;
   readonly log: (line: string) => void;
+  /** Keeps each whole segment for wake training when the host has it switched on. */
+  readonly capture?: WakeCapture;
 }
 
 export const createWakeStream = (deps: WakeStreamDeps) => {
@@ -71,6 +74,9 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       best: number[];
       /** Stage 2's verdict on this segment, for the line beside the R1's own wake model (`event/wake/kws`). */
       outcome: string;
+      woke: boolean;
+      /** The whole segment, for the capture only. */
+      seg: Int16Array;
     }
   >();
   /** Per R1 and segment number: the R1's on-device verdict and ours, whichever came first, until both are in. */
@@ -102,6 +108,8 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         samples: 0,
         best: [],
         outcome: "",
+        woke: false,
+        seg: new Int16Array(0),
       };
       devices.set(id, d);
     }
@@ -136,6 +144,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     const at = `${output.toFixed(3)}/${threshold} after ${(d.samples / RATE).toFixed(1)} s`;
     if (trusted || wakeWordHeard(text, word, ratio)) {
       d.outcome = `woken by ${word} (${at})`;
+      d.woke = true;
       deps.log(`[${id}] woken by ${word} (${at})`);
       deps.onWake(id, word, speechLevel(clip), Math.min(1, output), clip);
     } else {
@@ -163,6 +172,8 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length - (bytes.length % 2)),
       );
       d.chain = d.chain.then(async () => {
+        if (deps.capture !== undefined && d.seg.length < KEEP_SAMPLES)
+          d.seg = join(d.seg, pcm).slice(0, KEEP_SAMPLES);
         if (d.done) return;
         const scorer = await d.scorer;
         d.samples += pcm.length;
@@ -174,6 +185,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     /** The R1's own wake model's verdict on segment `seg` (`event/wake/kws`), logged beside stage 2's. */
     kws: (id: string, event: KwsEvent) => {
       if (typeof event.seg === "number") pair(id, event.seg, { kws: event });
+      deps.capture?.kws(id, event);
     },
     /** The segment ended (`seg`: the R1's number for it): forget it, and listen afresh on the next one. */
     end: (id: string, seg?: number) => {
@@ -197,8 +209,22 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
           d.outcome !== ""
             ? d.outcome
             : `no fire, best ${deps.words.map((w, i) => `${w.word} ${(d.best[i] ?? 0).toFixed(3)}`).join(", ")}`;
+        if (deps.capture !== undefined && d.seg.length > 0)
+          deps.capture.segment(
+            id,
+            seg,
+            d.seg,
+            {
+              outcome: ours,
+              woke: d.woke,
+              best: Object.fromEntries(deps.words.map((w, i) => [w.word, d.best[i] ?? 0])),
+            },
+            seg === undefined ? undefined : pairs.get(`${id}#${seg}`)?.kws,
+          );
         if (seg !== undefined) pair(id, seg, { ours });
         d.outcome = "";
+        d.woke = false;
+        d.seg = new Int16Array(0);
         d.samples = 0;
         d.best = [];
         drop(d);
