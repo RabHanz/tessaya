@@ -20,6 +20,7 @@ import {
   verifyR1Signature,
   type R1FirmwarePin,
   type R1KwsPin,
+  type R1LinesPin,
   type R1ReleaseIndex,
   type R1ReleaseManifest,
   type R1UpdatesView,
@@ -89,6 +90,10 @@ export interface R1Watch {
   /** The `cmd/model/load` in flight, and a pack that failed here (not tried again by itself; he sees why). */
   modelLoad: { version: number; startedAt: number } | null;
   modelStopped: { version: number; why: string } | null;
+  /** Its retained `state/lines` (entries, earcons among them), the `cmd/lines/load` in flight, and why one failed. */
+  lines: { count: number; earcons: number } | null;
+  linesLoad: { startedAt: number } | null;
+  linesStopped: string | null;
 }
 
 export const blankWatch = (): R1Watch => ({
@@ -107,6 +112,9 @@ export const blankWatch = (): R1Watch => ({
   kwsMode: null,
   modelLoad: null,
   modelStopped: null,
+  lines: null,
+  linesLoad: null,
+  linesStopped: null,
 });
 
 export type OtaStep = "wait" | "start" | "done" | "rollback" | "give-up";
@@ -141,7 +149,7 @@ export const otaStep = (
   if ((compareR1Firmware(pin.version, w.fw) ?? 0) <= 0) return "wait";
   if (w.stopped?.version === pin.version) return "wait";
   // The R1 takes one transfer at a time: a wake model load in flight finishes first.
-  if (w.modelLoad !== null) return "wait";
+  if (w.modelLoad !== null || w.linesLoad !== null) return "wait";
   if (w.enrolling || w.bluetoothAudio || now - w.lastUse < IDLE_MS) return "wait";
   return "start";
 };
@@ -182,13 +190,32 @@ export const kwsStep = (
   if (w.modelLoad !== null)
     return now - w.modelLoad.startedAt < ROLLBACK_AFTER_MS ? "wait" : "give-up";
   if (kws === null || kws.size > R1_KWS_MAX_BYTES) return "wait";
-  if (!w.online || w.fw === null || w.update !== null) return "wait";
+  if (!w.online || w.fw === null || w.update !== null || w.linesLoad !== null) return "wait";
   if (
     (w.model?.ok === true && w.model.sha256 === kws.sha256) ||
     w.modelStopped?.version === kws.version
   )
     return "wait";
   if (firmware !== null && (compareR1Firmware(w.fw, firmware.version) ?? -1) < 0) return "wait";
+  if (w.enrolling || w.bluetoothAudio || now - w.lastUse < IDLE_MS) return "wait";
+  return "start";
+};
+
+/**
+ * Whether to send the tone pack to one R1 now: only to one that reported no line pack at all (loading replaces the
+ * whole pack, voice lines included), on firmware that plays earcons, idle, one transfer at a time. Pure.
+ */
+export const linesStep = (
+  w: R1Watch,
+  pack: R1LinesPin | null | undefined,
+  now: number,
+): KwsStep => {
+  if (w.linesLoad !== null)
+    return now - w.linesLoad.startedAt < ROLLBACK_AFTER_MS ? "wait" : "give-up";
+  if (pack == null || w.linesStopped !== null || w.lines === null) return "wait";
+  if (w.lines.count > 0 || w.lines.earcons > 0) return "wait";
+  if (!w.online || w.fw === null || w.update !== null || w.modelLoad !== null) return "wait";
+  if ((compareR1Firmware(w.fw, pack.minFirmware) ?? -1) < 0) return "wait";
   if (w.enrolling || w.bluetoothAudio || now - w.lastUse < IDLE_MS) return "wait";
   return "start";
 };
@@ -265,7 +292,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
         Effect.map((b): Uint8Array | null => new Uint8Array(b)),
         Effect.orElseSucceed(() => null),
       ));
-  const { firmware, kws } = r1Release(options.pin).artifacts;
+  const { firmware, kws, lines } = r1Release(options.pin).artifacts;
   const watches = new Map<string, R1Watch>();
   const tickets = new Map<string, { readonly file: string; readonly until: number }>();
   const holds = yield* Effect.promise(() =>
@@ -334,6 +361,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
       "freya/r1/+/state/bt",
       "freya/r1/+/state/model",
       "freya/r1/+/state/voice/kws",
+      "freya/r1/+/state/lines",
       "freya/r1/+/state/net/ack",
       "freya/r1/+/call/up",
       "freya/r1/+/state/call/#",
@@ -364,6 +392,11 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
           ok: body?.["ok"] === true,
           why: typeof body?.["why"] === "string" ? body["why"] : null,
         };
+      else if (what === "state/lines")
+        w.lines = {
+          count: typeof body?.["count"] === "number" ? body["count"] : 0,
+          earcons: typeof body?.["earcons"] === "number" ? body["earcons"] : 0,
+        };
       else if (what === "state/voice/kws") {
         w.kwsMode = typeof body?.["mode"] === "string" ? body["mode"] : null;
         // Turning it back on after an unload loads the pack again.
@@ -372,6 +405,14 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
         // He unloaded the pack (cmd/model/clear): it stays unloaded until he turns the wake model on again.
         if (body?.["op"] === "model.clear" && body["ok"] === true && kws !== null) {
           w.modelStopped = { version: kws.version, why: UNLOADED };
+          return;
+        }
+        if (body?.["op"] === "lines" && w.linesLoad !== null) {
+          // Busy (an OTA or another load): tried again later; any other failure is not retried by itself.
+          const error = typeof body["error"] === "string" ? body["error"] : "no reason given";
+          if (body["ok"] !== true && error !== "busy")
+            w.linesStopped = `The ${DEVICE} did not load its button sounds: ${error}.`;
+          w.linesLoad = null;
           return;
         }
         // The one answer to a `cmd/model/load`: loaded, busy (an OTA or another load; tried again later), or why not.
@@ -429,15 +470,19 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
     return true;
   });
 
-  /** The wake model pack on disk, checked; downloaded once. */
-  const ensurePack = Effect.fn("R1Updates.ensurePack")(function* (pack: R1KwsPin) {
-    if (pack.size > R1_KWS_MAX_BYTES) return false;
-    const file = NodePath.join(dir, `${pack.sha256}.kws`);
+  /** A wake model or line pack on disk, checked; downloaded once. */
+  const ensurePack = Effect.fn("R1Updates.ensurePack")(function* (
+    pack: R1KwsPin | R1LinesPin,
+    ext: "kws" | "r1ln" = "kws",
+  ) {
+    if (ext === "kws" && pack.size > R1_KWS_MAX_BYTES) return false;
+    const file = NodePath.join(dir, `${pack.sha256}.${ext}`);
     const have = yield* Effect.promise(() => NodeFSP.readFile(file).catch(() => null));
     if (have !== null && sha256(have) === pack.sha256) return true;
     const bytes = yield* download(pack.url);
     if (bytes === null || bytes.length !== pack.size || sha256(bytes) !== pack.sha256) {
-      yield* Effect.logWarning("R1 wake model pack did not match its pin", {
+      yield* Effect.logWarning("R1 pack did not match its pin", {
+        ext,
         version: pack.version,
       });
       return false;
@@ -451,18 +496,18 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
 
   const offer = Effect.fn("R1Updates.offer")(function* (
     id: string,
-    image: R1FirmwarePin | R1KwsPin,
-    kind: "ota" | "model" = "ota",
+    image: R1FirmwarePin | R1KwsPin | R1LinesPin,
+    kind: "ota" | "model" | "lines" = "ota",
     /** Going back on purpose: firmware with a version floor refuses an older image without it. */
     downgrade = false,
   ) {
     const base = (yield* reach.status).endpoints.proxy;
     if (base === "") return false;
     const ticket = NodeCrypto.randomBytes(16).toString("hex");
-    const file = `${image.sha256}.${kind === "ota" ? "rbl" : "kws"}`;
+    const file = `${image.sha256}.${{ ota: "rbl", model: "kws", lines: "r1ln" }[kind]}`;
     tickets.set(ticket, { file, until: (yield* Clock.currentTimeMillis) + TICKET_MS });
     hub.publish(
-      `freya/r1/${id}/cmd/${kind === "ota" ? "ota/start" : "model/load"}`,
+      `freya/r1/${id}/cmd/${{ ota: "ota/start", model: "model/load", lines: "lines/load" }[kind]}`,
       encodeJson({
         // Firmware 0.3.99+ refuses an install older than what it runs unless allow_downgrade, which this updater
         // never sends: it only goes forward, and a rollback never goes below what the R1 last ran.
@@ -555,6 +600,14 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
             why: `The wake model ${w.modelLoad.version} did not report back within 7 minutes.`,
           };
           w.modelLoad = null;
+        }
+        const tones = linesStep(w, lines, now);
+        if (tones === "start" && lines != null) {
+          if (!(yield* ensurePack(lines, "r1ln"))) continue;
+          if (yield* offer(id, lines, "lines")) w.linesLoad = { startedAt: now };
+        } else if (tones === "give-up") {
+          w.linesStopped = `The ${DEVICE}'s button sounds did not report back within 7 minutes.`;
+          w.linesLoad = null;
         }
       }
     }),
