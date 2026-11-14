@@ -119,6 +119,7 @@ import { R1Hub } from "../home/R1Hub.ts";
 import { R1Pairing } from "../home/R1Pairing.ts";
 import { R1Reach } from "../home/R1Reach.ts";
 import { R1Updates } from "../home/R1Updates.ts";
+import { R1Loop } from "../home/R1Loop.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { VoiceArbiter } from "../home/VoiceArbiter.ts";
 import { DeviceTriggers } from "../home/DeviceTriggers.ts";
@@ -157,6 +158,7 @@ export type BatonServices =
   | R1Reach
   | R1Pairing
   | R1Updates
+  | R1Loop
   | HomeDevices
   | DeviceRegistry
   | VoiceArbiter

@@ -51,6 +51,7 @@ import * as R1Device from "../home/R1Device.ts";
 import * as HomeDevices from "../home/HomeDevices.ts";
 import * as R1Hub from "../home/R1Hub.ts";
 import * as R1Pairing from "../home/R1Pairing.ts";
+import * as R1Loop from "../home/R1Loop.ts";
 import * as R1Reach from "../home/R1Reach.ts";
 import * as R1Updates from "../home/R1Updates.ts";
 import * as DeviceRegistry from "../home/DeviceRegistry.ts";
@@ -139,6 +140,8 @@ const updatesLayer = R1Updates.layer.pipe(
   Layer.provide(hubLayer),
   Layer.provide(homeLayer),
 );
+// The room voice loop as this server's child, where it is installed beside it (R1Loop.ts).
+const loopLayer = R1Loop.layer.pipe(Layer.provide(hubLayer), Layer.provide(homeLayer));
 const pairingLayer = R1Pairing.layer.pipe(
   Layer.provide(reachLayer),
   Layer.provide(hubLayer),
@@ -279,7 +282,7 @@ const servicesInner = IntentService.layer.pipe(
   Layer.provideMerge(VesselHands.layer),
   // The Record under everything above, so any service can write to it.
   Layer.provideMerge(BatonRecordService.layer),
-  Layer.provideMerge(Layer.mergeAll(updatesLayer, pairingLayer, reachLayer, hubLayer)),
+  Layer.provideMerge(Layer.mergeAll(loopLayer, updatesLayer, pairingLayer, reachLayer, hubLayer)),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.
   Layer.provide(BatonDatabase.layer),
 );
