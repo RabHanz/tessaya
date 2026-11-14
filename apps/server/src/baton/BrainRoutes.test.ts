@@ -45,6 +45,9 @@ const SITES: Readonly<Record<string, Site>> = {
     routed: "judging a natural-language device rule: the intent row",
   },
   "apps/server/src/home/R1Device.ts": { routed: "the Agora path's one-shot: the voice row" },
+  "apps/server/src/baton/TessayaExpression.ts": {
+    routed: "her lines written ahead are persona speech: the voice row",
+  },
   "apps/server/src/baton/BatonMemoryLearning.ts": {
     routed: "learning and episodes: the background row",
   },
