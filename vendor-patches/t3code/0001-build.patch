@@ -145,6 +145,19 @@ index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..3aca1ef3560ddb8b4a25a731feb4e379
      "playwright-core": "1.64.1",
      "proper-lockfile": "4.1.2",
      "saxes": "6.0.0",
+diff --git a/apps/server/vite.config.ts b/apps/server/vite.config.ts
+index 3291aa304d39553ab8991a9fa8956eda13b17c73..54668b3634756051f4178dddd315326ceac685c5 100644
+--- a/apps/server/vite.config.ts
++++ b/apps/server/vite.config.ts
+@@ -128,6 +128,8 @@ export default mergeConfig(
+         js: "#!/usr/bin/env node\n",
+       },
+       define: {
++        // Internal builds only (TESSAYA_INTERNAL=1): loads owner-only persona layers (src/tessaya/PersonaLayers.ts).
++        __TESSAYA_INTERNAL__: JSON.stringify(repoEnv.TESSAYA_INTERNAL?.trim() === "1"),
+         __T3CODE_BUILD_CHANNEL__: JSON.stringify(cliBuildChannel),
+         __T3CODE_TELEMETRY_CHANNEL__: JSON.stringify(telemetryChannel),
+         __T3CODE_BUILD_RELAY_URL__: JSON.stringify(repoEnv.T3CODE_RELAY_URL?.trim() ?? ""),
 diff --git a/apps/web/package.json b/apps/web/package.json
 index fd3aca76ad247c3101889df922e29f104f8de909..60ea3fbb1d988dc2e9068f09ad489fb5fe43c30c 100644
 --- a/apps/web/package.json
