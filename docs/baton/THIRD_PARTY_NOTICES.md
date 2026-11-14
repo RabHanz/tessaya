@@ -146,7 +146,7 @@ Code's own dependencies are covered by `third-party-licenses.config.json`. Licen
 - **Rust crates** in `native/baton-dictation`: `transcribe-cpp`, `handy-recorder`, `handy-keys` (MIT, handy-computer);
   `enigo` (MIT); `hound` (Apache-2.0); `serde` and `serde_json` (MIT OR Apache-2.0); `tungstenite` (MIT OR Apache-2.0, Alexey Galakhov and Jason Housley), the WebSocket client to his own recogniser; `windows-rs`, the `windows` crate
   (MIT OR Apache-2.0, Microsoft). Texts: `licences/MIT.txt`, `licences/Apache-2.0.txt`.
-- **r1flash** (`tools/r1flash`, the R1's USB flasher, shipped beside the desktop app and as its own release) is built with
+- **r1flash** (`tools/tessel-flash`, the R1's USB flasher, shipped beside the desktop app and as its own release) is built with
   `go.bug.st/serial` (BSD-3-Clause, Copyright (c) 2014-2026 Cristian Maglie) and `golang.org/x/sys` (BSD-3-Clause, Copyright
   2009 The Go Authors), texts `licences/BSD-3-go-serial.txt` and `licences/BSD-3-go-x-sys.txt`. Its bootrom protocol is a
   port of `bk7231tools` 2.1.2 (MIT, Copyright (c) Kuba Szczodrzyński), text `licences/MIT.txt`.

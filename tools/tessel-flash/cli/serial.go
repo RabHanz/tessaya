@@ -216,15 +216,15 @@ func noPortHint() string {
 	switch runtime.GOOS {
 	case "linux":
 		if ch340WithoutTTY() {
-			return "a CH340 is plugged in but has no port: brltty has claimed it. Remove it with `sudo apt remove brltty` and replug the R1."
+			return "a CH340 is plugged in but has no port: brltty has claimed it. Remove it with `sudo apt remove brltty` and replug the Tessel."
 		}
-		return "plug the R1 in with a data USB cable (some cables carry power only); the CH340 and CP210x drivers are in the kernel."
+		return "plug the Tessel in with a data USB cable (some cables carry power only); the CH340 and CP210x drivers are in the kernel."
 	case "darwin":
-		return "plug the R1 in with a data USB cable. macOS 11+ has the CH340 driver built in; a CP210x board needs the Silicon Labs VCP driver."
+		return "plug the Tessel in with a data USB cable. macOS 11+ has the CH340 driver built in; a CP210x board needs the Silicon Labs VCP driver."
 	case "windows":
-		return "plug the R1 in with a data USB cable. If Device Manager shows it without a COM port, install WCH's CH341SER driver (or Silicon Labs' CP210x driver)."
+		return "plug the Tessel in with a data USB cable. If Device Manager shows it without a COM port, install WCH's CH341SER driver (or Silicon Labs' CP210x driver)."
 	}
-	return "plug the R1 in with a data USB cable."
+	return "plug the Tessel in with a data USB cable."
 }
 
 func ch340WithoutTTY() bool {

@@ -1,6 +1,6 @@
 // Signs one release file with the R1 release key, as the firmware's images are signed: ECDSA P-256 with SHA-256 over
-// the exact bytes, raw r||s in hex, into FILE.sig. The desktop checks r1flash's SHA256SUMS this way before running it.
-//   R1_OTA_SIGNING_KEY=<PEM or hex scalar> node tools/r1flash/sign.mjs tools/r1flash/dist/SHA256SUMS
+// the exact bytes, raw r||s in hex, into FILE.sig. The desktop checks tessel-flash's SHA256SUMS this way before running it.
+//   R1_OTA_SIGNING_KEY=<PEM or hex scalar> node tools/tessel-flash/sign.mjs tools/tessel-flash/dist/SHA256SUMS
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 

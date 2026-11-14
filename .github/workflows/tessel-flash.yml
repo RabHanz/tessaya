@@ -1,17 +1,18 @@
-name: r1flash
+name: tessel-flash
 
 on:
   pull_request:
-    paths: ["tools/r1flash/**", ".github/workflows/r1flash.yml"]
+    paths: ["tools/tessel-flash/**", ".github/workflows/tessel-flash.yml"]
   push:
-    tags: ["r1flash-v*"]
+    # New releases are tessel-flash-v*; r1flash-v* stays so an old tag can be rebuilt.
+    tags: ["tessel-flash-v*", "r1flash-v*"]
 
 permissions:
   contents: read
 
 defaults:
   run:
-    working-directory: tools/r1flash
+    working-directory: tools/tessel-flash
 
 jobs:
   test:
@@ -21,8 +22,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: tools/r1flash/go.mod
-          cache-dependency-path: tools/r1flash/go.sum
+          go-version-file: tools/tessel-flash/go.mod
+          cache-dependency-path: tools/tessel-flash/go.sum
       - name: Format
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - run: go vet ./...
@@ -32,7 +33,7 @@ jobs:
         run: GOOS=js GOARCH=wasm go build ./core/...
 
   build:
-    if: startsWith(github.ref, 'refs/tags/r1flash-v')
+    if: startsWith(github.ref, 'refs/tags/tessel-flash-v') || startsWith(github.ref, 'refs/tags/r1flash-v')
     needs: test
     strategy:
       matrix:
@@ -49,8 +50,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: tools/r1flash/go.mod
-          cache-dependency-path: tools/r1flash/go.sum
+          go-version-file: tools/tessel-flash/go.mod
+          cache-dependency-path: tools/tessel-flash/go.sum
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
@@ -59,13 +60,14 @@ jobs:
           CGO_CFLAGS: ${{ matrix.cflags }}
           CGO_LDFLAGS: ${{ matrix.cflags }}
         run: |
-          version="${GITHUB_REF_NAME#r1flash-v}"
-          go build -trimpath -ldflags "-s -w -X github.com/RabHanz/tessaya/tools/r1flash/cli.Version=${version}" \
-            -o "dist/r1flash-${GOOS}-${GOARCH}${{ matrix.ext }}" .
+          tool="${GITHUB_REF_NAME%-v*}"
+          version="${GITHUB_REF_NAME#"$tool"-v}"
+          go build -trimpath -ldflags "-s -w -X github.com/RabHanz/tessaya/tools/tessel-flash/cli.Version=${version}" \
+            -o "dist/${tool}-${GOOS}-${GOARCH}${{ matrix.ext }}" .
       - uses: actions/upload-artifact@v4
         with:
-          name: r1flash-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: tools/r1flash/dist/*
+          name: flash-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: tools/tessel-flash/dist/*
 
   release:
     needs: build
@@ -76,11 +78,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: tools/r1flash/dist
+          path: tools/tessel-flash/dist
           merge-multiple: true
       - name: Checksums
-        run: cd dist && sha256sum r1flash-* > SHA256SUMS
-      # The desktop downloads r1flash on first use and checks SHA256SUMS against the R1 release key.
+        run: cd dist && sha256sum *-linux-* *-windows-* *-darwin-* > SHA256SUMS
+      # The desktop downloads tessel-flash on first use and checks SHA256SUMS against the R1 release key.
       - name: Sign the checksums
         working-directory: .
         env:
@@ -91,11 +93,11 @@ jobs:
           if [ -z "$R1_OTA_SIGNING_KEY" ]; then
             echo "::warning::R1_OTA_SIGNING_KEY is not set: publishing without SHA256SUMS.sig"
           else
-            node tools/r1flash/sign.mjs tools/r1flash/dist/SHA256SUMS
+            node tools/tessel-flash/sign.mjs tools/tessel-flash/dist/SHA256SUMS
           fi
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* --title "r1flash ${GITHUB_REF_NAME#r1flash-v}" \
+          gh release create "$GITHUB_REF_NAME" dist/* --title "${GITHUB_REF_NAME%-v*} ${GITHUB_REF_NAME##*-v}" \
             --notes-file README.md

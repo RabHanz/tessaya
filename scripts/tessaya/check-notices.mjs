@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fails when something Tessaya's own code ships or downloads has no licence entry (public release checklist).
-// Looks at: the dependencies of packages/baton-*, apps/desktop, the Rust crates of native/baton-dictation, r1flash's Go
+// Looks at: the dependencies of packages/baton-*, apps/desktop, the Rust crates of native/baton-dictation, tessel-flash's Go
 // modules, the model files it ships, and the fonts in the window. Each must be in docs/baton/notices.json, named in
 // THIRD_PARTY_NOTICES.md, and point at a licence text that exists.  Plain Node:  node scripts/tessaya/check-notices.mjs
 import * as NodeFS from "node:fs";
@@ -51,8 +51,8 @@ export const wanted = (root) => {
       if (m) keys.add(`crate:${m[1]}`);
     }
   }
-  // r1flash's Go modules (go.mod `require` lines), and the bootrom protocol it ports from bk7231tools.
-  const gomod = read(root, "tools/r1flash/go.mod") ?? "";
+  // tessel-flash's Go modules (go.mod `require` lines), and the bootrom protocol it ports from bk7231tools.
+  const gomod = read(root, "tools/tessel-flash/go.mod") ?? "";
   for (const m of gomod.matchAll(/^\s*(?:require\s+)?([a-z0-9.-]+\.[a-z]+\/[^\s]+)\s+v[^\s]+/gm))
     keys.add(`go:${m[1]}`);
   if (gomod !== "") keys.add("port:bk7231tools");

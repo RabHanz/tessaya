@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/RabHanz/tessaya/tools/r1flash/core"
+	"github.com/RabHanz/tessaya/tools/tessel-flash/core"
 )
 
 // menu is the terminal UI: numbered choices that run the same commands as the CLI.
 func (a *app) menu() int {
-	fmt.Fprintln(a.out.w, "r1flash "+Version+": update, repair and configure a Tessaya R1 over USB.")
+	fmt.Fprintln(a.out.w, "tessel-flash "+Version+": update, repair and configure a Tessel over USB.")
 	if a.o.port == "" {
 		if name := a.choosePort(); name == "" {
 			return 2
@@ -26,7 +26,7 @@ func (a *app) menu() int {
 		run   func() int
 	}{
 		{"Update or repair (the recommended signed release)", func() int { return a.flash(false) }},
-		{"Repair a stuck or boot-looping R1", func() int { return a.flash(true) }},
+		{"Repair a stuck or boot-looping Tessel", func() int { return a.flash(true) }},
 		{"Install another signed release", func() int {
 			v := a.chooseVersion()
 			if v == "" {
@@ -113,7 +113,7 @@ func (a *app) choosePort() string {
 		return r1[0].Name
 	}
 	if len(r1) == 0 {
-		fmt.Fprintln(a.out.w, "No R1 found. "+noPortHint())
+		fmt.Fprintln(a.out.w, "No Tessel found. "+noPortHint())
 		r1 = ports
 	}
 	for i, p := range r1 {

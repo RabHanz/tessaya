@@ -1,4 +1,4 @@
-module github.com/RabHanz/tessaya/tools/r1flash
+module github.com/RabHanz/tessaya/tools/tessel-flash
 
 go 1.25.0
 
