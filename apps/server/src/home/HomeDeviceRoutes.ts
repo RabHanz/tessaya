@@ -116,8 +116,12 @@ export const routes = HttpRouter.use((router) =>
       "GET",
       R1_HUB_PATH,
       Effect.gen(function* () {
-        const socket = yield* Effect.flatMap(HttpServerRequest.HttpServerRequest, (r) => r.upgrade);
-        yield* runHubSocket(socket, hub).pipe(Effect.scoped);
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        // Through the tunnel the peer is cloudflared on loopback; the caller is in the header.
+        const remote =
+          request.headers["cf-connecting-ip"] ?? Option.getOrUndefined(request.remoteAddress);
+        const socket = yield* request.upgrade;
+        yield* runHubSocket(socket, hub, remote).pipe(Effect.scoped);
         return HttpServerResponse.empty();
       }).pipe(Effect.catchCause(() => Effect.succeed(HttpServerResponse.empty({ status: 400 })))),
     );

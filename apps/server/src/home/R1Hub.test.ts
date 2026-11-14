@@ -18,7 +18,15 @@ import type * as NetAddress from "effect/net/NetAddress";
 import { expect } from "vite-plus/test";
 
 import type { R1Device } from "./HomeAssistantService.ts";
-import { deviceGrant, makeHub, runHubSocket, serveTcp, tcpBind, type HubGrant } from "./R1Hub.ts";
+import {
+  deviceGrant,
+  makeHub,
+  makeLoginGuard,
+  runHubSocket,
+  serveTcp,
+  tcpBind,
+  type HubGrant,
+} from "./R1Hub.ts";
 import type * as NodeNet from "node:net";
 
 const KEY = "k".repeat(32);
@@ -205,6 +213,51 @@ it.effect("never echoes a bridge's own messages back to it, so two brokers canno
     // Everyone else's messages still reach it.
     hub.publish("freya/r1/r1-a/cmd/led", "red");
     expect(bridge.publishes()).toEqual(["freya/r1/r1-a/cmd/led=red"]);
+  }),
+);
+
+it("slows a fast caller and locks out a guesser, per address, so the R1 itself is never locked out", () => {
+  const guard = makeLoginGuard();
+  for (let i = 0; i < 20; i++) expect(guard.admit("203.0.113.9", 1_000)).toBeNull();
+  expect(guard.admit("203.0.113.9", 1_000)).toBe("too-fast");
+  // A minute later it may try again.
+  expect(guard.admit("203.0.113.9", 62_000)).toBeNull();
+  for (let i = 0; i < 9; i++) expect(guard.failed("203.0.113.9", 62_000)).toBe(false);
+  expect(guard.failed("203.0.113.9", 62_000)).toBe(true);
+  expect(guard.admit("203.0.113.9", 63_000)).toBe("locked");
+  // The R1's own address is untouched, and the lock ends after 15 minutes.
+  expect(guard.admit("192.168.1.30", 63_000)).toBeNull();
+  expect(guard.admit("203.0.113.9", 62_000 + 15 * 60_000 + 1)).toBeNull();
+  // A good login clears the count of wrong ones.
+  for (let i = 0; i < 9; i++) guard.failed("192.168.1.30", 70_000);
+  guard.succeeded("192.168.1.30");
+  expect(guard.failed("192.168.1.30", 70_000)).toBe(false);
+});
+
+it.effect("refuses even the right key from an address that kept guessing", () =>
+  Effect.gen(function* () {
+    const hub = hubForTest();
+    const from = (remote: string) => {
+      let code = -1;
+      const session = hub.open({ send: (b) => void (code = b[3]!), close: () => {}, remote });
+      return { session, code: () => code };
+    };
+    for (let i = 0; i < 10; i++) {
+      const guess = from("203.0.113.9");
+      yield* guess.session.receive(
+        connectPacket({ clientId: `g${i}`, user: "r1-a", pass: `guess-${i}`, keepAliveS: 60 }),
+      );
+    }
+    const late = from("203.0.113.9");
+    yield* late.session.receive(
+      connectPacket({ clientId: "x", user: "r1-a", pass: KEY, keepAliveS: 60 }),
+    );
+    expect(late.code()).toBe(5);
+    const r1 = from("192.168.1.30");
+    yield* r1.session.receive(
+      connectPacket({ clientId: "r1-a", user: "r1-a", pass: KEY, keepAliveS: 60 }),
+    );
+    expect(r1.code()).toBe(0);
   }),
 );
 
