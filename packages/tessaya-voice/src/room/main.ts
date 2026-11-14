@@ -166,8 +166,11 @@ const health = (url: string, token: string) =>
     ws.addEventListener("error", () => done(null));
   });
 
+/** Faint noise, not silence, so a recogniser really decodes: that is what is slow after a quiet spell. */
+const WARM_CLIP = Int16Array.from({ length: 9_600 }, (_, i) => ((i * 7919) % 401) - 200);
+
 /** His recognisers (`R1_RECOGNIZERS=url=tokenfile,...`), each turn to the quickest lately (recognisers.ts). */
-const recognisers = () => {
+const recognisers = (online: () => boolean) => {
   const list = (
     process.env["R1_RECOGNIZERS"] ??
     `${env("R1_RECOGNIZER_URL")}=${env("R1_RECOGNIZER_TOKEN_FILE")}`
@@ -184,6 +187,23 @@ const recognisers = () => {
   };
   void refresh();
   setInterval(() => void refresh(), 2_000);
+  const timed = (url: string, ms: number) => {
+    states = states.map((s) =>
+      s.url === url ? { ...s, recent: noteTime(s.recent, ms, Date.now()) } : s,
+    );
+  };
+  // After a quiet minute every time is stale and her wake check went to the first listed, the laptop: 2.2 s at 21:38
+  // on 14 Nov, against 0.5 s here. While an R1 is online each one decodes faint noise every 45 s, which keeps it quick
+  // and its time current.
+  setInterval(() => {
+    if (!online()) return;
+    for (const r of list) {
+      const turn = recogniserTurn(r.url, r.token);
+      const at = performance.now();
+      turn.feed(WARM_CLIP);
+      void turn.finish().then(() => turn.failed() || timed(r.url, performance.now() - at));
+    }
+  }, 45_000);
   return (): RecogniserTurn =>
     turnAcross(
       (tried) => {
@@ -195,11 +215,7 @@ const recognisers = () => {
       },
       (url, ms, failed, next) => {
         // A failed one counts as very slow, so the next turns leave it alone for a while (STALE_MS).
-        states = states.map((s) =>
-          s.url === url
-            ? { ...s, recent: noteTime(s.recent, failed ? 30_000 : ms, Date.now()) }
-            : s,
-        );
+        timed(url, failed ? 30_000 : ms);
         const host = url.replace(/^ws:\/\//, "");
         log(
           failed
@@ -603,6 +619,8 @@ const main = async () => {
           capBytes: Number(process.env["R1_WAKE_CAPTURE_MB"] ?? "1024") * 1_048_576,
           log,
         });
+  /** The R1s whose last word on `state/online` was "1": only then are the recognisers kept warm. */
+  const online = new Set<string>();
   let room: ReturnType<typeof createRoomVoice> | null = null;
   const mqtt = connectMqtt({
     // A broker URL (the server's `ws://<host>:<port>/api/r1/mqtt`), or the old host and port.
@@ -651,6 +669,8 @@ const main = async () => {
       "freya/r1/+/event/voice/flush",
     ],
     onMessage: (t, p) => {
+      const seen = /^freya\/r1\/([^/]+)\/state\/online$/.exec(t);
+      if (seen !== null) String(p).trim() === "1" ? online.add(seen[1]!) : online.delete(seen[1]!);
       const started = /^freya\/r1\/([^/]+)\/event\/session\/start$/.exec(t);
       if (started !== null) capture?.session(started[1]!);
       // voice/profile[/<member>]: a shared profile (retained); empty on a member's topic clears that member.
@@ -711,7 +731,7 @@ const main = async () => {
       embedding: model("embedding_model.onnx"),
       wakes: list.map((w) => ({ word: w.word, path: w.file, threshold: w.threshold })),
     });
-  const confirmWith = recognisers();
+  const recognise = recognisers(() => online.size > 0);
   const wake =
     words.length === 0 || !NodeFS.existsSync(model("melspectrogram.onnx"))
       ? undefined
@@ -719,7 +739,7 @@ const main = async () => {
           words,
           scorer: scorerFor(words),
           confirm: (pcm) => {
-            const turn = confirmWith();
+            const turn = recognise();
             turn.feed(pcm);
             return turn.finish();
           },
@@ -735,9 +755,6 @@ const main = async () => {
           ...(capture === undefined ? {} : { capture }),
         });
   startCameraRelay();
-  const recognise = recognisers();
-  // Faint noise, not silence, so the recogniser really decodes: that is what is slow after a quiet spell.
-  const warmClip = Int16Array.from({ length: 9_600 }, (_, i) => ((i * 7919) % 401) - 200);
   room = createRoomVoice(
     {
       ...(wake === undefined ? {} : { wake }),
@@ -754,7 +771,7 @@ const main = async () => {
       recognise,
       warm: () => {
         const turn = recognise();
-        turn.feed(warmClip);
+        turn.feed(WARM_CLIP);
         void turn.finish().catch(() => undefined);
       },
       speaker: async (pcm) => {
