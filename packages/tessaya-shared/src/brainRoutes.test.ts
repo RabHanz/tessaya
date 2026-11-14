@@ -1,6 +1,8 @@
+import { BrainCredential } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { brainRoute, keyRefusal, type BrainSettings } from "./brainRoutes.ts";
+import { brainRoute, credentialOf, keyRefusal, type BrainSettings } from "./brainRoutes.ts";
 
 const settings = (over: Partial<BrainSettings> = {}): BrainSettings => ({
   brainCredentials: {},
@@ -71,5 +73,20 @@ describe("brain routes", () => {
     expect(
       keyRefusal(settings({ brainKeyRoles: { anthropic: [] } }), "anthropic", "cleanup"),
     ).toMatch(/serves: nothing/);
+    // A key he has not given roles serves nothing, so naming it on a row never spends it.
+    expect(keyRefusal(settings(), "openai", "background")).toMatch(/serves: nothing/);
+    expect(
+      keyRefusal(settings({ brainKeyRoles: { openai: ["background"] } }), "openai", "background"),
+    ).toBeNull();
+  });
+
+  it("reads any provider's instance or key, and nothing it can't name", () => {
+    const valid = Schema.is(BrainCredential);
+    expect(
+      ["instance:codex", "apiKey:openai", "apiKey:google", "subscription:work"].every(valid),
+    ).toBe(true);
+    expect(["apiKey:mistral", "instance:", "instance:-x", "subscription:"].some(valid)).toBe(false);
+    expect(credentialOf("instance:codex")).toEqual({ kind: "instance", instanceId: "codex" });
+    expect(credentialOf("apiKey:openai")).toEqual({ kind: "apiKey", key: "openai" });
   });
 });

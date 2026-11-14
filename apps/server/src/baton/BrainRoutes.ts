@@ -6,7 +6,12 @@
 import * as NodePath from "node:path";
 
 import { deferNearLimit, instancePool } from "@t3tools/tessaya-shared/accountRotation";
-import { brainRoute, credentialLabel, type BrainRoute } from "@t3tools/tessaya-shared/brainRoutes";
+import {
+  brainRoute,
+  credentialLabel,
+  credentialOf,
+  type BrainRoute,
+} from "@t3tools/tessaya-shared/brainRoutes";
 import { BATON_DEFAULT_CLAUDE_INSTANCE, ProviderDriverKind } from "@t3tools/tessaya-contracts";
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
 import { DEFAULT_SERVER_SETTINGS, type BrainRole } from "@t3tools/contracts";
@@ -50,7 +55,10 @@ export const onSubscription = (
   route: BrainRoute,
 ): { readonly model: string } | { readonly refused: string } => {
   // shortcut: only the server's own Claude login ("") runs one-shots; named accounts arrive with the warm pool (B1b).
-  const own = [route.use, route.fallback].find((c) => c === "subscription");
+  // Its default instance is the same login; any other instance is another provider or config dir this path can't run.
+  const own = [route.use, route.fallback].find(
+    (c) => c === "subscription" || c === `instance:${BATON_DEFAULT_CLAUDE_INSTANCE}`,
+  );
   return own === undefined
     ? {
         refused: `${route.role} is routed to ${credentialLabel(route.use)}, which this path can't use`,
@@ -92,11 +100,19 @@ export const accountPause = Effect.fn("BrainRoutes.accountPause")(function* (ins
   return read === null ? null : deferNearLimit(read);
 });
 
-/** Why a role's call waits instead of running now (B-031), or null: background work on the server's own subscription. */
+/** Why a role's call waits instead of running now (B-031), or null: background work on its row's subscription or instance. */
 export const deferredRole = Effect.fn("BrainRoutes.deferredRole")(function* (role: BrainRole) {
   if (!DEFERRABLE.has(role)) return null;
-  const defer = yield* accountPause(BATON_DEFAULT_CLAUDE_INSTANCE);
+  const routed = yield* routeFor(role).pipe(Effect.option);
+  if (Option.isNone(routed)) return null;
+  const route = routed.value;
+  const credential = credentialOf(route.use);
+  // An API key is paid per call and has no window to wait for.
+  if (credential.kind === "apiKey") return null;
+  const defer = yield* accountPause(
+    credential.kind === "instance" ? credential.instanceId : BATON_DEFAULT_CLAUDE_INSTANCE,
+  );
   return defer === null
     ? null
-    : `${role} waits for the reset${defer.until === null ? "" : ` at ${defer.until}`}: the subscription has ${Math.round(defer.headroomPercent)}% left and no other login has room`;
+    : `${role} waits for the reset${defer.until === null ? "" : ` at ${defer.until}`}: ${credentialLabel(route.use)} has ${Math.round(defer.headroomPercent)}% left and no other login has room`;
 });
