@@ -77,6 +77,7 @@ const ROOM_TOOLS = [
   "tessaya_usage_report",
   "tessaya_whos_home",
   "tessaya_preference_set",
+  "tessaya_persona_handoff",
   "tessaya_wake_words",
   "tessaya_wake_word_change",
   "tessaya_ask",
@@ -321,7 +322,7 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
               ? JSON.stringify({ kept: "noted", id: null, line: replayKept(input, "text") })
               : name === "tessaya_preference_set"
                 ? JSON.stringify({ line: replayKept(input, "value") })
-                : name === "tessaya_wake_word_change"
+                : name === "tessaya_wake_word_change" || name === "tessaya_persona_handoff"
                   ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
                   : name === "tessaya_memory_forget"
                     ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })

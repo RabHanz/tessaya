@@ -555,6 +555,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_memory_remember", "tessaya_preference_set"],
   },
   {
+    // CS8: the hand-off tool, in his own words.
+    id: "persona-handoff",
+    proves: ["tessaya_persona_handoff"],
+    said: ["Let Freya take this over."],
+    uses: [["tessaya_persona_handoff"]],
+    clean: ["tessaya_persona_handoff"],
+  },
+  {
     id: "preference-set",
     proves: ["tessaya_preference_set"],
     said: ["Call me Rab from now on."],

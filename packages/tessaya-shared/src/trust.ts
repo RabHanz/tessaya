@@ -85,6 +85,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "what_happened",
       "morning_brief",
       "trust_show",
+      // Who answers their own conversation: anyone may pass it to another persona.
+      "tessaya_persona_handoff",
     ].map((t) => [t, "general" as const]),
   ),
   ...Object.fromEntries(

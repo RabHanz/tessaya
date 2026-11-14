@@ -344,6 +344,22 @@ const PreferenceSetTool = Tool.make("tessaya_preference_set", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const PersonaHandoffTool = Tool.make("tessaya_persona_handoff", {
+  ...shared,
+  description:
+    'Hand this conversation to another persona, in whatever words they ask ("Freya, take this over", "let Onyx deal with it", "pass me to Sebastian"), or back to whoever had it before (`back`, for "give it back", "I want Tessaya again"): the named persona answers from now on, with the same conversation. When the persona named is the one speaking, `to` is that persona. Not for a message to a persona ("tell Freya I said hi") or a question about one. Returns a line to follow.',
+  parameters: Schema.Struct({
+    to: Schema.optional(Schema.String.check(Schema.isMaxLength(64))),
+    back: Schema.optional(Schema.Boolean),
+  }),
+  success: Schema.Struct({ line: Schema.String, persona: Schema.optional(Schema.String) }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const WakeWordsTool = Tool.make("tessaya_wake_words", {
   ...shared,
   description:
@@ -641,6 +657,7 @@ export const TessayaToolkit = Toolkit.make(
   PromptLabTool,
   WhosHomeTool,
   PreferenceSetTool,
+  PersonaHandoffTool,
   WakeWordsTool,
   WakeWordChangeTool,
   RulesTool,

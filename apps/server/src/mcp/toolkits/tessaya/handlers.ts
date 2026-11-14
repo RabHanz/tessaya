@@ -412,6 +412,9 @@ export const layer = McpToolAccess.toLayer(
           ),
         ),
       ),
+      tessaya_persona_handoff: McpToolAccess.writes((input) =>
+        call(withTurn((turn) => turn.handOff(input))),
+      ),
       // Her home server's record when this one has a home (TessayaWake forwards), so every vessel says the same.
       tessaya_wake_words: McpToolAccess.reads(() =>
         call(

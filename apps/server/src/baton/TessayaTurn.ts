@@ -313,10 +313,6 @@ export const boardLine = (
   return line.length <= BOARD_MAX_CHARS ? line : `${line.slice(0, BOARD_MAX_CHARS - 1)}…`;
 };
 
-/** "Freya, take this over": the named persona takes the conversation from whoever had it (CS8); "take it back" too. */
-export const TAKE_OVER =
-  /\b(?:take (?:this|it|that|the rest) (?:over|back|from here)|take over|over to you)\b/i;
-
 export const handOffLine = (from: string): string =>
   `${from} handed this conversation to you: carry on from where it is, without a greeting or starting over.`;
 
@@ -414,6 +410,11 @@ export class TessayaTurn extends Context.Service<
     ) => Effect.Effect<LearnResult | null>;
     /** Her live threads, one persona's or all, newest first: the base of the presence board (CS2). */
     readonly threads: (persona?: string) => Effect.Effect<ReadonlyArray<LiveThread>>;
+    /** The model's hand-off of this turn's conversation to another persona, or back (CS8). */
+    readonly handOff: (input: {
+      readonly to?: string | undefined;
+      readonly back?: boolean | undefined;
+    }) => Effect.Effect<{ readonly line: string; readonly persona?: string }>;
   }
 >()("t3/baton/TessayaTurn") {}
 
@@ -574,30 +575,76 @@ export const make = Effect.gen(function* () {
           ? turn.member
           : null;
     if (persona !== null && Option.isSome(current)) yield* current.value.set(conversation, persona);
-    // A hand-off moves the live row: the persona that had this conversation leaves it, its start time stays.
-    const from =
-      persona !== null && TAKE_OVER.test(turn.text)
-        ? [...live.entries()]
-            .filter(
-              ([, t]) =>
-                t.conversation === conversation &&
-                t.persona !== persona &&
-                now - t.lastAt <= CONVERSATION_IDLE_MS,
-            )
-            .toSorted(([, a], [, b]) => b.lastAt - a.lastAt)
-        : [];
-    for (const [key] of from) live.delete(key);
-    const opened =
-      held === undefined || now - held.lastAt > CONVERSATION_IDLE_MS ? now : held.openedAt;
     live.set(id, {
       persona,
       conversation,
       vessel: turn.vessel,
       person,
-      openedAt: Math.min(opened, ...from.map(([, t]) => t.openedAt)),
+      openedAt:
+        held === undefined || now - held.lastAt > CONVERSATION_IDLE_MS ? now : held.openedAt,
       lastAt: now,
     });
-    return from[0]?.[1].persona ?? null;
+  });
+
+  // Who had each conversation before its last hand-off (the way back), and the hand-off its new persona is told of once.
+  const handedFrom = new Map<string, string>();
+  const handedTo = new Map<string, { readonly to: string; readonly from: string }>();
+  /**
+   * The model's hand-off (CS8, persona_handoff): `to` takes this turn's conversation, or with `back` whoever had it
+   * before. Every other persona's live row in it moves to `to`, keeping when it opened.
+   */
+  const handOff = Effect.fn("TessayaTurn.handOff")(function* (input: {
+    readonly to?: string | undefined;
+    readonly back?: boolean | undefined;
+  }) {
+    const origin = yield* TurnOrigin;
+    if (origin === null) return { line: "Only a conversation can be handed over." };
+    const conversation = conversationKey({
+      vessel: origin,
+      text: "",
+      speaker: origin.speaker,
+      member: origin.member,
+    });
+    const { personas } = yield* personasList;
+    const wanted =
+      input.back === true ? handedFrom.get(conversation) : input.to?.trim().toLowerCase();
+    const target = personas.find(
+      (p) => wanted !== undefined && (p.id === wanted || p.name.toLowerCase() === wanted),
+    );
+    if (target === undefined)
+      return {
+        line:
+          input.back === true
+            ? "Nothing was handed over in this conversation to give back."
+            : `There is no persona called ${input.to ?? "that"}. Say who should take it.`,
+      };
+    const now = yield* Clock.currentTimeMillis;
+    const rows = [...live.entries()]
+      .filter(([, t]) => t.conversation === conversation && now - t.lastAt <= CONVERSATION_IDLE_MS)
+      .toSorted(([, a], [, b]) => b.lastAt - a.lastAt);
+    const from =
+      rows.find(([, t]) => t.persona !== null && t.persona !== target.id)?.[1].persona ??
+      (origin.persona !== target.id ? (origin.persona ?? null) : null);
+    const mine = rows.find(([, t]) => t.persona === target.id)?.[1] ?? rows[0]?.[1];
+    for (const [key, t] of rows) if (t.persona !== target.id) live.delete(key);
+    live.set(`${target.id}|${conversation}`, {
+      persona: target.id,
+      conversation,
+      vessel: mine?.vessel ?? { kind: origin.kind, id: origin.id },
+      person: mine?.person ?? null,
+      openedAt: Math.min(now, ...rows.map(([, t]) => t.openedAt)),
+      lastAt: now,
+    });
+    if (Option.isSome(current)) yield* current.value.set(conversation, target.id);
+    const fromName = personas.find((p) => p.id === from)?.name ?? "the persona before";
+    if (from !== null) handedFrom.set(conversation, from);
+    // The persona speaking now carries on itself; another one hears it on its next turn.
+    if (origin.persona === target.id) return { line: handOffLine(fromName), persona: target.id };
+    handedTo.set(conversation, { to: target.id, from: fromName });
+    return {
+      line: `${target.name} has this conversation now: say so in a few words.`,
+      persona: target.id,
+    };
   });
   const threads = Effect.fn("TessayaTurn.threads")(function* (persona?: string) {
     const now = yield* Clock.currentTimeMillis;
@@ -616,7 +663,7 @@ export const make = Effect.gen(function* () {
 
   const begin = Effect.fn("TessayaTurn.begin")(function* (raw: TurnEnvelope) {
     const turn = yield* withMember(raw);
-    const handedFrom = yield* touchThread(turn);
+    yield* touchThread(turn);
     const view = {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
       // Persona x person (P7): a known person's turn reads none of the persona's notes from someone else.
@@ -651,12 +698,13 @@ export const make = Effect.gen(function* () {
       .filter((l) => l !== "")
       .join(" ");
     const board = yield* boardFor(turn, member);
+    const key = conversationKey(turn);
+    const pending = handedTo.get(key);
     const handed =
-      handedFrom == null
-        ? ""
-        : handOffLine(
-            (yield* personasList).personas.find((p) => p.id === handedFrom)?.name ?? handedFrom,
-          );
+      pending !== undefined && pending.to === turn.persona && turn.rehearsal !== true
+        ? handOffLine(pending.from)
+        : "";
+    if (handed !== "") handedTo.delete(key);
     return {
       notice: waiting,
       block: [here, handed, board, standing.block, extra, nameOnceLine(turn.nameOnce)]
@@ -986,6 +1034,7 @@ export const make = Effect.gen(function* () {
     whoIsHome,
     comingUp: comingUpNow,
     threads,
+    handOff,
   });
 });
 
