@@ -30,6 +30,8 @@ export interface RoomCase {
   readonly noNameOpen?: boolean;
   /** What the turn tells her to say now (TessayaTurn.begin's notice: messages that waited). */
   readonly notice?: string;
+  /** The turn's block as TessayaTurn.begin gives it (the where-you-are and presence board lines). */
+  readonly memory?: string;
 }
 
 export const SPECIALISTS = DEFAULT_OS_PACK.personas.filter((p) => !p.lead).map((p) => p.name);
@@ -218,5 +220,33 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     verified: true,
     calls: ["tessaya_preference_set"],
     callsAtMost: { tessaya_wake_word_change: 0 },
+  },
+  // CS3: her other live conversations come up only when they bear on what he asks, and never what was said.
+  {
+    id: "board-relevant",
+    source: "PERSONA-MODEL-AUDIT CS3: he asks where someone is while Freya is talking to her",
+    said: ["is Sara around?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study. Your other conversations now (mention one only if it matters here): Freya with Sara on the kitchen R1 (2 min ago).",
+    lastSays: [/\b(kitchen|Freya)\b/i],
+  },
+  {
+    id: "board-quiet",
+    source: "PERSONA-MODEL-AUDIT CS3: the board does not leak into an unrelated answer",
+    said: ["what's the capital of Portugal?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study. Your other conversations now (mention one only if it matters here): Freya with Sara on the kitchen R1 (2 min ago).",
+    lastSays: [/Lisbon/i, /^(?![\s\S]*\b(Sara|kitchen|Freya)\b)/i],
+  },
+  {
+    id: "board-count-only",
+    source:
+      "PERSONA-MODEL-AUDIT CS3: a member's turn gets only a count, and she says nothing of who or where",
+    said: ["who else are you talking to right now?"],
+    memory:
+      "You are speaking through R1, in the study. You are also in 2 other conversations now; say nothing of them.",
+    lastSays: [/^(?![\s\S]*\b(Sara|Maya|kitchen|study R1|phone)\b)/i],
   },
 ];
