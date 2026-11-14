@@ -4,6 +4,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { phoneManifest, phoneValues } from "@t3tools/baton-shared/phoneDevice";
+import { r1EasyAction, type R1UpdatesView } from "@t3tools/baton-shared/r1Firmware";
 import * as Device from "expo-device";
 import {
   DEVICE_SPEAKER_OUTPUTS,
@@ -195,7 +196,7 @@ function HardwareSections({
   );
   // Read once and after each change, not on every refresh: it asks the tunnel for its address.
   // Firmware updates from this server (R1Updates): each R1's line, including why one stopped.
-  const [updates, setUpdates] = useState<ReadonlyArray<{ id: string; line: string }>>([]);
+  const [updatesView, setUpdatesView] = useState<R1UpdatesView | null>(null);
   const readReach = async () => {
     const result = await devicesCall({
       environmentId,
@@ -203,14 +204,13 @@ function HardwareSections({
     });
     if (result._tag === "Success" && result.value.ok)
       setReach(result.value.value as { away: boolean; offered: boolean; line: string });
+  };
+  const readUpdates = async () => {
     const upd = await devicesCall({
       environmentId,
       input: { kind: "read", op: "updates", args: {} },
     });
-    if (upd._tag === "Success" && upd.value.ok)
-      setUpdates(
-        (upd.value.value as { devices: ReadonlyArray<{ id: string; line: string }> }).devices,
-      );
+    if (upd._tag === "Success" && upd.value.ok) setUpdatesView(upd.value.value as R1UpdatesView);
   };
   const refresh = async () => {
     void publishPhone();
@@ -220,6 +220,8 @@ function HardwareSections({
     });
     if (result._tag === "Success" && result.value.ok)
       setView(result.value.value as DevicesOverview);
+    // In memory on the server: an install's progress shows as it goes.
+    await readUpdates();
   };
   const reading =
     view?.devices.some((d) => d.enrol?.phase === "reading" || d.enrol?.phase === "saving") === true;
@@ -284,9 +286,72 @@ function HardwareSections({
             ))}
           </Row>
         )}
-        {updates.map((u) => (
-          <Row key={`fw-${u.id}`} divider title={`Firmware · ${u.id}`} description={u.line} />
-        ))}
+        {(updatesView?.devices ?? []).map((u) => {
+          const online = devices.find((d) => d.id === u.id)?.online === true;
+          const recommended =
+            updatesView?.releases.find((r) => r.recommended)?.version ??
+            updatesView?.pinned ??
+            null;
+          const easy = r1EasyAction(online, u, recommended);
+          return (
+            <Row
+              key={`fw-${u.id}`}
+              divider
+              title={`Firmware · ${u.id} · ${u.firmware ?? "not reported"}`}
+              description={
+                easy.kind === "usb"
+                  ? "It's offline. If it doesn't come back, plug it into a computer with the Tessaya desktop app or r1flash to repair it."
+                  : u.line
+              }
+            >
+              {easy.kind === "update" || easy.kind === "busy" || easy.kind === "current" ? (
+                <ControlPill
+                  variant="primary"
+                  label={
+                    easy.kind === "update"
+                      ? `Update to ${easy.version}`
+                      : easy.kind === "busy"
+                        ? "Updating…"
+                        : "Up to date"
+                  }
+                  accessibilityLabel="Update or repair"
+                  disabled={busy || easy.kind !== "update"}
+                  onPress={() =>
+                    easy.kind === "update" &&
+                    void run("owner", "update", { id: u.id, version: easy.version })
+                  }
+                />
+              ) : null}
+              {u.hold === null ? null : (
+                <ControlPill
+                  variant="pill"
+                  label="Resume automatic updates"
+                  accessibilityLabel="Resume automatic updates"
+                  disabled={busy}
+                  onPress={() => void run("owner", "updateHold", { id: u.id, version: null })}
+                />
+              )}
+              {/* A way back: the recent signed releases other than the one it runs. */}
+              {online && easy.kind !== "busy"
+                ? (updatesView?.releases ?? [])
+                    .filter((r) => r.version !== u.firmware && r.version !== recommended)
+                    .slice(0, 3)
+                    .map((r) => (
+                      <ControlPill
+                        key={r.version}
+                        variant="pill"
+                        label={`Install ${r.version}`}
+                        accessibilityLabel={`Install ${r.version}`}
+                        disabled={busy}
+                        onPress={() =>
+                          void run("owner", "update", { id: u.id, version: r.version })
+                        }
+                      />
+                    ))
+                : null}
+            </Row>
+          );
+        })}
         {devices.map((d) => (
           <Row
             key={d.id}

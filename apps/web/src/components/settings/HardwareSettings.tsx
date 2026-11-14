@@ -18,6 +18,7 @@ import {
   type RegisteredDevice,
 } from "@t3tools/baton-contracts";
 import { accessOf, groupItems, valueText } from "@t3tools/baton-shared/deviceItems";
+import type { R1UpdatesView } from "@t3tools/baton-shared/r1Firmware";
 import {
   DISPLAY_CHOICES,
   EYE_SCREENS,
@@ -74,6 +75,7 @@ import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-fi
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { BodiesSection } from "./BodiesSection";
+import { DeviceUtilitySection } from "./DeviceUtilitySection";
 import { R1SetupSection } from "./R1SetupSection";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -163,9 +165,8 @@ function HardwareSections({
   );
   // Read once and after each change, not on every refresh: it asks the tunnel for its address.
   // Firmware updates from this server (R1Updates): each R1's line, including why one stopped.
-  const [updates, setUpdates] = useState<ReadonlyArray<{ id: string; line: string; kws: string }>>(
-    [],
-  );
+  const [updatesView, setUpdatesView] = useState<R1UpdatesView | null>(null);
+  const updates = updatesView?.devices ?? [];
   // The R1's room voice on this server (R1Loop): its download, then whether it runs.
   const [voice, setVoice] = useState<string | null>(null);
   const readReach = async () => {
@@ -175,15 +176,13 @@ function HardwareSections({
     });
     if (result._tag === "Success" && result.value.ok)
       setReach(result.value.value as { away: boolean; offered: boolean; line: string });
+  };
+  const readUpdates = async () => {
     const upd = await devicesCall({
       environmentId,
       input: { kind: "read", op: "updates", args: {} },
     });
-    if (upd._tag === "Success" && upd.value.ok)
-      setUpdates(
-        (upd.value.value as { devices: ReadonlyArray<{ id: string; line: string; kws: string }> })
-          .devices,
-      );
+    if (upd._tag === "Success" && upd.value.ok) setUpdatesView(upd.value.value as R1UpdatesView);
   };
 
   const refresh = async () => {
@@ -200,6 +199,8 @@ function HardwareSections({
       });
       if (loop._tag === "Success" && loop.value.ok)
         setVoice((loop.value.value as { line: string } | null)?.line ?? null);
+      // In memory on the server: cheap, and an install's progress shows as it goes.
+      await readUpdates();
       onR1(
         environmentId,
         next.devices.some((d) => d.configured),
@@ -353,6 +354,18 @@ function HardwareSections({
           environmentId={environmentId}
         />
       ))}
+
+      <DeviceUtilitySection
+        devices={devices}
+        registry={view?.registry ?? []}
+        updates={updatesView}
+        busy={busy}
+        run={run}
+        call={async (kind, op, args) => {
+          const result = await devicesCall({ environmentId, input: { kind, op, args } });
+          return result._tag === "Success" ? result.value : null;
+        }}
+      />
 
       {(view?.registry ?? []).map((d) => (
         <ManifestDevice
