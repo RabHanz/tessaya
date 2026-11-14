@@ -6,6 +6,7 @@
  * Windows first (D97, D106): capture, speech and paste are `tessaya-voice`, which is packaged
  * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
+import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/baton-shared/household";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -1493,6 +1494,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   /** Members' names for the pill's initial, read when a verified session names someone not read yet. */
   const memberNames = new Map<string, string>();
+  /** His wake-training switch on his server (the owner's is on until he says off), read once and kept in step. */
+  let wakeTraining: boolean | null = null;
+  void input
+    .household?.("preferences", { id: OWNER_MEMBER_ID })
+    .then((r) => {
+      wakeTraining = wakeTrainingOn(OWNER_MEMBER_ID, r.preferences?.["wakeTraining"]);
+    })
+    .catch(() => undefined);
   speakerIdentity.onTurn(() => {
     const member = speakerIdentity.session()?.member;
     if (member == null || memberNames.has(member) || input.household === undefined) return;
@@ -6877,6 +6886,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.keepVoice,
       },
       {
+        id: "v.wakeTraining",
+        section: "Voice recordings",
+        label: "Train her wake words on my voice",
+        hint: "Your enrolment recordings stay on your server to train new personas' wake words. Off deletes them there at once.",
+        kind: "toggle",
+        on: wakeTraining ?? true,
+        disabled: wakeTraining === null,
+      },
+      {
         id: "v.keepDays",
         section: "Voice recordings",
         label: "Delete recordings after",
@@ -8130,6 +8148,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.copyLast") {
       const last = lastReply ?? lastDictation;
       if (last !== null) void Electron.clipboard.writeText(last);
+    } else if (id === "v.wakeTraining" && input.household !== undefined) {
+      void input
+        .household("setPreference", {
+          id: OWNER_MEMBER_ID,
+          key: "wakeTraining",
+          value: on ? "on" : "off",
+        })
+        .then((r) => {
+          if (r.status === "done") wakeTraining = on;
+          home.refresh();
+        })
+        .catch(() => undefined);
     } else if (id === "v.keepVoice") {
       save({ keepVoice: on });
       // The helper writes key dictations' recordings only while he keeps audio.

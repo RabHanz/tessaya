@@ -773,6 +773,16 @@ const main = async () => {
         // To her server, which decides the member and shares it with his other devices (never the refinement).
         const saved = store.list().find((p) => p.id === "owner");
         if (saved !== undefined) uploadProfile(saved, true);
+        // His speech itself, for training her wake words: her server keeps it only while his switch is on.
+        void fetch(new URL("/api/tessaya/wake/enrolment", env("R1_BRAIN_URL")), {
+          method: "POST",
+          headers: { authorization: `Bearer ${deviceKey}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            clips: windows
+              .slice(0, 20)
+              .map((w) => Buffer.from(w.buffer, w.byteOffset, w.byteLength).toString("base64")),
+          }),
+        }).catch(() => undefined);
         return { saved: true, said: "Thanks. I know your voice now." };
       },
       embed: (pcm) => embedder.embed(pcm),

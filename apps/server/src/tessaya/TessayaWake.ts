@@ -28,9 +28,13 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 
+import { wakeTrainingOn } from "@t3tools/baton-shared/household";
+
 import * as ServerConfig from "../config.ts";
+import { MemberPreferences } from "../baton/MemberPreferences.ts";
 import { PACK_DIR_NAME, readPack } from "../baton/OperatingSystemPack.ts";
 
 export type Refused = { readonly refused: string };
@@ -64,6 +68,25 @@ export class TessayaWake extends Context.Service<
     readonly publicKey: Effect.Effect<string>;
     readonly rollback: (word: string, version: number) => Effect.Effect<Refused | { ok: true }>;
     readonly cancel: (word: string) => Effect.Effect<Refused | { ok: true }>;
+    /** A member's kept enrolment clips, only while their wakeTraining switch is on (checked on every call). */
+    readonly voices: (personId: string) => Effect.Effect<
+      | Refused
+      | {
+          readonly personId: string;
+          readonly consent: true;
+          readonly clips: ReadonlyArray<{ readonly id: string; readonly ms: number }>;
+        }
+    >;
+    /** One clip as a 16 kHz mono PCM16 WAV; null when there is no such clip. */
+    readonly voiceClip: (
+      personId: string,
+      clipId: string,
+    ) => Effect.Effect<Refused | Uint8Array | null>;
+    /** Enrolment audio (16 kHz PCM16) kept for training, only with that member's switch on. */
+    readonly keepEnrolment: (
+      personId: string,
+      clips: ReadonlyArray<Int16Array>,
+    ) => Effect.Effect<{ readonly kept: number }>;
   }
 >()("t3/tessaya/TessayaWake") {}
 
@@ -81,6 +104,32 @@ const writeFile = (file: string, body: string | Uint8Array, mode = 0o644) => {
   NodeFS.renameSync(tmp, file);
 };
 
+const RATE = 16_000;
+const PERSON = /^[\w-]{1,60}$/;
+const CLIP = /^[0-9a-f]{16}$/;
+
+/** 16 kHz mono PCM16 as a WAV file. */
+const wavOf = (pcm: Uint8Array): Uint8Array => {
+  const out = new Uint8Array(44 + pcm.byteLength);
+  const v = new DataView(out.buffer);
+  const text = (at: number, s: string) =>
+    [...s].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
+  text(0, "RIFF");
+  v.setUint32(4, 36 + pcm.byteLength, true);
+  text(8, "WAVEfmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, RATE, true);
+  v.setUint32(28, RATE * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  text(36, "data");
+  v.setUint32(40, pcm.byteLength, true);
+  out.set(pcm, 44);
+  return out;
+};
+
 const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const userdata = NodePath.dirname(config.dbPath);
@@ -90,6 +139,24 @@ const make = Effect.gen(function* () {
   const modelFile = (word: string, version: number, target: WakeTarget) =>
     NodePath.join(pack, "wake", word, String(version), `${target}.bin`);
   const keyFile = NodePath.join(config.secretsDir, "wake-model-key.pem");
+  const voicesDir = (personId: string) => NodePath.join(userdata, "wake-voices", personId);
+  const prefs = yield* Effect.serviceOption(MemberPreferences);
+  const consented = (personId: string) =>
+    Option.isNone(prefs)
+      ? Effect.succeed(false)
+      : Effect.map(prefs.value.of(personId), (p) => wakeTrainingOn(personId, p.wakeTraining));
+  const forgetVoices = (personId: string) =>
+    Effect.sync(() => NodeFS.rmSync(voicesDir(personId), { recursive: true, force: true }));
+  // His switch going off deletes the audio at once, not at the next training job.
+  if (Option.isSome(prefs))
+    yield* prefs.value.listen((member) =>
+      PERSON.test(member)
+        ? Effect.flatMap(consented(member), (on) => (on ? Effect.void : forgetVoices(member)))
+        : Effect.void,
+    );
+  const noConsent: Refused = {
+    refused: "That member has not agreed to their voice being used for training.",
+  };
   // One writer at a time: a report and an upload for the same word must not lose each other's change.
   const lock = yield* Semaphore.make(1);
 
@@ -216,7 +283,62 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const voices = Effect.fn("TessayaWake.voices")(function* (personId: string) {
+    if (!PERSON.test(personId) || !(yield* consented(personId))) return noConsent;
+    const clips = yield* Effect.sync(() => {
+      try {
+        return NodeFS.readdirSync(voicesDir(personId))
+          .filter((n) => CLIP.test(n.replace(/\.pcm$/, "")) && n.endsWith(".pcm"))
+          .map((n) => ({
+            id: n.slice(0, -4),
+            ms: Math.round(
+              (NodeFS.statSync(NodePath.join(voicesDir(personId), n)).size / 2 / RATE) * 1000,
+            ),
+          }));
+      } catch {
+        return [];
+      }
+    });
+    return { personId, consent: true as const, clips };
+  });
+
+  const voiceClip = Effect.fn("TessayaWake.voiceClip")(function* (
+    personId: string,
+    clipId: string,
+  ) {
+    if (!PERSON.test(personId) || !(yield* consented(personId))) return noConsent;
+    if (!CLIP.test(clipId)) return null;
+    return yield* Effect.sync(() => {
+      try {
+        return wavOf(
+          new Uint8Array(NodeFS.readFileSync(NodePath.join(voicesDir(personId), `${clipId}.pcm`))),
+        );
+      } catch {
+        return null;
+      }
+    });
+  });
+
+  const keepEnrolment = Effect.fn("TessayaWake.keepEnrolment")(function* (
+    personId: string,
+    clips: ReadonlyArray<Int16Array>,
+  ) {
+    if (!PERSON.test(personId) || !(yield* consented(personId))) return { kept: 0 };
+    return yield* Effect.sync(() => {
+      for (const pcm of clips)
+        writeFile(
+          NodePath.join(voicesDir(personId), `${NodeCrypto.randomBytes(8).toString("hex")}.pcm`),
+          new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength),
+          0o600,
+        );
+      return { kept: clips.length };
+    });
+  });
+
   return TessayaWake.of({
+    voices,
+    voiceClip,
+    keepEnrolment,
     requests,
     store: Effect.sync(load),
     status,

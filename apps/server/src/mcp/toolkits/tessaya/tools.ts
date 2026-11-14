@@ -26,6 +26,7 @@ import {
   OrchestrationRuleListInput,
   OrchestrationRuleListResult,
   WatchResult,
+  BatonPreferenceKey,
 } from "@t3tools/baton-contracts";
 import {
   OrchestratorMcpEnvironmentTarget,
@@ -328,9 +329,9 @@ const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
 const PreferenceSetTool = Tool.make("tessaya_preference_set", {
   ...shared,
   description:
-    'Keep how the person speaking likes something, for every later turn with them on any device: `key` is name (what to call them), persona, voice, units, timeFormat ("12-hour with AM/PM" or "24-hour"), news or music; `value` in their words, or empty to clear it. Only their own preference; a guest has none. Use it whenever they say what to call them (\"call me Rab from now on\") or how they want to be spoken to; a fact to keep is tessaya_memory_remember. When they spell a name, pass it with its letters as said (\"Zaid, Z-A-Y-D\"): the spelling is kept and taught to the voice, and the line spells it back; say that spelling to them once, letter by letter.',
+    'Keep how the person speaking likes something, for every later turn with them on any device: `key` is name (what to call them), persona, voice, units, timeFormat ("12-hour with AM/PM" or "24-hour"), news, music or wakeTraining (on or off: whether their enrolled voice may train her wake words; "stop using my voice for training" is off); `value` in their words, or empty to clear it. Only their own preference; a guest has none. Use it whenever they say what to call them (\"call me Rab from now on\") or how they want to be spoken to; a fact to keep is tessaya_memory_remember. When they spell a name, pass it with its letters as said (\"Zaid, Z-A-Y-D\"): the spelling is kept and taught to the voice, and the line spells it back; say that spelling to them once, letter by letter.',
   parameters: Schema.Struct({
-    key: Schema.Literals(["name", "persona", "voice", "units", "timeFormat", "news", "music"]),
+    key: BatonPreferenceKey,
     value: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   }),
   success: Schema.Struct({ line: Schema.String }),

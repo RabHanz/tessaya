@@ -563,6 +563,19 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     args: (input) => ({ name: input["key"] === "name" }),
   },
   {
+    // 14 Nov (P3b): his switch for training wake words on his enrolled voice, by voice.
+    id: "wake-training-off",
+    proves: ["tessaya_preference_set"],
+    said: ["Stop using my voice to train the wake words."],
+    uses: [["tessaya_preference_set"]],
+    clean: ["tessaya_preference_set"],
+    argsOf: "tessaya_preference_set",
+    args: (input) => ({
+      wakeTraining: input["key"] === "wakeTraining",
+      off: /\b(off|no|stop)\b/i.test(String(input["value"] ?? "")),
+    }),
+  },
+  {
     // 13 Nov: a unique name spelled out loud is kept as spelled and said back once.
     id: "spelled-name",
     proves: ["tessaya_preference_set"],

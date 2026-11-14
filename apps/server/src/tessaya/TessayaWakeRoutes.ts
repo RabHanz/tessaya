@@ -4,6 +4,7 @@
  * their own session or an R1's device key; rollback and cancel need a session that may change settings.
  */
 import { AuthSettingsWriteScope, AuthTessayaWakeTrainerScope } from "@t3tools/contracts";
+import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import { WAKE_TARGETS, type WakeTarget } from "@t3tools/baton-shared/wakeModels";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -44,8 +45,19 @@ const decodeCancel = Schema.decodeUnknownOption(Schema.Struct({ word: Schema.Str
 
 const say = (status: number, message: string) =>
   HttpServerResponse.jsonUnsafe({ message }, { status });
-const answer = (r: { readonly refused: string } | object) =>
-  "refused" in r ? say(409, (r as { refused: string }).refused) : HttpServerResponse.jsonUnsafe(r);
+const answer = (r: { readonly refused: string } | object, refusedStatus = 409) =>
+  "refused" in r
+    ? say(refusedStatus, (r as { refused: string }).refused)
+    : HttpServerResponse.jsonUnsafe(r);
+/** About a minute of 16 kHz speech in base64, the most one enrolment sends. */
+const MAX_ENROLMENT_BYTES = 4 * 1024 * 1024;
+const decodeEnrolment = Schema.decodeUnknownOption(
+  Schema.Struct({
+    clips: Schema.Array(Schema.String.check(Schema.isMaxLength(1_000_000))).check(
+      Schema.isMaxLength(30),
+    ),
+  }),
+);
 
 /** Who may use a wake route: the key is anyone's; models a paired vessel's or an R1's; the way back a settings writer's. */
 export const wakeAccess = (
@@ -55,17 +67,21 @@ export const wakeAccess = (
 ): { readonly status: number; readonly message: string } | null =>
   route === "GET key"
     ? null
-    : route === "GET models"
-      ? scopes === null && !r1
-        ? { status: 401, message: "Not paired." }
-        : null
-      : route === "POST rollback" || route === "POST cancel"
-        ? scopes?.has(AuthSettingsWriteScope) === true
-          ? null
-          : { status: 403, message: "Only a session that may change settings can do that." }
-        : scopes?.has(AuthTessayaWakeTrainerScope) === true
-          ? null
-          : { status: 403, message: "This token is not a wake trainer's." };
+    : route === "POST enrolment"
+      ? r1
+        ? null
+        : { status: 401, message: "Only an R1's enrolment sends audio here." }
+      : route === "GET models"
+        ? scopes === null && !r1
+          ? { status: 401, message: "Not paired." }
+          : null
+        : route === "POST rollback" || route === "POST cancel"
+          ? scopes?.has(AuthSettingsWriteScope) === true
+            ? null
+            : { status: 403, message: "Only a session that may change settings can do that." }
+          : scopes?.has(AuthTessayaWakeTrainerScope) === true
+            ? null
+            : { status: 403, message: "This token is not a wake trainer's." };
 
 export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
@@ -100,7 +116,9 @@ export const routes = HttpRouter.use((router) =>
       const denied = wakeAccess(
         route,
         scopes,
-        route === "GET models" && scopes === null ? yield* isR1(request) : false,
+        (route === "GET models" && scopes === null) || route === "POST enrolment"
+          ? yield* isR1(request)
+          : false,
       );
       if (denied !== null) return say(denied.status, denied.message);
       if (route === "GET key") return HttpServerResponse.text(yield* service.publicKey);
@@ -150,10 +168,27 @@ export const routes = HttpRouter.use((router) =>
         const bytes = new Uint8Array(yield* request.arrayBuffer);
         return answer(yield* service.upload(decodeURIComponent(parts[1]!), version, target, bytes));
       }
-      // Enrolled voices leave only with that member's consent, checked on every call; none is given by default, and
-      // Voice ID keeps no enrolment audio today (Director decision 4 pending).
-      if (route === "GET voices" && parts.length === 2)
-        return say(403, "That member has not agreed to their voice being used for training.");
+      // Enrolled voices leave only with that member's switch on, checked on every call.
+      if (route === "GET voices" && (parts.length === 2 || parts.length === 3)) {
+        const person = decodeURIComponent(parts[1]!);
+        if (parts.length === 2) return answer(yield* service.voices(person), 403);
+        const wav = yield* service.voiceClip(person, parts[2]!);
+        if (wav === null) return say(404, "No such clip.");
+        if ("refused" in wav) return say(403, wav.refused);
+        return HttpServerResponse.uint8Array(wav, { contentType: "audio/wav" });
+      }
+      // The R1's enrolment: his windows of speech, kept for training only while his switch is on.
+      if (route === "POST enrolment") {
+        const length = Number(request.headers["content-length"] ?? Number.NaN);
+        if (!(length > 0 && length <= MAX_ENROLMENT_BYTES)) return say(413, "Too large or empty.");
+        const body = decodeEnrolment(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
+        if (Option.isNone(body)) return say(400, "That request is not valid.");
+        const clips = body.value.clips.map((b64) => {
+          const bytes = Buffer.from(b64, "base64");
+          return new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
+        });
+        return HttpServerResponse.jsonUnsafe(yield* service.keepEnrolment(OWNER_MEMBER_ID, clips));
+      }
       return say(404, "No such wake route.");
     }).pipe(Effect.catchCause(() => Effect.succeed(say(500, "That did not work."))));
     for (const method of ["GET", "POST", "PUT"] as const)
