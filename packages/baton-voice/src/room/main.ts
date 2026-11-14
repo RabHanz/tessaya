@@ -548,7 +548,9 @@ const main = async () => {
       "freya/r1/+/event/voice/flush",
     ],
     onMessage: (t, p) => {
-      const started = /^freya\/r1\/([^/]+)\/event\/session\/start$/.exec(t);
+      // A session opens on cmd/voice/start (her wake, or the R1's button); the R1 sends no event/session/start then.
+      const started =
+        /^freya\/r1\/([^/]+)\/(?:cmd\/voice\/start|event\/session\/start|event\/wake)$/.exec(t);
       if (started !== null) capture?.session(started[1]!);
       // voice/profile[/<member>]: a shared profile (retained); empty on a member's topic clears that member.
       const m = /^freya\/r1\/[^/]+\/voice\/profile(?:\/([^/]+))?$/.exec(t);
