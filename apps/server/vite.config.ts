@@ -128,6 +128,8 @@ export default mergeConfig(
         js: "#!/usr/bin/env node\n",
       },
       define: {
+        // Internal builds only (TESSAYA_INTERNAL=1): loads owner-only persona layers (src/tessaya/PersonaLayers.ts).
+        __TESSAYA_INTERNAL__: JSON.stringify(repoEnv.TESSAYA_INTERNAL?.trim() === "1"),
         __T3CODE_BUILD_CHANNEL__: JSON.stringify(cliBuildChannel),
         __T3CODE_TELEMETRY_CHANNEL__: JSON.stringify(telemetryChannel),
         __T3CODE_BUILD_RELAY_URL__: JSON.stringify(repoEnv.T3CODE_RELAY_URL?.trim() ?? ""),

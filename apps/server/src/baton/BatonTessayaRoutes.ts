@@ -53,6 +53,7 @@ import { memberOfSubject } from "@t3tools/baton-shared/household";
 import { callPrivate, PrivateCaller } from "./BatonPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaComms } from "./TessayaComms.ts";
+import * as PersonaLayers from "../tessaya/PersonaLayers.ts";
 import { approvalRefusal } from "@t3tools/baton-shared/trust";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, BatonPhoneInbox } from "./BatonPhoneInbox.ts";
@@ -655,5 +656,94 @@ export const routes = HttpRouter.use((router) =>
     yield* router.add("POST", "/tessaya/hands/*", handsApi);
     yield* router.add("GET", "/tessaya/api/*", api);
     yield* router.add("POST", "/tessaya/api/*", api);
+    yield* personaLayerRoutes(router, context, auth);
   }),
 );
+
+/**
+ * Owner-only persona layers' own pages and calls, under /tessaya/layer/<id>/ (PersonaLayers.ts). A public build loads
+ * none and registers nothing. The host verifies a layer's step-up through the household, on the request's own session.
+ */
+const personaLayerRoutes = Effect.fn("BatonTessayaRoutes.personaLayers")(function* (
+  router: HttpRouter.HttpRouter,
+  context: Context.Context<BatonRpcHandlers.BatonServices>,
+  auth: EnvironmentAuth.EnvironmentAuth["Service"],
+) {
+  const run = Effect.runPromiseWith(context);
+  const registry = Context.getOption(context, PersonaLayers.PersonaLayers);
+  if (Option.isNone(registry) || !PersonaLayers.internalBuild()) return;
+  // The caller of each in-flight layer request, so a step-up is checked on that session and no other.
+  const callers = new Map<string, ReturnType<typeof householdCallerOf> & { origin?: string }>();
+  const decodeStepUp = Schema.decodeUnknownEffect(BatonHouseholdCallInput);
+  const host: PersonaLayers.LayerHost = {
+    stepUp: async (session, input) => {
+      const caller = callers.get(session);
+      const fields = (input ?? {}) as Record<string, unknown>;
+      const method =
+        fields["passkey"] !== undefined
+          ? "passkey"
+          : fields["hello"] !== undefined
+            ? "hello"
+            : "pin";
+      if (caller === undefined || caller.member === null || caller.service) return null;
+      const result = await run(
+        decodeStepUp({ ...fields, op: "stepUp" }).pipe(
+          Effect.flatMap((call) => Effect.flatMap(TessayaHousehold, (h) => h.call(call))),
+          Effect.provideService(HouseholdCaller, caller),
+          Effect.provideContext(context),
+          Effect.orElseSucceed(() => null),
+        ),
+      );
+      return result?.status === "done" ? { member: caller.member, method } : null;
+    },
+  };
+  registry.value.all.push(...(yield* Effect.promise(() => PersonaLayers.loadPersonaLayers(host))));
+  const notHere = HttpServerResponse.jsonUnsafe(
+    { message: "Not here." },
+    { status: 404, headers: PAGE_HEADERS },
+  );
+  const serve = Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const [id = "", ...rest] = new URL(request.url, "http://local").pathname
+      .replace(/^\/tessaya\/layer\//, "")
+      .split("/");
+    const target = registry.value.all.find((l) => l.id === id);
+    const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
+    if (target === undefined || Option.isNone(session) || householdRefusal(session.value) !== null)
+      return notHere;
+    const caller = {
+      ...householdCallerOf(session.value),
+      ...(typeof request.headers["origin"] === "string"
+        ? { origin: request.headers["origin"] }
+        : {}),
+    };
+    const body =
+      request.method === "POST" ? yield* request.json.pipe(Effect.orElseSucceed(() => ({}))) : {};
+    callers.set(caller.session, caller);
+    const answer = yield* Effect.promise(() =>
+      target
+        .http({
+          method: request.method === "POST" ? "POST" : "GET",
+          path: rest.join("/"),
+          member: caller.member,
+          session: caller.session,
+          body,
+        })
+        .finally(() => {
+          if (callers.get(caller.session) === caller) callers.delete(caller.session);
+        }),
+    );
+    return answer.body === undefined
+      ? HttpServerResponse.jsonUnsafe(answer.json ?? {}, {
+          status: answer.status,
+          headers: PAGE_HEADERS,
+        })
+      : HttpServerResponse.text(answer.body, {
+          status: answer.status,
+          contentType: answer.contentType ?? "text/plain; charset=utf-8",
+          headers: PAGE_HEADERS,
+        });
+  }).pipe(Effect.catchCause(() => Effect.succeed(notHere)));
+  yield* router.add("GET", "/tessaya/layer/*", serve);
+  yield* router.add("POST", "/tessaya/layer/*", serve);
+});

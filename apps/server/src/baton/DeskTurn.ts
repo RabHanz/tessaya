@@ -25,6 +25,7 @@ import { readPack } from "./OperatingSystemPack.ts";
 import { brainTurn, type ActOutcome, type TurnNotes } from "./TessayaBrain.ts";
 import { TessayaTurn, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { VesselHands, vesselTools } from "./VesselHands.ts";
+import { replyFor } from "../tessaya/PersonaLayers.ts";
 import type { HandsBroker } from "@t3tools/baton-shared/remoteHands";
 
 const Speaker = Schema.Struct({
@@ -143,6 +144,12 @@ export const deskTurnStream = (
         // Each turn is a fresh session, as on the room: standing memory comes with the turn.
         sessionless: true,
       };
+      // A persona layer answers the whole turn itself: nothing below runs, so nothing is learned or recorded.
+      const layered = yield* replyFor(turn);
+      if (layered !== null) {
+        Queue.offerUnsafe(queue, layered.text);
+        return yield* Queue.end(queue);
+      }
       const said = yield* brainTurn(
         {
           system: `${AGENT_PROMPT}\n\n${assistantFrame(pack)}`,

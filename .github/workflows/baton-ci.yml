@@ -27,6 +27,7 @@ jobs:
         run: |
           node scripts/tessaya/check-notices.mjs
           node --test scripts/tessaya/check-notices.test.mjs
+          node --test scripts/tessaya/check-no-private-layer.test.mjs
       - name: Status-file writer
         run: node --test scripts/tessaya/status-file.test.mjs scripts/tessaya/cloud-logins.test.mjs scripts/tessaya/live/answer-review.test.mjs scripts/tessaya/live/baton-live-acp.test.mjs
       - name: Upstream paths equal PIN + series
