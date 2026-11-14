@@ -39,6 +39,7 @@ import { commsWaitingLine } from "@t3tools/baton-shared/comms";
 import { TurnPools } from "./TurnPools.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import { personasList } from "./OperatingSystemPack.ts";
 import type { RegisteredDevice } from "@t3tools/baton-contracts";
 
 export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
@@ -291,6 +292,32 @@ export const hereLine = (
   if (home !== null && home.length > 0) parts.push(`Likely home: ${home.slice(0, 8).join(", ")}.`);
   const line = parts.join(" ");
   return line.length <= HERE_MAX_CHARS ? line : `${line.slice(0, HERE_MAX_CHARS - 1)}…`;
+};
+
+/** The presence board's ceiling (the bounded-context rule): about 100 tokens, however many talk to her at once. */
+const BOARD_MAX_CHARS = 400;
+
+/**
+ * Her other live conversations, as this turn may see them (CS2): the owner hears who each is with, where and how long
+ * ago; anyone else only how many there are; a guest and a shared room nothing. Never what was said in them.
+ */
+export const boardLine = (
+  others: ReadonlyArray<{
+    readonly persona: string;
+    readonly person: string;
+    readonly where: string;
+    readonly minutesAgo: number;
+  }>,
+  viewer: "owner" | "member" | "guest",
+): string => {
+  if (others.length === 0 || viewer === "guest") return "";
+  if (viewer === "member")
+    return `You are also in ${others.length} other conversation${others.length === 1 ? "" : "s"} now; say nothing of them.`;
+  const rows = others
+    .slice(0, 6)
+    .map((o) => `${o.persona} with ${o.person} on ${o.where} (${o.minutesAgo} min ago)`);
+  const line = `Your other conversations now (mention one only if it matters here): ${rows.join("; ")}.`;
+  return line.length <= BOARD_MAX_CHARS ? line : `${line.slice(0, BOARD_MAX_CHARS - 1)}…`;
 };
 
 /** How much of a conversation every vessel shares, and how long it waits for him to go on. */
@@ -606,9 +633,10 @@ export const make = Effect.gen(function* () {
     const preferences = yield* preferencesOf(member);
     const waiting = yield* waitingLine(turn, member, preferences.name ?? null);
     const here = yield* hereFor(turn, member);
+    const board = yield* boardFor(turn, member);
     return {
       notice: waiting,
-      block: [here, standing.block, extra, nameOnceLine(turn.nameOnce)]
+      block: [here, board, standing.block, extra, nameOnceLine(turn.nameOnce)]
         .filter((b) => b !== "")
         .join("\n\n"),
       ids: sentence.ids,
@@ -637,6 +665,46 @@ export const make = Effect.gen(function* () {
     for (const [who, s] of seen)
       if (now - s.at <= PRESENCE_HOME_MS) names.push((yield* memberName(who)) ?? who);
     return hereLine(device, names);
+  });
+
+  /** The presence board for this turn (CS2): her other live threads, filtered by who is asking. */
+  const boardFor = Effect.fn("TessayaTurn.boardFor")(function* (
+    turn: TurnEnvelope,
+    member: string | null,
+  ) {
+    const self = conversationKey(turn);
+    const others = (yield* threads()).filter((t) => t.conversation !== self);
+    const viewer =
+      member === null || turn.sharedRoom === true
+        ? "guest"
+        : member === OWNER_MEMBER_ID && turnIdentity(turn).assurance >= 2
+          ? "owner"
+          : "member";
+    // Anyone but the owner hears only how many: no names are read for them.
+    if (others.length === 0 || viewer !== "owner")
+      return boardLine(
+        others.map(() => ({ persona: "", person: "", where: "", minutesAgo: 0 })),
+        viewer,
+      );
+    const { personas } = yield* personasList;
+    const registry = yield* Effect.serviceOption(DeviceRegistry);
+    const now = yield* Clock.currentTimeMillis;
+    const rows = [];
+    for (const t of others) {
+      const device = Option.isNone(registry)
+        ? null
+        : yield* registry.value.get(t.vessel.id).pipe(Effect.orElseSucceed(() => null));
+      rows.push({
+        persona: personas.find((p) => p.id === t.persona)?.name ?? t.persona ?? "Tessaya",
+        person:
+          t.person === null
+            ? "someone she doesn't know"
+            : ((yield* memberName(t.person)) ?? t.person),
+        where: device?.name ?? t.vessel.kind,
+        minutesAgo: Math.floor((now - t.lastAt) / 60_000),
+      });
+    }
+    return boardLine(rows, viewer);
   });
 
   /**

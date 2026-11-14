@@ -21,6 +21,7 @@ import type {
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
+  boardLine,
   hereLine,
   SessionMember,
   TessayaTurn,
@@ -498,12 +499,26 @@ layer("TessayaTurn", (it) => {
           { concurrency: "unbounded" },
         );
         yield* TestClock.adjust("1 minute");
-        yield* turn.begin({
+        const next = yield* turn.begin({
           vessel: desktop,
           persona: "operations",
           speaker: him,
           text: "and the fan",
         });
+        // CS2: his turn sees her other live conversation, never what was said in it; Maya's sees only a count.
+        assert.include(next.block, "Your other conversations now");
+        assert.include(next.block, "with maya on phone (1 min ago)");
+        assert.notInclude(next.block, "dinner");
+        const hers = yield* turn.begin({
+          vessel: phone,
+          persona: "operations",
+          speaker: maya,
+          text: "and dessert",
+          // A rehearsal reads as a real turn and leaves her threads as they were.
+          rehearsal: true,
+        });
+        assert.match(hers.block, /You are also in \d+ other conversations? now/);
+        assert.notInclude(hers.block, "owner");
         yield* turn.begin({
           vessel: device,
           text: "rehearsed",
@@ -844,5 +859,20 @@ it("tells every turn where she is in a few dozen tokens: vessel, body, room, wha
       Array.from({ length: 50 }, (_, i) => `Person ${i}`),
     ).length,
     360,
+  );
+});
+
+it("keeps the presence board under its ceiling however many talk to her at once", () => {
+  const many = Array.from({ length: 40 }, (_, i) => ({
+    persona: "Freya",
+    person: `Person ${i}`,
+    where: "the kitchen R1",
+    minutesAgo: i,
+  }));
+  assert.isAtMost(boardLine(many, "owner").length, 400);
+  assert.strictEqual(boardLine(many, "guest"), "");
+  assert.strictEqual(
+    boardLine(many, "member"),
+    "You are also in 40 other conversations now; say nothing of them.",
   );
 });
