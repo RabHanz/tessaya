@@ -20,6 +20,8 @@ import {
   BATON_VOICE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
+  BATON_PROMPT_LAB_WS_METHODS,
+  AuthSettingsWriteScope,
   BatonRecordAppendInput,
   DesktopSettingsSetInput,
   AuthGrantScopes,
@@ -32,6 +34,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { it as effectIt } from "@effect/vitest";
+import { roleCeiling } from "@t3tools/baton-shared/household";
 import { describe, expect, it } from "vite-plus/test";
 
 import { TOKEN_DELEGATED_SUBJECT, type AuthenticatedSession } from "../auth/EnvironmentAuth.ts";
@@ -49,6 +52,17 @@ import {
   memoryViewerOf,
   missingBatonScope,
 } from "./BatonRpcAuthorization.ts";
+
+describe("who may use the prompt lab", () => {
+  it("needs settings:write on the server and in the client, which only the owner (or a machine grant) holds", () => {
+    const door = BATON_PROMPT_LAB_WS_METHODS.call;
+    expect(BATON_RPC_REQUIRED_SCOPES[door]).toBe(AuthSettingsWriteScope);
+    expect(clientRpcRequiredScopes(door, { op: "list" })).toEqual([AuthSettingsWriteScope]);
+    expect(roleCeiling("owner", false)).toContain(AuthSettingsWriteScope);
+    for (const role of ["admin", "member", "child", "guest"] as const)
+      expect(roleCeiling(role, false)).not.toContain(AuthSettingsWriteScope);
+  });
+});
 
 describe("who may use cloud tasks on a hub", () => {
   it("lets any reader look, any operator ask, and only a holder of the approval scope approve or deny", () => {

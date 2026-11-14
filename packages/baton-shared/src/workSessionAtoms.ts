@@ -16,6 +16,7 @@ import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
+  BATON_PROMPT_LAB_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
@@ -217,6 +218,10 @@ export function createBatonWorkSessionAtoms<R, E>(
     personasList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:personas",
       tag: BATON_PERSONAS_WS_METHODS.list,
+    }),
+    promptLab: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:prompt-lab",
+      tag: BATON_PROMPT_LAB_WS_METHODS.call,
     }),
     homeCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:home",

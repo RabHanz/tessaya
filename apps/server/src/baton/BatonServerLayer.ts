@@ -92,6 +92,7 @@ import * as TessayaWakeRoutes from "../tessaya/TessayaWakeRoutes.ts";
 import * as TessayaPackRoutes from "../tessaya/TessayaPackRoutes.ts";
 import * as CurrentPersona from "../tessaya/CurrentPersona.ts";
 import * as PersonaLayers from "../tessaya/PersonaLayers.ts";
+import * as PromptLab from "../tessaya/PromptLab.ts";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 
 const readClaudeAccountInstances = Layer.effectDiscard(
@@ -305,6 +306,8 @@ const servicesInner = IntentService.layer.pipe(
       PersonaLayers.layer,
     ),
   ),
+  // The prompt lab (B-030): Settings, the voice and its tool share it; its runs are one-shots on his subscription.
+  Layer.provideMerge(PromptLab.layer.pipe(Layer.provide(BatonOneShot.layer))),
   Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
   // Every brain call's usage row, for the Usage page and her usage report; her wake-word models, signed here (P3b).
   Layer.provideMerge(
