@@ -120,9 +120,57 @@ const ack = (head: number, id: number) => Buffer.from([head, 2, id >> 8, id & 0x
  * The hub itself, with no sockets: tests drive it with bytes. `authenticate` says what a CONNECT's user and password
  * may do, or null for a refusal (CONNACK 5, then the socket closes).
  */
+/** Logins per address before it waits: the R1 reconnects a few times a minute at most. */
+const LOGINS_PER_MINUTE = 20;
+/** Wrong logins from one address before it is locked out, and for how long. */
+const FAILURES_BEFORE_LOCK = 10;
+const FAILURE_WINDOW_MS = 10 * 60_000;
+const LOCK_MS = 15 * 60_000;
+
+/**
+ * Who may try a login now, per address (the tunnel's caller from `cf-connecting-ip`): a rate per minute and a lockout
+ * after repeated wrong keys. Per address, so a stranger guessing an R1's id cannot lock the R1 itself out. Pure.
+ */
+export const makeLoginGuard = () => {
+  const seen = new Map<
+    string,
+    { tries: Array<number>; failures: Array<number>; lockedUntil: number }
+  >();
+  const of = (who: string) => {
+    let s = seen.get(who);
+    if (s === undefined) {
+      // Bounded: the oldest address is forgotten first.
+      if (seen.size >= 10_000) seen.delete(seen.keys().next().value!);
+      seen.set(who, (s = { tries: [], failures: [], lockedUntil: 0 }));
+    }
+    return s;
+  };
+  return {
+    /** Null when it may try; otherwise why not. Counts the try. */
+    admit: (who: string, now: number): "locked" | "too-fast" | null => {
+      const s = of(who);
+      if (s.lockedUntil > now) return "locked";
+      s.tries = s.tries.filter((t) => t > now - 60_000);
+      if (s.tries.length >= LOGINS_PER_MINUTE) return "too-fast";
+      s.tries.push(now);
+      return null;
+    },
+    failed: (who: string, now: number): boolean => {
+      const s = of(who);
+      s.failures = [...s.failures.filter((t) => t > now - FAILURE_WINDOW_MS), now];
+      if (s.failures.length < FAILURES_BEFORE_LOCK) return false;
+      s.lockedUntil = now + LOCK_MS;
+      s.failures = [];
+      return true;
+    },
+    succeeded: (who: string) => void (of(who).failures = []),
+  };
+};
+
 export const makeHub = (
   authenticate: (user: string, pass: string) => Effect.Effect<HubGrant | null>,
 ) => {
+  const guard = makeLoginGuard();
   const retained = new Map<string, Buffer>();
   const subscribers = new Set<Subscriber>();
   const sessions = new Map<
@@ -165,7 +213,10 @@ export const makeHub = (
   const open = (io: {
     readonly send: (bytes: Uint8Array) => void;
     readonly close: () => void;
+    /** The caller's address, for the login guard and the audit line. */
+    readonly remote?: string;
   }): HubSession => {
+    const who = io.remote ?? "unknown";
     const decode = createDecoder(MAX_PACKET);
     let grant: HubGrant | null = null;
     let clientId = "";
@@ -199,11 +250,36 @@ export const makeHub = (
           io.send(connack(1));
           return end();
         }
-        const given = yield* authenticate(c.user, c.pass);
-        if (given === null || (c.will !== null && !hubAllows(given, c.will.topic))) {
+        const now = yield* Clock.currentTimeMillis;
+        const held = guard.admit(who, now);
+        if (held !== null) {
+          yield* Effect.logWarning("R1 hub login refused", {
+            user: c.user,
+            remote: who,
+            why: held,
+          });
           io.send(connack(5));
           return end();
         }
+        const given = yield* authenticate(c.user, c.pass);
+        if (given === null || (c.will !== null && !hubAllows(given, c.will.topic))) {
+          const locked = guard.failed(who, now);
+          yield* Effect.logWarning("R1 hub login refused", {
+            user: c.user,
+            remote: who,
+            why: given === null ? "wrong login" : "will outside its topics",
+            ...(locked ? { locked: "15 minutes" } : {}),
+          });
+          io.send(connack(5));
+          return end();
+        }
+        guard.succeeded(who);
+        yield* Effect.logInfo("R1 hub login", {
+          user: c.user,
+          remote: who,
+          as: given.kind,
+          bridge: c.level === 0x84,
+        });
         // The same client id again (the R1 reconnecting before its old socket timed out): the new one wins, and the
         // old one's will is dropped so it cannot mark the device offline after it came back.
         const before = c.clientId === "" ? undefined : sessions.get(c.clientId);
@@ -455,6 +531,7 @@ export const serveTcp = Effect.fn("R1Hub.serveTcp")(function* (
         const session = hub.open({
           send: (bytes) => void socket.write(bytes),
           close: () => socket.destroySoon(),
+          ...(socket.remoteAddress === undefined ? {} : { remote: socket.remoteAddress }),
         });
         socket.setTimeout(session.idleMs());
         // One chunk at a time, in order, as the WebSocket's reader does.
@@ -487,6 +564,7 @@ export const serveTcp = Effect.fn("R1Hub.serveTcp")(function* (
 export const runHubSocket = Effect.fn("R1Hub.runSocket")(function* (
   socket: Socket.Socket,
   hub: Pick<Hub, "open">,
+  remote?: string,
 ) {
   const writer = yield* socket.writer;
   const reader = yield* socket.reader;
@@ -495,6 +573,7 @@ export const runHubSocket = Effect.fn("R1Hub.runSocket")(function* (
   const session = hub.open({
     send: (bytes) => void Queue.offerUnsafe(out, bytes),
     close: () => void Deferred.doneUnsafe(closed, Effect.void),
+    ...(remote === undefined ? {} : { remote }),
   });
   const read = Effect.forever(
     Effect.gen(function* () {
