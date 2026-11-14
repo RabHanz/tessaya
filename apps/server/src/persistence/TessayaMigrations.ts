@@ -72,6 +72,7 @@ import Migration0040 from "./Migrations/Baton/040_DeviceMember.ts";
 import Migration0041 from "./Migrations/Baton/041_PersonaRoster.ts";
 import Migration0042 from "./Migrations/Baton/042_JobPlanLease.ts";
 import Migration0043 from "./Migrations/Baton/043_PersonaMood.ts";
+import Migration0044 from "./Migrations/Baton/044_JobLeadMoves.ts";
 
 /**
  * Baton's own tracking table. Upstream's `effect_sql_migrations` is left to
@@ -124,6 +125,7 @@ const tessayaMigrationEntries = [
   [41, "PersonaRoster", Migration0041],
   [42, "JobPlanLease", Migration0042],
   [43, "PersonaMood", Migration0043],
+  [44, "JobLeadMoves", Migration0044],
 ] as const;
 
 export const tessayaMigrationManifest = tessayaMigrationEntries.map(

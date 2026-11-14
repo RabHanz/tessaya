@@ -7,6 +7,7 @@ import {
   type TessayaJob,
   type TessayaJobGrant,
   type TessayaJobGroup,
+  type TessayaJobLeadMove,
   type TessayaJobLimits,
   type TessayaJobPermissions,
   type TessayaJobTool,
@@ -319,3 +320,70 @@ export const workerFirstMessage = (input: {
       ? "This is one part of a larger plan he has already agreed. Do it now, inside what you were allowed, and report what changed, the evidence, and what blocks you."
       : "Plan first. Write the plan, and any question you need answered, here in this thread. Do not start the work. He will refine the plan here and tell you when to go.",
   ].join("\n\n");
+
+interface Face {
+  readonly id: string;
+  readonly name: string;
+  readonly role: string;
+}
+
+/**
+ * Who a lead move goes to: the persona he named (by name or pack id), or with `back` whoever led before the last
+ * move. Null with the reason when there is no one.
+ */
+export const leadTarget = <P extends Face>(
+  personas: ReadonlyArray<P>,
+  moves: ReadonlyArray<TessayaJobLeadMove>,
+  said: { readonly to?: string | undefined; readonly back?: boolean | undefined },
+): { readonly ok: true; readonly persona: P } | { readonly ok: false; readonly why: string } => {
+  const word =
+    said.back === true
+      ? moves.findLast((m) => m.declined === undefined)?.from
+      : said.to?.trim().toLowerCase();
+  if (word === undefined)
+    return {
+      ok: false,
+      why:
+        said.back === true
+          ? "No one led this job before to give it back to."
+          : "Say who should lead it.",
+    };
+  const persona = personas.find((p) => p.id === word || p.name.toLowerCase() === word);
+  return persona === undefined
+    ? { ok: false, why: `There is no persona called ${said.to ?? word}. Say who should lead it.` }
+    : { ok: true, persona };
+};
+
+/** What the new lead is told once: done, what is pending, and the last thing he said about the job. */
+export const leadHandoffNote = (input: {
+  readonly from: string;
+  readonly title: string;
+  readonly phase: TessayaJobPhase;
+  readonly pendingApprovals: number;
+  readonly lastDone: string | null;
+  readonly lastSaid: string | null;
+}): string => {
+  const clip = (t: string) => (t.length <= 160 ? t : `${t.slice(0, 159)}…`);
+  const pending = [
+    input.phase === "drafting_plan"
+      ? "its plan is still being drafted"
+      : input.phase === "awaiting_agreement"
+        ? "its plan waits for his yes"
+        : null,
+    input.pendingApprovals > 0
+      ? `${input.pendingApprovals} approval${input.pendingApprovals === 1 ? "" : "s"} wait${input.pendingApprovals === 1 ? "s" : ""} for him (they carry over)`
+      : null,
+  ].filter((p) => p !== null);
+  return [
+    `${input.from} handed you the job "${input.title}"; its worker carries on as it was.`,
+    input.lastDone === null ? null : `Done so far: ${clip(input.lastDone)}`,
+    `Pending: ${pending.length === 0 ? "nothing waits on him" : pending.join("; ")}.`,
+    input.lastSaid === null ? null : `Last thing he said about it: "${clip(input.lastSaid)}"`,
+  ]
+    .filter((l) => l !== null)
+    .join(" ");
+};
+
+/** The worker's one note: who it reports to now and what that lead cares about. */
+export const workerLeadNote = (lead: Face): string =>
+  `${lead.name} leads this job now (${lead.role.split(";")[0]!.trim().replace(/\.$/, "")}). Carry on with the same plan and permissions; report to ${lead.name}. Nothing else changes, so do not start over.`;

@@ -110,6 +110,24 @@ export const TessayaJobRevision = Schema.Struct({
 });
 export type TessayaJobRevision = typeof TessayaJobRevision.Type;
 
+/**
+ * A change of who leads a job (its lead persona), or his "no" to a suggested one (`declined`). The worker is never
+ * touched by it; the log is the job's own, so a team record can count hand-offs and referrals.
+ */
+export const TessayaJobLeadMove = Schema.Struct({
+  at: IsoDateTime,
+  /** Persona ids: who led it, and who leads it now (the same id for a declined suggestion). */
+  from: TrimmedNonEmptyString,
+  to: TrimmedNonEmptyString,
+  by: Schema.Literals(["him", "persona"]),
+  via: Schema.Literals(["voice", "text", "card", "tool"]),
+  /** The suggestion he turned down: who was suggested. The lead stays, and does not raise it again. */
+  declined: Schema.optionalKey(TrimmedNonEmptyString),
+  /** What the new lead was told (done, pending, the last thing he said), or why it was suggested. */
+  note: Schema.optionalKey(Schema.String),
+});
+export type TessayaJobLeadMove = typeof TessayaJobLeadMove.Type;
+
 export const TessayaJobTerms = Schema.Struct({
   workSessionId: WorkSessionId,
   goal: TrimmedString,
@@ -134,6 +152,10 @@ export const TessayaJobTerms = Schema.Struct({
       routine: Schema.optionalKey(Schema.Boolean),
     }),
   ),
+  /** The persona leading it now (a pack id); absent from an older server. */
+  lead: Schema.optionalKey(TrimmedNonEmptyString),
+  /** Every lead move and declined suggestion, oldest first; absent from an older server. */
+  leadMoves: Schema.optionalKey(Schema.Array(TessayaJobLeadMove)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -183,6 +205,8 @@ export const BATON_JOB_WS_METHODS = {
   jobPlace: "baton.job.place",
   /** Hand a job to the worker he named. */
   jobHandoff: "baton.job.handoff",
+  /** Move who leads a job to another persona, or keep its lead after he turns a suggestion down. */
+  jobLead: "baton.job.lead",
   /** Who on the team is doing what (P4): a read of jobs, episodes and the Record, never a store. */
   jobTeam: "baton.job.team",
 } as const;
@@ -263,6 +287,16 @@ export const TessayaJobHandoffInput = Schema.Struct({
   note: Schema.optionalKey(TrimmedNonEmptyString),
 });
 export type TessayaJobHandoffInput = typeof TessayaJobHandoffInput.Type;
+
+/** `to` moves the lead (a name he knows or a pack id); `back` returns it to whoever led before; `declined` keeps it. */
+export const TessayaJobLeadInput = Schema.Struct({
+  id: WorkSessionId,
+  to: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(60))),
+  back: Schema.optionalKey(Schema.Boolean),
+  declined: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(60))),
+  via: Schema.optionalKey(Schema.Literals(["voice", "text", "card", "tool"])),
+});
+export type TessayaJobLeadInput = typeof TessayaJobLeadInput.Type;
 
 /** His words named no project or worker this server has; the reason says what it does have. */
 export class TessayaJobPlacementError extends Schema.TaggedError<TessayaJobPlacementError>()(

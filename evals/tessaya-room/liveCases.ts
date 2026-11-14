@@ -563,6 +563,19 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_persona_handoff"],
   },
   {
+    // Job lead hand-off: the job moves with the conversation, and comes back, its worker untouched.
+    id: "job-lead-handoff",
+    proves: ["tessaya_job_lead"],
+    said: [
+      "Start a job in acme app to tidy its release notes, and have Onyx lead it.",
+      "Alfred, take this over.",
+      "Onyx, take it back.",
+    ],
+    voices: [{ speaker: SURE }, { speaker: SURE }, { speaker: SURE }],
+    uses: [["job_start"], ["tessaya_persona_handoff", "tessaya_job_lead"]],
+    clean: ["tessaya_persona_handoff", "tessaya_job_lead"],
+  },
+  {
     id: "preference-set",
     proves: ["tessaya_preference_set"],
     said: ["Call me Rab from now on."],

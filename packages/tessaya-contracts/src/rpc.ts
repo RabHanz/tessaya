@@ -134,6 +134,7 @@ import {
   TessayaJobRefInput,
   TessayaJobRefineInput,
   TessayaJobHandoffInput,
+  TessayaJobLeadInput,
   TessayaTeamBoardInput,
   TessayaTeamBoardResult,
   TessayaJobPlaceInput,
@@ -454,6 +455,11 @@ const WsTessayaJobHandoffRpc = Rpc.make(BATON_JOB_WS_METHODS.jobHandoff, {
     OrchestrationDispatchCommandError,
     EnvironmentAuthorizationError,
   ]),
+});
+const WsTessayaJobLeadRpc = Rpc.make(BATON_JOB_WS_METHODS.jobLead, {
+  payload: TessayaJobLeadInput,
+  success: TessayaJobTermsResult,
+  error: Schema.Union([TessayaJobPlacementError, WorkSessionError, EnvironmentAuthorizationError]),
 });
 const WsTessayaJobAgreeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobAgree, {
   payload: TessayaJobRefInput,
@@ -1025,6 +1031,7 @@ const BATON_RPCS = [
   WsTessayaJobStartRpc,
   WsTessayaJobPlaceRpc,
   WsTessayaJobHandoffRpc,
+  WsTessayaJobLeadRpc,
   WsTessayaJobTeamRpc,
   WsTessayaJobAgreeRpc,
   WsTessayaJobRefineRpc,

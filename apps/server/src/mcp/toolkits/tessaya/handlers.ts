@@ -2,6 +2,7 @@ import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_JOB_WS_METHODS,
+  type TessayaJobLeadInput,
   BATON_MEMORY_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
@@ -245,6 +246,17 @@ export const layer = McpToolAccess.toLayer(
         ),
         Effect.andThen(effect.pipe(Effect.mapError(failed))),
       );
+    // A move he cannot make (no such job or persona) is a line to say, never a failed tool.
+    const moveLead = (input: TessayaJobLeadInput) =>
+      handlers[BATON_JOB_WS_METHODS.jobLead](input).pipe(
+        Effect.map(() => ({
+          line:
+            input.declined !== undefined
+              ? "Noted: the lead stays, and it is not suggested again for this job."
+              : "The job's lead moved too: its worker carries on, and its approvals carry over.",
+        })),
+        Effect.catchTags({ BatonJobPlacementError: (e) => Effect.succeed({ line: e.detail }) }),
+      );
     return {
       tessaya_voice_arbiter: McpToolAccess.writes(
         (input) =>
@@ -413,7 +425,27 @@ export const layer = McpToolAccess.toLayer(
         ),
       ),
       tessaya_persona_handoff: McpToolAccess.writes((input) =>
-        call(withTurn((turn) => turn.handOff(input))),
+        call(
+          withTurn((turn) =>
+            Effect.gen(function* () {
+              const handed = yield* turn.handOff(input);
+              if (input.job === undefined || handed.persona === undefined) return handed;
+              const job = yield* moveLead({ id: input.job, to: handed.persona, via: "voice" });
+              return { ...handed, line: `${handed.line} ${job.line}` };
+            }),
+          ),
+        ),
+      ),
+      tessaya_job_lead: McpToolAccess.writes((input) =>
+        call(
+          moveLead({
+            id: input.id,
+            via: "voice",
+            ...(input.to === undefined ? {} : { to: input.to }),
+            ...(input.back === undefined ? {} : { back: input.back }),
+            ...(input.declined === undefined ? {} : { declined: input.declined }),
+          }),
+        ),
       ),
       // Her home server's record when this one has a home (TessayaWake forwards), so every vessel says the same.
       tessaya_wake_words: McpToolAccess.reads(() =>

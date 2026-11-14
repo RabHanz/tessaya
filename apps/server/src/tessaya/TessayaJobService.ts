@@ -6,6 +6,7 @@
  */
 import {
   TessayaJobGrant,
+  TessayaJobLeadMove,
   TessayaJobLimits,
   TessayaJobPermissions,
   TessayaPlanLease,
@@ -53,6 +54,10 @@ const encodeLease = Schema.encodeSync(Schema.fromJsonString(TessayaPlanLease));
 const decodeLease = Schema.decodeUnknownSync(Schema.fromJsonString(TessayaPlanLease));
 const encodeGrants = Schema.encodeSync(Schema.fromJsonString(Schema.Array(TessayaJobGrant)));
 const decodeGrants = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(TessayaJobGrant)));
+const encodeMoves = Schema.encodeSync(Schema.fromJsonString(Schema.Array(TessayaJobLeadMove)));
+const decodeMoves = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.Array(TessayaJobLeadMove)),
+);
 
 interface TermsRow {
   readonly work_session_id: string;
@@ -68,6 +73,7 @@ interface TermsRow {
   readonly parent_id: string | null;
   readonly part_spec_json: string | null;
   readonly persona: string | null;
+  readonly lead_moves_json: string | null;
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -94,6 +100,8 @@ const fromRow = (row: TermsRow): TessayaJobTerms =>
     workerInstanceId: row.worker_instance_id,
     parentId: row.parent_id,
     partSpec: row.part_spec_json === null ? null : decodePartSpec(row.part_spec_json),
+    lead: row.persona ?? "executive",
+    leadMoves: row.lead_moves_json === null ? [] : decodeMoves(row.lead_moves_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }) as TessayaJobTerms;
@@ -132,6 +140,14 @@ export class TessayaJobService extends Context.Service<
     readonly parts: (parentId: WorkSessionId) => Effect.Effect<ReadonlyArray<TessayaJobTerms>>;
     /** Each job's persona by its id; a job from before personas is the lead's. */
     readonly personas: () => Effect.Effect<ReadonlyMap<string, string>>;
+    /**
+     * Logs a lead move on the job. A move changes its lead and the persona its agreed plan lease is for, so his yes
+     * carries over; a declined suggestion only logs. Nothing about its worker changes.
+     */
+    readonly moveLead: (
+      id: WorkSessionId,
+      move: TessayaJobLeadMove,
+    ) => Effect.Effect<TessayaJobTerms | null>;
     /** The R1 each job asked there was asked on, by its id. */
     readonly origins: () => Effect.Effect<ReadonlyMap<string, string>>;
     /** A standing permission for this job and this channel: explicit, per job, and logged. */
@@ -259,6 +275,25 @@ export const make = Effect.gen(function* () {
     `.pipe(Effect.orDie);
     return new Map(rows.map((r) => [r.work_session_id, r.persona ?? "executive"]));
   });
+  const moveLead = Effect.fn("BatonJobService.moveLead")(function* (
+    id: WorkSessionId,
+    move: TessayaJobLeadMove,
+  ) {
+    const current = yield* read(id);
+    if (current === null) return null;
+    const moved = move.declined === undefined;
+    const lease =
+      current.lease == null || !moved ? current.lease : { ...current.lease, persona: move.to };
+    yield* sql`
+      UPDATE fabric_job_terms SET
+        persona = ${moved ? move.to : (current.lead ?? null)},
+        lease_json = ${lease == null ? null : encodeLease(lease)},
+        lead_moves_json = ${encodeMoves([...(current.leadMoves ?? []), move])},
+        updated_at = ${move.at}
+      WHERE work_session_id = ${id}
+    `.pipe(Effect.orDie);
+    return yield* read(id);
+  });
   const origins = Effect.fn("BatonJobService.origins")(function* () {
     const rows = yield* sql<{ readonly work_session_id: string; readonly origin: string }>`
       SELECT work_session_id, origin FROM fabric_job_terms WHERE origin IS NOT NULL
@@ -374,6 +409,7 @@ export const make = Effect.gen(function* () {
     allTerms,
     parts,
     personas,
+    moveLead,
     origins,
     clearPartSpec,
     grant,
