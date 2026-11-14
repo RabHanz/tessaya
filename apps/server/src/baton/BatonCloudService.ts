@@ -28,6 +28,7 @@ import * as Schedule from "effect/Schedule";
 import * as ServerConfig from "../config.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
+import { envOf } from "@t3tools/tessaya-shared/envOf";
 
 // The Cloud page's own refresh, now the server's, so a task with no client watching still moves.
 const REFRESH = "1 minute";
@@ -79,7 +80,7 @@ export const layer = Layer.effect(
       nodeExec,
       fileStores(NodePath.join(NodePath.dirname(config.dbPath), "cloud")),
       {
-        ...settingsFromEnv((yield* HostProcess.Environment)["BATON_CLOUD_CONFIG"]),
+        ...settingsFromEnv(envOf("CLOUD_CONFIG", yield* HostProcess.Environment)),
         ...(registry._tag === "None"
           ? {}
           : {

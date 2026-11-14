@@ -7,6 +7,10 @@
 # Writes release-cli/t3-<version>-linux-x64.tar.gz and smoke-tests it. The package.json version
 # bump is release-time only and is put back afterwards, so the tree stays PIN + series.
 set -euo pipefail
+# Settings are renamed TESSAYA_*; the old BATON_* names still work. Drop them once no unit or workflow sets them.
+BATON_R1_RECOGNIZER="${TESSAYA_R1_RECOGNIZER:-${BATON_R1_RECOGNIZER:-}}"
+BATON_RELEASE_DIR="${TESSAYA_RELEASE_DIR:-${BATON_RELEASE_DIR:-}}"
+BATON_RESOURCE_MONITOR_DIR="${TESSAYA_RESOURCE_MONITOR_DIR:-${BATON_RESOURCE_MONITOR_DIR:-}}"
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 cd "$(git rev-parse --show-toplevel)"
 version="${1:?usage: release-build.sh <version>}"

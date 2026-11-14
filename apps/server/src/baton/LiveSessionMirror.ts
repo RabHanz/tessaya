@@ -117,6 +117,7 @@ import { projectRefFor } from "./ProjectRef.ts";
 import { stateFile } from "@t3tools/tessaya-shared/stateDir";
 import { wentIdle } from "@t3tools/tessaya-shared/liveModel";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
+import { envOf } from "@t3tools/tessaya-shared/envOf";
 
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make(BATON_LIVE_INSTANCE);
 export const LIVE_DRIVER = ProviderDriverKind.make("acpRegistry");
@@ -507,13 +508,13 @@ export const liveMedia = (input: {
 };
 
 /** Off by machine with `BATON_LIVE_THREADS=off`. */
-export const liveThreadsEnabled = (): boolean => process.env.BATON_LIVE_THREADS !== "off";
+export const liveThreadsEnabled = (): boolean => envOf("LIVE_THREADS") !== "off";
 
 export const liveThreadId = (sessionId: string): ThreadId =>
   ThreadId.make(`${PREFIX}:${sessionId}`);
 
 const agentScript = (): string =>
-  process.env.BATON_LIVE_ACP ?? stateFile(NodeOS.homedir(), "baton-live-acp.mjs");
+  envOf("LIVE_ACP") ?? stateFile(NodeOS.homedir(), "baton-live-acp.mjs");
 
 /** A Node for the agent: T3 itself is a single executable, so it cannot run a script. */
 export const findNode = (): string | null => {
@@ -526,7 +527,7 @@ export const findNode = (): string | null => {
       .map((version) => NodePath.join(nvm, version, "bin", "node"));
   } catch {}
   const candidates = [
-    process.env.BATON_LIVE_NODE,
+    envOf("LIVE_NODE"),
     // The desktop's server runs on Electron as Node: the same executable runs the agent.
     process.env.ELECTRON_RUN_AS_NODE === "1" ? process.execPath : undefined,
     stateFile(home, "node"),

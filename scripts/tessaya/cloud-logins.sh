@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes ~/.t3/baton/cloud-logins.json: per cloud account, whether its claude.ai login is alive and how
-# how many days of login it has left. Run daily by baton-cloud-logins.timer (scripts/tessaya/systemd).
+# how many days of login it has left. Run daily by tessaya-cloud-logins.timer (was baton-cloud-logins) (scripts/tessaya/systemd).
 #
 # A cloud account is a folder under $BATON_CLOUD_DIR (default ~/.claude-cloud); its name is the
 # account's name here and in the report, so no address is ever written. One call per account
@@ -9,6 +9,12 @@
 #
 # {"checkedAt": <epoch seconds>, "accounts": [{"account", "state": ok|renew-soon|expired|not-logged-in,
 #   "loginExpiresInDays", "accessTokenExpiresInHours"}]}  renew-soon is under 5 days of login left.
+# Settings are renamed TESSAYA_*; the old BATON_* names still work. Drop them once no unit or workflow sets them.
+BATON_CLOUD_DIR="${TESSAYA_CLOUD_DIR:-${BATON_CLOUD_DIR:-}}"
+BATON_CLOUD_LOGINS_FILE="${TESSAYA_CLOUD_LOGINS_FILE:-${BATON_CLOUD_LOGINS_FILE:-}}"
+BATON_CLOUD_RENEW_DAYS="${TESSAYA_CLOUD_RENEW_DAYS:-${BATON_CLOUD_RENEW_DAYS:-}}"
+BATON_NOW="${TESSAYA_NOW:-${BATON_NOW:-}}"
+BATON_STATE="${TESSAYA_STATE:-${BATON_STATE:-}}"
 set -uo pipefail
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 root="${BATON_CLOUD_DIR:-$HOME/.claude-cloud}"

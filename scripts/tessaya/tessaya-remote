@@ -8,6 +8,8 @@
 # named by BATON_REMOTE_IDENTITY (default: the venture key) with IdentitiesOnly and BatchMode, and
 # changes nothing else on the machine.
 set -euo pipefail
+# Settings are renamed TESSAYA_*; the old BATON_* names still work. Drop them once no unit or workflow sets them.
+BATON_REMOTE_IDENTITY="${TESSAYA_REMOTE_IDENTITY:-${BATON_REMOTE_IDENTITY:-}}"
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 target="${1:?usage: tessaya-remote <ssh-target> [session]}"
 session="${2:-}"

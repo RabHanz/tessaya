@@ -55,7 +55,7 @@ export const askHistory = (
     args = words;
   }
   // Checked after the words, so a bad ask is refused here rather than passed to another server.
-  const script = env[HISTORY_ENV];
+  const script = env["TESSAYA_HISTORY_SEARCH"] ?? env[HISTORY_ENV];
   if (script === undefined || script.trim() === "")
     return Promise.resolve({ ok: false, why: NOT_HERE });
   return run(script, args).then(

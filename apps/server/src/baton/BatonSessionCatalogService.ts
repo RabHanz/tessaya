@@ -102,6 +102,7 @@ import {
   type CatalogPorts,
 } from "./SessionCatalog.ts";
 import { realCatalogPorts, TESSAYA_CLI } from "./SessionCatalogLive.ts";
+import { envOf } from "@t3tools/tessaya-shared/envOf";
 
 export class BatonSessionCatalogService extends Context.Service<
   BatonSessionCatalogService,
@@ -256,7 +257,7 @@ export const layer = Layer.effect(
     );
     // No Herdr here (Windows): a missing piece must say so, not fall through to a Herdr program that is not there.
     const noHerdr =
-      NodePath.sep === "\\" || (yield* HostProcess.Environment)["BATON_NO_HERDR"] === "1";
+      NodePath.sep === "\\" || envOf("NO_HERDR", yield* HostProcess.Environment) === "1";
     const OWN_FOLDER =
       "That folder belongs to Tessaya's own data, not to a project, so no session is started there.";
     const MISSING =
@@ -546,7 +547,7 @@ export const layer = Layer.effect(
     const catalog = createSessionCatalog(ports);
     // On by default on a server; off on a person's own Windows computer until he turns it on (BATON_AUTO_RESUME=on).
     const autoEnabled = () => {
-      const setting = (process.env["BATON_AUTO_RESUME"] ?? "").toLowerCase();
+      const setting = (envOf("AUTO_RESUME") ?? "").toLowerCase();
       if (setting === "on") return true;
       if (setting === "off") return false;
       return autoState.enabled ?? !noHerdr;
@@ -646,7 +647,7 @@ export const layer = Layer.effect(
         if (resumed.length >= MAX_AT_ONCE) break;
         const decision = autoResumeAllowed({
           idleMs: now - Date.parse(t.lastActivityAt),
-          graceMs: Number(process.env["BATON_AUTO_RESUME_GRACE_MS"] ?? DEFAULT_GRACE_MS),
+          graceMs: Number(envOf("AUTO_RESUME_GRACE_MS") ?? DEFAULT_GRACE_MS),
           sessionId: t.sessionId,
           verdict,
           background: t.background === true,

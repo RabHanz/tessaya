@@ -46,17 +46,22 @@ commitments are stored durably and resume by themselves.
 where `state` is `ok`, `renew-soon` (under five days of login left), `expired` or `not-logged-in`. The login lasts until
 the refresh token expires (about 28 days); the access token lives hours and is refreshed by use, so it is reported but
 never decides the state. One line a day is also appended to `cloud-logins.history` (times only). Accounts are the
-folder names under `~/.claude-cloud` (override `BATON_CLOUD_DIR`); no address is written anywhere.
+folder names under `~/.claude-cloud` (override `TESSAYA_CLOUD_DIR`; the old `BATON_` name still works); no address is written anywhere.
 
 Install on the box that holds the cloud logins:
 
 ```
-install -m 755 scripts/tessaya/cloud-logins.sh ~/.local/bin/baton-cloud-logins
-cp scripts/tessaya/systemd/baton-cloud-logins.{service,timer} ~/.config/systemd/user/
-systemctl --user daemon-reload && systemctl --user enable --now baton-cloud-logins.timer
+install -m 755 scripts/tessaya/cloud-logins.sh ~/.local/bin/tessaya-cloud-logins
+cp scripts/tessaya/systemd/tessaya-cloud-logins.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now tessaya-cloud-logins.timer
 ```
 
-The Now page reads the file (read only; `BATON_CLOUD_LOGINS_FILE` overrides the place): a "Claude cloud
+A box that still runs the old `baton-cloud-logins` units: install the new ones as above, check
+`systemctl --user list-timers tessaya-cloud-logins.timer` shows its next run, then
+`systemctl --user disable --now baton-cloud-logins.timer` and remove the two old unit files and
+`~/.local/bin/baton-cloud-logins`.
+
+The Now page reads the file (read only; `TESSAYA_CLOUD_LOGINS_FILE`, or the old `BATON_` name, overrides the place): a "Claude cloud
 logins" row under what works, "unknown" when there is no file, and a needs-you row naming each account
 that is `renew-soon` or `expired` ("Renew the cloud login for <account>: it needs you at a browser").
 These logins are cloud-only. Tessaya and T3 never use them as a provider.

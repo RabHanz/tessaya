@@ -26,6 +26,8 @@
 # Exit codes: 0 ok, 1 refused or drift found, 2 rebase left conflicts for a human.
 
 set -euo pipefail
+# Settings are renamed TESSAYA_*; the old BATON_* names still work. Drop them once no unit or workflow sets them.
+BATON_PATCH_DIR="${TESSAYA_PATCH_DIR:-${BATON_PATCH_DIR:-}}"
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 
 export LC_ALL=C

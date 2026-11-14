@@ -3,6 +3,8 @@
 #   scripts/tessaya/toolchain-install.sh            into $BATON_TOOLCHAIN_DIR or the default
 # Node comes from nodejs.org with SHASUMS256.txt checked; pnpm is installed into that Node.
 set -euo pipefail
+# Settings are renamed TESSAYA_*; the old BATON_* names still work. Drop them once no unit or workflow sets them.
+BATON_TOOLCHAIN_DIR="${TESSAYA_TOOLCHAIN_DIR:-${BATON_TOOLCHAIN_DIR:-}}"
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 cd "$(git rev-parse --show-toplevel)"
 

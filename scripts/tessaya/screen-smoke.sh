@@ -10,6 +10,8 @@
 # enough: set BATON_SMOKE_XBIN to its usr/bin), and `pnpm install` done. Frames, the approval
 # boxes' text and results.json land in <out-dir>.
 set -euo pipefail
+# Settings are renamed TESSAYA_*; the old BATON_* names still work. Drop them once no unit or workflow sets them.
+BATON_SMOKE_XBIN="${TESSAYA_SMOKE_XBIN:-${BATON_SMOKE_XBIN:-}}"
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 cd "$(git rev-parse --show-toplevel)/apps/desktop"
 out="$(realpath -m "${1:?out dir}")"
