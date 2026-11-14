@@ -678,6 +678,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         ownEscape: holdEscape.own,
         onActivity: (label, caption) => voice?.onActivity(label, caption),
         onCue: (name) => voice?.cue(name),
+        onFace: (name) => voice?.face(name),
         onDismissed: () => voice?.onDismissed(),
         onOpenTab: () => voice?.openHome(),
       });

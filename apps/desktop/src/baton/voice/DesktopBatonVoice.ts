@@ -683,6 +683,8 @@ interface VoiceSettings {
   readonly mascotSize: MascotSize;
   /** Her face in the pill while he talks to her, when the desktop companion is off. */
   readonly pillFace: boolean;
+  /** Her body is the persona answering him, not only his chosen one (SPINE-UNIFY §10, P5). */
+  readonly mascotFollows: boolean;
   /** Windows 11's acrylic behind the pill's island and the cards beside it; off by default. */
   readonly frosted: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
@@ -862,6 +864,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   mascotPersona: "tessaya",
   mascotSize: "medium",
   pillFace: false,
+  mascotFollows: false,
   frosted: false,
   waitMs: WAIT_DEFAULT_MS,
   wakeListenMs: 8_000,
@@ -1006,6 +1009,7 @@ export const readSettings = (path: string): VoiceSettings => {
       mascotPersona: parseMascotPersona(saved["mascotPersona"]),
       mascotSize: parseMascotSize(saved["mascotSize"]),
       pillFace: saved["pillFace"] === true,
+      mascotFollows: saved["mascotFollows"] === true,
       frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
@@ -1324,6 +1328,8 @@ export interface DesktopBatonVoice {
   readonly onTurnEnd: () => void;
   /** The assistant is looking, planning or driving; null when it stops. */
   readonly onActivity: (label: string | null, caption?: string) => void;
+  /** The persona answering him now: with "Follows who is talking" on, her body becomes that persona's. */
+  readonly face: (name: string) => void;
   /** A lesson or drive sound, through the pill's own cue path. */
   readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** How loud Baton's voice is right now, for the pill. */
@@ -1382,10 +1388,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let syncMascot: (() => void) | null = null;
   /** The body his chosen persona wears, from its pack record; read again whenever his settings change. */
   let body: PersonaBody | null = null;
+  /** The persona answering him, when her body follows who is talking (P5). */
+  let talking: string | null = null;
   const mascotBody = () =>
     (body ??= bodyOf(
       readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas,
-      settings.mascotPersona,
+      (settings.mascotFollows ? talking : null) ?? settings.mascotPersona,
     ));
   const save = (next: Partial<VoiceSettings>) => {
     settings = { ...settings, ...next };
@@ -7008,6 +7016,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         disabled: !settings.mascot,
       },
       {
+        id: "v.mascotFollows",
+        section: "Desktop companion",
+        label: "Follows who is talking",
+        hint: "Her character becomes the persona answering you, and stays until another one answers.",
+        kind: "toggle",
+        on: settings.mascotFollows,
+      },
+      {
         id: "v.pillFace",
         section: "Desktop companion",
         label: "Her face in the pill",
@@ -8182,7 +8198,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.mascotPersona") save({ mascotPersona: parseMascotPersona(value) });
     else if (id === "v.mascotSize") save({ mascotSize: parseMascotSize(value) });
     else if (id === "v.pillFace") save({ pillFace: on });
-    else if (id === "v.motion") save({ motion: parseMotion(value) });
+    else if (id === "v.mascotFollows") {
+      talking = null;
+      save({ mascotFollows: on });
+    } else if (id === "v.motion") save({ motion: parseMotion(value) });
     else if (id === "v.glass") save({ glass: parseGlass(value) });
     else if (id === "v.hideFromCapture") {
       save({ hideFromCapture: on });
@@ -8734,6 +8753,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     respellings: () => settings.pronounce,
     onPlaying: (text) => core?.playing(text),
     onTurnEnd: () => pill.on({ type: "finished" }),
+    face: (name) => {
+      if (!settings.mascotFollows || name.toLowerCase() === talking) return;
+      talking = name.toLowerCase();
+      syncMascot?.();
+    },
     cue: (name) => pill.cue(name),
     onActivity: (label, caption) =>
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),

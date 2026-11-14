@@ -766,6 +766,8 @@ export const startScreenCompanion = (input: {
   readonly ownEscape?: <T>(send: () => Promise<T>) => Promise<T>;
   /** Tells the pill what is going on; null when it stops. */
   readonly onActivity?: (label: string | null, caption?: string) => void;
+  /** The persona answering him changed (its name): her body can follow who is talking. */
+  readonly onFace?: (name: string) => void;
   /** A short sound for a lesson or drive: start, a step done, waiting, error, finished. */
   readonly onCue?: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** The answer's words were cancelled by him: the pill goes too. */
@@ -3568,6 +3570,7 @@ export const startScreenCompanion = (input: {
     // A device's turn never changes whose conversation he is in.
     if (!outside) {
       conversations.setCurrent(face.id);
+      input.onFace?.(face.name);
       // The pins follow him: the lead, this persona and the one before keep their fast tiers (0.1.79).
       pinFastTiers(face.id);
     }
