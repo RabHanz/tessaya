@@ -18,7 +18,7 @@ import * as Schedule from "effect/Schedule";
 
 import * as ServerConfig from "../config.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
-import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
+import { DEVICE_API, HUB_PATH, R1Hub } from "./R1Hub.ts";
 import { R1_VOICE_BUNDLE } from "./R1VoiceBundle.ts";
 import {
   BUNDLE_MARK,
@@ -88,10 +88,10 @@ export const loopPlan = (input: {
           }
         : {}),
       ...input.folderEnv,
-      R1_MQTT_URL: `ws://${base}${R1_HUB_PATH}`,
+      R1_MQTT_URL: `ws://${base}${HUB_PATH}`,
       R1_MQTT_USER: "tessaya-bus",
       R1_MQTT_PASS_FILE: NodePath.join(secrets, "hub-bus"),
-      R1_BRAIN_URL: `http://${base}/api/devices/r1/v1/chat/completions`,
+      R1_BRAIN_URL: `http://${base}${DEVICE_API}/chat/completions`,
       R1_DEVICE_KEY_FILE: NodePath.join(secrets, "device-key"),
       // Every R1 on this hub speaks through this loop.
       R1_INHOUSE: onHub.map((d) => d.deviceId!).join(","),

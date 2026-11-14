@@ -45,7 +45,9 @@ export const ROLLBACK_AFTER_MS = 420_000;
 /** In use: anything it did in the last 5 minutes (a voice turn, a press). */
 export const IDLE_MS = 5 * 60_000;
 const TICKET_MS = 10 * 60_000;
-export const R1_FIRMWARE_PATH = "/api/r1/firmware/";
+/** The image link this server hands out; the old path is still served for a link given before an update. */
+export const R1_FIRMWARE_PATH = "/api/tessel/firmware/";
+export const OLD_FIRMWARE_PATH = "/api/r1/firmware/";
 const SAY_BEFORE = "I'm updating; back in a minute.";
 const SAY_AFTER = "I've updated.";
 const UNLOADED = "Unloaded; Shadow loads it again.";
