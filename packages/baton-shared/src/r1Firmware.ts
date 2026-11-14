@@ -40,11 +40,11 @@ export const r1Release = (pin: R1ReleaseManifest | R1FirmwarePin | null): R1Rele
 export const R1_RELEASE: R1ReleaseManifest = {
   artifacts: {
     firmware: {
-      version: "smp-0.3.76",
-      url: "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-smp-0.3.76/r1bt-smp-0.3.76.rbl",
-      size: 1633696,
-      sha256: "1000036051620ba8f716bdd762b04ce0d8b108c7716faeddfeaafa71ac1186df",
-      sig: "b7a9ad19fe173567efb4a0784c1ae09bfcaba021197c4097d789c667b9f410709c2c1addb7f1458c74404d175bd8dd2464e2ef6bbd83f544f3f94bba4a2cdf09",
+      version: "smp-0.3.93",
+      url: "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-smp-0.3.93/r1bt-smp-0.3.93.rbl",
+      size: 1639952,
+      sha256: "05e2521dbc0c5086dd1051db411fc2d523e4ec7ac9dff130f0c4988d280b6cce",
+      sig: "5a1754d28adbb4925fe45f18e704ac1b5e78711fffd4b2dfedc428cf238d5fabbc042a81135ad48ca319f015b8fc823fb00903d94f2b7429250dcb8e5c79f011",
     },
     kws: {
       version: 1,
