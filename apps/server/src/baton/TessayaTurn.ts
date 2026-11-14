@@ -38,6 +38,8 @@ import { TessayaComms } from "./TessayaComms.ts";
 import { commsWaitingLine } from "@t3tools/baton-shared/comms";
 import { TurnPools } from "./TurnPools.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
+import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import type { RegisteredDevice } from "@t3tools/baton-contracts";
 
 export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
 
@@ -251,6 +253,45 @@ export interface TurnContext {
   /** Who she is talking to: the member and what to call them (their `name` preference, else their member name). */
   readonly who: { readonly member: string | null; readonly name: string | null };
 }
+
+/** The most one turn's "where you are" line may add (P8): a few dozen tokens, flat however many people are home. */
+const HERE_MAX_CHARS = 360;
+
+/**
+ * Where she is this turn (SPINE-UNIFY §10, P8; PERSONA-MODEL-AUDIT CS0): the vessel she speaks through, the body and
+ * room it is in, what it can do and its state now, and who is home. Only what the registry knows; private items left
+ * out. Empty when there is nothing to say.
+ */
+export const hereLine = (
+  device: RegisteredDevice | null,
+  home: ReadonlyArray<string> | null,
+): string => {
+  const parts: string[] = [];
+  if (device !== null) {
+    const value = (id: string) => {
+      const v = device.values.find((x) => x.itemId === id)?.value;
+      return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+    };
+    const body = value("body.current");
+    const room = value("body.room");
+    parts.push(
+      `You are speaking through ${device.name}${body === null ? "" : `, in ${body}`}${room === null ? "" : `, in the ${room}`}${device.online ? "" : " (offline)"}.`,
+    );
+    const open = device.items.filter((i) => i.privacy !== true && i.group !== "body");
+    const can = open.filter((i) => i.access.includes("write")).map((i) => i.label);
+    if (can.length > 0) parts.push(`It can: ${can.slice(0, 8).join(", ")}.`);
+    const now = open.flatMap((i) => {
+      const v = device.values.find((x) => x.itemId === i.id)?.value;
+      return typeof v === "number" || typeof v === "boolean" || typeof v === "string"
+        ? [`${i.label} ${String(v)}${i.unit === undefined ? "" : i.unit}`]
+        : [];
+    });
+    if (now.length > 0) parts.push(`Now: ${now.slice(0, 6).join(", ")}.`);
+  }
+  if (home !== null && home.length > 0) parts.push(`Likely home: ${home.slice(0, 8).join(", ")}.`);
+  const line = parts.join(" ");
+  return line.length <= HERE_MAX_CHARS ? line : `${line.slice(0, HERE_MAX_CHARS - 1)}…`;
+};
 
 /** How much of a conversation every vessel shares, and how long it waits for him to go on. */
 const CONVERSATION_TURNS = 12;
@@ -564,9 +605,10 @@ export const make = Effect.gen(function* () {
     yield* notePresence(turn);
     const preferences = yield* preferencesOf(member);
     const waiting = yield* waitingLine(turn, member, preferences.name ?? null);
+    const here = yield* hereFor(turn, member);
     return {
       notice: waiting,
-      block: [standing.block, extra, nameOnceLine(turn.nameOnce)]
+      block: [here, standing.block, extra, nameOnceLine(turn.nameOnce)]
         .filter((b) => b !== "")
         .join("\n\n"),
       ids: sentence.ids,
@@ -575,6 +617,26 @@ export const make = Effect.gen(function* () {
       preferences,
       who: { member, name: preferences.name ?? (yield* memberName(member)) },
     };
+  });
+
+  /**
+   * The turn's "where you are" line: its vessel from the registry, and for a member (never a guest, never a shared
+   * room) who was heard here lately. Only what this server holds in memory: no call that would slow the first word.
+   */
+  const hereFor = Effect.fn("TessayaTurn.hereFor")(function* (
+    turn: TurnEnvelope,
+    member: string | null,
+  ) {
+    const registry = yield* Effect.serviceOption(DeviceRegistry);
+    const device = Option.isNone(registry)
+      ? null
+      : yield* registry.value.get(turn.vessel.id).pipe(Effect.orElseSucceed(() => null));
+    if (member === null || turn.sharedRoom === true) return hereLine(device, null);
+    const now = yield* Clock.currentTimeMillis;
+    const names: string[] = [];
+    for (const [who, s] of seen)
+      if (now - s.at <= PRESENCE_HOME_MS) names.push((yield* memberName(who)) ?? who);
+    return hereLine(device, names);
   });
 
   /**

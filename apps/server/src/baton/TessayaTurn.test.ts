@@ -13,10 +13,15 @@ import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.t
 import { BatonPrivateMemoryService } from "./BatonPrivateMemoryService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
-import type { BatonHouseholdCallInput } from "@t3tools/baton-contracts";
+import type {
+  BatonHouseholdCallInput,
+  DeviceItem,
+  RegisteredDevice,
+} from "@t3tools/baton-contracts";
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
+  hereLine,
   SessionMember,
   TessayaTurn,
   TurnOrigin,
@@ -787,4 +792,57 @@ it("tells the brain a newly recognised speaker's name once, and nothing otherwis
   assert.include(nameOnceLine("Maya"), "not again");
   assert.strictEqual(nameOnceLine(undefined), "");
   assert.strictEqual(nameOnceLine("  "), "");
+});
+
+it("tells every turn where she is in a few dozen tokens: vessel, body, room, what it can do, its state, who is home", () => {
+  const item = (
+    id: string,
+    label: string,
+    access: string,
+    extra: Partial<DeviceItem> = {},
+  ): DeviceItem => ({
+    id,
+    label,
+    type: "string",
+    access,
+    safety: "free" as const,
+    ...extra,
+  });
+  const device: RegisteredDevice = {
+    deviceId: "r1-1",
+    kind: "r1",
+    name: "R1",
+    firmware: null,
+    via: "mqtt",
+    online: true,
+    lastSeenAt: null,
+    version: null,
+    items: [
+      item("volume", "Volume", "read,write", { unit: "%" }),
+      item("battery", "Battery", "read", { unit: "%" }),
+      item("camera", "Camera", "read,write", { privacy: true }),
+      item("body.current", "Body", "read", { group: "body" }),
+      item("body.room", "Room", "read", { group: "body" }),
+    ],
+    values: [
+      { itemId: "volume", value: 70, at: "2026-11-14T12:00:00Z" },
+      { itemId: "battery", value: 99, at: "2026-11-14T12:00:00Z" },
+      { itemId: "camera", value: "on", at: "2026-11-14T12:00:00Z" },
+      { itemId: "body.current", value: "the Dock", at: "2026-11-14T12:00:00Z" },
+      { itemId: "body.room", value: "study", at: "2026-11-14T12:00:00Z" },
+    ],
+  };
+  assert.strictEqual(
+    hereLine(device, ["Rab", "Sara"]),
+    "You are speaking through R1, in the Dock, in the study. It can: Volume. Now: Volume 70%, Battery 99%. Likely home: Rab, Sara.",
+  );
+  // A guest's turn (no member) is not told who lives here; nothing known is nothing said.
+  assert.strictEqual(hereLine(null, null), "");
+  assert.isAtMost(
+    hereLine(
+      device,
+      Array.from({ length: 50 }, (_, i) => `Person ${i}`),
+    ).length,
+    360,
+  );
 });
