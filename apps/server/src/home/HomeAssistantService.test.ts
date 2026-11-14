@@ -17,6 +17,8 @@ import {
   type HomeLink,
 } from "./HomeAssistantConnection.ts";
 import * as HomeAssistantService from "./HomeAssistantService.ts";
+import { TessayaHousehold } from "../baton/TessayaHousehold.ts";
+import { TurnOrigin } from "../baton/TessayaTurn.ts";
 
 interface Entity {
   s: string;
@@ -116,7 +118,11 @@ const makeHouse = () => {
             for (const [e, v] of scenes.get(ids(m["target"])[0]!) ?? []) put(e, structuredClone(v));
           if (name === "fan.turn_on")
             for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "on" });
-          if (name === "light.turn_off" || name === "automation.turn_off")
+          if (
+            name === "light.turn_off" ||
+            name === "fan.turn_off" ||
+            name === "automation.turn_off"
+          )
             for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "off" });
           if (name === "automation.turn_on")
             for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "on" });
@@ -665,5 +671,52 @@ it.effect(
       yield* home.removeDevice(null);
       assert.lengthOf(yield* home.devices, 0);
     }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "two people, one fan (CS4): the owner wins, a child cannot override, anyone else is told and asking again is their yes",
+  () => {
+    const { house, layer } = setup();
+    const household = Layer.mock(TessayaHousehold)({
+      grantsOf: (member: string) =>
+        Effect.succeed({
+          role: member === "kid" ? "child" : "adult",
+          machine: false,
+          name: member,
+        }),
+    } as never);
+    const as = (member: string | null) => (service: "turn_on" | "turn_off") =>
+      Effect.gen(function* () {
+        const home = yield* HomeAssistantService.HomeAssistantService;
+        return yield* home.call(
+          { domain: "fan", service, target: { entity_id: "fan.fan" }, why: "asked" },
+          assistant,
+        );
+      }).pipe(
+        Effect.provideService(
+          TurnOrigin,
+          member === null ? null : { kind: "device", id: "r1", label: "R1", member, assurance: 2 },
+        ),
+      );
+    return Effect.gen(function* () {
+      yield* connected;
+      assert.strictEqual((yield* as("sara")("turn_off")).status, "done");
+      const kid = yield* as("kid")("turn_on").pipe(Effect.flip);
+      assert.include(kid.why, "a child cannot change it over them");
+      const omar = yield* as("omar")("turn_on").pipe(Effect.flip);
+      assert.include(omar.why, "sara set Fan");
+      assert.strictEqual(house.states.get("fan.fan")?.s, "off");
+      // Told, he asks again: that is his yes.
+      const again = yield* as("omar")("turn_on");
+      assert.strictEqual(again.status, "done");
+      assert.include(again.line, "sara had set Fan");
+      // The owner (no turn origin: Settings, his outside agents) goes through, and hears whose setting it was.
+      const owner = yield* as(null)("turn_off");
+      assert.include(owner.line, "changed it over theirs");
+      // Past the window it is an ordinary ask.
+      yield* TestClock.adjust("2 minutes");
+      assert.strictEqual((yield* as("kid")("turn_on")).status, "done");
+    }).pipe(Effect.provide(Layer.merge(layer, household)));
   },
 );
