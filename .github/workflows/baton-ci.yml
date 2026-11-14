@@ -75,9 +75,10 @@ jobs:
           # On main every test Tessaya added since the pin runs (web's too, not its browser ones), so a test no PR
           # touched cannot go stale until the nightly sync finds it. The pin's tree is fetched blobless to know which.
           all=0 workspaces="apps/server apps/desktop packages/tessaya-shared packages/tessaya-voice packages/tessaya-contracts"
+          # Fetched for PRs too: the private guard's test needs the pin's tree whenever it runs.
+          pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
+          git fetch -q --no-tags --filter=blob:none https://github.com/pingdotgg/t3code.git "$pin"
           if [ "${{ github.event_name }}" = push ]; then
-            pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
-            git fetch -q --no-tags --filter=blob:none https://github.com/pingdotgg/t3code.git "$pin"
             changed="$(git diff --no-renames --name-only --diff-filter=A "$pin" HEAD)" all=1 workspaces="$workspaces apps/web"
             echo "main: running every test Tessaya added since $pin"
           fi
