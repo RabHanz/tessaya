@@ -210,7 +210,8 @@ describe("her reasoning is never said aloud (13 Nov audit, R1-P8)", () => {
     const s = speakableSentences((sentence) => said.push(sentence));
     for (const chunk of lines[2]!.match(/.{1,7}/gs)!) s.push(chunk);
     s.flush();
-    expect(said.join("")).toBe("Got it, nothing else is waiting on you.");
+    // The last one ends with a space as well: the R1's loop speaks a sentence once one follows it (14 Nov, 21:40).
+    expect(said.join("")).toBe("Got it, nothing else is waiting on you. ");
   });
 
   it("never speaks, records or learns her own name as an opener", () => {
@@ -229,7 +230,7 @@ describe("her reasoning is never said aloud (13 Nov audit, R1-P8)", () => {
     const s = speakableSentences((sentence) => said.push(sentence), names);
     for (const chunk of "Alfred here. Nothing needs you.".match(/.{1,4}/gs)!) s.push(chunk);
     s.flush();
-    expect(said.join("")).toBe("Nothing needs you.");
+    expect(said.join("")).toBe("Nothing needs you. ");
   });
 });
 
@@ -460,7 +461,7 @@ effectIt.effect(
         Stream.runForEach((words) => Effect.sync(() => said.push(words))),
         Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
       );
-      expect(said.join("")).toBe("Let me look that up. It is 23 degrees and hazy.");
+      expect(said.join("")).toBe("Let me look that up. It is 23 degrees and hazy. ");
       expect(details).toEqual(["It is 23 degrees and hazy."]);
     }),
 );
@@ -512,7 +513,7 @@ effectIt.effect(
       );
       yield* TestClock.adjust("5 seconds");
       yield* Fiber.join(turn);
-      expect(said.join("")).toBe("One moment. Done.");
+      expect(said.join("")).toBe("One moment. Done. ");
     }),
 );
 
@@ -563,8 +564,8 @@ effectIt.effect(
           Effect.map(() => said.join("")),
         );
       };
-      expect(yield* turn("plan my week around the launch")).toBe("Want Opus on it?");
-      expect(yield* turn("yes, go on")).toBe("Putting Opus on this. Here is the plan.");
+      expect(yield* turn("plan my week around the launch")).toBe("Want Opus on it? ");
+      expect(yield* turn("yes, go on")).toBe("Putting Opus on this. Here is the plan. ");
       expect(sent.map((s) => s.role)).toEqual(["voice", "voice", "deep"]);
       expect(sent[2]!.user).toContain('because: "his week"');
     }),
@@ -628,7 +629,7 @@ effectIt.effect(
           ),
         ),
       );
-      expect(said.join("")).toBe("Putting Opus on this. Use backoff.");
+      expect(said.join("")).toBe("Putting Opus on this. Use backoff. ");
       expect(roles).toEqual(["voice", "deep"]);
     }),
 );
