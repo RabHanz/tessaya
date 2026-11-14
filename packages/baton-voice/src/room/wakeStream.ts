@@ -61,10 +61,14 @@ export interface WakeStreamDeps {
 }
 
 export const createWakeStream = (deps: WakeStreamDeps) => {
+  /** The words and scorer a segment starts on; `reload` replaces them, and each R1 takes them at its next segment. */
+  let current = { words: deps.words, scorer: deps.scorer, gen: 0 };
   const devices = new Map<
     string,
     {
       scorer: Promise<WakeScorer>;
+      words: WakeStreamDeps["words"];
+      gen: number;
       heard: Int16Array;
       pending: Int16Array;
       done: boolean;
@@ -100,7 +104,9 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     let d = devices.get(id);
     if (d === undefined) {
       d = {
-        scorer: deps.scorer(),
+        scorer: current.scorer(),
+        words: current.words,
+        gen: current.gen,
         heard: new Int16Array(0),
         pending: new Int16Array(PRIME_SAMPLES),
         done: false,
@@ -158,9 +164,9 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       const chunk = d.pending.slice(0, scorer.chunkSamples);
       d.pending = d.pending.slice(scorer.chunkSamples);
       const scores = await scorer.score(chunk);
-      deps.words.forEach((_, i) => (d.best[i] = Math.max(d.best[i] ?? 0, scores[i] ?? 0)));
-      const at = deps.words.findIndex((w, i) => (scores[i] ?? 0) >= w.threshold);
-      if (at >= 0) await fired(id, d, deps.words[at]!.word, scores[at]!, deps.words[at]!.threshold);
+      d.words.forEach((_, i) => (d.best[i] = Math.max(d.best[i] ?? 0, scores[i] ?? 0)));
+      const at = d.words.findIndex((w, i) => (scores[i] ?? 0) >= w.threshold);
+      if (at >= 0) await fired(id, d, d.words[at]!.word, scores[at]!, d.words[at]!.threshold);
     }
   };
 
@@ -175,6 +181,12 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         if (deps.capture !== undefined && d.seg.length < KEEP_SAMPLES)
           d.seg = join(d.seg, pcm).slice(0, KEEP_SAMPLES);
         if (d.done) return;
+        // A new segment on an old word list takes the reloaded one; a segment in progress keeps its own.
+        if (d.samples === 0 && d.gen !== current.gen) {
+          d.scorer = current.scorer();
+          d.words = current.words;
+          d.gen = current.gen;
+        }
         const scorer = await d.scorer;
         d.samples += pcm.length;
         d.heard = join(d.heard, pcm).slice(-KEEP_SAMPLES);
@@ -201,14 +213,14 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         // One line a segment, so a name that did not wake her can be audited against the thresholds.
         if (!d.done && d.samples > 0)
           deps.log(
-            `[${id}] wake segment ${(d.samples / RATE).toFixed(1)} s, best ${deps.words
+            `[${id}] wake segment ${(d.samples / RATE).toFixed(1)} s, best ${d.words
               .map((w, i) => `${w.word} ${(d.best[i] ?? 0).toFixed(3)}/${w.threshold}`)
               .join(", ")}`,
           );
         const ours =
           d.outcome !== ""
             ? d.outcome
-            : `no fire, best ${deps.words.map((w, i) => `${w.word} ${(d.best[i] ?? 0).toFixed(3)}`).join(", ")}`;
+            : `no fire, best ${d.words.map((w, i) => `${w.word} ${(d.best[i] ?? 0).toFixed(3)}`).join(", ")}`;
         if (deps.capture !== undefined && d.seg.length > 0)
           deps.capture.segment(
             id,
@@ -217,7 +229,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
             {
               outcome: ours,
               woke: d.woke,
-              best: Object.fromEntries(deps.words.map((w, i) => [w.word, d.best[i] ?? 0])),
+              best: Object.fromEntries(d.words.map((w, i) => [w.word, d.best[i] ?? 0])),
             },
             seg === undefined ? undefined : pairs.get(`${id}#${seg}`)?.kws,
           );
@@ -232,6 +244,10 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         scorer.reset();
         d.pending = new Int16Array(PRIME_SAMPLES);
       });
+    },
+    /** New words (her newly trained ones): each R1 listens for them from its next segment. */
+    reload: (words: WakeStreamDeps["words"], scorer: WakeStreamDeps["scorer"]) => {
+      current = { words, scorer, gen: current.gen + 1 };
     },
     /** For tests: everything sent so far has been scored. */
     drained: (id: string) => devices.get(id)?.chain ?? Promise.resolve(),
