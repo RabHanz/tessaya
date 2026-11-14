@@ -11,6 +11,7 @@ import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
 import { PACK_DIR_NAME } from "../baton/OperatingSystemPack.ts";
+import { MemberPreferences } from "../baton/MemberPreferences.ts";
 import * as TessayaWake from "./TessayaWake.ts";
 import { wakeAccess } from "./TessayaWakeRoutes.ts";
 
@@ -93,3 +94,46 @@ it("lets only the trainer train, any paired vessel or R1 fetch, and a settings w
   }
   expect(wakeAccess("GET key", null, false)).toBeNull();
 });
+
+it.effect(
+  "keeps enrolment audio only while that member's switch is on: on for the owner, opt-in for others, deleted when off",
+  () => {
+    const prefs = new Map<string, Record<string, string>>();
+    let told: (member: string) => Effect.Effect<void> = () => Effect.void;
+    const preferences = Layer.mock(MemberPreferences)({
+      of: (member: string) => Effect.succeed(prefs.get(member) ?? {}),
+      listen: (listener) => Effect.sync(() => void (told = (m) => listener(m, null))),
+    });
+    return Effect.gen(function* () {
+      const wake = yield* TessayaWake.TessayaWake;
+      const speech = [Int16Array.from({ length: 16_000 }, (_, i) => i % 300)];
+      // The owner is on until he says off; Maya is off until she says on.
+      expect(yield* wake.keepEnrolment("owner", speech)).toEqual({ kept: 1 });
+      expect(yield* wake.keepEnrolment("maya", speech)).toEqual({ kept: 0 });
+      expect(yield* wake.voices("maya")).toEqual({
+        refused: "That member has not agreed to their voice being used for training.",
+      });
+      prefs.set("maya", { wakeTraining: "yes, use my voice" });
+      yield* wake.keepEnrolment("maya", speech);
+      const hers = yield* wake.voices("maya");
+      expect("clips" in hers && hers.clips.map((c) => c.ms)).toEqual([1000]);
+      const his = yield* wake.voices("owner");
+      if (!("clips" in his)) throw new Error("the owner's clips should be listed");
+      const wav = (yield* wake.voiceClip("owner", his.clips[0]!.id)) as Uint8Array;
+      expect([new TextDecoder().decode(wav.slice(0, 4)), wav.byteLength]).toEqual([
+        "RIFF",
+        44 + 32_000,
+      ]);
+      // His switch goes off: refused at once, and the audio is gone, not just hidden.
+      prefs.set("owner", { wakeTraining: "off" });
+      yield* told("owner");
+      expect("refused" in (yield* wake.voices("owner"))).toBe(true);
+      prefs.set("owner", { wakeTraining: "on" });
+      expect(yield* wake.voices("owner")).toEqual({ personId: "owner", consent: true, clips: [] });
+    }).pipe(
+      Effect.provide(
+        TessayaWake.layer.pipe(Layer.provideMerge(config), Layer.provide(preferences)),
+      ),
+    );
+  },
+);

@@ -162,6 +162,14 @@ export const PREFERENCE_KEYS: Readonly<Record<BatonPreferenceKey, string>> = {
   timeFormat: "how to say times (12-hour with AM/PM, or 24-hour)",
   news: "where their news comes from",
   music: "their music service or taste",
+  wakeTraining:
+    "whether their enrolled voice may train her wake words (on or off; on for the owner until he says off)",
 };
 export type PreferenceKey = BatonPreferenceKey;
+/** Whether a member's enrolled voice may train wake words: the owner's yes stands until he says no; others opt in. */
+export const wakeTrainingOn = (member: string, value: string | undefined): boolean =>
+  value === undefined
+    ? member === OWNER_MEMBER_ID
+    : /^\s*(?:on|yes|y|true|allow(?:ed)?|ok(?:ay)?|sure|go ahead|use it)\b/i.test(value);
+
 export const isPreferenceKey = (key: string): key is PreferenceKey => key in PREFERENCE_KEYS;

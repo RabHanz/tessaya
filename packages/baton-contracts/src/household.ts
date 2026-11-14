@@ -18,6 +18,7 @@ export const BatonPreferenceKey = Schema.Literals([
   "timeFormat",
   "news",
   "music",
+  "wakeTraining",
 ]);
 export type BatonPreferenceKey = typeof BatonPreferenceKey.Type;
 

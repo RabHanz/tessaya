@@ -300,7 +300,13 @@ const servicesInner = IntentService.layer.pipe(
   ),
   Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
   // Every brain call's usage row, for the Usage page and her usage report; her wake-word models, signed here (P3b).
-  Layer.provideMerge(Layer.mergeAll(BrainUsage.layer, TessayaWake.layer)),
+  Layer.provideMerge(
+    Layer.mergeAll(
+      BrainUsage.layer,
+      // It hears each member's training switch from their preferences (the same memoised layer as above).
+      TessayaWake.layer.pipe(Layer.provide(MemberPreferences.layer)),
+    ),
+  ),
   // The desktop's hands: a remote session's calls and a brain turn's, one broker.
   Layer.provideMerge(VesselHands.layer),
   // The Record under everything above, so any service can write to it.
