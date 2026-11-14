@@ -45,6 +45,13 @@ export type DeviceWriter = (
   value: unknown,
 ) => Effect.Effect<{ readonly ok: boolean; readonly error?: string } | null>;
 
+/** The server's own items on a device (its body): it answers their writes with a line, or refuses. */
+export type OwnWriter = (
+  deviceId: string,
+  itemId: string,
+  value: unknown,
+) => Effect.Effect<string, DeviceRefusedError>;
+
 export interface WriteOutcome {
   /** done: the device acknowledged it; sent: it went out but no acknowledgement came in time. */
   readonly status: "done" | "sent";
@@ -102,6 +109,8 @@ export class DeviceRegistry extends Context.Service<
       value: unknown,
     ) => Effect.Effect<WriteOutcome, DeviceRefusedError>;
     readonly attachWriter: (via: "mqtt", writer: DeviceWriter) => Effect.Effect<void>;
+    /** Items the server keeps for devices; a device shows one once the server has reported a value for it. */
+    readonly own: (items: ReadonlyArray<DeviceItem>, writer: OwnWriter) => Effect.Effect<void>;
     /** A broker device acknowledged an item write. */
     readonly acked: (
       deviceId: string,
@@ -146,6 +155,9 @@ const make = Effect.gen(function* () {
   const queued = new Map<string, Array<DeviceWrite>>();
   const wake = new Map<string, Deferred.Deferred<void>>();
   let counter = 0;
+  let owned: { items: ReadonlyArray<DeviceItem>; writer: OwnWriter } | null = null;
+  const ownedOf = (d: Held) =>
+    (owned?.items ?? []).filter((i) => d.values.has(i.id) && !d.items.some((x) => x.id === i.id));
 
   const rows = yield* sql<{
     id: string;
@@ -243,7 +255,7 @@ const make = Effect.gen(function* () {
     lastSeenAt: iso(d.lastSeen),
     version: d.version,
     ...(d.member === null ? {} : { member: d.member }),
-    items: d.items,
+    items: [...d.items, ...ownedOf(d)],
     values: [...d.values].map(([itemId, v]) => ({ itemId, value: v.value, at: iso(v.at)! })),
     live: [...d.live]
       .filter(([, until]) => until > now)
@@ -324,7 +336,8 @@ const make = Effect.gen(function* () {
     const d = devices.get(deviceId);
     if (d === undefined)
       return yield* new DeviceRefusedError({ why: `No device called ${deviceId} is known here.` });
-    const item = d.items.find((i) => i.id === itemId);
+    const own = ownedOf(d).find((i) => i.id === itemId);
+    const item = d.items.find((i) => i.id === itemId) ?? own;
     if (item === undefined)
       return yield* new DeviceRefusedError({ why: `${d.name} has no item ${itemId}.` });
     if (item.safety === "never")
@@ -333,6 +346,9 @@ const make = Effect.gen(function* () {
       });
     const checked = checkWrite(item, value);
     if (!checked.ok) return yield* new DeviceRefusedError({ why: checked.why });
+    // The server's own item is answered here, whether or not the device is online.
+    if (own !== undefined && owned !== null)
+      return { status: "done", line: yield* owned.writer(deviceId, itemId, checked.value) };
     if (!onlineOf(d, now))
       return yield* new DeviceRefusedError({
         why: `${d.name} is offline right now. Nothing was sent.`,
@@ -424,6 +440,11 @@ const make = Effect.gen(function* () {
       if (waiter !== undefined) yield* Deferred.succeed(waiter, result);
     }),
     take,
+    own: Effect.fn("DeviceRegistry.own")((items: ReadonlyArray<DeviceItem>, writer: OwnWriter) =>
+      Effect.sync(() => {
+        owned = { items: items.map(withFloor), writer };
+      }),
+    ),
     forget: Effect.fn("DeviceRegistry.forget")(function* (deviceId: string) {
       devices.delete(deviceId);
       queued.delete(deviceId);

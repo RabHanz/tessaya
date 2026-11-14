@@ -58,6 +58,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { BatonPhoneInbox } from "../baton/BatonPhoneInbox.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
+import { VesselBodies } from "./VesselBodies.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/baton-shared/mqtt";
@@ -710,6 +711,16 @@ const make = Effect.gen(function* () {
   const reach = yield* Effect.serviceOption(R1Reach);
   const hub = yield* Effect.serviceOption(R1Hub);
   const record = yield* Effect.serviceOption(BatonRecordService);
+  const bodies = yield* Effect.serviceOption(VesselBodies);
+  /** His own change (Settings, or asked of her; not a rule's) sticks to the body the vessel is in. */
+  const keep = (by: DeviceActor, id: string, itemId: string, value: unknown, previous: unknown) =>
+    bodies._tag === "Some" &&
+    by.dryRun !== true &&
+    (by.surface === "settings" || (by.surface === "assistant" && !by.who.startsWith("rule ")))
+      ? Effect.map(bodies.value.remember(id, itemId, value, previous), (line) =>
+          line === null ? "" : ` ${line}`,
+        )
+      : Effect.succeed("");
   const registry = yield* DeviceRegistry;
   const scope = yield* Effect.scope;
   const incoming = yield* Queue.unbounded<{ topic: string; payload: string }>();
@@ -1295,7 +1306,9 @@ const make = Effect.gen(function* () {
           s.volume[id] = after;
         });
         yield* publish(id, "cmd/volume", { pct: after });
-        return done(volumeLine(before, after));
+        return done(
+          volumeLine(before, after) + (yield* keep(by, id, "audio.volume", after, before)),
+        );
       }
       case "vibrate":
         yield* publish(id, "cmd/vibrate", { ms: Math.min(Math.max(Math.round(c.ms), 10), 1500) });
@@ -1486,18 +1499,22 @@ const make = Effect.gen(function* () {
               ? `${item.label} on ${reg.name} would run.`
               : `${item.label} on ${reg.name} would be ${valueText(item, c.value)}.`,
           );
+        const previous = yield* registry.value(id, c.itemId);
         const out = yield* registry.write(id, c.itemId, c.value);
         const said =
           item.type === "action"
             ? `${item.label} on ${reg.name}`
             : `${item.label} on ${reg.name} to ${valueText(item, c.value)}`;
         yield* audit(by, id, said, out.status);
+        const kept = item.type === "action" ? "" : yield* keep(by, id, c.itemId, c.value, previous);
         return done(
-          out.status === "sent"
+          (out.status === "sent"
             ? out.line
             : item.type === "action"
               ? `Done: ${item.label} on ${reg.name}.`
-              : `${item.label} on ${reg.name} is now ${valueText(item, c.value)}.`,
+              : c.itemId.startsWith("body.")
+                ? out.line
+                : `${item.label} on ${reg.name} is now ${valueText(item, c.value)}.`) + kept,
         );
       }
     }

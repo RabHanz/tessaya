@@ -13,6 +13,7 @@ import {
   DevicePublish,
   DEVICE_TRANSPORTS,
   DeviceTagAction,
+  VESSEL_BODY_TYPES,
   R1_KEY_SLOTS,
   R1KeyBinding,
   R1_LEDS,
@@ -36,6 +37,7 @@ import { R1Pairing } from "./R1Pairing.ts";
 import { R1Reach } from "./R1Reach.ts";
 import { R1Loop } from "./R1Loop.ts";
 import { R1Updates } from "./R1Updates.ts";
+import { VesselBodies } from "./VesselBodies.ts";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const Id = Text(60);
@@ -236,6 +238,31 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
         : pairing.value.rotate(a.id, a.confirmed === true),
     ),
   ),
+  bodies: op(Schema.Struct({}), () => bodies((b) => b.view)),
+  bodyMint: op(
+    Schema.Struct({
+      uid: Schema.String.check(Schema.isPattern(/^[0-9a-fA-F:]{8,40}$/)),
+      type: Schema.Literals(VESSEL_BODY_TYPES),
+      name: Text(60),
+      room: Schema.optionalKey(Schema.NullOr(Text(60))),
+      bodyId: Schema.optionalKey(Text(20)),
+      madeFor: Schema.optionalKey(Schema.NullOr(Text(60))),
+    }),
+    (a) => bodies((b) => b.mint(a)),
+  ),
+  bodyEdit: op(
+    Schema.Struct({
+      bodyId: Text(20),
+      name: Schema.optionalKey(Text(60)),
+      room: Schema.optionalKey(Schema.NullOr(Text(60))),
+      retired: Schema.optionalKey(Schema.Boolean),
+      resetValues: Schema.optionalKey(Schema.Boolean),
+    }),
+    (a) => bodies((b) => b.edit(a)),
+  ),
+  bodyLinks: op(Schema.Struct({ host: Schema.NullOr(Text(253)) }), (a) =>
+    bodies((b) => b.setLinksHost(a.host)),
+  ),
   busLogin: op(Schema.Struct({}), () =>
     Effect.flatMap(Effect.serviceOption(R1Hub), (hub) =>
       Option.isNone(hub)
@@ -244,6 +271,14 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
     ),
   ),
 };
+
+/** Bodies run where the device hub does. */
+const bodies = <A>(f: (b: VesselBodies["Service"]) => Effect.Effect<A, DeviceRefusedError>) =>
+  Effect.flatMap(Effect.serviceOption(VesselBodies), (b) =>
+    Option.isNone(b)
+      ? Effect.fail(new DeviceRefusedError({ why: "Bodies don't run on this server." }))
+      : f(b.value),
+  );
 
 export type DevicesCallKind = BatonDevicesCallInput["kind"];
 

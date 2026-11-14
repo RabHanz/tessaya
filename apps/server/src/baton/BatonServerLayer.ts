@@ -55,6 +55,7 @@ import * as R1Loop from "../home/R1Loop.ts";
 import * as R1Reach from "../home/R1Reach.ts";
 import * as R1Updates from "../home/R1Updates.ts";
 import * as DeviceRegistry from "../home/DeviceRegistry.ts";
+import * as VesselBodies from "../home/VesselBodies.ts";
 import * as VoiceArbiter from "../home/VoiceArbiter.ts";
 import * as DeviceTriggers from "../home/DeviceTriggers.ts";
 import * as HomeDeviceRoutes from "../home/HomeDeviceRoutes.ts";
@@ -148,8 +149,12 @@ const pairingLayer = R1Pairing.layer.pipe(
   Layer.provide(homeLayer),
 );
 
+// The bodies vessels sit in (Dock, plush, stand), read from their NFC tags; one instance for the devices and the door.
+const vesselBodiesLayer = VesselBodies.layer.pipe(Layer.provide(DeviceRegistry.layer));
+
 // The R1 and later devices: one instance, shared by the rules that drive them.
 const homeDevicesLayer = HomeDevices.layer.pipe(
+  Layer.provide(vesselBodiesLayer),
   Layer.provide(HomeDevices.brokerLayer.pipe(Layer.provide(hubLayer))),
   Layer.provide(reachLayer),
   Layer.provide(DeviceRegistry.layer),
@@ -212,6 +217,7 @@ const servicesInner = IntentService.layer.pipe(
         Layer.provide(BatonOneShot.layer),
       ),
       homeDevicesLayer,
+      vesselBodiesLayer,
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session
       // on a machine with no Herdr found no way to start a thread.
       BatonSessionCatalogService.layer.pipe(
