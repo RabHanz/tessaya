@@ -463,7 +463,9 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       job_start:
         "Opened Tidy the README in shop on sonnet, led by Onyx. Its login is nearly out of usage and no other has room, so it is paused and starts by itself when the limit resets at Fri 14 Nov, 18:30; tell him that plainly. Talking keeps working meanwhile.",
     },
-    says: "18:30",
+    // Spoken replies say times in words ("half past six"), so a judge reads it rather than a substring.
+    rubric:
+      "The reply says the job is paused or waiting because its login is nearly out of usage, and that it starts by itself when the limit resets at 18:30 (said any way, such as half past six).",
   },
   {
     id: "assign-he-names",
