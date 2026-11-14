@@ -332,4 +332,15 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /^(?![\s\S]*\b(mood|I'?m (so |really )?(happy|glad|in a good)|feeling)\b)/i,
     ],
   },
+  // CS8: a hand-off between personas, as TessayaTurn writes it.
+  {
+    id: "hand-off",
+    source:
+      "PERSONA-MODEL-AUDIT CS8: 'Freya, take this over' and she carries on, no fresh greeting",
+    said: ["Freya, take this over"],
+    persona: "companion",
+    verified: true,
+    memory: `${HERE} Onyx handed this conversation to you: carry on from where it is, without a greeting or starting over.`,
+    lastSays: [/^(?![\s\S]*\b(hi|hello|hey there|I'?m Freya|nice to meet)\b)/i, SHORT],
+  },
 ];
