@@ -7,9 +7,12 @@ import * as NodePath from "node:path";
 
 import { rng, room } from "../../packages/baton-voice/src/echoSim.ts";
 import { createSileroScorer } from "../../packages/baton-voice/src/providers/onnx.ts";
+import { createSpeakerEmbedder } from "../../packages/baton-voice/src/providers/speakerOnnx.ts";
+import { cosine, memberByVoice } from "../../packages/baton-voice/src/speaker.ts";
 import {
-  createRoomLevel,
+  createVoiceLevel,
   createTalkOver,
+  voiceCheckDue,
   type TalkOverOptions,
 } from "../../packages/baton-voice/src/talkOver.ts";
 
@@ -130,6 +133,27 @@ const captures = async (
   opts: TalkOverOptions,
 ) => {
   const silero = process.env["SILERO"];
+  // PROFILE=<dir of 16 kHz s16le clips>: a household profile (their mean CAM++ vector) for the voice check.
+  const member = await (async () => {
+    const dir = process.env["PROFILE"];
+    if (dir === undefined) return null;
+    const embedder = await createSpeakerEmbedder(process.env["CAMPLUS"]!, "campplus", 2);
+    const vectors: Float32Array[] = [];
+    for (const f of NodeFS.readdirSync(dir).sort().slice(0, 12)) {
+      const b = NodeFS.readFileSync(NodePath.join(dir, f));
+      const v = await embedder.embed(
+        new Int16Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.length)),
+      );
+      if (v !== null) vectors.push(v);
+    }
+    const centroid = new Float32Array(vectors[0]!.length);
+    for (const v of vectors)
+      for (let i = 0; i < v.length; i += 1) centroid[i] = centroid[i]! + v[i]! / vectors.length;
+    return async (pcm: Int16Array) => {
+      const v = await embedder.embed(pcm);
+      return v === null ? Number.NEGATIVE_INFINITY : cosine(v, centroid);
+    };
+  })();
   const herI = (() => {
     const b = NodeFS.readFileSync(refFile);
     return new Int16Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.length));
@@ -160,9 +184,18 @@ const captures = async (
       const det = createTalkOver(opts);
       // SILERO=<model>: the loop's whole gate (Silero on the latest window, the room's level) on top of the detector.
       const vad = silero === undefined ? null : await createSileroScorer(silero);
-      const level = createRoomLevel(TALK_MIN_DBFS);
+      const level = createVoiceLevel();
       let prob = 1;
       const cuts: number[] = [];
+      const pauses: Array<{ at: number; outcome: "member" | "other"; ms: number }> = [];
+      let hold: {
+        at: number;
+        seq: number;
+        fromSeq: number;
+        checked: number;
+        quietSince: number | null;
+      } | null = null;
+      let recentFrames: Array<{ seq: number; pcm: Int16Array }> = [];
       let lastCut = -Infinity;
       for (const pass of [0, 1])
         for (const f of frames) {
@@ -184,29 +217,80 @@ const captures = async (
                   );
               }
           det.reference(ref, f.seq * 960);
-          let heard = det.process(mic, f.seq * 960).some((v) => v.ready && v.speech);
+          const voiced = det.process(mic, f.seq * 960).some((v) => v.ready && v.speech);
+          let heard = voiced;
           if (vad !== null && pass === 1) {
             level.push(mic);
             for (let w = 0; w + 512 <= 960; w += 512)
               prob = await vad.score(mic.subarray(w, w + 512));
-            heard = heard && prob >= 0.35 && level.rises();
+            heard = heard && prob >= SILERO_MIN && level.reaches(TALK_MIN_DBFS);
+          }
+          if (pass === 1) recentFrames = [...recentFrames, { seq: f.seq, pcm: mic }].slice(-60);
+          // The loop's soft pause (roomVoice `followHold`): whose voice, checked as it comes in.
+          if (pass === 1 && hold !== null && member !== null) {
+            const h = hold;
+            h.quietSince = voiced ? null : (h.quietSince ?? f.seq);
+            const quiet = h.quietSince !== null && f.seq - h.quietSince >= 10;
+            const got = recentFrames.filter((r) => r.seq >= h.fromSeq);
+            const seconds = (got.length * 960) / RATE;
+            if (voiceCheckDue(seconds, h.checked, quiet)) {
+              h.checked = seconds;
+              const clip = new Int16Array(got.length * 960);
+              got.forEach((r, i) => clip.set(r.pcm, i * 960));
+              const best = await member(clip);
+              if (process.env["CHECKS"] !== undefined)
+                NodeFS.appendFileSync(
+                  process.env["CHECKS"],
+                  `${JSON.stringify({ alone: placed.length === 0, him: placed.some((p) => h.at >= p.at && h.at <= p.at + RATE), his: placed.some((p) => h.at >= p.at && h.at <= p.at + p.pcm.length + RATE / 2), at: h.at, seconds, best, quiet })}\n`,
+                );
+              const v = memberByVoice(
+                best,
+                quiet || seconds >= 2.5 ? Math.max(seconds, 2) : seconds,
+              );
+              // CHECKS: every checkpoint is logged, so the hold runs to its end whatever it would have decided.
+              const final = quiet || seconds >= 2.5;
+              if (process.env["CHECKS"] !== undefined ? final : v !== "unsure") {
+                pauses.push({
+                  at: h.at,
+                  outcome: v === "member" ? "member" : "other",
+                  ms: ((f.seq - h.seq) * 960 * 1000) / RATE,
+                });
+                hold = null;
+              }
+            }
+            continue;
           }
           // The loop's onset grace (400 ms of her playing) and one cut a second at most.
           const at = f.seq * 960 + 960;
           if (pass === 1 && heard && f.seq >= first + 7 && f.seq <= last && at - lastCut >= RATE) {
             cuts.push(at);
             lastCut = at;
+            if (member !== null)
+              hold = { at, seq: f.seq, fromSeq: f.seq - 5, checked: 0, quietSince: null };
           }
         }
-      return cuts;
+      return { cuts, pauses };
     };
     const herSeconds = ((last - first + 1) * 960) / RATE;
     const alone = await runCap([]);
+    const perHour = (n: number) => Math.round((n / herSeconds) * 36000) / 10;
+    const gaps = alone.pauses
+      .filter((p) => p.outcome === "other")
+      .map((p) => p.ms)
+      .sort((a, b) => a - b);
     const result: Record<string, unknown> = {
       file: NodePath.basename(file),
       herSeconds: Math.round(herSeconds * 10) / 10,
-      falseStops: alone.length,
-      falseStopsPerHour: Math.round((alone.length / herSeconds) * 36000) / 10,
+      ...(member === null
+        ? { falseStops: alone.cuts.length, falseStopsPerHour: perHour(alone.cuts.length) }
+        : {
+            pausesPerHour: perHour(alone.cuts.length),
+            falseStopsPerHour: perHour(alone.pauses.filter((p) => p.outcome === "member").length),
+            resumeGapMs: {
+              p50: Math.round(gaps[gaps.length >> 1] ?? NaN),
+              p90: Math.round(gaps[Math.floor(gaps.length * 0.9)] ?? NaN),
+            },
+          }),
     };
     for (const dbfs of [-60, -50, -41]) {
       const scaled = (k: number) => {
@@ -227,12 +311,21 @@ const captures = async (
             runs.push([{ at: (first + offset) * 960, pcm: scaled(k), k }]);
       let hit = 0;
       let total = 0;
+      // Paused for him, then not taken for a household voice: the voice check's misses, not the detector's.
+      let judgedOther = 0;
       const lat: number[] = [];
       for (const placed of runs) {
-        const cuts = await runCap(placed);
+        const { cuts, pauses } = await runCap(placed);
         for (const p of placed) {
           total += 1;
-          const c = cuts.find((t) => t >= p.at && t <= p.at + RATE);
+          // With the voice check, he stops her only when the pause it began ends with "member".
+          const c = cuts.find(
+            (t) =>
+              t >= p.at &&
+              t <= p.at + RATE &&
+              (member === null || pauses.some((q) => q.at === t && q.outcome === "member")),
+          );
+          if (c === undefined && cuts.some((t) => t >= p.at && t <= p.at + RATE)) judgedOther += 1;
           if (c !== undefined) {
             hit += 1;
             lat.push(((c - p.at) / RATE) * 1000);
@@ -257,6 +350,7 @@ const captures = async (
       result[`${dbfs}dBFS`] = {
         detection: Math.round((hit / total) * 1000) / 1000,
         n: total,
+        ...(member === null ? {} : { pausedNotMember: judgedOther }),
         p50ms: Math.round(lat[lat.length >> 1] ?? NaN),
         p90ms: Math.round(lat[Math.floor(lat.length * 0.9)] ?? NaN),
       };
@@ -268,6 +362,8 @@ const captures = async (
 
 /** The loop's whole gate (roomVoice `heardOver`): the detector, Silero on the latest window, and a level floor. */
 const TALK_MIN_DBFS = -55;
+/** The loop's `config.turn.stopProb`; SILERO_MIN to try another. */
+const SILERO_MIN = Number(process.env["SILERO_MIN"] ?? 0.35);
 const gateEval = async (dir: string, silero: string, opts: TalkOverOptions) => {
   const her = read(NodePath.join(dir, "her.s16")).subarray(0, RATE * 180);
   const his = NodeFS.readdirSync(NodePath.join(dir, "his"))
@@ -345,10 +441,7 @@ const gateEval = async (dir: string, silero: string, opts: TalkOverOptions) => {
         );
       let prob = 0;
       let lastCut = -Infinity;
-      const level = createRoomLevel(
-        TALK_MIN_DBFS,
-        ...(process.env["OVER_ROOM_DB"] === undefined ? [] : [Number(process.env["OVER_ROOM_DB"])]),
-      );
+      const level = createVoiceLevel();
       const cuts: number[] = [];
       for (let at = 0; at + FRAME <= mic.length; at += FRAME) {
         det.reference(toI16(her, at), at);
@@ -357,8 +450,8 @@ const gateEval = async (dir: string, silero: string, opts: TalkOverOptions) => {
         const heard = det.process(frame, at).some((v) => v.ready && v.speech);
         for (let w = at; w + 512 <= at + FRAME; w += 512)
           prob = await vad.score(toI16(mic, w, 512));
-        if (!heard || prob < 0.35 || at - lastCut < RATE) continue;
-        if (!level.rises()) continue;
+        if (!heard || prob < SILERO_MIN || at - lastCut < RATE) continue;
+        if (!level.reaches(TALK_MIN_DBFS)) continue;
         lastCut = at;
         cuts.push(at + FRAME);
       }

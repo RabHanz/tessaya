@@ -20,34 +20,38 @@ Settings, Voice and wake words: "Headphones or speakers" (on Windows, Automatic 
 ## On the R1: open talk-over (`packages/baton-voice/src/talkOver.ts`)
 
 The R1 cancels its own echo (firmware 0.3.93: about 40 dB, her residual near -77 dBFS against a -81 floor), so the server
-does not subtract anything. It only has to tell his voice from what is left of hers. Firmware 0.3.92's uplink header
-(`cmd/voice/upformat {"v":1}`: seq, rx, q, flags) says which of her samples was under the speaker as each mic frame was
-heard: `rx - q - L`, with L = 1972 samples (123 ms) on the onboard speaker. The loop keeps her downlink by sample, lines it
-up with every frame, learns her level per band and the room's decay (kept per R1 across sessions), and flags a voice that
-rises 6 dB over the predicted echo for 128 of 256 ms. A cut also needs Silero to hear speech, the voice to clear the
-room's loud moments of the last 3 s by 10 dB (a TV or music already on is not him) and -55 dBFS, or his own level less 18 dB once known, and
-her to have sounded for 400 ms (the device's echo cancelling lets a burst through as she starts). Then she stops (flush),
-and his turn goes through the usual echo-by-sound and addressing checks and is answered, not held to a stop phrase.
+does not subtract anything. It only has to tell a voice from what is left of hers, and then whose voice it is.
 
-Open mode is per R1: retained `cmd/voice/talkover {"mode":"open"}` (`"keyword"` or empty goes back), or `R1_TALK_OVER=open`
-for the loop. Without the header (older firmware) the R1 stays on keyword barge-in.
+1. **Hearing a voice over hers.** Firmware 0.3.92's uplink header (`cmd/voice/upformat {"v":1}`: seq, rx, q, flags) says
+   which of her samples was under the speaker as each mic frame was heard: `rx - q - L`, with L = 1972 samples (123 ms) on
+   the onboard speaker. The loop lines her downlink up with every frame, learns her level per band and the room's decay
+   (kept per R1 across sessions), and flags a voice that rises 6 dB over the predicted echo for 128 of 256 ms, with Silero
+   hearing speech, at least -55 dBFS (or his own level less 18 dB once known), once she has sounded for 400 ms (the
+   device's echo cancelling lets a burst through as she starts).
+2. **A soft pause.** She goes quiet at once (the R1's queue is flushed), but her reply is not cancelled.
+3. **Whose voice.** From 0.6 s of it, CAM++ compares it with every enrolled profile here (any household member, not only
+   him; `memberByVoice` holds the short-clip cut-offs). A member stops her, and their words are answered, not held to a
+   stop phrase. Anyone else: she goes on from where she paused (from her sentence's start if the pause ran past 2 s), and
+   their words are not answered.
 
-Measured (`scripts/tessaya/talkover-eval.ts`; his recorded voice, high-passed, mixed in at the R1 mic level):
+Level is no guide to whose voice it is: a rule that a voice must rise 10 dB over the room's own loud moments kept a TV out,
+and kept him out of a busy room three times in four. Open mode is per R1 (retained `cmd/voice/talkover {"mode":"open"}`,
+`"keyword"` or empty goes back, or `R1_TALK_OVER=open`), and it is keyword until someone has a voice profile here, or
+without the header (older firmware).
 
-|                                                    | Detected at -41 dBFS (his usual level)  | Detection p50 / p90 | False stops |
-| -------------------------------------------------- | --------------------------------------- | ------------------- | ----------- |
-| Real R1 captures, AEC delay 384 (2 x 80 trials)    | 100% / 98.8% (tuning half / check half) | 120-180 / 180 ms    | 0 (4 s)     |
-| Simulated R1 chain, 31 min of her, 4 rooms (quiet) | 98.9% (94.7% at -60)                    | 128 / 160 ms        | 0 per hour  |
+Measured (`scripts/tessaya/talkover-eval.ts`, 14 Nov). His recorded voice is mixed in at the R1 mic level, and a profile
+from his desk-mic clips stands in for his R1 enrolment. The time is from his first word to the pause (the flush's trip to
+the R1 is on top of it):
 
-Through the whole gate (Silero and the room's level), simulated, 12 min of her in a quiet room: 0 false stops, him at -41
-and -50 dBFS always heard (p90 180-200 ms), coughs at -30 dBFS never and at -40 two in fifteen. A TV already on through
-her reply stops her 15 times an hour at -55 dBFS and 20 at -50, where he is still heard 100% and 88% of the time; music
-or a TV that starts while she talks stops her once.
+|                                                           | False stops | Pauses     | Him at -41 dBFS (two halves) | To the pause p50 / p90 |
+| --------------------------------------------------------- | ----------- | ---------- | ---------------------------- | ---------------------- |
+| Real R1 capture, quiet moment, AEC delay 384              | 0           | 0          | 96.3% / 93.8%                | 180 / 180 ms           |
+| Real R1 bench, busy room (median -47, p95 -27 dBFS), 5:04 | 0 per hour  | 95 an hour | 67.4% / 69.8%                | 240 / 660 ms           |
 
-**The real busy room is where it fails.** The 14 Nov 10:40 bench (5:04 of her on the R1 at volume 10, firmware 0.3.93; the
-room measured -47 dBFS median and -27 at its 95th percentile, louder than he speaks to her) gave 59.5 false stops an hour
-through the whole gate, and him at -41 heard only 30% of the time. So keyword barge-in stays the default: open mode is for
-a quiet room until a check of his own voice (his enrolled profile against whoever else is talking) is in the gate.
+A pause for a voice that is not the household's lasts 780 ms at the median and 840 ms at p90, before she goes on. The short
+clips were calibrated on 30 of his against 109 LibriTTS speakers: at 0.6 s his 2nd percentile scores 0.24 and the others'
+95th 0.17. At 1 s his 10th percentile is 0.38 and no other speaker scores above 0.33. In the busy room his own voice is
+louder than the room for only part of each clip, and the voice check is what misses him there.
 
 ## How the echo guard hears him (`packages/baton-voice/src/echoGuard.ts`)
 

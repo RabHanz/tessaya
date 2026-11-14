@@ -18,6 +18,7 @@ import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import {
   ACT_SINGLE_MS,
   CAMPLUS_POLICY,
+  cosine,
   decideSpeaker,
   enrol,
   identityOf,
@@ -702,6 +703,14 @@ const main = async () => {
         return { saved: true, said: "Thanks. I know your voice now." };
       },
       embed: (pcm) => embedder.embed(pcm),
+      member: async (pcm) => {
+        const vector = await embedder.embed(pcm);
+        const mine = store.list().filter((p) => p.model === SPEAKER_MODEL_ID);
+        return vector === null
+          ? Number.NEGATIVE_INFINITY
+          : Math.max(Number.NEGATIVE_INFINITY, ...mine.map((p) => cosine(vector, p.centroid)));
+      },
+      members: () => store.list().some((p) => p.model === SPEAKER_MODEL_ID),
       now: () => performance.timeOrigin + performance.now(),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       log,

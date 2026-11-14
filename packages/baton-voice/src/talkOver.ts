@@ -287,36 +287,25 @@ export const createTalkOverGuard = (options: TalkOverOptions = {}): EchoGuard =>
 };
 
 /**
- * A voice over her must stand this far above the room's loud moments: a TV or music already playing is not him. In a
- * quiet room the floor decides; over a TV he raises his voice a little, as he would for a person.
+ * How loud the mic's last 240 ms are. A TV or another person is told from him by their voice, not their level (14 Nov:
+ * a rule against the room's own loudness kept him out of a busy room 74% of the time), so this is only a floor.
  */
-const OVER_ROOM_DB = 10;
-
-/**
- * How loud the mic is now (its last 240 ms) against how loud the room has been (its loud moments in the 3 s before), so a
- * cut-in is a voice that rises out of the room, not a TV or music that was already on.
- */
-export const createRoomLevel = (minDbfs: number, overRoomDb = OVER_ROOM_DB) => {
-  const levels: number[] = [];
+export const createVoiceLevel = () => {
   let recent = new Int16Array(0);
   return {
     push: (pcm: Int16Array) => {
-      let sum = 0;
-      for (const v of pcm) sum += v * v;
-      levels.push(10 * Math.log10(sum / Math.max(1, pcm.length) / 32768 ** 2 + 1e-12));
-      if (levels.length > 55) levels.shift();
       const kept = recent.subarray(Math.max(0, recent.length - 3 * pcm.length));
       recent = new Int16Array(kept.length + pcm.length);
       recent.set(kept);
       recent.set(pcm, kept.length);
     },
-    /** Loud enough to be someone talking to her, over the floor given and over the room as it has been. */
-    rises: (floorDbfs = minDbfs): boolean => {
-      const before = levels.slice(0, -5).sort((a, b) => a - b);
-      // The room's loud moments, not its average: a TV's speech has pauses, and its peaks are what would pass.
-      const room =
-        before.length < 20 ? Number.NEGATIVE_INFINITY : before[Math.floor(before.length * 0.9)]!;
-      return speechLevel(recent) >= Math.max(floorDbfs, room + overRoomDb);
-    },
+    reaches: (floorDbfs: number): boolean => speechLevel(recent) >= floorDbfs,
   };
 };
+
+/**
+ * While she is paused for a voice: is it time to check whose it is? First at 0.6 s of it, then every 0.3 s, at once
+ * when it has stopped (600 ms quiet, 0.5 s at least), and finally at 2.5 s.
+ */
+export const voiceCheckDue = (seconds: number, checkedSeconds: number, quiet: boolean): boolean =>
+  seconds >= Math.max(0.6, checkedSeconds + 0.3) || (quiet && seconds >= 0.5) || seconds >= 2.5;
