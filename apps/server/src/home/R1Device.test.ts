@@ -303,7 +303,7 @@ effectIt.effect(
 );
 
 effectIt.effect(
-  "the house matching his words and what needs him are in the model's message before it starts",
+  "the house matching his words and what needs him are in the model's message before it starts, unless a read is slow",
   () =>
     Effect.gen(function* () {
       let sent = "";
@@ -350,6 +350,24 @@ effectIt.effect(
         /What needs him \(tessaya_watch\), live as of this turn: \{"findings":\[\]\}/,
       );
       expect(sent).toMatch(/tessaya_in_flight\), live as of this turn: \{"threads":\[\]\}/);
+
+      // A read of his work that hangs is left out at its deadline; the model is not kept waiting (14 Nov, 21:40).
+      sent = "";
+      const slow = yield* r1TurnStream({ heard: "is the study lamp on?", history: [] }, brain, {
+        specs: [],
+        run: (name) =>
+          name === "tessaya_watch"
+            ? Effect.never
+            : Effect.succeed({ text: '{"threads":[]}', isError: false }),
+      }).pipe(
+        Stream.runDrain,
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(BatonOneShot)({}))),
+        Effect.forkChild,
+      );
+      yield* TestClock.adjust("300 millis");
+      yield* Fiber.join(slow);
+      expect(sent).not.toMatch(/tessaya_watch/);
+      expect(sent).toMatch(/tessaya_in_flight\), live as of this turn/);
     }),
 );
 
