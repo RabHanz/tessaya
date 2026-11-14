@@ -46,8 +46,14 @@ export const R1_RELEASE: R1ReleaseManifest = {
       sha256: "1000036051620ba8f716bdd762b04ce0d8b108c7716faeddfeaafa71ac1186df",
       sig: "b7a9ad19fe173567efb4a0784c1ae09bfcaba021197c4097d789c667b9f410709c2c1addb7f1458c74404d175bd8dd2464e2ef6bbd83f544f3f94bba4a2cdf09",
     },
-    // The firmware lane publishes the first pack.
-    kws: null,
+    kws: {
+      version: 1,
+      url: "https://github.com/RabHanz/tessaya/releases/download/r1-kws-v1/r1-kws-v1.r1kw",
+      size: 27228,
+      sha256: "af4cc208dd115f8ead84d310847e34c0867a488b45cf04139fd1ce7e44a937f3",
+      sig: "ccd09770dcdab708de0ec94bf7d15d4c5d9576a6f2c0104fd69a1777b39eca6adbe58b2d98fd25e82129cdd9dc7e195a41357111affb128dcc602ccabd20741a",
+      threshold: 0.4,
+    },
   },
 };
 
