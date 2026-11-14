@@ -56,7 +56,9 @@ export function openDetachedWindow(target: ThreadRouteTarget): boolean {
 type WindowMessage =
   | { readonly type: "claim"; readonly key: string; readonly from: string }
   | { readonly type: "attach"; readonly target: ThreadRouteTarget; readonly request: string }
-  | { readonly type: "attached"; readonly request: string };
+  | { readonly type: "attached"; readonly request: string }
+  | { readonly type: "pane-drag"; readonly drag: RemotePaneDrag; readonly from: string }
+  | { readonly type: "pane-drag-end"; readonly token: string };
 
 const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(CHANNEL);
 
@@ -103,4 +105,38 @@ export function requestAttach(target: ThreadRouteTarget): Promise<boolean> {
     channel?.addEventListener("message", handle);
     send({ type: "attach", target, request });
   });
+}
+
+/**
+ * A pane dragged to another window. Windows do not reliably share drag data, so the drag carries
+ * only a token and this channel carries the thread; the drop must name the token to take it.
+ */
+export interface RemotePaneDrag {
+  readonly token: string;
+  readonly target: ThreadRouteTarget;
+}
+
+export function announcePaneDrag(target: ThreadRouteTarget): string {
+  const token = crypto.randomUUID();
+  send({ type: "pane-drag", drag: { token, target }, from: batonWindowId() });
+  return token;
+}
+
+export const endPaneDrag = (token: string) => send({ type: "pane-drag-end", token });
+
+/** The drag another window has in flight, or null once it ends there. */
+export function onRemotePaneDrag(listener: (drag: RemotePaneDrag | null) => void): () => void {
+  let current: string | null = null;
+  const handle = (event: MessageEvent<WindowMessage>) => {
+    const message = event.data;
+    if (message.type === "pane-drag" && message.from !== batonWindowId()) {
+      current = message.drag.token;
+      listener(message.drag);
+    } else if (message.type === "pane-drag-end" && message.token === current) {
+      current = null;
+      listener(null);
+    }
+  };
+  channel?.addEventListener("message", handle);
+  return () => channel?.removeEventListener("message", handle);
 }

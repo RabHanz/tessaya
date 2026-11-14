@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
   type KeyboardEvent,
   type PointerEvent,
   type ReactElement,
@@ -70,10 +71,14 @@ import {
 } from "./batonPaneLayout";
 import { useBatonPanesStore } from "./batonPanesStore";
 import {
+  announcePaneDrag,
   batonWindowId,
+  endPaneDrag,
   MAIN_WINDOW_ID,
   onAttachRequest,
+  onRemotePaneDrag,
   openDetachedWindow,
+  type RemotePaneDrag,
   requestAttach,
 } from "./batonWindows";
 
@@ -176,7 +181,7 @@ const DROP_HINT: Readonly<Record<PaneDropZone, CSSProperties>> = {
 function PaneDropTarget(props: {
   readonly id: PaneSlotId;
   readonly box: PaneBox;
-  readonly onDrop: (zone: PaneDropZone) => void;
+  readonly onDrop: (zone: PaneDropZone, token: string) => void;
 }) {
   const [zone, setZone] = useState<PaneDropZone | null>(null);
   return (
@@ -186,6 +191,7 @@ function PaneDropTarget(props: {
       style={boxStyle(props.box)}
       onDragOver={(event) => {
         event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
         const rect = event.currentTarget.getBoundingClientRect();
         setZone(
           paneDropZone(
@@ -197,7 +203,7 @@ function PaneDropTarget(props: {
       onDragLeave={() => setZone(null)}
       onDrop={(event) => {
         event.preventDefault();
-        if (zone !== null) props.onDrop(zone);
+        if (zone !== null) props.onDrop(zone, event.dataTransfer.getData(PANE_DRAG_TYPE));
       }}
     >
       {zone === null ? null : (
@@ -327,7 +333,9 @@ function BatonPane(props: {
   readonly onDetachPane: (slot: PaneSlot) => void;
   readonly onAttachPane: (slot: PaneSlot) => void;
   readonly onBringHere: (target: ThreadRouteTarget) => void;
-  readonly onDragChange: (id: PaneSlotId | null) => void;
+  /** Returns the token the drag carries, for a window that is not this one. */
+  readonly onDragStart: (slot: PaneSlot) => string;
+  readonly onDragEnd: (slot: PaneSlot, event: DragEvent<HTMLDivElement>) => void;
   readonly onMovePane: (id: PaneSlotId, edge: PaneEdge, toWindowEdge: boolean) => void;
 }) {
   const { slot, box, count, focused, background, elsewhere, detached } = props;
@@ -441,10 +449,9 @@ function BatonPane(props: {
           draggable={split}
           onDragStart={(event) => {
             event.dataTransfer.effectAllowed = "move";
-            event.dataTransfer.setData(PANE_DRAG_TYPE, slot.id);
-            props.onDragChange(slot.id);
+            event.dataTransfer.setData(PANE_DRAG_TYPE, props.onDragStart(slot));
           }}
-          onDragEnd={() => props.onDragChange(null)}
+          onDragEnd={(event) => props.onDragEnd(slot, event)}
           data-testid={`baton-pane-bar-${slot.id}`}
           className={cn(
             "flex h-6 shrink-0 items-center gap-2 border-t px-2 text-xs",
@@ -614,6 +621,9 @@ export function BatonPanes(props: {
   const ceded = useBatonPanesStore((state) => state.ceded);
   const narrow = useMediaQuery("max-lg");
   const [dragging, setDragging] = useState<PaneSlotId | null>(null);
+  const [remoteDrag, setRemoteDrag] = useState<RemotePaneDrag | null>(null);
+  const dragToken = useRef<string | null>(null);
+  const droppedHere = useRef(false);
   const lastNavigation = useRef<string | null>(null);
   const routeRef = useRef(route);
   const detached = batonWindowId() !== MAIN_WINDOW_ID;
@@ -634,11 +644,21 @@ export function BatonPanes(props: {
       }),
     [],
   );
+  const endDrag = () => {
+    if (dragToken.current !== null) endPaneDrag(dragToken.current);
+    dragToken.current = null;
+    setDragging(null);
+    setRemoteDrag(null);
+  };
+  const endDragEvent = useEffectEvent(endDrag);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to panes another window is dragging
+  useEffect(() => onRemotePaneDrag(setRemoteDrag), []);
+  const dragActive = dragging !== null || remoteDrag !== null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a drag released outside the window can skip the bar's dragend, which left the drop targets over every pane
   useEffect(() => {
-    if (dragging === null) return;
+    if (!dragActive) return;
     // No pointer events fire during a native drag, so any of these means it is over.
-    const end = () => setDragging(null);
+    const end = () => endDragEvent();
     const onKey = (event: globalThis.KeyboardEvent) => event.key === "Escape" && end();
     const onHidden = () => document.hidden && end();
     const ends = ["pointermove", "pointerdown"] as const;
@@ -652,7 +672,7 @@ export function BatonPanes(props: {
       window.removeEventListener("keydown", onKey, true);
       document.removeEventListener("visibilitychange", onHidden);
     };
-  }, [dragging]);
+  }, [dragActive]);
 
   const goTo = async (target: ThreadRouteTarget) => {
     const key = paneTargetKey(target);
@@ -710,6 +730,42 @@ export function BatonPanes(props: {
         visible.map((slot) => slot.id),
       );
   const rects = paneRects(tree);
+  const startDrag = (slot: PaneSlot) => {
+    const token = announcePaneDrag(slot.target);
+    dragToken.current = token;
+    droppedHere.current = false;
+    setDragging(slot.id);
+    return token;
+  };
+  const finishDrag = (slot: PaneSlot, event: DragEvent<HTMLDivElement>) => {
+    const { dropEffect } = event.dataTransfer;
+    const outside =
+      event.screenX < window.screenX ||
+      event.screenX >= window.screenX + window.outerWidth ||
+      event.screenY < window.screenY ||
+      event.screenY >= window.screenY + window.outerHeight;
+    const here = droppedHere.current;
+    endDrag();
+    if (here) return;
+    // Another window took the pane; released over no window snaps it out into its own.
+    if (dropEffect === "move") closeSlot(slot.id);
+    else if (outside) detachSlot(slot);
+  };
+  const dropOn = (targetId: PaneSlotId, zone: PaneDropZone, token: string) => {
+    const panes = useBatonPanesStore.getState();
+    if (dragging !== null) {
+      droppedHere.current = true;
+      panes.dock(dragging, targetId, zone);
+    } else if (remoteDrag !== null && token === remoteDrag.token) {
+      panes.open(routeRef.current, remoteDrag.target);
+      const key = paneTargetKey(remoteDrag.target);
+      const moved = useBatonPanesStore
+        .getState()
+        .slots.find((slot) => paneTargetKey(slot.target) === key);
+      if (moved !== undefined && moved.id !== targetId) panes.dock(moved.id, targetId, zone);
+    }
+    endDrag();
+  };
   const moveSlot = (id: PaneSlotId, edge: PaneEdge, toWindowEdge: boolean) => {
     const panes = useBatonPanesStore.getState();
     if (toWindowEdge) return panes.dockToEdge(id, edge);
@@ -736,11 +792,12 @@ export function BatonPanes(props: {
           onDetachPane={detachSlot}
           onAttachPane={attachSlot}
           onBringHere={(target) => useBatonPanesStore.getState().claim(target)}
-          onDragChange={setDragging}
+          onDragStart={startDrag}
+          onDragEnd={finishDrag}
           onMovePane={moveSlot}
         />
       ))}
-      {dragging === null
+      {!dragActive
         ? null
         : rects
             .filter((rect) => rect.id !== dragging)
@@ -749,10 +806,7 @@ export function BatonPanes(props: {
                 key={rect.id}
                 id={rect.id}
                 box={rect.box}
-                onDrop={(zone) => {
-                  useBatonPanesStore.getState().dock(dragging, rect.id, zone);
-                  setDragging(null);
-                }}
+                onDrop={(zone, token) => dropOn(rect.id, zone, token)}
               />
             ))}
       {paneDividers(tree).map((divider) => (
