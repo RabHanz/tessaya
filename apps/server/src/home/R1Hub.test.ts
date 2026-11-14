@@ -11,6 +11,7 @@ import {
   publishPacket,
   subscribePacket,
 } from "@t3tools/baton-shared/mqtt";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -20,6 +21,7 @@ import { expect } from "vite-plus/test";
 import type { R1Device } from "./HomeAssistantService.ts";
 import {
   deviceGrant,
+  deviceSetting,
   makeHub,
   makeLoginGuard,
   runHubSocket,
@@ -376,6 +378,18 @@ it.live(
         }
       });
     }).pipe(Effect.scoped, Effect.provide(NodeHttpServer.layerTest)),
+);
+
+it.effect("reads a device setting by its TESSAYA_TESSEL_ name, else the old TESSAYA_R1_ one", () =>
+  Effect.gen(function* () {
+    const read = (env: Record<string, string>) =>
+      deviceSetting("LOOP").pipe(
+        Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
+      );
+    expect(yield* read({ TESSAYA_R1_LOOP: "off" })).toBe("off");
+    expect(yield* read({ TESSAYA_TESSEL_LOOP: "on", TESSAYA_R1_LOOP: "off" })).toBe("on");
+    expect(yield* read({})).toBe("");
+  }),
 );
 
 it("listens on plain TCP only on loopback or a private address", () => {

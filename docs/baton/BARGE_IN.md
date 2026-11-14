@@ -36,7 +36,7 @@ does not subtract anything. It only has to tell a voice from what is left of her
 
 Level is no guide to whose voice it is: a rule that a voice must rise 10 dB over the room's own loud moments kept a TV out,
 and kept him out of a busy room three times in four. Open mode is per Tessel (retained `cmd/voice/talkover {"mode":"open"}`,
-`"keyword"` or empty goes back, or `R1_TALK_OVER=open`), and it is keyword until someone has a voice profile here, or
+`"keyword"` or empty goes back, or `TESSEL_TALK_OVER=open`), and it is keyword until someone has a voice profile here, or
 without the header (older firmware).
 
 Measured (`scripts/tessaya/talkover-eval.ts`, 14 Nov). His recorded voice is mixed in at the Tessel mic level, and a profile

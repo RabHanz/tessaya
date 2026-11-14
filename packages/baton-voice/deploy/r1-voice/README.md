@@ -14,12 +14,15 @@ The Tessel's in-house voice loop (`src/room`), run on the voice host next to the
   - `campplus.onnx` (the desktop's Voice ID model, sha256 357a834f…).
   - `pocket/` (the pocket-tts 3.3.0 Linux binary, and `english/` with Tessaya's voice, as the desktop fetches it).
 - **Wake by name between sessions:** `melspectrogram.onnx`, `embedding_model.onnx`, `tessaya.onnx`, `alfred.onnx` and `freya.onnx` from `native/baton-dictation/models`, beside the others. The Tessel sends only voiced segments on `voice/wake` (firmware with the wake stream). A model fire is confirmed in text from the 2 s before it, nothing else is recognised, and the segment is dropped.
-- **Camera relay:** `R1_CAMERA_PORT` (unset: off) listens on all interfaces, because the Tessel posts pictures to its LAN host. Pictures go on to her server's `/camera/upload`, which keeps one only while a capture it asked for is armed. Point the Tessel at it with `cmd/routing/set {"local_url":"http://<LAN ip>:<port>","mode":"auto","enabled":true}`.
-- **Wake capture for training:** `R1_WAKE_CAPTURE_DIR` (unset: off) keeps every wake segment as 16 kHz PCM plus a JSON record: the Tessel's own wake score, the loop's verdict, and whether a session opened within 15 s. Only with the owner's consent: it is room audio. The folder is made 0700, files 0600, and the oldest segments go once it passes `R1_WAKE_CAPTURE_MB` (default 1024, about 5,000 segments).
+- **Camera relay:** `TESSEL_CAMERA_PORT` (unset: off) listens on all interfaces, because the Tessel posts pictures to its LAN host. Pictures go on to her server's `/camera/upload`, which keeps one only while a capture it asked for is armed. Point the Tessel at it with `cmd/routing/set {"local_url":"http://<LAN ip>:<port>","mode":"auto","enabled":true}`.
+- **Wake capture for training:** `TESSEL_WAKE_CAPTURE_DIR` (unset: off) keeps every wake segment as 16 kHz PCM plus a JSON record: the Tessel's own wake score, the loop's verdict, and whether a session opened within 15 s. Only with the owner's consent: it is room audio. The folder is made 0700, files 0600, and the oldest segments go once it passes `TESSEL_WAKE_CAPTURE_MB` (default 1024, about 5,000 segments).
 - **Release install:** a release server fetches all of this itself into `<T3 home>/userdata/r1-voice` when its first
   Tessel pairs (`apps/server/src/home/R1Loop.ts`, bundle from `scripts/tessaya/build-r1-voice.sh`), with its own
-  recogniser (`R1_RECOGNIZER_BIN`, Parakeet TDT 0.6B v3, CC-BY-4.0) instead of `R1_RECOGNIZERS`.
-- **Install by hand:** `systemctl --user enable --now r1-voice` with `r1-voice.service` in `~/.config/systemd/user/`.
+  recogniser (`TESSEL_RECOGNIZER_BIN`, Parakeet TDT 0.6B v3, CC-BY-4.0) instead of `TESSEL_RECOGNIZERS`.
+- **Install by hand:** `systemctl --user enable --now tessel-voice` with `tessel-voice.service` in `~/.config/systemd/user/`.
+  The unit was `r1-voice.service`, and its settings `R1_*`; the loop still reads the old names (`TESSEL_*` wins when both
+  are set). To move a host: copy the new unit in, then `systemctl --user disable --now r1-voice && systemctl --user
+  enable --now tessel-voice`, and check `systemctl --user status tessel-voice`. Its env file and folder stay `~/r1-voice`.
 - **Gate before a Tessel is switched to it:** `node app/replay.mjs <his wavs>` with the same env. It plays his recordings
   as a pretend Tessel (`replay-1`) and prints the end-of-voice to first-sound time per clip, then p50 and p90.
 - **Switch a Tessel** (no firmware change): publish `{"mode":"inhouse"}` to `freya/r1/<id>/cmd/voice/mode`. To go back,
@@ -43,7 +46,7 @@ The loop holds no brain, memory or settings of its own. What it reuses:
 What stays Tessel-specific, and why:
 
 - **Its own owner profile** (`state/voice/speakers.json`). The Tessel's mics are not his laptop's. Two profiles of one voice in one list nearly tie and read as a guest, and merging them lowers his scores (the Voice ID lane's measurement).
-- **A Pocket process on the voice host.** Tessaya has no server-side voice yet: the desktop runs Pocket locally. These are the same pinned model files. Each reply is spoken in the answering persona's voice from the default pack (Tessaya eve, Freya azelma, Alfred peter_yearsley, Sebastian michael), fetched once at start; `R1_VOICE` is only Pocket's fallback. A pack edited on the laptop is not read here yet.
+- **A Pocket process on the voice host.** Tessaya has no server-side voice yet: the desktop runs Pocket locally. These are the same pinned model files. Each reply is spoken in the answering persona's voice from the default pack (Tessaya eve, Freya azelma, Alfred peter_yearsley, Sebastian michael), fetched once at start; `TESSEL_VOICE` is only Pocket's fallback. A pack edited on the laptop is not read here yet.
 - **Smart Turn and SenseVoice.** They are new, and they are in the shared package, so the desktop can adopt them.
 - **The MQTT transport and paced downlink.** These are the Tessel's own wire.
 

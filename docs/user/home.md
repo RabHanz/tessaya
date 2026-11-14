@@ -62,7 +62,7 @@ fill it in only for a Tessel on a separate MQTT broker. **Forget** removes all o
 3. After the first Tessel you are asked once whether it may work away from home.
 4. Her voice then downloads to this server by itself, about 1 GB, once: Hardware shows **Voice** with its progress,
    then "The Tessel's voice runs on this server." It needs a Linux (x64) server from a Tessaya release and about 2 GB free
-   disk. A server where another machine already runs the Tessel's voice leaves it alone. Set `TESSAYA_R1_LOOP=off` to
+   disk. A server where another machine already runs the Tessel's voice leaves it alone. Set `TESSAYA_TESSEL_LOOP=off` (or the old `TESSAYA_R1_LOOP=off`) to
    keep a server from running it.
 
 Her room voice hears you with Parakeet TDT 0.6B v3 by NVIDIA, licensed under

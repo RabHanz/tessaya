@@ -57,6 +57,13 @@ const TSY = "tsy/";
 const inside = (topic: string) => (topic.startsWith(TSY) ? ROOT + topic.slice(TSY.length) : topic);
 const asTsy = (topic: string) => (topic.startsWith(ROOT) ? TSY + topic.slice(ROOT.length) : topic);
 
+/** A device setting by its renamed `TESSAYA_TESSEL_` name, else the old `TESSAYA_R1_` one; drop the old once no box sets it. */
+export const deviceSetting = (name: string) =>
+  Config.String(`TESSAYA_TESSEL_${name}`).pipe(
+    Config.orElse(() => Config.String(`TESSAYA_R1_${name}`)),
+    Config.withDefault(""),
+  );
+
 export type HubGrant = { readonly kind: "device"; readonly id: string } | { readonly kind: "bus" };
 
 /** A filter or topic this login may use: a device its own prefix, the bus every R1's. */
@@ -501,15 +508,12 @@ export const layer = Layer.effect(
           }),
     );
     let outsideUseAt: number | null = null;
-    const tcp = yield* Config.String("TESSAYA_R1_MQTT_TCP").pipe(
-      Config.withDefault(""),
-      Effect.orDie,
-    );
+    const tcp = yield* deviceSetting("MQTT_TCP").pipe(Effect.orDie);
     if (tcp !== "") {
       const bind = tcpBind(tcp);
       if (bind === null)
         yield* Effect.logWarning(
-          "TESSAYA_R1_MQTT_TCP must be a loopback or private host:port; TCP is off",
+          "TESSAYA_TESSEL_MQTT_TCP must be a loopback or private host:port; TCP is off",
           {
             setting: tcp,
           },
