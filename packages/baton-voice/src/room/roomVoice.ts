@@ -732,7 +732,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       sentAway = true;
       lastActivity = deps.now();
       face("sleepy");
-      if (!noCues.has(id))
+      if (!silent(id))
         void send(cueSamples("end"), new AbortController().signal, () => undefined).catch(
           () => undefined,
         );
@@ -903,8 +903,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const acknowledge = () => {
       if (config.acknowledge === "off") return;
       face("attentive");
+      if (bench.has(id)) return deps.log(`[${id}] her name alone: bench, not said`);
       if (config.acknowledge === "tone") {
-        if (!noCues.has(id))
+        if (!silent(id))
           void send(cueSamples("wake"), new AbortController().signal, () => undefined).catch(
             () => undefined,
           );
@@ -1896,8 +1897,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const noCues = new Set<string>();
   /** R1s on a bench (`cmd/voice/no-reply`, retained): what they hear is judged and logged, never answered. */
   const bench = new Map<string, { readonly keep: boolean }>();
+  /** No sound of hers: earcons switched off, or a bench sweep, which is never answered aloud either. */
+  const silent = (id: string) => noCues.has(id) || bench.has(id);
   const cue = (id: string, name: PillSound) => {
-    if (!noCues.has(id)) sessions.get(id)?.cue(name);
+    if (!silent(id)) sessions.get(id)?.cue(name);
   };
   /** What waits on the session an R1 was asked to open (`cmd/voice/start`): his read or her question needs its mic. */
   const onStart = new Map<string, (s: ReturnType<typeof openSession>) => void>();
@@ -2155,9 +2158,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (s === undefined) return;
         cue(id, "end");
         sessions.delete(id);
-        void deps
-          .sleep(noCues.has(id) ? 0 : soundMs("end") + config.downDelayMs)
-          .then(() => s.close());
+        void deps.sleep(silent(id) ? 0 : soundMs("end") + config.downDelayMs).then(() => s.close());
       } else if (tail === "cmd/voice/earcons") {
         if (json()["on"] === false) noCues.add(id);
         else noCues.delete(id);
@@ -2182,7 +2183,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       for (const [id, s] of sessions)
         if (s.tick() === "stop") {
           // Her closing sound plays out before the R1 is told to stop (it no longer says "Bye bye" itself).
-          const closing = noCues.has(id) ? 0 : soundMs("end") + config.downDelayMs;
+          const closing = silent(id) ? 0 : soundMs("end") + config.downDelayMs;
           cue(id, "end");
           sessions.delete(id);
           void deps.sleep(closing).then(() => {

@@ -1990,7 +1990,11 @@ describe("recognising who she is talking to across a session (recognition.ts)", 
 });
 
 describe("her name alone, then nothing (16:36:43, 13 Nov: the red light and silence)", () => {
-  const wakeThenSilence = async (acknowledge: "voice" | "tone" | "off", speaks: boolean) => {
+  const wakeThenSilence = async (
+    acknowledge: "voice" | "tone" | "off",
+    speaks: boolean,
+    bench = false,
+  ) => {
     const spoken: string[] = [];
     const logs: string[] = [];
     const waits: Array<() => void> = [];
@@ -2010,6 +2014,7 @@ describe("her name alone, then nothing (16:36:43, 13 Nov: the red light and sile
       },
       { ...ROOM_CONFIG, acknowledge },
     );
+    if (bench) t.room.message(`freya/r1/${DEV}/cmd/voice/no-reply`, Buffer.from('{"on":true}'));
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     const cueFrames = t.published.filter((p) => p.topic.endsWith("/voice/down")).length;
     if (speaks) await t.feed(true, 20);
@@ -2059,5 +2064,13 @@ describe("her name alone, then nothing (16:36:43, 13 Nov: the red light and sile
     expect(off.after).toBe(0);
     const tone = await wakeThenSilence("tone", false);
     expect(tone.after).toBeGreaterThan(0);
+  });
+
+  it("is silent on a bench sweep (cmd/voice/no-reply): no line, no tone, no listening sound", async () => {
+    for (const acknowledge of ["voice", "tone"] as const) {
+      const bench = await wakeThenSilence(acknowledge, false, true);
+      expect(bench.t.published.filter((p) => p.topic.endsWith("/voice/down"))).toEqual([]);
+      expect(bench.logs.filter((l) => l.includes('her name alone: "'))).toEqual([]);
+    }
   });
 });
