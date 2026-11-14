@@ -24,6 +24,11 @@ import * as NodeURL from "node:url";
 
 import { CARD_REF, herdrBin, parsePanePrompt, parseWaitingScreen } from "./pane-prompt.mjs";
 
+// Settings are renamed TESSAYA_*; each also fills its old BATON_* name, which the code below reads. Drop with BATON_.
+for (const [key, value] of Object.entries(process.env))
+  if (key.startsWith("TESSAYA_") && value !== undefined)
+    process.env[`BATON_${key.slice(8)}`] = value;
+
 const HERDR = herdrBin();
 const localBin = (name) => NodePath.join(NodeOS.homedir(), ".local", "bin", name);
 // A box whose launchers predate the rename has only `baton`.

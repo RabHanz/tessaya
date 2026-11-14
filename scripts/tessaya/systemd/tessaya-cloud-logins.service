@@ -4,4 +4,4 @@ Description=Check the Claude cloud logins (one per account) and write their heal
 [Service]
 Type=oneshot
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=%h/.local/bin/baton-cloud-logins
+ExecStart=%h/.local/bin/tessaya-cloud-logins

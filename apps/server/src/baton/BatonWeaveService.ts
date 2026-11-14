@@ -174,11 +174,18 @@ export const storesLayer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
     const own =
+      (yield* HostProcess.Environment)["TESSAYA_LIVE_QUEUE_DIR"] ??
       (yield* HostProcess.Environment)["BATON_LIVE_QUEUE_DIR"] ??
       (Option.isSome(config) ? queueDirFor(config.value.baseDir, NodeOS.homedir()) : null);
     // The bridges this server starts read the folder from the environment they inherit.
-    // @effect-diagnostics-next-line processEnvInEffect:off
-    if (own !== null) yield* Effect.sync(() => void (process.env["BATON_LIVE_QUEUE_DIR"] = own));
+    // Both names: a bridge from before the rename reads only the BATON_ one.
+    if (own !== null)
+      yield* Effect.sync(() => {
+        // @effect-diagnostics-next-line processEnvInEffect:off
+        process.env["TESSAYA_LIVE_QUEUE_DIR"] = own;
+        // @effect-diagnostics-next-line processEnvInEffect:off
+        process.env["BATON_LIVE_QUEUE_DIR"] = own;
+      });
     return {
       // Read each time otherwise: the folder can move to ~/.t3/tessaya while the server runs.
       liveQueueDir: own === null ? liveQueueDir : () => own,

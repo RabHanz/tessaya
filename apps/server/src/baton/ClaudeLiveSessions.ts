@@ -11,6 +11,7 @@ import * as NodePath from "node:path";
 
 import type { ClaudeLiveSession } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
+import { envOf } from "@t3tools/tessaya-shared/envOf";
 
 const DEFAULT_SESSIONS_DIR = NodePath.join(NodeOS.homedir(), ".claude", "sessions");
 
@@ -115,7 +116,7 @@ export const claudeConfigDirs = (): ReadonlyArray<string> => {
   };
   add(NodePath.join(home, ".local", "share", "claude-swap", "sessions"), () => true);
   add(home, (name) => name.startsWith(".claude-"));
-  for (const extra of (process.env.BATON_CLAUDE_CONFIG_DIRS ?? "").split(NodePath.delimiter)) {
+  for (const extra of (envOf("CLAUDE_CONFIG_DIRS") ?? "").split(NodePath.delimiter)) {
     if (extra.length > 0) dirs.push(extra);
   }
   // A profile with transcripts but no live-session folder (nothing running yet, or a fresh machine) still counts.

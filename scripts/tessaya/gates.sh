@@ -11,6 +11,8 @@
 # Order: patch series (cheapest, catches an unrecorded upstream edit) → typecheck → lint → tests of
 # every package Baton adds to or patches → build. Stops at the first failure.
 set -euo pipefail
+# Settings are renamed TESSAYA_*; the old BATON_* names still work. Drop them once no unit or workflow sets them.
+BATON_HEAVY_LOCK="${TESSAYA_HEAVY_LOCK:-${BATON_HEAVY_LOCK:-}}"
 cd "$(git rev-parse --show-toplevel)"
 
 install=0 build=0 tests=1

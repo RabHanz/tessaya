@@ -37,6 +37,7 @@ import type { Palette } from "./palette.ts";
 import { artDir, companionDir, readArt, stingFile } from "./artFiles.ts";
 import { shouldSplash, splashCentre } from "./splash.ts";
 import { startSplash } from "./splashWindow.ts";
+import { envOf } from "@t3tools/tessaya-shared/envOf";
 
 export interface HomeOption {
   readonly value: string;
@@ -528,7 +529,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   // otherwise nothing.
   let tabShots = 0;
   const shoot = (open: Electron.BrowserWindow | null, tab: string) => {
-    const dir = process.env["BATON_TEST_DIR"] ?? "";
+    const dir = envOf("TEST_DIR") ?? "";
     if (dir === "" || open === null) return;
     const n = (tabShots += 1);
     setTimeout(() => {

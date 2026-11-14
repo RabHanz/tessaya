@@ -22,6 +22,8 @@
 # The tree is left on the sync branch in cases 2 and 3 so the fix starts from it.
 
 set -euo pipefail
+# Settings are renamed TESSAYA_*; the old BATON_* names still work. Drop them once no unit or workflow sets them.
+BATON_SYNC_REPORT="${TESSAYA_SYNC_REPORT:-${BATON_SYNC_REPORT:-}}"
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 cd "$(git rev-parse --show-toplevel)"
 export LC_ALL=C

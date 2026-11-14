@@ -4,6 +4,8 @@
 # package.json `engines.node` (when an exact version) and `packageManager` name the toolchain.
 # Exact versions live user-local under $BATON_TOOLCHAIN_DIR (default ~/dev/toolchain), as node-v<ver>-linux-x64/ with pnpm installed into it. A range
 # (upstream before 2026-10 said ^24.13.1) keeps whatever node is already on PATH.
+# Settings are renamed TESSAYA_*; the old BATON_* names still work. Drop them once no unit or workflow sets them.
+BATON_TOOLCHAIN_DIR="${TESSAYA_TOOLCHAIN_DIR:-${BATON_TOOLCHAIN_DIR:-}}"
 
 baton_toolchain_dir="${BATON_TOOLCHAIN_DIR:-}"
 if [ -z "$baton_toolchain_dir" ]; then

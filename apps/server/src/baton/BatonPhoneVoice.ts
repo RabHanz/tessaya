@@ -7,6 +7,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import { envOf } from "@t3tools/tessaya-shared/envOf";
 
 export const MODEL_FILE = "parakeet-tdt-0.6b-v3-Q8_0.gguf";
 export const NOT_AVAILABLE =
@@ -50,9 +51,10 @@ export const transcribeWav = async (input: {
   readonly exists?: (path: string) => boolean;
 }): Promise<Transcription> => {
   const exists = input.exists ?? NodeFS.existsSync;
-  const binary = input.env["BATON_DICTATION"];
+  const binary = envOf("DICTATION", input.env);
   const model =
-    input.env["BATON_STT_MODEL"] ?? NodePath.join(input.userdataDir, "voice", "models", MODEL_FILE);
+    envOf("STT_MODEL", input.env) ??
+    NodePath.join(input.userdataDir, "voice", "models", MODEL_FILE);
   if (binary === undefined || !exists(binary) || !exists(model))
     return { ok: false, why: NOT_AVAILABLE };
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-phone-"));

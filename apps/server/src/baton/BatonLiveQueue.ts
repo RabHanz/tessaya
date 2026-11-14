@@ -10,9 +10,10 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { stateSubdir } from "@t3tools/tessaya-shared/stateDir";
+import { envOf } from "@t3tools/tessaya-shared/envOf";
 
 export const liveQueueDir = (): string =>
-  process.env["BATON_LIVE_QUEUE_DIR"] ?? stateSubdir(NodeOS.homedir(), "live-queue");
+  envOf("LIVE_QUEUE_DIR") ?? stateSubdir(NodeOS.homedir(), "live-queue");
 
 const safe = (sessionId: string): string => sessionId.replace(/[^A-Za-z0-9_-]/g, "_");
 const queueFile = (dir: string, sessionId: string): string =>

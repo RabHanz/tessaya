@@ -16,6 +16,7 @@ import {
 } from "./ClaudeLiveSessions.ts";
 import type { CatalogPorts, TranscriptInfo } from "./SessionCatalog.ts";
 import { isBackgroundRun, parseHistoryHits, readTranscriptHead } from "./SessionCatalogParse.ts";
+import { envOf } from "@t3tools/tessaya-shared/envOf";
 
 const HEAD_BYTES = 48 * 1024;
 
@@ -148,7 +149,7 @@ const localBin = (name: string) => NodePath.join(NodeOS.homedir(), ".local", "bi
 // A box whose launchers predate the rename has only `baton`.
 export const TESSAYA_CLI =
   process.env["TESSAYA_BIN"] ??
-  process.env["BATON_BIN"] ??
+  envOf("BIN") ??
   (NodeFS.existsSync(localBin("tessaya")) ? localBin("tessaya") : localBin("baton"));
 
 export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
