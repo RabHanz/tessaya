@@ -148,10 +148,12 @@ func (s *sim) runConsole() {
 		switch {
 		case line == "reboot":
 			s.reset("rom")
-		case line == "r1cfg status":
-			s.out = append(s.out, s.status+"\r\n"...)
+		case line == "ap_cmd r1cfg status": // the real console answers AP commands behind a prompt character
+			s.out = append(s.out, "$"+s.status+"\r\n"...)
+		case strings.HasPrefix(line, "ap_cmd r1cfg ") || strings.HasPrefix(line, "ap_cmd r1ep "):
+			s.out = append(s.out, `${"ok":true}`+"\r\n"...)
 		case strings.HasPrefix(line, "r1cfg ") || strings.HasPrefix(line, "r1ep "):
-			s.out = append(s.out, `{"ok":true}`+"\r\n"...)
+			s.out = append(s.out, "cmd NOT found: "+strings.Fields(line)[0]+".\r\n"...)
 		}
 	}
 }

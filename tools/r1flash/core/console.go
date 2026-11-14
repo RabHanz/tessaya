@@ -11,6 +11,10 @@ import (
 // The firmware's UART console at 115,200, DTR and RTS low so opening it does not reset the board. `r1cfg` (one-line
 // JSON replies) is the firmware ask U2; `r1ep set` exists since 0.3.61.
 
+// AP addresses the application core. The UART is the CP's console: it runs the AP's commands (r1cfg, r1ep) only
+// behind ap_cmd, and prints a prompt character before each reply.
+func AP(line string) string { return "ap_cmd " + line }
+
 var fwRe = regexp.MustCompile(`smp-\d+\.\d+\.\d+`)
 
 // ConsoleLines sends one line (unless empty) and collects what the console prints for wait.
@@ -47,7 +51,8 @@ func ConsoleLines(p Port, clk Clock, line string, wait time.Duration) ([]string,
 func JSONLine(lines []string) map[string]any {
 	for i := len(lines) - 1; i >= 0; i-- {
 		var m map[string]any
-		if strings.HasPrefix(lines[i], "{") && json.Unmarshal([]byte(lines[i]), &m) == nil {
+		j := strings.IndexByte(lines[i], '{') // after the console's prompt character
+		if j >= 0 && j <= 2 && json.Unmarshal([]byte(lines[i][j:]), &m) == nil {
 			return m
 		}
 	}
@@ -78,7 +83,7 @@ type Detection struct {
 // Detect asks the console for its status; with no console, it tries one short link at both rates.
 func Detect(p Port, clk Clock, rep Reporter) (Detection, error) {
 	rep.Phase("detect", "looking at the port")
-	lines, err := ConsoleLines(p, clk, "r1cfg status", 1500*time.Millisecond)
+	lines, err := ConsoleLines(p, clk, AP("r1cfg status"), 1500*time.Millisecond)
 	if err != nil {
 		return Detection{}, err
 	}

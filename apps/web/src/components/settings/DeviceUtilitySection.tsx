@@ -232,17 +232,19 @@ function DeviceUtility({
           <SettingsRow
             title="Wi-Fi and pairing"
             description={
-              has("setup.open")
+              has("net.setup")
                 ? "Setup mode shows its Wi-Fi and pairing codes on the eyes; then add it below, as a new R1."
                 : "Hold S1 and S3 together for 5 seconds to open setup mode, then add it below as a new R1."
             }
             control={
-              has("setup.open") ? (
+              has("net.setup") ? (
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={busy || d.online !== true}
-                  onClick={() => void run("act", "set", { id: d.id, itemId: "setup.open" })}
+                  onClick={() =>
+                    void run("act", "set", { id: d.id, itemId: "net.setup", value: true })
+                  }
                 >
                   Open setup mode
                 </Button>
@@ -277,7 +279,7 @@ function FactoryReset({ id, busy, run }: { id: string; busy: boolean; run: Run }
           size="sm"
           variant="destructive-outline"
           disabled={busy || typed !== id}
-          onClick={() => void run("act", "set", { id, itemId: "sys.factory_reset" })}
+          onClick={() => void run("act", "set", { id, itemId: "sys.factory_reset", value: true })}
         >
           Reset
         </Button>
