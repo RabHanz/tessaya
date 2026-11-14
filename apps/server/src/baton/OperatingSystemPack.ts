@@ -12,7 +12,9 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
-import { mergePack, packPrompt, wakeModelOf, type OsPack } from "@t3tools/baton-shared/osPack";
+import { mergePack, packPrompt, type OsPack } from "@t3tools/baton-shared/osPack";
+import { parseWakeStore, wakeModelOf } from "@t3tools/baton-shared/wakeModels";
+import * as Clock from "effect/Clock";
 
 export const PACK_DIR_NAME = "operating-system";
 const MAX_FILE_BYTES = 64 * 1024;
@@ -66,14 +68,14 @@ export const planningFrame = (userdata: string): string => packPrompt(readPack(u
 export const readRouting = (userdata: string): Routing =>
   parseRouting(readText(NodePath.join(userdata, PACK_DIR_NAME, "routing.json")));
 
-/** The wake-word training pipeline's record (`{"nova": "training"}`); a word it lacks is one for it to train. */
-const readWakeModels = (userdata: string): unknown => {
+/** Her wake-word models (`wake-models.json`, kept by TessayaWake); empty when there is none yet. */
+const readWakeStore = (userdata: string) => {
   try {
-    return JSON.parse(
-      readText(NodePath.join(userdata, PACK_DIR_NAME, "wake-models.json")) ?? "null",
+    return parseWakeStore(
+      JSON.parse(readText(NodePath.join(userdata, PACK_DIR_NAME, "wake-models.json")) ?? "null"),
     );
   } catch {
-    return null;
+    return parseWakeStore(null);
   }
 };
 
@@ -82,8 +84,9 @@ export const personasList = Effect.gen(function* () {
   const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
   const userdata = Option.isNone(config) ? null : NodePath.dirname(config.value.dbPath);
   const pack = userdata === null ? mergePack({}) : readPack(userdata);
-  const trained = userdata === null ? null : readWakeModels(userdata);
+  const store = userdata === null ? parseWakeStore(null) : readWakeStore(userdata);
+  const now = yield* Clock.currentTimeMillis;
   return {
-    personas: pack.personas.map((p) => ({ ...p, wakeModel: wakeModelOf(p.wake, trained) })),
+    personas: pack.personas.map((p) => ({ ...p, wakeModel: wakeModelOf(p.wake, store, now) })),
   };
 }).pipe(Effect.withSpan("OperatingSystemPack.personasList"));

@@ -297,7 +297,7 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..afea59780296fe24b6e5a6de9e838d15
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..0d1cc391505ab3d72af5f293fc774de3db7c3e26 100644
+index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..79f5b82ec20c396dd8d3453c95ff5077a34fb3d4 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
 @@ -1,4 +1,5 @@
@@ -306,7 +306,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..0d1cc391505ab3d72af5f293fc774de3
  import * as HttpApiSchema from "effect/http-api/HttpApiSchema";
  
  import {
-@@ -46,7 +47,34 @@ export const AuthAccessReadScope = "access:read" as const;
+@@ -46,7 +47,39 @@ export const AuthAccessReadScope = "access:read" as const;
  export const AuthAccessWriteScope = "access:write" as const;
  export const AuthRelayReadScope = "relay:read" as const;
  export const AuthRelayWriteScope = "relay:write" as const;
@@ -338,11 +338,16 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..0d1cc391505ab3d72af5f293fc774de3
 +export const AuthTessayaMemberScope = "tessaya:member" as const;
 +/** A guest pass's device: less than a member's; Tessaya's methods decide what it may do. */
 +export const AuthTessayaGuestScope = "tessaya:guest" as const;
++/**
++ * The wake-word trainer (WAKE-AUTOTRAIN-DESIGN, P3b): it reads training requests and consented voices, reports status
++ * and uploads models, which her server signs. It reaches nothing else.
++ */
++export const AuthTessayaWakeTrainerScope = "tessaya:wake-trainer" as const;
 +const AuthEnvironmentScopeName = Schema.Literals([
    AuthOrchestrationReadScope,
    AuthOrchestrationOperateScope,
    AuthSettingsWriteScope,
-@@ -64,16 +92,77 @@ export const AuthEnvironmentScope = Schema.Literals([
+@@ -64,16 +97,78 @@ export const AuthEnvironmentScope = Schema.Literals([
    AuthAccessWriteScope,
    AuthRelayReadScope,
    AuthRelayWriteScope,
@@ -352,6 +357,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..0d1cc391505ab3d72af5f293fc774de3
 +  AuthBatonMemorySyncScope,
 +  AuthTessayaMemberScope,
 +  AuthTessayaGuestScope,
++  AuthTessayaWakeTrainerScope,
  ]);
 -export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
 +/**
@@ -424,7 +430,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..0d1cc391505ab3d72af5f293fc774de3
  export type AuthGrantScopes = typeof AuthGrantScopes.Type;
  
  const legacyScopes = new Set<AuthEnvironmentScope>([
-@@ -109,10 +198,22 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
+@@ -109,10 +204,23 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
    [AuthTerminalReadScope]: AuthTerminalOperateScope,
  };
  
@@ -438,6 +444,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..0d1cc391505ab3d72af5f293fc774de3
 +  [AuthBatonMemorySyncScope]: AuthOrchestrationOperateScope,
 +  [AuthTessayaMemberScope]: AuthOrchestrationReadScope,
 +  [AuthTessayaGuestScope]: AuthOrchestrationReadScope,
++  [AuthTessayaWakeTrainerScope]: AuthOrchestrationOperateScope,
 +};
 +
  /** Keep permission denials decodable by clients with the original scope enum. */
