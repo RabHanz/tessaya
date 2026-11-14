@@ -162,7 +162,6 @@ const vesselBodiesLayer = VesselBodies.layer.pipe(Layer.provide(DeviceRegistry.l
 
 // The R1 and later devices: one instance, shared by the rules that drive them.
 const homeDevicesLayer = HomeDevices.layer.pipe(
-  Layer.provide(expressionLayer),
   Layer.provide(vesselBodiesLayer),
   Layer.provide(HomeDevices.brokerLayer.pipe(Layer.provide(hubLayer))),
   Layer.provide(reachLayer),
