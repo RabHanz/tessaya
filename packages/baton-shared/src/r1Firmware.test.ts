@@ -1,11 +1,14 @@
 import { expect, it } from "vite-plus/test";
 
 import {
+  parseR1ReleaseIndex,
+  r1EasyAction,
   R1_FIRMWARE,
   R1_FIRMWARE_MAX_BYTES,
   R1_FIRMWARE_PUBLIC_KEY,
   R1_RELEASE,
   r1Release,
+  verifyR1Signature,
 } from "./r1Firmware.ts";
 
 // ECDSA P-256 over a digest as given (the R1 verifies the image's sha256 itself, prehashed); Node's crypto always
@@ -70,4 +73,65 @@ it("pins a firmware whose release signature verifies against the R1's compiled-i
   // Today's single-firmware pin still reads as a manifest.
   expect(r1Release(pin)).toEqual({ artifacts: { firmware: pin, kws: null } });
   expect(r1Release(R1_RELEASE)).toBe(R1_RELEASE);
+});
+
+it("checks a release signature over the file with the R1's compiled-in key, and nothing else", async () => {
+  // A real signed release file is too large to keep here; the wake pack's signature is over its bytes, and those are
+  // reproduced only by the release, so check the scheme with a key made here and the real key's refusals.
+  const keys = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+    "verify",
+  ]);
+  const raw = Buffer.from(await crypto.subtle.exportKey("raw", keys.publicKey)).toString("hex");
+  const data = new TextEncoder().encode('{"v":1}');
+  const sig = Buffer.from(
+    await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, keys.privateKey, data),
+  ).toString("hex");
+  expect(await verifyR1Signature(data, sig, raw)).toBe(true);
+  expect(await verifyR1Signature(new TextEncoder().encode('{"v":2}'), sig, raw)).toBe(false);
+  expect(await verifyR1Signature(data, sig)).toBe(false);
+  expect(await verifyR1Signature(data, "zz")).toBe(false);
+});
+
+it("reads the release list, dropping entries that are not signed images", () => {
+  const img = {
+    url: "https://x.test/a.rbl",
+    size: 3,
+    sha256: "a".repeat(64),
+    sig: "b".repeat(128),
+  };
+  const list = parseR1ReleaseIndex(
+    JSON.stringify({
+      v: 1,
+      recommended: "smp-0.3.98",
+      releases: [
+        { version: "smp-0.3.98", date: "2026-11-14", rbl: img, allapp: img },
+        { version: "smp-0.3.95", date: "2026-11-14", rbl: img, allapp: null },
+        {
+          version: "smp-0.3.94",
+          date: "2026-11-14",
+          rbl: { ...img, url: "http://x.test/a" },
+          allapp: null,
+        },
+        { version: "custom", date: "2026-11-14", rbl: img, allapp: null },
+      ],
+    }),
+  );
+  expect(list?.releases.map((r) => r.version)).toEqual(["smp-0.3.98", "smp-0.3.95"]);
+  expect(parseR1ReleaseIndex("not json")).toBeNull();
+  expect(parseR1ReleaseIndex('{"v":2,"recommended":"x","releases":[]}')).toBeNull();
+});
+
+it("picks Easy's one action: wait, repair by cable when offline, nothing when current, else update", () => {
+  const d = { id: "r1", firmware: "smp-0.3.95", line: "", kws: "", hold: null, updating: null };
+  expect(r1EasyAction(true, d, "smp-0.3.98")).toEqual({ kind: "update", version: "smp-0.3.98" });
+  expect(r1EasyAction(true, { ...d, firmware: "smp-0.3.98" }, "smp-0.3.98")).toEqual({
+    kind: "current",
+  });
+  expect(r1EasyAction(false, d, "smp-0.3.98")).toEqual({ kind: "usb" });
+  expect(r1EasyAction(false, { ...d, updating: "smp-0.3.98" }, "smp-0.3.98")).toEqual({
+    kind: "busy",
+    version: "smp-0.3.98",
+  });
+  expect(r1EasyAction(true, undefined, null)).toEqual({ kind: "current" });
 });

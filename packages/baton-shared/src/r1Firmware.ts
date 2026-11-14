@@ -203,3 +203,22 @@ export interface R1UpdatesView {
     readonly updating: string | null;
   }>;
 }
+
+/** What Easy's one button does for an R1 now: update over the air, wait for one in flight, nothing, or repair by cable. */
+export type R1EasyAction =
+  | { readonly kind: "update"; readonly version: string }
+  | { readonly kind: "busy"; readonly version: string }
+  | { readonly kind: "current" }
+  | { readonly kind: "usb" };
+
+export const r1EasyAction = (
+  online: boolean,
+  device: R1UpdatesView["devices"][number] | undefined,
+  recommended: string | null,
+): R1EasyAction => {
+  if (device?.updating != null) return { kind: "busy", version: device.updating };
+  // Offline is the broken case too: an install cut off while the bootloader copied it comes back only by cable.
+  if (!online) return { kind: "usb" };
+  if (recommended === null || device?.firmware === recommended) return { kind: "current" };
+  return { kind: "update", version: recommended };
+};
