@@ -332,6 +332,7 @@ export const adaptProfile = (
 export const memberByVoice = (best: number, seconds: number): "member" | "other" | "unsure" => {
   if (!Number.isFinite(best)) return "other";
   if (best >= (seconds < 1.25 ? 0.4 : 0.36)) return "member";
-  if (seconds >= 2 || (seconds >= 1 && best < 0.2) || best < 0.15) return "other";
+  // Early only when plainly someone else: his own first half second can score low in a loud room (bench, 14 Nov).
+  if (seconds >= 2 || (seconds >= 1 && best < 0.2) || best < 0.1) return "other";
   return "unsure";
 };

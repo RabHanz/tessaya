@@ -10,7 +10,7 @@ import { pronounce, pronounceFrom } from "@t3tools/baton-shared/pronounce";
 import { stopIntent } from "@t3tools/baton-shared/stopPhrases";
 
 import { createEchoGuard } from "../echoGuard.ts";
-import { createRoomLevel, createTalkOver, voiceCheckDue, type TalkOver } from "../talkOver.ts";
+import { createTalkOver, createVoiceLevel, voiceCheckDue, type TalkOver } from "../talkOver.ts";
 import { ackLines, pickAck, type Acknowledge } from "./acknowledge.ts";
 import {
   accumulate,
@@ -459,7 +459,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let lastDownAt = Number.NEGATIVE_INFINITY;
     /** When her voice began after silence: the R1's echo cancelling lets a burst through as it starts (14 Nov captures). */
     let soundingFrom = Number.NEGATIVE_INFINITY;
-    const roomLevel = createRoomLevel(TALK_MIN_DBFS);
+    const voiceLevel = createVoiceLevel();
     /** He was heard over her and she stopped for it: his turn begun then is answered, not held to a stop phrase. */
     let cutByVoiceAt = Number.NEGATIVE_INFINITY;
     let lastProb = 0;
@@ -1771,7 +1771,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
      * is left of hers stops her at once. The words then go through the same echo and addressing checks as any turn.
      */
     const heardOver = (pcm: Int16Array, seq: number, rx: number, q: number) => {
-      roomLevel.push(pcm, speaking() && hold === null);
+      voiceLevel.push(pcm);
       heardLately = [...heardLately, { seq, pcm }].slice(-60);
       // Nothing in flight and nothing queued: the R1 has every byte sent, so its count and ours differ by a constant.
       if (q === 0 && deps.now() - lastDownAt > 1_000) downBase = rx - downSamples * 2;
@@ -1794,8 +1794,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (!heard || !speaking() || enrolling() || bench.has(id) || lastProb < config.turn.stopProb)
         return;
       if (deps.now() - cutByVoiceAt < 1_000 || deps.now() - soundingFrom < ONSET_GRACE_MS) return;
-      // The room (a TV, someone across it) is far quieter than he is, or was already this loud before he spoke.
-      if (!roomLevel.rises(Number.isFinite(hisLevel) ? hisLevel - FAR_DB : TALK_MIN_DBFS)) return;
+      // Someone across the room is far quieter than he is; whose voice it is decides the rest.
+      if (!voiceLevel.reaches(Number.isFinite(hisLevel) ? hisLevel - FAR_DB : TALK_MIN_DBFS))
+        return;
       // Only a household voice may stop her, so with nobody enrolled it stays keyword.
       if (deps.member === undefined || deps.members?.() !== true) return;
       let release = () => undefined as void;

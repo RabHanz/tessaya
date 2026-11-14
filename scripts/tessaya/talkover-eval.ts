@@ -10,7 +10,7 @@ import { createSileroScorer } from "../../packages/baton-voice/src/providers/onn
 import { createSpeakerEmbedder } from "../../packages/baton-voice/src/providers/speakerOnnx.ts";
 import { cosine, memberByVoice } from "../../packages/baton-voice/src/speaker.ts";
 import {
-  createRoomLevel,
+  createVoiceLevel,
   createTalkOver,
   voiceCheckDue,
   type TalkOverOptions,
@@ -184,10 +184,7 @@ const captures = async (
       const det = createTalkOver(opts);
       // SILERO=<model>: the loop's whole gate (Silero on the latest window, the room's level) on top of the detector.
       const vad = silero === undefined ? null : await createSileroScorer(silero);
-      const level = createRoomLevel(
-        TALK_MIN_DBFS,
-        ...(process.env["OVER_ROOM_DB"] === undefined ? [] : [Number(process.env["OVER_ROOM_DB"])]),
-      );
+      const level = createVoiceLevel();
       let prob = 1;
       const cuts: number[] = [];
       const pauses: Array<{ at: number; outcome: "member" | "other"; ms: number }> = [];
@@ -223,10 +220,10 @@ const captures = async (
           const voiced = det.process(mic, f.seq * 960).some((v) => v.ready && v.speech);
           let heard = voiced;
           if (vad !== null && pass === 1) {
-            level.push(mic, hold === null);
+            level.push(mic);
             for (let w = 0; w + 512 <= 960; w += 512)
               prob = await vad.score(mic.subarray(w, w + 512));
-            heard = heard && prob >= 0.35 && level.rises();
+            heard = heard && prob >= SILERO_MIN && level.reaches(TALK_MIN_DBFS);
           }
           if (pass === 1) recentFrames = [...recentFrames, { seq: f.seq, pcm: mic }].slice(-60);
           // The loop's soft pause (roomVoice `followHold`): whose voice, checked as it comes in.
@@ -244,7 +241,7 @@ const captures = async (
               if (process.env["CHECKS"] !== undefined)
                 NodeFS.appendFileSync(
                   process.env["CHECKS"],
-                  `${JSON.stringify({ him: placed.some((p) => h.at >= p.at && h.at <= p.at + RATE), at: h.at, seconds, best, quiet })}\n`,
+                  `${JSON.stringify({ alone: placed.length === 0, him: placed.some((p) => h.at >= p.at && h.at <= p.at + RATE), his: placed.some((p) => h.at >= p.at && h.at <= p.at + p.pcm.length + RATE / 2), at: h.at, seconds, best, quiet })}\n`,
                 );
               const v = memberByVoice(
                 best,
@@ -361,6 +358,8 @@ const captures = async (
 
 /** The loop's whole gate (roomVoice `heardOver`): the detector, Silero on the latest window, and a level floor. */
 const TALK_MIN_DBFS = -55;
+/** The loop's `config.turn.stopProb`; SILERO_MIN to try another. */
+const SILERO_MIN = Number(process.env["SILERO_MIN"] ?? 0.35);
 const gateEval = async (dir: string, silero: string, opts: TalkOverOptions) => {
   const her = read(NodePath.join(dir, "her.s16")).subarray(0, RATE * 180);
   const his = NodeFS.readdirSync(NodePath.join(dir, "his"))
@@ -438,10 +437,7 @@ const gateEval = async (dir: string, silero: string, opts: TalkOverOptions) => {
         );
       let prob = 0;
       let lastCut = -Infinity;
-      const level = createRoomLevel(
-        TALK_MIN_DBFS,
-        ...(process.env["OVER_ROOM_DB"] === undefined ? [] : [Number(process.env["OVER_ROOM_DB"])]),
-      );
+      const level = createVoiceLevel();
       const cuts: number[] = [];
       for (let at = 0; at + FRAME <= mic.length; at += FRAME) {
         det.reference(toI16(her, at), at);
@@ -450,8 +446,8 @@ const gateEval = async (dir: string, silero: string, opts: TalkOverOptions) => {
         const heard = det.process(frame, at).some((v) => v.ready && v.speech);
         for (let w = at; w + 512 <= at + FRAME; w += 512)
           prob = await vad.score(toI16(mic, w, 512));
-        if (!heard || prob < 0.35 || at - lastCut < RATE) continue;
-        if (!level.rises()) continue;
+        if (!heard || prob < SILERO_MIN || at - lastCut < RATE) continue;
+        if (!level.reaches(TALK_MIN_DBFS)) continue;
         lastCut = at;
         cuts.push(at + FRAME);
       }
