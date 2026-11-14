@@ -198,7 +198,11 @@ export const KEY_ROWS = (Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>).map((slo
 });
 
 /** What a free press may be set to. `home`, `thread:*` and `prompt` need a detail before they save. */
-export const keyChoices = (slot: R1KeySlot): ReadonlyArray<readonly [string, string]> => [
+export const keyChoices = (
+  slot: R1KeySlot,
+  /** Her server's personas (`baton.personas.list`); the default pack's until it answers. */
+  personas: ReadonlyArray<string> = DEFAULT_OS_PACK.personas.map((p) => p.name),
+): ReadonlyArray<readonly [string, string]> => [
   ["device:none", "Nothing"],
   ...(R1_KEY_SLOTS[slot] === "device"
     ? R1_DEVICE_DOS.filter((d) => d !== "none").map(
@@ -206,7 +210,7 @@ export const keyChoices = (slot: R1KeySlot): ReadonlyArray<readonly [string, str
       )
     : []),
   ["persona:", "Next persona, in her voice"],
-  ...DEFAULT_OS_PACK.personas.map((p) => [`persona:${p.name}`, `Switch to ${p.name}`] as const),
+  ...personas.map((name) => [`persona:${name}`, `Switch to ${name}`] as const),
   ["whatsNext", "What's next"],
   ["mute", "Mute Tessaya"],
   ["home", "Toggle a lamp or run a scene"],

@@ -11,8 +11,15 @@ const TESSAYA_ALONE = /^(?:you |to |tuh )?say (?:yeah|ya|yah|uh)$/;
 const TESSAYA_LEAD = /^(?:to|tuh) say,? (?:yeah|ya|yah|uh),/i;
 
 /** The name he called her by, from `names` (the first is the lead), or null when he did not call one. */
+const SWITCH_TO =
+  /\b(?:switch(?: me)?(?: back| over)? to|hand (?:me |it )?(?:over )?to|let me (?:talk|speak) to)\s+([a-z][a-z'-]*)/i;
+
 export const calledName = (text: string, names: ReadonlyArray<string>): string | null => {
   const words = text.trim().split(/\s+/).filter(Boolean);
+  // "Tessaya, switch to Nova": the one he asks for, so a name with no trained wake word is still reachable.
+  const asked = SWITCH_TO.exec(text)?.[1];
+  const switched = asked === undefined ? undefined : names.find((n) => wakeWordHeard(asked, n));
+  if (switched !== undefined) return switched;
   const lead = names.find((n) => wakeWordLead(words, [n]) > 0);
   if (lead !== undefined) return lead;
   const plain = text

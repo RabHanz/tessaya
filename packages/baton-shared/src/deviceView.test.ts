@@ -22,6 +22,14 @@ describe("an R1 button's choices", () => {
     expect(keyBindingFrom("thread:stop", "", null)).toBeNull();
     // Device actions are offered only where the firmware lets a press be rebound.
     expect(keyChoices("s1.hold").some(([c]) => c === "device:sleep")).toBe(false);
+    // His own personas from her server, a custom one included.
+    expect(
+      keyChoices("s2.double", ["Tessaya", "Nova"]).filter(([c]) => c.startsWith("persona:")),
+    ).toEqual([
+      ["persona:", "Next persona, in her voice"],
+      ["persona:Tessaya", "Switch to Tessaya"],
+      ["persona:Nova", "Switch to Nova"],
+    ]);
   });
 });
 

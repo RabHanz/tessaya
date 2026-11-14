@@ -12,6 +12,7 @@ import {
   createRoomVoice,
   firstClause,
   ROOM_CONFIG,
+  servedRoster,
   splitSentences,
   type RoomDeps,
   type TurnMetrics,
@@ -1057,6 +1058,67 @@ describe("what Tessaya's Devices page can ask of the room", () => {
     ]);
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"freya"}'));
     expect(spoken.at(-1)).toEqual(["Fray-uh here.", "azelma"]);
+  });
+
+  it("takes her server's roster for the next session: his custom persona answers in its voice, with the generic eyes", async () => {
+    const spoken: Array<[string, string | undefined]> = [];
+    const t = setup({
+      speak: async function* (text, _signal, voice) {
+        spoken.push([text, voice]);
+        yield new Int16Array(3_200);
+      },
+    });
+    expect(servedRoster({ personas: "no" })).toBeNull();
+    expect(servedRoster({ personas: [{ id: "x", name: "" }] })).toBeNull();
+    const roster = servedRoster({
+      personas: [
+        { id: "nova", name: "Nova", wake: null, voice: "alba", lead: false },
+        { id: "bad", voice: "eve" },
+        {
+          id: "executive",
+          name: "Tessaya",
+          wake: "Tessaya",
+          voice: "eve",
+          lead: true,
+          eyes: "tessaya",
+        },
+      ],
+    });
+    expect(roster).toEqual([
+      { id: "executive", name: "Tessaya", voice: "eve", eyes: "tessaya" },
+      { id: "nova", name: "Nova", voice: "alba" },
+    ]);
+    t.room.personas(roster!);
+    t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"nova"}'));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    expect(spoken).toEqual([["Nova here.", "alba"]]);
+    expect(
+      t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload)),
+    ).toEqual(['{"name":"generic"}']);
+    // Freya renamed Maya: her trained wake word still brings her, by the persona id it belongs to.
+    const renamed = setup();
+    renamed.room.personas(
+      servedRoster({
+        personas: [
+          { id: "executive", name: "Tessaya", wake: "Tessaya", voice: "eve", lead: true },
+          {
+            id: "operations",
+            name: "Maya",
+            wake: "Maya",
+            voice: "azelma",
+            lead: false,
+            eyes: "freya",
+          },
+        ],
+      })!,
+    );
+    renamed.room.woken(DEV, "operations");
+    renamed.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    expect(
+      renamed.published
+        .filter((p) => p.topic.endsWith("/cmd/eye/persona"))
+        .map((p) => String(p.payload)),
+    ).toEqual(['{"name":"freya"}']);
   });
 
   it("asks a button's prompt with no session only once the R1 has opened its mic", async () => {
