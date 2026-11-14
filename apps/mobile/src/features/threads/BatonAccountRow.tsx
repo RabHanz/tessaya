@@ -387,7 +387,7 @@ function LiveAccounts(props: {
       {queued === null ? null : (
         <View className="min-h-11 flex-row items-center gap-2 px-4">
           <Text className="min-w-0 flex-1 text-2xs text-foreground-muted">
-            Next · {queuedText(queued, props.accounts)}
+            Next · {queuedText(queued, props.accounts, state?.applying === true)}
           </Text>
           <Pressable
             accessibilityRole="button"

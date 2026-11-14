@@ -77,7 +77,11 @@ effectIt.effect(
       busy = false;
       yield* restarted.settle("baton-live4:s1");
       expect(told).toEqual([{ effort: "high", model: "claude-opus-5-5" }]);
-      expect(yield* restarted.liveQueued("s1")).toEqual({ queued: null, failure: null });
+      expect(yield* restarted.liveQueued("s1")).toEqual({
+        queued: null,
+        applying: false,
+        failure: null,
+      });
       expect((yield* (yield* makeMoves(engine, sql, apply)).liveQueued("s1")).queued).toBeNull();
     }).pipe(Effect.provide(SqlitePersistenceMemory)),
 );
@@ -101,11 +105,15 @@ effectIt.effect("a cancel or a newer pick during an apply wins, and a failure is
     yield* moves.settle("baton-live4:s1");
     expect((yield* moves.liveQueued("s1")).queued).toEqual({ accountKey: "4" });
 
-    during = Effect.void;
+    // While it applies (a restart can take half a minute) the change still shows, as applying.
+    let seen: unknown = null;
+    during = Effect.map(moves.liveQueued("s1"), (state) => (seen = state));
     answer = { state: "failed", detail: "Not switched: refused." };
     yield* moves.settle("baton-live4:s1");
+    expect(seen).toEqual({ queued: { accountKey: "4" }, applying: true, failure: null });
     expect(yield* moves.liveQueued("s1")).toEqual({
       queued: null,
+      applying: false,
       failure: "Not switched: refused.",
     });
   }).pipe(Effect.provide(SqlitePersistenceMemory)),

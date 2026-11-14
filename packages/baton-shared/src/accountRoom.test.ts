@@ -69,5 +69,6 @@ describe("a terminal session's queued change", () => {
     expect(queuedText({ accountKey: "9" }, accounts)).toBe(
       "Switches to another account when this turn ends",
     );
+    expect(queuedText({ accountKey: "1" }, accounts, true)).toBe("Switches to Work now");
   });
 });
