@@ -146,6 +146,7 @@ export function TessayaSidebarSection(props: {
   const jobTeam = useAtomCommand(tessayaWorkSessions.jobTeam, quiet);
   const jobPlace = useAtomCommand(tessayaWorkSessions.jobPlace, quiet);
   const jobHandoff = useAtomCommand(tessayaWorkSessions.jobHandoff, quiet);
+  const jobLead = useAtomCommand(tessayaWorkSessions.jobLead, quiet);
   const jobAgree = useAtomCommand(tessayaWorkSessions.jobAgree, quiet);
   const jobRefine = useAtomCommand(tessayaWorkSessions.jobRefine, quiet);
   const jobSplit = useAtomCommand(tessayaWorkSessions.jobSplit, quiet);
@@ -284,6 +285,18 @@ export function TessayaSidebarSection(props: {
               id: text("id") as never,
               instance: text("instance"),
               ...(text("note") === "" ? {} : { note: text("note") }),
+            },
+          }),
+        );
+      case "lead":
+        return done(
+          await jobLead({
+            ...env,
+            input: {
+              id: text("id") as never,
+              ...(text("to") === "" ? {} : { to: text("to") }),
+              ...(args["back"] === true ? { back: true } : {}),
+              via: "card",
             },
           }),
         );

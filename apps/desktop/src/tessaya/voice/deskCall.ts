@@ -130,6 +130,16 @@ export const deskCall = (
           ...(text("note") === "" ? {} : { note: text("note") }),
         },
       };
+    case "lead":
+      return {
+        method: "baton.job.lead",
+        input: {
+          ...id,
+          ...(text("to") === "" ? {} : { to: text("to") }),
+          ...(args["back"] === true ? { back: true } : {}),
+          via: "card",
+        },
+      };
     case "watch":
       return { method: "baton.watch.get", input: {} };
     case "agree":

@@ -86,6 +86,11 @@ describe("the Now area", () => {
             jobs: [{ id: "j-1", title: "Ship the shop" }],
             episode: { text: "Tuesday, 3 November 2026, with Alfred: the deploy passed", at: "x" },
             recent: [],
+            track: { led: 3, done: 2, failed: 1 },
+            templates: [{ id: "release", title: "Ship a release", jobs: 2, lessons: 1 }],
+            moves: [
+              { job: "j-1", title: "Ship the shop", from: "research", to: "engineering", at: "x" },
+            ],
           },
           {
             id: "research",
@@ -104,6 +109,9 @@ describe("the Now area", () => {
     const alfred = rows.find((r) => r.id === "now.team:engineering");
     expect(alfred).toMatchObject({ section: "The team", label: "Alfred: Ship the shop" });
     expect(alfred && "detail" in alfred ? alfred.detail : "").toContain("the deploy passed");
+    expect(alfred && "detail" in alfred ? alfred.detail : "").toContain(
+      "Led 3: 2 done, 1 failed. Templates: Ship a release (2 jobs, 1 lesson). Sebastian handed Ship the shop to Alfred",
+    );
     expect(rows.find((r) => r.id === "now.team:research")).toMatchObject({
       label: "Sebastian: free",
     });

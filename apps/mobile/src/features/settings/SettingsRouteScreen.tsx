@@ -273,6 +273,10 @@ function useSettingsIndexSections(): SettingsListSection[] {
       rows: [page("SettingsVoice", "mic", "Voice and dictation")],
     },
     {
+      title: "Working for you",
+      rows: [serverPage("SettingsTeam", "person.2", "Team")],
+    },
+    {
       title: "Home and devices",
       rows: [
         serverPage("SettingsHome", "house", "Home Assistant"),

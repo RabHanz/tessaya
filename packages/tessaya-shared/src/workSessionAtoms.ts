@@ -337,6 +337,10 @@ export function createTessayaWorkSessionAtoms<R, E>(
       label: "environment-data:baton:job-handoff",
       tag: BATON_JOB_WS_METHODS.jobHandoff,
     }),
+    jobLead: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:job-lead",
+      tag: BATON_JOB_WS_METHODS.jobLead,
+    }),
     jobAgree: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-agree",
       tag: BATON_JOB_WS_METHODS.jobAgree,

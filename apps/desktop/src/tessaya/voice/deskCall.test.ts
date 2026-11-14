@@ -66,6 +66,10 @@ describe("a request answered by this machine's server while T3 is closed", () =>
         input: { id: "w1", instance: "Codex" },
       },
     );
+    expect(deskCall({ kind: "job", op: "lead", args: { id: "w1", to: "Alfred" } })).toEqual({
+      method: "baton.job.lead",
+      input: { id: "w1", to: "Alfred", via: "card" },
+    });
     expect(deskCall({ kind: "memory", op: "sync", args: {} })).toBeNull();
     expect(deskCall({ kind: "run" })).toBeNull();
   });

@@ -403,6 +403,7 @@ export interface TessayaJobBridgeRequest {
     | "schedule"
     | "split"
     | "handoff"
+    | "lead"
     | "rule_preview"
     | "rule_run";
   readonly args: Readonly<Record<string, unknown>>;

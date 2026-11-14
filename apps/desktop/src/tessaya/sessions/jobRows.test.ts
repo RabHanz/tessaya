@@ -46,6 +46,34 @@ describe("the Jobs area", () => {
     expect(jobAction(jobs, "js:c")).toMatchObject({ kind: "schedule", scheduled: true });
     expect(jobAction(jobs, "j:zzz")).toBeNull();
   });
+  it("says who leads a job and offers the rest of the team, with its last hand-offs", () => {
+    const team = [
+      { id: "lead", name: "Onyx" },
+      { id: "butler", name: "Alfred" },
+    ];
+    const led = {
+      ...job("c", "running"),
+      terms: {
+        scheduleTaskId: null,
+        lead: "butler",
+        leadMoves: [{ at: "t", from: "lead", to: "butler", by: "him", via: "voice" }],
+      },
+    } as unknown as TessayaJob;
+    const rows = jobControls([led], team);
+    expect(rows[0]?.hint).toContain("Led by Alfred. Last: Onyx handed it to Alfred.");
+    expect(rows.find((r) => r.id === "jl:c")).toMatchObject({
+      kind: "choice",
+      value: "butler",
+      more: true,
+      options: [
+        { value: "lead", label: "Onyx" },
+        { value: "butler", label: "Alfred" },
+      ],
+    });
+    expect(jobAction([led], "jl:c")).toMatchObject({ id: "c", kind: "lead" });
+    // An older server names no lead: no picker, and nothing said about one.
+    expect(jobControls([job("c", "running")], team).map((r) => r.id)).not.toContain("jl:c");
+  });
 });
 
 describe("employee flows in the Jobs area", () => {
