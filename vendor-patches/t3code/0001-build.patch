@@ -159,10 +159,10 @@ index fd3aca76ad247c3101889df922e29f104f8de909..60ea3fbb1d988dc2e9068f09ad489fb5
      "@t3tools/contracts": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/evals/README.md b/evals/README.md
-index 8cfb697373c318c91927adeb4f373d54a7e1922e..229cfdb89f950785400b81f12abd09599ecae8e5 100644
+index 8cfb697373c318c91927adeb4f373d54a7e1922e..ba37abf4e721e9cd71acb45610417a5a6cd872f4 100644
 --- a/evals/README.md
 +++ b/evals/README.md
-@@ -4,13 +4,16 @@ An eval runs a real model against T3 Code's real text or code and scores what th
+@@ -4,13 +4,17 @@ An eval runs a real model against T3 Code's real text or code and scores what th
  
  Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
  
@@ -183,14 +183,15 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..229cfdb89f950785400b81f12abd0959
 +| [tessaya-assistant](tessaya-assistant/) | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                        |
 +| [tessaya-outside](tessaya-outside/)     | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.   |
 +| [tessaya-room](tessaya-room/)           | What the R1 desk device says and does on a fake house: status, the lamp, his work, the camera.       |
++| [tessaya-lines](tessaya-lines/)         | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are. |
  
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..084d8bffc0e922b83952919becc731cde5471fc5 100644
+index 0659f65475da775fd54525d9147c84a8b0ad4a3a..6335f6cf8e317aa4866d62eee1fa857d36534fb0 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,8 +10,15 @@
+@@ -10,8 +10,16 @@
      "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
@@ -203,7 +204,8 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..084d8bffc0e922b83952919becc731cd
 +    "tessaya-room:live": "node tessaya-room/live.ts",
 +    "tessaya-brain": "node --env-file-if-exists=../.env tessaya-brain/run.ts",
 +    "tessaya-brain:tokens": "node --env-file-if-exists=../.env tessaya-brain/tokens.ts",
-+    "tessaya-brain:subscription": "node tessaya-brain/subscription.ts"
++    "tessaya-brain:subscription": "node tessaya-brain/subscription.ts",
++    "tessaya-lines": "node tessaya-lines/run.ts"
    },
    "dependencies": {
      "@effect/platform-node": "catalog:",

@@ -18,7 +18,8 @@
     "tessaya-room:live": "node tessaya-room/live.ts",
     "tessaya-brain": "node --env-file-if-exists=../.env tessaya-brain/run.ts",
     "tessaya-brain:tokens": "node --env-file-if-exists=../.env tessaya-brain/tokens.ts",
-    "tessaya-brain:subscription": "node tessaya-brain/subscription.ts"
+    "tessaya-brain:subscription": "node tessaya-brain/subscription.ts",
+    "tessaya-lines": "node tessaya-lines/run.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

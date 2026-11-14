@@ -42,6 +42,12 @@ export const SERVER_SETTINGS_VOICE: {
   responseStreamingMode: free("whether replies stream by paragraph or arrive per turn"),
   enableProviderUpdateChecks: free("checking for provider updates"),
   keepAwakeWhileAgentsWork: free("keeping the computer awake while agents work"),
+  tessayaExpression: free(
+    "lines written fresh each time, varied and in character, instead of fixed ones",
+  ),
+  companionMotion: free(
+    "how much is said and done unprompted: lively, calm, or important only (less chatter)",
+  ),
   newSessionsRun: free("whether new sessions run in Tessaya or a terminal"),
   mainThreadId: owner("which thread is the main session"),
   continueThreadsAfterServerUpdate: confirm("continuing sessions after the server updates"),
