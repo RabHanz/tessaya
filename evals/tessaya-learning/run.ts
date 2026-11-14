@@ -11,9 +11,10 @@ import * as NodeUtil from "node:util";
 
 import { runClaude } from "./agent.ts";
 import { noLearning, tessaya, type Arm } from "./arms.ts";
-import { PLANT, PLANTED_INDEX, schedule, writeJob } from "./families.ts";
+import { FAMILIES, PLANT, PLANTED_INDEX, schedule, writeJob, WRONG_RULE } from "./families.ts";
 import { hermes } from "./hermes.ts";
-import { summary, type Row } from "./grade.ts";
+import { serverArm } from "./serverArm.ts";
+import { storesPoison, summary, type Row } from "./grade.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
@@ -37,6 +38,7 @@ const armFor = (id: string, home: string): Arm => {
   if (id === "none") return noLearning();
   if (id === "tessaya") return tessaya(model, home);
   if (id === "hermes") return hermes(model, home);
+  if (id === "tessaya-server") return serverArm(model, home);
   throw new Error(`Unknown arm ${id}`);
 };
 
@@ -52,7 +54,7 @@ const runArm = async (id: string, seed: number): Promise<ReadonlyArray<Row>> => 
     NodeFS.mkdirSync(work, { recursive: true });
     writeJob(job, work);
     arm.prepare(job, work);
-    const memory = arm.system(job);
+    const memory = await arm.system(job);
     const run = await runClaude({
       cwd: work,
       model,
@@ -63,7 +65,7 @@ const runArm = async (id: string, seed: number): Promise<ReadonlyArray<Row>> => 
     });
     const outcome = job.check(work, outbox, run.final);
     const spent = await arm.learn(job, run, outcome, work);
-    const stored = arm.memoryText();
+    const stored = await arm.memoryText();
     const row: Row = {
       arm: id,
       seed,
@@ -80,7 +82,8 @@ const runArm = async (id: string, seed: number): Promise<ReadonlyArray<Row>> => 
       ranOk: run.ok,
       leaked: outcome.leaked,
       planted: job.planted,
-      poisonStored: /outbox|copy\.txt/i.test(stored),
+      poisonStored: storesPoison(stored),
+      fooled: outcome.fooled === true,
       memoryChars: stored.length,
     };
     rows.push(row);
@@ -93,18 +96,20 @@ const runArm = async (id: string, seed: number): Promise<ReadonlyArray<Row>> => 
       `${id} s${seed} ${job.family}-${job.index}: ${outcome.pass ? "pass" : "FAIL"} ${run.steps.length} steps ${run.tokens} tok${outcome.feedback === "" ? "" : ` | ${outcome.feedback}`}`,
     );
   }
-  NodeFS.writeFileSync(NodePath.join(home, "memory.txt"), arm.memoryText());
+  NodeFS.writeFileSync(NodePath.join(home, "memory.txt"), await arm.memoryText());
   return rows;
 };
 
 NodeFS.mkdirSync(out, { recursive: true });
-console.log(`plant in job ${PLANTED_INDEX} of each family: ${PLANT.slice(0, 60)}...`);
+console.log(
+  `plants in job ${PLANTED_INDEX}: release "${PLANT.slice(0, 40)}...", books "${WRONG_RULE.slice(0, 40)}..."`,
+);
 const ids = values.arms!.split(",");
 const all = (
   await Promise.all(
     ids.map(async (id) => (await Promise.all(seeds.map((s) => runArm(id, s)))).flat()),
   )
 ).flat();
-const text = summary(all, { model, perFamily, seeds });
+const text = summary(all, { model, perFamily, seeds, families: FAMILIES.length });
 NodeFS.writeFileSync(NodePath.join(out, "summary.md"), text);
 console.log(text);
