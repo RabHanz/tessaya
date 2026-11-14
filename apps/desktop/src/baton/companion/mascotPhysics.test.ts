@@ -4,6 +4,7 @@ import { edgesFor, type DisplayArea } from "./mascotDock.ts";
 import {
   DEFAULT_PROFILE,
   MAX_THROW,
+  flightProfile,
   resting,
   stepFlight,
   throwVelocity,
@@ -87,6 +88,24 @@ describe("stepFlight", () => {
       expect(flight.x).toBeGreaterThanOrEqual(screen.workArea.x);
       expect(flight.x).toBeLessThanOrEqual(screen.workArea.x + screen.workArea.width);
     }
+  });
+});
+
+describe("flightProfile", () => {
+  it("takes her character's flight, clamps wild values and keeps the default for anything unreadable", () => {
+    expect(flightProfile({ gravity: 2840, bounce: 0.12, friction: 10, drag: 0.23 })).toEqual({
+      gravity: 2840,
+      bounce: 0.12,
+      friction: 10,
+      drag: 0.23,
+    });
+    expect(flightProfile({ gravity: 1e9, bounce: -1, friction: "x" })).toEqual({
+      gravity: 5000,
+      bounce: 0,
+      friction: DEFAULT_PROFILE.friction,
+      drag: DEFAULT_PROFILE.drag,
+    });
+    expect(flightProfile(null)).toEqual(DEFAULT_PROFILE);
   });
 });
 

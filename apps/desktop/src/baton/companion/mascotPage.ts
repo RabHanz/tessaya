@@ -58,6 +58,11 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   },
   play(name) { if (rig) rig.play(name); },
   motion(vx, vy) { if (rig && rig.motion) rig.motion(vx, vy); },
+  // her character's own body (bodies.js TCS.PHYSICS): her flight for the window's physics, and how she reacts
+  physics() { return rig && rig.physics ? TCS.flightOf(rig.physics()) : null; },
+  react(kind, speed) { if (rig && rig.react) rig.react(kind, speed || 0); },
+  walk(ms, dir) { if (rig && rig.walk) rig.walk(ms, dir); else if (rig) rig.play("hop"); },
+  look(gx, gy) { if (rig && rig.look) rig.look(gx, gy); },
   impact(speed, landed) { if (rig && rig.impact) rig.impact(speed, landed !== false); },
  };
 })();`;

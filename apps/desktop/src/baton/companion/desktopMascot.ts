@@ -40,6 +40,8 @@ import {
 import { MASCOT_SCRIPT } from "./mascotPage.ts";
 import {
   DEFAULT_PROFILE,
+  flightProfile,
+  type PhysicsProfile,
   STEP_S,
   resting,
   stepFlight,
@@ -277,16 +279,16 @@ export const createDesktopMascot = (input: {
     if (hitTimer !== null) clearTimeout(hitTimer);
     hitTimer = null;
   };
-  /** A brief reaction (a poke, a pet): her face for a moment, never her mood's colour, then back to her mood. */
-  let reactTimer: ReturnType<typeof setTimeout> | null = null;
-  const react = (expression: string, ms: number) => {
-    call(`window.mascot.cue({expression:${JSON.stringify(expression)},brief:true})`);
-    if (reactTimer !== null) clearTimeout(reactTimer);
-    reactTimer = setTimeout(() => {
-      reactTimer = null;
-      cue(momentOf(phase) ?? "rest");
-    }, ms);
-    reactTimer.unref();
+  /** Something happened to her body: her character reacts in its own way and returns to her mood by itself (rig.react). */
+  const react = (kind: "pickup" | "land" | "wall" | "poke" | "pet", speed = 0) =>
+    call(`window.mascot.react(${JSON.stringify(kind)},${Math.round(speed)})`);
+  /** Her eyes follow the cursor while it is near; sent only when the look changes. */
+  let looking = "";
+  const lookAt = (gx: number | null, gy = 0) => {
+    const next = gx === null ? "null" : `${gx.toFixed(2)},${gy.toFixed(2)}`;
+    if (next === looking) return;
+    looking = next;
+    call(`window.mascot.look(${next})`);
   };
   let strokes: Strokes = { points: [] };
   let pettedAt = 0;
@@ -311,10 +313,17 @@ export const createDesktopMascot = (input: {
       strokes = next.state;
       if (next.petted && now - pettedAt > 3000) {
         pettedAt = now;
-        call(`window.mascot.play("squint")`);
-        react("happy", 1600);
+        react("pet");
       }
     } else if (strokes.points.length > 0) strokes = { points: [] };
+    // within reach she watches the cursor; past it she looks ahead again
+    if (near && dragging === null && !sleeping) {
+      const round = (v: number) => Math.round(Math.max(-1, Math.min(1, v)) * 10) / 10;
+      lookAt(
+        round((dx - body.width / 2) / (body.width * 1.5)),
+        round((dy - body.height / 2) / (body.height * 2)),
+      );
+    } else lookAt(null);
     if (over !== takingMouse) {
       takingMouse = over;
       target.setIgnoreMouseEvents(!over, { forward: true });
@@ -366,10 +375,20 @@ export const createDesktopMascot = (input: {
     return created;
   };
 
-  const init = () =>
+  /** Her character's flight (heavier falls harder, plush bounces more), read from her page once she is drawn. */
+  let profile: PhysicsProfile = DEFAULT_PROFILE;
+  const init = () => {
     call(
       `window.mascot.init(${JSON.stringify({ persona: options.persona, quiet: options.motion !== "lively", reduced: options.reduced })})`,
     );
+    const target = win;
+    void ready.then(async () => {
+      if (target === null || target.isDestroyed()) return;
+      profile = flightProfile(
+        await target.webContents.executeJavaScript("window.mascot.physics()").catch(() => null),
+      );
+    });
+  };
 
   /** Shows, hides or builds her window to match his settings, a snooze or hide, and a full-screen app. */
   const apply = () => {
@@ -488,13 +507,12 @@ export const createDesktopMascot = (input: {
           edges: all,
           displays: screens,
           half: size() / 4,
-          profile: DEFAULT_PROFILE,
+          profile,
         });
         flight = next.flight;
         // every landing and wall is felt: a squash by its speed that springs back
         for (const event of next.events)
-          if (event.speed > IMPACT_SPEED)
-            call(`window.mascot.impact(${Math.round(event.speed)},${event.kind === "land"})`);
+          if (event.speed > IMPACT_SPEED) react(event.kind, event.speed);
       }
       if (!resting(flight) || flight.on === null) {
         target.setBounds(box({ x: flight.x - size() / 2, y: flight.y - size() * FOOT_SHARE }));
@@ -522,8 +540,7 @@ export const createDesktopMascot = (input: {
     if (isPoke(samples, pressedAt, Date.now())) {
       // a poke: a little squash and a giggle where she stands
       call(`window.mascot.motion(0,0)`);
-      call(`window.mascot.impact(420,false)`);
-      react("giggle", 900);
+      react("poke");
       if (edge !== null) target.setBounds(box(standAt(edge, x, size())));
       return;
     }
@@ -554,9 +571,8 @@ export const createDesktopMascot = (input: {
     stopMoving();
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
-    // a brief reaction: her face, never her mood's colour
-    call(`window.mascot.cue({expression:"surprised",brief:true})`);
-    call(`window.mascot.impact(500)`);
+    // a brief reaction in her own way: her face, never her mood's colour
+    react("pickup");
     const samples: Array<{ readonly x: number; readonly y: number; readonly t: number }> = [];
     const timer = setInterval(() => {
       if (target.isDestroyed()) return clearInterval(timer);
@@ -595,10 +611,11 @@ export const createDesktopMascot = (input: {
     if (idle < WANDER_IDLE_S[0] || idle > WANDER_IDLE_S[1] || Math.random() > WANDER_CHANCE) return;
     const to = wanderTo(edge, x, Math.random());
     if (to === null) return;
-    call(`window.mascot.play("hop")`);
+    // a walk in her own gait (hops, a waddle, a glide) for the length of the glide
+    call(`window.mascot.walk(1600,${to > x ? 1 : -1})`);
     x = to;
     save({ x: to });
-    glide(standAt(edge, to, size()), 48, () => call(`window.mascot.impact(400)`));
+    glide(standAt(edge, to, size()), 48);
   }, WANDER_CHECK_MS);
   wander.unref();
 
@@ -655,7 +672,6 @@ export const createDesktopMascot = (input: {
     dispose: () => {
       clearInterval(wander);
       if (wakeTimer !== null) clearTimeout(wakeTimer);
-      if (reactTimer !== null) clearTimeout(reactTimer);
       Electron.ipcMain.removeListener("baton-mascot:press", onPress);
       Electron.ipcMain.removeListener("baton-mascot:release", onRelease);
       Electron.ipcMain.removeListener("baton-mascot:menu", onMenu);
