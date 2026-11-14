@@ -24,6 +24,8 @@ import {
   MOOD_EYES,
   clock,
   deviceStatusLine,
+  tesselHosts,
+  type TesselSeen,
   displayChoiceOf,
   displayLine,
   keyBindingFrom,
@@ -95,6 +97,9 @@ type Run = (
   done?: (value: unknown) => string,
 ) => Promise<unknown>;
 
+const reachableLine = (others: ReadonlyArray<string>) =>
+  others.length === 0 ? "" : ` Also reachable from ${others.join(", ")}.`;
+
 const lineOf = (v: unknown) =>
   typeof v === "object" && v !== null && "line" in v
     ? String((v as { line: unknown }).line)
@@ -104,6 +109,22 @@ export function SettingsHardwareRouteScreen() {
   const environmentMenu = useSettingsEnvironmentMenu();
   const { selectedTargets } = useSettingsEnvironmentFilter();
   const insets = useSafeAreaInsets();
+  // What each server hears, so a Tessel several servers reach (a bridged broker) shows once, on its primary host.
+  const [seen, setSeen] = useState<ReadonlyMap<EnvironmentId, ReadonlyArray<TesselSeen>>>(
+    new Map(),
+  );
+  const hosts = tesselHosts(
+    selectedTargets.flatMap((e) => {
+      const devices = seen.get(e.environmentId);
+      return devices === undefined ? [] : [{ host: e.environmentId, devices }];
+    }),
+  );
+  const report = (id: EnvironmentId, devices: ReadonlyArray<TesselSeen>) =>
+    setSeen((was) =>
+      JSON.stringify(was.get(id)) === JSON.stringify(devices) ? was : new Map(was).set(id, devices),
+    );
+  const labelOf = (id: EnvironmentId) =>
+    selectedTargets.find((e) => e.environmentId === id)?.label ?? id;
   return (
     <SettingsScreen title="Hardware" menus={[environmentMenu]}>
       <ScreenScrollView
@@ -121,6 +142,12 @@ export function SettingsHardwareRouteScreen() {
               environmentId={environment.environmentId}
               roomBrain={environment.serverConfig.settings.roomBrain}
               label={selectedTargets.length > 1 ? environment.label : null}
+              onSeen={report}
+              owns={(deviceId) =>
+                (hosts.get(deviceId)?.primary ?? environment.environmentId) ===
+                environment.environmentId
+              }
+              alsoOn={(deviceId) => (hosts.get(deviceId)?.reachable ?? []).map(labelOf)}
             />
           ))
         )}
@@ -155,10 +182,17 @@ function HardwareSections({
   environmentId,
   roomBrain,
   label,
+  onSeen,
+  owns,
+  alsoOn,
 }: {
   readonly environmentId: EnvironmentId;
   readonly roomBrain: RoomBrain;
   readonly label: string | null;
+  readonly onSeen: (environmentId: EnvironmentId, devices: ReadonlyArray<TesselSeen>) => void;
+  /** Whether this server is the device's primary host; another server's devices show there only. */
+  readonly owns: (deviceId: string) => boolean;
+  readonly alsoOn: (deviceId: string) => ReadonlyArray<string>;
 }) {
   const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
     label: "room brain update",
@@ -219,8 +253,14 @@ function HardwareSections({
       environmentId,
       input: { kind: "read", op: "list", args: {} },
     });
-    if (result._tag === "Success" && result.value.ok)
-      setView(result.value.value as DevicesOverview);
+    if (result._tag === "Success" && result.value.ok) {
+      const next = result.value.value as DevicesOverview;
+      setView(next);
+      onSeen(
+        environmentId,
+        next.devices.map((d) => ({ id: d.id, online: d.online, configured: d.configured })),
+      );
+    }
     // In memory on the server: an install's progress shows as it goes.
     await readUpdates();
   };
@@ -255,7 +295,8 @@ function HardwareSections({
   };
 
   const prefix = label === null ? "" : `${label} · `;
-  const devices = view?.devices ?? [];
+  const heard = view?.devices ?? [];
+  const devices = heard.filter((d) => owns(d.id));
   return (
     <>
       <SettingsSection title={`${prefix}Hardware devices`}>
@@ -279,7 +320,7 @@ function HardwareSections({
                 accessibilityLabel={enabled ? "Away from home: on" : "Away from home: home only"}
                 disabled={busy}
                 onPress={() => {
-                  const id = devices.find((d) => d.configured)?.id;
+                  const id = heard.find((d) => d.configured)?.id;
                   if (id !== undefined)
                     void run("owner", "away", { id, enabled }).then(() => readReach());
                 }}
@@ -287,78 +328,80 @@ function HardwareSections({
             ))}
           </Row>
         )}
-        {(updatesView?.devices ?? []).map((u) => {
-          const online = devices.find((d) => d.id === u.id)?.online === true;
-          const recommended =
-            updatesView?.releases.find((r) => r.recommended)?.version ??
-            updatesView?.pinned ??
-            null;
-          const easy = r1EasyAction(online, u, recommended);
-          return (
-            <Row
-              key={`fw-${u.id}`}
-              divider
-              title={`Firmware · ${u.id} · ${u.firmware ?? "not reported"}`}
-              description={
-                easy.kind === "usb"
-                  ? `It's offline. If it doesn't come back, plug it into a computer with the Tessaya desktop app or ${FLASH_TOOL} to repair it.`
-                  : u.line
-              }
-            >
-              {easy.kind === "update" || easy.kind === "busy" || easy.kind === "current" ? (
-                <ControlPill
-                  variant="primary"
-                  label={
-                    easy.kind === "update"
-                      ? `Update to ${easy.version}`
-                      : easy.kind === "busy"
-                        ? "Updating…"
-                        : "Up to date"
-                  }
-                  accessibilityLabel="Update or repair"
-                  disabled={busy || easy.kind !== "update"}
-                  onPress={() =>
-                    easy.kind === "update" &&
-                    void run("owner", "update", { id: u.id, version: easy.version })
-                  }
-                />
-              ) : null}
-              {u.hold === null ? null : (
-                <ControlPill
-                  variant="pill"
-                  label="Resume automatic updates"
-                  accessibilityLabel="Resume automatic updates"
-                  disabled={busy}
-                  onPress={() => void run("owner", "updateHold", { id: u.id, version: null })}
-                />
-              )}
-              {/* A way back: the recent signed releases other than the one it runs. */}
-              {online && easy.kind !== "busy"
-                ? (updatesView?.releases ?? [])
-                    .filter((r) => r.version !== u.firmware && r.version !== recommended)
-                    .slice(0, 3)
-                    .map((r) => (
-                      <ControlPill
-                        key={r.version}
-                        variant="pill"
-                        label={`Install ${r.version}`}
-                        accessibilityLabel={`Install ${r.version}`}
-                        disabled={busy}
-                        onPress={() =>
-                          void run("owner", "update", { id: u.id, version: r.version })
-                        }
-                      />
-                    ))
-                : null}
-            </Row>
-          );
-        })}
+        {(updatesView?.devices ?? [])
+          .filter((u) => owns(u.id))
+          .map((u) => {
+            const online = devices.find((d) => d.id === u.id)?.online === true;
+            const recommended =
+              updatesView?.releases.find((r) => r.recommended)?.version ??
+              updatesView?.pinned ??
+              null;
+            const easy = r1EasyAction(online, u, recommended);
+            return (
+              <Row
+                key={`fw-${u.id}`}
+                divider
+                title={`Firmware · ${u.id} · ${u.firmware ?? "not reported"}`}
+                description={
+                  easy.kind === "usb"
+                    ? `It's offline. If it doesn't come back, plug it into a computer with the Tessaya desktop app or ${FLASH_TOOL} to repair it.`
+                    : u.line
+                }
+              >
+                {easy.kind === "update" || easy.kind === "busy" || easy.kind === "current" ? (
+                  <ControlPill
+                    variant="primary"
+                    label={
+                      easy.kind === "update"
+                        ? `Update to ${easy.version}`
+                        : easy.kind === "busy"
+                          ? "Updating…"
+                          : "Up to date"
+                    }
+                    accessibilityLabel="Update or repair"
+                    disabled={busy || easy.kind !== "update"}
+                    onPress={() =>
+                      easy.kind === "update" &&
+                      void run("owner", "update", { id: u.id, version: easy.version })
+                    }
+                  />
+                ) : null}
+                {u.hold === null ? null : (
+                  <ControlPill
+                    variant="pill"
+                    label="Resume automatic updates"
+                    accessibilityLabel="Resume automatic updates"
+                    disabled={busy}
+                    onPress={() => void run("owner", "updateHold", { id: u.id, version: null })}
+                  />
+                )}
+                {/* A way back: the recent signed releases other than the one it runs. */}
+                {online && easy.kind !== "busy"
+                  ? (updatesView?.releases ?? [])
+                      .filter((r) => r.version !== u.firmware && r.version !== recommended)
+                      .slice(0, 3)
+                      .map((r) => (
+                        <ControlPill
+                          key={r.version}
+                          variant="pill"
+                          label={`Install ${r.version}`}
+                          accessibilityLabel={`Install ${r.version}`}
+                          disabled={busy}
+                          onPress={() =>
+                            void run("owner", "update", { id: u.id, version: r.version })
+                          }
+                        />
+                      ))
+                  : null}
+              </Row>
+            );
+          })}
         {devices.map((d) => (
           <Row
             key={d.id}
             divider
             title={`${d.name}${d.muted ? " · muted" : ""}${d.camera.armedUntil === null ? "" : " · camera on"}`}
-            description={deviceStatusLine(d)}
+            description={deviceStatusLine(d) + reachableLine(alsoOn(d.id))}
           />
         ))}
         {view?.pending.map((p) => (
@@ -442,7 +485,7 @@ function HardwareSections({
       <SetupSection
         prefix={prefix}
         busy={busy}
-        configured={devices.some((d) => d.configured)}
+        configured={heard.some((d) => d.configured)}
         onSave={async (args) => {
           setBusy(true);
           const result = await homeCall({

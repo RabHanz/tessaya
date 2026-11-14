@@ -9,6 +9,7 @@ import {
   outputLabels,
   scanLine,
   playingLine,
+  tesselHosts,
 } from "./deviceView.ts";
 
 describe("an R1 button's choices", () => {
@@ -72,5 +73,32 @@ describe("where replies play (firmware 0.3.52)", () => {
       "Replies play on: Tessel speaker.",
     );
     expect(playingLine(speaker)).toBeNull();
+  });
+});
+
+describe("one Tessel heard by several servers", () => {
+  const r1 = (online: boolean | null, configured: boolean) => ({
+    id: "r1-3d57b3",
+    online,
+    configured,
+  });
+  it("is one device on the server that holds it, with the others as where else it is reachable", () => {
+    const hosts = tesselHosts([
+      {
+        host: "laptop",
+        devices: [r1(true, false), { id: "desk", online: true, configured: false }],
+      },
+      { host: "hetzner", devices: [r1(true, true)] },
+      { host: "onnyx", devices: [r1(true, false)] },
+    ]);
+    expect(hosts.get("r1-3d57b3")).toEqual({ primary: "hetzner", reachable: ["laptop", "onnyx"] });
+    expect(hosts.get("desk")).toEqual({ primary: "laptop", reachable: [] });
+  });
+  it("moves when it goes quiet on its server and is heard on another", () => {
+    const hosts = tesselHosts([
+      { host: "hetzner", devices: [r1(false, true)] },
+      { host: "onnyx", devices: [r1(true, false)] },
+    ]);
+    expect(hosts.get("r1-3d57b3")).toEqual({ primary: "onnyx", reachable: ["hetzner"] });
   });
 });
