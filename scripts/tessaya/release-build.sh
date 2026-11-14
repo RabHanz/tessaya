@@ -46,5 +46,7 @@ nice -n 10 pnpm exec vp run --filter t3 build
 PATH="$(dirname "$sea_node"):$PATH" nice -n 10 node apps/server/scripts/cli.ts build-exe
 nice -n 10 node scripts/build-cli-archive.ts --platform linux --arch x64 --version "$version" \
   --resource-monitor-dir "$monitor" --output-dir "$out"
+# A public archive carries no private persona layer (apps/server/src/tessaya/PersonaLayers.ts); internal builds skip this.
+[ "${TESSAYA_INTERNAL:-}" = "1" ] || node scripts/tessaya/check-no-private-layer.mjs apps/server/dist
 node scripts/smoke-cli-archive.ts --archive "$out/t3-$version-linux-x64.tar.gz" --expect-version "$version"
 ls -la "$out/t3-$version-linux-x64.tar.gz"

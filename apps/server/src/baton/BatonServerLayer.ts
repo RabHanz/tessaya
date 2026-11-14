@@ -90,6 +90,7 @@ import * as WorkSessionService from "./WorkSessionService.ts";
 import * as TessayaWake from "../tessaya/TessayaWake.ts";
 import * as TessayaWakeRoutes from "../tessaya/TessayaWakeRoutes.ts";
 import * as CurrentPersona from "../tessaya/CurrentPersona.ts";
+import * as PersonaLayers from "../tessaya/PersonaLayers.ts";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 
 const readClaudeAccountInstances = Layer.effectDiscard(
@@ -296,7 +297,12 @@ const servicesInner = IntentService.layer.pipe(
   // Her lines for every vessel, beside the members' preferences.
   // Who each person is talking to (P5), written by the turn and told to the room loops by the broker.
   Layer.provideMerge(
-    Layer.mergeAll(MemberPreferences.layer, expressionLayer, CurrentPersona.layer),
+    Layer.mergeAll(
+      MemberPreferences.layer,
+      expressionLayer,
+      CurrentPersona.layer,
+      PersonaLayers.layer,
+    ),
   ),
   Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
   // Every brain call's usage row, for the Usage page and her usage report; her wake-word models, signed here (P3b).
