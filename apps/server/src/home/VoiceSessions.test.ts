@@ -139,6 +139,8 @@ describe("warm subscription sessions for spoken turns", () => {
       heard.slice(0, heard.indexOf(words)).filter((h) => h.includes(WARM)).length;
     expect(warmedBefore("lights?")).toBeGreaterThanOrEqual(1);
     expect(warmedBefore("search the news")).toBeGreaterThanOrEqual(2);
+    // Nothing was warm for the first turn; the log says so (14 Nov, 21:39: 5.2 s to her first word, cause unknown).
+    expect(events[0]).toEqual({ type: "session", cold: true });
     expect(events).toContainEqual({ type: "tool", name: "WebSearch", web: true });
     expect(events.filter((e) => e.type === "text").length).toBe(2);
     // Every answered message is paid for, the warm-ups before each turn included.
@@ -159,9 +161,10 @@ describe("warm subscription sessions for spoken turns", () => {
       retryMs: 1,
     });
     await sessions.warm("r1", spec);
+    const seen: Array<SessionEvent> = [];
     const turn = (signal?: AbortSignal) => ({
       run: async () => ({ text: "" }),
-      onEvent: () => undefined,
+      onEvent: (e: SessionEvent) => void seen.push(e),
       ...(signal === undefined ? {} : { signal }),
     });
     const abort = new AbortController();
@@ -173,6 +176,10 @@ describe("warm subscription sessions for spoken turns", () => {
     await sessions.turn("r1", spec, "again", turn());
     await sessions.close();
     expect(heard.filter((h) => !h.includes(WARM))).toEqual(["hang on", "again"]);
+    expect(seen.filter((e) => e.type === "session")).toEqual([
+      { type: "session", cold: false },
+      { type: "session", cold: false },
+    ]);
     // An early start he talked past must not leave the next turn waiting on a warm-up (13 Nov: 2.9 s).
     const proc = by.find((b) => b.endsWith(":again"))!.split(":")[0];
     expect(by.indexOf(`${proc}:warm`)).toBeLessThan(by.indexOf("1:hang on"));

@@ -19,7 +19,9 @@ export type SessionEvent =
   /** A tool call started: `web` for Claude Code's own WebSearch and WebFetch, which take seconds. */
   | { readonly type: "tool"; readonly name: string; readonly web: boolean }
   | { readonly type: "done" }
-  | { readonly type: "error"; readonly detail: string };
+  | { readonly type: "error"; readonly detail: string }
+  /** The turn has its session: `cold` when its warm-up was still running as the turn began (the slow first turn, B0). */
+  | { readonly type: "session"; readonly cold: boolean };
 
 const MCP_NAME = "room";
 const WEB_TOOLS = ["WebSearch", "WebFetch"];
@@ -81,6 +83,8 @@ export interface SessionTurn {
 
 interface Session {
   used: number;
+  /** When its warm-up answered. */
+  warmAt: number;
   dead: boolean;
   readonly send: (text: string, turn: SessionTurn) => Promise<void>;
   readonly close: () => void;
@@ -220,6 +224,7 @@ export const createVoiceSessions = (
     };
     const session: Session = {
       used: 0,
+      warmAt: Number.POSITIVE_INFINITY,
       dead: false,
       close: () => end("the session was closed"),
       send: (text, next) =>
@@ -260,6 +265,7 @@ export const createVoiceSessions = (
     });
     // The first turn on a session is the slow one: it is spent here, never on his words.
     await session.send(WARM_UP, { run: async () => ({ text: "" }), onEvent: () => undefined });
+    session.warmAt = now();
     return session;
   };
 
@@ -335,7 +341,9 @@ export const createVoiceSessions = (
   return {
     /** One spoken turn, carrying its own recent conversation, in a warmed session that then goes. */
     turn: async (vessel: string, spec: SessionSpec, text: string, turn: SessionTurn) => {
+      const askedAt = now();
       const session = await take(vessel, spec);
+      turn.onEvent({ type: "session", cold: session.warmAt > askedAt });
       session.used += 1;
       try {
         await session.send(text, turn);
