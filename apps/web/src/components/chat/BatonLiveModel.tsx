@@ -15,7 +15,9 @@ import type {
   ProviderOptionSelection,
   ScopedThreadRef,
 } from "@t3tools/contracts";
+import { rankRotationTargets } from "@t3tools/baton-shared/accountRotation";
 import { useNavigate } from "@tanstack/react-router";
+import { GaugeIcon } from "lucide-react";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { useState } from "react";
@@ -27,7 +29,9 @@ import { waitForThreadShell } from "../../state/entities";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { buildThreadRouteParams } from "../../threadRoutes";
+import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
+import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import type { TraitsSelectionInput } from "./TraitsPicker";
 
 const NO_POOL = Atom.make(AsyncResult.initial<never, never>(false));
@@ -59,6 +63,7 @@ export function useLiveState(threadRef: ScopedThreadRef | null) {
   return {
     effort: state?.effort ?? null,
     queued: state?.queued ?? null,
+    limit: state?.limit ?? null,
     applying: state?.applying === true,
     failure: state?.failure ?? null,
     refresh,
@@ -145,6 +150,40 @@ export function useLiveAccountSwitch(threadRef: ScopedThreadRef | null) {
     });
   };
   return switchTo;
+}
+
+/**
+ * A terminal session stopped on a usage limit: one tap moves it to the login with the most room (the rotation's own
+ * ranking), or the banner says no other login has room. Gone once the session says anything else.
+ */
+export function useLiveLimitBanner(
+  threadRef: ScopedThreadRef | null,
+): ComposerBannerStackItem | null {
+  const { limit } = useLiveState(threadRef);
+  const accounts = useLiveAccounts(threadRef);
+  const switchTo = useLiveAccountSwitch(threadRef);
+  if (limit === null) return null;
+  // Spent is 0%; any reading above it is room a person may choose.
+  const target = rankRotationTargets({ accounts }, 1)[0];
+  return {
+    id: `live-limit:${limit.at}`,
+    variant: "warning",
+    icon: <GaugeIcon />,
+    title: "This session hit its usage limit",
+    description:
+      target === undefined
+        ? `${limit.text} No other login here has room.`
+        : `${limit.text} ${target.label} has ${Math.round(target.headroomPercent ?? 0)}% left.`,
+    ...(target === undefined
+      ? {}
+      : {
+          actions: (
+            <Button size="xs" data-testid="live-limit-switch" onClick={() => switchTo(target)}>
+              Switch to {target.label}
+            </Button>
+          ),
+        }),
+  };
 }
 
 /** Model and effort changes of a mirrored terminal session, applied inside that session (never a new one). */

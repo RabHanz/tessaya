@@ -29,7 +29,7 @@ import {
   type BatonLiveSetModelResult,
 } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
-import { claudeProjectSlug } from "@t3tools/baton-shared/liveTranscript";
+import { claudeProjectSlug, liveLimitHit } from "@t3tools/baton-shared/liveTranscript";
 import { sessionEffort, setLiveModel, transcriptModel } from "@t3tools/baton-shared/liveModel";
 import { herdrSend } from "./HerdrSend.ts";
 import { TESSAYA_CLI } from "./SessionCatalogLive.ts";
@@ -225,6 +225,17 @@ export const liveEffort = (
       modelDefault: defaultEffortOf(transcriptModel(tail)),
     });
   }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+
+/** The usage limit a live session last stopped on (its transcript's 429), for the one-tap switch; null otherwise. */
+export const liveLimit = (sessionId: string) =>
+  Effect.map(readAllProfileLiveSessions(), (live) => {
+    const found = live.find((s) => s.sessionId === sessionId);
+    return found === undefined ? null : liveLimitHit(readSessionTail(found));
+  }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+
+/** The last bytes of a live session's transcript ("" when it has none yet). */
+export const readSessionTail = (session: Parameters<typeof transcriptPath>[0]): string =>
+  readTail(transcriptPath(session));
 
 /** Tell a live Claude session its model and effort, and report only what it confirmed (D-live-model). */
 export const liveSetModel = (
