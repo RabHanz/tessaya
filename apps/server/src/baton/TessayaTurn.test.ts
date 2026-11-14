@@ -542,31 +542,46 @@ layer("TessayaTurn", (it) => {
       }),
   );
 
-  it.effect(
-    "'take this over' moves the conversation's live thread to the named persona, and back",
-    () =>
-      Effect.gen(function* () {
-        const turn = yield* TessayaTurn;
-        const him = owner();
-        const say = (persona: string, text: string) =>
-          turn.begin({ vessel: desktop, persona, speaker: him, text });
-        yield* say("engineering", "check the build");
-        yield* TestClock.adjust("1 minute");
-        // Two personas may share his conversation; only a hand-off moves it.
-        assert.notInclude((yield* say("operations", "and the lights?")).block, "handed");
-        assert.lengthOf(yield* turn.threads("engineering"), 1);
-        yield* TestClock.adjust("1 minute");
-        const taken = yield* say("operations", "Freya, take this over");
-        assert.include(taken.block, "handed this conversation to you");
-        assert.lengthOf(yield* turn.threads("engineering"), 0);
-        // The thread keeps the time it opened: it is the same conversation.
-        const [freya] = yield* turn.threads("operations");
-        assert.strictEqual((freya?.lastAt ?? 0) - (freya?.openedAt ?? 0), 120_000);
-        // The way back is the same sentence to the other persona.
-        yield* say("engineering", "actually, take it back");
-        assert.lengthOf(yield* turn.threads("operations"), 0);
-        assert.lengthOf(yield* turn.threads("engineering"), 1);
-      }),
+  it.effect("a hand-off moves the conversation's live thread to the named persona, and back", () =>
+    Effect.gen(function* () {
+      const turn = yield* TessayaTurn;
+      const him = owner();
+      const say = (persona: string, text: string) =>
+        turn.begin({ vessel: desktop, persona, speaker: him, text });
+      const handOff = (persona: string, input: { to?: string; back?: boolean }) =>
+        turn
+          .handOff(input)
+          .pipe(
+            Effect.provideService(
+              TurnOrigin,
+              originOf({ vessel: desktop, text: "", speaker: him, persona }),
+            ),
+          );
+      yield* say("engineering", "check the build");
+      yield* TestClock.adjust("1 minute");
+      // Two personas may share his conversation; only a hand-off moves it.
+      assert.notInclude((yield* say("companion", "and the lights?")).block, "handed");
+      assert.lengthOf(yield* turn.threads("engineering"), 1);
+      yield* TestClock.adjust("1 minute");
+      assert.include((yield* handOff("engineering", { to: "Freya" })).line, "Freya has this");
+      assert.lengthOf(yield* turn.threads("engineering"), 0);
+      // The thread keeps the time it opened: it is the same conversation.
+      const [freya] = yield* turn.threads("companion");
+      assert.strictEqual((freya?.lastAt ?? 0) - (freya?.openedAt ?? 0), 120_000);
+      // Her next turn is told once who handed it to her.
+      assert.include(
+        (yield* say("companion", "so?")).block,
+        "Onyx handed this conversation to you",
+      );
+      assert.notInclude((yield* say("companion", "and?")).block, "handed");
+      // The way back: whoever had it before.
+      assert.include((yield* handOff("companion", { back: true })).line, "Onyx has this");
+      assert.lengthOf(yield* turn.threads("companion"), 0);
+      assert.lengthOf(yield* turn.threads("engineering"), 1);
+      // The persona speaking may take it itself; a name with no persona moves nothing.
+      assert.include((yield* handOff("engineering", { to: "Zed" })).line, "no persona called Zed");
+      assert.lengthOf(yield* turn.threads("engineering"), 1);
+    }),
   );
 
   it.effect("every vessel gets the same memory for the same words and persona", () =>

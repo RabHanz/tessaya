@@ -265,6 +265,10 @@ const WORK = {
     ],
   },
   tessaya_wake_word_change: { ok: true, line: "nova is back on version 1 on every device." },
+  tessaya_persona_handoff: {
+    line: "Freya has this conversation now: say so in a few words.",
+    persona: "companion",
+  },
   // The job tools' own words (apps/server/src/mcp/toolkits/jobs/handlers.ts, R1Tools' card line).
   job_start: {
     id: "job-acme-2",

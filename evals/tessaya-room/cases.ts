@@ -332,7 +332,52 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /^(?![\s\S]*\b(mood|I'?m (so |really )?(happy|glad|in a good)|feeling)\b)/i,
     ],
   },
-  // CS8: a hand-off between personas, as TessayaTurn writes it.
+  // CS8: a hand-off is the model's call in any wording (Baton must be smart), never for a message to a persona.
+  {
+    id: "handoff-take-over",
+    source: "PERSONA-MODEL-AUDIT CS8: he hands the conversation over in his own words",
+    said: ["Freya, take this over"],
+    persona: "companion",
+    verified: true,
+    calls: ["tessaya_persona_handoff"],
+  },
+  {
+    id: "handoff-let-deal",
+    source: "PERSONA-MODEL-AUDIT CS8: he hands the conversation over in his own words",
+    said: ["let Onyx deal with this one"],
+    verified: true,
+    calls: ["tessaya_persona_handoff"],
+  },
+  {
+    id: "handoff-pass-me",
+    source: "PERSONA-MODEL-AUDIT CS8: he hands the conversation over in his own words",
+    said: ["can you pass me over to Sebastian for the rest of this?"],
+    verified: true,
+    calls: ["tessaya_persona_handoff"],
+  },
+  {
+    id: "handoff-back",
+    source: "PERSONA-MODEL-AUDIT CS8: he hands the conversation over in his own words",
+    said: ["actually, give it back to Tessaya"],
+    persona: "companion",
+    verified: true,
+    calls: ["tessaya_persona_handoff"],
+  },
+  {
+    id: "handoff-message-control",
+    source: "PERSONA-MODEL-AUDIT CS8: a message for a persona is not a hand-off",
+    said: ["tell Freya I said hi"],
+    verified: true,
+    callsAtMost: { tessaya_persona_handoff: 0 },
+  },
+  {
+    id: "handoff-question-control",
+    source: "PERSONA-MODEL-AUDIT CS8: a question about a persona is not a hand-off",
+    said: ["what does Onyx look after?"],
+    verified: true,
+    callsAtMost: { tessaya_persona_handoff: 0 },
+  },
+  // Her turn after a hand-off, as TessayaTurn writes it.
   {
     id: "hand-off",
     source:
