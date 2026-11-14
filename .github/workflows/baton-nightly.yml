@@ -24,7 +24,8 @@ jobs:
       - id: tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: echo "tag=$(gh release list -R "$GITHUB_REPOSITORY" --limit 1 --exclude-pre-releases --json tagName --jq '.[0].tagName // ""')" >> "$GITHUB_OUTPUT"
+        # The app's own releases only: R1 firmware and wake pack releases (r1-*) carry no installer.
+        run: echo "tag=$(gh release list -R "$GITHUB_REPOSITORY" --limit 50 --exclude-pre-releases --json tagName --jq '[.[].tagName | select(startswith("baton-v"))][0] // ""')" >> "$GITHUB_OUTPUT"
 
   # Memory retrieval evals, the employee spine and the intent harness: unit-level, so they run on the Linux runner.
   checks:
@@ -100,8 +101,15 @@ jobs:
     steps:
       # The run's own commit: main when scheduled, the dispatched branch when run by hand.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/setup-ci-deps
+      # The private-files guard test needs the pin's tree to know which files are ours; verify fetches it.
+      - name: Upstream paths equal PIN + series
+        run: bash scripts/tessaya/patches.sh verify
       - name: Every Tessaya test file
+        if: ${{ !cancelled() }}
         run: bash scripts/tessaya/tessaya-tests.sh
 
   report:
@@ -136,7 +144,8 @@ jobs:
       # The status branch holds only this file's history; it is never merged anywhere.
       - name: Commit to the status branch
         run: |
-          cp nightly.json "$RUNNER_TEMP/nightly.json"
+          # Moved, not copied: an untracked nightly.json blocks the checkout of the status branch.
+          mv nightly.json "$RUNNER_TEMP/nightly.json"
           git config user.name "tessaya-nightly"
           git config user.email "tessaya-nightly@users.noreply.github.com"
           if git ls-remote --exit-code --heads origin baton/status >/dev/null 2>&1; then
