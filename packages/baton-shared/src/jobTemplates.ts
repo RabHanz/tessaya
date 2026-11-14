@@ -5,6 +5,7 @@
  * (`kind: persona`) is a face to hire, written as a role file.
  */
 import { listOf, splitFront } from "./osPack.ts";
+import { reviewSkill } from "./skillReview.ts";
 
 export const APPROVALS = ["plan", "per-act", "draft-only", "read-only", "allow"] as const;
 export type Approval = (typeof APPROVALS)[number];
@@ -25,6 +26,11 @@ export interface JobTemplate {
   readonly approval: Approval;
   /** What the report holds. */
   readonly reports: string;
+  /**
+   * A command run in the job's folder after each report (LEARNING-LOOP-DESIGN §3.2): exit 0 passes the report, and
+   * anything else fails it with its output. His own files only; null when absent or when it fails the danger review.
+   */
+  readonly check: string | null;
   /** How the work is done well (a job), or the role file's brief (a persona). */
   readonly brief: string;
   /** A persona template's own front-matter (name, voice, role, tools...) to write into its role file. */
@@ -136,6 +142,16 @@ export const DEFAULT_TEMPLATE_FILES: Readonly<Record<string, string>> = {
 
 const ID = /^[a-z0-9][a-z0-9-]{0,40}$/;
 
+const checkOf = (field: string | undefined): string | null => {
+  const command = (field ?? "").trim();
+  if (command === "" || command.length > 300) return null;
+  const review = reviewSkill(
+    { name: "check", description: "", body: command, allowedTools: null },
+    command,
+  );
+  return review.some((f) => f.level === "high") ? null : command;
+};
+
 const parse = (id: string, text: string): JobTemplate | null => {
   const { fields, body } = splitFront(text);
   const kind = fields["kind"] === "persona" ? "persona" : "job";
@@ -154,6 +170,7 @@ const parse = (id: string, text: string): JobTemplate | null => {
     tools: listOf(fields["tools"]),
     approval,
     reports: (fields["reports"] ?? "").trim(),
+    check: checkOf(fields["check"]),
     brief: body,
     ...(kind === "persona"
       ? { face: Object.fromEntries(FACE_KEYS.flatMap((k) => (fields[k] ? [[k, fields[k]!]] : []))) }
