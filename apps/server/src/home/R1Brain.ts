@@ -446,7 +446,8 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
                 });
               },
               onEvent: (event) => {
-                if (event.type === "text") {
+                if (event.type === "session") step(event.cold ? "cold" : "warm");
+                else if (event.type === "text") {
                   if (firstAt === null) step("words");
                   firstAt ??= Date.now();
                   actAt ??= firstAt;
