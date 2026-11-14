@@ -315,6 +315,15 @@ const servedPersonas = async (url: string, key: string): Promise<RoomPersona[] |
   }
 };
 
+/** A word the room listens for; `version` is her signed model's, for a word she trained. */
+interface RoomWake {
+  readonly word: string;
+  readonly persona: string;
+  readonly file: string;
+  readonly threshold: number;
+  readonly version?: number;
+}
+
 /**
  * Her trained wake words for the roster's personas (SPINE-UNIFY §10, P3c): each word's signed room model from her
  * server, checked against her signature before it is kept. An unsigned or altered model is never loaded; an
@@ -325,7 +334,7 @@ const trainedWakes = async (
   key: string,
   roster: ReadonlyArray<RoomPersona>,
   skip: ReadonlySet<string>,
-): Promise<Array<{ word: string; persona: string; file: string; threshold: number }>> => {
+): Promise<RoomWake[]> => {
   const dir = NodePath.join(state, "wake");
   const keptFile = NodePath.join(dir, "signed.json");
   let kept: Record<string, { version: number; threshold: number }> = {};
@@ -334,7 +343,7 @@ const trainedWakes = async (
   } catch {
     // none kept yet
   }
-  const out: Array<{ word: string; persona: string; file: string; threshold: number }> = [];
+  const out: RoomWake[] = [];
   for (const p of roster) {
     const word = wakeKey(p.name);
     if (word === null || skip.has(word)) continue;
@@ -358,7 +367,13 @@ const trainedWakes = async (
       log(`wake model for ${word}: version ${got.version}, signed`);
     }
     if (NodeFS.existsSync(file))
-      out.push({ word: p.name, persona: p.id, file, threshold: kept[word]!.threshold });
+      out.push({
+        word: p.name,
+        persona: p.id,
+        file,
+        threshold: kept[word]!.threshold,
+        version: kept[word]!.version,
+      });
   }
   return out;
 };
@@ -678,8 +693,7 @@ const main = async () => {
     { word: "Alfred", persona: "butler", file: model("alfred.onnx"), threshold: 0.95 },
     { word: "Freya", persona: "companion", file: model("freya.onnx"), threshold: 0.95 },
   ].filter((w) => NodeFS.existsSync(w.file));
-  // shortcut: read at start only; a word trained later loads when the loop next restarts (each deploy restarts it).
-  const words = [
+  const wakeWords = async (): Promise<RoomWake[]> => [
     ...shipped,
     ...(await trainedWakes(
       env("R1_BRAIN_URL"),
@@ -688,22 +702,20 @@ const main = async () => {
       new Set(shipped.map((w) => w.word.toLowerCase())),
     ).catch(() => [])),
   ];
+  let words = await wakeWords();
+  const scorerFor = (list: typeof words) => () =>
+    createOpenWakeWordScorer({
+      melspectrogram: model("melspectrogram.onnx"),
+      embedding: model("embedding_model.onnx"),
+      wakes: list.map((w) => ({ word: w.word, path: w.file, threshold: w.threshold })),
+    });
   const confirmWith = recognisers();
   const wake =
     words.length === 0 || !NodeFS.existsSync(model("melspectrogram.onnx"))
       ? undefined
       : createWakeStream({
           words,
-          scorer: () =>
-            createOpenWakeWordScorer({
-              melspectrogram: model("melspectrogram.onnx"),
-              embedding: model("embedding_model.onnx"),
-              wakes: words.map((w) => ({
-                word: w.word,
-                path: w.file,
-                threshold: w.threshold,
-              })),
-            }),
+          scorer: scorerFor(words),
           confirm: (pcm) => {
             const turn = confirmWith();
             turn.feed(pcm);
@@ -886,6 +898,21 @@ const main = async () => {
       log(`personas changed: ${next.map((p) => `${p.name} (${p.voice})`).join(", ")}`);
     });
   }, 60_000);
+  // Her newly trained (or rolled back) words reach the room without a restart: when the signed list changes, each R1
+  // listens for the new one from its next segment. Every 10 minutes, as each check asks her server for every word.
+  // shortcut: a loop that started with no wake words at all still needs a restart to begin listening.
+  setInterval(() => {
+    void wakeWords().then((next) => {
+      const key = (l: typeof words) =>
+        JSON.stringify(l.map((w) => [w.word, w.version, w.threshold]));
+      if (wake === undefined || key(next) === key(words)) return;
+      words = next;
+      wake.reload(next, scorerFor(next));
+      log(
+        `wake words changed: ${next.map((w) => `${w.word}${w.version === undefined ? "" : ` v${w.version}`}`).join(", ")}`,
+      );
+    });
+  }, 10 * 60_000);
   const stop = () => {
     room?.close();
     mqtt.close();

@@ -56,6 +56,25 @@ describe("waking her by name with no session open", () => {
     expect(t.woken).toEqual(["r1 Tessaya", "r1 Tessaya"]);
   });
 
+  it("hears a newly trained word from the next segment, never by swapping mid-segment", async () => {
+    const t = rig("Hey Nova.");
+    t.stream.frame("r1", frame(1));
+    await t.stream.drained("r1");
+    t.stream.reload([{ word: "Nova", threshold: 0.9 }], async () => ({
+      chunkSamples: 1280,
+      reset: () => undefined,
+      score: async (chunk) => [chunk.includes(9) ? 0.95 : 0],
+    }));
+    // The segment that was open keeps the old words: Nova's marker wakes nothing yet.
+    for (let i = 0; i < 3; i += 1) t.stream.frame("r1", frame(9));
+    await t.stream.drained("r1");
+    expect(t.woken).toEqual([]);
+    t.stream.end("r1");
+    for (let i = 0; i < 3; i += 1) t.stream.frame("r1", frame(9));
+    await t.stream.drained("r1");
+    expect(t.woken).toEqual(["r1 Nova"]);
+  });
+
   it("logs the R1's own wake model beside stage 2 for the same segment, whichever comes first", async () => {
     const t = rig("Hey Tessaya.");
     const kws = { score: 0.91, pass: true, name: "tessaya", best: 0.91, ms: 12, n: 40 };
