@@ -698,7 +698,14 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     roster: rosterLine(pack.personas, persona?.id ?? ""),
     now: houseTime(yield* Clock.currentTimeMillis, timeZone),
   };
-  return { device, context, turn, names: pack.personas.map((p) => p.name) };
+  return {
+    device,
+    context,
+    turn,
+    names: pack.personas.map((p) => p.name),
+    // The answering persona's own tool list (its file's `tools:`), as the desktop applies it; null is all of them.
+    allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
+  };
 });
 
 export const runActs = Effect.fn("R1Device.runActs")(function* (
@@ -944,9 +951,10 @@ const r1Vessel = (
   // On a guess, anything that changes something waits for the loop to confirm his final words.
   hold: (name: string) => heldForGuess(input.voice, name),
   gather: r1Gather(input, true, false).pipe(
-    Effect.map(({ device, context, turn, names }) => ({
+    Effect.map(({ device, context, turn, names, allowed }) => ({
       turn,
       names,
+      allowed,
       user: (notes: TurnNotes) => roomData({ ...context, ...notes }),
       readBefore:
         Array.isArray(context.devices) && context.devices.length > 0

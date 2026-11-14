@@ -181,6 +181,16 @@ export interface TurnNotes {
   readonly skills: string;
 }
 
+/** The shared tools a persona's own list allows: only those are offered, and a call to any other is refused. */
+export const personaTools = (tools: RoomToolSet, allowed: ReadonlyArray<string>): RoomToolSet => ({
+  ...tools,
+  specs: tools.specs.filter((t) => allowed.includes(t.name)),
+  run: (name, input, device) =>
+    allowed.includes(name)
+      ? tools.run(name, input, device)
+      : Effect.succeed({ text: `${name} is not one of this persona's tools.`, isError: true }),
+});
+
 /** What the vessel read before the model starts. */
 export interface Gathered<R> {
   readonly turn: TurnEnvelope;
@@ -191,6 +201,8 @@ export interface Gathered<R> {
   /** What the vessel read on the model's behalf, for the trace. */
   readonly readBefore: ReadonlyArray<RoomCall>;
   readonly own: ReadonlyArray<VesselTool>;
+  /** The answering persona's tool list; the shared tools outside it are neither offered nor run. Null is all. */
+  readonly allowed?: ReadonlyArray<string> | null;
   /** The Record, learning and the vessel's own end of turn (eyes, a guess waiting to be played). */
   readonly finish: (
     said: string,
@@ -225,7 +237,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   via: "api" | "session",
   calls?: Array<RoomCall>,
 ) {
-  const { tools } = vessel;
+  let tools = vessel.tools;
   const startedAt = yield* Clock.currentTimeMillis;
   // His work, read alongside the vessel: "what needs me" or "what's in flight" then needs no tool round.
   const workRead = (name: string) =>
@@ -239,6 +251,8 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     { concurrency: "unbounded" },
   );
   const { turn, names, own } = gathered;
+  const allowed = gathered.allowed ?? null;
+  if (allowed !== null) tools = personaTools(vessel.tools, allowed);
   // Opus is offered on the session route only: the API key's spend guard keeps the deep role off it.
   const escalating = via === "session";
   const escalationSettings = escalating
