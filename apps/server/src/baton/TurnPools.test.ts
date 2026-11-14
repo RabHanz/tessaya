@@ -1,6 +1,7 @@
 // @effect-diagnostics globalConsole:off globalConsoleInEffect:off
 import { assert, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
@@ -142,5 +143,50 @@ it.effect(
       );
       // One slot, reserved for turns: consolidation never runs ahead of him, so he never waits.
       assert.strictEqual(perVessel[0]!.p95, FIRST_MS);
+    }),
+);
+
+it.effect(
+  "personas take turns within a class, and one thread has one turn in flight while other threads go ahead (CS5)",
+  () =>
+    Effect.gen(function* () {
+      const pools = yield* makeWith({ brain: { slots: 2, reserved: 0 } });
+      const order: string[] = [];
+      const holds = new Map<string, Deferred.Deferred<void>>();
+      const turn = (id: string, vessel: string, persona: string, thread: string) =>
+        Effect.gen(function* () {
+          const hold = yield* Deferred.make<void>();
+          holds.set(id, hold);
+          return yield* Effect.forkChild(
+            pools.run(
+              "brain",
+              { vessel, class: "interactive", persona, thread },
+              Effect.sync(() => order.push(id)).pipe(Effect.andThen(Deferred.await(hold))),
+            ),
+          );
+        });
+      const done = (id: string) => Deferred.succeed(holds.get(id)!, undefined);
+      const a = yield* turn("a", "kitchen", "freya", "kitchen|freya|sara");
+      // His second sentence on the same thread waits for the first; another thread takes the free slot.
+      const again = yield* turn("a2", "kitchen", "freya", "kitchen|freya|sara");
+      const other = yield* turn("b", "study", "freya", "study|freya|owner");
+      yield* Effect.yieldNow;
+      assert.deepStrictEqual(order, ["a", "b"]);
+      // Both slots busy: two more Freya turns queue, then an Alfred one.
+      const f1 = yield* turn("f1", "phone", "freya", "phone|freya|omar");
+      const f2 = yield* turn("f2", "hall", "freya", "hall|freya|maya");
+      const al = yield* turn("al", "phone", "alfred", "phone|alfred|omar");
+      yield* Effect.yieldNow;
+      yield* done("b");
+      yield* Effect.yieldNow;
+      // Freya was served last: Alfred goes next, though he asked last.
+      assert.deepStrictEqual(order, ["a", "b", "al"]);
+      yield* done("a");
+      yield* Effect.yieldNow;
+      // The thread's own second turn now runs, ahead of nothing it was not already behind.
+      assert.include(order.slice(3), "a2");
+      for (const id of ["al", "a2", "f1", "f2"]) yield* done(id);
+      for (const f of [a, again, other, f1, f2, al]) yield* Fiber.join(f);
+      assert.sameMembers(order, ["a", "b", "al", "a2", "f1", "f2"]);
     }),
 );
