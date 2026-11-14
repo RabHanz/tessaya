@@ -340,7 +340,24 @@ export interface BatonDesktopBridge {
   readonly replyComposerDictation?: (reply: ComposerDictationReply) => void;
   /** Bring up Tessaya's window, at a place such as `tessaya://settings/hardware` when given. */
   readonly openTessaya?: (link?: string) => void;
+  /**
+   * Repair an R1 by cable with the r1flash tool (DEVICE-UTILITY.md §3): one job at a time; its NDJSON events stream to
+   * `onEvent` until it ends. A flash or recovery always runs to its end; only `console` and `detect` stop.
+   */
+  readonly r1flash?: (
+    request: R1flashRequest,
+    onEvent: (event: Readonly<Record<string, unknown>>) => void,
+  ) => Promise<{ readonly code: number; readonly error?: string }>;
+  /** A line typed into the running r1flash console. */
+  readonly r1flashInput?: (line: string) => void;
+  readonly r1flashStop?: () => void;
 }
+
+/** What the Hardware page may ask r1flash to do; the desktop builds the arguments. */
+export type R1flashRequest =
+  | { readonly op: "ports" }
+  | { readonly op: "detect" | "recover" | "backup" | "console"; readonly port?: string }
+  | { readonly op: "flash"; readonly version: string; readonly port?: string };
 
 /**
  * The desktop's dictation into the chat box that has the keyboard, instead of a floating pill and a paste. `start`

@@ -13,3 +13,7 @@ export const BATON_USAGE_CHANNEL = "desktop:baton-usage";
 export const BATON_OPEN_TESSAYA_CHANNEL = "desktop:baton-open-tessaya";
 export const R1_BLE_PAIRING_REQUEST_CHANNEL = "desktop:r1-ble-pairing-request";
 export const R1_BLE_PAIRING_RESPONSE_CHANNEL = "desktop:r1-ble-pairing-response";
+export const R1FLASH_RUN_CHANNEL = "desktop:r1flash-run";
+export const R1FLASH_EVENT_CHANNEL = "desktop:r1flash-event";
+export const R1FLASH_INPUT_CHANNEL = "desktop:r1flash-input";
+export const R1FLASH_STOP_CHANNEL = "desktop:r1flash-stop";
