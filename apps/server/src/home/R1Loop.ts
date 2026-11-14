@@ -1,14 +1,14 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalJsonInEffect:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalJsonInEffect:off globalDate:off
 /**
- * The R1's room voice loop as this server's own child process (R1-CONNECT-UNIVERSAL §1, L1), so a user installs one
- * thing: when the loop is installed under `<T3 home>/r1-voice` (its Node, the app bundle and the models) and an R1 is
- * on this server's hub, the server runs it against its own hub and brain, and restarts it if it stops. A loop run
- * elsewhere (a separate voice host) is untouched: set `TESSAYA_R1_LOOP=off` there, or install none here.
+ * The R1's room voice loop as this server's child process (R1-CONNECT-UNIVERSAL §1, L1), run against its own hub and
+ * brain from `<T3 home>/r1-voice` once an R1 is on the hub; a release build installs it there itself (R1VoiceInstall).
+ * A loop on another machine already hearing the R1s, or `TESSAYA_R1_LOOP=off`, keeps this server out of it.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -19,6 +19,21 @@ import * as Schedule from "effect/Schedule";
 import * as ServerConfig from "../config.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
+import { R1_VOICE_BUNDLE } from "./R1VoiceBundle.ts";
+import {
+  BUNDLE_MARK,
+  BUNDLE_TAR,
+  gb,
+  install,
+  missing,
+  R1_VOICE_MODELS,
+  type InstallProgress,
+} from "./R1VoiceInstall.ts";
+
+/** What a room loop listens to: a bus client hearing it is a loop on another machine. */
+const VOICE_TOPIC = "freya/r1/any/voice/up";
+/** After the server starts, a loop elsewhere gets this long to reconnect before this server installs its own. */
+const SETTLE_MS = 60_000;
 
 export interface LoopPlan {
   readonly node: string;
@@ -50,6 +65,8 @@ export const loopPlan = (input: {
   readonly port: number;
   readonly busKey: string;
   readonly folderEnv: Readonly<Record<string, string>>;
+  /** Installed from a release bundle: its own recogniser, Pocket and voice, unless the folder's env says otherwise. */
+  readonly bundled?: boolean;
 }): LoopPlan | null => {
   if (input.setting === "off" || !input.installed) return null;
   const onHub = input.devices.filter((d) => d.deviceId !== null && d.mqttUrl === null);
@@ -63,6 +80,13 @@ export const loopPlan = (input: {
     env: {
       R1_MODELS: NodePath.join(input.dir, "models"),
       R1_STATE: NodePath.join(input.dir, "state"),
+      ...(input.bundled === true
+        ? {
+            R1_RECOGNIZER_BIN: NodePath.join(input.dir, "bin", "tessaya-recognizer"),
+            R1_POCKET_BIN: NodePath.join(input.dir, "models", "pocket", "pocket-tts"),
+            R1_VOICE: "eve",
+          }
+        : {}),
       ...input.folderEnv,
       R1_MQTT_URL: `ws://${base}${R1_HUB_PATH}`,
       R1_MQTT_USER: "tessaya-bus",
@@ -79,11 +103,53 @@ export const loopPlan = (input: {
   };
 };
 
+export type InstallState =
+  | { readonly kind: "idle" }
+  | { readonly kind: "fetching"; readonly progress: InstallProgress }
+  | { readonly kind: "failed"; readonly why: string; readonly at: number };
+
+/** The one line Settings → Hardware shows about the R1's voice on this server. Pure. */
+export const voiceLine = (input: {
+  readonly setting: string;
+  readonly onHub: boolean;
+  readonly available: boolean;
+  readonly elsewhere: boolean;
+  readonly install: InstallState;
+  readonly planned: boolean;
+  readonly running: boolean;
+  readonly restarts: number;
+}): string | null => {
+  if (!input.onHub) return null;
+  if (input.setting === "off")
+    return "The R1's voice is turned off on this server (TESSAYA_R1_LOOP=off).";
+  if (input.elsewhere) return "The R1's voice runs on another machine.";
+  if (input.install.kind === "fetching") {
+    const { done, total } = input.install.progress;
+    const pct = total === 0 ? 0 : Math.floor((done / total) * 100);
+    return `Downloading the R1's voice: ${pct}% (${gb(done)} of ${gb(total)}).`;
+  }
+  if (input.install.kind === "failed")
+    return `The R1's voice did not download: ${input.install.why}. Trying again in a minute.`;
+  if (input.planned)
+    return input.running
+      ? "The R1's voice runs on this server."
+      : input.restarts > 0
+        ? `The R1's voice stopped; restarting (${input.restarts} so far).`
+        : "Starting the R1's voice…";
+  return input.available
+    ? "Getting the R1's voice ready…"
+    : "This server cannot run the R1's voice itself yet: only Linux (x64) release builds include it.";
+};
+
 export class R1Loop extends Context.Service<
   R1Loop,
   {
-    /** Running, and since when; null when this server runs no loop. */
-    readonly status: Effect.Effect<{ readonly running: boolean; readonly restarts: number } | null>;
+    /** Running, how often it restarted, and the line for Settings; null when no R1 is on this server's hub. */
+    readonly status: Effect.Effect<{
+      readonly running: boolean;
+      readonly restarts: number;
+      readonly line: string;
+    } | null>;
   }
 >()("t3/home/R1Loop") {}
 
@@ -104,6 +170,18 @@ export const layer = Layer.effect(
     let backoff = 5_000;
     let nextStart = 0;
     let exited = false;
+    const bornAt = yield* Clock.currentTimeMillis;
+    let installState: InstallState = { kind: "idle" };
+    let elsewhere = false;
+    /** A loop elsewhere was seen since the server started: this server does not fetch one of its own. */
+    let seenElsewhere = false;
+    let onHub = false;
+    const bundle =
+      R1_VOICE_BUNDLE !== null &&
+      R1_VOICE_BUNDLE.platform ===
+        `${yield* HostProcess.Platform}-${yield* HostProcess.Architecture}`
+        ? R1_VOICE_BUNDLE
+        : null;
 
     const stop = () => {
       child?.kill("SIGTERM");
@@ -138,7 +216,53 @@ export const layer = Layer.effect(
         backoff = Math.min(backoff * 2, 60_000);
       }
       const busKey = yield* hub.busLogin.pipe(Effect.map((l) => l.key));
+      const devices = yield* home.devices;
+      onHub = devices.some((d) => d.deviceId !== null && d.mqttUrl === null);
+      // Another machine's loop hears the R1s here (his own voice host): this server neither installs nor runs one.
+      if (child === null) elsewhere = hub.busHears(VOICE_TOPIC);
+      seenElsewhere ||= elsewhere;
+      const bundleMark = NodeFS.existsSync(NodePath.join(dir, BUNDLE_MARK))
+        ? NodeFS.readFileSync(NodePath.join(dir, BUNDLE_MARK), "utf8")
+        : null;
+      const byHand =
+        bundleMark === null && NodeFS.existsSync(NodePath.join(dir, "app", "main.mjs"));
+      const wanted =
+        bundle !== null &&
+        !byHand &&
+        onHub &&
+        setting !== "off" &&
+        !seenElsewhere &&
+        installState.kind !== "fetching" &&
+        now - bornAt >= SETTLE_MS &&
+        (installState.kind !== "failed" || now - installState.at >= 60_000);
+      const todo = wanted
+        ? yield* Effect.promise(() =>
+            missing(dir, { ...bundle, file: BUNDLE_TAR }, R1_VOICE_MODELS),
+          )
+        : [];
+      if (bundle !== null && todo.length > 0) {
+        const progress = (p: InstallProgress) => {
+          installState = { kind: "fetching", progress: p };
+        };
+        yield* Effect.promise(() =>
+          install({ dir, bundle, onProgress: progress }).then(
+            () => {
+              installState = { kind: "idle" };
+            },
+            (error: unknown) => {
+              installState = {
+                kind: "failed",
+                why: error instanceof Error ? error.message : String(error),
+                at: Date.now(),
+              };
+            },
+          ),
+        ).pipe(Effect.forkDetach);
+        installState = { kind: "fetching", progress: { done: 0, total: 0 } };
+      }
       const installed =
+        installState.kind !== "fetching" &&
+        !elsewhere &&
         NodeFS.existsSync(NodePath.join(dir, "app", "main.mjs")) &&
         NodeFS.existsSync(NodePath.join(dir, "node", "bin", "node"));
       const folderEnv = installed
@@ -156,10 +280,11 @@ export const layer = Layer.effect(
         dir,
         installed,
         setting,
-        devices: yield* home.devices,
+        devices,
         port: config.port,
         busKey,
         folderEnv,
+        bundled: bundleMark !== null,
       });
       const key = plan === null ? null : JSON.stringify(plan);
       // A changed plan (a new R1, a new key) restarts it; none stops it.
@@ -180,7 +305,19 @@ export const layer = Layer.effect(
     yield* Effect.addFinalizer(() => Effect.sync(stop));
 
     return R1Loop.of({
-      status: Effect.sync(() => (planned === null ? null : { running: child !== null, restarts })),
+      status: Effect.sync(() => {
+        const line = voiceLine({
+          setting,
+          onHub,
+          available: bundle !== null,
+          elsewhere,
+          install: installState,
+          planned: planned !== null,
+          running: child !== null,
+          restarts,
+        });
+        return line === null ? null : { running: child !== null, restarts, line };
+      }),
     });
   }),
 );
