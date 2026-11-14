@@ -263,6 +263,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "hh.hello.hint":
       "Who Windows Hello on {account} proves it is, for things that need you to be sure: adding people, roles, this computer. Only one person per Windows account.",
     "hh.hello.nobody": "Nobody",
+    "hh.faceAway": "You stepped away, so the Windows Hello approval ended early. Hello asks again next time.",
     "hh.pin": "Confirm it's you with your PIN",
     "hh.pin.hint":
       "For the next 5 minutes this device can do what needs you. Without it, those wait for a yes on the owner's phone.",
@@ -331,6 +332,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "pv.recovery.copied": "Copied. It clears from the clipboard in 30 seconds.",
     "pv.hello": "Open your private memories",
     "pv.hello.no": "Windows Hello did not confirm it is you.",
+    "pv.onlooker": "Hidden: someone else is in view of the camera. It shows again when it is just you.",
     "pv.search": "Search these memories",
     "pv.lock": "Lock now",
     "pv.locked.now": "Locked.",

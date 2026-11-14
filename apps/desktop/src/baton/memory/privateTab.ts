@@ -56,6 +56,8 @@ export const createPrivateTab = (input: {
   /** The people Voice ID has saved (Settings > Voice). */
   readonly voices?: () => ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly refresh: () => void;
+  /** Face check: someone besides the person checked is in view, so what is in the store stays hidden. */
+  readonly onlooker?: () => Promise<boolean>;
   readonly now?: () => number;
 }) => {
   const now = input.now ?? Date.now;
@@ -107,6 +109,9 @@ export const createPrivateTab = (input: {
       drop();
     } else if (!openNow(store, now())) {
       admin.delete(store.id);
+      drop();
+    } else if ((await input.onlooker?.()) === true) {
+      status = text("pv.onlooker");
       drop();
     } else {
       const at = epoch;
