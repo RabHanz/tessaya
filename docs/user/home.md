@@ -43,52 +43,54 @@ to undo it. Undo puts the devices back as Home Assistant had them just before (i
 that snapshot is gone). Deleting one of her automations can be undone for 7 days. Every action is in the Record and
 in Home Assistant's logbook.
 
-## The R1 desk device (Settings → Hardware)
+## The Tessel desk device (Settings → Hardware)
 
-Settings → Hardware shows each Agora R1 this server hears: online, battery, Wi-Fi, firmware and when it was last
-seen, with its controls. A home can have several. To add one, give its id and its device key under **Set up an R1**. Leave the broker empty
-when the R1 connects to this server itself (`ws://<this server>:<port>/api/r1/mqtt`), which needs no broker of its own;
-fill it in only for an R1 on a separate MQTT broker. **Forget** removes all of it from this server again.
+The Tessel was called the R1 until November 2026. Its main body, the shell the board sits in, is the Tumble.
 
-### Set up an R1
+Settings → Hardware shows each Tessel this server hears: online, battery, Wi-Fi, firmware and when it was last
+seen, with its controls. A home can have several. To add one, give its id and its device key under **Set up a Tessel**. Leave the broker empty
+when the Tessel connects to this server itself (`ws://<this server>:<port>/api/tessel/mqtt`; devices paired earlier keep using `/api/r1/mqtt`), which needs no broker of its own;
+fill it in only for a Tessel on a separate MQTT broker. **Forget** removes all of it from this server again.
 
-1. A new R1 shows a pairing QR on its right eye. On your phone, Settings → **Add an R1** scans it. On the web or
-   desktop, Settings → Hardware → **Add an R1** takes the QR's text (`T3R1:…`).
+### Set up a Tessel
+
+1. A new Tessel shows a pairing QR on its right eye. On your phone, Settings → **Add a Tessel** scans it. On the web or
+   desktop, Settings → Hardware → **Add a Tessel** takes the QR's text (`T3R1:…`).
 2. Give your Wi-Fi name and password, then **Set up over Bluetooth** (phone, desktop, Chrome) and type the six digits
-   the R1's eyes show. Without Bluetooth, **Get a setup code**, join the R1's own Wi-Fi (the QR on its left eye) and
+   the Tessel's eyes show. Without Bluetooth, **Get a setup code**, join the Tessel's own Wi-Fi (the QR on its left eye) and
    paste the code into its page.
-3. After the first R1 you are asked once whether it may work away from home.
+3. After the first Tessel you are asked once whether it may work away from home.
 4. Her voice then downloads to this server by itself, about 1 GB, once: Hardware shows **Voice** with its progress,
-   then "The R1's voice runs on this server." It needs a Linux (x64) server from a Tessaya release and about 2 GB free
-   disk. A server where another machine already runs the R1's voice leaves it alone. Set `TESSAYA_R1_LOOP=off` to
+   then "The Tessel's voice runs on this server." It needs a Linux (x64) server from a Tessaya release and about 2 GB free
+   disk. A server where another machine already runs the Tessel's voice leaves it alone. Set `TESSAYA_R1_LOOP=off` to
    keep a server from running it.
 
 Her room voice hears you with Parakeet TDT 0.6B v3 by NVIDIA, licensed under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and speaks with Pocket TTS by Kyutai (CC BY 4.0).
 
-**Updates.** An R1 that connects to this server gets the R1 firmware that comes with this Tessaya, from this server,
+**Updates.** A Tessel that connects to this server gets the Tessel firmware that comes with this Tessaya, from this server,
 once it has been idle for 5 minutes. It says so before and after. If it does not come back on the new version within
 7 minutes it goes back to the one before, and that version is not tried again; Hardware shows why.
 
 **Update or repair (Hardware → Device utility).** Choose a level:
 
-- **Easy** has one button. It updates the R1 now if it is online. It doesn't wait for idle, but it never starts during a
-  conversation, a call, or below 30% battery unless the R1 is charging.
+- **Easy** has one button. It updates the Tessel now if it is online. It doesn't wait for idle, but it never starts during a
+  conversation, a call, or below 30% battery unless the Tessel is charging.
 - **Normal** installs any signed release, including an older one. An older release pauses automatic updates until you
   choose **Resume automatic updates**.
-- **Developer** sends raw commands and shows the R1's log.
+- **Developer** sends raw commands and shows the Tessel's log.
 
-An R1 that stays offline, for example after a power cut during an update, is repaired by cable: plug it into a
-computer and use the Tessaya desktop app there, or the standalone `r1flash` tool from the Tessaya releases. It's one
-file with nothing to install, and it lists the port, checks the image's signature, keeps the R1's settings and writes
+A Tessel that stays offline, for example after a power cut during an update, is repaired by cable: plug it into a
+computer and use the Tessaya desktop app there, or the standalone flash tool from the Tessaya releases (`tessel-flash`, called `r1flash` in older releases). It's one
+file with nothing to install, and it lists the port, checks the image's signature, keeps the Tessel's settings and writes
 the firmware.
-The R1's own wake model pack comes the same way, once it runs this firmware. **Own wake model** in Hardware shows its
-mode and pack: **Shadow** has the R1 report what it hears while Tessaya still decides, **Off** stops it, and **Unload**
+The Tessel's own wake model pack comes the same way, once it runs this firmware. **Own wake model** in Hardware shows its
+mode and pack: **Shadow** has the Tessel report what it hears while Tessaya still decides, **Off** stops it, and **Unload**
 removes the pack until you choose Shadow again.
 
-**Away from home.** At home the R1 connects over your own network. Turn on **Away from home** (in Hardware, by asking
-Tessaya, or from the card your phone gets when the R1 could not reach home) and it can also connect through T3 Connect
-when it is elsewhere; turn it off to keep it home only. The server sends the R1 its addresses by itself, also when your
+**Away from home.** At home the Tessel connects over your own network. Turn on **Away from home** (in Hardware, by asking
+Tessaya, or from the card your phone gets when the Tessel could not reach home) and it can also connect through T3 Connect
+when it is elsewhere; turn it off to keep it home only. The server sends the Tessel its addresses by itself, also when your
 network changes. It needs this server linked to T3 Connect (Settings → Connections), and for the fastest replies at home,
 network access turned on.
 
@@ -96,9 +98,9 @@ network access turned on.
 - **Voice transport:** in-house is Tessaya's own room voice. Trying Agora's cloud goes back to in-house, muted, after
   60 seconds unless you press **Keep**; **Revert to in-house** works at any time. After every restart the server sets
   in-house voice again, since the device forgets it.
-- **Room brain:** how the R1's turns reach Claude: your Anthropic key from Settings → APIs (quickest), your Claude
+- **Room brain:** how the Tessel's turns reach Claude: your Anthropic key from Settings → APIs (quickest), your Claude
   subscription, or Automatic (the key, then the subscription if the key fails). It applies from the next thing you say.
-- **NFC tags:** tap a tag on the R1, then name it and choose what a tap does (mute, unmute, show a mood, or run a
+- **NFC tags:** tap a tag on the Tessel, then name it and choose what a tap does (mute, unmute, show a mood, or run a
   Home Assistant scene, which still asks first when the scene is a risky one).
 - **Camera:** one picture, only when you press **Take one**. A "Camera on" badge shows while it waits for the
   picture. The picture is kept in memory for 10 minutes, never written to disk, and **Delete now** removes it sooner.
@@ -108,27 +110,27 @@ network access turned on.
 **Talking to it.** Press S2 or start with her name ("Tessaya, …"); for about 8 seconds after each reply you can go on
 without the name. Anything else said in the room, such as your dictation, a call or the TV, is not answered. Say
 "dismissed" or "that's all" to end the conversation; her name or S2 wakes her again. After 15 quiet minutes the
-R1 stops listening, and S2 starts it again.
+Tessel stops listening, and S2 starts it again.
 
 **Other personas.** Start with another persona's name ("Alfred, …", "Onyx, …", "Freya, …", "Sebastian, …") and that persona
-answers in its own voice, with its own eyes on the R1 and its own memories. It stays on for follow-ups in the 8-second
-window; once the R1 rests, Tessaya answers again.
+answers in its own voice, with its own eyes on the Tessel and its own memories. It stays on for follow-ups in the 8-second
+window; once the Tessel rests, Tessaya answers again.
 
 **Work by voice.** Ask for a job ("start a job in my app to fix the login bug, have Codex do it") and Tessaya opens
-it in its own thread, where the worker writes a plan and starts nothing until you agree. She says on that R1 when the
+it in its own thread, where the worker writes a plan and starts nothing until you agree. She says on that Tessel when the
 plan is ready and when the job is done or needs you, outside quiet hours (22:00 to 08:00 on the house's clock) and at
 most three times an hour. Say "go ahead", pass on changes, split it across the team, stop it or try it again by
 voice; these need your recognised voice. Putting a job on a schedule always asks for a yes on your phone first.
 
-**Buttons** (firmware 3.32 and later). Some presses are the R1's own and cannot change: S2 tap starts or stops
+**Buttons** (firmware 3.32 and later). Some presses are the Tessel's own and cannot change: S2 tap starts or stops
 talking, holding S2 is push-to-talk, a long S2 press wakes it, S1 and S3 taps turn the volume up and down, and holding
 S1 and S3 together for 5 seconds starts Wi-Fi setup. The rest are yours under **Buttons** in Settings → Hardware: the
 double presses, the 3-second long presses of S1 (mic mute by default) and S3 (deep sleep by default), and holding S1
-or S3 for under 3 seconds. Each can do one of the R1's own actions or one of Tessaya's: switch persona (announced in
+or S3 for under 3 seconds. Each can do one of the Tessel's own actions or one of Tessaya's: switch persona (announced in
 the new voice), tell you what's next, toggle a lamp or run a scene (risky ones still ask first), mute her, continue or
 stop a thread, or ask her something you write. A double press of S2 switches to the next persona until you change it.
 
-**Screen** (firmware 3.32). Auto turns the screen with the R1; Normal or Upside down pins it. If Auto has it the
-wrong way up, stand the R1 the way you use it and press **Set upright**.
+**Screen** (firmware 3.32). Auto turns the screen with the Tessel; Normal or Upside down pins it. If Auto has it the
+wrong way up, stand the Tessel the way you use it and press **Set upright**.
 
 Firmware updates need new firmware and come later.
