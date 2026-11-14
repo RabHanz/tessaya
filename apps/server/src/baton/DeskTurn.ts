@@ -9,6 +9,7 @@ import * as NodePath from "node:path";
 
 import { AGENT_PROMPT } from "@t3tools/baton-shared/agentPrompt";
 import { recordText } from "@t3tools/baton-shared/audit";
+import { templateFrame } from "@t3tools/baton-shared/jobTemplates";
 import { assistantFrame } from "@t3tools/baton-shared/osPack";
 import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -21,7 +22,7 @@ import * as ServerConfig from "../config.ts";
 import { R1Brain, type RoomToolSet } from "../home/R1Brain.ts";
 import { MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
-import { readPack } from "./OperatingSystemPack.ts";
+import { readPack, readTemplates } from "./OperatingSystemPack.ts";
 import { brainTurn, type ActOutcome, type TurnNotes } from "./TessayaBrain.ts";
 import { TessayaTurn, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { VesselHands, vesselTools } from "./VesselHands.ts";
@@ -116,9 +117,10 @@ export const deskTurnStream = (
     Effect.gen(function* () {
       const brain = yield* R1Brain;
       const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
-      const pack = readPack(
-        Option.isNone(config) ? NodeOS.homedir() : NodePath.dirname(config.value.dbPath),
-      );
+      const userdata = Option.isNone(config)
+        ? NodeOS.homedir()
+        : NodePath.dirname(config.value.dbPath);
+      const pack = readPack(userdata);
       const turn: TurnEnvelope = {
         vessel: { kind: from.kind, id: body.vessel ?? from.kind },
         origin: from.origin,
@@ -145,7 +147,7 @@ export const deskTurnStream = (
       };
       const said = yield* brainTurn(
         {
-          system: `${AGENT_PROMPT}\n\n${assistantFrame(pack)}`,
+          system: `${AGENT_PROMPT}\n\n${assistantFrame(pack)}${templateFrame(readTemplates(userdata))}`,
           tools,
           device: body.vessel,
           hold: () => (call) => call,

@@ -165,7 +165,7 @@ export const withFrontField = (text: string, key: string, value: string | null):
   return lines.length === 0 ? body : `---\n${lines.join("\n")}\n---\n${body}`;
 };
 
-const listOf = (field: string | undefined): ReadonlyArray<string> =>
+export const listOf = (field: string | undefined): ReadonlyArray<string> =>
   (field ?? "")
     .split(",")
     .map((t) => t.trim())

@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
+import { mergeTemplates, type JobTemplate } from "@t3tools/baton-shared/jobTemplates";
 import { mergePack, packPrompt, type OsPack } from "@t3tools/baton-shared/osPack";
 import { parseWakeStore, wakeModelOf } from "@t3tools/baton-shared/wakeModels";
 import * as Clock from "effect/Clock";
@@ -29,28 +30,40 @@ const readText = (file: string): string | undefined => {
   }
 };
 
+/** A pack subfolder's `.md` files by stem; none when it is missing. */
+const mdFiles = (dir: string): Record<string, string> => {
+  let names: string[] = [];
+  try {
+    names = NodeFS.readdirSync(dir);
+  } catch {
+    // no such folder: the defaults stand
+  }
+  const out: Record<string, string> = {};
+  for (const name of names) {
+    if (!name.endsWith(".md")) continue;
+    const text = readText(NodePath.join(dir, name));
+    if (text !== undefined) out[name.slice(0, -3)] = text;
+  }
+  return out;
+};
+
 /** His own files as he wrote them, before the defaults. */
 export const readPackFiles = (
   userdata: string,
 ): { readonly executive?: string; readonly roles: Record<string, string> } => {
   const dir = NodePath.join(userdata, PACK_DIR_NAME);
-  let names: string[] = [];
-  try {
-    names = NodeFS.readdirSync(NodePath.join(dir, "roles"));
-  } catch {
-    // no roles folder: the defaults stand
-  }
-  const roles: Record<string, string> = {};
-  for (const name of names) {
-    if (!name.endsWith(".md")) continue;
-    const text = readText(NodePath.join(dir, "roles", name));
-    if (text !== undefined) roles[name.slice(0, -3)] = text;
-  }
   const executive = readText(NodePath.join(dir, "executive.md"));
-  return { ...(executive === undefined ? {} : { executive }), roles };
+  return {
+    ...(executive === undefined ? {} : { executive }),
+    roles: mdFiles(NodePath.join(dir, "roles")),
+  };
 };
 
 export const readPack = (userdata: string): OsPack => mergePack(readPackFiles(userdata));
+
+/** The template catalogue: his `templates/<name>.md` over the defaults, read fresh so an edit counts at the next job. */
+export const readTemplates = (userdata: string): ReadonlyArray<JobTemplate> =>
+  mergeTemplates(mdFiles(NodePath.join(userdata, PACK_DIR_NAME, "templates")));
 
 /** The pack's own files as he wrote them (no defaults), so memory's door can refuse their text. */
 export const packFileTexts = (userdata: string): ReadonlyArray<string> => {

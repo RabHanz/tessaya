@@ -20,6 +20,7 @@ import {
   personaFor,
   rosterLine,
 } from "../../packages/baton-shared/src/osPack.ts";
+import { mergeTemplates, templateFrame } from "../../packages/baton-shared/src/jobTemplates.ts";
 import { memoryBlock } from "../../packages/baton-shared/src/memory.ts";
 import { DESK_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { chooseTurnBrain } from "../../packages/baton-shared/src/turnTier.ts";
@@ -134,7 +135,7 @@ const sample = async (c: AssistantCase, index: number): Promise<Sample> => {
           }),
     },
     // As a live session gets it: the pack's frame names the specialists.
-    notes: assistantFrame(DEFAULT_OS_PACK),
+    notes: assistantFrame(DEFAULT_OS_PACK) + templateFrame(mergeTemplates()),
     ...(c.answers === undefined ? {} : { answers: c.answers }),
     ...(() => {
       const recalled = recalledFor(c);

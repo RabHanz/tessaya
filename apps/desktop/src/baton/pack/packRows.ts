@@ -16,6 +16,11 @@ import {
   splitFront,
   type OsPack,
 } from "@t3tools/baton-shared/osPack";
+import {
+  DEFAULT_TEMPLATE_FILES,
+  mergeTemplates,
+  type JobTemplate,
+} from "@t3tools/baton-shared/jobTemplates";
 import { setPersonaField } from "@t3tools/baton-shared/personaFile";
 import { parseWakeStore, wakeModelOf, type WakeStore } from "@t3tools/baton-shared/wakeModels";
 import {
@@ -33,8 +38,10 @@ const NAME = /^[a-z0-9][a-z0-9-]{0,40}$/;
 const fileFor = (dir: string, id: string): string | null => {
   if (id === "executive") return NodePath.join(dir, "executive.md");
   if (id === "routing") return NodePath.join(dir, "routing.json");
-  const role = /^role:(.+)$/.exec(id)?.[1];
-  return role !== undefined && NAME.test(role) ? NodePath.join(dir, "roles", `${role}.md`) : null;
+  const m = /^(role|template):(.+)$/.exec(id);
+  return m !== null && NAME.test(m[2]!)
+    ? NodePath.join(dir, m[1] === "role" ? "roles" : "templates", `${m[2]}.md`)
+    : null;
 };
 
 const defaultText = (id: string): string =>
@@ -42,7 +49,32 @@ const defaultText = (id: string): string =>
     ? DEFAULT_PACK_FILES.executive
     : id === "routing"
       ? JSON.stringify(DEFAULT_ROUTING, null, 2)
-      : (DEFAULT_PACK_FILES.roles[id.replace(/^role:/, "")] ?? "");
+      : id.startsWith("template:")
+        ? (DEFAULT_TEMPLATE_FILES[id.slice("template:".length)] ?? "")
+        : (DEFAULT_PACK_FILES.roles[id.replace(/^role:/, "")] ?? "");
+
+/** His template files by stem (none when the folder is missing). */
+const templateFiles = (dir: string): Record<string, string> => {
+  const out: Record<string, string> = {};
+  let names: string[] = [];
+  try {
+    names = NodeFS.readdirSync(NodePath.join(dir, "templates")).filter((n) => n.endsWith(".md"));
+  } catch {
+    // no templates of his own
+  }
+  for (const name of names) {
+    try {
+      out[name.slice(0, -3)] = NodeFS.readFileSync(NodePath.join(dir, "templates", name), "utf8");
+    } catch {
+      // unreadable: the default stands
+    }
+  }
+  return out;
+};
+
+/** The template catalogue as the server reads it: his files over the defaults, read fresh each call. */
+export const readTemplates = (dir: string): ReadonlyArray<JobTemplate> =>
+  mergeTemplates(templateFiles(dir));
 
 const roleNames = (dir: string): ReadonlyArray<string> => {
   let mine: string[] = [];
@@ -104,6 +136,15 @@ export const packControls = (dir: string): ReadonlyArray<HomeControl> => {
     ...roleNames(dir).map((name) =>
       row(`role:${name}`, `Specialist: ${name}`, "Briefed when a part is given to it."),
     ),
+    ...readTemplates(dir).map((t) =>
+      row(
+        `template:${t.id}`,
+        `Template: ${t.title}`,
+        t.kind === "job"
+          ? "Loaded into a job of this kind; its persona and team are who Tessaya usually picks."
+          : "A face to hire: copy it into a role file with a name of your own.",
+      ),
+    ),
     row(
       "routing",
       "The cheap model for routine work",
@@ -123,7 +164,7 @@ export const packControls = (dir: string): ReadonlyArray<HomeControl> => {
 
 /** `p:<id>` Edit, `p:<id>:later` Use default. */
 export const packAction = (id: string) => {
-  const m = /^p:(executive|routing|role:[a-z0-9-]+?)(:later)?$/.exec(id);
+  const m = /^p:(executive|routing|(?:role|template):[a-z0-9-]+?)(:later)?$/.exec(id);
   return m === null ? null : ({ id: m[1]!, reset: m[2] !== undefined } as const);
 };
 
@@ -148,7 +189,7 @@ export const useDefault = (dir: string, id: string): boolean => {
 
 /** `p.ed:<id>:save` with the text, `p.ed:<id>:reset`. */
 export const packEdit = (id: string) => {
-  const m = /^p\.ed:(executive|routing|role:[a-z0-9-]+?):(save|reset)$/.exec(id);
+  const m = /^p\.ed:(executive|routing|(?:role|template):[a-z0-9-]+?):(save|reset)$/.exec(id);
   return m === null ? null : ({ id: m[1]!, save: m[2] === "save" } as const);
 };
 
