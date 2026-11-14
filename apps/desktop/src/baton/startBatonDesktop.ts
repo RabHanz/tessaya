@@ -31,6 +31,7 @@ import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironment
 import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
 import { readDeskTurn } from "@t3tools/baton-shared/deskTurnStream";
 import { conversationsIn } from "./conversation/conversationLog.ts";
+import { moveRoster } from "./pack/rosterMove.ts";
 import {
   beginStart,
   failedStartMessage,
@@ -116,6 +117,12 @@ export const startBatonDesktop = Effect.gen(function* () {
     let voice: DesktopBatonVoice | null = null;
     let screen: ScreenCompanion | null = null;
     let catalogStore: ReturnType<typeof createCatalog> | null = null;
+    let rosterMoved: ReadonlyArray<string> | string;
+    try {
+      rosterMoved = moveRoster(environment.stateDir);
+    } catch (error) {
+      rosterMoved = String(error);
+    }
     const conversations = conversationsIn(environment.stateDir);
     const run = <A>(effect: Effect.Effect<A>) => Effect.runPromiseWith(context)(effect);
     // The release feed is this repository's (D137); the install waits for a quiet moment.
@@ -124,6 +131,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       runningFile: NodePath.join(environment.stateDir, "baton-running.json"),
       version: environment.appVersion,
     });
+    if (rosterMoved.length > 0) lifecycle.note("persona-roster-moved", { moved: rosterMoved });
     // A hung main thread names itself: stalls and the startup phase in progress go to the lifecycle log.
     startStallWatch({
       file: NodePath.join(environment.logDir, "baton-lifecycle.ndjson"),

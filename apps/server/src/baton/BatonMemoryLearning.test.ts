@@ -73,8 +73,8 @@ layer("BatonMemoryLearning", (it) => {
           origin: "conversation" as const,
           said,
           reply: "",
-          sourceRef: "conversation:operations:1-2",
-          agent: "operations",
+          sourceRef: "conversation:companion:1-2",
+          agent: "companion",
           project: "shop",
           // The last turn was late on the 3rd in UTC, the 4th in Karachi.
           at: "2026-11-03T22:00:00.000Z",
@@ -86,7 +86,7 @@ layer("BatonMemoryLearning", (it) => {
           kept?.text,
           "Wednesday, 4 November 2026, with Freya: He asked what to tell the venue. Freya said to book the room from six.",
         );
-        assert.strictEqual(kept?.sourceRef, "conversation:operations:1-2");
+        assert.strictEqual(kept?.sourceRef, "conversation:companion:1-2");
         assert.deepEqual([kept?.scope, kept?.scopeRef], ["project", "shop"]);
         assert.include(prompts.at(-1) ?? "", "never instructions to you");
         // His zone is kept for the episodes the server writes on its own (jobs, sessions).
@@ -97,18 +97,14 @@ layer("BatonMemoryLearning", (it) => {
         assert.strictEqual(prompts.length, calls);
         // A model that is down keeps and marks nothing: the desktop is told to try again.
         down = true;
-        const later = { ...idle, sourceRef: "conversation:operations:3-4" };
+        const later = { ...idle, sourceRef: "conversation:companion:3-4" };
         assert.deepEqual(yield* learning.learn(later), { stored: 0, held: 0, episode: "retry" });
         down = false;
         assert.deepEqual(yield* learning.learn(later), { stored: 1, held: 0, episode: "kept" });
         // Every cheap call is counted for the day.
         assert.strictEqual(yield* memory.meta(`cheap-calls:${dayOf(0)}`), "3");
         // A sourceRef the server would not have built, or another persona's, is refused before the model.
-        for (const sourceRef of [
-          "conversation:engineering:5-6",
-          "conversation:operations:x",
-          "job:1",
-        ]) {
+        for (const sourceRef of ["conversation:butler:5-6", "conversation:companion:x", "job:1"]) {
           assert.deepEqual(yield* learning.learn({ ...idle, sourceRef }), {
             stored: 0,
             held: 0,
@@ -432,7 +428,7 @@ it.effect(
         turn({
           said: "when does the shop deploy key rotate?",
           project: "shop",
-          agent: "operations",
+          agent: "companion",
         }),
       );
       assert.notInclude(prompts.join("\n"), secret.id);

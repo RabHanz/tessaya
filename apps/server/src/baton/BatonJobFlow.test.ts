@@ -288,7 +288,7 @@ layer("BatonJobFlow", (it) => {
           parts: [
             { title: "Copy", goal: "write the copy", role: "marketing", routine: true },
             { title: "Code", goal: "build the page" },
-            { title: "Sources", goal: "check the sources", role: "research" },
+            { title: "Sources", goal: "check the sources", role: "alter-ego" },
           ],
         });
         assert.lengthOf(started, 3);
@@ -298,10 +298,10 @@ layer("BatonJobFlow", (it) => {
           ["default", "default", "default"],
         );
         assert.include(mine[0]?.text ?? "", "Your role (marketing)");
-        // A part recalls as its persona when the pack has one (research); a role with none (marketing), or none, as nobody.
+        // A part recalls as its persona when the pack has one (alter-ego); a role with none (marketing), or none, as nobody.
         assert.deepEqual(
           recalls.slice(recalled).map((r) => r.agent),
-          [undefined, undefined, "research"],
+          [undefined, undefined, "alter-ego"],
         );
         assert.include(mine[0]?.text ?? "", "already agreed");
         // Routine work runs on the cheap model at low effort; a model he picked stays for the other
@@ -461,7 +461,7 @@ layer("BatonJobFlow", (it) => {
         yield* splitJob({
           id: parent,
           parts: [
-            { title: "Sources", goal: "check the sources", role: "research" },
+            { title: "Sources", goal: "check the sources", role: "alter-ego" },
             { title: "Code", goal: "build it" },
           ],
         });
@@ -483,7 +483,7 @@ layer("BatonJobFlow", (it) => {
         NodeFS.mkdirSync(NodePath.join(dir, "roles"), { recursive: true });
         NodeFS.writeFileSync(NodePath.join(dir, "executive.md"), "---\nmodel: lead-model\n---\n");
         NodeFS.writeFileSync(
-          NodePath.join(dir, "roles", "research.md"),
+          NodePath.join(dir, "roles", "alter-ego.md"),
           "---\nmodel: research-model\ntools: read, web_search\n---\nCite every source.",
         );
         try {
@@ -510,10 +510,10 @@ layer("BatonJobFlow", (it) => {
           });
           const part = WorkSessionId.make("job-flow-roster-part-1");
           assert.strictEqual(launched.at(-1)?.modelSelection.model, "research-model");
-          assert.include(launched.at(-1)?.text ?? "", "Your role (research): Cite every source.");
+          assert.include(launched.at(-1)?.text ?? "", "Your role (alter-ego): Cite every source.");
           // His file lists read and a web search: of the job's read and edit, only read is left.
           assert.deepEqual((yield* jobs.terms(part))?.permissions.tools, ["read"]);
-          assert.strictEqual((yield* jobs.personas()).get(part), "research");
+          assert.strictEqual((yield* jobs.personas()).get(part), "alter-ego");
 
           const entry = (state: string) =>
             [
@@ -680,7 +680,7 @@ layer("BatonJobFlow", (it) => {
             modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
             runtimeMode: "approval-required",
           },
-          { role: "operations" },
+          { role: "companion" },
         );
         shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
         yield* jobs.planReady(id);
@@ -721,11 +721,11 @@ layer("BatonJobFlow", (it) => {
         );
         const three = new Map([
           ["executive", 40],
-          ["engineering", 40],
-          ["operations", 40],
+          ["butler", 40],
+          ["companion", 40],
         ]);
         assert.deepStrictEqual(pastGuide(three), { personas: [], team: false });
-        assert.deepStrictEqual(pastGuide(new Map([...three, ["research", 1]])), {
+        assert.deepStrictEqual(pastGuide(new Map([...three, ["alter-ego", 1]])), {
           personas: [],
           team: true,
         });

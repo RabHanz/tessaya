@@ -121,7 +121,7 @@ it("fixes his names in what the room heard, from the shared dictionary, as dicta
 
 it("answers as the persona he called by name, and as Tessaya for her own name or an unknown one", async () => {
   const { DEFAULT_OS_PACK } = await import("@t3tools/baton-shared/osPack");
-  expect(calledPersona(DEFAULT_OS_PACK, { persona: "engineering" })?.name).toBe("Alfred");
+  expect(calledPersona(DEFAULT_OS_PACK, { persona: "butler" })?.name).toBe("Alfred");
   expect(calledPersona(DEFAULT_OS_PACK, { persona: "executive" })).toBeNull();
   expect(calledPersona(DEFAULT_OS_PACK, { persona: "nobody" })).toBeNull();
   expect(calledPersona(DEFAULT_OS_PACK, undefined)).toBeNull();
@@ -141,7 +141,7 @@ describe('who answers in the room (13 Nov audit: every reply opened with "Sebast
       preferences: {},
       voice: undefined,
       now: "now",
-      persona: calledPersona(DEFAULT_OS_PACK, { persona: "research" }),
+      persona: calledPersona(DEFAULT_OS_PACK, { persona: "alter-ego" }),
       switched,
       roster: "",
     };
@@ -157,9 +157,9 @@ describe('who answers in the room (13 Nov audit: every reply opened with "Sebast
   });
 
   it("reads a switch only from the loop's switched flag, so an older loop never switches", () => {
-    expect(switchedPersona({ persona: "research", switched: true })).toBe(true);
-    expect(switchedPersona({ persona: "research" })).toBe(false);
-    expect(switchedPersona({ persona: "research", switched: "yes" })).toBe(false);
+    expect(switchedPersona({ persona: "alter-ego", switched: true })).toBe(true);
+    expect(switchedPersona({ persona: "alter-ego" })).toBe(false);
+    expect(switchedPersona({ persona: "alter-ego", switched: "yes" })).toBe(false);
     expect(switchedPersona(undefined)).toBe(false);
   });
 

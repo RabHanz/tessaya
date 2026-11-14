@@ -70,7 +70,7 @@ describe("what a persona speaks in", () => {
 
   it("reads each persona's voices from the pack, his file over the default", () => {
     const pack = mergePack({
-      roles: { operations: "---\nvoice: jane\ncloud voice: en-gb-assistant-12\n---\n" },
+      roles: { companion: "---\nvoice: jane\ncloud voice: en-gb-assistant-12\n---\n" },
     });
     const voices = Object.fromEntries(
       pack.personas.map((p) => [p.name, resolvePersonaVoice(p, on)]),

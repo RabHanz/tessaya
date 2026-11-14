@@ -43,7 +43,7 @@ const per = Number(values.per);
 const samples = Number(values.samples);
 const poolSize = Number(values["pool-size"]);
 const personas = DEFAULT_OS_PACK.personas.filter((p) =>
-  (values.persona ?? ["executive", "engineering"]).includes(p.id),
+  (values.persona ?? ["executive", "butler"]).includes(p.id),
 );
 const events = (values.event ?? LINE_EVENT_IDS).filter(isLineEvent);
 const POOL_FILE = NodePath.join(

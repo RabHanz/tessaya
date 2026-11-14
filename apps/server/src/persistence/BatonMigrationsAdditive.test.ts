@@ -33,8 +33,11 @@ const sourceOf = (id: number, name: string): string => {
 /** Triggers whose body may delete or update: each runs on later writes, never at migration time, and is reviewed. */
 const REVIEWED_TRIGGERS = new Set(["fabric_memory_vectors_gone"]);
 
-/** Migrations whose UPDATE only fills a column the same migration added, which an older build never reads. */
-const REVIEWED_BACKFILLS = new Set(["31_MemoryPersona"]);
+/**
+ * Migrations whose UPDATE only fills a column the same migration added, which an older build never reads; and the
+ * persona roster's re-keying, which deletes nothing (an older build only stops seeing those personas' own items).
+ */
+const REVIEWED_BACKFILLS = new Set(["31_MemoryPersona", "41_PersonaRoster"]);
 
 /** Comments out first (a commented-out END must not end a trigger early), then the reviewed triggers' bodies. */
 const withoutTriggerBodies = (source: string): string =>

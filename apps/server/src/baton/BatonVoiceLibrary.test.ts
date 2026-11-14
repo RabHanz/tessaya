@@ -80,20 +80,20 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
       Effect.gen(function* () {
         assert.isTrue(
           (yield* call("act", "setPersona", {
-            persona: "operations",
+            persona: "companion",
             engine: "pocket",
             voice: "jane",
           })).ok,
         );
         assert.isTrue(
           (yield* call("act", "setPersona", {
-            persona: "operations",
+            persona: "companion",
             engine: "gemini",
             voice: "en-gb-assistant-1",
           })).ok,
         );
         const file = NodeFS.readFileSync(
-          NodePath.join(userdata, "operating-system", "roles", "operations.md"),
+          NodePath.join(userdata, "operating-system", "roles", "companion.md"),
           "utf8",
         );
         expect(file).toMatch(/^voice: jane$/m);
@@ -106,7 +106,7 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
           { voice: "jane", cloud: "en-gb-assistant-1", speaks: "jane" },
         );
         const refused = yield* call("act", "setPersona", {
-          persona: "operations",
+          persona: "companion",
           engine: "pocket",
           voice: "nobody",
         });

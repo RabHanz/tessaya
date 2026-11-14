@@ -24,10 +24,12 @@ describe("the pack in the window", () => {
     const first = packControls(dir);
     expect(first.map((c) => c.id)).toEqual([
       "p.ed:executive",
+      "p.ed:role:butler",
       "p.ed:role:engineering",
       "p.ed:role:marketing",
       "p.ed:role:research",
-      "p.ed:role:operations",
+      "p.ed:role:alter-ego",
+      "p.ed:role:companion",
       "p.ed:routing",
       "p.folder",
     ]);
@@ -88,25 +90,26 @@ describe("the roster in the window", () => {
     const rows = () => rosterControls(dir).map((c) => [c.id, c.kind === "choice" ? c.value : ""]);
     expect(rows()).toEqual([
       ["v.persona:executive", "default"],
+      ["v.persona:butler", "default"],
       ["v.persona:engineering", "default"],
-      ["v.persona:research", "default"],
-      ["v.persona:operations", "default"],
+      ["v.persona:alter-ego", "default"],
+      ["v.persona:companion", "default"],
     ]);
-    expect(rosterControls(dir)[3]).toMatchObject({ label: "Freya" });
+    expect(rosterControls(dir)[4]).toMatchObject({ label: "Freya" });
     // The page plays an option's own voice; Default carries the persona's default as data.
-    const freya = rosterControls(dir)[3];
+    const freya = rosterControls(dir)[4];
     expect(freya?.kind === "choice" ? freya.options[0] : null).toMatchObject({
       value: "default",
       voice: expect.stringMatching(/^[a-z]+$/),
     });
-    expect(setPersonaVoice(dir, "operations", "nobody")).toBe(false);
-    expect(setPersonaVoice(dir, "operations", "anna")).toBe(true);
-    expect(rows()[3]).toEqual(["v.persona:operations", "anna"]);
+    expect(setPersonaVoice(dir, "companion", "nobody")).toBe(false);
+    expect(setPersonaVoice(dir, "companion", "anna")).toBe(true);
+    expect(rows()[4]).toEqual(["v.persona:companion", "anna"]);
     expect(readPack(dir).personas.find((p) => p.name === "Freya")?.voice).toBe("anna");
     // Every library voice is offered, personal-use ones too (outside a commercial build).
-    expect(setPersonaVoice(dir, "operations", "cosette")).toBe(true);
-    expect(setPersonaVoice(dir, "operations", null)).toBe(true);
-    expect(rows()[3]).toEqual(["v.persona:operations", "default"]);
+    expect(setPersonaVoice(dir, "companion", "cosette")).toBe(true);
+    expect(setPersonaVoice(dir, "companion", null)).toBe(true);
+    expect(rows()[4]).toEqual(["v.persona:companion", "default"]);
     expect(readPack(dir).personas.find((p) => p.name === "Freya")?.voice).toBe("azelma");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });

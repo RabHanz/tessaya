@@ -625,8 +625,8 @@ const main = async () => {
   const words = [
     // Each trained word belongs to a persona's id, so a renamed persona keeps its wake word.
     { word: "Tessaya", persona: "executive", file: "tessaya.onnx", threshold: 0.99 },
-    { word: "Alfred", persona: "engineering", file: "alfred.onnx", threshold: 0.95 },
-    { word: "Freya", persona: "operations", file: "freya.onnx", threshold: 0.95 },
+    { word: "Alfred", persona: "butler", file: "alfred.onnx", threshold: 0.95 },
+    { word: "Freya", persona: "companion", file: "freya.onnx", threshold: 0.95 },
   ].filter((w) => NodeFS.existsSync(model(w.file)));
   const confirmWith = recognisers();
   const wake =

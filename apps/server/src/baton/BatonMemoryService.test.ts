@@ -269,11 +269,8 @@ it.effect(
     const pack = NodePath.join(userdata, "operating-system");
     NodeFS.mkdirSync(NodePath.join(pack, "roles"), { recursive: true });
     NodeFS.writeFileSync(NodePath.join(pack, "executive.md"), "---\nwalled: Shop\n---\n");
-    NodeFS.writeFileSync(
-      NodePath.join(pack, "roles", "engineering.md"),
-      "---\nprojects: shop\n---\n",
-    );
-    NodeFS.writeFileSync(NodePath.join(pack, "roles", "research.md"), "---\nleads: shop\n---\n");
+    NodeFS.writeFileSync(NodePath.join(pack, "roles", "butler.md"), "---\nprojects: shop\n---\n");
+    NodeFS.writeFileSync(NodePath.join(pack, "roles", "alter-ego.md"), "---\nleads: shop\n---\n");
     const config = Layer.succeed(ServerConfig.ServerConfig, {
       dbPath: NodePath.join(userdata, "state.sqlite"),
     } as never);
@@ -298,15 +295,15 @@ it.effect(
           .recall({ text: "deploy key", ...(agent === undefined ? {} : { agent }) })
           .pipe(Effect.map((r) => r.block.includes("shop deploy key")));
       // Freya is not on the shop's team; Alfred is, Sebastian leads it, Tessaya leads everything.
-      assert.isFalse(yield* recalled("operations"));
-      assert.isTrue(yield* recalled("engineering"));
-      assert.isTrue(yield* recalled("research"));
+      assert.isFalse(yield* recalled("companion"));
+      assert.isTrue(yield* recalled("butler"));
+      assert.isTrue(yield* recalled("alter-ego"));
       assert.isTrue(yield* recalled("executive"));
       // A block no one persona owns (the shared standing set) carries nothing walled.
       assert.isFalse(yield* recalled());
       // An unwalled project is everyone's.
       assert.include(
-        (yield* memory.recall({ text: "deploy key", agent: "operations" })).block,
+        (yield* memory.recall({ text: "deploy key", agent: "companion" })).block,
         "site deploy key",
       );
       // Freya's memory_search cannot reach it either.
@@ -314,12 +311,12 @@ it.effect(
         memory
           .search({ text: "deploy key", ...(agent === undefined ? {} : { agent }) })
           .pipe(Effect.map((hits) => hits.some((h) => h.item.scopeRef === "shop")));
-      assert.isFalse(yield* found("operations"));
+      assert.isFalse(yield* found("companion"));
       // A search that names no persona fails closed; only his own view (admin) sees through.
       assert.isFalse(yield* found());
       const own = yield* memory.search({ text: "deploy key", admin: true });
       assert.isTrue(own.some((h) => h.item.scopeRef === "shop"));
-      yield* memory.recall({ text: "deploy key", agent: "engineering", turnRef: "t1" });
+      yield* memory.recall({ text: "deploy key", agent: "butler", turnRef: "t1" });
       assert.isTrue((yield* memory.used("t1")).some((i) => i.scopeRef === "shop"));
       assert.include(yield* memory.exportMarkdown, "shop deploy key");
 
@@ -328,8 +325,8 @@ it.effect(
         effect.pipe(Effect.provideService(MemoryViewer, "client"));
       const shop = (items: ReadonlyArray<{ readonly scopeRef: string | null } | null>) =>
         items.some((i) => i?.scopeRef === "shop");
-      assert.isFalse(yield* asClient(recalled("engineering")));
-      assert.isFalse(yield* asClient(found("engineering")));
+      assert.isFalse(yield* asClient(recalled("butler")));
+      assert.isFalse(yield* asClient(found("butler")));
       const hits = yield* asClient(memory.search({ text: "deploy key", admin: true }));
       assert.isFalse(shop(hits.map((h) => h.item)));
       assert.isFalse(shop(yield* asClient(memory.list({ admin: true }))));

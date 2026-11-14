@@ -10,7 +10,7 @@ export type Acknowledge = "voice" | "tone" | "off";
 /** Lines any persona may say; a persona's own lines are added to these. `{name}` is his name, once a session. */
 const COMMON = ["Yes?", "Mm?", "I'm here.", "Go on.", "Hey."];
 const BY_PERSONA: Readonly<Record<string, ReadonlyArray<string>>> = {
-  engineering: ["At your service.", "Sir?"],
+  butler: ["At your service.", "Sir?"],
 };
 const WITH_NAME = ["What's up, {name}?", "Yes, {name}?"];
 

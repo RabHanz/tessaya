@@ -62,25 +62,25 @@ layer("the team board (P4)", (it) => {
             permissions: { folders: [], projects: [], tools: ["read"] },
             persona,
           });
-        yield* job("j-1", "p-shop", "Ship the shop", "engineering");
-        yield* job("j-2", "p-vault", "Rotate the vault keys", "engineering");
-        yield* job("j-3", "p-shop", "Old release", "engineering");
+        yield* job("j-1", "p-shop", "Ship the shop", "butler");
+        yield* job("j-2", "p-vault", "Rotate the vault keys", "butler");
+        yield* job("j-3", "p-shop", "Old release", "butler");
         // Sebastian's only work is walled, and one job is in a project nobody can name.
-        yield* job("j-4", "p-vault", "Audit the vault", "research");
-        yield* job("j-5", "p-gone", "Lost project work", "operations");
+        yield* job("j-4", "p-vault", "Audit the vault", "alter-ego");
+        yield* job("j-5", "p-gone", "Lost project work", "companion");
         yield* sessions.settle({ id: WorkSessionId.make("j-3") });
         const memory = yield* BatonMemoryService;
         yield* memory.add({
           kind: "episode",
           text: "Monday, 2 November 2026, with Freya: he booked dinner for eight",
           source: "thread",
-          sourceRef: "conversation:operations:1-2",
+          sourceRef: "conversation:companion:1-2",
         });
         yield* memory.add({
           kind: "episode",
           text: "Tuesday, 3 November 2026, with Freya: the venue is booked from six",
           source: "thread",
-          sourceRef: "conversation:operations:3-4",
+          sourceRef: "conversation:companion:3-4",
           scope: "project",
           scopeRef: "vault",
         });
@@ -104,7 +104,7 @@ layer("the team board (P4)", (it) => {
         const outside = yield* teamBoard({ agent: "executive", admin: true }).pipe(
           Effect.provideService(MemoryViewer, "client"),
         );
-        const alfred = outside.members.find((m) => m.id === "engineering")!;
+        const alfred = outside.members.find((m) => m.id === "butler")!;
         assert.deepEqual(
           alfred.jobs.map((j) => j.title),
           ["Ship the shop"],
@@ -114,34 +114,37 @@ layer("the team board (P4)", (it) => {
           alfred.recent.map((r) => r.subject),
           ["Ship the shop"],
         );
-        assert.strictEqual(alfred.role, "sessions, builds and releases");
-        const freya = outside.members.find((m) => m.id === "operations")!;
+        assert.strictEqual(
+          alfred.role,
+          "life, home and admin: his calendar, errands, bookings, bills and paperwork",
+        );
+        const freya = outside.members.find((m) => m.id === "companion")!;
         assert.include(freya.episode?.text ?? "", "dinner for eight");
         // A project it cannot name counts as walled, and work it may not see does not show as busy either.
         assert.deepEqual(freya.jobs, []);
         assert.isFalse(freya.busy);
-        assert.isFalse(outside.members.find((m) => m.id === "research")!.busy);
+        assert.isFalse(outside.members.find((m) => m.id === "alter-ego")!.busy);
 
         // His own Now page sees through the walls.
         const his = yield* teamBoard({ admin: true }).pipe(
           Effect.provideService(MemoryViewer, "desktop"),
         );
-        const all = his.members.find((m) => m.id === "engineering")!;
+        const all = his.members.find((m) => m.id === "butler")!;
         assert.sameMembers(
           all.jobs.map((j) => j.title),
           ["Ship the shop", "Rotate the vault keys"],
         );
         assert.include(
-          his.members.find((m) => m.id === "operations")?.episode?.text ?? "",
+          his.members.find((m) => m.id === "companion")?.episode?.text ?? "",
           "venue is booked",
         );
 
         // A private persona (P5's flag) shows only whether it is busy.
-        const hidden = yield* teamBoard({ admin: true }, (id) => id === "engineering").pipe(
+        const hidden = yield* teamBoard({ admin: true }, (id) => id === "butler").pipe(
           Effect.provideService(MemoryViewer, "desktop"),
         );
         assert.deepInclude(
-          hidden.members.find((m) => m.id === "engineering"),
+          hidden.members.find((m) => m.id === "butler"),
           {
             private: true,
             busy: true,

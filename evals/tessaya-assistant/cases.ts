@@ -431,13 +431,15 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   {
     id: "split-it",
     model: "opus",
-    source: "Spine step 6: the lead splits an agreed job between his own roster, by name",
+    source:
+      "Spine step 6: the lead splits an agreed job between his own roster, by name; since the 14 Nov roster, code is Onyx's",
     said: "split it",
     answers: { jobs_list: agreedShopJob },
     first: ["jobs_list", "job_split"],
     goal: "job_split",
     maxCalls: 3,
-    goalArgs: ["Alfred", "Sebastian"],
+    goalArgs: ["Onyx"],
+    notGoalArgs: ["Alfred"],
   },
   {
     id: "specialist-wont-split",

@@ -40,8 +40,8 @@ describe("her 'I'm here' when he only says her name", () => {
     expect(lines(at({ sinceExchangeMs: 60_000 }))).toContain("Still here.");
     expect(lines(at({ name: "Rab" }))).toContain("What's up, Rab?");
     expect(lines(at())).not.toContain("What's up, Rab?");
-    expect(lines(at({ personaId: "engineering" }))).toContain("At your service.");
-    expect(ackLines("engineering")).toContain("Sir?");
+    expect(lines(at({ personaId: "butler" }))).toContain("At your service.");
+    expect(ackLines("butler")).toContain("Sir?");
   });
 
   it("often says nothing, only her look, when woken again within minutes", () => {
