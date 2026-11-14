@@ -13,7 +13,7 @@ import {
 import { bodyTagCommands, configPageOf, GET_VERSION, read } from "@t3tools/baton-shared/bodyTag";
 import { useEffect, useState } from "react";
 import { Platform, TextInput, View } from "react-native";
-import NfcManager, { NfcTech } from "react-native-nfc-manager";
+import NfcManager, { Ndef, NfcTech } from "react-native-nfc-manager";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { ControlPill } from "../../components/ui/ControlPill";
@@ -69,7 +69,40 @@ const writeBodyTag = async (sign: (uid: string) => Promise<VesselBodyMint>): Pro
   }
 };
 
-export function BodiesSection(props: { readonly prefix: string; readonly call: BodiesCall }) {
+/** One body tag on this phone: its UID and the link it carries. */
+export interface SeenTag {
+  readonly uid: string;
+  readonly url: string;
+}
+
+const URI_TYPE = 0x55;
+const readBodyTag = async (): Promise<SeenTag> => {
+  await NfcManager.start();
+  try {
+    await NfcManager.requestTechnology(Platform.OS === "ios" ? NfcTech.MifareIOS : NfcTech.NfcA, {
+      alertMessage: "Hold the top of your phone to the body's tag.",
+    });
+    const tag = await NfcManager.getTag();
+    const uid = (tag?.id ?? "").toLowerCase().replace(/[^0-9a-f]/g, "");
+    const record = (tag?.ndefMessage ?? []).find(
+      (r) => r.tnf === 1 && (r.type === "U" || (Array.isArray(r.type) && r.type[0] === URI_TYPE)),
+    );
+    if (uid === "" || record === undefined) throw new Error("That tag doesn't carry a body link.");
+    return { uid, url: Ndef.uri.decodePayload(Uint8Array.from(record.payload)) };
+  } finally {
+    await NfcManager.cancelTechnologyRequest().catch(() => undefined);
+  }
+};
+
+export function BodiesSection(props: {
+  readonly prefix: string;
+  readonly call: BodiesCall;
+  /**
+   * Tells the server which body tag this phone sits on, or none.
+   * Until the phone companion watches the tag and the motion sensors, he seats it and takes it out here.
+   */
+  readonly seat: (tags: ReadonlyArray<SeenTag>) => Promise<string>;
+}) {
   const [view, setView] = useState<VesselBodiesView | null>(null);
   const [type, setType] = useState<VesselBodyType>("dock");
   const [name, setName] = useState("");
@@ -133,6 +166,22 @@ export function BodiesSection(props: { readonly prefix: string; readonly call: B
     }
     setBusy(false);
     await refresh();
+  };
+
+  const seat = async (on: boolean) => {
+    setBusy(true);
+    if (on) setLine("Hold the phone to the body's tag…");
+    const tags = on
+      ? await readBodyTag().then(
+          (t) => [t],
+          (cause: unknown) => {
+            setLine(cause instanceof Error ? cause.message : "The tag wasn't read.");
+            return null;
+          },
+        )
+      : [];
+    if (tags !== null) setLine(await props.seat(tags));
+    setBusy(false);
   };
 
   const bodies = view?.bodies ?? [];
@@ -211,6 +260,20 @@ export function BodiesSection(props: { readonly prefix: string; readonly call: B
             label="Write a body tag"
             disabled={busy || view?.linksHost == null}
             onPress={() => void write()}
+          />
+        </View>
+        <View className="flex-row flex-wrap gap-2">
+          <ControlPill
+            variant="pill"
+            label="Seat this phone"
+            disabled={busy}
+            onPress={() => void seat(true)}
+          />
+          <ControlPill
+            variant="pill"
+            label="Take it out"
+            disabled={busy}
+            onPress={() => void seat(false)}
           />
         </View>
         {line === "" ? null : (

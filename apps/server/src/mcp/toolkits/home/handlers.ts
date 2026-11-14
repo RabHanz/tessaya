@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 
 import { BatonRuntime } from "../../../baton/BatonRpcHandlers.ts";
 import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
+import { DeviceRegistry } from "../../../home/DeviceRegistry.ts";
 import { serveHomeCall, type HomeCallKind } from "../../../home/HomeCalls.ts";
 import type { HomeActor } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -103,8 +104,29 @@ export const make = Effect.gen(function* () {
           };
     return yield* serveHomeCall({ kind, op, args }, by).pipe(Effect.provideContext(context));
   });
+  /** The room of the body the turn's vessel sits in ("kitchen dock" → kitchen), or null. */
+  const vesselRoom = Effect.gen(function* () {
+    const origin = yield* TurnOrigin;
+    if (origin === null || context === null) return null;
+    const registry = yield* Effect.serviceOption(DeviceRegistry).pipe(
+      Effect.provideContext(context),
+    );
+    if (registry._tag === "None") return null;
+    const room = yield* registry.value.value(origin.id, "body.room");
+    return typeof room === "string" && room.trim() !== "" ? room : null;
+  });
   return {
-    home_find: McpToolAccess.reads((input: Args) => home("read", "find", { ...input })),
+    // With no room named, the vessel's own body room comes first; the whole house if nothing matches there.
+    home_find: McpToolAccess.reads((input: Args) =>
+      Effect.gen(function* () {
+        const room = input["area"] === undefined ? yield* vesselRoom : null;
+        if (room !== null) {
+          const near = yield* home("read", "find", { ...input, area: room });
+          if (near.ok && Array.isArray(near.value) && near.value.length > 0) return near;
+        }
+        return yield* home("read", "find", { ...input });
+      }),
+    ),
     home_state: McpToolAccess.reads((input: Args) => home("read", "state", { ...input })),
     home_automations: McpToolAccess.reads((input: Args) =>
       Effect.map(home("read", "automations", { ...input }), withCounts),
