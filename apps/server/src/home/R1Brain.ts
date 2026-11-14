@@ -327,8 +327,9 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   /** Which way the next turn goes: the key, the subscription, or the key with the subscription named behind it. */
   const route: Effect.Effect<R1Route> = Effect.gen(function* () {
     const row = yield* voice;
-    if (credentialOf(row.use).kind === "subscription") return "subscription" as const;
-    if (row.fallback === null || credentialOf(row.fallback).kind !== "subscription")
+    // Only the Anthropic key has an API path here; anything else goes to onSubscription, which runs or refuses it.
+    if (row.use !== "apiKey:anthropic") return "subscription" as const;
+    if (row.fallback === null || credentialOf(row.fallback).kind === "apiKey")
       return "api" as const;
     return (yield* api.configured) ? ("auto" as const) : ("subscription" as const);
   }).pipe(Effect.orElseSucceed(() => "subscription" as const));

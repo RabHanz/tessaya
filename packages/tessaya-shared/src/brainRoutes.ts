@@ -35,15 +35,18 @@ export interface BrainSettings {
 const SUBSCRIPTION: BrainCredential = "subscription";
 const ANTHROPIC_KEY: BrainCredential = "apiKey:anthropic";
 
-/** A credential read: which kind, and the account or key it names ("" for the server's own login). */
+/** A credential read: which kind, and the account, instance or key it names ("" for the server's own login). */
 export const credentialOf = (
   credential: BrainCredential,
 ):
   | { readonly kind: "subscription"; readonly account: string }
+  | { readonly kind: "instance"; readonly instanceId: string }
   | { readonly kind: "apiKey"; readonly key: BrainApiKey } =>
   credential.startsWith("apiKey:")
     ? { kind: "apiKey", key: credential.slice("apiKey:".length) as BrainApiKey }
-    : { kind: "subscription", account: credential.slice("subscription:".length) };
+    : credential.startsWith("instance:")
+      ? { kind: "instance", instanceId: credential.slice("instance:".length) }
+      : { kind: "subscription", account: credential.slice("subscription:".length) };
 
 /** Cleanup's model before the table: the cleanup setting's when it is Claude's, else Haiku. */
 const CLEANUP_MODEL = "claude-haiku-5-5";
@@ -90,9 +93,11 @@ const before = (
   }
 };
 
-/** His choice (13 Nov): the API key pays for dictation cleanup only, chosen for speed. */
+/** His choice (13 Nov): the Anthropic key pays for dictation cleanup only, chosen for speed. Other keys serve nothing. */
 const KEY_ROLES: Readonly<Record<BrainApiKey, ReadonlyArray<BrainRole>>> = {
   anthropic: ["cleanup"],
+  openai: [],
+  google: [],
 };
 
 export const brainRoute = (settings: BrainSettings, role: BrainRole, cheap: string): BrainRoute => {
@@ -127,14 +132,16 @@ export const keyRefusal = (
     ? null
     : `${role} is not allowed on the ${key} API key (it serves: ${keyRoles(settings, key).join(", ") || "nothing"})`;
 
-/** For logs and the Usage page: "subscription", "subscription (work)", "API key anthropic". */
+/** For logs and the Usage page: "subscription", "subscription (work)", "codex instance", "API key anthropic". */
 export const credentialLabel = (credential: BrainCredential): string => {
   const read = credentialOf(credential);
   return read.kind === "apiKey"
     ? `API key ${read.key}`
-    : read.account === ""
-      ? "subscription"
-      : `subscription (${read.account})`;
+    : read.kind === "instance"
+      ? `${read.instanceId} instance`
+      : read.account === ""
+        ? "subscription"
+        : `subscription (${read.account})`;
 };
 
 /** Each role as he would name it, for the Brain and Usage pages. */

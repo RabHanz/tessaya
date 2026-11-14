@@ -20,15 +20,21 @@ const BRAIN_ROLES = [
 export const BrainRole = Schema.Literals(BRAIN_ROLES);
 export type BrainRole = typeof BrainRole.Type;
 
-/** The API keys the brain can read: today the one Anthropic key in Settings → APIs. */
-export type BrainApiKey = "anthropic";
+const BRAIN_API_KEYS = ["anthropic", "openai", "google"] as const;
+/** The providers whose API key a row can name. Today only the Anthropic key in Settings → APIs is read. */
+export type BrainApiKey = (typeof BRAIN_API_KEYS)[number];
 
 /**
- * Which login pays: `subscription` (the server's own Claude login), `subscription:<account>` (a named one), or
- * `apiKey:anthropic`. One string, so a voice setting or a settings row reads as plainly as it is said.
+ * Which login pays: `subscription` (the server's own Claude login), `subscription:<account>` (a named one),
+ * `instance:<providerInstanceId>` (any provider's instance on this server), or `apiKey:<provider>`. One string, so a
+ * voice setting or a settings row reads as plainly as it is said.
  */
 export const BrainCredential = Schema.String.check(
-  Schema.isPattern(/^(?:subscription(?::[A-Za-z0-9._-]{1,60})?|apiKey:anthropic)$/),
+  Schema.isPattern(
+    new RegExp(
+      `^(?:subscription(?::[A-Za-z0-9._-]{1,60})?|instance:[a-zA-Z][a-zA-Z0-9_-]{0,63}|apiKey:(?:${BRAIN_API_KEYS.join("|")}))$`,
+    ),
+  ),
 );
 export type BrainCredential = typeof BrainCredential.Type;
 
@@ -103,6 +109,8 @@ export type BrainModels = typeof BrainModels.Type;
 /** The roles each API key may serve. A call for any other role is refused, never sent (the spend guard). */
 export const BrainKeyRoles = Schema.Struct({
   anthropic: Schema.optionalKey(Schema.Array(BrainRole)),
+  openai: Schema.optionalKey(Schema.Array(BrainRole)),
+  google: Schema.optionalKey(Schema.Array(BrainRole)),
 });
 export type BrainKeyRoles = typeof BrainKeyRoles.Type;
 
