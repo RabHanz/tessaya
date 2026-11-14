@@ -247,6 +247,52 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     callsMustNot: ["tessaya_ask"],
   },
   {
+    id: "outside-team-best-at",
+    source:
+      "B-033, Director 15 Nov: he asks by voice who is best at something; the team record answers",
+    prompt: "Who on Tessaya's team would be best at sorting out my household bills?",
+    answers: {
+      tessaya_team_board: {
+        members: [
+          {
+            id: "butler",
+            name: "Alfred",
+            role: "life, home and admin: his calendar, errands, bookings, bills and paperwork",
+            duties:
+              "life, home and admin: his calendar, errands, bookings, bills and paperwork; formal",
+            private: false,
+            busy: false,
+            jobs: [],
+            episode: null,
+            recent: [],
+            templates: [
+              { id: "household-books", title: "The household books", jobs: 4, lessons: 6 },
+            ],
+            track: { led: 9, done: 8, failed: 0 },
+            moves: [],
+          },
+          {
+            id: "engineering",
+            name: "Onyx",
+            role: "engineering and operations",
+            duties: "engineering and operations; terse",
+            private: false,
+            busy: true,
+            jobs: [{ id: "j-2", title: "Ship the release" }],
+            episode: null,
+            recent: [],
+            templates: [],
+            track: { led: 12, done: 10, failed: 1 },
+            moves: [],
+          },
+        ],
+      },
+    },
+    calls: ["tessaya_team_board"],
+    callsMustNot: ["tessaya_ask"],
+    replyMust: /\bAlfred\b/,
+  },
+  {
     id: "outside-prompt-lab-run",
     source:
       "B-030, Director 14 Nov: try a persona's prompt variant on a chosen model, scored, from any surface",

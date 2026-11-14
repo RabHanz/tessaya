@@ -93,6 +93,12 @@ const playbookItem = Effect.fn("BatonPlaybook.item")(function* (domain: string) 
   return items.find((i) => i.sourceRef === `${PLAYBOOK_REF}${domain}`) ?? null;
 });
 
+/** How much a domain has taught: the jobs its playbook learned from and the lessons it holds now. */
+export const playbookStats = Effect.fn("BatonPlaybook.stats")(function* (domain: string) {
+  const book = parsePlaybook((yield* playbookItem(domain))?.text ?? null, domain);
+  return { jobs: book.jobs, lessons: book.lessons.length };
+});
+
 /** The block a job in this domain starts with; empty while the domain has taught nothing. */
 export const jobPlaybook = Effect.fn("BatonPlaybook.forJob")(function* (domain: string) {
   const item = yield* playbookItem(domain);

@@ -5,6 +5,7 @@
  */
 import { moodLine, type AffectView } from "../../packages/tessaya-shared/src/affect.ts";
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
+import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
 
 export interface RoomCase {
@@ -33,6 +34,14 @@ export interface RoomCase {
   readonly notice?: string;
   /** The turn's block as TessayaTurn.begin gives it (the where-you-are and presence board lines). */
   readonly memory?: string;
+  /** The block per sentence where it changes as the conversation goes (it wins over `memory` for that sentence). */
+  readonly memoryByTurn?: ReadonlyArray<string>;
+  /** Custom personas he added, beside the default pack's, as the roster line names them. */
+  readonly team?: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly role: string;
+  }>;
   /** His clock preference (timeFormat): how the turn's time is said. */
   readonly clock?: "12h" | "24h";
 }
@@ -376,6 +385,73 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     said: ["what does Onyx look after?"],
     verified: true,
     callsAtMost: { tessaya_persona_handoff: 0 },
+  },
+  // B-033: a lead points him at a better-fit teammate only on a real mismatch, offers both paths, never switches by
+  // itself, and drops it when he says carry on. The lead line is TessayaTurn's own (leadFitLine).
+  {
+    id: "referral-mismatch",
+    source:
+      "Director 15 Nov: X would be a better fit because…, want me to hand it over? Or give me more instructions",
+    said: [
+      "Onyx, for Mum's birthday dinner job, book a table somewhere nice for Saturday and sort out a gift.",
+    ],
+    persona: "engineering",
+    verified: true,
+    memory: `${HERE} ${leadFitLine([{ title: "Mum's birthday dinner", kept: [] }])}`,
+    lastSays: [
+      /\bAlfred\b/,
+      /\b(hand|pass|give|move)\b/i,
+      /\b(carry on|continue|keep (going|at it)|more|instructions|myself)\b/i,
+    ],
+    callsAtMost: { tessaya_job_lead: 0, tessaya_persona_handoff: 0 },
+  },
+  {
+    id: "referral-fits-control",
+    source: "Director 15 Nov: keep it rare and grounded; work the lead can do gets no suggestion",
+    said: ["Onyx, on the checkout bug job, also cover the coupon path with a test."],
+    persona: "engineering",
+    verified: true,
+    memory: `${HERE} ${leadFitLine([{ title: "fix the checkout bug", kept: [] }])}`,
+    lastSays: [/^(?![\s\S]*\b(Alfred|Freya|Sebastian|hand (it|this) over|better fit)\b)/i],
+    callsAtMost: { tessaya_job_lead: 0, tessaya_persona_handoff: 0 },
+  },
+  {
+    id: "referral-respects-no",
+    source:
+      "Director 15 Nov: on his no it respects his answer and does not nag about the same issue",
+    said: [
+      "Onyx, for Mum's birthday dinner job, book a table somewhere nice for Saturday and sort out a gift.",
+      "No, you carry on with it yourself.",
+      "And make it somewhere with a garden.",
+    ],
+    persona: "engineering",
+    verified: true,
+    // After his no, TessayaTurn's line says he kept Onyx on it (the declined move on the job).
+    memoryByTurn: [
+      `${HERE} ${leadFitLine([{ title: "Mum's birthday dinner", kept: [] }])}`,
+      `${HERE} ${leadFitLine([{ title: "Mum's birthday dinner", kept: [] }])}`,
+      `${HERE} ${leadFitLine([{ title: "Mum's birthday dinner", kept: ["Alfred"] }])}`,
+    ],
+    calls: ["tessaya_job_lead"],
+    lastSays: [/^(?![\s\S]*\b(Alfred|hand (it|this) over|better fit)\b)/i],
+    callsAtMost: { tessaya_persona_handoff: 0 },
+  },
+  {
+    id: "referral-custom-persona",
+    source: "Director 15 Nov: it must also work for custom personas",
+    said: ["Onyx, for the VAT return job, which of my receipts count as deductible expenses?"],
+    persona: "engineering",
+    verified: true,
+    team: [
+      {
+        id: "tax",
+        name: "Juno",
+        role: "his taxes, bookkeeping, VAT returns and receipts; precise",
+      },
+    ],
+    memory: `${HERE} ${leadFitLine([{ title: "file the quarterly VAT return", kept: [] }])}`,
+    lastSays: [/\bJuno\b/],
+    callsAtMost: { tessaya_job_lead: 0, tessaya_persona_handoff: 0 },
   },
   // Her turn after a hand-off, as TessayaTurn writes it.
   {
