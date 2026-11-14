@@ -8,6 +8,7 @@ import { it } from "@effect/vitest";
 import type {
   R1FirmwarePin,
   R1KwsPin,
+  R1LinesPin,
   R1ReleaseManifest,
 } from "@t3tools/tessaya-shared/r1Firmware";
 import * as Effect from "effect/Effect";
@@ -24,6 +25,7 @@ import {
   blankWatch,
   IDLE_MS,
   kwsStep,
+  linesStep,
   manualRefusal,
   otaStep,
   R1Updates,
@@ -55,6 +57,16 @@ const KWS: R1KwsPin = {
     dsaEncoding: "ieee-p1363",
   }).toString("hex"),
   threshold: 0.9,
+};
+
+const TONES_BYTES = imageOf("tone pack 1");
+const TONES: R1LinesPin = {
+  version: 1,
+  size: TONES_BYTES.length,
+  sha256: NodeCrypto.createHash("sha256").update(TONES_BYTES).digest("hex"),
+  url: "https://example.test/tones-1.r1ln",
+  sig: "s".repeat(128),
+  minFirmware: "smp-0.3.122",
 };
 
 /** R1Updates over a real hub with one R1 on it; `out` collects what the server sends the R1 (topic tail, payload). */
@@ -458,6 +470,65 @@ describe("when an R1 updates", () => {
           yield* updates.tick;
           expect(out).toHaveLength(2);
           expect((yield* updates.view).devices[0]!.kws).toContain("not signed by the release key");
+        }),
+    ),
+  );
+
+  it("sends the tone pack only to an idle Tessel with no line pack, on firmware that plays it", () => {
+    const bare = { count: 0, earcons: 0 };
+    const idle = { ...blankWatch(), online: true, fw: "smp-0.3.124", lastUse: 0, lines: bare };
+    expect(linesStep(idle, TONES, IDLE_MS)).toBe("start");
+    expect(linesStep(idle, TONES, IDLE_MS - 1)).toBe("wait");
+    expect(linesStep(idle, null, IDLE_MS)).toBe("wait");
+    expect(linesStep({ ...idle, fw: "smp-0.3.121" }, TONES, IDLE_MS)).toBe("wait");
+    // Not yet reported, already has the sounds, or carries voice lines a load would erase.
+    expect(linesStep({ ...idle, lines: null }, TONES, IDLE_MS)).toBe("wait");
+    expect(linesStep({ ...idle, lines: { count: 36, earcons: 36 } }, TONES, IDLE_MS)).toBe("wait");
+    expect(linesStep({ ...idle, lines: { count: 12, earcons: 0 } }, TONES, IDLE_MS)).toBe("wait");
+    expect(linesStep({ ...idle, linesStopped: "no" }, TONES, IDLE_MS)).toBe("wait");
+    // One transfer at a time, every way round.
+    const loading = { ...idle, modelLoad: { version: 1, startedAt: IDLE_MS } };
+    expect(linesStep(loading, TONES, IDLE_MS)).toBe("wait");
+    const going = { ...idle, linesLoad: { startedAt: 0 } };
+    expect(linesStep(going, TONES, ROLLBACK_AFTER_MS - 1)).toBe("wait");
+    expect(linesStep(going, TONES, ROLLBACK_AFTER_MS)).toBe("give-up");
+    expect(kwsStep(going, KWS, null, IDLE_MS)).toBe("wait");
+    expect(otaStep({ ...going, fw: "0.3.9" }, PIN, null, IDLE_MS)).toBe("wait");
+  });
+
+  it.effect("loads the tone pack once and stops after a refusal", () =>
+    withUpdates(
+      { artifacts: { firmware: null, kws: null, lines: TONES } },
+      (url) => (url === TONES.url ? TONES_BYTES : V2),
+      ["freya/r1/+/cmd/#"],
+      (hub, out) =>
+        Effect.gen(function* () {
+          const updates = yield* R1Updates;
+          hub.publish("freya/r1/r1-a/state/online", "1", true);
+          hub.publish("freya/r1/r1-a/state/caps", '{"fw":"smp-0.3.124"}', true);
+          hub.publish(
+            "freya/r1/r1-a/state/lines",
+            '{"version":0,"count":0,"earcons":0,"ok":false,"why":"none"}',
+            true,
+          );
+          yield* TestClock.adjust(IDLE_MS + 1);
+          yield* updates.tick;
+          expect(out.map(([t]) => t)).toEqual(["cmd/lines/load"]);
+          const load = JSON.parse(out[0]![1]) as { url: string };
+          expect(load).toMatchObject({ size: TONES.size, sha256: TONES.sha256, sig: TONES.sig });
+          const ticket = new URL(load.url).searchParams.get("t")!;
+          expect(yield* updates.image(`${TONES.sha256}.r1ln`, ticket)).toEqual(TONES_BYTES);
+          // Busy: tried again on a later pass. A real refusal is not retried by itself.
+          hub.publish("freya/r1/r1-a/state/net/ack", '{"op":"lines","ok":false,"error":"busy"}');
+          yield* updates.tick;
+          expect(out).toHaveLength(2);
+          hub.publish(
+            "freya/r1/r1-a/state/net/ack",
+            '{"op":"lines","ok":false,"error":"not signed by the release key"}',
+          );
+          yield* TestClock.adjust(IDLE_MS + 1);
+          yield* updates.tick;
+          expect(out).toHaveLength(2);
         }),
     ),
   );

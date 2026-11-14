@@ -25,6 +25,20 @@ export interface R1KwsPin {
   readonly threshold: number;
 }
 
+/**
+ * The Tessel's button sounds, a signed line pack of earcons (firmware contract: `cmd/lines/load`, `state/lines`). It
+ * replaces the whole line pack, so it only goes to a Tessel with no pack at all, on firmware that plays earcons.
+ */
+export interface R1LinesPin {
+  readonly version: number;
+  readonly url: string;
+  readonly sha256: string;
+  readonly size: number;
+  readonly sig: string;
+  /** The first firmware that plays earcons from a line pack. */
+  readonly minFirmware: string;
+}
+
 /** The largest pack the R1 takes. */
 export const R1_KWS_MAX_BYTES = 476 * 1024;
 
@@ -33,7 +47,11 @@ export const R1_FIRMWARE_MAX_BYTES = 2748 * 1024;
 
 /** Everything one release of Tessaya pins for its R1s. Null: that artifact is not updated. */
 export interface R1ReleaseManifest {
-  readonly artifacts: { readonly firmware: R1FirmwarePin | null; readonly kws: R1KwsPin | null };
+  readonly artifacts: {
+    readonly firmware: R1FirmwarePin | null;
+    readonly kws: R1KwsPin | null;
+    readonly lines?: R1LinesPin | null;
+  };
 }
 
 /** A manifest, or today's single-firmware pin read as one. */
@@ -56,6 +74,14 @@ export const R1_RELEASE: R1ReleaseManifest = {
       sha256: "af4cc208dd115f8ead84d310847e34c0867a488b45cf04139fd1ce7e44a937f3",
       sig: "ccd09770dcdab708de0ec94bf7d15d4c5d9576a6f2c0104fd69a1777b39eca6adbe58b2d98fd25e82129cdd9dc7e195a41357111affb128dcc602ccabd20741a",
       threshold: 0.4,
+    },
+    lines: {
+      version: 1,
+      url: "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-smp-0.3.123/tessel-tones-1.r1ln",
+      size: 277884,
+      sha256: "1e298e370f119db335a4d10c1a5276b128a05a9864ac2bf9bb29369eceb832ce",
+      sig: "9031d4564521d36f5aca9e7045f6ccca6e9ed558065919f1e1c0cf3ddd53af334d1185753826244f7a8ec7523ab312223e110d54d4af6d93deb73c31ecfdc8ea",
+      minFirmware: "smp-0.3.122",
     },
   },
 };
