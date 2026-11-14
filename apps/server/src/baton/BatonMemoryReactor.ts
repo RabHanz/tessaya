@@ -22,6 +22,8 @@ import { pullIfEnabled } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { BatonMemorySync } from "./BatonMemorySync.ts";
+import { BatonOneShot } from "./BatonOneShot.ts";
+import { learnFromJobReply } from "./BatonPlaybook.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 export class BatonMemoryReactor extends Context.Service<
@@ -132,12 +134,14 @@ export const layer = Layer.effect(
       | BatonMemoryService
       | BatonMemoryLearning
       | BatonMemorySync
+      | BatonOneShot
     >();
     return {
       start: Effect.fn("BatonMemoryReactor.start")(function* () {
         yield* forkParked(
           Stream.runForEach(engine.changedThreads, (threadId) =>
             learnFromJobThread(threadId).pipe(
+              Effect.andThen(learnFromJobReply(threadId)),
               Effect.provideContext(context),
               Effect.ignoreCause({ log: true }),
             ),

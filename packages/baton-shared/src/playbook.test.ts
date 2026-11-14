@@ -11,6 +11,7 @@ import {
   playbookText,
   refuseLesson,
   TRIAL_JOBS,
+  verdictOf,
   type Playbook,
   type PlaybookDelta,
 } from "./playbook.ts";
@@ -81,6 +82,7 @@ describe("the domain playbook", () => {
           by: "him",
           from: "him",
           seen: 0,
+          people: [],
         },
         {
           id: "L2",
@@ -91,6 +93,7 @@ describe("the domain playbook", () => {
           by: "outcome",
           from: "j",
           seen: 0,
+          people: [],
         },
       ],
     };
@@ -172,6 +175,45 @@ describe("the domain playbook", () => {
       helpful: 0,
       text: "Before April, food is labelled groceries; count both.",
     });
+  });
+});
+
+describe("outcomes that are not plain passes", () => {
+  it("lets an unchecked job teach but neither credit nor blame", () => {
+    let p = learnFromJob(
+      emptyPlaybook("books"),
+      job(1, false),
+      add("Void lines do not count."),
+    ).playbook;
+    p = learnFromJob(
+      p,
+      { ...job(2, false, ["L1"]), passed: null },
+      { ...none, harmful: ["L1"], add: ["Amounts are in pence."] },
+    ).playbook;
+    expect(p.lessons.map((l) => [l.id, l.helpful, l.harmful, l.proven])).toEqual([
+      ["L1", 0, 0, false],
+      ["L2", 0, 0, false],
+    ]);
+  });
+
+  it("proves a household lesson only after passes from two different people", () => {
+    let p = learnFromJob(
+      emptyPlaybook("home", true),
+      job(1, false),
+      add("Bins go out on Sunday night."),
+    ).playbook;
+    p = learnFromJob(p, { ...job(2, true, ["L1"]), person: "owner" }, none).playbook;
+    p = learnFromJob(p, { ...job(3, true, ["L1"]), person: "owner" }, none).playbook;
+    expect(p.lessons[0]).toMatchObject({ helpful: 2, proven: false, people: ["owner"] });
+    p = learnFromJob(p, { ...job(4, true, ["L1"]), person: "anna" }, none).playbook;
+    expect(p.lessons[0]).toMatchObject({ proven: true, people: ["owner", "anna"] });
+    expect(parsePlaybook(playbookText(p), "home")).toEqual(p);
+  });
+
+  it("reads his reply to a report as a verdict", () => {
+    expect(verdictOf("No, you missed the takeaway lines")).toBe(false);
+    expect(verdictOf("thanks, that's it")).toBe(true);
+    expect(verdictOf("Now do March too")).toBeNull();
   });
 });
 

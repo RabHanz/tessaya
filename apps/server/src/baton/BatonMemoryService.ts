@@ -161,6 +161,10 @@ export const SyncCredential = Context.Reference<string | null>(
   { defaultValue: () => null },
 );
 
+/** A skill (and a playbook) keeps its lines: its front matter and lesson lines are parsed back. Others are one line. */
+const wordingFor = (kind: MemoryKind, text: string) =>
+  kind === "skill" ? text.trim() : text.trim().replace(/\s+/g, " ");
+
 export class BatonMemoryService extends Context.Service<
   BatonMemoryService,
   {
@@ -425,9 +429,7 @@ export const make = Effect.gen(function* () {
   const add = Effect.fn("BatonMemoryService.add")(function* (draft: MemoryDraft) {
     const reason = refuseToStore(draft.text, privateTexts(), draft.kind);
     if (reason !== null) return yield* refuse(reason);
-    // A skill keeps its lines: its front matter is parsed back when a turn matches it.
-    const text =
-      draft.kind === "skill" ? draft.text.trim() : draft.text.trim().replace(/\s+/g, " ");
+    const text = wordingFor(draft.kind, draft.text);
     const scope = draft.scope ?? "global";
     const scopeRef = scope === "global" ? null : (draft.scopeRef ?? null);
     const at = yield* nowIso;
@@ -546,8 +548,9 @@ export const make = Effect.gen(function* () {
       `.pipe(Effect.orDie);
       return yield* requireItem(id);
     }
-    const text = patch.text === undefined ? current.text : patch.text.trim().replace(/\s+/g, " ");
-    const reason = refuseToStore(text, privateTexts());
+    const kind = patch.kind ?? current.kind;
+    const text = patch.text === undefined ? current.text : wordingFor(kind, patch.text);
+    const reason = refuseToStore(text, privateTexts(), kind);
     if (reason !== null) return yield* refuse(reason);
     if (text !== current.text || (patch.kind ?? current.kind) !== current.kind)
       yield* keepVersion(current, "him", why, at);
@@ -567,8 +570,8 @@ export const make = Effect.gen(function* () {
     by: "rewrite" | "consolidate" = "rewrite",
   ) {
     const prior = yield* requireItem(id);
-    const text = wording.trim().replace(/\s+/g, " ");
-    const reason = refuseToStore(text, privateTexts());
+    const text = wordingFor(prior.kind, wording);
+    const reason = refuseToStore(text, privateTexts(), prior.kind);
     if (reason !== null) return yield* refuse(reason);
     const at = yield* nowIso;
     if (text !== prior.text)

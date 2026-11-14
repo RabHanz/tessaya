@@ -14,6 +14,7 @@ export interface Run {
   readonly costUsd: number;
   readonly ms: number;
   readonly ok: boolean;
+  readonly spawned: boolean;
 }
 
 const summarize = (name: string, input: Record<string, unknown>): string => {
@@ -21,7 +22,7 @@ const summarize = (name: string, input: Record<string, unknown>): string => {
   return `${name}(${String(v).replace(/\s+/g, " ").slice(0, 160)})`;
 };
 
-export const runClaude = (input: {
+const runOnce = (input: {
   readonly cwd: string;
   readonly prompt: string;
   readonly system?: string;
@@ -104,9 +105,40 @@ export const runClaude = (input: {
       }
     });
     const timer = setTimeout(() => child.kill("SIGTERM"), 6 * 60_000);
+    // The CLI updates itself in place; a spawn in that moment finds no binary, so the run says so and is retried.
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve({
+        steps,
+        results,
+        final: "",
+        tokens: 0,
+        costUsd: 0,
+        ms: 0,
+        ok: false,
+        spawned: false,
+      });
+    });
     child.on("close", () => {
       clearTimeout(timer);
       if (buf.trim() !== "") line(buf);
-      resolve({ steps, results, final, tokens, costUsd, ms: Date.now() - started, ok });
+      resolve({
+        steps,
+        results,
+        final,
+        tokens,
+        costUsd,
+        ms: Date.now() - started,
+        ok,
+        spawned: true,
+      });
     });
   });
+
+export const runClaude = async (input: Parameters<typeof runOnce>[0]): Promise<Run> => {
+  for (let tries = 1; ; tries++) {
+    const run = await runOnce(input);
+    if (run.spawned || tries === 5) return run;
+    await new Promise((wake) => setTimeout(wake, 15_000));
+  }
+};

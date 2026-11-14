@@ -25,12 +25,12 @@ export interface Spend {
 export interface Arm {
   readonly id: string;
   /** Added to the worker's system prompt. */
-  readonly system: (job: Job) => string;
+  readonly system: (job: Job) => string | Promise<string>;
   /** Files the arm puts in the job's folder before it starts (a skills folder). */
   readonly prepare: (job: Job, work: string) => void;
   readonly learn: (job: Job, run: Run, outcome: Outcome, work: string) => Promise<Spend>;
   /** Everything the arm would show a later job, for the poisoning check. */
-  readonly memoryText: () => string;
+  readonly memoryText: () => string | Promise<string>;
 }
 
 const nothing: Spend = { tokens: 0, costUsd: 0 };
@@ -77,6 +77,7 @@ export const tessaya = (model: string, cwd: string): Arm & { readonly held: () =
           passed: outcome.pass,
           cited,
           his: `${job.goal}\n${outcome.feedback}`,
+          correction: outcome.feedback,
           planted: run.results.filter(instructionLike),
         },
         parseDelta(wrote.final),

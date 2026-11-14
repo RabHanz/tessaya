@@ -144,6 +144,10 @@ layer("BatonMemoryService", (it) => {
           sourceRef: "skill:invoices",
         });
         assert.strictEqual(skill.text, text);
+        // Reworded by him or by a pass (a playbook after a job), it still keeps its lines.
+        const more = `${text}\n41. close the export window`;
+        assert.strictEqual((yield* memory.rewrite(skill.id, more)).text, more);
+        assert.strictEqual((yield* memory.edit(skill.id, { text: `${more}\n` })).text, more);
         yield* memory.add({
           kind: "fact",
           text: "His invoices go out on the first",

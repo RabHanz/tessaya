@@ -75,6 +75,7 @@ import { modelOf, roleFor, type Brain } from "@t3tools/baton-shared/osPack";
 import { assignJob, templateBrief, type JobTemplate } from "@t3tools/baton-shared/jobTemplates";
 import { BatonJobService } from "./BatonJobService.ts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
+import { jobPlaybook } from "./BatonPlaybook.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -184,18 +185,27 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
   const own = readPack(userdata).personas.find(
     (p) => p.id === options.role && !p.lead && p.private !== true,
   );
+  const projectTitle = (yield* engine.projects).find((p) => p.id === input.projectId)?.title;
   const remembered = yield* (yield* BatonMemoryService)
     .recall({
       text: input.goal,
       budgetTokens: 300,
       ...(own === undefined ? {} : { agent: own.id }),
-      scopeRef: (yield* engine.projects).find((p) => p.id === input.projectId)?.title ?? undefined,
+      scopeRef: projectTitle ?? undefined,
     })
     .pipe(
       Effect.provideService(MemoryViewer, "client"),
       Effect.timeout("2 seconds"),
       Effect.catchCause(() => Effect.succeed({ block: "" })),
     );
+  // What earlier jobs in this project taught (LEARNING-LOOP-DESIGN §3); slow or missing memory never holds a job.
+  const playbook =
+    projectTitle === undefined
+      ? ""
+      : yield* jobPlaybook(projectTitle).pipe(
+          Effect.timeout("2 seconds"),
+          Effect.catchCause(() => Effect.succeed("")),
+        );
   const launched = yield* engine.launchThread({
     tag: "job",
     threadId,
@@ -209,7 +219,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
     text: workerFirstMessage({
       verbatim: input.goal,
       frame: frame(userdata, options.role, options.template),
-      memory: remembered.block,
+      memory: [remembered.block, playbook].filter((b) => b !== "").join("\n\n"),
       ...(options.agreed === true ? { agreed: true } : {}),
       permissionsSummary: permissionsSummary(terms.permissions, terms.limits, terms.grants),
     }),
