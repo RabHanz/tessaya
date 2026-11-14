@@ -24,6 +24,8 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistantService.ts";
+import { DeviceRegistry } from "../../../home/DeviceRegistry.ts";
+import { TurnOrigin } from "../../../baton/TessayaTurn.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { DESK_REPLAY_CLIENT, ROOM_CLIENT, withCounts } from "../home/handlers.ts";
 import * as TessayaHandlers from "./handlers.ts";
@@ -587,6 +589,43 @@ it.effect(
         { who: "Tessaya", surface: "assistant", dryRun: true },
         { who: "an outside agent", surface: "agent" },
       ]);
+    }),
+);
+
+it.effect(
+  "with no room named, the house is searched in the room of the body her vessel sits in first, then everywhere",
+  () =>
+    Effect.gen(function* () {
+      const asked: Array<string | undefined> = [];
+      const home = {
+        find: (input: { readonly area?: string; readonly text?: string }) =>
+          Effect.sync(() => {
+            asked.push(input.area);
+            return input.area === "kitchen" && input.text === "fan"
+              ? []
+              : [{ entityId: "light.kitchen", name: "Kitchen light", area: "Kitchen" }];
+          }),
+      } as unknown as HomeAssistantService["Service"];
+      const registry = {
+        value: (id: string, itemId: string) =>
+          Effect.succeed(id === "r1-desk" && itemId === "body.room" ? "kitchen" : null),
+      } as unknown as DeviceRegistry["Service"];
+      const runtime = Context.mergeAll(
+        Context.make(HomeAssistantService, home),
+        Context.make(DeviceRegistry, registry),
+      ) as never;
+      const fromDock = (input: unknown) =>
+        callTool("room", runtime, "home_find", input).pipe(
+          Effect.provideService(TurnOrigin, { kind: "device", id: "r1-desk", label: "R1" }),
+        );
+      yield* fromDock({ text: "light" });
+      expect(asked).toEqual(["kitchen"]);
+      // Nothing like it in the kitchen: the whole house.
+      yield* fromDock({ text: "fan" });
+      expect(asked).toEqual(["kitchen", "kitchen", undefined]);
+      // A room he names wins.
+      yield* fromDock({ text: "light", area: "bedroom" });
+      expect(asked.at(-1)).toBe("bedroom");
     }),
 );
 

@@ -12,6 +12,8 @@ import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import * as HomeDevices from "./HomeDevices.ts";
 import { R1Reach } from "./R1Reach.ts";
+import { VesselBodies, layer as VesselBodiesLayer } from "./VesselBodies.ts";
+import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 
 import { VoiceForgets, layer as VoiceForgetsLayer } from "../baton/VoiceForgets.ts";
 import { MemberPreferences, layer as MemberPreferencesLayer } from "../baton/MemberPreferences.ts";
@@ -79,12 +81,21 @@ const setup = () => {
       }),
   });
   const layer = HomeDevices.layer.pipe(
+    Layer.provideMerge(bodiesLayer),
     Layer.provideMerge(Layer.mergeAll(broker, home, inboxLayer, recordLayer, registryLayer, reach)),
     Layer.provideMerge(BatonDatabaseMemory),
   );
   const topics = () => sent.map((s) => s.topic);
   return { sent, scenes, topics, layer, record: () => record, away: () => away };
 };
+
+const bodiesLayer = VesselBodiesLayer.pipe(
+  Layer.provide(
+    Layer.mock(ServerSecretStore)({
+      getOrCreateRandom: () => Effect.succeed(new Uint8Array(32).fill(7)),
+    }),
+  ),
+);
 
 const me = { who: "the Director", surface: "settings" } as const;
 const agent = { who: "an agent in T3", surface: "agent" } as const;
@@ -548,6 +559,34 @@ it.effect("turns the R1's screen as asked and shows what it reports back", () =>
     assert.deepStrictEqual(yield* view(), { rotate: 180, mode: "auto", note: null });
     yield* devices.receive(`${root}/state/display`, '{"ok":false,"reason":"not standing"}');
     assert.deepStrictEqual(yield* view(), { rotate: 180, mode: "auto", note: "not standing" });
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("in a body, his own volume change is kept for that body, and a rule's is not", () => {
+  const { layer } = setup();
+  return Effect.gen(function* () {
+    const devices = yield* HomeDevices.HomeDevices;
+    const bodies = yield* VesselBodies;
+    yield* devices.tick;
+    yield* devices.receive(`${root}/state/online`, "1");
+    yield* bodies.setLinksHost("tags.example.com");
+    const mint = yield* bodies.mint({ uid: "04a1b2c3d4e5f6", type: "dock", name: "Kitchen dock" });
+    yield* devices.receive(
+      `${root}/state/item/body.tags`,
+      JSON.stringify({ value: [{ uid: "04a1b2c3d4e5f6", url: mint.url }] }),
+    );
+    yield* bodies.settle(ID);
+    const rule = { who: 'rule "night dim"', surface: "assistant" } as const;
+    assert.notInclude(
+      (yield* devices.command(ID, { op: "volume", to: "down" }, rule)).line,
+      "Kept",
+    );
+    assert.deepStrictEqual((yield* bodies.view).bodies[0]!.values, {});
+    assert.include(
+      (yield* devices.command(ID, { op: "volume", to: "max" }, me)).line,
+      "Kept for the Kitchen dock.",
+    );
+    assert.deepStrictEqual((yield* bodies.view).bodies[0]!.values, { "audio.volume": 100 });
   }).pipe(Effect.provide(layer));
 });
 

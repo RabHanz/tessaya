@@ -169,7 +169,7 @@ function HardwareSections({
   const [busy, setBusy] = useState(false);
 
   // This phone joins the device registry while he looks at his hardware (a stub until the phone companion lands).
-  const publishPhone = () => {
+  const publishPhone = (extra: ReadonlyArray<{ itemId: string; value: unknown }> = []) => {
     const facts = {
       installId: `${Device.modelName ?? ""}${Device.deviceName ?? ""}`,
       model: Device.modelName ?? null,
@@ -177,12 +177,16 @@ function HardwareSections({
       motion: Device.isDevice,
     };
     const manifest = phoneManifest(facts);
-    void devicesCall({
+    return devicesCall({
       environmentId,
       input: {
         kind: "vessel",
         op: "publish",
-        args: { deviceId: manifest.deviceId, manifest, values: phoneValues(facts) },
+        args: {
+          deviceId: manifest.deviceId,
+          manifest,
+          values: [...phoneValues(facts), ...extra],
+        },
       },
     });
   };
@@ -209,7 +213,7 @@ function HardwareSections({
       );
   };
   const refresh = async () => {
-    publishPhone();
+    void publishPhone();
     const result = await devicesCall({
       environmentId,
       input: { kind: "read", op: "list", args: {} },
@@ -344,6 +348,14 @@ function HardwareSections({
         call={async (kind, op, args) => {
           const result = await devicesCall({ environmentId, input: { kind, op, args } });
           return result._tag === "Success" ? result.value : null;
+        }}
+        seat={async (tags) => {
+          const result = await publishPhone([{ itemId: "body.tags", value: tags }]);
+          return result._tag !== "Success" || !result.value.ok
+            ? "Couldn’t reach this environment. Try again."
+            : tags.length === 0
+              ? "This phone is out of its body."
+              : "Seated. If the tag is one of yours, this phone takes that body's settings.";
         }}
       />
 

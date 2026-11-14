@@ -56,6 +56,16 @@ export const phoneManifest = (facts: PhoneFacts): DeviceManifest => ({
       group: "sensors",
       description: "whether the phone has motion sensors Tessaya can use",
     },
+    {
+      id: "body.tags",
+      label: "Body tags",
+      type: "list",
+      access: "read",
+      safety: "free",
+      report: "on-change",
+      group: "body",
+      description: "the body tag the phone was last seated on, read by its own NFC",
+    },
   ],
 });
 
