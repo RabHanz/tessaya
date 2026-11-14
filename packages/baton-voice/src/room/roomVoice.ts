@@ -1391,9 +1391,21 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       if (over && raw !== "" && !echoed && intent === null && rawCalled === null) {
-        kept?.control.abort();
-        dropped(turn, "over her voice and not a stop", raw);
-        return;
+        // With a household enrolled, only a household voice stops her (the voice check while she plays). Unenrolled, her
+        // own words back or an "oh" over her is still not a new request ("yes" may answer her, so it is not dropped).
+        if (
+          deps.members?.() === true ||
+          isOwnVoice(raw, herLines) ||
+          /^(?:oh|ah|um|uh|hm+|mm+)[.!?,]*$/i.test(raw.trim())
+        ) {
+          kept?.control.abort();
+          dropped(turn, "over her voice and not a stop", raw);
+          return;
+        }
+        // Nobody enrolled: the person who woke her is answered over her voice, never a glance (14 Nov, 18:57).
+        if (speaking()) interrupt();
+        bargedIn = true;
+        deps.log(`[${id}] turn ${turn}: over her voice, nobody enrolled; she stopped to answer`);
       }
       // He (or the R1's S2 or a tap) stopped her while this turn was on its way: it is not answered.
       if (stopsAt !== stops) {
