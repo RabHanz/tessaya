@@ -7,10 +7,10 @@ import * as ServerConfig from "../config.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
-import { dailyEpisode } from "./BatonMemoryEpisode.ts";
+import { dailyEpisode, personaDayEpisodes } from "./BatonMemoryEpisode.ts";
 import { layer as learningLayer } from "./BatonMemoryLearning.ts";
 import { episodeFromSession } from "./BatonMemoryReactor.ts";
-import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
+import { BatonMemoryService, MemoryViewer, layer as memoryLayer } from "./BatonMemoryService.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
 import { WorkSessionService, layer as workSessionLayer } from "./WorkSessionService.ts";
 
@@ -61,6 +61,55 @@ layer("dailyEpisode", (it) => {
         // A restart the same day writes no second episode for the 2nd.
         assert.isNull(yield* dailyEpisode(2 * DAY + 10 * 3_600_000));
       }),
+  );
+});
+
+layer("personaDayEpisodes (CS7)", (it) => {
+  it.effect(
+    "one episode per persona's day, counting every conversation but quoting none walled or private",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* BatonMemoryService;
+        const DAY = 86_400_000;
+        const said = (persona: string, n: number, text: string, extra = {}) =>
+          memory.add({
+            kind: "episode",
+            text: `Thursday, 1 January 1970, with Freya: ${text}`,
+            source: "thread",
+            sourceRef: `conversation:${persona}:${n}-${n + 1}`,
+            ...extra,
+          });
+        yield* said("companion", 1, "He planned a ten kilometre run for Saturday morning");
+        yield* said("companion", 3, "They chose a quieter bedtime playlist for the week");
+        yield* said("companion", 5, "The merger numbers for the walled client deal", {
+          scope: "project",
+          scopeRef: "acme",
+        });
+        yield* said("companion", 7, "Sara told her about the surprise party plans", {
+          persona: "companion",
+          visibility: "persona",
+          speaker: "sara",
+        });
+        // One conversation is already its own episode: no day for it.
+        yield* said("research", 1, "Three sources on standing desks were compared");
+
+        const [day, ...rest] = yield* personaDayEpisodes(DAY + 9 * 3_600_000);
+        assert.lengthOf(rest, 0);
+        assert.strictEqual(day?.persona, "companion");
+        assert.strictEqual(day?.text.slice(0, 41), "1970-01-01, Freya's day: 4 conversations.");
+        assert.include(day?.text ?? "", "ten kilometre run");
+        assert.include(day?.text ?? "", "bedtime playlist");
+        // Leak test: nothing of a walled or private conversation reaches a line every reader may recall.
+        for (const word of ["merger", "acme", "Sara", "surprise"])
+          assert.notInclude(day?.text ?? "", word);
+        assert.strictEqual(day?.visibility, "household");
+        // A member's or guest's view (the client's) reads the day, and it is the same safe line.
+        const seen = yield* memory.list({ kinds: ["episode"] });
+        assert.strictEqual(seen.find((e) => e.id === day?.id)?.text, day?.text);
+        assert.isUndefined(seen.find((e) => e.text.includes("surprise")));
+        // Once a day, even after a restart.
+        assert.lengthOf(yield* personaDayEpisodes(DAY + 10 * 3_600_000), 0);
+      }).pipe(Effect.provideService(MemoryViewer, "client")),
   );
 });
 

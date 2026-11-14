@@ -76,6 +76,21 @@
       "source": "thread",
       "persona": "sebastian",
       "visibility": "persona"
+    },
+    {
+      "key": "pd-freya-day",
+      "kind": "episode",
+      "text": "2026-11-13, Freya's day: 3 conversations. Talked about: He planned a ten kilometre run for Saturday morning; They chose a quieter bedtime playlist for the week",
+      "source": "thread",
+      "sourceRef": "day:2026-11-13:companion",
+      "persona": "companion"
+    },
+    {
+      "key": "pd-sebastian-convo",
+      "kind": "episode",
+      "text": "Friday, 13 November 2026, with Sebastian: They drafted a post about the shop's opening hours",
+      "source": "thread",
+      "sourceRef": "conversation:alter-ego:4-9"
     }
   ],
   "cases": [
@@ -109,7 +124,12 @@
       "query": "what is Lumen's price",
       "present": ["pe-reading-pricing"]
     },
-    { "recall": true, "group": "people", "query": "who is Maya", "top": "pe-maya-sister" },
+    {
+      "recall": true,
+      "group": "people",
+      "query": "who is Maya",
+      "top": "pe-maya-sister"
+    },
     {
       "recall": true,
       "group": "persona",
@@ -137,6 +157,21 @@
       "agent": "alfred",
       "query": "how many sources when researching",
       "absent": ["ps-sebastian-sources"]
+    },
+    {
+      "recall": true,
+      "group": "persona-day",
+      "agent": "companion",
+      "query": "what did we talk about yesterday about my run",
+      "present": ["pd-freya-day"]
+    },
+    {
+      "recall": true,
+      "group": "persona-day",
+      "agent": "companion",
+      "query": "which playlist did we pick for bedtime",
+      "present": ["pd-freya-day"],
+      "absent": ["pd-sebastian-convo"]
     }
   ]
 }
