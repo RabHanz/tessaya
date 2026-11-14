@@ -11,6 +11,7 @@ import * as Electron from "electron";
 import { isCompanionWindow } from "./lastAppWindow.ts";
 import { captureDraftImageDrops } from "./health/draftImageDropLog.ts";
 import { installR1Bluetooth } from "./bluetooth/r1Pairing.ts";
+import { installR1flash } from "./devices/r1flash.ts";
 import { rescueMainWindow } from "./mainWindowRescue.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -135,6 +136,8 @@ export const startBatonDesktop = Effect.gen(function* () {
     );
     // Add an R1 over Bluetooth: the device a page asks for, and the passkey he confirmed.
     installR1Bluetooth(Electron.webContents.getAllWebContents());
+    // Repair an R1 by cable: the Hardware page drives the r1flash tool.
+    installR1flash({ platform: environment.platform, arch: hostArchitecture });
     markPhase("start-guard:begin");
     // A version that fails to start twice is remembered, never installed again by itself, and he is told what worked.
     const guardPath = NodePath.join(environment.stateDir, "baton-start-guard.json");

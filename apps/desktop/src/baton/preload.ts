@@ -92,6 +92,21 @@ export function exposeBatonDesktopBridge(): void {
     replyComposerDictation: (reply) =>
       ipcRenderer.send(Channels.BATON_COMPOSER_DICTATION_REPLY_CHANNEL, reply),
     openTessaya: (link) => ipcRenderer.send(Channels.BATON_OPEN_TESSAYA_CHANNEL, link ?? ""),
+    r1flash: async (request, onEvent) => {
+      const listener = (_event: Electron.IpcRendererEvent, message: unknown) => {
+        if (typeof message === "object" && message !== null)
+          onEvent(message as Record<string, unknown>);
+      };
+      // One cable job at a time, so every event while this call runs is this job's.
+      ipcRenderer.on(Channels.R1FLASH_EVENT_CHANNEL, listener);
+      try {
+        return await ipcRenderer.invoke(Channels.R1FLASH_RUN_CHANNEL, request);
+      } finally {
+        ipcRenderer.removeListener(Channels.R1FLASH_EVENT_CHANNEL, listener);
+      }
+    },
+    r1flashInput: (line) => ipcRenderer.send(Channels.R1FLASH_INPUT_CHANNEL, line),
+    r1flashStop: () => ipcRenderer.send(Channels.R1FLASH_STOP_CHANNEL),
   };
   contextBridge.exposeInMainWorld("batonDesktopBridge", bridge);
 }
