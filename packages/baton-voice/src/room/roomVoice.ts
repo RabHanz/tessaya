@@ -83,7 +83,56 @@ export interface RoomPersona {
   readonly voice: string;
   /** The look she gives when she first recognises him this session; "happy" when the persona has none. */
   readonly cueMood?: string;
+  /** Its look on the R1's eyes (`cmd/eye/persona`); without one, the generic look. */
+  readonly eyes?: string;
 }
+
+/** What a body needs of a persona record, from her server's roster or the default pack. */
+export interface ServedPersona {
+  readonly id: string;
+  readonly name: string;
+  readonly wake: string | null;
+  readonly voice: string;
+  readonly lead: boolean;
+  readonly eyes?: string;
+}
+
+/** The room's roster from her server's personas: the lead first, each called by its wake word or its name. */
+export const roomPersonas = (personas: ReadonlyArray<ServedPersona>): RoomPersona[] =>
+  [...personas]
+    .sort((a, b) => Number(b.lead) - Number(a.lead))
+    .map((p) => ({
+      id: p.id,
+      name: p.wake ?? p.name,
+      voice: p.voice,
+      ...(p.eyes === undefined ? {} : { eyes: p.eyes }),
+    }));
+
+/** `GET .../personas` as her server answered it, each record checked; null when nothing usable came back. */
+export const servedRoster = (body: unknown): RoomPersona[] | null => {
+  const list = (body as { personas?: unknown } | null)?.personas;
+  if (!Array.isArray(list)) return null;
+  const text = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v : undefined);
+  const ok = list.flatMap((p: Record<string, unknown>): ServedPersona[] => {
+    const [id, name, voice] = [text(p?.["id"]), text(p?.["name"]), text(p?.["voice"])];
+    if (id === undefined || name === undefined || voice === undefined) return [];
+    const eyes = text(p["eyes"]);
+    return [
+      {
+        id,
+        name,
+        voice,
+        wake: text(p["wake"]) ?? null,
+        lead: p["lead"] === true,
+        ...(eyes ? { eyes } : {}),
+      },
+    ];
+  });
+  return ok.length === 0 ? null : roomPersonas(ok);
+};
+
+/** The look a persona without its own shows on the R1. */
+export const GENERIC_EYES = "generic";
 
 export interface RecogniserTurn {
   readonly feed: (pcm: Int16Array) => void;
@@ -334,12 +383,8 @@ export const ROOM_CONFIG: RoomConfig = {
   acknowledge: "voice",
   // shortcut: her name only wakes her while the R1 streams; with the firmware's own wake word off, S2 after this.
   idleStopMs: 15 * 60_000,
-  // shortcut: the default pack's personas and voices (his picks); a pack he edits on the laptop is not read here.
-  personas: DEFAULT_OS_PACK.personas.map((p) => ({
-    id: p.id,
-    name: p.wake ?? p.name,
-    voice: p.voice,
-  })),
+  // Until her server's roster arrives (main.ts reads it, and `personas` swaps it in for the next session).
+  personas: roomPersonas(DEFAULT_OS_PACK.personas),
   sideMs: 250,
   // His room: guests are heard only when he lets them; until he enrols through the R1 every voice is unverified.
   gate: {
@@ -443,6 +488,8 @@ const ENROL_INTRO = "Let's learn your voice. Read the sentences on your screen, 
 const CARD_MS = 250;
 
 export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG) => {
+  /** Her server's roster; a session keeps the one it opened with. */
+  let roster = config.personas;
   const topic = (id: string, tail: string) => `freya/r1/${id}/${tail}`;
 
   const openSession = (id: string) => {
@@ -535,7 +582,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       herLines = [...herLines, text].slice(-6);
     };
     let asleep = false;
-    const lead = config.personas[0];
+    const personas = roster;
+    const lead = personas[0];
     /** Who answers: the one he last called, until the window lapses. */
     let persona = lead;
     const history: Array<{ role: "user" | "assistant"; content: string }> = [];
@@ -543,7 +591,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const speaking = () => reply !== null || deps.now() < playUntil + config.downDelayMs;
     /** What the voice reads: his own pronunciations for this R1 (and the built-in ones), never the text kept. */
     const spoken = (text: string) => pronounce(text, pronunciations.get(id) ?? {});
-    const names = config.personas.map((p) => p.name);
+    const names = personas.map((p) => p.name);
 
     /**
      * Her own voice coming back through the mic, not his. While she is still playing (firmware that keeps the mic open,
@@ -600,7 +648,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       prefsFor = member;
       const prefs = prefsOf.get(member);
       memberVoice = prefs?.voice ?? null;
-      const wanted = config.personas.find(
+      const wanted = personas.find(
         (p) =>
           prefs?.persona !== undefined &&
           (p.id === prefs.persona || p.name.toLowerCase() === prefs.persona.toLowerCase()),
@@ -704,7 +752,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (stopIntent(words, config.stopPhrases) !== null) return;
       const called = calledName(words, names);
       if (!addressed(words, called, turnStartedAt)) return;
-      const who = config.personas.find((p) => p.name === called) ?? persona;
+      const who = personas.find((p) => p.name === called) ?? persona;
       const via: Tessaya["via"] =
         called !== null
           ? "name"
@@ -961,7 +1009,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
     const gesture = (name: string) => eye("cmd/eye/gesture", { name });
     /** The persona's own eyes (the eye lane's looks; firmware without them ignores the topic). */
-    const look = () => eye("cmd/eye/persona", { name: (persona?.name ?? "").toLowerCase() });
+    const look = () => eye("cmd/eye/persona", { name: persona?.eyes ?? GENERIC_EYES });
 
     /** Her last "I'm here", so it is never the same twice running, and when it was. */
     // Kept per R1 across sessions: every S2 or wake opens a new one (17:23 replay: "Yes?" twice running).
@@ -1118,7 +1166,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const ask = async (words: string) => {
         const called = calledName(
           words,
-          config.personas.map((p) => p.name),
+          personas.map((p) => p.name),
         );
         if (!addressed(words, called, startedAt) || bench.has(id)) return null;
         // A guess waits for who is speaking (it may only answer whom the final turn would answer), not for the mood.
@@ -1126,7 +1174,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const affect = affectNow;
         const identity = speaker ?? UNVERIFIED(deps.now());
         if (!admits(identity, config.gate, "turn")) return null;
-        const who = config.personas.find((p) => p.name === called) ?? persona;
+        const who = personas.find((p) => p.name === called) ?? persona;
         const tessaya = envelope(
           words,
           who,
@@ -1413,7 +1461,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (Number.isFinite(level)) hisLevel = level;
       }
       const via = viaOf(called, startedAt);
-      const named = config.personas.find((p) => p.name === called);
+      const named = personas.find((p) => p.name === called);
       const switched = named !== undefined && named !== persona;
       if (switched) {
         persona = named;
@@ -1992,8 +2040,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const wanted = name?.toLowerCase();
         const next =
           wanted === undefined
-            ? config.personas[(config.personas.indexOf(persona!) + 1) % config.personas.length]
-            : config.personas.find(
+            ? personas[(personas.indexOf(persona!) + 1) % personas.length]
+            : personas.find(
                 (p) => p.name.toLowerCase() === wanted || p.id.toLowerCase() === wanted,
               );
         if (next === undefined) return;
@@ -2027,7 +2075,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       heardName: (identity: SpeakerIdentity, ms: number) => hear(identity, ms),
       call: (name: string, level = Number.NEGATIVE_INFINITY) => {
         if (Number.isFinite(level)) hisLevel = level;
-        const named = config.personas.find((p) => p.name === name);
+        // Her name as heard, or the persona id a trained wake word belongs to.
+        const named = personas.find((p) => p.name === name || p.id === name);
         if (named !== undefined && named !== persona) {
           persona = named;
           look();
@@ -2178,6 +2227,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   };
 
   return {
+    /** Her server's roster changed: every session opened from now on uses it. */
+    personas: (next: ReadonlyArray<RoomPersona>) => {
+      if (next.length > 0) roster = next;
+    },
     /** One MQTT message from the broker. */
     message: (t: string, payload: Uint8Array) => {
       const m = /^freya\/r1\/([^/]+)\/(.+)$/.exec(t);

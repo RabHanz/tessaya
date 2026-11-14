@@ -1186,7 +1186,16 @@ function KeysSection({
   const [threadId, setThreadId] = useState<string | null>(null);
   const current = d.keys[slot];
   const picked = choice ?? (current === undefined ? "device:none" : keyChoiceOf(current));
-  const choices = keyChoices(slot);
+  const listPersonas = useAtomCommand(batonWorkSessions.personasList, { reportFailure: false });
+  const [personas, setPersonas] = useState<ReadonlyArray<string> | undefined>(undefined);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads her server's personas once per environment
+  useEffect(() => {
+    void listPersonas({ environmentId, input: {} }).then((r) => {
+      if (r._tag === "Success") setPersonas(r.value.personas.map((p) => p.name));
+    });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- one read per environment; the command is stable
+  }, [environmentId]);
+  const choices = keyChoices(slot, personas);
   const threads = useVisibleThreadShells(picked.startsWith("thread:"))
     .filter((t) => t.environmentId === environmentId)
     .slice(0, 40);

@@ -31,6 +31,8 @@ describe("whether he was talking to her", () => {
     expect(heard("To say uh")).toBe("Tessaya");
     expect(heard("To say uh, can you hear me?")).toBe("Tessaya");
     expect(heard("Can you switch back to Teseah?")).toBe("Tessaya");
+    expect(heard("Tessaya, switch to Alfred.")).toBe("Alfred");
+    expect(calledName("Tessaya, let me talk to Nova", [...NAMES, "Nova"])).toBe("Nova");
     for (const t of [
       "Did you hear me?",
       "This is a test of Tessa dictation.",

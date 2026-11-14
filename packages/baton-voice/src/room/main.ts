@@ -31,7 +31,14 @@ import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "@t3tools/baton-shared/mqtt";
 import { noteTime, pickRecogniser, turnAcross, type RecogniserState } from "./recognisers.ts";
 import { createProfileSync, parseShared } from "./profileSync.ts";
-import { createRoomVoice, ROOM_CONFIG, type RecogniserTurn, type RoomDeps } from "./roomVoice.ts";
+import {
+  createRoomVoice,
+  ROOM_CONFIG,
+  servedRoster,
+  type RecogniserTurn,
+  type RoomDeps,
+  type RoomPersona,
+} from "./roomVoice.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
@@ -205,7 +212,7 @@ const recognisers = () => {
 const CALIBRATION =
   "Good morning. The office fan is on now, and the lamp in the study is off. Shall I set a timer for twenty minutes?";
 
-const startPocket = async () => {
+const startPocket = async (voices: ReadonlyArray<string>) => {
   const dir = NodePath.join(models, "pocket", "english");
   const port = Number(env("R1_POCKET_PORT", "58232"));
   const proc = NodeChildProcess.spawn(
@@ -249,26 +256,33 @@ const startPocket = async () => {
   // The same fetch measures each voice, so every persona is played at one loudness (R1_VOICE_LUFS, default -16).
   const target = Number(process.env["R1_VOICE_LUFS"] ?? "-16");
   const gains = new Map<string, number>();
-  void (async () => {
-    for (const p of ROOM_CONFIG.personas) {
+  const warmed = new Set<string>();
+  const warm = async (list: ReadonlyArray<string>) => {
+    for (const voice of list) {
+      if (warmed.has(voice)) continue;
+      warmed.add(voice);
       const at = Date.now();
-      await tts(CALIBRATION, AbortSignal.timeout(60_000), p.voice).then(
+      await tts(CALIBRATION, AbortSignal.timeout(60_000), voice).then(
         async (r) => {
           const pcm = createResampler24to16()(
             createWavReader()(new Uint8Array(await r.arrayBuffer())),
           );
           const lufs = integratedLufs(pcm, 16_000);
           const gain = loudnessGain(lufs, target);
-          gains.set(p.voice, gain);
+          gains.set(voice, gain);
           log(
-            `voice ${p.voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB, now ${integratedLufs(withGain(pcm, gain), 16_000).toFixed(1)} LUFS (target ${target})`,
+            `voice ${voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB, now ${integratedLufs(withGain(pcm, gain), 16_000).toFixed(1)} LUFS (target ${target})`,
           );
         },
-        (e: unknown) => log(`voice ${p.voice} not ready: ${String(e)}`),
+        (e: unknown) => {
+          warmed.delete(voice);
+          log(`voice ${voice} not ready: ${String(e)}`);
+        },
       );
     }
-  })();
-  return async function* (text: string, signal: AbortSignal, voice?: string) {
+  };
+  void warm(voices);
+  const speak = async function* (text: string, signal: AbortSignal, voice?: string) {
     const res = await tts(text, signal, voice);
     if (!res.ok || res.body === null) throw new Error(`voice answered ${res.status}`);
     const read = createWavReader();
@@ -278,6 +292,24 @@ const startPocket = async () => {
       if (pcm.length > 0) yield withGain(pcm, gains.get(voice ?? "") ?? 1);
     }
   };
+  return { speak, warm };
+};
+
+/**
+ * Her server's personas on the R1's device key (SPINE-UNIFY §10, P2): his names, voices and looks reach the room.
+ * Null when her server is older, unreachable or `R1_SERVED_PERSONAS=0`; the loop keeps what it has.
+ */
+const servedPersonas = async (url: string, key: string): Promise<RoomPersona[] | null> => {
+  if (process.env["R1_SERVED_PERSONAS"] === "0") return null;
+  try {
+    const res = await fetch(url.replace(/\/chat\/completions$/, "/personas"), {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    return res.ok ? servedRoster(await res.json()) : null;
+  } catch {
+    return null;
+  }
 };
 
 /**
@@ -458,8 +490,10 @@ const main = async () => {
   sharedProfiles.setRefining(process.env["R1_VOICE_REFINE"] !== "0");
   const policy = { ...CAMPLUS_POLICY, model: SPEAKER_MODEL_ID };
   log("starting: models loaded");
-  const speak = await startPocket();
   const deviceKey = secret("R1_DEVICE_KEY_FILE");
+  let roster = (await servedPersonas(env("R1_BRAIN_URL"), deviceKey)) ?? ROOM_CONFIG.personas;
+  log(`personas: ${roster.map((p) => `${p.name} (${p.voice})`).join(", ")}`);
+  const { speak, warm } = await startPocket(roster.map((p) => p.voice));
   /** A voice profile made here, to her server's door on the device key; the home keeps the copy with more samples. */
   const uploadProfile = (p: SpeakerProfile, fresh: boolean) =>
     void fetch(env("R1_BRAIN_URL").replace(/\/chat\/completions$/, "/voice/profile"), {
@@ -587,9 +621,10 @@ const main = async () => {
   );
   // His wake words as the desktop ships them (wakeDefaults.ts); a word whose model is not on this host is skipped.
   const words = [
-    { word: "Tessaya", file: "tessaya.onnx", threshold: 0.99 },
-    { word: "Alfred", file: "alfred.onnx", threshold: 0.95 },
-    { word: "Freya", file: "freya.onnx", threshold: 0.95 },
+    // Each trained word belongs to a persona's id, so a renamed persona keeps its wake word.
+    { word: "Tessaya", persona: "executive", file: "tessaya.onnx", threshold: 0.99 },
+    { word: "Alfred", persona: "engineering", file: "alfred.onnx", threshold: 0.95 },
+    { word: "Freya", persona: "operations", file: "freya.onnx", threshold: 0.95 },
   ].filter((w) => NodeFS.existsSync(model(w.file)));
   const confirmWith = recognisers();
   const wake =
@@ -612,7 +647,14 @@ const main = async () => {
             turn.feed(pcm);
             return turn.finish();
           },
-          onWake: (id, word, level, score, clip) => room?.woken(id, word, level, score, clip),
+          onWake: (id, word, level, score, clip) =>
+            room?.woken(
+              id,
+              words.find((w) => w.word === word)?.persona ?? word,
+              level,
+              score,
+              clip,
+            ),
           log,
           ...(capture === undefined ? {} : { capture }),
         });
@@ -731,6 +773,7 @@ const main = async () => {
     },
     {
       ...ROOM_CONFIG,
+      personas: roster,
       inhouse,
       // The household's languages (R1_LANGUAGES=en,ur); her server can change them per R1 on voice/languages.
       languages: (process.env["R1_LANGUAGES"] ?? "en")
@@ -744,6 +787,16 @@ const main = async () => {
     },
   );
   setInterval(() => room?.sweep(), 1_000);
+  // His pack edits reach the room within a minute: new voices are fetched first, then the next session uses them.
+  setInterval(() => {
+    void servedPersonas(env("R1_BRAIN_URL"), deviceKey).then(async (next) => {
+      if (next === null || JSON.stringify(next) === JSON.stringify(roster)) return;
+      roster = next;
+      await warm(next.map((p) => p.voice));
+      room?.personas(next);
+      log(`personas changed: ${next.map((p) => `${p.name} (${p.voice})`).join(", ")}`);
+    });
+  }, 60_000);
   const stop = () => {
     room?.close();
     mqtt.close();
