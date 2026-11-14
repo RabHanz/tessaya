@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RabHanz/tessaya/tools/r1flash/core"
+	"github.com/RabHanz/tessaya/tools/tessel-flash/core"
 )
 
 func TestUnsignedImagesNeedTheTypedConfirmation(t *testing.T) {
@@ -53,5 +53,36 @@ func TestExitCodesAndJSONResult(t *testing.T) {
 		if got := resultOf(in, "").exit(); got != want {
 			t.Errorf("%v: exit %d, want %d", in, got, want)
 		}
+	}
+}
+
+func TestDataDirMovesTheR1flashFolderOnce(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv("HOME", cfg)
+	base, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(base, "r1flash")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(old, "backup.bin"), []byte("settings"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := dataDir("")
+	if err != nil || dir != filepath.Join(base, "tessel-flash") {
+		t.Fatalf("dataDir = %q, %v", dir, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "backup.bin")); err != nil || string(b) != "settings" {
+		t.Fatalf("backup after the move = %q, %v", b, err)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatalf("old folder still there: %v", err)
+	}
+	// A second run finds the new folder and leaves it be.
+	if again, err := dataDir(""); err != nil || again != dir {
+		t.Fatalf("second dataDir = %q, %v", again, err)
 	}
 }

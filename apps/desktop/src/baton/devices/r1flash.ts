@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off
 /**
- * The R1's cable repair from the desktop (DEVICE-UTILITY.md §3): Tessaya's Hardware page drives the standalone r1flash
- * tool, downloaded once per version from our releases and checked against the R1 release key, so the bootrom
+ * The Tessel's cable repair from the desktop (DEVICE-UTILITY.md §3): Tessaya's Hardware page drives the standalone
+ * tessel-flash tool (r1flash in older releases), downloaded once per version from our releases and checked against the R1 release key, so the bootrom
  * protocol exists once. The page never passes arguments: it names an operation and this builds the argv. A linked
  * write is never stopped from here; only the console is.
  */
@@ -21,7 +21,9 @@ import {
 } from "../channels.ts";
 
 export const R1FLASH_VERSION = "0.1.1";
-const RELEASE = `https://github.com/RabHanz/tessaya/releases/download/r1flash-v${R1FLASH_VERSION}`;
+const RELEASES = "https://github.com/RabHanz/tessaya/releases/download";
+/** The tool's names, newest first: releases up to 0.1.1 are r1flash; drop it once the pinned version is a tessel-flash one. */
+export const FLASH_TOOLS = ["tessel-flash", "r1flash"] as const;
 
 const PORT = /^(?:COM\d{1,3}|\/dev\/(?:tty|cu)\.?[A-Za-z0-9._-]{1,40})$/;
 const VERSION = /^smp-\d+\.\d+\.\d+$/;
@@ -60,12 +62,16 @@ export const r1flashEvent = (line: string): Record<string, unknown> | null => {
   }
 };
 
-/** The binary's name in our releases for this machine. */
-export const r1flashAsset = (platform: string, arch: string): string | null => {
+/** The binary's name in that tool's releases for this machine. */
+export const r1flashAsset = (
+  platform: string,
+  arch: string,
+  tool: (typeof FLASH_TOOLS)[number] = FLASH_TOOLS[0],
+): string | null => {
   const os = platform === "win32" ? "windows" : platform === "darwin" ? "darwin" : "linux";
   const cpu = arch === "x64" ? "amd64" : arch === "arm64" ? "arm64" : null;
   if (cpu === null || (os === "windows" && cpu === "arm64")) return null;
-  return `r1flash-${os}-${cpu}${os === "windows" ? ".exe" : ""}`;
+  return `${tool}-${os}-${cpu}${os === "windows" ? ".exe" : ""}`;
 };
 
 /** The release key's signature over the checksums, raw r||s hex, checked like the R1 checks its firmware. */
@@ -94,33 +100,41 @@ const fetchBytes = async (url: string): Promise<Buffer> => {
   return Buffer.from(await r.arrayBuffer());
 };
 
-/** The checked binary on disk, downloaded on first use. */
-const ensureBinary = async (asset: string | null): Promise<string> => {
-  if (asset === null) throw new Error("r1flash has no build for this computer.");
-  const dir = NodePath.join(Electron.app.getPath("userData"), "r1flash", R1FLASH_VERSION);
-  const file = NodePath.join(dir, asset);
-  const sums = await fetchBytes(`${RELEASE}/SHA256SUMS`).catch(() => null);
-  const have = NodeFS.existsSync(file) ? NodeFS.readFileSync(file) : null;
-  // Offline with a copy already checked: use it.
-  if (sums === null && have !== null) return file;
-  if (sums === null)
-    throw new Error("r1flash could not be downloaded; check the internet connection.");
-  const sig = (await fetchBytes(`${RELEASE}/SHA256SUMS.sig`)).toString("utf8").trim();
-  if (!signedSums(sums, sig))
-    throw new Error("r1flash's checksums are not signed by the release key.");
-  const want = sums
-    .toString("utf8")
-    .split("\n")
-    .map((l) => l.trim().split(/\s+\*?/))
-    .find(([, name]) => name === asset)?.[0];
-  const sha = (b: Buffer) => NodeCrypto.createHash("sha256").update(b).digest("hex");
-  if (want === undefined) throw new Error(`r1flash ${R1FLASH_VERSION} has no ${asset}.`);
-  if (have !== null && sha(have) === want) return file;
-  const bytes = await fetchBytes(`${RELEASE}/${asset}`);
-  if (sha(bytes) !== want) throw new Error("r1flash did not match its signed checksum.");
-  NodeFS.mkdirSync(dir, { recursive: true });
-  NodeFS.writeFileSync(file, bytes, { mode: 0o755 });
-  return file;
+/** The checked binary on disk, downloaded on first use from the first tool name whose release has this version. */
+const ensureBinary = async (host: {
+  readonly platform: string;
+  readonly arch: string;
+}): Promise<string> => {
+  for (const tool of FLASH_TOOLS) {
+    const asset = r1flashAsset(host.platform, host.arch, tool);
+    if (asset === null) throw new Error("tessel-flash has no build for this computer.");
+    const release = `${RELEASES}/${tool}-v${R1FLASH_VERSION}`;
+    const dir = NodePath.join(Electron.app.getPath("userData"), tool, R1FLASH_VERSION);
+    const file = NodePath.join(dir, asset);
+    const sums = await fetchBytes(`${release}/SHA256SUMS`).catch(() => null);
+    const have = NodeFS.existsSync(file) ? NodeFS.readFileSync(file) : null;
+    // Offline with a copy already checked: use it.
+    if (sums === null && have !== null) return file;
+    // No release under this name (or offline): try the older name.
+    if (sums === null) continue;
+    const sig = (await fetchBytes(`${release}/SHA256SUMS.sig`)).toString("utf8").trim();
+    if (!signedSums(sums, sig))
+      throw new Error(`${tool}'s checksums are not signed by the release key.`);
+    const want = sums
+      .toString("utf8")
+      .split("\n")
+      .map((l) => l.trim().split(/\s+\*?/))
+      .find(([, name]) => name === asset)?.[0];
+    const sha = (b: Buffer) => NodeCrypto.createHash("sha256").update(b).digest("hex");
+    if (want === undefined) throw new Error(`${tool} ${R1FLASH_VERSION} has no ${asset}.`);
+    if (have !== null && sha(have) === want) return file;
+    const bytes = await fetchBytes(`${release}/${asset}`);
+    if (sha(bytes) !== want) throw new Error(`${tool} did not match its signed checksum.`);
+    NodeFS.mkdirSync(dir, { recursive: true });
+    NodeFS.writeFileSync(file, bytes, { mode: 0o755 });
+    return file;
+  }
+  throw new Error("tessel-flash could not be downloaded; check the internet connection.");
 };
 
 /** Only a top-level page of the app itself, never a browser-panel guest. */
@@ -128,7 +142,6 @@ const trusted = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) =>
   event.sender.getType() !== "webview" && event.senderFrame === event.sender.mainFrame;
 
 export function installR1flash(host: { readonly platform: string; readonly arch: string }): void {
-  const asset = r1flashAsset(host.platform, host.arch);
   const runs = new Map<number, { child: NodeChildProcess.ChildProcess; op: string }>();
   let next = 0;
   Electron.ipcMain.handle(R1FLASH_RUN_CHANNEL, async (event, request: unknown) => {
@@ -140,7 +153,7 @@ export function installR1flash(host: { readonly platform: string; readonly arch:
       return { code: 2, error: "A cable job is already running." };
     let binary: string;
     try {
-      binary = await ensureBinary(asset);
+      binary = await ensureBinary(host);
     } catch (error) {
       return { code: 1, error: error instanceof Error ? error.message : String(error) };
     }

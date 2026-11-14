@@ -30,10 +30,10 @@ func CheckImage(img []byte) error {
 
 func (r *ROM) checkChip() error {
 	if r.FlashSize != R1FlashSize {
-		return refuse("refusing: the flash is 0x%X; the R1 has 8 MiB", r.FlashSize)
+		return refuse("refusing: the flash is 0x%X; the Tessel has 8 MiB", r.FlashSize)
 	}
 	if !r.KnownFlash() {
-		return refuse("refusing: flash ID %x is not one r1flash knows how to unprotect", r.FlashID)
+		return refuse("refusing: flash ID %x is not one tessel-flash knows how to unprotect", r.FlashID)
 	}
 	return nil
 }

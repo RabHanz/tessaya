@@ -43,9 +43,11 @@ describe("repairing an R1 by cable from the desktop", () => {
   });
 
   it("names this machine's build, and refuses checksums not signed by the release key", () => {
-    expect(r1flashAsset("win32", "x64")).toBe("r1flash-windows-amd64.exe");
-    expect(r1flashAsset("darwin", "arm64")).toBe("r1flash-darwin-arm64");
-    expect(r1flashAsset("linux", "arm64")).toBe("r1flash-linux-arm64");
+    expect(r1flashAsset("win32", "x64")).toBe("tessel-flash-windows-amd64.exe");
+    expect(r1flashAsset("darwin", "arm64")).toBe("tessel-flash-darwin-arm64");
+    expect(r1flashAsset("linux", "arm64")).toBe("tessel-flash-linux-arm64");
+    // Releases up to 0.1.1 carry the old name.
+    expect(r1flashAsset("linux", "arm64", "r1flash")).toBe("r1flash-linux-arm64");
     expect(r1flashAsset("win32", "arm64")).toBeNull();
     expect(r1flashAsset("linux", "ia32")).toBeNull();
     const sums = Buffer.from("abc  r1flash-linux-amd64\n");

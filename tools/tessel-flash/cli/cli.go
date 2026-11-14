@@ -1,4 +1,4 @@
-// Package cli is r1flash's command line, menu and serial port; the protocol lives in core.
+// Package cli is tessel-flash's command line, menu and serial port; the protocol lives in core.
 package cli
 
 import (
@@ -15,25 +15,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RabHanz/tessaya/tools/r1flash/core"
+	"github.com/RabHanz/tessaya/tools/tessel-flash/core"
 )
 
 var Version = "dev"
 
-const usage = `r1flash: update, repair and configure a Tessaya R1 over its USB cable.
+const usage = `tessel-flash: update, repair and configure a Tessel over its USB cable.
 
-  r1flash                          interactive menu
-  r1flash ports                    list serial ports, mark the likely R1
-  r1flash detect                   console, bootrom or silent; firmware version and status
-  r1flash flash [--version X | --file F [--sig S]] [--allow-unsigned]
+  tessel-flash                     interactive menu
+  tessel-flash ports               list serial ports, mark the likely Tessel
+  tessel-flash detect              console, bootrom or silent; firmware version and status
+  tessel-flash flash [--version X | --file F [--sig S]] [--allow-unsigned]
                                    verify, back up the settings, write, verify, reboot, watch the boot
-  r1flash recover [--probe]        link a stuck or boot-looping chip and write the recommended image
+  tessel-flash recover [--probe]   link a stuck or boot-looping chip and write the recommended image
                                    (--probe: link and reboot only)
-  r1flash backup                   save the settings area (0x7E7000-0x800000)
-  r1flash restore FILE             write a settings backup back
-  r1flash config get | wifi SSID PASS | endpoints URL... | key HEX | setup
-  r1flash console                  raw console, DTR/RTS low
-  r1flash version
+  tessel-flash backup              save the settings area (0x7E7000-0x800000)
+  tessel-flash restore FILE        write a settings backup back
+  tessel-flash config get | wifi SSID PASS | endpoints URL... | key HEX | setup
+  tessel-flash console             raw console, DTR/RTS low
+  tessel-flash version
 
 Flags (anywhere): --port P  --json  --link-wait S (120)  --kick  --baud N (460800)  --trace FILE
                   --index URL|FILE  --dir DIR  --force  --confirm-unsigned "flash unsigned"
@@ -56,7 +56,7 @@ type app struct {
 
 // Run is the whole program; it returns the exit code.
 func Run(args []string, stdin io.Reader, stdout io.Writer, tty bool) int {
-	fs := flag.NewFlagSet("r1flash", flag.ContinueOnError)
+	fs := flag.NewFlagSet("tessel-flash", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var o opts
 	fs.StringVar(&o.port, "port", "", "")
@@ -127,7 +127,7 @@ func (a *app) command(pos []string) int {
 	case "console":
 		return a.console()
 	case "version":
-		return a.out.result(result{OK: true, Code: "ok", Msg: "r1flash " + Version})
+		return a.out.result(result{OK: true, Code: "ok", Msg: "tessel-flash " + Version})
 	case "help", "-h", "--help":
 		fmt.Fprintln(a.out.w, usage)
 		return 0
@@ -161,10 +161,10 @@ func (a *app) ports() int {
 	}
 	for _, p := range ports {
 		if p.R1 {
-			return a.out.result(result{OK: true, Code: "ok", Msg: "* marks a USB serial bridge an R1 uses"})
+			return a.out.result(result{OK: true, Code: "ok", Msg: "* marks a USB serial bridge a Tessel uses"})
 		}
 	}
-	return a.out.result(result{OK: true, Code: "ok", Msg: "no R1 found: " + noPortHint()})
+	return a.out.result(result{OK: true, Code: "ok", Msg: "no Tessel found: " + noPortHint()})
 }
 
 // pickPort is --port, or the only USB-UART bridge plugged in.
@@ -187,7 +187,7 @@ func (a *app) pickPort() (string, error) {
 		a.out.Log("using " + r1[0])
 		return r1[0], nil
 	case 0:
-		return "", &core.Refused{Msg: "no R1 found: " + noPortHint()}
+		return "", &core.Refused{Msg: "no Tessel found: " + noPortHint()}
 	}
 	return "", &core.Refused{Msg: "several USB serial ports (" + strings.Join(r1, ", ") + "): pick one with --port"}
 }
@@ -212,9 +212,9 @@ func (a *app) detect() int {
 	}
 	a.emitDetect(d)
 	msg := map[string]string{
-		"console": "The R1's firmware is running" + map[bool]string{true: " (" + d.FW + ")", false: ""}[d.FW != ""] + ".",
-		"bootrom": "The R1 is in its loader, ready to flash.",
-		"silent":  "The R1 is silent: it may be off, boot-looping or bricked. `r1flash recover` repairs it.",
+		"console": "The Tessel's firmware is running" + map[bool]string{true: " (" + d.FW + ")", false: ""}[d.FW != ""] + ".",
+		"bootrom": "The Tessel is in its loader, ready to flash.",
+		"silent":  "The Tessel is silent: it may be off, boot-looping or bricked. `tessel-flash recover` repairs it.",
 	}[d.State]
 	return a.out.result(result{OK: true, Code: "ok", Msg: msg, Version: d.FW})
 }
@@ -239,7 +239,7 @@ func (a *app) emitDetect(d core.Detection) {
 // link waits for the loader; for a person at the terminal it says how to get the R1 there.
 func (a *app) link(p *realPort) (*core.ROM, error) {
 	if !a.o.json {
-		a.out.Log(fmt.Sprintf("Unplug and replug the R1's battery now (or reboot it from Tessaya). Waiting %d s for its loader.", a.o.linkWait))
+		a.out.Log(fmt.Sprintf("Unplug and replug the Tessel's battery now (or reboot it from Tessaya). Waiting %d s for its loader.", a.o.linkWait))
 	}
 	return core.Link(p, realClock{}, a.out, core.LinkOpts{
 		Wait: time.Duration(a.o.linkWait) * time.Second, Kick: a.o.kick, TransferBaud: a.o.baud,
@@ -255,7 +255,7 @@ func (a *app) holdInterrupts() func() {
 		for {
 			select {
 			case <-ch:
-				a.out.Log("writing; stopping or unplugging now needs the cable again. r1flash finishes first.")
+				a.out.Log("writing; stopping or unplugging now needs the cable again. tessel-flash finishes first.")
 			case <-done:
 				return
 			}
@@ -299,7 +299,7 @@ func (a *app) flash(recover bool) int {
 	if recover && a.o.probe {
 		err = rom.Reboot()
 		a.store.audit(merge(audit, map[string]any{"result": errText(err), "probe": true}))
-		return a.out.result(resultOf(err, "The loader answered; the R1 was rebooted into its firmware. Nothing was written."))
+		return a.out.result(resultOf(err, "The loader answered; the Tessel was rebooted into its firmware. Nothing was written."))
 	}
 	release := a.holdInterrupts()
 	backup, err := rom.Flash(img.data, a.store, time.Now().UTC().Format("20060102-150405"))
@@ -536,11 +536,11 @@ func (a *app) config(args []string) int {
 	}
 	switch {
 	case len(lines) == 0:
-		return a.out.result(result{Code: "failed", Msg: "no answer on the console: is the R1's firmware running (try `r1flash detect`)?"})
+		return a.out.result(result{Code: "failed", Msg: "no answer on the console: is the Tessel's firmware running (try `tessel-flash detect`)?"})
 	case st == nil:
 		return a.out.result(result{Code: "failed", Msg: "the console did not understand: this firmware may predate the r1cfg command (" + lines[len(lines)-1] + ")"})
 	case st["ok"] == false:
-		return a.out.result(result{Code: "failed", Msg: fmt.Sprintf("the R1 refused: %v", st["error"])})
+		return a.out.result(result{Code: "failed", Msg: fmt.Sprintf("the Tessel refused: %v", st["error"])})
 	}
 	return a.out.result(result{OK: true, Code: "ok", Msg: "Done."})
 }

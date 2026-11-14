@@ -177,7 +177,7 @@
       "file": "docs/baton/licences/BSD-3-go-x-sys.txt"
     },
     "port:bk7231tools": {
-      "name": "bk7231tools (protocol ported to Go in tools/r1flash/core)",
+      "name": "bk7231tools (protocol ported to Go in tools/tessel-flash/core)",
       "licence": "MIT",
       "holder": "Kuba Szczodrzyński",
       "mention": "bk7231tools"

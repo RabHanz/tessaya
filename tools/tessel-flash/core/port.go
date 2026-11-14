@@ -1,4 +1,4 @@
-// Package core is r1flash's protocol logic: the BK7258 bootrom protocol, the flash flow, the firmware console and the
+// Package core is tessel-flash's protocol logic: the BK7258 bootrom protocol, the flash flow, the firmware console and the
 // signed release list. It has no OS dependencies (the CLI supplies the port, clock and file store), so it also builds
 // for GOOS=js GOARCH=wasm, for a later Web Serial client.
 package core
@@ -42,7 +42,7 @@ type Reporter interface {
 }
 
 // ErrNoLink: the bootrom never answered in the link window.
-var ErrNoLink = errors.New("no link with the R1's loader")
+var ErrNoLink = errors.New("no link with the Tessel's loader")
 
 // Refused is a safety refusal: nothing was written.
 type Refused struct{ Msg string }

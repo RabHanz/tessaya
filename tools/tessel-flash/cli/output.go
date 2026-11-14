@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RabHanz/tessaya/tools/r1flash/core"
+	"github.com/RabHanz/tessaya/tools/tessel-flash/core"
 )
 
 // out is both the reporter the core writes to and the CLI's own output: NDJSON with --json, plain lines otherwise.
@@ -85,7 +85,7 @@ func resultOf(err error, okMsg string) result {
 	case errors.As(err, &ref):
 		return result{Code: "refused", Msg: err.Error()}
 	case errors.Is(err, core.ErrNoLink):
-		return result{Code: "no-link", Msg: "No link with the R1's loader. Unplug and replug the R1's battery while r1flash waits, or reboot it from Tessaya, then try again."}
+		return result{Code: "no-link", Msg: "No link with the Tessel's loader. Unplug and replug the Tessel's battery while tessel-flash waits, or reboot it from Tessaya, then try again."}
 	}
 	return result{Code: "failed", Msg: err.Error()}
 }
@@ -120,21 +120,27 @@ func (o *out) result(r result) int {
 	return r.exit()
 }
 
-// dirStore keeps backups, the resume marker, the image cache and the audit log in r1flash's data folder.
+// dirStore keeps backups, the resume marker, the image cache and the audit log in tessel-flash's data folder.
 type dirStore struct{ dir string }
 
 func dataDir(flag string) (string, error) {
 	if flag != "" {
 		return flag, os.MkdirAll(flag, 0o755)
 	}
-	base, err := os.UserConfigDir()
-	if err != nil {
-		home, _ := os.UserHomeDir()
-		base = filepath.Join(home, ".r1flash")
+	old, dir := "", ""
+	if base, err := os.UserConfigDir(); err == nil {
+		old, dir = filepath.Join(base, "r1flash"), filepath.Join(base, "tessel-flash")
 	} else {
-		base = filepath.Join(base, "r1flash")
+		home, _ := os.UserHomeDir()
+		old, dir = filepath.Join(home, ".r1flash"), filepath.Join(home, ".tessel-flash")
 	}
-	return base, os.MkdirAll(base, 0o755)
+	// The tool was r1flash: its folder (backups, the resume marker) moves once, or stays in use if it cannot move.
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if _, err := os.Stat(old); err == nil && os.Rename(old, dir) != nil {
+			return old, nil
+		}
+	}
+	return dir, os.MkdirAll(dir, 0o755)
 }
 
 func (s dirStore) Read(n string) ([]byte, error) { return os.ReadFile(filepath.Join(s.dir, n)) }

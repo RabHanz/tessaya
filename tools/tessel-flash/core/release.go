@@ -67,7 +67,7 @@ func ParseIndex(body []byte, sigHex string, pub *ecdsa.PublicKey) (*Index, error
 		return nil, fmt.Errorf("release list: %w", err)
 	}
 	if ix.V != 1 {
-		return nil, fmt.Errorf("release list version %d is newer than this r1flash; update it", ix.V)
+		return nil, fmt.Errorf("release list version %d is newer than this tessel-flash; update it", ix.V)
 	}
 	return &ix, nil
 }
