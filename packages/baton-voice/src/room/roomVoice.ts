@@ -757,8 +757,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
     /** Sent away by voice: her reply flushed, any turn on its way cancelled, sleepy eyes and her closing sound, at once. */
     const dismissNow = (why: string) => {
-      if (dismissedAt === deps.now()) return;
-      dismissedAt = deps.now();
+      const at = deps.now();
+      if (dismissedAt === at) return;
+      dismissedAt = at;
       stops += 1;
       if (speaking()) interrupt();
       carry = null;
@@ -769,10 +770,17 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       sentAway = true;
       lastActivity = deps.now();
       face("sleepy");
-      if (!silent(id))
-        void send(cueSamples("end"), new AbortController().signal, () => undefined).catch(
-          () => undefined,
-        );
+      const closing = silent(id)
+        ? Promise.resolve()
+        : send(cueSamples("end"), new AbortController().signal, () => undefined).catch(
+            () => undefined,
+          );
+      // Sent away ends the session: the R1 closes its mic and listens for her name again (14 Nov, mic stayed on).
+      void closing
+        .then(() => deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())))
+        .then(() => {
+          if (!closed && dismissedAt === at) deps.publish(topic(id, "cmd/voice/stop"), "{}");
+        });
       deps.log(`${why}; she rests`);
     };
     /** Each stop of hers (his "stop", or the R1's S2 or tap): a turn heard before it is not answered after it. */
@@ -1272,6 +1280,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // "Stop" (not her name): she stops and listens for what he says next; nothing to answer.
       if (given === undefined && !echoed && intent === "stop" && rawCalled === null) {
         kept?.control.abort();
+        // Nothing of hers to stop: his "stop" sends her away like a dismissal.
+        if (!tainted && !speaking() && reply === null && cutByVoiceAt < startedAt)
+          return dismissNow(`[${id}] turn ${turn}: he said stop with nothing to stop`);
         stopHer(`[${id}] turn ${turn}: he said stop`);
         return;
       }
