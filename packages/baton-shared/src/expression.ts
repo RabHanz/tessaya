@@ -4,9 +4,11 @@
  * pass through a model: a wording is a template whose `{slots}` take the exact values.
  */
 import type {
+  Expression,
   ExpressionGesture,
   ExpressionMood,
   ExpressionPriority,
+  R1Mood,
 } from "@t3tools/baton-contracts";
 import { EXPRESSION_GESTURES, EXPRESSION_MOODS } from "@t3tools/baton-contracts";
 
@@ -58,6 +60,11 @@ export const LINE_EVENTS = {
     mood: "happy",
     gesture: "leanIn",
   }),
+  "ack.again": spec(
+    "Still here.",
+    "He said only her name again, minutes after they last spoke; she is still with him.",
+    { maxWords: 5, mood: "happy", gesture: "nodSmall" },
+  ),
   "filler.hold": spec("One moment.", "He asked something and her answer is a few seconds away.", {
     maxWords: 6,
     mood: "focused",
@@ -124,6 +131,33 @@ export const LINE_EVENTS = {
     mood: "proud",
     gesture: "thumbsUp",
   }),
+  "job.failed": spec("{title} failed.", "A job he started has failed; {title} is its name.", {
+    slots: ["title"],
+    priority: "important",
+    maxWords: 8,
+    mood: "concerned",
+  }),
+  "job.needs": spec(
+    "{title} needs you.",
+    "A job he started is waiting on him; {title} is its name.",
+    {
+      slots: ["title"],
+      priority: "important",
+      maxWords: 8,
+      mood: "curious",
+      gesture: "leanIn",
+    },
+  ),
+  "job.plan": spec(
+    "The plan for {title} is ready in its thread.",
+    "The plan for a job he asked for is written and waits for his OK in its thread; {title} is its name.",
+    { slots: ["title"], required: ["plan"], priority: "important", maxWords: 12, mood: "proud" },
+  ),
+  "job.stopped": spec(
+    "{title} stopped at its {limit} limit.",
+    "A job stopped because it reached a limit he set; {title} is its name and {limit} which limit.",
+    { slots: ["title", "limit"], priority: "important", maxWords: 10, mood: "steady" },
+  ),
   "msg.from": spec(
     "From {from}: {text}",
     "A message for him arrived from someone at home; {text} is their words, read out exactly.",
@@ -151,6 +185,48 @@ export const LINE_EVENTS = {
       mood: "steady",
     },
   ),
+  "bt.forgot": spec(
+    "{name} has forgotten me. Put it in pairing mode, usually by holding its Bluetooth button until the light flashes, then ask me to pair it.",
+    "A Bluetooth speaker, {name}, no longer knows her; he must put it in pairing mode (hold its Bluetooth button until the light flashes) and ask her to pair it.",
+    {
+      slots: ["name"],
+      required: ["pairing mode"],
+      maxWords: 30,
+      mood: "concerned",
+      gesture: "shrug",
+    },
+  ),
+  "bt.unreachable": spec(
+    "I couldn't reach {name}. Check it's switched on and nearby, then ask me again.",
+    "She could not reach the Bluetooth speaker {name}; it may be off or too far away.",
+    { slots: ["name"], maxWords: 18, mood: "concerned", gesture: "shrug" },
+  ),
+  "bt.declined": spec(
+    "{name} turned the connection down or switched off. Switch it on and ask me again.",
+    "The Bluetooth speaker {name} refused the connection or switched off.",
+    { slots: ["name"], maxWords: 18, mood: "putout", gesture: "shrug" },
+  ),
+  "bt.failed": spec(
+    "I couldn't connect to {name}. It's probably connected to another phone or laptop: disconnect it there first, or switch it off and on, then ask me again.",
+    "She could not connect to the Bluetooth speaker {name}, most likely because another phone or laptop holds it; he should disconnect it there or switch it off and on.",
+    {
+      slots: ["name"],
+      required: ["disconnect"],
+      maxWords: 30,
+      mood: "concerned",
+      gesture: "shrug",
+    },
+  ),
+  "bt.notfound": spec(
+    "I didn't find it. Make sure it's in pairing mode, with its light flashing, and ask me again.",
+    "She looked for the Bluetooth speaker he wanted to pair and found nothing; it must be in pairing mode, its light flashing.",
+    { required: ["pairing mode"], maxWords: 22, mood: "concerned", gesture: "shrug" },
+  ),
+  "bt.which": spec(
+    "I found {names}. Which one should I pair?",
+    "She found more than one Bluetooth speaker, {names}, and asks which one to pair.",
+    { slots: ["names"], maxWords: 10, mood: "curious", gesture: "tilt" },
+  ),
   "bt.connected": spec(
     "Connected to {label}. I'll play through it.",
     "She just paired a Bluetooth speaker, {label}, and her voice now plays through it.",
@@ -165,6 +241,31 @@ export const LINE_EVENTS = {
     'Say "{phrase}" for me.',
     "To check his voice she asks him to say a short random phrase, {phrase}, word for word.",
     { slots: ["phrase"], maxWords: 6, mood: "curious", gesture: "leanIn" },
+  ),
+  "id.confirm": spec(
+    "Is that you, {name}?",
+    "To be sure of his voice she asks whether it is really {name} speaking.",
+    {
+      slots: ["name"],
+      maxWords: 6,
+      mood: "curious",
+      gesture: "tilt",
+    },
+  ),
+  "id.phone": spec(
+    "Tap yes on your phone if that's you.",
+    "To be sure it is him, she asks him to confirm with a yes on his phone.",
+    { required: ["phone", "yes"], maxWords: 12, mood: "curious", gesture: "tilt" },
+  ),
+  "id.ok": spec("Thanks, that's you.", "His voice check passed; she is now sure it is him.", {
+    maxWords: 6,
+    mood: "happy",
+    gesture: "nodSmall",
+  }),
+  "id.failed": spec(
+    "I still can't tell it's you, so I've left that.",
+    "His voice check failed, so she has not done what he asked; it stays undone.",
+    { maxWords: 14, mood: "concerned", gesture: "shrug" },
   ),
   "enrol.start": spec(
     "Let's learn your voice. Read the sentences on your screen, one at a time.",
@@ -279,6 +380,29 @@ export const lineProblem = (event: LineEvent, line: Line): string | null => {
   if (!EXPRESSION_GESTURES.includes(line.gesture)) return "an unknown gesture";
   return null;
 };
+
+/** The R1's eyes have fewer moods than the face library: the nearest one. */
+const R1_MOOD: Readonly<Record<ExpressionMood, R1Mood>> = {
+  neutral: "neutral",
+  happy: "happy",
+  proud: "happy",
+  curious: "curious",
+  focused: "thinking",
+  determined: "thinking",
+  surprised: "surprise",
+  sleepy: "sleepy",
+  concerned: "sad",
+  steady: "neutral",
+  sad: "sad",
+  hurt: "sad",
+  lonely: "sad",
+  sulky: "angry",
+  putout: "angry",
+  frustrated: "angry",
+  angry: "angry",
+};
+export const r1MoodOf = (mood: string): R1Mood | null =>
+  Object.hasOwn(R1_MOOD, mood) ? R1_MOOD[mood as ExpressionMood] : null;
 
 /** The template with each slot replaced by its exact value; null when a value is missing. */
 export const fillLine = (
@@ -420,3 +544,56 @@ export type LinePool = Readonly<
 export const LINE_POOL = POOL as LinePool;
 export const poolLines = (persona: string, event: LineEvent, pool: LinePool = LINE_POOL) =>
   pool[persona]?.[event] ?? pool["executive"]?.[event] ?? [];
+
+const INTENSITY: Readonly<Record<ExpressionPriority, number>> = {
+  ambient: 0.4,
+  normal: 0.5,
+  important: 0.7,
+  safety: 1,
+};
+
+/** A wording as the brain's decision, with the facts filled; null when a fact is missing or it says nothing. */
+export const expressionOf = (
+  event: LineEvent,
+  persona: string,
+  line: Line,
+  facts: Readonly<Record<string, string>>,
+  source: Expression["source"],
+): Expression | null => {
+  const s: LineSpec = LINE_EVENTS[event];
+  const text = fillLine(line.text, facts);
+  return text === null || text.trim() === ""
+    ? null
+    : {
+        event,
+        persona,
+        text,
+        mood: line.mood,
+        gesture: line.gesture,
+        intensity: INTENSITY[s.priority],
+        priority: s.priority,
+        source,
+        lineId: lineId(event, line.text),
+      };
+};
+
+/** Today's line for a moment: `plain` where a call site words it its own way, else the event's own. */
+export const plainExpression = (
+  event: LineEvent,
+  persona: string,
+  facts: Readonly<Record<string, string>> = {},
+  plain?: string,
+): Expression | null => {
+  const s: LineSpec = LINE_EVENTS[event];
+  return expressionOf(
+    event,
+    persona,
+    { text: plain ?? s.fixed, mood: s.mood, gesture: s.gesture },
+    facts,
+    "fixed",
+  );
+};
+
+/** What a vessel is sent to say: the words, and the mood and gesture only for her own (the plain line stays as it was). */
+export const sayPayload = (e: Expression) =>
+  e.source === "fixed" ? { text: e.text } : { text: e.text, mood: e.mood, gesture: e.gesture };

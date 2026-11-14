@@ -55,13 +55,15 @@ import { TessayaTurn, type TurnEnvelope } from "../baton/TessayaTurn.ts";
 import {
   type ActOutcome,
   brainTurn,
-  FILLERS,
   HOLD_ON,
+  WEB_CUE,
   inBrainSlot,
   type RoomCall,
   type TurnNotes,
   speakableSentences,
 } from "../baton/TessayaBrain.ts";
+import { TessayaExpression, expressOr } from "../baton/TessayaExpression.ts";
+import { isLineEvent } from "@t3tools/baton-shared/expression";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -152,19 +154,68 @@ const OP_OF = {
 } as const;
 
 /** What the R1 says: her words when everything she did is done, otherwise what really happened. */
-export const spokenReply = (say: string, outcomes: ReadonlyArray<ActOutcome>): string => {
+export const spokenReply = (
+  say: string,
+  outcomes: ReadonlyArray<ActOutcome>,
+  words: ReplyWords = PLAIN_REPLY_WORDS,
+): string => {
   const asked = outcomes.filter((o) => o.ok && (o.status === "asked" || o.status === "held"));
-  const failed = outcomes.filter((o) => !o.ok || o.status === "failed" || o.status === "refused");
+  const failed = outcomes.filter(failedOutcome);
   // Another machine's own answer (his laptop's), spoken as it came.
   const told = outcomes.filter((o) => o.ok && o.status === "told");
   if (asked.length === 0 && failed.length === 0 && told.length === 0) return say;
   const parts: Array<string> = told.map((o) => o.line);
-  if (asked.length > 0)
-    parts.push("I've sent that to your phone. It happens when you say yes there.");
-  for (const f of failed.slice(0, 2))
-    parts.push(`I couldn't: ${f.line.replace(/^Not done: /, "")}`);
+  if (asked.length > 0) parts.push(words.sentPhone);
+  for (const f of failed.slice(0, 2)) parts.push(words.couldnt(f.line.replace(/^Not done: /, "")));
   return parts.join(" ");
 };
+
+const failedOutcome = (o: ActOutcome) => !o.ok || o.status === "failed" || o.status === "refused";
+
+/** How she words what really happened when it is not what she said: the phone's yes, and what failed. */
+export interface ReplyWords {
+  readonly sentPhone: string;
+  readonly couldnt: (what: string) => string;
+}
+const PLAIN_REPLY_WORDS: ReplyWords = {
+  sentPhone: "I've sent that to your phone. It happens when you say yes there.",
+  couldnt: (what) => `I couldn't: ${what}`,
+};
+const MARK = "\u0001";
+
+/** Who is speaking with whom on a turn, for her lines' persona and no-repeat. */
+const lineWho = (input: R1Heard) => {
+  const persona =
+    typeof input.voice === "object" && input.voice !== null && "persona" in input.voice
+      ? input.voice.persona
+      : undefined;
+  return {
+    persona: typeof persona === "string" ? persona : undefined,
+    person: speakerOf(input.voice)?.personId ?? undefined,
+  };
+};
+
+/** Her own wording for a turn's outcomes, asked for only when an outcome needs words of its own. */
+const replyWords = Effect.fn("R1Device.replyWords")(function* (
+  input: R1Heard,
+  outcomes: ReadonlyArray<ActOutcome>,
+) {
+  const who = lineWho(input);
+  const asked = outcomes.some((o) => o.ok && (o.status === "asked" || o.status === "held"));
+  const phone = asked ? yield* expressOr("ok.sentphone", who) : null;
+  const couldnt = outcomes.some(failedOutcome)
+    ? yield* expressOr("err.couldnt", { ...who, facts: { what: MARK } })
+    : null;
+  return {
+    sentPhone: phone?.text ?? PLAIN_REPLY_WORDS.sentPhone,
+    couldnt: (what: string) =>
+      couldnt === null ? PLAIN_REPLY_WORDS.couldnt(what) : couldnt.text.replace(MARK, what),
+  } satisfies ReplyWords;
+});
+
+/** Her apology when her thinking failed, worded as this call site always said it while her own words are off. */
+const sorry = (input: R1Heard, plain: string) =>
+  Effect.map(expressOr("err.brain", { ...lineWho(input), plain }), (e) => e?.text ?? plain);
 
 const quoted = (value: unknown) => JSON.stringify(value);
 
@@ -797,10 +848,14 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   if (Option.isNone(plan)) {
     // Her brain did not answer: the eyes say so, the words fill in.
     yield* eyes(device, "worried", 6000, "the brain did not answer");
-    return "Sorry, I lost my train of thought. Say that again?";
+    return yield* sorry(input, "Sorry, I lost my train of thought. Say that again?");
   }
   const outcomes = yield* runActs(plan.value.acts);
-  const said = spokenReply(withoutNarration(plan.value.say, names), outcomes);
+  const said = spokenReply(
+    withoutNarration(plan.value.say, names),
+    outcomes,
+    yield* replyWords(input, outcomes),
+  );
   yield* r1Finish(device, input, said, outcomes, turn);
   return said;
 });
@@ -877,8 +932,13 @@ export const roomLook = Effect.fn("R1Device.look")(function* (
 });
 
 /** The R1 and the room as a vessel of the one brain: the house it reads, its camera, its eyes and its Record line. */
-const r1Vessel = (input: R1Heard, tools: RoomToolSet) => ({
+const r1Vessel = (
+  input: R1Heard,
+  tools: RoomToolSet,
+  fillers?: { readonly hold: string; readonly web: string },
+) => ({
   system: ROOM_SYSTEM,
+  ...(fillers === undefined ? {} : { fillers }),
   tools,
   device: input.device,
   // On a guess, anything that changes something waits for the loop to confirm his final words.
@@ -917,33 +977,47 @@ export const r1TurnStream = (
   Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
     Effect.gen(function* () {
       let offered = false;
+      // Her fillers for this turn, picked before a word so the slow path never waits on them.
+      const who = lineWho(input);
+      const fillers = {
+        hold: (yield* expressOr("filler.hold", who))?.text ?? HOLD_ON,
+        web: (yield* expressOr("filler.web", who))?.text ?? WEB_CUE,
+      };
       const say = (words: string) => {
         // One filler a turn: the 3 s hold and the tool-start cue both fired on a slow first call ("One moment. One moment.").
-        if (offered && FILLERS.includes(words.trim())) return;
+        if (offered && (words.trim() === fillers.hold || words.trim() === fillers.web)) return;
         offered = true;
         Queue.offerUnsafe(queue, words);
       };
       // An act or a slow brain must not leave the room silent.
       yield* Effect.sleep(HOLD_AFTER).pipe(
-        Effect.andThen(Effect.sync(() => offered || say(`${HOLD_ON} `))),
+        Effect.andThen(Effect.sync(() => offered || say(`${fillers.hold} `))),
         Effect.forkScoped,
       );
       const way = yield* brain.route;
       if (way === "subscription" && tools !== null) {
-        const done = yield* brainTurn(r1Vessel(input, tools), brain, say, "session", calls).pipe(
-          Effect.orElseSucceed(() => null),
-        );
+        const done = yield* brainTurn(
+          r1Vessel(input, tools, fillers),
+          brain,
+          say,
+          "session",
+          calls,
+        ).pipe(Effect.orElseSucceed(() => null));
         if (done !== null) return yield* Queue.end(queue);
       }
       if (way !== "subscription" && tools !== null) {
-        const done = yield* brainTurn(r1Vessel(input, tools), brain, say, "api", calls).pipe(
-          Effect.orElseSucceed(() => null),
-        );
+        const done = yield* brainTurn(
+          r1Vessel(input, tools, fillers),
+          brain,
+          say,
+          "api",
+          calls,
+        ).pipe(Effect.orElseSucceed(() => null));
         if (done !== null) return yield* Queue.end(queue);
         if (way === "auto") {
           // The key failed before a word; the subscription is the fallback his table names.
           const fallback = yield* brainTurn(
-            r1Vessel(input, tools),
+            r1Vessel(input, tools, fillers),
             brain,
             say,
             "session",
@@ -994,14 +1068,18 @@ export const r1TurnStream = (
         // The warm brain failed or said nothing: the slower one-shot turn answers instead, whole.
         say(
           yield* r1Turn(input).pipe(
-            Effect.orElseSucceed(() => "Sorry, something went wrong on my side."),
+            Effect.catchCause(() => sorry(input, "Sorry, something went wrong on my side.")),
           ),
         );
         return yield* Queue.end(queue);
       }
       if (final.acts.length === 0) sentences.flush();
       const outcomes = yield* runActs(final.acts);
-      const said = spokenReply(withoutNarration(final.rest, names), outcomes);
+      const said = spokenReply(
+        withoutNarration(final.rest, names),
+        outcomes,
+        yield* replyWords(input, outcomes),
+      );
       if (final.acts.length > 0) say(said);
       yield* r1Finish(device, input, said, outcomes, turn);
       yield* Queue.end(queue);
@@ -1135,18 +1213,22 @@ export const routes = HttpRouter.use((router) =>
           { contentType: "text/event-stream", headers: { "cache-control": "no-store" } },
         );
       // Detached: the answer keeps coming after the hold-on line has gone out with the response.
-      const turn = yield* r1Turn({
+      const heardBy: R1Heard = {
         heard,
         history: turns.slice(0, -1),
         voice: body.value.tessaya,
         ...(body.value.device === undefined ? {} : { device: body.value.device }),
-      }).pipe(
+      };
+      const turn = yield* r1Turn(heardBy).pipe(
+        Effect.catchCause(() => sorry(heardBy, "Sorry, something went wrong on my side.")),
         Effect.provideContext(context),
-        Effect.orElseSucceed(() => "Sorry, something went wrong on my side."),
         Effect.forkDetach,
       );
       const early = yield* Fiber.join(turn).pipe(Effect.timeoutOption(HOLD_AFTER));
       if (Option.isNone(early) && body.value.stream !== false) {
+        const hold = yield* expressOr("filler.hold", lineWho(heardBy)).pipe(
+          Effect.provideContext(context),
+        );
         const rest = Fiber.join(turn).pipe(
           Effect.map(
             (said) =>
@@ -1155,7 +1237,7 @@ export const routes = HttpRouter.use((router) =>
         );
         return HttpServerResponse.stream(
           Stream.concat(
-            Stream.make(sseChunk(id, model, created, HOLD_ON)),
+            Stream.make(sseChunk(id, model, created, hold?.text ?? HOLD_ON)),
             Stream.fromEffect(rest),
           ).pipe(Stream.encodeText),
           { contentType: "text/event-stream", headers: { "cache-control": "no-store" } },
@@ -1224,5 +1306,39 @@ export const routes = HttpRouter.use((router) =>
       return HttpServerResponse.jsonUnsafe({ confirmed: yield* r1Confirmed(body.value.callId) });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     yield* router.add("POST", "/api/devices/r1/v1/turns/confirm", confirm);
+    // Her next few lines for the room loop's own moments (acknowledgements, step-ups), so it never waits to speak.
+    const lines = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      const body = decodeLinesAsk(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
+      if (body._tag === "None") return error(400, "That is not a lines request.");
+      const expression = yield* Effect.serviceOption(TessayaExpression).pipe(
+        Effect.provideContext(context),
+      );
+      if (Option.isNone(expression)) return HttpServerResponse.jsonUnsafe({ on: false, lines: {} });
+      const got = yield* expression.value.ahead(
+        body.value.events.filter(isLineEvent).slice(0, 16),
+        { persona: body.value.persona, person: body.value.person },
+        Math.min(Math.max(Math.round(body.value.count ?? 3), 1), 4),
+      );
+      return HttpServerResponse.jsonUnsafe(got);
+    }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
+    yield* router.add("POST", "/api/devices/r1/v1/lines", lines);
   }),
+);
+
+const decodeLinesAsk = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      events: Schema.Array(Schema.String),
+      persona: Schema.optionalKey(Schema.String),
+      person: Schema.optionalKey(Schema.String),
+      count: Schema.optionalKey(Schema.Number),
+    }),
+  ),
 );

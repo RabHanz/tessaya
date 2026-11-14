@@ -4961,6 +4961,2871 @@
         "mood": "putout",
         "gesture": "lookAway"
       }
+    ],
+    "bt.forgot": [
+      {
+        "text": "{name} has forgotten me. Put it in pairing mode, hold its Bluetooth button until the light flashes, then ask me to pair it.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} doesn't know me anymore. Hold its Bluetooth button until the light flashes, that's pairing mode, then ask me to pair it.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "It seems {name} dropped me. Put it in pairing mode, light flashing, and tell me to pair it.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I've lost {name}. Hold the Bluetooth button until it flashes, so it's in pairing mode, and ask me to pair again.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} has no memory of me. Pairing mode first: hold the Bluetooth button until the light flashes. Then ask me.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "We need to start over with {name}. Put it in pairing mode and ask me to pair it.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} forgot me. Easy fix: hold its Bluetooth button till the light flashes, pairing mode, then ask me to pair.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No luck, {name} doesn't recognise me. Put it in pairing mode, and I'll pair it when you ask.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Pairing mode, please. Hold the Bluetooth button on {name} until the light flashes, then tell me to pair it.",
+        "mood": "determined",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{name} and I need to be introduced again. Put it in pairing mode and ask me to pair it.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "It's forgotten me, {name} has. Light flashing, pairing mode, then ask me to pair it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} has lost me. Put it in pairing mode, hold its Bluetooth button till the light flashes, then ask me to pair.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} doesn't know me anymore. Pairing mode, please, then ask me to pair it.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Start over with {name}. Hold its button until the light flashes. That's pairing mode. Then ask me.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} wiped me from its memory. Put it in pairing mode and I'll pair when you ask.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm a stranger to {name} now. Get it into pairing mode and ask me to pair.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Pairing mode for {name}, please. Hold the Bluetooth button until it flashes.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{name} let me go. Put it in pairing mode and we'll pair again.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} forgot who I am. Light flashing, pairing mode, then say the word.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No record of me on {name}. Put it in pairing mode and ask me to pair it.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Pair {name} again. It needs pairing mode: hold the Bluetooth button until the light flashes.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} has no trace of me. Pairing mode first, then ask me.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Small hitch. {name} dropped me, so put it in pairing mode and I'll pair it on request.",
+        "mood": "steady",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{name} has wiped me from its memory. Pairing mode, please, then ask me to pair it.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I've been forgotten by {name}. Hold its Bluetooth button until the light flashes, that's pairing mode, and ask me.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} doesn't remember me. Put it in pairing mode and we'll start over.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Start over with {name}: pairing mode, light flashing, then tell me to pair.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} lost me somewhere. Switch it to pairing mode and ask me to pair it.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Pairing mode, please. {name} no longer knows me.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Hold the Bluetooth button on {name} until it flashes. That's pairing mode. Then ask me.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{name} has let go of me. Put it in pairing mode and I'll pair it again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Clean slate with {name}. Put it in pairing mode and ask me to pair.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} has no memory of us. Pairing mode first, light flashing, then ask me.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I can't use {name} until it knows me again. Pairing mode, then say pair.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Easy fix for {name}: pairing mode, wait for the flashing light, and ask me to pair it.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} doesn't know me anymore. Put it in pairing mode, then ask me to pair it.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "We've lost each other, {name} and I. Pairing mode, and I'll take it from there.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hold the Bluetooth button on {name} until the light flashes. That's pairing mode. Then tell me to pair.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} has dropped me from its memory. Pairing mode, please, and ask me again.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I need {name} in pairing mode. Once it flashes, ask me to pair it.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      }
+    ],
+    "bt.unreachable": [
+      {
+        "text": "I couldn't reach {name}. Check it's switched on and nearby, then ask me again.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} isn't answering. Maybe it's off, or too far away.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No sign of {name}. Is it on, and close enough?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I can't get to {name}. Switch it on, bring it closer, and ask again.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} is out of reach. Off, or too far, I'd guess.",
+        "mood": "focused",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Nothing from {name}. Check the power and the distance.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} won't come. Probably switched off or too far from me.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I tried {name} and got silence. Make sure it's on and nearby.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Can't find {name} in range. Turn it on, move it closer, ask me again.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} is out of my reach right now. Power or distance, most likely.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Hm, {name} doesn't respond. Is it switched on?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "I couldn't connect with {name}. It may be off, or simply too far.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} won't answer. Probably switched off or too far from me.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Can't find {name} in range. Turn it on, move it closer, ask again.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} is beyond me right now. Power or distance, most likely.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} isn't picking up. Check it has power and sits near me.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Silence from {name}. Switch it on, bring it closer.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "I can't reach {name}. Off or far away, one of the two.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} is out of my reach. Is it on, and close enough?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No answer from {name}. Maybe it's off, or across the house.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I tried {name} and got nothing. Check power and distance.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} seems to be asleep or too far. Have a look.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Nothing from {name}. Wake it up or bring it nearer.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "I can't hear {name} at all. Is it powered on?",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "{name} is out of range, or off. Sort that and ask again.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Couldn't get through to {name}. Off, or too far away?",
+        "mood": "curious",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} isn't there, as far as I can tell. Power it up and move it close.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Tried {name}, no reply. Make sure it's on and nearby.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm not reaching {name}. Worth checking its power.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} stays quiet. Switch it on and keep it near.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} isn't answering. Is it on?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No sign of {name}. Switch it on, bring it closer.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't get to {name}. Off, or too far.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} is out of reach. Check its power, then ask again.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Silence from {name}. Power and distance, those are the usual suspects.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Tried {name}. Nothing came back.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} is either asleep or far away.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't find {name} to talk to. Turn it on and keep it close.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Can't connect to {name}. Wake it up and try me again.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{name} won't pick up. Check it's on.",
+        "mood": "concerned",
+        "gesture": "none"
+      }
+    ],
+    "bt.declined": [
+      {
+        "text": "{name} turned the connection down or switched off. Switch it on and ask me again.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} said no. Or it shut itself off. Try switching it on.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "The connection to {name} was refused. Make sure it's on, then ask again.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} turned me away. Check it's on and try me again.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "It looks like {name} switched off, or didn't want me. Turn it on and ask again.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} hung up on me. Switch it back on and I'll try again.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "No connection. {name} refused, or powered down.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} wouldn't have me. Power it on and ask me once more.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Refused by {name}. It may have just gone off, so switch it on.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} closed the door. Turn it on and I'll knock again.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{name} dropped the connection or turned off. Switch it on, then ask me.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That didn't take. {name} declined, or is off.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Looks like {name} switched off, or didn't want me. Turn it on and ask again.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} said no. Or it's off. Check, then ask me again.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The link to {name} was turned down. Make sure it's on, and I'll retry.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} turned me away. Power it up and we'll go again.",
+        "mood": "determined",
+        "gesture": "none"
+      },
+      {
+        "text": "Hm. {name} cut me off. Is it still switched on?",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "{name} wouldn't have me. Check it's on, then ask again.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "The connection to {name} was refused. Switch it on and try me again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} hung up on me. Is it still on?",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} shut me out, or powered down. Turn it on and ask again.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Refused by {name}. Make sure it's switched on.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} turned me down. Power it up and I'll give it another go.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No connection. {name} declined or went off.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} slipped away from me. Switch it back on and ask again.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "I was rejected by {name}, or it turned off. Check and call me.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{name} dropped out. Turn it on, and I'll reconnect.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Not this time. {name} refused, or it's off.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} didn't let me in. Check its power and ask again.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} said no. Make sure it's on, then ask again.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Turned away by {name}. Or it went dark.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} wouldn't take the connection. Check its power.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "It seems {name} switched off on me.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{name} refused me. Switch it on and I'll try again.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "No deal. {name} closed the door.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} cut me off. Power it up, then ask.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "The connection to {name} was turned down. Is it still on?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} declined, or died. Either way, check it.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Rebuffed by {name}. Give it power and call me back.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{name} isn't letting me in right now. Check it's on.",
+        "mood": "steady",
+        "gesture": "tilt"
+      }
+    ],
+    "bt.failed": [
+      {
+        "text": "I couldn't connect to {name}. It's probably held by another phone or laptop: disconnect it there, or switch it off and on.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} won't let me in. Another phone or laptop likely has it. Disconnect it there, then ask me again.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Someone else has {name}, I think. Disconnect it from that phone or laptop, or switch it off and on.",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No connection to {name}. Another device is probably holding it, so disconnect it there first.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} is busy with another phone or laptop. Disconnect it there, or power-cycle it, and ask me.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I can't get a hold of {name}. Something else is connected. Disconnect it, or turn it off and on.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Looks like {name} is taken. Disconnect it from the other phone or laptop, then try me again.",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "{name} refuses me, most likely because another device has it. Disconnect it there, or switch it off and on.",
+        "mood": "determined",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Couldn't connect {name}. Check your phone and laptop, disconnect it from them, then ask again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} is clinging to someone else. Disconnect it there, or switch it off and on.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Connection to {name} failed. Another device probably holds it, so disconnect it and I'll retry.",
+        "mood": "focused",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} won't pair up with me. Disconnect it from other devices, or switch it off and on first.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I can't get a hold of {name}. Something else is connected. Please disconnect it, or turn it off and on.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} won't link up with me. Disconnect it from other devices, or switch it off and on first.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Someone else has {name}, I suspect. Disconnect it from that device and I'll try again.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No luck with {name}. It's likely held by another phone or laptop. Disconnect it there.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} is already spoken for. Disconnect it elsewhere, or turn it off and on, then call me.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "I couldn't connect to {name}. Another device may be holding on, so disconnect it first.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} is probably tied to another phone or laptop. Disconnect it there, then ask me.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I couldn't connect to {name}. Disconnect it from whatever else holds it.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Another device likely has {name}. Disconnect it there, or switch it off and on.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} wouldn't take me. Disconnect it from the other phone, then try again.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Something's already using {name}. Disconnect it, and I'll try once more.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No connection to {name}. Switch it off and on, or disconnect it from the other device.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} is busy elsewhere, I think. Disconnect it there and ask again.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I'm locked out of {name}. Disconnect your phone or laptop from it first.",
+        "mood": "putout",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Couldn't get {name} to connect. Disconnect it from anything else, then call me.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} is held by something else. Disconnect it, then I'll take over.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Failed with {name}. Another phone may hold it, so disconnect it there.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} is occupied. Disconnect it from the other device, or power cycle it, then ask.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} won't connect. Another phone may have it. Disconnect it there, then ask me.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Can't get into {name}. Disconnect it from your laptop, or switch it off and on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Something else is holding {name}. Disconnect it and I'll try again.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} is taken, I suspect. Disconnect your other devices from it.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No luck with {name}. Disconnect it elsewhere, or turn it off and on.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm shut out of {name}. Disconnect whatever else is using it.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "{name} won't have me. Likely it's connected to a phone. Disconnect it there.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Failed to connect to {name}. Power cycle it, or disconnect it from the other device.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} is busy. Disconnect it from the phone or laptop, then call me.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Couldn't connect to {name}. Disconnect it from anything else first.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      }
+    ],
+    "bt.notfound": [
+      {
+        "text": "I didn't find it. Make sure it's in pairing mode, with its light flashing, and ask me again.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nothing there. Put it in pairing mode, light flashing, and ask again.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "I looked and found nothing. Is it in pairing mode?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No speaker in sight. Check it's in pairing mode and the light is flashing.",
+        "mood": "steady",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Nothing answered. Pairing mode, light flashing, then ask me once more.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I came up empty. Put the speaker in pairing mode and I'll look again.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Can't see it. It needs to be in pairing mode, light flashing.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "I searched, and there's nothing. Is the light flashing in pairing mode?",
+        "mood": "concerned",
+        "gesture": "think"
+      },
+      {
+        "text": "Not found. Get it into pairing mode first, then ask me.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No luck. Flashing light, pairing mode, then I'll try again.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I found nothing nearby. Check it's in pairing mode.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Silence out there. Put it in pairing mode and call me back.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Nothing in range is pairing. Is it in pairing mode yet?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I looked everywhere I can. Pairing mode, with the light flashing, and I'll search again.",
+        "mood": "determined",
+        "gesture": "none"
+      },
+      {
+        "text": "No speaker showed itself. Switch it to pairing mode and ask me again.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Hm, empty handed. It has to be in pairing mode before I can see it.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nothing showed up. Is it in pairing mode, light flashing?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I searched and found no speaker. Put it in pairing mode and try me again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Empty air. It needs to be in pairing mode before I can find it.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I can't find it. Check the pairing mode light is flashing.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Nothing's answering. Set it to pairing mode and ask me once more.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "No speaker in sight. Pairing mode, flashing light, then ask again.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Found nothing. Hold the Bluetooth button until it flashes, that's pairing mode.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "It's not showing. Is it in pairing mode?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I came up empty. Get it into pairing mode and I'll look again.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not a sign of it. It must be in pairing mode for me to see it.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Nobody's advertising nearby. Put the speaker in pairing mode.",
+        "mood": "neutral",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Search done, nothing found. Pairing mode first, then call me.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Found nothing. Is it in pairing mode?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Nothing out there. Put it in pairing mode, light flashing, and ask again.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't see it. It needs to be in pairing mode.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No speaker answered. Try pairing mode and call me again.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Searched, and came up empty. Pairing mode, then I'll look again.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nothing's flashing nearby. Switch it to pairing mode.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Not a trace. Hold the Bluetooth button for pairing mode.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "It isn't visible to me. Pairing mode, please.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "My search found no one. Get it into pairing mode first.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Empty handed. Make sure the light flashes, that's pairing mode.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Can't find it. Is the speaker in pairing mode yet?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Nobody home. Set pairing mode and I'll search again.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      }
+    ],
+    "bt.which": [
+      {
+        "text": "I found {names}. Which one should I pair?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "There's {names}. Which one?",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "I see {names}. Which do you want?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "More than one: {names}. Pick one.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{names}. Which should I pair?",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Found {names}. Tell me which.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Several here: {names}. Your choice.",
+        "mood": "happy",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Which one then? {names}.",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "I have {names} in range. Which one?",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Options are {names}. Which to pair?",
+        "mood": "focused",
+        "gesture": "none"
+      },
+      {
+        "text": "Take your pick: {names}.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{names}, all showing. Which one?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "More than one answered: {names}. Which?",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Pick one for me: {names}.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "I see {names}. Say which.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{names}. Which are we pairing?",
+        "mood": "curious",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Which of these: {names}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I can see {names}. Which one do you want?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{names}. Tell me which.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Found a few: {names}. Which one?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Several answered: {names}. Which should I pair?",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Choose between {names}.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Which speaker: {names}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I've got {names}. Your call.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Which one do you mean? {names}.",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "In range: {names}. Pick one.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{names}. Which one gets paired?",
+        "mood": "focused",
+        "gesture": "none"
+      },
+      {
+        "text": "A few here: {names}. Name your choice.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I see {names}. Which one?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{names}. Which do you want?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "More than one here: {names}. Pick.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{names}. You choose.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Options: {names}. Which one?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I've got {names} in range. Which?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Which one should I pair: {names}?",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "There's {names}. Say which.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Several found. {names}. Your decision.",
+        "mood": "steady",
+        "gesture": "shrug"
+      }
+    ],
+    "job.failed": [
+      {
+        "text": "{title} failed.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} didn't make it.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Bad news: {title} failed.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} fell over.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm afraid {title} failed.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "{title} broke down.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "No luck with {title}. It failed.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} has failed. Take a look?",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That one failed: {title}.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} ran into trouble and stopped.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Heads up, {title} failed.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} didn't go through.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Something went wrong with {title}.",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} stopped with an error.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Your job {title} failed.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} hit a wall and failed.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "That's a failure: {title}.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} came to a bad end.",
+        "mood": "sad",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{title} did not finish. It failed.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Trouble with {title}. It failed.",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} gave up on us.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Bad news. {title} broke.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "It failed: {title}.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} ended in failure.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "{title} errored out.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No good. {title} failed.",
+        "mood": "frustrated",
+        "gesture": "sigh"
+      },
+      {
+        "text": "We lost {title}. It failed.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      }
+    ],
+    "job.needs": [
+      {
+        "text": "{title} needs you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} is waiting on you.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Your turn on {title}.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} has a question for you.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Whenever you're ready, {title} is waiting.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} is stuck until you step in.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I need you for {title}.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} is paused, waiting for you.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Got a moment? {title} needs a decision.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} can't go on without you.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Over to you: {title}.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{title} is holding for you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} is waiting on your word.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "A hand here, please. {title}.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} has stopped and needs you.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} needs a word from you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your input, please, on {title}.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} is stuck until you answer.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Waiting on you: {title}.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} is parked, pending you.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{title} needs your attention.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Come back to {title} when you can.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} can't move until you do.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Need you for {title}.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} is on hold, waiting.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "A moment for {title}, when you can.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} wants a decision.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Pending your word: {title}.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Stopped at {title}. It needs you.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      }
+    ],
+    "job.plan": [
+      {
+        "text": "The plan for {title} is ready in its thread.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I've written the plan for {title}. It's waiting on your OK.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Have a look at the plan for {title}, whenever you're ready.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} has a plan now. Your call.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The plan for {title} is in its thread, waiting for you.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Plan's done for {title}. Say yes and we move.",
+        "mood": "determined",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Here's the plan for {title}. Read it, then give me the nod.",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I've laid out a plan for {title}. Needs your approval.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Plan for {title} is written. Nothing starts without you.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The plan for {title} is waiting in its thread.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} is planned out. Take a look when you can.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Your plan for {title} is ready for review.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} has a plan now. Have a look and tell me.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I wrote the plan for {title}. It's your call.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Plan for {title} is up. Approve it and I'll start.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The plan's ready for {title}. Short read, worth it.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title}, planned. Over to you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Check the plan for {title} when you have a minute.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "I've put the plan for {title} in the thread. Your OK moves it.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Plan for {title} is drawn up. Change anything you like.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The plan for {title} is done, and it's waiting on you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} has its plan. Say the word.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Got the plan for {title} written. Tell me if it's right.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Plan's in for {title}. I'm holding until you approve.",
+        "mood": "determined",
+        "gesture": "none"
+      },
+      {
+        "text": "Plan for {title} is written. Have a look when you can.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} has a plan now. It needs your OK.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I wrote the plan for {title}. Nothing moves until you agree.",
+        "mood": "focused",
+        "gesture": "none"
+      },
+      {
+        "text": "Here's the plan for {title}. Tell me what to change.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "The {title} plan is in its thread, waiting for you.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Plan's ready for {title}. Read it, then give me the nod.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} is mapped out. The plan is yours to approve.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Drafted the plan for {title}. Over to your judgment.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Your plan for {title} is written. I'll wait.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The plan for {title} is set down. Approve it and I start.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Look over the plan for {title} when it suits you.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title}: plan done, thread open, your call.",
+        "mood": "focused",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{title} is drafted. The plan's in the thread when you want it.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Plan for {title} is written. Say the word.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I've laid out the plan for {title}. Nothing moves until you approve.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} has a plan now. Take a look.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      }
+    ],
+    "job.stopped": [
+      {
+        "text": "{title} stopped at its {limit} limit.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} hit the {limit} limit and stopped.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The {limit} limit stopped {title}.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} ran into your {limit} limit. It's paused.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Heads up, {title} reached the {limit} limit.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} is stopped. The {limit} limit was reached.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Reached the {limit} limit, so {title} stopped.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{title} came to a halt at the {limit} limit.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "The {limit} limit did its job. {title} stopped.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} stopped. It hit the {limit} limit you set.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your {limit} limit caught {title}. It's stopped.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} is waiting on you. {limit} limit reached.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} stopped. The {limit} limit is what held it.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The {limit} limit ended {title}.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "I stopped {title} at the {limit} limit, as set.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} ran into your {limit} limit and stopped.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Out of {limit} for {title}. It's stopped.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{title} is paused at the {limit} limit. Your move.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That's the {limit} limit. {title} stops here.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} hit {limit} and stopped. Raise it if you want more.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The {limit} limit tripped. {title} is on hold.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} went as far as the {limit} limit allowed.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Stopped {title}. The {limit} limit was reached.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Limit's reached on {title}. It's {limit}, and I held the line.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} ran into the {limit} limit and stopped.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} is stopped. You set {limit} as the ceiling.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "I stopped {title}. The {limit} limit was hit.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} reached {limit}, so it's halted.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Halted {title} at your {limit} limit.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The {limit} cap stopped {title}. Want it raised?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} is waiting. It used up the {limit} allowance.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No {limit} left, so {title} stopped.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} came to the {limit} limit and held there.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Held {title}. The {limit} ran out.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Your {limit} limit ended {title} early.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} stopped short. The {limit} limit did that.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{title} is paused; {limit} ran out.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "The {limit} limit caught {title}. Say if you'd like more.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} went as far as your {limit} allows.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I stopped {title} at the {limit} line.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      }
+    ],
+    "ack.again": [
+      {
+        "text": "Still here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes, I'm here.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Right here.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Go on.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I'm listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Didn't go anywhere.",
+        "mood": "steady",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Still with you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Here. What's next?",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mm, still here.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ready when you are.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm still around.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Yes? Go ahead.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still on it.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I'm here.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say the word.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nowhere else to be.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Go ahead, I'm ready.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Still around. Talk to me.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm, I'm here.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Back with you. Go on.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Yes? Go on.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I'm with you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Mm-hm, I'm listening.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Go on, I'm here.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Still on it. Speak.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Tell me.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "All ears.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Here. Say it.",
+        "mood": "focused",
+        "gesture": "none"
+      },
+      {
+        "text": "Go on, then.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I haven't gone anywhere.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Yes? What now?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm. Speak.",
+        "mood": "focused",
+        "gesture": "none"
+      },
+      {
+        "text": "I'm here. Continue.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "What do you need?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      }
+    ],
+    "id.confirm": [
+      {
+        "text": "Is that you, {name}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, is that you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Just checking, {name}?",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Am I speaking with {name}?",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That's {name}, right?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Is this really {name}?",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, can you confirm?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Tell me it's {name}.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Is it {name} talking?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "Sounds like {name}. Right?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm for me, {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Is this {name}?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Quick check: {name}?",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Just to be sure, {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's {name} speaking?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Say yes if you're {name}.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Am I hearing {name}?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{name}, is that really you?",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I think that's {name}. Correct?",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Is it {name} I'm talking to?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Can you confirm you're {name}?",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name}? Just checking.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Just {name}, right?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Tell me you're {name}.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That sounds like {name}. Right?",
+        "mood": "curious",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Am I talking to {name}?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "You're {name}, yes?",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Is this voice {name}'s?",
+        "mood": "focused",
+        "gesture": "think"
+      },
+      {
+        "text": "Let me be sure. {name}?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Is that {name}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, is it you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "This is {name}, correct?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Say it's {name}.",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, am I right?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "I think that's {name}. Yes?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Who's speaking? {name}?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Is {name} there?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Humor me. You're {name}?",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Can you confirm, {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      }
+    ],
+    "id.phone": [
+      {
+        "text": "Tap yes on your phone if that's you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm with a yes on your phone.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say yes on your phone, so I know it's you.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Check your phone and tap yes.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your phone has a question. Tap yes.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Just tap yes on your phone for me.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Pick up your phone and answer yes.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "A quick yes on your phone will do.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I need a yes from your phone.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Phone's got a prompt. Tap yes if it's you.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "To be sure, tap yes on your phone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm it's you. Yes, on your phone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say yes on your phone and we're done.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I've sent a prompt. Answer yes on your phone.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Tap yes on your phone, please.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Your phone will ask. Just say yes.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Quick yes on your phone, if it's you.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Confirm on your phone with a yes.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "One tap on your phone. Yes.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Phone, please. Tap yes.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Reach for your phone and say yes.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I'd like a yes from your phone first.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Just answer yes on your phone.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say yes on your phone to confirm.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Check your phone and answer yes.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Your phone has a question. Answer yes.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Please confirm with a yes on your phone.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Grab your phone and tap yes.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "A yes from your phone, and we're done.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Open your phone and say yes.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Phone in hand? Tap yes.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Just a yes on your phone, please.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Tap yes on your phone to prove it's you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm it on your phone. A yes is enough.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Say yes on your phone, please.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Tap yes on your phone for me.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I sent a question to your phone. Tap yes.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Your phone has a yes waiting.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Pick up your phone and tap yes.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "One yes on your phone settles it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      }
+    ],
+    "id.ok": [
+      {
+        "text": "Thanks, that's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirmed. Good.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Got it, it's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "All clear, thanks.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "There you are.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Voice matched. Thank you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, I'm sure now.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's settled, thanks.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Perfect, it's you.",
+        "mood": "happy",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Verified. Carry on.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Thanks, I know it's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Okay, we're good.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Got you. Thanks.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Confirmed.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That's you. Good.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "All clear.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes, it's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Thanks, that's all I needed.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Check passed. Moving on.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good. I'm sure.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Welcome back.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "No doubt left.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's you, all right.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Done. Thank you.",
+        "mood": "neutral",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Good, that's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Verified. Carrying on.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Thanks. All clear.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Got you.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Sure now. Thank you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's settled.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Right, it's really you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good. On with it.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "You're verified.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Thank you. That's enough.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "All good. Carry on.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, it's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's it. Thank you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Verified. Moving on.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes, I know you now.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Check passed.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      }
+    ],
+    "id.failed": [
+      {
+        "text": "I still can't tell it's you, so I've left that.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't confirm it's you, so I haven't done it.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not sure it's you, so that stays undone.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I can't be sure it's you. I've left it alone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The check didn't pass, so I haven't touched it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Sorry, I can't verify you. Nothing was done.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Without being sure it's you, I've held off.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't match your voice, so that waits.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No confirmation, so I've left that untouched.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm not certain it's you, so I didn't do it.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Can't verify it's you. That one stays undone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Voice check failed, so I've left your request.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I couldn't confirm it's you, so I didn't do it.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check failed. Nothing's been done.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Sorry, I'm not sure it's you. I've left it.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Not verified, so your request stays undone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't be sure, so I've held back.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That didn't check out. I've left it alone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No match, so I haven't done it.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'd rather be sure. Nothing was changed.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check didn't go through, so that waits.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Sorry. Without that check, I can't go ahead.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't verify you, so it's untouched.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Not confirmed. I've left your request as it was.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not sure it's you, so that stays as it was.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The check failed. I've done nothing.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Sorry, I can't verify you. Nothing has changed.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Without a match, I won't go ahead.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm not certain, so I held off.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "That didn't pass. Your request is still waiting.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't be sure, so I left it alone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Verification failed. I haven't touched anything.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't do that until I'm sure it's you.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No confirmation, so no action. Try again later.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "It didn't check out, so I stopped there.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't verify you, so nothing was done.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check failed. I've left your request alone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not sure it's you, so I didn't act.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I can't confirm it's you. Nothing changed.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "No match, so I stopped. Try again when you can.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      }
     ]
   },
   "engineering": {
@@ -10049,6 +12914,3001 @@
         "text": "Oof. Only my pride took damage.",
         "mood": "hurt",
         "gesture": "chuckle"
+      }
+    ],
+    "bt.forgot": [
+      {
+        "text": "{name} has forgotten me. Put it in pairing mode, hold its Bluetooth button until the light flashes, then ask me to pair it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "It seems {name} no longer knows me. Pairing mode, please: hold the Bluetooth button until the light flashes, then ask me again.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} and I have lost each other. Hold its Bluetooth button until the light flashes, that's pairing mode, then ask me to pair.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Memory failure, on {name}'s side. Put it into pairing mode, light flashing, and ask me to pair it.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} doesn't recognise me anymore. Pairing mode will fix that: hold the Bluetooth button until it flashes, then say the word.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I'm afraid {name} has wiped me from its memory. Put it in pairing mode and ask me to pair it again.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "We'll need to be reintroduced to {name}. Hold the Bluetooth button until the light flashes, pairing mode, then ask me.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} has let me go. Pairing mode, then ask me to pair it. Hold the button until the light flashes.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "No record of me on {name}. Put it in pairing mode, button held until the light flashes, and I'll pair it.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "A small snag: {name} forgot me. Set it to pairing mode by holding the Bluetooth button, then ask me to pair.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} needs a fresh introduction. Hold its Bluetooth button until the light flashes, pairing mode, and ask me to pair it.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Pairing again, then. {name} forgot me, so put it in pairing mode and the light should flash. Ask when ready.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} has forgotten me. Pairing mode, please: hold its Bluetooth button until the light flashes, then ask me to pair.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "It seems {name} has erased me. Put it in pairing mode, light flashing, and I'll pair again.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} no longer knows me. Hold the Bluetooth button for pairing mode, then ask me to pair it.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Awkward. {name} has no memory of me. Pairing mode, flashing light, and we'll start afresh.",
+        "mood": "steady",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "I've been struck from {name}'s records. Put it in pairing mode and ask me to pair.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{name} needs reminding who I am. Hold the button until it flashes, that's pairing mode, then ask.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Pairing mode for {name}, if you would. Hold the Bluetooth button until the light flashes, then ask me.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} has let go of me. Put it in pairing mode, and I'll gladly pair it again.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "A fresh start with {name}, I'm afraid. Pairing mode, light flashing, then ask me to pair.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} has no record of me. Bluetooth button held until it flashes, pairing mode, and say the word.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not on speaking terms with {name}, it seems. Put it in pairing mode and I'll make amends.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{name} forgot me. Pairing mode will sort it. Hold the button until the light flashes, then ask.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} no longer remembers me. Put it in pairing mode, then ask me to pair it.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "It seems {name} has wiped me from memory. Pairing mode, light flashing, and I'll reintroduce myself.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} has forgotten me. Hold its Bluetooth button until it flashes, that's pairing mode, then ask.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "We'll have to start over with {name}. Pairing mode, please, and then ask me to pair.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'm a stranger to {name} now. Put it in pairing mode and I'll set things right.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{name} has dropped me entirely. Pairing mode first, then say the word.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Pairing mode on {name}, if you'd be so kind. Hold the button until the light flashes.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "{name} has no memory of me. Get it into pairing mode and ask me to pair.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The pairing with {name} is gone. Pairing mode, flashing light, and we'll mend it.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} and I need a fresh introduction. Hold its Bluetooth button until it flashes, pairing mode, then ask.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'm afraid {name} let me go. Put it in pairing mode and ask me to pair it again.",
+        "mood": "sad",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{name} has forgotten me. Pairing mode will fix it. Just ask once the light flashes.",
+        "mood": "steady",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "{name} seems to have lost my details. Pairing mode, if you would, and then ask me to pair.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "We've been struck from {name}'s memory. Put it in pairing mode and I'll reintroduce myself.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} no longer recognises me. Hold its Bluetooth button until the light flashes, pairing mode, and ask away.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Pairing mode on {name} would help enormously. Light flashing, then ask me to pair.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      }
+    ],
+    "bt.unreachable": [
+      {
+        "text": "I couldn't reach {name}. It may be off, or too far away.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} isn't answering. Switched off, perhaps, or out of range.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No sign of {name}. Check it's on and nearby, and ask me again.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} is out of my reach. Either it's off or it's too far.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "I tried {name} and got nothing. Power or distance, most likely.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Can't reach {name} from here. Is it switched on?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} seems to be elsewhere. Off, or simply too far away.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Silence from {name}. Bring it closer, or switch it on, and I'll try again.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I've lost {name}. Likely off or out of range.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{name} didn't respond. Check its power and distance, would you?",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "No luck reaching {name}. It may be off, or too far off.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} is beyond me at the moment. Off, or too distant.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} isn't answering. Switched off, or too far away.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I can't find {name} at all. Is it on and close by?",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "No response from {name}. Check its power, perhaps.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} is out of reach. Off, or out of range.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Nothing from {name}. Bring it nearer and I'll try again.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I reached out to {name} and heard nothing. Switched on, is it?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} seems to have gone quiet. Power, or distance.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "{name} is out of my range, or off. Check, and I'll retry.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't raise {name}. Either it's off, or it's wandered too far.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{name} is not within reach. Please check it's on.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not a whisper from {name}. Is it switched on and nearby?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} is missing, as far as I can tell. Off or too distant.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I can't reach {name}. Is it on, and close by?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} isn't answering. Off, or too far.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No sign of {name}. Please check its power and distance.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} is beyond my reach. Switch it on or bring it closer.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Silence from {name}. It may be off, or simply too far.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I tried {name} and found nothing. Is it switched on?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "{name} is out of range, or out of battery, I suspect.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Can't find {name} at all. Closer, or powered on, please.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} won't come to the phone. Off, or too far away.",
+        "mood": "putout",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "My reach doesn't extend to {name}. Check it's on and near.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} has vanished from my range. Power and distance, please.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "No response from {name}. Do make sure it's on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} isn't answering. Off, or out of range.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I can't raise {name}. Is it on, and close by?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "No sign of {name}. Power, or distance, likely.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} is beyond my reach just now. Check it's switched on.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      }
+    ],
+    "bt.declined": [
+      {
+        "text": "{name} turned the connection down, or switched off.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} refused me. Or it simply went off.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "The connection to {name} was declined. Switch it on and ask again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} shut me out, or shut itself down. Try again once it's on.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "No welcome from {name}. It declined, or powered off.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} said no. Or switched off. Hard to tell which.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} dropped the connection. Make sure it's on, then ask me again.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I was turned away by {name}. Switch it on and I'll retry.",
+        "mood": "steady",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "{name} wouldn't have me. Perhaps it's off.",
+        "mood": "sulky",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Declined by {name}, or it switched off. Either way, ask me again.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} refused the connection. Power it up and we'll try once more.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The line to {name} went dead. Switch it on and ask me again.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} turned me down. Or switched off. Ask me again once it's on.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "The connection to {name} was refused. Is it powered on?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} shut me out. Switch it on and I'll try again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} wouldn't connect, or it went off. Check it, then ask again.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "A polite refusal from {name}, or it simply switched off.",
+        "mood": "steady",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{name} dropped me. Make sure it's on and ask again.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "No luck. {name} declined, or powered down.",
+        "mood": "sulky",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} rejected the connection. Switch it on, and we'll retry.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I was refused by {name}. Perhaps it's off. Do check.",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} cut the connection. Power it on, then ask me once more.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} has said no, or gone dark. Switch it on and ask again.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "The door to {name} is closed. Switch it on and I'll knock again.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{name} turned me away. Switch it on and ask again.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "The connection to {name} was refused, or it powered off.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} wouldn't have me. Check it's on, then ask again.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Declined by {name}. Perhaps it's switched off.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} hung up on me. Power it on and I'll retry.",
+        "mood": "putout",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{name} said no, or went to sleep. Switch it on and ask again.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The connection with {name} didn't hold. Is it still on?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "A refusal from {name}, or it simply switched off.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} turned down the connection. Check its power and ask once more.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} has gone dark on me. Switch it on and try me again.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No connection. {name} refused or switched off.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} turned me away. Check it's still switched on.",
+        "mood": "hurt",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "The connection to {name} was refused. Power it on and ask again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} shut the door on me. Is it still on?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} dropped out, or switched itself off. Try once more after powering it up.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I was refused by {name}. Make sure it's awake.",
+        "mood": "putout",
+        "gesture": "sigh"
+      }
+    ],
+    "bt.failed": [
+      {
+        "text": "I couldn't connect to {name}. Another phone or laptop probably holds it. Disconnect it there, or switch it off and on.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} is likely busy with another device. Disconnect it from that phone or laptop, or power-cycle it, then ask me.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "No connection to {name}. I suspect a phone or laptop has it. Disconnect it there, or switch it off and on.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Something else is holding {name}. Disconnect it from the other phone or laptop, or switch it off and on again.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} won't take me. Another device has it, I'd wager. Disconnect it there, or cycle its power, and ask again.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm locked out of {name}. Disconnect it from whichever phone or laptop has it, or switch it off and on.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Connection to {name} failed. Most likely it's taken. Disconnect it elsewhere, or switch it off and on, then ask me again.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} seems occupied. Disconnect it from the other phone or laptop, or turn it off and on.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "I couldn't get through to {name}. Another device probably has it. Disconnect it there and I'll try again.",
+        "mood": "neutral",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "A rival has {name}, I suspect. Disconnect it from the phone or laptop, or switch it off and on.",
+        "mood": "curious",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{name} refused to connect. Disconnect it from any other device, or power it off and on, then ask me.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Failed to connect to {name}. Check whether a phone or laptop holds it, and disconnect it there.",
+        "mood": "determined",
+        "gesture": "think"
+      },
+      {
+        "text": "I couldn't connect to {name}. Another device likely holds it. Disconnect it there, or switch it off and on.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} is busy, I think. Disconnect it from the other phone or laptop, then ask me again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No connection to {name}. Please disconnect it from any other device, or cycle its power.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Something else has {name}. Disconnect it there, or switch it off and on, and I'll retry.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{name} wouldn't let me in. Disconnect it from the other device and ask me again.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I think another phone or laptop is holding {name}. Disconnect it, or turn it off and on.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The connection to {name} failed. Disconnect it elsewhere, or power it off and on.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} is spoken for, I suspect. Disconnect it from the other device and I'll try again.",
+        "mood": "steady",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Couldn't connect to {name}. Disconnect it from whatever else has it, then ask me.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name} is already taken, most likely. Disconnect it there, or switch it off and on.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I can't get a connection to {name}. Disconnect it from the other device, and we'll go again.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "A failed attempt on {name}. Another device may hold it. Disconnect it there first.",
+        "mood": "steady",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "I couldn't connect to {name}. Another device likely has it, so disconnect it there.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name} is probably held by a phone or laptop. Disconnect it there, then ask me.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No connection to {name}. Disconnect it from the other device, or switch it off and on.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Someone else has {name}, I suspect. Disconnect it from there and I'll try again.",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "{name} wouldn't connect. Disconnect it from your other devices and ask again.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I was kept out of {name}. Disconnect it elsewhere, or power cycle it.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "The attempt on {name} failed. Disconnect whatever else holds it.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "{name} is busy with another device, most likely. Disconnect it there, then ask me.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Couldn't get through to {name}. Disconnect it from the other phone or laptop, or switch it off and on.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name} is occupied elsewhere, I think. Disconnect it there and we'll go again.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I can't connect to {name}. Disconnect it from the other device first.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "{name} refuses to share. Disconnect it from the other device, then ask me.",
+        "mood": "putout",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "{name} won't take me. Another phone or laptop probably holds it, so disconnect it there, or switch it off and on.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't connect to {name}. Please disconnect whatever else is using it, then ask me again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Something else has hold of {name}. Disconnect it from there, or give it a power cycle.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{name} is likely tied up with another device. Disconnect it there and I'll try again.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      }
+    ],
+    "bt.notfound": [
+      {
+        "text": "I looked and found nothing. Is it in pairing mode, light flashing?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Nothing in range. Put it in pairing mode, with the light flashing, and ask me again.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "No speaker found. Make sure it's in pairing mode and the light is flashing.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I searched and came up empty. Pairing mode, light flashing, then ask again.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nothing there. Check it's in pairing mode before I look again.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I didn't find it. Pairing mode should have the light flashing.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "No sign of it. Put it in pairing mode and I'll have another look.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Empty-handed, I'm afraid. It needs to be in pairing mode, light flashing.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I can't see it anywhere. Is the light flashing? It must be in pairing mode.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Search came back blank. Pairing mode first, then ask me once more.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Nothing found. Get it into pairing mode, light flashing, and I'll try again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "It isn't showing. Pairing mode, flashing light, then ask me again.",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I found nothing. Is it in pairing mode, light flashing?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No luck. Put it in pairing mode and ask me again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nothing in range. It needs to be in pairing mode.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I looked and found nothing. Pairing mode, light flashing, then once more.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not a trace. Check it's in pairing mode.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "It's not showing up. Pairing mode, please, with the light flashing.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I can't see it. Has it been put in pairing mode?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Nothing yet. Get it into pairing mode and I'll search again.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "My search found nothing. Pairing mode first, light flashing.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "No speaker answered. Put it in pairing mode and ask me again.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I came up empty. Pairing mode, with the light flashing, should do it.",
+        "mood": "steady",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "It's hiding from me. Pairing mode, flashing light, and I'll look again.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I found nothing. Is it in pairing mode?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "No speaker showed up. Pairing mode, with the light flashing, please.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nothing in range. Put it in pairing mode and ask again.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I searched and came back empty. Check it's in pairing mode.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Not a sign of it. Pairing mode, light flashing, then I'll look again.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I can't find it. Has pairing mode been switched on?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "Nothing answered. Put it in pairing mode and we'll try once more.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "It's not out there, or not in pairing mode.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I looked everywhere I could. Pairing mode, please, and ask me again.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "No luck. Make sure its light is flashing, in pairing mode.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "The search turned up nothing. Pairing mode first.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I see no speaker. Get it into pairing mode, then ask me.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Nothing found. Is it in pairing mode, light flashing?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I searched and came up empty. Pairing mode, please, then ask again.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No speaker in sight. Check it's in pairing mode and flashing.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "It isn't showing. Put it in pairing mode and give me another go.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      }
+    ],
+    "bt.which": [
+      {
+        "text": "I found {names}. Which one should I pair?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "There's {names}. Which shall it be?",
+        "mood": "curious",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I see {names}. Which one do you mean?",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Several speakers here: {names}. Which to pair?",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{names}. Which one would you like?",
+        "mood": "curious",
+        "gesture": "none"
+      },
+      {
+        "text": "My search turned up {names}. Which one?",
+        "mood": "focused",
+        "gesture": "think"
+      },
+      {
+        "text": "Options are {names}. Your choice.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I've found {names}. Name the one to pair.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Which of these: {names}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Spoilt for choice: {names}. Which one?",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "I can pair {names}. Which first?",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Found {names}. Tell me which to pair.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "I found {names}. Which shall I pair?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "There's {names}. Which one?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{names}. Which would you like paired?",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I see {names}. Pick one.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Several here: {names}. Which one?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Which of {names}?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{names} are all within reach. Which one first?",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Choose from {names}, and I'll pair it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I have {names}. Your preference?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{names} showed up. Which one shall it be?",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Found {names}. Which to pair?",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{names}, all available. Which one?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I see {names}. Which one?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{names}. Which shall I pair?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "There's {names}. Take your pick.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Which would you like: {names}?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{names} are here. Which one first?",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "I've found {names}. Which one, please?",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Several turned up: {names}. Which one?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "{names}. Name your favourite.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "I can pair {names}. Which?",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{names} are available. Which one do you want?",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I found {names}. Which shall it be?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Choose from {names}, please.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{names}. Which one do you prefer?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Several are about: {names}. Which?",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "There's {names}. Which should I pair?",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I see {names}. Which one, then?",
+        "mood": "curious",
+        "gesture": "tilt"
+      }
+    ],
+    "job.failed": [
+      {
+        "text": "{title} failed.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "I'm afraid {title} has failed.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{title} didn't make it.",
+        "mood": "sad",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Bad news: {title} failed.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} has fallen over.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} broke. I'll show you where.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "It's {title}. It failed.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} ended in failure.",
+        "mood": "sad",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Sorry, {title} failed.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} came apart.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Trouble with {title}. It failed.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} failed. Shall we look?",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} has gone wrong. Shall I show you?",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} hit a wall.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "No joy with {title}. It failed.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{title} stopped, and not kindly.",
+        "mood": "concerned",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "It's {title}. Something broke.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} failed. Let's see why.",
+        "mood": "determined",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} fell short.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "A failure in {title}. I have the details.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} failed. I'm afraid it didn't make it.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{title} came apart. Shall we look?",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} didn't survive. I have the details.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "It's {title}. It has failed.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} broke down. Want the cause?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Something went wrong with {title}.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{title} has failed. Next, we find out why.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm sorry, {title} failed.",
+        "mood": "sad",
+        "gesture": "bow"
+      },
+      {
+        "text": "{title} fell over. I'll show you where.",
+        "mood": "steady",
+        "gesture": "think"
+      },
+      {
+        "text": "A failure on {title}. Not ideal.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{title} has come apart.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "{title} did not finish. It failed.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm afraid {title} went wrong.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} is down. I'll find the cause.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "A failure, on {title}. Shall we look?",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} stopped with an error.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "That's {title} broken. Details are ready.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{title} fell short. I know where.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Regrettably, {title} has failed.",
+        "mood": "sad",
+        "gesture": "bow"
+      },
+      {
+        "text": "{title} hit a wall. Let's see why.",
+        "mood": "determined",
+        "gesture": "think"
+      }
+    ],
+    "job.needs": [
+      {
+        "text": "{title} needs you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} is waiting on you.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Your attention, please: {title}.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} has a question for you.",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "When you have a moment, {title} is waiting.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} is stuck until you weigh in.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I've paused {title}. It needs you.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} wants a word.",
+        "mood": "curious",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Over to you on {title}.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} can't go on without you.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "A decision is needed on {title}.",
+        "mood": "focused",
+        "gesture": "think"
+      },
+      {
+        "text": "{title} is holding for you.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "A word, please, about {title}.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} has stopped for you.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Your input is wanted on {title}.",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} is paused and asking for you.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Whenever you're ready, {title} is waiting.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} awaits your say.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "I need you for {title}.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} is on hold until you look.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Could you look at {title}? It's waiting.",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} is waiting for you.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} needs a word from you.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Your attention, please, on {title}.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} has paused for your decision.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I'm holding {title} for you.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} is asking for you.",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} is stalled until you weigh in.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "A question on {title}, for you.",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "{title} awaits you, whenever convenient.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "When you can, {title} wants a decision.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I've paused {title} for you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} cannot go on without you.",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "A moment of your time, for {title}.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "{title} is on hold, awaiting you.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} is patiently waiting for an answer.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Do have a look at {title}.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} stopped, hoping for your say.",
+        "mood": "curious",
+        "gesture": "shrug"
+      }
+    ],
+    "job.plan": [
+      {
+        "text": "The plan for {title} is ready in its thread.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I've written the plan for {title}. It awaits your OK.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} has its plan now, sitting in the thread for you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your plan for {title} is drafted. Have a look when you can.",
+        "mood": "proud",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "The plan for {title} is done, and waiting on your word.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Plan for {title}, written and waiting in its thread.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Nothing moves on {title} until you approve the plan.",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The plan for {title} is in the thread. Your call.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I've laid out the plan for {title}. Over to you.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Have a read of the plan for {title} when convenient.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The plan for {title} is ready for your approval.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "{title} now has a plan. One nod from you and we proceed.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I've written the plan for {title}. It's in the thread, awaiting you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The plan for {title} is drafted. Say the word and we begin.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} has its plan now. Nothing starts until you approve it.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Your plan for {title} is ready, whenever you've a moment.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Plan for {title} is in the thread, ready for your eye.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I've put the plan for {title} in its thread. Do approve or amend.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The plan for {title} is set down. Awaiting your verdict.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Whenever suits, the plan for {title} wants your approval.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{title} is planned out. Only your go-ahead is missing.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The plan for {title} is written. Do read it over.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Plan for {title} is ready. I'll hold until you've decided.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "I've finished the plan for {title}. Your approval sets it moving.",
+        "mood": "determined",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "The plan for {title} is written. Do have a look.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} has its plan, waiting in the thread for you.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "I've drawn up the plan for {title}. Your word, and we begin.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Plan for {title} is done. It needs only your nod.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The plan for {title} sits in its thread, awaiting approval.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} now has a plan. Nothing moves until you agree.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I trust you'll find the plan for {title} in order.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "The plan for {title} is ready. Amend freely.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Plan for {title}, written and waiting. Over to you.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your plan for {title} is in the thread. Say the word.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The plan for {title} is laid out. I'll wait on your decision.",
+        "mood": "steady",
+        "gesture": "think"
+      },
+      {
+        "text": "The plan for {title} is written. Approve it when ready.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} has its plan, waiting in the thread.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "I've drawn up the plan for {title}. Your verdict, whenever suits.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Plan's done for {title}. Nothing proceeds without you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Have a look at the plan for {title}. It's in the thread.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      }
+    ],
+    "job.stopped": [
+      {
+        "text": "{title} stopped at its {limit} limit.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} reached the {limit} limit and halted.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The {limit} limit stopped {title}.",
+        "mood": "focused",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} hit your {limit} limit, so it stopped.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I've halted {title}. The {limit} limit was reached.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} ran into the {limit} limit.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Your {limit} limit ended {title}.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} is paused. The {limit} limit was reached.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "The {limit} limit held, and {title} stopped.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} came to a stop at the {limit} limit.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Limit reached: {limit}. {title} stopped there.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} stopped, as the {limit} limit asked.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{title} has stopped. Your {limit} limit was hit.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm afraid {title} reached the {limit} limit and halted.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The {limit} limit was reached, so {title} is stopped.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} hit your {limit} limit. Raise it and I'll continue.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That's the {limit} limit for {title}. I stopped it there.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "{title} stands still. The {limit} limit did its job.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "No fault, but {title} met the {limit} limit and stopped.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The {limit} limit ended {title}. Your call on what next.",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{title} is held at the {limit} limit, as you instructed.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Stopped: {title}. It reached the {limit} limit you set.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} has reached the {limit} limit. Shall I go on?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I've stopped {title}; the {limit} limit was the cause.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} has stopped. The {limit} limit was reached.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The {limit} limit you set has halted {title}.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} ran into the {limit} limit and stopped.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Nothing broke. {title} simply hit the {limit} limit.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I've halted {title} at the {limit} limit. Do advise.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The {limit} limit has been met, so {title} rests.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{title} is paused at the {limit} limit. Raise it, or leave it?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That is the {limit} limit, and {title} stops there.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} came to the {limit} limit, as arranged.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Stopped on the {limit} limit: {title}. Shall I carry on?",
+        "mood": "focused",
+        "gesture": "think"
+      },
+      {
+        "text": "The {limit} limit caught {title}. All is otherwise well.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{title} is at a halt; the {limit} limit was the reason.",
+        "mood": "concerned",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} has stopped at the {limit} limit.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The {limit} limit was reached, so {title} stopped.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "{title} ran into the {limit} limit. Your call on what follows.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I stopped {title} at the {limit} limit, as you set.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      }
+    ],
+    "ack.again": [
+      {
+        "text": "Still here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Right here.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Yes, still with you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I haven't gone anywhere.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Present and listening.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Go ahead.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Still on it.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes? I'm here.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Not going anywhere.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Here, as ever.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Still at your service.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Yes, go on.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'm all ears.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm, I'm with you.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Do continue.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Never left.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "At your disposal.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Yes? Go ahead.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still with you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ready when you are.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Attending, as ever.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Go on, I'm listening.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Yes, still about.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Present and correct.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I haven't wandered off.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Speak freely.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Quite so, carry on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nowhere else to be.",
+        "mood": "happy",
+        "gesture": "shrug"
+      },
+      {
+        "text": "All ears.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Standing by.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Go ahead, then.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Yes, I'm listening.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "At your service.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "I'm with you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not gone anywhere.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Mm, go on.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Listening, as ever.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Attentive, as promised.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      }
+    ],
+    "id.confirm": [
+      {
+        "text": "Is that you, {name}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, is that really you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Just to be sure, {name}?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Am I speaking with {name}?",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{name}, is that you speaking?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Forgive me, {name}, is that you?",
+        "mood": "concerned",
+        "gesture": "bow"
+      },
+      {
+        "text": "Confirm for me, {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That sounds like {name}. Is it?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "{name}, can you confirm it's you?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Is this {name} I hear?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Tell me it's {name}.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "{name}? Just checking.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name}, is it really you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That's {name}, correct?",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Quick check: {name}, is that you?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "{name}, would you confirm?",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I believe that's {name}. Am I right?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "Tell me, is this {name}?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Is {name} the one speaking?",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Forgive the caution. {name}?",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name}, may I ask you to confirm?",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Just so I'm certain, {name}?",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Would that be {name}?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name}, am I right?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I do beg your pardon. {name}?",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Can you confirm you're {name}?",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Is {name} really there?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "One moment. {name}, is that you?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'd like to be sure. {name}?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{name}, if you'd be so good?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Just checking: {name}?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "Is this {name} speaking?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Quick check. {name}, yes?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{name}? I'd like to be certain.",
+        "mood": "concerned",
+        "gesture": "think"
+      },
+      {
+        "text": "Is it {name} I hear?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Pardon me. {name}, is that right?",
+        "mood": "steady",
+        "gesture": "tilt"
+      }
+    ],
+    "id.phone": [
+      {
+        "text": "Tap yes on your phone if that's you.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirm with a yes on your phone, please.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'll need a yes from your phone.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Pop a yes onto your phone for me.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Please answer yes on your phone.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your phone has a yes waiting, if it's you.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Just tap yes on your phone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "A quick yes on your phone will do.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Check your phone and say yes there.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "If it's you, press yes on your phone.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Humour me with a yes on your phone.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Phone, then yes. That settles it.",
+        "mood": "determined",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Say yes on your phone, if it's you.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I've sent a prompt to your phone. Answer yes.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Tap yes on your phone to prove it.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Your phone will ask. A yes will do.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Pick up your phone and confirm with yes.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "A yes on your phone, if you'd be so kind.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Confirm on your phone with a yes.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "One yes on your phone, and we proceed.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "If that's really you, tap yes on your phone.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Your phone, please. Tap yes.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Just a yes on your phone, and we're done.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Reach for your phone and answer yes.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Would you answer yes on your phone, please?",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Take out your phone and tap yes.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your phone should be asking. Say yes there.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Humour me: yes, on your phone.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Check your phone and tap yes to confirm.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "To be certain, press yes on your phone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Over to your phone, then. Yes will do nicely.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Your phone has a question. Answer yes.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Tap yes on your phone, and I'll carry on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Kindly send a yes from your phone.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Pop over to your phone and say yes.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "A quick yes on your phone, please.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Your phone is waiting. Just answer yes.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Confirm with a yes on your phone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Would you tap yes on your phone?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Phone, if you would. A yes will do.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      }
+    ],
+    "id.ok": [
+      {
+        "text": "Thanks, that's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Confirmed. Thank you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ah, there you are.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, I'm sure now.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's settled, thanks.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Verified. Carry on.",
+        "mood": "steady",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Yes, definitely you.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Lovely, all clear.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Thank you, I know you now.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Quite sure now. Thanks.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That's the voice. Thanks.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "All good. It's you.",
+        "mood": "steady",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "There you are.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good, that's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Identity settled. Proceeding.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Splendid, I'm sure now.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Verified. Thank you kindly.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "No doubt left. Thanks.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Ah, it is you.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Recognised. Carry on.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's cleared up, thank you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Satisfied. It's you.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good. Now we can proceed.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, that settles it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Yes, that's you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Lovely. All in order.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Identity settled. Onward.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "There we are. Thank you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Quite sure now.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Passed. Do go on.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Knew it, but now I'm certain.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Reassuring. Thank you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's in the clear.",
+        "mood": "steady",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Welcome, then. Proceeding.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Thank you, that's you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Confirmed. Carry on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good, all verified.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That's settled, thank you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Verified. Proceeding.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Lovely. I'm sure now.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      }
+    ],
+    "id.failed": [
+      {
+        "text": "I still can't tell it's you, so I've left that.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I couldn't confirm it's you, so that stays undone.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not sure it's you, so I haven't done it.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm afraid I can't verify you. Nothing has been changed.",
+        "mood": "concerned",
+        "gesture": "bow"
+      },
+      {
+        "text": "That check didn't pass, so I've left it alone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Can't be certain it's you. I've held off.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Voice check failed. Your request is untouched.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I didn't trust the match, so I've not done it.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Sorry, I couldn't confirm you. That's still undone.",
+        "mood": "sad",
+        "gesture": "sigh"
+      },
+      {
+        "text": "No match on your voice, so I've left it.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Until I'm sure it's you, that waits.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I couldn't verify you, so nothing was done.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't confirm it was you, so that's undone.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check failed. I've done nothing.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Not sure it's you, so I've held off.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Verification failed. Your request remains undone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't vouch for you yet, so it waits.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That didn't verify, so I've left things as they were.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Apologies, no confirmation, no action.",
+        "mood": "concerned",
+        "gesture": "bow"
+      },
+      {
+        "text": "I wasn't convinced it was you. Nothing's changed.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The voice check failed, so I've not acted.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Better safe than sorry. I've left it undone.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I couldn't be sure of you, so I stopped.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Without a confirmed match, I can't proceed. It's untouched.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That check didn't pass, so nothing's been done.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't confirm it was you. I've left it alone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "No match, I'm afraid, so I haven't acted.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Verification failed. Your request stays undone.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I can't be sure it's you, so it stands untouched.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Sorry, the check failed and I've changed nothing.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Not verified, so I've held off entirely.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'd rather not guess. Nothing has been done.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The voice didn't match, so I've done nothing.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Without proof it's you, I've left everything as it was.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That didn't go through. Better left undone for now.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm afraid I couldn't verify you, so I've stood down.",
+        "mood": "sad",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I couldn't verify it's you, so nothing has changed.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "The check failed, so I've left it undone.",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Not confirmed, so I haven't touched a thing.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm sorry, I can't verify you. It stays as it was.",
+        "mood": "sad",
+        "gesture": "nodSoft"
       }
     ]
   }

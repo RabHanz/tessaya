@@ -26,6 +26,7 @@ import {
   type SpeakerProfile,
 } from "../speaker.ts";
 import { createSpeakerStore } from "../speakerStore.ts";
+import { createLines, type LinesGot } from "./lines.ts";
 import { voicesOf } from "./segments.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "@t3tools/baton-shared/mqtt";
@@ -713,6 +714,21 @@ const main = async () => {
       },
       arbiter: arbiter(env("R1_BRAIN_URL"), deviceKey),
       confirmed: turnSignal(env("R1_BRAIN_URL"), deviceKey, "confirm"),
+      lines: createLines({
+        fetch: async (ask) => {
+          const res = await fetch(env("R1_BRAIN_URL").replace(/\/chat\/completions$/, "/lines"), {
+            method: "POST",
+            headers: { authorization: `Bearer ${deviceKey}`, "content-type": "application/json" },
+            body: JSON.stringify(ask),
+            signal: AbortSignal.timeout(5_000),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return (await res.json()) as LinesGot;
+        },
+        random: Math.random,
+        hour: () => new Date().getHours(),
+        log,
+      }),
       // A bench's turns for regression cases, only while it set `cmd/voice/no-reply` with `keep` (never his).
       keep: (b) => {
         const dir = NodePath.join(state, "bench");

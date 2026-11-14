@@ -54,6 +54,7 @@ import { TessayaTurn, TurnOrigin } from "./TessayaTurn.ts";
 
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
+import { expressOr } from "./TessayaExpression.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 
 type Result = CommsCallResult;
@@ -438,6 +439,15 @@ export const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const createdAt = DateTime.formatIso(DateTime.makeUnsafe(now));
     const fromLabel = name ?? `someone via ${caller.via}`;
+    const plainForms = fallbackForms(input.text, fromLabel);
+    // A note its sender's turn gave no spoken form: her own framing, the words exactly as sent.
+    const spoken =
+      input.forms !== undefined
+        ? plainForms.spoken
+        : ((yield* expressOr("msg.from", {
+            facts: { from: fromLabel, text: input.text.replace(/\s+/g, " ").trim() },
+            plain: plainForms.spoken,
+          }))?.text.slice(0, 600) ?? plainForms.spoken);
     const note: CommsNote = {
       id: yield* newId,
       kind: input.kind,
@@ -446,8 +456,7 @@ export const make = Effect.gen(function* () {
       fromVessel: null,
       to: input.to,
       text: input.text,
-      forms:
-        input.forms === undefined ? fallbackForms(input.text, fromLabel) : trimForms(input.forms),
+      forms: input.forms === undefined ? { ...plainForms, spoken } : trimForms(input.forms),
       // A child's "urgent" is theirs to feel, not to override anyone's quiet (§5.1): it stays soon.
       urgency:
         input.urgency === "urgent" && role === "child" ? "soon" : (input.urgency ?? "normal"),
@@ -932,7 +941,12 @@ export const make = Effect.gen(function* () {
           yield* devices.value
             .command(
               d.deviceId,
-              { op: "say", text: `False alarm: ${label} is over. All clear.` },
+              {
+                op: "say",
+                text:
+                  (yield* expressOr("alarm.clear", { facts: { label } }))?.text ??
+                  `False alarm: ${label} is over. All clear.`,
+              },
               {
                 who: "a false alarm",
                 surface: "assistant",

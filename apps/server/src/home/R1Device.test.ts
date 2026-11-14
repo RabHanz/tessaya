@@ -58,6 +58,17 @@ describe("R1Device", () => {
         { ok: false, status: "failed", line: "Home is unreachable right now." },
       ]),
     ).toBe("I couldn't: Home is unreachable right now.");
+    // In her own words, the failure's own words exact.
+    expect(
+      spokenReply(
+        "Done.",
+        [
+          { ok: true, status: "asked", line: "Sent" },
+          { ok: false, status: "failed", line: "Not done: the lamp is offline." },
+        ],
+        { sentPhone: "Over to your phone for a yes.", couldnt: (what) => `No luck there: ${what}` },
+      ),
+    ).toBe("Over to your phone for a yes. No luck there: the lamp is offline.");
   });
 
   it("streams one OpenAI-style chunk, a stop and [DONE]", () => {

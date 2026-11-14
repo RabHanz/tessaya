@@ -1152,6 +1152,23 @@ describe("what Tessaya's Devices page can ask of the room", () => {
     expect(t.room.session(DEV)).toBeUndefined();
     expect(t.brainCalls).toEqual([]);
   });
+
+  it("shows the mood of her own line on the eyes, and leaves them for a plain one", async () => {
+    const t = setup();
+    t.s2();
+    const eyes = () =>
+      t.published
+        .filter((p) => p.topic.endsWith("/cmd/eye/set"))
+        .map((p) => JSON.parse(String(p.payload)).mood as string);
+    const before = eyes().length;
+    t.room.message(`freya/r1/${DEV}/voice/say`, Buffer.from(JSON.stringify({ text: "Updated." })));
+    expect(eyes().length).toBe(before);
+    t.room.message(
+      `freya/r1/${DEV}/voice/say`,
+      Buffer.from(JSON.stringify({ text: "Back, and up to date.", mood: "proud", gesture: "hop" })),
+    );
+    expect(eyes().slice(before)).toEqual(["happy"]);
+  });
 });
 
 const abortedBy = (signal: AbortSignal) =>

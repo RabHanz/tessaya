@@ -132,12 +132,19 @@ const homeLayer = HomeAssistantService.layer.pipe(
   Layer.provide(BatonPhoneInbox.layer),
 );
 
+// Her lines for every vessel: written ahead on her voice route, picked without waiting on a model. One value, shared.
+const expressionLayer = TessayaExpression.layer.pipe(
+  Layer.provide(BatonOneShot.layer),
+  Layer.provide(homeLayer),
+);
+
 // The R1's own MQTT hub: one instance, so the route, the devices and every publish share its subscribers.
 const hubLayer = R1Hub.layer.pipe(Layer.provide(homeLayer));
 // Where the R1 should connect (LAN, then T3 Connect when away is on), kept current on it.
 const reachLayer = R1Reach.layer.pipe(Layer.provide(hubLayer), Layer.provide(homeLayer));
 // Firmware for the R1s on the hub, served by this server and installed when they are idle.
 const updatesLayer = R1Updates.layer.pipe(
+  Layer.provide(expressionLayer),
   Layer.provide(reachLayer),
   Layer.provide(hubLayer),
   Layer.provide(homeLayer),
@@ -283,13 +290,8 @@ const servicesInner = IntentService.layer.pipe(
   // Voices to forget, between the household and every vessel's owner: under both, so each sees it.
   Layer.provideMerge(VoiceForgets.layer),
   // Members' voice defaults and acts held for a step-up, between the turn and runner and every vessel's owner.
-  // Her lines for every vessel beside them: written ahead on her voice route, picked without waiting on a model.
-  Layer.provideMerge(
-    Layer.mergeAll(
-      MemberPreferences.layer,
-      TessayaExpression.layer.pipe(Layer.provide(BatonOneShot.layer), Layer.provide(homeLayer)),
-    ),
-  ),
+  // Her lines for every vessel, beside the members' preferences.
+  Layer.provideMerge(Layer.mergeAll(MemberPreferences.layer, expressionLayer)),
   Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
   // Every brain call's usage row, for the Usage page and her usage report.
   Layer.provideMerge(BrainUsage.layer),
