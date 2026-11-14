@@ -23,6 +23,7 @@ import {
   type BatonDevicesCallResult,
 } from "@t3tools/baton-contracts";
 import { itemsView, readView } from "@t3tools/baton-shared/deviceItems";
+import type { R1UpdatesView } from "@t3tools/baton-shared/r1Firmware";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -187,6 +188,36 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
     (a, devices, by) => devices.command(a.id, { op: "speaker", ...a }, by),
   ),
   reboot: plain({ op: "reboot" }),
+  update: op(
+    Schema.Struct({ id: Id, version: Schema.optionalKey(Schema.NullOr(Text(30))) }),
+    (a, devices, by) => devices.command(a.id, { op: "update", version: a.version ?? null }, by),
+  ),
+  updateHold: op(Schema.Struct({ id: Id, version: Schema.NullOr(Text(30)) }), (a, _devices, by) =>
+    by.surface !== "settings"
+      ? Effect.fail(
+          new DeviceRefusedError({ why: "Updates are kept or resumed in Settings → Hardware." }),
+        )
+      : Effect.flatMap(Effect.serviceOption(R1Updates), (updates) =>
+          Option.isNone(updates)
+            ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))
+            : Effect.map(updates.value.hold(a.id, a.version), (line) => ({ status: "done", line })),
+        ),
+  ),
+  raw: op(
+    Schema.Struct({
+      id: Id,
+      path: Schema.String.check(Schema.isPattern(/^[a-z0-9_]+(?:\/[a-z0-9_]+){0,4}$/)),
+      payload: Schema.Record(Schema.String, Schema.Unknown),
+    }),
+    (a, devices, by) => devices.command(a.id, { op: "raw", path: a.path, payload: a.payload }, by),
+  ),
+  tail: op(Schema.Struct({ id: Id, since: Schema.Number }), (a, devices, by) =>
+    by.surface !== "settings"
+      ? Effect.fail(
+          new DeviceRefusedError({ why: "The device log is shown only in Settings → Hardware." }),
+        )
+      : devices.tail(a.id, a.since),
+  ),
   kwsMode: op(
     Schema.Struct({ id: Id, mode: Schema.Literals(["off", "shadow", "gate"]) }),
     (a, devices, by) => devices.command(a.id, { op: "kws", mode: a.mode }, by),
@@ -216,7 +247,9 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   ),
   updates: op(Schema.Struct({}), () =>
     Effect.flatMap(Effect.serviceOption(R1Updates), (updates) =>
-      Option.isNone(updates) ? Effect.succeed({ pinned: null, devices: [] }) : updates.value.view,
+      Option.isNone(updates)
+        ? Effect.succeed<R1UpdatesView>({ pinned: null, releases: [], devices: [] })
+        : updates.value.view,
     ),
   ),
   voice: op(Schema.Struct({}), () =>

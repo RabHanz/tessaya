@@ -62,6 +62,12 @@ export const BATON_DEVICES_OWNER_OPS = [
   // Bodies (VesselBodies): sign a new body tag (or re-sign a body onto a new tag), and the host its links name.
   "bodyMint",
   "bodyLinks",
+  // Device utility (DEVICE-UTILITY.md): a signed release over the air; keep a version or resume automatic updates;
+  // Developer's raw `cmd/<path>` and its log (Settings only).
+  "update",
+  "updateHold",
+  "raw",
+  "tail",
 ] as const;
 export const BATON_DEVICES_VESSEL_OPS = ["publish"] as const;
 

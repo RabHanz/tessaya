@@ -64,6 +64,8 @@ import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/baton-shared/mqtt";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
+import { R1Updates } from "./R1Updates.ts";
+import { R1_FIRMWARE } from "@t3tools/baton-shared/r1Firmware";
 
 /** settings is him in Settings → Devices (the RPC checked his scope); anyone else asks before camera or reboot. */
 export interface DeviceActor {
@@ -100,6 +102,10 @@ export type DeviceCommand =
       readonly output?: DeviceSpeakerOutput;
     }
   | { readonly op: "reboot" }
+  /** A signed firmware release over the air (R1Updates.install); null: the one this build recommends. */
+  | { readonly op: "update"; readonly version: string | null }
+  /** Settings → Hardware → Device utility, Developer: any `cmd/<path>` with a JSON body; never from an agent. */
+  | { readonly op: "raw"; readonly path: string; readonly payload: unknown }
   | { readonly op: "camera" }
   /** "Away from home": the R1 may also connect through T3 Connect (R1Reach); a setting of this server, not the R1. */
   | { readonly op: "away"; readonly on: boolean }
@@ -130,11 +136,14 @@ const R1_DEFAULT_VOLUME = 71;
 
 const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set([
   "reboot",
+  "update",
   "camera",
   "away",
   "kws",
   "kwsClear",
 ]);
+/** Lines of state and events kept per device for the Developer log. */
+const TAIL_LINES = 200;
 /** How long a private item's live light shows after it is used. */
 const LIVE_MS = 30_000;
 
@@ -691,6 +700,18 @@ export class HomeDevices extends Context.Service<
     readonly acceptShot: (id: string, bytes: Uint8Array) => Effect.Effect<boolean>;
     /** One broker message; the subscriber feeds every one through here, in order. */
     readonly receive: (topic: string, payload: string) => Effect.Effect<void>;
+    /** The device's recent state and event messages after `since` (a sequence number), for the Developer log. */
+    readonly tail: (
+      id: string,
+      since: number,
+    ) => Effect.Effect<{
+      readonly next: number;
+      readonly lines: ReadonlyArray<{
+        readonly at: string;
+        readonly topic: string;
+        readonly text: string;
+      }>;
+    }>;
     /** One pass: follow the device record's broker, end trials, windows and asks. The layer runs it. */
     readonly tick: Effect.Effect<void>;
   }
@@ -710,6 +731,18 @@ const make = Effect.gen(function* () {
   const threads = yield* Effect.serviceOption(HomeDeviceThreads);
   const reach = yield* Effect.serviceOption(R1Reach);
   const hub = yield* Effect.serviceOption(R1Hub);
+  const updates = yield* Effect.serviceOption(R1Updates);
+  // The last messages per device, for the Developer log; small, so it is always kept rather than switched on.
+  const tails = new Map<
+    string,
+    Array<{
+      readonly seq: number;
+      readonly at: number;
+      readonly topic: string;
+      readonly text: string;
+    }>
+  >();
+  let tailSeq = 0;
   const record = yield* Effect.serviceOption(BatonRecordService);
   const bodies = yield* Effect.serviceOption(VesselBodies);
   /** His own change (Settings, or asked of her; not a rule's) sticks to the body the vessel is in. */
@@ -1020,6 +1053,18 @@ const make = Effect.gen(function* () {
 
   const handle = Effect.fn("HomeDevices.handle")(function* (topic: string, payload: string) {
     const now = yield* Clock.currentTimeMillis;
+    const [, , tailId, ...tailRest] = topic.split("/");
+    if (tailId !== undefined) {
+      const lines = tails.get(tailId) ?? [];
+      lines.push({
+        seq: ++tailSeq,
+        at: now,
+        topic: tailRest.join("/"),
+        text: payload.slice(0, 300),
+      });
+      if (lines.length > TAIL_LINES) lines.shift();
+      tails.set(tailId, lines);
+    }
     const result = applyMessage(heard, topic, payload, now);
     if (result === null) return;
     if (topic.endsWith("/state/online"))
@@ -1244,17 +1289,19 @@ const make = Effect.gen(function* () {
       ? "take one camera picture"
       : c.op === "reboot"
         ? "restart the device"
-        : c.op === "away"
-          ? c.on
-            ? "let the R1 work away from home"
-            : "keep the R1 to home only"
-          : c.op === "kws"
-            ? `set the R1's own wake model to ${c.mode}`
-            : c.op === "kwsClear"
-              ? "unload the R1's own wake model"
-              : c.op === "item"
-                ? `use ${c.itemId}${c.value === null || c.value === undefined ? "" : ` (${recordText(JSON.stringify(c.value), 60)})`}`
-                : c.op;
+        : c.op === "update"
+          ? `update the R1's firmware${c.version === null ? "" : ` to ${c.version}`}`
+          : c.op === "away"
+            ? c.on
+              ? "let the R1 work away from home"
+              : "keep the R1 to home only"
+            : c.op === "kws"
+              ? `set the R1's own wake model to ${c.mode}`
+              : c.op === "kwsClear"
+                ? "unload the R1's own wake model"
+                : c.op === "item"
+                  ? `use ${c.itemId}${c.value === null || c.value === undefined ? "" : ` (${recordText(JSON.stringify(c.value), 60)})`}`
+                  : c.op;
 
   /** A registry item and its device, or why there is none. */
   const itemOf = Effect.fn("HomeDevices.itemOf")(function* (id: string, itemId: string) {
@@ -1472,6 +1519,26 @@ const make = Effect.gen(function* () {
         yield* publish(id, "cmd/model/clear", {});
         yield* audit(by, id, "R1 wake model unloaded", "done");
         return done("Asked the R1 to unload its own wake model.");
+      case "update": {
+        if (updates._tag === "None")
+          return yield* new DeviceRefusedError({ why: "This server does not run the R1 hub." });
+        const version = c.version ?? R1_FIRMWARE?.version ?? null;
+        if (version === null)
+          return yield* new DeviceRefusedError({ why: "This build recommends no firmware." });
+        const pct = yield* registry.value(id, "power.battery_pct");
+        const charging = yield* registry.value(id, "power.charging");
+        const out = yield* updates.value.install(id, version, {
+          pct: typeof pct === "number" ? pct : null,
+          charging: typeof charging === "boolean" ? charging : null,
+        });
+        yield* audit(by, id, `R1 firmware ${version}`, out.ok ? "started" : "refused");
+        if (!out.ok) return yield* new DeviceRefusedError({ why: out.line });
+        return done(out.line);
+      }
+      case "raw":
+        yield* publish(id, `cmd/${c.path}`, c.payload);
+        yield* audit(by, id, `raw cmd/${c.path}`, "sent");
+        return done(`Sent cmd/${c.path}.`);
       case "reboot":
         yield* publish(id, "cmd/reboot", {});
         yield* audit(by, id, "R1 restarted", "done");
@@ -1546,7 +1613,12 @@ const make = Effect.gen(function* () {
         return yield* new DeviceRefusedError({
           why: "Only he forgets a device, in Settings or by asking Tessaya.",
         });
-    } else if (c.op !== "away") yield* live(id);
+    } else if (c.op === "raw" && by.surface !== "settings") {
+      return yield* new DeviceRefusedError({
+        why: "Raw device commands are sent only from Settings → Hardware.",
+      });
+    }
+    if (c.op !== "away" && c.op !== "item" && c.op !== "forget") yield* live(id);
     if (needsYes && by.surface !== "settings" && by.approved !== true) {
       if (by.dryRun === true)
         return {
@@ -1783,6 +1855,19 @@ const make = Effect.gen(function* () {
       return true;
     }),
     receive: handle,
+    tail: Effect.fn("HomeDevices.tail")((id, since) =>
+      Effect.sync(() => {
+        const lines = (tails.get(id) ?? []).filter((l) => l.seq > since);
+        return {
+          next: lines.at(-1)?.seq ?? since,
+          lines: lines.map((l) => ({
+            at: new Date(l.at).toISOString(),
+            topic: l.topic,
+            text: l.text,
+          })),
+        };
+      }),
+    ),
     tick,
   });
 });

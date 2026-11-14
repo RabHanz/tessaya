@@ -20,6 +20,7 @@ import {
   blankWatch,
   IDLE_MS,
   kwsStep,
+  manualRefusal,
   otaStep,
   R1Updates,
   ROLLBACK_AFTER_MS,
@@ -61,6 +62,7 @@ const withUpdates = <A, E>(
     hub: ReturnType<typeof makeHub>,
     out: Array<[string, string]>,
   ) => Effect.Effect<A, E, R1Updates>,
+  index?: { readonly url: string; readonly publicKey: string },
 ) =>
   Effect.gen(function* () {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "r1-updates-"));
@@ -76,7 +78,11 @@ const withUpdates = <A, E>(
     hub.attach(topics, (t, p) => out.push([t.split("/").slice(3).join("/"), p.toString("utf8")]));
     const layer = Layer.effect(
       R1Updates,
-      R1UpdatesModule.make({ pin, download: (url) => Effect.sync(() => download(url)) }),
+      R1UpdatesModule.make({
+        pin,
+        download: (url) => Effect.sync(() => download(url)),
+        ...(index === undefined ? {} : { index }),
+      }),
     ).pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -142,7 +148,137 @@ describe("when an R1 updates", () => {
     expect(otaStep(going, PIN, null, ROLLBACK_AFTER_MS)).toBe("give-up");
     // The way back never goes below what the R1 last reported running.
     expect(otaStep(going, PIN, pinOf("0.3.8", imageOf("old")), ROLLBACK_AFTER_MS)).toBe("give-up");
+    // An install by hand goes back to what it ran, even when that is older than the kept pin.
+    const byHand = { ...going, update: { ...going.update, back: pinOf("0.3.8", imageOf("old")) } };
+    expect(otaStep(byHand, PIN, null, ROLLBACK_AFTER_MS)).toBe("rollback");
+    // A version he kept is left alone until he resumes automatic updates.
+    expect(otaStep({ ...idle, hold: "0.3.9" }, PIN, null, IDLE_MS)).toBe("wait");
   });
+
+  it("refuses an install by hand during a conversation, a call or on a low battery, in his words", () => {
+    const idle = { ...blankWatch(), online: true, fw: "0.3.9", liveAt: -Infinity };
+    const power = { pct: 80, charging: false };
+    const now = 1_000_000;
+    expect(manualRefusal(idle, "0.4.0", power, now)).toBeNull();
+    // Unlike the automatic update, it does not wait for 5 idle minutes.
+    expect(manualRefusal({ ...idle, lastUse: now }, "0.4.0", power, now)).toBeNull();
+    expect(manualRefusal({ ...idle, online: false }, "0.4.0", power, now)).toMatch(/USB cable/);
+    expect(manualRefusal({ ...idle, liveSeen: true }, "0.4.0", power, now)).toMatch(/conversation/);
+    expect(manualRefusal({ ...idle, liveAt: now - 59_000 }, "0.4.0", power, now)).toMatch(
+      /conversation/,
+    );
+    expect(manualRefusal({ ...idle, liveAt: now - 61_000 }, "0.4.0", power, now)).toBeNull();
+    expect(manualRefusal({ ...idle, enrolling: true }, "0.4.0", power, now)).not.toBeNull();
+    expect(manualRefusal({ ...idle, bluetoothAudio: true }, "0.4.0", power, now)).not.toBeNull();
+    expect(manualRefusal(idle, "0.3.9", power, now)).toMatch(/already on 0.3.9/);
+    expect(manualRefusal(idle, "0.4.0", { pct: 29, charging: false }, now)).toMatch(/29%/);
+    expect(manualRefusal(idle, "0.4.0", { pct: 29, charging: true }, now)).toBeNull();
+    // A battery it does not report does not block (a board on its cable).
+    expect(manualRefusal(idle, "0.4.0", { pct: null, charging: null }, now)).toBeNull();
+  });
+
+  it.effect(
+    "installs a release he picked from the signed list, goes back by hand, and keeps it there",
+    () => {
+      const sign = (bytes: Uint8Array) =>
+        NodeCrypto.sign("sha256", bytes, {
+          key: KEYS.privateKey,
+          dsaEncoding: "ieee-p1363",
+        }).toString("hex");
+      const OLD = imageOf("firmware 0.3.8");
+      const entry = (version: string, bytes: Uint8Array) => ({
+        version,
+        date: "2026-11-14",
+        rbl: {
+          ...pinOf(version, bytes),
+          url: `https://example.test/${version}.rbl`,
+          sig: sign(bytes),
+        },
+        allapp: null,
+      });
+      const list = imageOf(
+        JSON.stringify({
+          v: 1,
+          recommended: "0.4.0",
+          releases: [entry("0.4.0", V2), entry("0.3.8", OLD)],
+        }),
+      );
+      const publicKey = KEYS.publicKey.export({ format: "jwk" }) as { x: string; y: string };
+      const point = `04${Buffer.from(publicKey.x, "base64url").toString("hex")}${Buffer.from(publicKey.y, "base64url").toString("hex")}`;
+      const files: Record<string, Uint8Array> = {
+        "https://example.test/list.json": list,
+        "https://example.test/list.json.sig": imageOf(sign(list)),
+        "https://example.test/0.4.0.rbl": V2,
+        "https://example.test/0.3.8.rbl": OLD,
+      };
+      return withUpdates(
+        PIN,
+        (url) => files[url] ?? new Uint8Array(),
+        ["freya/r1/+/cmd/ota/start"],
+        (hub, out) =>
+          Effect.gen(function* () {
+            const updates = yield* R1Updates;
+            hub.publish("freya/r1/r1-a/state/online", "1", true);
+            hub.publish("freya/r1/r1-a/state/caps", '{"fw":"0.4.0"}', true);
+            yield* updates.tick;
+            const view = yield* updates.view;
+            expect(view.releases.map((r) => [r.version, r.recommended])).toEqual([
+              ["0.4.0", true],
+              ["0.3.8", false],
+            ]);
+            const power = { pct: 90, charging: false };
+            // A voice turn just now: refused, nothing sent.
+            hub.publish("freya/r1/r1-a/voice/up", "frame");
+            expect((yield* updates.install("r1-a", "0.3.8", power)).ok).toBe(false);
+            yield* TestClock.adjust("2 minutes");
+            yield* updates.tick;
+            yield* TestClock.adjust("2 minutes");
+            expect((yield* updates.install("r1-a", "9.9.9", power)).ok).toBe(false);
+            const done = yield* updates.install("r1-a", "0.3.8", power);
+            expect(done.ok).toBe(true);
+            const start = JSON.parse(out.at(-1)![1]) as Record<string, unknown>;
+            expect(start).toMatchObject({
+              sha256: pinOf("0.3.8", OLD).sha256,
+              allow_downgrade: true,
+            });
+            // Back on 0.3.8 and kept there: idle for long, the automatic update does not undo it.
+            hub.publish("freya/r1/r1-a/state/caps", '{"fw":"0.3.8"}', true);
+            yield* updates.tick;
+            yield* TestClock.adjust(IDLE_MS + 1);
+            yield* updates.tick;
+            expect(out).toHaveLength(1);
+            expect((yield* updates.view).devices[0]).toMatchObject({
+              hold: "0.3.8",
+              updating: null,
+            });
+            // Resuming lets the recommended release install again.
+            yield* updates.hold("r1-a", null);
+            yield* updates.tick;
+            expect(out).toHaveLength(2);
+            expect(JSON.parse(out[1]![1])).toMatchObject({ sha256: PIN.sha256 });
+          }),
+        { url: "https://example.test/list.json", publicKey: point },
+      );
+    },
+  );
+
+  it.effect("ignores a release list whose signature does not check", () =>
+    withUpdates(
+      PIN,
+      (url) =>
+        url.endsWith(".sig")
+          ? imageOf("00".repeat(64))
+          : imageOf('{"v":1,"recommended":"0.4.0","releases":[]}'),
+      [],
+      () =>
+        Effect.gen(function* () {
+          const updates = yield* R1Updates;
+          yield* updates.tick;
+          expect((yield* updates.view).releases.map((r) => r.version)).toEqual(["0.4.0"]);
+        }),
+      { url: "https://example.test/list.json", publicKey: "04" + "11".repeat(64) },
+    ),
+  );
 
   it.effect(
     "offers the checked image on a short-lived link with a spoken notice, then says it updated",
