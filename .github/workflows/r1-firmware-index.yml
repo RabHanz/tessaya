@@ -1,0 +1,51 @@
+name: R1 firmware release list
+
+# Rebuilds the signed list of every R1 firmware release (scripts/tessaya/r1-release-index.mjs) and publishes it on the
+# r1-firmware-index release, where servers and r1flash read it (DEVICE-UTILITY.md §7). Every image is downloaded and
+# its signature checked before it is listed; a release that fails the check fails this run.
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths: [packages/baton-shared/src/r1Firmware.ts, scripts/tessaya/r1-release-index.mjs]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: r1-firmware-index
+  cancel-in-progress: false
+
+jobs:
+  index:
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'r1-firmware-smp-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Build and sign the list
+        env:
+          R1_OTA_SIGNING_KEY: ${{ secrets.R1_OTA_SIGNING_KEY }}
+        run: |
+          gh release list --repo "$REPO" --limit 300 --json tagName,publishedAt > releases.json
+          node scripts/tessaya/r1-release-index.mjs releases.json out
+          test -s out/r1-releases.json.sig
+
+      - name: Publish on r1-firmware-index
+        run: |
+          gh release view r1-firmware-index --repo "$REPO" >/dev/null 2>&1 ||
+            gh release create r1-firmware-index --repo "$REPO" --prerelease --latest=false \
+              --title "R1 firmware release list (signed)" \
+              --notes "The signed list of every R1 firmware release, rebuilt by CI. Not the desktop app."
+          gh release upload r1-firmware-index --repo "$REPO" --clobber out/r1-releases.json out/r1-releases.json.sig
