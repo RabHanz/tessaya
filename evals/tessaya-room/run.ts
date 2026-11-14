@@ -340,7 +340,7 @@ const context = (
     : [],
   lastAction: house.last(),
   automations: null,
-  memory: "",
+  memory: c.memory ?? "",
   ...(c.notice === undefined ? {} : { notice: c.notice }),
   preferences: {},
   voice:
