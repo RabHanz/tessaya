@@ -402,8 +402,9 @@ export const makeHub = (
   const connected = (id: string) =>
     [...sessions.values()].some((s) => s.grant?.kind === "device" && s.grant.id === id);
 
-  /** A bus client hearing this topic: a room loop on another machine, when the topic is an R1's voice. */
-  const busHears = (topic: string) => [...sessions.values()].some((s) => s.hears?.(topic) === true);
+  /** Bus clients hearing this topic: room loops, when the topic is an R1's voice. */
+  const busHears = (topic: string) =>
+    [...sessions.values()].filter((s) => s.hears?.(topic) === true).length;
 
   return { attach, open, publish, dropDevice, connected, busHears };
 };

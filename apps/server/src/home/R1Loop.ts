@@ -219,7 +219,8 @@ export const layer = Layer.effect(
       const devices = yield* home.devices;
       onHub = devices.some((d) => d.deviceId !== null && d.mqttUrl === null);
       // Another machine's loop hears the R1s here (his own voice host): this server neither installs nor runs one.
-      if (child === null) elsewhere = hub.busHears(VOICE_TOPIC);
+      // Ours counts as one while it runs: a second is a loop elsewhere, and two would both answer.
+      elsewhere = hub.busHears(VOICE_TOPIC) > (child === null ? 0 : 1);
       seenElsewhere ||= elsewhere;
       const bundleMark = NodeFS.existsSync(NodePath.join(dir, BUNDLE_MARK))
         ? NodeFS.readFileSync(NodePath.join(dir, BUNDLE_MARK), "utf8")
