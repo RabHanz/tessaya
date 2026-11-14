@@ -63,6 +63,9 @@ fill it in only for an R1 on a separate MQTT broker. **Forget** removes all of i
    disk. A server where another machine already runs the R1's voice leaves it alone. Set `TESSAYA_R1_LOOP=off` to
    keep a server from running it.
 
+Her room voice hears you with Parakeet TDT 0.6B v3 by NVIDIA, licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and speaks with Pocket TTS by Kyutai (CC BY 4.0).
+
 **Updates.** An R1 that connects to this server gets the R1 firmware that comes with this Tessaya, from this server,
 once it has been idle for 5 minutes. It says so before and after. If it does not come back on the new version within
 7 minutes it goes back to the one before, and that version is not tried again; Hardware shows why.

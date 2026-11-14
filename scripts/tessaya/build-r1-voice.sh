@@ -58,6 +58,8 @@ cp -r "$ort/package.json" "$ort/dist" "$root/app/node_modules/onnxruntime-node/"
 cp -r "$ort/bin/napi-v6/linux/x64" "$root/app/node_modules/onnxruntime-node/bin/napi-v6/linux/"
 cp -rL "$(readlink -f "$ort/../onnxruntime-common")" "$root/app/node_modules/onnxruntime-common"
 cp packages/baton-voice/LICENSE "$root/app/LICENSE"
+# Attribution travels with the bundle (Parakeet and Pocket are CC BY 4.0).
+cp docs/baton/THIRD_PARTY_NOTICES.md "$root/NOTICE.md"
 
 "$root/node/bin/node" -e 'require(process.argv[1] + "/app/node_modules/onnxruntime-node")' "$root"
 

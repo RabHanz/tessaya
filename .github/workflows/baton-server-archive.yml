@@ -72,4 +72,5 @@ jobs:
           gh release create "server-$VERSION" "t3-$VERSION-linux-x64.tar.gz" "t3-$VERSION-linux-x64.tar.gz.sha256" \
             "r1-voice-$VERSION-linux-x64.tar.gz" "r1-voice-$VERSION-linux-x64.tar.gz.sha256" \
             --target "$GITHUB_SHA" --prerelease --latest=false \
-            --title "Server $VERSION" --notes "Linux server archive built from $GITHUB_SHA."
+            --title "Server $VERSION" \
+            --notes "Linux server archive built from $GITHUB_SHA. The r1-voice bundle and the models it fetches include Parakeet TDT 0.6B v3 by NVIDIA (CC BY 4.0, https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), Pocket TTS by Kyutai (CC BY 4.0) and Smart Turn by Daily (BSD-2-Clause); see docs/baton/THIRD_PARTY_NOTICES.md."

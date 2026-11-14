@@ -7,7 +7,8 @@
     "CC-BY-NC-SA-4.0": "docs/baton/licences/CC-BY-NC-SA-4.0.txt",
     "OFL-1.1-newsreader": "docs/baton/licences/OFL-newsreader.txt",
     "OFL-1.1-schibsted-grotesk": "docs/baton/licences/OFL-schibsted-grotesk.txt",
-    "OFL-1.1-bricolage-grotesque": "docs/baton/licences/OFL-bricolage-grotesque.txt"
+    "OFL-1.1-bricolage-grotesque": "docs/baton/licences/OFL-bricolage-grotesque.txt",
+    "BSD-2-Clause-smart-turn": "docs/baton/licences/BSD-2-smart-turn.txt"
   },
   "entries": {
     "npm:onnxruntime-node": {
@@ -148,6 +149,18 @@
       "licence": "MIT",
       "holder": "Beijing Academy of Artificial Intelligence (BAAI), ONNX conversion by Xenova",
       "mention": "bge-small-en-v1.5"
+    },
+    "model:parakeet-tdt-0.6b-v3": {
+      "name": "Parakeet TDT 0.6B v3 (GGUF conversion by handy-computer)",
+      "licence": "CC-BY-4.0",
+      "holder": "NVIDIA Corporation",
+      "mention": "Parakeet TDT 0.6B v3"
+    },
+    "model:smart-turn-v3.2": {
+      "name": "Smart Turn v3.2",
+      "licence": "BSD-2-Clause-smart-turn",
+      "holder": "Daily",
+      "mention": "Smart Turn"
     }
   }
 }
