@@ -228,7 +228,7 @@ export const CommsCallResult = Schema.Struct({
   settings: Schema.optionalKey(CommsSettings),
   emergency: Schema.optionalKey(Schema.NullOr(CommsEmergency)),
   emergencyKinds: Schema.optionalKey(Schema.Array(CommsEmergencyKind)),
-  /** Where a note went, in words: "the kitchen R1", "Sara's phone". */
+  /** Where a note went, in words: "the kitchen Tessel", "Sara's phone". */
   delivered: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type CommsCallResult = typeof CommsCallResult.Type;

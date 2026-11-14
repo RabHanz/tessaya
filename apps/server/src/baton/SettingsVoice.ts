@@ -13,6 +13,7 @@ import * as Schema from "effect/Schema";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonDesktopSettings } from "./BatonDesktopSettings.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 export type SettingClass = "free" | "confirm" | "owner" | "never";
 
@@ -174,7 +175,7 @@ export const DESKTOP_SETTINGS_VOICE: {
   openTessayaOnStart: free("opening Tessaya when the computer starts"),
   openSessionsOnStart: free("opening sessions when the computer starts"),
   devicesMayLook: owner(
-    "letting his own devices, like the R1, look at this computer's screen without asking",
+    `letting his own devices, like the ${DEVICE}, look at this computer's screen without asking`,
   ),
 };
 

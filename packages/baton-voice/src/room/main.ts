@@ -44,6 +44,7 @@ import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { createWakeStream } from "./wakeStream.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const env = (key: string, fallback?: string): string => {
   const v = process.env[key] ?? fallback;
@@ -768,7 +769,7 @@ const main = async () => {
           samples: made.kept,
           sources: ["spoken"],
           enrolledAt: new Date().toISOString(),
-          consentNote: "Enrolled through the R1 at his request; numbers only, no audio kept.",
+          consentNote: `Enrolled through the ${DEVICE} at his request; numbers only, no audio kept.`,
         });
         // To her server, which decides the member and shares it with his other devices (never the refinement).
         const saved = store.list().find((p) => p.id === "owner");

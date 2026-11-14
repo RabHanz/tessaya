@@ -40,6 +40,7 @@ import { expressOr } from "../baton/TessayaExpression.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 export const ROLLBACK_AFTER_MS = 420_000;
 /** In use: anything it did in the last 5 minutes (a voice turn, a press). */
@@ -201,7 +202,7 @@ const kwsLine = (w: R1Watch, kws: R1KwsPin | null): string => {
       : w.modelStopped !== null && w.modelStopped.version === kws?.version
         ? w.modelStopped.why
         : kws !== null && kws.size > R1_KWS_MAX_BYTES
-          ? `pack ${kws.version} is larger than the R1 takes.`
+          ? `pack ${kws.version} is larger than the ${DEVICE} takes.`
           : w.model === null
             ? "no pack reported."
             : w.model.ok
@@ -379,7 +380,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
         if (body["ok"] !== true && error !== "busy")
           w.modelStopped = {
             version: w.modelLoad.version,
-            why: `The R1 did not load wake model ${w.modelLoad.version}: ${error}.`,
+            why: `The ${DEVICE} did not load wake model ${w.modelLoad.version}: ${error}.`,
           };
         w.modelLoad = null;
       } else w.used = true;
@@ -522,7 +523,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
             const failed = w.stopped?.version || pin.version;
             w.stopped = {
               version: failed,
-              why: `${failed} did not come back within 7 minutes, so the R1 went back to ${w.fw}.`,
+              why: `${failed} did not come back within 7 minutes, so the ${DEVICE} went back to ${w.fw}.`,
             };
           } else yield* say(id, "upd.done", SAY_AFTER);
           w.update = null;
@@ -581,7 +582,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
               : w.stopped !== null
                 ? w.stopped.why
                 : firmware !== null && firmware.size > R1_FIRMWARE_MAX_BYTES
-                  ? `${firmware.version} is larger than the R1 takes.`
+                  ? `${firmware.version} is larger than the ${DEVICE} takes.`
                   : w.hold !== null
                     ? `Kept on ${w.hold}; automatic updates are paused.`
                     : firmware === null ||
@@ -629,7 +630,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
           yield* say(id, "upd.start", SAY_BEFORE);
           const down = (compareR1Firmware(version, w.fw!) ?? 0) < 0;
           if (!(yield* offer(id, target, "ota", down)))
-            return { ok: false, line: "This server has no address the R1 can fetch from." };
+            return { ok: false, line: `This server has no address the ${DEVICE} can fetch from.` };
           w.update = { version, startedAt: now, rollback: false, back };
           w.stopped = null;
           // Older than the pin: keep it there, or the automatic update would undo it.

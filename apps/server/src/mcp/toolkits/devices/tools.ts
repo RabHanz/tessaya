@@ -17,6 +17,7 @@ import { Tool } from "effect/ai";
 import { On, PeerOrigin } from "../../../peer/PeerVessels.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const shared = {
   failure: OrchestratorMcpFailure,
@@ -83,7 +84,7 @@ const OwnerTool = Tool.make("device_owner", {
     id: Id,
     op: Schema.Literals(["camera", "reboot", "away", "update"]),
     enabled: Schema.optional(Schema.Boolean).annotate({
-      description: "For away: true lets the R1 connect away from home, false keeps it home only.",
+      description: `For away: true lets the ${DEVICE} connect away from home, false keeps it home only.`,
     }),
     version: Schema.optional(Schema.String.check(Schema.isMaxLength(30))).annotate({
       description:

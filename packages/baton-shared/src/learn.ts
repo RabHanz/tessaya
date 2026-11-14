@@ -1,3 +1,4 @@
+import { DEVICE } from "./productNames.ts";
 /**
  * Learning Tessaya: every tip she can show, and the one rule that picks the next. Shared by every surface (`@t3tools/baton-shared/learn`); each keeps
  * its own `LearnProgress` (the desktop window keeps it on this computer) and asks `pickTip` what to show.
@@ -101,9 +102,9 @@ export const LEARN_ITEMS: ReadonlyArray<LearnItem> = [
     id: "hardware",
     area: "devices",
     place: "hardware",
-    title: "Your R1 can be her body in the room",
+    title: `Your ${DEVICE} can be her body in the room`,
     body: "Set it up and she answers on it with her own voice and memory.",
-    action: "Set up an R1",
+    action: `Set up a ${DEVICE}`,
     afterDays: 4,
   },
   {

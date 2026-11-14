@@ -81,6 +81,7 @@ import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const REFRESH_MS = 5000;
 /** While he reads for an R1 enrolment, so the card keeps up with his words. */
@@ -254,7 +255,7 @@ function HardwareSections({
             view === null
               ? "Reading…"
               : view.broker.state === "off"
-                ? "No device is set up. Set up an R1 below."
+                ? `No device is set up. Set up a ${DEVICE} below.`
                 : `${view.broker.state === "connected" ? "Connected to" : "Connecting to"} ${view.broker.host ?? "the broker"}.`
           }
         />
@@ -785,7 +786,7 @@ function DeviceControls({
           >
             <img
               src={picture.dataUrl}
-              alt="The R1's camera picture"
+              alt={`The ${DEVICE}'s camera picture`}
               className="mt-2 max-w-full rounded-md"
             />
           </SettingsRow>
@@ -862,7 +863,7 @@ function DeviceControls({
         />
         <SettingsRow
           title="New device key"
-          description="Sends the R1 a new key over its link; the old one stops working once it uses the new one."
+          description={`Sends the ${DEVICE} a new key over its link; the old one stops working once it uses the new one.`}
           control={
             <Button size="xs" variant="outline" disabled={off} onClick={() => setConfirm("rotate")}>
               Rotate key
@@ -900,7 +901,7 @@ function DeviceControls({
                 ? "It stops listening while it restarts. In-house voice comes back on by itself."
                 : confirm === "rotate"
                   ? (rotateWarning ??
-                    "It keeps working: the R1 saves the new key and uses it from its next connection.")
+                    `It keeps working: the ${DEVICE} saves the new key and uses it from its next connection.`)
                   : "Its key, broker and tag settings are removed from this server. Nothing on the device changes."}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1105,7 +1106,7 @@ function TagsSection({
         title="Assign a tag"
         description={
           uid === null || d.lastTag === null
-            ? "Tap a tag on the R1, then give it a name and what it does."
+            ? `Tap a tag on the ${DEVICE}, then give it a name and what it does.`
             : `Last tapped: ${uid} at ${clock(d.lastTag.at)}.`
         }
       >
@@ -1225,7 +1226,7 @@ function KeysSection({
         title="Button map"
         description={
           d.keyNote ??
-          "Grey presses are the R1's own. A Tessaya action runs only where the R1 itself does nothing."
+          `Grey presses are the ${DEVICE}'s own. A Tessaya action runs only where the ${DEVICE} itself does nothing.`
         }
       >
         <div className="overflow-x-auto pt-2">
@@ -1268,7 +1269,7 @@ function KeysSection({
         title="Change a button"
         description={
           canEdit
-            ? "Pick a press and what it does. Saved on the R1 and on this server."
+            ? `Pick a press and what it does. Saved on the ${DEVICE} and on this server.`
             : "This connection can look but not change the buttons."
         }
       >
@@ -1369,10 +1370,12 @@ function SetupSection({
   const [deviceKey, setDeviceKey] = useState("");
   const [devicePass, setDevicePass] = useState("");
   return (
-    <SettingsSection title={configured ? "Add an R1, or replace one by its id" : "Set up an R1"}>
+    <SettingsSection
+      title={configured ? `Add a ${DEVICE}, or replace one by its id` : `Set up a ${DEVICE}`}
+    >
       <SettingsRow
         title="Device and broker"
-        description="Its id (r1-…), its key to reach Tessaya (24 characters or more), and its MQTT broker: empty when the R1 connects to this server itself. The key and passwords stay on the server."
+        description={`Its id (r1-…), its key to reach Tessaya (24 characters or more), and its MQTT broker: empty when the ${DEVICE} connects to this server itself. The key and passwords stay on the server.`}
       >
         <div className="flex flex-col gap-2 pt-2">
           <Input
@@ -1403,7 +1406,7 @@ function SetupSection({
           {mqttUrl.trim() === "" ? (
             <SecretInput
               value={devicePass}
-              placeholder="The R1's own MQTT password, if it is not the key (optional)"
+              placeholder={`The ${DEVICE}'s own MQTT password, if it is not the key (optional)`}
               onChange={(e) => setDevicePass(e.target.value)}
             />
           ) : null}
@@ -1433,7 +1436,7 @@ function SetupSection({
       </SettingsRow>
       <SettingsRow
         title="Room loop login"
-        description="What a voice loop or another server on a different machine logs in to this server's R1 hub with."
+        description={`What a voice loop or another server on a different machine logs in to this server's ${DEVICE} hub with.`}
         control={
           <Button size="xs" variant="outline" disabled={busy} onClick={() => void onShowBus()}>
             Show

@@ -45,9 +45,9 @@ describe("the Bluetooth audio row", () => {
       scannedAt: "2026-11-13T12:08:46.000Z",
     } as const;
     expect(outputLabels(s)).toEqual({
-      auto: "Office speaker, else R1",
+      auto: "Office speaker, else Tessel",
       bt: "Office speaker only",
-      onboard: "R1 only",
+      onboard: "Tessel only",
     });
     expect(scanLine(s)).toContain("disconnect it from your phone or laptop");
   });
@@ -63,13 +63,13 @@ describe("where replies play (firmware 0.3.52)", () => {
   };
   it("says where they play now beside the route he chose, and why they differ", () => {
     expect(playingLine({ ...speaker, playing: "onboard" })).toBe(
-      "Replies play on: R1 speaker (wanted: Galaxy X, not connected).",
+      "Replies play on: Tessel speaker (wanted: Galaxy X, not connected).",
     );
     expect(playingLine({ ...speaker, state: "connected", playing: "bt" })).toBe(
       "Replies play on: Galaxy X.",
     );
     expect(playingLine({ ...speaker, output: "auto", playing: "onboard" })).toBe(
-      "Replies play on: R1 speaker.",
+      "Replies play on: Tessel speaker.",
     );
     expect(playingLine(speaker)).toBeNull();
   });

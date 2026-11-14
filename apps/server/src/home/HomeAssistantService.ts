@@ -50,6 +50,7 @@ import {
   type HomeCallError,
   type HomeLink,
 } from "./HomeAssistantConnection.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 export const TOKEN_SECRET = "home-assistant-token";
 /** Before several R1s: one record. Read when DEVICES_SECRET is missing, and kept as the first R1 for a rollback. */
@@ -1962,14 +1963,14 @@ const make = Effect.gen(function* () {
       if (device.deviceKey.length < 24)
         return yield* new HomeRefusedError({ why: "The device key is too short." });
       if (device.deviceId === null || !R1_ID.test(device.deviceId))
-        return yield* new HomeRefusedError({ why: "Give the R1's id, such as r1-a1b2c3." });
+        return yield* new HomeRefusedError({ why: `Give the ${DEVICE}'s id, such as r1-a1b2c3.` });
       const id = device.deviceId;
       return yield* deviceLock.withPermits(1)(
         Effect.gen(function* () {
           const all = yield* devices;
           if (all.length >= MAX_R1 && !all.some((d) => d.deviceId === id))
             return yield* new HomeRefusedError({
-              why: `This server already has ${MAX_R1} R1s. Forget one first.`,
+              why: `This server already has ${MAX_R1} ${DEVICE}s. Forget one first.`,
             });
           // Replaced in place, so the order they were set up in stays.
           yield* writeDevices(

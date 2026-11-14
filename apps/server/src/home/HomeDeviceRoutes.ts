@@ -28,6 +28,7 @@ import { OLD_FIRMWARE_PATH, R1_FIRMWARE_PATH, R1Updates } from "./R1Updates.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 import * as Schema from "effect/Schema";
 import { HouseholdCaller, TessayaHousehold } from "../baton/TessayaHousehold.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 /**
  * What the room loop sends after enrolling: the profile less what the server decides (the member, the version). A post
@@ -252,7 +253,7 @@ export const routes = HttpRouter.use((router) =>
         Effect.provideService(HouseholdCaller, {
           member: OWNER_MEMBER_ID,
           assurance: 2,
-          via: "the R1's enrolment",
+          via: `the ${DEVICE}'s enrolment`,
         }),
         Effect.provideContext(context),
       );

@@ -1,3 +1,4 @@
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 /**
  * Every piece of user-facing text the window draws, in one table per language. English is the only
  * one today; a second language is a second object with the same keys, and any key it leaves out falls
@@ -132,8 +133,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "area.agents": "Agents",
     "area.settings": "Settings for {area}",
     "intro.hardware.title": "Hardware",
-    "intro.hardware.text":
-      "Your R1 and the things around it: NFC tags, the room brain, its speaker and sounds.",
+    "intro.hardware.text": `Your ${DEVICE} and the things around it: NFC tags, the room brain, its speaker and sounds.`,
     "intro.intercom.title": "Intercom",
     "intro.intercom.text":
       "Messages and announcements between the people here: whether they're on, quiet hours, your do-not-disturb, who may drop in on you, and the emergencies.",

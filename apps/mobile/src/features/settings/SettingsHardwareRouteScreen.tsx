@@ -63,6 +63,7 @@ import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 import { BodiesSection } from "./BodiesSection";
 import { R1SetupSection } from "./R1SetupSection";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
+import { DEVICE, FLASH_TOOL } from "@t3tools/baton-shared/productNames";
 
 const QUIET = { reportFailure: false } as const;
 const INPUT_CLASS = "rounded-lg border border-border-subtle px-3 py-2 text-base text-foreground";
@@ -264,7 +265,7 @@ function HardwareSections({
             view === null
               ? "Reading…"
               : view.broker.state === "off"
-                ? "No device is set up. Set up an R1 below."
+                ? `No device is set up. Set up a ${DEVICE} below.`
                 : `${view.broker.state === "connected" ? "Connected to" : "Connecting to"} ${view.broker.host ?? "the broker"}.`
           }
         />
@@ -300,7 +301,7 @@ function HardwareSections({
               title={`Firmware · ${u.id} · ${u.firmware ?? "not reported"}`}
               description={
                 easy.kind === "usb"
-                  ? "It's offline. If it doesn't come back, plug it into a computer with the Tessaya desktop app or r1flash to repair it."
+                  ? `It's offline. If it doesn't come back, plug it into a computer with the Tessaya desktop app or ${FLASH_TOOL} to repair it.`
                   : u.line
               }
             >
@@ -393,7 +394,7 @@ function HardwareSections({
       <SettingsSection title={`${prefix}Room brain`}>
         <Row
           title={ROOM_BRAIN_LABELS[roomBrain]}
-          description="Automatic uses your Anthropic key from Settings → APIs for the quickest answers, and your Claude subscription if the key fails. Changes apply from the next thing you say, on every R1 this server answers."
+          description={`Automatic uses your Anthropic key from Settings → APIs for the quickest answers, and your Claude subscription if the key fails. Changes apply from the next thing you say, on every ${DEVICE} this server answers.`}
         >
           {ROOM_BRAINS.map((way) => (
             <ControlPill
@@ -724,7 +725,7 @@ function DeviceControls({
             </Text>
             <Image
               source={{ uri: picture.dataUrl }}
-              accessibilityLabel="The R1's camera picture"
+              accessibilityLabel={`The ${DEVICE}'s camera picture`}
               className="aspect-[4/3] w-full rounded-lg"
             />
             <View className="flex-row">
@@ -801,7 +802,7 @@ function DeviceControls({
         <Row
           divider
           title="New device key"
-          description="Sends the R1 a new key over its link; the old one stops working once it uses the new one."
+          description={`Sends the ${DEVICE} a new key over its link; the old one stops working once it uses the new one.`}
         >
           <ControlPill
             variant="pill"
@@ -810,7 +811,7 @@ function DeviceControls({
             onPress={() =>
               confirm(
                 `New key for ${id}?`,
-                "It keeps working: the R1 saves the new key and uses it from its next connection.",
+                `It keeps working: the ${DEVICE} saves the new key and uses it from its next connection.`,
                 "Rotate key",
                 () =>
                   void run("owner", "rotate", { id, confirmed: false }).then((v) => {
@@ -888,7 +889,7 @@ function TagsSection({
       <View className="gap-2 px-4 py-3">
         <Text textRole="footnote" className="text-foreground-muted">
           {d.lastTag === null
-            ? "Tap a tag on the R1, then give it a name and what it does."
+            ? `Tap a tag on the ${DEVICE}, then give it a name and what it does.`
             : `Last tapped: ${d.lastTag.uid} at ${clock(d.lastTag.at)}.`}
         </Text>
         <TextInput
@@ -1037,7 +1038,7 @@ function KeysSection({
         <Text textRole="footnote" className="text-foreground-muted">
           {d.keyNote ??
             (canEdit
-              ? "Pick a press and what it does. A Tessaya action runs only where the R1 itself does nothing."
+              ? `Pick a press and what it does. A Tessaya action runs only where the ${DEVICE} itself does nothing.`
               : "This connection can look but not change the buttons.")}
         </Text>
         <View className="flex-row flex-wrap gap-2">
@@ -1163,13 +1164,13 @@ function SetupSection({
   );
   return (
     <SettingsSection
-      title={`${prefix}${configured ? "Add an R1, or replace one by its id" : "Set up an R1"}`}
+      title={`${prefix}${configured ? `Add a ${DEVICE}, or replace one by its id` : `Set up a ${DEVICE}`}`}
     >
       <View className="gap-2 px-4 py-3">
         <Text textRole="footnote" className="text-foreground-muted">
           Its id (r1-…), the key it uses to reach Tessaya (24 characters or more), and the MQTT
-          broker it listens on. Leave the broker empty when the R1 connects to this server itself.
-          The key and passwords stay on the server.
+          broker it listens on. Leave the broker empty when the {DEVICE} connects to this server
+          itself. The key and passwords stay on the server.
         </Text>
         {field("Device id, e.g. r1-3d57b3", deviceId, setDeviceId)}
         {field("Broker, e.g. mqtt://broker.local:1883 (empty: this server)", mqttUrl, setMqttUrl)}
@@ -1183,7 +1184,7 @@ function SetupSection({
         )}
         {mqttUrl.trim() === ""
           ? field(
-              "The R1's own MQTT password, if it is not the key (optional)",
+              `The ${DEVICE}'s own MQTT password, if it is not the key (optional)`,
               devicePass,
               setDevicePass,
               true,

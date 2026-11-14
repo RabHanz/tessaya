@@ -39,6 +39,7 @@ import { R1Reach } from "./R1Reach.ts";
 import { R1Loop } from "./R1Loop.ts";
 import { R1Updates } from "./R1Updates.ts";
 import { VesselBodies } from "./VesselBodies.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const Text = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const Id = Text(60);
@@ -199,7 +200,9 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
         )
       : Effect.flatMap(Effect.serviceOption(R1Updates), (updates) =>
           Option.isNone(updates)
-            ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))
+            ? Effect.fail(
+                new DeviceRefusedError({ why: `This server does not run the ${DEVICE} hub.` }),
+              )
             : Effect.map(updates.value.hold(a.id, a.version), (line) => ({ status: "done", line })),
         ),
   ),
@@ -241,7 +244,9 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   reach: op(Schema.Struct({}), () =>
     Effect.flatMap(Effect.serviceOption(R1Reach), (reach) =>
       Option.isNone(reach)
-        ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))
+        ? Effect.fail(
+            new DeviceRefusedError({ why: `This server does not run the ${DEVICE} hub.` }),
+          )
         : reach.value.status,
     ),
   ),
@@ -260,14 +265,18 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   claim: op(Schema.Struct({ deviceId: Id, oneTimeKey: Text(32) }), (a) =>
     Effect.flatMap(Effect.serviceOption(R1Pairing), (pairing) =>
       Option.isNone(pairing)
-        ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))
+        ? Effect.fail(
+            new DeviceRefusedError({ why: `This server does not run the ${DEVICE} hub.` }),
+          )
         : pairing.value.claim(a),
     ),
   ),
   rotate: op(Schema.Struct({ id: Id, confirmed: Schema.optionalKey(Schema.Boolean) }), (a) =>
     Effect.flatMap(Effect.serviceOption(R1Pairing), (pairing) =>
       Option.isNone(pairing)
-        ? Effect.fail(new DeviceRefusedError({ why: "This server does not run the R1 hub." }))
+        ? Effect.fail(
+            new DeviceRefusedError({ why: `This server does not run the ${DEVICE} hub.` }),
+          )
         : pairing.value.rotate(a.id, a.confirmed === true),
     ),
   ),
@@ -299,7 +308,7 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   busLogin: op(Schema.Struct({}), () =>
     Effect.flatMap(Effect.serviceOption(R1Hub), (hub) =>
       Option.isNone(hub)
-        ? Effect.fail(new DeviceRefusedError({ why: "This server has no R1 hub." }))
+        ? Effect.fail(new DeviceRefusedError({ why: `This server has no ${DEVICE} hub.` }))
         : Effect.map(hub.value.busLogin, (login) => ({ ...login, path: R1_HUB_PATH })),
     ),
   ),

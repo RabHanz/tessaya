@@ -29,6 +29,7 @@ import {
   R1_VOICE_MODELS,
   type InstallProgress,
 } from "./R1VoiceInstall.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 /** What a room loop listens to: a bus client hearing it is a loop on another machine. */
 const VOICE_TOPIC = "freya/r1/any/voice/up";
@@ -121,24 +122,24 @@ export const voiceLine = (input: {
 }): string | null => {
   if (!input.onHub) return null;
   if (input.setting === "off")
-    return "The R1's voice is turned off on this server (TESSAYA_R1_LOOP=off).";
-  if (input.elsewhere) return "The R1's voice runs on another machine.";
+    return `The ${DEVICE}'s voice is turned off on this server (TESSAYA_R1_LOOP=off).`;
+  if (input.elsewhere) return `The ${DEVICE}'s voice runs on another machine.`;
   if (input.install.kind === "fetching") {
     const { done, total } = input.install.progress;
     const pct = total === 0 ? 0 : Math.floor((done / total) * 100);
-    return `Downloading the R1's voice: ${pct}% (${gb(done)} of ${gb(total)}).`;
+    return `Downloading the ${DEVICE}'s voice: ${pct}% (${gb(done)} of ${gb(total)}).`;
   }
   if (input.install.kind === "failed")
-    return `The R1's voice did not download: ${input.install.why}. Trying again in a minute.`;
+    return `The ${DEVICE}'s voice did not download: ${input.install.why}. Trying again in a minute.`;
   if (input.planned)
     return input.running
-      ? "The R1's voice runs on this server."
+      ? `The ${DEVICE}'s voice runs on this server.`
       : input.restarts > 0
-        ? `The R1's voice stopped; restarting (${input.restarts} so far).`
-        : "Starting the R1's voice…";
+        ? `The ${DEVICE}'s voice stopped; restarting (${input.restarts} so far).`
+        : `Starting the ${DEVICE}'s voice…`;
   return input.available
-    ? "Getting the R1's voice ready…"
-    : "This server cannot run the R1's voice itself yet: only Linux (x64) release builds include it.";
+    ? `Getting the ${DEVICE}'s voice ready…`
+    : `This server cannot run the ${DEVICE}'s voice itself yet: only Linux (x64) release builds include it.`;
 };
 
 export class R1Loop extends Context.Service<

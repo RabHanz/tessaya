@@ -71,14 +71,14 @@ it("tells him where the R1's voice is: downloading, running, elsewhere, or not i
       ...at,
       install: { kind: "fetching", progress: { done: 512 * 1024 ** 2, total: 1024 ** 3 } },
     }),
-  ).toBe("Downloading the R1's voice: 50% (0.5 GB of 1.0 GB).");
+  ).toBe("Downloading the Tessel's voice: 50% (0.5 GB of 1.0 GB).");
   expect(voiceLine({ ...at, install: { kind: "failed", why: "no room", at: 0 } })).toContain(
     "no room",
   );
   expect(voiceLine({ ...at, planned: true, running: true })).toBe(
-    "The R1's voice runs on this server.",
+    "The Tessel's voice runs on this server.",
   );
-  expect(voiceLine({ ...at, elsewhere: true })).toBe("The R1's voice runs on another machine.");
+  expect(voiceLine({ ...at, elsewhere: true })).toBe("The Tessel's voice runs on another machine.");
   expect(voiceLine({ ...at, available: false })).toContain("only Linux (x64)");
   expect(voiceLine({ ...at, setting: "off" })).toContain("turned off");
 });

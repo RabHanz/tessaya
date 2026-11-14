@@ -268,7 +268,7 @@ it.effect(
       const asked = yield* devices.command(ID, { op: "camera" }, agent);
       assert.strictEqual(asked.status, "asked");
       assert.notInclude(topics(), "cmd/camera/capture");
-      const card = (yield* inbox.pending).find((p) => p.title.includes("R1"));
+      const card = (yield* inbox.pending).find((p) => p.title.includes("Tessel"));
       assert.strictEqual(card?.needs, "cloud-approve");
       assert.isTrue(yield* inbox.answerPrompt(card!.id, 0));
       yield* devices.tick;

@@ -69,7 +69,7 @@ export const createPhoneRelay = (input: {
   readonly run: (
     text: string,
     source: AskSource,
-    /** The device he said it to ("R1"), when it came through one. */
+    /** The device he said it to ("Tessel"), when it came through one. */
     origin: string | null,
     /** Said in his own verified voice on that device. */
     hisVoice: boolean,

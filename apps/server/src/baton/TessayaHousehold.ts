@@ -61,7 +61,7 @@ export const HouseholdCaller = Context.Reference<{
   readonly assurance: Assurance;
   /** The turn read outside content: nothing admin-class is done for it. */
   readonly tainted?: boolean;
-  /** How the Record and the owner's ask name who asked ("Tessaya via R1", "Sara's phone"). */
+  /** How the Record and the owner's ask name who asked ("Tessaya via Tessel", "Sara's phone"). */
   readonly via: string;
   /** The signed-in session it came through: a step-up (PIN, Windows Hello) raises only that session, for a while. */
   readonly session?: string;

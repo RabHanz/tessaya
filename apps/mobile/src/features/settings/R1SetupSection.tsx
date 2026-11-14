@@ -19,6 +19,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { PairingScanCard } from "../connection/ConnectionsNewRouteScreen";
 import { SettingsSection } from "./components/SettingsSection";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const INPUT_CLASS = "rounded-lg border border-border-subtle px-3 py-2 text-base text-foreground";
 const FIND_TIMEOUT_MS = 30_000;
@@ -35,7 +36,7 @@ const STEP_LINE: Record<R1SetupStep, string> = {
   wifi: "Sending your Wi-Fi…",
   claim: "Pairing it with this server…",
   joining: "Joining your Wi-Fi…",
-  online: "Your R1 is set up.",
+  online: `Your ${DEVICE} is set up.`,
   failed: "Setup did not finish.",
 };
 
@@ -60,7 +61,9 @@ const findR1 = (manager: BleManager): Promise<Device> =>
     const giveUp = setTimeout(() => {
       manager.stopDeviceScan();
       reject(
-        new Error("No R1 in setup mode nearby. Hold S1 and S3 for 5 seconds, then try again."),
+        new Error(
+          `No ${DEVICE} in setup mode nearby. Hold S1 and S3 for 5 seconds, then try again.`,
+        ),
       );
     }, FIND_TIMEOUT_MS);
     void manager.startDeviceScan([R1_SETUP_SERVICE], null, (error, device) => {
@@ -103,10 +106,11 @@ const setUpOverBluetooth = async (input: {
   readonly call: R1Call;
   readonly onLine: (line: string) => void;
 }): Promise<boolean> => {
-  if (!(await allowBluetooth())) throw new Error("Tessaya needs Bluetooth to set up the R1.");
+  if (!(await allowBluetooth()))
+    throw new Error(`Tessaya needs Bluetooth to set up the ${DEVICE}.`);
   const manager = new BleManager();
   try {
-    input.onLine("Looking for your R1… When asked, type the 6 digits on its eyes.");
+    input.onLine(`Looking for your ${DEVICE}… When asked, type the 6 digits on its eyes.`);
     const device = await findR1(manager);
     const ok = await runR1Setup({
       port: portOf(device),
@@ -115,7 +119,7 @@ const setUpOverBluetooth = async (input: {
       claim: async () => {
         const reply = await input.call("owner", "claim", { ...input.pairing });
         if (reply?.ok !== true)
-          throw new Error(reply?.error ?? "This server could not pair the R1.");
+          throw new Error(reply?.error ?? `This server could not pair the ${DEVICE}.`);
         return (reply.value as { blob: string }).blob;
       },
       onStep: (step, why) => input.onLine(why === "" ? STEP_LINE[step] : why),
@@ -147,7 +151,7 @@ export function R1SetupSection(props: {
 
   const startScan = async () => {
     if ((await requestCamera()).granted) setScanning(true);
-    else setLine("Tessaya needs the camera to read the R1's pairing code.");
+    else setLine(`Tessaya needs the camera to read the ${DEVICE}'s pairing code.`);
   };
   const setUp = async () => {
     if (pairing === null) return;
@@ -197,11 +201,11 @@ export function R1SetupSection(props: {
   );
 
   return (
-    <SettingsSection title={`${props.prefix}Add an R1`}>
+    <SettingsSection title={`${props.prefix}Add a ${DEVICE}`}>
       <View className="gap-2 px-4 py-3">
         <PairingScanCard
           cameraActive={scanning}
-          hint="Scan the pairing code on the R1's right eye"
+          hint={`Scan the pairing code on the ${DEVICE}'s right eye`}
           onScanPress={() => void startScan()}
           onScan={({ data }) => {
             if (parsePairingQr(data) === null) return;
@@ -230,7 +234,7 @@ export function R1SetupSection(props: {
         )}
         {askAway === null ? null : (
           <View className="gap-2">
-            <Text>Use your R1 away from home too?</Text>
+            <Text>Use your {DEVICE} away from home too?</Text>
             <Text textRole="footnote" className="text-foreground-muted">
               It connects through T3 Connect when it is not on your Wi-Fi. You can change this later
               in Settings.

@@ -17,6 +17,7 @@ import {
 } from "@t3tools/baton-contracts";
 
 import { DEFAULT_OS_PACK } from "./osPack.ts";
+import { DEVICE } from "./productNames.ts";
 
 export const when = (iso: string): string =>
   new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -64,7 +65,11 @@ export const btKindNoun = (kind: BtKind | undefined): string => KIND_NOUN[kind ?
 /** "Replies play on" choices, named after the saved device. */
 export const outputLabels = (s: DeviceSpeaker) => {
   const name = s.saved === null ? "Bluetooth" : btDeviceLabel(s.saved);
-  return { auto: `${name}, else R1`, bt: `${name} only`, onboard: "R1 only" } as const;
+  return {
+    auto: `${name}, else ${DEVICE}`,
+    bt: `${name} only`,
+    onboard: `${DEVICE} only`,
+  } as const;
 };
 
 /** The pair row's line; an empty scan says why a device may not show. */
@@ -84,12 +89,12 @@ export const playingLine = (s: DeviceSpeaker): string | null => {
   if (s.playing === undefined) return null;
   const name = s.saved === null ? "the Bluetooth device" : btDeviceLabel(s.saved);
   const linked = s.state === "connected" || s.state === "streaming";
-  const now = s.playing === "bt" ? name : "R1 speaker";
+  const now = s.playing === "bt" ? name : `${DEVICE} speaker`;
   const agrees =
     s.output === s.playing ||
     (s.output === "auto" && (linked ? s.playing === "bt" : s.playing === "onboard"));
   if (agrees) return `Replies play on: ${now}.`;
-  const wanted = s.output === "onboard" ? "R1 speaker" : name;
+  const wanted = s.output === "onboard" ? `${DEVICE} speaker` : name;
   return `Replies play on: ${now} (wanted: ${wanted}${s.output !== "onboard" && !linked ? ", not connected" : ""}).`;
 };
 
@@ -117,15 +122,15 @@ const speakerStateLine = (s: DeviceSpeaker, name: string): string => {
       return s.saved === null
         ? "Nothing paired. Scan, then pick one to pair."
         : s.playing === undefined
-          ? `${name} is paired but not connected. Replies play on the R1.`
+          ? `${name} is paired but not connected. Replies play on the ${DEVICE}.`
           : `${name} is paired but not connected.`;
   }
 };
 
 export const SPEAKER_OUTPUT_LINE = {
-  auto: "Replies play on it, and on the R1 when it drops.",
+  auto: `Replies play on it, and on the ${DEVICE} when it drops.`,
   bt: "Replies play only on it.",
-  onboard: "Replies play on the R1's own speaker for now.",
+  onboard: `Replies play on the ${DEVICE}'s own speaker for now.`,
 } as const;
 
 export const tagActionLine = (action: DeviceTagAction): string =>
@@ -155,13 +160,13 @@ export const displayLine = (d: DeviceView): string =>
   (!displaySupported(d.display)
     ? "Needs a firmware update: this firmware cannot turn the screen."
     : d.display.mode === null
-      ? "Auto turns it with the R1. Set upright stores how it stands now as upright (firmware 3.32)."
-      : `${d.display.mode === "auto" ? "Turns with the R1" : "Pinned"}; upright now is ${d.display.rotate === 180 ? "upside down" : "normal"}.`);
+      ? `Auto turns it with the ${DEVICE}. Set upright stores how it stands now as upright (firmware 3.32).`
+      : `${d.display.mode === "auto" ? `Turns with the ${DEVICE}` : "Pinned"}; upright now is ${d.display.rotate === 180 ? "upside down" : "normal"}.`);
 
 const DEVICE_DO_LINE: Readonly<Record<R1DeviceDo, string>> = {
   none: "Nothing",
   talk: "Talk: start or stop",
-  mute: "Mic mute, on the R1",
+  mute: `Mic mute, on the ${DEVICE}`,
   vol_up: "Volume up",
   vol_down: "Volume down",
   sleep: "Deep sleep",

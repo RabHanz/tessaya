@@ -85,6 +85,7 @@ import {
   type HomeActor,
   type R1Device,
 } from "./HomeAssistantService.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const R1: HomeActor = { who: "Tessaya", surface: "r1" };
 
@@ -632,7 +633,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   // One pipeline for every vessel: this device is a thin adapter over TessayaTurn (MEMORY-V2-DESIGN.md §2.0).
   const turn: TurnEnvelope = {
     vessel: { kind: "device", id: input.device ?? "room" },
-    origin: "R1",
+    origin: DEVICE,
     text: input.heard,
     persona: persona?.id ?? pack.personas.find((p) => p.lead)?.id,
     speaker: speakerOf(input.voice),
@@ -1174,7 +1175,7 @@ export const routes = HttpRouter.use((router) =>
         Effect.provideContext(context),
       );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       // Each R1's room loop calls with that R1's key.
       if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
@@ -1275,7 +1276,7 @@ export const routes = HttpRouter.use((router) =>
         Effect.provideContext(context),
       );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       // Each R1's room loop calls with that R1's key.
       if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
@@ -1292,7 +1293,7 @@ export const routes = HttpRouter.use((router) =>
         Effect.provideContext(context),
       );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       return HttpServerResponse.jsonUnsafe(
         yield* personasList.pipe(Effect.provideContext(context)),
@@ -1306,7 +1307,7 @@ export const routes = HttpRouter.use((router) =>
         Effect.provideContext(context),
       );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       // Each R1's room loop calls with that R1's key.
       if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
@@ -1323,7 +1324,7 @@ export const routes = HttpRouter.use((router) =>
         Effect.provideContext(context),
       );
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, "This server has no R1 set up.");
+      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       const body = decodeLinesAsk(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a lines request.");
