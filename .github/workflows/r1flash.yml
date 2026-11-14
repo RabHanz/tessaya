@@ -85,7 +85,14 @@ jobs:
         working-directory: .
         env:
           R1_OTA_SIGNING_KEY: ${{ secrets.R1_OTA_SIGNING_KEY }}
-        run: node tools/r1flash/sign.mjs tools/r1flash/dist/SHA256SUMS
+        # Without the key the release goes out without SHA256SUMS.sig; the desktop refuses unsigned sums, so add the
+        # secret and re-run this job to sign it.
+        run: |
+          if [ -z "$R1_OTA_SIGNING_KEY" ]; then
+            echo "::warning::R1_OTA_SIGNING_KEY is not set: publishing without SHA256SUMS.sig"
+          else
+            node tools/r1flash/sign.mjs tools/r1flash/dist/SHA256SUMS
+          fi
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
