@@ -813,6 +813,36 @@ describe("answering only when he is talking to her", () => {
     expect(spoken).toEqual([]);
     expect(t.published.some((p) => p.payload === '{"mood":"sleepy"}')).toBe(true);
   });
+
+  it("plays her closing tone whole when the dismissal is heard early and then again (14 Nov, 19:40)", async () => {
+    const logs: string[] = [];
+    const t = setup({
+      log: (l) => logs.push(l),
+      recognise: () => {
+        let partial: (text: string) => void = () => undefined;
+        return {
+          feed: () => undefined,
+          finish: async () => {
+            // "Dismissed" is heard early, and the final words land a few milliseconds later while her tone plays.
+            partial("Dismissed.");
+            await Promise.resolve();
+            t.advance(8);
+            return "Dismissed.";
+          },
+          cancel: () => undefined,
+          onPartial: (l) => void (partial = l),
+        };
+      },
+    });
+    t.s2();
+    await turn(t);
+    expect(logs.filter((l) => l.includes("she rests"))).toHaveLength(1);
+    expect(
+      t.published.some(
+        (p) => p.topic.endsWith("/voice/ctl") && String(p.payload).includes("flush"),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("waking by name with no session open", () => {

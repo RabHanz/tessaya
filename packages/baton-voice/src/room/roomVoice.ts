@@ -825,7 +825,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** Sent away by voice: her reply flushed, any turn on its way cancelled, sleepy eyes and her closing sound, at once. */
     const dismissNow = (why: string) => {
       const at = deps.now();
-      if (dismissedAt === at) return;
+      // The same dismissal heard again (early, then final): a second pass would flush her closing tone (14 Nov, 19:40).
+      if (sentAway && at - dismissedAt < 3_000) return;
       dismissedAt = at;
       stops += 1;
       if (speaking()) interrupt();
