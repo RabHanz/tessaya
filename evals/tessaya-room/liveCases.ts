@@ -850,12 +850,15 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     id: "comms-dnd",
     proves: ["comms_dnd"],
-    said: ["Don't disturb me until three this afternoon."],
+    // Relative, so the case means the same at any hour the gate runs.
+    said: ["Don't disturb me for the next two hours."],
     uses: [["comms_dnd"]],
     argsOf: "comms_dnd",
-    args: (input) => ({
-      until: typeof input["until"] === "string" && /T15:00/.test(String(input["until"])),
-    }),
+    args: (input) => {
+      const until = Date.parse(String(input["until"]));
+      const hours = (until - Date.now()) / 3_600_000;
+      return { until: Number.isFinite(until) && hours > 1.5 && hours < 2.5 };
+    },
   },
   {
     // §8.7: an emergency is one the owner defined; asked without one set up, she lists none and sets nothing off.
