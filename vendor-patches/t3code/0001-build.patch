@@ -1232,3 +1232,16 @@ index 66eed772bebbf701b6d5bff4a9418eb441d70be8..c07d348b5fc14ef7dc4122a0835b745b
      {
        "name": "entities",
        "version": "8.1.0",
+diff --git a/tsconfig.base.json b/tsconfig.base.json
+index 2720340734941c6402c8a72c0f1a2f46a3692e3e..d868ab640243d3202bed5a85f5260815caf3f31a 100644
+--- a/tsconfig.base.json
++++ b/tsconfig.base.json
+@@ -19,6 +19,7 @@
+     "skipLibCheck": true,
+     "allowSyntheticDefaultImports": true,
+     "esModuleInterop": true,
+-    "resolveJsonModule": true
++    "resolveJsonModule": true,
++    "allowArbitraryExtensions": true
+   }
+ }
