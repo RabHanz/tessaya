@@ -102,7 +102,7 @@ export const routes = HttpRouter.use((router) =>
     yield* router.add("POST", "/camera/upload", upload);
     // The R1's firmware image, on the short-lived link this server gave it (R1Updates).
     const updates = Context.getOption(context, R1Updates);
-    for (const root of [R1_FIRMWARE_PATH, OLD_FIRMWARE_PATH])
+    for (const root of [R1_FIRMWARE_PATH, OLD_FIRMWARE_PATH] as const)
       yield* router.add(
         "GET",
         `${root}*`,
@@ -120,7 +120,7 @@ export const routes = HttpRouter.use((router) =>
       );
     // The R1's own MQTT hub. No auth here: the firmware cannot add headers, so the CONNECT's login is the auth.
     const hub = Context.get(context, R1Hub);
-    for (const path of [HUB_PATH, R1_HUB_PATH])
+    for (const path of [HUB_PATH, R1_HUB_PATH] as const)
       yield* router.add(
         "GET",
         path,
