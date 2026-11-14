@@ -2166,9 +2166,30 @@ describe("recognising who she is talking to across a session (recognition.ts)", 
       `freya/r1/${DEV}/voice/prefs/member-1`,
       Buffer.from('{"persona":"research","voice":"alba"}'),
     );
+    // Who he last talked to elsewhere counts only with personaFollows on (P5).
+    t.room.message(
+      `freya/r1/${DEV}/voice/current/member-1`,
+      Buffer.from('{"persona":"engineering"}'),
+    );
     await t.feed(true, 20);
     await t.feed(false, 40);
     expect(t.brainCalls.at(-1)!.tessaya.persona).toBe("research");
+    const follows = setup(
+      { recognise: lines(["What's on today?"]), speaker: async () => owner(0.7, true) },
+      { ...QUIET, personaFollows: true },
+    );
+    follows.room.message(
+      `freya/r1/${DEV}/voice/prefs/member-1`,
+      Buffer.from('{"persona":"research"}'),
+    );
+    follows.room.message(
+      `freya/r1/${DEV}/voice/current/member-1`,
+      Buffer.from('{"persona":"engineering"}'),
+    );
+    follows.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await follows.feed(true, 20);
+    await follows.feed(false, 40);
+    expect(follows.brainCalls.at(-1)!.tessaya.persona).toBe("engineering");
   });
 });
 

@@ -571,6 +571,7 @@ const main = async () => {
       "freya/r1/+/voice/forget",
       "freya/r1/+/voice/stepup",
       "freya/r1/+/voice/prefs/+",
+      "freya/r1/+/voice/current/+",
       "freya/r1/+/voice/languages",
       "freya/r1/+/voice/profile",
       "freya/r1/+/voice/profile/+",
@@ -800,6 +801,8 @@ const main = async () => {
       acknowledge: ((v) => (v === "tone" || v === "off" ? v : "voice"))(process.env["R1_ACK"]),
       // Over her voice: keyword (a stop phrase or her name) unless R1_TALK_OVER=open; per R1 on cmd/voice/talkover.
       talkOver: process.env["R1_TALK_OVER"] === "open" ? "open" : "keyword",
+      // A member's session opens on the persona they last talked to anywhere (R1_PERSONA_FOLLOWS=1; off by default).
+      personaFollows: process.env["R1_PERSONA_FOLLOWS"] === "1",
     },
   );
   setInterval(() => room?.sweep(), 1_000);

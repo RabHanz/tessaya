@@ -369,6 +369,11 @@ export interface RoomConfig {
    * playback, from firmware 0.3.92's aligned uplink). Changed per R1 by `cmd/voice/talkover` (retained).
    */
   readonly talkOver: "keyword" | "open";
+  /**
+   * A recognised member's session opens on the persona they last talked to on any vessel (her server's
+   * `voice/current/<member>`, within 10 minutes), before their own default. Off until the manager's yes (P5).
+   */
+  readonly personaFollows: boolean;
 }
 
 export const ROOM_CONFIG: RoomConfig = {
@@ -403,9 +408,12 @@ export const ROOM_CONFIG: RoomConfig = {
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
   languages: ["en"],
   talkOver: "keyword",
+  personaFollows: false,
 };
 
 const REARM_AT_MS = [2_000, 8_000, 18_000];
+/** As long as her server holds a conversation (TessayaTurn's idle boundary). */
+const CURRENT_HELD_MS = 10 * 60_000;
 const onlyEnglish = (languages: ReadonlyArray<string>) =>
   languages.length > 0 && languages.every((l) => l.toLowerCase().split("-")[0] === "en");
 /** A voice this much quieter than his name reached the R1 is the room, not him. */
@@ -653,10 +661,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       prefsFor = member;
       const prefs = prefsOf.get(member);
       memberVoice = prefs?.voice ?? null;
+      const now = currentOf.get(member);
+      const chosen =
+        config.personaFollows && now !== undefined && deps.now() - now.at <= CURRENT_HELD_MS
+          ? now.persona
+          : prefs?.persona;
       const wanted = personas.find(
         (p) =>
-          prefs?.persona !== undefined &&
-          (p.id === prefs.persona || p.name.toLowerCase() === prefs.persona.toLowerCase()),
+          chosen !== undefined &&
+          (p.id === chosen || p.name.toLowerCase() === chosen.toLowerCase()),
       );
       if (wanted !== undefined && persona === lead && wanted !== persona) {
         persona = wanted;
@@ -2221,6 +2234,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       });
   /** Each member's own defaults from her server (`voice/prefs/<member>`, retained): persona and voice. */
   const prefsOf = new Map<string, { readonly persona?: string; readonly voice?: string }>();
+  /** Who each member last talked to on any vessel, from her server (`voice/current/<member>`), and when it said so. */
+  const currentOf = new Map<string, { readonly persona: string; readonly at: number }>();
   /** The household's languages per R1, from her server (`voice/languages`, retained). */
   const languagesOf = new Map<string, ReadonlyArray<string>>();
   /** The conversation the arbiter last named for each R1 (sent on its turns). */
@@ -2366,6 +2381,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           languagesOf.set(id, list as ReadonlyArray<string>);
         else languagesOf.delete(id);
         deps.log(`[${id}] languages: ${(languagesOf.get(id) ?? config.languages).join(", ")}`);
+        return;
+      }
+      if (tail.startsWith("voice/current/")) {
+        const member = tail.slice("voice/current/".length);
+        const { persona: p } = json();
+        if (
+          member !== "" &&
+          !member.includes("/") &&
+          typeof p === "string" &&
+          /^[\w-]{1,40}$/.test(p)
+        )
+          currentOf.set(member, { persona: p, at: deps.now() });
         return;
       }
       if (tail.startsWith("voice/prefs/")) {

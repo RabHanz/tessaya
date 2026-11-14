@@ -63,6 +63,7 @@ import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/baton-shared/mqtt";
 import { expressOr } from "../baton/TessayaExpression.ts";
+import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { sayPayload, type LineEvent } from "@t3tools/baton-shared/expression";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
@@ -880,6 +881,20 @@ const make = Effect.gen(function* () {
       : Effect.flatMap(prefs.value.voiceDefaults, (all) =>
           Effect.forEach(all, ([member, now]) => sendPrefs([id], member, now), { discard: true }),
         );
+
+  // Who each member is talking to now (P5): every room loop hears it, and follows it at their next session if it may.
+  const current = yield* Effect.serviceOption(CurrentPersona);
+  if (current._tag === "Some")
+    yield* current.value.listen((conversation, persona) =>
+      conversation.startsWith("person:")
+        ? Effect.forEach(
+            [...heard.keys()],
+            (id) =>
+              publish(id, `voice/current/${conversation.slice("person:".length)}`, { persona }),
+            { discard: true },
+          )
+        : Effect.void,
+    );
 
   // An act her server holds until it knows who is speaking: that device's loop asks (StepUps).
   const stepUps = yield* Effect.serviceOption(StepUps);
