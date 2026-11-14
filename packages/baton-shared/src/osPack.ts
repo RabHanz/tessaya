@@ -65,7 +65,32 @@ export interface Persona {
   readonly leads: ReadonlyArray<string>;
   /** `private: yes` in its file: its memory is its own, and the roster leaves it out (never the lead). */
   readonly private?: boolean;
+  /** Its body in Character Studio, the mascot and the pill (`character:`); a body's id. */
+  readonly character?: string;
+  /** Its temperament (`traits: energy 0.5, warmth 0.6, ...`), each 0 to 1: how its body and voice move. */
+  readonly traits?: Readonly<Partial<Record<Trait, number>>>;
+  /** Its look on a device with eyes (`eyes:`); a device without that look uses its generic one. */
+  readonly eyes?: string;
+  /** How much it shows a slip (`guilt:` 0 to 3). */
+  readonly guilt?: number;
+  /** The model and effort it thinks on (its file's `model:` and `effort:`). */
+  readonly brain?: Brain;
 }
+
+export const TRAITS = ["energy", "warmth", "play", "expr", "formal", "sass"] as const;
+export type Trait = (typeof TRAITS)[number];
+
+/** `energy 0.5, warmth .6` into numbers 0 to 1; anything else is left out. */
+export const traitsOf = (field: string | undefined): Partial<Record<Trait, number>> => {
+  const out: Partial<Record<Trait, number>> = {};
+  for (const part of (field ?? "").split(",")) {
+    const m = /^\s*([a-z]+)\s*[=:]?\s*(\d*\.?\d+)\s*$/i.exec(part);
+    const trait = TRAITS.find((t) => t === m?.[1]?.toLowerCase());
+    const value = Number(m?.[2]);
+    if (trait !== undefined && value >= 0 && value <= 1) out[trait] = value;
+  }
+  return out;
+};
 
 /** The pack's files as they ship: front-matter for the face, then the brief. */
 export interface PackFiles {
@@ -79,6 +104,9 @@ name: Tessaya
 wake: Tessaya
 voice: eve
 role: the lead, who sees everything and hands out the work; calm, direct and brief.
+character: selvedge
+traits: energy 0.5, warmth 0.6, play 0.4, expr 0.55, formal 0.5, sass 0.3
+guilt: 1
 model: opus
 effort: medium
 ---
@@ -94,13 +122,13 @@ Show the result as a job brief before work begins: the job, the outcomes, the le
 Workers report outcomes, not activity: what changed against each outcome, the evidence, what is next, what blocks it.`,
   roles: {
     engineering:
-      "---\nname: Alfred\nwake: Alfred\nvoice: peter_yearsley\nrole: sessions, builds and releases; precise and unflappable, says what broke and what is next.\nmodel: sonnet\neffort: medium\n---\nPersona: a careful engineer who reads before writing. Tools: read, edit, shell inside the written folders. Remember: the project's conventions and what broke before. Limits: no change outside the written folders, no deploy without his yes. Report: what changed, the test that proves it, what is left.",
+      "---\nname: Alfred\nwake: Alfred\nvoice: peter_yearsley\nrole: sessions, builds and releases; precise and unflappable, says what broke and what is next.\ncharacter: tweed\ntraits: energy 0.3, warmth 0.75, play 0.2, expr 0.4, formal 0.92, sass 0.55\nguilt: 1\nmodel: sonnet\neffort: medium\n---\nPersona: a careful engineer who reads before writing. Tools: read, edit, shell inside the written folders. Remember: the project's conventions and what broke before. Limits: no change outside the written folders, no deploy without his yes. Report: what changed, the test that proves it, what is left.",
     marketing:
       "---\nmodel: sonnet\neffort: medium\n---\nPersona: a plain-spoken marketer who starts from the reader. Tools: read, web. Remember: his voice and what he has said no to. Limits: drafts only; nothing is published or sent without his yes. Report: the draft, who it is for, the one thing it should make them do.",
     research:
-      "---\nname: Sebastian\nvoice: michael\nrole: research and analysis; sceptical and thorough, says what is known and what is only claimed.\nmodel: sonnet\neffort: medium\n---\nPersona: a sceptical researcher who separates what is known from what is claimed. Tools: read, web. Remember: the question and the sources already checked. Limits: cite where each fact came from; say what is uncertain. Report: the answer first, then the evidence, then what would change it.",
+      "---\nname: Sebastian\nvoice: michael\nrole: research and analysis; sceptical and thorough, says what is known and what is only claimed.\ncharacter: spool\ntraits: energy 0.45, warmth 0.4, play 0.35, expr 0.55, formal 0.55, sass 0.8\nguilt: 1\nmodel: sonnet\neffort: medium\n---\nPersona: a sceptical researcher who separates what is known from what is claimed. Tools: read, web. Remember: the question and the sources already checked. Limits: cite where each fact came from; say what is uncertain. Report: the answer first, then the evidence, then what would change it.",
     operations:
-      "---\nname: Freya\nwake: Freya\nvoice: azelma\nrole: his day, his messages and his reminders; warm, quick and practical.\nmodel: sonnet\neffort: medium\n---\nPersona: an operator who keeps things running and notices what is left alone. Tools: read, sessions. Remember: what is scheduled and what failed before. Limits: change nothing live without his yes. Report: what is healthy, what is stuck, what needs him.",
+      "---\nname: Freya\nwake: Freya\nvoice: azelma\nrole: his day, his messages and his reminders; warm, quick and practical.\ncharacter: felt\ntraits: energy 0.78, warmth 0.9, play 0.7, expr 0.85, formal 0.2, sass 0.35\nguilt: 2\nmodel: sonnet\neffort: medium\n---\nPersona: an operator who keeps things running and notices what is left alone. Tools: read, sessions. Remember: what is scheduled and what failed before. Limits: change nothing live without his yes. Report: what is healthy, what is stuck, what needs him.",
   },
 };
 
@@ -159,8 +187,19 @@ const face = (
     lead,
     ...(!lead && /^(?:yes|true)$/i.test((fields["private"] ?? "").trim()) ? { private: true } : {}),
     tools: tools === undefined || tools.trim() === "" ? null : listOf(tools),
+    ...(BODY_ID.test(fields["character"] ?? "")
+      ? { character: fields["character"]!.toLowerCase() }
+      : {}),
+    ...(Object.keys(traitsOf(fields["traits"])).length === 0
+      ? {}
+      : { traits: traitsOf(fields["traits"]) }),
+    ...(BODY_ID.test(fields["eyes"] ?? "") ? { eyes: fields["eyes"]!.toLowerCase() } : {}),
+    ...(/^[0-3]$/.test((fields["guilt"] ?? "").trim()) ? { guilt: Number(fields["guilt"]) } : {}),
+    brain: brainOf(fields, lead ? LEAD_BRAIN : SPECIALIST_BRAIN),
   };
 };
+
+const BODY_ID = /^[a-z][a-z0-9-]{0,40}$/i;
 
 /** One file: his front-matter fields over the default's, and his brief unless he left it empty. */
 const mergeFile = (mine: string | undefined, base: string | undefined) => {

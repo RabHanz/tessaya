@@ -8,6 +8,10 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { parseRouting, type Routing } from "@t3tools/baton-shared/costRouting";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+
+import * as ServerConfig from "../config.ts";
 import { mergePack, packPrompt, type OsPack } from "@t3tools/baton-shared/osPack";
 
 export const PACK_DIR_NAME = "operating-system";
@@ -61,3 +65,12 @@ export const planningFrame = (userdata: string): string => packPrompt(readPack(u
 /** The cost routing table, `routing.json` in the pack folder, over the default. */
 export const readRouting = (userdata: string): Routing =>
   parseRouting(readText(NodePath.join(userdata, PACK_DIR_NAME, "routing.json")));
+
+/** Her personas as this server's pack resolves them: the one registry every body reads (SPINE-UNIFY §10). */
+export const personasList = Effect.gen(function* () {
+  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  const pack = Option.isNone(config)
+    ? mergePack({})
+    : readPack(NodePath.dirname(config.value.dbPath));
+  return { personas: pack.personas };
+}).pipe(Effect.withSpan("OperatingSystemPack.personasList"));

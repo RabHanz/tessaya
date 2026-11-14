@@ -31,6 +31,7 @@ import {
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
+  BATON_PERSONAS_WS_METHODS,
   BATON_DICTATION_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -70,6 +71,7 @@ import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BrainUsage, brainUsageReport } from "./BrainUsage.ts";
+import { personasList } from "./OperatingSystemPack.ts";
 import { VesselHands } from "./VesselHands.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import * as ServerConfig from "../config.ts";
@@ -622,6 +624,7 @@ export const makeHandlers = Effect.gen(function* () {
         ),
       ),
     [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input)),
+    [BATON_PERSONAS_WS_METHODS.list]: () => run(personasList),
     [BATON_RECORD_WS_METHODS.append]: (input) =>
       run(
         Effect.flatMap(BatonRecordService, (record) =>
