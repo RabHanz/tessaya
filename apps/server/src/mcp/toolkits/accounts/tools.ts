@@ -21,10 +21,10 @@ const UseTool = Tool.make("tessaya_account_use", {
     ThreadManagementService.ThreadManagementService,
   ],
   description:
-    "Switch his Claude login to another of his accounts on a machine: its default login and every Claude session running there, busy ones at the end of their turn. Without `machines` or `everywhere` it is this machine only. Use it for 'switch to the rabee account', 'switch everything to optima' (everywhere) or 'switch hetzner and the laptop to signzart'. Say each machine's line as it came back; a machine that did not switch says why.",
+    "Switch his Claude login to another of his accounts on a machine: its default login and every Claude session running there, busy ones at the end of their turn. Without `machines` or `everywhere` it is this machine only. Use it for 'switch to the work account', 'switch everything to the home account' (everywhere) or 'switch the studio and the laptop to work'. Say each machine's line as it came back; a machine that did not switch says why.",
   parameters: Schema.Struct({
     account: Schema.String.check(Schema.isMaxLength(120)).annotate({
-      description: "The account in his words: a name ('rabee') or an address.",
+      description: "The account in his words: a name ('work') or an address.",
     }),
     machines: Schema.optional(
       Schema.Array(On).annotate({

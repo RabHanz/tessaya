@@ -133,7 +133,7 @@ export const queuedText = (
 };
 
 /**
- * The login his words name ("the rabee account", an address): an exact address, else the one login whose address or
+ * The login his words name ("the work account", an address): an exact address, else the one login whose address or
  * label contains the words. Null when none or several do, so a vague name never switches the wrong login.
  */
 export const accountByWords = <A extends { readonly label: string; readonly email: string | null }>(

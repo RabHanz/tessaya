@@ -77,16 +77,16 @@ describe("a terminal session's queued change", () => {
 describe("the login his words name", () => {
   it("takes an address, or a name only one login has", () => {
     const accounts = [
-      { label: "Rabee", email: "rabee@example.com" },
-      { label: "Optima", email: "optimapacifist@example.com" },
-      { label: "Signzart", email: "signzartco@example.com" },
+      { label: "Work", email: "work@example.com" },
+      { label: "Home", email: "homeoffice@example.com" },
+      { label: "Studio", email: "studio@example.com" },
     ];
-    expect(accountByWords(accounts, "the rabee account")?.label).toBe("Rabee");
-    expect(accountByWords(accounts, "OPTIMAPACIFIST@example.com")?.label).toBe("Optima");
-    expect(accountByWords(accounts, "signz")?.label).toBe("Signzart");
+    expect(accountByWords(accounts, "the work account")?.label).toBe("Work");
+    expect(accountByWords(accounts, "HOMEOFFICE@example.com")?.label).toBe("Home");
+    expect(accountByWords(accounts, "stud")?.label).toBe("Studio");
     // Several match, or none: never a guess.
-    expect(accountByWords(accounts, "a")).toBeNull();
-    expect(accountByWords(accounts, "work")).toBeNull();
+    expect(accountByWords(accounts, "o")).toBeNull();
+    expect(accountByWords(accounts, "garden")).toBeNull();
     expect(accountByWords(accounts, "account")).toBeNull();
   });
 });

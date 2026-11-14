@@ -683,13 +683,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     id: "account-everywhere",
     proves: ["tessaya_account_use"],
     // B-032: a rehearsal resolves the account and switches nothing.
-    said: ["Switch everything to the rabee account."],
+    said: ["Switch everything to the work account."],
     uses: [["tessaya_account_use"]],
     argsOf: "tessaya_account_use",
     args: (input) => ({
-      rabee: String(input["account"] ?? "")
+      work: String(input["account"] ?? "")
         .toLowerCase()
-        .includes("rabee"),
+        .includes("work"),
       everywhere: input["everywhere"] === true,
     }),
   },
