@@ -10,7 +10,7 @@ export interface LayerLinkDeps {
   readonly post: (body: {
     readonly key?: string;
     readonly signals: ReadonlyArray<string>;
-  }) => Promise<{ readonly open: boolean } | null>;
+  }) => Promise<{ readonly open: boolean; readonly page: string | null } | null>;
   /** The device key, created and kept by the OS keystore on first use; null where none is available. */
   readonly deviceKey: () => string | null;
   /** Whether another app has the camera or microphone right now (a call or a recording). */
@@ -23,6 +23,7 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
   let stopped = false;
   let open = false;
   let knownHere = false;
+  let page: string | null = null;
   const pending = new Set<string>();
   const tick = async (signal?: string) => {
     if (stopped) return;
@@ -37,6 +38,7 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
     if (answer === undefined) return;
     if (answer === null) return stop();
     for (const s of sent) pending.delete(s);
+    page = answer.page;
     if (answer.open !== open) {
       open = answer.open;
       deps.shield(open);
@@ -59,6 +61,8 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
     signal: (kind: string) => tick(kind),
     stop,
     isOpen: () => open,
+    /** The layer's own page on this server (its path), or null where there is none. */
+    page: () => page,
   };
 };
 

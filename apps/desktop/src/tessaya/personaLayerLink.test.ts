@@ -46,7 +46,7 @@ describe("startPersonaLayerLink", () => {
     const shield: Array<boolean> = [];
     let open = true;
     const link = startPersonaLayerLink({
-      post: async (body) => (posts.push(body), { open }),
+      post: async (body) => (posts.push(body), { open, page: "/tessaya/layer/x" }),
       deviceKey: () => "k",
       othersCapturing: async () => true,
       shield: (on) => void shield.push(on),
@@ -56,6 +56,7 @@ describe("startPersonaLayerLink", () => {
     expect(posts[0]).toEqual({ signals: [] });
     expect(posts[1]?.key).toBe("k");
     expect(shield).toEqual([true]);
+    expect(link.page()).toBe("/tessaya/layer/x");
     open = false;
     await link.signal("screenLocked");
     expect(posts.at(-1)?.signals).toEqual(expect.arrayContaining(["screenLocked", "call"]));

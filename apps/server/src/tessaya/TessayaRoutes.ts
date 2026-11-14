@@ -54,6 +54,7 @@ import { callPrivate, PrivateCaller } from "./TessayaPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import * as PersonaLayers from "./PersonaLayers.ts";
+import { readPack } from "./OperatingSystemPack.ts";
 import { approvalRefusal } from "@t3tools/tessaya-shared/trust";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
@@ -657,7 +658,7 @@ export const routes = HttpRouter.use((router) =>
     yield* router.add("POST", "/tessaya/hands/*", handsApi);
     yield* router.add("GET", "/tessaya/api/*", api);
     yield* router.add("POST", "/tessaya/api/*", api);
-    yield* personaLayerRoutes(router, context, auth);
+    yield* personaLayerRoutes(router, context, auth, deskTools, NodePath.dirname(config.dbPath));
   }),
 );
 
@@ -695,6 +696,10 @@ const personaLayerRoutes = Effect.fn("BatonTessayaRoutes.personaLayers")(functio
   router: HttpRouter.HttpRouter,
   context: Context.Context<TessayaRpcHandlers.TessayaServices>,
   auth: EnvironmentAuth.EnvironmentAuth["Service"],
+  deskTools: {
+    readonly specs: ReadonlyArray<{ readonly name: string; readonly description: string }>;
+  } | null,
+  userdata: string,
 ) {
   const run = Effect.runPromiseWith(context);
   const registry = Context.getOption(context, PersonaLayers.PersonaLayers);
@@ -726,6 +731,12 @@ const personaLayerRoutes = Effect.fn("BatonTessayaRoutes.personaLayers")(functio
     // The desktop's own key for the layer's store, kept by Windows (DPAPI) and sent by the desktop app.
     deviceKey: async () => deviceKey,
     presence: (vessel) => run(presenceOn(vessel)),
+    capabilities: async () => ({
+      personas: readPack(userdata)
+        .personas.filter((p) => p.private !== true)
+        .map((p) => ({ id: p.id, name: p.name, role: p.role, lead: p.lead })),
+      tools: (deskTools?.specs ?? []).map((t) => ({ name: t.name, description: t.description })),
+    }),
   };
   let deviceKey: Uint8Array | null = null;
   registry.value.all.push(...(yield* Effect.promise(() => PersonaLayers.loadPersonaLayers(host))));
@@ -755,7 +766,13 @@ const personaLayerRoutes = Effect.fn("BatonTessayaRoutes.personaLayers")(functio
       if (desk.key !== null) deviceKey = desk.key;
       for (const kind of desk.signals) for (const l of registry.value.all) l.signal({ kind });
       return HttpServerResponse.jsonUnsafe(
-        { open: registry.value.all.some((l) => l.active?.("desktop") === true) },
+        {
+          open: registry.value.all.some((l) => l.active?.("desktop") === true),
+          page:
+            registry.value.all[0] === undefined
+              ? null
+              : `/tessaya/layer/${registry.value.all[0].id}`,
+        },
         { headers: PAGE_HEADERS },
       );
     }
