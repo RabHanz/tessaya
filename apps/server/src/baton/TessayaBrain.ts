@@ -13,6 +13,7 @@ import {
   type EscalationAsk,
 } from "@t3tools/baton-shared/brainEscalation";
 import { isNarration, withoutSelfIntro } from "@t3tools/baton-shared/narration";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -223,7 +224,19 @@ export interface VesselTurn<E, R> {
   readonly fillers?: { readonly hold: string; readonly web: string };
   /** Wraps every call: a guessed turn's changes wait for his final words. */
   readonly hold: (name: string) => (call: Effect.Effect<ToolOutcome>) => Effect.Effect<ToolOutcome>;
+  /** The model failed before a word: why, in its own words (a login's limit and when it resets, say). */
+  readonly failed?: (detail: string) => void;
 }
+
+/** A brain failure's own words, for the log: the R1BrainError's detail, else the cause as text. */
+export const brainFailure = (cause: Cause.Cause<unknown>) => {
+  const error = Cause.squash(cause);
+  return (
+    typeof error === "object" && error !== null && "detail" in error
+      ? String(error.detail)
+      : String(error)
+  ).slice(0, 300);
+};
 
 /**
  * A turn with the vessel's tools, on his key (`api`) or in the vessel's warm subscription session (`session`). Null
@@ -450,6 +463,15 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     firstSentenceMs: firstSentenceAt === null ? null : firstSentenceAt - startedAt,
     cueMs: cueAt === null ? null : cueAt - startedAt,
   });
+  if (Exit.isFailure(ran)) {
+    const detail = brainFailure(ran.cause);
+    yield* Effect.logWarning("brain turn failed", {
+      route: via,
+      detail,
+      spoke: said.trim() !== "",
+    });
+    if (said.trim() === "") vessel.failed?.(detail);
+  }
   if (said.trim() === "") return null;
   if (Exit.isFailure(ran)) {
     const sorry = " Sorry, something went wrong on my side.";

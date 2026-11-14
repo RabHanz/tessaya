@@ -61,6 +61,7 @@ import {
   type RoomCall,
   type TurnNotes,
   speakableSentences,
+  brainFailure,
 } from "../baton/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../baton/TessayaExpression.ts";
 import { isLineEvent } from "@t3tools/baton-shared/expression";
@@ -217,6 +218,16 @@ const replyWords = Effect.fn("R1Device.replyWords")(function* (
 /** Her apology when her thinking failed, worded as this call site always said it while her own words are off. */
 const sorry = (input: R1Heard, plain: string) =>
   Effect.map(expressOr("err.brain", { ...lineWho(input), plain }), (e) => e?.text ?? plain);
+
+/**
+ * The login's usage limit, from a failed turn's detail ("You've hit your weekly limit · resets Nov 16, 6pm
+ * (Asia/Karachi)"): when it resets as Claude Code wrote it, "later" without a time; null for any other failure.
+ */
+export const limitResets = (detail: string): string | null => {
+  if (!/\b(?:hit your|reached your)\b.*\blimit\b|\busage limit\b|\blimit reached\b/i.test(detail))
+    return null;
+  return /\bresets\s+(?:at\s+)?([^(·\n]+?)\s*(?:\(|$)/i.exec(detail)?.[1]?.trim() ?? "later";
+};
 
 const quoted = (value: unknown) => JSON.stringify(value);
 
@@ -852,7 +863,12 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   const oneShot = yield* BatonOneShot;
   const plan = yield* oneShot
     .run({ prompt: r1Prompt(context), outputSchema: R1Plan, role: "voice" })
-    .pipe(Effect.option);
+    .pipe(
+      Effect.tapCause((cause) =>
+        Effect.logWarning("R1 brain failed", { route: "one-shot", detail: brainFailure(cause) }),
+      ),
+      Effect.option,
+    );
   if (Option.isNone(plan)) {
     // Her brain did not answer: the eyes say so, the words fill in.
     yield* eyes(device, "worried", 6000, "the brain did not answer");
@@ -944,8 +960,10 @@ const r1Vessel = (
   input: R1Heard,
   tools: RoomToolSet,
   fillers?: { readonly hold: string; readonly web: string },
+  failed?: (detail: string) => void,
 ) => ({
   system: ROOM_SYSTEM,
+  ...(failed === undefined ? {} : { failed }),
   ...(fillers === undefined ? {} : { fillers }),
   tools,
   device: input.device,
@@ -1004,19 +1022,34 @@ export const r1TurnStream = (
         Effect.forkScoped,
       );
       const way = yield* brain.route;
+      /** When the login's limit resets, once a route has failed on it: nothing else on that login can answer. */
+      let limited: string | null = null;
+      const failed = (detail: string) => {
+        limited ??= limitResets(detail);
+      };
+      // Out of capacity: one honest line from her pool, not the other routes on the same spent login.
+      const outOfCapacity = Effect.gen(function* () {
+        const line = yield* expressOr("err.limit", {
+          ...lineWho(input),
+          facts: { until: limited ?? "later" },
+        });
+        say(line?.text ?? `My accounts are out of capacity until ${limited ?? "later"}.`);
+        return yield* Queue.end(queue);
+      });
       if (way === "subscription" && tools !== null) {
         const done = yield* brainTurn(
-          r1Vessel(input, tools, fillers),
+          r1Vessel(input, tools, fillers, failed),
           brain,
           say,
           "session",
           calls,
         ).pipe(Effect.orElseSucceed(() => null));
         if (done !== null) return yield* Queue.end(queue);
+        if (limited !== null) return yield* outOfCapacity;
       }
       if (way !== "subscription" && tools !== null) {
         const done = yield* brainTurn(
-          r1Vessel(input, tools, fillers),
+          r1Vessel(input, tools, fillers, failed),
           brain,
           say,
           "api",
@@ -1026,13 +1059,14 @@ export const r1TurnStream = (
         if (way === "auto") {
           // The key failed before a word; the subscription is the fallback his table names.
           const fallback = yield* brainTurn(
-            r1Vessel(input, tools, fillers),
+            r1Vessel(input, tools, fillers, failed),
             brain,
             say,
             "session",
             calls,
           ).pipe(Effect.orElseSucceed(() => null));
           if (fallback !== null) return yield* Queue.end(queue);
+          if (limited !== null) return yield* outOfCapacity;
         }
         if (way === "api") {
           // His key alone failed before a word: the one-shot turn answers, whole.
@@ -1073,6 +1107,12 @@ export const r1TurnStream = (
         brainFirstMs: firstAt === null ? null : firstAt - gatheredAt,
       });
       const final = splitActs(text) ?? { acts: [], rest: "" };
+      if (Exit.isFailure(outcome)) {
+        const detail = brainFailure(outcome.cause);
+        yield* Effect.logWarning("brain turn failed", { route: "acts", detail });
+        failed(detail);
+        if (limited !== null) return yield* outOfCapacity;
+      }
       if (Exit.isFailure(outcome) || (final.rest.trim() === "" && final.acts.length === 0)) {
         // The warm brain failed or said nothing: the slower one-shot turn answers instead, whole.
         say(

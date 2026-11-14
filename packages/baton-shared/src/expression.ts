@@ -80,6 +80,11 @@ export const LINE_EVENTS = {
     "Her thinking failed mid-answer, so she has no answer this time; he can ask again. Never claim whether anything was done.",
     { maxWords: 14, mood: "concerned", gesture: "shrug" },
   ),
+  "err.limit": spec(
+    "My accounts are out of capacity until {until}, so I can't think that through now.",
+    "Every login her thinking runs on has used its allowance; {until} is when it comes back. Say why plainly, never claim anything was done.",
+    { slots: ["until"], maxWords: 16, mood: "concerned", gesture: "shrug" },
+  ),
   "err.overlap": spec(
     "One at a time, please.",
     "Two people spoke to her at once and she can only take one.",
