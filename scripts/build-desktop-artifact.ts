@@ -1175,6 +1175,11 @@ export const DESKTOP_EXTRA_RESOURCES = [
     from: "apps/desktop/prod-resources/baton-live",
     to: "baton-live",
   },
+  // Only an internal build stages one (apps/server/src/tessaya/PersonaLayers.ts); a missing resource is skipped.
+  {
+    from: "apps/desktop/prod-resources/persona-layers",
+    to: "persona-layers",
+  },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
   {
@@ -4217,6 +4222,9 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     path.join(repoRoot, "apps/web/public/companion"),
     path.join(stageProdResourcesDir, "companion"),
   );
+  const personaLayers = path.join(repoRoot, "apps/desktop/persona-layers");
+  if (yield* fs.exists(personaLayers))
+    yield* fs.copy(personaLayers, path.join(stageProdResourcesDir, "persona-layers"));
   yield* fs.makeDirectory(path.join(stageProdResourcesDir, "baton-live"), { recursive: true });
   for (const file of BATON_LIVE_AGENT_FILES) {
     yield* fs.copy(
