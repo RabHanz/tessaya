@@ -241,25 +241,6 @@ export const mergePack = (
 
 export const DEFAULT_OS_PACK: OsPack = mergePack({});
 
-export type WakeModel = "trained" | "training" | "none";
-/** The wake words a model ships for (desktop and R1); `wake-models.json` in the pack adds what training made. */
-const SHIPPED_WAKE_MODELS = ["tessaya", "alfred", "freya", "sebastian", "onyx"];
-
-/**
- * Whether a persona's wake word has a model: the shipped ones, else the training pipeline's own record
- * (`{"nova": "training"}`). Until one is trained she is reached by "switch to <name>" and her name in the words.
- */
-export const wakeModelOf = (wake: string | null, trained: unknown): WakeModel => {
-  if (wake === null) return "none";
-  const word = wake.toLowerCase();
-  const said = (trained as Record<string, unknown> | null)?.[word];
-  return said === "trained" || said === "training"
-    ? said
-    : SHIPPED_WAKE_MODELS.includes(word)
-      ? "trained"
-      : "none";
-};
-
 /**
  * Who the other personas are, in one line ("Tessaya leads and hands out the work; Alfred handles sessions, builds and
  * releases"), so a persona can say who to ask (PRESENCE). The part of a role before its first ";" is what it does.

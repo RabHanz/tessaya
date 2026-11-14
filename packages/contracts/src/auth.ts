@@ -74,6 +74,11 @@ export const AuthBatonMemorySyncScope = "baton:memory-sync" as const;
 export const AuthTessayaMemberScope = "tessaya:member" as const;
 /** A guest pass's device: less than a member's; Tessaya's methods decide what it may do. */
 export const AuthTessayaGuestScope = "tessaya:guest" as const;
+/**
+ * The wake-word trainer (WAKE-AUTOTRAIN-DESIGN, P3b): it reads training requests and consented voices, reports status
+ * and uploads models, which her server signs. It reaches nothing else.
+ */
+export const AuthTessayaWakeTrainerScope = "tessaya:wake-trainer" as const;
 const AuthEnvironmentScopeName = Schema.Literals([
   AuthOrchestrationReadScope,
   AuthOrchestrationOperateScope,
@@ -98,6 +103,7 @@ const AuthEnvironmentScopeName = Schema.Literals([
   AuthBatonMemorySyncScope,
   AuthTessayaMemberScope,
   AuthTessayaGuestScope,
+  AuthTessayaWakeTrainerScope,
 ]);
 /**
  * Baton was renamed Tessaya. Each `baton:` scope also decodes from its `tessaya:` spelling, and this build still
@@ -208,6 +214,7 @@ const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope
   [AuthBatonMemorySyncScope]: AuthOrchestrationOperateScope,
   [AuthTessayaMemberScope]: AuthOrchestrationReadScope,
   [AuthTessayaGuestScope]: AuthOrchestrationReadScope,
+  [AuthTessayaWakeTrainerScope]: AuthOrchestrationOperateScope,
 };
 
 /** Keep permission denials decodable by clients with the original scope enum. */

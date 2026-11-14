@@ -87,6 +87,8 @@ import * as OrchestrationRuleService from "./OrchestrationRuleService.ts";
 import * as SynopsisReactor from "./SynopsisReactor.ts";
 import * as ThreadAccountMoves from "./ThreadAccountMoves.ts";
 import * as WorkSessionService from "./WorkSessionService.ts";
+import * as TessayaWake from "../tessaya/TessayaWake.ts";
+import * as TessayaWakeRoutes from "../tessaya/TessayaWakeRoutes.ts";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 
 const readClaudeAccountInstances = Layer.effectDiscard(
@@ -293,8 +295,8 @@ const servicesInner = IntentService.layer.pipe(
   // Her lines for every vessel, beside the members' preferences.
   Layer.provideMerge(Layer.mergeAll(MemberPreferences.layer, expressionLayer)),
   Layer.provideMerge(StepUps.layer.pipe(Layer.provide(BatonPhoneInbox.layer))),
-  // Every brain call's usage row, for the Usage page and her usage report.
-  Layer.provideMerge(BrainUsage.layer),
+  // Every brain call's usage row, for the Usage page and her usage report; her wake-word models, signed here (P3b).
+  Layer.provideMerge(Layer.mergeAll(BrainUsage.layer, TessayaWake.layer)),
   // The desktop's hands: a remote session's calls and a brain turn's, one broker.
   Layer.provideMerge(VesselHands.layer),
   // The Record under everything above, so any service can write to it.
@@ -336,6 +338,7 @@ export const workers = Layer.effectDiscard(
 /** The phone page at /tessaya and its API, and the R1 desk device's chat endpoint and camera upload. */
 export const routes = Layer.mergeAll(
   BatonTessayaRoutes.routes,
+  TessayaWakeRoutes.routes,
   R1Device.routes,
   HomeDeviceRoutes.routes,
 );

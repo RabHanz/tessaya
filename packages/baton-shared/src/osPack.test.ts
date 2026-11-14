@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   DEFAULT_OS_PACK,
-  wakeModelOf,
   leadsProject,
   mergePack,
   modelOf,
@@ -34,14 +33,6 @@ describe("the operating-system pack", () => {
     });
     expect(pack.personas.find((p) => p.id === "research")?.private).toBe(true);
     expect(pack.personas.find((p) => p.lead)?.private).toBeUndefined();
-  });
-  it("knows which wake words have a model: shipped, then what training wrote", () => {
-    expect(wakeModelOf("Freya", null)).toBe("trained");
-    expect(wakeModelOf("Nova", null)).toBe("none");
-    expect(wakeModelOf("Nova", { nova: "training" })).toBe("training");
-    expect(wakeModelOf("Nova", { nova: "trained" })).toBe("trained");
-    expect(wakeModelOf("Nova", { nova: 7 })).toBe("none");
-    expect(wakeModelOf(null, { nova: "trained" })).toBe("none");
   });
   it("carries each persona's body, temperament, eyes and model, and drops what it cannot read", () => {
     const tessaya = DEFAULT_OS_PACK.personas.find((p) => p.lead)!;

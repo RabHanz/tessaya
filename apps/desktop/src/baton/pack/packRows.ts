@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**
  * The pack in Baton's window (D148): the executive framing, each role and the routing table as rows to
  * open and correct. They are the same files the server reads; a row that has no file yet writes the
@@ -14,10 +14,10 @@ import {
   mergePack,
   modelOf,
   splitFront,
-  wakeModelOf,
   type OsPack,
 } from "@t3tools/baton-shared/osPack";
 import { setPersonaField } from "@t3tools/baton-shared/personaFile";
+import { parseWakeStore, wakeModelOf, type WakeStore } from "@t3tools/baton-shared/wakeModels";
 import {
   commercialBuild,
   DEFAULT_POCKET_VOICE,
@@ -183,9 +183,9 @@ const capital = (word: string) => `${word[0]!.toUpperCase()}${word.slice(1)}`;
 
 /** The roster on the Voice tab: each face, its wake word, and its voice to change or put back. */
 /** His persona's wake word and whether a model wakes to it yet (the training pipeline's `wake-models.json`). */
-const wakeLine = (wake: string | null, trained: unknown) => {
+const wakeLine = (wake: string | null, store: WakeStore) => {
   if (wake === null) return "No wake word yet: say or type the name.";
-  const model = wakeModelOf(wake, trained);
+  const model = wakeModelOf(wake, store, Date.now());
   return model === "trained"
     ? `Wake word: ${wake}.`
     : `Wake word: ${wake}, ${model === "training" ? "being trained" : "not trained yet"}; until then say "switch to ${wake}".`;
@@ -193,9 +193,11 @@ const wakeLine = (wake: string | null, trained: unknown) => {
 
 export const rosterControls = (dir: string): ReadonlyArray<HomeControl> => {
   const pack = readPack(dir);
-  let trained: unknown = null;
+  let trained = parseWakeStore(null);
   try {
-    trained = JSON.parse(NodeFS.readFileSync(NodePath.join(dir, "wake-models.json"), "utf8"));
+    trained = parseWakeStore(
+      JSON.parse(NodeFS.readFileSync(NodePath.join(dir, "wake-models.json"), "utf8")),
+    );
   } catch {
     // none trained here beyond the shipped words
   }
