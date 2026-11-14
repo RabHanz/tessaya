@@ -250,7 +250,11 @@ const captures = async (
               // CHECKS: every checkpoint is logged, so the hold runs to its end whatever it would have decided.
               const final = quiet || seconds >= 2.5;
               if (process.env["CHECKS"] !== undefined ? final : v !== "unsure") {
-                pauses.push({ at: h.at, outcome: v, ms: ((f.seq - h.seq) * 960 * 1000) / RATE });
+                pauses.push({
+                  at: h.at,
+                  outcome: v === "member" ? "member" : "other",
+                  ms: ((f.seq - h.seq) * 960 * 1000) / RATE,
+                });
                 hold = null;
               }
             }
