@@ -16,6 +16,7 @@ import { startBatonMcp } from "../../apps/desktop/src/baton/agent/batonMcp.ts";
 import { toolUsesOf } from "../../apps/desktop/src/baton/screen/claudeVision.ts";
 import {
   calledPersona,
+  houseTime,
   LOOK,
   R1_STREAM_SYSTEM,
   r1Data,
@@ -347,7 +348,8 @@ const context = (
     c.verified === true
       ? { speaker: { kind: "owner", personId: "owner", verified: true, inherited: false } }
       : undefined,
-  now: "Thursday, 12 November 2026 at 10:15 (Asia/Karachi)",
+  // His clock as the server gives it (houseTime), with the time as it is said; 10:15 on 12 Nov in Karachi.
+  now: houseTime(Date.UTC(2026, 10, 12, 5, 15), "Asia/Karachi", c.clock ?? "12h"),
   // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.
   persona: c.persona === undefined ? null : calledPersona(DEFAULT_OS_PACK, { persona: c.persona }),
   switched: c.persona !== undefined && turn === 0,

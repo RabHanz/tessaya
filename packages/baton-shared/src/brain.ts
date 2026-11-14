@@ -133,11 +133,16 @@ const TENS = ["", "", "twenty", "thirty", "forty", "fifty"];
 const inWords = (n: number): string =>
   n < 20 ? ONES[n]! : `${TENS[Math.floor(n / 10)]}${n % 10 === 0 ? "" : `-${ONES[n % 10]}`}`;
 
+/** How a person wants times said: their `timeFormat` preference, else 12-hour (no household locale exists yet). */
+export type ClockStyle = "12h" | "24h";
+export const clockStyleOf = (timeFormat: string | undefined): ClockStyle =>
+  timeFormat !== undefined && /\b24\b/.test(timeFormat) ? "24h" : "12h";
+
 /**
  * The clock, as the model should read it: his own zone, never a time read off a screen; background, not words to say.
  * The time is also given as it is said: from "11:32" alone a fast model said "twenty-eight minutes past eleven" (0.1.78).
  */
-export const clockLine = (now: Date, timeZone?: string): string => {
+export const clockLine = (now: Date, timeZone?: string, style: ClockStyle = "12h"): string => {
   const zone = timeZone === undefined ? {} : { timeZone };
   return `(his clock, for your reference: ${new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
@@ -147,12 +152,20 @@ export const clockLine = (now: Date, timeZone?: string): string => {
     hour: "2-digit",
     minute: "2-digit",
     timeZoneName: "short",
+    hourCycle: style === "12h" ? "h12" : "h23",
     ...zone,
-  }).format(now)}; said as ${spokenTime(now, timeZone)})`;
+  }).format(now)}; said as ${spokenTime(now, timeZone, style)})`;
 };
 
-/** The time as it is said ("twenty-four minutes to eleven"), so no model ever does the arithmetic. */
-export const spokenTime = (now: Date | number, timeZone?: string): string => {
+/**
+ * The time as it is said ("twenty-four minutes to eleven in the morning", or "ten thirty-six" on a 24-hour clock), so no
+ * model ever does the arithmetic. One form only: given both, the model read both aloud.
+ */
+export const spokenTime = (
+  now: Date | number,
+  timeZone?: string,
+  style: ClockStyle = "12h",
+): string => {
   const zone = timeZone === undefined ? {} : { timeZone };
   const parts = new Intl.DateTimeFormat("en-GB", {
     hour: "numeric",
@@ -162,13 +175,21 @@ export const spokenTime = (now: Date | number, timeZone?: string): string => {
   }).formatToParts(now);
   const hour = Number(parts.find((p) => p.type === "hour")?.value);
   const minute = Number(parts.find((p) => p.type === "minute")?.value);
+  if (style === "24h") {
+    const h = hour < 10 ? `oh ${inWords(hour)}` : inWords(hour);
+    return minute === 0 ? `${h} hundred` : `${h} ${minute < 10 ? "oh " : ""}${inWords(minute)}`;
+  }
+  if (minute === 0 && hour === 0) return "midnight";
+  if (minute === 0 && hour === 12) return "noon";
+  const period = hour < 12 ? "in the morning" : hour < 17 ? "in the afternoon" : "in the evening";
   const twelve = (h: number) => inWords(h % 12 === 0 ? 12 : h % 12);
   const minutes = (m: number) =>
     m === 15 ? "quarter" : m === 30 ? "half" : `${inWords(m)} minute${m === 1 ? "" : "s"}`;
-  // One form only: given both, the model read both aloud ("five past one, or fifty-five to two").
-  return minute === 0
-    ? `${twelve(hour)} o'clock`
-    : minute <= 30
-      ? `${minutes(minute)} past ${twelve(hour)}`
-      : `${minutes(60 - minute)} to ${twelve(hour + 1)}`;
+  const said =
+    minute === 0
+      ? `${twelve(hour)} o'clock`
+      : minute <= 30
+        ? `${minutes(minute)} past ${twelve(hour)}`
+        : `${minutes(60 - minute)} to ${twelve(hour + 1)}`;
+  return `${said} ${period}`;
 };
