@@ -61,7 +61,7 @@ index bac40332a27702521a6c08c40aa13b6dc86ced91..cef8387b7582a75c104b6f699b284062
      const ids = SETTINGS_SEARCH_ITEMS.map((item) => item.id);
      expect(new Set(ids).size).toBe(ids.length);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 85e4878be73dda2cf42949d067daf91a669d573c..5297d9176d9f6564823f6640a511d8a381dfd786 100644
+index 85e4878be73dda2cf42949d067daf91a669d573c..060c1e7201aeba5e8fe7ec89552e9578e06e01d3 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -1,3 +1,4 @@
@@ -123,13 +123,13 @@ index 85e4878be73dda2cf42949d067daf91a669d573c..5297d9176d9f6564823f6640a511d8a3
 +    id: "apis-anthropic",
 +    title: "Anthropic",
 +    to: "/settings/apis",
-+    searchTerms: ["api key claude dictation cleanup voice room brain r1"],
++    searchTerms: ["api key claude dictation cleanup voice room brain r1 tessel tumble"],
 +  },
 +  {
 +    id: "home-assistant",
 +    title: "Home Assistant",
 +    to: "/settings/home",
-+    searchTerms: ["house lights automations devices smart home r1"],
++    searchTerms: ["house lights automations devices smart home r1 tessel tumble"],
 +  },
 +  {
 +    id: "hardware-devices",
@@ -143,19 +143,19 @@ index 85e4878be73dda2cf42949d067daf91a669d573c..5297d9176d9f6564823f6640a511d8a3
 +    id: "hardware-nfc",
 +    title: "NFC tags",
 +    to: "/settings/hardware",
-+    searchTerms: ["nfc tag tap dock mode r1"],
++    searchTerms: ["nfc tag tap dock mode r1 tessel tumble"],
 +  },
 +  {
 +    id: "hardware-bodies",
 +    title: "Bodies",
 +    to: "/settings/hardware",
-+    searchTerms: ["body bodies dock plush perch stand cradle car mount nfc tag room vessel"],
++    searchTerms: ["body bodies dock plush tuft perch stand cradle car mount nfc tag room vessel"],
 +  },
 +  {
 +    id: "room-brain",
 +    title: "Room brain",
 +    to: "/settings/hardware",
-+    searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
++    searchTerms: ["r1 tessel tumble desk device api key subscription claude anthropic voice room"],
 +  },
 +  // Tessaya's own settings live in her window; T3's search finds them and says where.
 +  ...TESSAYA_PLACES.map((place) => ({
