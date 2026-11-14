@@ -73,6 +73,7 @@ import { Input } from "../ui/input";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { BodiesSection } from "./BodiesSection";
 import { R1SetupSection } from "./R1SetupSection";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -365,6 +366,15 @@ function HardwareSections({
       ))}
 
       {home ? <RoomBrainSection environmentId={environmentId} /> : null}
+
+      {home ? (
+        <BodiesSection
+          call={async (kind, op, args) => {
+            const result = await devicesCall({ environmentId, input: { kind, op, args } });
+            return result._tag === "Success" ? result.value : null;
+          }}
+        />
+      ) : null}
 
       {home ? (
         <R1SetupSection

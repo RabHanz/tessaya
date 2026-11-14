@@ -120,6 +120,13 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 const variant = VARIANT_CONFIG[APP_VARIANT];
 // Copied thread links open the app. app.t3.codes/.well-known lists every variant's identifiers.
 const HOSTED_APP_HOST = "app.t3.codes";
+// Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
+const nfcPlugin: [string, { nfcPermission: string }] = [
+  "react-native-nfc-manager",
+  { nfcPermission: "Tessaya writes the NFC tag that tells your devices which body they are in." },
+];
+/** The domain body tags link to: configuration, never hard-coded (Director, 14 Nov). */
+const tagLinksHost = repoEnv.TESSAYA_TAG_LINKS_HOST?.trim() || undefined;
 const iosBundleIdentifier = isIosPersonalTeamBuild
   ? personalTeamBundleIdentifier!
   : variant.iosBundleIdentifier;
@@ -262,6 +269,8 @@ const config: ExpoConfig = {
       `applinks:${variant.relyingParty}`,
       `webcredentials:${variant.relyingParty}`,
       `applinks:${HOSTED_APP_HOST}`,
+      // Body tag links open the app on iPhone; must match the server's Bodies host setting (VESSEL-BODIES §2.3).
+      ...(tagLinksHost === undefined ? [] : [`applinks:${tagLinksHost}`]),
     ],
     entitlements: {
       "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
@@ -361,6 +370,8 @@ const config: ExpoConfig = {
         bluetoothAlwaysPermission: "Tessaya uses Bluetooth to set up your R1 on your Wi-Fi.",
       },
     ],
+    // Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
+    ...(isIosPersonalTeamBuild ? [] : [nfcPlugin]),
     ...(isIosPersonalTeamBuild
       ? [sharingPlugin]
       : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),

@@ -1396,6 +1396,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["nfc tag tap dock mode r1"],
   },
   {
+    id: "hardware-bodies",
+    title: "Bodies",
+    to: "/settings/hardware",
+    searchTerms: ["body bodies dock plush perch stand cradle car mount nfc tag room vessel"],
+  },
+  {
     id: "room-brain",
     title: "Room brain",
     to: "/settings/hardware",

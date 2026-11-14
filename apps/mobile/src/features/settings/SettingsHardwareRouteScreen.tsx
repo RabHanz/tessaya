@@ -59,6 +59,7 @@ import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilt
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
+import { BodiesSection } from "./BodiesSection";
 import { R1SetupSection } from "./R1SetupSection";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
 
@@ -337,6 +338,14 @@ function HardwareSections({
           ))}
         </Row>
       </SettingsSection>
+
+      <BodiesSection
+        prefix={prefix}
+        call={async (kind, op, args) => {
+          const result = await devicesCall({ environmentId, input: { kind, op, args } });
+          return result._tag === "Success" ? result.value : null;
+        }}
+      />
 
       <R1SetupSection
         prefix={prefix}
