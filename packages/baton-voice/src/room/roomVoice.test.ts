@@ -5,6 +5,7 @@ import type { EnrolCard } from "@t3tools/baton-contracts";
 import type { SpeakerIdentity } from "../speaker.ts";
 import { UNVERIFIED } from "../speaker.ts";
 import { PILL_SOUNDS, renderSound } from "../cueSounds.ts";
+import { speechLike } from "../echoSim.ts";
 import { toBytes } from "./audio.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
@@ -1387,6 +1388,81 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     ]);
     // Begun over her voice: the pipeline is told some of it may be hers.
     expect(t.brainCalls.map((c) => c.tessaya.tainted)).toEqual([false, true]);
+  });
+
+  it("open talk-over: anything he says over her stops her and is answered; her own echo never does", async () => {
+    // Her reply as speech-like sound, and the R1's 0.3.92 uplink: each frame says how much of her it has played.
+    const her = Int16Array.from(speechLike(6, 3, 190), (v) => v * 32768);
+    const run = async (mode: "open" | "keyword", him: boolean) => {
+      const t = setup({
+        recognise: heardInTurn(["What time is it?", "No, I meant in London."]),
+        vad: () => ({
+          score: async (w) =>
+            Math.sqrt(w.reduce((a, v) => a + v * v, 0) / w.length) > 300 ? 0.9 : 0.05,
+        }),
+        brain: async function* (input, signal) {
+          t.brainCalls.push(input);
+          yield "It's seven forty here, and the sun is up.";
+          if (input.messages.at(-1)!.content === "What time is it?") await abortedBy(signal);
+        },
+        speak: async function* (_text, signal) {
+          yield her;
+          await abortedBy(signal);
+        },
+      });
+      t.room.message(`freya/r1/${DEV}/cmd/voice/talkover`, Buffer.from(JSON.stringify({ mode })));
+      let seq = 0;
+      let played = 0;
+      const sent = () =>
+        t.published
+          .filter((p) => p.topic.endsWith("/voice/down"))
+          .reduce((n, p) => n + (p.payload as Uint8Array).length, 0);
+      const up = async (voice: (i: number) => number, n: number) => {
+        for (let k = 0; k < n; k += 1) {
+          const rx = sent();
+          const pcm = new Int16Array(960);
+          for (let i = 0; i < 960; i += 1) {
+            // What is left of her after the R1's own echo cancelling (-26 dB), at its 123 ms latency, plus him.
+            const e = played / 2 + i - 1972;
+            pcm[i] =
+              (e >= 0 && e < rx / 2 ? her[e % her.length]! * 0.05 : 0) + voice(seq * 960 + i);
+          }
+          played = Math.min(rx, played + 1920);
+          const head = new DataView(new ArrayBuffer(16));
+          head.setUint32(0, seq, true);
+          head.setUint32(4, rx, true);
+          head.setUint32(8, rx - played, true);
+          const bytes = new Uint8Array(16 + 1920);
+          bytes.set(new Uint8Array(head.buffer), 0);
+          bytes.set(toBytes(pcm), 16);
+          t.room.message(`freya/r1/${DEV}/voice/up/tainted`, bytes);
+          seq += 1;
+          t.advance(60);
+          await t.room.session(DEV)!.drained();
+        }
+      };
+      const loud = (i: number) => Math.round(4000 * Math.sin(i / 7) * Math.sin(i / 900));
+      const quiet = () => 0;
+      t.s2();
+      await up(loud, 20);
+      await up(quiet, 10);
+      // She is talking now: her echo alone for 1.8 s, then (perhaps) him over her.
+      await up(quiet, 30);
+      if (him) await up(loud, 20);
+      await up(quiet, 20);
+      const flushed = t.published.some(
+        (p) => p.topic.endsWith("/voice/ctl") && String(p.payload).includes("flush"),
+      );
+      return { flushed, asked: t.brainCalls.map((c) => c.messages.at(-1)!.content) };
+    };
+    expect(await run("open", true)).toEqual({
+      flushed: true,
+      asked: ["What time is it?", "No, I meant in London."],
+    });
+    // Her own voice coming back is not him.
+    expect((await run("open", false)).flushed).toBe(false);
+    // Keyword mode (the default): over her voice only a stop phrase or her name counts.
+    expect((await run("keyword", true)).asked).toEqual(["What time is it?"]);
   });
 
   it("never says her reasoning, nor keeps it in the conversation (07:17:55, 07:38:34, 07:44:27)", async () => {

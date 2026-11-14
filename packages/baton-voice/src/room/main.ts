@@ -514,6 +514,7 @@ const main = async () => {
       "freya/r1/+/state/voice",
       "freya/r1/+/event/key",
       "freya/r1/+/cmd/voice/earcons",
+      "freya/r1/+/cmd/voice/talkover",
       "freya/r1/+/voice/persona",
       "freya/r1/+/voice/ask",
       "freya/r1/+/event/session/end",
@@ -715,6 +716,8 @@ const main = async () => {
         .filter(Boolean),
       // Her name alone: a spoken "I'm here" (voice), a sound (tone) or only her look (off).
       acknowledge: ((v) => (v === "tone" || v === "off" ? v : "voice"))(process.env["R1_ACK"]),
+      // Over her voice: keyword (a stop phrase or her name) unless R1_TALK_OVER=open; per R1 on cmd/voice/talkover.
+      talkOver: process.env["R1_TALK_OVER"] === "open" ? "open" : "keyword",
     },
   );
   setInterval(() => room?.sweep(), 1_000);

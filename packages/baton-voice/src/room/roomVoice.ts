@@ -10,6 +10,7 @@ import { pronounce, pronounceFrom } from "@t3tools/baton-shared/pronounce";
 import { stopIntent } from "@t3tools/baton-shared/stopPhrases";
 
 import { createEchoGuard } from "../echoGuard.ts";
+import { createRoomLevel, createTalkOver, type TalkOver } from "../talkOver.ts";
 import { ackLines, pickAck, type Acknowledge } from "./acknowledge.ts";
 import {
   accumulate,
@@ -53,6 +54,16 @@ import {
 } from "./turnTaking.ts";
 
 const RATE = 16_000;
+/** Her downlink kept for open talk-over: 8 s, far more than the R1 ever holds unplayed. */
+const DOWN_RING = RATE * 8;
+/** firmware 0.3.92 `cmd/voice/upformat {"v":1}`: each uplink frame leads with seq, rx, q (u32) and flags (u16), 16 bytes. */
+const UP_HEADER = 16;
+/** The R1's own latency on its onboard speaker (firmware lane, 14 Nov): her sample under it is rx - q - this. */
+const R1_LATENCY = 1972;
+/** Talking over her counts once she has sounded this long: the device's echo cancelling settles in that time. */
+const ONSET_GRACE_MS = 400;
+/** Until his own level is known, a voice over her must reach this (dBFS): he is near -41 at the R1, a TV far below. */
+const TALK_MIN_DBFS = -55;
 
 /**
  * Her listening and closing sounds on the R1 (firmware 3.31.1 dropped Beken's spoken "Uh huh" and "Bye bye"): the
@@ -294,6 +305,11 @@ export interface RoomConfig {
    * another language is the room only when this is English alone. Changed per R1 by `voice/languages` (retained).
    */
   readonly languages: ReadonlyArray<string>;
+  /**
+   * Over her voice: only a stop, a dismissal or her name (keyword), or anything he says (open: his voice heard over her
+   * playback, from firmware 0.3.92's aligned uplink). Changed per R1 by `cmd/voice/talkover` (retained).
+   */
+  readonly talkOver: "keyword" | "open";
 }
 
 export const ROOM_CONFIG: RoomConfig = {
@@ -331,6 +347,7 @@ export const ROOM_CONFIG: RoomConfig = {
   inhouse: new Set(),
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
   languages: ["en"],
+  talkOver: "keyword",
 };
 
 const REARM_AT_MS = [2_000, 8_000, 18_000];
@@ -427,6 +444,21 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const vad = deps.vad();
     const turns = createTurnTaking(config.turn);
     const echo = createEchoGuard();
+    /** Open talk-over: her downlink as the R1 received it, by sample, to line up with each mic frame's header. */
+    // One per R1: the room it learned from her last replies holds for the next session.
+    const talk = talkOf(id);
+    const down = new Int16Array(DOWN_RING);
+    let downSamples = 0;
+    /** The R1's downlink count minus ours, read off the first aligned frame (its session may have begun before ours). */
+    let downBase: number | null = null;
+    let lastDownAt = Number.NEGATIVE_INFINITY;
+    /** When her voice began after silence: the R1's echo cancelling lets a burst through as it starts (14 Nov captures). */
+    let soundingFrom = Number.NEGATIVE_INFINITY;
+    const roomLevel = createRoomLevel(TALK_MIN_DBFS);
+    /** He was heard over her and she stopped for it: his turn begun then is answered, not held to a stop phrase. */
+    let cutByVoiceAt = Number.NEGATIVE_INFINITY;
+    let lastProb = 0;
+    if (open(id)) deps.publish(topic(id, "cmd/voice/upformat"), JSON.stringify({ v: 1 }));
     let pending = new Int16Array(0);
     let chain: Promise<void> = Promise.resolve();
     /** The turn being answered now, so a push-to-talk release can wait for its reply before ending the session. */
@@ -770,8 +802,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (ahead > config.leadMs) await deps.sleep(ahead - config.leadMs);
         if (signal.aborted) return;
         const start = Math.max(deps.now(), playUntil);
+        if (start > playUntil) soundingFrom = start + config.downDelayMs;
         deps.publish(topic(id, "voice/down"), frame);
-        echo.reference(fromBytes(frame), start + config.downDelayMs);
+        const samples = fromBytes(frame);
+        echo.reference(samples, start + config.downDelayMs);
+        for (let i = 0; i < samples.length; i += 1)
+          down[(downSamples + i) % DOWN_RING] = samples[i]!;
+        downSamples += samples.length;
+        lastDownAt = deps.now();
         if (bench.get(id)?.keep === true) {
           played.push({ at: start, pcm: fromBytes(frame) });
           while (played.length > 0 && played[0]!.at < start - 20_000) played.shift();
@@ -991,6 +1029,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // Begun while she was still playing (the mic open over her): only a stop, a dismissal or her name counts.
       const over =
         given === undefined &&
+        // His voice stopped her (open talk-over): this turn is what he said over her, and it is answered.
+        !(cutByVoiceAt >= startedAt && cutByVoiceAt - startedAt < 3_000) &&
         (turnTainted || startedAt <= speechUntil + config.downDelayMs + 300) &&
         // Still talking once her voice and its tail are gone: normal speech again (10:36, 13 Nov).
         lastVoice - config.upDelayMs <= speechUntil + config.downDelayMs + config.echoTailMs;
@@ -1678,8 +1718,40 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (step.ready) void enrolled(g);
       });
 
+    /**
+     * Open talk-over: the frame's own header says which of her samples were under the speaker as it was heard
+     * (rx - q, firmware 0.3.92), so her playback lines up with the mic to the sample, and his voice rising over what
+     * is left of hers stops her at once. The words then go through the same echo and addressing checks as any turn.
+     */
+    const heardOver = (pcm: Int16Array, seq: number, rx: number, q: number) => {
+      roomLevel.push(pcm);
+      // Nothing in flight and nothing queued: the R1 has every byte sent, so its count and ours differ by a constant.
+      if (q === 0 && deps.now() - lastDownAt > 1_000) downBase = rx - downSamples * 2;
+      if (downBase === null) return;
+      const at = seq * pcm.length;
+      // From 32 ms before the device's latency: the detector finds the rest (it only looks later, never earlier).
+      const from = (rx - q - downBase) / 2 - R1_LATENCY + 512;
+      const ref = new Int16Array(pcm.length);
+      for (let i = 0; i < ref.length; i += 1) {
+        const n = from + i;
+        if (n >= 0 && n < downSamples && n > downSamples - DOWN_RING) ref[i] = down[n % DOWN_RING]!;
+      }
+      talk.reference(ref, at);
+      const heard = talk.process(pcm, at).some((v) => v.ready && v.speech);
+      if (!heard || !speaking() || enrolling() || bench.has(id) || lastProb < config.turn.stopProb)
+        return;
+      if (deps.now() - cutByVoiceAt < 1_000 || deps.now() - soundingFrom < ONSET_GRACE_MS) return;
+      // The room (a TV, someone across it) is far quieter than he is, or was already this loud before he spoke.
+      if (!roomLevel.rises(Number.isFinite(hisLevel) ? hisLevel - FAR_DB : TALK_MIN_DBFS)) return;
+      cutByVoiceAt = deps.now();
+      bargedIn = true;
+      deps.log(`[${id}] he talked over her; she stopped`);
+      stopHer(`[${id}] talked over`);
+    };
+
     const onWindow = async (window: Int16Array, arrivedAt: number) => {
       const prob = await vad.score(window);
+      lastProb = prob;
       let heard = prob;
       if (speaking()) {
         // While she talks, a window the echo guard reads as only her own voice cannot cut her off.
@@ -1697,7 +1769,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const arrivedAt = deps.now();
         if (tainted) lastTaintedAt = arrivedAt;
         lastUpAt = arrivedAt;
-        const pcm = fromBytes(bytes);
+        const aligned =
+          bytes.length > UP_HEADER && (bytes.length - UP_HEADER) % DOWN_FRAME_BYTES === 0;
+        const pcm = fromBytes(aligned ? bytes.subarray(UP_HEADER) : bytes);
+        const head = aligned ? new DataView(bytes.buffer, bytes.byteOffset, UP_HEADER) : null;
         // Her own voice (the intro) is not his read.
         if (guide !== null && guide.phase() === "reading" && !speaking()) {
           const g = guide;
@@ -1714,6 +1789,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           chain = chain.then(() => onWindow(window, arrivedAt));
         }
         pending = all.slice(at);
+        if (head !== null && open(id)) {
+          const seq = head.getUint32(0, true);
+          const rx = head.getUint32(4, true);
+          const q = head.getUint32(8, true);
+          chain = chain.then(() => heardOver(pcm, seq, rx, q));
+        }
       },
       /** He let go of push-to-talk (firmware 3.32 `ptt_end`): answer what he said, then end the session once it has played. */
       released: () =>
@@ -1895,6 +1976,17 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const muted = new Set<string>();
   /** R1s with her listening and closing sounds off (`cmd/voice/earcons {"on":false}`, retained); on by default. */
   const noCues = new Set<string>();
+  /** R1s switched between keyword and open talk-over (`cmd/voice/talkover {"mode"}`, retained); else the config's. */
+  const talkOverFor = new Map<string, RoomConfig["talkOver"]>();
+  const open = (id: string) => (talkOverFor.get(id) ?? config.talkOver) === "open";
+  const talks = new Map<string, TalkOver>();
+  const talkOf = (id: string) => {
+    const known = talks.get(id);
+    if (known !== undefined) return known;
+    const made = createTalkOver({ searchMs: 96 });
+    talks.set(id, made);
+    return made;
+  };
   /** R1s on a bench (`cmd/voice/no-reply`, retained): what they hear is judged and logged, never answered. */
   const bench = new Map<string, { readonly keep: boolean }>();
   /** No sound of hers: earcons switched off, or a bench sweep, which is never answered aloud either. */
@@ -2159,6 +2251,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         cue(id, "end");
         sessions.delete(id);
         void deps.sleep(silent(id) ? 0 : soundMs("end") + config.downDelayMs).then(() => s.close());
+      } else if (tail === "cmd/voice/talkover") {
+        const mode = json()["mode"];
+        if (mode === "open" || mode === "keyword") talkOverFor.set(id, mode);
+        else talkOverFor.delete(id);
+        deps.log(`[${id}] talking over her: ${open(id) ? "open" : "keyword"}`);
       } else if (tail === "cmd/voice/earcons") {
         if (json()["on"] === false) noCues.add(id);
         else noCues.delete(id);

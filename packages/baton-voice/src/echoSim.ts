@@ -3,7 +3,7 @@
  * the mic mix. Deterministic. The real test is recordings through real speakers; this is the harness that measures the
  * detector's false barge-ins on its own voice and its recall of real interruptions (docs/baton/BARGE_IN.md).
  */
-import { createEchoGuard } from "./echoGuard.ts";
+import { createEchoGuard, type EchoGuard } from "./echoGuard.ts";
 
 export const RATE_16K = 16_000;
 const FRAME = 320;
@@ -117,6 +117,8 @@ export interface EchoRun {
  * `unknownDelayMs` is what the guard is not told: the output device and the air.
  */
 export const runEcho = (input: {
+  /** The detector under test (the NLMS echo guard by default). */
+  readonly guard?: () => EchoGuard;
   readonly tts: Float32Array;
   readonly seed: number;
   readonly unknownDelayMs: number;
@@ -139,7 +141,7 @@ export const runEcho = (input: {
   ) => void;
 }): EchoRun => {
   const need = input.frames ?? 5;
-  const guard = createEchoGuard();
+  const guard = (input.guard ?? createEchoGuard)();
   const echo = convolve(input.tts, room(input.unknownDelayMs, input.rt60Ms, input.seed));
   let eSum = 0;
   for (const v of echo) eSum += v * v;
@@ -197,7 +199,11 @@ const ROOMS: ReadonlyArray<readonly [number, number]> = [
 
 /** The measurement behind docs/baton/BARGE_IN.md: the same rooms and levels every run. */
 export const evaluateGuard = (
-  input: { readonly seconds?: number; readonly levelsDb?: ReadonlyArray<number> } = {},
+  input: {
+    readonly seconds?: number;
+    readonly levelsDb?: ReadonlyArray<number>;
+    readonly guard?: () => EchoGuard;
+  } = {},
 ): GuardEvaluation => {
   const seconds = input.seconds ?? 60;
   let alarms = 0;
@@ -205,6 +211,7 @@ export const evaluateGuard = (
   ROOMS.forEach(([delay, rt60], i) => {
     const tts = speechLike(seconds, 11 + i, 105 + i * 8);
     const run = runEcho({
+      ...(input.guard === undefined ? {} : { guard: input.guard }),
       tts,
       seed: 5 + i,
       unknownDelayMs: delay,
@@ -230,6 +237,8 @@ export const evaluateGuard = (
         pitchHz: 170 + k * 12,
       }));
       const run = runEcho({
+        ...(input.guard === undefined ? {} : { guard: input.guard }),
+        ...(input.guard === undefined ? {} : { guard: input.guard }),
         tts,
         seed: 5 + i,
         unknownDelayMs: delay,

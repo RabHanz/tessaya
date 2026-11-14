@@ -93,6 +93,12 @@ const powerSpectrum = (frame: Float64Array): void => {
   for (let k = 0; k < FFT / 2; k += 1) power[k] = re[k]! * re[k]! + im[k]! * im[k]!;
 };
 
+/** The power spectrum of a 512-sample frame (bins 0..255); the buffer is reused by the next call. */
+export const spectrum512 = (frame: Float64Array): Float64Array => {
+  powerSpectrum(frame);
+  return power;
+};
+
 /**
  * 16 kHz PCM (int16 scale) to frames × 80 log mel energies, mean-subtracted per bin. Empty under one frame.
  * SenseVoice was trained on the same bank with a Hamming window and no mean subtraction (sherpa-onnx's front end).
