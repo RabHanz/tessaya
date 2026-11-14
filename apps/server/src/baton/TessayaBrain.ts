@@ -54,7 +54,17 @@ export const inBrainSlot =
     Effect.flatMap(Effect.serviceOption(TurnPools), (pools) =>
       Option.isNone(pools)
         ? work
-        : pools.value.run("brain", { vessel: turn.vessel.id, class: "interactive" }, work),
+        : pools.value.run(
+            "brain",
+            {
+              vessel: turn.vessel.id,
+              class: "interactive",
+              persona: turn.persona ?? null,
+              // With the vessel: a turn that asks another vessel (laptop_ask) never waits on its own slot.
+              thread: `${turn.vessel.id}|${turn.persona ?? ""}|${conversationKey(turn)}`,
+            },
+            work,
+          ),
     );
 
 /**

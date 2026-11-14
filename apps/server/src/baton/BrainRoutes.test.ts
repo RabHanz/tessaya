@@ -56,6 +56,15 @@ const SITES: Readonly<Record<string, Site>> = {
     routed: "a work session's synopsis: the synopsis row",
   },
   "apps/server/src/baton/BatonJobFlow.ts": { routed: "a job's routine parts: the background row" },
+  "apps/server/src/baton/BatonPlaybook.ts": {
+    routed: "a job template's playbook: the background row",
+  },
+  "apps/server/src/tessaya/PromptLab.ts": {
+    routed: "the prompt lab: the voice row, on each model he chose to compare",
+  },
+  "apps/server/src/baton/BatonMemoryReactor.ts": {
+    wiring: "carries the one-shot service to the learning it starts",
+  },
   "apps/server/src/baton/BatonRpcHandlers.ts": {
     routed: "dictation cleanup over RPC: the cleanup row",
   },

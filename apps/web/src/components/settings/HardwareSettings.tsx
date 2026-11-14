@@ -22,6 +22,8 @@ import type { R1UpdatesView } from "@t3tools/baton-shared/r1Firmware";
 import {
   DISPLAY_CHOICES,
   EYE_SCREENS,
+  KEY_NAMES,
+  KEY_PRESSES,
   KEY_ROWS,
   MOOD_EYES,
   clock,
@@ -1177,7 +1179,6 @@ function TagsSection({
 
 const detailOf = (b: R1KeyBinding | undefined) =>
   b?.kind === "prompt" ? b.text : b?.kind === "home" ? b.entityId : "";
-const PRESSES = ["tap", "double", "hold", "long"] as const;
 
 /** The R1's buttons: the firmware's fixed presses read-only, the rest set to its own action or one of hers. */
 function KeysSection({
@@ -1234,7 +1235,7 @@ function KeysSection({
             <thead className="text-muted-foreground">
               <tr>
                 <th className="py-1 pr-3 font-medium" />
-                {PRESSES.map((p) => (
+                {KEY_PRESSES.map((p) => (
                   <th key={p} className="py-1 pr-3 font-medium capitalize">
                     {p}
                   </th>
@@ -1242,11 +1243,12 @@ function KeysSection({
               </tr>
             </thead>
             <tbody>
-              {(["s1", "s2", "s3"] as const).map((key) => (
+              {(Object.keys(KEY_NAMES) as Array<keyof typeof KEY_NAMES>).map((key) => (
                 <tr key={key} className="border-t">
-                  <th className="py-1.5 pr-3 font-medium">{key.toUpperCase()}</th>
-                  {PRESSES.map((p) => {
-                    const row = KEY_ROWS.find((r) => r.slot === `${key}.${p}`)!;
+                  <th className="py-1.5 pr-3 font-medium">{KEY_NAMES[key]}</th>
+                  {KEY_PRESSES.map((p) => {
+                    const row = KEY_ROWS.find((r) => r.slot === `${key}.${p}`);
+                    if (row === undefined) return <td key={p} className="py-1.5 pr-3" />;
                     const b = d.keys[row.slot];
                     return (
                       <td

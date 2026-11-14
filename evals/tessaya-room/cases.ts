@@ -32,6 +32,8 @@ export interface RoomCase {
   readonly notice?: string;
   /** The turn's block as TessayaTurn.begin gives it (the where-you-are and presence board lines). */
   readonly memory?: string;
+  /** His clock preference (timeFormat): how the turn's time is said. */
+  readonly clock?: "12h" | "24h";
 }
 
 export const SPECIALISTS = DEFAULT_OS_PACK.personas.filter((p) => !p.lead).map((p) => p.name);
@@ -43,6 +45,20 @@ const PLAIN = /^(?![\s\S]*(\d|volume (is )?set|set (it )?to|percent))[\s\S]{1,80
 const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
+  {
+    // 14 Nov: "it isn't using the am pm timing"; the time on his own clock, with the part of the day.
+    id: "clock-12h",
+    source: "Director, 14 Nov ~20:30",
+    said: ["What time is it?"],
+    lastSays: [/quarter past ten|10:15/i, /\b(morning|a\.?m\.?)\b/i],
+  },
+  {
+    id: "clock-24h",
+    source: "Director, 14 Nov ~20:30",
+    said: ["What time is it?"],
+    clock: "24h",
+    lastSays: [/\b(ten fifteen|10:15)\b/i],
+  },
   {
     // COMMS-DESIGN §2.4: a message that waited is told once, on the turn that proves he is here, beside his question.
     id: "comms-waiting",
@@ -123,6 +139,14 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [PLAIN],
     calls: ["set_device_volume"],
     callsAtMost: { set_device_volume: 1, home_do: 0 },
+  },
+  {
+    id: "remap-button",
+    source: "Director 2026-11-14 (R-045): every press of the Tessel is his to remap by voice",
+    said: ["make double press S1 switch to Freya"],
+    lastSays: [/^(?![\s\S]*waits for)[\s\S]{1,120}freya/i],
+    calls: ["device_button"],
+    callsAtMost: { device_button: 1, home_do: 0, device_set: 0 },
   },
   {
     id: "no-intro",
