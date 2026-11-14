@@ -67,11 +67,12 @@ import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { spendOf, type Spend } from "./BatonJobSpend.ts";
-import { planningFrame, readPack } from "./OperatingSystemPack.ts";
+import { planningFrame, readPack, readTemplates } from "./OperatingSystemPack.ts";
 import { expressOr } from "./TessayaExpression.ts";
 import { routeFor } from "./BrainRoutes.ts";
 import { DEFAULT_ROUTING, ROUTINE_EFFORT } from "@t3tools/baton-shared/costRouting";
 import { modelOf, roleFor, type Brain } from "@t3tools/baton-shared/osPack";
+import { assignJob, templateBrief, type JobTemplate } from "@t3tools/baton-shared/jobTemplates";
 import { BatonJobService } from "./BatonJobService.ts";
 import { BatonMemoryService, MemoryViewer } from "./BatonMemoryService.ts";
 import { BatonRecordService } from "./BatonRecordService.ts";
@@ -116,11 +117,12 @@ const routineBrain = routeFor("background").pipe(
   ),
 );
 
-/** The planning frame, with the brief of the specialist a part is given to. */
-const frame = (userdata: string, role: string | undefined): string => {
+/** The planning frame, with the brief of the specialist a part is given to and the template the job follows. */
+const frame = (userdata: string, role: string | undefined, template?: JobTemplate): string => {
   const base = planningFrame(userdata);
   const brief = role === undefined ? undefined : readPack(userdata).roles[role];
-  return brief === undefined ? base : `${base}\n\nYour role (${role}): ${brief}`;
+  const withRole = brief === undefined ? base : `${base}\n\nYour role (${role}): ${brief}`;
+  return template === undefined ? withRole : `${withRole}\n\n${templateBrief(template)}`;
 };
 
 export interface StartOptions {
@@ -132,6 +134,8 @@ export interface StartOptions {
   readonly role?: string;
   /** The R1 he asked on, where its plan-ready and done lines are said. */
   readonly origin?: string;
+  /** The pack template the job follows. */
+  readonly template?: JobTemplate;
 }
 
 export const startJob = Effect.fn("BatonJobFlow.start")(function* (
@@ -204,7 +208,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
     branch: workSession.baseBranch,
     text: workerFirstMessage({
       verbatim: input.goal,
-      frame: frame(userdata, options.role),
+      frame: frame(userdata, options.role, options.template),
       memory: remembered.block,
       ...(options.agreed === true ? { agreed: true } : {}),
       permissionsSummary: permissionsSummary(terms.permissions, terms.limits, terms.grants),
@@ -245,7 +249,10 @@ export const placeJob = Effect.fn("BatonJobFlow.place")(function* (input: BatonJ
   );
   if (!placed.ok) return yield* new BatonJobPlacementError({ detail: placed.why });
   const { project, label, worker } = placed.value;
-  return yield* startJob(
+  const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
+  const pack = readPack(userdata);
+  const { persona, template } = assignJob(pack.personas, readTemplates(userdata), input);
+  const started = yield* startJob(
     {
       projectId: project.id,
       title: input.title,
@@ -262,8 +269,17 @@ export const placeJob = Effect.fn("BatonJobFlow.place")(function* (input: BatonJ
       // Anything the worker would ask permission for becomes a card that needs him.
       runtimeMode: "approval-required",
     },
-    input.origin === undefined ? {} : { origin: input.origin },
+    {
+      ...(input.origin === undefined ? {} : { origin: input.origin }),
+      ...(persona === undefined ? {} : { role: persona.id }),
+      ...(template === undefined ? {} : { template }),
+    },
   );
+  return {
+    ...started,
+    lead: persona?.name ?? pack.personas[0]!.name,
+    template: template?.id ?? null,
+  };
 });
 
 export const beginWork = Effect.fn("BatonJobFlow.beginWork")(function* (threadId: ThreadId) {

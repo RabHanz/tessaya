@@ -168,6 +168,8 @@ export const make = Effect.gen(function* () {
             folders: input.folders ?? [],
             tools: input.tools ?? [],
             ...(input.worker === undefined ? {} : { worker: input.worker }),
+            ...(input.persona === undefined ? {} : { persona: input.persona }),
+            ...(input.template === undefined ? {} : { template: input.template }),
             ...(input.report_every_minutes === undefined
               ? {}
               : { reportEveryMinutes: input.report_every_minutes }),
@@ -179,7 +181,7 @@ export const make = Effect.gen(function* () {
         );
         return {
           id: started.terms.workSessionId,
-          line: `Opened ${input.title} in ${input.project} on ${started.model}. It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.`,
+          line: `Opened ${input.title} in ${input.project} on ${started.model}, led by ${started.lead}${started.template === null ? "" : ` (template ${started.template})`}. It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.`,
         };
       }),
     ),

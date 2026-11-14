@@ -173,12 +173,31 @@ export const mergeTemplates = (
     return t === null ? [] : [t];
   });
 
-/** What a template's front-matter names as its lead, as the roster's id; null when no face of the roster has it. */
-export const templateLead = (
-  template: Pick<JobTemplate, "persona">,
-  personas: ReadonlyArray<{ readonly id: string; readonly name: string }>,
-): string | null =>
-  personas.find((p) => p.name.toLowerCase() === template.persona?.toLowerCase())?.id ?? null;
+interface Face {
+  readonly id: string;
+  readonly name: string;
+  readonly lead: boolean;
+}
+
+/**
+ * Who leads a job and the template it follows, from what Tessaya passed: the persona she named (by name or file stem),
+ * else the template's usual lead. A name the roster lacks, or the lead herself, leaves the job hers (`persona` absent).
+ */
+export const assignJob = <P extends Face>(
+  personas: ReadonlyArray<P>,
+  templates: ReadonlyArray<JobTemplate>,
+  said: { readonly persona?: string | undefined; readonly template?: string | undefined },
+): { readonly persona?: P; readonly template?: JobTemplate } => {
+  const template = templates.find(
+    (t) => t.kind === "job" && t.id === said.template?.trim().toLowerCase(),
+  );
+  const word = (said.persona ?? template?.persona ?? "").trim().toLowerCase();
+  const persona = personas.find((p) => !p.lead && (p.name.toLowerCase() === word || p.id === word));
+  return {
+    ...(persona === undefined ? {} : { persona }),
+    ...(template === undefined ? {} : { template }),
+  };
+};
 
 /** The job templates in one paragraph for the assistant's frame, after `assistantFrame`: what she assigns from. */
 export const templateFrame = (templates: ReadonlyArray<JobTemplate>): string => {

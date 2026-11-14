@@ -55,6 +55,8 @@ const StartTool = Tool.make("job_start", {
     report_every_minutes: Schema.optionalKey(
       Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1440 })),
     ),
+    persona: Schema.optionalKey(Text(60)),
+    template: Schema.optionalKey(Text(60)),
   }),
 })
   .annotate(McpSchema.EnabledWhen, roomOnly)

@@ -4,7 +4,7 @@
  */
 export const JOB_TOOL_TEXT = {
   job_start:
-    "Hand long work to a worker thread that PLANS FIRST and does nothing until he agrees. Put his words in goal exactly as he said them. Name the project. Say plainly which folders and tools it may use. worker only when he names who does it (codex, claude); otherwise the routing table picks.",
+    "Hand long work to a worker thread that PLANS FIRST and does nothing until he agrees. Put his words in goal exactly as he said them. Name the project. Say plainly which folders and tools it may use. worker only when he names who does it (codex, claude); otherwise the routing table picks. Pick the job template from your frame that fits (template) and who leads it (persona, by name): the template's lead unless he named someone or another face fits better. Before calling, tell him in one or two sentences who does what and when he will hear back; if he names someone else, that person leads.",
   job_retry:
     "Try a failed job's worker again, with the reason it failed so it does not repeat the same step. Only an agreed job that failed or hit a limit, and only within its retry budget (two unless the job says otherwise). Raise a hit limit first with job_refine (widens true).",
   job_refine:

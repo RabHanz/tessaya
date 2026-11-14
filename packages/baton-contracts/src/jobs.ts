@@ -234,6 +234,10 @@ export const BatonJobPlaceInput = Schema.Struct({
   worker: Schema.optionalKey(TrimmedNonEmptyString),
   /** The R1 he asked on: its plan-ready and done lines are said there. */
   origin: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(120))),
+  /** Who leads it, by the name he knows (Onyx) or the role's file stem; absent or unknown: the lead. */
+  persona: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(60))),
+  /** The pack template it follows (`plan-a-trip`); its brief joins the worker's frame. */
+  template: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(60))),
 });
 export type BatonJobPlaceInput = typeof BatonJobPlaceInput.Type;
 
