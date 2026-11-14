@@ -536,6 +536,13 @@ export const make = Effect.gen(function* () {
     yield* touchThread(turn);
     const view = {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
+      // Persona x person (P7): a known person's turn reads none of the persona's notes from someone else.
+      person:
+        turn.speaker?.verified === true && turn.speaker.personId !== null
+          ? turn.speaker.personId
+          : typeof turn.member === "string"
+            ? turn.member
+            : null,
       ...(turn.timeZone === undefined ? {} : { timeZone: turn.timeZone }),
       ...(turn.project === undefined ? {} : { scopeRef: turn.project }),
     };

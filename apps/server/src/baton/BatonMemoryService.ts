@@ -221,6 +221,8 @@ export class BatonMemoryService extends Context.Service<
       readonly scopeRef?: string | null | undefined;
       readonly agent?: string | undefined;
       readonly timeZone?: string | undefined;
+      /** Who the turn is with, when known: a persona's notes learned from others stay out (P7). */
+      readonly person?: string | null | undefined;
     }) => Effect.Effect<ReadonlyArray<MemoryItem>>;
     /** The memory block for a prompt; with `turnRef` it records which items the turn used. */
     readonly recall: (context: {
@@ -231,6 +233,7 @@ export class BatonMemoryService extends Context.Service<
       readonly agent?: string | undefined;
       /** His zone, so "yesterday" is his day; the last one the desktop sent when absent. */
       readonly timeZone?: string | undefined;
+      readonly person?: string | null | undefined;
     }) => Effect.Effect<MemoryRecall>;
     readonly markUsed: (turnRef: string, ids: ReadonlyArray<string>) => Effect.Effect<void>;
     readonly used: (turnRef?: string) => Effect.Effect<ReadonlyArray<MemoryItem>>;
@@ -345,14 +348,21 @@ export const make = Effect.gen(function* () {
   });
 
   /** Decision 6: a walled project's items reach only its team; the wall is a label, not a second store. */
-  const walls = Effect.fn("BatonMemoryService.walls")(function* (agent: string | undefined) {
+  const walls = Effect.fn("BatonMemoryService.walls")(function* (
+    agent: string | undefined,
+    person: string | null = null,
+  ) {
     const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
     const pack = Option.isNone(config)
       ? DEFAULT_OS_PACK
       : readPack(NodePath.dirname(config.value.dbPath));
     return (item: MemoryItem) =>
       // A persona's own memory reaches only that persona (Memory v2 §2.3); his own view and upkeep see all.
-      (item.visibility !== "persona" || (agent !== undefined && item.persona === agent)) &&
+      // ...and persona x person (P7): what it learned from one person reaches its turns with that person only.
+      (item.visibility !== "persona" ||
+        (agent !== undefined &&
+          item.persona === agent &&
+          (person === null || item.speaker == null || item.speaker === person))) &&
       (item.scope !== "project" || item.scopeRef === null || mayRecall(pack, agent, item.scopeRef));
   });
 
@@ -360,10 +370,11 @@ export const make = Effect.gen(function* () {
   const viewFor = Effect.fn("BatonMemoryService.viewFor")(function* (
     agent: string | undefined,
     admin: boolean | undefined,
+    person: string | null = null,
   ) {
     const viewer = yield* MemoryViewer;
     if (viewer === "server" || (viewer === "desktop" && admin === true)) return () => true;
-    return yield* walls(viewer === "desktop" ? agent : undefined);
+    return yield* walls(viewer === "desktop" ? agent : undefined, person);
   });
 
   const list = Effect.fn("BatonMemoryService.list")(function* (query: MemoryQuery = {}) {
@@ -792,9 +803,11 @@ export const make = Effect.gen(function* () {
     readonly scopeRef?: string | null | undefined;
     readonly agent?: string | undefined;
     readonly timeZone?: string | undefined;
+    /** Who the turn is with, when known ("owner" or a member id): a persona's notes from others stay out. */
+    readonly person?: string | null | undefined;
   }) {
     const now = yield* nowMs;
-    const seen = yield* viewFor(context.agent, false);
+    const seen = yield* viewFor(context.agent, false, context.person ?? null);
     const words = context.text === undefined ? [] : tokens(context.text);
     const where = {
       ...(context.scopeRef === undefined ? {} : { scopeRef: context.scopeRef }),
@@ -913,6 +926,7 @@ export const make = Effect.gen(function* () {
     readonly turnRef?: string | undefined;
     readonly agent?: string | undefined;
     readonly timeZone?: string | undefined;
+    readonly person?: string | null | undefined;
   }) {
     const ranked = yield* related(context);
     const out = memoryBlock(ranked, context.budgetTokens ?? DEFAULT_RECALL_TOKENS);
