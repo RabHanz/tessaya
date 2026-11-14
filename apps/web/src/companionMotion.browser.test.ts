@@ -23,12 +23,12 @@ const studio = async (): Promise<Studio> => {
 };
 
 /** One persona's rig on a real SVG, stepped 60 times a second on the test's fake clock. */
-const mount = (TCS: Studio, persona: string) => {
+const mount = (TCS: Studio, persona: string, character?: string) => {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   document.body.append(svg);
   const P = TCS.PERSONAS[persona]!;
   const rig = TCS.create(svg, {
-    character: P.character,
+    character: character ?? P.character,
     personality: P.traits,
     quiet: true,
     expression: "neutral",
@@ -170,5 +170,38 @@ describe("the companion's body in a throw", () => {
     // the squash and its recovery move on every frame of their first 0.4 s, and she is herself again by 1 s
     expect(after.slice(0, 24).every((h, i) => i === 0 || h !== after[i - 1])).toBe(true);
     expect(Math.abs(after.at(-1)! - rest)).toBeLessThan(rest * 0.02);
+  });
+});
+
+describe("each character's own body", () => {
+  it("squashes as deep as it is soft, springs back without a snap, and is still at rest", async () => {
+    const TCS = await studio();
+    using _random = vi.spyOn(Math, "random").mockReturnValue(0.999);
+    using _timers = fakeTimers();
+    const landing = (character: string) => {
+      using m = mount(TCS, "tessaya", character);
+      const rest = m.sample().height;
+      m.rig.impact(2200, true);
+      const after = m.frames(90).map((s) => s.height);
+      m.frames(120);
+      const still = m.frames(10).map((s) => s.height);
+      return {
+        depth: Math.min(...after) / rest,
+        settled: Math.abs(after.at(-1)! - rest) / rest,
+        snaps: motionOf([rest, ...after]).snaps,
+        still: new Set(still).size,
+      };
+    };
+    const drop = landing("drop");
+    const thimble = landing("thimble");
+    // liquid pancakes to about half; silver metal barely gives
+    expect(drop.depth).toBeLessThan(0.7);
+    expect(thimble.depth).toBeGreaterThan(0.8);
+    expect(drop.depth).toBeLessThan(thimble.depth);
+    for (const r of [drop, thimble]) {
+      expect(r.snaps).toBe(0);
+      expect(r.settled).toBeLessThan(0.02);
+      expect(r.still).toBe(1);
+    }
   });
 });
