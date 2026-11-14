@@ -74,8 +74,12 @@ export const createFaceCheck = (input: {
   readonly progress?: (message: string) => void;
   readonly onNote?: (event: string, data: Record<string, unknown>) => void;
   readonly now?: () => number;
+  /** Palm runs the same sidecar's palm commands, with its own templates, consents and limit. */
+  readonly modality?: "face" | "palm";
 }) => {
-  const dir = NodePath.join(input.stateDir, "face");
+  const modality = input.modality ?? "face";
+  const cmd = (c: "enroll" | "verify") => (modality === "palm" ? `palm-${c}` : c);
+  const dir = NodePath.join(input.stateDir, modality);
   const run = input.run ?? runFaceEngine(input.exe);
   const now = input.now ?? Date.now;
   const tmpl = (member: string) => NodePath.join(dir, `${encodeURIComponent(member)}.bin`);
@@ -119,7 +123,7 @@ export const createFaceCheck = (input: {
     exclusive(async () => {
       const list = enrolled();
       const r = await run(
-        ["verify", "--passive", ...list.flatMap((c) => ["--template", tmpl(c.member)])],
+        [cmd("verify"), "--passive", ...list.flatMap((c) => ["--template", tmpl(c.member)])],
         () => {},
       );
       if (r === null || r.reason === "camera") return null;
@@ -127,6 +131,7 @@ export const createFaceCheck = (input: {
         r,
         list.map((c) => c.member),
         r.ok || r.reason === "multiple_faces" || r.reason === "no_match",
+        modality,
       );
     }, null);
 
@@ -139,16 +144,16 @@ export const createFaceCheck = (input: {
     enrol: (member: { readonly id: string; readonly name: string }) =>
       exclusive(async () => {
         NodeFS.mkdirSync(dir, { recursive: true });
-        const r = await run(["enroll", "--out", tmpl(member.id)], forward);
+        const r = await run([cmd("enroll"), "--out", tmpl(member.id)], forward);
         if (r?.ok !== true) {
-          input.onNote?.("face_enrol_failed", { reason: r?.reason ?? "engine" });
+          input.onNote?.(`${modality}_enrol_failed`, { reason: r?.reason ?? "engine" });
           return false;
         }
         writeConsents([
           ...consents().filter((c) => c.member !== member.id),
           { member: member.id, name: member.name, at: new Date(now()).toISOString() },
         ]);
-        input.onNote?.("face_enrolled", {});
+        input.onNote?.(`${modality}_enrolled`, {});
         return true;
       }, false),
 
@@ -158,7 +163,7 @@ export const createFaceCheck = (input: {
         await run(["delete", "--template", tmpl(member)], () => {});
       NodeFS.rmSync(tmpl(member), { force: true });
       writeConsents(consents().filter((c) => c.member !== member));
-      input.onNote?.("face_deleted", {});
+      input.onNote?.(`${modality}_deleted`, {});
     },
 
     /**
@@ -172,7 +177,7 @@ export const createFaceCheck = (input: {
           if (r !== null && r.member === member) lastSeen = now();
           if (walkedAway(lastSeen, now())) {
             clearInterval(timer);
-            input.onNote?.("face_walked_away", {});
+            input.onNote?.(`${modality}_walked_away`, {});
             gone();
           }
         });
@@ -181,7 +186,7 @@ export const createFaceCheck = (input: {
       return () => clearInterval(timer);
     },
 
-    /** The full check (PAD, head-turn challenge, 3D motion) for one member: an A1 face proof when it passes. */
+    /** The full check for one member (face: PAD, head turn, 3D motion; palm: finger poses, parallax, screen flash). */
     prove: (member: string): Promise<BiometricReading | null> =>
       exclusive(async () => {
         if (!biometricAllowed(limit, now())) return null;
@@ -190,7 +195,8 @@ export const createFaceCheck = (input: {
         if (at < 0) return null;
         const r = await run(
           [
-            "verify",
+            cmd("verify"),
+            ...(modality === "palm" ? ["--flash"] : []),
             "--require",
             String(at),
             ...list.flatMap((c) => ["--template", tmpl(c.member)]),
@@ -198,7 +204,7 @@ export const createFaceCheck = (input: {
           forward,
         );
         limit = recordBiometricAttempt(limit, r?.ok === true, now());
-        input.onNote?.("face_check", {
+        input.onNote?.(`${modality}_check`, {
           ok: r?.ok === true,
           reason: r?.reason ?? "engine",
           ms: r?.wallMs ?? 0,
@@ -208,6 +214,7 @@ export const createFaceCheck = (input: {
           r,
           list.map((c) => c.member),
           r.ok,
+          modality,
         );
         return r.ok ? { ...reading, member } : reading;
       }, null),

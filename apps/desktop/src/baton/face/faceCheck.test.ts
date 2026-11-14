@@ -5,9 +5,14 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
+import { biometricAssurance } from "@t3tools/tessaya-shared/biometrics";
+
 import { createFaceCheck, type FaceRun } from "./faceCheck.ts";
 
-const setup = (results: Array<{ ok: boolean; reason: string; faces?: number; per?: number[] }>) => {
+const setup = (
+  results: Array<{ ok: boolean; reason: string; faces?: number; per?: number[] }>,
+  modality: "face" | "palm" = "face",
+) => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "face-"));
   const exe = NodePath.join(dir, "faceid.exe");
   NodeFS.writeFileSync(exe, "");
@@ -15,7 +20,7 @@ const setup = (results: Array<{ ok: boolean; reason: string; faces?: number; per
   let on = true;
   const run: FaceRun = async (args) => {
     calls.push([...args]);
-    if (args[0] === "enroll") NodeFS.writeFileSync(args[2]!, "sealed");
+    if (args[0]?.endsWith("enroll")) NodeFS.writeFileSync(args[2]!, "sealed");
     const r = results.shift() ?? { ok: true, reason: "ok" };
     return {
       type: "result",
@@ -34,6 +39,7 @@ const setup = (results: Array<{ ok: boolean; reason: string; faces?: number; per
     on: () => on,
     run,
     now: () => clock,
+    modality,
   });
   return { face, calls, off: () => (on = false), tick: (ms: number) => (clock += ms) };
 };
@@ -97,5 +103,24 @@ describe("createFaceCheck", () => {
     ]);
     await t.face.enrol({ id: "owner", name: "You" });
     expect(await t.face.scan()).toMatchObject({ others: 1, live: false });
+  });
+
+  it("palm runs the engine's palm commands with the screen flash, in its own store", async () => {
+    const t = setup(
+      [
+        { ok: true, reason: "ok" },
+        { ok: true, reason: "ok", per: [12.4] },
+      ],
+      "palm",
+    );
+    await t.face.enrol({ id: "owner", name: "You" });
+    expect(t.calls[0]?.[0]).toBe("palm-enroll");
+    expect(t.calls[0]?.[2]).toContain(`${NodePath.sep}palm${NodePath.sep}`);
+    const palm = await t.face.prove("owner");
+    expect(t.calls.at(-1)?.slice(0, 4)).toEqual(["palm-verify", "--flash", "--require", "0"]);
+    expect(palm).toMatchObject({ modality: "palm", member: "owner", live: true, others: 0 });
+    expect(biometricAssurance([palm!], "owner")).toBe(1);
+    const face = { modality: "face", member: "owner", live: true, others: 0 } as const;
+    expect(biometricAssurance([face, palm!], "owner")).toBe(2);
   });
 });
