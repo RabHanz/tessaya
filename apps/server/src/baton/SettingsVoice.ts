@@ -69,6 +69,9 @@ export const SERVER_SETTINGS_VOICE: {
     "which login pays for each kind of her work: his subscription or an API key, and any fallback",
   ),
   brainKeyRoles: owner("which kinds of work each API key is allowed to pay for"),
+  brainDeferNearLimit: free(
+    "background learning waiting for the reset when the subscription is nearly spent, so talking keeps working",
+  ),
   brainEscalation: free(
     'when hard tasks go to Opus: ask him each time, go on her own up to a daily cap, or never; and his standing rules such as coding questions to Opus. Its value is an object: {"mode": "ask" | "auto" | "never", "autoDeepDailyCap": 20, "rules": [{"when": "coding questions", "then": "opus" | "ask" | "sonnet"}]}; send the whole rules list, old ones included',
   ),

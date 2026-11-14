@@ -19,7 +19,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { toJsonSchemaObject } from "@t3tools/provider-core/server/textGenerationUtils";
 
-import { onSubscription, routeFor } from "./BrainRoutes.ts";
+import { deferredRole, onSubscription, routeFor } from "./BrainRoutes.ts";
 import { BrainUsage, cliTokens, layer as brainUsageLayer } from "./BrainUsage.ts";
 
 const TIMEOUT = "90 seconds";
@@ -65,6 +65,11 @@ export const make = Effect.gen(function* () {
           () => new BatonOneShotError({ detail: "the brain's settings could not be read" }),
         ),
       );
+      const waits = yield* deferredRole(role);
+      if (waits !== null) {
+        yield* Effect.logInfo("brain: a one-shot waits for the reset", { role, why: waits });
+        return yield* new BatonOneShotError({ detail: waits });
+      }
       const path = onSubscription(route);
       if ("refused" in path) {
         yield* Effect.logWarning("brain: a one-shot was refused", { role, why: path.refused });
