@@ -63,6 +63,8 @@ export interface HubSession {
 interface Subscriber {
   readonly filters: Array<string>;
   readonly deliver: (topic: string, payload: Buffer, retained: boolean) => void;
+  /** A bridge keeps the retain flag as published (mosquitto's own bridges do), or its broker's copy goes stale. */
+  asPublished?: boolean;
 }
 
 const str = (body: Buffer, at: number): [Buffer, number] => {
@@ -192,7 +194,7 @@ export const makeHub = (
     }
     for (const s of subscribers)
       if (s !== from && s.filters.some((f) => topicMatches(f, topic)))
-        s.deliver(topic, payload, false);
+        s.deliver(topic, payload, retain && s.asPublished === true);
   };
   const sendRetained = (s: Subscriber, filters: ReadonlyArray<string>) => {
     for (const [topic, payload] of retained)
@@ -297,6 +299,7 @@ export const makeHub = (
         }
         grant = given;
         bridge = c.level === 0x84;
+        sub.asPublished = bridge;
         clientId = c.clientId === "" ? NodeCrypto.randomUUID() : c.clientId;
         keepAliveS = c.keepAliveS;
         self.will = c.will;

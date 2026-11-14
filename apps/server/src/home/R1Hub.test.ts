@@ -194,30 +194,44 @@ it.effect(
     }),
 );
 
-it.effect("never echoes a bridge's own messages back to it, so two brokers cannot loop", () =>
-  Effect.gen(function* () {
-    const hub = hubForTest();
-    const bridge = socketOn(hub);
-    // mosquitto's try_private: protocol level 0x84, MQTT 3.1.1 from a bridge.
-    const login = connectPacket({
-      clientId: "mosq",
-      user: "tessaya-bus",
-      pass: "bus",
-      keepAliveS: 60,
-    });
-    login[8] = 0x84;
-    yield* bridge.send(login);
-    expect([...bridge.got[0]!.body]).toEqual([0, 0]);
-    yield* bridge.send(subscribePacket(1, ["freya/r1/#"]));
-    const server: Array<string> = [];
-    hub.attach(["freya/r1/#"], (t) => server.push(t));
-    yield* bridge.send(publishPacket("freya/r1/r1-a/state/online", Buffer.from("1")));
-    expect(server).toEqual(["freya/r1/r1-a/state/online"]);
-    expect(bridge.publishes()).toEqual([]);
-    // Everyone else's messages still reach it.
-    hub.publish("freya/r1/r1-a/cmd/led", "red");
-    expect(bridge.publishes()).toEqual(["freya/r1/r1-a/cmd/led=red"]);
-  }),
+it.effect(
+  "never echoes a bridge's own messages back to it, and keeps retained ones retained for it",
+  () =>
+    Effect.gen(function* () {
+      const hub = hubForTest();
+      const bridge = socketOn(hub);
+      // mosquitto's try_private: protocol level 0x84, MQTT 3.1.1 from a bridge.
+      const login = connectPacket({
+        clientId: "mosq",
+        user: "tessaya-bus",
+        pass: "bus",
+        keepAliveS: 60,
+      });
+      login[8] = 0x84;
+      yield* bridge.send(login);
+      expect([...bridge.got[0]!.body]).toEqual([0, 0]);
+      yield* bridge.send(subscribePacket(1, ["freya/r1/#"]));
+      const server: Array<string> = [];
+      hub.attach(["freya/r1/#"], (t) => server.push(t));
+      yield* bridge.send(publishPacket("freya/r1/r1-a/state/online", Buffer.from("1")));
+      expect(server).toEqual(["freya/r1/r1-a/state/online"]);
+      expect(bridge.publishes()).toEqual([]);
+      // Everyone else's messages still reach it.
+      hub.publish("freya/r1/r1-a/cmd/led", "red");
+      expect(bridge.publishes()).toEqual(["freya/r1/r1-a/cmd/led=red"]);
+      // A retained message stays retained on the way to the bridge, so the other broker's copy is current; a plain
+      // client hears it live with the flag off, as MQTT says.
+      const bus = socketOn(hub);
+      yield* bus.send(
+        connectPacket({ clientId: "w", user: "tessaya-bus", pass: "bus", keepAliveS: 30 }),
+      );
+      yield* bus.send(subscribePacket(2, ["freya/r1/#"]));
+      const r1 = socketOn(hub);
+      yield* r1.send(connectPacket({ clientId: "r1-a", user: "r1-a", pass: KEY, keepAliveS: 60 }));
+      yield* r1.send(publishPacket("freya/r1/r1-a/state/caps", Buffer.from("new"), true));
+      expect(bridge.got.at(-1)).toMatchObject({ topic: "freya/r1/r1-a/state/caps", retain: true });
+      expect(bus.got.at(-1)).toMatchObject({ topic: "freya/r1/r1-a/state/caps", retain: false });
+    }),
 );
 
 it("slows a fast caller and locks out a guesser, per address, so the R1 itself is never locked out", () => {
