@@ -99,7 +99,7 @@ index 455901299edc31b4c958e7c523eb3faf31563f44..99414dd8ac4b6c84b124e12d79ccc346
    test: {
      // The Windows lane runs workspace suites concurrently; filesystem-heavy
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index 1892b649061f8cc8413805bceea774e7eaf04298..630300c6083af04b157a859f104ff84152df49da 100644
+index 1892b649061f8cc8413805bceea774e7eaf04298..7f4dcb11e7bec4cc9a6149377ae3ca8fd5eb0ac8 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -72,6 +72,8 @@
@@ -111,7 +111,7 @@ index 1892b649061f8cc8413805bceea774e7eaf04298..630300c6083af04b157a859f104ff841
      "@t3tools/client-runtime": "workspace:*",
      "@t3tools/contracts": "workspace:*",
      "@t3tools/mobile-highlights-native": "file:./modules/t3-highlights",
-@@ -126,6 +128,7 @@
+@@ -126,10 +128,12 @@
      "react": "catalog:",
      "react-dom": "catalog:",
      "react-native": "0.88.1",
@@ -119,6 +119,11 @@ index 1892b649061f8cc8413805bceea774e7eaf04298..630300c6083af04b157a859f104ff841
      "react-native-enriched-markdown": "file:deps/react-native-enriched-markdown-1.2.0-t3.18-0dc7ed81.tgz",
      "react-native-gesture-handler": "~3.5.0",
      "react-native-image-viewing": "^0.2.2",
+     "react-native-keyboard-controller": "1.23.0",
++    "react-native-nfc-manager": "4.2.0",
+     "react-native-nitro-modules": "0.37.2",
+     "react-native-pdf-jsi": "6.1.0",
+     "react-native-reanimated": "4.7.1",
 diff --git a/apps/server/package.json b/apps/server/package.json
 index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..3aca1ef3560ddb8b4a25a731feb4e379c4f8e807 100644
 --- a/apps/server/package.json
