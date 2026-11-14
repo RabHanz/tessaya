@@ -365,6 +365,17 @@ describe("makeRewriter", () => {
       dictationPieces("Go now. Then eat! Can you check? And also send it.", "default"),
     ).toEqual(["Go now.", "Then eat!", "Can you check? And also send it."]);
     expect(dictationPieces("Hi Sam. Thanks.", "email")).toEqual(["Hi Sam. Thanks."]);
+    // A sentence that takes back the last one's words is cleaned with it (15 Nov: "…content makers. Sorry creators.").
+    expect(
+      dictationPieces(
+        "Venture OS has a register of videos. They are mainly from content providers sorry content makers. Sorry creators. So that is it.",
+        "default",
+      ),
+    ).toEqual([
+      "Venture OS has a register of videos.",
+      "They are mainly from content providers sorry content makers. Sorry creators.",
+      "So that is it.",
+    ]);
     // A list spans its sentences, so it is cleaned whole: pieces cleaned apart could never become one.
     for (const listed of [
       "I want you to pick up a few things from the store. Bread, potato chips, ice cream.",

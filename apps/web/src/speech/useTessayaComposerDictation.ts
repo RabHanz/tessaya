@@ -131,8 +131,8 @@ export interface TessayaComposerDictation {
   readonly state: ComposerDictation;
   /** The microphone's level now in dBFS (read by the waveform each frame, never rendered). */
   readonly level: RefObject<number>;
-  /** The editor stays as it was while the words are drawn over it. */
-  readonly freezesEditor: boolean;
+  /** Words are coming: a send now would leave them behind. */
+  readonly live: boolean;
   readonly confirm: () => void;
   readonly cancel: () => void;
 }
@@ -251,19 +251,41 @@ export function useTessayaComposerDictation(input: {
       desktopId.current = null;
       const now = latest.current;
       if (now.phase !== "listening" && now.phase !== "working") return false;
-      // The draft moved under the dictation (another device, an agent): the desktop pastes it instead.
-      const draft = input.readDraft();
-      if (draft.text !== now.base.text) {
-        step({ type: "cancel" });
-        return false;
-      }
-      const committed = insertWords(now.base, message.text.trim());
+      // At the caret as it is now, wherever he moved it or whatever changed in the draft while he spoke.
+      const committed = insertWords(input.readDraft(), message.text.trim());
       step({ type: "final", text: message.text, committed });
       input.commitDraft(committed.text, committed.selection);
       return true;
     }
     return true;
   });
+  // While Tessaya's dictation runs here he can still click or move the caret: the words follow it, and a field outside
+  // this chat box taking the keyboard hands the dictation back to the desktop, which pastes it there.
+  const listening = state.phase === "listening" || state.phase === "working";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows the document's caret and focus, outside React, while words are coming
+  useEffect(() => {
+    if (!listening) return;
+    const inside = () => input.rootRef.current?.contains(document.activeElement) === true;
+    const onSelection = () => {
+      if (desktopId.current !== null && inside()) step({ type: "rebase", base: readDraft() });
+    };
+    const onFocus = (event: FocusEvent) => {
+      const id = desktopId.current;
+      const element = event.target as Element | null;
+      if (id === null || inside() || element?.matches(TEXT_FIELD) !== true) return;
+      desktopId.current = null;
+      step({ type: "cancel" });
+      batonDesktopBridge()?.replyComposerDictation?.({ type: "released", id });
+    };
+    // Capture: a text box's own selection changes are fired at the box, not the document, and not by every browser.
+    const moves = ["selectionchange", "select", "keyup", "pointerup"] as const;
+    for (const type of moves) document.addEventListener(type, onSelection, true);
+    document.addEventListener("focusin", onFocus);
+    return () => {
+      for (const type of moves) document.removeEventListener(type, onSelection, true);
+      document.removeEventListener("focusin", onFocus);
+    };
+  }, [listening, input.rootRef, readDraft, step]);
   const root = useStableCallback(() => input.rootRef.current);
   const ready = useStableCallback(() => !input.disabled);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes this composer to the desktop's dictation channel and focus reports
@@ -286,7 +308,7 @@ export function useTessayaComposerDictation(input: {
   return {
     state,
     level,
-    freezesEditor: state.phase === "listening" || state.phase === "working",
+    live: listening,
     confirm,
     cancel,
   };

@@ -57,6 +57,8 @@ export type ComposerDictation =
 
 export type ComposerDictationEvent =
   | { readonly type: "start"; readonly mode: DictationMode; readonly base: DictationDraft }
+  /** He moved the caret or edited the draft while speaking: the words go where the caret is now. */
+  | { readonly type: "rebase"; readonly base: DictationDraft }
   /** A double tap latched a held key: it is hands-free now. */
   | { readonly type: "mode"; readonly mode: DictationMode }
   | { readonly type: "heard"; readonly text: string; readonly tentative?: string | null }
@@ -90,6 +92,10 @@ export const stepDictation = (
         tentative: null,
         paused: false,
       };
+    case "rebase":
+      return state.phase === "listening" || state.phase === "working"
+        ? { ...state, base: event.base }
+        : state;
     case "mode":
       return state.phase === "listening" ? { ...state, mode: event.mode } : state;
     case "heard":

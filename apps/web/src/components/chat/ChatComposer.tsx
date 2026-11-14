@@ -2166,6 +2166,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       submitAfterDictation(() => submitComposerRef.current(dispatchMode, submissionIntent));
       return false;
     }
+    // The editor stays open to him while Tessaya's words are coming; Enter waits for them.
+    if (tessayaDictation.live) {
+      event?.preventDefault();
+      return false;
+    }
     if (submissionBlocked || !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
       event?.preventDefault();
       return false;
@@ -3657,8 +3662,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       projectSelectionRequired ||
                       isChoiceOnlyPendingQuestion ||
                       activePendingIsResponding ||
-                      speechInput.freezesEditor ||
-                      tessayaDictation.freezesEditor
+                      speechInput.freezesEditor
                     }
                   />
                 </ComposerContextActionsContext>

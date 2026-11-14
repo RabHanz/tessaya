@@ -415,6 +415,21 @@ describe("cleanDictation", () => {
     });
   });
 
+  it("keeps her manager's name as one name when the model lowers it", async () => {
+    const ask = async () =>
+      "Can you ask the Tessaya manager to check the results and send them over tomorrow?";
+    expect(
+      await cleanDictation({
+        ...base,
+        raw: "um can you ask the tessaya manager to check the results and uh send them over tomorrow",
+        ask,
+      }),
+    ).toEqual({
+      text: "Can you ask the Tessaya Manager to check the results and send them over tomorrow?",
+      stage: "model",
+    });
+  });
+
   it("pastes the local text when the model fails", async () => {
     const ask = () => Promise.reject(new Error("timed out"));
     expect(await cleanDictation({ ...base, raw: messy, ask })).toEqual({

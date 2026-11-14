@@ -50,6 +50,33 @@ describe("dictation into our own chat box", () => {
     }
   });
 
+  it("a chat box he left for another field lets the dictation go: the pill shows it and the words paste there", async () => {
+    const released: number[] = [];
+    const sent: ComposerDictationMessage[] = [];
+    const composer = createComposerDictation({
+      target: () => ({
+        focused: () => true,
+        send: (m) => {
+          sent.push(m);
+          if (m.type === "start") composer.reply({ type: "claimed", id: m.id, ok: true });
+        },
+        gone: () => false,
+      }),
+      onAction: () => undefined,
+      onRelease: () => released.push(1),
+    });
+    expect(await composer.start("free")).toBe(true);
+    const id = sent[0]!.id;
+    composer.reply({ type: "released", id: id + 1 });
+    expect(composer.active()).toBe(true);
+    composer.reply({ type: "released", id });
+    expect(released).toEqual([1]);
+    expect(composer.active()).toBe(false);
+    composer.words("more words");
+    expect(await composer.commit("More words.")).toBe(false);
+    expect(sent.map((m) => m.type)).toEqual(["start"]);
+  });
+
   it("a window with no composer gets the pill: the claim fails and nothing more is sent", async () => {
     const { composer, sent } = box(() => false);
     expect(await composer.start("held")).toBe(false);

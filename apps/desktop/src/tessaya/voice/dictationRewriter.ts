@@ -42,8 +42,16 @@ const LIST_CUE =
 export const dictationPieces = (raw: string, mode: DictationMode): ReadonlyArray<string> => {
   const text = raw.trim();
   if (text === "") return [];
-  return mode === "email" || LIST_CUE.test(text) ? [text] : text.split(/(?<=[.!])\s+(?=\S)/);
+  if (mode === "email" || LIST_CUE.test(text)) return [text];
+  // A sentence that opens by taking back words ("Sorry, creators.", "No, I mean…") belongs with the one it corrects.
+  const pieces: string[] = [];
+  for (const piece of text.split(/(?<=[.!])\s+(?=\S)/)) {
+    if (pieces.length > 0 && TAKES_BACK.test(piece)) pieces[pieces.length - 1] += ` ${piece}`;
+    else pieces.push(piece);
+  }
+  return pieces;
 };
+const TAKES_BACK = /^(?:sorry|no|i mean|i meant|actually|or rather|scratch that|make that|wait)\b/i;
 
 /** A long dictation takes longer to write out, so the limit grows with it, but it always ends. */
 export const hardLimitMs = (text: string): number => Math.min(45_000, 2_500 + text.length * 8);

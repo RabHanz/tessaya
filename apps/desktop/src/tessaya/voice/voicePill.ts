@@ -277,7 +277,10 @@ const setMode=(m,kind)=>{if(kind)wkind=kind;if(m==='live'&&wmode!=='live')LV.res
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
 let ctx=null;
 const ipcRenderer=window.pillIpc||{send(){}};
-ipcRenderer.onLevel?.(v=>{if(typeof v!=='number')return;db=v;if(!raf&&wmode==='live'&&v>LV.state().floor+5)kick();});
+// With the loop stopped, each level still steps the gain (no drawing), so it has learned his room and his voice by the
+// first word: from its defaults, a quiet mic's first words barely moved the wave, which looked frozen.
+let lastLv=0;
+ipcRenderer.onLevel?.(v=>{if(typeof v!=='number')return;db=v;const now=performance.now();if(!raf&&wmode==='live'){LV.tick(v,lastLv?(now-lastLv)/1000:.033);if(v>LV.state().floor+5)kick();}lastLv=now;});
 // The morph (Tessaya, Quiet): the box jumps once to cover the old and new shapes, then only its clip-path moves between
 // them on the design's spring; the hairline is drawn at the new shape. Once it has settled the box takes the new size.
 const rimR=document.querySelector('#rim rect');

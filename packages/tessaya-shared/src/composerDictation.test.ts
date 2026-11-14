@@ -42,6 +42,24 @@ describe("dictation in the chat box", () => {
     expect(placeholderWhile(IDLE_DICTATION, "Ask anything")).toBe("Ask anything");
   });
 
+  it("follows the caret he moves while he speaks: the words go where it is when they land", () => {
+    const heard = run(
+      { type: "start", mode: "free", base },
+      { type: "heard", text: "and a note" },
+      { type: "rebase", base: { text: base.text, selection: { start: 0, end: 0 } } },
+    );
+    expect(heard).toMatchObject({
+      phase: "listening",
+      heard: "and a note",
+      base: { selection: { start: 0 } },
+    });
+    expect(stepDictation(heard, { type: "final", text: "First," })).toMatchObject({
+      committed: { text: "First, Let's ship it. Also add a test." },
+    });
+    // Once the words are in, a caret move is his own editing again.
+    expect(stepDictation(IDLE_DICTATION, { type: "rebase", base })).toBe(IDLE_DICTATION);
+  });
+
   it("hands-free shows ✕ and ✓, and a latched hold turns into it", () => {
     expect(showsActions(run({ type: "start", mode: "free", base }))).toBe(true);
     expect(

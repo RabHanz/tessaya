@@ -36,6 +36,8 @@ export const createComposerDictation = (input: {
   readonly target: () => ComposerTarget | null;
   /** ✓ or ✕ on the composer's control: the same as on the pill. */
   readonly onAction: (insert: boolean) => void;
+  /** The chat box let the dictation go (he moved to another field): the pill shows it again. */
+  readonly onRelease?: () => void;
 }) => {
   let seq = 0;
   let session: Session | null = null;
@@ -117,6 +119,13 @@ export const createComposerDictation = (input: {
     reply: (reply: ComposerDictationReply) => {
       if (reply.type === "action") {
         if (session?.id === reply.id) input.onAction(reply.insert);
+        return;
+      }
+      if (reply.type === "released") {
+        const s = live();
+        if (s?.id !== reply.id) return;
+        s.claimed = false;
+        input.onRelease?.();
         return;
       }
       waits.get(`${reply.id}:${reply.type}`)?.(reply.ok);
