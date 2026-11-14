@@ -336,6 +336,9 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
     hub.publish(
       `freya/r1/${id}/cmd/${kind === "ota" ? "ota/start" : "model/load"}`,
       encodeJson({
+        // Firmware 0.3.99+ refuses an install older than what it runs unless allow_downgrade, which this updater
+        // never sends: it only goes forward, and a rollback never goes below what the R1 last ran.
+        version: image.version,
         url: `${base}${R1_FIRMWARE_PATH}${file}?t=${ticket}`,
         sha256: image.sha256,
         size: image.size,

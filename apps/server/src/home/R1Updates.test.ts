@@ -172,10 +172,12 @@ describe("when an R1 updates", () => {
               sig: string;
             };
             expect(start).toMatchObject({
+              version: "0.4.0",
               sha256: PIN.sha256,
               size: PIN.size,
               sig: "sig-of-0.4.0",
             });
+            expect(start).not.toHaveProperty("allow_downgrade");
             expect(
               start.url.startsWith(`http://192.168.1.20:3773/api/r1/firmware/${PIN.sha256}.rbl?t=`),
             ).toBe(true);
@@ -237,7 +239,12 @@ describe("when an R1 updates", () => {
             sha256: string;
             sig: string;
           };
-          expect(load).toMatchObject({ size: KWS.size, sha256: KWS.sha256, sig: KWS.sig });
+          expect(load).toMatchObject({
+            version: KWS.version,
+            size: KWS.size,
+            sha256: KWS.sha256,
+            sig: KWS.sig,
+          });
           const ticket = new URL(load.url).searchParams.get("t")!;
           const served = yield* updates.image(`${KWS.sha256}.kws`, ticket);
           expect(served).toEqual(PACK);
