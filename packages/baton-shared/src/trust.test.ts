@@ -271,6 +271,62 @@ describe("One Trust", () => {
   });
 });
 
+describe("a plan lease from his yes on a job's plan", () => {
+  const C = "mcp__claude-in-chrome__";
+  const leases = [
+    {
+      job: "j1",
+      persona: "butler",
+      sites: ["booking.com"],
+      apps: ["Notepad"],
+      acts: ["open", "click", "type"],
+      until: 100,
+    },
+  ];
+  const read: JudgeContext = {
+    actWithoutAsking: false,
+    tainted: true,
+    chrome: { socialOn: false, pageHost: "www.booking.com", recentSocial: 0 },
+  };
+  const click = { tool: `${C}computer`, input: { action: "left_click", coordinate: [1, 2] } };
+  const lease = (over = {}) => ({ leases, persona: "butler", now: 0, ...over });
+  it("runs what follows a read on a leased site, for that persona and in time, and nothing else", () => {
+    expect(decideTrust({ call: click, context: read }).verdict).toBe("ask");
+    expect(decideTrust({ call: click, context: read, lease: lease() })).toEqual({
+      verdict: "allow",
+      inPlan: true,
+    });
+    const elsewhere = { ...read, chrome: { ...read.chrome!, pageHost: "evil.example" } };
+    expect(decideTrust({ call: click, context: elsewhere, lease: lease() }).verdict).toBe("ask");
+    expect(
+      decideTrust({ call: click, context: read, lease: lease({ persona: "engineering" }) }).verdict,
+    ).toBe("ask");
+    expect(decideTrust({ call: click, context: read, lease: lease({ now: 100 }) }).verdict).toBe(
+      "ask",
+    );
+    // A typed Enter may submit: that ask is not the one a lease lifts.
+    const enter = { tool: `${C}computer`, input: { action: "type", text: "hotels\n enter" } };
+    expect(decideTrust({ call: enter, context: read, lease: lease() }).verdict).toBe("ask");
+  });
+  it("covers an app's hands steps only in the leased app, never a command line", () => {
+    const typing = { tool: "mcp__baton__type_text", input: { text: "notes" } };
+    const typed = { actWithoutAsking: false, tainted: true } as const;
+    expect(
+      decideTrust({ call: typing, context: typed, lease: lease({ app: "Notepad" }) }).verdict,
+    ).toBe("allow");
+    expect(
+      decideTrust({ call: typing, context: typed, lease: lease({ app: "Word" }) }).verdict,
+    ).toBe("ask");
+    expect(
+      decideTrust({
+        call: typing,
+        context: { ...typed, focusedShell: true },
+        lease: lease({ app: "Notepad" }),
+      }).verdict,
+    ).toBe("ask");
+  });
+});
+
 describe("a message from one agent to another's thread", () => {
   it("goes through below the per-minute limit and is refused at it, saying why", () => {
     expect(decideMessage({ sentLastMinute: 0 }).verdict).toBe("allow");

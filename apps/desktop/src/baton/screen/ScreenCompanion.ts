@@ -4,6 +4,7 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/SCREEN.md.
  */
+import type { PlanLease } from "@t3tools/baton-shared/planLease";
 import { volumeAfter, volumeLine } from "@t3tools/baton-shared/speakingVolume";
 import { speakerPath, type SpeakerIdentity, type SpokenAnswer } from "@t3tools/baton-voice";
 import { contextLine } from "@t3tools/baton-shared/agentPrompt";
@@ -452,6 +453,8 @@ export interface AssistantActions {
   readonly projects?: () => ReadonlyArray<ProjectRef>;
   /** The projects a job may work in, by its id; null when the jobs could not be read. */
   readonly jobProjects?: (id: string) => Promise<ReadonlyArray<ProjectRef> | null>;
+  /** The plan leases of his agreed jobs (planLease.ts); empty when the jobs could not be read. */
+  readonly planLeases?: () => Promise<ReadonlyArray<PlanLease>>;
   /** The awareness state as a line for the assistant (D149); empty when every switch is off. */
   readonly presence?: () => Promise<string>;
   /** The job operations (D145), answered in a sentence for the assistant. */
@@ -2092,6 +2095,10 @@ export const startScreenCompanion = (input: {
         return how === "words" ? "words" : false;
       },
       inPlan: () => planGrant?.steps ?? null,
+      planLeases: async () =>
+        actions?.planLeases === undefined
+          ? null
+          : { leases: await actions.planLeases(), persona: face.id },
       agent: () => ({
         ...face,
         leadsProject: (p: ProjectRef) => leadsProject(face, p, actions?.projects?.() ?? []),
