@@ -182,6 +182,32 @@ it.effect(
     }),
 );
 
+it.effect("never echoes a bridge's own messages back to it, so two brokers cannot loop", () =>
+  Effect.gen(function* () {
+    const hub = hubForTest();
+    const bridge = socketOn(hub);
+    // mosquitto's try_private: protocol level 0x84, MQTT 3.1.1 from a bridge.
+    const login = connectPacket({
+      clientId: "mosq",
+      user: "tessaya-bus",
+      pass: "bus",
+      keepAliveS: 60,
+    });
+    login[8] = 0x84;
+    yield* bridge.send(login);
+    expect([...bridge.got[0]!.body]).toEqual([0, 0]);
+    yield* bridge.send(subscribePacket(1, ["freya/r1/#"]));
+    const server: Array<string> = [];
+    hub.attach(["freya/r1/#"], (t) => server.push(t));
+    yield* bridge.send(publishPacket("freya/r1/r1-a/state/online", Buffer.from("1")));
+    expect(server).toEqual(["freya/r1/r1-a/state/online"]);
+    expect(bridge.publishes()).toEqual([]);
+    // Everyone else's messages still reach it.
+    hub.publish("freya/r1/r1-a/cmd/led", "red");
+    expect(bridge.publishes()).toEqual(["freya/r1/r1-a/cmd/led=red"]);
+  }),
+);
+
 it("accepts an R1 by its device key or the password it had on its own broker, and nothing else", () => {
   const record: R1Device = {
     deviceKey: KEY,

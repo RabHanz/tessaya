@@ -130,13 +130,15 @@ export const makeHub = (
     { will: unknown; grant: HubGrant | null; readonly close: () => void }
   >();
 
-  const route = (topic: string, payload: Buffer, retain: boolean) => {
+  /** `from`: the subscriber that published it, skipped when it is a bridge (no echo back to another broker). */
+  const route = (topic: string, payload: Buffer, retain: boolean, from?: Subscriber) => {
     if (retain) {
       if (payload.length === 0) retained.delete(topic);
       else if (retained.size < MAX_RETAINED || retained.has(topic)) retained.set(topic, payload);
     }
     for (const s of subscribers)
-      if (s.filters.some((f) => topicMatches(f, topic))) s.deliver(topic, payload, false);
+      if (s !== from && s.filters.some((f) => topicMatches(f, topic)))
+        s.deliver(topic, payload, false);
   };
   const sendRetained = (s: Subscriber, filters: ReadonlyArray<string>) => {
     for (const [topic, payload] of retained)
@@ -169,6 +171,7 @@ export const makeHub = (
     let clientId = "";
     let keepAliveS = 0;
     let ended = false;
+    let bridge = false;
     const self = {
       will: null as { topic: string; payload: Buffer; retain: boolean } | null,
       grant: null as HubGrant | null,
@@ -191,7 +194,8 @@ export const makeHub = (
       if (grant === null) {
         if (p.type !== 1) return end();
         const c = parseConnect(p);
-        if (c.name !== "MQTT" || c.level !== 4) {
+        // 0x84 is 3.1.1 from another broker's bridge (mosquitto's try_private): it never gets its own messages back.
+        if (c.name !== "MQTT" || (c.level !== 4 && c.level !== 0x84)) {
           io.send(connack(1));
           return end();
         }
@@ -208,6 +212,7 @@ export const makeHub = (
           before.close();
         }
         grant = given;
+        bridge = c.level === 0x84;
         clientId = c.clientId === "" ? NodeCrypto.randomUUID() : c.clientId;
         keepAliveS = c.keepAliveS;
         self.will = c.will;
@@ -231,6 +236,7 @@ export const makeHub = (
               topic,
               Buffer.from(p.body.subarray(at + (qos === 1 ? 2 : 0))),
               (p.flags & 1) === 1,
+              bridge ? sub : undefined,
             );
           return;
         }
