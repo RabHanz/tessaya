@@ -24,6 +24,9 @@ import {
   FOOT_SHARE,
   bodyRect,
   dropAt,
+  isPoke,
+  stroke,
+  type Strokes,
   edgesFor,
   followFocus,
   landing,
@@ -37,6 +40,8 @@ import {
 import { MASCOT_SCRIPT } from "./mascotPage.ts";
 import {
   DEFAULT_PROFILE,
+  flightProfile,
+  type PhysicsProfile,
   STEP_S,
   resting,
   stepFlight,
@@ -101,8 +106,8 @@ const HIT_FAR_MS = 400;
 const NEAR_PX = 60;
 const FRAME_MS = 16;
 const DRAG_MS = 16;
-/** A landing at least this fast squashes her. */
-const HARD_LANDING = 900;
+/** A landing or a wall at least this fast is felt as an impact (a squash by its speed). */
+const IMPACT_SPEED = 300;
 const SNOOZE_MS = 60 * 60_000;
 /** A wander is considered once a minute, and taken about one time in six: every few minutes, never on a beat. */
 const WANDER_CHECK_MS = 60_000;
@@ -179,6 +184,7 @@ export const createDesktopMascot = (input: {
   let dragging: {
     readonly timer: ReturnType<typeof setInterval>;
     readonly samples: Array<{ readonly x: number; readonly y: number; readonly t: number }>;
+    readonly pressedAt: number;
   } | null = null;
   let moving: ReturnType<typeof setInterval> | null = null;
   let hitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -229,13 +235,21 @@ export const createDesktopMascot = (input: {
     // Frames are counted at 30 a second; she moves at 60, so the same move takes the same time, twice as smoothly.
     const steps = pathBetween(target.getBounds(), to, Math.max(1, frames) * 2);
     let i = 0;
+    let from = target.getBounds();
     moving = setInterval(() => {
       const step = steps[i++];
       if (step === undefined || target.isDestroyed()) {
         stopMoving();
+        call(`window.mascot.motion(0,0)`);
         done?.();
         return;
       }
+      // she leans and stretches with the move, as in a throw
+      const s = 1000 / FRAME_MS;
+      call(
+        `window.mascot.motion(${Math.round((step.x - from.x) * s)},${Math.round((step.y - from.y) * s)})`,
+      );
+      from = { ...from, ...step };
       target.setBounds(box(step));
     }, FRAME_MS);
   };
@@ -265,6 +279,20 @@ export const createDesktopMascot = (input: {
     if (hitTimer !== null) clearTimeout(hitTimer);
     hitTimer = null;
   };
+  /** Something happened to her body: her character reacts in its own way and returns to her mood by itself (rig.react). */
+  const react = (kind: "pickup" | "land" | "wall" | "poke" | "pet", speed = 0) =>
+    call(`window.mascot.react(${JSON.stringify(kind)},${Math.round(speed)})`);
+  /** Her eyes follow the cursor while it is near; sent only when the look changes. */
+  let looking = "";
+  const lookAt = (gx: number | null, gy = 0) => {
+    const next = gx === null ? "null" : `${gx.toFixed(2)},${gy.toFixed(2)}`;
+    if (next === looking) return;
+    looking = next;
+    call(`window.mascot.look(${next})`);
+  };
+  let strokes: Strokes = { points: [] };
+  let pettedAt = 0;
+
   /** The window takes the mouse exactly while the cursor is over her body, decided here; the rest clicks through. */
   const hitTest = () => {
     hitTimer = null;
@@ -279,6 +307,23 @@ export const createDesktopMascot = (input: {
     const near =
       over ||
       (dx > -NEAR_PX && dy > -NEAR_PX && dx < body.width + NEAR_PX && dy < body.height + NEAR_PX);
+    if (over && dragging === null && !sleeping) {
+      const now = Date.now();
+      const next = stroke(strokes, cursor.x, now, body.width);
+      strokes = next.state;
+      if (next.petted && now - pettedAt > 3000) {
+        pettedAt = now;
+        react("pet");
+      }
+    } else if (strokes.points.length > 0) strokes = { points: [] };
+    // within reach she watches the cursor; past it she looks ahead again
+    if (near && dragging === null && !sleeping) {
+      const round = (v: number) => Math.round(Math.max(-1, Math.min(1, v)) * 10) / 10;
+      lookAt(
+        round((dx - body.width / 2) / (body.width * 1.5)),
+        round((dy - body.height / 2) / (body.height * 2)),
+      );
+    } else lookAt(null);
     if (over !== takingMouse) {
       takingMouse = over;
       target.setIgnoreMouseEvents(!over, { forward: true });
@@ -330,10 +375,20 @@ export const createDesktopMascot = (input: {
     return created;
   };
 
-  const init = () =>
+  /** Her character's flight (heavier falls harder, plush bounces more), read from her page once she is drawn. */
+  let profile: PhysicsProfile = DEFAULT_PROFILE;
+  const init = () => {
     call(
       `window.mascot.init(${JSON.stringify({ persona: options.persona, quiet: options.motion !== "lively", reduced: options.reduced })})`,
     );
+    const target = win;
+    void ready.then(async () => {
+      if (target === null || target.isDestroyed()) return;
+      profile = flightProfile(
+        await target.webContents.executeJavaScript("window.mascot.physics()").catch(() => null),
+      );
+    });
+  };
 
   /** Shows, hides or builds her window to match his settings, a snooze or hide, and a full-screen app. */
   const apply = () => {
@@ -439,7 +494,6 @@ export const createDesktopMascot = (input: {
     let flight = start;
     let owed = 0;
     let last = Date.now();
-    let squashed = false;
     moving = setInterval(() => {
       const target = win;
       if (target === null || target.isDestroyed()) return stopMoving();
@@ -453,20 +507,22 @@ export const createDesktopMascot = (input: {
           edges: all,
           displays: screens,
           half: size() / 4,
-          profile: DEFAULT_PROFILE,
+          profile,
         });
         flight = next.flight;
+        // every landing and wall is felt: a squash by its speed that springs back
         for (const event of next.events)
-          if (event.kind === "land" && event.speed > HARD_LANDING && !squashed) {
-            squashed = true;
-            call(`window.mascot.play("squish")`);
-          }
+          if (event.speed > IMPACT_SPEED) react(event.kind, event.speed);
       }
       if (!resting(flight) || flight.on === null) {
         target.setBounds(box({ x: flight.x - size() / 2, y: flight.y - size() * FOOT_SHARE }));
+        call(
+          `window.mascot.motion(${Math.round(flight.vx)},${Math.round(flight.on === null ? flight.vy : 0)})`,
+        );
         return;
       }
       stopMoving();
+      call(`window.mascot.motion(0,0)`);
       edge = flight.on;
       x = flight.x;
       save({ x, placed: edge.kind === "floor" });
@@ -479,8 +535,15 @@ export const createDesktopMascot = (input: {
     const target = win;
     if (dragging === null || target === null || target.isDestroyed()) return;
     clearInterval(dragging.timer);
-    const { samples } = dragging;
+    const { samples, pressedAt } = dragging;
     dragging = null;
+    if (isPoke(samples, pressedAt, Date.now())) {
+      // a poke: a little squash and a giggle where she stands
+      call(`window.mascot.motion(0,0)`);
+      react("poke");
+      if (edge !== null) target.setBounds(box(standAt(edge, x, size())));
+      return;
+    }
     if (options.motion !== "important" && !options.reduced) {
       const b = target.getBounds();
       return fling({
@@ -508,17 +571,20 @@ export const createDesktopMascot = (input: {
     stopMoving();
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
-    call(`window.mascot.cue({expression:"surprised"})`);
-    call(`window.mascot.play("squish")`);
+    // a brief reaction in her own way: her face, never her mood's colour
+    react("pickup");
     const samples: Array<{ readonly x: number; readonly y: number; readonly t: number }> = [];
     const timer = setInterval(() => {
       if (target.isDestroyed()) return clearInterval(timer);
       const at = Electron.screen.getCursorScreenPoint();
       samples.push({ x: at.x, y: at.y, t: Date.now() });
       if (samples.length > 12) samples.shift();
+      // carried, she stretches along his hand's speed
+      const carried = throwVelocity(samples);
+      call(`window.mascot.motion(${Math.round(carried.vx)},${Math.round(carried.vy)})`);
       target.setBounds(box({ x: at.x - (cursor.x - b.x), y: at.y - (cursor.y - b.y) }));
     }, DRAG_MS);
-    dragging = { timer, samples };
+    dragging = { timer, samples, pressedAt: Date.now() };
   };
   const onRelease = (event: Electron.IpcMainEvent) => {
     if (mine(event)) drop();
@@ -545,10 +611,11 @@ export const createDesktopMascot = (input: {
     if (idle < WANDER_IDLE_S[0] || idle > WANDER_IDLE_S[1] || Math.random() > WANDER_CHANCE) return;
     const to = wanderTo(edge, x, Math.random());
     if (to === null) return;
-    call(`window.mascot.play("hop")`);
+    // a walk in her own gait (hops, a waddle, a glide) for the length of the glide
+    call(`window.mascot.walk(1600,${to > x ? 1 : -1})`);
     x = to;
     save({ x: to });
-    glide(standAt(edge, to, size()), 48, () => call(`window.mascot.play("squish")`));
+    glide(standAt(edge, to, size()), 48);
   }, WANDER_CHECK_MS);
   wander.unref();
 

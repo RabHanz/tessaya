@@ -23,6 +23,23 @@ export const DEFAULT_PROFILE: PhysicsProfile = {
   drag: 0.4,
 };
 
+/** Her own flight from her character's profile (bodies.js TCS.flightOf, read from her page); anything unreadable keeps the default. */
+export const flightProfile = (raw: unknown): PhysicsProfile => {
+  const r = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const pick = (k: keyof PhysicsProfile, lo: number, hi: number) => {
+    const v = r[k];
+    return typeof v === "number" && Number.isFinite(v)
+      ? Math.min(hi, Math.max(lo, v))
+      : DEFAULT_PROFILE[k];
+  };
+  return {
+    gravity: pick("gravity", 1000, 5000),
+    bounce: pick("bounce", 0, 0.9),
+    friction: pick("friction", 0, 30),
+    drag: pick("drag", 0, 2),
+  };
+};
+
 export interface Flight {
   /** Her feet. */
   readonly x: number;

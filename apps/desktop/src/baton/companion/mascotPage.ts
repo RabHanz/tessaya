@@ -47,7 +47,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    if (!rig) return;
    still = c.expression === "asleep" ? 6 : c.expression === "thinking" ? 15 : Infinity;
    if (!speaking) fps = still;
-   rig.setExpression(c.expression, { noCut: c.expression === "neutral" });
+   rig.setExpression(c.expression, { noCut: c.expression === "neutral", brief: !!c.brief });
    if (c.clip) rig.play(c.clip);
    if (c.fx) rig.spawn(c.fx);
   },
@@ -57,5 +57,12 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    if (on) { peak = 0.02; rig.speak(forever, { mouth }); } else rig.stopSpeech();
   },
   play(name) { if (rig) rig.play(name); },
+  motion(vx, vy) { if (rig && rig.motion) rig.motion(vx, vy); },
+  // her character's own body (bodies.js TCS.PHYSICS): her flight for the window's physics, and how she reacts
+  physics() { return rig && rig.physics ? TCS.flightOf(rig.physics()) : null; },
+  react(kind, speed) { if (rig && rig.react) rig.react(kind, speed || 0); },
+  walk(ms, dir) { if (rig && rig.walk) rig.walk(ms, dir); else if (rig) rig.play("hop"); },
+  look(gx, gy) { if (rig && rig.look) rig.look(gx, gy); },
+  impact(speed, landed) { if (rig && rig.impact) rig.impact(speed, landed !== false); },
  };
 })();`;
