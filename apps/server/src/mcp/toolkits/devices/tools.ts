@@ -81,9 +81,13 @@ const OwnerTool = Tool.make("device_owner", {
   description: DEVICE_TOOL_TEXT.device_owner,
   parameters: Schema.Struct({
     id: Id,
-    op: Schema.Literals(["camera", "reboot", "away"]),
+    op: Schema.Literals(["camera", "reboot", "away", "update"]),
     enabled: Schema.optional(Schema.Boolean).annotate({
       description: "For away: true lets the R1 connect away from home, false keeps it home only.",
+    }),
+    version: Schema.optional(Schema.String.check(Schema.isMaxLength(30))).annotate({
+      description:
+        "For update: a signed release such as smp-0.3.95 from device_list's updates; leave out for the recommended one.",
     }),
     on: Schema.optional(On),
     ...PeerOrigin,

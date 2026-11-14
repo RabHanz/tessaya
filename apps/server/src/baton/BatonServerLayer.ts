@@ -157,6 +157,8 @@ const homeDevicesLayer = HomeDevices.layer.pipe(
   Layer.provide(vesselBodiesLayer),
   Layer.provide(HomeDevices.brokerLayer.pipe(Layer.provide(hubLayer))),
   Layer.provide(reachLayer),
+  // Firmware installs he asks for go through the devices' approval and audit, then the one updater.
+  Layer.provide(updatesLayer),
   Layer.provide(DeviceRegistry.layer),
   Layer.provide(homeLayer),
   // A button bound to a thread continues or stops it through the engine's own door.

@@ -353,6 +353,31 @@ it.effect(
         "cmd/reboot",
       );
 
+      // Developer's raw command and log: his, from Settings only; never an agent's.
+      const raw = { id: ID, path: "imu/stats", payload: { s: 10 } };
+      const byAgent = yield* serveDevicesCall({ kind: "owner", op: "raw", args: raw }, agent);
+      assert.isFalse(byAgent.ok);
+      assert.notInclude(
+        sent.map((s) => s.topic),
+        "cmd/imu/stats",
+      );
+      const badPath = { ...raw, path: "../voice/say" };
+      assert.isFalse((yield* serveDevicesCall({ kind: "owner", op: "raw", args: badPath }, me)).ok);
+      assert.isTrue((yield* serveDevicesCall({ kind: "owner", op: "raw", args: raw }, me)).ok);
+      assert.deepStrictEqual(sent.at(-1), { topic: "cmd/imu/stats", payload: { s: 10 } });
+      const tail = yield* serveDevicesCall(
+        { kind: "owner", op: "tail", args: { id: ID, since: 0 } },
+        me,
+      );
+      assert.include(
+        (tail.value as { lines: ReadonlyArray<{ topic: string }> }).lines.map((l) => l.topic),
+        "event/nfc",
+      );
+      assert.isFalse(
+        (yield* serveDevicesCall({ kind: "owner", op: "tail", args: { id: ID, since: 0 } }, agent))
+          .ok,
+      );
+
       const forgot = yield* serveDevicesCall({ kind: "act", op: "forget", args: { id: ID } }, me);
       assert.isTrue(forgot.ok);
       assert.isNull(record());

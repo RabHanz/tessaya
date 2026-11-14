@@ -81,3 +81,144 @@ export const R1_FIRMWARE: R1FirmwarePin | null = R1_RELEASE.artifacts.firmware;
  */
 export const R1_FIRMWARE_PUBLIC_KEY =
   "044a630e15eaf9f58558dbbd8f9519c26349b80e7c94110f159c92824c3470ea16e6aa5da0ee9dc560a62bfbe3b6710d2268855d27a785dfbb040d1b8158c32a14";
+
+/**
+ * Every signed firmware release (DEVICE-UTILITY §7): rebuilt and signed by CI on each `r1-firmware-*` release, so a
+ * user can pick a version or go back. `rbl` is the over-the-air package; `allapp` the cable image (null on releases
+ * from before cable images were published). The list's own signature stops a label being moved to another image.
+ */
+export const R1_RELEASE_INDEX_URL =
+  "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-index/r1-releases.json";
+
+export interface R1ReleaseImage {
+  readonly url: string;
+  readonly size: number;
+  readonly sha256: string;
+  readonly sig: string;
+}
+
+export interface R1ReleaseEntry {
+  readonly version: string;
+  readonly date: string;
+  readonly rbl: R1ReleaseImage;
+  readonly allapp: R1ReleaseImage | null;
+}
+
+export interface R1ReleaseIndex {
+  readonly v: 1;
+  readonly recommended: string;
+  readonly releases: ReadonlyArray<R1ReleaseEntry>;
+}
+
+const hex = (s: unknown, len?: number): s is string =>
+  typeof s === "string" && /^[0-9a-f]+$/.test(s) && (len === undefined || s.length === len);
+const image = (x: unknown): x is R1ReleaseImage => {
+  const i = x as Partial<R1ReleaseImage> | null;
+  return (
+    typeof i?.url === "string" &&
+    i.url.startsWith("https://") &&
+    typeof i.size === "number" &&
+    i.size > 0 &&
+    hex(i.sha256, 64) &&
+    hex(i.sig, 128)
+  );
+};
+
+/** The release list from its JSON, or null when it is not one; entries that do not parse are dropped. */
+export const parseR1ReleaseIndex = (text: string): R1ReleaseIndex | null => {
+  let raw: Partial<R1ReleaseIndex> | null;
+  try {
+    raw = JSON.parse(text) as Partial<R1ReleaseIndex> | null;
+  } catch {
+    return null;
+  }
+  if (raw?.v !== 1 || typeof raw.recommended !== "string" || !Array.isArray(raw.releases))
+    return null;
+  const releases = raw.releases.filter(
+    (r: Partial<R1ReleaseEntry>) =>
+      typeof r?.version === "string" &&
+      fwParts(r.version) !== null &&
+      typeof r.date === "string" &&
+      image(r.rbl) &&
+      (r.allapp === null || image(r.allapp)),
+  );
+  return { v: 1, recommended: raw.recommended, releases };
+};
+
+const bytesOf = (h: string) => Uint8Array.from(h.match(/../g) ?? [], (b) => parseInt(b, 16));
+
+/**
+ * The release key's ECDSA P-256 signature (raw r||s hex) over `data`'s SHA-256, checked with WebCrypto so the server
+ * and every client share it. A malformed key or signature is a no.
+ */
+export const verifyR1Signature = async (
+  data: Uint8Array,
+  sig: string,
+  publicKey: string = R1_FIRMWARE_PUBLIC_KEY,
+): Promise<boolean> => {
+  if (!hex(sig, 128) || !hex(publicKey, 130)) return false;
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      bytesOf(publicKey),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+    return await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      key,
+      bytesOf(sig),
+      new Uint8Array(data),
+    );
+  } catch {
+    return false;
+  }
+};
+
+/** One release as the R1's over-the-air pin. */
+export const r1PinOf = (entry: R1ReleaseEntry): R1FirmwarePin => ({
+  version: entry.version,
+  ...entry.rbl,
+});
+
+/** What Settings → Hardware → Device utility shows about firmware (the `updates` read). */
+export interface R1UpdatesView {
+  readonly pinned: string | null;
+  /** Every signed release this server knows, newest first; `recommended` is the one it installs by itself. */
+  readonly releases: ReadonlyArray<{
+    readonly version: string;
+    readonly date: string | null;
+    readonly recommended: boolean;
+    readonly cable: boolean;
+  }>;
+  readonly devices: ReadonlyArray<{
+    readonly id: string;
+    readonly firmware: string | null;
+    readonly line: string;
+    readonly kws: string;
+    /** Kept on this version: automatic updates leave it alone until he resumes them. */
+    readonly hold: string | null;
+    /** An install in flight: the version it should come back on. */
+    readonly updating: string | null;
+  }>;
+}
+
+/** What Easy's one button does for an R1 now: update over the air, wait for one in flight, nothing, or repair by cable. */
+export type R1EasyAction =
+  | { readonly kind: "update"; readonly version: string }
+  | { readonly kind: "busy"; readonly version: string }
+  | { readonly kind: "current" }
+  | { readonly kind: "usb" };
+
+export const r1EasyAction = (
+  online: boolean,
+  device: R1UpdatesView["devices"][number] | undefined,
+  recommended: string | null,
+): R1EasyAction => {
+  if (device?.updating != null) return { kind: "busy", version: device.updating };
+  // Offline is the broken case too: an install cut off while the bootloader copied it comes back only by cable.
+  if (!online) return { kind: "usb" };
+  if (recommended === null || device?.firmware === recommended) return { kind: "current" };
+  return { kind: "update", version: recommended };
+};
