@@ -4,7 +4,11 @@ import { createAgentGate, createTaint } from "./agentGate.ts";
 
 const P = "mcp__claude-in-chrome__";
 
-const rig = (socialOn: boolean, yes = true) => {
+const rig = (
+  socialOn: boolean,
+  yes = true,
+  planLeases?: Parameters<typeof createAgentGate>[0]["planLeases"],
+) => {
   const log: string[] = [];
   const asked: string[] = [];
   const taint = createTaint();
@@ -17,6 +21,7 @@ const rig = (socialOn: boolean, yes = true) => {
     confirm: async (p) => (asked.push(p.detail), yes),
     record: () => undefined,
     chrome: { socialOn: () => socialOn, now: () => (now += 1000), log: (l) => log.push(l) },
+    ...(planLeases === undefined ? {} : { planLeases }),
   });
   return { gate, log, asked, taint };
 };
@@ -65,6 +70,25 @@ describe("the gate on his own Chrome", () => {
         })
       ).allow,
     ).toBe(false);
+    expect(r.asked).toHaveLength(1);
+  });
+  it("runs a click after a read on a site his agreed plan leases, and asks on any other site", async () => {
+    const lease = {
+      job: "j1",
+      persona: "butler",
+      sites: ["booking.com"],
+      apps: [],
+      acts: ["open", "click"],
+      until: Date.parse("2026-11-03T12:00:00.000Z"),
+    };
+    const r = rig(false, false, async () => ({ leases: [lease], persona: "butler" }));
+    const click = { tool: `${P}computer`, input: { action: "left_click", coordinate: [5, 5] } };
+    await r.gate({ tool: `${P}navigate`, input: { url: "https://www.booking.com/" } });
+    await r.gate({ tool: `${P}get_page_text`, input: {} });
+    expect((await r.gate(click)).allow).toBe(true);
+    expect(r.asked).toHaveLength(0);
+    await r.gate({ tool: `${P}navigate`, input: { url: "https://example.com/" } });
+    expect((await r.gate(click)).allow).toBe(false);
     expect(r.asked).toHaveLength(1);
   });
 });

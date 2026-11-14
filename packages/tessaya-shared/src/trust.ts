@@ -14,6 +14,8 @@ import {
   type ToolVerdict,
 } from "./operator.ts";
 import type { Assurance, MemberRole, PrincipalRole } from "./household.ts";
+import { leaseDecision, type PlanLease } from "./planLease.ts";
+import { CHROME_PREFIX, hostForCall, isChromeTool } from "./webPolicy.ts";
 import type { ProjectRef } from "./osPack.ts";
 
 /** Who is asking: a persona from the roster. `tools: null` is no list of its own, so only the base rules apply. */
@@ -41,6 +43,13 @@ export interface TrustAsk {
   readonly agent?: TrustAgent;
   /** The steps of a plan he approved this turn (plan_show). */
   readonly plan?: ReadonlyArray<string> | null;
+  /** The plan leases of his agreed jobs, the persona acting, and the app with the keyboard (planLease.ts). */
+  readonly lease?: {
+    readonly leases: ReadonlyArray<PlanLease>;
+    readonly persona: string;
+    readonly now: number;
+    readonly app?: string;
+  };
   /** The projects of the job a job_split, job_handoff or job_schedule names; null when it could not be read. */
   readonly jobProjects?: ReadonlyArray<ProjectRef> | null;
   /** Who is asking and how sure we are (identity I-2). It only narrows; absent, nothing changes. */
@@ -297,6 +306,62 @@ const planCovers = (
   return steps.length > 0 && steps.every((s) => covered(s.tool, s.input));
 };
 
+/** What a call does, as a plan lease names act kinds; null for what no lease covers. */
+const actKind = (tool: string, args: Readonly<Record<string, unknown>>): string | null => {
+  if (tool === "navigate" || tool === "tabs_create_mcp") return "open";
+  if (tool === "click" || tool === "click_element") return "click";
+  if (tool === "type_text" || tool === "form_input") return "type";
+  if (tool !== "computer") return null;
+  const action = String(args["action"] ?? "");
+  return /click$/.test(action) ? "click" : action === "type" ? "type" : null;
+};
+
+/**
+ * A plan lease lifts only "it follows something it read" (a job that browses reads every page it acts on), for an act
+ * kind it names on a site or app it names, for the persona and in time. Never a risky ask, a command line or keys.
+ */
+const leaseCovers = (ask: TrustAsk): boolean => {
+  const lease = ask.lease;
+  if (lease === undefined || lease.leases.length === 0 || ask.context.focusedShell === true)
+    return false;
+  const chrome = isChromeTool(ask.call.tool);
+  const covered = (tool: string, args: Readonly<Record<string, unknown>>) => {
+    const kind = actKind(tool, args);
+    if (kind === null) return false;
+    const one = judgeToolCall(
+      { tool: chrome ? `${CHROME_PREFIX}${tool}` : `${BATON_TOOL_PREFIX}${tool}`, input: args },
+      ask.context,
+    );
+    if (one.verdict === "allow") return true;
+    if (one.verdict !== "ask" || one.risky === true || one.why !== "It follows something it read.")
+      return false;
+    const site = chrome
+      ? (hostForCall(args, ask.context.chrome?.pageHost ?? null) ?? undefined)
+      : undefined;
+    const app = chrome ? undefined : lease.app;
+    return lease.leases.some(
+      (l) =>
+        leaseDecision(
+          {
+            persona: lease.persona,
+            job: l.job,
+            kind,
+            ...(site === undefined ? {} : { site }),
+            ...(app === undefined ? {} : { app }),
+          },
+          [l],
+          lease.now,
+        ) === "run",
+    );
+  };
+  if (chrome) return covered(ask.call.tool.slice(CHROME_PREFIX.length), ask.call.input);
+  if (!isOwnTool(ask.call.tool)) return false;
+  const name = batonToolName(ask.call.tool);
+  if (name !== "act_batch") return covered(name, ask.call.input);
+  const steps = batchSteps(ask.call.input) ?? [];
+  return steps.length > 0 && steps.every((s) => covered(s.tool, s.input));
+};
+
 /** The tools a call uses: a batch uses itself and each of its steps. */
 const toolsUsed = (call: ToolCall): ReadonlyArray<string> => {
   const name = batonToolName(call.tool);
@@ -345,9 +410,8 @@ const decideBase = (ask: TrustAsk): TrustVerdict => {
   const base = judgeToolCall(ask.call, ask.context);
   const verdict: TrustVerdict =
     base.verdict === "ask" &&
-    ask.plan !== null &&
-    ask.plan !== undefined &&
-    planCovers(ask.call, ask.context, ask.plan)
+    ((ask.plan !== null && ask.plan !== undefined && planCovers(ask.call, ask.context, ask.plan)) ||
+      leaseCovers(ask))
       ? { verdict: "allow", inPlan: true }
       : base;
   const agent = ask.agent;

@@ -184,12 +184,27 @@ layer("BatonJobFlow", (it) => {
       assert.notInclude(launched.at(-1)?.text ?? "", "blue palette");
       assert.include(launched.at(-1)?.text ?? "", "He asked: tidy the site");
 
+      // His yes leases the browser acts the plan names, for the job's time limit, as the lead's.
+      messages.push({
+        role: "assistant",
+        text: `${BRIEF}\n- Sites: booking.com\n- Acts: open, read`,
+      });
       const agreed = yield* agreeJob(id);
+      messages.length = 0;
       assert.strictEqual(agreed?.phase, "approved");
+      assert.deepInclude(agreed?.lease ?? {}, {
+        sites: ["booking.com"],
+        apps: [],
+        acts: ["open", "read"],
+        until: "1970-01-01T02:00:00.000Z",
+      });
       assert.lengthOf(sent, 2);
       assert.strictEqual(sent[1]?.threadId, threadId);
       yield* agreeJob(id);
       assert.lengthOf(sent, 2);
+      // A refinement that widens sends the plan back to wait, and the lease goes with it.
+      yield* refineJob({ id, text: "Also use the shell", via: "voice", widens: true });
+      assert.isNull((yield* jobs.terms(id))?.lease ?? null);
     }),
   );
 

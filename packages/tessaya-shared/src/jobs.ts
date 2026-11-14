@@ -13,6 +13,7 @@ import {
   type BatonGrantKind,
   type BatonJobPhase,
   type BatonJobRevision,
+  type BatonPlanLease,
   type BatonSessionState,
 } from "@t3tools/tessaya-contracts";
 
@@ -63,6 +64,7 @@ export const permissionsSummary = (
   permissions: BatonJobPermissions,
   limits: BatonJobLimits,
   grants: ReadonlyArray<BatonJobGrant>,
+  lease?: BatonPlanLease | null,
 ): string => {
   const where = [...permissions.projects.map((p) => `the ${p} project`), ...permissions.folders];
   const parts = [
@@ -85,6 +87,10 @@ export const permissionsSummary = (
       ? "Asks you before it sends anything public."
       : `May send ${list(standing)} without asking; asks for anything else public.`,
   );
+  if (lease != null)
+    parts.push(
+      `Its agreed plan may ${list(lease.acts)} on ${list([...lease.sites, ...lease.apps])} without asking; anything risky still asks.`,
+    );
   return parts.join(" ");
 };
 

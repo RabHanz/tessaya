@@ -170,10 +170,10 @@ index fd3aca76ad247c3101889df922e29f104f8de909..5bc505b36132fc74070b3b7bede32017
      "@tanstack/react-router": "^1.160.2",
      "@tiptap/core": "^3.31.3",
 diff --git a/evals/README.md b/evals/README.md
-index 8cfb697373c318c91927adeb4f373d54a7e1922e..5da9b69248fc46a50ddffa6074aca0a9abe1ca60 100644
+index 8cfb697373c318c91927adeb4f373d54a7e1922e..52f9021332e0c154512dd45ed667d7453cc3a390 100644
 --- a/evals/README.md
 +++ b/evals/README.md
-@@ -4,13 +4,18 @@ An eval runs a real model against T3 Code's real text or code and scores what th
+@@ -4,13 +4,19 @@ An eval runs a real model against T3 Code's real text or code and scores what th
  
  Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
  
@@ -195,15 +195,16 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..5da9b69248fc46a50ddffa6074aca0a9
 +| [tessaya-outside](tessaya-outside/)     | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.   |
 +| [tessaya-room](tessaya-room/)           | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.   |
 +| [tessaya-lines](tessaya-lines/)         | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are. |
++| [tessaya-plan](tessaya-plan/)           | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.     |
 +| [tessaya-learning](tessaya-learning/)   | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none. |
  
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..60d3f056655deefba9525c7b5dd64c387576fa9c 100644
+index 0659f65475da775fd54525d9147c84a8b0ad4a3a..8ec445429fa03b35a6282dc852be06b9fa5ab6dc 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,8 +10,17 @@
+@@ -10,8 +10,18 @@
      "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
@@ -218,6 +219,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..60d3f056655deefba9525c7b5dd64c38
 +    "tessaya-brain:tokens": "node --env-file-if-exists=../.env tessaya-brain/tokens.ts",
 +    "tessaya-brain:subscription": "node tessaya-brain/subscription.ts",
 +    "tessaya-lines": "node tessaya-lines/run.ts",
++    "tessaya-plan": "node tessaya-plan/run.ts",
 +    "tessaya-learning": "node tessaya-learning/run.ts"
    },
    "dependencies": {

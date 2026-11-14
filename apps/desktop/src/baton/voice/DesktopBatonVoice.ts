@@ -6,6 +6,7 @@
  * Windows first (D97, D106): capture, speech and paste are `tessaya-voice`, which is packaged
  * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
+import type { PlanLease } from "@t3tools/tessaya-shared/planLease";
 import { shoulderSurf } from "@t3tools/tessaya-shared/biometrics";
 import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/tessaya-shared/household";
 import { createFaceCheck, faceEnginePath } from "../face/faceCheck.ts";
@@ -2867,6 +2868,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (ok === true) entry.resolve(value);
     else entry.reject(new Error(typeof error === "string" ? error : "That could not be done."));
   });
+  let leaseCache: { readonly at: number; readonly leases: ReadonlyArray<PlanLease> } | null = null;
   /** What the sessions side answered joins the one conversation, with what it was about. */
   const requestKept = async (
     body:
@@ -3123,6 +3125,29 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       (input.sessions?.rows() ?? [])
         .filter((r) => r.project !== "")
         .map((r) => ({ title: r.project, computer: r.box })),
+    planLeases: async () => {
+      // shortcut: one read of the job list per 5 s, so a stopped job's lease can outlive it by that much.
+      if (leaseCache !== null && Date.now() - leaseCache.at < 5_000) return leaseCache.leases;
+      const value = (await requestKept({ kind: "job", op: "list", args: {} }).catch(
+        () => null,
+      )) as { jobs?: ReadonlyArray<BatonJob> } | null;
+      const leases = (value?.jobs ?? []).flatMap((j) =>
+        j.phase === "approved" && j.terms.lease != null
+          ? [
+              {
+                job: j.workSessionId,
+                persona: j.terms.lease.persona,
+                sites: j.terms.lease.sites,
+                apps: j.terms.lease.apps,
+                acts: j.terms.lease.acts,
+                until: Date.parse(j.terms.lease.until),
+              },
+            ]
+          : [],
+      );
+      leaseCache = { at: Date.now(), leases };
+      return leases;
+    },
     jobProjects: async (id) => {
       const value = (await requestKept({ kind: "job", op: "list", args: {} }).catch(
         () => null,

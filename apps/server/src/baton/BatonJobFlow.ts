@@ -9,6 +9,7 @@ import {
   type BatonJobPlaceInput,
   type BatonJobRefineInput,
   type BatonFleetEntry,
+  type BatonJobTerms,
   type BatonJobScheduleInput,
   type BatonJobSplitInput,
   type BatonJobStartInput,
@@ -23,6 +24,7 @@ import {
 import { BLOCKED_MARK } from "@t3tools/tessaya-shared/coordinator";
 import { placeJob as placeFromWords } from "@t3tools/tessaya-shared/jobPlacement";
 import { briefNudge, NUDGE_MARK, parseJobBrief } from "@t3tools/tessaya-shared/jobBrief";
+import { planActs } from "@t3tools/tessaya-shared/planLease";
 import {
   buildReport,
   reportCadence,
@@ -341,9 +343,38 @@ export const agreeJob = Effect.fn("BatonJobFlow.agree")(function* (id: WorkSessi
   // Only a job that was waiting starts; agreeing twice sends nothing twice.
   if (terms !== null && before.phase === "awaiting_agreement" && terms.phase === "approved") {
     const threadId = yield* threadOf(id);
-    if (threadId !== null) yield* beginWork(threadId);
+    if (threadId !== null) {
+      const leased = yield* leasePlan(id, threadId, terms);
+      yield* beginWork(threadId);
+      return leased ?? terms;
+    }
   }
   return terms;
+});
+
+/** His yes on the plan leases the computer and browser acts it names, for the job's time limit (planLease.ts). */
+const leasePlan = Effect.fn("BatonJobFlow.leasePlan")(function* (
+  id: WorkSessionId,
+  threadId: ThreadId,
+  terms: BatonJobTerms,
+) {
+  const jobs = yield* BatonJobService;
+  const plan = (yield* (yield* BatonEngine).recentMessages(threadId, 1)).findLast(
+    (m) => m.role === "assistant",
+  );
+  const acts = planActs(plan?.text ?? "");
+  if (acts === null) return null;
+  const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
+  const persona =
+    (yield* jobs.personas()).get(id) ?? readPack(userdata).personas[0]?.id ?? "executive";
+  const now = yield* Clock.currentTimeMillis;
+  const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+  return yield* jobs.setLease(id, {
+    persona,
+    ...acts,
+    issuedAt: iso(now),
+    until: iso(now + terms.limits.wallClockMinutes * 60_000),
+  });
 });
 
 export const refineJob = Effect.fn("BatonJobFlow.refine")(function* (input: BatonJobRefineInput) {
@@ -615,6 +646,7 @@ export const noticePlan = Effect.fn("BatonJobFlow.noticePlan")(function* (thread
 
 /** His stop: the worker's running turn ends now. The job and its thread stay for him to read. */
 export const stopJob = Effect.fn("BatonJobFlow.stop")(function* (id: WorkSessionId) {
+  yield* (yield* BatonJobService).setLease(id, null);
   const threadId = yield* threadOf(id);
   if (threadId === null) return false;
   return yield* (yield* BatonEngine).interruptThread({ tag: "job", threadId });
