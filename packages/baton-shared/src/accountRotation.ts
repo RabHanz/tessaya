@@ -69,7 +69,7 @@ export const activeAccount = (pool: BatonAccountPool): BatonAccount | null =>
  * still pick it — this is the automatic path's rule, not the UI's.
  */
 export function rankRotationTargets(
-  pool: BatonAccountPool,
+  pool: Pick<BatonAccountPool, "accounts">,
   minimumHeadroomPercent: number,
 ): ReadonlyArray<BatonAccount> {
   return pool.accounts

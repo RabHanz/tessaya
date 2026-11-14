@@ -48,7 +48,8 @@ import {
   readClaudeLiveSessions,
   threadDirSlot,
 } from "./ClaudeLiveSessions.ts";
-import { liveSetAccount } from "./LiveActions.ts";
+import { liveLimitHit } from "@t3tools/baton-shared/liveTranscript";
+import { liveSetAccount, readSessionTail } from "./LiveActions.ts";
 import { respawnClaudeInPane } from "./HerdrRespawn.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 
@@ -73,13 +74,15 @@ export const rotationTick = (input: {
   readonly policy: BatonOnLimitPolicy;
   readonly lastAutoRotationAt: string | null;
   readonly now: string;
+  /** The work itself stopped on a 429, which outranks a reading that still shows room. */
+  readonly stoppedOnLimit?: boolean;
 }): RotationDecision =>
   decideRotation({
     pool: input.pool,
     policy: input.policy,
     lastAutoRotationAt: input.lastAutoRotationAt,
     sourceWindowResetsAt: sourceWindowResetsAt(input.pool),
-    limitReached: limitReached(input.pool),
+    limitReached: input.stoppedOnLimit === true || limitReached(input.pool),
     now: input.now,
   });
 
@@ -195,7 +198,12 @@ export const planThreadMoves = (input: {
  */
 export const planLiveSessionMoves = (input: {
   readonly pool: BatonAccountPool;
-  readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly slot: string }>;
+  readonly sessions: ReadonlyArray<{
+    readonly sessionId: string;
+    readonly slot: string;
+    /** Its transcript's last word is a usage limit (liveLimitHit). */
+    readonly limited?: boolean;
+  }>;
   readonly kept: (sessionId: string) => boolean;
   readonly lastAutoRotationAt: ReadonlyMap<string, string>;
   readonly now: string;
@@ -215,6 +223,7 @@ export const planLiveSessionMoves = (input: {
       policy: "auto",
       lastAutoRotationAt: input.lastAutoRotationAt.get(session.sessionId) ?? null,
       now: input.now,
+      stoppedOnLimit: session.limited === true,
     });
     return decision.outcome === "rotate"
       ? [{ sessionId: session.sessionId, target: decision.target }]
@@ -236,9 +245,13 @@ export const make = Effect.gen(function* () {
     current: BatonAccountPool,
   ) {
     const held = yield* moves.held;
+    const machineSlot = current.accounts.find((account) => account.active)?.key ?? null;
     const sessions = (yield* readAllProfileLiveSessions()).flatMap((session) => {
-      const slot = isThreadConfigDir(session.configDir) ? threadDirSlot(session.configDir) : null;
-      return slot === null ? [] : [{ sessionId: session.sessionId, slot }];
+      const own = isThreadConfigDir(session.configDir);
+      const limited = liveLimitHit(readSessionTail(session)) !== null;
+      // A shared-login session moves on its own only once it stopped on a limit (its one restart is then between turns).
+      const slot = own ? threadDirSlot(session.configDir) : limited ? machineSlot : null;
+      return slot === null ? [] : [{ sessionId: session.sessionId, slot, limited }];
     });
     const planned = planLiveSessionMoves({
       pool: current,

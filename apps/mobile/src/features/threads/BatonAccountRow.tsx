@@ -8,6 +8,7 @@ import { accountForInstance, type BatonAccountRecord } from "@t3tools/baton-cont
 import { keepsDraft, liveChangeRoute } from "@t3tools/baton-shared/liveModel";
 import { accountPickHint, accountPickTarget, accountTicks } from "@t3tools/baton-shared/accounts";
 import { maskedEmail, queuedText, roomText, roomTone } from "@t3tools/baton-shared/accountRoom";
+import { rankRotationTargets } from "@t3tools/baton-shared/accountRotation";
 import { isLiveThreadId, LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/baton-shared/liveThread";
 import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -347,13 +348,29 @@ function LiveAccounts(props: {
   const moveTo = useLiveAccountMove(props.environmentId, props.sessionId, setMovedTo);
   const queued = state?.queued ?? null;
   const failure = state?.failure ?? null;
+  const limit = state?.limit ?? null;
+  const pool = Option.getOrNull(
+    AsyncResult.value(
+      useAtomValue(
+        batonWorkSessions.accountPoolQuery({ environmentId: props.environmentId, input: {} }),
+      ),
+    ),
+  );
+  // The rotation's own ranking, any room above spent: one tap moves the session there.
+  const limitTarget =
+    limit === null || pool === null
+      ? undefined
+      : rankRotationTargets(
+          { accounts: pool.accounts.map((a) => ({ ...a, active: a.key === loginKey })) },
+          1,
+        )[0];
   // The tick is the login the session runs as, as the header chip says; a waiting pick is named apart.
   const { runsAs, setTo } = accountTicks(props.accounts, {
     storedInstanceId: LIVE_INSTANCE,
     shownInstanceId: props.shownInstanceId,
     loginKey,
   });
-  if (accounts.length === 0 && queued === null && failure === null) return null;
+  if (accounts.length === 0 && queued === null && failure === null && limit === null) return null;
   return (
     <Card title="Account · % used">
       {accounts.map((account, index) => {
@@ -364,7 +381,9 @@ function LiveAccounts(props: {
             account={account}
             current={current}
             next={queued?.accountKey !== undefined && queued.accountKey === account.liveSwitchKey}
-            isLast={index === accounts.length - 1 && queued === null && failure === null}
+            isLast={
+              index === accounts.length - 1 && queued === null && failure === null && limit === null
+            }
             hint={null}
             onPick={
               current || account.liveSwitchKey === null
@@ -378,6 +397,25 @@ function LiveAccounts(props: {
         <Text className="px-4 py-2 text-2xs text-foreground-muted">
           Thread set to {setTo.label}
         </Text>
+      )}
+      {limit === null ? null : (
+        <View className="gap-1 px-4 py-2">
+          <Text className="text-2xs text-danger-foreground">
+            Hit its usage limit: {limit.text}
+            {limitTarget === undefined ? " No other login here has room." : ""}
+          </Text>
+          {limitTarget === undefined ? null : (
+            <Pressable
+              accessibilityRole="button"
+              className="min-h-9 justify-center active:opacity-60"
+              onPress={() => moveTo(limitTarget.key)}
+            >
+              <Text className="text-sm font-t3-medium text-primary">
+                Switch to {limitTarget.label} ({Math.round(limitTarget.headroomPercent ?? 0)}% left)
+              </Text>
+            </Pressable>
+          )}
+        </View>
       )}
       {failure === null ? null : (
         <Text className="px-4 py-2 text-2xs text-danger-foreground">
