@@ -42,6 +42,7 @@ import {
 import { DOWN_FRAME_BYTES, fromBytes, speechLevel, toBytes } from "./audio.ts";
 import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "../cueSounds.ts";
 import type { Affect } from "./senseVoice.ts";
+import type { KwsEvent } from "./wakeStream.ts";
 import { segmentsOf, type TurnVoices } from "./segments.ts";
 import {
   createTurnTaking,
@@ -241,7 +242,8 @@ export interface RoomDeps {
   /** Her name with no session open (`voice/wake`): voiced segments only, never recognised beyond the wake check. */
   readonly wake?: {
     readonly frame: (deviceId: string, pcm: Uint8Array) => void;
-    readonly end: (deviceId: string) => void;
+    readonly end: (deviceId: string, seg?: number) => void;
+    readonly kws?: (deviceId: string, event: KwsEvent) => void;
   };
 }
 
@@ -2131,7 +2133,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         if (!muted.has(id)) deps.wake?.frame(id, payload);
       } else if (tail === "voice/wake/end") {
-        deps.wake?.end(id);
+        const seg = json()["seg"];
+        deps.wake?.end(id, typeof seg === "number" ? seg : undefined);
+      } else if (tail === "event/wake/kws") {
+        deps.wake?.kws?.(id, json() as KwsEvent);
       } else if (tail === "cmd/voice/stop") stop(id);
       else if (tail === "event/voice/interrupt" || tail === "event/voice/stop") {
         const src = json()["src"];

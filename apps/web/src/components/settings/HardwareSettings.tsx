@@ -162,7 +162,9 @@ function HardwareSections({
   );
   // Read once and after each change, not on every refresh: it asks the tunnel for its address.
   // Firmware updates from this server (R1Updates): each R1's line, including why one stopped.
-  const [updates, setUpdates] = useState<ReadonlyArray<{ id: string; line: string }>>([]);
+  const [updates, setUpdates] = useState<ReadonlyArray<{ id: string; line: string; kws: string }>>(
+    [],
+  );
   const readReach = async () => {
     const result = await devicesCall({
       environmentId,
@@ -176,7 +178,8 @@ function HardwareSections({
     });
     if (upd._tag === "Success" && upd.value.ok)
       setUpdates(
-        (upd.value.value as { devices: ReadonlyArray<{ id: string; line: string }> }).devices,
+        (upd.value.value as { devices: ReadonlyArray<{ id: string; line: string; kws: string }> })
+          .devices,
       );
   };
 
@@ -265,6 +268,40 @@ function HardwareSections({
         )}
         {updates.map((u) => (
           <SettingsRow key={`fw-${u.id}`} title={`Firmware · ${u.id}`} description={u.line} />
+        ))}
+        {updates.map((u) => (
+          <SettingsRow
+            key={`kws-${u.id}`}
+            title={`Own wake model · ${u.id}`}
+            description={u.kws}
+            control={
+              <span className="flex gap-1">
+                {(["shadow", "off"] as const).map((mode) => (
+                  <Button
+                    key={mode}
+                    size="xs"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      void run("owner", "kwsMode", { id: u.id, mode }).then(() => readReach())
+                    }
+                  >
+                    {mode === "shadow" ? "Shadow" : "Off"}
+                  </Button>
+                ))}
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() =>
+                    void run("owner", "kwsClear", { id: u.id }).then(() => readReach())
+                  }
+                >
+                  Unload
+                </Button>
+              </span>
+            }
+          />
         ))}
         {devices.map((d) => (
           <SettingsRow
