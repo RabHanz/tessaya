@@ -524,13 +524,12 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       ? input.learn(decoded.value).catch(() => null)
       : null;
   });
-  // BATON_TEST_DIR: a PNG of the window's own page at each tab change, from inside the app; otherwise nothing.
+  // BATON_TEST_DIR: a PNG of the window's own page when it shows and at each tab change, from inside the app;
+  // otherwise nothing.
   let tabShots = 0;
-  Electron.ipcMain.on("baton-home:tab", (_event, tab: unknown) => {
-    if (typeof tab === "string") input.onTab?.(tab);
+  const shoot = (open: Electron.BrowserWindow | null, tab: string) => {
     const dir = process.env["BATON_TEST_DIR"] ?? "";
-    const open = live();
-    if (dir === "" || open === null || typeof tab !== "string") return;
+    if (dir === "" || open === null) return;
     const n = (tabShots += 1);
     setTimeout(() => {
       if (open.isDestroyed()) return;
@@ -545,6 +544,11 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
         })
         .catch(() => undefined);
     }, 500).unref();
+  };
+  Electron.ipcMain.on("baton-home:tab", (_event, tab: unknown) => {
+    if (typeof tab !== "string") return;
+    input.onTab?.(tab);
+    shoot(live(), tab);
   });
 
   const systemAsks = () => ({
@@ -791,6 +795,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
           splash.fade((o) => created.isDestroyed() || created.setOpacity(o), 0, 1);
         });
       });
+      created.once("show", () => shoot(created, "open"));
       created.on("show", showing);
       created.on("restore", showing);
       created.on("closed", () => {
