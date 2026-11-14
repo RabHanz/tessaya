@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalFetch:off
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * Installs the R1's room voice under `<T3 home>/userdata/r1-voice` when the first R1 pairs (R1Loop): the bundle this
  * release was built with (R1VoiceBundle.ts) and the large models, each pinned by size and sha256, resumed where a
@@ -8,6 +8,8 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
+import * as NodeHttp from "node:http";
+import * as NodeHttps from "node:https";
 import * as NodePath from "node:path";
 import * as NodeStreamPromises from "node:stream/promises";
 import * as NodeUtil from "node:util";
@@ -85,6 +87,33 @@ const hashFile = async (path: string) => {
   return hash.digest("hex");
 };
 
+export interface Got {
+  readonly status: number;
+  readonly body: AsyncIterable<Uint8Array>;
+}
+export type Get = (url: string, headers: Record<string, string>) => Promise<Got>;
+
+/**
+ * A GET that follows redirects (Hugging Face and GitHub both redirect to a CDN). node:http, not fetch: undici's
+ * parser asserts and takes the whole server down when a slow reader meets a closed socket (seen 14 Nov, Node 24.19).
+ */
+const httpGet: Get = (url, headers, hops = 5) =>
+  new Promise((resolve, reject) => {
+    const get = url.startsWith("https:") ? NodeHttps.get : NodeHttp.get;
+    const req = get(url, { headers, timeout: 60_000 }, (res) => {
+      const next = res.headers.location;
+      if (res.statusCode !== undefined && res.statusCode >= 300 && res.statusCode < 400 && next) {
+        res.resume();
+        if (hops <= 0) return reject(new Error("too many redirects"));
+        return resolve(httpGet(new URL(next, url).toString(), headers, hops - 1));
+      }
+      resolve({ status: res.statusCode ?? 0, body: res });
+    });
+    // No bytes for a minute is a failed download, not a slow one.
+    req.on("timeout", () => req.destroy(new Error("the download stalled")));
+    req.on("error", reject);
+  });
+
 /** Whether `file` is in place with its pinned bytes (checked once, then remembered beside it). */
 const isVerified = async (dir: string, pin: Pinned): Promise<boolean> =>
   (await read(verifiedMark(NodePath.join(dir, pin.file)))) === pin.sha256;
@@ -97,7 +126,7 @@ export const fetchPinned = async (
   dir: string,
   pin: Pinned,
   onBytes: (bytes: number) => void,
-  fetchImpl: typeof fetch = fetch,
+  get: Get = httpGet,
 ): Promise<void> => {
   const target = NodePath.join(dir, pin.file);
   if (await isVerified(dir, pin)) return;
@@ -109,12 +138,8 @@ export const fetchPinned = async (
     have = 0;
   }
   if (have < pin.size) {
-    const response = await fetchImpl(pin.url, {
-      redirect: "follow",
-      headers: have > 0 ? { range: `bytes=${have}-` } : {},
-      signal: AbortSignal.timeout(30 * 60_000),
-    });
-    if (!response.ok || response.body === null)
+    const response = await get(pin.url, have > 0 ? { range: `bytes=${have}-` } : {});
+    if (response.status !== 200 && response.status !== 206)
       throw new Error(`${NodePath.basename(pin.file)} answered ${response.status}`);
     const resumed = response.status === 206;
     if (!resumed) have = 0;
@@ -122,7 +147,7 @@ export const fetchPinned = async (
     // Each chunk is on disk before the next is read, so a broken download resumes from what really arrived.
     const out = await NodeFSP.open(part, resumed ? "a" : "w");
     try {
-      for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+      for await (const chunk of response.body) {
         await out.write(chunk);
         onBytes(chunk.length);
       }
@@ -161,7 +186,7 @@ export const install = async (input: {
   readonly bundle: Omit<Pinned, "file">;
   readonly models?: ReadonlyArray<Pinned>;
   readonly onProgress: (progress: InstallProgress) => void;
-  readonly fetchImpl?: typeof fetch;
+  readonly get?: Get;
 }): Promise<void> => {
   const bundle: Pinned = { ...input.bundle, file: BUNDLE_TAR };
   const todo = await missing(input.dir, bundle, input.models ?? R1_VOICE_MODELS);
@@ -184,7 +209,7 @@ export const install = async (input: {
         done += bytes;
         input.onProgress({ done, total });
       },
-      input.fetchImpl,
+      input.get,
     );
   }
   if (todo.includes(bundle)) {
