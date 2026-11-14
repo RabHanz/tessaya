@@ -18,7 +18,10 @@ export interface BiometricReading {
   readonly others: number;
 }
 
-/** The most a modality proves alone. Palm is RGB palm print on a webcam until a NIR palm-vein sensor exists. */
+/**
+ * The most a modality proves alone. Palm is RGB palm print on a webcam: 1 in 10,000 strangers pass at its bar on
+ * held-out palms, like face, but a paper print over a real hand is not ruled out, so it never goes above A1.
+ */
 export const MODALITY_CEILING: Readonly<Record<BiometricModality, Assurance>> = {
   face: 1,
   voice: 2,
@@ -86,7 +89,7 @@ export const recordBiometricAttempt = (
     : { consecutive, restUntil: s.restUntil, failures, off: false };
 };
 
-/** One JSON line from the face engine sidecar (`faceid verify|enroll|devices`). */
+/** One JSON line from the engine sidecar (`faceid verify|enroll|palm-verify|palm-enroll`). */
 export type FaceEngineLine =
   | { readonly type: "progress"; readonly message: string }
   | {
@@ -115,32 +118,35 @@ export const parseFaceEngineLine = (line: string): FaceEngineLine | null => {
     type: "result",
     ok: o["ok"],
     reason: typeof o["reason"] === "string" ? o["reason"] : "unknown",
-    faces: typeof o["faces"] === "number" ? o["faces"] : 0,
+    // palm results count hands in view where face results count faces
+    faces:
+      typeof o["faces"] === "number" ? o["faces"] : typeof o["hands"] === "number" ? o["hands"] : 0,
     perTemplate: per.filter((x): x is number => typeof x === "number"),
     wallMs: typeof o["wall_ms"] === "number" ? o["wall_ms"] : 0,
   };
 };
 
-/** The engine's match bar (face_engine.h Thresholds::match); a template at or above it is that member. */
-export const FACE_MATCH = 0.5;
+/** The engines' match bars (face_engine.h Thresholds::match, palm_engine.h PalmThresholds::match). */
+export const MATCH_BAR = { face: 0.5, palm: 9.2 } as const;
 
 /**
- * Which member a passive face scan saw, given the members in template order. The best score over the bar wins; a
- * second member over the bar too is ambiguous and names nobody.
+ * Which member a face or palm check saw, given the members in template order. The best score over the bar wins; a
+ * second member over the bar too is ambiguous and names nobody. A second hand in view only fails the palm check.
  */
 export const faceReading = (
   result: Extract<FaceEngineLine, { type: "result" }>,
   members: ReadonlyArray<string>,
   live: boolean,
+  modality: "face" | "palm" = "face",
 ): BiometricReading => {
   const over = members
     .map((m, i) => ({ m, s: result.perTemplate[i] ?? -1 }))
-    .filter((x) => x.s >= FACE_MATCH)
+    .filter((x) => x.s >= MATCH_BAR[modality])
     .toSorted((a, b) => b.s - a.s);
   return {
-    modality: "face",
+    modality,
     member: over.length === 1 ? over[0]!.m : null,
     live: live && result.faces === 1,
-    others: Math.max(0, result.faces - 1),
+    others: modality === "face" ? Math.max(0, result.faces - 1) : 0,
   };
 };

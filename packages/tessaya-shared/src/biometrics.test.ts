@@ -105,6 +105,11 @@ describe("face engine sidecar", () => {
       perTemplate: [0.71, 0.12],
       wallMs: 1830,
     });
+    expect(
+      parseFaceEngineLine(
+        '{"type":"result","wall_ms":7000,"modality":"palm","ok":true,"reason":"ok","hands":1,"per_template":[0.8]}',
+      ),
+    ).toMatchObject({ ok: true, faces: 1, perTemplate: [0.8] });
     expect(parseFaceEngineLine("not json")).toBeNull();
     expect(parseFaceEngineLine('{"type":"devices","devices":[]}')).toBeNull();
   });
@@ -116,5 +121,13 @@ describe("face engine sidecar", () => {
     expect(faceReading(r([0.72, 0.2], 2), ["owner", "sara"], true)).toEqual(
       face("owner", false, 1),
     );
+    // palm scores are the engine's fused z-scores, with their own bar
+    expect(faceReading(r([0.72, 0.2]), ["owner", "sara"], true, "palm").member).toBeNull();
+    expect(faceReading(r([12.4, 2.1], 2), ["owner", "sara"], true, "palm")).toEqual({
+      modality: "palm",
+      member: "owner",
+      live: false,
+      others: 0,
+    });
   });
 });

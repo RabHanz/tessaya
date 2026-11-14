@@ -10,7 +10,15 @@ import type { PlanLease } from "@t3tools/tessaya-shared/planLease";
 import { shoulderSurf } from "@t3tools/tessaya-shared/biometrics";
 import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/tessaya-shared/household";
 import { createFaceCheck, faceEnginePath } from "../face/faceCheck.ts";
-import { FACE_MEMBER, FACE_ON, FACE_RESUME, faceControls } from "../face/faceRows.ts";
+import {
+  FACE_MEMBER,
+  FACE_ON,
+  FACE_RESUME,
+  faceControls,
+  PALM_MEMBER,
+  PALM_ON,
+  PALM_RESUME,
+} from "../face/faceRows.ts";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -665,6 +673,8 @@ interface VoiceSettings {
   readonly devicesMayLook: boolean;
   /** Tessaya's face check on this computer's webcam (Settings → Privacy → Face check); off until he turns it on. */
   readonly faceCheck: boolean;
+  /** Palm print on the same webcam and engine (Settings → Privacy → Palm check); off until he turns it on. */
+  readonly palmCheck: boolean;
   readonly pinnedLabel: string | null;
   /** Where the wake and VAD models are; null = the ones that shipped with the app. */
   readonly modelsDir: string | null;
@@ -860,6 +870,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   openSessionsOnStart: true,
   devicesMayLook: false,
   faceCheck: false,
+  palmCheck: false,
   pinnedLabel: null,
   modelsDir: null,
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
@@ -1021,6 +1032,7 @@ export const readSettings = (path: string): VoiceSettings => {
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       devicesMayLook: saved["devicesMayLook"] === true,
       faceCheck: saved["faceCheck"] === true,
+      palmCheck: saved["palmCheck"] === true,
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       pillDesign: parsePillDesign(saved["pillDesign"]),
       pillWaveform: parsePillWave(saved["pillWaveform"]),
@@ -1384,6 +1396,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const setupMarker = NodePath.join(input.stateDir, "baton-setup.pending");
   let settings = readSettings(settingsPath);
   let faceStatus: string | null = null;
+  let palmStatus: string | null = null;
   let faceOnlooker = false;
   let faceMembers: ReadonlyArray<{
     readonly id: string;
@@ -1401,6 +1414,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
   });
+  const palmCheck = createFaceCheck({
+    stateDir: input.stateDir,
+    platform: input.platform,
+    exe: faceEnginePath(input.env),
+    on: () => settings.palmCheck,
+    modality: "palm",
+    progress: (message) => {
+      palmStatus = message;
+      pushHome();
+    },
+    ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
+  });
   /** Who may enrol a face here: the home's members (only the owner where there is no household yet). */
   const refreshFaceMembers = async () => {
     const listed = (await input.household?.("list").catch(() => null))?.members;
@@ -1410,7 +1435,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .map((m) => ({ id: m.id, name: m.name, you: m.you }));
     pushHome();
   };
-  if (input.platform === "win32" && settings.faceCheck)
+  if (input.platform === "win32" && (settings.faceCheck || settings.palmCheck))
     setTimeout(() => void refreshFaceMembers(), 5_000).unref();
   /** Someone besides the person checked is in view: private things hide and a spoken yes waits for a click. */
   const onlooker = async (): Promise<boolean> =>
@@ -6699,6 +6724,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           enrolled: faceCheck.enrolled().some((e) => e.member === m.id),
         })),
       }),
+      ...faceControls(
+        {
+          platform: input.platform,
+          engineFound: NodeFS.existsSync(faceEnginePath(input.env)),
+          on: settings.palmCheck,
+          limited: palmCheck.limited(),
+          status: palmStatus,
+          members: faceMembers.map((m) => ({
+            ...m,
+            enrolled: palmCheck.enrolled().some((e) => e.member === m.id),
+          })),
+        },
+        "palm",
+      ),
       ...(intercomTab?.controls() ?? []),
       ...(privateTab === null || privateTab.everyday() ? memoryTab.controls() : []),
       ...vaultTab.controls(),
@@ -8481,6 +8520,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         });
     } else if (id === FACE_RESUME) {
       faceCheck.resetLimit();
+      pushHome();
+    } else if (id === PALM_ON) {
+      save({ palmCheck: on });
+      if (on) void refreshFaceMembers();
+    } else if (id.startsWith(PALM_MEMBER)) {
+      const member = faceMembers.find((m) => m.id === id.slice(PALM_MEMBER.length));
+      if (member !== undefined)
+        void (on ? palmCheck.enrol(member) : palmCheck.remove(member.id)).finally(() => {
+          palmStatus = null;
+          pushHome();
+        });
+    } else if (id === PALM_RESUME) {
+      palmCheck.resetLimit();
       pushHome();
     } else if (id === "vid.enrol") voiceId.read({ kind: "owner" });
     else if (id === "vid.card:redo") voiceId.card("redo");
