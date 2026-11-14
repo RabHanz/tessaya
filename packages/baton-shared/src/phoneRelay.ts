@@ -27,7 +27,7 @@ export interface PhoneAsk {
   readonly text: string;
   /** "phone": his own (the paired phone page or the desktop app); "device": a token's words, which may be an agent's. */
   readonly source: AskSource;
-  /** The device he said it to ("R1", "phone"), when it came through one; its answer and approvals name it. */
+  /** The device he said it to ("Tessel", "phone"), when it came through one; its answer and approvals name it. */
   readonly origin: string | null;
   /** Said in his own verified voice on that device: his yes for a look it needs. */
   readonly hisVoice: boolean;

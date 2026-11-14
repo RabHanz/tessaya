@@ -157,7 +157,7 @@ describe("the room voice loop", () => {
     expect(last.summary).toMatchObject({ quality: 3, headline: "Your voice profile is ready" });
     expect(last.summary!.rows).toContainEqual({
       label: "Microphone",
-      value: "Agora R1 (room mic)",
+      value: "Tessel (room mic)",
     });
     expect(windows).toEqual([6]);
     expect(t.brainCalls).toEqual([]);

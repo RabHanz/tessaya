@@ -1373,13 +1373,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "apis-anthropic",
     title: "Anthropic",
     to: "/settings/apis",
-    searchTerms: ["api key claude dictation cleanup voice room brain r1"],
+    searchTerms: ["api key claude dictation cleanup voice room brain r1 tessel tumble"],
   },
   {
     id: "home-assistant",
     title: "Home Assistant",
     to: "/settings/home",
-    searchTerms: ["house lights automations devices smart home r1"],
+    searchTerms: ["house lights automations devices smart home r1 tessel tumble"],
   },
   {
     id: "hardware-devices",
@@ -1393,19 +1393,19 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "hardware-nfc",
     title: "NFC tags",
     to: "/settings/hardware",
-    searchTerms: ["nfc tag tap dock mode r1"],
+    searchTerms: ["nfc tag tap dock mode r1 tessel tumble"],
   },
   {
     id: "hardware-bodies",
     title: "Bodies",
     to: "/settings/hardware",
-    searchTerms: ["body bodies dock plush perch stand cradle car mount nfc tag room vessel"],
+    searchTerms: ["body bodies dock plush tuft perch stand cradle car mount nfc tag room vessel"],
   },
   {
     id: "room-brain",
     title: "Room brain",
     to: "/settings/hardware",
-    searchTerms: ["r1 desk device api key subscription claude anthropic voice room"],
+    searchTerms: ["r1 tessel tumble desk device api key subscription claude anthropic voice room"],
   },
   // Tessaya's own settings live in her window; T3's search finds them and says where.
   ...TESSAYA_PLACES.map((place) => ({

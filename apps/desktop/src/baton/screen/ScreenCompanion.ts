@@ -217,6 +217,7 @@ import {
   shotOf,
   type CapturedScreen,
 } from "./screenCapture.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 /** Names a step of building the screen's controls for the stall log; adds nothing. */
 const stepMark = (name: string): [] => {
@@ -596,7 +597,7 @@ export interface ScreenCompanion {
   readonly askFromPhone: (
     text: string,
     source: "phone" | "device",
-    /** The device he said it to ("R1"), when it came through one. */
+    /** The device he said it to ("Tessel"), when it came through one. */
     origin?: string | null,
     /** His yes for one look: his verified voice on that device, or his "devices may look" setting. */
     mayLook?: boolean,
@@ -848,7 +849,7 @@ export const startScreenCompanion = (input: {
   const turnLock = createTurnLock();
   let recentErrors: ReadonlyArray<{ readonly code: string; readonly at: string }> = [];
   let phoneTurn = false;
-  /** The device a relayed ask was said to, for its approvals ("Requested from R1"). */
+  /** The device a relayed ask was said to, for its approvals ("Requested from Tessel"). */
   let askOrigin: string | null = null;
   /** The relayed ask may take one look without a prompt here (his verified voice, or his setting). */
   let askMayLook = false;
@@ -4180,7 +4181,7 @@ export const startScreenCompanion = (input: {
         id: "s.serverBrain",
         section: "Working for you",
         label: "Run my turns on the one brain on my server",
-        hint: "Her answers come from your server's brain, the same one the R1 and your phone use, and she uses this computer's screen and keys through this app, behind the same checks. Off, this computer runs its own.",
+        hint: `Her answers come from your server's brain, the same one the ${DEVICE} and your phone use, and she uses this computer's screen and keys through this app, behind the same checks. Off, this computer runs its own.`,
         kind: "toggle",
         on: settings.serverBrain,
       },

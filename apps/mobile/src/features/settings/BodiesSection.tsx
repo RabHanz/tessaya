@@ -19,6 +19,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { Menu } from "../../components/ui/Menu";
 import { SettingsSection } from "./components/SettingsSection";
+import { PLUSH_BODY } from "@t3tools/baton-shared/productNames";
 
 const INPUT_CLASS = "rounded-lg border border-border-subtle px-3 py-2 text-base text-foreground";
 
@@ -32,7 +33,7 @@ export type BodiesCall = (
 const TYPE_LABELS: Readonly<Record<VesselBodyType, string>> = {
   dock: "Dock",
   perch: "Perch",
-  plush: "Plush",
+  plush: PLUSH_BODY,
   clip: "Clip",
   car: "Car mount",
   peek: "Monitor (Peek)",

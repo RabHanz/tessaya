@@ -48,6 +48,7 @@ import { JobTools } from "../jobs/tools.ts";
 import { MembersTools } from "../members/tools.ts";
 import { CommsTools } from "../comms/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const shared = {
   failure: OrchestratorMcpFailure,
@@ -217,8 +218,7 @@ const AskTool = Tool.make("tessaya_ask", {
     text: Schema.String.check(Schema.isMaxLength(2000)),
     origin: Schema.optionalKey(
       Schema.String.check(Schema.isMaxLength(40)).annotate({
-        description:
-          "The device he said it to (e.g. R1), when it came through one; his approvals name it.",
+        description: `The device he said it to (e.g. ${DEVICE}), when it came through one; his approvals name it.`,
       }),
     ),
     hisVoice: Schema.optionalKey(

@@ -16,6 +16,7 @@ import { DeviceRefusedError } from "./DeviceRegistry.ts";
 import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach, type R1Endpoints } from "./R1Reach.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const DEVICE_ID = /^[A-Za-z0-9_-]{1,60}$/;
 /** A key use from another machine this recent makes a rotation ask first. */
@@ -125,9 +126,9 @@ export const layer = Layer.effect(
       claim: Effect.fn("R1Pairing.claim")(function* (input) {
         const deviceId = input.deviceId.toLowerCase();
         const oneTimeKey = input.oneTimeKey;
-        if (!DEVICE_ID.test(deviceId)) return yield* refuse("That is not an R1 id.");
+        if (!DEVICE_ID.test(deviceId)) return yield* refuse(`That is not a ${DEVICE} id.`);
         if (!ONE_TIME_KEY.test(oneTimeKey))
-          return yield* refuse("That is not the code from the R1's pairing picture.");
+          return yield* refuse(`That is not the code from the ${DEVICE}'s pairing picture.`);
         const key = newKey();
         yield* store({ deviceKey: key, deviceId, mqttUrl: null, mqttUser: null, mqttPass: null });
         // A claimed again R1 (reset, re-paired) must not keep a link made with its old key.
@@ -148,25 +149,25 @@ export const layer = Layer.effect(
         if (device === null) return yield* refuse(`${id} is not set up on this server.`);
         if (device.mqttUrl !== null || !hub.connected(id))
           return yield* refuse(
-            "The R1 must be online on this server to take a new key. Try again once it shows online.",
+            `The ${DEVICE} must be online on this server to take a new key. Try again once it shows online.`,
           );
         if (device.previousKey != null)
           return yield* refuse(
-            "The last new key has not reached the R1 yet. Wait until it reconnects, then try again.",
+            `The last new key has not reached the ${DEVICE} yet. Wait until it reconnects, then try again.`,
           );
         const outside = hub.keyUsedOutside();
         const now = yield* Clock.currentTimeMillis;
         if (!confirmed && outside !== null && now - outside < OUTSIDE_RECENT_MS)
           return {
             status: "confirm",
-            line: "Something on another machine (a room loop or another server) uses this R1's key. After a new key it stops working until it gets the new one. Rotate anyway?",
+            line: `Something on another machine (a room loop or another server) uses this ${DEVICE}'s key. After a new key it stops working until it gets the new one. Rotate anyway?`,
           };
         const key = newKey();
         yield* store({ ...device, deviceKey: key, previousKey: device.deviceKey });
         hub.publish(`freya/r1/${id}/cmd/net/key`, encodeJson({ key }));
         return {
           status: "done",
-          line: "The R1 gets a new key. The old one stops working once it logs in with the new one.",
+          line: `The ${DEVICE} gets a new key. The old one stops working once it logs in with the new one.`,
         };
       }),
     });

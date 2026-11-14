@@ -19,6 +19,7 @@ import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts"
 import { DirectEndpoints } from "../environment/DirectEndpoints.ts";
 import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
 import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 /** The firmware keeps four broker URLs of up to 96 characters (`r1bt_endpoints.c`). */
 const EP_MAX = 4;
@@ -196,10 +197,10 @@ export const layer = Layer.effect(
     const status = Effect.gen(function* () {
       const { on, host, endpoints } = yield* compose;
       const line = !on
-        ? "Home only: the R1 connects to this server on your network."
+        ? `Home only: the ${DEVICE} connects to this server on your network.`
         : host === null
-          ? "Away from home is on, but this server is not linked to T3 Connect. Link it in Settings → Connections; the R1 gets the new address by itself."
-          : "The R1 connects at home first, and through T3 Connect when it is away.";
+          ? `Away from home is on, but this server is not linked to T3 Connect. Link it in Settings → Connections; the ${DEVICE} gets the new address by itself.`
+          : `The ${DEVICE} connects at home first, and through T3 Connect when it is away.`;
       const offered = Option.isSome(yield* read(OFFERED_SECRET));
       return { away: on, offered, tunnel: host !== null, endpoints, line } satisfies R1ReachStatus;
     });

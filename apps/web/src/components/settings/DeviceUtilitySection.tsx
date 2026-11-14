@@ -19,6 +19,7 @@ import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
+import { DEVICE, FLASH_TOOL } from "@t3tools/baton-shared/productNames";
 
 const LEVELS = [
   ["easy", "Easy"],
@@ -27,7 +28,8 @@ const LEVELS = [
 ] as const;
 type Level = (typeof LEVELS)[number][0];
 const LevelSchema = Schema.Literals(["easy", "normal", "developer"]);
-const R1FLASH_URL = "https://github.com/RabHanz/tessaya/releases?q=r1flash";
+// "flash" finds both the r1flash releases and tessel-flash ones.
+const R1FLASH_URL = "https://github.com/RabHanz/tessaya/releases?q=flash";
 const TAIL_MS = 1000;
 
 type Run = (
@@ -145,7 +147,7 @@ function DeviceUtility({
           action.kind === "usb" ? (
             cable ? undefined : (
               <Button size="sm" variant="outline" render={<a href={R1FLASH_URL} target="_blank" />}>
-                Get r1flash
+                Get {FLASH_TOOL}
               </Button>
             )
           ) : (
@@ -169,7 +171,7 @@ function DeviceUtility({
       {action.kind === "usb" && !cable ? (
         <SettingsRow
           title="Repair by cable"
-          description="Open the Tessaya desktop app on the computer it's plugged into, or run r1flash there: one file, no install. Either restores it even when it won't start."
+          description={`Open the Tessaya desktop app on the computer it's plugged into, or run ${FLASH_TOOL} there: one file, no install. Either restores it even when it won't start.`}
         />
       ) : null}
       {cable && (action.kind === "usb" || level !== "easy") ? (
@@ -233,8 +235,8 @@ function DeviceUtility({
             title="Wi-Fi and pairing"
             description={
               has("net.setup")
-                ? "Setup mode shows its Wi-Fi and pairing codes on the eyes; then add it below, as a new R1."
-                : "Hold S1 and S3 together for 5 seconds to open setup mode, then add it below as a new R1."
+                ? `Setup mode shows its Wi-Fi and pairing codes on the eyes; then add it below, as a new ${DEVICE}.`
+                : `Hold S1 and S3 together for 5 seconds to open setup mode, then add it below as a new ${DEVICE}.`
             }
             control={
               has("net.setup") ? (
@@ -422,7 +424,7 @@ function UsbRepair({
         line ??
         (version === null
           ? "No release has a cable image yet."
-          : `Plug the R1 into this computer with its USB cable. This writes ${version} and keeps its settings, even when it won't start.`)
+          : `Plug the ${DEVICE} into this computer with its USB cable. This writes ${version} and keeps its settings, even when it won't start.`)
       }
       control={
         <Button

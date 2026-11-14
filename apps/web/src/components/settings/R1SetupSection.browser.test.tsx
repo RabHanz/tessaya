@@ -64,12 +64,12 @@ describe("Add an R1", () => {
     await userEvent.fill(screen.getByLabelText("Pairing code"), QR);
     // Nothing to type until a pairing asks: the R1's eyes show its own digits then.
     await expect
-      .element(screen.getByLabelText("The 6 digits on the R1's eyes"))
+      .element(screen.getByLabelText("The 6 digits on the Tessel's eyes"))
       .not.toBeInTheDocument();
     await userEvent.fill(screen.getByLabelText("Wi-Fi name"), "Home");
     await userEvent.fill(screen.getByLabelText("Wi-Fi password"), "secret");
     await userEvent.click(screen.getByRole("button", { name: "Set up over Bluetooth" }));
-    await expect.element(screen.getByText("Your R1 is set up.")).toBeVisible();
+    await expect.element(screen.getByText("Your Tessel is set up.")).toBeVisible();
     expect(call).toHaveBeenCalledWith("owner", "claim", {
       deviceId: "r1-a1b2c3",
       oneTimeKey: "000102030405060708090A0B0C0D0E0F",
@@ -99,7 +99,7 @@ describe("Add an R1", () => {
     await userEvent.click(screen.getByRole("button", { name: "Get a setup code" }));
     await expect.element(screen.getByLabelText("Setup code")).toHaveValue("SEALED");
     await expect
-      .element(screen.getByText("Use your R1 away from home too?"))
+      .element(screen.getByText("Use your Tessel away from home too?"))
       .not.toBeInTheDocument();
   });
 
@@ -139,11 +139,11 @@ describe("Add an R1", () => {
     await userEvent.fill(screen.getByLabelText("Pairing code"), QR);
     await userEvent.fill(screen.getByLabelText("Wi-Fi name"), "Home");
     await userEvent.click(screen.getByRole("button", { name: "Set up over Bluetooth" }));
-    const digits = screen.getByLabelText("The 6 digits on the R1's eyes");
+    const digits = screen.getByLabelText("The 6 digits on the Tessel's eyes");
     await expect.element(digits).toHaveValue("");
     await userEvent.fill(digits, "48 29 13");
     await userEvent.click(screen.getByRole("button", { name: "Pair" }));
-    await expect.element(screen.getByText("Your R1 is set up.")).toBeVisible();
+    await expect.element(screen.getByText("Your Tessel is set up.")).toBeVisible();
     expect(answers).toEqual([{ confirmed: true, pin: "482913" }]);
   });
 });

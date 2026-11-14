@@ -119,12 +119,12 @@ it.effect(
 
         // Lifted out: what the plush replaced comes back.
         yield* registry.report("client", R1, [{ itemId: "body.tags", value: [] }]);
-        const out = yield* Effect.forkChild(reported(sub, "body.current", "Pebble"));
+        const out = yield* Effect.forkChild(reported(sub, "body.current", "Tumble"));
         assert.sameDeepMembers(yield* takeWrites(2), [
           ["imu.profile", "focus"],
           ["audio.volume", 60],
         ]);
-        assert.strictEqual(yield* Fiber.join(out), "Pebble");
+        assert.strictEqual(yield* Fiber.join(out), "Tumble");
         yield* registry.report("client", R1, [
           { itemId: "audio.volume", value: 60 },
           { itemId: "imu.profile", value: "focus" },
@@ -161,7 +161,7 @@ it.effect("never adopts a body from a link copied onto another tag", () =>
       yield* registry.report("client", R1, [
         { itemId: "body.tags", value: [{ uid: "04ffffffffffff", url: mint.url }] },
       ]);
-      assert.strictEqual(yield* Fiber.join(current), "Pebble");
+      assert.strictEqual(yield* Fiber.join(current), "Tumble");
       assert.strictEqual(yield* registry.value(R1, "body.posture"), null);
     }),
   ).pipe(Effect.provide(layer)),

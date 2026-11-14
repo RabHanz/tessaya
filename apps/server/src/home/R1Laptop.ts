@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 import { TurnOrigin } from "../baton/TessayaTurn.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const AskResult = Schema.Struct({
   id: Schema.NullOr(Schema.String),
@@ -65,7 +66,7 @@ export const askLaptop = Effect.fn("R1Laptop.ask")(function* (question: string) 
     // A laptop before these fields refuses an argument it does not list; it is asked without them.
     const named = yield* call("tessaya_ask", {
       text,
-      origin: turn?.label ?? "R1",
+      origin: turn?.label ?? DEVICE,
       ...(hisVoice ? { hisVoice: true } : {}),
     });
     const asked =

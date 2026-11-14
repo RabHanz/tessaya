@@ -56,6 +56,7 @@ import {
   type TurnAction,
   type TurnConfig,
 } from "./turnTaking.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 const RATE = 16_000;
 /** Her downlink kept for open talk-over: 8 s, far more than the R1 ever holds unplayed. */
@@ -1340,7 +1341,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         kept?.control.abort();
         if (raw !== "")
           deps.log(
-            `[${id}] turn ${turn}: the R1 was muted or stopped; not answered (${heldBack(raw)})`,
+            `[${id}] turn ${turn}: the ${DEVICE} was muted or stopped; not answered (${heldBack(raw)})`,
           );
         return;
       }
@@ -2075,8 +2076,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           // No name: the voice host's login is a machine account, and Tessaya keeps no display name for him.
           sentences: enrolScript(null),
           title: "Read these aloud",
-          lead: "Stand where you usually talk to the R1, and use your normal voice. One sentence at a time, with a short pause between them.",
-          mic: "Agora R1 (room mic)",
+          lead: `Stand where you usually talk to the ${DEVICE}, and use your normal voice. One sentence at a time, with a short pause between them.`,
+          mic: `${DEVICE} (room mic)`,
           tip: "Enrol on the computer too, in Tessaya's Voice ID settings, for your desk mic.",
           otherVoiceBelow: CAMPLUS_POLICY.single.listen,
           strongFrom: CAMPLUS_POLICY.single.act + 0.15,
@@ -2161,7 +2162,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
       },
       /** The R1's own stop (S2 or a tap while she speaks): she stops, and a turn on its way is not answered. */
-      stopReply: (src: string) => stopHer(`[${id}] stop from the R1 (${src})`),
+      stopReply: (src: string) => stopHer(`[${id}] stop from the ${DEVICE} (${src})`),
       /** S2 or the R1's own wake: he is talking to her now. */
       wake: () => {
         openUntil = Math.max(openUntil, deps.now() + config.followMs);

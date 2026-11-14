@@ -17,6 +17,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { SecretInput } from "./SecretInput";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 type Reply = { readonly ok: boolean; readonly value?: unknown; readonly error?: string } | null;
 export type R1Call = (
@@ -50,7 +51,7 @@ const SETUP_TIMEOUT_MS = 90_000;
 /** An R1 in range, over Web Bluetooth; the OS asks for the passkey the eyes show while it pairs. */
 const connectR1 = async (bluetooth: Bluetooth): Promise<R1SetupPort> => {
   const device = await bluetooth.requestDevice({ filters: [{ services: [R1_SETUP_SERVICE] }] });
-  if (device.gatt === undefined) throw new Error("This R1 has no setup service.");
+  if (device.gatt === undefined) throw new Error(`This ${DEVICE} has no setup service.`);
   const service = await (await device.gatt.connect()).getPrimaryService(R1_SETUP_SERVICE);
   return {
     write: async (uuid, value) =>
@@ -73,7 +74,7 @@ const STEP_LINE: Record<R1SetupStep, string> = {
   wifi: "Sending your Wi-Fi…",
   claim: "Pairing it with this server…",
   joining: "Joining your Wi-Fi…",
-  online: "Your R1 is set up.",
+  online: `Your ${DEVICE} is set up.`,
   failed: "Setup did not finish.",
 };
 
@@ -106,9 +107,10 @@ export function R1SetupSection({
   const [typed, setTyped] = useState("");
 
   const claim = async () => {
-    if (pairing === null) throw new Error("That is not the R1's pairing code.");
+    if (pairing === null) throw new Error(`That is not the ${DEVICE}'s pairing code.`);
     const reply = await call("owner", "claim", { ...pairing });
-    if (reply?.ok !== true) throw new Error(reply?.error ?? "This server could not pair the R1.");
+    if (reply?.ok !== true)
+      throw new Error(reply?.error ?? `This server could not pair the ${DEVICE}.`);
     return (reply.value as { blob: string }).blob;
   };
   const finish = (ok: boolean) => {
@@ -149,11 +151,11 @@ export function R1SetupSection({
     try {
       setCode(await claim());
       setLine(
-        "Join the R1's own Wi-Fi (the QR on its left eye), open any page, and paste this into “From the Tessaya app” with your Wi-Fi.",
+        `Join the ${DEVICE}'s own Wi-Fi (the QR on its left eye), open any page, and paste this into “From the Tessaya app” with your Wi-Fi.`,
       );
       finish(true);
     } catch (cause) {
-      setLine(cause instanceof Error ? cause.message : "This server could not pair the R1.");
+      setLine(cause instanceof Error ? cause.message : `This server could not pair the ${DEVICE}.`);
     }
     setBusy(false);
   };
@@ -170,7 +172,7 @@ export function R1SetupSection({
   };
 
   return (
-    <SettingsSection title="Add an R1">
+    <SettingsSection title={`Add a ${DEVICE}`}>
       <SettingsRow
         title="Pairing code"
         description="Scan the QR on the R1's right eye with your phone's camera and paste the text here (T3R1:…), or use the Tessaya phone app."
@@ -217,18 +219,18 @@ export function R1SetupSection({
             <div className="flex flex-col gap-2">
               {pairAsk.kind === "providePin" ? (
                 <Input
-                  aria-label="The 6 digits on the R1's eyes"
+                  aria-label={`The 6 digits on the ${DEVICE}'s eyes`}
                   inputMode="numeric"
                   autoFocus
                   value={typed}
-                  placeholder="Type the 6 digits on the R1's eyes"
+                  placeholder={`Type the 6 digits on the ${DEVICE}'s eyes`}
                   onChange={(e) => setTyped(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 />
               ) : (
                 <p className="text-sm">
                   {pairAsk.kind === "confirmPin"
-                    ? `Do the R1's eyes show ${pairAsk.pin ?? ""}?`
-                    : "Pair with this R1?"}
+                    ? `Do the ${DEVICE}'s eyes show ${pairAsk.pin ?? ""}?`
+                    : `Pair with this ${DEVICE}?`}
                 </p>
               )}
               <div className="flex gap-2">
@@ -276,7 +278,7 @@ export function R1SetupSection({
       </SettingsRow>
       {askAway === null ? null : (
         <SettingsRow
-          title="Use your R1 away from home too?"
+          title={`Use your ${DEVICE} away from home too?`}
           description="It connects through T3 Connect when it is not on your Wi-Fi. You can change this later in Settings."
           control={
             <div className="flex gap-2">

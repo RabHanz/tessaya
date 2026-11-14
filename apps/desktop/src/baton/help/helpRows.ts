@@ -4,6 +4,7 @@
  * going unmentioned.
  */
 import type { HomeControl } from "../home/batonHome.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 /** Tool name -> what he might say and what it gets him. */
 export const SAY: Readonly<Record<string, readonly [string, string]>> = {
@@ -133,10 +134,16 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
     "Anything later or repeating becomes a Home Assistant automation.",
   ],
   home_automation_set: ["Pause the night lights automation", "Pauses, resumes or deletes one."],
-  device_list: ["Is the R1 online?", "Your devices: online, battery, signal, firmware."],
-  device_act: ["Make the R1 look happy", "Its eyes, light, a buzz or a line said aloud."],
-  device_owner: ["Take a picture with the R1", "Camera or restart; always waits for your yes."],
-  device_tag: ["Make this tag mute the R1", "Sets what an NFC tag does when tapped on the R1."],
+  device_list: [`Is the ${DEVICE} online?`, "Your devices: online, battery, signal, firmware."],
+  device_act: [`Make the ${DEVICE} look happy`, "Its eyes, light, a buzz or a line said aloud."],
+  device_owner: [
+    `Take a picture with the ${DEVICE}`,
+    "Camera or restart; always waits for your yes.",
+  ],
+  device_tag: [
+    `Make this tag mute the ${DEVICE}`,
+    `Sets what an NFC tag does when tapped on the ${DEVICE}.`,
+  ],
 };
 
 /** Tools that exist for the assistant's own steps and are not something to say. */

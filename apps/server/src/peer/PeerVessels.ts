@@ -13,6 +13,7 @@ import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import { vesselOf } from "../mcp/toolkits/home/handlers.ts";
 import * as PeerLinks from "./PeerLinks.ts";
 import * as PeerMcpClient from "./PeerMcpClient.ts";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 /** What a forwarded call adds: where the turn was heard, and his verified voice as that server's own turn heard it. */
 export const PeerOrigin = {
@@ -68,7 +69,7 @@ const peersToAsk = Effect.gen(function* () {
   const carried = {
     origin:
       turn?.label ??
-      (vessel === null ? "another of his servers" : vessel.surface === "r1" ? "R1" : "desktop"),
+      (vessel === null ? "another of his servers" : vessel.surface === "r1" ? DEVICE : "desktop"),
     ...(turn?.hisVoice === true ? { hisVoice: true } : {}),
   };
   const call = (

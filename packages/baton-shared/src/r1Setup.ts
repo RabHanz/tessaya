@@ -1,3 +1,4 @@
+import { DEVICE } from "./productNames.ts";
 /**
  * Setting up a new R1 from an app (web, desktop, phone): the pairing QR and the setup steps
  * over the R1's setup service (firmware 0.3.70). No platform code: the caller hands in its Bluetooth port and the
@@ -54,10 +55,10 @@ export const statusOutcome = (
       ok: false,
       why:
         status.op === "claim"
-          ? "The R1 could not take this server's pairing. Show its pairing code again and retry."
+          ? `The ${DEVICE} could not take this server's pairing. Show its pairing code again and retry.`
           : status.op === "pair"
             ? "Bluetooth pairing did not finish. Check the 6 digits and try again."
-            : `The R1 could not join that Wi-Fi${status.err === undefined ? "" : ` (${status.err})`}.`,
+            : `The ${DEVICE} could not join that Wi-Fi${status.err === undefined ? "" : ` (${status.err})`}.`,
     };
   if (status.op === "join" && status.state === "done") return { ok: true };
   return null;
@@ -107,7 +108,7 @@ export const runR1Setup = async (input: {
   void input.timeout.then(() =>
     settle({
       ok: false,
-      why: "The R1 did not answer in time. Check it is in setup mode and nearby.",
+      why: `The ${DEVICE} did not answer in time. Check it is in setup mode and nearby.`,
     }),
   );
   try {

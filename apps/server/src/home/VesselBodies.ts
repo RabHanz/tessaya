@@ -35,6 +35,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { BatonRecordService } from "../baton/BatonRecordService.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
+import { BARE_BOARD, MAIN_BODY } from "@t3tools/baton-shared/productNames";
 
 interface DeviceBody {
   outer: string | null;
@@ -208,7 +209,11 @@ const make = Effect.gen(function* () {
   const reportFor = (d: RegisteredDevice, st: DeviceBody, body: VesselBody | null) => {
     const activity = d.values.find((v) => v.itemId === "imu.activity")?.value;
     const r1 = d.kind === "r1";
-    const base = r1 ? (st.shell === "bare" ? "bare board (dev)" : "Pebble") : "no body";
+    const base = r1
+      ? st.shell === "bare"
+        ? `${BARE_BOARD} (bare board, dev)`
+        : MAIN_BODY
+      : "no body";
     return [
       { itemId: "body.current", value: body?.name ?? base },
       {
@@ -266,7 +271,7 @@ const make = Effect.gen(function* () {
           yield* settleLocked(deviceId);
           return st.shell === "bare"
             ? "Marked as a bare board: dev mode."
-            : "Marked as in her Pebble.";
+            : `Marked as in her ${MAIN_BODY}.`;
         }
         const body = currentBody(deviceId);
         if (body === null)

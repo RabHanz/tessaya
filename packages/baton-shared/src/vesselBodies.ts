@@ -3,6 +3,7 @@
  * and where it is when it is in none. Pure; the server signs and the phone writes.
  */
 import { VESSEL_BODY_TYPES, type DeviceItem, type VesselBodyType } from "@t3tools/baton-contracts";
+import { BARE_BOARD, MAIN_BODY } from "./productNames.ts";
 
 /** `https://<host>/b/1/<type>/<bodyId>.<sig>`: any host, so the domain stays a setting and old tags keep working. */
 const LINK =
@@ -76,8 +77,7 @@ export const BODY_ITEMS: ReadonlyArray<DeviceItem> = [
     access: "read",
     safety: "free",
     group: "body",
-    description:
-      "the body she is in now: a dock, plush or stand by its name, her Pebble alone, or a bare board",
+    description: `the body she is in now: a dock, plush or stand by its name, her ${MAIN_BODY} alone, or the bare board (${BARE_BOARD})`,
   },
   {
     id: "body.type",
@@ -124,7 +124,7 @@ export const BODY_ITEMS: ReadonlyArray<DeviceItem> = [
     access: "read,write",
     safety: "confirm",
     group: "body",
-    description: "whether the board is in its Pebble shell, or out of it on a bench (dev mode)",
+    description: `whether the board is in its ${MAIN_BODY} shell, or out of it on a bench (dev mode)`,
   },
   {
     id: "body.history",

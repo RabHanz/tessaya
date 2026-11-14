@@ -69,6 +69,7 @@ import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
 import { R1Updates } from "./R1Updates.ts";
 import { R1_FIRMWARE } from "@t3tools/baton-shared/r1Firmware";
+import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 /** settings is him in Settings → Devices (the RPC checked his scope); anyone else asks before camera or reboot. */
 export interface DeviceActor {
@@ -460,7 +461,7 @@ export const applyMessage = (
       if (body?.["ok"] === false) {
         d.display = {
           ...d.display,
-          note: recordText(str(body["reason"]) ?? "The R1 refused that.", 120),
+          note: recordText(str(body["reason"]) ?? `The ${DEVICE} refused that.`, 120),
         };
         break;
       }
@@ -915,7 +916,7 @@ const make = Effect.gen(function* () {
       if (![...links.values()].some((l) => l.link.connected()))
         return Effect.fail(
           new DeviceRefusedError({
-            why: "The devices' broker is not connected. Check the R1's broker in Settings → Home.",
+            why: `The devices' broker is not connected. Check the ${DEVICE}'s broker in Settings → Home.`,
           }),
         );
       if (heard.get(id)?.online !== true)
@@ -956,7 +957,7 @@ const make = Effect.gen(function* () {
               domain: "scene",
               service: "turn_on",
               target: { entity_id: action.entityId },
-              why: `NFC tag "${entry.label}" tapped on the R1`,
+              why: `NFC tag "${entry.label}" tapped on the ${DEVICE}`,
             },
             { who: `NFC tag ${entry.label}`, surface: "r1" },
           )
@@ -983,7 +984,7 @@ const make = Effect.gen(function* () {
     // did:"none" says the device did nothing, whatever its last ack said.
     const bind = tessayaOf(yield* readSaved, id, slot as R1KeySlot);
     if (bind === null) return;
-    const by: DeviceActor = { who: `the R1's ${slot} button`, surface: "agent" };
+    const by: DeviceActor = { who: `the ${DEVICE}'s ${slot} button`, surface: "agent" };
     const say = (text: string) => publish(id, "voice/say", { text });
     switch (bind.kind) {
       case "device":
@@ -1012,7 +1013,7 @@ const make = Effect.gen(function* () {
               domain,
               service: domain === "scene" || domain === "script" ? "turn_on" : "toggle",
               target: { entity_id: bind.entityId },
-              why: `The R1's ${slot} button`,
+              why: `The ${DEVICE}'s ${slot} button`,
             },
             { who: by.who, surface: "r1" },
           )
@@ -1064,7 +1065,7 @@ const make = Effect.gen(function* () {
     yield* command(
       id,
       { op: "away", on: true },
-      { who: "Your R1, after it could not reach home,", surface: "agent" },
+      { who: `Your ${DEVICE}, after it could not reach home,`, surface: "agent" },
     ).pipe(Effect.ignore);
   });
 
@@ -1338,15 +1339,15 @@ const make = Effect.gen(function* () {
       : c.op === "reboot"
         ? "restart the device"
         : c.op === "update"
-          ? `update the R1's firmware${c.version === null ? "" : ` to ${c.version}`}`
+          ? `update the ${DEVICE}'s firmware${c.version === null ? "" : ` to ${c.version}`}`
           : c.op === "away"
             ? c.on
-              ? "let the R1 work away from home"
-              : "keep the R1 to home only"
+              ? `let the ${DEVICE} work away from home`
+              : `keep the ${DEVICE} to home only`
             : c.op === "kws"
-              ? `set the R1's own wake model to ${c.mode}`
+              ? `set the ${DEVICE}'s own wake model to ${c.mode}`
               : c.op === "kwsClear"
-                ? "unload the R1's own wake model"
+                ? `unload the ${DEVICE}'s own wake model`
                 : c.op === "item"
                   ? `use ${c.itemId}${c.value === null || c.value === undefined ? "" : ` (${recordText(JSON.stringify(c.value), 60)})`}`
                   : c.op;
@@ -1375,7 +1376,9 @@ const make = Effect.gen(function* () {
     switch (c.op) {
       case "away": {
         if (reach._tag === "None")
-          return yield* new DeviceRefusedError({ why: "This server does not run the R1 hub." });
+          return yield* new DeviceRefusedError({
+            why: `This server does not run the ${DEVICE} hub.`,
+          });
         return done((yield* reach.value.setAway(c.on)).line);
       }
       case "eye":
@@ -1434,7 +1437,7 @@ const make = Effect.gen(function* () {
         const device = c.bind.kind === "device" ? c.bind.do : "none";
         if (typeof spec === "object" || (spec === "tessaya" && device !== "none"))
           return yield* new DeviceRefusedError({
-            why: "The R1 does that press itself; it cannot be changed.",
+            why: `The ${DEVICE} does that press itself; it cannot be changed.`,
           });
         yield* change((s) => {
           const k = (s.keys[id] ??= { device: {}, tessaya: {} });
@@ -1445,12 +1448,12 @@ const make = Effect.gen(function* () {
         if (spec === "tessaya") return done("Saved.");
         const [key, act] = c.slot.split(".");
         yield* publish(id, "cmd/key/bind", { key, act, do: device });
-        return done("Saved. The R1 confirms it in a moment.");
+        return done(`Saved. The ${DEVICE} confirms it in a moment.`);
       }
       case "display":
         if (!displaySupported(heard.get(id)?.display))
           return yield* new DeviceRefusedError({
-            why: "This R1's firmware cannot turn its screen yet; it needs a firmware update. Nothing was sent.",
+            why: `This ${DEVICE}'s firmware cannot turn its screen yet; it needs a firmware update. Nothing was sent.`,
           });
         yield* publish(
           id,
@@ -1461,7 +1464,7 @@ const make = Effect.gen(function* () {
           c.set === "calibrate"
             ? "The way it stands now is upright."
             : c.set === "auto"
-              ? "The screen turns with the R1."
+              ? `The screen turns with the ${DEVICE}.`
               : `The screen stays ${c.set === "normal" ? "upright" : "upside down"}.`,
         );
       case "transport":
@@ -1541,7 +1544,7 @@ const make = Effect.gen(function* () {
             );
           case "disconnect":
             yield* publish(id, "cmd/bt/disconnect", {});
-            return done("Disconnected. Replies play on the R1 until you connect again.");
+            return done(`Disconnected. Replies play on the ${DEVICE} until you connect again.`);
           case "forget":
             yield* publish(id, "cmd/bt/forget", {});
             return done("Speaker forgotten. Pair it again to use it.");
@@ -1553,23 +1556,25 @@ const make = Effect.gen(function* () {
               c.output === "bt"
                 ? "Replies play only on the Bluetooth speaker."
                 : c.output === "onboard"
-                  ? "Replies play on the R1's own speaker."
-                  : "Replies play on the Bluetooth speaker when it is connected, else on the R1.",
+                  ? `Replies play on the ${DEVICE}'s own speaker.`
+                  : `Replies play on the Bluetooth speaker when it is connected, else on the ${DEVICE}.`,
             );
         }
         return done("Done.");
       }
       case "kws":
         yield* publish(id, "cmd/voice/kws", { mode: c.mode });
-        yield* audit(by, id, `R1 wake model ${c.mode}`, "done");
-        return done(`Asked the R1 to set its own wake model to ${c.mode}.`);
+        yield* audit(by, id, `${DEVICE} wake model ${c.mode}`, "done");
+        return done(`Asked the ${DEVICE} to set its own wake model to ${c.mode}.`);
       case "kwsClear":
         yield* publish(id, "cmd/model/clear", {});
-        yield* audit(by, id, "R1 wake model unloaded", "done");
-        return done("Asked the R1 to unload its own wake model.");
+        yield* audit(by, id, `${DEVICE} wake model unloaded`, "done");
+        return done(`Asked the ${DEVICE} to unload its own wake model.`);
       case "update": {
         if (updates._tag === "None")
-          return yield* new DeviceRefusedError({ why: "This server does not run the R1 hub." });
+          return yield* new DeviceRefusedError({
+            why: `This server does not run the ${DEVICE} hub.`,
+          });
         const version = c.version ?? R1_FIRMWARE?.version ?? null;
         if (version === null)
           return yield* new DeviceRefusedError({ why: "This build recommends no firmware." });
@@ -1579,7 +1584,7 @@ const make = Effect.gen(function* () {
           pct: typeof pct === "number" ? pct : null,
           charging: typeof charging === "boolean" ? charging : null,
         });
-        yield* audit(by, id, `R1 firmware ${version}`, out.ok ? "started" : "refused");
+        yield* audit(by, id, `${DEVICE} firmware ${version}`, out.ok ? "started" : "refused");
         if (!out.ok) return yield* new DeviceRefusedError({ why: out.line });
         return done(out.line);
       }
@@ -1589,7 +1594,7 @@ const make = Effect.gen(function* () {
         return done(`Sent cmd/${c.path}.`);
       case "reboot":
         yield* publish(id, "cmd/reboot", {});
-        yield* audit(by, id, "R1 restarted", "done");
+        yield* audit(by, id, `${DEVICE} restarted`, "done");
         return done("Restarting; it is back in about half a minute.");
       case "camera":
         cameras.set(id, {
@@ -1598,7 +1603,7 @@ const make = Effect.gen(function* () {
           line: "Waiting for the picture.",
         });
         yield* publish(id, "cmd/camera/capture", {});
-        yield* audit(by, id, "R1 camera picture", "taken");
+        yield* audit(by, id, `${DEVICE} camera picture`, "taken");
         return done("Taking one picture.");
       case "item": {
         const { reg, item } = yield* itemOf(id, c.itemId);
@@ -1685,7 +1690,7 @@ const make = Effect.gen(function* () {
         title:
           c.op === "item"
             ? "Tessaya wants to use one of your devices"
-            : "Tessaya wants to use the R1",
+            : `Tessaya wants to use the ${DEVICE}`,
         detail: `${line}.`,
         buttons: ["Yes, do it", "No"],
         yes: 0,
@@ -1724,7 +1729,7 @@ const make = Effect.gen(function* () {
     const charging = values.get("power.charging");
     return {
       id,
-      name: `Agora R1 (${id})`,
+      name: `${DEVICE} (${id})`,
       kind: "agora-r1",
       configured: devices.some((d) => d.deviceId === id),
       online: d.online,
@@ -1744,7 +1749,7 @@ const make = Effect.gen(function* () {
           .filter((slot) => typeof R1_KEY_SLOTS[slot] !== "object")
           .map((slot) => [slot, keyBindingOf(saved, id, slot)]),
       ),
-      keyNote: d.keyRefused ? "The R1 refused the last button change." : null,
+      keyNote: d.keyRefused ? `The ${DEVICE} refused the last button change.` : null,
       display: d.display,
       transport: DEVICE_TRANSPORTS.includes(saved.transport[id]!)
         ? saved.transport[id]!
@@ -1800,7 +1805,7 @@ const make = Effect.gen(function* () {
         cameras.set(id, {
           armedUntil: null,
           shot: null,
-          line: "No picture arrived. The R1 posts pictures to its upload address, which must point at this server.",
+          line: `No picture arrived. The ${DEVICE} posts pictures to its upload address, which must point at this server.`,
         });
       else if (cam.shot !== null && cam.shot.at + SHOT_KEEP_MS <= now) cameras.delete(id);
     }

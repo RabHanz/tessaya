@@ -752,7 +752,7 @@ describe("asking his laptop", () => {
       );
       const outcomes = yield* fake.provide(runActs(look));
       // Asked as from his R1, so the laptop's approval names it (13 Nov).
-      expect(fake.calls).toEqual(["tessaya_ask from R1", "tessaya_ask_status"]);
+      expect(fake.calls).toEqual(["tessaya_ask from Tessel", "tessaya_ask_status"]);
       expect(spokenReply("Let me look.", outcomes)).toBe("VS Code and Chrome are open.");
       const older = linked(
         [laptop],
@@ -763,7 +763,7 @@ describe("asking his laptop", () => {
       expect(spokenReply("Let me look.", yield* older.provide(runActs(look)))).toBe(
         "VS Code is open.",
       );
-      expect(older.calls).toEqual(["tessaya_ask from R1", "tessaya_ask", "tessaya_ask_status"]);
+      expect(older.calls).toEqual(["tessaya_ask from Tessel", "tessaya_ask", "tessaya_ask_status"]);
       // The turn's own vessel (TurnOrigin) names it when the pipeline gives one.
       const named = linked(
         [laptop],

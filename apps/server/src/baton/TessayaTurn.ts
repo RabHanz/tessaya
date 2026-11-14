@@ -43,7 +43,7 @@ export type VesselKind = "desktop" | "device" | "phone" | "web" | "mcp" | "job";
 
 export interface TurnEnvelope {
   readonly vessel: { readonly kind: VesselKind; readonly id: string };
-  /** How approvals, replies and the Record name the vessel that heard it ("R1", "desktop", "phone"). */
+  /** How approvals, replies and the Record name the vessel that heard it ("Tessel", "desktop", "phone"). */
   readonly origin?: string | undefined;
   /** What was said this turn. */
   readonly text: string;
@@ -179,7 +179,7 @@ export const NOT_HIS_VOICE_TO_FORGET =
 export interface WhoIsHome {
   readonly member: string;
   readonly name: string;
-  /** Last verified voice or own-device turn: where (the vessel, "R1", "desktop"), its id, and how long ago. */
+  /** Last verified voice or own-device turn: where (the vessel, "Tessel", "desktop"), its id, and how long ago. */
   readonly heard: {
     readonly via: string;
     readonly vessel: string;
