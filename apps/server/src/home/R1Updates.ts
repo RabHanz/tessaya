@@ -35,6 +35,8 @@ import * as Semaphore from "effect/Semaphore";
 import { FetchHttpClient, HttpClient } from "effect/http";
 
 import * as ServerConfig from "../config.ts";
+import { sayPayload } from "@t3tools/baton-shared/expression";
+import { expressOr } from "../baton/TessayaExpression.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
@@ -469,8 +471,13 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
     );
     return true;
   });
-  const say = (id: string, text: string) =>
-    hub.publish(`freya/r1/${id}/voice/say`, encodeJson({ text }));
+  /** Her words for an update moment, with the mood her eyes show. */
+  const say = (id: string, event: "upd.start" | "upd.done", plain: string) =>
+    Effect.flatMap(expressOr(event, { plain }), (said) =>
+      said === null
+        ? Effect.void
+        : Effect.sync(() => hub.publish(`freya/r1/${id}/voice/say`, encodeJson(sayPayload(said)))),
+    );
 
   // One pass at a time: a second must not start the same install while the first downloads.
   const lock = yield* Semaphore.make(1);
@@ -497,7 +504,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
         const step = otaStep(w, pin, kept.previous, now);
         if (step === "start" && pin !== null) {
           if (!(yield* ensureImage(pin))) continue;
-          say(id, SAY_BEFORE);
+          yield* say(id, "upd.start", SAY_BEFORE);
           if (yield* offer(id, pin))
             w.update = { version: pin.version, startedAt: now, rollback: false };
         } else if (step === "done") {
@@ -512,7 +519,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
               version: failed,
               why: `${failed} did not come back within 7 minutes, so the R1 went back to ${w.fw}.`,
             };
-          } else say(id, SAY_AFTER);
+          } else yield* say(id, "upd.done", SAY_AFTER);
           w.update = null;
         } else if (step === "rollback" && (w.update?.back ?? kept.previous) !== null) {
           const failed = w.update?.version ?? "";
@@ -614,7 +621,7 @@ export const make = Effect.fn("R1Updates.make")(function* (options: {
           // The way back is the release it runs now, when the list has it.
           const back = releases().find((r) => r.pin.version === w.fw)?.pin ?? null;
           if (back !== null) yield* ensureImage(back, false);
-          say(id, SAY_BEFORE);
+          yield* say(id, "upd.start", SAY_BEFORE);
           const down = (compareR1Firmware(version, w.fw!) ?? 0) < 0;
           if (!(yield* offer(id, target, "ota", down)))
             return { ok: false, line: "This server has no address the R1 can fetch from." };

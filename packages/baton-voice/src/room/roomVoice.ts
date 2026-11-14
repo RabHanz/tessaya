@@ -3,6 +3,7 @@
  * `voice/up`, asks her server, speaks on `voice/down` and stops when he cuts in. I/O is passed in for tests.
  * @module baton-voice/room/roomVoice
  */
+import { r1MoodOf } from "@t3tools/baton-shared/expression";
 import { mostlyForeign } from "@t3tools/baton-shared/language";
 import { isNarration, withoutSelfIntro } from "@t3tools/baton-shared/narration";
 import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
@@ -2019,12 +2020,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       },
       /** Tessaya says this in the room now (an agent, a reminder or the Devices page), cutting off whatever she was saying. */
       /** A line in a session the R1 opened only for it: said, then that session ends. */
-      sayOnly: (text: string) => {
+      sayOnly: (text: string, mood?: string | null) => {
+        if (mood) face(mood);
         speakNow(text);
         stopAfterSaid();
       },
-      say: (text: string) => {
+      /** `mood` is the eyes' look for her own words (the brain's expression); none keeps the eyes as they are. */
+      say: (text: string, mood?: string | null) => {
         if (reply !== null) interrupt();
+        if (mood) face(mood);
         speakNow(text);
       },
       /** One of her cues on the downlink, paced like speech so the echo guard knows it; a second wake cue within 1.5 s is dropped. */
@@ -2369,9 +2373,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const text = json()["text"];
         if (typeof text === "string" && text.trim() !== "") {
           const open = sessions.get(id);
+          const mood = r1MoodOf(String(json()["mood"] ?? ""));
           // The R1 plays her voice only inside its own session (r1bt_voice_play drops it otherwise, 13 Nov).
-          if (open !== undefined) open.say(text.trim().slice(0, 500));
-          else startOnR1(id, (s) => s.sayOnly(text.trim().slice(0, 500)));
+          if (open !== undefined) open.say(text.trim().slice(0, 500), mood);
+          else startOnR1(id, (s) => s.sayOnly(text.trim().slice(0, 500), mood));
         }
       } else if (tail === "voice/persona") {
         const name = json()["name"];

@@ -13,6 +13,7 @@ import { BatonOneShot } from "./BatonOneShot.ts";
 import {
   BATCHES_PER_HOUR,
   TessayaExpression,
+  expressOr,
   layer as expressionLayer,
 } from "./TessayaExpression.ts";
 
@@ -122,3 +123,15 @@ it.effect(
     }).pipe(Effect.provide(t.layer));
   },
 );
+
+it.effect("keeps a call site's own plain words, with or without the service", () => {
+  const t = setup({});
+  return Effect.gen(function* () {
+    const plain = "Sorry, something went wrong on my side.";
+    assert.strictEqual((yield* expressOr("err.brain", { plain }))?.text, plain);
+    assert.strictEqual(
+      (yield* expressOr("err.brain", { plain }).pipe(Effect.provide(t.layer)))?.text,
+      plain,
+    );
+  });
+});

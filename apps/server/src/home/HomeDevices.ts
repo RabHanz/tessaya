@@ -62,6 +62,8 @@ import { VesselBodies } from "./VesselBodies.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/baton-shared/mqtt";
+import { expressOr } from "../baton/TessayaExpression.ts";
+import { sayPayload, type LineEvent } from "@t3tools/baton-shared/expression";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
 import { R1Updates } from "./R1Updates.ts";
@@ -1129,6 +1131,35 @@ const make = Effect.gen(function* () {
           ? `It connected to ${got.mac} rather than ${btLabel(target)}.`
           : `Connected to ${btLabel(target)}. I'll play through it.`;
 
+  /** The moment a connect's outcome is, for her own words; null for the ones only said plainly. */
+  const btMoment = (target: BtKnown, got: BtResult | null): LineEvent | null =>
+    got === null
+      ? null
+      : got.state === "failed"
+        ? got.reason === "repair-needed"
+          ? "bt.forgot"
+          : got.reason === "unreachable" || got.reason === "timeout"
+            ? "bt.unreachable"
+            : got.reason === "remote-off"
+              ? "bt.declined"
+              : "bt.failed"
+        : got.mac !== null && got.mac.toUpperCase() !== target.mac
+          ? null
+          : "bt.connected";
+
+  /** Her words on this R1, with the mood her eyes show; `plain` is today's line, said while her own words are off. */
+  const sayAs = (
+    id: string,
+    event: LineEvent | null,
+    plain: string,
+    facts: Record<string, string> = {},
+  ) =>
+    event === null
+      ? publish(id, "voice/say", { text: plain })
+      : Effect.flatMap(expressOr(event, { plain, facts }), (said) =>
+          said === null ? Effect.void : publish(id, "voice/say", sayPayload(said)),
+        );
+
   /** Route to one known device and connect; the firmware switches between bonded sinks in 3-5 s. */
   const btConnect = Effect.fn("HomeDevices.btConnect")(function* (
     id: string,
@@ -1136,7 +1167,7 @@ const make = Effect.gen(function* () {
     by: DeviceActor,
     pair: boolean,
   ) {
-    if (by.dryRun === true) return `Connecting to ${btLabel(target)}.`;
+    if (by.dryRun === true) return { said: `Connecting to ${btLabel(target)}.`, moment: null };
     const waiter = yield* Deferred.make<BtResult>();
     btWait.set(id, waiter);
     yield* publish(
@@ -1148,9 +1179,10 @@ const make = Effect.gen(function* () {
       Effect.timeoutOption(pair ? "20 seconds" : "8 seconds"),
     );
     if (btWait.get(id) === waiter) btWait.delete(id);
-    const said = btLine(target, got._tag === "Some" ? got.value : null);
+    const result = got._tag === "Some" ? got.value : null;
+    const said = btLine(target, result);
     yield* audit(by, id, `Bluetooth ${pair ? "pair" : "connect"} ${btLabel(target)}`, said);
-    return said;
+    return { said, moment: btMoment(target, result) };
   });
 
   /** His words for a Bluetooth device, resolved; or a pair, which scans first. */
@@ -1181,7 +1213,7 @@ const make = Effect.gen(function* () {
         status: "done",
         line: `I don't know a Bluetooth device called "${recordText(target.name, 40)}" here. If it's new, ask me to pair it.`,
       };
-    return { status: "done", line: yield* btConnect(id, found.device, by, false) };
+    return { status: "done", line: (yield* btConnect(id, found.device, by, false)).said };
   });
 
   /** The R1's Bluetooth reports: its links join the known list, a waiting connect hears its result, a scan finds a pair. */
@@ -1243,7 +1275,6 @@ const make = Effect.gen(function* () {
     pairing.delete(id);
     if (wanted.until < now) return;
     const nearby = (heard.get(id)?.speaker?.found ?? []).filter((f) => f.audio || f.name !== "");
-    const say = (text: string) => publish(id, "voice/say", { text });
     const picked =
       wanted.name.trim() === "" && nearby.length === 1
         ? ({
@@ -1260,18 +1291,20 @@ const make = Effect.gen(function* () {
             })),
           );
     if (picked.kind === "none")
-      return yield* say(
+      return yield* sayAs(
+        id,
+        "bt.notfound",
         "I didn't find it. Make sure it's in pairing mode, with its light flashing, and ask me again.",
       );
-    if (picked.kind === "several")
-      return yield* say(
-        `I found ${picked.devices.map(btLabel).join(" and ")}. Which one should I pair?`,
-      );
+    if (picked.kind === "several") {
+      const names = picked.devices.map(btLabel).join(" and ");
+      return yield* sayAs(id, "bt.which", `I found ${names}. Which one should I pair?`, { names });
+    }
     yield* remember(id, picked.device);
     // Off the broker's queue: the result it waits for comes in on that queue.
-    yield* Effect.flatMap(btConnect(id, picked.device, wanted.by, true), say).pipe(
-      Effect.forkIn(scope, { startImmediately: true }),
-    );
+    yield* Effect.flatMap(btConnect(id, picked.device, wanted.by, true), ({ said, moment }) =>
+      sayAs(id, moment, said, { name: btLabel(picked.device), label: btLabel(picked.device) }),
+    ).pipe(Effect.forkIn(scope, { startImmediately: true }));
   });
 
   const revert = Effect.fn("HomeDevices.revert")(function* (id: string) {

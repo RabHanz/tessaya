@@ -11,6 +11,7 @@ import {
   type JobLifecycle,
   jobChanges,
   jobLimits,
+  jobMoment,
   jobNotice,
   limitReached,
   outboundDecision,
@@ -245,6 +246,25 @@ describe("a job's changes for the Record", () => {
       "Fix login failed.",
       "Fix login stopped at its turns limit.",
       null,
+      null,
+    ]);
+  });
+  it("names the same moments for her own words, with the limit as an exact fact", () => {
+    expect(
+      [
+        "plan waits for his OK",
+        "done",
+        "failed",
+        "needs him",
+        "stopped at its turns limit",
+        "running",
+      ].map((outcome) => jobMoment(outcome)),
+    ).toEqual([
+      { event: "job.plan", facts: {} },
+      { event: "job.done", facts: {} },
+      { event: "job.failed", facts: {} },
+      { event: "job.needs", facts: {} },
+      { event: "job.stopped", facts: { limit: "turns" } },
       null,
     ]);
   });

@@ -45,7 +45,6 @@ export interface RoomCall {
 export const HOLD_ON = "One moment.";
 /** What she says when a web search starts before her first word (B0: the subscription writes no line itself). */
 export const WEB_CUE = "Let me look that up.";
-export const FILLERS = [HOLD_ON, WEB_CUE];
 
 /** A turn's brain call takes one of the shared brain slots, so many vessels at once never overload the box (§2.0a). */
 export const inBrainSlot =
@@ -208,6 +207,8 @@ export interface VesselTurn<E, R> {
   /** The shared tools (the one registry), called for `device`. */
   readonly tools: RoomToolSet;
   readonly device: string | undefined;
+  /** Her fillers for this turn, in her own words; unset says the plain ones. */
+  readonly fillers?: { readonly hold: string; readonly web: string };
   /** Wraps every call: a guessed turn's changes wait for his final words. */
   readonly hold: (name: string) => (call: Effect.Effect<ToolOutcome>) => Effect.Effect<ToolOutcome>;
 }
@@ -390,7 +391,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     if (web) readTheWeb = true;
     if (said === "") {
       cueAt ??= clock.currentTimeMillisUnsafe();
-      say(`${web ? WEB_CUE : HOLD_ON} `);
+      say(`${web ? (vessel.fillers?.web ?? WEB_CUE) : (vessel.fillers?.hold ?? HOLD_ON)} `);
     }
   }
   const speak = (stream: typeof words) =>

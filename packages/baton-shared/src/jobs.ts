@@ -16,6 +16,8 @@ import {
   type BatonSessionState,
 } from "@t3tools/baton-contracts";
 
+import type { LineEvent } from "./expression.ts";
+
 /** running, needs him, done or failed: from the work session's state and whether it was settled. */
 export const jobGroup = (state: BatonSessionState, settled: boolean): BatonJobGroup => {
   if (state === "failed") return "failed";
@@ -250,6 +252,25 @@ export const jobNotice = (title: string, outcome: string): string | null =>
           ? `${title} needs you.`
           : outcome.startsWith("stopped at its ")
             ? `${title} ${outcome}.`
+            : null;
+
+/** The moment a job's change is, for her own words (`jobNotice` is the plain line), or null for none. */
+export const jobMoment = (
+  outcome: string,
+): { readonly event: LineEvent; readonly facts: Readonly<Record<string, string>> } | null =>
+  outcome === "plan waits for his OK"
+    ? { event: "job.plan", facts: {} }
+    : outcome === GROUP_WORDS.done
+      ? { event: "job.done", facts: {} }
+      : outcome === GROUP_WORDS.failed
+        ? { event: "job.failed", facts: {} }
+        : outcome === GROUP_WORDS.needs_you
+          ? { event: "job.needs", facts: {} }
+          : outcome.startsWith("stopped at its ")
+            ? {
+                event: "job.stopped",
+                facts: { limit: outcome.replace(/^stopped at its | limit$/g, "") },
+              }
             : null;
 
 /**

@@ -34,6 +34,7 @@ import { inQuietHours } from "@t3tools/baton-shared/attention";
 import { DEFAULT_POLICY } from "@t3tools/baton-shared/initiative";
 import {
   jobChanges,
+  jobMoment,
   jobNotice,
   outboundDecision,
   permissionsSummary,
@@ -67,6 +68,7 @@ import { HomeDevices } from "../home/HomeDevices.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack } from "./OperatingSystemPack.ts";
+import { expressOr } from "./TessayaExpression.ts";
 import { routeFor } from "./BrainRoutes.ts";
 import { DEFAULT_ROUTING, ROUTINE_EFFORT } from "@t3tools/baton-shared/costRouting";
 import { modelOf, roleFor, type Brain } from "@t3tools/baton-shared/osPack";
@@ -970,6 +972,18 @@ export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(funct
     });
     const origin = origins.get(job.workSessionId);
     const line = jobNotice(job.title, outcome);
-    if (origin !== undefined && line !== null) yield* sayOnOrigin(origin, line, said);
+    if (origin !== undefined && line !== null) {
+      // In the voice of the persona the job is for; sayOnOrigin keeps the quiet hours and the hourly budget.
+      const moment = jobMoment(outcome);
+      const own =
+        moment === null
+          ? null
+          : yield* expressOr(moment.event, {
+              persona,
+              plain: line,
+              facts: { title: job.title, ...moment.facts },
+            });
+      yield* sayOnOrigin(origin, own?.text ?? line, said);
+    }
   }
 });

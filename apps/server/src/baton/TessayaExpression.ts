@@ -6,12 +6,13 @@
  */
 import {
   LINE_EVENTS,
-  fillLine,
+  expressionOf,
   keptLines,
   lineId,
   linesPrompt,
   mayExpress,
   pickLine,
+  plainExpression,
   poolLines,
   remember,
   timeSlot,
@@ -53,6 +54,8 @@ export interface ExpressInput {
   readonly facts?: Readonly<Record<string, string>> | undefined;
   /** A call or a work session on the vessel: unprompted lines wait. */
   readonly busy?: boolean | undefined;
+  /** Today's words at this call site, where they differ from the event's own: said with the setting off. */
+  readonly plain?: string | undefined;
 }
 
 export class TessayaExpression extends Context.Service<
@@ -77,13 +80,6 @@ const PER_EVENT = 6;
 const EVENTS_PER_BATCH = 8;
 /** At most this many writing calls an hour: cheap however chatty the house is. */
 export const BATCHES_PER_HOUR = 6;
-
-const INTENSITY: Readonly<Record<Expression["priority"], number>> = {
-  ambient: 0.4,
-  normal: 0.5,
-  important: 0.7,
-  safety: 1,
-};
 
 const Written = Schema.Struct({
   moments: Schema.Array(
@@ -215,23 +211,9 @@ export const make = Effect.gen(function* () {
       });
       if (!allowed) return null;
       const persona = personaOf(input.persona)?.id ?? "executive";
-      const out = (line: Line, source: Expression["source"]): Expression | null => {
-        const text = fillLine(line.text, facts);
-        return text === null || text.trim() === ""
-          ? null
-          : {
-              event,
-              persona,
-              text,
-              mood: line.mood,
-              gesture: line.gesture,
-              intensity: INTENSITY[s.priority],
-              priority: s.priority,
-              source,
-              lineId: lineId(event, line.text),
-            };
-      };
-      const fixed = out({ text: s.fixed, mood: s.mood, gesture: s.gesture }, "fixed");
+      const out = (line: Line, source: Expression["source"]) =>
+        expressionOf(event, persona, line, facts, source);
+      const fixed = plainExpression(event, persona, facts, input.plain);
       if (current?.tessayaExpression !== true) return fixed;
 
       const slot = timeSlot(hourIn(at, (yield* timeZone) ?? quiet?.timeZone ?? "UTC"));
@@ -260,3 +242,14 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(TessayaExpression, make);
+
+/** The words for a moment where the service may be missing (a bare server, a test): its decision, else the plain line. */
+export const expressOr = Effect.fn("TessayaExpression.expressOr")(function* (
+  event: LineEvent,
+  input: ExpressInput = {},
+) {
+  const service = yield* Effect.serviceOption(TessayaExpression);
+  return Option.isSome(service)
+    ? yield* service.value.express(event, input)
+    : plainExpression(event, input.persona ?? "executive", input.facts, input.plain);
+});
