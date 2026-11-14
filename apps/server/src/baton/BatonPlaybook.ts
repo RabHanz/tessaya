@@ -17,6 +17,7 @@ import {
 } from "@t3tools/baton-shared/playbook";
 import type { ThreadId, WorkSessionId } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -123,7 +124,10 @@ export const learnFromOutcome = Effect.fn("BatonPlaybook.learn")(function* (inpu
   const item = yield* playbookItem(domain);
   const playbook = parsePlaybook(item?.text ?? null, domain);
   const cited = citedIn(input.report).filter((id) => playbook.lessons.some((l) => l.id === id));
-  const answer = yield* (yield* BatonOneShot)
+  // Optional, so the job flows that grade a report (retry, a repeat ask) take on no new service.
+  const oneShot = yield* Effect.serviceOption(BatonOneShot);
+  if (Option.isNone(oneShot)) return null;
+  const answer = yield* oneShot.value
     .run({
       prompt: `${WRITER_SYSTEM}\n\n${writerInput({
         goal: input.goal,
