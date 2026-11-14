@@ -68,6 +68,16 @@ export interface LayerHost {
   ) => Promise<{ readonly member: string; readonly method: "pin" | "hello" | "passkey" } | null>;
   readonly presence?: (vessel: string) => Promise<"alone" | "others" | "unknown">;
   readonly deviceKey?: () => Promise<Uint8Array | null>;
+  /** What this system can do today: its personas and the tools a turn can reach, read live from the server. */
+  readonly capabilities?: () => Promise<{
+    readonly personas: ReadonlyArray<{
+      readonly id: string;
+      readonly name: string;
+      readonly role: string;
+      readonly lead: boolean;
+    }>;
+    readonly tools: ReadonlyArray<{ readonly name: string; readonly description: string }>;
+  }>;
   readonly home?: (call: {
     readonly tool: string;
     readonly args: Readonly<Record<string, unknown>>;

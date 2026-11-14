@@ -527,7 +527,11 @@ export const startBatonDesktop = Effect.gen(function* () {
         });
         if (response.status === 404) return null;
         if (!response.ok) throw new Error(`layer link ${response.status}`);
-        return { open: ((await response.json()) as { open?: unknown }).open === true };
+        const answer = (await response.json()) as { open?: unknown; page?: unknown };
+        return {
+          open: answer.open === true,
+          page: typeof answer.page === "string" ? answer.page : null,
+        };
       },
       // Kept by the OS keystore (DPAPI on Windows): only this Windows account on this machine can read it back.
       deviceKey: () => {
@@ -561,6 +565,32 @@ export const startBatonDesktop = Effect.gen(function* () {
       },
       shield: (on) => setPrivateShield(on, Electron.BrowserWindow.getAllWindows()),
     });
+    // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer.
+    const openLayerPage = async () => {
+      const page = layerLink.page();
+      if (page === null) return;
+      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      if (config._tag === "None") return;
+      const origin = new URL(config.value.httpBaseUrl).origin;
+      const session = Electron.session.fromPartition(`layer-${NodeCrypto.randomUUID()}`);
+      session.webRequest.onBeforeSendHeaders(
+        { urls: [`${origin}/tessaya/layer/*`] },
+        (details, done) =>
+          done({ requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${token}` } }),
+      );
+      const win = new Electron.BrowserWindow({
+        width: 1100,
+        height: 820,
+        title: "Tessaya",
+        autoHideMenuBar: true,
+        webPreferences: { session, contextIsolation: true, sandbox: true },
+      });
+      win.setContentProtection(true);
+      void win.loadURL(`${origin}${page}`);
+    };
+    const wantsLayer = (args: ReadonlyArray<string>) =>
+      args.some((a) => a.startsWith(`${TESSAYA_SCHEME}://layer`));
     Electron.powerMonitor.on("lock-screen", () => void layerLink.signal("screenLocked"));
     Electron.powerMonitor.on("suspend", () => void layerLink.signal("sleep"));
     // His sentence through the one brain on this machine's server (SPINE-UNIFY S4): her words as they stream.
@@ -794,6 +824,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     // A second launch means "show me Tessaya". T3's own handler raises its main window first and slowly, so
     // Tessaya's window is raised after it, or the T3 window ends up on top.
     Electron.app.on("second-instance", (_event, argv) => {
+      if (wantsLayer(argv)) return void openLayerPage();
       const place = placeInArgs(argv) ?? undefined;
       setTimeout(() => voice?.openHome(place), SECOND_LAUNCH_RAISE_MS).unref();
     });
@@ -801,6 +832,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     Electron.app.on("open-url", (event, url) => {
       if (!isTessayaLink(url)) return;
       event.preventDefault();
+      if (wantsLayer([url])) return void openLayerPage();
       voice?.openHome(tessayaPlaceOf(url) ?? undefined);
     });
     if (Electron.app.isPackaged) Electron.app.setAsDefaultProtocolClient(TESSAYA_SCHEME);
