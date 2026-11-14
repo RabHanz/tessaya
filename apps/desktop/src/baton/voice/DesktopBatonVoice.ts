@@ -96,6 +96,7 @@ import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/tessaya-shared/approvals";
 import { COMMS_SOUND_PLACEHOLDER, noteCardOf } from "@t3tools/tessaya-shared/comms";
 import { createIntercomTab, type CommsCall } from "../home/intercomTab.ts";
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 import { releasesUrl, repoSlug } from "@t3tools/tessaya-shared/repo";
 import { answerNeeds } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/tessaya-shared/weave";
@@ -6957,8 +6958,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       {
         id: "v.serveRoomRecognizer",
         section: "Dictation",
-        label: "Recognise for the R1",
-        hint: "While you are not dictating or talking to Tessaya here, the R1 desk device can use this computer to recognise what you say to it, over your private network. It is faster than the R1's own server; when this computer is busy or asleep, the R1 uses that.",
+        label: `Recognise for the ${DEVICE}`,
+        hint: `While you are not dictating or talking to Tessaya here, your ${DEVICE} can use this computer to recognise what you say to it, over your private network. It is faster than the ${DEVICE}'s own server; when this computer is busy or asleep, the ${DEVICE} uses that.`,
         kind: "toggle",
         on: settings.serveRoomRecognizer,
       },
@@ -7542,7 +7543,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.devicesMayLook",
         section: "Start",
         label: "Let my devices look at this screen without asking",
-        hint: "When your R1 or another device of yours asks what is on this screen, Tessaya looks without a prompt here. Off: she asks each time, unless your own verified voice asked.",
+        hint: `When your ${DEVICE} or another device of yours asks what is on this screen, Tessaya looks without a prompt here. Off: she asks each time, unless your own verified voice asked.`,
         kind: "toggle",
         on: settings.devicesMayLook,
       },

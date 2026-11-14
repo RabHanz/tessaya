@@ -13,6 +13,7 @@ import {
   type SpeakerProfile,
 } from "@t3tools/tessaya-voice";
 
+import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 import { enrolOwner, enrolSaved, personId, SAVED_PERSON_LINES } from "./speakerEnrolment.ts";
 import type { VoiceIdModelState, VoiceIdSettings, VoiceIdView } from "./voiceIdRows.ts";
 
@@ -247,7 +248,7 @@ export const createVoiceId = (input: {
           lead: "Use your normal voice, at your usual distance from the mic. One sentence at a time, with a short pause between them.",
           mic: input.micName?.() ?? "This computer's microphone",
           tip: owner
-            ? "Using the R1 too? Enrol again from Hardware, so Tessaya knows you on the room mic as well."
+            ? `Using the ${DEVICE} too? Enrol again from Hardware, so Tessaya knows you on the room mic as well.`
             : null,
           otherVoiceBelow: CAMPLUS_POLICY.single.listen,
           strongFrom: CAMPLUS_POLICY.single.act + 0.15,
