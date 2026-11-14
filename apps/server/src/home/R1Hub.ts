@@ -39,11 +39,21 @@ const MAX_PACKET = 64 * 1024;
 const MAX_RETAINED = 2_000;
 const DEVICE_ID = /^[A-Za-z0-9_-]{1,60}$/;
 
+const ROOT = "freya/r1/";
+/**
+ * The renamed root: a client may speak `tsy/<id>/…`, the hub keeps `freya/r1/…` inside, and a client hears in the root
+ * it subscribed with. Flip the inside root once the firmware OTA ships `tsy/`; drop `freya/r1/` when no paired device
+ * or room loop still speaks it.
+ */
+const TSY = "tsy/";
+const inside = (topic: string) => (topic.startsWith(TSY) ? ROOT + topic.slice(TSY.length) : topic);
+const asTsy = (topic: string) => (topic.startsWith(ROOT) ? TSY + topic.slice(ROOT.length) : topic);
+
 export type HubGrant = { readonly kind: "device"; readonly id: string } | { readonly kind: "bus" };
 
 /** A filter or topic this login may use: a device its own prefix, the bus every R1's. */
 const hubAllows = (grant: HubGrant, filter: string): boolean =>
-  filter.startsWith(grant.kind === "bus" ? "freya/r1/" : `freya/r1/${grant.id}/`);
+  filter.startsWith(grant.kind === "bus" ? ROOT : `${ROOT}${grant.id}/`);
 
 export interface HubLink {
   readonly publish: (topic: string, payload: string | Uint8Array, retain?: boolean) => void;
@@ -231,6 +241,7 @@ export const makeHub = (
     let keepAliveS = 0;
     let ended = false;
     let bridge = false;
+    let speaksTsy = false;
     const self = {
       will: null as { topic: string; payload: Buffer; retain: boolean } | null,
       grant: null as HubGrant | null,
@@ -243,7 +254,8 @@ export const makeHub = (
     };
     const sub: Subscriber = {
       filters: [],
-      deliver: (topic, payload, retained) => io.send(publishPacket(topic, payload, retained)),
+      deliver: (topic, payload, retained) =>
+        io.send(publishPacket(speaksTsy ? asTsy(topic) : topic, payload, retained)),
     };
     const end = () => {
       self.will = null;
@@ -255,6 +267,7 @@ export const makeHub = (
       if (grant === null) {
         if (p.type !== 1) return end();
         const c = parseConnect(p);
+        if (c.will !== null) c.will.topic = inside(c.will.topic);
         // 0x84 is 3.1.1 from another broker's bridge (mosquitto's try_private): it never gets its own messages back.
         if (c.name !== "MQTT" || (c.level !== 4 && c.level !== 0x84)) {
           io.send(connack(1));
@@ -315,7 +328,7 @@ export const makeHub = (
           const qos = (p.flags >> 1) & 3;
           if (qos === 2) return end();
           const [t, at] = str(p.body, 0);
-          const topic = t.toString("utf8");
+          const topic = inside(t.toString("utf8"));
           if (qos === 1) io.send(ack(0x40, p.body.readUInt16BE(at)));
           // A topic a login may not use is dropped quietly, as mosquitto does.
           if (hubAllows(g, topic) && !/[+#]/.test(topic))
@@ -334,7 +347,9 @@ export const makeHub = (
           for (let at = 2; at < p.body.length;) {
             const [f, next] = str(p.body, at);
             at = next + 1;
-            const filter = f.toString("utf8");
+            const given = f.toString("utf8");
+            if (given.startsWith(TSY)) speaksTsy = true;
+            const filter = inside(given);
             if (hubAllows(g, filter)) {
               added.push(filter);
               codes.push(0);
@@ -352,7 +367,7 @@ export const makeHub = (
           for (let at = 2; at < p.body.length;) {
             const [f, next] = str(p.body, at);
             at = next;
-            const i = sub.filters.indexOf(f.toString("utf8"));
+            const i = sub.filters.indexOf(inside(f.toString("utf8")));
             if (i >= 0) sub.filters.splice(i, 1);
           }
           io.send(ack(0xb0, id));

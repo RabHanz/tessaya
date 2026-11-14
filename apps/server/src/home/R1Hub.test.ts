@@ -234,6 +234,33 @@ it.effect(
     }),
 );
 
+it.effect(
+  "lets a device speak the renamed tsy/ root while the server and old clients keep freya/r1/",
+  () =>
+    Effect.gen(function* () {
+      const hub = hubForTest();
+      const server: Array<string> = [];
+      const link = hub.attach(["freya/r1/+/state/#"], (t, p) => server.push(`${t}=${p}`));
+      const a = socketOn(hub);
+      const bus = socketOn(hub);
+      yield* a.send(will("r1-a", "r1-a", KEY, "tsy/r1-a/state/online"));
+      yield* bus.send(
+        connectPacket({ clientId: "loop", user: "tessaya-bus", pass: "bus", keepAliveS: 30 }),
+      );
+      yield* bus.send(subscribePacket(1, ["freya/r1/+/state/#"]));
+      yield* a.send(subscribePacket(1, ["tsy/r1-a/cmd/#", "tsy/r1-b/cmd/#"]));
+      expect([...a.got.at(-1)!.body]).toEqual([0, 1, 0, 0x80]);
+      yield* a.send(publishPacket("tsy/r1-a/state/online", Buffer.from("1")));
+      yield* a.send(publishPacket("tsy/r1-b/state/online", Buffer.from("x")));
+      expect(server).toEqual(["freya/r1/r1-a/state/online=1"]);
+      expect(bus.publishes()).toEqual(["freya/r1/r1-a/state/online=1"]);
+      link.publish("freya/r1/r1-a/cmd/eye/set", "{}");
+      expect(a.publishes()).toEqual(["tsy/r1-a/cmd/eye/set={}"]);
+      a.session.gone();
+      expect(server.at(-1)).toBe("freya/r1/r1-a/state/online=0");
+    }),
+);
+
 it("slows a fast caller and locks out a guesser, per address, so the R1 itself is never locked out", () => {
   const guard = makeLoginGuard();
   for (let i = 0; i < 20; i++) expect(guard.admit("203.0.113.9", 1_000)).toBeNull();
