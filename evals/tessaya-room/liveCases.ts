@@ -680,6 +680,20 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     }),
   },
   {
+    id: "account-everywhere",
+    proves: ["tessaya_account_use"],
+    // B-032: a rehearsal resolves the account and switches nothing.
+    said: ["Switch everything to the work account."],
+    uses: [["tessaya_account_use"]],
+    argsOf: "tessaya_account_use",
+    args: (input) => ({
+      work: String(input["account"] ?? "")
+        .toLowerCase()
+        .includes("work"),
+      everywhere: input["everywhere"] === true,
+    }),
+  },
+  {
     id: "setting-confirm",
     proves: ["settings_set"],
     // The model she talks on is the brain's routing table's voice row (brainModels, a confirm setting).
