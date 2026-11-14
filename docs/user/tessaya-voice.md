@@ -38,6 +38,16 @@ Tessaya serves everyone who lives with you. In Tessaya's window, open **Memory**
 - **Preferences for** shows how Tessaya talks to each person: what to call them, who answers, her voice, units, times, news and music. Everyone changes their own; the owner can change anyone's. Spell an unusual name ("Zaid, Z-A-Y-D") and she keeps the spelling.
 - Adding people, changing roles and giving **this computer** need you to be sure it's you. On Windows, choose yourself under **Windows Hello confirms** once (your phone says yes to that), and from then on Windows Hello covers the next 5 minutes. Without it, type your PIN under **Confirm it's you with your PIN**, or say yes on your phone.
 
+## Face check (Windows)
+
+On Windows, Tessaya can also use your webcam. Turn it on in Settings, Privacy, **Face check**. It needs the face engine from face-unlock installed on the computer, and without it the switch stays greyed out. Then switch on **Your face** and look at the camera. Each person in the household gets their own switch: they look at the camera while it turns on, and that is their consent. Switching a face off deletes it at once, even with Face check off. You can do all of this by voice too.
+
+- The camera only looks when Tessaya needs it: while a Windows Hello approval is open, before showing your private memories, and while she waits for a yes.
+- If you step away for 10 seconds, the Windows Hello approval ends early.
+- If someone else is in view, your private memories stay hidden and a spoken yes does not count. Click it instead.
+- A face alone means "probably you". With your voice it can approve everyday asks. Risky ones always need Windows Hello, your PIN or your phone.
+- After several failed checks in a row it rests, and **Turn back on** brings it back.
+
 ## Messages and announcements
 
 People who live with you can message each other and make announcements through Tessaya. Messages are off until you turn them on: in Tessaya's window open **Devices**, then **Intercom**, and switch on **Messages and announcements**. The same page sets quiet hours, your do-not-disturb, who may drop in on you, and the emergencies. On your phone, **Messages** at `/tessaya` on your server has the same switch.

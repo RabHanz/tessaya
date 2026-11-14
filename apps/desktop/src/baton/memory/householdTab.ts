@@ -1,4 +1,4 @@
-// @effect-diagnostics globalDate:off
+// @effect-diagnostics globalDate:off globalTimers:off
 /**
  * The Household area (ACCOUNTS-IDENTITY-DESIGN I-1): who lives here, each one's role and devices, adding someone with a
  * code for their phone, removing them (their data waits 7 days for their export) or bringing them back, and enrolling
@@ -332,8 +332,28 @@ export const createHouseholdTab = (input: {
   /** This computer's Windows account and Windows Hello, on Windows: Hello first for what needs you. */
   readonly windowsAccount?: string;
   readonly hello?: () => Promise<"verified" | "declined" | "unavailable">;
+  /** Face check: watches for him while the lease is open and calls `gone` when he walks away; returns its stop. */
+  readonly faceAway?: (member: string, gone: () => void) => () => void;
 }) => {
   let leaseUntil = 0;
+  let stopWatch = () => {};
+  /** The Hello lease, ended early by the face check when he steps away (it only narrows). */
+  const lease = () => {
+    leaseUntil = Date.now() + LEASE_MS;
+    const mine = members.find((m) => m.you)?.id;
+    stopWatch();
+    if (input.faceAway === undefined || mine === undefined) return;
+    const stop = input.faceAway(mine, () => {
+      leaseUntil = 0;
+      status = text("hh.faceAway");
+      input.refresh();
+    });
+    const timer = setTimeout(stop, LEASE_MS);
+    stopWatch = () => {
+      clearTimeout(timer);
+      stop();
+    };
+  };
   /** Hello once for the next 5 minutes, where this account is yours alone; otherwise the server asks his phone. */
   const confirm = async () => {
     const mine = members.find((m) => m.you)?.windowsAccount;
@@ -341,7 +361,7 @@ export const createHouseholdTab = (input: {
       return;
     if ((await input.hello()) !== "verified") return;
     const r = await input.call("stepUp", { hello: input.windowsAccount }).catch(() => null);
-    if (r?.status === "done") leaseUntil = Date.now() + LEASE_MS;
+    if (r?.status === "done") lease();
   };
   let members: ReadonlyArray<BatonHouseholdMember> = [];
   let homeOn: string | null = null;
@@ -380,7 +400,7 @@ export const createHouseholdTab = (input: {
         await confirm();
       const r = await input.call(op, args);
       status = r.line;
-      if (op === "stepUp" && r.status === "done") leaseUntil = Date.now() + LEASE_MS;
+      if (op === "stepUp" && r.status === "done") lease();
       if (r.code !== undefined && r.codeExpiresAt !== undefined)
         code = { name: name ?? "", code: r.code, until: r.codeExpiresAt };
     } catch (e) {

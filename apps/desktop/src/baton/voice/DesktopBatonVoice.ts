@@ -6,7 +6,10 @@
  * Windows first (D97, D106): capture, speech and paste are `tessaya-voice`, which is packaged
  * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
+import { shoulderSurf } from "@t3tools/baton-shared/biometrics";
 import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/baton-shared/household";
+import { createFaceCheck, faceEnginePath } from "../face/faceCheck.ts";
+import { FACE_MEMBER, FACE_ON, FACE_RESUME, faceControls } from "../face/faceRows.ts";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -658,6 +661,8 @@ interface VoiceSettings {
   readonly openSessionsOnStart: boolean;
   /** His own devices may look at this screen without asking (an owner setting: Settings or his yes by voice). */
   readonly devicesMayLook: boolean;
+  /** Tessaya's face check on this computer's webcam (Settings → Privacy → Face check); off until he turns it on. */
+  readonly faceCheck: boolean;
   readonly pinnedLabel: string | null;
   /** Where the wake and VAD models are; null = the ones that shipped with the app. */
   readonly modelsDir: string | null;
@@ -852,6 +857,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   openTessayaOnStart: false,
   openSessionsOnStart: true,
   devicesMayLook: false,
+  faceCheck: false,
   pinnedLabel: null,
   modelsDir: null,
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
@@ -1012,6 +1018,7 @@ export const readSettings = (path: string): VoiceSettings => {
       openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       devicesMayLook: saved["devicesMayLook"] === true,
+      faceCheck: saved["faceCheck"] === true,
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       pillDesign: parsePillDesign(saved["pillDesign"]),
       pillWaveform: parsePillWave(saved["pillWaveform"]),
@@ -1374,6 +1381,38 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Written once on a fresh install; the guide is shown while it exists and is not marked done. */
   const setupMarker = NodePath.join(input.stateDir, "baton-setup.pending");
   let settings = readSettings(settingsPath);
+  let faceStatus: string | null = null;
+  let faceOnlooker = false;
+  let faceMembers: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly you: boolean;
+  }> = [{ id: OWNER_MEMBER_ID, name: "You", you: true }];
+  const faceCheck = createFaceCheck({
+    stateDir: input.stateDir,
+    platform: input.platform,
+    exe: faceEnginePath(input.env),
+    on: () => settings.faceCheck,
+    progress: (message) => {
+      faceStatus = message;
+      pushHome();
+    },
+    ...(input.onNote === undefined ? {} : { onNote: input.onNote }),
+  });
+  /** Who may enrol a face here: the home's members (only the owner where there is no household yet). */
+  const refreshFaceMembers = async () => {
+    const listed = (await input.household?.("list").catch(() => null))?.members;
+    if (listed === undefined) return;
+    faceMembers = listed
+      .filter((m) => m.state !== "leaving")
+      .map((m) => ({ id: m.id, name: m.name, you: m.you }));
+    pushHome();
+  };
+  if (input.platform === "win32" && settings.faceCheck)
+    setTimeout(() => void refreshFaceMembers(), 5_000).unref();
+  /** Someone besides the person checked is in view: private things hide and a spoken yes waits for a click. */
+  const onlooker = async (): Promise<boolean> =>
+    (faceOnlooker = faceCheck.available() && shoulderSurf(await faceCheck.scan()));
   const tourMemory = () => ({
     freshInstall: NodeFS.existsSync(setupMarker),
     ...(settings.setupDone === undefined ? {} : { done: settings.setupDone }),
@@ -3485,18 +3524,24 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : { width: found.width / scale, height: found.height / scale }),
       };
     },
-    confirm: (prompt) => core?.confirm(prompt) ?? null,
+    confirm: (prompt) => {
+      // Looks while the question is asked, so a spoken yes is judged with what the camera saw.
+      void onlooker();
+      return core?.confirm(prompt) ?? null;
+    },
     // D4: while Voice ID runs, a spoken yes stands alone only for ordinary things and only in his voice. A "yes" is
     // too short to judge, so it is the voice of the turn it answers; one judged as someone else's still is not his.
     spokenYes: (risk, turnSpeaker) =>
-      !speakerIdentity.running() ||
-      spokenYesStands(speakerIdentity.current(), turnSpeaker, risk, settings.voiceId.voiceYes) ||
-      // His session is verified (recognition.ts): a yes too short to judge is his for an ordinary ask.
-      (risk === "ordinary" &&
-        settings.voiceId.voiceYes &&
-        speakerIdentity.current().kind === "unverified" &&
-        speakerIdentity.session()?.verified === true &&
-        speakerIdentity.session()?.member === "owner"),
+      // Someone else in view: the yes is clicked, not spoken (face check, Settings → Privacy).
+      !faceOnlooker &&
+      (!speakerIdentity.running() ||
+        spokenYesStands(speakerIdentity.current(), turnSpeaker, risk, settings.voiceId.voiceYes) ||
+        // His session is verified (recognition.ts): a yes too short to judge is his for an ordinary ask.
+        (risk === "ordinary" &&
+          settings.voiceId.voiceYes &&
+          speakerIdentity.current().kind === "unverified" &&
+          speakerIdentity.session()?.verified === true &&
+          speakerIdentity.session()?.member === "owner")),
     stepUp: () => {
       const member = speakerIdentity.session()?.member ?? null;
       const step = speakerIdentity.stepUp(
@@ -5524,6 +5569,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             ? {
                 windowsAccount: windowsAccountOf(NodeOS.hostname(), NodeOS.userInfo().username),
                 hello: () => windowsHello("Confirm it's you for Tessaya", input.platform),
+                faceAway: (member: string, gone: () => void) =>
+                  faceCheck.available() && faceCheck.enrolled().some((e) => e.member === member)
+                    ? faceCheck.watchAway(member, gone)
+                    : () => {},
               }
             : {}),
         });
@@ -5540,6 +5589,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ? null
       : createPrivateTab({
           memory: input.privateMemory,
+          onlooker,
           voices: () =>
             voiceId
               .profiles()
@@ -6612,6 +6662,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...at("memory"),
       ...(privateTab?.controls() ?? []),
       ...(householdTab?.controls() ?? []),
+      ...faceControls({
+        platform: input.platform,
+        engineFound: NodeFS.existsSync(faceEnginePath(input.env)),
+        on: settings.faceCheck,
+        limited: faceCheck.limited(),
+        status: faceStatus,
+        members: faceMembers.map((m) => ({
+          ...m,
+          enrolled: faceCheck.enrolled().some((e) => e.member === m.id),
+        })),
+      }),
       ...(intercomTab?.controls() ?? []),
       ...(privateTab === null || privateTab.everyday() ? memoryTab.controls() : []),
       ...vaultTab.controls(),
@@ -8382,6 +8443,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (VOICE_ID_SWITCHES[id] !== undefined) {
       save({ voiceId: { ...settings.voiceId, [VOICE_ID_SWITCHES[id]]: on } });
       voiceId.sync();
+    } else if (id === FACE_ON) {
+      save({ faceCheck: on });
+      if (on) void refreshFaceMembers();
+    } else if (id.startsWith(FACE_MEMBER)) {
+      const member = faceMembers.find((m) => m.id === id.slice(FACE_MEMBER.length));
+      if (member !== undefined)
+        void (on ? faceCheck.enrol(member) : faceCheck.remove(member.id)).finally(() => {
+          faceStatus = null;
+          pushHome();
+        });
+    } else if (id === FACE_RESUME) {
+      faceCheck.resetLimit();
+      pushHome();
     } else if (id === "vid.enrol") voiceId.read({ kind: "owner" });
     else if (id === "vid.card:redo") voiceId.card("redo");
     else if (id === "vid.card:close") voiceId.card("close");
