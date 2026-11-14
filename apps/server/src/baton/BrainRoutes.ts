@@ -72,23 +72,30 @@ export const readInstancePool = Effect.fn("BrainRoutes.readInstancePool")(functi
 const DEFERRABLE: ReadonlySet<BrainRole> = new Set(["background", "consolidation"]);
 
 /**
- * Why a role's call waits instead of running now (B-031), or null: background work on the server's own subscription
- * when it is within the warning band and no other login has room, while `brainDeferNearLimit` is on (the default).
+ * The account `instanceId` runs on, when it is within the warning band and no other login has room (B-031): its reset
+ * and headroom, or null to go on. Off when `brainDeferNearLimit` is off. Talking never asks; background work and jobs do.
  */
-export const deferredRole = Effect.fn("BrainRoutes.deferredRole")(function* (role: BrainRole) {
-  if (!DEFERRABLE.has(role)) return null;
+export const accountPause = Effect.fn("BrainRoutes.accountPause")(function* (instanceId: string) {
   const settings = yield* Effect.serviceOption(ServerSettingsService);
   if (Option.isSome(settings)) {
     const current = yield* settings.value.getSettings.pipe(Effect.option);
     if (Option.isSome(current) && !current.value.brainDeferNearLimit) return null;
   }
   const pool = yield* Effect.serviceOption(AccountPoolService);
-  if (Option.isNone(pool)) return null;
-  // Without cswap (the laptop) the subscription is the default Claude instance and its reported limits.
-  const read = yield* pool.value
-    .read(ProviderDriverKind.make("claudeAgent"))
-    .pipe(Effect.catch(() => readInstancePool(BATON_DEFAULT_CLAUDE_INSTANCE)));
-  const defer = read === null ? null : deferNearLimit(read);
+  // The default instance is cswap's machine login where cswap exists; elsewhere (the laptop) its reported limits.
+  const read =
+    instanceId === BATON_DEFAULT_CLAUDE_INSTANCE && Option.isSome(pool)
+      ? yield* pool.value
+          .read(ProviderDriverKind.make("claudeAgent"))
+          .pipe(Effect.catch(() => readInstancePool(instanceId)))
+      : yield* readInstancePool(instanceId);
+  return read === null ? null : deferNearLimit(read);
+});
+
+/** Why a role's call waits instead of running now (B-031), or null: background work on the server's own subscription. */
+export const deferredRole = Effect.fn("BrainRoutes.deferredRole")(function* (role: BrainRole) {
+  if (!DEFERRABLE.has(role)) return null;
+  const defer = yield* accountPause(BATON_DEFAULT_CLAUDE_INSTANCE);
   return defer === null
     ? null
     : `${role} waits for the reset${defer.until === null ? "" : ` at ${defer.until}`}: the subscription has ${Math.round(defer.headroomPercent)}% left and no other login has room`;

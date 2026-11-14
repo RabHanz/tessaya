@@ -21,7 +21,7 @@ import {
   MAX_PARTS,
   SUMMARY_MARK,
 } from "@t3tools/tessaya-shared/coordinator";
-import { BLOCKED_MARK } from "@t3tools/tessaya-shared/coordinator";
+import { BLOCKED_MARK, PAUSED_MARK } from "@t3tools/tessaya-shared/coordinator";
 import { placeJob as placeFromWords } from "@t3tools/tessaya-shared/jobPlacement";
 import { briefNudge, NUDGE_MARK, parseJobBrief } from "@t3tools/tessaya-shared/jobBrief";
 import { planActs } from "@t3tools/tessaya-shared/planLease";
@@ -71,7 +71,7 @@ import { BatonEngine } from "./BatonEngine.ts";
 import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack, readTemplates } from "./OperatingSystemPack.ts";
 import { expressOr } from "./TessayaExpression.ts";
-import { routeFor } from "./BrainRoutes.ts";
+import { accountPause, routeFor } from "./BrainRoutes.ts";
 import { DEFAULT_ROUTING, ROUTINE_EFFORT } from "@t3tools/tessaya-shared/costRouting";
 import { modelOf, roleFor, type Brain } from "@t3tools/tessaya-shared/osPack";
 import { assignJob, templateBrief, type JobTemplate } from "@t3tools/tessaya-shared/jobTemplates";
@@ -140,6 +140,53 @@ export interface StartOptions {
   /** The pack template the job follows. */
   readonly template?: JobTemplate;
 }
+
+// Paused work re-reads its account this often, and at the reset if that comes first.
+const PAUSE_RECHECK_MS = 5 * 60_000;
+// Jobs waiting for a reset now: a second ask while one waits adds no second line or wait.
+const heldJobs = new Set<string>();
+
+/**
+ * Runs `work` now, or when `instanceId`'s login is nearly spent with no other room (B-031) notes it in the job's record
+ * and runs it once there is room. Returns the reset it waits for, or undefined when it ran now.
+ * shortcut: the wait is in memory, so a restart drops it; upgrade to a scheduled task if that bites.
+ */
+export const runOrHoldForReset = Effect.fn("BatonJobFlow.runOrHoldForReset")(function* <E, R>(
+  id: WorkSessionId,
+  instanceId: string,
+  work: Effect.Effect<void, E, R>,
+) {
+  const pause = yield* accountPause(instanceId);
+  if (pause === null) {
+    yield* work;
+    return undefined;
+  }
+  if (heldJobs.has(id)) return pause.until;
+  heldJobs.add(id);
+  const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
+  yield* (yield* BatonJobService).refine(id, {
+    by: "baton",
+    at,
+    via: "thread",
+    text: `${PAUSED_MARK} ${instanceId} has ${Math.round(pause.headroomPercent)}% left and no other login has room. It starts on its own ${pause.until === null ? "once there is room" : `at the reset (${pause.until})`}.`,
+  });
+  const untilMs = pause.until === null ? Number.NaN : Date.parse(pause.until);
+  const waitForRoom = Effect.gen(function* () {
+    for (;;) {
+      const now = yield* Clock.currentTimeMillis;
+      const left = Number.isNaN(untilMs) ? PAUSE_RECHECK_MS : untilMs - now;
+      yield* Effect.sleep(Math.max(1_000, Math.min(PAUSE_RECHECK_MS, left)));
+      if ((yield* accountPause(instanceId)) === null) return;
+    }
+  });
+  yield* waitForRoom.pipe(
+    Effect.andThen(Effect.sync(() => heldJobs.delete(id))),
+    Effect.andThen(work),
+    Effect.ignoreCause({ log: true }),
+    Effect.forkDetach,
+  );
+  return pause.until;
+});
 
 export const startJob = Effect.fn("BatonJobFlow.start")(function* (
   input: BatonJobStartInput,
@@ -212,43 +259,49 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
           Effect.timeout("2 seconds"),
           Effect.catchCause(() => Effect.succeed("")),
         );
-  const launched = yield* engine.launchThread({
-    tag: "job",
-    threadId,
-    projectId: input.projectId,
-    title: input.title,
-    modelSelection,
-    runtimeMode: input.runtimeMode,
-    interactionMode: options.agreed === true ? "default" : "plan",
-    worktreePath: workSession.primaryWorktreePath,
-    branch: workSession.baseBranch,
-    text: workerFirstMessage({
-      verbatim: input.goal,
-      frame: frame(userdata, options.role, options.template),
-      memory: [remembered.block, playbook].filter((b) => b !== "").join("\n\n"),
-      ...(options.agreed === true ? { agreed: true } : {}),
-      permissionsSummary: permissionsSummary(terms.permissions, terms.limits, terms.grants),
-    }),
-  });
-  if (launched === null) {
-    return yield* Effect.die(new Error("The worker thread could not be started."));
-  }
-  yield* workSessions.attachThread({
-    id,
-    threadId: launched,
-    providerInstanceId: input.modelSelection.instanceId,
-    providerDriver: null,
-    origin: "created",
-  });
-  if (options.agreed === true) {
-    yield* jobs.planReady(id);
-    return {
-      terms: (yield* jobs.agree(id)) ?? terms,
+  const launch = Effect.gen(function* () {
+    const launched = yield* engine.launchThread({
+      tag: "job",
+      threadId,
+      projectId: input.projectId,
+      title: input.title,
+      modelSelection,
+      runtimeMode: input.runtimeMode,
+      interactionMode: options.agreed === true ? "default" : "plan",
+      worktreePath: workSession.primaryWorktreePath,
+      branch: workSession.baseBranch,
+      text: workerFirstMessage({
+        verbatim: input.goal,
+        frame: frame(userdata, options.role, options.template),
+        memory: [remembered.block, playbook].filter((b) => b !== "").join("\n\n"),
+        ...(options.agreed === true ? { agreed: true } : {}),
+        permissionsSummary: permissionsSummary(terms.permissions, terms.limits, terms.grants),
+      }),
+    });
+    if (launched === null) {
+      return yield* Effect.die(new Error("The worker thread could not be started."));
+    }
+    yield* workSessions.attachThread({
+      id,
       threadId: launched,
-      model: modelSelection.model,
-    };
-  }
-  return { terms, threadId: launched, model: modelSelection.model };
+      providerInstanceId: input.modelSelection.instanceId,
+      providerDriver: null,
+      origin: "created",
+    });
+    started = { terms, threadId: launched };
+    if (options.agreed === true) {
+      yield* jobs.planReady(id);
+      started = { terms: (yield* jobs.agree(id)) ?? terms, threadId: launched };
+    }
+  });
+  // The thread id is chosen here, so a held start still returns the thread it will open.
+  let started = { terms, threadId };
+  const held = yield* runOrHoldForReset(id, input.modelSelection.instanceId, launch);
+  return {
+    ...started,
+    model: modelSelection.model,
+    ...(held === undefined ? {} : { pausedUntil: held }),
+  };
 });
 
 /** The plan stands and the work begins: out of plan mode, and told to go. */
@@ -316,16 +369,23 @@ export const placeJob = Effect.fn("BatonJobFlow.place")(function* (input: BatonJ
   };
 });
 
-export const beginWork = Effect.fn("BatonJobFlow.beginWork")(function* (threadId: ThreadId) {
+export const beginWork = Effect.fn("BatonJobFlow.beginWork")(function* (
+  terms: BatonJobTerms,
+  threadId: ThreadId,
+) {
   const engine = yield* BatonEngine;
-  yield* engine
-    .setInteractionMode({ tag: "job", threadId, interactionMode: "default" })
-    .pipe(Effect.ignoreCause({ log: true }));
-  yield* engine.sendMessage({
-    tag: "job",
-    threadId,
-    text: "Go ahead with the plan as it stands. Stay inside what you were allowed.",
+  const go = Effect.gen(function* () {
+    yield* engine
+      .setInteractionMode({ tag: "job", threadId, interactionMode: "default" })
+      .pipe(Effect.ignoreCause({ log: true }));
+    yield* engine.sendMessage({
+      tag: "job",
+      threadId,
+      text: "Go ahead with the plan as it stands. Stay inside what you were allowed.",
+    });
   });
+  if (terms.workerInstanceId === null) return yield* go;
+  yield* runOrHoldForReset(terms.workSessionId, terms.workerInstanceId, go);
 });
 
 export const agreeJob = Effect.fn("BatonJobFlow.agree")(function* (id: WorkSessionId) {
@@ -345,7 +405,7 @@ export const agreeJob = Effect.fn("BatonJobFlow.agree")(function* (id: WorkSessi
     const threadId = yield* threadOf(id);
     if (threadId !== null) {
       const leased = yield* leasePlan(id, threadId, terms);
-      yield* beginWork(threadId);
+      yield* beginWork(terms, threadId);
       return leased ?? terms;
     }
   }
@@ -603,7 +663,11 @@ export const autoRetry = Effect.fn("BatonJobFlow.autoRetry")(function* (
     const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
     // The record comes first: it counts against the budget even if the message below fails.
     yield* jobs.refine(card.workSessionId, { by: "baton", at, via: "thread", text });
-    yield* (yield* BatonEngine).sendMessage({ tag: "job", threadId, text });
+    const send = (yield* BatonEngine)
+      .sendMessage({ tag: "job", threadId, text })
+      .pipe(Effect.asVoid);
+    if (card.terms.workerInstanceId === null) yield* send;
+    else yield* runOrHoldForReset(card.workSessionId, card.terms.workerInstanceId, send);
     retried.push(card.workSessionId);
   }
   return retried;
@@ -641,7 +705,7 @@ export const noticePlan = Effect.fn("BatonJobFlow.noticePlan")(function* (thread
     }
   }
   const next = yield* jobs.planReady(id);
-  if (next?.phase === "approved") yield* beginWork(threadId);
+  if (next?.phase === "approved") yield* beginWork(next, threadId);
 });
 
 /** His stop: the worker's running turn ends now. The job and its thread stay for him to read. */

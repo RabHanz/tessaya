@@ -452,6 +452,20 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     says: "Onyx",
   },
   {
+    id: "job-paused-at-limit",
+    source:
+      "Director 14 Nov (B-032): one login at its limit keeps talking and pauses everything else, with an honest status",
+    said: "take on a job in the shop project: tidy the README",
+    first: ["job_start"],
+    goal: "job_start",
+    maxCalls: 2,
+    answers: {
+      job_start:
+        "Opened Tidy the README in shop on sonnet, led by Onyx. Its login is nearly out of usage and no other has room, so it is paused and starts by itself when the limit resets at Fri 14 Nov, 18:30; tell him that plainly. Talking keeps working meanwhile.",
+    },
+    says: "18:30",
+  },
+  {
     id: "assign-he-names",
     model: "opus",
     source: "PERSONA-TEAM-DESIGN §2.4: he can say who does it, and that person leads",

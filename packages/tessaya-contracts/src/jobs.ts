@@ -277,6 +277,8 @@ export class BatonJobPlacementError extends Schema.TaggedError<BatonJobPlacement
 export const BatonJobStartResult = Schema.Struct({
   terms: BatonJobTerms,
   threadId: ThreadId,
+  /** Its account is nearly spent: the work waits for this reset (null when none was named) and then starts. */
+  pausedUntil: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type BatonJobStartResult = typeof BatonJobStartResult.Type;
 
