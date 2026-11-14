@@ -37,6 +37,10 @@ export class BatonOneShot extends Context.Service<
       readonly outputSchema: S;
       /** Which kind of work this is: the brain's routing table picks the model (BrainRoutes). */
       readonly role: BrainRole;
+      /** A model he chose for this call (the prompt lab), still on his subscription. */
+      readonly model?: string;
+      /** Replaces Claude Code's own system prompt. */
+      readonly system?: string;
     }) => Effect.Effect<S["Type"], BatonOneShotError, S["DecodingServices"]>;
   }
 >()("t3/baton/BatonOneShot") {}
@@ -54,7 +58,7 @@ export const make = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const usage = yield* BrainUsage;
 
-  const run: BatonOneShot["Service"]["run"] = ({ prompt, outputSchema, role }) =>
+  const run: BatonOneShot["Service"]["run"] = ({ prompt, outputSchema, role, system, ...chosen }) =>
     Effect.gen(function* () {
       const route = yield* routeFor(role).pipe(
         Effect.mapError(
@@ -66,7 +70,7 @@ export const make = Effect.gen(function* () {
         yield* Effect.logWarning("brain: a one-shot was refused", { role, why: path.refused });
         return yield* new BatonOneShotError({ detail: path.refused });
       }
-      const { model } = path;
+      const model = chosen.model ?? path.model;
       // @effect-diagnostics-next-line globalJsonInEffect:off - a JSON Schema object, always serialisable.
       const jsonSchema = JSON.stringify(toJsonSchemaObject(outputSchema));
       const command = ChildProcess.make(
@@ -90,6 +94,7 @@ export const make = Effect.gen(function* () {
           "--strict-mcp-config",
           "--permission-mode",
           "dontAsk",
+          ...(system === undefined ? [] : ["--system-prompt", system]),
         ],
         { stdin: { stream: Stream.encodeText(Stream.make(prompt)) }, forceKillAfter: "1 second" },
       );

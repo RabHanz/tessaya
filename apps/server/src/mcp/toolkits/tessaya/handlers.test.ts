@@ -739,3 +739,15 @@ it.effect(
       expect(forgot).toEqual(["sara"]);
     }),
 );
+
+it("keeps the prompt lab the owner's, and what is live his to change", () => {
+  const refused = TessayaHandlers.labRefusal;
+  expect(refused("run", { member: "owner" })).toBeNull();
+  expect(refused("promote", { member: "owner" })).toBeNull();
+  expect(refused("list", { member: "maya" })).toBe("The prompt lab is the owner's.");
+  expect(refused("list", { member: null })).toBe("The prompt lab is the owner's.");
+  // An agent from outside may look, save and run, never make a variant live.
+  expect(refused("save", null)).toBeNull();
+  expect(refused("promote", null)).toContain("Only he makes a prompt live");
+  expect(refused("rollback", null)).toContain("Only he makes a prompt live");
+});

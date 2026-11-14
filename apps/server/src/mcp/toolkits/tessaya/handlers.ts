@@ -1,8 +1,10 @@
 import {
+  BATON_ACCOUNT_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
+  BATON_PROMPT_LAB_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
@@ -21,7 +23,9 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { accountByWords } from "@t3tools/baton-shared/accountRoom";
 import { recordText } from "@t3tools/baton-shared/audit";
+import { OWNER_MEMBER_ID } from "@t3tools/baton-shared/household";
 
 import { clientMessageFrom, withAgentMessageFrom } from "../../../baton/AgentMessageFrom.ts";
 import { gateMessage } from "../../../baton/AgentMessageGate.ts";
@@ -40,10 +44,12 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
 import * as HomeHandlers from "../home/handlers.ts";
+import { vesselOf } from "../home/handlers.ts";
 import * as JobsHandlers from "../jobs/handlers.ts";
 import * as MembersHandlers from "../members/handlers.ts";
 import * as CommsHandlers from "../comms/handlers.ts";
 import * as SettingsHandlers from "../settings/handlers.ts";
+import { asForwarded, fromPeers, onPeer } from "../../../peer/PeerVessels.ts";
 import { OpenInTerminalReply, TessayaToolkit } from "./tools.ts";
 
 const decodeAsked = Schema.decodeUnknownOption(
@@ -146,6 +152,20 @@ const agoOf = (ms: number): string => {
 };
 
 /** The Record on the house's clock, each row with its age, so no model reads UTC as local (13 Nov). */
+/**
+ * Who may use the prompt lab from a tool: the owner only. Making a variant live or rolling back is his, by voice (the
+ * room asks his yes first) or in Settings; an agent from outside may look, save and run, never change what is live.
+ */
+export const labRefusal = (
+  action: string,
+  origin: { readonly member?: string | null } | null,
+): string | null =>
+  origin !== null && origin.member !== undefined && origin.member !== OWNER_MEMBER_ID
+    ? "The prompt lab is the owner's."
+    : origin === null && (action === "promote" || action === "rollback")
+      ? "Only he makes a prompt live or rolls it back: in Settings, Brain, Prompt lab, or by asking Tessaya."
+      : null;
+
 export const onHouseClock = (
   entries: ReadonlyArray<BatonRecordEntry>,
   now: number,
@@ -251,6 +271,84 @@ export const layer = McpToolAccess.toLayer(
       ...(yield* MembersHandlers.make),
       ...(yield* CommsHandlers.make),
       ...(yield* JobsHandlers.make),
+      // This machine, the ones he names, or all of them; each peer switches only itself (a linked call is never forwarded).
+      tessaya_account_use: McpToolAccess.writes(
+        (input) =>
+          asForwarded(
+            input,
+            Effect.gen(function* () {
+              const thisOne = (name: string) => /^(this|here)\b/i.test(name.trim());
+              const named = input.machines ?? [];
+              const everywhere = input.everywhere === true;
+              const here = Effect.gen(function* () {
+                const pool = yield* call(handlers[BATON_ACCOUNT_WS_METHODS.accountPool]({}));
+                const target = accountByWords(pool.accounts, input.account);
+                if (target === null)
+                  return {
+                    on: "this machine",
+                    switched: false,
+                    line: `No one login here is called ${input.account}; here there are ${pool.accounts.map((a) => a.label).join(", ")}.`,
+                  };
+                // The suite's pretend vessel is checked as for real and switches nothing.
+                const scope = yield* McpInvocationContext.McpInvocationContext;
+                if (vesselOf(scope.client)?.dryRun === true)
+                  return {
+                    on: "this machine",
+                    switched: false,
+                    line: `Would switch to ${target.label} (a rehearsal).`,
+                  };
+                const used = yield* call(
+                  handlers[BATON_ACCOUNT_WS_METHODS.accountUse]({
+                    key: target.key,
+                    reason: "manual",
+                    ...(target.email === null ? {} : { email: target.email }),
+                  }),
+                );
+                const moved = "sessions" in used ? used.sessions.switched : 0;
+                return {
+                  on: "this machine",
+                  switched: true,
+                  line: `Now on ${target.label}${moved === 0 ? "" : `, and ${moved} session${moved === 1 ? "" : "s"} with their own login moved too`}.`,
+                };
+              }).pipe(
+                Effect.catch((error) =>
+                  Effect.succeed({
+                    on: "this machine",
+                    switched: false,
+                    line: `Not switched: ${error.message}`,
+                  }),
+                ),
+              );
+              const args = { account: input.account };
+              const answers = everywhere
+                ? yield* fromPeers("tessaya_account_use", args, "40 seconds")
+                : yield* Effect.forEach(
+                    named.filter((name) => !thisOne(name)),
+                    (on) =>
+                      Effect.map(
+                        onPeer("tessaya_account_use", args, {
+                          on,
+                          takes: () => true,
+                          wait: "40 seconds",
+                        }),
+                        (there) => there ?? { on, value: null },
+                      ),
+                  );
+              const elsewhere = answers.flatMap(({ on, value }) => {
+                const results = (
+                  value as { results?: ReadonlyArray<{ switched: boolean; line: string }> } | null
+                )?.results;
+                return results === undefined
+                  ? [{ on, switched: false, line: "That machine did not answer." }]
+                  : results.map((result) => ({ ...result, on }));
+              });
+              const local = everywhere || named.length === 0 || named.some(thisOne);
+              return { results: [...(local ? [yield* here] : []), ...elsewhere] };
+            }),
+          ),
+        // His other servers switch this machine for a turn they heard ("switch everything to …").
+        { linkedCallers: "allowed" },
+      ),
       tessaya_jobs: McpToolAccess.reads(() => call(handlers[BATON_JOB_WS_METHODS.jobList]())),
       tessaya_watch: McpToolAccess.reads(() => call(handlers[BATON_WATCH_WS_METHODS.watchGet]())),
       // State and names only: no synopsis, prompt or folder, and a walled project's work by its project's name.
@@ -371,6 +469,34 @@ export const layer = McpToolAccess.toLayer(
             timeZone: "",
           }),
         ),
+      ),
+      tessaya_prompt_lab: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          const origin = yield* TurnOrigin;
+          const refused = labRefusal(input.action, origin);
+          if (refused !== null) return { line: refused };
+          const persona = input.persona ?? "";
+          const variant = input.variant ?? "";
+          return yield* call(
+            handlers[BATON_PROMPT_LAB_WS_METHODS.call](
+              input.action === "list"
+                ? { op: "list" }
+                : input.action === "save"
+                  ? { op: "save", persona, variant, text: input.text ?? "" }
+                  : input.action === "run"
+                    ? {
+                        op: "run",
+                        persona,
+                        variants: input.variants ?? (variant === "" ? ["live"] : [variant]),
+                        models: input.models ?? ["sonnet"],
+                        ...(input.message === undefined ? {} : { message: input.message }),
+                      }
+                    : input.action === "promote"
+                      ? { op: "promote", persona, variant }
+                      : { op: "rollback", persona },
+            ),
+          );
+        }),
       ),
       tessaya_memory_about: McpToolAccess.reads((input) =>
         call(withTurn((turn) => Effect.map(turn.about(input.subject), (items) => ({ items })))),

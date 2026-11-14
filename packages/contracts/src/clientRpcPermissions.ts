@@ -87,6 +87,8 @@ const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
 
 /** Tessaya's device door (`BATON_DEVICES_WS_METHODS.call`); this package cannot import baton-contracts. */
 const DEVICES_CALL = "baton.devices.call";
+/** Her prompt lab (`BATON_PROMPT_LAB_WS_METHODS.call`): his prompts, the owner's settings. */
+const PROMPT_LAB_CALL = "baton.promptLab.call";
 
 export function clientRpcRequiredScopes(
   method: string,
@@ -114,6 +116,7 @@ export function clientRpcRequiredScopes(
         ? [AuthOrchestrationReadScope, AuthBatonCloudApproveScope]
         : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   }
+  if (method === PROMPT_LAB_CALL) return [AuthSettingsWriteScope];
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]
     : [];

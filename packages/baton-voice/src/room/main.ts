@@ -46,6 +46,7 @@ import { createSmartTurn } from "./smartTurn.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { createWakeStream } from "./wakeStream.ts";
 import { DEVICE } from "@t3tools/baton-shared/productNames";
+import { adoptTesselNames } from "./envNames.ts";
 
 const env = (key: string, fallback?: string): string => {
   const v = process.env[key] ?? fallback;
@@ -532,6 +533,7 @@ const startRecogniser = async () => {
 };
 
 const main = async () => {
+  adoptTesselNames(process.env);
   const threads = Number(env("R1_ONNX_THREADS", "2"));
   log("starting: loading models");
   await startRecogniser();

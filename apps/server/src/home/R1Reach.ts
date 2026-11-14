@@ -4,7 +4,6 @@
  * on `state/net/endpoints` differs (a DHCP change, the setting, a relink), so the user never re-pairs.
  */
 import * as Clock from "effect/Clock";
-import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -18,7 +17,7 @@ import { CLOUD_ENDPOINT_RUNTIME_CONFIG } from "../cloud/config.ts";
 import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts";
 import { DirectEndpoints } from "../environment/DirectEndpoints.ts";
 import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
-import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
+import { deviceSetting, R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
 import { DEVICE } from "@t3tools/baton-shared/productNames";
 
 /** The firmware keeps four broker URLs of up to 96 characters (`r1bt_endpoints.c`). */
@@ -105,10 +104,7 @@ export const layer = Layer.effect(
     const direct = yield* Effect.serviceOption(DirectEndpoints);
     const runtime = yield* Effect.serviceOption(CloudManagedEndpointRuntime);
     // shortcut: an operator list for a migration's old broker, read once; a setting if users ever need it.
-    const fallback = (yield* Config.String("TESSAYA_R1_FALLBACK_BROKERS").pipe(
-      Config.withDefault(""),
-      Effect.orDie,
-    ))
+    const fallback = (yield* deviceSetting("FALLBACK_BROKERS").pipe(Effect.orDie))
       .split(",")
       .map((s) => s.trim())
       .filter((s) => s !== "");

@@ -21,6 +21,7 @@ import {
   BatonWeaveSendInput,
   BatonWeaveSendResult,
   BrainUsageResult,
+  BatonPromptLabResult,
   DesktopSettingsView,
   DesktopVoiceSettingsPatch,
   OrchestrationRuleListInput,
@@ -47,6 +48,7 @@ import { HomeTools } from "../home/tools.ts";
 import { JobTools } from "../jobs/tools.ts";
 import { MembersTools } from "../members/tools.ts";
 import { CommsTools } from "../comms/tools.ts";
+import { AccountTools } from "../accounts/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
 import { DEVICE } from "@t3tools/baton-shared/productNames";
 
@@ -454,6 +456,30 @@ const UsageReportTool = Tool.make("tessaya_usage_report", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const Word = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(60));
+const PromptLabTool = Tool.make("tessaya_prompt_lab", {
+  ...shared,
+  description:
+    'His prompt lab, for trying a persona\'s prompt before it goes live. `list`: each persona\'s live prompt and his named variants. `save`: keep `text` as variant `variant` of `persona` (nothing live changes). `run`: try `variants` ("live" is the current one) on `models` (haiku, sonnet, opus: his subscription) over the standard scenarios, or on `message` alone; returns each reply with its score, side by side. `promote`: make a variant live, after his yes; `rollback`: put back what was live before. Use it when he says "try my variant B on Sonnet" or "make B live". Say the scores plainly; never promote unasked.',
+  parameters: Schema.Struct({
+    action: Schema.Literals(["list", "save", "run", "promote", "rollback"]),
+    persona: Schema.optional(Word.annotate({ description: "The persona by name, e.g. Alfred." })),
+    variant: Schema.optional(
+      Word.annotate({ description: "A variant's name: lower-case, digits, dashes." }),
+    ),
+    text: Schema.optional(Schema.String.check(Schema.isMaxLength(40_000))),
+    variants: Schema.optional(Schema.Array(Word).check(Schema.isMaxLength(3))),
+    models: Schema.optional(Schema.Array(Word).check(Schema.isMaxLength(3))),
+    message: Schema.optional(Schema.String.check(Schema.isMaxLength(2_000))),
+  }),
+  success: BatonPromptLabResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 const MemoryAboutTool = Tool.make("tessaya_memory_about", {
   ...shared,
   description:
@@ -600,6 +626,7 @@ export const TessayaToolkit = Toolkit.make(
   ...MembersTools,
   ...CommsTools,
   ...JobTools,
+  ...AccountTools,
   JobsTool,
   WatchTool,
   RecordTool,
@@ -611,6 +638,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryAboutTool,
   ComingUpTool,
   UsageReportTool,
+  PromptLabTool,
   WhosHomeTool,
   PreferenceSetTool,
   WakeWordsTool,

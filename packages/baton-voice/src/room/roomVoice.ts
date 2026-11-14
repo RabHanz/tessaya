@@ -2177,9 +2177,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** The R1's own stop (S2 or a tap while she speaks): she stops, and a turn on its way is not answered. */
       stopReply: (src: string) => stopHer(`[${id}] stop from the ${DEVICE} (${src})`),
       /** S2 or the R1's own wake: he is talking to her now. */
-      wake: () => {
+      /** `ack` false: the window only, no sound (the R1 back on the link refuses audio outside a session, 14 Nov). */
+      wake: (ack = true) => {
         openUntil = Math.max(openUntil, deps.now() + config.followMs);
         firstUntil = deps.now() + config.firstTurnMs;
+        if (!ack) return;
         // Nothing said within 1.2 s of her name or S2: she shows she heard (13 Nov: the red light, then silence).
         const seq = starts;
         const at = deps.now();
@@ -2550,12 +2552,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         tail === "event/session/end" ||
         (tail === "state/voice" && ["stop", "end"].includes(String(json()["ev"])))
       ) {
-        // The R1 closed its own session (it no longer says "Bye bye"): her closing sound, then the loop lets it go.
+        // The R1 closed its own session: it refuses audio now ("no session"), so no closing sound is sent (14 Nov, 20:20).
         const s = sessions.get(id);
         if (s === undefined) return;
-        cue(id, "end");
         sessions.delete(id);
-        void deps.sleep(silent(id) ? 0 : soundMs("end") + config.downDelayMs).then(() => s.close());
+        s.close();
       } else if (tail === "cmd/voice/talkover") {
         const mode = json()["mode"];
         if (mode === "open" || mode === "keyword") talkOverFor.set(id, mode);
@@ -2571,7 +2572,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         } else startOnR1(id, (s) => s.enrol());
       } else if (tail === "state/online" && String(payload).trim() === "1") {
         // Back on the link mid-session: he was talking to her, so the window opens again rather than lapsing (00:43, 13 Nov).
-        sessions.get(id)?.wake();
+        sessions.get(id)?.wake(false);
         if (config.inhouse.has(id)) void rearm(id);
       }
     },
