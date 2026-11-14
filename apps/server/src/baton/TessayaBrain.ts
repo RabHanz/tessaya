@@ -80,8 +80,9 @@ export const speakableSentences = (
   const out = (sentence: string) => {
     if (sentence.trim() === "" || isNarration(sentence)) return;
     const kept = withoutSelfIntro(sentence, names);
-    // A sentence that was only the opener says nothing; one with more keeps its trailing space.
-    if (kept !== "") say(kept === sentence.trim() ? sentence : `${kept} `);
+    // A sentence that was only the opener says nothing. Each one ends in a space, the last too: the vessel speaks a
+    // sentence once a space follows it, and the stream's end waits for the turn's Record write (14 Nov, 21:40).
+    if (kept.trim() !== "") say(/\s$/.test(kept) ? kept : `${kept} `);
   };
   return {
     push: (words: string) => {
@@ -442,11 +443,6 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   // Sonnet said "Putting Opus on this.": the same turn goes on in an Opus session, with the vessel's tools.
   const task: string | null = handOff;
   if (task !== null && Exit.isSuccess(ran)) {
-    // Her last sentence ended the stream with no space after it: the loop splits sentences on one.
-    if (said !== "" && !/\s$/.test(said)) {
-      said += " ";
-      say(" ");
-    }
     ran = yield* speak(
       brain.session({
         ...toolTurn,
