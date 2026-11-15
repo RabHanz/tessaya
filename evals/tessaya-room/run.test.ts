@@ -165,6 +165,35 @@ describe("the room's live tool suite", () => {
     expect(liveFailureOf(camera, {}, ["Done, I took the picture."], [set])).not.toBeNull();
   });
 
+  it("fails a done act's reply that runs long, offers more, or adds the time or advice (L-tessel, 15 Nov)", () => {
+    const kept: LiveCall = {
+      name: "tessaya_preference_set",
+      input: { key: "timeFormat", value: "24-hour" },
+      isError: false,
+      text: JSON.stringify({ line: "Kept." }),
+    };
+    const wish = liveCases.find((c) => c.id === "direct-wish")!;
+    const failure = (reply: string) => liveFailureOf(wish, {}, [reply], [kept]);
+    expect(failure("One moment. Done, twenty-four hour times from now on.")).toBeNull();
+    expect(failure("Done, 24-hour from now on. It's twenty-three twenty-seven right now.")).toMatch(
+      /last reply/,
+    );
+    expect(failure("Done. Want me to change the date format too?")).toMatch(/offer/);
+    expect(failure("Done. It is set. You will hear it next time.")).toMatch(/more than 2/);
+    const remember = liveCases.find((c) => c.id === "direct-after-chat")!;
+    const noted: LiveCall = {
+      ...kept,
+      name: "tessaya_memory_remember",
+      input: { text: "the plumber comes Thursday at ten" },
+    };
+    expect(
+      liveFailureOf(remember, {}, ["Kept: the plumber, Thursday at ten."], [noted]),
+    ).toBeNull();
+    expect(liveFailureOf(remember, {}, ["Kept. You've earned some rest."], [noted])).toMatch(
+      /last reply/,
+    );
+  });
+
   it("has a case for every tool the room can call, so a new tool fails until it has one", async () => {
     const { ROOM_TOOL_SPECS } = await import("../../apps/server/src/home/R1Tools.ts");
     expect(uncovered([...ROOM_TOOL_SPECS.map((s) => s.name), "room_look"])).toEqual([]);
