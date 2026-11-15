@@ -130,6 +130,7 @@ import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { VoiceArbiter } from "../home/VoiceArbiter.ts";
 import { DeviceTriggers } from "../home/DeviceTriggers.ts";
 import { devicesActorOf, serveDevicesCall } from "../home/HomeDeviceCalls.ts";
+import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import { TessayaVoiceLibrary, serveVoiceCall } from "./TessayaVoiceLibrary.ts";
 import { serveLearnCall } from "./TessayaLearn.ts";
 
@@ -170,6 +171,7 @@ export type TessayaServices =
   | VoiceArbiter
   | DeviceTriggers
   | R1Brain
+  | TessayaVocabulary
   | TessayaVoiceLibrary
   | TessayaOneShot
   | TessayaSessionCatalogService

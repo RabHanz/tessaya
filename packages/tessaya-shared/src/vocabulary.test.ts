@@ -9,6 +9,7 @@ import {
   addNever,
   isNever,
   learnCorrection,
+  mergeEntries,
   mergeWispr,
   removeHeard,
   skipWord,
@@ -62,6 +63,45 @@ describe("vocabulary file", () => {
     expect(terms[4]).toBe("Tessel");
     expect(terms.slice(5)).toEqual(["Parakeet", 'Baton (heard as "Buton")']);
     expect(entries.find((e) => e.phrase === "Baton")).toMatchObject({ source: "added", count: 2 });
+  });
+});
+
+describe("two copies of his vocabulary", () => {
+  it("merge to the same list whichever way and however often they are sent", () => {
+    const desk = [
+      {
+        phrase: "Kubernetes",
+        replacement: null,
+        source: "learned" as const,
+        count: 4,
+        heard: ["cube"],
+      },
+      { phrase: "Hetzner", replacement: null, source: "added" as const, count: 1 },
+    ];
+    const server = [
+      {
+        phrase: "kubernetes",
+        replacement: null,
+        source: "added" as const,
+        count: 2,
+        heard: ["kuber"],
+        lastSeen: NOW,
+      },
+    ];
+    const merged = mergeEntries(server, desk);
+    expect(merged).toEqual([
+      {
+        phrase: "kubernetes",
+        replacement: null,
+        source: "added",
+        count: 4,
+        lastSeen: NOW,
+        heard: ["kuber", "cube"],
+      },
+      desk[1],
+    ]);
+    expect(mergeEntries(merged, desk)).toEqual(merged);
+    expect(mergeEntries(merged, server)).toEqual(merged);
   });
 });
 

@@ -13,6 +13,7 @@ import {
   BATON_VOICE_ACT_OPS,
   BATON_VOICE_READ_OPS,
   type TessayaVoiceCallInput,
+  VocabularyChange,
   type TessayaVoiceCallResult,
   type LibraryVoiceView,
   type VoiceClip,
@@ -45,6 +46,7 @@ import { serveArbiter } from "../home/VoiceArbiter.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 
 export const GOOGLE_KEY_SECRET = "google-api-key";
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
@@ -386,15 +388,29 @@ const ACT: ReadonlySet<string> = new Set(BATON_VOICE_ACT_OPS);
 export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
   input: TessayaVoiceCallInput,
 ) {
-  const voices = yield* TessayaVoiceLibrary;
   const args = input.args ?? {};
   const decode = <S extends Schema.Decoder<unknown>>(schema: S) =>
     Schema.decodeUnknownOption(schema)(args as unknown);
   const allowed = input.kind === "read" ? READ : ACT;
   const bad: TessayaVoiceCallResult = { ok: false, error: "That is not a voice request." };
   if (!allowed.has(input.op)) return bad;
+  if (input.op === "vocabulary" || input.op === "vocabularyChange") {
+    const store = yield* Effect.serviceOption(TessayaVocabulary);
+    if (Option.isNone(store)) return { ok: false, error: "This server keeps no dictionary." };
+    if (input.op === "vocabulary") return { ok: true, value: yield* store.value.read };
+    const a = decode(VocabularyChange);
+    if (Option.isNone(a)) return bad;
+    return yield* store.value.change(a.value).pipe(
+      Effect.map((value): TessayaVoiceCallResult => ({ ok: true, value })),
+      Effect.catchTags({
+        VocabularyRefusedError: (e) =>
+          Effect.succeed<TessayaVoiceCallResult>({ ok: false, error: e.why }),
+      }),
+    );
+  }
   const arbiter = yield* serveArbiter(input.op, args);
   if (arbiter !== null) return arbiter;
+  const voices = yield* TessayaVoiceLibrary;
   const answer = <A>(effect: Effect.Effect<A, VoiceRefusedError>) =>
     effect.pipe(
       Effect.map((value): TessayaVoiceCallResult => ({ ok: true, value })),

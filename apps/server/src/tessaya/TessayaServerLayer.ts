@@ -68,6 +68,7 @@ import * as TessayaMemoryReactor from "./TessayaMemoryReactor.ts";
 import * as TessayaMemoryEmbedder from "./TessayaMemoryEmbedder.ts";
 import * as TessayaMemoryService from "./TessayaMemoryService.ts";
 import * as TessayaPrivateMemoryService from "./TessayaPrivateMemoryService.ts";
+import * as TessayaVocabulary from "./TessayaVocabulary.ts";
 import * as TessayaVoiceLibrary from "./TessayaVoiceLibrary.ts";
 import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as TessayaOneShot from "./TessayaOneShot.ts";
@@ -296,7 +297,8 @@ const servicesInner = IntentService.layer.pipe(
     ),
   ),
   Layer.provideMerge(TessayaPrivateMemoryService.layer),
-  Layer.provideMerge(TessayaVoiceLibrary.layer),
+  // The voices, and his one dictionary, which the voice door, the device route and every vessel's turn read.
+  Layer.provideMerge(Layer.mergeAll(TessayaVoiceLibrary.layer, TessayaVocabulary.layer)),
   // Voices to forget, between the household and every vessel's owner: under both, so each sees it.
   Layer.provideMerge(VoiceForgets.layer),
   // Members' voice defaults and acts held for a step-up, between the turn and runner and every vessel's owner.

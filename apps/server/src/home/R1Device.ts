@@ -52,6 +52,7 @@ import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { TessayaRuntime } from "../tessaya/TessayaRpcHandlers.ts";
 import { MemoryViewer } from "../tessaya/TessayaMemoryService.ts";
 import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
+import { TessayaVocabulary } from "../tessaya/TessayaVocabulary.ts";
 import { TessayaTurn, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
 import type { R1Mood as ContractR1Mood } from "@t3tools/tessaya-contracts";
@@ -602,6 +603,20 @@ export const dictionaryEntries = (
 ): ReadonlyArray<VocabularyEntry> =>
   words.map((w) => ({ phrase: w.term, replacement: null, heard: w.aliases }));
 
+/** His one dictionary; a server without the store falls back to T3's own list. */
+const vocabularyEntries = Effect.gen(function* () {
+  const store = yield* Effect.serviceOption(TessayaVocabulary);
+  if (Option.isSome(store)) return yield* store.value.read;
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  if (Option.isNone(settings)) return [];
+  return dictionaryEntries(
+    yield* settings.value.getSettings.pipe(
+      Effect.map((s) => s.speechProjectCustomWords),
+      Effect.orElseSucceed(() => []),
+    ),
+  );
+});
+
 const r1Pack = Effect.map(Effect.serviceOption(ServerConfig.ServerConfig), (config) =>
   Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath)),
 );
@@ -644,19 +659,12 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   /** The acts form (the subscription's one-shot, no tools): it never reads his private memories. */
   acts = withHouse,
 ) {
-  // His names, as dictation fixes them ("Tessa" → "Tessaya"), from the environment's shared dictionary.
-  const settings = yield* Effect.serviceOption(ServerSettingsService);
-  const words =
-    settings._tag === "None"
-      ? []
-      : yield* settings.value.getSettings.pipe(
-          Effect.map((s) => s.speechProjectCustomWords),
-          Effect.orElseSucceed(() => []),
-        );
+  // His names, as dictation fixes them ("Tessa" → "Tessaya"), from his one dictionary.
+  const entries = yield* vocabularyEntries;
   const pack = yield* r1Pack;
   const input = {
     ...raw,
-    heard: biasTranscript(raw.heard, dictionaryEntries(words), {
+    heard: biasTranscript(raw.heard, entries, {
       names: pack.personas.map((p) => p.name),
     }),
   };
@@ -1400,6 +1408,20 @@ export const routes = HttpRouter.use((router) =>
       );
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     for (const root of DEVICE_API_ROOTS) yield* router.add("GET", `${root}/personas`, personas);
+    // His one dictionary, for the room loop's own correction before it addresses anyone (ONE-EAR-AUDIT §7a).
+    const vocabulary = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
+      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      return HttpServerResponse.jsonUnsafe({
+        entries: yield* vocabularyEntries.pipe(Effect.provideContext(context)),
+      });
+    }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
+    for (const root of DEVICE_API_ROOTS) yield* router.add("GET", `${root}/vocabulary`, vocabulary);
     // His final words matched a guess: the writes it held go ahead.
     const confirm = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;

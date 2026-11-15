@@ -7,8 +7,14 @@
 import * as Schema from "effect/Schema";
 
 export const BATON_VOICE_WS_METHODS = { call: "baton.voice.call" } as const;
-/** `mood` is a persona's working mood (CS6) for a vessel to wear at rest. */
-export const BATON_VOICE_READ_OPS = ["library", "preview", "arbiter", "mood"] as const;
+/** `mood` is a persona's working mood (CS6) for a vessel to wear at rest; `vocabulary` is his one dictionary. */
+export const BATON_VOICE_READ_OPS = [
+  "library",
+  "preview",
+  "arbiter",
+  "mood",
+  "vocabulary",
+] as const;
 /** `claim`, `speaking` and `ended` are the voice arbiter's (one responder per utterance); `answerFrom` sets the primary. */
 /** `express` is a vessel's moment (her desktop body poked, thrown, moved) as the brain words it, in her persona. */
 export const BATON_VOICE_ACT_OPS = [
@@ -20,6 +26,7 @@ export const BATON_VOICE_ACT_OPS = [
   "speaking",
   "ended",
   "answerFrom",
+  "vocabularyChange",
 ] as const;
 
 /** A device heard its wake or her name and asks to answer (R1-P7). */
@@ -42,6 +49,32 @@ export const VoiceClaimInput = Schema.Struct({
   answerHere: Schema.optionalKey(Schema.Boolean),
 });
 export type VoiceClaimInput = typeof VoiceClaimInput.Type;
+
+const VocabularyText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(60));
+
+/**
+ * One change to his dictionary, with the desktop editor's verbs. `learn` merges entries another copy already holds
+ * (a learned word, a desktop's whole list), so sending it twice changes nothing.
+ */
+export const VocabularyChange = Schema.Union([
+  Schema.Struct({
+    verb: Schema.Literal("add"),
+    phrase: VocabularyText,
+    replacement: Schema.NullOr(VocabularyText),
+  }),
+  Schema.Struct({
+    verb: Schema.Literal("edit"),
+    from: VocabularyText,
+    phrase: VocabularyText,
+    replacement: Schema.NullOr(VocabularyText),
+  }),
+  Schema.Struct({ verb: Schema.Literal("remove"), phrase: VocabularyText }),
+  Schema.Struct({
+    verb: Schema.Literal("learn"),
+    entries: Schema.Array(Schema.Unknown).check(Schema.isMaxLength(5_000)),
+  }),
+]);
+export type VocabularyChange = typeof VocabularyChange.Type;
 
 export const TessayaVoiceCallInput = Schema.Struct({
   kind: Schema.Literals(["read", "act"]),
