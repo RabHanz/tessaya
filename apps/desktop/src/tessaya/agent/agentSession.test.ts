@@ -75,7 +75,7 @@ describe("the one assistant's session", () => {
     // No "Freya here." on a new face: the card and the voice say who it is, and her saying the name
     // over the speakers is what dropped his next "Freya, …" as her own voice (0.1.63).
     expect(asked[1]).not.toContain("saying you are");
-    expect(asked[1]).toContain('never open with your name ("Freya here")');
+    expect(asked[1]).toContain('never open with your name ("Freya here", "Freya\'s here")');
     expect(conversation.recent(1)[0]).toMatchObject({
       said: "what time is it",
       persona: "assistant",
