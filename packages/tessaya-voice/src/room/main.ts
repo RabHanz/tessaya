@@ -28,6 +28,7 @@ import {
 } from "../speaker.ts";
 import { createSpeakerStore, vectorToBase64 } from "../speakerStore.ts";
 import { createLines, type LinesGot } from "./lines.ts";
+import { servedVocabulary, VOCABULARY_EVERY_MS } from "./vocabulary.ts";
 import { voicesOf } from "./segments.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
@@ -52,7 +53,7 @@ import { createSmartTurn } from "./smartTurn.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { createWakeStream } from "./wakeStream.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
-import { biasTranscript } from "@t3tools/tessaya-shared/vocabulary";
+import { biasTranscript, type VocabularyEntry } from "@t3tools/tessaya-shared/vocabulary";
 import { adoptTesselNames } from "./envNames.ts";
 
 const env = (key: string, fallback?: string): string => {
@@ -755,8 +756,15 @@ const main = async () => {
       wakes: list.map((w) => ({ word: w.word, path: w.file, threshold: w.threshold })),
     });
   const heard = recognisers(() => online.size > 0);
-  // The room's words get dictation's own name correction, with the personas he can call (one ear on every vessel).
-  const fix = (text: string) => biasTranscript(text, [], { names: roster.map((p) => p.name) });
+  // The room's words get dictation's own correction: his dictionary and the personas he can call (one ear).
+  let vocabulary: ReadonlyArray<VocabularyEntry> = [];
+  const readVocabulary = async () => {
+    vocabulary = (await servedVocabulary(env("R1_BRAIN_URL"), deviceKey)) ?? vocabulary;
+  };
+  void readVocabulary();
+  setInterval(() => void readVocabulary(), VOCABULARY_EVERY_MS).unref();
+  const fix = (text: string) =>
+    biasTranscript(text, vocabulary, { names: roster.map((p) => p.name) });
   const recognise = (who?: { readonly owner: boolean }): RecogniserTurn => {
     const turn = heard(who?.owner);
     return {
