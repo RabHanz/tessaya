@@ -19,6 +19,7 @@ import {
 
 import { DEFAULT_OS_PACK } from "./osPack.ts";
 import { DEVICE } from "./productNames.ts";
+import { compareR1Firmware } from "./r1Firmware.ts";
 
 export const when = (iso: string): string =>
   new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -155,6 +156,24 @@ export const displayChoiceOf = (d: DeviceView): "auto" | "normal" | "flipped" =>
 export const displaySupported = (display: DeviceView["display"] | undefined): boolean =>
   display !== undefined &&
   (display.mode !== null || display.rotate !== null || display.note !== null);
+
+/** The eye styles by the names he sees (R1_EYE_STYLES), and what each looks like. */
+export const EYE_STYLE_CHOICES = [
+  ["alive", "Alive"],
+  ["glass", "Glass"],
+  ["classic", "Classic"],
+] as const;
+const EYE_STYLE_LINES = {
+  alive: "Her eyes look around, breathe and blink their own way.",
+  glass: "Her mood lights her eyes from inside.",
+  classic: "The original eyes, with a soft glow of her mood.",
+} as const;
+/** Firmware before smp-0.3.142 keeps its eyes; the choice is saved and reaches it with the update. */
+export const eyeStyleLine = (d: DeviceView): string =>
+  EYE_STYLE_LINES[d.eyeStyle ?? "alive"] +
+  (d.firmware !== null && (compareR1Firmware(d.firmware, "smp-0.3.142") ?? -1) < 0
+    ? " Saved: it shows after the next firmware update."
+    : "");
 
 /** The sound families of the button and volume taps (`tone.family`, SMP 0.3.122), by the names he hears. */
 export const TONE_FAMILIES = [

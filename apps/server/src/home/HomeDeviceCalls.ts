@@ -16,6 +16,7 @@ import {
   VESSEL_BODY_TYPES,
   R1_KEY_SLOTS,
   R1KeyBinding,
+  R1_EYE_STYLES,
   R1_LEDS,
   R1_MOODS,
   type R1KeySlot,
@@ -143,6 +144,9 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   ),
   earcons: op(Schema.Struct({ id: Id, on: Schema.Boolean }), (a, devices, by) =>
     devices.command(a.id, { op: "earcons", on: a.on }, by),
+  ),
+  eyeStyle: op(Schema.Struct({ id: Id, style: Schema.Literals(R1_EYE_STYLES) }), (a, devices, by) =>
+    devices.command(a.id, { op: "eyeStyle", style: a.style }, by),
   ),
   talkOver: op(Schema.Struct({ id: Id, open: Schema.Boolean }), (a, devices, by) =>
     devices.command(a.id, { op: "talkOver", open: a.open }, by),
