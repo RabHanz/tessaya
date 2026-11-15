@@ -212,3 +212,12 @@ Architecture and its constraints: `docs/internals/overview.md`. Glossary: `docs/
 ## Additional tips
 
 - Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
+
+## Tessaya: one spine
+
+This section is the fork's own. Tessaya is one agent with one brain, spine and memory; every surface and vessel (desktop, web, phone, Tessel and the room loop) is a thin adapter onto it.
+
+- Before you build, find the shared service that already does the job and extend it. Grep `apps/server/src/tessaya`, `apps/server/src/home`, `packages/tessaya-shared` and `packages/tessaya-voice` first. A vessel brings its own I/O and nothing else: no brain, memory, tool table, ear or gate of its own.
+- A second implementation of an existing capability is a defect, even when it works: a separate recogniser, vocabulary, voice ID, consent store, TTS path, persona list or settings store drifts from the first, and users hear the difference.
+- When the shared piece does not fit, change it so it does, for every surface, rather than forking it. Say so loudly if that is too big for one PR.
+- Every PR body names what it reused, what it extended, and anything new with the reason no existing piece fits.
