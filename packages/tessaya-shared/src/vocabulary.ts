@@ -359,6 +359,16 @@ export const soundKey = (word: string): string =>
 export const soundsLike = (heard: string, term: string): boolean =>
   heard.toLowerCase() !== term.toLowerCase() && similar(soundKey(heard), soundKey(term)) >= 0.6;
 
+const consonants = (word: string) =>
+  soundKey(word)
+    .replace(/(?!^)[aeiouhwy]/g, "")
+    .replace(/(.)\1+/g, "$1");
+/** The same consonants in the same order, four or more: "whisperfull" and Wispr Flow, where vowels and spelling differ. */
+export const sameConsonants = (heard: string, term: string): boolean => {
+  const key = consonants(term);
+  return key.length >= 4 && consonants(heard) === key;
+};
+
 /**
  * Names on his screen, from the lines of the focused window's accessibility tree (`Kind: Name …`): words with a
  * capital, a digit or camelCase inside, most frequent first. Titles capitalise every word, so common words are dropped.

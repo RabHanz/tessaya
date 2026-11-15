@@ -30,13 +30,27 @@ export const MODE_LABELS: Readonly<Record<DictationMode, string>> = {
 };
 
 import type { StylePair } from "./stylePairs.ts";
-import { joinSplitTerms, promptTerms, soundKey, soundsLike, withOwnWords } from "./vocabulary.ts";
+import {
+  joinSplitTerms,
+  promptTerms,
+  sameConsonants,
+  soundKey,
+  soundsLike,
+  withOwnWords,
+} from "./vocabulary.ts";
 import { NAME_SOUNDALIKES } from "./wakeVerify.ts";
 
 /** What was on his screen as he spoke: names the recogniser has never heard of (Wispr sends the same). */
 export interface DictationContext {
   readonly screen?: ReadonlyArray<string>;
+  /** The field's text before the caret, so a mis-heard word can be put right from what he is writing about. */
+  readonly before?: string;
+  /** His last few dictations into the same window, oldest first. */
+  readonly recent?: ReadonlyArray<string>;
 }
+
+/** How much of the field and of each recent dictation goes to the model. */
+const CONTEXT_CHARS = 300;
 
 export interface DictionaryEntry {
   readonly phrase: string;
@@ -693,7 +707,7 @@ export const checkRewrite = (
   const output = answer.replace(LIST_MARK, "");
   const input = asked.replace(LIST_MARK, "");
   if (output.trim().length === 0) return fail("empty");
-  if (/<\/?(?:dictation|example|said|kept|refused)>/i.test(output))
+  if (/<\/?(?:dictation|example|said|kept|refused|before|recent)>/i.test(output))
     return fail("leaked its wrapper");
   if (REPLY.test(output.trim()) && !REPLY.test(input.trim()))
     return fail("replied instead of cleaning");
@@ -724,7 +738,11 @@ export const checkRewrite = (
       return fail(`lost number ${number}`);
 
   const his = withOwnWords(dictionary);
-  const screen = context.screen ?? [];
+  // A name in what he wrote before, in the field or a dictation just now, counts as on his screen.
+  const screen = [
+    ...(context.screen ?? []),
+    ...namesIn([context.before ?? "", ...(context.recent ?? [])].join("\n")),
+  ];
   // Whole words: "Tessa" is not known because "Tessaya" is.
   const known = new Set(
     [...his.flatMap((d) => `${d.phrase} ${d.replacement ?? ""}`), ...screen].flatMap((t) =>
@@ -751,6 +769,29 @@ export const checkRewrite = (
   );
   const outLower = output.toLowerCase();
   const inLower = input.toLowerCase();
+  // One of his words heard as two or three words that sound like it only together ("Large Watch" for Launchwatch,
+  // "to say it" for Tessaya), or as one word with its consonants ("whisperfull" for Wispr Flow). One word that
+  // merely sounds close stays refused: "Copy Tessa in" is a person. Every word of the run must be gone from the
+  // answer, so "kuber, is it free" never lends its "is it" to Kubernetes.
+  const count = (words: ReadonlyArray<string>, w: string) =>
+    words.filter((x) => x.toLowerCase() === w.toLowerCase()).length;
+  const outputWords = (output.match(/[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu) ?? []).map((w) =>
+    w.replace(/[.'’-]+$/, ""),
+  );
+  const replaced = (run: ReadonlyArray<string>) =>
+    run.every((w) => count(outputWords, w) < count(inputWords, w));
+  const soundsAcross = (term: string, word?: string) => {
+    const bare = term.replace(/\s+/g, "");
+    for (let i = 0; i < inputWords.length; i += 1)
+      for (let n = 1; n <= 3 && i + n <= inputWords.length; n += 1) {
+        const run = inputWords.slice(i, i + n);
+        if ((word !== undefined && !run.includes(word)) || !replaced(run)) continue;
+        const heard = run.join("");
+        if (sameConsonants(heard, bare)) return true;
+        if (n > 1 && soundsLike(heard, bare) && !run.some((w) => soundsLike(w, bare))) return true;
+      }
+    return false;
+  };
   // A name may go for one of his words the answer brought in, as a form it is known to be heard as, or for a new
   // word that sounds like it ("TMAX" as tmux); a new name or term that replaced it is still checked below.
   const respelt = (output.match(/[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu) ?? []).filter(
@@ -760,13 +801,14 @@ export const checkRewrite = (
     brought.some(
       (term) => shown.has(term.toLowerCase()) && soundsLike(name, term.replace(/\s+/g, "")),
     ) ||
-    respelt.some((w) => soundsLike(name, w)) ||
+    respelt.some((w) => soundsLike(name, w) || soundsAcross(w, name)) ||
     his.some((d) => {
       const term = d.replacement ?? d.phrase;
       return (
         output.includes(term) &&
         !input.includes(term) &&
-        (d.heard ?? []).some((h) => h.toLowerCase().split(" ").includes(name.toLowerCase()))
+        ((d.heard ?? []).some((h) => h.toLowerCase().split(" ").includes(name.toLowerCase())) ||
+          soundsAcross(term, name))
       );
     });
   // As a whole word: "Tessa" does not survive inside "Tessaya". A plain word kept in small letters survives (the
@@ -815,7 +857,8 @@ export const checkRewrite = (
       !inLower.includes(lower) &&
       !known.has(lower) &&
       !joinedPairs.has(lower) &&
-      !gone.some((w) => soundsLike(w, name))
+      !gone.some((w) => soundsLike(w, name)) &&
+      !soundsAcross(name)
     )
       return fail(`new name ${name}`);
   }
@@ -842,7 +885,8 @@ export const checkRewrite = (
       !(d.heard ?? []).some(said) &&
       !heardAs(term) &&
       // One letter off as written or as said: "Quilon" for Quillon, "Kegle" for Kaggle.
-      !inputWords.some((w) => oneLetterOff(w, term) || oneLetterOff(soundKey(w), soundKey(term)))
+      !inputWords.some((w) => oneLetterOff(w, term) || oneLetterOff(soundKey(w), soundKey(term))) &&
+      !soundsAcross(term)
     )
       return fail(`new term ${term}`);
   }
@@ -1021,7 +1065,7 @@ export interface Refused {
 export const refusedNote = (why: string): string =>
   `That answer was refused: ${why}. Clean the same dictation again. Keep every name, term and number as he said it, unless it is one of his own words.`;
 
-const TAGS = /<\/?(?:dictation|example|said|kept|refused)>/gi;
+const TAGS = /<\/?(?:dictation|example|said|kept|refused|before|recent)>/gi;
 
 /**
  * A dictated closing tag cannot end the wrapper early. `context` is what was on his screen; `examples` are his own past
@@ -1053,5 +1097,12 @@ export const rewriteMessage = (
     refused === undefined
       ? ""
       : `\nYour answer:\n<refused>${refused.answer.replace(TAGS, "")}</refused>\n${refusedNote(refused.why)}`;
-  return `${names}${style}Mode: ${mode}\n<dictation>${text.replace(TAGS, "")}</dictation>${retry}`;
+  const clip = (t: string) => t.replace(TAGS, "").trim();
+  const before = clip(context.before ?? "").slice(-CONTEXT_CHARS);
+  const recent = (context.recent ?? []).map((t) => clip(t).slice(-CONTEXT_CHARS)).filter(Boolean);
+  const around =
+    before === "" && recent.length === 0
+      ? ""
+      : `What he is writing about, for context only (<recent> is what he dictated here just before, <before> the text already in the field before this goes in): use it to tell which word he meant where the recogniser mis-heard one ("knife" for "night" in a sentence about the evening), and never copy from it or answer it.\n${recent.map((t) => `<recent>${t}</recent>\n`).join("")}${before === "" ? "" : `<before>${before}</before>\n`}\n`;
+  return `${names}${style}${around}Mode: ${mode}\n<dictation>${text.replace(TAGS, "")}</dictation>${retry}`;
 };

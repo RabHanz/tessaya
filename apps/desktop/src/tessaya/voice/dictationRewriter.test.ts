@@ -135,8 +135,8 @@ describe("makeRewriter", () => {
       },
     });
     const said = { raw: "we should go home now please", mode: "default", level: "claude" } as const;
-    // His finished sentences are cleaned through the key while he speaks, so release has only the rest.
-    rewriter.speculate({ ...said, raw: "we should go home. And then eat", pause: false });
+    // His guesses while he speaks go through the key too.
+    rewriter.speculate({ ...said, raw: "we should go home." });
     await vi.waitFor(() => expect(apiAsked).toHaveLength(1));
     expect((await rewriter.clean({ ...said, raw: "we should go home." })).text).toBe(
       "from the api",
@@ -185,6 +185,49 @@ describe("makeRewriter", () => {
       "They are mainly from content providers sorry content makers. Sorry creators. And I need to make I need to start.",
     );
     pieces.dispose();
+  });
+
+  it("with his key, warms at the start and takes the whole guessed at his last pause", async () => {
+    const asked: Array<{ readonly text: string; readonly maxTokens: number }> = [];
+    let answer: (() => void) | null = null;
+    const rewriter = makeRewriter({
+      claudeBinary: "claude",
+      model: "haiku",
+      workDir: "/tmp",
+      env: {},
+      platform: "linux",
+      dictionary: () => [],
+      always: true,
+      api: (_system, message, maxTokens) => {
+        const text = message.match(/<dictation>([\s\S]*)<\/dictation>/)?.[1] ?? "";
+        asked.push({ text, maxTokens });
+        if (maxTokens === 0) return Promise.resolve("");
+        return new Promise((resolve) => {
+          answer = () => resolve(text.toUpperCase());
+        });
+      },
+    });
+    const said = { mode: "default", level: "claude" } as const;
+    rewriter.warm();
+    rewriter.warm();
+    expect(asked).toEqual([{ text: "", maxTokens: 0 }]);
+    // Still talking: nothing is guessed; at the pause the whole so far is, in one call.
+    rewriter.speculate({ ...said, raw: "We should go now. Then we", pause: false });
+    rewriter.speculate({ ...said, raw: "We should go now. Then we eat." });
+    await vi.waitFor(() =>
+      expect(asked.map((a) => a.text)).toEqual(["", "We should go now. Then we eat."]),
+    );
+    // Released while that guess is on its way: it is waited for, not asked again.
+    const cleaned = rewriter.clean({ ...said, raw: "We should go now. Then we eat." });
+    await vi.waitFor(() => expect(answer).not.toBeNull());
+    answer!();
+    expect(await cleaned).toMatchObject({
+      text: "WE SHOULD GO NOW. THEN WE EAT.",
+      stage: "model",
+      speculated: true,
+    });
+    expect(asked).toHaveLength(2);
+    rewriter.dispose();
   });
 
   it("never holds release past its budget once his key answers: the local text goes in", async () => {

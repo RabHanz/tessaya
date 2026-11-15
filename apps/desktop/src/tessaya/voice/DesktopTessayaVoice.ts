@@ -52,6 +52,7 @@ import {
   DICTATION_MODES,
   MODE_LABELS,
   type CleanupLevel,
+  type DictationContext,
   type DictationMode,
   type Refused,
 } from "@t3tools/tessaya-shared/dictationCleanup";
@@ -2054,6 +2055,53 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     }
   };
   input.extras?.setTransformHotkeys?.(transforms.read().enabled);
+  /** What he dictated lately, by window, so the next clean-up there knows what he is writing about. */
+  let recentDictations: Array<{
+    readonly key: string;
+    readonly text: string;
+    readonly at: number;
+  }> = [];
+  const RECENT_MS = 10 * 60_000;
+  const CONTEXT_WAIT_MS = 150;
+  /**
+   * The clean-up's context: names on screen, the field before the caret (read at key-down, never waited for long),
+   * and his last two dictations into this window. Text that looks like a secret is left out.
+   */
+  const cleanupContext = async (app: {
+    readonly exe: string;
+    readonly title: string;
+  }): Promise<DictationContext> => {
+    const key = windowKey(app);
+    const early = caretEarly?.key === key && caretEarly.pastes === pastes ? caretEarly.read : null;
+    const around =
+      early === null
+        ? null
+        : await Promise.race([
+            early,
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), CONTEXT_WAIT_MS)),
+          ]);
+    const safe = (text: string) => (detectSecret(text) === null ? text : "");
+    const recent = recentDictations
+      .filter((d) => d.key === key && Date.now() - d.at < RECENT_MS)
+      .slice(-2)
+      .map((d) => safe(d.text))
+      .filter(Boolean);
+    const before = safe(around?.before ?? "");
+    return {
+      screen: screenNow,
+      ...(before.trim() === "" ? {} : { before }),
+      ...(recent.length === 0 ? {} : { recent }),
+    };
+  };
+  const rememberDictation = (
+    app: { readonly exe: string; readonly title: string },
+    text: string,
+  ) => {
+    recentDictations = [
+      ...recentDictations.filter((d) => Date.now() - d.at < RECENT_MS),
+      { key: windowKey(app), text, at: Date.now() },
+    ].slice(-10);
+  };
   /** Clean-up, then the spoken cues he saved expand (Snippets). */
   const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
     // Words that look like a secret are never put in a Claude prompt, whatever the level.
@@ -2069,8 +2117,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       raw: raw,
       mode: chooseMode(app, settings.appModes),
       level,
-      context: { screen: screenNow },
+      context: level === "claude" ? await cleanupContext(app) : { screen: screenNow },
     });
+    if (out.text.trim() !== "") rememberDictation(app, out.text);
     // Every fallback keeps its reason (a refused name, a timeout, the API's error), so a slow or failed clean-up can be
     // told apart from a right refusal (0.1.92 fell back after 2.95 s with no reason logged).
     if (out.stage === "fallback")
@@ -4456,12 +4505,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       const app = focusedApp;
       // Each finished sentence is cleaned as he speaks, and at a pause the last one too.
       if (settings.dictationCleanup === "claude")
-        void levelNow(app).then(({ level }) =>
+        void levelNow(app).then(async ({ level }) =>
           rewriter.speculate({
             raw: event.text,
             mode: chooseMode(app, settings.appModes),
             level,
-            context: { screen: screenNow },
+            context: level === "claude" ? await cleanupContext(app) : { screen: screenNow },
             pause: event.pause !== false,
           }),
         );

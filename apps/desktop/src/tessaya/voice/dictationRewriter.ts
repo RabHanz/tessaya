@@ -67,6 +67,8 @@ const TURNS_PER_SESSION = 20;
  * (2026-11-12), so this is his p90 with room for the hop to his server.
  */
 const RELEASE_BUDGET_MS = 1_800;
+/** Recording starts closer together than this share one warm call. */
+const KEY_WARM_GAP_MS = 2_000;
 
 interface CleanInput {
   readonly raw: string;
@@ -151,7 +153,7 @@ export const makeRewriter = (input: {
   /** Drops the session; the next is started now when it should stay warm. */
   const renew = () => {
     drop();
-    if (input.keepWarm?.() === true) warm();
+    if (input.keepWarm?.() === true) warmSession();
   };
   let prompt = "";
   const get = (): VisionSession => {
@@ -175,7 +177,22 @@ export const makeRewriter = (input: {
     return session;
   };
 
-  const warm = () => {
+  let keyWarmedAt = 0;
+  /**
+   * A call that writes nothing (0 tokens) as he starts speaking, so the prompt cache and the connection are ready by
+   * release. Cold, his laptop's first byte took 0.96 s against 0.26 s warm (16 Nov).
+   */
+  const warmKey = () => {
+    if (input.api === undefined || Date.now() - keyWarmedAt < KEY_WARM_GAP_MS) return;
+    keyWarmedAt = Date.now();
+    void input
+      .api(rewriteSystemPrompt(input.dictionary()), rewriteMessage("", "default"), 0)
+      .then((answer) => {
+        if (answer === null) noKey = true;
+      })
+      .catch(() => undefined);
+  };
+  const warmSession = () => {
     // With a key, no subscription session is kept for clean-up: it only ever answers when there is no key.
     if (keyRoute() && keySeen) return;
     try {
@@ -183,6 +200,10 @@ export const makeRewriter = (input: {
     } catch {
       drop();
     }
+  };
+  const warm = () => {
+    if (keyRoute()) warmKey();
+    warmSession();
   };
 
   /** The session's turn in flight, by its own answer: the next question waits for it, not for a timer. */
@@ -274,7 +295,7 @@ export const makeRewriter = (input: {
         // Still waiting behind a guess, nothing of ours was asked: the session stays.
         if (sent) {
           drop();
-          warm();
+          warmSession();
         }
         throw error;
       } finally {
@@ -327,7 +348,12 @@ export const makeRewriter = (input: {
     warm,
     speculate: ({ pause = true, ...c }) => {
       if (c.level !== "claude") return;
-      const pieces = dictationPieces(c.raw, c.mode);
+      // His key cleans the whole dictation at release, so a pause guesses the whole: if he stops there, release takes it.
+      const pieces = keyRoute()
+        ? pause && c.raw.trim() !== ""
+          ? [c.raw]
+          : []
+        : dictationPieces(c.raw, c.mode);
       const keys = new Set(pieces.map((piece) => keyOf(c, piece)));
       // Waiting guesses his newer words no longer hold are never asked.
       queue = queue.filter((job) => keys.has(job.key));
@@ -351,24 +377,31 @@ export const makeRewriter = (input: {
       const done = new Map(answered);
       guesses.clear();
       answered.clear();
-      const waitFor = async (cleaned: Promise<CleanedText>) => {
+      const waitFor = async (cleaned: Promise<CleanedText>, by = deadline) => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const answer = await Promise.race([
           cleaned.catch(() => null),
           new Promise<null>((resolve) => {
-            timer = setTimeout(() => resolve(null), deadline - Date.now());
+            timer = setTimeout(() => resolve(null), by - Date.now());
           }),
         ]);
         clearTimeout(timer);
         return answer;
       };
+      const wholeBy = started + (input.wholeLimitMs ?? wholeLimitMs(c.raw));
+      if (keyRoute()) {
+        // The whole guessed at his last pause, answered or still on its way, is sooner than asking again now.
+        const key = keyOf(c, c.raw);
+        const pending = ready.get(key);
+        const guessed =
+          done.get(key) ?? (pending === undefined ? null : await waitFor(pending, wholeBy));
+        if (guessed !== null && usable(guessed))
+          return { ...guessed, ms: Date.now() - started, speculated: true };
+      }
       const pieces = dictationPieces(c.raw, c.mode);
       // With his key, more than one sentence is also cleaned whole, so a correction or fragment that crosses a
       // sentence is settled; the pieces below, cleaned meanwhile, are pasted only if the whole does not come back.
-      const whole =
-        pieces.length > 1 && keyRoute()
-          ? run(c, askBy(started + (input.wholeLimitMs ?? wholeLimitMs(c.raw)), c.context))
-          : null;
+      const whole = pieces.length > 1 && keyRoute() ? run(c, askBy(wholeBy, c.context)) : null;
       // Each piece cleaned while he spoke is taken as it is; the pieces left, side by side, are cleaned together now.
       const parts: CleanedText[] = [];
       let left: string[] = [];
