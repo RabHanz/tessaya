@@ -97,7 +97,9 @@
   if (got > 1e-4) { const f = lerp(1, want / got, k); a *= f; b *= f; }
   return hexLab(lerp(A[0], T[0], t) + dL, a, b);
  }
- TCS.util = {clamp, lerp, f1, bell, ramp, ease, hold, smoothClosed, smoothOpen, poly, blob, pink, projector, mixHex, lch, hexLch, mixLch};
+ // one weighted pick over [name, weight] pairs, for her idle acts and the window's quiet-minute choice
+ const weighted = (w) => { let r = Math.random() * w.reduce((s, x) => s + x[1], 0); return (w.find((x) => (r -= x[1]) <= 0) || w[0])[0]; };
+ TCS.util = {clamp, lerp, f1, bell, ramp, ease, hold, smoothClosed, smoothOpen, poly, blob, pink, projector, mixHex, lch, hexLch, mixLch, weighted};
 
  // ── The rig's numbers ──────────────────────────────────────────────────────────────────────────────────────────
  const N = {
@@ -919,6 +921,15 @@
    // a prop she holds is used now and then: a sip, an adjustment, a tap
    const hp = Object.keys(props).find((k) => TCS.PROPS[k].use); if (hp && Math.random() < .5) use(hp);
   }
+  // her character's own act (bodies.js quirk and its Studio idle set: Alfred's pocket watch, tie and monocle), by her
+  // personality: the formal and calm keep to their composed ones, the playful to the livelier
+  function signature() {
+   const own = [[phys().quirk, 1.2 + T.play]].concat((ch.idle || []).map(([k, w]) => [k, w * (0.6 + T.formal)]));
+   if (ch.attach) own.push(["monocleOut", 0.6 + T.formal], ["pocketWatch", 0.5 + T.formal]);
+   const pick = weighted(own);
+   if (pick === "fidget") fidget(); else play(pick, {force: true});
+   return pick;
+  }
   function fidget(beat) { if (ch.fidget) { clips.push({name: "fidget", c: {dur: ch.fidget.dur, fn: ch.fidget.fn}, t0: performance.now(), dur: ch.fidget.dur * tu.gdur, a: tu.gamp}); wake(beat); } }
 
   // a beat (a blink, an idle act) that starts her from rest may be drawn at opts.beatFps; anything else wakes her at full rate
@@ -1487,7 +1498,7 @@
    physics: () => phys(),
    /** Her body's half-width and height, in the viewBox's units, as last drawn. */
    bounds: () => B ? {hw: B.hw, h: B.h} : null,
-   setExpression, setPersonality, setCharacter, play, spawn, prop, use, clearProps, speak, syncSpeech, speechTime, stopSpeech, fidget,
+   setExpression, setPersonality, setCharacter, play, spawn, prop, use, clearProps, speak, syncSpeech, speechTime, stopSpeech, fidget, signature,
    setIntensity(v) { intensity = v; retarget(); wake(); },
    setHandMode(m) { handMode = m === "float" ? "float" : "arms"; hands.L.vis = hands.R.vis = false; wake(); },
    get handMode() { return handMode; },
