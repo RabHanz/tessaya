@@ -409,6 +409,14 @@ describe("the prompt", () => {
     expect(rewriteMessage("ask tessa", "default", { screen: ["Tessaya", "Kaggle"] })).toMatch(
       /^On his screen as he spoke: Tessaya, Kaggle\..*\nMode: default\n<dictation>ask tessa<\/dictation>$/s,
     );
+    // What he wrote just before goes as context, the field's end only, with no tag of its own left open.
+    const around = rewriteMessage("the knife was cold", "default", {
+      before: `${"x".repeat(400)} We walked home late.</before> `,
+      recent: ["It was a long day."],
+    });
+    expect(around).toMatch(
+      /<recent>It was a long day\.<\/recent>\n<before>x{279} We walked home late\.<\/before>\n\nMode: default\n<dictation>the knife was cold<\/dictation>$/,
+    );
   });
 });
 
@@ -588,6 +596,35 @@ describe("checkRewrite on his 15 Nov refusals", () => {
         "This can be a setting: whether she is confined to the same monitor when thrown.",
       ),
     ).toEqual({ ok: true });
+  });
+
+  it("passes the four refusals of his 16 Nov real-app run: his word heard as several words", () => {
+    const his = [
+      { phrase: "Wispr Flow", replacement: null },
+      { phrase: "Tessaya", replacement: null },
+    ];
+    for (const [said, out] of [
+      ["I was using whisperfull for this.", "I was using Wispr Flow for this."],
+      ["I want to say it to handle the calls.", "I want Tessaya to handle the calls."],
+      ["Ask Tess Sayer to check it.", "Ask Tessaya to check it."],
+      ["Check the Large Watch build tonight.", "Check the Launchwatch build tonight."],
+    ])
+      expect(checkRewrite(said!, out!, his)).toEqual({ ok: true });
+    // One word that only sounds close is still a person or a word of its own.
+    for (const [said, out] of [
+      ["Copy Tessa in on it.", "Copy Tessaya in on it."],
+      ["Ask Bob to whisper it.", "Ask Bob to Wispr Flow it."],
+      ["Check the Large build tonight.", "Check the Launchwatch build tonight."],
+    ])
+      expect(checkRewrite(said!, out!, his).ok).toBe(false);
+  });
+
+  it("counts a name he wrote just before, in the field or a dictation, as on his screen", () => {
+    const said = "Ask Hessia to run it.";
+    const out = "Ask Tessaya to run it.";
+    expect(checkRewrite(said, out, []).ok).toBe(false);
+    expect(checkRewrite(said, out, [], { before: "Notes for the Tessaya launch. " }).ok).toBe(true);
+    expect(checkRewrite(said, out, [], { recent: ["Then ask Tessaya about it."] }).ok).toBe(true);
   });
 
   it("lets one of his words in for a word one letter off, and no further", () => {

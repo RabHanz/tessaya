@@ -9,7 +9,8 @@ export const BATON_DICTATION_WS_METHODS = {
 export const TessayaDictationCleanupInput = Schema.Struct({
   system: Schema.String.check(Schema.isMaxLength(50_000)),
   message: Schema.String.check(Schema.isMaxLength(50_000)),
-  maxTokens: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 8192 })),
+  /** 0 writes nothing: it only warms the connection and the prompt cache as he starts speaking. */
+  maxTokens: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 8192 })),
   /** The one retry: the answer the desktop's check refused, and why. An older server asks the same message again. */
   refused: Schema.optional(
     Schema.Struct({
