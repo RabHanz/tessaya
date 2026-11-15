@@ -21,6 +21,7 @@ import {
   type House,
   type LiveCall,
   type Slot,
+  unheldFailure,
 } from "./liveCases.ts";
 
 const { values } = NodeUtil.parseArgs({
@@ -234,7 +235,9 @@ for (const c of cases) {
       c.voices,
     ));
     // Nothing is held where no member has a voice yet (Voice ID can't tell anyone apart): not applicable there.
-    if (c.stepUps !== undefined && !calls.some((x) => HELD.test(x.text))) {
+    const unheld = c.stepUps !== undefined && !calls.some((x) => HELD.test(x.text));
+    const broke = unheld ? unheldFailure(c, calls) : null;
+    if (unheld && broke === null) {
       rows.push({ id: c.id, proves: c.proves, result: "n/a", why: "no member has a voice here" });
       console.log(`n/a   ${c.id}: no member has a voice on this server`);
       continue;
@@ -245,7 +248,8 @@ for (const c of cases) {
       console.log(`n/a   ${c.id}: ${nothing}`);
       continue;
     }
-    why = liveFailureOf(c, house, replies, calls) ?? (await stepUpFailure(c.stepUps, calls));
+    why =
+      broke ?? liveFailureOf(c, house, replies, calls) ?? (await stepUpFailure(c.stepUps, calls));
   } catch (error) {
     why = `the turn failed: ${String(error)}`;
   }

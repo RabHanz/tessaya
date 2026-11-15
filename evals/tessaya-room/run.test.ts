@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { roomCases } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
-import { liveCases, liveFailureOf, uncovered, type LiveCall } from "./liveCases.ts";
+import { liveCases, liveFailureOf, uncovered, unheldFailure, type LiveCall } from "./liveCases.ts";
 
 const caseOf = (id: string) => roomCases.find((c) => c.id === id)!;
 const sample = (s: Partial<RoomSample>): RoomSample => ({
@@ -102,6 +102,21 @@ describe("the room's live tool suite", () => {
     expect(failure("You have three automations, and three are active.")).toMatch(/said 3 running/);
     expect(failure("Three are running right now.")).toMatch(/said 3 running/);
     expect(failure("Four automations, one of them paused.")).toMatch(/said 4 total/);
+  });
+
+  it("fails a card case whose held tool errored, not as not applicable (the #1156 card acts)", () => {
+    const schedule = liveCases.find((c) => c.id === "job-unschedule-needs-card")!;
+    const call = (isError: boolean, text: string): LiveCall => ({
+      name: "job_schedule",
+      input: { id: "job-suite-1", every_minutes: 0 },
+      isError,
+      text,
+    });
+    expect(unheldFailure(schedule, [call(true, "it did not work")])).toMatch(
+      /job_schedule failed: it did not work/,
+    );
+    expect(unheldFailure(schedule, [call(false, "Done.")])).toBeNull();
+    expect(unheldFailure(schedule, [])).toBeNull();
   });
 
   it("does not ask for a pause where the house lists no automations (the .157 gate, his home offline)", () => {
