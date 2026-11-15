@@ -266,6 +266,8 @@ export interface RoomDeps {
   readonly preview?: (pcm: Int16Array) => Promise<string>;
   /** A throwaway decode as a session opens: the first clip after a quiet spell is otherwise about 1.5 s slower. */
   readonly warm?: () => void;
+  /** Opens her server's connection ahead of a turn, as a session opens and as he starts to speak. */
+  readonly link?: () => void;
   readonly speaker?: (pcm: Int16Array) => Promise<SpeakerIdentity>;
   /** Who spoke when in the turn (`segments.ts`); "one" at once when fewer than two voices are enrolled. */
   readonly voices?: (pcm: Int16Array) => Promise<TurnVoices>;
@@ -1988,6 +1990,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
                 deps.now() - voiceHold.verifiedAt <= HOLD_MS &&
                 speechLevel(a.pcm) >= PERSONAL_FLOOR_DB,
             });
+            deps.link?.();
             starts += 1;
             turnPcm = [a.pcm];
             rec.onPartial?.(cutIn);
@@ -2488,6 +2491,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const s = openSession(id);
     sessions.set(id, s);
     deps.warm?.();
+    deps.link?.();
     deps.log(`[${id}] session open (${how})`);
     return s;
   };

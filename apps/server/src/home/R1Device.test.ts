@@ -419,6 +419,40 @@ effectIt.effect(
       yield* Fiber.join(slow);
       expect(sent).not.toMatch(/tessaya_watch/);
       expect(sent).toMatch(/tessaya_in_flight\), live as of this turn/);
+
+      // The next turn on the same tools uses the read the slow one finished, without waiting on its own (15 Nov).
+      let watchReads = 0;
+      const lateTools = {
+        specs: [],
+        run: (name: string) =>
+          name === "tessaya_watch" && watchReads++ === 0
+            ? Effect.succeed({ text: '{"findings":["late"]}', isError: false }).pipe(
+                Effect.delay("1 second"),
+              )
+            : name === "tessaya_watch"
+              ? Effect.never
+              : Effect.succeed({ text: '{"threads":[]}', isError: false }),
+      };
+      const turnOn = (toolSet: typeof lateTools) =>
+        r1TurnStream({ heard: "is the study lamp on?", history: [] }, brain, toolSet).pipe(
+          Stream.runDrain,
+          Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
+          Effect.forkChild,
+        );
+      const first = yield* turnOn(lateTools);
+      yield* TestClock.adjust("1 second");
+      yield* Fiber.join(first);
+      expect(sent).not.toMatch(/tessaya_watch/);
+      yield* Fiber.join(yield* turnOn(lateTools));
+      expect(sent).toMatch(
+        /What needs him \(tessaya_watch\), live as of this turn: \{"findings":\["late"\]\}/,
+      );
+      // Past 30 s that read is too old: a hanging one leaves the line out again.
+      yield* TestClock.adjust("31 seconds");
+      const stale = yield* turnOn(lateTools);
+      yield* TestClock.adjust("300 millis");
+      yield* Fiber.join(stale);
+      expect(sent).not.toMatch(/tessaya_watch/);
     }),
 );
 

@@ -462,6 +462,23 @@ const startCameraRelay = () => {
   }).listen(port, "0.0.0.0", () => log(`camera relay on :${port}`));
 };
 
+/**
+ * Two idle connections to her server, opened ahead: from the room host a fresh one costs about 0.25 s before the turn's first
+ * byte (205 ms round trip, 15 Nov), and an early start he talks past closes the one it took. The server keeps them 95 s.
+ */
+const link = (url: string): NonNullable<RoomDeps["link"]> => {
+  const health = new URL("/api/health", url).toString();
+  let at = 0;
+  return () => {
+    if (Date.now() - at < 2000) return;
+    at = Date.now();
+    for (let i = 0; i < 2; i += 1)
+      void fetch(health, { signal: AbortSignal.timeout(5000) })
+        .then((res) => res.arrayBuffer())
+        .catch(() => undefined);
+  };
+};
+
 /** Tessaya's turn on her server, OpenAI chat-completions shape, streamed. */
 const brain = (url: string, key: string): RoomDeps["brain"] =>
   async function* (input, signal) {
@@ -859,6 +876,7 @@ const main = async () => {
         voicesOf({ pcm, embed: embedder.embed, profiles: store.list(), policy, at: Date.now() }),
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
+      link: link(env("R1_BRAIN_URL")),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
       forget: (personId) => sharedProfiles.clear(personId),
       preview: (pcm) => {
