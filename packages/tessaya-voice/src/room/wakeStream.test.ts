@@ -72,6 +72,18 @@ describe("waking her by name with no session open", () => {
     expect(t.lines.filter((l) => /\] woken by/.test(l))).toHaveLength(2);
   });
 
+  it("a Wi-Fi stall over 3 s mid-segment splits it, and a name after the stall still wakes her once", async () => {
+    let t0 = 0;
+    const t = rig("Hey Tessaya.", () => t0);
+    for (let i = 0; i < 5; i += 1) t.stream.frame("r1", frame(1));
+    // The stalled frames arrive late, in a burst: the gap is measured on arrival.
+    t0 = 8_000;
+    for (let i = 0; i < 3; i += 1) t.stream.frame("r1", frame(7));
+    t.stream.end("r1", 5);
+    await t.stream.drained("r1");
+    expect(t.woken).toEqual(["r1 Tessaya"]);
+  });
+
   it("hears a newly trained word from the next segment, never by swapping mid-segment", async () => {
     const t = rig("Hey Nova.");
     t.stream.frame("r1", frame(1));
