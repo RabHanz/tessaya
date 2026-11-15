@@ -70,7 +70,7 @@ import {
   sessionTools,
 } from "../tessaya/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
-import { isLineEvent, r1MoodOf } from "@t3tools/tessaya-shared/expression";
+import { greetEvent, isLineEvent, r1MoodOf } from "@t3tools/tessaya-shared/expression";
 import type { ExpressionMood } from "@t3tools/tessaya-contracts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
@@ -778,6 +778,8 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     context,
     turn,
     names: pack.personas.map((p) => p.name),
+    // The pipeline's conversation is empty after its idle window, the same one a greeting starts afresh after.
+    justSpoke: begun.conversation.turns.length > 0,
     // The answering persona's own tool list (its file's `tools:`), as the desktop applies it; null is all of them.
     allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
   };
@@ -929,7 +931,7 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
 const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   const layered = yield* r1Layer(input);
   if (layered !== null) return layered.text;
-  const { device, context, turn, names } = yield* r1Gather(input);
+  const { device, context, turn, names, justSpoke } = yield* r1Gather(input);
   const oneShot = yield* TessayaOneShot;
   const plan = yield* oneShot
     .run({ prompt: r1Prompt(context), outputSchema: R1Plan, role: "voice" })
@@ -942,7 +944,11 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   if (Option.isNone(plan)) {
     // Her brain did not answer: the eyes say so, the words fill in.
     yield* eyes(device, "concerned", 6000, "the brain did not answer");
-    return yield* sorry(input, "Sorry, I lost my train of thought. Say that again?");
+    const plain = "Sorry, I lost my train of thought. Say that again?";
+    const greet = greetEvent(input.heard, justSpoke);
+    return greet === null
+      ? yield* sorry(input, plain)
+      : ((yield* expressOr(greet, { ...lineWho(input), plain }))?.text ?? plain);
   }
   const outcomes = yield* runActs(plan.value.acts);
   const said = spokenReply(

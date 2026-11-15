@@ -3,6 +3,7 @@
  * desktop, a desk device, the phone and the mascot are vessels. Each sends the same envelope, gets the same memory
  * for the same words and persona, and every addressed turn it carries is learned from the same way.
  */
+import { SAME_CONVERSATION_MS } from "@t3tools/tessaya-shared/agentPrompt";
 import {
   type Assurance,
   memberOfSpeaker,
@@ -328,7 +329,7 @@ export const handOffLine = (from: string): string =>
 
 /** How much of a conversation every vessel shares, and how long it waits for him to go on. */
 const CONVERSATION_TURNS = 12;
-const CONVERSATION_IDLE_MS = 10 * 60_000;
+const CONVERSATION_IDLE_MS = SAME_CONVERSATION_MS;
 
 /** Standing memory a sessionless turn carries, as a session's system prompt does (MEMORY.md §5). */
 const STANDING_TOKENS = 600;

@@ -5,7 +5,9 @@ import {
   LINE_EVENT_IDS,
   LINE_POOL,
   RECENT_KEEP,
+  farewellEvent,
   fillLine,
+  greetEvent,
   keptLines,
   lineId,
   lineProblem,
@@ -77,6 +79,26 @@ describe("the guard on a wording", () => {
             line.text,
             null,
           ]);
+  });
+});
+
+describe("greetings and goodbyes", () => {
+  it.each([
+    ["Good night, Freya.", "end.night"],
+    ["night night", "end.night"],
+    ["Okay, goodbye.", "end.bye"],
+    ["bye then", "end.bye"],
+    ["see you tomorrow", "end.bye"],
+    ["dismissed", null],
+    ["go to sleep", null],
+  ] as const)("%j says %s", (words, event) => {
+    expect(farewellEvent(words)).toBe(event);
+  });
+
+  it("greets afresh only outside the conversation, and only a bare greeting", () => {
+    expect(greetEvent("Good morning, Tessaya!", false)).toBe("greet.hello");
+    expect(greetEvent("Good morning, Tessaya!", true)).toBe("greet.again");
+    expect(greetEvent("hi, is the deploy done?", false)).toBeNull();
   });
 });
 

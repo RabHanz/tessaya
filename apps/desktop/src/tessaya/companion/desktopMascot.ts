@@ -143,7 +143,8 @@ export type MascotMoment =
   | "moment.thrown"
   | "moment.petted"
   | "moment.screen"
-  | "moment.met";
+  | "moment.met"
+  | "moment.idle";
 /** One answer at a time, and none sooner than this after the last: a flurry of pokes gets one line. */
 const MOMENT_GAP_MS = 6_000;
 /** Her body's half-width and height inside her window, as shares of its size (the rig's body at rest). */
@@ -253,6 +254,8 @@ const WANDER_CHECK_MS = 60_000;
 const WANDER_CHANCE = 1 / 6;
 /** He is at the computer, but not typing this second. */
 const WANDER_IDLE_S: readonly [number, number] = [3, 120];
+/** A wander that also brings a remark of hers to herself: about one every 25 minutes he works quietly. */
+const REMARK_CHANCE = 1 / 4;
 
 const nextMorning = (now: number): number => {
   const at = new Date(now);
@@ -952,6 +955,7 @@ export const createDesktopMascot = (input: {
         if (choice === "funny") funny();
         else if (choice === "signature") call(`window.mascot.signature()`);
         else walk();
+        if (Math.random() < REMARK_CHANCE) moment("moment.idle");
       })
       .catch(() => undefined);
   }, WANDER_CHECK_MS);

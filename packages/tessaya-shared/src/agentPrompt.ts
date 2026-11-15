@@ -143,6 +143,9 @@ const personaLine = (p: TurnPersona) =>
 /** A greeting and nothing else ("hi Freya", "good morning!"); "hi Freya, is the deploy done?" is a request. */
 const GREETS =
   /^\s*(?:hi|hiya|hello|hey|morning|afternoon|evening|good (?:morning|afternoon|evening))\b[\s,.!]*(?:\p{L}+)?[\s,.!]*$/iu;
+export const isGreeting = (said: string) => GREETS.test(said);
+/** He spoke with this persona this recently: a greeting is the same conversation going on, not a fresh start. */
+export const SAME_CONVERSATION_MS = 10 * 60_000;
 const MANNERS = [
   "with a short greeting and nothing else",
   "with a greeting and a word about the time of day",
@@ -162,7 +165,7 @@ export const greetingLine = (
   /** They spoke minutes ago: a time-of-day or how-are-you manner read as a fresh start to him. */
   justSpoke = false,
 ): { readonly text: string; readonly manner: number } | null => {
-  if (!GREETS.test(said)) return null;
+  if (!isGreeting(said)) return null;
   const choices = MANNERS.map((_, i) => i).filter((i) => i !== avoid);
   const manner = choices[Math.floor(random() * choices.length)]!;
   const opening = OPENINGS[Math.floor(random() * OPENINGS.length)]!;

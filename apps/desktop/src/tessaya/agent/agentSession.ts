@@ -19,6 +19,7 @@ import {
   agentSystemPrompt,
   contextLine,
   greetingLine,
+  SAME_CONVERSATION_MS,
   sinceLine,
   type TurnPersona,
 } from "@t3tools/tessaya-shared/agentPrompt";
@@ -51,7 +52,7 @@ export const startPersonas = (
 ): ReadonlyArray<string> =>
   [...new Set([lead, ...recent.filter((id) => all.includes(id)), ...all])].slice(0, WARM_MAX - 1);
 /** Another persona's turns this recent, up to this many, ride along when he turns to a new one (INTEGRATION.md 3.1 step 3). */
-export const HAND_OFF_MS = 10 * 60_000;
+export const HAND_OFF_MS = SAME_CONVERSATION_MS;
 /** The same question within this is a repeat (he did not hear); later it is asked afresh. */
 const REPEAT_MS = 3 * 60_000;
 const HAND_OFF_TURNS = 3;
