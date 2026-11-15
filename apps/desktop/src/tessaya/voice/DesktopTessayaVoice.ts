@@ -550,7 +550,7 @@ import {
   type SeenWords,
   type VocabularyEntry,
 } from "@t3tools/tessaya-shared/vocabulary";
-import { CLEANUP_FAILED_LINE, settleOneShot } from "@t3tools/tessaya-shared/dictationOneShot";
+import { cleanupFailedLine, settleOneShot } from "@t3tools/tessaya-shared/dictationOneShot";
 import { createOneShot } from "./oneShotDictation.ts";
 import {
   clipPaths,
@@ -2657,7 +2657,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       // Named only when the model could have cleaned it: a local clean-up said "tidied by haiku" (0.1.106).
       model: result.failed || result.level !== "claude" ? null : settings.cleanupModel,
       error: result.failed
-        ? "Clean-up failed, inserted what was heard"
+        ? cleanupFailedLine(result.why)
         : result.status === "kept"
           ? "Not pasted"
           : null,
@@ -2673,7 +2673,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       }
       if (result.failed) {
         showDictation(null);
-        toast.show({ kind: "error", message: CLEANUP_FAILED_LINE });
+        toast.show({ kind: "error", message: cleanupFailedLine(result.why) });
       } else offerSmarterCleanup();
       dictationTimer?.pillGone();
     } else {

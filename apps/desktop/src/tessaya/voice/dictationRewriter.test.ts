@@ -152,6 +152,41 @@ describe("makeRewriter", () => {
     rewriter.dispose();
   });
 
+  it("cleans a dictation of several sentences whole with his key, and pastes the pieces if the whole fails", async () => {
+    const said = {
+      raw: "They are mainly from content providers sorry content makers. Sorry creators. And I need to make I need to start.",
+      mode: "default",
+      level: "claude",
+    } as const;
+    const settle = (wholeFails: boolean) =>
+      makeRewriter({
+        claudeBinary: "claude",
+        model: "haiku",
+        workDir: "/tmp",
+        env: {},
+        platform: "linux",
+        dictionary: () => [],
+        always: true,
+        api: async (_system, message) => {
+          const text = message.match(/<dictation>([\s\S]*)<\/dictation>/)?.[1] ?? "";
+          if (!text.includes("creators") || !text.includes("start")) return text;
+          if (wholeFails) throw new Error("timeout");
+          return "They are mainly from creators. And I need to start.";
+        },
+      });
+    const whole = settle(false);
+    expect(await whole.clean(said)).toMatchObject({
+      stage: "model",
+      text: "They are mainly from creators. And I need to start.",
+    });
+    whole.dispose();
+    const pieces = settle(true);
+    expect((await pieces.clean(said)).text).toBe(
+      "They are mainly from content providers sorry content makers. Sorry creators. And I need to make I need to start.",
+    );
+    pieces.dispose();
+  });
+
   it("never holds release past its budget once his key answers: the local text goes in", async () => {
     const rewriter = makeRewriter({
       claudeBinary: "claude",
