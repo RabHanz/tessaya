@@ -14,6 +14,7 @@ import { EXPRESSION_GESTURES, EXPRESSION_MOODS, R1_MOODS } from "@t3tools/tessay
 
 import type { CompanionMotion } from "./companion.ts";
 import POOL from "./expressionPool.json" with { type: "json" };
+import { isGreeting } from "./agentPrompt.ts";
 import { isNarration } from "./narration.ts";
 
 export interface LineSpec {
@@ -63,6 +64,16 @@ export const LINE_EVENTS = {
   "ack.again": spec(
     "Still here.",
     "He said only her name again, minutes after they last spoke; she is still with him.",
+    { maxWords: 5, mood: "happy", gesture: "nodSmall" },
+  ),
+  "greet.hello": spec(
+    "Hello.",
+    "He greeted her, the first words in a while; she greets him back in a few words, offering no help. Any hour.",
+    { maxWords: 7, mood: "happy", gesture: "wave" },
+  ),
+  "greet.again": spec(
+    "Hi again.",
+    "He greeted her again minutes after they last spoke: the same conversation going on, so a few words, no good morning, no how are you, nothing that starts afresh.",
     { maxWords: 5, mood: "happy", gesture: "nodSmall" },
   ),
   "filler.hold": spec("One moment.", "He asked something and her answer is a few seconds away.", {
@@ -272,6 +283,16 @@ export const LINE_EVENTS = {
     mood: "neutral",
     gesture: "nodSmall",
   }),
+  "end.bye": spec(
+    "Bye for now.",
+    "He said goodbye to end the conversation; a short warm farewell before she rests, never an offer to help later. Any hour, so no good night.",
+    { maxWords: 6, mood: "happy", gesture: "wave" },
+  ),
+  "end.night": spec(
+    "Good night.",
+    "He said good night to end the conversation, off to sleep; a short soft good night before she rests, never an offer to help later.",
+    { maxWords: 6, mood: "sleepy", gesture: "nodSoft" },
+  ),
   "id.failed": spec(
     "I still can't tell it's you, so I've left that.",
     "His voice check failed, so she has not done what he asked; it stays undone.",
@@ -356,6 +377,11 @@ export const LINE_EVENTS = {
     mood: "curious",
     gesture: "lookAway",
   }),
+  "moment.idle": spec(
+    "",
+    "On his desktop he has worked quietly a while; she says a small remark to herself, needing no answer. She knows nothing of his work, devices or room right now, so no claim about any of them, and never calls him he.",
+    { priority: "ambient", maxWords: 8, mood: "curious", gesture: "lookAway" },
+  ),
 } as const satisfies Record<string, LineSpec>;
 
 export type LineEvent = keyof typeof LINE_EVENTS;
@@ -403,6 +429,21 @@ export const lineId = (event: string, text: string): string => {
   }
   return `${event}#${(h >>> 0).toString(36)}`;
 };
+
+/** His goodbye gets her farewell rather than a bare "okay"; null for any other dismissal. */
+export const farewellEvent = (words: string): "end.bye" | "end.night" | null =>
+  /\b(?:good ?night|night night)\b/i.test(words)
+    ? "end.night"
+    : /\b(?:good ?bye|bye|see (?:you|ya))\b/i.test(words)
+      ? "end.bye"
+      : null;
+
+/** A bare greeting her brain could not answer: within one conversation it is "hi again", never a fresh hello. */
+export const greetEvent = (
+  said: string,
+  justSpoke: boolean,
+): "greet.hello" | "greet.again" | null =>
+  !isGreeting(said) ? null : justSpoke ? "greet.again" : "greet.hello";
 
 /** Why a wording may not be said for this event, or null. The one gate for model wordings and the shipped pool. */
 export const lineProblem = (event: LineEvent, line: Line): string | null => {

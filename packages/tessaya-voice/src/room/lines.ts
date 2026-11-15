@@ -47,6 +47,10 @@ export const ROOM_EVENTS: ReadonlyArray<LineEvent> = [
   "id.ok",
   "id.failed",
   "end.ack",
+  "end.bye",
+  "end.night",
+  "greet.hello",
+  "greet.again",
   "enrol.start",
 ];
 const AHEAD = 3;

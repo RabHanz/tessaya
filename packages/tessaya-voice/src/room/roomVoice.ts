@@ -3,7 +3,14 @@
  * `voice/up`, asks her server, speaks on `voice/down` and stops when he cuts in. I/O is passed in for tests.
  * @module baton-voice/room/roomVoice
  */
-import { eyeClipOf, r1MoodOf, type LineEvent } from "@t3tools/tessaya-shared/expression";
+import { SAME_CONVERSATION_MS } from "@t3tools/tessaya-shared/agentPrompt";
+import {
+  eyeClipOf,
+  farewellEvent,
+  greetEvent,
+  r1MoodOf,
+  type LineEvent,
+} from "@t3tools/tessaya-shared/expression";
 import { mostlyForeign } from "@t3tools/tessaya-shared/language";
 import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
@@ -904,7 +911,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
      * Sent away by voice: a turn on its way is cancelled and she says a brief "okay" before the soft close, never an
      * instant sleep (15 Nov). Said over her, it stops her sentence first, as any barge-in does.
      */
-    const dismissNow = (why: string) => {
+    const dismissNow = (why: string, words = "") => {
       const at = deps.now();
       // The same dismissal heard again (early, then final): a second pass would flush her closing tone (14 Nov, 19:40).
       if (sentAway && at - dismissedAt < 3_000) return;
@@ -912,7 +919,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       stops += 1;
       if (speaking() || hold !== null) interrupt();
       carry = null;
-      if (!silent(id)) speakNow(own("end.ack", "Okay."));
+      if (!silent(id)) speakNow(own(farewellEvent(words) ?? "end.ack", "Okay."));
       restGently(at);
       deps.log(`${why}; she rests`);
     };
@@ -1414,7 +1421,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       current?.onPartial?.((words) => {
         // "Dismissed" heard while the recogniser still works on it (10:36:40: 4.9 s): she rests now.
         if (!settled && stopIntent(words, config.stopPhrases) === "dismiss")
-          dismissNow(`[${id}] turn ${turn}: dismissed (heard early)`);
+          dismissNow(`[${id}] turn ${turn}: dismissed (heard early)`, words);
         latest = words;
         tryGuess(words);
       });
@@ -1485,7 +1492,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // Sent away: the session rests here and now, with no brain call and nothing joined to it (10:36-10:37, 13 Nov).
       if (given === undefined && !echoed && intent === "dismiss") {
         kept?.control.abort();
-        dismissNow(`[${id}] turn ${turn}: dismissed`);
+        dismissNow(`[${id}] turn ${turn}: dismissed`, raw);
         return;
       }
       if (dismissedAt >= startedAt) {
@@ -1895,10 +1902,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           deps.log(
             `[${id}] turn ${turn} failed: ${error instanceof Error ? error.message : String(error)}`,
           );
-          await say(
-            own("err.brain", "Sorry, I couldn't reach my brain just then."),
-            control.signal,
-          ).catch(() => undefined);
+          const sorry = "Sorry, I couldn't reach my brain just then.";
+          const greet = greetEvent(me.text, deps.now() - lastExchangeAt < SAME_CONVERSATION_MS);
+          await say(own(greet ?? "err.brain", sorry), control.signal).catch(() => undefined);
         }
       } finally {
         if (reply === control || reply === null) {
