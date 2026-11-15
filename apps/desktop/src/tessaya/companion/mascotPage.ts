@@ -68,7 +68,8 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    if (rig && persona === key) return;
    persona = key;
    if (rig) { rig.setCharacter(P.character); rig.setPersonality(P.traits); return; }
-   rig = TCS.create(svg, { character: P.character, personality: P.traits, expression: "neutral", intensity: 0.85, quiet: o.quiet, reduced: o.reduced, hands: o.hands });
+   // at rest she costs next to nothing (release smoke): her blinks and idle acts draw 30 a second, Calm's half as often
+   rig = TCS.create(svg, { character: P.character, personality: P.traits, expression: "neutral", intensity: 0.85, quiet: o.quiet, reduced: o.reduced, hands: o.hands, beatFps: 30, idleEvery: o.calm ? 2 : 1 });
   },
   cue(c) {
    if (!rig) return;

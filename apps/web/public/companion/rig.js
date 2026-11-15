@@ -721,7 +721,7 @@
   const hands = {L: {x: 0, y: 0, r: 0, s: 0, vx: 0, vy: 0, vr: 0, vs: 0, pose: "open"}, R: {x: 0, y: 0, r: 0, s: 0, vx: 0, vy: 0, vr: 0, vs: 0, pose: "open"}};
   const sec = {x: 0, y: 0, vx: 0, vy: 0, px: 0, py: 0};
   let handMode = opts.hands || "arms"; // arms by default (Director, 13 Nov); floating hands are a hidden option
-  let raf = 0, last = 0, frames = 0, running = false, destroyed = false, blinkTimer = 0, idleTimer = 0, lastVariant = {}, dyn = "";
+  let raf = 0, last = 0, frames = 0, running = false, beatOnly = false, beatFrame = 0, destroyed = false, blinkTimer = 0, idleTimer = 0, lastVariant = {}, dyn = "";
   const stats = {frames: 0, since: performance.now()};
   let B = null, F = null;
 
@@ -814,7 +814,7 @@
    if (reduced && !o.force && c.g !== undefined && name !== "blink") { if (o.cut) snapFace(); return; }
    const dur = (o.dur || c.dur) * (name.includes("link") ? 1 : tu.gdur);
    clips.push({name, c, loop: !!o.fromLoop, t0: performance.now() + (o.delay || 0), dur, a: (o.amp ?? 1) * (name.includes("link") ? 1 : tu.gamp), cut: o.cut, cutDone: false});
-   wake();
+   wake(o.beat);
   }
   function snapFace() { for (const k of KEYS) if (!SPRING.has(k)) { cur[k] = tgt[k]; vel[k] = 0; delete tw[k]; } }
   function spawn(name, o = {}) { if (!FX[name] || reduced) return; fxs.push({name, t0: performance.now(), dur: FX[name].dur, seed: Math.random() * 6, dir: o.dir || 0}); wake(); }
@@ -845,27 +845,28 @@
   function stopSpeech() { if (speech) { const d = speech.done; speech = null; d && d(); } }
 
   // ── scheduling: blinks and idle acts; at rest the loop sleeps ──
-  function scheduleBlink() { clearTimeout(blinkTimer); if (opts.static || destroyed) return; blinkTimer = setTimeout(() => { if (!document.hidden && !speechBusy() && !eyesShaped()) play(Math.random() < .18 ? "doubleBlink" : "blink"); scheduleBlink(); }, (tu.blink * (.55 + Math.random() * .9)) * 1000); }
+  function scheduleBlink() { clearTimeout(blinkTimer); if (opts.static || destroyed) return; blinkTimer = setTimeout(() => { if (!document.hidden && !speechBusy() && !eyesShaped()) play(Math.random() < .18 ? "doubleBlink" : "blink", {beat: true}); scheduleBlink(); }, (tu.blink * (.55 + Math.random() * .9)) * 1000); }
   function speechBusy() { return !!speech; }
   // closed or shaped eyes (arcs, > <, stars…) and heavy lids never get a blink on top
   const shaped = (v) => Math.max(v.arc, v.sarc, v.chev, v.star, v.heart, v.spiral, v.dots, v.wink) > .3;
   function eyesShaped() { return shaped(cur) || shaped(tgt) || cur.lu > .6; }
   function scheduleIdle() {
    clearTimeout(idleTimer); if (opts.static || opts.quiet || destroyed || reduced) return;
-   idleTimer = setTimeout(() => { if (!document.hidden && !speech && !clips.some((c) => !/link/.test(c.name)) && !(E[expr].loop && LOOPS[E[expr].loop].acts)) idleAct(); scheduleIdle(); }, tu.idle * (.6 + Math.random() * .8) * 1000);
+   idleTimer = setTimeout(() => { if (!document.hidden && !speech && !clips.some((c) => !/link/.test(c.name)) && !(E[expr].loop && LOOPS[E[expr].loop].acts)) idleAct(); scheduleIdle(); }, tu.idle * (opts.idleEvery || 1) * (.6 + Math.random() * .8) * 1000);
   }
   function idleAct() {
    const w = [["glance", 1], ["glanceBack", 1], ["lookAround", .5 + T.energy], ["smile", .2 + T.warmth], ["tilt", .2 + T.warmth * .4], ["hop", T.play * T.energy * 1.4], ["squish", T.play * .7], ["eyeRoll", T.sass * .7 * (expr === "neutral" ? 1 : 0)], ["stretch", (1 - T.energy) * .4], ["fidget", .3 + T.play]];
    if (ch.idle) w.push(...ch.idle);
    if (["sad", "sulky", "lonely", "angry", "frustrated", "asleep", "sleepy"].includes(expr)) w.splice(3);
    let s = 0; w.forEach((x) => s += x[1]); let r = Math.random() * s;
-   for (const [k, v] of w) { r -= v; if (r <= 0) { if (k === "fidget") fidget(); else play(k); return; } }
+   for (const [k, v] of w) { r -= v; if (r <= 0) { if (k === "fidget") fidget(true); else play(k, {beat: true}); return; } }
    // a prop she holds is used now and then: a sip, an adjustment, a tap
    const hp = Object.keys(props).find((k) => TCS.PROPS[k].use); if (hp && Math.random() < .5) use(hp);
   }
-  function fidget() { if (ch.fidget) { clips.push({name: "fidget", c: {dur: ch.fidget.dur, fn: ch.fidget.fn}, t0: performance.now(), dur: ch.fidget.dur * tu.gdur, a: tu.gamp}); wake(); } }
+  function fidget(beat) { if (ch.fidget) { clips.push({name: "fidget", c: {dur: ch.fidget.dur, fn: ch.fidget.fn}, t0: performance.now(), dur: ch.fidget.dur * tu.gdur, a: tu.gamp}); wake(beat); } }
 
-  function wake() { if (destroyed) return; if (opts.static) { render(performance.now(), true); return; } if (!running) { running = true; last = performance.now(); raf = requestAnimationFrame(frame); } }
+  // a beat (a blink, an idle act) that starts her from rest may be drawn at opts.beatFps; anything else wakes her at full rate
+  function wake(beat) { if (destroyed) return; if (opts.static) { render(performance.now(), true); return; } if (!beat) beatOnly = false; if (!running) { running = true; beatOnly = !!beat; last = performance.now(); raf = requestAnimationFrame(frame); } }
 
   // the silhouette profile: the body's left and right edge at 41 heights, measured once per character from its
   // neutral outline (hidden path, isPointInFill), then scaled with the body
@@ -935,6 +936,7 @@
    const busy = fullRate || fxs.length;
    // a throttled loop (breathing, thinking) keeps its low rate even while its own effects (zzz, …) float by
    if (lp && lp.fps && !fullRate && !reduced) { const step = 1000 / lp.fps; if (now - loopFrame < step - 2) { raf = requestAnimationFrame(frame); return; } loopFrame = now; }
+   if (beatOnly && opts.beatFps) { if (now - beatFrame < 1000 / opts.beatFps - 2) { raf = requestAnimationFrame(frame); return; } beatFrame = now; }
    last = now;
    const moving = render(now, false, dt);
    if (moving || busy || (lp && lp.fps && !reduced && !(lp.stop && (now - loopT0) / 1000 > lp.stop)) || (lp && lp.acts)) {
