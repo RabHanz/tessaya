@@ -162,6 +162,26 @@ const REASONING =
 /** "There's no member with that id", "I don't see anyone with the id maya-1" (K-room-1, 15 Nov). */
 const NO_SUCH_MEMBER =
   /\b(can'?t|cannot|couldn'?t|don'?t|no|nobody)\b.*\b(find|see|member|one|anyone)\b/i;
+/** An offer tacked on to a reply ("want me to…", "shall I…", "anything else?"). */
+const OFFER =
+  /\b(want me to|would you like( me)? to|shall I|should I|I can (check|look)|anything else)\b/i;
+/** A spoken reply: at most `max` sentences after the filler, and no offer tacked on. */
+const brief =
+  (max: number) =>
+  (last: string): string | null =>
+    OFFER.test(last)
+      ? `tacked on an offer: ${last.slice(0, 80)}`
+      : last
+            .replace(/^(One moment|Looking)\.\s*/i, "")
+            .split(/[.!?](?:\s|$)/)
+            .filter((x) => x.trim() !== "").length > max
+        ? `more than ${max} sentences: ${last.slice(0, 120)}`
+        : null;
+/** The time, unasked ("It's twenty-three twenty-seven right now"). */
+const UNASKED_TIME =
+  /\b(right now it'?s|it'?s (now )?(\w+[- ]){0,2}(twenty|thirty|forty|fifty|o'?clock|\d))|\bright now\.?$/i;
+/** Advice on how he should feel or rest, after small talk ("rest your head", "you've earned it"). */
+const ADVICE = /\b(rest|sleep|wind down|earned|take it easy|go easy|look after yourself)\b/i;
 /** "X here." at the start of a turn (13 Nov). */
 const SELF_INTRO = /^\s*(\w+) here[.!,]/i;
 
@@ -581,6 +601,103 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["Let Freya take this over."],
     uses: [["tessaya_persona_handoff"]],
     clean: ["tessaya_persona_handoff"],
+  },
+  // 15 Nov: his Tessel sessions, judged blind (L-tessel): directions she missed. Made-up sentences of the same shapes.
+  {
+    // A persona asked for under a loose or misheard name: she asked him to say it again.
+    id: "direct-loose-name",
+    proves: ["tessaya_persona_handoff"],
+    said: ["Put me through to Alfie."],
+    uses: [["tessaya_persona_handoff"]],
+    argsOf: "tessaya_persona_handoff",
+    args: (input) => ({ alfred: /alfred/i.test(String(input["to"] ?? "")) }),
+    check: brief(2),
+  },
+  {
+    // A persona's name the recogniser broke up ("all Fred"): who he means is clear anyway.
+    id: "direct-broken-name",
+    proves: ["tessaya_persona_handoff"],
+    said: ["Can you get me all Fred?"],
+    uses: [["tessaya_persona_handoff"]],
+    argsOf: "tessaya_persona_handoff",
+    args: (input) => ({ alfred: /alfred/i.test(String(input["to"] ?? "")) }),
+    check: brief(2),
+  },
+  {
+    // A persona's name cut short.
+    id: "direct-short-name",
+    proves: ["tessaya_persona_handoff"],
+    said: ["Let's talk to Seb."],
+    uses: [["tessaya_persona_handoff"]],
+    argsOf: "tessaya_persona_handoff",
+    args: (input) => ({ sebastian: /sebastian/i.test(String(input["to"] ?? "")) }),
+    check: brief(2),
+  },
+  {
+    // A correction of what she just did, in the next breath.
+    id: "direct-correction",
+    proves: ["tessaya_persona_handoff"],
+    said: ["Let Freya take this over.", "No, not her. I meant Alfred."],
+    uses: [["tessaya_persona_handoff"]],
+    check: (last, calls) =>
+      calls.some(
+        (x) => x.name === "tessaya_persona_handoff" && /alfred/i.test(JSON.stringify(x.input)),
+      )
+        ? brief(2)(last)
+        : "never handed it to Alfred",
+  },
+  {
+    // A standing direction said as a wish, not a command.
+    id: "direct-wish",
+    proves: ["tessaya_preference_set"],
+    said: ["Honestly, I'd rather hear times the twenty-four hour way."],
+    uses: [["tessaya_preference_set"]],
+    argsOf: "tessaya_preference_set",
+    args: (input) => ({ timeFormat: input["key"] === "timeFormat" }),
+    lastNotSays: [UNASKED_TIME],
+    check: brief(2),
+  },
+  {
+    // A command after small talk, in one breath.
+    id: "direct-after-chat",
+    proves: ["tessaya_memory_remember"],
+    said: [
+      "Long day. My head's all over the place tonight. Anyway, remember that the plumber comes Thursday at ten.",
+    ],
+    uses: [["tessaya_memory_remember"]],
+    argsOf: "tessaya_memory_remember",
+    args: (input) => ({ plumber: /plumber/i.test(String(input["text"] ?? "")) }),
+    lastNotSays: [ADVICE],
+    check: brief(2),
+  },
+  {
+    // Two asks in one sentence: she did one.
+    id: "direct-two-asks",
+    proves: ["tessaya_memory_remember", "tessaya_team_board"],
+    said: ["Remember that the bins go out on Tuesday night, and what's on the team board?"],
+    uses: [["tessaya_memory_remember"], ["tessaya_team_board", "tessaya_in_flight"]],
+    check: brief(3),
+  },
+  {
+    // One request the recogniser cut in two: the second piece finishes the first.
+    id: "direct-split",
+    proves: ["tessaya_memory_remember"],
+    said: ["Remember that my sister's flight lands at", "six on Friday evening."],
+    uses: [["tessaya_memory_remember"]],
+    argsOf: "tessaya_memory_remember",
+    args: (input) => ({
+      "the whole fact":
+        /\b(six|6)\b/i.test(String(input["text"] ?? "")) &&
+        /friday/i.test(String(input["text"] ?? "")),
+    }),
+  },
+  {
+    // A request said as a wonder: she offered to look instead of looking. A control: it passed before the fix too.
+    id: "direct-wonder",
+    proves: ["tessaya_fleet"],
+    said: ["Everything feels slow today. I wonder if one of my machines is down."],
+    uses: [["tessaya_fleet"]],
+    lastNotSays: [OFFER],
   },
   {
     // Job lead hand-off: the job moves with the conversation, and comes back, its worker untouched.
