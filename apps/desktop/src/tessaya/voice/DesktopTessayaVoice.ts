@@ -511,7 +511,9 @@ import {
   createDesktopMascot,
   mascotChoices,
   parseMascotPersona,
+  parseMascotScreens,
   parseMascotSize,
+  type MascotScreens,
   type MascotSize,
   type PersonaBody,
 } from "../companion/desktopMascot.ts";
@@ -713,6 +715,8 @@ interface VoiceSettings {
   /** A persona in his pack, by name in lower case; custom ones too. */
   readonly mascotPersona: string;
   readonly mascotSize: MascotSize;
+  /** Thrown, she stays on her screen or flies across all of them as one desktop. */
+  readonly mascotScreens: MascotScreens;
   /** Her face in the pill while he talks to her, when the desktop companion is off. */
   readonly pillFace: boolean;
   /** Her body is the persona answering him, not only his chosen one (SPINE-UNIFY §10, P5). */
@@ -897,6 +901,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   mascotMotion: "calm",
   mascotPersona: "tessaya",
   mascotSize: "medium",
+  mascotScreens: "span",
   pillFace: false,
   mascotFollows: false,
   frosted: false,
@@ -1044,6 +1049,7 @@ export const readSettings = (path: string): VoiceSettings => {
       mascotMotion: parseCompanionMotion(saved["mascotMotion"]),
       mascotPersona: parseMascotPersona(saved["mascotPersona"]),
       mascotSize: parseMascotSize(saved["mascotSize"]),
+      mascotScreens: parseMascotScreens(saved["mascotScreens"]),
       pillFace: saved["pillFace"] === true,
       mascotFollows: saved["mascotFollows"] === true,
       frosted: saved["frosted"] === true,
@@ -4832,6 +4838,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       persona: mascotBody(),
       size: settings.mascotSize,
       reduced: settings.motion !== "full",
+      screens: settings.mascotScreens,
     });
     // Jobs are read on a timer only once something wants them; she does.
     if (settings.mascot) wantJobs();
@@ -7267,6 +7274,19 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         disabled: !settings.mascot,
       },
       {
+        id: "v.mascotScreens",
+        section: "Desktop companion",
+        label: "When you throw her",
+        hint: "One big desktop: she flies across your screens as they are arranged, and the gaps between them are walls. Stay on this screen: she bounces off its edges. You can still drag her to any screen.",
+        kind: "choice",
+        value: settings.mascotScreens,
+        options: [
+          { value: "span", label: "One big desktop" },
+          { value: "one", label: "Stay on this screen" },
+        ],
+        disabled: !settings.mascot,
+      },
+      {
         id: "v.mascotFollows",
         section: "Desktop companion",
         label: "Follows who is talking",
@@ -8471,6 +8491,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.mascotMotion") save({ mascotMotion: parseCompanionMotion(value) });
     else if (id === "v.mascotPersona") save({ mascotPersona: parseMascotPersona(value) });
     else if (id === "v.mascotSize") save({ mascotSize: parseMascotSize(value) });
+    else if (id === "v.mascotScreens") save({ mascotScreens: parseMascotScreens(value) });
     else if (id === "v.pillFace") save({ pillFace: on });
     else if (id === "v.mascotFollows") {
       talking = null;

@@ -75,6 +75,8 @@
   sx: 1, sy: 1, lift: 0, lean: 0, tilt: 0, yaw: 0, pitch: 0, zoom: 1, app: 0,
   // body tint: anger flush, a cold gloom, a warm glow behind
   flush: 0, gloom: 0, glow: 0,
+  // the mood's colour through the whole body: warmer and brighter as it rises, cooler blue-grey as it falls
+  warm: 0, cool: 0,
   // eyes: size, spacing, height, gaze; upper lid close and slant (+ inner down = cross, − outer down = sad); lower lid push
   ew: 1, eh: 1, gap: 1, ey: 0, gx: 0, gy: 0, lu: 0, la: 0, ll: .12,
   // eye styles, crossfaded: happy arcs, sleeping arcs, squeezed > <, stars, hearts, spirals, loading dots, wink, one eye bigger
@@ -88,9 +90,20 @@
  };
  const KEYS = Object.keys(N);
  const SPRING = new Set(["sx", "sy", "lift", "lean", "tilt", "yaw", "pitch", "zoom", "app"]);
- // the eyes' shape keys move on a critically damped spring (ω 11: a gentle start, settled in about 0.45 s, as the motion
- // bar's reference morphs), never an ease that starts at full speed
- const SHAPE = new Set(["arc", "sarc", "chev", "star", "heart", "spiral", "dots"]), SHAPE_W = 11;
+ // A change of mood is a timed move of about a second and a half that moves on every frame (the motion bar: the
+ // reference recolours the whole character from about 0.3 s to 1.1 s and is halfway near 0.55 s). The body's colour,
+ // aura and posture travel the whole way; the brows, eyes and mouth arrive spread from 0.5 to 0.9 s. Each value leaves
+ // wherever it is on a slow-in, slow-out curve whose long tail keeps it moving to the end.
+ const GROUP = (k) => /^(warm|cool|gloom|flush|glow|lift|lean|pitch|tilt)$/.test(k) ? "body" : /^(bo|by|ba|bc|bas)$/.test(k) ? "brow" : /^(mw|mc|mo|mr|mx|mt|mwob|teeth|tongue|puff|cheek|blush)$/.test(k) ? "mouth" : "eye";
+ const TIMING = {body: [0, 2000], brow: [40, 520], eye: [130, 600], mouth: [220, 640]};
+ const LAG = Object.fromEntries(Object.keys(N).map((k) => [k, TIMING[GROUP(k)][0]]));
+ const DUR = Object.fromEntries(Object.keys(N).map((k) => [k, TIMING[GROUP(k)][1]]));
+ const TWEEN_MS = 800;
+ const smoother = (x) => x * x * x * (x * (x * 6 - 15) + 10);
+ // the body's curve: a slow start, halfway near 0.6 s, then a long arrival that keeps moving to the end (a sine ease on
+ // t^0.55 over 2 s: the reference's change is visible on 40 of its 47 frames)
+ const longTail = (x) => .5 - .5 * Math.cos(PI * Math.pow(x, .55));
+ const VALENCE = {Joy: 1, Love: .9, Surprise: .8, Curious: .4, Angry: .3, Calm: 0, Sulky: -.6, Sad: -1, Sleepy: -.8};
  const STYLE = new Set(["arc", "sarc", "chev", "star", "heart", "spiral", "dots", "wink"]);
  TCS.NEUTRAL = N;
 
@@ -238,6 +251,22 @@
   glanceBack:{g: "idle", label: "Glance back", dur: 1100, fn: (t) => ({d: {gx: -.6 * hold(t, 0, .06, .7, .8), yaw: -.12 * hold(t, .05, .3, .7, .9)}})},
   lookAround:{g: "idle", label: "Look around", dur: 1900, fn: (t) => ({d: {gx: .55 * hold(t, .02, .08, .38, .44) - .55 * hold(t, .46, .52, .82, .88), yaw: .22 * hold(t, .05, .25, .35, .45) - .22 * hold(t, .5, .65, .8, .92), tilt: 3 * bell(t, .05, .45) - 3 * bell(t, .5, .92)}})},
   smile:     {g: "idle", label: "Smile at you", dur: 1400, fn: (t) => ({d: {ll: .4 * bell(t, 0, 1), mc: .4 * bell(t, 0, 1), cheek: .4 * bell(t, 0, 1), tilt: -3 * bell(t, 0, 1), lift: -2 * bell(t, 0, 1)}})},
+  // (humps, sin², so every part leaves and arrives at rest: nothing starts at full speed)
+  // the body's part of a change of expression (play with amp = the change in valence, − for sadder): a small
+  // anticipation the other way, the move along an arc (lift and lean together), one overshoot, and the settle;
+  // sideways scale answers vertical so her volume holds
+  shift:     {g: "body", label: "Shift", dur: 1000, fn: (t, a) => { const s = Math.sign(a) || 1, m = Math.min(1.2, Math.abs(a)), h = (u, a0, b0) => bell(u, a0, b0) ** 2, L = (u) => (2 * h(u, 0, .5) - 3.6 * h(u, .22, 1)) * s * m, v = (L(t + .01) - L(t - .01)) / .02, sy = clamp(-v * .003, -.05, .05); return {d: {lift: L(t), sy, sx: -.5 * sy, lean: (-.8 * h(t, 0, .5) + 2.2 * h(t, .25, 1)) * s * m}}; }},
+  squint:    {g: "face", label: "Squint", dur: 300, fn: (t) => ({d: {lu: .5 * bell(t, 0, 1) ** .7, ll: .35 * bell(t, 0, 1), mw: .06 * bell(t, 0, 1)}})},
+  // the characters' own quirks and gaits (bodies.js TCS.PHYSICS): each leaves and returns to rest
+  rock:      {g: "body", label: "Rock to a stop", dur: 1500, fn: (t) => ({d: {tilt: 7 * Math.sin(t * TAU * 2.5) * (1 - t) ** 2}})},
+  plump:     {g: "body", label: "Plump up", dur: 1000, fn: (t) => { const s = Math.sin(t * TAU * 2) * bell(t, 0, 1); return {d: {sy: .07 * s, sx: -.05 * s, lift: -3 * bell(t, 0, 1)}}; }},
+  wobble:    {g: "body", label: "Wobble", dur: 1400, fn: (t) => { const s = Math.sin(t * TAU * 3.5) * (1 - t) ** 2; return {d: {sx: .09 * s, sy: -.09 * s, tilt: 2 * s}}; }},
+  waddle:    {g: "body", label: "Waddle step", dur: 520, fn: (t, a) => ({d: {tilt: 5 * a * Math.sin(t * PI), lift: -4 * Math.abs(a) * Math.sin(t * PI)}})},
+  // the funny moments (rig.humour): each a short act that leaves and returns to rest
+  sneeze:    {g: "body", label: "Sneeze", dur: 1500, fn: (t) => { const ah = ease(ramp(t, 0, .55)) * (1 - ramp(t, .55, .62)), ch = bell(t, .56, .9); return {d: {pitch: -.14 * ah + .22 * ch, sy: .1 * ah - .16 * ch, sx: -.06 * ah + .12 * ch, lu: .55 * ah + .9 * bell(t, .56, .8), bo: .8 * ah, by: -6 * ah, mo: .35 * ah + .9 * ch, mr: .6 * ah, lift: -6 * ah + 3 * ch}}; }},
+  slip:      {g: "body", label: "Slip", dur: 1100, fn: (t) => { const up = bell(t, 0, .5), sit = hold(t, .45, .55, .8, 1); return {d: {tilt: -34 * up - 8 * sit, lift: -26 * up, eh: .35 * up, lu: -.3 * up, mo: .7 * up, sy: -.06 * sit}}; }},
+  hang:      {g: "body", label: "Hang from a ledge", dur: 2600, fn: (t) => { const h = hold(t, 0, .06, .9, 1); return {d: {tilt: 7 * Math.sin(t * TAU * 1.4) * h, sy: .08 * h, sx: -.05 * h, eh: .2 * h, mo: .3 * h}, hands: t < .97 ? {L: ["overhead", "grip"], R: ["overhead", "grip"]} : null}; }},
+  peel:      {g: "body", label: "Peel up", dur: 1000, fn: (t) => ({d: {tilt: 16 * bell(t, 0, 1) * (1 - t), lean: -6 * bell(t, 0, .7)}})},
   squish:    {g: "body", label: "Squish", dur: 420, fn: (t) => ({d: {sy: -.1 * bell(t, 0, .5) + .04 * bell(t, .5, 1), sx: .08 * bell(t, 0, .5) - .03 * bell(t, .5, 1)}})},
   stomp:     {g: "feel", label: "Stomp", dur: 800, fn: (t, a) => ({d: {lift: -16 * a * bell(t, 0, .45), sy: -.12 * bell(t, .45, .7), sx: .1 * bell(t, .45, .7), flush: .5 * bell(t, .3, 1)}})},
   giggleOnce:{g: "feel", label: "Giggle", dur: 1000, fn: (t) => ({d: {arc: hold(t, 0, .1, .85, 1), lift: -3 * Math.abs(sw(t, 3)), tilt: -4 * bell(t, 0, 1), mc: .5 * bell(t, 0, 1)}, hands: t < .92 ? {L: ["mouth", "back"]} : null})},
@@ -604,6 +633,8 @@
   sparkle: {dur: 1100}, hearts: {dur: 1600}, zzz: {dur: 2800}, tears: {dur: 1400}, tear: {dur: 1300}, steam: {dur: 1300}, vein: {dur: 1500},
   sweat: {dur: 1600}, question: {dur: 1500}, exclaim: {dur: 900}, puff: {dur: 1000}, scribble: {dur: 1400}, gloom: {dur: 2400},
   notes: {dur: 1800}, confetti: {dur: 1800}, ellipsis: {dur: 1600}, flash: {dur: 420},
+  // motion graphics for her physics: a landing's dust, dizzy stars, speed lines behind a fast flight
+  dust: {dur: 650}, stars: {dur: 2600}, speed: {dur: 280},
  };
  function drawFx(list, now, B, F, pal) {
   let o = "";
@@ -627,6 +658,9 @@
     case "notes": for (let i = 0; i < 2; i++) { const tt = ramp(t, i * .3, .7 + i * .3), px = hw * .5 + tt * 20 + i * 12, py = top - tt * 40; if (tt > 0 && tt < 1) o += `<text x="${f1(px)}" y="${f1(py)}" font-size="18" fill="${pal.zzz}" opacity="${f1(Math.sin(tt * PI))}">♪</text>`; } break;
     case "confetti": for (let i = 0; i < 16; i++) { const a = s + i * 2.39, v = 60 + (i % 5) * 18, px = Math.cos(a) * v * t, py = top - 10 + Math.sin(a) * v * t * .6 + 90 * t * t; o += `<rect x="${f1(px)}" y="${f1(py)}" width="6" height="3.5" fill="${[pal.star, pal.heart, "#5FB3B3", "#BC96CE"][i % 4]}" transform="rotate(${f1(t * 720 + i * 40)} ${f1(px)} ${f1(py)})" opacity="${f1(fade)}"/>`; } break;
     case "ellipsis": for (let i = 0; i < 3; i++) o += `<circle cx="${f1(hw * .5 + 10 + i * 10)}" cy="${f1(top - 4 - i * 6)}" r="${f1(3 + i)}" fill="${pal.zzz}" opacity="${f1(bell(t, i * .15, .7 + i * .1))}"/>`; break;
+    case "dust": for (const side of [-1, 1]) for (let i = 0; i < 3; i++) { const tt = ease(t), r = (4 + i * 2) * (.5 + tt), px = side * (hw * (.55 + i * .16) + tt * (26 + i * 12)), py = -3 - tt * (5 + i * 5); o += `<circle cx="${f1(px)}" cy="${f1(py)}" r="${f1(r)}" fill="#d9d2c4" opacity="${f1(.75 * (1 - t))}"/>`; } break;
+    case "stars": for (let i = 0; i < 3; i++) { const a = s + t * TAU * 1.7 + i * TAU / 3, px = Math.cos(a) * hw * .62, py = top - 6 + Math.sin(a) * 9, k = 10 * (.75 + .25 * Math.sin(a)) * inn; let d = ""; for (let j = 0; j < 10; j++) { const b = j * PI / 5 - PI / 2, q = j % 2 ? k * .45 : k; d += (j ? "L" : "M") + f1(px + Math.cos(b) * q) + " " + f1(py + Math.sin(b) * q); } o += `<path d="${d}Z" fill="${pal.star}" stroke="#a87412" stroke-width=".8" opacity="${f1(fade)}"/>`; } break;
+    case "speed": for (let i = 0; i < 3; i++) { const bx = -Math.cos(x.dir), by = -Math.sin(x.dir), nx = -by, ny = bx, off = (i - 1) * B.h * .26, x0 = bx * hw * (1.05 + i % 2 * .15) + nx * off, y0 = B.cy + by * B.h * .5 + ny * off, len = (34 + 14 * (i % 2)) * (1 - t * .6); o += `<path d="M${f1(x0)} ${f1(y0)}l${f1(bx * len)} ${f1(by * len)}" stroke="${pal.zzz}" stroke-width="3" stroke-linecap="round" opacity="${f1(.6 * (1 - t))}"/>`; } break;
     // a camera flash: a small, quick burst at the camera's side, never a wash over her face
     case "flash": { const px = hw * .95, py = B.cy + B.h * .2, k = 8 + 22 * ease(t); o += `<g opacity="${f1(.85 * (1 - t))}"><circle cx="${f1(px)}" cy="${f1(py)}" r="${f1(k * .5)}" fill="#fff"/>${[0, 1, 2, 3, 4, 5].map((i) => { const a = i * PI / 3; return `<path d="M${f1(px + Math.cos(a) * k * .6)} ${f1(py + Math.sin(a) * k * .6)}L${f1(px + Math.cos(a) * k)} ${f1(py + Math.sin(a) * k)}" stroke="#fff3b0" stroke-width="2.5" stroke-linecap="round"/>`; }).join("")}</g>`; break; }
    }
@@ -638,6 +672,11 @@
  let UID = 0;
  const GROUND = 112;
  TCS.VIEWBOX = "-160 -168 320 320";
+ /** A character's physics profile (bodies.js TCS.PHYSICS), or a middling one for a body without its own. */
+ const PHYS0 = {mass: 1, soft: .5, bounce: .35, friction: 6, squash: [.8, 1.2], pace: 1, gait: {walk: "hop", hop: .8, ms: 700}, react: {pickup: "surprised", land: "calm", poke: "giggle", pet: "happy", bump: "surprised", under: "surprised"}, quirk: "glanceBack", hello: "nodSmall"};
+ TCS.physicsOf = (id) => (TCS.PHYSICS && TCS.PHYSICS[id]) || PHYS0;
+ /** Her flight from her profile, as the desktop's physics and the sandbox step it: heavier falls harder and floats less. */
+ TCS.flightOf = (P) => ({gravity: 2200 + 400 * P.mass, bounce: P.bounce, friction: P.friction, drag: clamp(.95 - .45 * P.mass, .15, .9)});
  TCS.create = function (svg, opts = {}) {
   const uid = ++UID, NS = "http://www.w3.org/2000/svg";
   svg.setAttribute("viewBox", TCS.VIEWBOX);
@@ -649,6 +688,29 @@
   let tu = tune(T), bi = bias(T), intensity = opts.intensity ?? 1;
   const reduced = opts.reduced ?? (g.matchMedia && g.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const cur = Object.assign({}, N), vel = {}, tgt = Object.assign({}, N);
+  let oldLoop = null, brief = false;
+  // the mood's own colour and posture, kept while a brief reaction plays
+  const mood = {};
+  // her soft body: one spring on how squashed (−) or stretched (+) she is, driven by her flight (stretch along her speed)
+  // and kicked by an impact (a squash that recovers with one gentle overshoot); sideways answers so her volume holds
+  const soft = {y: 0, v: 0, target: 0, tilt: 0, tiltTo: 0, felt: -1e9, lx: 0, ly: 0, lxTo: 0, lyTo: 0};
+  // her body's physics (bodies.js TCS.PHYSICS): how soft, heavy and quick she is, her gait, reactions and quirk
+  const phys = () => TCS.physicsOf(ch.id);
+  // her deformable outline: 12 radial nodes round her body on springs, coupled to their neighbours, so a poke dents one
+  // spot and bulges the rest, a pull draws her out like taffy, and a release wobbles like jelly (r: share of her radius)
+  const JN = 12, jel = {r: new Array(JN).fill(0), v: new Array(JN).fill(0), pin: -1, pinTo: 0, on: false};
+  const jAt = (a) => { const u = ((a / TAU) % 1 + 1) % 1 * JN, i = Math.floor(u) % JN, f = u - Math.floor(u); return jel.r[i] * (1 - f) + jel.r[(i + 1) % JN] * f; };
+  const jNode = (x, y) => B ? ((Math.round(Math.atan2((y - B.cy) / (B.h / 2), x / B.hw) / TAU * JN) % JN) + JN) % JN : 0;
+  // every path command here is absolute M/L/C/Q pairs (smoothClosed); anything else is left as drawn
+  const warp = (d, hw, cy, hh, dy) => /[^MLCQZ0-9.\-\s,e]/.test(d) ? d : d.replace(/(-?[\d.]+(?:e-?\d+)?)[ ,](-?[\d.]+(?:e-?\d+)?)/g, (m, xs, ys) => {
+   const x = +xs, y = +ys, u = x / hw, v = (y - cy) / hh, rho = Math.hypot(u, v), k = 1 + jAt(Math.atan2(v, u)) * Math.min(1, rho * rho);
+   return f1(x * k) + " " + f1(cy + (y - cy) * k - dy);
+  });
+  // the mood a brief reaction returns to, and when
+  let moodName = opts.expression || "neutral", briefTimer = 0, quirkAt = -1e9;
+  // values on their way to a new target: {from, to, t0, dur}
+  const tw = {};
+  const pace = () => clamp(tu.tau / .12, .85, 1.3) * phys().pace;
   KEYS.forEach((k) => vel[k] = 0);
   let expr = "neutral", clips = [], fxs = [], props = {}, propT = {}, speech = null, loopT0 = 0, loopFrame = 0, nextLoopAct = 0;
   const hands = {L: {x: 0, y: 0, r: 0, s: 0, vx: 0, vy: 0, vr: 0, vs: 0, pose: "open"}, R: {x: 0, y: 0, r: 0, s: 0, vx: 0, vy: 0, vr: 0, vs: 0, pose: "open"}};
@@ -667,7 +729,7 @@
     + `<radialGradient id="ck${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.cheek}" stop-opacity=".95"/><stop offset="1" stop-color="${p.cheek}" stop-opacity="0"/></radialGradient>`
     + `<radialGradient id="fl${uid}" cx=".5" cy=".15" r=".8"><stop offset="0" stop-color="#e2403f" stop-opacity=".75"/><stop offset="1" stop-color="#e2403f" stop-opacity="0"/></radialGradient>`
     + `<linearGradient id="gl${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b4a7a" stop-opacity=".7"/><stop offset=".6" stop-color="#3b4a7a" stop-opacity="0"/></linearGradient>`
-    + `<radialGradient id="gw${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.glow || p.light}" stop-opacity=".55"/><stop offset="1" stop-color="${p.glow || p.light}" stop-opacity="0"/></radialGradient>`
+    + `<radialGradient id="gw${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.glow || p.light}" stop-opacity=".55"/><stop offset="1" stop-color="${p.glow || p.light}" stop-opacity="0"/></radialGradient><radialGradient id="aw${uid}" cx=".5" cy=".5" r=".5"><stop offset=".35" stop-color="#FFC85C" stop-opacity=".5"/><stop offset="1" stop-color="#FFC85C" stop-opacity="0"/></radialGradient><radialGradient id="ac${uid}" cx=".5" cy=".5" r=".5"><stop offset=".35" stop-color="#7F9CC8" stop-opacity=".5"/><stop offset="1" stop-color="#7F9CC8" stop-opacity="0"/></radialGradient>`
     + `<clipPath id="cl${uid}"><path/></clipPath>` + (ch.defs ? ch.defs(uid, p) : "");
 
    L.defs.insertAdjacentHTML("beforeend", `<mask id="re${uid}" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600"><path fill="none" stroke="#fff" stroke-width="16"/></mask><mask id="rc${uid}" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600"><g mask="url(#re${uid})"></g></mask>`);
@@ -687,13 +749,47 @@
     tgt[k] = STYLE.has(k) ? look : base + (look - N[k]) * A;
    }
    tgt.sx = 1 + (tgt.sx - 1); // keep
+   // posture follows the mood: up and a little back when it rises, down and forward when it falls
+   // and a warm aura swells behind her as it rises (a falling mood greys through its own gloom)
+   if (brief) { for (const k of ["lift", "pitch", "glow", "warm", "cool", "gloom", "flush"]) tgt[k] = mood[k] ?? tgt[k]; return; }
+   const v = VALENCE[ex.g] ?? 0; tgt.lift += -6 * v * A; tgt.pitch += -.03 * v * A; tgt.glow += Math.max(0, v) * .4 * A;
+   tgt.warm = clamp(Math.max(0, v) * .9, 0, .8); tgt.cool = clamp(Math.max(0, -v) * .9, 0, .8);
+   for (const k of ["lift", "pitch", "glow", "warm", "cool", "gloom", "flush"]) mood[k] = tgt[k];
+  }
+  /** She hit something at this speed (px/s): a squash as deep as she is soft, springing back as she is soft (plush ones
+   * wobble, rigid ones barely give); landing, a quick squint as she hits, never in the air. */
+  function impact(speed, landed = true) {
+   const P = phys(), k = clamp(speed / 2000, 0, 1) * (.6 + .4 * P.mass), t = performance.now();
+   soft.tiltTo = 0; soft.v -= 6 * k * (1 + .5 * k) * (.35 + 1.1 * P.soft);
+   // a hard landing pancakes her and holds it a beat before she springs back
+   if (landed && k > .35) { soft.target = -k * (1 - P.squash[0]) * 1.6; soft.holdUntil = t + 200 * pace(); } else if (!soft.pressed && !soft.holdUntil) soft.target = 0;
+   // and her outline wobbles like jelly: the oval and three-lobed shapes, as soft as she is
+   if (landed && k > .3) { jel.on = true; for (let i = 0; i < JN; i++) { const a = i / JN * TAU; jel.v[i] += k * P.soft * (2.6 * Math.cos(2 * a) + 1.3 * Math.cos(3 * a)); } }
+   if (landed && k > .2 && t - soft.felt > 700) { play("squint"); soft.felt = t; if (k > .35) spawn("dust"); }
+   wake();
+  }
+  /** A reaction's face for a while (0: until the next reaction or mood), then back to her mood. */
+  function briefly(name, ms) {
+   clearTimeout(briefTimer);
+   if (name === moodName) { setExpression(name); return; }
+   setExpression(name, {brief: true});
+   if (ms) briefTimer = setTimeout(() => { if (expr === name) setExpression(moodName); }, ms * pace());
   }
   function setExpression(name, o = {}) {
    if (!E[name]) return;
+   const prev = expr, t = performance.now();
+   // a brief reaction (picked up, a poke) changes the face only: colour and posture belong to moods
+   brief = !!o.brief;
+   if (!brief) { moodName = name; clearTimeout(briefTimer); }
    expr = name;
-   clips = clips.filter((c) => !c.loop); // a mood's own acts (a sigh, a facepalm) end with the mood
+   // a mood's own acts (a sigh, a facepalm) end with the mood, fading out rather than cut
+   for (const c of clips) if (c.loop && c.fade0 === undefined) c.fade0 = t;
+   // the old mood's loop (a sway, a breath) fades out over its first moments, never vanishing at once
+   if (prev !== name && E[prev] && E[prev].loop && LOOPS[E[prev].loop] && LOOPS[E[prev].loop].fn) oldLoop = {lp: LOOPS[E[prev].loop], t0: loopT0, fade0: t};
    if (o.intensity !== undefined) intensity = o.intensity;
    retarget();
+   if (!reduced) for (const k of KEYS) if (Math.abs(tgt[k] - cur[k]) > 1e-3) tw[k] = GROUP(k) === "body" ? {from: cur[k], to: tgt[k], t0: t, dur: DUR[k], curve: longTail} : {from: cur[k], to: tgt[k], t0: t + LAG[k] * pace(), dur: DUR[k] * pace(), curve: smoother};
+   // the pose rises or sinks with the colour, slowly (no anticipation bob: the motion bar asks for a soft move)
    const ex = E[name];
    loopT0 = performance.now(); nextLoopAct = loopT0 + 1500;
    // every change morphs: the face's shape keys blend through in-betweens (the motion bar, 13 Nov, replaced the old
@@ -715,8 +811,8 @@
    clips.push({name, c, loop: !!o.fromLoop, t0: performance.now() + (o.delay || 0), dur, a: (o.amp ?? 1) * (name.includes("link") ? 1 : tu.gamp), cut: o.cut, cutDone: false});
    wake();
   }
-  function snapFace() { for (const k of KEYS) if (!SPRING.has(k)) { cur[k] = tgt[k]; vel[k] = 0; } }
-  function spawn(name) { if (!FX[name] || reduced) return; fxs.push({name, t0: performance.now(), dur: FX[name].dur, seed: Math.random() * 6}); wake(); }
+  function snapFace() { for (const k of KEYS) if (!SPRING.has(k)) { cur[k] = tgt[k]; vel[k] = 0; delete tw[k]; } }
+  function spawn(name, o = {}) { if (!FX[name] || reduced) return; fxs.push({name, t0: performance.now(), dur: FX[name].dur, seed: Math.random() * 6, dir: o.dir || 0}); wake(); }
   function prop(name, on = true) {
    if (name === "monocle" && ch.attach) { if (on) play("monocleOut", {force: true}); else play("monocleDrop", {force: true}); }
    const P = TCS.PROPS[name]; if (!P) return;
@@ -785,22 +881,26 @@
    c._prof = {n, h: b0.h, hw: b0.hw, R: Rx, L: Lx};
    return c._prof;
   }
-  function stepSprings(dt) {
-   const k = tu.k, z = tu.z, c = 2 * z * Math.sqrt(k), a = 1 - Math.exp(-dt / tu.tau);
+  function stepSprings(dt, now) {
+   const k = tu.k, z = tu.z, c = 2 * z * Math.sqrt(k);
    let moving = false;
    for (const key of KEYS) {
     const target = tgt[key];
-    if (SHAPE.has(key)) {
-     const v = vel[key] || 0, acc = SHAPE_W * SHAPE_W * (target - cur[key]) - 2 * SHAPE_W * v;
-     vel[key] = v + acc * dt; cur[key] += vel[key] * dt;
-     if (Math.abs(target - cur[key]) > 1e-3 || Math.abs(vel[key]) > 1e-3) moving = true; else { cur[key] = target; vel[key] = 0; }
-    } else if (SPRING.has(key)) {
+    // a tween left aimed at an old target ends: the new target moves the usual way, or she would draw forever at rest
+    if (tw[key] && tw[key].to !== target) delete tw[key];
+    const w = tw[key];
+    if (w && w.to === target) {
+     // a change: slow in, slow out, from wherever it was
+     const p = clamp((now - w.t0) / w.dur, 0, 1);
+     cur[key] = w.from + (w.to - w.from) * (w.curve || smoother)(p); vel[key] = 0;
+     if (p < 1) moving = true; else delete tw[key];
+    } else if (!SPRING.has(key)) {
+     // any other new target (a personality, an intensity) travels the same way
+     if (Math.abs(target - cur[key]) > 1e-3) { tw[key] = {from: cur[key], to: target, t0: now, dur: TWEEN_MS * pace()}; moving = true; } else cur[key] = target;
+    } else {
      const acc = k * (target - cur[key]) - c * vel[key];
      vel[key] += acc * dt; cur[key] += vel[key] * dt;
      if (Math.abs(target - cur[key]) > 1e-3 || Math.abs(vel[key]) > 1e-3) moving = true; else { cur[key] = target; vel[key] = 0; }
-    } else {
-     const d = target - cur[key];
-     if (Math.abs(d) > 2e-3) { cur[key] += d * a; moving = true; } else cur[key] = target;
     }
    }
    return moving;
@@ -825,7 +925,8 @@
    const dt = Math.min(.05, (now - last) / 1000);
    const ex = E[expr], lp = ex.loop && LOOPS[ex.loop];
    // throttled loops: skip frames to hold their fps, unless something else needs full rate
-   const fullRate = clips.length || speech || Object.values(props).some((p) => now - p.t0 < 900 || p.out || (p.use && now - p.use < p.useDur));
+   // a change of mood in progress runs at the display's rate even when the new mood's own loop is a throttled one
+   const fullRate = clips.length || speech || Object.keys(tw).length || Object.values(props).some((p) => now - p.t0 < 900 || p.out || (p.use && now - p.use < p.useDur));
    const busy = fullRate || fxs.length;
    // a throttled loop (breathing, thinking) keeps its low rate even while its own effects (zzz, …) float by
    if (lp && lp.fps && !fullRate && !reduced) { const step = 1000 / lp.fps; if (now - loopFrame < step - 2) { raf = requestAnimationFrame(frame); return; } loopFrame = now; }
@@ -847,29 +948,36 @@
   const put = (el, html) => { if (el.__h !== html) { el.__h = html; el.innerHTML = html; } };
   function render(now, snap, dt = 1 / 60) {
    let moving = false;
-   if (snap) { for (const k of KEYS) cur[k] = tgt[k]; } else moving = stepSprings(dt);
+   if (snap) { for (const k of KEYS) cur[k] = tgt[k]; } else moving = stepSprings(dt, now);
+   if (Object.keys(tw).length) moving = true;
    // rendered values: state + clips + loop + speech
    const Rv = Object.assign({}, cur), handReq = {L: null, R: null};
    const add = (d, a = 1) => { for (const k in d) if (k in Rv) Rv[k] += d[k] * a; };
    const ex = E[expr], lp = ex.loop && LOOPS[ex.loop];
    let spinT = 0;
    if (lp && lp.fn && !reduced) {
-    const s = (now - loopT0) / 1000, fade = lp.stop ? 1 - ramp(s, lp.stop - .6, lp.stop) : 1;
+    // a new mood's own loop (a laugh, a sway) eases in after the change's move, never starting at full strength
+    const s = (now - loopT0) / 1000, fade = (lp.stop ? 1 - ramp(s, lp.stop - .6, lp.stop) : 1) * ease(ramp(s, .7, 1.2));
     const r = lp.fn(s, tu.gamp * intensity);
     if (fade > 0) { add(r.d || {}, fade); if (r.hands && fade > .5 && !(ch.exprHands && ch.exprHands[expr])) Object.assign(handReq, r.hands); }
     if (r.spin !== undefined) spinT = r.spin;
     if (r.fx && !snap) { const lastFx = fxs.find((x) => x.name === r.fx && now - x.t0 < 600); if (!lastFx) spawn(r.fx); }
    } else if (lp && lp.spin) spinT = now / 1000;
+   if (oldLoop && !reduced) {
+    const fade = 1 - clamp((now - oldLoop.fade0) / 280, 0, 1);
+    if (fade <= 0 || oldLoop.lp === lp) oldLoop = null; else { add(oldLoop.lp.fn((now - oldLoop.t0) / 1000, tu.gamp * intensity).d || {}, fade); moving = true; }
+   }
    if (E[expr].look.dots || E[expr].look.spiral) spinT = (now - loopT0) / 1000;
    Rv._close = 0;
    const eyesClosedOrShaped = shaped(cur);
    clips = clips.filter((c) => {
     const t = c.frozen !== undefined ? c.frozen : (now - c.t0) / c.dur; if (t < 0) return true; if (t >= 1) return false;
+    const fade = c.fade0 === undefined ? 1 : 1 - clamp((now - c.fade0) / 220, 0, 1); if (fade <= 0) return false;
     if (eyesClosedOrShaped && /link/.test(c.name) && !c.cut) return false;
     const r = c.c.fn(t, c.a) || {};
-    if (c.name.includes("link")) Rv._close = Math.max(Rv._close, (r.d && r.d.lu) || 0);
-    else add(r.d || {});
-    if (r.hands) for (const s of ["L", "R"]) if (r.hands[s]) handReq[s] = r.hands[s];
+    if (c.name.includes("link")) Rv._close = Math.max(Rv._close, ((r.d && r.d.lu) || 0) * fade);
+    else add(r.d || {}, fade);
+    if (r.hands && fade > .5) for (const s of ["L", "R"]) if (r.hands[s]) handReq[s] = r.hands[s];
     if (c.cut && !c.cutDone && t > .45) { c.cutDone = true; snapFace(); }
     return true;
    });
@@ -916,7 +1024,32 @@
     moving = true;
    }
    if (reduced) { for (const k of ["lift", "lean", "tilt", "yaw", "pitch"]) Rv[k] = cur[k]; }
-   Rv.sx = clamp(Rv.sx, .8, 1.25); Rv.sy = clamp(Rv.sy, .8, 1.25);
+   if (!snap && dt > 0 && !reduced) {
+    const P = phys(), w = lerp(20, 11, P.soft), z = lerp(.95, .38, P.soft);
+    soft.v += (-w * w * (soft.y - soft.target) - 2 * z * w * soft.v) * dt; soft.y += soft.v * dt;
+    soft.tilt += (soft.tiltTo - soft.tilt) * Math.min(1, dt * 10);
+    // where she is looking (at another character, at what hit her): her eyes lead, her head turns a little after
+    soft.lx += (soft.lxTo - soft.lx) * Math.min(1, dt * 7); soft.ly += (soft.lyTo - soft.ly) * Math.min(1, dt * 7);
+    if (Math.abs(soft.y - soft.target) + Math.abs(soft.v) + Math.abs(soft.tilt - soft.tiltTo) + Math.abs(soft.lx - soft.lxTo) + Math.abs(soft.ly - soft.lyTo) > 1e-3 || soft.target !== 0) moving = true;
+    else { soft.y = soft.target; soft.v = 0; }
+    // peeling up off the floor: drawn back up over most of a second, never popping
+    if (soft.peel) { const p = clamp((now - soft.peel) / 800, 0, 1); soft.target = -1.4 * (1 - ease(p)); if (p >= 1) { soft.peel = 0; soft.flat = false; soft.pressed = false; soft.target = 0; } }
+    if (soft.holdUntil && now > soft.holdUntil) { soft.holdUntil = 0; if (!soft.pressed) soft.target = 0; }
+    if (jel.on) {
+     const n = Math.max(1, Math.ceil(dt * 120)), h = dt / n, kN = w * w, cN = 2 * z * w, cp = kN * .9;
+     let act = jel.pin >= 0;
+     for (let s = 0; s < n; s++) {
+      for (let i = 0; i < JN; i++) { if (i === jel.pin) { jel.r[i] += (jel.pinTo - jel.r[i]) * Math.min(1, h * 30); jel.v[i] = 0; continue; } jel.v[i] += (-kN * jel.r[i] - cN * jel.v[i] + cp * (jel.r[(i + JN - 1) % JN] + jel.r[(i + 1) % JN] - 2 * jel.r[i])) * h; }
+      let mean = 0; for (let i = 0; i < JN; i++) { if (i !== jel.pin) jel.r[i] += jel.v[i] * h; mean += jel.r[i]; }
+      mean /= JN; for (let i = 0; i < JN; i++) if (i !== jel.pin) jel.r[i] -= mean;
+     }
+     for (let i = 0; i < JN; i++) if (Math.abs(jel.r[i]) > 1e-3 || Math.abs(jel.v[i]) > 1e-3) act = true;
+     if (!act) { jel.r.fill(0); jel.v.fill(0); jel.on = false; }
+     moving = true;
+    }
+    Rv.tilt += soft.tilt; Rv.gx += soft.lx; Rv.gy += soft.ly; Rv.yaw += soft.lx * .14;
+   }
+   Rv.sx = clamp(Rv.sx, .7, 1.4); Rv.sy = clamp(Rv.sy, .7, 1.4);
 
    // secondary motion: appendages lag behind the body's movement on a loose spring
    const drive = Rv.tilt + Rv.lean + Rv.yaw * 22, driveY = Rv.lift;
@@ -928,10 +1061,20 @@
    }
 
    // body
-   const pal = ch.palette ? ch.palette(Rv, expr) : ch.pal;
-   if (ch.palette) { const key = pal.base + pal.light + pal.dark; if (key !== dyn) { dyn = key; L.stops[0].setAttribute("stop-color", pal.light); L.stops[1].setAttribute("stop-color", pal.base); L.stops[2].setAttribute("stop-color", pal.dark); } }
+   const pal0 = ch.palette ? ch.palette(Rv, brief ? moodName : expr) : ch.pal, wm = clamp(Rv.warm, 0, 1), co = clamp(Rv.cool, 0, 1);
+   const tone = (c, w, k) => mixHex(mixHex(c, w, wm), k, co);
+   const pal = wm + co < .002 ? pal0 : {...pal0, light: tone(pal0.light, "#FFE7A3", "#C9D6EA"), base: tone(pal0.base, "#FFC85C", "#93A9CC"), dark: tone(pal0.dark, "#E8A23C", "#5F7397")};
+   { const key = pal.base + pal.light + pal.dark; if (key !== dyn) { dyn = key; L.stops[0].setAttribute("stop-color", pal.light); L.stops[1].setAttribute("stop-color", pal.base); L.stops[2].setAttribute("stop-color", pal.dark); } }
    const ctx = {t: now / 1000, uid, sec, pal, R: Rv, expr, proj: projector(ch.face.R, ch.face.curv ?? 1, clamp(Rv.yaw, -(ch.face.yawMax ?? 2), ch.face.yawMax ?? 2), Rv.pitch)};
    B = ch.body(Rv, ctx);
+   // the deformed outline: the body, its clip (so the face and textures inside follow) and the parts on it move with it
+   let jelT = "";
+   if (jel.on) {
+    const hh = B.h / 2, dy = jAt(PI / 2) * hh, sxJ = 1 + (jAt(0) + jAt(PI)) / 2, syJ = 1 + (jAt(-PI / 2) + jAt(PI / 2)) / 2, dx = (jAt(0) - jAt(PI)) / 2 * B.hw * .5;
+    B.d = warp(B.d, B.hw, B.cy, hh, dy);
+    jelT = `translate(${f1(dx)} ${f1(-dy)}) translate(0 ${f1(B.cy)}) scale(${sxJ.toFixed(3)} ${syJ.toFixed(3)}) translate(0 ${f1(-B.cy)})`;
+   }
+   if (jelT !== (L.jelT || "")) { L.jelT = jelT; for (const g of [L.fc, L.fr, L.hd, L.bk, L.wn]) if (jelT) g.setAttribute("transform", jelT); else g.removeAttribute("transform"); }
    const f = ch.face, sxF = Rv.sx, syF = Rv.sy;
    F = {uid, R: f.R, curv: f.curv ?? 1, cx: 0, cy: B.cy + f.y * syF, ex: f.ex * sxF, eyY: f.eyY * syF, ew: f.ew, eh: f.eh, mY: f.mY * syF, mw: f.mw * sxF, bg: f.bg ?? 10, bw: f.bw, yawMax: f.yawMax ?? 2, noFace: !!ch.noFace, chained: !!ch.attach, lastEyes: F && F.lastEyes};
    L.clip.setAttribute("d", B.d);
@@ -943,7 +1086,8 @@
    const tint = (Rv.flush > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#fl${uid})" opacity="${f1(clamp(Rv.flush, 0, 1))}"/>` : "")
     + (Rv.gloom > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#gl${uid})" opacity="${f1(clamp(Rv.gloom, 0, 1) * .45)}"/>` : "");
    // where a sleeve passes behind the edge, the plain body fill covers the rim highlight (no light seam beside the sleeve)
-   put(L.bd, rim + `<g mask="url(#rc${uid})"><path d="${B.d}" fill="url(#bg${uid})"/></g>` + (B.body || "") + core + hi + tint);
+   // the body's colours are in its gradient's stops; naming them here rebuilds the layer when they change, so it repaints
+   put(L.bd, rim + `<g mask="url(#rc${uid})" data-tone="${dyn}"><path d="${B.d}" fill="url(#bg${uid})"/></g>` + (B.body || "") + core + hi + tint);
    if (L.rcEdge) L.rcEdge.setAttribute("d", B.d);
    const back = B.back || "";
    const face = ch.noFace ? {svg: "", eyes: drawFace(Rv, F, pal, now / 1000, spinT).eyes} : drawFace(Rv, F, pal, now / 1000, spinT);
@@ -953,8 +1097,14 @@
    // contact shadow and the glow behind her
    const lift = Rv.lift, ls = clamp(1 + lift / 90, .45, 1.1);
    put(L.sh, `<ellipse cx="${f1(Rv.lean * 1.2)}" cy="${GROUND + 2}" rx="${f1(B.hw * 1.02 * ls)}" ry="${f1(10 * ls)}" fill="url(#gs${uid})" opacity="${f1(.9 * ls)}"/>`);
-   put(L.glow, Rv.glow > .03 ? `<circle cx="0" cy="${f1(GROUND + B.cy)}" r="${f1(B.hw * 1.45)}" fill="url(#gw${uid})" opacity="${f1(clamp(Rv.glow, 0, 1))}"/>` : "");
-   L.w.setAttribute("transform", `translate(0 ${f1(GROUND + lift)}) rotate(${f1(Rv.lean)}) translate(0 ${f1(B.cy)}) rotate(${f1(Rv.tilt)}) scale(${f1(Rv.zoom * 1000) / 1000}) translate(0 ${f1(-B.cy)})`);
+   // the mood's aura: a soft warm or cool light round her that colours with the body (the reference's background shifts);
+   // it fades out inside her own window, so the desktop never shows its edge
+   const aura = (id, o) => o > .01 ? `<ellipse cx="0" cy="${f1(GROUND + B.cy)}" rx="${f1(B.hw * 1.5)}" ry="${f1(B.h * .75)}" fill="url(#${id}${uid})" opacity="${(clamp(o, 0, 1)).toFixed(3)}"/>` : "";
+   put(L.glow, aura("aw", Rv.warm * 1.15) + aura("ac", Rv.cool * 1.15) + (Rv.glow > .03 ? `<circle cx="0" cy="${f1(GROUND + B.cy)}" r="${f1(B.hw * 1.45)}" fill="url(#gw${uid})" opacity="${f1(clamp(Rv.glow, 0, 1))}"/>` : ""));
+   // her soft body squashes and stretches as a whole, feet on the ground, her area held (sideways = 1 / height): a cartoon
+   // pancake spreads as wide as it flattens
+   const [qa0, qb] = phys().squash, qa = soft.flat ? .32 : qa0, sq = soft.y >= 0 ? 1 + (qb - 1) * Math.tanh(soft.y / (qb - 1)) : 1 - (1 - qa) * Math.tanh(-soft.y / (1 - qa)), squash = Math.abs(sq - 1) > 1e-3 ? ` scale(${(1 / sq).toFixed(4)} ${sq.toFixed(4)})` : "";
+   L.w.setAttribute("transform", `translate(0 ${f1(GROUND + lift)})${squash} rotate(${f1(Rv.lean)}) translate(0 ${f1(B.cy)}) rotate(${f1(Rv.tilt)}) scale(${f1(Rv.zoom * 1000) / 1000}) translate(0 ${f1(-B.cy)})`);
    L.fx.setAttribute("transform", `translate(0 ${f1(GROUND + lift)})`);
 
    // props and hands: a gesture's hands win over a prop's, a prop's over the expression's
@@ -1196,6 +1346,64 @@
   render(performance.now(), true); scheduleBlink(); scheduleIdle();
 
   return {
+   /** Her speed while she flies or is carried (px/s, screen axes; 0, 0 at rest): she stretches along it, as soft as she is, and leans into it. */
+   motion(vx, vy) { const sp = Math.hypot(vx, vy), P = phys(); if (soft.holdUntil || soft.pressed) { soft.tiltTo = 0; wake(); return; } soft.target = clamp(sp / 2400 * (.4 + P.soft), 0, .35) * (Math.abs(vy) >= Math.abs(vx) ? 1 : -.5); soft.tiltTo = clamp(vx / 160, -8, 8) * (1.2 - .4 * P.soft); const t = performance.now(); if (sp > 1500 && !(t - (soft.lineT || 0) < 140)) { soft.lineT = t; spawn("speed", {dir: Math.atan2(vy, vx)}); } wake(); },
+   impact,
+   /** Something happened to her body: picked up, landed, hit a wall, poked, petted, bumped by or landed on by another
+    * character. Her face answers in her own way for a moment (never her mood's colour), then she returns to her mood. */
+   react(kind, speed = 0) {
+    const P = phys(), R = P.react, hard = speed > 900;
+    if (kind === "pickup") { impact(500, false); briefly(R.pickup, 0); }
+    else if (kind === "land") {
+     impact(speed, true);
+     const t = performance.now();
+     if (hard) { briefly(R.land, 1500); if (t - quirkAt > 3500) { quirkAt = t; if (P.quirk === "fidget") setTimeout(fidget, 650 * pace()); else play(P.quirk, {delay: 650 * pace(), force: true}); } }
+     else if (brief) briefly(moodName, 0);
+    }
+    else if (kind === "wall") impact(speed, false);
+    else if (kind === "poke") { impact(420, false); briefly(R.poke, 900); }
+    else if (kind === "pet") { play("squint"); briefly(R.pet, 1600); }
+    else if (kind === "bump") { impact(Math.min(speed, 700), false); briefly(R.bump, 1000); }
+    else if (kind === "under") { impact(Math.max(speed, 600), true); briefly(R.under, 1300); }
+    else if (kind === "hello") play(P.hello);
+   },
+   /** A walk of this long in her own gait (dir ±1): hops, a bounce, a waddle or a glide. */
+   walk(ms, dir = 1) {
+    const g = phys().gait, n = Math.max(1, Math.round(ms / g.ms));
+    for (let i = 0; i < n; i++) play(g.walk === "waddle" ? "waddle" : "hop", {delay: i * g.ms, dur: g.ms, amp: g.walk === "waddle" ? (i % 2 ? -1 : 1) * g.hop : g.walk === "glide" ? g.hop * .3 : g.hop});
+    soft.tiltTo = dir * (g.walk === "glide" ? 6 : 2); clearTimeout(soft.walkT); soft.walkT = setTimeout(() => { soft.tiltTo = 0; wake(); }, n * g.ms); wake();
+   },
+   /** Poked at this point (viewBox units): that spot dents in and the rest of her bulges, then it springs back. */
+   poke(x, y) { const P = phys(), i = jNode(x, y - GROUND); jel.on = true; jel.v[i] -= 9 * (.3 + P.soft); jel.v[(i + 1) % JN] -= 4 * (.3 + P.soft); jel.v[(i + JN - 1) % JN] -= 4 * (.3 + P.soft); wake(); },
+   /** Grabbed at this point and pulled by (dx, dy) viewBox units: that spot draws out like taffy until she is let go. */
+   grab(x, y) { jel.pin = jNode(x, y - GROUND); jel.pinTo = 0; jel.on = true; wake(); },
+   pull(dx, dy) { if (jel.pin < 0 || !B) return; const a = jel.pin / JN * TAU, P = phys(); jel.pinTo = clamp((dx * Math.cos(a) / B.hw + dy * Math.sin(a) / (B.h / 2)), -.5, .5 + 1.1 * P.soft + .2); wake(); },
+   /** Pressed down (a < 0 flattens, as far as she squashes) or drawn up (a > 0 stretches); 0 lets go and she wobbles back. */
+   press(a) { const P = phys(); soft.pressed = a !== 0; soft.target = a < 0 ? a * (1 - P.squash[0]) * 1.6 : a * (P.squash[1] - 1) * 1.6; wake(); },
+   release() { jel.pin = -1; soft.pressed = false; soft.target = 0; wake(); },
+   /** A funny moment (sneeze, slip, dizzy, yawn, doubleTake, flat, hang, peek, monocle). Returns what the world around her
+    * must do (a hop from the sneeze, holding her on a ledge), with when, in ms. */
+   humour(name) {
+    const p = pace();
+    switch (name) {
+     case "sneeze": play("sneeze", {force: true}); setTimeout(() => { spawn("puff"); impact(900, false); }, 860 * p); return {kick: {at: 860 * p, vy: -820}};
+     case "slip": play("slip", {force: true}); briefly("surprised", 0); setTimeout(() => { impact(1900, true); briefly("embarrassed", 1600); spawn("stars"); }, 560 * p); return {};
+     case "dizzy": play("spin", {amp: 1.6, force: true}); setTimeout(() => { briefly("dizzy", 2600); spawn("stars"); play("wobble", {force: true}); }, 950 * p); return {};
+     case "yawn": play("yawn", {amp: 1.6, force: true}); play("stretch", {delay: 400, force: true}); return {};
+     case "doubleTake": play("glance", {force: true}); setTimeout(() => { play("startle", {amp: 1.5, force: true}); briefly("surprised", 1300); spawn("exclaim"); }, 650 * p); return {};
+     case "flat": soft.pressed = true; soft.flat = true; soft.target = -3; soft.v -= 8; briefly("dizzy", 0); spawn("stars"); setTimeout(() => { soft.peel = performance.now(); play("peel", {force: true}); jel.on = true; for (let i = 0; i < JN; i++) jel.v[i] += 2 * Math.cos(2 * i / JN * TAU); briefly("putout", 1500); wake(); }, 1500 * p); return {};
+     case "hang": play("hang", {force: true}); briefly("worried", 2600); return {hold: 2600};
+     case "peek": briefly("curious", 2400); return {};
+     case "monocle": if (!ch.attach) return null; play("monocleDrop", {force: true}); setTimeout(() => { briefly("surprised", 900); }, 500); setTimeout(() => play("monocleOut", {force: true}), 1900); return {};
+    }
+    return null;
+   },
+   /** Where she looks, in her eyes' range (−1 to 1 each way), for a while (ms) or null to look ahead again: a look is a
+    * glance, so at rest she is still again. */
+   look(gx, gy = 0, ms = 1800) { clearTimeout(soft.lookT); soft.lxTo = gx === null ? 0 : clamp(gx, -1, 1); soft.lyTo = gx === null ? 0 : clamp(gy, -1, 1); if (gx !== null) soft.lookT = setTimeout(() => { soft.lxTo = soft.lyTo = 0; wake(); }, ms); wake(); },
+   physics: () => phys(),
+   /** Her body's half-width and height, in the viewBox's units, as last drawn. */
+   bounds: () => B ? {hw: B.hw, h: B.h} : null,
    setExpression, setPersonality, setCharacter, play, spawn, prop, use, clearProps, speak, syncSpeech, speechTime, stopSpeech, fidget,
    setIntensity(v) { intensity = v; retarget(); wake(); },
    setHandMode(m) { handMode = m === "float" ? "float" : "arms"; hands.L.vis = hands.R.vis = false; wake(); },
@@ -1207,7 +1415,7 @@
    unfreeze() { clips = clips.filter((c) => c.frozen === undefined); wake(); },
    pocket(state) { if (ch.pocketState) { ch.pocketState(uid, state); wake(); } },
    debug() { return {clips: clips.map((c) => c.name), shaped: shaped(cur), closing: clips.some((c) => /link/.test(c.name) && !c.cut)}; },
-   destroy() { destroyed = true; cancelAnimationFrame(raf); clearTimeout(blinkTimer); clearTimeout(idleTimer); document.removeEventListener("visibilitychange", onVis); },
+   destroy() { destroyed = true; cancelAnimationFrame(raf); clearTimeout(blinkTimer); clearTimeout(idleTimer); clearTimeout(briefTimer); clearTimeout(soft.walkT); clearTimeout(soft.lookT); document.removeEventListener("visibilitychange", onVis); },
   };
  };
 })(window);
