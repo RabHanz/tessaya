@@ -569,7 +569,7 @@ export const applyOwnNames = (text: string): string => {
 };
 
 /** Her own names of more than one word: her manager thread, written the way he names it. */
-const OWN_PHRASES: ReadonlyArray<string> = ["Tessaya Manager"];
+const OWN_PHRASES: ReadonlyArray<string> = ["Tessaya Manager", "Tessel"];
 
 /**
  * His names of two or more words put right as one: each word as written, or (with at least one word exact to hold it in
