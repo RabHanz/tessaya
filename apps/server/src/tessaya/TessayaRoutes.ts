@@ -45,15 +45,16 @@ import {
   syncCredentialOf,
 } from "./TessayaRpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./TessayaMemoryService.ts";
-import { SessionMember } from "./TessayaTurn.ts";
+import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
 import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
 import { runAskWorker } from "./AskWorker.ts";
 import { peerTurnHands, PeerTurnBody, relayDeskTurn, servePeerTurn } from "./DeskRelay.ts";
-import { memberOfSubject } from "@t3tools/tessaya-shared/household";
+import { memberOfSubject, OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { callPrivate, PrivateCaller } from "./TessayaPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import * as PersonaLayers from "./PersonaLayers.ts";
+import { readPack } from "./OperatingSystemPack.ts";
 import { approvalRefusal } from "@t3tools/tessaya-shared/trust";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
@@ -657,7 +658,7 @@ export const routes = HttpRouter.use((router) =>
     yield* router.add("POST", "/tessaya/hands/*", handsApi);
     yield* router.add("GET", "/tessaya/api/*", api);
     yield* router.add("POST", "/tessaya/api/*", api);
-    yield* personaLayerRoutes(router, context, auth);
+    yield* personaLayerRoutes(router, context, auth, deskTools, NodePath.dirname(config.dbPath));
   }),
 );
 
@@ -665,10 +666,40 @@ export const routes = HttpRouter.use((router) =>
  * Owner-only persona layers' own pages and calls, under /tessaya/layer/<id>/ (PersonaLayers.ts). A public build loads
  * none and registers nothing. The host verifies a layer's step-up through the household, on the request's own session.
  */
-const personaLayerRoutes = Effect.fn("BatonTessayaRoutes.personaLayers")(function* (
+/** What the desktop app reports to the layers: its device key (32 bytes, base64) and what just happened on it. */
+export const deskReport = (body: unknown) => {
+  const b = (body ?? {}) as { key?: unknown; signals?: unknown };
+  const key = typeof b.key === "string" ? Buffer.from(b.key, "base64") : null;
+  return {
+    key: key !== null && key.length === 32 ? new Uint8Array(key) : null,
+    signals: Array.isArray(b.signals)
+      ? b.signals.filter((k): k is string => typeof k === "string" && DESK_SIGNALS.has(k))
+      : [],
+  };
+};
+const DESK_SIGNALS = new Set(["screenLocked", "sleep", "call", "screenShared", "recording"]);
+
+/**
+ * Who is near a vessel, for a layer's Tessel rule: "alone" only when the owner is the one member likely home and was
+ * just heard on that vessel; another member likely home is "others"; anything less is "unknown", which fails closed.
+ */
+const presenceOn = Effect.fn("TessayaRoutes.presenceOn")(function* (vessel: string) {
+  const home = (yield* (yield* TessayaTurn).whoIsHome).filter((p) => p.likelyHome);
+  if (home.some((p) => p.member !== OWNER_MEMBER_ID)) return "others" as const;
+  const owner = home.find((p) => p.member === OWNER_MEMBER_ID);
+  return owner?.heard?.vessel === vessel && owner.heard.minutesAgo <= 5
+    ? ("alone" as const)
+    : ("unknown" as const);
+});
+
+const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
   router: HttpRouter.HttpRouter,
   context: Context.Context<TessayaRpcHandlers.TessayaServices>,
   auth: EnvironmentAuth.EnvironmentAuth["Service"],
+  deskTools: {
+    readonly specs: ReadonlyArray<{ readonly name: string; readonly description: string }>;
+  } | null,
+  userdata: string,
 ) {
   const run = Effect.runPromiseWith(context);
   const registry = Context.getOption(context, PersonaLayers.PersonaLayers);
@@ -697,7 +728,17 @@ const personaLayerRoutes = Effect.fn("BatonTessayaRoutes.personaLayers")(functio
       );
       return result?.status === "done" ? { member: caller.member, method } : null;
     },
+    // The desktop's own key for the layer's store, kept by Windows (DPAPI) and sent by the desktop app.
+    deviceKey: async () => deviceKey,
+    presence: (vessel) => run(presenceOn(vessel)),
+    capabilities: async () => ({
+      personas: readPack(userdata)
+        .personas.filter((p) => p.private !== true)
+        .map((p) => ({ id: p.id, name: p.name, role: p.role, lead: p.lead })),
+      tools: (deskTools?.specs ?? []).map((t) => ({ name: t.name, description: t.description })),
+    }),
   };
+  let deviceKey: Uint8Array | null = null;
   registry.value.all.push(...(yield* Effect.promise(() => PersonaLayers.loadPersonaLayers(host))));
   const notHere = HttpServerResponse.jsonUnsafe(
     { message: "Not here." },
@@ -710,8 +751,7 @@ const personaLayerRoutes = Effect.fn("BatonTessayaRoutes.personaLayers")(functio
       .split("/");
     const target = registry.value.all.find((l) => l.id === id);
     const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
-    if (target === undefined || Option.isNone(session) || householdRefusal(session.value) !== null)
-      return notHere;
+    if (Option.isNone(session) || householdRefusal(session.value) !== null) return notHere;
     const caller = {
       ...householdCallerOf(session.value),
       ...(typeof request.headers["origin"] === "string"
@@ -720,6 +760,23 @@ const personaLayerRoutes = Effect.fn("BatonTessayaRoutes.personaLayers")(functio
     };
     const body =
       request.method === "POST" ? yield* request.json.pipe(Effect.orElseSucceed(() => ({}))) : {};
+    if (id === "_desk") {
+      if (!caller.desktop) return notHere;
+      const desk = deskReport(body);
+      if (desk.key !== null) deviceKey = desk.key;
+      for (const kind of desk.signals) for (const l of registry.value.all) l.signal({ kind });
+      return HttpServerResponse.jsonUnsafe(
+        {
+          open: registry.value.all.some((l) => l.active?.("desktop") === true),
+          page:
+            registry.value.all[0] === undefined
+              ? null
+              : `/tessaya/layer/${registry.value.all[0].id}`,
+        },
+        { headers: PAGE_HEADERS },
+      );
+    }
+    if (target === undefined) return notHere;
     callers.set(caller.session, caller);
     const answer = yield* Effect.promise(() =>
       target

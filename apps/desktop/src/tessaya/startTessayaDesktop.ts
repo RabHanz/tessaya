@@ -5,6 +5,8 @@
  * core (D66), and the screen companion (D84). Neither may stop the app starting: a missing tray
  * host or a refused microphone is reported in its own tray, not as a startup failure.
  */
+import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeOS from "node:os";
 import * as Electron from "electron";
 
@@ -13,6 +15,8 @@ import { captureDraftImageDrops } from "./health/draftImageDropLog.ts";
 import { installR1Bluetooth } from "./bluetooth/r1Pairing.ts";
 import { installR1flash } from "./devices/r1flash.ts";
 import { rescueMainWindow } from "./mainWindowRescue.ts";
+import { capturingApps, startPersonaLayerLink } from "./personaLayerLink.ts";
+import { setPrivateShield } from "./captureProtection.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -509,6 +513,87 @@ export const startTessayaDesktop = Effect.gen(function* () {
     };
     const direct = (method: string, body: unknown, timeoutMs?: number) =>
       own(`/tessaya/desk/${method}`, body, timeoutMs);
+    // An owner-only persona layer on this machine's server, in internal builds only: the first 404 stops it.
+    const layerKeyFile = NodePath.join(environment.stateDir, "tessaya-layer-device.key");
+    const layerLink = startPersonaLayerLink({
+      post: async (body) => {
+        const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+        const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+        if (config._tag === "None") throw new Error("The local server is not ready.");
+        const response = await fetch(new URL("/tessaya/layer/_desk", config.value.httpBaseUrl), {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error(`layer link ${response.status}`);
+        const answer = (await response.json()) as { open?: unknown; page?: unknown };
+        return {
+          open: answer.open === true,
+          page: typeof answer.page === "string" ? answer.page : null,
+        };
+      },
+      // Kept by the OS keystore (DPAPI on Windows): only this Windows account on this machine can read it back.
+      deviceKey: () => {
+        if (!Electron.safeStorage.isEncryptionAvailable()) return null;
+        try {
+          return Electron.safeStorage.decryptString(NodeFS.readFileSync(layerKeyFile));
+        } catch {
+          const key = NodeCrypto.randomBytes(32).toString("base64");
+          NodeFS.writeFileSync(layerKeyFile, Electron.safeStorage.encryptString(key), {
+            mode: 0o600,
+          });
+          return key;
+        }
+      },
+      othersCapturing: async () => {
+        if (environment.platform !== "win32") return false;
+        const store =
+          "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore";
+        const query = (what: string) =>
+          new Promise<string>((resolve) =>
+            NodeChildProcess.execFile(
+              "reg",
+              ["query", `${store}\\${what}`, "/s"],
+              { timeout: 5_000, windowsHide: true },
+              (_error, stdout) => resolve(stdout ?? ""),
+            ),
+          );
+        const ownDir = NodePath.dirname(process.execPath);
+        const [mic, cam] = await Promise.all([query("microphone"), query("webcam")]);
+        return capturingApps(mic, ownDir).length > 0 || capturingApps(cam, ownDir).length > 0;
+      },
+      shield: (on) => setPrivateShield(on, Electron.BrowserWindow.getAllWindows()),
+    });
+    // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer.
+    const openLayerPage = async () => {
+      const page = layerLink.page();
+      if (page === null) return;
+      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      if (config._tag === "None") return;
+      const origin = new URL(config.value.httpBaseUrl).origin;
+      const session = Electron.session.fromPartition(`layer-${NodeCrypto.randomUUID()}`);
+      session.webRequest.onBeforeSendHeaders(
+        { urls: [`${origin}/tessaya/layer/*`] },
+        (details, done) =>
+          done({ requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${token}` } }),
+      );
+      const win = new Electron.BrowserWindow({
+        width: 1100,
+        height: 820,
+        title: "Tessaya",
+        autoHideMenuBar: true,
+        webPreferences: { session, contextIsolation: true, sandbox: true },
+      });
+      win.setContentProtection(true);
+      void win.loadURL(`${origin}${page}`);
+    };
+    const wantsLayer = (args: ReadonlyArray<string>) =>
+      args.some((a) => a.startsWith(`${TESSAYA_SCHEME}://layer`));
+    Electron.powerMonitor.on("lock-screen", () => void layerLink.signal("screenLocked"));
+    Electron.powerMonitor.on("suspend", () => void layerLink.signal("sleep"));
     // His sentence through the one brain on this machine's server (SPINE-UNIFY S4): her words as they stream.
     const deskTurn = async (
       body: unknown,
@@ -740,6 +825,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     // A second launch means "show me Tessaya". T3's own handler raises its main window first and slowly, so
     // Tessaya's window is raised after it, or the T3 window ends up on top.
     Electron.app.on("second-instance", (_event, argv) => {
+      if (wantsLayer(argv)) return void openLayerPage();
       const place = placeInArgs(argv) ?? undefined;
       setTimeout(() => voice?.openHome(place), SECOND_LAUNCH_RAISE_MS).unref();
     });
@@ -747,6 +833,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     Electron.app.on("open-url", (event, url) => {
       if (!isTessayaLink(url)) return;
       event.preventDefault();
+      if (wantsLayer([url])) return void openLayerPage();
       voice?.openHome(tessayaPlaceOf(url) ?? undefined);
     });
     if (Electron.app.isPackaged) Electron.app.setAsDefaultProtocolClient(TESSAYA_SCHEME);

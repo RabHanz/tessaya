@@ -552,6 +552,12 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
                 "baton-live",
                 "baton-live-acp.mjs",
               ),
+              // Read only by an internal build's server, and only when an internal build staged the file.
+              TESSAYA_PERSONA_LAYERS: environment.path.join(
+                environment.resourcesPath,
+                "persona-layers",
+                "index.mjs",
+              ),
             }
           : {}),
         T3CODE_CLI_PATH: Option.getOrUndefined(input.cliPath),
