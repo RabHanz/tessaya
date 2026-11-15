@@ -10577,6 +10577,128 @@
         "mood": "proud",
         "gesture": "think"
       }
+    ],
+    "moment.bumped": [
+      {
+        "text": "Oof, that one hit me.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Hey, watch where you throw.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Well, that knocked me sideways.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Got me. Nice aim.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Whoa, I'm rolling now.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Careful, your people are rowdy.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "That was a direct hit.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Alright, I'm moving. Apparently.",
+        "mood": "neutral",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Ow. Throw softer next time.",
+        "mood": "sulky",
+        "gesture": "none"
+      },
+      {
+        "text": "Collision noted. I'm fine.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ha, they got me.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Hey! Mind the lead.",
+        "mood": "frustrated",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Oh. That one had momentum.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Noted. Your crowd hits hard.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Bold of them, really.",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I felt that one.",
+        "mood": "hurt",
+        "gesture": "startle"
+      },
+      {
+        "text": "Fine, I'll go with it.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Ha. Good arm.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Watch the lead, please.",
+        "mood": "focused",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Well, that moved me.",
+        "mood": "curious",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Okay, that was unexpected.",
+        "mood": "surprised",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Not my best landing.",
+        "mood": "sulky",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "They don't hold back.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Point taken. Literally.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      }
     ]
   },
   "butler": {
@@ -21292,6 +21414,128 @@
         "mood": "surprised",
         "gesture": "chuckle"
       }
+    ],
+    "moment.bumped": [
+      {
+        "text": "Oof. Direct hit.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Well, that one had aim.",
+        "mood": "curious",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ah. I've been struck.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Careful, that one's got momentum.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Collision noted. I'm fine.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Rather a hearty throw, that.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Well, that's one way to knock.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Whoa, steady on there.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Pushed along, I see.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Bullseye, apparently. Me.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Mind the furniture. That's me.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Ha. Unscheduled, but welcome.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Ah. That was me, wasn't it?",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Duly shoved. Carry on.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hm. Right in the ribs.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Oof. Direct hit, that.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "I was standing there, you know.",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Charming. Do it again, perhaps.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Well, that moved me.",
+        "mood": "neutral",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Good aim. Questionable manners.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ooh. Off I go.",
+        "mood": "surprised",
+        "gesture": "hop"
+      },
+      {
+        "text": "Noted. Do mind the staff.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "A gentle nudge. Roughly.",
+        "mood": "steady",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Airborne, briefly. Quite refreshing.",
+        "mood": "curious",
+        "gesture": "dizzy"
+      }
     ]
   },
   "engineering": {
@@ -31956,6 +32200,123 @@
         "text": "Mm. The good kind of silence.",
         "mood": "happy",
         "gesture": "nodSoft"
+      }
+    ],
+    "moment.bumped": [
+      {
+        "text": "Oof. Got clipped.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Hey, watch the throwing arm.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Direct hit. Noted.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That one had momentum.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Ow. Rude, but fair.",
+        "mood": "hurt",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Whoa, I'm moving.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Your persona has decent aim.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Collision logged. I'm fine.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Bonk. Okay, rolling on.",
+        "mood": "neutral",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Careful, I'm in the way.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Well, that happened.",
+        "mood": "neutral",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Shoved sideways. Brilliant.",
+        "mood": "sulky",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Hey, watch the trajectory.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Ooh. Direct hit.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Noted. Impact received.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Okay, I'm airborne-ish.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Thrown character, confirmed hit.",
+        "mood": "focused",
+        "gesture": "think"
+      },
+      {
+        "text": "Nudged off course. Recovering.",
+        "mood": "determined",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Hm. Didn't see that coming.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Fair. I was standing there.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Steady. Just a shove.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Tell your persona sorry first.",
+        "mood": "sulky",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Wheee. Okay, enough.",
+        "mood": "happy",
+        "gesture": "hop"
       }
     ]
   },
@@ -42692,6 +43053,128 @@
         "mood": "curious",
         "gesture": "tilt"
       }
+    ],
+    "moment.bumped": [
+      {
+        "text": "Oof! That one came right at me.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Well, that was rude. Funny, but rude.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Hey, watch the aim!",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Ow. Direct hit.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Whoa, I'm rolling now.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Thrown straight into me. Nice.",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Okay, I felt that one.",
+        "mood": "hurt",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Bowled over by your own crew.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Careful, I'm standing here!",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Well, that knocked me sideways.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Ha, good throw. Terrible target.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Right, I'm moving. Clearly.",
+        "mood": "neutral",
+        "gesture": "hop"
+      },
+      {
+        "text": "Oof. Friendly fire.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "That one had my name on it.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Ow. Aim a little left next time.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm not a bowling pin, you know.",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Well, that happened.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Ha! Direct hit.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Spinning off now, thanks.",
+        "mood": "surprised",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Your characters have no manners.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Bonk. Noted.",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Was I the target? Be honest.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Pinballed across the desktop. Lovely.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Mind the furniture. That's me.",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      }
     ]
   },
   "companion": {
@@ -53350,6 +53833,118 @@
       {
         "text": "Breathe in, hold it, and out.",
         "mood": "steady",
+        "gesture": "sigh"
+      }
+    ],
+    "moment.bumped": [
+      {
+        "text": "Oof! Direct hit.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Whoa, that one had aim!",
+        "mood": "surprised",
+        "gesture": "hop"
+      },
+      {
+        "text": "Hey! Watch the flying friends.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Ha, you got me!",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ow. Rude, but fair.",
+        "mood": "sulky",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Well, that rolled me.",
+        "mood": "neutral",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Incoming! Too late, though.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Bullseye. On me.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Okay, I felt that.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Careful with your throwing arm!",
+        "mood": "concerned",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Wheee... not on purpose, I assume.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Knocked sideways. Nicely done.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hey, I was standing there!",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Well, that stung a little.",
+        "mood": "hurt",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Nice aim. Terrible target.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Whoa, I'm moving now.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "That one had some weight.",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Duly noted. Pitching arm works.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Whoops, my spot, apparently.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Ouch. Do it again, I dare you.",
+        "mood": "determined",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I'm dizzy. Worth it?",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Thrown, bonked, shoved. Busy morning.",
+        "mood": "neutral",
         "gesture": "sigh"
       }
     ]

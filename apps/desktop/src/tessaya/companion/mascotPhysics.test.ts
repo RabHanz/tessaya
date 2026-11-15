@@ -4,6 +4,7 @@ import { edgesFor, seamsOf, type DisplayArea } from "./mascotDock.ts";
 import {
   DEFAULT_PROFILE,
   MAX_THROW,
+  bumpOf,
   flightProfile,
   resting,
   stepFlight,
@@ -255,5 +256,28 @@ describe("throwVelocity", () => {
     ]);
     expect(Math.hypot(flick.vx, flick.vy)).toBeCloseTo(MAX_THROW);
     expect(throwVelocity([{ x: 1, y: 1, t: 5 }])).toEqual({ vx: 0, vy: 0 });
+  });
+});
+
+describe("bumpOf", () => {
+  const still = { x: 600, y: 1186, half: 50, tall: 90 };
+  const sliding = (x: number, y: number, vx: number): Flight => ({ x, y, vx, vy: 0, on: null });
+  const bump = (flight: Flight, others = [still]) =>
+    bumpOf({ flight, half: 50, tall: 90, bounce: 0.35, others });
+
+  it("flying sideways into one who stands still, she bounces back and knocks the other along", () => {
+    const hit = bump(sliding(520, 1180, 1200));
+    expect(hit?.index).toBe(0);
+    expect(hit?.flight.x).toBe(500);
+    expect(hit!.push).toBeGreaterThan(1200 / 2);
+    expect(Math.abs(hit!.flight.vx)).toBeLessThan(hit!.push);
+    expect(bump(sliding(680, 1180, -1200))?.push).toBeLessThan(0);
+  });
+
+  it("misses one behind her, one she passes high over (she lands on its head instead) and a slow nudge", () => {
+    expect(bump(sliding(680, 1180, 1200))).toBeNull();
+    expect(bump(sliding(560, 1186 - 80, 1200))).toBeNull();
+    expect(bump(sliding(560, 1180, 5))).toBeNull();
+    expect(bump(sliding(300, 1180, 1200))).toBeNull();
   });
 });

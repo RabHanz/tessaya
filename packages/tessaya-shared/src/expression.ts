@@ -371,6 +371,11 @@ export const LINE_EVENTS = {
     "On his desktop she landed beside, or on top of, another of his personas' characters; she greets them.",
     { priority: "ambient", maxWords: 7, mood: "happy", gesture: "wave" },
   ),
+  "moment.bumped": spec(
+    "",
+    "On his desktop he threw another of his personas' characters, and it crashed into her and knocked her along.",
+    { priority: "ambient", maxWords: 7, mood: "surprised", gesture: "startle" },
+  ),
   "moment.screen": spec("", "He moved her from one of his screens to another one.", {
     priority: "ambient",
     maxWords: 7,
