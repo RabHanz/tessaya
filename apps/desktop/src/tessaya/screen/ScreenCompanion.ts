@@ -2458,7 +2458,7 @@ export const startScreenCompanion = (input: {
           images: [{ data: area.jpeg.toString("base64"), mimeType: "image/jpeg" }],
         };
       }
-      const window = a?.all === true ? null : await windowShot();
+      const window = a?.all === true || a?.screen !== undefined ? null : await windowShot();
       if (window !== null) {
         lastShots = [window.shot];
         imagesSent += 1;
@@ -2467,7 +2467,10 @@ export const startScreenCompanion = (input: {
           images: [{ data: window.jpeg.toString("base64"), mimeType: "image/jpeg" }],
         };
       }
-      const captured = await capture();
+      const every = await capture();
+      // "My second screen": only that one, numbered as the labels number them.
+      const named = every.filter((c) => c.shot.screen === a?.screen);
+      const captured = named.length === 0 ? every : named;
       lastShots = captured.map((c) => c.shot);
       shotWindow = null;
       imagesSent += captured.length;
@@ -2475,8 +2478,7 @@ export const startScreenCompanion = (input: {
       return {
         text: [
           ...captured.map(
-            (c) =>
-              `${screenLabel(c.shot, captured.length)}, image ${c.shot.width}x${c.shot.height}`,
+            (c) => `${screenLabel(c.shot, every.length)}, image ${c.shot.width}x${c.shot.height}`,
           ),
           ...(missing === null ? [] : [missing]),
         ].join("\n"),

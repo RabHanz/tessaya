@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   rememberOutside,
+  screenLabel,
+  screenPlaces,
   teachShouldLook,
   TEACH_LOOK_ANYWAY,
   captureSize,
@@ -195,6 +197,39 @@ describe("capture sources for two displays", () => {
     expect(pickSource(sources, 22, 0)).toEqual({ display_id: "22" });
     expect(pickSource([{ display_id: "" }, { display_id: "" }], 99, 1)).toEqual({ display_id: "" });
     expect(pickSource(sources, 33, 2)).toBeUndefined();
+  });
+  it("numbers his screens left to right wherever the cursor is, so 'my second screen' is the right one (15 Nov)", () => {
+    // The cursor's display comes first in capture order; here it is the right one.
+    const right = { x: 1920, y: 0, width: 1920, height: 1080 };
+    const left = { x: 0, y: 0, width: 1920, height: 1080 };
+    expect(screenPlaces([right, left])).toEqual([
+      { screen: 2, place: "right" },
+      { screen: 1, place: "left" },
+    ]);
+    const shot: ScreenShot = {
+      screen: 2,
+      width: 1280,
+      height: 720,
+      cursorHere: true,
+      place: "right",
+      bounds: right,
+    };
+    expect(screenLabel(shot, 2)).toMatch(
+      /^screen 2 of 2, the right one, the window he is using is here/,
+    );
+    // A screen left of the main one has negative x; stacked screens go top to bottom; three get a middle.
+    expect(screenPlaces([left, { ...left, x: -1280, width: 1280 }]).map((p) => p.screen)).toEqual([
+      2, 1,
+    ]);
+    expect(screenPlaces([{ ...left, y: 1080 }, left])).toEqual([
+      { screen: 2, place: "bottom" },
+      { screen: 1, place: "top" },
+    ]);
+    expect(screenPlaces([right, left, { ...left, x: 3840 }]).map((p) => p.place)).toEqual([
+      "middle",
+      "left",
+      "right",
+    ]);
   });
   it("says so when a display gave no picture", () => {
     expect(missingDisplaysNote(2, 2)).toBeNull();

@@ -7,7 +7,10 @@ import {
   cosine,
   decideSpeaker,
   enrol,
+  HOLD_MS,
+  holdVoice,
   identityOf,
+  NO_HOLD,
   speakerPath,
   UNVERIFIED,
   spokenYesStands,
@@ -182,6 +185,37 @@ describe("the speaker identity", () => {
       verified: false,
     });
     expect(owned(at(0.6), 1_000)).toEqual(UNVERIFIED(1));
+  });
+
+  it("keeps him verified through a session, from three owner turns or one verified, until another voice", () => {
+    // His Tessel turns at 09:27-09:30 (GMT+5), 15 Nov: short ones unverified, longer ones owner under the act cut-off.
+    const turns: Array<[SpeakerIdentity["kind"], number | null]> = [
+      ["unverified", null],
+      ["owner", 0.597],
+      ["owner", 0.739],
+      ["unverified", null],
+      ["owner", 0.564],
+      ["owner", 0.486],
+      ["unverified", null],
+    ];
+    let hold = NO_HOLD;
+    const verified = turns.map(([kind, confidence], i) => {
+      const out = holdVoice(hold, { ...UNVERIFIED(i), kind, confidence }, i * 10_000);
+      hold = out.hold;
+      return out.identity.kind === "owner" && out.identity.verified;
+    });
+    expect(verified).toEqual([false, false, false, false, true, true, true]);
+    // A clip that clears the act cut-off verifies him at once; anyone else ends the hold.
+    const once = holdVoice(NO_HOLD, owned(at(0.6), 4_000), 0);
+    expect(once.identity.verified).toBe(true);
+    expect(holdVoice(once.hold, UNVERIFIED(1), HOLD_MS).identity).toMatchObject({
+      kind: "owner",
+      verified: true,
+    });
+    expect(holdVoice(once.hold, UNVERIFIED(1), HOLD_MS + 1).identity.verified).toBe(false);
+    const other = holdVoice(once.hold, owned(at(0.05), 4_000), 1);
+    expect(other.identity.kind).toBe("guest");
+    expect(holdVoice(other.hold, UNVERIFIED(2), 2).identity.kind).toBe("unverified");
   });
 
   const who = (kind: SpeakerIdentity["kind"], more: Partial<SpeakerIdentity> = {}) => ({
