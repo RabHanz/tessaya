@@ -94,3 +94,20 @@ it.effect("off: no line, a neutral face, and the state is cleared", () =>
     assert.notInclude(yield* blockOf(his), "mood");
   }).pipe(Effect.provide(setup(false))),
 );
+
+it.effect("how his voice sounds moves her mood on his turn, never on someone else's", () =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+    const sql = yield* SqlClient.SqlClient;
+    const warmth = Effect.map(
+      sql<{
+        state_json: string;
+      }>`SELECT state_json FROM tessaya_affect_state WHERE persona = 'companion'`,
+      (rows) => (JSON.parse(rows[0]?.state_json ?? "{}").reaction?.warmth ?? 0) as number,
+    );
+    yield* blockOf({ ...his, member: "sara", emotion: "sad" });
+    assert.strictEqual(yield* warmth, 0);
+    yield* blockOf({ ...his, emotion: "sad" });
+    assert.isAbove(yield* warmth, 0.1);
+  }).pipe(Effect.provide(setup())),
+);

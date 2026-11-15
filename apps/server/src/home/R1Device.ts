@@ -534,6 +534,19 @@ const zoneOfVoice = (voice: unknown): string | undefined =>
     ? voice.tz
     : undefined;
 
+/** How the room heard his voice (`emotion.label`); "unknown" and "neutral" move nothing. */
+const emotionOf = (voice: unknown): string | undefined => {
+  const e =
+    typeof voice === "object" && voice !== null && "emotion" in voice ? voice.emotion : null;
+  const label = typeof e === "object" && e !== null && "label" in e ? e.label : null;
+  return typeof label === "string" &&
+    /^[a-z]{1,16}$/.test(label) &&
+    label !== "unknown" &&
+    label !== "neutral"
+    ? label
+    : undefined;
+};
+
 /** The exchange before this one, so "yes, from now on" has a referent when it is learned from. */
 const previousOf = (history: R1Heard["history"]): string | null => {
   const last = history.slice(-2).map((t) => `${t.role}: ${t.content}`);
@@ -635,6 +648,7 @@ const r1Envelope = (input: R1Heard, pack: OsPack, timeZone: string | undefined):
     // Begun while her own voice could still be heard: what it teaches waits for his yes, and nothing private is read.
     tainted: taintedOf(input.voice),
     timeZone,
+    ...(emotionOf(input.voice) === undefined ? {} : { emotion: emotionOf(input.voice) }),
     // Each turn is a fresh call, with no session holding standing memory.
     sessionless: true,
     rehearsal: isReplay(input),

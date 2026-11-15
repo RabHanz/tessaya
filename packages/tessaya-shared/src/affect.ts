@@ -89,7 +89,18 @@ export type AffectEvent =
   | { readonly kind: "praise" }
   | { readonly kind: "correction" }
   /** One of his turns reached this persona: the time away resolves, and the bond counts the day. */
-  | { readonly kind: "his_turn"; readonly day: string };
+  | { readonly kind: "his_turn"; readonly day: string }
+  /** How his voice sounded, as the room heard it (SenseVoice's label): she meets it, warmer when he sounds low. */
+  | { readonly kind: "his_voice"; readonly emotion: string };
+
+const VOICE_REACTION: Readonly<Record<string, Partial<Record<AffectDim, number>>>> = {
+  happy: { valence: 0.1, arousal: 0.05 },
+  sad: { warmth: 0.15, valence: -0.05, arousal: -0.05 },
+  angry: { arousal: 0.1, warmth: 0.05, valence: -0.05 },
+  fearful: { arousal: 0.1, warmth: 0.1 },
+  surprised: { arousal: 0.08, curiosity: 0.05 },
+  disgusted: { valence: -0.05 },
+};
 
 const half = (x: number, dt: number, halfLife: number) => x * 0.5 ** (Math.max(0, dt) / halfLife);
 const decayed = (dims: AffectState["mood"], dt: number, halfLife: number) =>
@@ -164,6 +175,13 @@ export const appraise = (
         },
         reason: "he corrected her",
       };
+    case "his_voice": {
+      const change = VOICE_REACTION[event.emotion];
+      return {
+        state: change === undefined ? at : { ...at, reaction: add(at.reaction, change) },
+        reason: `he sounded ${event.emotion}`,
+      };
+    }
     case "his_turn": {
       const away = at.seenAt !== null && now - at.seenAt >= AWAY_MS;
       const bond =

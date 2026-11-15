@@ -53,6 +53,13 @@ describe("affect", () => {
     expect(affectView(s, "executive", { ...day, now: 30 * 60_000 }).label).toBe("neutral");
   });
 
+  it("meets how his voice sounds: warmer when he sounds low, nothing from a label it doesn't know", () => {
+    // 15 Nov: the room heard his emotion and the server threw it away.
+    expect(run([{ kind: "his_voice", emotion: "sad" }]).reaction.warmth).toBeCloseTo(0.15);
+    expect(run([{ kind: "his_voice", emotion: "happy" }]).reaction.valence).toBeCloseTo(0.1);
+    expect(run([{ kind: "his_voice", emotion: "other" }]).reaction).toEqual(run([]).reaction);
+  });
+
   it("misses him inside the guilt dial, and the return resolves once", () => {
     const seen = run([{ kind: "his_turn", day: "d1" }]);
     const later = { ...day, now: 9 * H };

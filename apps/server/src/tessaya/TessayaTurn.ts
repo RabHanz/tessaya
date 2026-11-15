@@ -72,6 +72,8 @@ export interface TurnEnvelope {
   readonly project?: string | null | undefined;
   /** His IANA zone, so "yesterday" is his day. */
   readonly timeZone?: string | undefined;
+  /** How his voice sounded, where the vessel hears it (the room's SenseVoice label: "happy", "sad"...). */
+  readonly emotion?: string | undefined;
   /** Records which memories the turn used. */
   readonly turnRef?: string | undefined;
   /** No warm session holds the standing memory, so the turn carries it (a desk device's every turn). */
@@ -762,6 +764,9 @@ export const make = Effect.gen(function* () {
     const mood = yield* Effect.serviceOption(TessayaMood);
     if (Option.isNone(mood) || !movesMood(turn)) return "";
     const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
+    // How he sounds moves her before this turn's line is read, so her answer already meets it.
+    if (turn.emotion !== undefined)
+      yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion });
     const line = moodLine(yield* mood.value.view(turn.persona, zone));
     yield* mood.value.heard(turn.persona, zone);
     return line;
