@@ -22,6 +22,12 @@ const PRIME_SAMPLES = 1.3 * RATE;
 const TAIL_SAMPLES = 0.5 * RATE;
 /** What the confirm hears: the name and a little before it. */
 const CONFIRM_SAMPLES = 2 * RATE;
+/**
+ * Frames come every 60 ms inside a segment. A longer silence means its `voice/wake/end` never came: a fire starts the
+ * R1's session mid-segment and it never ends that one, and a dropped hub link loses ends too. Left open, the next
+ * segment was ignored whole (15 Nov soak: 5 of 18 names heard opened nothing).
+ */
+const SEGMENT_GAP_MS = 3_000;
 
 /** `event/wake/kws`: the R1's on-device wake model on one segment (firmware contract). */
 export interface KwsEvent {
@@ -58,11 +64,13 @@ export interface WakeStreamDeps {
   readonly log: (line: string) => void;
   /** Keeps each whole segment for wake training when the host has it switched on. */
   readonly capture?: WakeCapture;
+  readonly now?: () => number;
 }
 
 export const createWakeStream = (deps: WakeStreamDeps) => {
   /** The words and scorer a segment starts on; `reload` replaces them, and each R1 takes them at its next segment. */
   let current = { words: deps.words, scorer: deps.scorer, gen: 0 };
+  const now = deps.now ?? Date.now;
   const devices = new Map<
     string,
     {
@@ -81,6 +89,8 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       woke: boolean;
       /** The whole segment, for the capture only. */
       seg: Int16Array;
+      /** When its last frame came. */
+      at: number;
     }
   >();
   /** Per R1 and segment number: the R1's on-device verdict and ours, whichever came first, until both are in. */
@@ -116,6 +126,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         outcome: "",
         woke: false,
         seg: new Int16Array(0),
+        at: Number.NEGATIVE_INFINITY,
       };
       devices.set(id, d);
     }
@@ -131,6 +142,19 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
   const drop = (d: Device) => {
     d.heard = new Int16Array(0);
     d.pending = new Int16Array(0);
+  };
+
+  /** Listen afresh: the next frame opens a new segment. */
+  const restart = (d: Device, scorer: WakeScorer) => {
+    d.outcome = "";
+    d.woke = false;
+    d.seg = new Int16Array(0);
+    d.samples = 0;
+    d.best = [];
+    drop(d);
+    d.done = false;
+    scorer.reset();
+    d.pending = new Int16Array(PRIME_SAMPLES);
   };
 
   const fired = async (
@@ -174,10 +198,14 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     /** One 60 ms frame of a voiced segment. */
     frame: (id: string, bytes: Uint8Array) => {
       const d = of(id);
+      const t = now();
+      const lost = t - d.at > SEGMENT_GAP_MS;
+      d.at = t;
       const pcm = new Int16Array(
         bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length - (bytes.length % 2)),
       );
       d.chain = d.chain.then(async () => {
+        if (lost && (d.samples > 0 || d.done)) restart(d, await d.scorer);
         if (deps.capture !== undefined && d.seg.length < KEEP_SAMPLES)
           d.seg = join(d.seg, pcm).slice(0, KEEP_SAMPLES);
         if (d.done) return;
@@ -234,15 +262,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
             seg === undefined ? undefined : pairs.get(`${id}#${seg}`)?.kws,
           );
         if (seg !== undefined) pair(id, seg, { ours });
-        d.outcome = "";
-        d.woke = false;
-        d.seg = new Int16Array(0);
-        d.samples = 0;
-        d.best = [];
-        drop(d);
-        d.done = false;
-        scorer.reset();
-        d.pending = new Int16Array(PRIME_SAMPLES);
+        restart(d, scorer);
       });
     },
     /** New words (her newly trained ones): each R1 listens for them from its next segment. */

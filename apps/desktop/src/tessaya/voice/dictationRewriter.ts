@@ -53,6 +53,8 @@ export const dictationPieces = (raw: string, mode: DictationMode): ReadonlyArray
 };
 const TAKES_BACK = /^(?:sorry|no|i mean|i meant|actually|or rather|scratch that|make that|wait)\b/i;
 
+/** The whole-dictation pass writes all of it out again, so it gets longer than release's budget for what is left. */
+export const wholeLimitMs = (text: string): number => Math.min(8_000, 1_500 + text.length * 4);
 /** A long dictation takes longer to write out, so the limit grows with it, but it always ends. */
 export const hardLimitMs = (text: string): number => Math.min(45_000, 2_500 + text.length * 8);
 const IDLE_MS = 10 * 60_000;
@@ -95,6 +97,8 @@ export const makeRewriter = (input: {
   readonly dictionary: () => ReadonlyArray<DictionaryEntry>;
   /** Replaces `hardLimitMs`, for the lab and for tests. */
   readonly limitMs?: number;
+  /** Replaces `wholeLimitMs`, for the lab and for tests. */
+  readonly wholeLimitMs?: number;
   /** Replaces `RELEASE_BUDGET_MS`, for the lab and for tests. */
   readonly releaseBudgetMs?: number;
   readonly start?: typeof startVisionSession;
@@ -341,6 +345,13 @@ export const makeRewriter = (input: {
         clearTimeout(timer);
         return answer;
       };
+      const pieces = dictationPieces(c.raw, c.mode);
+      // With his key, more than one sentence is also cleaned whole, so a correction or fragment that crosses a
+      // sentence is settled; the pieces below, cleaned meanwhile, are pasted only if the whole does not come back.
+      const whole =
+        pieces.length > 1 && keyRoute()
+          ? run(c, askBy(started + (input.wholeLimitMs ?? wholeLimitMs(c.raw)), c.context))
+          : null;
       // Each piece cleaned while he spoke is taken as it is; the pieces left, side by side, are cleaned together now.
       const parts: CleanedText[] = [];
       let left: string[] = [];
@@ -351,7 +362,7 @@ export const makeRewriter = (input: {
         left = [];
         guessedAll = false;
       };
-      for (const piece of dictationPieces(c.raw, c.mode)) {
+      for (const piece of pieces) {
         const key = keyOf(c, piece);
         const guess = ready.get(key);
         // A guess still running is waited for on the subscription, where a new ask would queue behind it anyway; with
@@ -367,6 +378,9 @@ export const makeRewriter = (input: {
       }
       await cleanLeft();
       if (parts.length === 0) parts.push(await run(c, askBy(deadline, c.context)));
+      const settled = await whole?.catch(() => null);
+      if (settled?.stage === "model")
+        return { ...settled, ms: Date.now() - started, speculated: false };
       const fellBack = parts.find((part) => part.stage === "fallback");
       const cleaned: CleanedText = {
         text: parts

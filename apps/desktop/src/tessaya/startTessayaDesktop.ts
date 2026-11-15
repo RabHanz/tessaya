@@ -29,6 +29,7 @@ import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
 import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
+import { cleanupApiLimitMs } from "@t3tools/tessaya-shared/dictationCleanup";
 import { readDeskTurn } from "@t3tools/tessaya-shared/deskTurnStream";
 import { conversationsIn } from "./conversation/conversationLog.ts";
 import { moveRoster } from "./pack/rosterMove.ts";
@@ -788,12 +789,12 @@ export const startTessayaDesktop = Effect.gen(function* () {
       wakeServer,
       comms,
       // His Anthropic key cleans every dictation when he saved one; a failure (its reason in the error) inserts the
-      // local text, never the subscription. The wait matches the server's 2.5 s limit, with a little for the hop.
+      // local text, never the subscription. The wait is the server's limit, with a little for the hop.
       cleanupApi: async (system, message, maxTokens) => {
         const answer = (await direct(
           "baton.dictation.cleanupApi",
           { system, message, maxTokens },
-          2_800,
+          cleanupApiLimitMs(maxTokens) + 300,
         )) as { readonly configured?: boolean; readonly text?: unknown };
         return answer?.configured === true && typeof answer.text === "string" ? answer.text : null;
       },
