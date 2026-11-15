@@ -23,6 +23,7 @@ import {
   dedupeShellEnrichment,
   omitIdleSubagentShells,
   omitOlderSettledShells,
+  omitUnchangedPullRequests,
   shellStreamItemFromEnrichmentRefresh,
   shellStreamItemsFromInitialSnapshot,
   shouldPublishShellApplicationEvent,
@@ -683,6 +684,94 @@ describe("skipUnchangedThreadShells", () => {
       Stream.runCollect,
       Effect.map((items) => Array.from(items, (item) => ("sequence" in item ? item.sequence : -1))),
     );
+
+  it.effect("omitUnchangedPullRequests sends a thread's links only when they change", () =>
+    Effect.gen(function* () {
+      // A long-lived thread like the Director's: 46 merged PR links, about 38 KB as a shell.
+      const link = (number: number) => ({
+        host: "github.com",
+        repository: "rabhanz/ventureos",
+        number,
+        url: `https://github.com/RabHanz/VentureOS/pull/${number}`,
+        source: "created" as const,
+        linkedAt: "2026-10-29T15:50:50.177Z",
+        snapshot: {
+          state: "merged" as const,
+          title: "A pull request title of typical length for this repository's history",
+          headBranch: "docs/some-branch",
+          baseBranch: "main",
+          isDraft: false,
+          updatedAt: "2026-10-29T15:50:58Z",
+          syncedAt: "2026-10-29T15:52:09.243Z",
+          closedAt: "2026-10-29T15:50:58Z",
+          mergedAt: "2026-10-29T15:50:58Z",
+          author: {
+            login: "RabHanz",
+            name: null,
+            avatarUrl:
+              "https://avatars.githubusercontent.com/u/53461530?u=4151290527442b5f1edd&v=4",
+          },
+          additions: 2,
+          deletions: 2,
+          changedFiles: 2,
+          reviewDecision: null,
+          checksState: "passing" as const,
+          mergeability: "unknown" as const,
+        },
+        stack: null,
+      });
+      const links = Array.from({ length: 46 }, (_, index) => link(4300 + index));
+      const thread = (status: OrchestrationV2ThreadShell["status"], pullRequests = links) =>
+        shell("live", { status, pullRequests } as Partial<OrchestrationV2ThreadShell>);
+      const update = (
+        sequence: number,
+        thread: OrchestrationV2ThreadShell,
+      ): OrchestrationV2ShellStreamItem => ({
+        kind: "thread.updated",
+        sequence,
+        location: "active",
+        thread,
+      });
+      const items: ReadonlyArray<OrchestrationV2ShellStreamItem> = [
+        { kind: "snapshot", snapshot: { ...emptyShellSnapshot, threads: [thread("running")] } },
+        ...Array.from({ length: 10 }, (_, index) =>
+          update(index + 1, thread(index % 2 === 0 ? "waiting" : "running")),
+        ),
+        update(11, thread("running", [...links, link(4400)])),
+        {
+          kind: "thread.removed",
+          sequence: 12,
+          location: "active",
+          threadId: ThreadId.make("live"),
+        },
+        update(13, thread("running")),
+      ];
+      const measure = (stream: Stream.Stream<OrchestrationV2ShellStreamItem>) =>
+        Stream.runCollect(stream).pipe(
+          Effect.map((sent) =>
+            Array.from(sent, (item) => ({
+              bytes: JSON.stringify(item).length,
+              links: "thread" in item ? (item.thread.pullRequests?.length ?? 0) : null,
+            })),
+          ),
+        );
+      const before = yield* measure(Stream.fromIterable(items));
+      const after = yield* measure(omitUnchangedPullRequests(Stream.fromIterable(items)));
+      const updateBytes = (sent: typeof before) =>
+        sent.slice(1, 11).reduce((total, item) => total + item.bytes, 0);
+
+      expect(after.length).toBe(before.length);
+      expect(updateBytes(before) / 10).toBeGreaterThan(30_000);
+      expect(updateBytes(after) / 10).toBeLessThan(2_000);
+      expect(after.map((item) => item.links)).toEqual([
+        null,
+        ...Array.from({ length: 10 }, () => 0),
+        47,
+        null,
+        46,
+      ]);
+    }),
+  );
 
   it.effect("sends the next update after a removal", () =>
     Effect.gen(function* () {

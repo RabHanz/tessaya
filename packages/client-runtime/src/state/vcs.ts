@@ -341,6 +341,11 @@ export function createVcsEnvironmentAtoms<R, E>(
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,
     }),
+    // Re-reads local status into the open status stream, which then sends only what changed.
+    refreshLocalStatus: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:vcs:refresh-local-status",
+      tag: WS_METHODS.vcsRefreshStatus,
+    }),
     // Outside the serial queue: it only reads status, and a checkout picked right after opening
     // the picker must not wait behind that read.
     refreshLocalStatusForPicker: createEnvironmentRpcCommand(runtime, {

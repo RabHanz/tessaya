@@ -684,6 +684,7 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         const omission = {
           ...(omitIdleSubagents ? { omitIdleSubagents: true as const } : {}),
           ...(omitOlderSettled ? { omitOlderSettled: true as const } : {}),
+          omitUnchangedPullRequests: true as const,
         };
         if (Option.isNone(current.snapshot) || !(resumingHeldRows || loaded?.kind === "snapshot")) {
           return { ...omission, requestCompletionMarker: true as const };

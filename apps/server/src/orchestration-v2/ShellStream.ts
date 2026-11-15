@@ -788,6 +788,51 @@ export function skipUnchangedThreadShells<A extends OrchestrationV2ShellStreamIt
   });
 }
 
+const samePullRequests = Schema.toEquivalence(ThreadShellSchema.fields.pullRequests);
+
+/** Drop `pullRequests` from a thread update when this stream already delivered the same links. */
+export function omitUnchangedPullRequests<A extends OrchestrationV2ShellStreamItem, E, R>(
+  stream: Stream.Stream<A, E, R>,
+): Stream.Stream<A, E, R> {
+  return Stream.suspend(() => {
+    const sent = new Map<ThreadId, OrchestrationV2ThreadShell["pullRequests"]>();
+    return stream.pipe(
+      Stream.map((item): A => {
+        switch (item.kind) {
+          case "snapshot":
+            // Enrichment snapshots carry no rows; an authoritative one replaces the client's rows.
+            if (item.resolvedRepositoryIdentityRoots === undefined) sent.clear();
+            for (const thread of item.snapshot.threads) sent.set(thread.id, thread.pullRequests);
+            return item;
+          case "thread.removed":
+            sent.delete(item.threadId);
+            return item;
+          case "thread.updated": {
+            const { id, pullRequests } = item.thread;
+            if (item.location !== "active") {
+              sent.delete(id);
+              return item;
+            }
+            if (
+              pullRequests !== undefined &&
+              pullRequests.length > 0 &&
+              sent.has(id) &&
+              samePullRequests(sent.get(id), pullRequests)
+            ) {
+              const { pullRequests: _unchanged, ...thread } = item.thread;
+              return { ...item, thread };
+            }
+            sent.set(id, pullRequests);
+            return item;
+          }
+          default:
+            return item;
+        }
+      }),
+    );
+  });
+}
+
 export function shellStreamItemFromThreadShell(input: {
   readonly stored: Extract<ShellApplicationEvent, { readonly event: unknown }>;
   readonly shell: OrchestrationV2ThreadShell | null;

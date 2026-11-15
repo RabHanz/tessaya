@@ -9,6 +9,16 @@ import {
 import * as Schema from "effect/Schema";
 
 const sameThreadShell = Schema.toEquivalence(OrchestrationV2ThreadShell);
+
+/** A `thread.updated` without `pullRequests` keeps the row's links (`omitUnchangedPullRequests`). */
+function withHeldPullRequests(
+  previous: OrchestrationV2ThreadShell | undefined,
+  thread: OrchestrationV2ThreadShell,
+): OrchestrationV2ThreadShell {
+  return thread.pullRequests === undefined && previous?.pullRequests !== undefined
+    ? { ...thread, pullRequests: previous.pullRequests }
+    : thread;
+}
 const sameProjectShell = Schema.toEquivalence(OrchestrationProjectShell);
 const sameLinks = Schema.toEquivalence(Schema.UndefinedOr(Schema.Array(ThreadPullRequestLink)));
 const sameRepositoryIdentity = Schema.toEquivalence(
@@ -160,7 +170,8 @@ export function applyShellStreamEvent(
         event.location === "active"
           ? snapshot.threads.find((thread) => thread.id === event.thread.id)
           : undefined;
-      if (existing !== undefined && sameThreadShell(existing, event.thread)) {
+      const next = withHeldPullRequests(existing, event.thread);
+      if (existing !== undefined && sameThreadShell(existing, next)) {
         return { ...snapshot, snapshotSequence: event.sequence };
       }
       const withoutThread = (threads: OrchestrationV2ShellSnapshot["threads"]) =>
@@ -169,7 +180,7 @@ export function applyShellStreamEvent(
         ...snapshot,
         threads:
           event.location === "active"
-            ? upsertById(snapshot.threads, event.thread)
+            ? upsertById(snapshot.threads, next)
             : withoutThread(snapshot.threads),
         // The archive has its own bounded query/subscription. Older servers may
         // still send archive-located deltas here; remove them from the normal
@@ -243,8 +254,9 @@ export function applyShellStreamEvents(
         const id = event.thread.id;
         if (event.location === "active") {
           const previous = threads.get(id);
-          if (previous !== undefined && sameThreadShell(previous, event.thread)) break;
-          threads.set(event.thread);
+          const next = withHeldPullRequests(previous, event.thread);
+          if (previous !== undefined && sameThreadShell(previous, next)) break;
+          threads.set(next);
         } else {
           threads.remove(id);
         }

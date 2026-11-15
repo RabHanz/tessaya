@@ -140,6 +140,7 @@ import {
   resumeIdentityRoots,
   shellStreamItemsFromResumeSnapshot,
   shouldPublishShellApplicationEvent,
+  omitUnchangedPullRequests,
   skipUnchangedThreadShells,
   toShellApplicationEvent,
   type ShellApplicationEvent,
@@ -1135,6 +1136,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
     readonly requestCompletionMarker?: boolean;
     readonly omitIdleSubagents?: boolean;
     readonly omitOlderSettled?: boolean;
+    readonly omitUnchangedPullRequests?: true;
   }) {
     const sql = yield* SqlClient.SqlClient;
     const threadManagement = yield* ThreadManagementService.ThreadManagementService;
@@ -1405,8 +1407,10 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
       ),
     );
 
-    return stream.pipe(
-      dedupeShellEnrichment,
+    const deduped = dedupeShellEnrichment(stream);
+    return (
+      input.omitUnchangedPullRequests === true ? omitUnchangedPullRequests(deduped) : deduped
+    ).pipe(
       Stream.mapError(
         (cause) =>
           new OrchestrationV2GetShellSnapshotError({
