@@ -677,6 +677,8 @@ const main = async () => {
     .filter((w) => w.word !== "" && w.threshold > 0 && w.threshold <= 1);
   /** One clock for the wake stream and the room: a request's times in one are compared in the other. */
   const now = () => performance.timeOrigin + performance.now();
+  /** The Tessels whose kws scorer says it is ready: its pass decides their wakes. */
+  const kwsReady = new Set<string>();
   /** The R1s whose last word on `state/online` was "1": only then are the recognisers kept warm. */
   const online = new Set<string>();
   let room: ReturnType<typeof createRoomVoice> | null = null;
@@ -733,13 +735,17 @@ const main = async () => {
       // Her early kws threshold, which the Tessel loses on every boot: sent whenever it reports another.
       const kws = /^(freya\/r1\/[^/]+)\/state\/voice\/kws$/.exec(t);
       if (kws !== null) {
-        const send = (() => {
+        const state = (() => {
           try {
-            return kwsEarlyCommand(JSON.parse(String(p)) as { early?: unknown }, kwsWake);
+            return JSON.parse(String(p)) as { early?: unknown; scorer?: unknown };
           } catch {
-            return null;
+            return {};
           }
         })();
+        const id = kws[1]!.slice("freya/r1/".length);
+        if (state.scorer === "ready") kwsReady.add(id);
+        else kwsReady.delete(id);
+        const send = kwsEarlyCommand(state, kwsWake);
         if (send !== null) mqtt.publish(`${kws[1]}/cmd/voice/kws`, send);
         return;
       }
@@ -849,6 +855,7 @@ const main = async () => {
             ),
           log,
           kwsWake,
+          kwsReady: (id) => kwsReady.has(id),
           now,
           ...(capture === undefined ? {} : { capture }),
         });

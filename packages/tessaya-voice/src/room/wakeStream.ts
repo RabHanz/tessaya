@@ -114,6 +114,11 @@ export interface WakeStreamDeps {
    * the same confirm, on the whole segment. Only for a Tessel that has sent one; openWakeWord then only logs these words.
    */
   readonly kwsWake?: ReadonlyArray<{ readonly word: string; readonly threshold: number }>;
+  /**
+   * The Tessel says its kws scorer is ready (`state/voice/kws`, retained). Its first kws event cannot teach this: after
+   * a restart openWakeWord's fire started every session before any came (16 Nov, 01:18).
+   */
+  readonly kwsReady?: (deviceId: string) => boolean;
   /** Keeps each whole segment for wake training when the host has it switched on. */
   readonly capture?: WakeCapture;
   readonly now?: () => number;
@@ -156,7 +161,8 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
   const earlyConfirm = new Map<string, Promise<ReadonlyArray<string>>>();
   const kwsWord = (name: unknown) =>
     deps.kwsWake?.find((w) => w.word.toLowerCase() === String(name ?? "").toLowerCase());
-  const byKws = (id: string, word: string) => kwsSeen.has(id) && kwsWord(word) !== undefined;
+  const byKws = (id: string, word: string) =>
+    (kwsSeen.has(id) || deps.kwsReady?.(id) === true) && kwsWord(word) !== undefined;
   const pair = (id: string, seg: number, half: { kws?: KwsEvent; ours?: string }) => {
     const key = `${id}#${seg}`;
     const both = { ...pairs.get(key), ...half };

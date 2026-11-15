@@ -170,6 +170,30 @@ describe("waking her by name with no session open", () => {
     });
   });
 
+  it("on a Tessel whose kws scorer is ready, openWakeWord never wakes her, even before its first kws event (01:18, 16 Nov)", async () => {
+    const t = createWakeStream({
+      words: [{ word: "Tessaya", threshold: 0.99 }],
+      scorer: async (): Promise<WakeScorer> => ({
+        chunkSamples: 1280,
+        reset: () => undefined,
+        score: async (chunk) => [chunk.includes(7) ? 0.995 : 0],
+      }),
+      confirm: async () => ["Tessaya, what time is it?"],
+      onWake: () => woken.push("woken"),
+      log: () => undefined,
+      kwsWake: [{ word: "Tessaya", threshold: 0.9 }],
+      kwsReady: () => true,
+    });
+    const woken: string[] = [];
+    for (let i = 0; i < 4; i += 1) t.frame("r1", frame(7));
+    await t.drained("r1");
+    expect(woken).toEqual([]);
+    t.end("r1", 1, 4);
+    t.kws("r1", { seg: 1, name: "tessaya", pass: true, best: 0.95 });
+    await t.drained("r1");
+    expect(woken).toEqual(["woken"]);
+  });
+
   it("hears the next segment when the one that woke her never ended (15 Nov soak: every other name opened nothing)", async () => {
     let t0 = 0;
     const t = rig("Hey Tessaya.", () => t0);
