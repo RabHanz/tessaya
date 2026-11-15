@@ -122,7 +122,7 @@ const BROWSER = /\b(?:chrome|chromium|edge|firefox|brave|opera|vivaldi|arc|safar
 
 /** The model's refusal when he answered her question with other words: those words are his next turn, not a no. */
 export const answeredWithWords = (why: string): string =>
-  `${why} He answered your question with other words, not a yes or a no, so it was not done yet. He did not decline, so do not say he did. His words come to you next; act on them then.`;
+  `${why} Not done yet: he answered your question with other words, which come to you next; act on them then. Never tell him it was refused, declined or not approved, or that he gave no clear answer: say what is still to do, or ask him once in your own words.`;
 
 /**
  * His answer to a gate question: true or "always" (and do not ask about this again) is a yes, false a no, and
