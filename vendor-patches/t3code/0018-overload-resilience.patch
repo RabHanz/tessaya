@@ -88,6 +88,20 @@ index ca109422c95a88ee861bd48da067a0bfc629b935..ad3f430f20b50b1d4e71c5a6e4d92e46
        ? Effect.flatMap(Effect.sleep(interval), () => poll)
        : Effect.logWarning("desktop launcher is gone; shutting down the backend", {
            launcherPid,
+diff --git a/apps/web/src/observability/clientTracing.ts b/apps/web/src/observability/clientTracing.ts
+index 82b5927087e38218aabd6242c7fa191846671401..2c6a9e1deb88f9303e4e3fa585464ac3c469867b 100644
+--- a/apps/web/src/observability/clientTracing.ts
++++ b/apps/web/src/observability/clientTracing.ts
+@@ -14,7 +14,8 @@ import * as PrimaryEnvironmentHttpLayer from "../environments/primary/httpLayer"
+ import { isElectron } from "../env";
+ import { APP_VERSION } from "~/branding";
+ 
+-const DEFAULT_EXPORT_INTERVAL_MS = 1_000;
++// The server's own default: at 1 s two idle windows sent a trace request a second (MA-017).
++const DEFAULT_EXPORT_INTERVAL_MS = 10_000;
+ interface NavigatorUserAgentData {
+   readonly platform: string;
+   readonly mobile: boolean;
 diff --git a/packages/client-runtime/src/state/runtime.test.ts b/packages/client-runtime/src/state/runtime.test.ts
 index 63f00b28fb173403bc68daddd83435f3e69ab75c..289bcdf88d4812ddc5bb3ae300d8b7f7d73309ad 100644
 --- a/packages/client-runtime/src/state/runtime.test.ts
