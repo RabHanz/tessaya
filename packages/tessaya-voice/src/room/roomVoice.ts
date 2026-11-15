@@ -8,7 +8,7 @@ import { mostlyForeign } from "@t3tools/tessaya-shared/language";
 import { isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import { pronounce, pronounceFrom } from "@t3tools/tessaya-shared/pronounce";
-import { stopIntent } from "@t3tools/tessaya-shared/stopPhrases";
+import { REST_MARK, stopIntent, stopMatch } from "@t3tools/tessaya-shared/stopPhrases";
 
 import { createEchoGuard } from "../echoGuard.ts";
 import { createTalkOver, createVoiceLevel, voiceCheckDue, type TalkOver } from "../talkOver.ts";
@@ -469,6 +469,31 @@ export const firstClause = (
   return m === null ? null : { head: m[1]!, rest: text.slice(m[0].length) };
 };
 
+/** The silence put between a held sentence's pieces when they are recognised again as one. */
+const PIECE_GAP = new Int16Array(RATE / 5);
+
+/**
+ * A sentence he paused in, recognised again from all its pieces' audio: each piece alone loses the words cut at a pause
+ * ("about how I speak" came out "about" + "Or" + "Speak.", 15 Nov 09:10). The joined pieces' words stand when the second
+ * pass fails or hears clearly fewer words, so nothing he said is dropped.
+ */
+export const wholeSentence = async (
+  joined: string,
+  pieces: ReadonlyArray<Int16Array>,
+  recognise: ((pcm: Int16Array) => Promise<string>) | undefined,
+): Promise<string> => {
+  if (recognise === undefined || pieces.length < 2) return joined;
+  const all = new Int16Array(pieces.reduce((n, p) => n + p.length + PIECE_GAP.length, 0));
+  let at = 0;
+  for (const p of pieces) {
+    all.set(p, at);
+    at += p.length + PIECE_GAP.length;
+  }
+  const again = (await recognise(all).catch(() => "")).trim();
+  const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+  return again !== "" && words(again) >= 0.8 * words(joined) ? again : joined;
+};
+
 /** Whole sentences out of a growing reply, keeping the unfinished tail. */
 export const splitSentences = (
   text: string,
@@ -542,7 +567,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** Mic turns begun so far: words that arrive after a newer turn of his began are not answered on their own. */
     let starts = 0;
     /** His words held for his next turn: a sentence he paused in, or one his next turn overtook (13 Nov, 07:39). */
-    let carry: { readonly text: string; readonly at: number; readonly since: number } | null = null;
+    let carry: {
+      readonly text: string;
+      readonly at: number;
+      readonly since: number;
+      /** Each piece's audio, in order: the joined sentence is recognised again as one. */
+      readonly pieces: ReadonlyArray<Int16Array>;
+    } | null = null;
     /** The turn being answered; a fragment of his that starts before she is heard is joined to it, not answered apart. */
     let current_: {
       readonly text: string;
@@ -550,6 +581,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       firstAt: number | null;
       readonly entry: { role: "user"; content: string };
       merged: boolean;
+      readonly pieces: ReadonlyArray<Int16Array>;
     } | null = null;
     /** Her recent downlink, kept only while a bench asks for its turns (`cmd/voice/no-reply` with `keep`). */
     const played: Array<{ at: number; pcm: Int16Array }> = [];
@@ -650,6 +682,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let nameOnce: string | null = null;
     /** An act her server holds until it knows who is speaking (`voice/stepup`), and how she asked. */
     let heldAct: { readonly act: string; readonly step: StepUp; readonly at: number } | null = null;
+    /** Her step-up question, asked once her reply ends: asked over it, it cut the reply off unheard (15 Nov, 08:19). */
+    let askAfter: string | null = null;
     /** The member's own voice for her (their preference), once they are recognised, while the lead answers. */
     let memberVoice: string | null = null;
     let prefsFor: string | null = null;
@@ -822,7 +856,40 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       );
     };
 
-    /** Sent away by voice: her reply flushed, any turn on its way cancelled, sleepy eyes and her closing sound, at once. */
+    /** The session ends softly: sleepy eyes and her closing sound once her last words have played, then the mic closes. */
+    const restGently = (at: number) => {
+      openUntil = 0;
+      firstUntil = 0;
+      invited = false;
+      asleep = true;
+      sentAway = true;
+      lastActivity = deps.now();
+      const closing = silent(id)
+        ? Promise.resolve()
+        : lastSaid
+            .then(() => deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())))
+            .then(() =>
+              dismissedAt === at
+                ? send(cueSamples("end"), new AbortController().signal, () => undefined)
+                : undefined,
+            )
+            .catch(() => undefined);
+      // Sent away ends the session: the R1 closes its mic and listens for her name again (14 Nov, mic stayed on).
+      void closing
+        .then(() => deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())))
+        .then(() => {
+          if (dismissedAt !== at) return;
+          // Her "okay" reopened the window as any line of hers does: sent away, it stays shut.
+          openUntil = 0;
+          invited = false;
+          face("sleepy");
+          if (!closed) deps.publish(topic(id, "cmd/voice/stop"), "{}");
+        });
+    };
+    /**
+     * Sent away by voice: a turn on its way is cancelled and she says a brief "okay" before the soft close, never an
+     * instant sleep (15 Nov). Said over her, it stops her sentence first, as any barge-in does.
+     */
     const dismissNow = (why: string) => {
       const at = deps.now();
       // The same dismissal heard again (early, then final): a second pass would flush her closing tone (14 Nov, 19:40).
@@ -831,24 +898,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       stops += 1;
       if (speaking()) interrupt();
       carry = null;
-      openUntil = 0;
-      firstUntil = 0;
-      invited = false;
-      asleep = true;
-      sentAway = true;
-      lastActivity = deps.now();
-      face("sleepy");
-      const closing = silent(id)
-        ? Promise.resolve()
-        : send(cueSamples("end"), new AbortController().signal, () => undefined).catch(
-            () => undefined,
-          );
-      // Sent away ends the session: the R1 closes its mic and listens for her name again (14 Nov, mic stayed on).
-      void closing
-        .then(() => deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())))
-        .then(() => {
-          if (!closed && dismissedAt === at) deps.publish(topic(id, "cmd/voice/stop"), "{}");
-        });
+      if (!silent(id)) speakNow(own("end.ack", "Okay."));
+      restGently(at);
       deps.log(`${why}; she rests`);
     };
     /** Each stop of hers (his "stop", or the R1's S2 or tap): a turn heard before it is not answered after it. */
@@ -1171,6 +1222,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         .finally(() => {
           if (reply !== control) return;
           reply = null;
+          if (askAfter !== null) askNow();
           // Whatever she said, he may answer it: the window follows her voice, not only her replies to him.
           if (control.signal.aborted) return;
           invited = invitesReply(text);
@@ -1180,6 +1232,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
               (invited ? config.replyHoldMs : config.followMs),
           );
         });
+    };
+
+    const askNow = () => {
+      const line = askAfter;
+      askAfter = null;
+      if (line !== null && heldAct !== null) speakNow(line);
     };
 
     /** Said to her: she was named, or it began inside the window and is more than a stray "yeah" she did not ask for. */
@@ -1226,6 +1284,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const voicesP = given === undefined ? deps.voices?.(pcm).catch(() => undefined) : undefined;
       let affectNow: Awaited<typeof affectP>;
       void affectP?.then((a) => (affectNow = a));
+      // Who spoke never waits on how they sounded: tied to the mood reader, a ready Voice ID was dropped (15 Nov).
+      let speakerNow: { readonly identity: Awaited<typeof speakerP> } | null =
+        speakerP === undefined ? { identity: undefined } : null;
+      void speakerP?.then((identity) => (speakerNow = { identity }));
       const sides = Promise.all([speakerP, affectP]);
       // What she would send her brain for these words, or null when this turn would not be answered.
       const seq = starts;
@@ -1375,7 +1437,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           });
         return;
       }
-      const intent = raw === "" ? null : stopIntent(raw, config.stopPhrases);
+      const matched = raw === "" ? null : stopMatch(raw, config.stopPhrases);
+      const intent = matched?.intent ?? null;
       // Sent away: the session rests here and now, with no brain call and nothing joined to it (10:36-10:37, 13 Nov).
       if (given === undefined && !echoed && intent === "dismiss") {
         kept?.control.abort();
@@ -1426,8 +1489,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         kept?.control.abort();
         // Nothing of hers to stop: his "stop" sends her away like a dismissal.
         if (!tainted && !speaking() && reply === null && cutByVoiceAt < startedAt)
-          return dismissNow(`[${id}] turn ${turn}: he said stop with nothing to stop`);
-        stopHer(`[${id}] turn ${turn}: he said stop`);
+          return dismissNow(
+            `[${id}] turn ${turn}: he said stop ("${matched?.phrase}") with nothing to stop`,
+          );
+        stopHer(`[${id}] turn ${turn}: he said stop ("${matched?.phrase}")`);
         return;
       }
       const mine =
@@ -1460,9 +1525,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       let text = mine ? raw : "";
+      let pieces: ReadonlyArray<Int16Array> = mine ? [pcm] : [];
       if (held !== null && carry === held) {
         carry = null;
         text = `${held.text} ${text}`.trim();
+        pieces = [...held.pieces, ...pieces];
       }
       // The rest of a turn of his still being answered and not yet heard: one sentence, answered once. Once she has
       // started answering it, it is answered as it was, never asked again.
@@ -1478,6 +1545,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const at = history.indexOf(prev.entry);
         if (at >= 0) history.splice(at, 1);
         text = `${prev.text} ${text}`;
+        pieces = [...prev.pieces, ...pieces];
       }
       if (text !== raw) {
         kept?.control.abort();
@@ -1491,7 +1559,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         (isUnfinished(text) || starts > seq) &&
         deps.now() - since < config.joinMs + 500
       ) {
-        const hold = { text, at: deps.now(), since };
+        const hold = { text, at: deps.now(), since, pieces };
         carry = hold;
         kept?.control.abort();
         if (starts === seq) await deps.sleep(config.joinMs);
@@ -1501,6 +1569,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         carry = null;
       }
+      if (pieces.length > 1) text = await wholeSentence(text, pieces, deps.preview);
       const called = calledName(text, names);
       // Another device of his is answering: what this one hears now is her voice from there, or his to that one.
       if (given === undefined && deps.now() < (quietUntil.get(id) ?? 0)) {
@@ -1567,10 +1636,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       asleep = false;
       sentAway = false;
       lastActivity = deps.now();
-      const dismissed = isDismissal(text) || stopIntent(text, config.stopPhrases) === "dismiss";
+      let dismissed = isDismissal(text) || stopIntent(text, config.stopPhrases) === "dismiss";
       // Her brain starts now, not after the speaker and mood readers: what they already know goes with it, and a voice
       // the gate keeps out is still never heard (her first sound waits for it, at most `sideMs`).
-      const known = await Promise.race([sides, Promise.resolve(null)]);
+      await Promise.resolve();
+      const known = speakerNow === null ? null : ([speakerNow.identity, affectNow] as const);
       const [speaker, affect] = known ?? [undefined, affectNow];
       const identity = speaker ?? UNVERIFIED(deps.now());
       const voicesAt = deps.now();
@@ -1648,7 +1718,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       openUntil = Number.POSITIVE_INFINITY;
       const entry = { role: "user" as const, content: text };
       history.push(entry);
-      const me = { text, endedAt: lastVoice, firstAt: null as number | null, entry, merged: false };
+      const me = {
+        text,
+        endedAt: lastVoice,
+        firstAt: null as number | null,
+        entry,
+        merged: false,
+        pieces,
+      };
       current_ = me;
       // One reply at a time: two playing at once interleave their frames on the downlink, which sounds chopped.
       // Still audible counts too: her last reply may already be on the R1.
@@ -1713,6 +1790,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         for await (const delta of source) {
           brainFirst ??= deps.now() - textAt;
           buffer += delta;
+          // Her brain heard him close the conversation: her sign-off plays, then the session rests by itself.
+          if (buffer.includes(REST_MARK)) {
+            buffer = buffer.replaceAll(REST_MARK, "");
+            dismissed = true;
+          }
           const { done, rest } = splitSentences(buffer);
           buffer = rest;
           done.forEach(enqueue);
@@ -1737,9 +1819,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           void deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now())).then(() => {
             if (reply === null || reply === control) face(dismissed ? "sleepy" : "neutral");
           });
-        if (dismissed) {
-          asleep = true;
-          sentAway = true;
+        if (dismissed && !control.signal.aborted) {
+          dismissedAt = deps.now();
+          restGently(dismissedAt);
         }
       } catch (error) {
         if (control.signal.aborted) deps.log(`[${id}] turn ${turn}: cut off`);
@@ -1766,6 +1848,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           spokeAt = Number.NEGATIVE_INFINITY;
           deps.arbiter?.report("ended", id);
         }
+        if (reply === null && askAfter !== null) {
+          if (dismissed) askAfter = null;
+          else askNow();
+        }
         if (said !== "" && !me.merged) history.push({ role: "assistant", content: said });
         if (said !== "") lastExchangeAt = deps.now();
         lastActivity = deps.now();
@@ -1783,7 +1869,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         speaker: identity.kind,
         speakerScore:
           identity.confidence === null ? null : Math.round(identity.confidence * 1000) / 1000,
-        emotion: affect?.emotion ?? "unknown",
+        emotion: (affect ?? affectNow)?.emotion ?? "unknown",
         bargedIn,
         speculative: kept !== null,
       };
@@ -2166,8 +2252,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (asked.step.kind === "none") return settleStepUp(true, "session");
         const line = stepUpWords(asked.step);
         if (line === null) return;
-        if (reply !== null) interrupt();
-        speakNow(line);
+        deps.log(
+          `[${id}] step-up for ${act}: asked${reply === null ? "" : " once her reply ends"}`,
+        );
+        askAfter = line;
+        if (reply === null) askNow();
       },
       /** S2 on this R1: someone is at it, which proves presence for an act waiting on who is speaking. */
       present: () => settleStepUp(true, "button"),

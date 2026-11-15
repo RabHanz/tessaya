@@ -682,7 +682,7 @@ describe("answering only when he is talking to her", () => {
     it("stops at once for his stop, answers nothing for it, and listens for his next words", async () => {
       const r = await overHer(["Turn the office fan on.", "Stop.", "What time is it?"], "his");
       expect(r.flushed).toBe(true);
-      expect(r.logs.some((l) => l.includes("he said stop; she stopped"))).toBe(true);
+      expect(r.logs.some((l) => l.includes('he said stop ("stop"); she stopped'))).toBe(true);
       // A breath, then his next request, with no name: she is listening.
       await r.t.feed(false, 15);
       await r.t.feed(true, 20);
@@ -814,7 +814,7 @@ describe("answering only when he is talking to her", () => {
     ]);
   });
 
-  it("rests at once when sent away, without asking her brain", async () => {
+  it("rests gently when sent away, without asking her brain", async () => {
     const spoken: string[] = [];
     const t = setup({
       recognise: said(["I said dismissed."]),
@@ -826,8 +826,8 @@ describe("answering only when he is talking to her", () => {
     t.s2();
     await turn(t);
     expect(t.brainCalls).toEqual([]);
-    // At once and on the R1 alone (10:36:40, 13 Nov: 6.5 s and a full sentence): sleepy eyes, no brain, no words.
-    expect(spoken).toEqual([]);
+    // No brain (10:36:40, 13 Nov: 6.5 s and a full sentence), but a brief "okay" before the soft close (15 Nov).
+    expect(spoken).toEqual(["Okay."]);
     expect(t.published.some((p) => p.payload === '{"mood":"sleepy"}')).toBe(true);
   });
 
@@ -1435,6 +1435,47 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     };
   };
 
+  it.each([
+    // The recogniser hears the whole sentence from all its pieces' audio.
+    [
+      "And how much would you say you have acquainted yourself about how I speak and do things?",
+      "And how much would you say you have acquainted yourself about how I speak and do things?",
+    ],
+    // A second pass that fails or hears far less keeps every word of the pieces.
+    ["", "And how much would you say you have acquainted yourself about Or Speak."],
+    ["Speak.", "And how much would you say you have acquainted yourself about Or Speak."],
+  ])(
+    "recognises a sentence he paused in twice again as one (15 Nov, 09:10: second pass %j)",
+    async (again, asked) => {
+      const holds: Array<() => void> = [];
+      const previews: number[] = [];
+      const t = setup({
+        recognise: heardInTurn([
+          "And how much would you say you have acquainted yourself about",
+          "Or",
+          "Speak.",
+        ]),
+        // An early start's preview of one piece hears nothing; only the whole sentence is read again.
+        preview: async (pcm) => (previews.push(pcm.length), pcm.length > 2 * 20 * 960 ? again : ""),
+        smartTurn: async () => 0.9,
+        sleep: async (ms) => {
+          if (ms === ROOM_CONFIG.joinMs) await new Promise<void>((r) => holds.push(r));
+          else t.advance(ms);
+        },
+      });
+      t.s2();
+      for (let i = 0; i < 3; i += 1) {
+        await t.feed(true, 20);
+        await t.feed(false, 8);
+      }
+      for (const release of holds) release();
+      await t.feed(false, 20);
+      expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([asked]);
+      // All three pieces' audio in one pass.
+      expect(previews.at(-1)).toBeGreaterThan(3 * 20 * 960);
+    },
+  );
+
   it("joins a sentence he paused in to its rest and answers it once (07:39:13)", async () => {
     const holds: Array<() => void> = [];
     const t = setup({
@@ -1755,7 +1796,7 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
 
   it.each([
     ["Dismiss.", "dismissed; she rests"],
-    ["Stop.", "he said stop with nothing to stop; she rests"],
+    ["Stop.", 'he said stop ("stop") with nothing to stop; she rests'],
   ])(
     "rests at once on '%s' with nothing of hers playing, and ends the session (10:37:43, 14:11 14 Nov)",
     async (said, line) => {
@@ -2153,6 +2194,19 @@ describe("recognising who she is talking to across a session (recognition.ts)", 
     };
   };
 
+  it("knows who spoke while the mood reader is still busy (15 Nov: owner, then unverified, turn to turn)", async () => {
+    const t = setup({
+      recognise: lines(["What time is it?"]),
+      speaker: async () => owner(0.7, true),
+      affect: () => new Promise(() => undefined),
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(t.brainCalls[0]!.tessaya.speaker?.kind).toBe("owner");
+    expect((await t.metrics).speaker).toBe("owner");
+  });
+
   it("looks warmly once and says his name once, on the turn he is first recognised", async () => {
     const t = setup({
       recognise: lines(["What time is it?", "And the date?"]),
@@ -2198,6 +2252,38 @@ describe("recognising who she is talking to across a session (recognition.ts)", 
       expect.objectContaining({ act: "unlock-door", ok: true, how: "voice" }),
     ]);
     expect(t.brainCalls).toEqual([]);
+  });
+
+  it("asks a step-up held mid-reply once her reply ends, never over it (15 Nov, 08:19)", async () => {
+    const spoken: string[] = [];
+    let release: () => void = () => undefined;
+    const hold = new Promise<void>((r) => (release = r));
+    const logs: string[] = [];
+    const t = setup({
+      brain: async function* () {
+        yield "Right, AM and PM from now on.";
+        await hold;
+        yield " It's eight nineteen a.m.";
+      },
+      speak: async function* (text) {
+        spoken.push(text);
+        yield new Int16Array(3_200);
+      },
+      log: (l) => logs.push(l),
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    t.room.message(`freya/r1/${DEV}/voice/stepup`, Buffer.from('{"act":"pref","shared":true}'));
+    release();
+    const m = await t.metrics;
+    expect(m.firstSoundMs).not.toBeNull();
+    expect(logs.some((l) => l.includes("cut off"))).toBe(false);
+    expect(spoken.slice(0, 2)).toEqual([
+      "Right, AM and PM from now on.",
+      "It's eight nineteen a.m.",
+    ]);
+    expect(spoken[2]?.startsWith("I'm not sure it's you yet.")).toBe(true);
   });
 
   it("takes S2 as presence for a held act, and a member's own persona and voice once he is recognised", async () => {

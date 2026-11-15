@@ -98,6 +98,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "memory_remember",
       "note_search",
       "member_preferences",
+      // How they like to be spoken to is theirs, as their memory is: never held for a step-up (15 Nov).
+      "tessaya_preference_set",
       // Their own messages: a private one is theirs alone.
       "comms_inbox",
       "comms_play",

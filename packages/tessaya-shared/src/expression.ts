@@ -267,6 +267,11 @@ export const LINE_EVENTS = {
     mood: "happy",
     gesture: "nodSmall",
   }),
+  "end.ack": spec("Okay.", "He sent her away or told her to stop; a brief word before she rests.", {
+    maxWords: 4,
+    mood: "neutral",
+    gesture: "nodSmall",
+  }),
   "id.failed": spec(
     "I still can't tell it's you, so I've left that.",
     "His voice check failed, so she has not done what he asked; it stays undone.",

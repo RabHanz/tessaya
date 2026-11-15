@@ -48,6 +48,9 @@ describe("whether he was talking to her", () => {
   it("knows when he has sent her away", () => {
     expect(isDismissal("No, dismissed.")).toBe(true);
     expect(isDismissal("Okay, that will be all discussed.")).toBe(true);
+    // 15 Nov, 09:11: she answered it and stayed awake.
+    expect(isDismissal("Nothing, that would be all.")).toBe(true);
+    expect(isDismissal("That'd be all, thanks.")).toBe(true);
     expect(isDismissal("Turn off the lamp.")).toBe(false);
   });
 
@@ -101,6 +104,7 @@ describe("his sentence left unfinished, and what a log keeps", () => {
       "Pages because",
       "My TikTok shop etcetera and much much more. Like the",
       "Can you turn on the.",
+      "And how much would you say you have acquainted yourself about",
     ])
       expect(isUnfinished(t), t).toBe(true);
     for (const t of [

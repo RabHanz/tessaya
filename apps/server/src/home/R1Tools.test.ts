@@ -121,6 +121,8 @@ describe("the room's tools for a replay", () => {
     expect(stepUpNeeds("home_do", 0)).toBeNull();
     expect(stepUpNeeds("settings_get", 0)).toBeNull();
     expect(stepUpNeeds("tessaya_memory_remember", 0)).toBeNull();
+    // 15 Nov, 08:19 GMT+5: his "say it in AM/PM" was held for a step-up that cut her reply off.
+    expect(stepUpNeeds("tessaya_preference_set", 0)).toBeNull();
   });
   it("judges a job act by the desktop's own table: a schedule waits for his phone, a stop needs only his voice", () => {
     expect(jobVerdict("job_start", { project: "acme", goal: "fix it" }, false)).toBe("allow");

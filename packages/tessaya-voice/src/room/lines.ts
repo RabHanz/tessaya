@@ -46,6 +46,7 @@ export const ROOM_EVENTS: ReadonlyArray<LineEvent> = [
   "id.phone",
   "id.ok",
   "id.failed",
+  "end.ack",
   "enrol.start",
 ];
 const AHEAD = 3;

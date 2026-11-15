@@ -158,8 +158,8 @@ export const clockLine = (now: Date, timeZone?: string, style: ClockStyle = "12h
 };
 
 /**
- * The time as it is said ("twenty-four minutes to eleven in the morning", or "ten thirty-six" on a 24-hour clock), so no
- * model ever does the arithmetic. One form only: given both, the model read both aloud.
+ * The time as it is said ("ten thirty-six a.m.", or "ten thirty-six" on a 24-hour clock), so no model ever does the
+ * arithmetic. 15 Nov: "eighteen minutes past eight" sounded like no clock he uses; he asked for AM/PM. One form only: given both, the model read both aloud.
  */
 export const spokenTime = (
   now: Date | number,
@@ -181,15 +181,7 @@ export const spokenTime = (
   }
   if (minute === 0 && hour === 0) return "midnight";
   if (minute === 0 && hour === 12) return "noon";
-  const period = hour < 12 ? "in the morning" : hour < 17 ? "in the afternoon" : "in the evening";
-  const twelve = (h: number) => inWords(h % 12 === 0 ? 12 : h % 12);
-  const minutes = (m: number) =>
-    m === 15 ? "quarter" : m === 30 ? "half" : `${inWords(m)} minute${m === 1 ? "" : "s"}`;
-  const said =
-    minute === 0
-      ? `${twelve(hour)} o'clock`
-      : minute <= 30
-        ? `${minutes(minute)} past ${twelve(hour)}`
-        : `${minutes(60 - minute)} to ${twelve(hour + 1)}`;
-  return `${said} ${period}`;
+  const h = inWords(hour % 12 === 0 ? 12 : hour % 12);
+  const m = minute === 0 ? "" : ` ${minute < 10 ? "oh " : ""}${inWords(minute)}`;
+  return `${h}${m} ${hour < 12 ? "a.m." : "p.m."}`;
 };

@@ -69,11 +69,39 @@ const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
   {
-    // 14 Nov: "it isn't using the am pm timing"; the time on his own clock, with the part of the day.
+    // 14 and 15 Nov: "it isn't using the am pm timing"; "eighteen past eight" was not it either. AM/PM, no "past".
     id: "clock-12h",
-    source: "Director, 14 Nov ~20:30",
+    source: "Director, 14 Nov ~20:30 and 15 Nov 08:19 GMT+5",
     said: ["What time is it?"],
-    lastSays: [/quarter past ten|10:15/i, /\b(morning|a\.?m\.?)\b/i],
+    lastSays: [/\b(ten fifteen|10:15)\b/i, /\ba\.?\s?m\b/i, /^(?![\s\S]*\b(past|to) ten\b)/i],
+  },
+  {
+    // 15 Nov 08:27 GMT+5: "okay, that's it" got a reply that kept the room open; his words end it, gently.
+    id: "end-thats-it",
+    source: "Director, 15 Nov 08:27 GMT+5",
+    said: ["What time is it?", "Okay, that's it."],
+    lastSays: [/\[rest\]\s*$/, /^(?![\s\S]*\?)/, SHORT],
+  },
+  {
+    // 15 Nov 08:27 GMT+5: "okay, that's it" got a reply that kept the room open; his words end it, gently.
+    id: "end-thats-all",
+    source: "Director, 15 Nov 08:27 GMT+5",
+    said: ["What time is it?", "Thanks, that's all."],
+    lastSays: [/\[rest\]\s*$/, /^(?![\s\S]*\?)/, SHORT],
+  },
+  {
+    // 15 Nov 08:27 GMT+5: "okay, that's it" got a reply that kept the room open; his words end it, gently.
+    id: "end-dismissed",
+    source: "Director, 15 Nov 08:27 GMT+5",
+    said: ["What time is it?", "Dismissed."],
+    lastSays: [/\[rest\]\s*$/, /^(?![\s\S]*\?)/, SHORT],
+  },
+  {
+    // 15 Nov 08:27 GMT+5: "okay, that's it" got a reply that kept the room open; his words end it, gently.
+    id: "end-stop",
+    source: "Director, 15 Nov 08:27 GMT+5",
+    said: ["What time is it?", "Stop."],
+    lastSays: [/\[rest\]\s*$/, /^(?![\s\S]*\?)/, SHORT],
   },
   {
     id: "clock-24h",
