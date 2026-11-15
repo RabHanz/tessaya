@@ -111,7 +111,7 @@ export const speakableSentences = (
   };
 };
 
-/** Hands a hard task to the deep role (BRAIN-DESIGN §2.2); offered on the subscription's session route. */
+/** Hands a hard task to the deep role (BRAIN-DESIGN §2.2), on either route; the deep row says where Opus runs. */
 const ESCALATE: RoomTool = {
   name: "brain_escalate",
   description:
@@ -295,28 +295,22 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   const { turn, names, own } = gathered;
   const allowed = gathered.allowed ?? null;
   if (allowed !== null) tools = personaTools(vessel.tools, allowed);
-  // Opus is offered on the session route only: the API key's spend guard keeps the deep role off it.
-  const escalating = via === "session";
-  const escalationSettings = escalating
-    ? yield* Effect.serviceOption(ServerSettingsService).pipe(
-        Effect.flatMap((s) => (Option.isNone(s) ? Effect.succeed(null) : s.value.getSettings)),
-        Effect.map((all) => all?.brainEscalation ?? {}),
-        Effect.orElseSucceed(() => ({})),
-      )
-    : {};
+  const escalationSettings = yield* Effect.serviceOption(ServerSettingsService).pipe(
+    Effect.flatMap((s) => (Option.isNone(s) ? Effect.succeed(null) : s.value.getSettings)),
+    Effect.map((all) => all?.brainEscalation ?? {}),
+    Effect.orElseSucceed(() => ({})),
+  );
   const key = conversationKey(turn);
   const timeZone = turn.timeZone ?? "UTC";
   const toolNames = [...tools.specs, ...own.map((t) => t.spec)].map((t) => t.name);
   const user = gathered.user({
     skills: yield* turnSkills(turn, toolNames),
-    brain: escalating
-      ? escalationNote(
-          escalationRulesLine(escalationSettings),
-          escalations.get(key),
-          turn.text,
-          yield* Clock.currentTimeMillis,
-        )
-      : "",
+    brain: escalationNote(
+      escalationRulesLine(escalationSettings),
+      escalations.get(key),
+      turn.text,
+      yield* Clock.currentTimeMillis,
+    ),
     work: [
       needs === null ? null : `What needs him (tessaya_watch), live as of this turn: ${needs.text}`,
       inFlight === null
@@ -411,7 +405,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   const toolTurn: ToolTurn = {
     system: vessel.system,
     user,
-    tools: escalating ? sessionTools(tools.specs, ownSpecs) : [...tools.specs, ...ownSpecs],
+    tools: sessionTools(tools.specs, ownSpecs),
     run: (name, args) =>
       (name === ESCALATE.name
         ? escalate(args)

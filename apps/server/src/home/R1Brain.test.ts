@@ -2,15 +2,19 @@ import { it as effectIt } from "@effect/vitest";
 import { expect, it } from "vite-plus/test";
 
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
+import { ServerSettingsService } from "../serverSettings.ts";
+import { BrainUsage } from "../tessaya/BrainUsage.ts";
 import {
+  DictationCleanupApi,
   converseReader,
   type ConversePart,
   type ConverseRequest,
   type StreamUsage,
 } from "../speech/DictationCleanupApi.ts";
-import { MAX_ROUNDS, readLine, toolLoop, type ToolTurn } from "./R1Brain.ts";
+import { MAX_ROUNDS, make, readLine, toolLoop, type ToolTurn } from "./R1Brain.ts";
 
 it("takes text deltas and the end of the turn from Claude Code's stream-json, and nothing else", () => {
   const delta = (text: string) =>
@@ -42,6 +46,18 @@ it("reads a Messages API turn: words as they come, each tool call once its input
       type: "message_start",
       message: { model: "claude-haiku-5-5", usage: { input_tokens: 40, output_tokens: 1 } },
     }),
+    data({ type: "content_block_start", index: 0, content_block: { type: "thinking" } }),
+    data({
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "thinking_delta", thinking: "" },
+    }),
+    data({
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "signature_delta", signature: "sig" },
+    }),
+    data({ type: "content_block_stop", index: 0 }),
     data({
       type: "content_block_delta",
       index: 0,
@@ -68,6 +84,7 @@ it("reads a Messages API turn: words as they come, each tool call once its input
     data({ type: "message_delta", usage: { output_tokens: 22 } }),
   ];
   expect(lines.flatMap(read)).toEqual([
+    { type: "thinking", block: { type: "thinking", thinking: "", signature: "sig" } },
     { type: "text", text: "Let me check." },
     { type: "tool", id: "t1", name: "home_state", input: { entityId: "light.study" } },
   ]);
@@ -113,8 +130,9 @@ effectIt.effect(
   "hands a tool's failure back as an error in its own words, and speaks only the outcome, never the words before a tool call",
   () =>
     Effect.gen(function* () {
+      const thought = { type: "thinking", thinking: "", signature: "sig" };
       const model = scripted([
-        [{ type: "text", text: "Let me check." }, call("a")],
+        [{ type: "thinking", block: thought }, { type: "text", text: "Let me check." }, call("a")],
         [{ type: "text", text: "The house isn't answering." }],
       ]);
       const said = yield* toolLoop(
@@ -127,6 +145,15 @@ effectIt.effect(
         ),
       ).pipe(Stream.mkString);
       expect(said).toBe("The house isn't answering.");
+      // Its thinking goes back unchanged, where it was: the API may refuse a tool round without it.
+      expect(model.requests[1]!.messages.at(-2)).toEqual({
+        role: "assistant",
+        content: [
+          thought,
+          { type: "text", text: "Let me check." },
+          { type: "tool_use", id: "a", name: "home_state", input: {} },
+        ],
+      });
       expect(model.requests[1]!.messages.at(-1)).toEqual({
         role: "user",
         content: [
@@ -139,4 +166,38 @@ effectIt.effect(
         ],
       });
     }),
+);
+
+effectIt.effect(
+  "a hand-off to Opus goes on his key when his deep row says so, not to a subscription session",
+  () =>
+    Effect.gen(function* () {
+      const roles: Array<string> = [];
+      const brain = yield* make("s").pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ServerSettingsService.layerTest({
+              brainCredentials: { deep: { use: "apiKey:anthropic" } },
+            }),
+            Layer.mock(DictationCleanupApi)({
+              converse: (route) => {
+                roles.push(`${route.role}:${route.model}`);
+                return Stream.make({ type: "text", text: "Here is the plan." } as const);
+              },
+            }),
+            Layer.mock(BrainUsage)({}),
+          ),
+        ),
+      );
+      const said = yield* brain
+        .session({
+          ...turn(() => Effect.succeed({ text: "", isError: false })),
+          vessel: "r1",
+          role: "deep",
+          cue: () => undefined,
+        })
+        .pipe(Stream.mkString);
+      expect(said).toBe("Here is the plan.");
+      expect(roles).toEqual(["deep:opus"]);
+    }).pipe(Effect.scoped),
 );

@@ -94,7 +94,7 @@ export class R1Brain extends Context.Service<
     readonly subscription: (user: string) => Stream.Stream<string, R1BrainError>;
     /** The key's turn with tools: its words as they come, tool rounds in between (`toolLoop`). */
     readonly converse: (turn: ToolTurn) => Stream.Stream<string, R1BrainError>;
-    /** The subscription's turn with tools, in the vessel's warm session: its words as they come. */
+    /** The subscription's turn with tools, in the vessel's warm session (a deep one routed to his key goes there). */
     readonly session: (turn: SessionToolTurn) => Stream.Stream<string, R1BrainError>;
     /** Warms a session for this vessel now, so the first turn is as quick as the rest. */
     readonly warm: (
@@ -114,6 +114,7 @@ export const MAX_ROUNDS = 4;
 export const toolLoop = <E>(
   converse: (request: ConverseRequest) => Stream.Stream<ConversePart, E>,
   turn: ToolTurn,
+  maxTokens = 400,
 ) =>
   Stream.callback<string, E>((queue) =>
     Effect.gen(function* () {
@@ -125,17 +126,31 @@ export const toolLoop = <E>(
       while (rounds < MAX_ROUNDS) {
         rounds += 1;
         const calls: Array<Extract<ConversePart, { type: "tool" }>> = [];
+        // The round's blocks in the order they came, so its thinking goes back unchanged and where it was.
+        const content: Array<Record<string, unknown>> = [];
         let text = "";
         const ran = yield* converse({
           system: turn.system,
           messages,
           tools: turn.tools,
-          maxTokens: 400,
+          maxTokens,
           toolChoice: rounds === MAX_ROUNDS ? "none" : "auto",
         }).pipe(
           Stream.runForEach((part) =>
             Effect.map(Clock.currentTimeMillis, (now) => {
-              if (part.type === "tool") return void calls.push(part);
+              if (part.type === "thinking") return void content.push(part.block);
+              if (part.type === "tool") {
+                calls.push(part);
+                return void content.push({
+                  type: "tool_use",
+                  id: part.id,
+                  name: part.name,
+                  input: part.input,
+                });
+              }
+              const last = content.at(-1);
+              if (last?.["type"] === "text") last["text"] = `${String(last["text"])}${part.text}`;
+              else content.push({ type: "text", text: part.text });
               text += part.text;
               firstAt ??= now;
             }),
@@ -152,13 +167,7 @@ export const toolLoop = <E>(
           concurrency: "unbounded",
         });
         messages.push(
-          {
-            role: "assistant",
-            content: [
-              ...(text === "" ? [] : [{ type: "text", text }]),
-              ...calls.map((c) => ({ type: "tool_use", id: c.id, name: c.name, input: c.input })),
-            ],
-          },
+          { role: "assistant", content },
           {
             role: "user",
             content: calls.map((c, i) => ({
@@ -365,10 +374,9 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
       }),
     );
 
-  const converse = (turn: ToolTurn) =>
-    Stream.unwrap(
-      Effect.map(voice, (row) => toolLoop((request) => api.converse(row, request), turn)),
-    ).pipe(
+  const onKey = (row: Effect.Success<typeof voice>, turn: ToolTurn) =>
+    // Opus can't turn thinking off, and its thinking counts against the cap: 400 cut its answer off mid-sentence.
+    toolLoop((request) => api.converse(row, request), turn, row.role === "deep" ? 4000 : 400).pipe(
       Stream.mapError(
         (error) =>
           new R1BrainError({
@@ -379,6 +387,13 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
                   ? `refused: ${error.why}`
                   : "settings",
           }),
+      ),
+    );
+  const converse = (turn: ToolTurn) =>
+    Stream.unwrap(
+      voice.pipe(
+        Effect.map((row) => onKey(row, turn)),
+        Effect.mapError(() => new R1BrainError({ detail: "settings" })),
       ),
     );
 
@@ -412,7 +427,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
     } satisfies SessionSpec;
   });
 
-  const session = (turn: SessionToolTurn) =>
+  const inSession = (turn: SessionToolTurn) =>
     Stream.callback<string, R1BrainError>((queue) =>
       Effect.gen(function* () {
         const spec = yield* sessionSpec(turn);
@@ -480,6 +495,19 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
         yield* Queue.end(queue);
       }),
     );
+
+  // A hand-off to Opus goes the way his deep row says, whichever way the voice turn went.
+  const session = (turn: SessionToolTurn) =>
+    turn.role !== "deep"
+      ? inSession(turn)
+      : Stream.unwrap(
+          deep.pipe(
+            Effect.map((row) =>
+              row.use === "apiKey:anthropic" ? onKey(row, turn) : inSession(turn),
+            ),
+            Effect.mapError(() => new R1BrainError({ detail: "settings" })),
+          ),
+        );
 
   const warm = Effect.fn("R1Brain.warm")(
     function* (turn: Pick<SessionToolTurn, "vessel" | "system" | "tools" | "role" | "builtins">) {
