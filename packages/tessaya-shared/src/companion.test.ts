@@ -6,6 +6,7 @@ import {
   jobLeadMoves,
   jobMoments,
   momentOf,
+  restFaceOf,
   wanders,
   type JobSnapshot,
 } from "./companion.ts";
@@ -106,5 +107,18 @@ describe("jobLeadMoves", () => {
         [job("a", "butler"), job("b", "butler"), job("c", "executive"), job("d", "executive")],
       ),
     ).toEqual([{ from: "executive", to: "butler", title: "Job a" }]);
+  });
+});
+
+describe("restFaceOf", () => {
+  it("wears her spine mood at rest, a mild one mild, and a faint or neutral one as her plain rest", () => {
+    expect(restFaceOf("sleepy", 1)).toEqual({ expression: "sleepy", intensity: 1 });
+    expect(restFaceOf("sad", 0.3)).toEqual({ expression: "sad", intensity: 0.6 });
+    // a small drift between turns is the same face
+    expect(restFaceOf("happy", 0.52)).toEqual(restFaceOf("happy", 0.5));
+    expect(restFaceOf("steady", 0.6)).toEqual({ expression: "calm", intensity: 0.8 });
+    expect(restFaceOf("happy", 0.1)).toBeNull();
+    expect(restFaceOf("neutral", 1)).toBeNull();
+    expect(restFaceOf("x);alert(1", 1)).toBeNull();
   });
 });

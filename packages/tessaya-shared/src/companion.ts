@@ -30,7 +30,40 @@ export interface CompanionCue {
   readonly clip?: string;
   /** A short burst (sparkle, sweat). */
   readonly fx?: string;
+  /** How strongly her face shows it, 0 to 1; unset is the rig's own default. */
+  readonly intensity?: number;
 }
+
+/** The brain's moods and gestures (tessaya-contracts expression.ts) the rig names differently. */
+const RIG_MOOD: Readonly<Record<string, string>> = { steady: "calm" };
+/** Gestures named after one of the rig's loops, as the one-off act that shows them. */
+const RIG_GESTURE: Readonly<Record<string, string>> = {
+  think: "lookAway",
+  bounce: "hop",
+  dizzy: "wobble",
+};
+export const rigMoodOf = (mood: string): string =>
+  Object.hasOwn(RIG_MOOD, mood) ? RIG_MOOD[mood]! : mood;
+export const rigGestureOf = (gesture: string): string =>
+  Object.hasOwn(RIG_GESTURE, gesture) ? RIG_GESTURE[gesture]! : gesture;
+
+/** A mood weaker than this (TessayaMood intensity, 0 to 1) is her plain rest. */
+const MOOD_SHOWN = 0.2;
+
+/**
+ * Her spine mood (TessayaMood's label and intensity) as her face at rest: a mild mood shows mild, a strong one in full.
+ * Steps of a tenth, so a small drift between turns redraws nothing. Null is her plain rest.
+ */
+export const restFaceOf = (
+  label: string,
+  intensity: number,
+): { readonly expression: string; readonly intensity: number } | null =>
+  /^[a-z]{2,20}$/.test(label) && label !== "neutral" && intensity >= MOOD_SHOWN
+    ? {
+        expression: rigMoodOf(label),
+        intensity: Math.round((0.45 + 0.55 * Math.min(1, intensity)) * 10) / 10,
+      }
+    : null;
 
 const CUES: Readonly<Record<CompanionMoment, CompanionCue>> = {
   rest: { expression: "neutral" },

@@ -5,6 +5,8 @@ import * as NodeVM from "node:vm";
 
 import { describe, expect, it } from "vite-plus/test";
 
+import { EXPRESSION_GESTURES, EXPRESSION_MOODS } from "@t3tools/tessaya-contracts";
+import { restFaceOf } from "@t3tools/tessaya-shared/companion";
 import { DEFAULT_OS_PACK, mergePack } from "@t3tools/tessaya-shared/osPack";
 
 import { bodyOf, sayOf } from "./desktopMascot.ts";
@@ -135,5 +137,19 @@ describe("her answer to what he did to her body", () => {
     });
     expect(sayOf({ ok: true, value: null })).toBeNull();
     expect(sayOf(undefined)).toBeNull();
+  });
+
+  it("has a face in the rig for every mood the brain can name, and an act for every gesture", () => {
+    const TCS = loadRig() as unknown as {
+      EXPRESSIONS: Record<string, unknown>;
+      CLIPS: Record<string, unknown>;
+    };
+    for (const mood of EXPRESSION_MOODS) {
+      expect(TCS.EXPRESSIONS[sayOf({ value: { mood } })!.mood!], mood).toBeDefined();
+      if (mood !== "neutral")
+        expect(TCS.EXPRESSIONS[restFaceOf(mood, 0.5)!.expression], mood).toBeDefined();
+    }
+    for (const gesture of EXPRESSION_GESTURES.filter((g) => g !== "none"))
+      expect(TCS.CLIPS[sayOf({ value: { gesture } })!.gesture!], gesture).toBeDefined();
   });
 });

@@ -336,7 +336,7 @@
    return {d: {gx: .55 * hold(p, .48, .53, .78, .84) * 2, tilt: -9 * hold(p, .46, .6, .8, .95) * a, bas: -1.6 * hold(p, .48, .55, .8, .9), mx: -.55 * hold(p, .5, .6, .8, .9), yaw: .3 * hold(p, .48, .6, .8, .92)},
     hands: {R: ["chin", "point", 0, -3 * tap]}, fx: p > .58 && p < .6 ? "ellipsis" : null}; }},
   orbit:   {fps: 30, fn: (s) => ({d: {}, spin: s})},
-  drowsy:  {fps: 15, fn: (s, a) => ({d: {lift: 2.2 * Math.sin(s * TAU / 4.2), sy: .012 * Math.sin(s * TAU / 4.2 + 1), mo: .08 * Math.max(0, Math.sin(s * TAU / 4.2 + 1)), lu: .06 * Math.sin(s * TAU / 9)}}), acts: [["nodOff", 3], ["yawn", 2], ["slowBlink", 2], ["stretch", .6]], every: [5, 9]},
+  drowsy:  {fps: 15, fn: (s, a) => ({d: {lift: 2.2 * Math.sin(s * TAU / 4.2), sy: .012 * Math.sin(s * TAU / 4.2 + 1), mo: .08 * Math.max(0, Math.sin(s * TAU / 4.2 + 1)), lu: .06 * Math.sin(s * TAU / 9)}}), acts: [["nodOff", 3], ["yawn", 2], ["slowBlink", 2], ["stretch", .6]], every: [8, 14], stop: 9},
   breathe: {fps: 12, fn: (s) => { const b = Math.sin(s * TAU / 4.6); return {d: {sy: .022 * b, sx: -.01 * b, lift: -1.5 * b, mo: .1 + .1 * b, mr: 1}, fx: (s % 3.2) < .1 ? "zzz" : null}; }},
   laugh:   {fps: 30, fn: (s, a) => ({d: {lift: -4 * a * Math.abs(Math.sin(s * TAU * 2.2)), sy: .02 * Math.sin(s * TAU * 4.4), mo: .15 * Math.sin(s * TAU * 4.4)}}), stop: 2.6},
   giggle:  {fps: 30, fn: (s) => ({d: {lift: -2 * Math.abs(Math.sin(s * TAU * 2.8)), tilt: 1.5 * Math.sin(s * TAU * 2.8)}}), stop: 2.2},
@@ -344,10 +344,10 @@
   jitter:  {fps: 24, fn: (s) => ({d: {gx: .35 * Math.sign(Math.sin(s * TAU * .9)), mwob: .3 * Math.sin(s * TAU * 3)}}), stop: 4},
   tremble: {fps: 24, fn: (s) => ({d: {mwob: .4 * Math.sin(s * TAU * 5), lift: .6 * Math.sin(s * TAU * 7)}}), stop: 2.5},
   sob:     {fps: 24, fn: (s, a) => { const b = Math.max(0, Math.sin(s * TAU * 1.6)); return {d: {lift: -3 * a * b, sy: .025 * b, mo: .25 * b, mwob: .5 * Math.sin(s * TAU * 6)}, fx: (s % .9) < .05 ? "tear" : null}; }},
-  sulk:    {fps: 0, acts: [["glanceBack", 2], ["hmph", 1.2], ["sigh", .8]], every: [4, 8]},
-  frustrate: {fps: 0, acts: [["sigh", 1.4], ["facepalm", .6], ["shakeSlow", .6]], every: [3.5, 6], fxEvery: "scribble"},
+  sulk:    {fps: 0, acts: [["glanceBack", 2], ["hmph", 1.2], ["sigh", .8]], every: [6, 12]},
+  frustrate: {fps: 0, acts: [["sigh", 1.4], ["facepalm", .6], ["shakeSlow", .6]], every: [6, 10], fxEvery: "scribble"},
   shake:   {fps: 30, fn: (s) => ({d: {lean: 1.2 * Math.sin(s * TAU * 9) * (s < 1.2 ? 1 : 0)}}), acts: [["stomp", 1], ["facepalm", 1]], every: [3, 6], stop: 1.2},
-  fume:    {fps: 0, acts: [["stomp", 1], ["hmph", .6]], every: [3, 5], fxEvery: "steam"},
+  fume:    {fps: 0, acts: [["stomp", 1], ["hmph", .6]], every: [5, 9], fxEvery: "steam"},
   dizzy:   {fps: 24, fn: (s) => ({d: {tilt: 6 * Math.sin(s * TAU * .8), lean: 3 * Math.cos(s * TAU * .8)}, spin: s})},
  };
  TCS.LOOPS = LOOPS;
@@ -892,8 +892,10 @@
 
   // ── speech: the mouth follows the syllable envelope; gestures fire on their words ──
   function speak(plan, hooks = {}) {
+   // her lips carry on from the sentence before: a fresh start would show her resting mouth for a frame
+   const lip = speech && speech.lip;
    stopSpeech();
-   speech = {plan, hooks, t0: performance.now(), fired: new Set(), word: -1, offset: 0};
+   speech = {plan, hooks, t0: performance.now(), fired: new Set(), word: -1, offset: 0, lip};
    wake();
    return new Promise((res) => speech.done = res);
   }
@@ -1006,13 +1008,15 @@
    if (beatOnly && opts.beatFps) { if (now - beatFrame < 1000 / opts.beatFps - 2) { raf = requestAnimationFrame(frame); return; } beatFrame = now; }
    last = now;
    const moving = render(now, false, dt);
-   if (moving || busy || (lp && lp.fps && !reduced && !(lp.stop && (now - loopT0) / 1000 > lp.stop)) || (lp && lp.acts)) {
+   const swaying = lp && lp.fps && !reduced && !(lp.stop && (now - loopT0) / 1000 > lp.stop);
+   if (moving || busy || swaying || (lp && lp.acts)) {
+    // a mood's own acts are beats at her idle cadence (Calm's half as often): at rest she draws them, then sleeps
     if (lp && lp.acts && !reduced && !opts.quiet && now > nextLoopAct && !speech) {
-     let s = 0; lp.acts.forEach((a) => s += a[1]); let r = Math.random() * s; for (const [k, v] of lp.acts) { r -= v; if (r <= 0) { play(k, {fromLoop: true}); break; } }
+     let s = 0; lp.acts.forEach((a) => s += a[1]); let r = Math.random() * s; for (const [k, v] of lp.acts) { r -= v; if (r <= 0) { play(k, {fromLoop: true, beat: true}); break; } }
      if (lp.fxEvery) spawn(lp.fxEvery);
-     nextLoopAct = now + (lp.every[0] + Math.random() * (lp.every[1] - lp.every[0])) * 1000;
+     nextLoopAct = now + (lp.every[0] + Math.random() * (lp.every[1] - lp.every[0])) * (opts.idleEvery || 1) * 1000;
     }
-    if (lp && lp.acts && !lp.fps && !moving && !busy) { running = false; setTimeout(wake, Math.max(50, nextLoopAct - now)); return; }
+    if (lp && lp.acts && !swaying && !moving && !busy) { running = false; setTimeout(() => wake(true), Math.max(50, nextLoopAct - now)); return; }
     raf = requestAnimationFrame(frame);
    } else running = false;
   }
@@ -1081,8 +1085,9 @@
      const live = speech.hooks.mouth && speech.hooks.mouth();
      if (live) {
       const name = live.shape === "st" ? "etc" : live.shape, V = TCS.VISEMES[name] || TCS.VISEMES.aa, o = live.open, shut = name === "mbp";
-      // one side of her mouth leads for a whole sentence, as a real one does
-      const L = speech.lip || (speech.lip = {mo: 0, mr: 0, mw: 0, teeth: 0, tongue: 0, bite: 0, tip: 0, press: 0, mc: 0, cheek: 0, at: now, env: 0, beat: 0, brow: 0, side: Math.random() < .5 ? -1 : 1}), dt = Math.min(.1, (now - L.at) / 1000); L.at = now;
+      // one side of her mouth leads for a whole sentence, as a real one does; a line that opens on a hum starts shut
+      // (her lips close before the sound)
+      const L = speech.lip || (speech.lip = {mo: shut ? -.35 : 0, mr: 0, mw: 0, teeth: 0, tongue: 0, bite: 0, tip: 0, press: shut ? 1 : 0, mc: 0, cheek: 0, at: now - 1000 / 30, env: 0, beat: 0, brow: 0, side: Math.random() < .5 ? -1 : 1}), dt = Math.min(.1, (now - L.at) / 1000); L.at = now;
       // a stressed syllable is one louder than her running level: the jaw drops further, and a beat may lift the brows or blink
       L.env += (o - L.env) * (1 - Math.exp(-dt / .45));
       const stress = shut || name === "rest" ? 0 : clamp((o - L.env * 1.15) / .3, 0, 1);
@@ -1096,6 +1101,8 @@
       for (const k in goal) { const tau = k === "mo" ? (goal.mo < L.mo ? .025 : .04) : k === "press" ? .025 : .055; L[k] += (goal[k] - L[k]) * (1 - Math.exp(-dt / tau)); }
       Rv.mo = Math.max(0, Rv.mo + L.mo); Rv.mr += L.mr; Rv.mw += L.mw; Rv.teeth = Math.max(Rv.teeth, L.teeth); Rv.tongue = Math.max(Rv.tongue, L.tongue);
       Rv.bite = Math.max(Rv.bite, L.bite); Rv.tip = Math.max(Rv.tip, L.tip); Rv.press = Math.max(Rv.press, L.press);
+      // pressed lips win over her face's own open or rounded mouth (a "Mmm" from surprise, sleepy or thinking)
+      const sh = clamp(L.press, 0, 1); for (const k of ["mo", "mr", "teeth", "tongue"]) Rv[k] *= 1 - sh;
       const talking = clamp(L.env * 2, 0, 1);
       Rv.mc += L.mc; Rv.cheek += L.cheek; Rv.mt += L.side * .05 * talking; Rv.mx += L.side * .03 * talking;
       // the head and brows follow her stresses, not the text's guess at them

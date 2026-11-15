@@ -76,7 +76,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    still = c.expression === "asleep" ? 6 : c.expression === "thinking" ? 15 : Infinity;
    if (!speaking) fps = still;
    const name = TCS.EXPRESSIONS[c.expression] ? c.expression : "neutral";
-   rig.setExpression(name, { noCut: name === "neutral", brief: !!c.brief });
+   rig.setExpression(name, { noCut: name === "neutral", brief: !!c.brief, intensity: c.intensity ?? 0.85 });
    if (c.clip) rig.play(c.clip);
    if (c.fx) rig.spawn(c.fx);
   },
