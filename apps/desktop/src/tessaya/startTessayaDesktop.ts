@@ -416,7 +416,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
         };
       };
     const voicePlayer = createVoicePlayer(
-      (level) => voice?.onSpeechLevel(level),
+      (level, shape) => voice?.onSpeechLevel(level, shape),
       () => screen?.volume() ?? 1,
       (pcm, rate, soundsAtMs) => voice?.onReference(pcm, rate, soundsAtMs),
     );

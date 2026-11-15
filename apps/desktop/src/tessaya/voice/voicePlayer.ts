@@ -7,10 +7,18 @@
  */
 import * as Electron from "electron";
 
-import { pcmLevel, wavFormat, type VoicePlayer } from "./voiceSpeaker.ts";
+import {
+  pcmLevel,
+  pcmShape,
+  wavFormat,
+  type VoicePlayer,
+  type VoiceShape,
+} from "./voiceSpeaker.ts";
 
 const IDLE_CLOSE_MS = 30_000;
 const HEADER_BYTES = 256;
+/** Her level and mouth shape are read every this long of sound, so the mouth follows syllables, not chunks. */
+const FRAME_MS = 40;
 
 const PLAYER_DOCUMENT = `<!doctype html><meta charset="utf-8"><script>
 let ctx=null,gain=null,vol=1,next=0,rate=24000,live=[],done=null;const LEAD=.12;
@@ -40,7 +48,7 @@ export const onAudioServiceGone = (listener: () => void): void => {
 const DUCK_LEVEL = 0.25;
 
 export const createVoicePlayer = (
-  onLevel: (level: number) => void,
+  onLevel: (level: number, shape?: VoiceShape) => void,
   volume: () => number = () => 1,
   /** What is about to sound (16-bit mono at `rate`) and when, for telling his voice from hers (echo guard). */
   onReference?: (pcm: Int16Array, rate: number, soundsAtMs: number) => void,
@@ -118,11 +126,18 @@ export const createVoicePlayer = (
             rate,
             Date.now() + delay,
           );
-          const pulse = setTimeout(() => {
-            pulses.delete(pulse);
-            onLevel(pcmLevel(samples));
-          }, delay);
-          pulses.add(pulse);
+          const step = Math.max(2, Math.round((rate * FRAME_MS) / 1000) * 2);
+          for (let at = 0; at < samples.length; at += step) {
+            const frame = samples.subarray(at, Math.min(samples.length, at + step));
+            const pulse = setTimeout(
+              () => {
+                pulses.delete(pulse);
+                onLevel(pcmLevel(frame), pcmShape(frame));
+              },
+              delay + (at / step) * FRAME_MS,
+            );
+            pulses.add(pulse);
+          }
         }
         if (bytes === 0) return false;
         if (!target.isDestroyed()) await run("window.finish()");

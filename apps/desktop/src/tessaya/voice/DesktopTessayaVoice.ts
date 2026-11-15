@@ -456,6 +456,7 @@ import { startRoomRecognizer, tailnetAddress } from "./roomRecognizer.ts";
 import { stillOurs, watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
 import { startDictationTiming, type DictationTimer } from "./dictationTiming.ts";
 import { createRemoteSettings } from "./remoteSettings.ts";
+import type { VoiceShape } from "./voiceSpeaker.ts";
 import { createLastLanded } from "./lastLanded.ts";
 import { createPressGate } from "./pressGate.ts";
 import {
@@ -512,8 +513,13 @@ import {
   createDesktopMascot,
   mascotChoices,
   parseMascotPersona,
+  MASCOT_CHARACTERS,
+  parseMascotCharacter,
+  parseMascotHands,
   parseMascotScreens,
   parseMascotSize,
+  type MascotCharacter,
+  type MascotHands,
   type MascotScreens,
   type MascotSize,
   type PersonaBody,
@@ -718,6 +724,9 @@ interface VoiceSettings {
   readonly mascotSize: MascotSize;
   /** Thrown, she stays on her screen or flies across all of them as one desktop. */
   readonly mascotScreens: MascotScreens;
+  /** Her body: her persona's own character or one from the Studio (EMOTION D10), and arms or floating hands. */
+  readonly mascotCharacter: MascotCharacter;
+  readonly mascotHands: MascotHands;
   /** Her face in the pill while he talks to her, when the desktop companion is off. */
   readonly pillFace: boolean;
   /** Her body is the persona answering him, not only his chosen one (SPINE-UNIFY §10, P5). */
@@ -903,6 +912,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   mascotPersona: "tessaya",
   mascotSize: "medium",
   mascotScreens: "span",
+  mascotCharacter: "persona",
+  mascotHands: "arms",
   pillFace: false,
   mascotFollows: false,
   frosted: false,
@@ -978,6 +989,8 @@ const REMOTE_SETTINGS_GAP_MS = 1_000;
 const REMOTE_SETTINGS_RETRY_MS = 30_000;
 /** Sent again at least this often, so the server can tell a quiet desktop from a gone one. */
 const STATE_REFRESH_MS = 5 * 60_000;
+/** Her mood drifts with time (away, the day): the mascot rereads it this often, besides after each turn. */
+const MOOD_READ_MS = 5 * 60_000;
 /** Under the context bus's 30 s TTL, so what Baton has open never expires while it is open. */
 const CONTEXT_REFRESH_MS = 10_000;
 /** As the paste's own caret read: a field that hangs UI Automation teaches nothing. */
@@ -1051,6 +1064,8 @@ export const readSettings = (path: string): VoiceSettings => {
       mascotPersona: parseMascotPersona(saved["mascotPersona"]),
       mascotSize: parseMascotSize(saved["mascotSize"]),
       mascotScreens: parseMascotScreens(saved["mascotScreens"]),
+      mascotCharacter: parseMascotCharacter(saved["mascotCharacter"]),
+      mascotHands: parseMascotHands(saved["mascotHands"]),
       pillFace: saved["pillFace"] === true,
       mascotFollows: saved["mascotFollows"] === true,
       frosted: saved["frosted"] === true,
@@ -1246,6 +1261,8 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly notice: (text: string) => void;
   /** An unprompted line: a card, and aloud when `speak` and spoken answers are on. */
   readonly announce: (text: string, speak: boolean, spoken?: string) => void;
+  /** Aloud only, in her voice, when spoken answers are on; false when it was not said. */
+  readonly speak?: (text: string) => boolean;
   /** Registers or drops the Transforms shortcuts. */
   readonly setTransformHotkeys?: (on: boolean) => void;
   readonly writtenOnly: () => boolean;
@@ -1378,7 +1395,7 @@ export interface DesktopTessayaVoice {
   /** A lesson or drive sound, through the pill's own cue path. */
   readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** How loud Baton's voice is right now, for the pill. */
-  readonly onSpeechLevel: (level: number) => void;
+  readonly onSpeechLevel: (level: number, shape?: VoiceShape) => void;
   /** What the player is about to play (16-bit mono at `rate`) and when it will sound. */
   readonly onReference: (pcm: Int16Array, rate: number, soundsAtMs: number) => void;
   /** He dismissed the assistant's output. */
@@ -4732,25 +4749,43 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     ...(input.direct === undefined
       ? {}
       : {
-          express: (event) => {
-            const key = (
-              (settings.mascotFollows ? talking : null) ?? settings.mascotPersona
-            ).toLowerCase();
-            const persona = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find(
-              (p) => p.id === key || p.name.toLowerCase() === key,
-            );
-            return input.direct!(
+          express: (event) =>
+            input.direct!(
               BATON_VOICE_WS_METHODS.call,
-              {
-                kind: "act",
-                op: "express",
-                args: { event, ...(persona ? { persona: persona.id } : {}) },
-              },
+              { kind: "act", op: "express", args: { event, ...mascotPersonaArg() } },
               8_000,
-            );
-          },
+            ),
         }),
+    // Her answer aloud in her own voice, never in quiet hours or Do not disturb.
+    speak: (text) => {
+      if (!silenced(new Date())) input.extras?.speak?.(text);
+    },
   });
+  /** The persona she wears, by id, for the spine; none when his pick is not in the pack (the lead answers). */
+  const mascotPersonaArg = (): { persona?: string } => {
+    const key = ((settings.mascotFollows ? talking : null) ?? settings.mascotPersona).toLowerCase();
+    const persona = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find(
+      (p) => p.id === key || p.name.toLowerCase() === key,
+    );
+    return persona === undefined ? {} : { persona: persona.id };
+  };
+  /** Her mood from the spine (CS6) for her body at rest: read when she appears, after each turn, and every few minutes. */
+  const readMood = () => {
+    if (!settings.mascot || input.direct === undefined) return;
+    void input
+      .direct(
+        BATON_VOICE_WS_METHODS.call,
+        { kind: "read", op: "mood", args: mascotPersonaArg() },
+        8_000,
+      )
+      .then((answer) => {
+        const felt = (answer as { value?: { label?: unknown; intensity?: unknown } } | null)?.value;
+        if (typeof felt?.label === "string" && typeof felt.intensity === "number")
+          mascot.mood(felt.label, felt.intensity);
+      })
+      .catch(() => undefined);
+  };
+  setInterval(readMood, MOOD_READ_MS).unref();
   /** The jobs as last read, so the mascot reacts to what changed (null until the first read). */
   let jobsSeen: ReadonlyArray<JobSnapshot> | null = null;
   const pillOptions: Parameters<typeof createVoicePill>[0] = {
@@ -4797,6 +4832,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
     onChange: (turn) => {
       mascot.turn(turn.phase);
+      // A turn can move her mood (CS6): she wears the new one once it is over.
+      if (turn.phase === "idle") readMood();
       input.onPillState?.(turn.phase);
     },
     face: (phase) =>
@@ -4862,9 +4899,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       size: settings.mascotSize,
       reduced: settings.motion !== "full",
       screens: settings.mascotScreens,
+      character: settings.mascotCharacter,
+      hands: settings.mascotHands,
     });
     // Jobs are read on a timer only once something wants them; she does.
     if (settings.mascot) wantJobs();
+    readMood();
   };
   // Where he works and whether it fills its screen, every 3 s while she is on: her edge, and stepping away.
   setInterval(() => {
@@ -7263,7 +7303,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         id: "v.mascotMotion",
         section: "Desktop companion",
         label: "How much she moves",
-        hint: "Calm reacts without extra acts. Lively adds little acts and a short walk now and then. Important only stays still except for her replies, finished or failed jobs and what needs you.",
+        hint: "Calm lives quietly where she stands: a glance, a small move in her own character, and she reacts to you. Lively adds a short walk and her funny moments now and then. Important only stays still except for her replies, finished or failed jobs and what needs you.",
         kind: "choice",
         value: settings.mascotMotion,
         options: [
@@ -7306,6 +7346,31 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         options: [
           { value: "span", label: "One big desktop" },
           { value: "one", label: "Stay on this screen" },
+        ],
+        disabled: !settings.mascot,
+      },
+      {
+        id: "v.mascotCharacter",
+        section: "Desktop companion",
+        label: "Her body",
+        hint: "Each persona wears its own character from the Character Studio, or pick one for her here.",
+        kind: "choice",
+        value: settings.mascotCharacter,
+        options: [
+          { value: "persona", label: "Her persona's own" },
+          ...Object.entries(MASCOT_CHARACTERS).map(([value, label]) => ({ value, label })),
+        ],
+        disabled: !settings.mascot,
+      },
+      {
+        id: "v.mascotHands",
+        section: "Desktop companion",
+        label: "Hands",
+        kind: "choice",
+        value: settings.mascotHands,
+        options: [
+          { value: "arms", label: "Arms" },
+          { value: "float", label: "Floating hands" },
         ],
         disabled: !settings.mascot,
       },
@@ -8515,6 +8580,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.mascotPersona") save({ mascotPersona: parseMascotPersona(value) });
     else if (id === "v.mascotSize") save({ mascotSize: parseMascotSize(value) });
     else if (id === "v.mascotScreens") save({ mascotScreens: parseMascotScreens(value) });
+    else if (id === "v.mascotCharacter") save({ mascotCharacter: parseMascotCharacter(value) });
+    else if (id === "v.mascotHands") save({ mascotHands: parseMascotHands(value) });
     else if (id === "v.pillFace") save({ pillFace: on });
     else if (id === "v.mascotFollows") {
       talking = null;
@@ -9096,7 +9163,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     },
     onSpoken: (text) => core?.noteSpoken(text),
     respellings: () => settings.pronounce,
-    onPlaying: (text) => core?.playing(text),
+    onPlaying: (text) => {
+      core?.playing(text);
+      mascot.line(text);
+    },
     onTurnEnd: () => pill.on({ type: "finished" }),
     face: (name) => {
       if (!settings.mascotFollows || name.toLowerCase() === talking) return;
@@ -9106,9 +9176,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     cue: (name) => pill.cue(name),
     onActivity: (label, caption) =>
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),
-    onSpeechLevel: (value) => {
+    onSpeechLevel: (value, shape) => {
       pill.speechLevel(value);
-      mascot.level(value);
+      mascot.level(value, shape);
     },
     onReference: (pcm, rate, soundsAtMs) => core?.reference(resampleTo16k(pcm, rate), soundsAtMs),
     onDismissed: () => pill.on({ type: "dismissed" }),

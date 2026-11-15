@@ -18,6 +18,7 @@ import { describe, expect } from "vite-plus/test";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
+import { TessayaMood } from "./TessayaMood.ts";
 import * as TessayaVoiceLibrary from "./TessayaVoiceLibrary.ts";
 
 const memorySecrets = () => {
@@ -115,6 +116,37 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
             ok: true,
             value: null,
           });
+        }),
+      ),
+  );
+
+  it.effect(
+    "tells a vessel a persona's mood to wear at rest, and nothing without the service",
+    () =>
+      withLibrary(() =>
+        Effect.gen(function* () {
+          const asked: Array<string | undefined> = [];
+          const mood = Layer.succeed(TessayaMood, {
+            view: (persona) =>
+              Effect.sync(() => {
+                asked.push(persona);
+                return {
+                  label: "proud" as const,
+                  intensity: 0.6,
+                  energy: 0.5,
+                  awayHours: null,
+                  guilt: "off" as const,
+                };
+              }),
+            note: () => Effect.void,
+            heard: () => Effect.void,
+          });
+          const felt = yield* call("read", "mood", { persona: "butler" }).pipe(
+            Effect.provide(mood),
+          );
+          assert.deepStrictEqual(felt, { ok: true, value: { label: "proud", intensity: 0.6 } });
+          assert.deepStrictEqual(asked, ["butler"]);
+          assert.deepStrictEqual(yield* call("read", "mood"), { ok: true, value: null });
         }),
       ),
   );

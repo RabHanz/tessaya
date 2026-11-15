@@ -42,6 +42,7 @@ import {
   type Rect,
 } from "./mascotDock.ts";
 import { MASCOT_SCRIPT } from "./mascotPage.ts";
+import type { VoiceShape } from "../voice/voiceSpeaker.ts";
 import {
   DEFAULT_PROFILE,
   flightProfile,
@@ -62,6 +63,32 @@ export const MASCOT_SIZES: Readonly<Record<MascotSize, number>> = {
 };
 export const parseMascotSize = (value: unknown): MascotSize =>
   value === "small" || value === "large" ? value : "medium";
+
+/** The Character Studio's characters (bodies.js), by id, with the names his drafts use. */
+export const MASCOT_CHARACTERS = {
+  selvedge: "Selvedge",
+  felt: "Felt",
+  tweed: "Tweed",
+  spool: "Spool",
+  purl: "Purl",
+  pebble: "Pebble",
+  thread: "Thread",
+  loom: "Loom",
+  drop: "Drop",
+  shuttle: "Shuttle",
+  swatch: "Swatch",
+  thimble: "Thimble",
+  mark: "Mark",
+} as const;
+export type MascotCharacter = keyof typeof MASCOT_CHARACTERS | "persona";
+export const parseMascotCharacter = (value: unknown): MascotCharacter =>
+  typeof value === "string" && Object.hasOwn(MASCOT_CHARACTERS, value)
+    ? (value as MascotCharacter)
+    : "persona";
+/** Arms with drawn hands (his pick, 13 Nov), or the hands floating beside her. */
+export type MascotHands = "arms" | "float";
+export const parseMascotHands = (value: unknown): MascotHands =>
+  value === "float" ? "float" : "arms";
 
 /** Where a throw may take her: only the screen she is thrown on, or every screen as one desktop in its real layout. */
 export type MascotScreens = "one" | "span";
@@ -112,6 +139,8 @@ export type MascotMoment =
   | "moment.screen";
 /** One answer at a time, and none sooner than this after the last: a flurry of pokes gets one line. */
 const MOMENT_GAP_MS = 6_000;
+/** A mood weaker than this (TessayaMood intensity, 0 to 1) is her plain rest. */
+const MOOD_SHOWN = 0.2;
 /** A throw at least this fast is one she remarks on. */
 const THROWN_SPEED = 1_500;
 
@@ -144,6 +173,9 @@ export interface MascotOptions {
   readonly size: MascotSize;
   readonly reduced: boolean;
   readonly screens: MascotScreens;
+  /** Her body: the persona's own character, or one he picked from the Studio's. */
+  readonly character: MascotCharacter;
+  readonly hands: MascotHands;
 }
 
 export interface DesktopMascot {
@@ -151,7 +183,11 @@ export interface DesktopMascot {
   /** The pill's phase: her moment follows it, except dictation. */
   readonly turn: (phase: TurnPhase) => void;
   /** Her own voice's level while she speaks, for the mouth. */
-  readonly level: (value: number) => void;
+  readonly level: (value: number, shape?: VoiceShape) => void;
+  /** The sentence her voice is playing now: her gestures land on its words by meaning. */
+  readonly line: (text: string) => void;
+  /** Her mood from the spine (TessayaMood, CS6) and how strongly, which she wears at rest. */
+  readonly mood: (label: string, intensity: number) => void;
   /** A job finished, failed or started waiting for him. */
   readonly react: (moment: CompanionMoment) => void;
   /** The window he is in (DIP, null when unknown) and whether it fills its screen. */
@@ -226,6 +262,8 @@ export const createDesktopMascot = (input: {
    * on it; a failure leaves her own reaction alone.
    */
   readonly express?: (event: MascotMoment) => Promise<unknown>;
+  /** Her answer's words aloud, in her voice (the caller keeps quiet hours and Do not disturb). */
+  readonly speak?: (text: string) => void;
 }): DesktopMascot => {
   const file = NodePath.join(input.stateDir, "baton-mascot.json");
   let saved = readSaved(file);
@@ -245,6 +283,8 @@ export const createDesktopMascot = (input: {
     size: "medium",
     reduced: false,
     screens: "span",
+    character: "persona",
+    hands: "arms",
   };
   let win: Electron.BrowserWindow | null = null;
   let ready: Promise<void> = Promise.resolve();
@@ -290,12 +330,14 @@ export const createDesktopMascot = (input: {
         void target.webContents.executeJavaScript(code).catch(() => undefined);
     });
   };
+  /** Her mood from the spine (CS6), worn whenever she is at rest; null is her plain rest. */
+  let restMood: string | null = null;
   const cue = (moment: CompanionMoment) => {
-    const next = cueFor(
-      sleeping ? "asleep" : snoozed() && moment === "rest" ? "asleep" : moment,
-      options.motion,
-    );
-    if (next !== null) call(`window.mascot.cue(${JSON.stringify(next)})`);
+    const shown = sleeping ? "asleep" : snoozed() && moment === "rest" ? "asleep" : moment;
+    const next = cueFor(shown, options.motion);
+    if (next === null) return;
+    const worn = shown === "rest" && restMood !== null ? { ...next, expression: restMood } : next;
+    call(`window.mascot.cue(${JSON.stringify(worn)})`);
   };
 
   const stopMoving = () => {
@@ -459,7 +501,7 @@ export const createDesktopMascot = (input: {
   let profile: PhysicsProfile = DEFAULT_PROFILE;
   const init = () => {
     call(
-      `window.mascot.init(${JSON.stringify({ persona: options.persona, quiet: options.motion !== "lively", reduced: options.reduced })})`,
+      `window.mascot.init(${JSON.stringify({ persona: options.character === "persona" ? options.persona : { ...options.persona, character: options.character }, quiet: options.motion === "important", reduced: options.reduced, hands: options.hands })})`,
     );
     const target = win;
     void ready.then(async () => {
@@ -583,7 +625,9 @@ export const createDesktopMascot = (input: {
       .express(event)
       .then((answer) => {
         const said = sayOf(answer);
-        if (said !== null) call(`window.mascot.say(${JSON.stringify(said)})`);
+        if (said === null) return;
+        call(`window.mascot.say(${JSON.stringify(said)})`);
+        if (said.text !== "") input.speak?.(said.text);
       })
       .catch(() => undefined)
       .finally(() => {
@@ -841,9 +885,28 @@ export const createDesktopMascot = (input: {
       const moment = momentOf(next);
       if (moment !== null && moment !== momentOf(was)) cue(moment);
     },
-    level: (value) => {
+    level: (value, shape) => {
       if (phase === "speaking" && win !== null && !win.isDestroyed() && win.isVisible())
-        win.webContents.send("baton-mascot:level", value);
+        win.webContents.send("baton-mascot:level", value, shape);
+    },
+    line: (text) => {
+      if (win !== null && win.isVisible()) call(`window.mascot.line(${JSON.stringify(text)})`);
+    },
+    mood: (label, intensity) => {
+      const next =
+        /^[a-z]{2,20}$/.test(label) && label !== "neutral" && intensity >= MOOD_SHOWN
+          ? label
+          : null;
+      if (next === restMood) return;
+      restMood = next;
+      if (
+        win !== null &&
+        win.isVisible() &&
+        phase === "idle" &&
+        moving === null &&
+        dragging === null
+      )
+        cue("rest");
     },
     react: (moment) => {
       if (win !== null && win.isVisible()) cue(moment);

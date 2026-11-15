@@ -44,6 +44,7 @@ import * as ServerConfig from "../config.ts";
 import { serveArbiter } from "../home/VoiceArbiter.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
+import { TessayaMood } from "./TessayaMood.ts";
 
 export const GOOGLE_KEY_SECRET = "google-api-key";
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
@@ -411,6 +412,14 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
         ? null
         : yield* lines.value.express(a.value.event, { persona: a.value.persona });
       return { ok: true, value: said };
+    }
+    case "mood": {
+      const a = decode(Schema.Struct({ persona: Schema.optionalKey(Text(60)) }));
+      if (Option.isNone(a)) return bad;
+      const mood = yield* Effect.serviceOption(TessayaMood);
+      if (Option.isNone(mood)) return { ok: true, value: null };
+      const felt = yield* mood.value.view(a.value.persona);
+      return { ok: true, value: { label: felt.label, intensity: felt.intensity } };
     }
     case "library":
       return yield* answer(voices.library);
