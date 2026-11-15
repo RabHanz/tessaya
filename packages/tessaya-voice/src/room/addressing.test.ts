@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  askedFor,
   calledName,
   heldBack,
   invitesReply,
@@ -43,6 +44,32 @@ describe("whether he was talking to her", () => {
       "I was going to say yeah",
     ])
       expect(heard(t)).toBeNull();
+  });
+
+  it("hears which persona he asked for, as the Tessel misheard his four tries for Tessaya (15 Nov)", () => {
+    const names = [...NAMES, "Onyx"];
+    for (const [heard, fixed] of [
+      ["Get me to say a little bit.", "Get me Tessaya little bit."],
+      ["I said get me to say a", "I said get me Tessaya"],
+      ["Let's talk to T.", "Let's talk to Tessaya."],
+      ["I said get me to say.", "I said get me Tessaya."],
+      ["I said get me Teseya.", "I said get me Tessaya."],
+    ] as const) {
+      expect(calledName(heard, names)).toBe("Tessaya");
+      expect(askedFor(heard, names)?.text).toBe(fixed);
+    }
+    expect(calledName("Get me Sebastian.", names)).toBe("Sebastian");
+    expect(calledName("Switch me over to Fraya.", names)).toBe("Freya");
+    expect(calledName("Can you put me through to Onix?", names)).toBe("Onyx");
+    expect(calledName("Give me Nova.", [...names, "Nova"])).toBe("Nova");
+    for (const t of [
+      "Get me a coffee.",
+      "Give me the time.",
+      "Talk to me.",
+      "Can you get me to the station?",
+      "Switch to the lamp.",
+    ])
+      expect(askedFor(t, [...names, "Maya"])).toBeNull();
   });
 
   it("knows when he has sent her away", () => {

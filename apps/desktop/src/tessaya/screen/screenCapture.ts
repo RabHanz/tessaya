@@ -3,7 +3,12 @@
  * first, each scaled so its long edge is at most 1280 px (farzaa/clicky's size), as JPEG.
  * Nothing is captured unless the companion asks, and the companion asks only after his approval.
  */
-import { captureSize, pickSource, type ScreenShot } from "@t3tools/tessaya-shared/screenCompanion";
+import {
+  captureSize,
+  pickSource,
+  screenPlaces,
+  type ScreenShot,
+} from "@t3tools/tessaya-shared/screenCompanion";
 
 type Rect = {
   readonly x: number;
@@ -91,6 +96,7 @@ export const captureScreens = async (
     thumbnailSize: { width: box, height: box },
   });
   const out: CapturedScreen[] = [];
+  const places = screenPlaces(ordered.map((o) => o.display.bounds));
   ordered.forEach(({ display, cursorHere }, i) => {
     const source = pickSource(sources, display.id, all.indexOf(display));
     if (source === undefined || source.thumbnail.isEmpty()) return;
@@ -105,10 +111,11 @@ export const captureScreens = async (
     const size = image.getSize();
     out.push({
       shot: {
-        screen: i + 1,
+        screen: places[i]!.screen,
         width: size.width,
         height: size.height,
         cursorHere,
+        ...(places[i]!.place === undefined ? {} : { place: places[i]!.place }),
         bounds: display.bounds,
       },
       jpeg: image.toJPEG(80),

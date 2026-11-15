@@ -263,3 +263,41 @@ export const wakeTrusted = (
   const setting = words.find((w) => w.word.toLowerCase() === word.toLowerCase());
   return setting !== undefined && score * setting.threshold >= TRUSTED_OUTPUT;
 };
+
+const NOT_A_NAME = new Set([
+  "me",
+  "you",
+  "us",
+  "him",
+  "her",
+  "them",
+  "it",
+  "a",
+  "an",
+  "the",
+  "my",
+  "this",
+  "that",
+]);
+
+/**
+ * The persona he asked for in the words after "get me" or "switch to", and how many words it took. There a name is
+ * all he can mean, so a sound-alike start of one name counts: "to say a" or "T" for Tessaya (15 Nov, four tries).
+ * A start must hold four sound-letters, or be all he said, and fit only one name.
+ */
+export const nameAskedFor = (
+  after: string,
+  names: ReadonlyArray<string>,
+): { readonly name: string; readonly words: number } | null => {
+  const spoken = letters(after).split(/\s+/).filter(Boolean);
+  for (let n = Math.min(MAX_WORDS, spoken.length); n >= 1; n -= 1) {
+    const head = spoken.slice(0, n);
+    const exact = names.find((name) => matches(head, letters(name).replace(/ /g, ""), n === 1));
+    if (exact !== undefined) return { name: exact, words: n };
+    const key = keyOf(head);
+    if ((key.length < 4 && n !== spoken.length) || NOT_A_NAME.has(head[0]!)) continue;
+    const starts = names.filter((name) => keyOf([letters(name).replace(/ /g, "")]).startsWith(key));
+    if (starts.length === 1) return { name: starts[0]!, words: n };
+  }
+  return null;
+};

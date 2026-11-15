@@ -26,6 +26,7 @@ import {
 } from "../recognition.ts";
 import { addressedInRoom, beganOverHer, echoVerdict, type Playback } from "../turnRules.ts";
 import {
+  askedFor,
   calledName,
   heldBack,
   isBackchannel,
@@ -41,6 +42,8 @@ import {
   CAMPLUS_POLICY,
   memberByVoice,
   UNVERIFIED,
+  holdVoice,
+  NO_HOLD,
   type SpeakerGate,
   type SpeakerIdentity,
 } from "../speaker.ts";
@@ -632,6 +635,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const lead = personas[0];
     /** Who answers: the one he last called, until the window lapses. */
     let persona = lead;
+    let voiceHold = NO_HOLD;
+    const heldVoice = (heard: SpeakerIdentity) => {
+      const out = holdVoice(voiceHold, heard, deps.now());
+      voiceHold = out.hold;
+      return out.identity;
+    };
     const history: Array<{ role: "user" | "assistant"; content: string }> = [];
 
     const speaking = () => reply !== null || deps.now() < playUntil + config.downDelayMs;
@@ -821,7 +830,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         who,
         who !== persona,
         via,
-        UNVERIFIED(deps.now()),
+        // His voice held from earlier in this session, or nobody yet: the guess starts before this turn is scored.
+        heldVoice(UNVERIFIED(deps.now())),
         undefined,
       );
       const control = new AbortController();
@@ -1279,7 +1289,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const current = given === undefined ? rec : null;
       if (given === undefined) rec = null;
       const speakerP =
-        given === undefined ? deps.speaker?.(pcm).catch(() => UNVERIFIED(deps.now())) : undefined;
+        given === undefined
+          ? deps.speaker?.(pcm).then(
+              (heard) => heldVoice(heard),
+              () => heldVoice(UNVERIFIED(deps.now())),
+            )
+          : undefined;
       const affectP = given === undefined ? deps.affect?.(pcm).catch(() => undefined) : undefined;
       const voicesP = given === undefined ? deps.voices?.(pcm).catch(() => undefined) : undefined;
       let affectNow: Awaited<typeof affectP>;
@@ -1570,6 +1585,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         carry = null;
       }
       if (pieces.length > 1) text = await wholeSentence(text, pieces, deps.preview);
+      text = askedFor(text, names)?.text ?? text;
       const called = calledName(text, names);
       // Another device of his is answering: what this one hears now is her voice from there, or his to that one.
       if (given === undefined && deps.now() < (quietUntil.get(id) ?? 0)) {

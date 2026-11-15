@@ -3,22 +3,45 @@
  * from across the room. Everything else in the room (his dictation, a call, the TV) is not hers to answer.
  * @module baton-voice/room/addressing
  */
-import { wakeWordHeard, wakeWordLead } from "@t3tools/tessaya-shared/wakeVerify";
+import { nameAskedFor, wakeWordHeard, wakeWordLead } from "@t3tools/tessaya-shared/wakeVerify";
 
 /** His "Tessaya" on its own, as the R1 hears it: "Say yeah.", "You say ya?" (12 Nov), "To say uh" (13 Nov). */
 const TESSAYA_ALONE = /^(?:you |to |tuh )?say (?:yeah|ya|yah|uh)$/;
 /** The same, leading a sentence with a comma after it: "To say uh, can you hear me?" (13 Nov). */
 const TESSAYA_LEAD = /^(?:to|tuh) say,? (?:yeah|ya|yah|uh),/i;
 
-/** The name he called her by, from `names` (the first is the lead), or null when he did not call one. */
 const SWITCH_TO =
-  /\b(?:switch(?: me)?(?: back| over)? to|hand (?:me |it )?(?:over )?to|let me (?:talk|speak) to)\s+([a-z][a-z'-]*)/i;
+  /\b(?:switch(?: me)?(?: back| over)? to|hand (?:me |it )?(?:over |back )?to|pass me (?:over |back )?to|put me (?:through |back )?(?:to|on to|onto)|(?:get|give|bring) me(?: back)?|(?:talk|speak) to|connect me (?:to|with))\s+/gi;
 
+/**
+ * The persona he asked for by a switch phrase ("get me Tessaya", "let's talk to Alfred"), and his words with the name
+ * written as it is, so her brain reads what he meant ("get me to say a" was Tessaya, 15 Nov). Null when he asked for none.
+ */
+export const askedFor = (
+  text: string,
+  names: ReadonlyArray<string>,
+): { readonly name: string; readonly text: string } | null => {
+  for (const m of text.matchAll(SWITCH_TO)) {
+    const from = m.index + m[0].length;
+    const asked = nameAskedFor(text.slice(from), names);
+    if (asked === null) continue;
+    const words = [...text.slice(from).matchAll(/\S+/g)].slice(0, asked.words);
+    const last = words.at(-1)!;
+    const end = from + last.index + last[0].length;
+    const tail = /[.,!?;:]+$/.exec(last[0])?.[0] ?? "";
+    return {
+      name: asked.name,
+      text: `${text.slice(0, from)}${asked.name}${tail}${text.slice(end)}`,
+    };
+  }
+  return null;
+};
+
+/** The name he called her by, from `names` (the first is the lead), or null when he did not call one. */
 export const calledName = (text: string, names: ReadonlyArray<string>): string | null => {
   const words = text.trim().split(/\s+/).filter(Boolean);
   // "Tessaya, switch to Nova": the one he asks for, so a name with no trained wake word is still reachable.
-  const asked = SWITCH_TO.exec(text)?.[1];
-  const switched = asked === undefined ? undefined : names.find((n) => wakeWordHeard(asked, n));
+  const switched = askedFor(text, names)?.name;
   if (switched !== undefined) return switched;
   const lead = names.find((n) => wakeWordLead(words, [n]) > 0);
   if (lead !== undefined) return lead;

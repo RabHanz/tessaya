@@ -6,13 +6,15 @@ import { isBareStop } from "./dictation.ts";
  * docs/baton/THIRD_PARTY_NOTICES.md. clicky-windows' PyQt6 UI (GPL-3.0) is not used.
  */
 
-/** One captured display, as the model is told about it. 1-based, cursor display first. */
+/** One captured display, as the model is told about it. 1-based, numbered left to right as he sees them. */
 export interface ScreenShot {
   readonly screen: number;
   /** Pixel size of the image the model sees. */
   readonly width: number;
   readonly height: number;
   readonly cursorHere: boolean;
+  /** Where it sits among his displays ("left", "right"), when there are several. */
+  readonly place?: string;
   /** The display's rectangle in global desktop coordinates (Electron DIPs). */
   readonly bounds: {
     readonly x: number;
@@ -58,7 +60,7 @@ const VOICE_RULES = `your reply will be spoken aloud, so write the way you'd act
 - you can help with anything: code, writing, any app, general knowledge.
 - never say "simply" or "just". don't read code out verbatim; describe what it does or what needs to change.
 - don't end with dead-end yes/no questions like "want me to show you?".
-- if you receive several screen images, the one marked "cursor is here" is the primary focus.`;
+- if you receive several screen images, the one marked "the window he is using is here" is the primary focus. they are numbered left to right as he names them: his "second screen" is screen 2.`;
 
 /** Asking about the screen. farzaa/clicky's companion prompt, adapted. */
 export const LOOK_PROMPT = `you're Tessaya's screen companion. the user just asked you something by voice or from a hotkey, and you can see their screen(s). this is an ongoing conversation; you remember what they said before.
@@ -93,7 +95,36 @@ export const teachTurn = (input: {
 
 /** How each screenshot is labelled, with its pixel dimensions (farzaa's label shape). */
 export const screenLabel = (shot: ScreenShot, count: number): string =>
-  `${count === 1 ? "user's screen (the window he is using is here)" : `screen ${shot.screen} of ${count}${shot.cursorHere ? ", the window he is using is here (primary focus)" : ", secondary screen"}`} (image dimensions: ${shot.width}x${shot.height} pixels)`;
+  `${count === 1 ? "user's screen (the window he is using is here)" : `screen ${shot.screen} of ${count}${shot.place === undefined ? "" : `, the ${shot.place} one`}${shot.cursorHere ? ", the window he is using is here" : ""}`} (image dimensions: ${shot.width}x${shot.height} pixels)`;
+
+type Bounds = ScreenShot["bounds"];
+
+/**
+ * His displays numbered as he names them, left to right (top to bottom when stacked), each with its place: his
+ * "second screen" is the second from the left wherever the cursor is (15 Nov: screen 2 was the one without the cursor).
+ */
+export const screenPlaces = (
+  displays: ReadonlyArray<Bounds>,
+): ReadonlyArray<{ readonly screen: number; readonly place: string | undefined }> => {
+  const centre = (b: Bounds) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+  const xs = displays.map((b) => centre(b).x);
+  const ys = displays.map((b) => centre(b).y);
+  const side = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+  const order = displays
+    .map((b, i) => ({ i, c: centre(b) }))
+    .toSorted((a, b) => (side ? a.c.x - b.c.x || a.c.y - b.c.y : a.c.y - b.c.y || a.c.x - b.c.x));
+  const words =
+    displays.length === 2
+      ? side
+        ? ["left", "right"]
+        : ["top", "bottom"]
+      : displays.length === 3 && side
+        ? ["left", "middle", "right"]
+        : [];
+  const out = Array.from(displays, () => ({ screen: 0, place: undefined as string | undefined }));
+  order.forEach(({ i }, k) => (out[i] = { screen: k + 1, place: words[k] }));
+  return out;
+};
 
 // ── Reply parsing ───────────────────────────────────────────────────────────
 

@@ -219,6 +219,41 @@ export const identityOf = (
   };
 };
 
+/**
+ * His voice across one session: most of his turns are under the 2 s a verdict needs, or short of the 4 s "act" clip,
+ * so turn by turn he read "unverified" twice in three (15 Nov). Three owner turns in a row that average the "act"
+ * cut-off verify him as three averaged clips do, and once verified he stays so for `HOLD_MS` after his last owner
+ * turn. A turn judged as anyone else ends it at once.
+ */
+export interface VoiceHold {
+  readonly verifiedAt: number | null;
+  readonly scores: ReadonlyArray<number>;
+}
+export const NO_HOLD: VoiceHold = { verifiedAt: null, scores: [] };
+export const HOLD_MS = 5 * 60_000;
+
+export const holdVoice = (
+  hold: VoiceHold,
+  identity: SpeakerIdentity,
+  now: number,
+  policy: Omit<SpeakerPolicy, "model"> = CAMPLUS_POLICY,
+): { readonly hold: VoiceHold; readonly identity: SpeakerIdentity } => {
+  const held = hold.verifiedAt !== null && now - hold.verifiedAt <= HOLD_MS;
+  if (identity.kind === "saved" || identity.kind === "guest") return { hold: NO_HOLD, identity };
+  if (identity.kind === "unverified")
+    return held
+      ? { hold, identity: { ...identity, kind: "owner", personId: "owner", verified: true } }
+      : { hold, identity };
+  const scores = [...hold.scores, identity.confidence ?? 0].slice(-3);
+  const averaged =
+    scores.length === 3 && scores.reduce((a, b) => a + b, 0) / 3 >= policy.averaged.act;
+  const verified = identity.verified || averaged || held;
+  return {
+    hold: { verifiedAt: verified ? now : hold.verifiedAt, scores },
+    identity: { ...identity, verified },
+  };
+};
+
 /** The Voice ID switches a verdict is weighed against (D1-D3, D8 in voiceid-plan.md). */
 export interface SpeakerGate {
   readonly respondToOthers: boolean;
