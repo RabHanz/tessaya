@@ -99,6 +99,8 @@ export const createSenseVoice = async (input: {
   readonly modelPath: string;
   readonly tokensPath: string;
   readonly threads?: number;
+  /** Punctuation and casing in `text` (a transcript); the room reads only the tags, so it skips them. */
+  readonly itn?: boolean;
 }): Promise<SenseVoice> => {
   const ort: typeof Ort = await import("onnxruntime-node");
   const meta = readOnnxMetadata(input.modelPath, [
@@ -107,6 +109,7 @@ export const createSenseVoice = async (input: {
     "neg_mean",
     "inv_stddev",
     "lang_auto",
+    "with_itn",
     "without_itn",
   ]);
   const negMean = Float32Array.from((meta["neg_mean"] ?? "").split(",").map(Number));
@@ -141,7 +144,9 @@ export const createSenseVoice = async (input: {
         language: new ort.Tensor("int32", Int32Array.from([Number(meta["lang_auto"] ?? 0)]), [1]),
         text_norm: new ort.Tensor(
           "int32",
-          Int32Array.from([Number(meta["without_itn"] ?? 15)]),
+          Int32Array.from([
+            Number(input.itn === true ? (meta["with_itn"] ?? 14) : (meta["without_itn"] ?? 15)),
+          ]),
           [1],
         ),
       });

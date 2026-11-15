@@ -229,7 +229,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..c3afbe05294b7873b0e80d746dd5d9e7
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index e3589f643c3259fac880e60fb4b13b9af3c95d39..7048c03317139e859af8d837b77d9b5a94803eff 100644
+index e3589f643c3259fac880e60fb4b13b9af3c95d39..c91a745035ad7a94bae3febea6635e753d47bc3c 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -41,6 +41,9 @@
@@ -330,7 +330,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..7048c03317139e859af8d837b77d9b5a
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -157,6 +188,13 @@
+@@ -157,6 +188,18 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
@@ -338,7 +338,12 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..7048c03317139e859af8d837b77d9b5a
 +    "packages/tessaya-shared": { "ignoreDependencies": ["@t3tools/contracts"] },
 +    "packages/tessaya-voice": {
 +      // The R1 room loop and its replay harness run as programs on the voice host (deploy/r1-voice).
-+      "entry": ["src/room/main.ts!", "src/room/replay.ts!", "test/segmentsEval.ts"],
++      "entry": [
++        "src/room/main.ts!",
++        "src/room/replay.ts!",
++        "src/room/transcribe.ts!",
++        "test/segmentsEval.ts",
++      ],
 +      "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"],
 +    },
      "packages/effect-acp": {

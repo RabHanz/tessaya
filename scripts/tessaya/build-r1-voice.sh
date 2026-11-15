@@ -48,6 +48,7 @@ install -m 755 "$recognizer" "$root/bin/tessaya-recognizer"
 cp native/baton-dictation/models/{silero_vad,melspectrogram,embedding_model,tessaya,alfred,freya}.onnx native/baton-dictation/models/LICENSE "$root/models/"
 
 scripts/node_modules/.bin/esbuild packages/tessaya-voice/src/room/main.ts packages/tessaya-voice/src/room/replay.ts \
+  packages/tessaya-voice/src/room/transcribe.ts \
   --bundle --platform=node --format=esm --target=node24 --outdir="$root/app" --out-extension:.js=.mjs \
   --external:onnxruntime-node --log-level=warning \
   --banner:js="import { createRequire as __r1Require } from 'node:module'; const require = __r1Require(import.meta.url);"
