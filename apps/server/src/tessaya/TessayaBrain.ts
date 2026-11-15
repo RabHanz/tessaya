@@ -17,6 +17,7 @@ import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
@@ -55,6 +56,19 @@ export const HOLD_ON = "One moment.";
 export const WEB_CUE = "Let me look that up.";
 /** His work's reads before the model starts take 20-180 ms; past this they wait for nobody. */
 const WORK_READ_MS = 300;
+/**
+ * A turn this soon after a read of his work uses that read while a fresh one runs: one in three turns waited the full
+ * 300 ms on a slow read (15 Nov). shortcut: held in this server's memory per tool set, tool and vessel; starts cold.
+ */
+const WORK_KEPT_MS = 30_000;
+const workKept = new WeakMap<
+  RoomToolSet,
+  Map<string, { readonly at: number; readonly read: WorkRead | null }>
+>();
+interface WorkRead {
+  readonly name: string;
+  readonly text: string;
+}
 
 /** A turn's brain call takes one of the shared brain slots, so many vessels at once never overload the box (§2.0a). */
 export const inBrainSlot =
@@ -290,14 +304,26 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   let tools = vessel.tools;
   const startedAt = yield* Clock.currentTimeMillis;
   // His work, read alongside the vessel: "what needs me" or "what's in flight" then needs no tool round.
-  const workRead = (name: string) =>
-    tools.run(name, {}, vessel.device).pipe(
-      Effect.map((o) => (o.isError ? null : { name, text: o.text.slice(0, 800) })),
-      // A read that breaks or is slow only leaves the line out: the model can still ask for it (14 Nov: 2.5-5.4 s).
+  const workRead = Effect.fnUntraced(function* (name: string) {
+    const key = `${name} ${vessel.device ?? ""}`;
+    const byKey = workKept.get(vessel.tools) ?? new Map();
+    workKept.set(vessel.tools, byKey);
+    const read = yield* tools.run(name, {}, vessel.device).pipe(
+      Effect.map((o): WorkRead | null => (o.isError ? null : { name, text: o.text.slice(0, 800) })),
+      Effect.catchCause(() => Effect.succeed(null)),
+      Effect.tap((read) =>
+        Effect.map(Clock.currentTimeMillis, (at) => void byKey.set(key, { at, read })),
+      ),
+      Effect.forkDetach,
+    );
+    const kept = byKey.get(key);
+    if (kept !== undefined && startedAt - kept.at < WORK_KEPT_MS) return kept.read;
+    // A read that breaks or is slow only leaves the line out: the model can still ask for it (14 Nov: 2.5-5.4 s).
+    return yield* Fiber.join(read).pipe(
       Effect.timeoutOption(WORK_READ_MS),
       Effect.map(Option.getOrNull),
-      Effect.catchCause(() => Effect.succeed(null)),
     );
+  });
   const [gathered, needs, inFlight] = yield* Effect.all(
     [vessel.gather, workRead("tessaya_watch"), workRead("tessaya_in_flight")],
     { concurrency: "unbounded" },
