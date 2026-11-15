@@ -51,7 +51,7 @@ import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import { RoomTools, type RoomTool, type RoomToolSet, type ToolOutcome } from "./R1Brain.ts";
 import { NOT_HIS_VOICE_TO_FORGET, TurnOrigin } from "../tessaya/TessayaTurn.ts";
-import { hisOwnTurn, readGrants, setGrant } from "../tessaya/consent.ts";
+import { Consent, hisOwnTurn } from "../tessaya/consent.ts";
 import { trustAgentOf } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { askLaptop } from "./R1Laptop.ts";
@@ -516,6 +516,10 @@ const makeRunners = Effect.gen(function* () {
   const household = yield* Effect.serviceOption(TessayaHousehold);
   const stepUps = yield* Effect.serviceOption(StepUps);
   const voices = yield* Effect.serviceOption(VoiceForgets);
+  const consent = yield* Effect.serviceOption(Consent);
+  const grants = Option.isSome(consent) ? consent.value.read : Effect.succeed([]);
+  const grant = (key: string) =>
+    Option.isSome(consent) ? Effect.asVoid(consent.value.set(key, true)) : Effect.void;
   // A replay's own rehearsed jobs, by its device: listed with the real ones so the next sentence can act on one.
   const rehearsed = new Map<string, Array<Record<string, unknown>>>();
   /**
@@ -600,7 +604,7 @@ const makeRunners = Effect.gen(function* () {
         if (
           origin !== null &&
           !origin.tainted &&
-          stands(yield* readGrants, key, { his: hisOwnTurn(origin) })
+          stands(yield* grants, key, { his: hisOwnTurn(origin) })
         )
           return yield* asCard(origin);
         const what = `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`;
@@ -610,7 +614,7 @@ const makeRunners = Effect.gen(function* () {
           const yes = Option.isNone(hands)
             ? "unreachable"
             : yield* askHisYes(hands.value, origin, what, origin.tainted === true ? null : key);
-          if (yes === "always") yield* setGrant(key, true);
+          if (yes === "always") yield* grant(key);
           if (yes === "yes" || yes === "always") return yield* asCard(origin);
           if (yes === "no")
             return {
@@ -631,9 +635,7 @@ const makeRunners = Effect.gen(function* () {
           member: origin.member ?? null,
           needs: CARD_YES,
           card: true,
-          ...(!origin.tainted && hisOwnTurn(origin)
-            ? { always: Effect.asVoid(setGrant(key, true)) }
-            : {}),
+          ...(!origin.tainted && hisOwnTurn(origin) ? { always: grant(key) } : {}),
           phone: !at.startsWith("replay-"),
           run: (raised) =>
             run(name, raw, device).pipe(

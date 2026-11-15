@@ -1,7 +1,9 @@
 // @effect-diagnostics globalJsonInEffect:off
 import { withGrant } from "@t3tools/tessaya-shared/consent";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -49,3 +51,27 @@ export const setGrant = Effect.fn("Consent.set")(function* (key: string, allow: 
   if (Option.isSome(desk)) yield* desk.value.nudge;
   return keys;
 });
+
+/**
+ * His standing yeses on Tessaya's own database, for code that runs where upstream's SqlClient is the ambient one (the
+ * room's tool runners): read there, `readGrants` died on "no such table: fabric_settings" and every card act failed.
+ */
+export class Consent extends Context.Service<
+  Consent,
+  {
+    readonly read: Effect.Effect<ReadonlyArray<string>>;
+    readonly set: (key: string, allow: boolean) => Effect.Effect<ReadonlyArray<string>>;
+  }
+>()("t3/tessaya/consent") {}
+
+export const layer = Layer.effect(
+  Consent,
+  Effect.map(SqlClient.SqlClient, (sql) =>
+    Consent.of({
+      read: readGrants.pipe(Effect.provideService(SqlClient.SqlClient, sql)),
+      set: Effect.fn("Consent.setOnTessaya")(function* (key: string, allow: boolean) {
+        return yield* Effect.provideService(setGrant(key, allow), SqlClient.SqlClient, sql);
+      }),
+    }),
+  ),
+);

@@ -29,6 +29,7 @@ import * as TessayaMemorySync from "./TessayaMemorySync.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
 import * as AdoptedSessionService from "./AdoptedSessionService.ts";
 import * as TessayaDatabase from "./TessayaDatabase.ts";
+import * as Consent from "./consent.ts";
 import * as TessayaEngine from "./TessayaEngine.ts";
 import * as TessayaJobReactor from "./TessayaJobReactor.ts";
 import * as TessayaJobService from "./TessayaJobService.ts";
@@ -316,7 +317,10 @@ const servicesInner = IntentService.layer.pipe(
       PromptLab.layer.pipe(Layer.provide(TessayaOneShot.layer)),
     ),
   ),
-  Layer.provideMerge(StepUps.layer.pipe(Layer.provide(TessayaPhoneInbox.layer))),
+  // His standing yeses on this database too, for the room's runners, which run beside upstream's SqlClient.
+  Layer.provideMerge(
+    Layer.mergeAll(StepUps.layer.pipe(Layer.provide(TessayaPhoneInbox.layer)), Consent.layer),
+  ),
   // Every brain call's usage row, for the Usage page and her usage report; her wake-word models, signed here (P3b).
   Layer.provideMerge(
     Layer.mergeAll(
