@@ -116,12 +116,14 @@ export const intercomControls = (s: {
     hint:
       set.dndUntil === null
         ? text("ic.dnd.hint")
-        : text("ic.dnd.until", {
-            at: new Date(set.dndUntil).toLocaleString(undefined, {
-              dateStyle: "medium",
-              timeStyle: "short",
+        : set.dndUntil === "on"
+          ? text("ic.dnd.untilOff")
+          : text("ic.dnd.until", {
+              at: new Date(set.dndUntil).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              }),
             }),
-          }),
     kind: "choice",
     value: "",
     options: DND.map((d) => ({ value: d, label: text(`ic.dnd.${d === "" ? "off" : d}`) })),

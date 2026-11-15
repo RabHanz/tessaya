@@ -130,8 +130,8 @@ export type CommsQuietHours = typeof CommsQuietHours.Type;
 export const CommsSettings = Schema.Struct({
   enabled: Schema.Boolean,
   quietHours: Schema.NullOr(CommsQuietHours),
-  /** The caller's own do-not-disturb end, if on. */
-  dndUntil: Schema.NullOr(IsoDateTime),
+  /** The caller's own do-not-disturb end, if on; "on" until they turn it off. */
+  dndUntil: Schema.NullOr(Schema.Union([IsoDateTime, Schema.Literal("on")])),
 });
 export type CommsSettings = typeof CommsSettings.Type;
 
@@ -191,8 +191,8 @@ export const CommsCallInput = Schema.Union([
   op("consents", {}),
   /** Plays one of the caller's notes where they are, or returns it for their screen; marks it read. */
   op("play", { noteId: Schema.String.check(Schema.isMaxLength(64)) }),
-  /** Do not disturb for the caller until a time, or off (null). */
-  op("dnd", { until: Schema.NullOr(IsoDateTime) }),
+  /** Do not disturb for the caller until a time, until they turn it off ("on"), or off (null). */
+  op("dnd", { until: Schema.NullOr(Schema.Union([IsoDateTime, Schema.Literal("on")])) }),
   /** The owner's switches: comms on or off for this home, and the household's quiet hours (null: none). */
   op("settings", {
     enabled: Schema.optionalKey(Schema.Boolean),

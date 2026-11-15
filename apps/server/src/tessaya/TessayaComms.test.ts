@@ -387,6 +387,8 @@ layer("TessayaComms", (it) => {
       assert.strictEqual(on1.settings?.dndUntil, "2099-01-01T00:00:00.000Z");
       const past = yield* comms("sara", { op: "dnd", until: "1969-12-31T00:00:00.000Z" });
       assert.strictEqual(past.status, "refused");
+      yield* comms("sara", { op: "dnd", until: "on" });
+      assert.strictEqual((yield* comms("sara", { op: "settings" })).settings?.dndUntil, "on");
       yield* comms("sara", { op: "dnd", until: null });
       assert.isNull((yield* comms("sara", { op: "settings" })).settings?.dndUntil);
     }),

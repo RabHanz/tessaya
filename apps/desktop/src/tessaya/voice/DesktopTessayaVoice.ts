@@ -1005,6 +1005,8 @@ const REMOTE_SETTINGS_GAP_MS = 1_000;
 const REMOTE_SETTINGS_RETRY_MS = 30_000;
 /** Sent again at least this often, so the server can tell a quiet desktop from a gone one. */
 const STATE_REFRESH_MS = 5 * 60_000;
+/** `dndUntil` for his server's open-ended do-not-disturb ("on"), kept as a number so the file stays plain JSON. */
+const DND_UNTIL_OFF = Number.MAX_SAFE_INTEGER;
 /** Her mood drifts with time (away, the day): the mascot rereads it this often, besides after each turn. */
 const MOOD_READ_MS = 5 * 60_000;
 /** At most this many other characters with her: each is a window and a redraw while it moves. */
@@ -5813,13 +5815,14 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       .catch(() => undefined);
   const shareDnd = (until: number) =>
     void input
-      .comms?.("dnd", { until: until === 0 ? null : new Date(until).toISOString() })
+      .comms?.("dnd", {
+        until: until === 0 ? null : until === DND_UNTIL_OFF ? "on" : new Date(until).toISOString(),
+      })
       .catch(() => undefined);
   // A Do not disturb from before it lived on the server goes up once.
   if ((settings as { doNotDisturb?: unknown }).doNotDisturb === true) {
-    const until = Date.now() + 365 * 24 * 60 * 60_000;
-    save({ dndUntil: until, doNotDisturb: false } as Partial<VoiceSettings>);
-    shareDnd(until);
+    save({ dndUntil: DND_UNTIL_OFF, doNotDisturb: false } as Partial<VoiceSettings>);
+    shareDnd(DND_UNTIL_OFF);
   }
   const pullComms = () =>
     void input
@@ -5829,7 +5832,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         if (quiet !== null && quietSpecOf(quiet) !== settings.quietHours)
           save({ quietHours: quietSpecOf(quiet) });
         const dnd = r.settings?.dndUntil;
-        const until = dnd == null ? 0 : Date.parse(dnd);
+        const until = dnd == null ? 0 : dnd === "on" ? DND_UNTIL_OFF : Date.parse(dnd);
         if (dnd !== undefined && until !== settings.dndUntil) save({ dndUntil: until });
       })
       .catch(() => undefined);
@@ -8375,8 +8378,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           id.endsWith(":save") && typeof value === "string" ? value.trim().slice(0, 300) : "",
       });
     } else if (id === "v.dnd") {
-      // shortcut: "until you turn this off" is a year on the server's timed do-not-disturb.
-      const until = on ? Date.now() + 365 * 24 * 60 * 60_000 : 0;
+      const until = on ? DND_UNTIL_OFF : 0;
       save({ dndUntil: until });
       shareDnd(until);
     } else if (id === "v.snooze") toggleSnooze();

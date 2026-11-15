@@ -242,9 +242,10 @@ export const make = Effect.gen(function* () {
     ).pipe(Effect.orDie, Effect.asVoid);
   const enabled = Effect.map(setting(ENABLED_KEY), (v) => v === "on");
   const quietHours = readQuietHours.pipe(Effect.provideService(SqlClient.SqlClient, sql));
-  /** A member's do-not-disturb end (ms), or null when off or over. */
+  /** A member's do-not-disturb end (ms; Infinity until they turn it off), or null when off or over. */
   const dndUntil = Effect.fn("TessayaComms.dndUntil")(function* (member: string) {
     const v = yield* setting(`${DND_PREFIX}${member}`);
+    if (v === "on") return Number.POSITIVE_INFINITY;
     const until = v === null ? Number.NaN : Date.parse(v);
     return Number.isFinite(until) && until > (yield* Clock.currentTimeMillis) ? until : null;
   });
@@ -1008,7 +1009,12 @@ export const make = Effect.gen(function* () {
     const { member, name } = yield* who;
     if (member === null) return refused("I need to know who you are to change that.");
     const now = yield* Clock.currentTimeMillis;
-    const until = input.until === null ? null : Date.parse(input.until);
+    const until =
+      input.until === null
+        ? null
+        : input.until === "on"
+          ? Number.POSITIVE_INFINITY
+          : Date.parse(input.until);
     if (until !== null && !(until > now)) return refused("That time has already passed.");
     if ((yield* TurnOrigin)?.rehearsal === true)
       return { status: "done", line: "Done. (A replay: nothing changed.)" } satisfies Result;
@@ -1017,14 +1023,16 @@ export const make = Effect.gen(function* () {
       actor: name ?? member,
       subject: "do not disturb",
       outcome: input.until === null ? "off" : "on",
-      ...(input.until === null ? {} : { detail: `until ${input.until}` }),
+      ...(input.until === null || input.until === "on" ? {} : { detail: `until ${input.until}` }),
     });
     return {
       status: "done",
       line:
         input.until === null
           ? "Do not disturb is off."
-          : 'Do not disturb is on; messages wait quietly until then. Say "I\'m free" to end it sooner.',
+          : input.until === "on"
+            ? 'Do not disturb is on until you turn it off; messages wait quietly. Say "I\'m free" to end it.'
+            : 'Do not disturb is on; messages wait quietly until then. Say "I\'m free" to end it sooner.',
       settings: { enabled: yield* enabled, quietHours: yield* quietHours, dndUntil: input.until },
     } satisfies Result;
   });
@@ -1057,7 +1065,12 @@ export const make = Effect.gen(function* () {
       settings: {
         enabled: yield* enabled,
         quietHours: yield* quietHours,
-        dndUntil: until === null ? null : DateTime.formatIso(DateTime.makeUnsafe(until)),
+        dndUntil:
+          until === null
+            ? null
+            : until === Number.POSITIVE_INFINITY
+              ? "on"
+              : DateTime.formatIso(DateTime.makeUnsafe(until)),
       },
       emergency: emergencyView(),
     } satisfies Result;
