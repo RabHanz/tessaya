@@ -7,6 +7,7 @@ interface Rig {
   motion: (vx: number, vy: number) => void;
   impact: (speed: number, landed?: boolean) => void;
   look: (gx: number | null, gy?: number) => void;
+  signature: () => string;
   stats: { frames: number };
   destroy: () => void;
 }
@@ -254,6 +255,20 @@ describe("the companion's body in a throw", () => {
     // the squash and its recovery move on every frame of their first 0.4 s, and she is herself again by 1 s
     expect(after.slice(0, 24).every((h, i) => i === 0 || h !== after[i - 1])).toBe(true);
     expect(Math.abs(after.at(-1)! - rest)).toBeLessThan(rest * 0.02);
+  });
+});
+
+describe("her character's own act", () => {
+  it("is picked by the rig from her own set: Alfred's quirk first, his pocket watch last", async () => {
+    const TCS = await studio();
+    using _timers = fakeTimers();
+    using m = mount(TCS, "alfred");
+    {
+      using _random = vi.spyOn(Math, "random").mockReturnValue(0);
+      expect(m.rig.signature()).toBe("adjustTie");
+    }
+    using _random = vi.spyOn(Math, "random").mockReturnValue(0.999);
+    expect(m.rig.signature()).toBe("pocketWatch");
   });
 });
 
