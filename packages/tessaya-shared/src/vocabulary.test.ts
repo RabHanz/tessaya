@@ -310,6 +310,17 @@ describe("learning from his corrections", () => {
     expect(
       correctionsBetween("Send the deck to Sam", "Email it to the whole team instead"),
     ).toEqual([]);
+    // A word fixed at a sentence's end is taught without its full stop.
+    expect(correctionsBetween("Open Tsaya.", "Open Tessaya.")).toEqual([
+      { heard: "Tsaya", meant: "Tessaya" },
+    ]);
+    expect(
+      parseVocabulary([
+        { phrase: "Tessaya.", replacement: null, source: "learned", count: 1, heard: ["Tsaya."] },
+      ]),
+    ).toEqual([
+      { phrase: "Tessaya", replacement: null, source: "learned", count: 1, heard: ["Tsaya"] },
+    ]);
     const one = correctionsBetween("Please call Tomas about it", "Please call Thomas about it");
     expect(one).toEqual([{ heard: "Tomas", meant: "Thomas" }]);
     let state = learnCorrection({}, [], one[0]!, NOW);

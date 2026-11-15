@@ -386,7 +386,7 @@ import { holdMainAtLaunch, launchWindows } from "../launchWindows.ts";
 import { createDictationHold } from "./dictationHold.ts";
 import { createComposerDictation, routePill } from "./composerDictation.ts";
 import { cleanupLevelNow } from "./cleanupLevel.ts";
-import { ownCaretContext, ownFieldFocused } from "./ownWindowField.ts";
+import { AROUND_CHARS, ownCaretContext, ownFieldFocused } from "./ownWindowField.ts";
 import { micAwakeMs, micAwakeOf, type MicAwake } from "./micAwake.ts";
 import { desktopDeviceId, startDesktopDevice } from "../devices/desktopDevice.ts";
 import * as Electron from "electron";
@@ -1851,6 +1851,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     if (!settings.learnWords || cleanupLevelFor("claude", app) !== "claude") return;
     if (written.trim().length === 0 || detectSecret(written) !== null) return;
     let watching = true;
+    let after = "";
     stopWatching = () => void (watching = false);
     const within = <A>(work: Promise<A>) =>
       Promise.race([
@@ -1871,22 +1872,37 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           ? now.window === app.window
           : app.exe !== "" && now.exe === app.exe;
       },
-      // A read that times out comes back null, which ends the watch.
+      // A read that times out comes back null, which ends the watch. Our own window reads its page: Windows' read of
+      // it says nothing, so no fix made in Tessaya's chat box was ever learned.
       read: async () => {
-        const around = sidecar === null ? null : await within(sidecar.caret());
-        return around === null || detectSecret(around.before) !== null ? null : around.before;
+        const around =
+          (app.window === undefined
+            ? null
+            : await within(ownCaretContext(app.window, written.length + AROUND_CHARS))) ??
+          (sidecar === null ? null : await within(sidecar.caret()));
+        if (around === null || detectSecret(`${around.before}${around.after}`) !== null)
+          return null;
+        after = around.after;
+        return around.before;
       },
-      ours: (before) => stillOurs(written, before),
+      // A fix mid-dictation leaves the caret there, with the rest of his words after it.
+      ours: (before) => stillOurs(written, before) || stillOurs(written, `${before}${after}`),
       learn: (before) => {
-        const { fixes, fixed } = correctionsAtCaret(written.trim(), before);
+        const atCaret = correctionsAtCaret(written.trim(), before);
+        const { fixes, fixed } =
+          atCaret.fixes.length > 0
+            ? atCaret
+            : correctionsAtCaret(written.trim(), `${before}${after}`);
         if (fixes.length === 0) return false;
         if (turnId !== null) history?.update(turnId, { corrected: true, fixed });
         void teachFixes(fixes);
         return true;
       },
-    }).finally(() => {
-      watching = false;
-    });
+    })
+      .then((outcome) => input.onNote?.("edit_watch", { outcome, app: app.exe }))
+      .finally(() => {
+        watching = false;
+      });
   };
   /** Each fix teaches the word he meant, announced as "Learned X" so he can undo it. */
   const teachFixes = (fixes: ReadonlyArray<{ readonly heard: string; readonly meant: string }>) =>
