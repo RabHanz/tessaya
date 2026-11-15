@@ -1,6 +1,13 @@
 import { expect, it } from "vite-plus/test";
 
-import { noteTime, pickRecogniser, STALE_MS, turnAcross, type TurnOn } from "./recognisers.ts";
+import {
+  noteTime,
+  pickRecogniser,
+  recognisersFor,
+  STALE_MS,
+  turnAcross,
+  type TurnOn,
+} from "./recognisers.ts";
 
 const at = (...ms: number[]) => ms.map((m) => ({ ms: m, at: 0 }));
 
@@ -94,4 +101,15 @@ it("gives his only recogniser one more go with the whole turn when it drops the 
   turn.feed(new Int16Array(60));
   expect(await turn.finish()).toBe("heard 160 samples");
   expect(log).toEqual(["voice-host failed, next voice-host", "voice-host ok"]);
+});
+
+it("gives his personal model only his held voice, and the general one everyone else or when it is down", () => {
+  const general = { url: "general", queue: 0, recent: [] };
+  const personal = { url: "personal", queue: 0, recent: [], personal: true };
+  const urls = (states: ReadonlyArray<{ readonly url: string }>) => states.map((s) => s.url);
+  expect(urls(recognisersFor([general, personal], true))).toEqual(["personal"]);
+  expect(urls(recognisersFor([general, personal], false))).toEqual(["general"]);
+  expect(urls(recognisersFor([general, { ...personal, queue: null }], true))).toEqual(["general"]);
+  // Tried and failed (left out of the pool): the general one hears it all.
+  expect(urls(recognisersFor([general], true))).toEqual(["general"]);
 });

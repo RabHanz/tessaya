@@ -16,6 +16,10 @@ The Tessel's in-house voice loop (`src/room`), run on the voice host next to the
 - **Wake by name between sessions:** `melspectrogram.onnx`, `embedding_model.onnx`, `tessaya.onnx`, `alfred.onnx` and `freya.onnx` from `native/baton-dictation/models`, beside the others. The Tessel sends only voiced segments on `voice/wake` (firmware with the wake stream). A model fire is confirmed in text from the 2 s before it, nothing else is recognised, and the segment is dropped.
 - **Camera relay:** `TESSEL_CAMERA_PORT` (unset: off) listens on all interfaces, because the Tessel posts pictures to its LAN host. Pictures go on to her server's `/camera/upload`, which keeps one only while a capture it asked for is armed. Point the Tessel at it with `cmd/routing/set {"local_url":"http://<LAN ip>:<port>","mode":"auto","enabled":true}`.
 - **Wake capture for training:** `TESSEL_WAKE_CAPTURE_DIR` (unset: off) keeps every wake segment as 16 kHz PCM plus a JSON record: the Tessel's own wake score, the loop's verdict, and whether a session opened within 15 s. Only with the owner's consent: it is room audio. The folder is made 0700, files 0600, and the oldest segments go once it passes `TESSEL_WAKE_CAPTURE_MB` (default 1024, about 5,000 segments).
+- **His personal model:** `TESSEL_PERSONAL_RECOGNIZERS` (`url=tokenfile,...`, unset: none) lists recognisers running the
+  owner's own fine-tuned model, kept in his private folder and never shipped. A turn goes there only while Voice ID holds
+  his voice and it is loud enough (`PERSONAL_FLOOR_DB` in `roomVoice.ts`), since that model writes words from faint or
+  other voices; everyone else, and him when it is down, gets `TESSEL_RECOGNIZERS`.
 - **Release install:** a release server fetches all of this itself into `<T3 home>/userdata/r1-voice` when its first
   Tessel pairs (`apps/server/src/home/R1Loop.ts`, bundle from `scripts/tessaya/build-r1-voice.sh`), with its own
   recogniser (`TESSEL_RECOGNIZER_BIN`, Parakeet TDT 0.6B v3, CC-BY-4.0) instead of `TESSEL_RECOGNIZERS`.

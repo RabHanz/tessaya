@@ -42,6 +42,7 @@ import {
   CAMPLUS_POLICY,
   memberByVoice,
   UNVERIFIED,
+  HOLD_MS,
   holdVoice,
   NO_HOLD,
   type SpeakerGate,
@@ -164,6 +165,12 @@ const sameWords = (a: string, b: string) => {
 
 /** How many times one turn may start her brain on a guess before the final text: each costs a brain call. */
 const MAX_GUESSES = 3;
+/**
+ * His personal model hears a turn only this loud or louder: below it, it wrote words where the general one heard none
+ * (on 356 of his Tessel segments, 15 Nov, -28 dBFS kept every name it gained and invented none).
+ */
+const PERSONAL_FLOOR_DB = -28;
+
 /** His words must hold still this long at a pause before her brain starts early on them. */
 const STABLE_MS = 300;
 
@@ -244,7 +251,8 @@ export interface RoomDeps {
   /** A fresh Silero scorer per session (it is recurrent). */
   readonly vad: () => { readonly score: (window: Int16Array) => Promise<number> };
   readonly smartTurn: (pcm: Int16Array) => Promise<number>;
-  readonly recognise: () => RecogniserTurn;
+  /** A turn's recogniser; `owner` when it is his held voice and loud enough for his personal model. */
+  readonly recognise: (who?: { readonly owner: boolean }) => RecogniserTurn;
   /** A member's data was destroyed: his voice profile on this host goes too. */
   readonly forget?: (personId: string) => void;
   /** The words in a stretch of his audio on their own (a second, short recognition): for an early start at a pause. */
@@ -1926,7 +1934,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             break;
           case "start":
             rec?.cancel();
-            rec = deps.recognise();
+            rec = deps.recognise({
+              owner:
+                voiceHold.verifiedAt !== null &&
+                deps.now() - voiceHold.verifiedAt <= HOLD_MS &&
+                speechLevel(a.pcm) >= PERSONAL_FLOOR_DB,
+            });
             starts += 1;
             turnPcm = [a.pcm];
             rec.onPartial?.(cutIn);
