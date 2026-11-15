@@ -587,7 +587,7 @@ export const createDesktopMascot = (input: {
   let profile: PhysicsProfile = DEFAULT_PROFILE;
   const init = () => {
     call(
-      `window.mascot.init(${JSON.stringify({ persona: options.character === "persona" ? options.persona : { ...options.persona, character: options.character }, quiet: options.motion === "important", reduced: options.reduced, hands: options.hands })})`,
+      `window.mascot.init(${JSON.stringify({ persona: options.character === "persona" ? options.persona : { ...options.persona, character: options.character }, quiet: options.motion === "important", calm: options.motion === "calm", reduced: options.reduced, hands: options.hands })})`,
     );
     const target = win;
     void ready.then(async () => {

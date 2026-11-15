@@ -6,6 +6,8 @@ interface Rig {
   setExpression: (name: string) => void;
   motion: (vx: number, vy: number) => void;
   impact: (speed: number, landed?: boolean) => void;
+  look: (gx: number | null, gy?: number) => void;
+  stats: { frames: number };
   destroy: () => void;
 }
 interface Studio {
@@ -23,7 +25,7 @@ const studio = async (): Promise<Studio> => {
 };
 
 /** One persona's rig on a real SVG, stepped 60 times a second on the test's fake clock. */
-const mount = (TCS: Studio, persona: string, character?: string) => {
+const mount = (TCS: Studio, persona: string, character?: string, options: object = {}) => {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   document.body.append(svg);
   const P = TCS.PERSONAS[persona]!;
@@ -32,6 +34,7 @@ const mount = (TCS: Studio, persona: string, character?: string) => {
     personality: P.traits,
     quiet: true,
     expression: "neutral",
+    ...options,
   });
   vi.advanceTimersByTime(3000);
   // What a viewer sees move: the body's lift, the brows' strength, and each eye's outline (its group's first path).
@@ -203,5 +206,30 @@ describe("each character's own body", () => {
       expect(r.settled).toBeLessThan(0.02);
       expect(r.still).toBe(1);
     }
+  });
+});
+
+describe("the companion at rest", () => {
+  it("sleeps between her idle beats and draws them 30 a second, while his touch still runs at full rate", async () => {
+    const TCS = await studio();
+    using _random = vi.spyOn(Math, "random").mockReturnValue(0.999);
+    using _timers = fakeTimers();
+    // as the desktop mascot makes her: idle life on, beats capped (mascotPage.ts)
+    using m = mount(TCS, "tessaya", undefined, { quiet: false, beatFps: 30 });
+    // a minute at rest, a second at a time: blinks every ~5 s and an idle act every ~22 s
+    const perSecond = Array.from({ length: 60 }, () => {
+      const before = m.rig.stats.frames;
+      vi.advanceTimersByTime(1000);
+      return m.rig.stats.frames - before;
+    });
+    // she has her idle life, never above 30 a second, and her loop stops between beats
+    expect(perSecond.filter((n) => n > 20).length).toBeGreaterThan(0);
+    expect(Math.max(...perSecond)).toBeLessThanOrEqual(31);
+    expect(perSecond.filter((n) => n === 0).length).toBeGreaterThan(30);
+    // whatever he does to her is drawn at the display's rate
+    const before = m.rig.stats.frames;
+    m.rig.look(0.8, 0);
+    vi.advanceTimersByTime(500);
+    expect(m.rig.stats.frames - before).toBeGreaterThan(25);
   });
 });
