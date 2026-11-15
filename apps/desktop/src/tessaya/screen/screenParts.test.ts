@@ -225,6 +225,10 @@ describe("the operator's Claude session", () => {
     expect(assistant).not.toContain("--safe-mode");
     expect(assistant).toContain("--strict-mcp-config");
     expect(assistant[assistant.indexOf("--setting-sources") + 1]).toBe("");
+    expect(assistant).not.toContain("--allowedTools");
+    // A replay has no gate, so its own server's tools are allowed by name rather than by his CLI default.
+    const replay = visionArgs("p.txt", "sonnet", false, "mcp.json");
+    expect(replay[replay.indexOf("--allowedTools") + 1]).toBe("mcp__baton");
   });
 
   it("reads a permission request, and nothing else, as one", () => {

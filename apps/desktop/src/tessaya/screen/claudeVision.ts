@@ -103,6 +103,8 @@ export const visionArgs = (
   operator ? OPERATOR_TOOLS : "",
   ...(operator ? OPERATOR_FLAGS : []),
   ...(mcpConfigFile === undefined ? [] : ["--mcp-config", mcpConfigFile, "--strict-mcp-config"]),
+  // Without a gate the CLI's own permission mode would refuse our tools unless his default is bypass; our server gates them.
+  ...(mcpConfigFile === undefined || operator ? [] : ["--allowedTools", "mcp__baton"]),
   ...(chrome ? ["--chrome"] : []),
   "--no-session-persistence",
   "--system-prompt-file",
