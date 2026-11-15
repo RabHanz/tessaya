@@ -109,13 +109,16 @@ export const ownFieldFocused = async (hwnd: number): Promise<boolean | null> => 
 };
 
 /** The words around the caret when `hwnd` is one of Tessaya's own windows; null when it is not ours or cannot say. */
-export const ownCaretContext = async (hwnd: number): Promise<CaretContext | null> => {
+export const ownCaretContext = async (
+  hwnd: number,
+  chars = AROUND_CHARS,
+): Promise<CaretContext | null> => {
   const window = Electron.BrowserWindow.getAllWindows().find(
     (w) => !w.isDestroyed() && handleOf(w) === hwnd,
   );
   if (window === undefined) return null;
   return window.webContents
-    .executeJavaScript(`(${caretAround.toString()})(document.activeElement, ${AROUND_CHARS})`)
+    .executeJavaScript(`(${caretAround.toString()})(document.activeElement, ${chars})`)
     .then((v: unknown) =>
       typeof v === "object" &&
       v !== null &&

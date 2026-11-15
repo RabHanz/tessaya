@@ -31,6 +31,9 @@ export const PROMPT_TERMS = 200;
 
 const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** A word without the full stop or quote that ended its sentence: "Tessaya." is taught as Tessaya. */
+const bare = (word: string): string => word.replace(/[.'’-]+$/, "");
+
 /** Distinct forms, never the word itself; an absent list stays absent so old files read back unchanged. */
 const withHeard = (phrase: string, value: unknown): { readonly heard?: ReadonlyArray<string> } => {
   if (!Array.isArray(value)) return {};
@@ -38,7 +41,7 @@ const withHeard = (phrase: string, value: unknown): { readonly heard?: ReadonlyA
     ...new Set(
       value
         .filter((v): v is string => typeof v === "string")
-        .map((v) => v.replace(/\s+/g, " ").trim())
+        .map((v) => bare(v.replace(/\s+/g, " ").trim()))
         .filter((v) => /\p{L}/u.test(v) && v.length <= 60 && !sameWord(v, phrase)),
     ),
   ];
@@ -71,9 +74,12 @@ export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> 
         if (typeof entry !== "object" || entry === null || typeof entry.phrase !== "string")
           return [];
         if (entry.phrase.trim().length === 0) return [];
+        // A correction at a sentence's end was once learned with its full stop ("Tessaya." heard as "Tsaya.").
+        const learned = entry.source === "learned";
+        const phrase = learned ? bare(entry.phrase) || entry.phrase : entry.phrase;
         return [
           {
-            phrase: entry.phrase,
+            phrase,
             replacement:
               typeof entry.replacement === "string" && entry.replacement.length > 0
                 ? entry.replacement
@@ -84,7 +90,7 @@ export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> 
                 ? Math.floor(entry.count)
                 : 1,
             ...(typeof entry.lastSeen === "string" ? { lastSeen: entry.lastSeen } : {}),
-            ...withHeard(entry.phrase, entry.heard),
+            ...withHeard(phrase, entry.heard),
           },
         ];
       })
@@ -362,14 +368,16 @@ export const correctionsBetween = (
     const word = b.slice(start, b.length - end);
     if (span.length < 2 || span.length > 3 || word.length !== 1) return [];
     return similar(span.join(""), word[0]!) >= 0.4
-      ? [{ heard: span.join(" "), meant: word[0]! }]
+      ? [{ heard: bare(span.join(" ")), meant: bare(word[0]!) }]
       : [];
   }
   const pairs: Array<{ heard: string; meant: string }> = [];
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i] === b[i]) continue;
+    const heard = bare(a[i]!);
+    const meant = bare(b[i]!);
+    if (heard === meant) continue;
     // A capital or spelling change only is still a correction (clearly the same word).
-    if (similar(a[i]!, b[i]!) >= 0.4) pairs.push({ heard: a[i]!, meant: b[i]! });
+    if (similar(heard, meant) >= 0.4) pairs.push({ heard, meant });
     else return [];
   }
   return pairs.length > 0 && pairs.length <= Math.max(1, Math.floor(a.length / 3)) ? pairs : [];
