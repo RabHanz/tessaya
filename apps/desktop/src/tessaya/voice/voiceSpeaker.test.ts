@@ -6,8 +6,10 @@ import { queueSpeech } from "@t3tools/tessaya-shared/companionPacing";
 import { pocketPlan } from "./pocketVoice.ts";
 import {
   createSpeaker,
+  heardAtMs,
   pcmLevel,
   pcmShape,
+  speechFrames,
   speakableText,
   wavFormat,
   type VoiceChoice,
@@ -365,6 +367,26 @@ describe("her mouth's shape from the sound", () => {
     expect(ss.zcr).toBeGreaterThan(0.22);
     expect(ss.bright).toBeGreaterThan(0.35);
     expect(pcmShape(Buffer.alloc(960 * 2))).toEqual({ zcr: 0, bright: 0 });
+  });
+
+  it("times each frame by when the speaker plays it, not by when the chunk or the page's reply arrived", () => {
+    // 10.5 s on the context clock; the speaker plays 10.0 at performance time 5000 ms.
+    const clock = {
+      at: 10.5,
+      currentTime: 10.06,
+      contextTime: 10,
+      performanceTime: 5_000,
+      timeOrigin: 1_000_000,
+      now: 5_090,
+      latency: 0.03,
+    };
+    expect(heardAtMs(clock)).toBe(1_005_500);
+    expect(heardAtMs({ ...clock, currentTime: 10.4, now: 5_700 })).toBe(1_005_500);
+    // before the device has played anything: the context clock plus its output latency
+    expect(heardAtMs({ ...clock, contextTime: 0, performanceTime: 0 })).toBeCloseTo(1_005_560);
+    const frames = speechFrames(Buffer.alloc(2_400 * 2), 24_000, 1_005_500);
+    expect(frames.map((f) => f.atMs)).toEqual([1_005_500, 1_005_540, 1_005_580]);
+    expect(frames.map((f) => f.pcm.length)).toEqual([1_920, 1_920, 960]);
   });
 });
 

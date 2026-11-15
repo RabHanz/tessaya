@@ -8,17 +8,21 @@
 import * as Electron from "electron";
 
 import {
+  FRAME_MS,
+  heardAtMs,
   pcmLevel,
   pcmShape,
+  speechFrames,
   wavFormat,
+  type AudioClock,
   type VoicePlayer,
   type VoiceShape,
 } from "./voiceSpeaker.ts";
 
 const IDLE_CLOSE_MS = 30_000;
 const HEADER_BYTES = 256;
-/** Her level and mouth shape are read every this long of sound, so the mouth follows syllables, not chunks. */
-const FRAME_MS = 40;
+/** Each frame's level goes out this far ahead of its sound: her jaw takes about this long to open on it. */
+const MOUTH_LEAD_MS = FRAME_MS;
 
 const PLAYER_DOCUMENT = `<!doctype html><meta charset="utf-8"><script>
 let ctx=null,gain=null,vol=1,next=0,rate=24000,live=[],done=null;const LEAD=.12;
@@ -27,7 +31,8 @@ window.open_=async(r)=>{ctx??=new AudioContext();if(!gain){gain=ctx.createGain()
 window.push=(b64)=>{const bin=atob(b64),n=bin.length>>1,buf=ctx.createBuffer(1,n,rate),o=buf.getChannelData(0);
  for(let i=0;i<n;i++){const v=(bin.charCodeAt(i*2)|bin.charCodeAt(i*2+1)<<8)<<16>>16;o[i]=v/32768;}
  const s=ctx.createBufferSource();s.buffer=buf;s.connect(gain);if(next<ctx.currentTime+.02)next=ctx.currentTime+.02;
- s.start(next);const at=next;next+=buf.duration;live.push(s);s.onended=()=>{live=live.filter(x=>x!==s);if(!live.length&&done)done();};return Math.max(0,(at-ctx.currentTime)*1000);};
+ s.start(next);const at=next;next+=buf.duration;live.push(s);s.onended=()=>{live=live.filter(x=>x!==s);if(!live.length&&done)done();};
+ const t=ctx.getOutputTimestamp();return{at,currentTime:ctx.currentTime,contextTime:t.contextTime||0,performanceTime:t.performanceTime||0,timeOrigin:performance.timeOrigin,now:performance.now(),latency:ctx.outputLatency||ctx.baseLatency||0};};
 window.finish=()=>new Promise(r=>{if(!live.length)return r();done=r;});
 window.halt=()=>{for(const s of live){try{s.onended=null;s.stop();}catch{}}live=[];done&&done();};
 </script>`;
@@ -118,23 +123,24 @@ export const createVoicePlayer = (
           if (even === 0) continue;
           const samples = joined.subarray(0, even);
           bytes += even;
-          const delay = await run(`window.push("${samples.toString("base64")}")`);
+          const clock: AudioClock = await target.webContents.executeJavaScript(
+            `window.push("${samples.toString("base64")}")`,
+          );
+          const heard = heardAtMs(clock);
           onReference?.(
             new Int16Array(
               samples.buffer.slice(samples.byteOffset, samples.byteOffset + samples.length),
             ),
             rate,
-            Date.now() + delay,
+            heard,
           );
-          const step = Math.max(2, Math.round((rate * FRAME_MS) / 1000) * 2);
-          for (let at = 0; at < samples.length; at += step) {
-            const frame = samples.subarray(at, Math.min(samples.length, at + step));
+          for (const frame of speechFrames(samples, rate, heard)) {
             const pulse = setTimeout(
               () => {
                 pulses.delete(pulse);
-                onLevel(pcmLevel(frame), pcmShape(frame));
+                onLevel(pcmLevel(frame.pcm), pcmShape(frame.pcm));
               },
-              delay + (at / step) * FRAME_MS,
+              frame.atMs - MOUTH_LEAD_MS - Date.now(),
             );
             pulses.add(pulse);
           }
