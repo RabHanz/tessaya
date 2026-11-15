@@ -1012,12 +1012,25 @@
      const live = speech.hooks.mouth && speech.hooks.mouth();
      if (live) {
       const name = live.shape === "st" ? "etc" : live.shape, V = TCS.VISEMES[name] || TCS.VISEMES.aa, o = live.open, shut = name === "mbp";
-      const goal = {mo: shut ? -.35 : name === "rest" ? 0 : (V.mo || 0) * (.6 + .7 * o), mr: (V.mr || 0) * (shut ? 0 : 1), mw: V.mw || 0, teeth: V.teeth || 0, tongue: (V.tongue || 0) * o, bite: V.bite || 0, tip: V.tip || 0, press: shut ? 1 : 0};
-      const L = speech.lip || (speech.lip = {mo: 0, mr: 0, mw: 0, teeth: 0, tongue: 0, bite: 0, tip: 0, press: 0, at: now}), dt = Math.min(.1, (now - L.at) / 1000); L.at = now;
+      // one side of her mouth leads for a whole sentence, as a real one does
+      const L = speech.lip || (speech.lip = {mo: 0, mr: 0, mw: 0, teeth: 0, tongue: 0, bite: 0, tip: 0, press: 0, mc: 0, cheek: 0, at: now, env: 0, beat: 0, brow: 0, side: Math.random() < .5 ? -1 : 1}), dt = Math.min(.1, (now - L.at) / 1000); L.at = now;
+      // a stressed syllable is one louder than her running level: the jaw drops further, and a beat may lift the brows or blink
+      L.env += (o - L.env) * (1 - Math.exp(-dt / .45));
+      const stress = shut || name === "rest" ? 0 : clamp((o - L.env * 1.15) / .3, 0, 1);
+      if (stress > .55 && now - L.beat > 650) { L.beat = now; L.brow = 1; if (Math.random() < .3 && !eyesShaped()) play("blink"); }
+      L.brow *= Math.exp(-dt / .3);
+      // a hum presses harder with its sound and fills the cheeks a little; corners rise on EE, draw in on O and OO
+      const hum = shut ? clamp(o * 1.4, 0, 1) : 0;
+      const goal = {mo: shut ? -.35 - .12 * hum : name === "rest" ? 0 : (V.mo || 0) * (.6 + .7 * o) * (1 + .3 * stress), mr: (V.mr || 0) * (shut ? 0 : 1), mw: (V.mw || 0) - .04 * hum, teeth: V.teeth || 0, tongue: (V.tongue || 0) * o, bite: V.bite || 0, tip: V.tip || 0, press: shut ? 1 : 0,
+       mc: name === "ee" || name === "etc" ? .08 : name === "oo" || name === "oh" ? -.16 : 0, cheek: .25 * hum};
       // closing for a stop is quick, opening a little slower, the lips' shape slower still
       for (const k in goal) { const tau = k === "mo" ? (goal.mo < L.mo ? .025 : .04) : k === "press" ? .025 : .055; L[k] += (goal[k] - L[k]) * (1 - Math.exp(-dt / tau)); }
       Rv.mo = Math.max(0, Rv.mo + L.mo); Rv.mr += L.mr; Rv.mw += L.mw; Rv.teeth = Math.max(Rv.teeth, L.teeth); Rv.tongue = Math.max(Rv.tongue, L.tongue);
       Rv.bite = Math.max(Rv.bite, L.bite); Rv.tip = Math.max(Rv.tip, L.tip); Rv.press = Math.max(Rv.press, L.press);
+      const talking = clamp(L.env * 2, 0, 1);
+      Rv.mc += L.mc; Rv.cheek += L.cheek; Rv.mt += L.side * .05 * talking; Rv.mx += L.side * .03 * talking;
+      // the head and brows follow her stresses, not the text's guess at them
+      env = L.brow * .9;
       if (name !== speech.vis) { speech.vis = name; speech.hooks.onViseme && speech.hooks.onViseme(name); }
      }
      const VS = live ? [] : (P.vis || []);

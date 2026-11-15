@@ -20,8 +20,12 @@ export type Viseme =
   | "er"
   | "etc";
 
-/** How a sound looks to the aligner: vowel-like (loud, voiced), nasal hum, lip or tongue closure, hiss, other consonant, pause. */
-type Kind = "V" | "N" | "B" | "F" | "C" | "P";
+/**
+ * How a sound looks to the aligner: vowel-like (loud, voiced), the short glide that ends a diphthong (the OO of "ow"),
+ * nasal, a hummed "Mmm" (lips shut however long it lasts),
+ * lip or tongue closure, hiss, other consonant, pause.
+ */
+type Kind = "V" | "G" | "N" | "H" | "B" | "F" | "C" | "P";
 
 export interface SpeechUnit {
   readonly viseme: Viseme;
@@ -45,7 +49,7 @@ const RULES: ReadonlyArray<readonly [string, ReadonlyArray<readonly [Viseme, Kin
     "igh",
     [
       ["aa", "V"],
-      ["ee", "V"],
+      ["ee", "G"],
     ],
   ],
   ["eigh", [["ee", "V"]]],
@@ -77,42 +81,42 @@ const RULES: ReadonlyArray<readonly [string, ReadonlyArray<readonly [Viseme, Kin
     "ou",
     [
       ["aa", "V"],
-      ["oo", "V"],
+      ["oo", "G"],
     ],
   ],
   [
     "ow",
     [
       ["oh", "V"],
-      ["oo", "V"],
+      ["oo", "G"],
     ],
   ],
   [
     "oi",
     [
       ["oh", "V"],
-      ["ee", "V"],
+      ["ee", "G"],
     ],
   ],
   [
     "oy",
     [
       ["oh", "V"],
-      ["ee", "V"],
+      ["ee", "G"],
     ],
   ],
   [
     "ai",
     [
       ["aa", "V"],
-      ["ee", "V"],
+      ["ee", "G"],
     ],
   ],
   [
     "ay",
     [
       ["aa", "V"],
-      ["ee", "V"],
+      ["ee", "G"],
     ],
   ],
   ["oa", [["oh", "V"]]],
@@ -151,7 +155,7 @@ const ONE: Readonly<Record<string, readonly [Viseme, Kind]>> = {
   v: ["fv", "F"],
   l: ["l", "C"],
   r: ["er", "V"],
-  w: ["oo", "V"],
+  w: ["oo", "C"],
   j: ["sh", "F"],
   g: ["etc", "C"],
   c: ["etc", "C"],
@@ -169,6 +173,12 @@ const NUMBERS = ["zero", "one", "two", "three", "four", "five", "six", "seven", 
 
 /** One word's visemes, from its spelling (a light letter-to-sound pass; English only). */
 export const wordUnits = (word: string): SpeechUnit[] => {
+  // hums said with the lips shut: "Mmm", "Hmm", "Mm hm", "Mhm", and the hum at the end of "Umm" and "Erm"
+  const said = word.toLowerCase().replace(/[^a-z]/g, "");
+  const hum: SpeechUnit = { viseme: "mbp", kind: "H" };
+  if (/^(h?m{2,}|hm|mh?m+)$/.test(said)) return [hum];
+  if (/^u+m+$/.test(said)) return [{ viseme: "uh", kind: "V" }, hum];
+  if (/^e+r+m+$/.test(said)) return [{ viseme: "er", kind: "V" }, hum];
   let w = word
     .toLowerCase()
     .replace(/\d/g, (d) => NUMBERS[Number(d)]!)
@@ -240,7 +250,7 @@ export const soundFrames = (samples: Int16Array, rate: number): SoundFrame[] => 
   return frames;
 };
 
-const KINDS: ReadonlyArray<Kind> = ["V", "N", "B", "F", "C", "P"];
+const KINDS: ReadonlyArray<Kind> = ["V", "G", "N", "H", "B", "F", "C", "P"];
 
 /** What each kind costs on a frame: loudness `en` (0 silent, 1 the loudest near it) and hiss `z`. Lower is likelier. */
 const emission = (kind: Kind, en: number, z: number): number => {
@@ -250,11 +260,16 @@ const emission = (kind: Kind, en: number, z: number): number => {
   switch (kind) {
     case "P":
       return 10 * en * en;
+    case "H":
+      // voiced and low: loud enough to be her voice, and not crossing zero like an open vowel
+      return 1.5 * (1 - hum) + 4 * Math.max(0, 0.55 - en) ** 2 + 2 * Math.max(0, hiss - 0.4);
     case "B":
-      // a closure is near silence, but a silence long enough to see is a pause
-      return 0.5 + 6 * en * en + Math.max(0, hiss - 0.5);
+      // a closure is a dip: a voiced B in "maybe" is only 12 to 18 dB under the vowels beside it. A silence long enough
+      // to see is a pause, which its duration limit leaves to "P".
+      return 0.5 + 8 * Math.max(0, en - 0.5) ** 2 + Math.max(0, hiss - 0.5);
     case "V":
-      return 5 * (1 - en) ** 2 + 3 * Math.max(0, hiss - 0.5) + 1.5 * hum;
+    case "G":
+      return 5 * (1 - en) ** 2 + 3 * Math.max(0, hiss - 0.5) + 0.5 * hum;
     case "N":
       return 2 * (en - 0.6) ** 2 + 2 * Math.max(0, hiss - 0.4) + 1.5 * (1 - hum);
     case "F":
@@ -269,7 +284,9 @@ const emission = (kind: Kind, en: number, z: number): number => {
  * A hum can be held ("Mmm"), a pause can be any length, a stop or a T is brief.
  */
 const DURATION: Readonly<Record<Kind, { min: number; max: number; stay: number }>> = {
-  V: { min: 3, max: 20, stay: 0.3 },
+  V: { min: 3, max: 20, stay: 0.1 },
+  G: { min: 2, max: 8, stay: 1 },
+  H: { min: 3, max: 3, stay: 0 },
   N: { min: 2, max: 20, stay: 0.02 },
   B: { min: 2, max: 10, stay: 1 },
   F: { min: 2, max: 15, stay: 0.3 },
@@ -282,32 +299,23 @@ export interface VisemeSegment {
   readonly at: number;
   readonly end: number;
   readonly viseme: Viseme;
+  /** A hum: shut lips the alignment can be sure of before the sound around it has all arrived. */
+  readonly hum?: boolean;
 }
 
+/** Loudness is read against the loudest sound this far back and ahead (frames): a syllable either side, less ahead. */
+const NEAR_BACK = 15;
+const NEAR_AHEAD = 8;
+/** Below this (about -40 dBFS) a sound is quiet whatever is near it: silence never counts as her loudest. */
+const NEAR_FLOOR = 0.01;
+
 /**
- * Forced alignment: the units in order over the frames, a Viterbi path through a left-to-right chain where each
- * unit is a run of states as long as its longest likely duration. `done` false means the audio so far may cover
- * only the start of the text, so the path may end anywhere.
+ * Forced alignment that keeps up with the sound: the units in order, a Viterbi path through a left-to-right chain where
+ * each unit is a run of states as long as its longest likely duration, one step per frame as frames arrive. A frame is
+ * stepped once NEAR_AHEAD frames after it are here (or the sound has ended).
  */
-export const alignVisemes = (
-  units: ReadonlyArray<SpeechUnit>,
-  frames: ReadonlyArray<SoundFrame>,
-  done: boolean,
-): VisemeSegment[] => {
-  const T = frames.length;
+export const createAligner = (units: ReadonlyArray<SpeechUnit>) => {
   const U = units.length;
-  if (T === 0 || U === 0) return [];
-  let peak = 1e-4;
-  for (const f of frames) peak = Math.max(peak, f.rms);
-  // loudness in dB below the loudest within a syllable either side (an unstressed vowel is still a vowel), 0 at
-  // -40 dB; a silence stays silent against her whole sentence
-  const en = new Float64Array(T);
-  for (let t = 0; t < T; t++) {
-    let near = peak * 0.03;
-    for (let i = Math.max(0, t - 15); i < Math.min(T, t + 15); i++)
-      near = Math.max(near, frames[i]!.rms);
-    en[t] = Math.min(1, Math.max(0, 1 + (20 * Math.log10(frames[t]!.rms / near + 1e-9)) / 40));
-  }
   const first = new Int32Array(U + 1);
   for (let u = 0; u < U; u++) first[u + 1] = first[u]! + DURATION[units[u]!.kind].max;
   const S = first[U]!;
@@ -321,61 +329,108 @@ export const alignVisemes = (
   // where a unit may go next: the one after it, or past a pause that can be left out, at that pause's cost
   const skipCost = (u: number) =>
     u < U && units[u]!.skip !== undefined ? units[u]!.skip! : Infinity;
+  const frames: SoundFrame[] = [];
+  const back: Int32Array[] = [];
   let cost = new Float64Array(S).fill(Infinity);
   let next = new Float64Array(S);
-  const back = new Int32Array(T * S);
-  const enter = (s: number, value: number, from: number, row: number) => {
-    if (value < next[s]!) {
-      next[s] = value;
-      back[row + s] = from;
-    }
-  };
   const em = new Float64Array(KINDS.length);
-  for (let t = 0; t < T; t++) {
+  const step = (t: number) => {
+    let near = NEAR_FLOOR;
+    for (let i = Math.max(0, t - NEAR_BACK); i <= Math.min(frames.length - 1, t + NEAR_AHEAD); i++)
+      near = Math.max(near, frames[i]!.rms);
+    const en = Math.min(1, Math.max(0, 1 + (20 * Math.log10(frames[t]!.rms / near + 1e-9)) / 40));
+    const row = new Int32Array(S);
+    back.push(row);
     next.fill(Infinity);
-    const row = t * S;
+    const enter = (s: number, value: number, from: number) => {
+      if (value < next[s]!) {
+        next[s] = value;
+        row[s] = from;
+      }
+    };
     if (t === 0) {
-      enter(0, 0, -1, row);
-      if (U > 1) enter(first[1]!, skipCost(0), -1, row);
+      enter(0, 0, -1);
+      if (U > 1) enter(first[1]!, skipCost(0), -1);
     } else
       for (let s = 0; s < S; s++) {
         const c = cost[s]!;
         if (c === Infinity) continue;
         const u = unitOf[s]!;
         const d = DURATION[units[u]!.kind];
-        if (s === first[u + 1]! - 1) enter(s, c + d.stay, s, row);
-        else enter(s + 1, c, s, row);
+        if (s === first[u + 1]! - 1) enter(s, c + d.stay, s);
+        else enter(s + 1, c, s);
         if (s - first[u]! + 1 < d.min || u + 1 >= U) continue;
-        enter(first[u + 1]!, c, s, row);
-        if (u + 2 < U) enter(first[u + 2]!, c + skipCost(u + 1), s, row);
+        enter(first[u + 1]!, c, s);
+        if (u + 2 < U) enter(first[u + 2]!, c + skipCost(u + 1), s);
       }
-    for (let k = 0; k < KINDS.length; k++) em[k] = emission(KINDS[k]!, en[t]!, frames[t]!.zcr);
+    for (let k = 0; k < KINDS.length; k++) em[k] = emission(KINDS[k]!, en, frames[t]!.zcr);
     for (let s = 0; s < S; s++) {
       const v = next[s]!;
       if (v !== Infinity) next[s] = v + em[kindOf[s]!]!;
     }
     [cost, next] = [next, cost];
-  }
-  // the end: when the sound is all here it ends in the last unit (or the pause before it); otherwise anywhere
-  const canEnd = (s: number) => {
-    const u = unitOf[s]!;
-    if (!done) return true;
-    if (s - first[u]! + 1 < DURATION[units[u]!.kind].min) return false;
-    return u === U - 1 || (u === U - 2 && skipCost(U - 1) < Infinity);
   };
-  let end = -1;
-  for (let s = 0; s < S; s++)
-    if (cost[s]! < Infinity && canEnd(s) && (end < 0 || cost[s]! < cost[end]!)) end = s;
-  if (end < 0) return [];
-  const out: VisemeSegment[] = [];
-  for (let t = T - 1, s = end; t >= 0; t--) {
-    const viseme = units[unitOf[s]!]!.viseme;
-    const head = out[0];
-    if (head !== undefined && head.viseme === viseme) out[0] = { ...head, at: t * ALIGN_HOP_MS };
-    else out.unshift({ at: t * ALIGN_HOP_MS, end: (t + 1) * ALIGN_HOP_MS, viseme });
-    s = back[t * S + s]!;
-  }
-  return out;
+  let ended = false;
+  const catchUp = () => {
+    while (back.length < frames.length && (ended || back.length + NEAR_AHEAD < frames.length))
+      step(back.length);
+  };
+  return {
+    push: (more: ReadonlyArray<SoundFrame>) => {
+      frames.push(...more);
+      if (U > 0) catchUp();
+    },
+    end: () => {
+      ended = true;
+      if (U > 0) catchUp();
+    },
+    /** Frames the path covers so far. */
+    stepped: () => back.length,
+    /** The likeliest path so far: once the sound has ended it must finish the text, before then it may end anywhere. */
+    path: (): VisemeSegment[] => {
+      const T = back.length;
+      if (T === 0 || U === 0) return [];
+      const canEnd = (s: number) => {
+        const u = unitOf[s]!;
+        if (!ended) return true;
+        if (s - first[u]! + 1 < DURATION[units[u]!.kind].min) return false;
+        return u === U - 1 || (u === U - 2 && skipCost(U - 1) < Infinity);
+      };
+      let end = -1;
+      for (let s = 0; s < S; s++)
+        if (cost[s]! < Infinity && canEnd(s) && (end < 0 || cost[s]! < cost[end]!)) end = s;
+      if (end < 0) return [];
+      const out: VisemeSegment[] = [];
+      for (let t = T - 1, s = end; t >= 0; t--) {
+        const unit = units[unitOf[s]!]!;
+        const hum = unit.kind === "H" ? { hum: true } : {};
+        const head = out[0];
+        if (head !== undefined && head.viseme === unit.viseme)
+          out[0] = { ...head, ...hum, at: t * ALIGN_HOP_MS };
+        else
+          out.unshift({
+            at: t * ALIGN_HOP_MS,
+            end: (t + 1) * ALIGN_HOP_MS,
+            viseme: unit.viseme,
+            ...hum,
+          });
+        s = back[t]![s]!;
+      }
+      return out;
+    },
+  };
+};
+
+/** The whole alignment at once. `done` false means the frames may cover only the start of the text. */
+export const alignVisemes = (
+  units: ReadonlyArray<SpeechUnit>,
+  frames: ReadonlyArray<SoundFrame>,
+  done: boolean,
+): VisemeSegment[] => {
+  const aligner = createAligner(units);
+  aligner.push(frames);
+  if (done) aligner.end();
+  return aligner.path();
 };
 
 /** Closed lips must read on screen even when the sound's closure is short: at least this long, taken from before it. */
@@ -401,7 +456,7 @@ export const holdClosures = (track: ReadonlyArray<VisemeSegment>): VisemeSegment
 };
 
 /** The shape at `ms`, or undefined past the track. */
-export const visemeAt = (track: ReadonlyArray<VisemeSegment>, ms: number): Viseme | undefined => {
+const segmentAt = (track: ReadonlyArray<VisemeSegment>, ms: number): VisemeSegment | undefined => {
   let lo = 0;
   let hi = track.length - 1;
   while (lo <= hi) {
@@ -409,47 +464,99 @@ export const visemeAt = (track: ReadonlyArray<VisemeSegment>, ms: number): Visem
     const s = track[mid]!;
     if (ms < s.at) hi = mid - 1;
     else if (ms >= s.end) lo = mid + 1;
-    else return s.viseme;
+    else return s;
   }
   return undefined;
 };
 
-/** The aligner trusts the end of the sound only once this much more has arrived, or the sentence has ended. */
-export const TRUST_MS = 150;
+export const visemeAt = (track: ReadonlyArray<VisemeSegment>, ms: number): Viseme | undefined =>
+  segmentAt(track, ms)?.viseme;
 
 /**
- * One sentence's mouth shapes as its audio streams in: push samples as they arrive, ask for the shape at any ms.
- * Before the alignment can say (the first moments, or audio not yet here) `at` returns undefined and the caller's
- * loudness classifier stands in.
+ * How far ahead of its sound each shape shows (on top of the jaw's own lead): rounding starts earliest, a closure or
+ * teeth on the lip least, since its silence or hiss is already the shape.
+ */
+const LEAD_MS: Readonly<Record<Viseme, number>> = {
+  rest: 40,
+  mbp: 20,
+  fv: 20,
+  th: 20,
+  l: 20,
+  ee: 40,
+  aa: 40,
+  uh: 40,
+  er: 40,
+  etc: 40,
+  sh: 60,
+  oh: 60,
+  oo: 60,
+};
+
+/**
+ * The shape to show for the sound at `ms`: a closure or contact due now, else the furthest-ahead shape whose lead
+ * reaches back to now. A rounding never skips the lips closing before it ("be Bob").
+ */
+const ledAt = (track: ReadonlyArray<VisemeSegment>, ms: number): Viseme | undefined => {
+  for (const lead of [20, 60, 40]) {
+    const v = visemeAt(track, ms + lead);
+    if (v !== undefined && LEAD_MS[v] === lead) return v;
+  }
+  return visemeAt(track, ms + 40);
+};
+
+/** The end of a path that may still change as more sound arrives: not used until this much more has been stepped. */
+export const TRUST_MS = 60;
+
+/**
+ * One sentence's mouth shapes as its audio streams in: push samples as they arrive, ask for the shape at the sound's
+ * ms (the shape's own lead is added here). Where the alignment cannot say yet, `at` returns undefined and the caller's
+ * loudness classifier stands in, except inside a hum, whose lips stay shut from its first frame.
  */
 export const createVisemeTrack = (text: string, rate: number) => {
   const units = speechUnits(text);
-  const frames: SoundFrame[] = [];
+  const aligner = createAligner(units);
+  const step = Math.max(1, Math.round((rate * ALIGN_HOP_MS) / 1000));
   let pending = new Int16Array(0);
   let track: VisemeSegment[] = [];
   let trusted = 0;
-  let alignedAt = 0;
-  const align = (done: boolean) => {
-    track = holdClosures(alignVisemes(units, frames, done));
-    trusted = done ? Infinity : frames.length * ALIGN_HOP_MS - TRUST_MS;
-    alignedAt = frames.length;
+  let pathAt = -1;
+  let ended = false;
+  const live = units.length > 1;
+  // a line that opens with a hum ("Mmm, …") has its lips shut from its first sound, before the path has reached it
+  const opensWithHum = units[1]?.kind === "H";
+  const refresh = () => {
+    if (aligner.stepped() === pathAt) return;
+    pathAt = aligner.stepped();
+    track = holdClosures(aligner.path());
+    trusted = ended ? Infinity : pathAt * ALIGN_HOP_MS - TRUST_MS;
   };
   return {
     push: (samples: Int16Array) => {
-      if (units.length <= 1) return;
+      if (!live) return;
       const all = new Int16Array(pending.length + samples.length);
       all.set(pending);
       all.set(samples, pending.length);
-      const step = Math.round((rate * ALIGN_HOP_MS) / 1000);
       const whole = all.length - (all.length % step);
-      frames.push(...soundFrames(all.subarray(0, whole), rate));
+      aligner.push(soundFrames(all.subarray(0, whole), rate));
       pending = all.slice(whole);
-      // realigning is a few ms; doing it at most every 200 ms of new sound keeps the main process light
-      if ((frames.length - alignedAt) * ALIGN_HOP_MS >= 200) align(false);
     },
     end: () => {
-      if (units.length > 1 && frames.length > 0) align(true);
+      if (!live) return;
+      ended = true;
+      aligner.end();
+      pathAt = -1;
+      refresh();
     },
-    at: (ms: number): Viseme | undefined => (ms < trusted ? visemeAt(track, ms) : undefined),
+    at: (ms: number): Viseme | undefined => {
+      if (!live) return undefined;
+      refresh();
+      if (ms + 60 < trusted) return ledAt(track, ms);
+      // a hum the path has reached goes on until the sound says otherwise
+      const last = track[track.length - 1];
+      const seg = segmentAt(track, ms) ?? (last !== undefined && ms >= last.end ? last : undefined);
+      if (seg?.hum === true) return "mbp";
+      if (opensWithHum && track.every((s) => s.viseme === "rest" || s.hum === true)) return "mbp";
+      return ms < trusted ? visemeAt(track, ms) : undefined;
+    },
   };
 };

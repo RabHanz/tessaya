@@ -265,9 +265,15 @@ export const createSpeaker = (input: {
       })(),
     );
     generating = source.finished;
-    // plain words only: a spliced sigh or laugh is sound the text does not have
-    const plain = pieces.length === 1 && pieces[0]?.kind === "text" ? pieces[0].text : undefined;
-    return { ...source, text: plain };
+    // What the audio says: its words and any sound said as words ("Ha ha."). A spliced breath or pause (one starts most
+    // sentences after the first) is a gap the alignment allows for.
+    const said = pieces.some((p) => p.kind === "text")
+      ? pieces
+          .map((p) => (p.kind === "text" ? p.text : p.sound.kind === "say" ? p.sound.text : ""))
+          .join(" ")
+          .trim()
+      : undefined;
+    return { ...source, text: said };
   };
 
   const run = (raw: string, pick: () => VoiceChoice, force: boolean): Promise<void> => {

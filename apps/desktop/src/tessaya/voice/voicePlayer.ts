@@ -25,11 +25,6 @@ const IDLE_CLOSE_MS = 30_000;
 const HEADER_BYTES = 256;
 /** Each frame's level goes out this far ahead of its sound: her jaw takes about this long to open on it. */
 const MOUTH_LEAD_MS = FRAME_MS;
-/**
- * Her lips take the shape this much further ahead again (80 ms before the sound in all): a mouth forms a sound before
- * it is heard, and a shape placed on the sound reads as late (the animators' "two frames ahead").
- */
-const VISEME_LEAD_MS = 40;
 
 const PLAYER_DOCUMENT = `<!doctype html><meta charset="utf-8"><script>
 let ctx=null,gain=null,vol=1,next=0,rate=24000,live=[],done=null;const LEAD=.12;
@@ -149,7 +144,7 @@ export const createVoicePlayer = (
             const pulse = setTimeout(
               () => {
                 pulses.delete(pulse);
-                const viseme = track?.at(frame.atMs + into + VISEME_LEAD_MS);
+                const viseme = track?.at(frame.atMs + into);
                 onLevel(pcmLevel(frame.pcm), {
                   ...pcmShape(frame.pcm),
                   ...(viseme === undefined ? {} : { viseme }),

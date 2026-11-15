@@ -28,6 +28,11 @@ describe("the mouth shapes a word asks for", () => {
     ["nice", ["etc", "ee", "etc"]],
     ["know", ["etc", "oh", "oo"]],
     ["wow", ["oo", "oh", "oo"]],
+    // hums keep the lips shut however long they last: as written, and as the voice is given them
+    ["Mmm,", ["mbp"]],
+    ["Hmm", ["mbp"]],
+    ["Mhm", ["mbp"]],
+    ["Umm", ["uh", "mbp"]],
   ])("%s", (word, visemes) => {
     expect(wordUnits(word).map((u) => u.viseme)).toEqual(visemes);
   });
@@ -90,6 +95,19 @@ describe("a sentence's shapes as its audio streams in", () => {
     return out;
   };
 
+  it("keeps the lips shut through a hum from its first frame, before the rest of the line has arrived", () => {
+    const rate = 16_000;
+    const pcm = samples(
+      [...silence(10), ...run(150, 0.3, 0.015), ...vowel(20), ...silence(10)],
+      rate,
+    );
+    const track = createVisemeTrack("Mmm, ah", rate);
+    // 300 ms arrived: 200 ms of hum, and nothing of what follows it
+    track.push(pcm.subarray(0, rate * 0.3));
+    expect(track.at(30)).toBe("rest");
+    for (const ms of [110, 200, 280]) expect(track.at(ms)).toBe("mbp");
+  });
+
   it("says nothing until the sound is far enough ahead to trust, and everything once it ends", () => {
     const rate = 16_000;
     const pcm = samples(
@@ -103,7 +121,10 @@ describe("a sentence's shapes as its audio streams in", () => {
     expect(track.at(150)).toBeUndefined();
     track.push(pcm.subarray(rate * 0.25));
     track.end();
-    expect(track.at(330)).toBe("mbp");
+    // the lips close ahead of the closure, and the rounding shows before its vowel but never over the closure
+    expect(track.at(270)).toBe("mbp");
+    expect(track.at(310)).toBe("mbp");
+    expect(track.at(345)).toBe("oh");
     expect(track.at(450)).toBe("oh");
   });
 });

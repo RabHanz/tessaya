@@ -109,6 +109,7 @@ describe("createSpeaker on the OS voice", () => {
       return out;
     };
     const played: number[] = [];
+    const said: Array<string | undefined> = [];
     const speaker = createSpeaker({
       os: { name: "os", speak: async () => {} },
       voice: () => ({
@@ -123,8 +124,9 @@ describe("createSpeaker on the OS voice", () => {
       }),
       player: {
         ...player,
-        play: async (stream) => {
+        play: async (stream, text) => {
           played.push(await drain(stream));
+          said.push(text);
           return true;
         },
       },
@@ -136,6 +138,11 @@ describe("createSpeaker on the OS voice", () => {
     // The first plays as synthesised; the second gets a 170 ms breath and a 70 ms gap before its words.
     expect(played[0]).toBe(44 + 200);
     expect(played[1]).toBe(44 + (4_080 + 1_680) * 2 + 200);
+    // her mouth is aligned to the words either way: the breath is only a gap
+    expect(said).toEqual([
+      "The build passed.",
+      "And the deploy finishes at half past two this afternoon.",
+    ]);
   });
 
   it("gives the voice the respelled line, and keeps the written one for the screen and her echo", async () => {
