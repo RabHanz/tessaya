@@ -36,8 +36,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::keys::{send_chord, PasteMethod};
 use crate::paste_tx::{
-    compare, evaluate, held_at_chord, retry_chord, settle_before_chord, take_over, Held, Seen, TakeOver, TxState,
-    WaitDecision, RESTORE_TIMEOUT, VERIFY_WINDOW,
+    compare, evaluate, held_at_chord, retry_chord, settle_before_chord, take_over, unreadable, Held, Seen, TakeOver,
+    TxState, WaitDecision, RESTORE_TIMEOUT, VERIFY_WINDOW,
 };
 
 fn log(message: &str) {
@@ -541,11 +541,9 @@ pub fn run(
         owner: Mutex::new(0),
     });
 
-    // Read while the clipboard is published and settles, so it adds nothing in a field that answers quickly.
-    let (field_tx, field_rx) = std::sync::mpsc::channel();
-    thread::spawn(move || {
-        let _ = field_tx.send(field_text());
-    });
+    // Read while the clipboard is published and settles; the chord never waits for it.
+    let target = unsafe { GetForegroundWindow() };
+    let before_rx = probe(target.0 as isize);
 
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     let shared_for_pump = shared.clone();
@@ -560,8 +558,7 @@ pub fn run(
     }
     log(&format!("paste: published transcript"));
     let settled = settle_before_chord(|| unsafe { GetOpenClipboardWindow().map(|h| h.0 as isize != 0).unwrap_or(false) }, thread::sleep);
-    let before = field_rx.recv_timeout(FIELD_DEADLINE).ok().flatten();
-    let target = unsafe { GetForegroundWindow() };
+    let before = before_rx.try_recv().ok().flatten();
 
     // Only our own, unchanged transcript is pasted: if anything wrote the clipboard since we published, the chord
     // would paste that under his dictation's name.
@@ -608,15 +605,41 @@ pub fn run(
     Ok(())
 }
 
-/// How many characters before the caret are compared, and how long the paste waits for them before the chord.
+/// How many characters before the caret are compared, and how long one read after the chord may take.
 const FIELD_CHARS: i32 = 120;
-const FIELD_DEADLINE: Duration = Duration::from_millis(150);
+const PROBE_TIMEOUT: Duration = Duration::from_millis(50);
 /// How long after the chord another process holding the clipboard counts as the reason it missed.
 const HOLD_WATCH: Duration = Duration::from_millis(60);
+
+/// Windows whose field UI Automation could not read in time: never read again, so they cost nothing per paste.
+/// shortcut: kept for the sidecar's life by handle; a window that later becomes readable stays skipped.
+static UNREADABLE: Mutex<Vec<isize>> = Mutex::new(Vec::new());
 
 /// The text before the caret in the focused field; None when UI Automation cannot say (or it is a password box).
 fn field_text() -> Option<String> {
     crate::uia::caret_context(FIELD_CHARS).ok()?.get("before")?.as_str().map(str::to_string)
+}
+
+/// Starts one read of the field on its own thread; a window known to be unreadable answers None at once.
+fn probe(target: isize) -> std::sync::mpsc::Receiver<Option<String>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    if UNREADABLE.lock().map(|w| w.contains(&target)).unwrap_or(false) {
+        let _ = tx.send(None);
+        return rx;
+    }
+    thread::spawn(move || {
+        let started = Instant::now();
+        let text = field_text();
+        if unreadable(text.is_none(), started.elapsed()) {
+            if let Ok(mut windows) = UNREADABLE.lock() {
+                if !windows.contains(&target) {
+                    windows.push(target);
+                }
+            }
+        }
+        let _ = tx.send(text);
+    });
+    rx
 }
 
 /// Whether a process other than ours and the target's opened the clipboard just after the chord.
@@ -643,14 +666,15 @@ fn foreign_hold(target: HWND) -> bool {
     }
 }
 
-/// Polls the field until it shows the paste or `VERIFY_WINDOW` passes.
-fn watch_field(before: Option<&str>, from: Instant) -> Seen {
+/// Polls the field until it shows the paste or `VERIFY_WINDOW` passes; a read slower than `PROBE_TIMEOUT` is Unknown.
+fn watch_field(before: Option<&str>, target: isize, from: Instant) -> Seen {
     if before.is_none() {
         return Seen::Unknown;
     }
     loop {
         thread::sleep(Duration::from_millis(50));
-        let seen = compare(before, field_text().as_deref());
+        let after = probe(target).recv_timeout(PROBE_TIMEOUT).ok().flatten();
+        let seen = compare(before, after.as_deref());
         if seen != Seen::Missed || from.elapsed() >= VERIFY_WINDOW {
             return seen;
         }
@@ -663,7 +687,7 @@ fn verify(shared: Arc<WinTxShared>, before: Option<String>, target: HWND, method
     let mut retried = false;
     let mut from = shared.state.lock().ok().and_then(|st| st.injected_at).unwrap_or_else(Instant::now);
     let seen = loop {
-        let seen = watch_field(before.as_deref(), from);
+        let seen = watch_field(before.as_deref(), target.0 as isize, from);
         let still_ours = unsafe {
             GetClipboardSequenceNumber() == *shared.sequence.lock().unwrap() && GetForegroundWindow() == target
         };

@@ -25,6 +25,15 @@ pub const UNREAD_TAKEOVER: Duration = Duration::from_millis(1500);
 /// How long after a chord the field may take to show the words before it counts as missed.
 pub const VERIFY_WINDOW: Duration = Duration::from_millis(500);
 
+/// A read slower than this marks its window as not worth reading again; a cold first read of a field that does
+/// answer (UI Automation loading in the sidecar) is well under it.
+pub const SLOW_READ: Duration = Duration::from_millis(300);
+
+/// Whether one finished read says the window's field cannot be read.
+pub fn unreadable(no_text: bool, took: Duration) -> bool {
+    no_text || took >= SLOW_READ
+}
+
 /// What the focused field showed after the chord.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Seen {
@@ -212,6 +221,13 @@ mod tests {
         assert_eq!(compare(Some(""), Some("")), Seen::Missed);
         assert_eq!(compare(None, Some("hello")), Seen::Unknown);
         assert_eq!(compare(Some("hello "), None), Seen::Unknown);
+    }
+
+    #[test]
+    fn a_field_that_says_nothing_or_answers_slowly_is_not_read_again() {
+        assert!(!unreadable(false, Duration::from_millis(20)));
+        assert!(unreadable(true, Duration::from_millis(5)));
+        assert!(unreadable(false, SLOW_READ));
     }
 
     #[test]
