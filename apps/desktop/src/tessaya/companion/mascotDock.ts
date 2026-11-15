@@ -23,7 +23,99 @@ export interface DisplayArea {
   readonly id: number;
   readonly bounds: Rect;
   readonly workArea: Rect;
+  /** Windows lays mixed-scale screens out physically: there a screen's DIP rect times this is where it really sits. */
+  readonly scaleFactor?: number;
 }
+
+export type Side = "left" | "right" | "top" | "bottom";
+const OPPOSITE: Readonly<Record<Side, Side>> = {
+  left: "right",
+  right: "left",
+  top: "bottom",
+  bottom: "top",
+};
+/** How far apart two screens' sides may be and still touch. */
+const SEAM_PX = 2;
+
+/** The work area reaches the screen's own side there: no taskbar stands in the way. */
+const openSide = (d: DisplayArea, side: Side): boolean => {
+  const b = d.bounds;
+  const w = d.workArea;
+  if (side === "left") return Math.abs(w.x - b.x) <= 1;
+  if (side === "top") return Math.abs(w.y - b.y) <= 1;
+  if (side === "right") return Math.abs(w.x + w.width - (b.x + b.width)) <= 1;
+  return Math.abs(w.y + w.height - (b.y + b.height)) <= 1;
+};
+
+export interface Seam {
+  readonly to: DisplayArea;
+  /** The stretch of the side, in the first screen's DIP, that opens onto `to`. */
+  readonly from: number;
+  readonly until: number;
+  /** Multiplies a DIP point or speed on the first screen into `to`'s DIP (1 when DIP already touch). */
+  readonly k: number;
+}
+
+/**
+ * The screens touching one side of a screen, where nothing blocks the way. Checked in DIP first (macOS, Linux, and
+ * Windows at one scale), then in Windows' physical layout, where screens at mixed scales touch although their DIP
+ * rects leave a gap or overlap.
+ */
+export const seamsOf = (
+  displays: ReadonlyArray<DisplayArea>,
+  d: DisplayArea,
+  side: Side,
+): ReadonlyArray<Seam> => {
+  if (!openSide(d, side)) return [];
+  const along = side === "left" || side === "right";
+  const out: Seam[] = [];
+  for (const other of displays) {
+    if (other === d || !openSide(other, OPPOSITE[side])) continue;
+    for (const physical of [false, true]) {
+      const s1 = physical ? (d.scaleFactor ?? 1) : 1;
+      const s2 = physical ? (other.scaleFactor ?? 1) : 1;
+      if (physical && s1 === s2) continue;
+      const a = d.bounds;
+      const b = other.bounds;
+      const line =
+        side === "right"
+          ? (a.x + a.width) * s1
+          : side === "left"
+            ? a.x * s1
+            : side === "bottom"
+              ? (a.y + a.height) * s1
+              : a.y * s1;
+      const facing =
+        side === "right"
+          ? b.x * s2
+          : side === "left"
+            ? (b.x + b.width) * s2
+            : side === "bottom"
+              ? b.y * s2
+              : (b.y + b.height) * s2;
+      if (Math.abs(line - facing) > SEAM_PX * Math.max(s1, s2)) continue;
+      // The shared stretch, back in the first screen's DIP.
+      const lo = Math.max(along ? a.y * s1 : a.x * s1, along ? b.y * s2 : b.x * s2) / s1;
+      const hi =
+        Math.min(
+          along ? (a.y + a.height) * s1 : (a.x + a.width) * s1,
+          along ? (b.y + b.height) * s2 : (b.x + b.width) * s2,
+        ) / s1;
+      if (hi - lo < 1) continue;
+      out.push({ to: other, from: lo, until: hi, k: s1 / s2 });
+      break;
+    }
+  }
+  return out;
+};
+
+/** The screen across a side of `d` at a point along that side (its y for left or right, its x for top or bottom). */
+export const seamAt = (
+  displays: ReadonlyArray<DisplayArea>,
+  d: DisplayArea,
+  side: Side,
+  along: number,
+): Seam | undefined => seamsOf(displays, d, side).find((s) => along >= s.from && along < s.until);
 
 /** The ground line inside her window, as a share of its height: the rig's ground (112) in its 320-unit view from -168. */
 export const FOOT_SHARE = (112 + 168) / 320;
@@ -55,13 +147,26 @@ export const edgesFor = (input: {
   /** Her window's height, for the room above. */
   readonly size: number;
 }): ReadonlyArray<Edge> => {
-  const floors: Edge[] = input.displays.map((d) => ({
-    kind: "floor",
-    x1: d.workArea.x,
-    x2: d.workArea.x + d.workArea.width,
-    y: d.workArea.y + d.workArea.height,
-    display: d.id,
-  }));
+  // A floor stops only where no screen continues below it: over a screen beneath, she falls on through.
+  const floors: Edge[] = input.displays.flatMap((d) => {
+    let parts: Array<readonly [number, number]> = [[d.workArea.x, d.workArea.x + d.workArea.width]];
+    for (const gap of seamsOf(input.displays, d, "bottom"))
+      parts = parts.flatMap(([a, b]) =>
+        (
+          [
+            [a, Math.min(b, gap.from)],
+            [Math.max(a, gap.until), b],
+          ] as const
+        ).filter(([p, q]) => q - p >= 1),
+      );
+    return parts.map(([x1, x2]) => ({
+      kind: "floor" as const,
+      x1,
+      x2,
+      y: d.workArea.y + d.workArea.height,
+      display: d.id,
+    }));
+  });
   const w = input.window;
   if (w === null) return floors;
   const screen = displayAt(input.displays, w.x + w.width / 2, w.y + 1);
@@ -212,13 +317,17 @@ export const bodyRect = (size: number): Rect => ({
 /** A press let go within this long, having moved less than this far, was a poke, not a carry. */
 const POKE_MS = 350;
 const POKE_PX = 6;
+/** His hand has not moved since he pressed: a poke, or held longer, a squish. */
+export const isStill = (
+  samples: ReadonlyArray<{ readonly x: number; readonly y: number }>,
+): boolean => samples.every((s) => Math.hypot(s.x - samples[0]!.x, s.y - samples[0]!.y) < POKE_PX);
 export const isPoke = (
   samples: ReadonlyArray<{ readonly x: number; readonly y: number; readonly t: number }>,
   pressedAt: number,
   now: number,
-): boolean =>
-  now - pressedAt <= POKE_MS &&
-  samples.every((s) => Math.hypot(s.x - samples[0]!.x, s.y - samples[0]!.y) < POKE_PX);
+): boolean => now - pressedAt <= POKE_MS && isStill(samples);
+/** Held still this long, she is pressed down (a squish) until he lets go or carries her. */
+export const SQUISH_MS = 450;
 
 /**
  * Petting: the cursor stroking back and forth over her body. Its sideways travel over the last 1.5 s, with at least

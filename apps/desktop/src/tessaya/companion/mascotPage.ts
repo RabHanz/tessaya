@@ -32,8 +32,12 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   return { open, shape: open < 0.08 ? "mbp" : open > 0.6 ? "aa" : open > 0.3 ? "oh" : "ee" };
  };
  const forever = { words: [], syl: [], events: [], vis: [], end: 1e9 };
- svg.addEventListener("pointerdown", (e) => { if (e.button === 0) ipc.send("baton-mascot:press"); });
- addEventListener("pointerup", (e) => { if (e.button === 0) ipc.send("baton-mascot:release"); });
+ // captured, so the release still arrives when her window moves out from under a fast hand
+ svg.addEventListener("pointerdown", (e) => { if (e.button !== 0) return; svg.setPointerCapture(e.pointerId); ipc.send("baton-mascot:press"); });
+ const up = (e) => { if (e.button === 0 || e.type !== "pointerup") ipc.send("baton-mascot:release"); };
+ addEventListener("pointerup", up);
+ svg.addEventListener("pointercancel", up);
+ svg.addEventListener("lostpointercapture", up);
  svg.addEventListener("contextmenu", (e) => { e.preventDefault(); ipc.send("baton-mascot:menu"); });
  window.mascot = {
   init(o) {
@@ -68,5 +72,18 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   walk(ms, dir) { if (rig && rig.walk) rig.walk(ms, dir); else if (rig) rig.play("hop"); },
   look(gx, gy) { if (rig && rig.look) rig.look(gx, gy); },
   impact(speed, landed) { if (rig && rig.impact) rig.impact(speed, landed !== false); },
+  press(a) { if (rig && rig.press) rig.press(a); },
+  release() { if (rig && rig.release) rig.release(); },
+  // a funny moment of her own (bodies.js funny, likeliest first) or the one named; what the window must do with it
+  humour(name, can) {
+   if (!rig || !rig.humour) return null;
+   const ok = (n) => (n !== "monocle" || rig.character === "tweed") && (n !== "hang" || (can && can.hang)) && (n !== "peek" || (can && can.peek));
+   if (name && !ok(name)) return null;
+   const list = (rig.physics().funny || []).filter(ok);
+   const pick = name || list[Math.floor(Math.random() * Math.min(2, list.length))];
+   if (!pick) return null;
+   const r = rig.humour(pick);
+   return r === null ? null : Object.assign({ name: pick }, r);
+  },
  };
 })();`;
