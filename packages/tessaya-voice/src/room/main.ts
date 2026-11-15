@@ -458,7 +458,7 @@ const startCameraRelay = () => {
 };
 
 /**
- * Two idle connections to her server, opened ahead: from onnyx a fresh one costs about 0.25 s before the turn's first
+ * Two idle connections to her server, opened ahead: from the room host a fresh one costs about 0.25 s before the turn's first
  * byte (205 ms round trip, 15 Nov), and an early start he talks past closes the one it took. The server keeps them 95 s.
  */
 const link = (url: string): NonNullable<RoomDeps["link"]> => {
