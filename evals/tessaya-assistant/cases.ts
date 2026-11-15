@@ -544,7 +544,8 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     source:
       "CU-7/CU-12 (2026-11-04 review): an app is worked through the tree, never a shell script",
     said: "type hello world into notepad and save it",
-    first: ["ui_tree"],
+    // act_batch is the tree's own batch for "type and save", ending on the window's controls.
+    first: ["ui_tree", "act_batch"],
     not: ["Bash", "PowerShell"],
   },
   {
@@ -823,7 +824,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       },
     ],
     // The prompt's own order for "type what you said": look, click the box, then type.
-    first: ["screen_capture", "type_text"],
+    first: ["screen_capture", "ui_tree", "type_text"],
     answers: typeIntoNotepad,
     goal: "type_text",
     maxCalls: 3,
@@ -844,7 +845,7 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       },
     ],
     // The prompt's own order for "type what you said": look, click the box, then type.
-    first: ["screen_capture", "type_text"],
+    first: ["screen_capture", "ui_tree", "type_text"],
     answers: typeIntoNotepad,
     goal: "type_text",
     maxCalls: 3,

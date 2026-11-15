@@ -37,6 +37,10 @@ describe("the room's tools for a replay", () => {
     expect(replayDryRun("tessaya_pronounce", word, "replay-1")?.text).toContain("nothing was kept");
     expect(replayDryRun("tessaya_pronounce", word, "r1-3d57b3")).toBeNull();
     expect(replayDryRun("settings_set", { key: "holdKeyCues" }, "replay-1")).toBeNull();
+    // A hand-off answers as the real one does, so she never says "nothing changed" aloud (15 Nov suite).
+    expect(replayDryRun("tessaya_persona_handoff", { to: "Onyx" }, "replay-1")?.text).toContain(
+      "Onyx has this conversation now",
+    );
     // The pretend desktop's device acts are answered, never sent.
     const eye = { id: "r1-3d57b3", op: "eye", mood: "happy" };
     expect(replayDryRun("device_act", eye, "replay-desktop")?.isError).toBe(false);
