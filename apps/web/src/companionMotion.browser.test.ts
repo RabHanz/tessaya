@@ -4,6 +4,7 @@ import { fakeTimers } from "../test/render";
 
 interface Rig {
   setExpression: (name: string) => void;
+  speak: (plan: object, hooks: { mouth: () => { open: number; shape: string } }) => void;
   motion: (vx: number, vy: number) => void;
   impact: (speed: number, landed?: boolean) => void;
   look: (gx: number | null, gy?: number) => void;
@@ -72,6 +73,7 @@ const mount = (TCS: Studio, persona: string, character?: string, options: object
   };
   return {
     rig,
+    svg,
     sample,
     frames: (n: number) =>
       Array.from({ length: n }, () => (vi.advanceTimersByTime(1000 / 60), sample())),
@@ -328,4 +330,59 @@ describe("the companion at rest", () => {
     vi.advanceTimersByTime(500);
     expect(m.rig.stats.frames - before).toBeGreaterThan(25);
   });
+});
+
+describe("her mood at rest", () => {
+  // every mood the spine gives her at rest (tessaya-shared affect.ts affectView): a sway fades, her mood's own acts are
+  // beats at her idle cadence, and between them she draws nothing (release smoke, MA-017)
+  it.each([
+    "sleepy",
+    "sulky",
+    "lonely",
+    "proud",
+    "happy",
+    "curious",
+    "frustrated",
+    "sad",
+    "focused",
+  ])("%s: never above 30 a second, still most of a minute", async (mood) => {
+    const TCS = await studio();
+    using _random = vi.spyOn(Math, "random").mockReturnValue(0.999);
+    using _timers = fakeTimers();
+    using m = mount(TCS, "tessaya", undefined, { quiet: false, beatFps: 30, idleEvery: 2 });
+    m.rig.setExpression(mood);
+    vi.advanceTimersByTime(12_000);
+    const perSecond = Array.from({ length: 60 }, () => {
+      const before = m.rig.stats.frames;
+      vi.advanceTimersByTime(1000);
+      return m.rig.stats.frames - before;
+    });
+    expect(Math.max(...perSecond)).toBeLessThanOrEqual(31);
+    expect(perSecond.filter((n) => n === 0).length).toBeGreaterThan(40);
+  });
+});
+
+describe("her mouth on a hum", () => {
+  it.each(["surprised", "sleepy", "thinking"])(
+    "from %s, her lips are shut from the hum's first frame, and from the next sentence's first frame",
+    async (face) => {
+      const TCS = await studio();
+      using _random = vi.spyOn(Math, "random").mockReturnValue(0.999);
+      using _timers = fakeTimers();
+      using m = mount(TCS, "tessaya");
+      m.rig.setExpression(face);
+      vi.advanceTimersByTime(3000);
+      const open = () => m.svg.querySelector('[data-l="mouth-open"]') !== null;
+      // a loud "Mmm": the jaw would open with the sound, the lips stay pressed
+      const hum = { mouth: () => ({ open: 0.8, shape: "mbp" }) };
+      const plan = { words: [], syl: [], events: [], vis: [], end: 1e9 };
+      m.rig.speak(plan, hum);
+      const first = Array.from({ length: 10 }, () => (vi.advanceTimersByTime(1000 / 60), open()));
+      // the line's next sentence opens with a hum too ("Mmm. Mm hm.")
+      m.rig.speak(plan, hum);
+      const next = Array.from({ length: 10 }, () => (vi.advanceTimersByTime(1000 / 60), open()));
+      expect(first).toEqual(Array(10).fill(false));
+      expect(next).toEqual(Array(10).fill(false));
+    },
+  );
 });

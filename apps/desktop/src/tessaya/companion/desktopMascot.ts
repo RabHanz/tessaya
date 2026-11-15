@@ -12,6 +12,9 @@ import * as NodeURL from "node:url";
 import {
   cueFor,
   momentOf,
+  restFaceOf,
+  rigGestureOf,
+  rigMoodOf,
   wanders,
   type CompanionMoment,
   type CompanionMotion,
@@ -172,8 +175,6 @@ export interface CrowdMember {
 }
 export type Crowd = Set<CrowdMember>;
 
-/** A mood weaker than this (TessayaMood intensity, 0 to 1) is her plain rest. */
-const MOOD_SHOWN = 0.2;
 /** A throw at least this fast is one she remarks on. */
 const THROWN_SPEED = 1_500;
 
@@ -189,8 +190,11 @@ export const sayOf = (raw: unknown): { text: string; mood?: string; gesture?: st
       ? (value[k] as string)
       : undefined;
   const text = typeof value["text"] === "string" ? value["text"].slice(0, 120) : "";
-  const mood = word("mood");
-  const gesture = word("gesture");
+  // the brain's names (tessaya-contracts expression.ts) as the rig's
+  const moodWord = word("mood");
+  const gestureWord = word("gesture");
+  const mood = moodWord === undefined ? undefined : rigMoodOf(moodWord);
+  const gesture = gestureWord === undefined ? undefined : rigGestureOf(gestureWord);
   if (text === "" && mood === undefined && gesture === undefined) return null;
   return {
     text,
@@ -414,12 +418,12 @@ export const createDesktopMascot = (input: {
     });
   };
   /** Her mood from the spine (CS6), worn whenever she is at rest; null is her plain rest. */
-  let restMood: string | null = null;
+  let restMood: ReturnType<typeof restFaceOf> = null;
   const cue = (moment: CompanionMoment) => {
     const shown = sleeping ? "asleep" : snoozed() && moment === "rest" ? "asleep" : moment;
     const next = cueFor(shown, options.motion);
     if (next === null) return;
-    const worn = shown === "rest" && restMood !== null ? { ...next, expression: restMood } : next;
+    const worn = shown === "rest" && restMood !== null ? { ...next, ...restMood } : next;
     call(`window.mascot.cue(${JSON.stringify(worn)})`);
   };
 
@@ -1040,11 +1044,8 @@ export const createDesktopMascot = (input: {
       if (win !== null && win.isVisible()) call(`window.mascot.line(${JSON.stringify(text)})`);
     },
     mood: (label, intensity) => {
-      const next =
-        /^[a-z]{2,20}$/.test(label) && label !== "neutral" && intensity >= MOOD_SHOWN
-          ? label
-          : null;
-      if (next === restMood) return;
+      const next = restFaceOf(label, intensity);
+      if (JSON.stringify(next) === JSON.stringify(restMood)) return;
       restMood = next;
       if (
         win !== null &&

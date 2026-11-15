@@ -173,10 +173,10 @@ const NUMBERS = ["zero", "one", "two", "three", "four", "five", "six", "seven", 
 
 /** One word's visemes, from its spelling (a light letter-to-sound pass; English only). */
 export const wordUnits = (word: string): SpeechUnit[] => {
-  // hums said with the lips shut: "Mmm", "Hmm", "Mm hm", "Mhm", and the hum at the end of "Umm" and "Erm"
+  // hums said with the lips shut: "Mmm", "Hmm", "Mm-hmm", "Mhm", "Mmmh", and the hum at the end of "Umm" and "Erm"
   const said = word.toLowerCase().replace(/[^a-z]/g, "");
   const hum: SpeechUnit = { viseme: "mbp", kind: "H" };
-  if (/^(h?m{2,}|hm|mh?m+)$/.test(said)) return [hum];
+  if (said.length > 1 && /^[hm]*m[hm]*$/.test(said)) return [hum];
   if (/^u+m+$/.test(said)) return [{ viseme: "uh", kind: "V" }, hum];
   if (/^e+r+m+$/.test(said)) return [{ viseme: "er", kind: "V" }, hum];
   let w = word

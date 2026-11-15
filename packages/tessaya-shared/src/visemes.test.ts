@@ -37,6 +37,20 @@ describe("the mouth shapes a word asks for", () => {
     expect(wordUnits(word).map((u) => u.viseme)).toEqual(visemes);
   });
 
+  // a hum holds the lips shut as long as it sounds; an M inside a word opens again for the next sound
+  it.each([
+    ["Mmm,", ["H"]],
+    ["Hmmm.", ["H"]],
+    ["Mm-hmm.", ["H"]],
+    ["Mmhm", ["H"]],
+    ["Mmmh…", ["H"]],
+    ["Erm", ["V", "H"]],
+    // a lone M (an initial) is the nasal of a word, not a hum
+    ["M.", ["N"]],
+  ])("%s holds its hum", (word, kinds) => {
+    expect(wordUnits(word).map((u) => u.kind)).toEqual(kinds);
+  });
+
   it("puts a pause between words, one costly to leave out at a full stop", () => {
     const pauses = speechUnits("Oh, wow. Bob").filter((u) => u.kind === "P");
     expect(pauses.map((u) => u.skip)).toEqual([0, 3, 8, 0]);
