@@ -194,6 +194,38 @@ describe("the room's live tool suite", () => {
     );
   });
 
+  it("fails an open question's answer that runs long, leaves out the read, or offers more on a yes-or-no (L-brief, 16 Nov)", () => {
+    const fleet: LiveCall = {
+      name: "tessaya_fleet",
+      input: {},
+      isError: false,
+      text: JSON.stringify({ machines: [{ name: "build-box", state: "busy", load: "high" }] }),
+    };
+    const slow = liveCases.find((c) => c.id === "brief-why-slow")!;
+    const failure = (reply: string) => liveFailureOf(slow, {}, [reply], [fleet]);
+    expect(
+      failure(
+        "The build box is busy with a heavy load, so everything queues behind it. Want the rest?",
+      ),
+    ).toBeNull();
+    expect(failure("Things feel slow sometimes. Want the rest?")).toMatch(/nothing from what/);
+    expect(
+      failure(
+        "The build box is busy with a heavy load right now, which slows every session on it, and two builds are queued behind the running one, and the web search is waiting too.",
+      ),
+    ).toMatch(/words before any offer/);
+    const stuck = liveCases.find((c) => c.id === "brief-yes-no")!;
+    const watch: LiveCall = {
+      ...fleet,
+      name: "tessaya_watch",
+      text: JSON.stringify({ needs: [] }),
+    };
+    expect(liveFailureOf(stuck, {}, ["No, nothing is stuck."], [watch])).toBeNull();
+    expect(liveFailureOf(stuck, {}, ["No, nothing is stuck. Want the rest?"], [watch])).toMatch(
+      /offered more/,
+    );
+  });
+
   it("has a case for every tool the room can call, so a new tool fails until it has one", async () => {
     const { ROOM_TOOL_SPECS } = await import("../../apps/server/src/home/R1Tools.ts");
     expect(uncovered([...ROOM_TOOL_SPECS.map((s) => s.name), "room_look"])).toEqual([]);
