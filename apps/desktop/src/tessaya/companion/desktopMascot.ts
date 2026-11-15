@@ -15,6 +15,7 @@ import {
   wanders,
   type CompanionMoment,
   type CompanionMotion,
+  type MascotAct,
 } from "@t3tools/tessaya-shared/companion";
 import type { TurnPhase } from "@t3tools/tessaya-shared/voiceTurn";
 import type { Persona } from "@t3tools/tessaya-shared/osPack";
@@ -100,26 +101,41 @@ export const parseMascotPersona = (value: unknown): string =>
     ? value.toLowerCase()
     : "tessaya";
 
-/** What she can be asked to do: a gesture, one of her funny moments, or a place to go. */
-export const MASCOT_ACTS = [
-  "hop",
-  "wave",
-  "nod",
-  "funny",
-  "sneeze",
-  "yawn",
-  "dizzy",
-  "doubleTake",
-  "slip",
-  "flat",
-  "hang",
-  "peek",
-  "window",
-  "taskbar",
-  "otherScreen",
-] as const;
-export type MascotAct = (typeof MASCOT_ACTS)[number];
 const ACT_CLIPS: Partial<Record<MascotAct, string>> = { hop: "hop", wave: "wave", nod: "nodSmall" };
+
+/** What he does to her body that her persona may answer (tessaya-shared LINE_EVENTS). */
+export type MascotMoment =
+  | "moment.poked"
+  | "moment.squished"
+  | "moment.thrown"
+  | "moment.petted"
+  | "moment.screen";
+/** One answer at a time, and none sooner than this after the last: a flurry of pokes gets one line. */
+const MOMENT_GAP_MS = 6_000;
+/** A throw at least this fast is one she remarks on. */
+const THROWN_SPEED = 1_500;
+
+/** The brain's answer as the page shows it: words, a face and a gesture; anything else is dropped. */
+export const sayOf = (raw: unknown): { text: string; mood?: string; gesture?: string } | null => {
+  const r = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const value = (typeof r["value"] === "object" && r["value"] !== null ? r["value"] : r) as Record<
+    string,
+    unknown
+  >;
+  const word = (k: string) =>
+    typeof value[k] === "string" && /^[A-Za-z]{1,20}$/.test(value[k] as string)
+      ? (value[k] as string)
+      : undefined;
+  const text = typeof value["text"] === "string" ? value["text"].slice(0, 120) : "";
+  const mood = word("mood");
+  const gesture = word("gesture");
+  if (text === "" && mood === undefined && gesture === undefined) return null;
+  return {
+    text,
+    ...(mood === undefined ? {} : { mood }),
+    ...(gesture === undefined ? {} : { gesture }),
+  };
+};
 
 export interface MascotOptions {
   readonly on: boolean;
@@ -205,6 +221,11 @@ export const createDesktopMascot = (input: {
   readonly stateDir: string;
   readonly openSettings: () => void;
   readonly onNote?: (kind: string, detail: Record<string, unknown>) => void;
+  /**
+   * What he did to her body, for the brain to word in her persona (the voice door's `express`). The physics never waits
+   * on it; a failure leaves her own reaction alone.
+   */
+  readonly express?: (event: MascotMoment) => Promise<unknown>;
 }): DesktopMascot => {
   const file = NodePath.join(input.stateDir, "baton-mascot.json");
   let saved = readSaved(file);
@@ -372,6 +393,7 @@ export const createDesktopMascot = (input: {
       if (next.petted && now - pettedAt > 3000) {
         pettedAt = now;
         react("pet");
+        moment("moment.petted");
       }
     } else if (strokes.points.length > 0) strokes = { points: [] };
     // within reach she watches the cursor; past it she looks ahead again
@@ -547,9 +569,32 @@ export const createDesktopMascot = (input: {
     Electron.Menu.buildFromTemplate(items).popup(win === null ? {} : { window: win });
   };
 
+  /** The screen she was on when he picked her up, so a carry to another one is a moment. */
+  let pickedFrom: number | undefined;
+  let lastMoment = 0;
+  let asking = false;
+  /** His act on her goes to the spine; her answer, when it comes, plays over whatever she does then. */
+  const moment = (event: MascotMoment) => {
+    const now = Date.now();
+    if (input.express === undefined || asking || now - lastMoment < MOMENT_GAP_MS) return;
+    lastMoment = now;
+    asking = true;
+    void input
+      .express(event)
+      .then((answer) => {
+        const said = sayOf(answer);
+        if (said !== null) call(`window.mascot.say(${JSON.stringify(said)})`);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        asking = false;
+      });
+  };
+
   /** Thrown or let go: she flies under the physics until she rests on an edge, then nothing runs. */
-  const fling = (start: Flight) => {
+  const fling = (start: Flight, byHand = false) => {
     stopMoving();
+    const thrown = Math.hypot(start.vx, start.vy) > THROWN_SPEED;
     const every = displays();
     const from = screenOf(every, start.x, start.y - size() / 4);
     const screens = options.screens === "one" && from !== undefined ? [from] : every;
@@ -591,6 +636,9 @@ export const createDesktopMascot = (input: {
       save({ x, placed: edge.kind === "floor" });
       target.setBounds(box(standAt(edge, x, size())));
       cue(momentOf(phase) ?? "rest");
+      if (byHand && pickedFrom !== undefined && edge.display !== pickedFrom)
+        moment("moment.screen");
+      else if (byHand && thrown) moment("moment.thrown");
     }, DRAG_MS);
   };
 
@@ -605,6 +653,7 @@ export const createDesktopMascot = (input: {
       call(`window.mascot.release()`);
       react("poke");
       if (edge !== null) target.setBounds(box(standAt(edge, x, size())));
+      moment("moment.squished");
       return;
     }
     if (isPoke(samples, pressedAt, Date.now())) {
@@ -612,16 +661,20 @@ export const createDesktopMascot = (input: {
       call(`window.mascot.motion(0,0)`);
       react("poke");
       if (edge !== null) target.setBounds(box(standAt(edge, x, size())));
+      moment("moment.poked");
       return;
     }
     if (options.motion !== "important" && !options.reduced) {
       const b = target.getBounds();
-      return fling({
-        x: b.x + size() / 2,
-        y: b.y + size() * FOOT_SHARE,
-        ...throwVelocity(samples),
-        on: null,
-      });
+      return fling(
+        {
+          x: b.x + size() / 2,
+          y: b.y + size() * FOOT_SHARE,
+          ...throwVelocity(samples),
+          on: null,
+        },
+        true,
+      );
     }
     const drop = dropAt(edges(), target.getBounds(), size());
     edge = drop.edge;
@@ -631,6 +684,7 @@ export const createDesktopMascot = (input: {
     glide(drop.spot, 10, () => {
       call(`window.mascot.play("hop")`);
       cue(momentOf(phase) ?? "rest");
+      if (pickedFrom !== undefined && drop.edge.display !== pickedFrom) moment("moment.screen");
     });
   };
 
@@ -639,6 +693,7 @@ export const createDesktopMascot = (input: {
     const target = win;
     if (!mine(event) || target === null || dragging !== null) return;
     stopMoving();
+    pickedFrom = edge?.display;
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
     // a brief reaction in her own way: her face, never her mood's colour

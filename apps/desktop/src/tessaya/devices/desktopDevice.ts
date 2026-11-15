@@ -9,6 +9,8 @@ import * as NodeChildProcess from "node:child_process";
 
 import type { DeviceItem, DeviceManifest, DeviceWrite } from "@t3tools/tessaya-contracts";
 
+import { MASCOT_ACTS, isMascotAct } from "@t3tools/tessaya-shared/companion";
+
 import type { HomeControl } from "../home/tessayaHome.ts";
 
 /** Voice choices that are this machine's hardware, as registry items. */
@@ -179,6 +181,15 @@ export const desktopManifest = (input: {
       item("comms.note", "Messages", "action", "comms", "shows a message from someone at home", {
         access: "write",
       }),
+      // The desktop companion: the brain or an agent has her do something or go somewhere (desktopMascot.ts act).
+      item(
+        MASCOT_ITEM,
+        "Desktop companion",
+        "enum",
+        "companion",
+        "has her character on this computer's desktop do a gesture or a funny moment, or go to his window, the taskbar or the other screen",
+        { access: "write", values: [...MASCOT_ACTS] },
+      ),
       item("screen.list", "Screens", "string", "system", "the screens connected to this computer"),
       item(
         "power.on_battery",
@@ -309,6 +320,8 @@ export const desktopValues = (
   return out;
 };
 
+export const MASCOT_ITEM = "mascot.do";
+
 /** A write for one of its items, as the voice setting it changes; null for an item it does not take writes on. */
 export const settingOfWrite = (
   write: Pick<DeviceWrite, "itemId" | "value">,
@@ -364,6 +377,8 @@ export const startDesktopDevice = (input: {
   readonly applySetting: (id: string, value: string) => void;
   /** A message from someone at home, as the server rendered it for this computer. */
   readonly onNote: (note: unknown) => void;
+  /** The desktop companion asked to act; false when she is not on the desktop or cannot now. */
+  readonly onMascot: (act: (typeof MASCOT_ACTS)[number]) => boolean;
   /** Calls `poke` when something it reads changed (a screen, power, lock); returns how to stop. */
   readonly onChange: (poke: () => void) => () => void;
 }) => {
@@ -414,6 +429,14 @@ export const startDesktopDevice = (input: {
         if (w.itemId === "comms.note") {
           input.onNote(w.value);
           acks.push({ id: w.id, ok: true });
+          continue;
+        }
+        if (w.itemId === MASCOT_ITEM) {
+          acks.push(
+            isMascotAct(w.value) && input.onMascot(w.value)
+              ? { id: w.id, ok: true }
+              : { id: w.id, ok: false, error: "She is not on the desktop right now." },
+          );
           continue;
         }
         const setting = settingOfWrite(w);

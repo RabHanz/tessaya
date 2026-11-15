@@ -17,6 +17,7 @@ import { describe, expect } from "vite-plus/test";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
+import { TessayaExpression } from "./TessayaExpression.ts";
 import * as TessayaVoiceLibrary from "./TessayaVoiceLibrary.ts";
 
 const memorySecrets = () => {
@@ -73,6 +74,49 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
         assert.isTrue(after.previews.cloud);
       }),
     ),
+  );
+
+  it.effect(
+    "words a vessel's moment through the one expression service, in the persona asked",
+    () =>
+      withLibrary(() =>
+        Effect.gen(function* () {
+          const asked: Array<unknown> = [];
+          const lines = Layer.succeed(TessayaExpression, {
+            express: (event, input) =>
+              Effect.sync(() => {
+                asked.push([event, input?.persona]);
+                return {
+                  event,
+                  persona: input?.persona ?? "executive",
+                  text: "Gently, if you please.",
+                  mood: "surprised" as const,
+                  gesture: "giggleOnce" as const,
+                  intensity: 0.4,
+                  priority: "ambient" as const,
+                  source: "cache" as const,
+                  lineId: "x",
+                };
+              }),
+            ahead: () => Effect.succeed({ on: false, lines: {} }),
+            writeAhead: () => Effect.succeed(0),
+          });
+          const said = yield* call("act", "express", {
+            event: "moment.poked",
+            persona: "butler",
+          }).pipe(Effect.provide(lines));
+          assert.deepStrictEqual(asked, [["moment.poked", "butler"]]);
+          assert.strictEqual((said.value as { text: string }).text, "Gently, if you please.");
+          // Not one of her moments, and a server without the service, say nothing.
+          assert.isFalse(
+            (yield* call("act", "express", { event: "rm -rf" }).pipe(Effect.provide(lines))).ok,
+          );
+          assert.deepStrictEqual(yield* call("act", "express", { event: "moment.poked" }), {
+            ok: true,
+            value: null,
+          });
+        }),
+      ),
   );
 
   it.effect("writes a persona's voices into his own pack file and reads them back", () =>

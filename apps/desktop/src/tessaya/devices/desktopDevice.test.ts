@@ -6,6 +6,7 @@ import {
   desktopManifest,
   desktopValues,
   settingOfWrite,
+  startDesktopDevice,
   type DesktopFacts,
 } from "./desktopDevice.ts";
 
@@ -90,5 +91,48 @@ describe("the desktop's manifest", () => {
     expect(settingOfWrite({ itemId: "audio.input", value: "Automatic" })).toEqual(["v.mic", ""]);
     expect(settingOfWrite({ itemId: "mic.awake", value: "off" })).toEqual(["v.micAwake", "off"]);
     expect(settingOfWrite({ itemId: "screen.list", value: "x" })).toBeNull();
+  });
+});
+
+describe("the desktop as a vessel", () => {
+  it("hands a write to its companion to the mascot and acks whether she could", async () => {
+    const asked: Array<string> = [];
+    const sent: Array<Record<string, unknown>> = [];
+    let answered: (() => void) | null = null;
+    const acked = new Promise<void>((resolve) => (answered = resolve));
+    const device = startDesktopDevice({
+      publish: (body) => {
+        sent.push(body);
+        if (sent.length === 1)
+          return Promise.resolve({
+            writes: [
+              { id: "w1", itemId: "mascot.do", value: "wave" },
+              { id: "w2", itemId: "mascot.do", value: "otherScreen" },
+              { id: "w3", itemId: "mascot.do", value: "explode" },
+            ],
+          });
+        answered?.();
+        return new Promise(() => undefined);
+      },
+      deviceId: "desktop-test",
+      name: "Test",
+      appVersion: "0",
+      platform: "linux",
+      facts: () => ({ controls: [], screens: [], onBattery: false, locked: false, idleSeconds: 0 }),
+      applySetting: () => undefined,
+      onNote: () => undefined,
+      onMascot: (act) => (asked.push(act), act === "wave"),
+      onChange: () => () => undefined,
+    });
+    await acked;
+    device.stop();
+    expect(asked).toEqual(["wave", "otherScreen"]);
+    expect(sent[1]?.["acks"]).toEqual([
+      { id: "w1", ok: true },
+      { id: "w2", ok: false, error: "She is not on the desktop right now." },
+      { id: "w3", ok: false, error: "She is not on the desktop right now." },
+    ]);
+    const manifest = sent[0]?.["manifest"] as { items: Array<{ id: string; values?: unknown }> };
+    expect(manifest.items.find((i) => i.id === "mascot.do")?.values).toContain("peek");
   });
 });

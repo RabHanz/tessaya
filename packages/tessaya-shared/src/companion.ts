@@ -136,3 +136,25 @@ export const jobMoments = (
     return [{ moment, title: job.title }];
   });
 };
+
+/** What the desktop mascot can be asked to do (the device registry's `mascot.do`): a gesture, a funny moment, a place. */
+export const MASCOT_ACTS = [
+  "hop",
+  "wave",
+  "nod",
+  "funny",
+  "sneeze",
+  "yawn",
+  "dizzy",
+  "doubleTake",
+  "slip",
+  "flat",
+  "hang",
+  "peek",
+  "window",
+  "taskbar",
+  "otherScreen",
+] as const;
+export type MascotAct = (typeof MASCOT_ACTS)[number];
+export const isMascotAct = (value: unknown): value is MascotAct =>
+  typeof value === "string" && (MASCOT_ACTS as ReadonlyArray<string>).includes(value);
