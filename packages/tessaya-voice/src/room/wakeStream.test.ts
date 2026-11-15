@@ -12,7 +12,11 @@ const frame = (v: number) => {
 };
 
 /** Scores "Tessaya" 1.0 on a chunk carrying the marker value 7, else 0. */
-const rig = (heard: string | ReadonlyArray<string>, now?: () => number) => {
+const rig = (
+  heard: string | ReadonlyArray<string> | (() => string),
+  now?: () => number,
+  kwsWake?: ReadonlyArray<{ word: string; threshold: number }>,
+) => {
   const confirmed: number[] = [];
   const woken: string[] = [];
   const lines: string[] = [];
@@ -28,11 +32,13 @@ const rig = (heard: string | ReadonlyArray<string>, now?: () => number) => {
     }),
     confirm: async (pcm) => {
       confirmed.push(pcm.length);
-      return typeof heard === "string" ? [heard] : heard;
+      const said = typeof heard === "function" ? heard() : heard;
+      return typeof said === "string" ? [said] : said;
     },
     onWake: (id, word) => woken.push(`${id} ${word}`),
     log: (line) => lines.push(line),
     ...(now === undefined ? {} : { now }),
+    ...(kwsWake === undefined ? {} : { kwsWake }),
   });
   return { stream, confirmed, woken, lines };
 };
@@ -55,6 +61,40 @@ describe("waking her by name with no session open", () => {
     t.stream.frame("r1", frame(7));
     await t.stream.drained("r1");
     expect(t.woken).toEqual(["r1 Tessaya", "r1 Tessaya"]);
+  });
+
+  it("on a Tessel that sends its own kws, its pass decides her name on the whole segment and openWakeWord only logs (W2, 15 Nov)", async () => {
+    let heard = "Hey Tessaya.";
+    const t = rig(() => heard, undefined, [{ word: "Tessaya", threshold: 0.9 }]);
+    const segment = async (seg: number, kws: { pass: boolean; best: number }, kwsFirst = false) => {
+      const event = { seg, name: "tessaya", score: 0, ...kws };
+      if (kwsFirst) t.stream.kws("r1", event);
+      for (let i = 0; i < 4; i += 1) t.stream.frame("r1", frame(7));
+      t.stream.end("r1", seg);
+      if (!kwsFirst) t.stream.kws("r1", event);
+      await t.stream.drained("r1");
+    };
+    // Before its first kws event the Tessel is woken by openWakeWord, as before.
+    await segment(1, { pass: true, best: 0.95 });
+    expect(t.woken).toEqual(["r1 Tessaya"]);
+    // Then openWakeWord's fire alone wakes nothing; the kws pass after the end does, confirmed on the whole segment.
+    await segment(2, { pass: true, best: 0.95 });
+    expect(t.woken).toEqual(["r1 Tessaya", "r1 Tessaya"]);
+    expect(t.confirmed.at(-1)).toBe(4 * 960);
+    await segment(3, { pass: false, best: 0.2 });
+    await segment(4, { pass: true, best: 0.6 });
+    expect(t.woken).toHaveLength(2);
+    // Sure enough to need no text, whichever of the end and the kws event comes first.
+    const asked = t.confirmed.length;
+    await segment(5, { pass: true, best: 0.9995 }, true);
+    expect(t.woken).toHaveLength(3);
+    expect(t.confirmed.length).toBe(asked);
+    heard = "Testing again.";
+    await segment(6, { pass: true, best: 0.95 });
+    expect(t.woken).toHaveLength(3);
+    expect(t.lines.join("\n")).toMatch(
+      /Tessaya kws pass \(kws 0\.950\/0\.9, segment 0\.2 s\), not confirmed/,
+    );
   });
 
   it("hears the next segment when the one that woke her never ended (15 Nov soak: every other name opened nothing)", async () => {
