@@ -31,7 +31,13 @@ import { createLines, type LinesGot } from "./lines.ts";
 import { voicesOf } from "./segments.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
-import { noteTime, pickRecogniser, turnAcross, type RecogniserState } from "./recognisers.ts";
+import {
+  noteTime,
+  pickRecogniser,
+  recognisersFor,
+  turnAcross,
+  type RecogniserState,
+} from "./recognisers.ts";
 import { createProfileSync, parseShared } from "./profileSync.ts";
 import {
   createRoomVoice,
@@ -172,16 +178,33 @@ const WARM_CLIP = Int16Array.from({ length: 9_600 }, (_, i) => ((i * 7919) % 401
 
 /** His recognisers (`R1_RECOGNIZERS=url=tokenfile,...`), each turn to the quickest lately (recognisers.ts). */
 const recognisers = (online: () => boolean) => {
-  const list = (
-    process.env["R1_RECOGNIZERS"] ??
-    `${env("R1_RECOGNIZER_URL")}=${env("R1_RECOGNIZER_TOKEN_FILE")}`
-  )
-    .split(",")
-    .map((pair) => {
-      const [url, file] = pair.split("=") as [string, string];
-      return { url: url.trim(), token: NodeFS.readFileSync(file.trim(), "utf8").trim() };
-    });
-  let states: RecogniserState[] = list.map((r) => ({ url: r.url, queue: 0, recent: [] }));
+  const parse = (pairs: string, personal: boolean) =>
+    pairs
+      .split(",")
+      .filter((pair) => pair.trim() !== "")
+      .map((pair) => {
+        const [url, file] = pair.split("=") as [string, string];
+        return {
+          url: url.trim(),
+          token: NodeFS.readFileSync(file.trim(), "utf8").trim(),
+          personal,
+        };
+      });
+  // `R1_PERSONAL_RECOGNIZERS`: the same service running his own model, for his verified turns only (recognisersFor).
+  const list = [
+    ...parse(
+      process.env["R1_RECOGNIZERS"] ??
+        `${env("R1_RECOGNIZER_URL")}=${env("R1_RECOGNIZER_TOKEN_FILE")}`,
+      false,
+    ),
+    ...parse(process.env["R1_PERSONAL_RECOGNIZERS"] ?? "", true),
+  ];
+  let states: RecogniserState[] = list.map((r) => ({
+    url: r.url,
+    queue: 0,
+    recent: [],
+    personal: r.personal,
+  }));
   const refresh = async () => {
     const queues = await Promise.all(list.map((r) => health(r.url, r.token)));
     states = states.map((s, i) => ({ ...s, queue: queues[i] ?? null }));
@@ -205,10 +228,13 @@ const recognisers = (online: () => boolean) => {
       void turn.finish().then(() => turn.failed() || timed(r.url, performance.now() - at));
     }
   }, 45_000);
-  return (): RecogniserTurn =>
+  return (owner = false): RecogniserTurn =>
     turnAcross(
       (tried) => {
-        const pool = states.filter((s) => !tried.has(s.url));
+        const pool = recognisersFor(
+          states.filter((s) => !tried.has(s.url)),
+          owner,
+        );
         const chosen = pickRecogniser(pool, Date.now()) ?? pool[0];
         if (chosen === undefined) return null;
         const token = list.find((r) => r.url === chosen.url)!.token;
@@ -731,8 +757,8 @@ const main = async () => {
   const heard = recognisers(() => online.size > 0);
   // The room's words get dictation's own name correction, with the personas he can call (one ear on every vessel).
   const fix = (text: string) => biasTranscript(text, [], { names: roster.map((p) => p.name) });
-  const recognise = (): RecogniserTurn => {
-    const turn = heard();
+  const recognise = (who?: { readonly owner: boolean }): RecogniserTurn => {
+    const turn = heard(who?.owner);
     return {
       ...turn,
       finish: async () => fix(await turn.finish()),

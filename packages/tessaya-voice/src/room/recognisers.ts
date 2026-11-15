@@ -10,7 +10,19 @@ export interface RecogniserState {
   readonly queue: number | null;
   /** Its last few end-of-speech-to-text times and when each was taken (epoch ms), newest last. */
   readonly recent: ReadonlyArray<{ readonly ms: number; readonly at: number }>;
+  /** Runs his own fine-tuned model: it hears only his held voice, since it writes words from faint or other voices. */
+  readonly personal?: boolean;
 }
+
+/** The recognisers a turn may use: his personal ones when it is his voice and one answers, else the general ones. */
+export const recognisersFor = (
+  states: ReadonlyArray<RecogniserState>,
+  owner: boolean,
+): ReadonlyArray<RecogniserState> => {
+  const general = states.filter((s) => s.personal !== true);
+  const mine = owner ? states.filter((s) => s.personal === true && s.queue !== null) : [];
+  return mine.length > 0 ? mine : general;
+};
 
 /** Times older than this stop counting, so a recogniser that was slow once is tried again rather than never. */
 export const STALE_MS = 60_000;
