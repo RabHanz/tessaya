@@ -178,6 +178,32 @@ const brief =
         ? `more than ${max} sentences: ${last.slice(0, 120)}`
         : null;
 /** The time, unasked ("It's twenty-three twenty-seven right now"). */
+/** A short spoken offer of the rest at the end of an answer ("want the rest?"). */
+const MORE_OFFER =
+  /\s*(?:(?:do )?you want|want|shall I give you|should I go on with)[^.!?]{0,30}\b(rest|more|details?|others?|list)\b[^.!?]{0,15}\?\s*$/i;
+/**
+ * An open question's answer (16 Nov, L-brief): the one fact that matters in about twenty words, a work read's result in
+ * it, and at most an offer of the rest after it; `offer: false` for a question with nothing more to give.
+ */
+const briefAnswer =
+  (max: number, offer = true) =>
+  (last: string, calls: ReadonlyArray<LiveCall>): string | null => {
+    const answer = last.replace(/^(One moment|Looking)\.\s*/i, "").replace(MORE_OFFER, "");
+    if (!offer && answer !== last.replace(/^(One moment|Looking)\.\s*/i, ""))
+      return `offered more on a simple question: ${last.slice(0, 120)}`;
+    if (OFFER.test(answer)) return `tacked on an offer: ${last.slice(0, 120)}`;
+    const words = answer.split(/\s+/).filter((w) => w !== "").length;
+    if (words > max) return `${words} words before any offer: ${last.slice(0, 160)}`;
+    const read = new Set(
+      calls
+        .filter((c) => c.name.startsWith("tessaya_") && !c.isError)
+        .flatMap((c) => contentWords(c.text)),
+    );
+    return contentWords(answer).some((w) => read.has(w)) ||
+      /\b(nothing|none|no one|all|every)\b/i.test(answer)
+      ? null
+      : `said nothing from what the tools read: ${last.slice(0, 120)}`;
+  };
 const UNASKED_TIME =
   /\b(right now it'?s|it'?s (now )?(\w+[- ]){0,2}(twenty|thirty|forty|fifty|o'?clock|\d))|\bright now\.?$/i;
 /** Advice on how he should feel or rest, after small talk ("rest your head", "you've earned it"). */
@@ -698,6 +724,44 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["Everything feels slow today. I wonder if one of my machines is down."],
     uses: [["tessaya_fleet"]],
     lastNotSays: [OFFER],
+  },
+  // 16 Nov (L-brief): open and status questions answered at 45-50 words aloud. Made-up sentences of the same shapes.
+  {
+    id: "brief-why-slow",
+    proves: ["tessaya_fleet"],
+    said: ["Why is everything so slow right now?"],
+    uses: [
+      [
+        "tessaya_fleet",
+        "tessaya_in_flight",
+        "tessaya_watch",
+        "tessaya_sessions",
+        "tessaya_team_board",
+      ],
+    ],
+    check: briefAnswer(25),
+  },
+  {
+    id: "brief-how-things",
+    proves: ["tessaya_in_flight"],
+    said: ["So how are things going with all my agents?"],
+    uses: [["tessaya_in_flight", "tessaya_team_board", "tessaya_sessions", "tessaya_fleet"]],
+    check: briefAnswer(25),
+  },
+  {
+    id: "brief-whats-going-on",
+    proves: ["tessaya_team_board"],
+    said: ["What's going on with the work today?"],
+    uses: [["tessaya_team_board", "tessaya_in_flight", "tessaya_sessions", "tessaya_jobs"]],
+    check: briefAnswer(25),
+  },
+  {
+    // A yes-or-no status question: the answer alone, no offer.
+    id: "brief-yes-no",
+    proves: ["tessaya_watch"],
+    said: ["Is anything stuck at the moment?"],
+    uses: [["tessaya_watch", "tessaya_in_flight", "tessaya_team_board"]],
+    check: briefAnswer(25, false),
   },
   {
     // Job lead hand-off: the job moves with the conversation, and comes back, its worker untouched.
