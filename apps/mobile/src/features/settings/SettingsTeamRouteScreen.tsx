@@ -26,6 +26,7 @@ import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilt
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
+import { StandingYesesSection } from "./StandingYesesSection";
 
 const QUIET = { reportFailure: false } as const;
 
@@ -44,13 +45,21 @@ export function SettingsTeamRouteScreen() {
         {selectedTargets.length === 0 ? (
           <Text className="text-foreground-muted">Connect an environment to see the team.</Text>
         ) : (
-          selectedTargets.map((environment) => (
-            <TeamSection
-              key={environment.environmentId}
-              environmentId={environment.environmentId}
-              label={selectedTargets.length > 1 ? environment.label : null}
-            />
-          ))
+          selectedTargets.flatMap((environment) => {
+            const label = selectedTargets.length > 1 ? environment.label : null;
+            return [
+              <TeamSection
+                key={environment.environmentId}
+                environmentId={environment.environmentId}
+                label={label}
+              />,
+              <StandingYesesSection
+                key={`${environment.environmentId}:yeses`}
+                environmentId={environment.environmentId}
+                label={label}
+              />,
+            ];
+          })
         )}
       </ScreenScrollView>
     </SettingsScreen>
