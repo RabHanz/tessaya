@@ -62,6 +62,35 @@ export const pcmLevel = (pcm: Buffer): number => {
   return count === 0 ? 0 : Math.min(1, Math.sqrt(sum / count) * 3.2);
 };
 
+/**
+ * The sound of one short frame of her voice, for her mouth's shape (the Character Studio's lipsync.js reads the same
+ * from an analyser): how often it crosses zero (hiss: s, t, f) and how much of it is high frequency (bright: e, i;
+ * dark: o, u), as the share of the signal's energy in its sample-to-sample change.
+ */
+export interface VoiceShape {
+  readonly zcr: number;
+  readonly bright: number;
+}
+export const pcmShape = (pcm: Buffer): VoiceShape => {
+  let crossings = 0;
+  let energy = 0;
+  let change = 0;
+  let last = 0;
+  const n = pcm.length >> 1;
+  for (let i = 0; i < n; i++) {
+    const v = pcm.readInt16LE(i * 2) / 32768;
+    if (i > 0) {
+      if (v >= 0 !== last >= 0) crossings++;
+      change += (v - last) * (v - last);
+    }
+    energy += v * v;
+    last = v;
+  }
+  return n < 2 || energy === 0
+    ? { zcr: 0, bright: 0 }
+    : { zcr: crossings / n, bright: Math.min(1, change / (4 * energy)) };
+};
+
 /** Reads ahead into memory, so generation runs on while the sentence before is still playing. */
 const readAhead = (
   source: AsyncIterable<Buffer>,

@@ -616,6 +616,7 @@ export interface ScreenCompanion {
   /** An unprompted line: a card, and aloud when asked and spoken answers are on. */
   /** Shown in full; when spoken, `spoken` is said instead of the whole text (a job's answer is only announced). */
   readonly announce: (text: string, speak: boolean, spoken?: string) => void;
+  readonly speak: (text: string) => boolean;
   /** Spoken answers are off. */
   readonly writtenOnly: () => boolean;
   readonly voice: () => PocketVoice | "system";
@@ -3958,6 +3959,7 @@ export const startScreenCompanion = (input: {
       if (speak) say(spoken ?? text);
       linger("Tessaya", text);
     },
+    speak: (text) => say(text),
     writtenOnly: () => settings.output === "written",
     remoteHands: {
       enabled: () => settings.remoteHands || settings.serverBrain,

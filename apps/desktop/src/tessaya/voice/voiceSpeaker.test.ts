@@ -7,6 +7,7 @@ import { pocketPlan } from "./pocketVoice.ts";
 import {
   createSpeaker,
   pcmLevel,
+  pcmShape,
   speakableText,
   wavFormat,
   type VoiceChoice,
@@ -344,6 +345,26 @@ describe("reading a streamed WAV", () => {
     expect(pcmLevel(Buffer.alloc(64))).toBe(0);
     const loud = Buffer.from(new Int16Array(32).fill(16_000).buffer);
     expect(pcmLevel(loud)).toBeGreaterThan(0.9);
+  });
+});
+
+describe("her mouth's shape from the sound", () => {
+  const pcm = (f: (i: number) => number) => {
+    const b = Buffer.alloc(960 * 2);
+    for (let i = 0; i < 960; i++) b.writeInt16LE(Math.round(f(i) * 20000), i * 2);
+    return b;
+  };
+  it("tells a dark vowel, a bright one and a hiss apart, and silence from all three", () => {
+    const rate = 24_000;
+    const oo = pcmShape(pcm((i) => Math.sin((2 * Math.PI * 300 * i) / rate)));
+    const ee = pcmShape(pcm((i) => Math.sin((2 * Math.PI * 2400 * i) / rate)));
+    let seed = 3;
+    const ss = pcmShape(pcm(() => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1));
+    expect(oo.bright).toBeLessThan(ee.bright);
+    expect(oo.zcr).toBeLessThan(0.05);
+    expect(ss.zcr).toBeGreaterThan(0.22);
+    expect(ss.bright).toBeGreaterThan(0.35);
+    expect(pcmShape(Buffer.alloc(960 * 2))).toEqual({ zcr: 0, bright: 0 });
   });
 });
 

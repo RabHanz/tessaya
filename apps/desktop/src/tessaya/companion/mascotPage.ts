@@ -23,15 +23,30 @@ export const MASCOT_SCRIPT = String.raw`(() => {
  };
  window.cancelAnimationFrame = () => { queued = []; };
  const svg = document.getElementById("c");
- let rig = null, persona = "", peak = 0.02, level = 0, speaking = false;
+ let rig = null, persona = "", level = 0, sound = { zcr: 0, bright: 0 }, speaking = false;
  const ipc = window.mascotIpc;
- ipc.onLevel((v) => { level = v; peak = Math.max(v, peak * 0.995); });
- // Her mouth from her own voice's level: louder opens wider, the quietest closes it.
+ ipc.onLevel((v, shape) => { level = v; if (shape) sound = shape; });
+ // Her mouth from the sound she is playing, as the Character Studio's lipsync.js reads it: the level opens the jaw (fast
+ // attack, slow release, gated and normalised to this voice's running peak); hiss, brightness against her own average
+ // and darkness pick one of its six shapes, each held at least 45 ms.
+ let cal, jaw, lastM, shapeNow, hold;
+ const calibrate = () => { cal = { peak: 0.02, mean: 0, sd: 0.08, n: 0 }; jaw = 0; lastM = performance.now(); shapeNow = "mbp"; hold = 0; };
+ calibrate();
  const mouth = () => {
-  const open = level < peak * 0.08 ? 0 : Math.min(1, Math.pow(level / (peak * 0.85), 0.7));
-  return { open, shape: open < 0.08 ? "mbp" : open > 0.6 ? "aa" : open > 0.3 ? "oh" : "ee" };
+  const now = performance.now(), dt = Math.min(0.05, (now - lastM) / 1000); lastM = now;
+  cal.peak = Math.max(level, cal.peak * Math.pow(0.5, dt / 4));
+  const gate = level < Math.max(0.004, cal.peak * 0.08);
+  const target = gate ? 0 : Math.min(1, Math.pow(level / (cal.peak * 0.85), 0.7));
+  jaw += (target - jaw) * (1 - Math.exp(-dt / (target > jaw ? 0.03 : 0.085)));
+  if (!gate) { cal.n++; const k = Math.max(0.02, 1 / cal.n); if (cal.n === 1) cal.mean = sound.bright; cal.mean += (sound.bright - cal.mean) * k; cal.sd += (Math.abs(sound.bright - cal.mean) - cal.sd) * k; }
+  const z = (sound.bright - cal.mean) / Math.max(0.03, cal.sd * 1.25);
+  const next = gate || jaw < 0.08 ? "mbp" : sound.zcr > 0.22 && sound.bright > 0.35 ? "st" : sound.zcr > 0.14 && sound.bright > 0.25 && jaw < 0.45 ? "fv" : z < -0.55 ? "oh" : z > 0.55 ? "ee" : "aa";
+  hold -= dt; if (next !== shapeNow && hold <= 0) { shapeNow = next; hold = 0.045; }
+  return { open: jaw, shape: shapeNow };
  };
  const forever = { words: [], syl: [], events: [], vis: [], end: 1e9 };
+ let lineNext = "";
+ const planOf = (text) => typeof TCS.plan === "function" ? Object.assign({}, TCS.plan(String(text).slice(0, 600)), { vis: [], end: 1e9 }) : forever;
  // captured, so the release still arrives when her window moves out from under a fast hand
  svg.addEventListener("pointerdown", (e) => { if (e.button !== 0) return; svg.setPointerCapture(e.pointerId); ipc.send("baton-mascot:press"); });
  const up = (e) => { if (e.button === 0 || e.type !== "pointerup") ipc.send("baton-mascot:release"); };
@@ -48,23 +63,32 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    const B = TCS.PERSONAS[b.persona] || TCS.PERSONAS.custom;
    const P = { character: b.character || B.character, traits: Object.assign({}, B.traits, b.traits) };
    const key = JSON.stringify(P);
+   if (rig && rig.handMode !== o.hands) rig.setHandMode(o.hands);
    if (rig && persona === key) return;
    persona = key;
    if (rig) { rig.setCharacter(P.character); rig.setPersonality(P.traits); return; }
-   rig = TCS.create(svg, { character: P.character, personality: P.traits, expression: "neutral", intensity: 0.85, quiet: o.quiet, reduced: o.reduced });
+   rig = TCS.create(svg, { character: P.character, personality: P.traits, expression: "neutral", intensity: 0.85, quiet: o.quiet, reduced: o.reduced, hands: o.hands });
   },
   cue(c) {
    if (!rig) return;
    still = c.expression === "asleep" ? 6 : c.expression === "thinking" ? 15 : Infinity;
    if (!speaking) fps = still;
-   rig.setExpression(c.expression, { noCut: c.expression === "neutral", brief: !!c.brief });
+   const name = TCS.EXPRESSIONS[c.expression] ? c.expression : "neutral";
+   rig.setExpression(name, { noCut: name === "neutral", brief: !!c.brief });
    if (c.clip) rig.play(c.clip);
    if (c.fx) rig.spawn(c.fx);
   },
   speak(on) {
    if (!rig || on === speaking) return;
    speaking = on; fps = on ? 30 : still;
-   if (on) { peak = 0.02; rig.speak(forever, { mouth }); } else rig.stopSpeech();
+   if (on) { calibrate(); rig.speak(lineNext ? planOf(lineNext) : forever, { mouth }); lineNext = ""; } else rig.stopSpeech();
+  },
+  // the sentence now sounding: her gestures and feelings land on its words by meaning (speech.js), her mouth stays on
+  // the audio; the plan never ends on its own, the sound does
+  line(text) {
+   if (!rig) return;
+   if (!speaking) { lineNext = String(text); return; }
+   rig.speak(planOf(text), { mouth });
   },
   play(name) { if (rig) rig.play(name); },
   motion(vx, vy) { if (rig && rig.motion) rig.motion(vx, vy); },
