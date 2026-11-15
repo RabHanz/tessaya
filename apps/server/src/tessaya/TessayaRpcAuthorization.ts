@@ -28,6 +28,7 @@ import {
   BATON_JOB_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
+  BATON_CONSENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
@@ -185,6 +186,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_LEARN_WS_METHODS.call]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
+  [BATON_CONSENT_WS_METHODS.list]: AuthOrchestrationReadScope,
+  [BATON_CONSENT_WS_METHODS.set]: AuthOrchestrationOperateScope,
   // The desktop relay takes and answers the phone's asks: operate.
   [BATON_PHONE_WS_METHODS.call]: AuthOrchestrationOperateScope,
   // Memory (D150): reading and searching are reads. Every write is operate-level, and so is
@@ -295,6 +298,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_DESKTOP_SETTINGS_WS_METHODS.sync,
   BATON_COMMITMENT_WS_METHODS.list,
   BATON_COMMITMENT_WS_METHODS.upsert,
+  BATON_CONSENT_WS_METHODS.list,
+  BATON_CONSENT_WS_METHODS.set,
   BATON_WEAVE_WS_METHODS.send,
   BATON_WEAVE_WS_METHODS.list,
   BATON_CLOUD_WS_METHODS.read,
@@ -393,6 +398,9 @@ export const missingTessayaScope = (
   // A home call's kind sets its scope: acting is operate, his yes is the approval scope.
   const homeKind =
     tag === BATON_HOME_WS_METHODS.call ? (fields as { kind?: unknown }).kind : undefined;
+  // Revoking a standing yes is operate; giving one is his yes, as a card's is.
+  if (tag === BATON_CONSENT_WS_METHODS.set && (fields as { allow?: unknown }).allow === true)
+    desktopOnly.push(AuthTessayaCloudApproveScope);
   if (homeKind === "act") desktopOnly.push(AuthOrchestrationOperateScope);
   else if (homeKind === "answer") desktopOnly.push(AuthTessayaCloudApproveScope);
   else if (homeKind !== undefined && homeKind !== "read") return AuthOrchestrationOperateScope;

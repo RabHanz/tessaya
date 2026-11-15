@@ -21,6 +21,7 @@ import {
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
+  BATON_CONSENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
@@ -246,6 +247,14 @@ export function createTessayaWorkSessionAtoms<R, E>(
     commitmentsUpsert: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:commitments-upsert",
       tag: BATON_COMMITMENT_WS_METHODS.upsert,
+    }),
+    consentList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:consent-list",
+      tag: BATON_CONSENT_WS_METHODS.list,
+    }),
+    consentSet: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:consent-set",
+      tag: BATON_CONSENT_WS_METHODS.set,
     }),
     phoneCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:phone-call",

@@ -14,6 +14,7 @@ export * from "./sessionState.ts";
 export * from "./synopsis.ts";
 export * from "./jobs.ts";
 export * from "./commitments.ts";
+export * from "./consent.ts";
 export * from "./phone.ts";
 export * from "./desktopState.ts";
 export * from "./desktopSettings.ts";

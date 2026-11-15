@@ -85,12 +85,23 @@ const handsOrigin = (origin: TurnOriginValue): HandsOrigin => ({
  * His yes in the desktop's own approval box, for a desk turn running here; "unreachable" when the desktop is not
  * listening or does not answer, so the caller asks his phone instead.
  */
-export const askHisYes = (hands: HandsBroker, origin: TurnOriginValue, what: string) =>
+export const askHisYes = (
+  hands: HandsBroker,
+  origin: TurnOriginValue,
+  what: string,
+  /** A standing-yes key: the box offers "Always allow", answered "always". */
+  key: string | null = null,
+) =>
   Effect.promise(() =>
-    hands.call(`turn:${origin.label}`, HIS_YES, { what }, handsOrigin(origin)),
+    hands.call(
+      `turn:${origin.label}`,
+      HIS_YES,
+      key === null ? { what } : { what, key },
+      handsOrigin(origin),
+    ),
   ).pipe(
-    Effect.map((r): "yes" | "no" | "unreachable" =>
-      !r.ok ? "unreachable" : r.text === "yes" ? "yes" : "no",
+    Effect.map((r): "yes" | "always" | "no" | "unreachable" =>
+      !r.ok ? "unreachable" : r.text === "yes" || r.text === "always" ? r.text : "no",
     ),
   );
 

@@ -224,6 +224,12 @@ import {
   TessayaCommitmentUpsertResult,
 } from "./commitments.ts";
 import {
+  BATON_CONSENT_WS_METHODS,
+  TessayaConsentListInput,
+  TessayaConsentResult,
+  TessayaConsentSetInput,
+} from "./consent.ts";
+import {
   BATON_PHONE_WS_METHODS,
   TessayaPhoneCallInput,
   TessayaPhoneCallResult,
@@ -509,6 +515,17 @@ const WsTessayaCommitmentUpsertRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.upsert
   payload: TessayaCommitmentUpsertInput,
   success: TessayaCommitmentUpsertResult,
   error: CommitmentErrors,
+});
+
+const WsTessayaConsentListRpc = Rpc.make(BATON_CONSENT_WS_METHODS.list, {
+  payload: TessayaConsentListInput,
+  success: TessayaConsentResult,
+  error: EnvironmentAuthorizationError,
+});
+const WsTessayaConsentSetRpc = Rpc.make(BATON_CONSENT_WS_METHODS.set, {
+  payload: TessayaConsentSetInput,
+  success: TessayaConsentResult,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsTessayaPhoneCallRpc = Rpc.make(BATON_PHONE_WS_METHODS.call, {
@@ -1056,6 +1073,8 @@ const BATON_RPCS = [
   WsTessayaWeaveTickRpc,
   WsTessayaCommitmentListRpc,
   WsTessayaCommitmentUpsertRpc,
+  WsTessayaConsentListRpc,
+  WsTessayaConsentSetRpc,
   WsTessayaPhoneCallRpc,
   WsTessayaSessionsListRpc,
   WsTessayaSessionsFoldersRpc,
