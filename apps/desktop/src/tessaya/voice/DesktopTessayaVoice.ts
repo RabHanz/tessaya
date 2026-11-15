@@ -6933,16 +6933,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     markPhase(`home-state:${name}`);
     return [];
   };
-  const homeState = (): HomeState => ({
-    status: {
-      label: hudView(state).label,
-      tone: state === "muted" ? "off" : state === "sleeping" ? "idle" : "good",
-      device: deviceName(),
-      mark: markSvg(markOptions()),
-      brandMark: brandMarkSvg(),
-    },
-    extra: homeExtra(),
-    controls: [
+  // The device and remote-settings loops need only the controls, not the status mark or Home extras.
+  const homeControls = (): HomeState["controls"] => {
+    const recordingBytes = spaceUsed(audioDir);
+    return [
       ...at("approvals"),
       ...approvalControls(
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
@@ -7412,12 +7406,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         id: "v.keepSpace",
         section: "Voice recordings",
         label: "Space used",
-        hint: `${(spaceUsed(audioDir) / 1024 ** 2).toFixed(1)} MB of recordings. ${
+        hint: `${(recordingBytes / 1024 ** 2).toFixed(1)} MB of recordings. ${
           keepNote ?? "Saving pauses if the drive drops under 5 GB free."
         }`,
         kind: "action",
         button: "Delete all recordings",
-        disabled: spaceUsed(audioDir) === 0,
+        disabled: recordingBytes === 0,
       },
       {
         id: "v.appearance",
@@ -7968,7 +7962,18 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         button: "Open",
         more: true,
       },
-    ],
+    ];
+  };
+  const homeState = (): HomeState => ({
+    status: {
+      label: hudView(state).label,
+      tone: state === "muted" ? "off" : state === "sleeping" ? "idle" : "good",
+      device: deviceName(),
+      mark: markSvg(markOptions()),
+      brandMark: brandMarkSvg(),
+    },
+    extra: homeExtra(),
+    controls: homeControls(),
   });
 
   // Idle, sleep and screen-lock all end here: the window must show locked at once.
@@ -9209,7 +9214,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       sync: (body) => direct(BATON_DESKTOP_SETTINGS_WS_METHODS.sync, body, 30_000),
       current: () => settings,
       apply: applyHome,
-      controls: () => homeState().controls,
+      controls: homeControls,
       ...(input.onGrants === undefined ? {} : { onGrants: input.onGrants }),
     });
     const remoteLoop = () =>
@@ -9234,7 +9239,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       appVersion: input.appVersion,
       platform: input.platform,
       facts: () => ({
-        controls: homeState().controls,
+        controls: homeControls(),
         screens: Electron.screen
           .getAllDisplays()
           .map((d) => `${d.label || "Screen"} ${d.size.width}x${d.size.height}`),
