@@ -513,6 +513,11 @@ describe("checkRewrite on his 15 Nov refusals", () => {
     });
   });
 
+  it("passes a recogniser's capitals put right, and still refuses a name made lower case", () => {
+    expect(checkRewrite("Can Kaggle do Ci tasks", "Can Kaggle do CI tasks?")).toEqual({ ok: true });
+    expect(checkRewrite("Pay Stripe today please", "Pay stripe today please.").ok).toBe(false);
+  });
+
   it("passes two of his words written as one name", () => {
     expect(
       checkRewrite(

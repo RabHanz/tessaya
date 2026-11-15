@@ -743,8 +743,11 @@ export const checkRewrite = (
       output,
     );
   // Or joined to the word beside it, as one of his words is written: "Launch Pad" became "LaunchPad".
+  // A recogniser's "Gb" or "Ci" written as GB or CI survives; a lone letter joins its number ("F three five" as F35).
   const survives = (name: string) =>
     whole(name) ||
+    whole(name.toUpperCase()) ||
+    name.length === 1 ||
     inputWords.some(
       (w, i) =>
         w === name &&
