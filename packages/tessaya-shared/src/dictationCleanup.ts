@@ -30,7 +30,7 @@ export const MODE_LABELS: Readonly<Record<DictationMode, string>> = {
 };
 
 import type { StylePair } from "./stylePairs.ts";
-import { joinSplitTerms, promptTerms, soundsLike, withOwnWords } from "./vocabulary.ts";
+import { joinSplitTerms, promptTerms, soundKey, soundsLike, withOwnWords } from "./vocabulary.ts";
 import { NAME_SOUNDALIKES } from "./wakeVerify.ts";
 
 /** What was on his screen as he spoke: names the recogniser has never heard of (Wispr sends the same). */
@@ -841,7 +841,8 @@ export const checkRewrite = (
       !said(term.replace(/\s+/g, "")) &&
       !(d.heard ?? []).some(said) &&
       !heardAs(term) &&
-      !inputWords.some((w) => oneLetterOff(w, term))
+      // One letter off as written or as said: "Quilon" for Quillon, "Kegle" for Kaggle.
+      !inputWords.some((w) => oneLetterOff(w, term) || oneLetterOff(soundKey(w), soundKey(term)))
     )
       return fail(`new term ${term}`);
   }

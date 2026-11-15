@@ -571,6 +571,17 @@ describe("checkRewrite on his 15 Nov refusals", () => {
         "So what is going on now and what is next? And what about the Kaggle state? Are things happening there?",
       ),
     ).toEqual({ ok: true });
+    // The same with Kaggle among his learned words, as on his laptop, where it was still refused as a new term.
+    expect(
+      checkRewrite("What about the Kegle State?", "What about the Kaggle state?", [
+        { phrase: "Kaggle", replacement: null },
+      ]),
+    ).toEqual({ ok: true });
+    expect(
+      checkRewrite("What about the Bob State?", "What about the Kaggle state?", [
+        { phrase: "Kaggle", replacement: null },
+      ]).ok,
+    ).toBe(false);
     expect(
       checkRewrite(
         "This can be a setting whether she is confined In the same monitor when thrown.",
