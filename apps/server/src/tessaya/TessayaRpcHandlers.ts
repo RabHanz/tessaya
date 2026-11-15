@@ -10,6 +10,7 @@
  * server without Baton's layer answers `fabric.*` with a defect naming why.
  */
 import { teamBoard } from "./TessayaTeamBoard.ts";
+import { readGrants, setGrant } from "./consent.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
@@ -19,6 +20,7 @@ import {
   BATON_INTENT_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
+  BATON_CONSENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
@@ -715,6 +717,9 @@ export const makeHandlers = Effect.gen(function* () {
           Effect.map(commitments.upsert(input.items), (applied) => ({ applied })),
         ),
       ),
+    [BATON_CONSENT_WS_METHODS.list]: () => run(Effect.map(readGrants, (keys) => ({ keys }))),
+    [BATON_CONSENT_WS_METHODS.set]: (input) =>
+      run(Effect.map(setGrant(input.key, input.allow), (keys) => ({ keys }))),
     [BATON_MEMORY_WS_METHODS.list]: (input) =>
       run(
         Effect.flatMap(TessayaMemoryService, (memory) =>

@@ -127,20 +127,40 @@ describe("the room's tools for a replay", () => {
   it("judges a job act by the desktop's own table: a schedule waits for his phone, a stop needs only his voice", () => {
     expect(jobVerdict("job_start", { project: "acme", goal: "fix it" }, false)).toBe("allow");
     expect(jobVerdict("job_stop", { id: "job-1" }, false)).toBe("allow");
-    expect(jobVerdict("job_schedule", { id: "job-1", every_minutes: 60 }, false)).toBe("card");
-    expect(jobVerdict("job_schedule", { id: "job-1", every_minutes: 0 }, false)).toBe("card");
+    expect(jobVerdict("job_schedule", { id: "job-1", every_minutes: 60 }, false)).toHaveProperty(
+      "card",
+    );
+    expect(jobVerdict("job_schedule", { id: "job-1", every_minutes: 0 }, false)).toHaveProperty(
+      "card",
+    );
     // Agreeing after reading something is never the model's own idea: his yes on a card.
-    expect(jobVerdict("job_agree", { id: "job-1" }, true)).toBe("card");
+    expect(jobVerdict("job_agree", { id: "job-1" }, true)).toHaveProperty("card");
     expect(jobVerdict("home_do", {}, true)).toBe("allow");
     // A new project and deleting a schedule wait for his phone; a run-now and a cloud request (its own card) do not.
-    expect(jobVerdict("project_add", { repository: "acme/app" }, false)).toBe("card");
-    expect(jobVerdict("schedule_delete", { id: "t1" }, false)).toBe("card");
+    expect(jobVerdict("project_add", { repository: "acme/app" }, false)).toHaveProperty("card");
+    expect(jobVerdict("schedule_delete", { id: "t1" }, false)).toHaveProperty("card");
     expect(jobVerdict("schedule_run_now", { id: "t1" }, false)).toBe("allow");
     expect(jobVerdict("cloud_dispatch", { repo: "acme/app" }, false)).toBe("allow");
     // The prompt lab: trying variants is free to ask for; making one live, or rolling back, waits for his yes.
     expect(jobVerdict("tessaya_prompt_lab", { action: "run" }, false)).toBe("allow");
-    expect(jobVerdict("tessaya_prompt_lab", { action: "promote" }, false)).toBe("card");
-    expect(jobVerdict("tessaya_prompt_lab", { action: "rollback" }, false)).toBe("card");
+    expect(jobVerdict("tessaya_prompt_lab", { action: "promote" }, false)).toHaveProperty("card");
+    expect(jobVerdict("tessaya_prompt_lab", { action: "rollback" }, false)).toHaveProperty("card");
+    // The turn's persona narrows it, as on the desktop: only the lead hands out work, and only from its own tools.
+    const freya = { name: "Freya", lead: false, tools: ["job_list", "job_stop"] };
+    expect(jobVerdict("job_start", { project: "acme", goal: "fix it" }, false, freya)).toEqual({
+      refused: "Only the lead hands out work, and Freya is not the lead.",
+    });
+    expect(jobVerdict("job_agree", { id: "job-1" }, false, freya)).toEqual({
+      refused: "job_agree is not one of Freya's tools.",
+    });
+    expect(jobVerdict("job_stop", { id: "job-1" }, false, freya)).toBe("allow");
+    expect(
+      jobVerdict("job_start", { project: "acme", goal: "fix it" }, false, {
+        ...freya,
+        lead: true,
+        tools: null,
+      }),
+    ).toBe("allow");
     // Starting work is the owner's (machine reach, A2): a lower voice is held for a step-up.
     expect(stepUpNeeds("job_start", 1)).toBe(2);
     expect(stepUpNeeds("job_stop", 2)).toBeNull();

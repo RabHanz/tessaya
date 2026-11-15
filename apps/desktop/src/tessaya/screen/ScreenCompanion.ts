@@ -134,7 +134,7 @@ import {
 import { createOutsideSlot } from "../agent/outsideSlot.ts";
 import { type MemberRole, voiceAssurance } from "@t3tools/tessaya-shared/household";
 import type { TrustPrincipal } from "@t3tools/tessaya-shared/trust";
-import { createTurnLock, deviceMayLook, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
+import { createTurnLock, headless, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 import type { DesktopStateInput } from "../phone/desktopState.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
@@ -144,6 +144,8 @@ import {
   type HandsResult,
   type HandsToolSpec,
 } from "@t3tools/tessaya-shared/remoteHands";
+import { LOOK_GRANT, lookAsks, withGrant } from "@t3tools/tessaya-shared/consent";
+import { BATON_CONSENT_WS_METHODS } from "@t3tools/tessaya-contracts";
 import {
   sessionWithOwnMcp,
   startTessayaMcp,
@@ -247,8 +249,13 @@ interface ScreenSettings {
   readonly volume: number;
   /** Low-risk work runs with no Run it box and no spoken yes. Off until he turns it on. */
   readonly actWithoutAsking: boolean;
-  /** His standing yeses ("don't ask me again"), as the gate keys them; turning Act without asking off clears them. */
+  /**
+   * His standing yeses ("don't ask me again"), as the gate keys them: this desktop's copy of his server's one list
+   * (`baton.consent.*`), with a look at the screen kept as `captureApproval`. Turning Act without asking off clears them.
+   */
   readonly alwaysAllowed: ReadonlyArray<string>;
+  /** This desktop's own yeses went up to his server once; after that the server's list wins. */
+  readonly grantsShared: boolean;
   /** A remote session the Director gave baton:hands may drive this computer (REMOTE_HANDS.md). Off until he turns it on. */
   readonly remoteHands: boolean;
   /** He is away: a remote call that would ask him is refused instead, since nobody can answer. */
@@ -288,6 +295,7 @@ const DEFAULTS: ScreenSettings = {
   volume: 1,
   actWithoutAsking: false,
   alwaysAllowed: [],
+  grantsShared: false,
   remoteHands: false,
   remoteHandsAway: false,
   serverBrain: false,
@@ -797,6 +805,37 @@ export const startScreenCompanion = (input: {
     writeJsonFile(settingsPath, changedFrom(settings, DEFAULTS));
     input.onChange?.();
   };
+
+  // His standing yeses live on his server, so a yes given on the Tessel, phone or web holds here and the reverse.
+  const adoptGrants = (keys: ReadonlyArray<string>) => {
+    const looks = keys.includes(LOOK_GRANT) ? "always" : "ask";
+    const rest = keys.filter((k) => k !== LOOK_GRANT);
+    if (looks !== settings.captureApproval || rest.join("\n") !== settings.alwaysAllowed.join("\n"))
+      save({ captureApproval: looks, alwaysAllowed: rest });
+  };
+  const shareGrant = (key: string, allow: boolean) =>
+    void input
+      .direct?.(BATON_CONSENT_WS_METHODS.set, { key, allow })
+      .then((r) => adoptGrants((r as { keys: ReadonlyArray<string> }).keys))
+      .catch(() => undefined);
+  const pullGrants = async () => {
+    if (input.direct === undefined) return;
+    if (!settings.grantsShared) {
+      const own = [
+        ...settings.alwaysAllowed,
+        ...(settings.captureApproval === "always" ? [LOOK_GRANT] : []),
+      ];
+      for (const key of own) await input.direct(BATON_CONSENT_WS_METHODS.set, { key, allow: true });
+      save({ grantsShared: true });
+    }
+    const r = (await input.direct(BATON_CONSENT_WS_METHODS.list, {})) as {
+      keys: ReadonlyArray<string>;
+    };
+    adoptGrants(r.keys);
+  };
+  // shortcut: a revoke from another vessel reaches this copy within a minute; push it when that is too slow.
+  void pullGrants().catch(() => undefined);
+  setInterval(() => void pullGrants().catch(() => undefined), 60_000).unref();
 
   let brains: BrainStatus | null = null;
   const checkBrains = async () => {
@@ -1397,23 +1436,21 @@ export const startScreenCompanion = (input: {
 
   /** His yes for a capture, or false. `forWhat` names the lesson or drive the yes covers. */
   const approveCapture = async (question: string, forWhat: string | null): Promise<boolean> => {
-    // His standing yes (always, or for an hour) is his; a device's turn is always asked.
+    // His standing yes (on any vessel) or his hour holds for his own turns; a device's turn looks on his verified voice.
     if (
-      !turnLock.deviceRunning() &&
-      !needsCaptureApproval({
-        policy: settings.captureApproval,
+      !lookAsks({
+        keys: settings.captureApproval === "always" ? [LOOK_GRANT] : [],
+        deviceTurn: turnLock.deviceRunning(),
+        mayLook: askMayLook,
         allowedUntil,
-        sessionApproved: false,
         now: Date.now(),
       })
     )
       return true;
-    // His verified voice on his own device, or his "devices may look" setting, is his yes for this one look.
-    if (deviceMayLook({ deviceRunning: turnLock.deviceRunning(), mayLook: askMayLook }))
-      return true;
     // A paired device's turn may get one look, never an hour or always.
     const lasting = !turnLock.deviceRunning();
-    const response = await askHandsFree(
+    let how: "always" | "words" | null = null;
+    const answered = await askHandsFree(
       {
         title: "Let Tessaya see your screen?",
         detail: `To answer: “${question}”\n\n${forWhat === null ? "One screenshot of each display goes to Claude on your subscription." : `Screenshots are taken during this ${forWhat}, after each step, until it ends.`} Nothing is stored after the answer.`,
@@ -1429,13 +1466,22 @@ export const startScreenCompanion = (input: {
         scoped: true,
       },
       "Can I see your screen? Yes or no.",
+      0,
+      false,
+      undefined,
+      (h) => (how = h),
     );
+    // "Always" said aloud is the Always allow button.
+    const response = lasting && answered === 0 && how === "always" ? 2 : answered;
     if (!lasting) {
       await new Promise((r) => setTimeout(r, 300));
       return response === 0;
     }
     if (response === 1) allowedUntil = Date.now() + 60 * 60_000;
-    if (response === 2) save({ captureApproval: "always" });
+    if (response === 2) {
+      save({ captureApproval: "always" });
+      shareGrant(LOOK_GRANT, true);
+    }
     // The box must be off the screen before the screenshot is taken.
     await new Promise((r) => setTimeout(r, 300));
     return response !== 3;
@@ -2133,10 +2179,10 @@ export const startScreenCompanion = (input: {
     {
       always: {
         has: (key) => settings.alwaysAllowed.includes(key),
-        add: (key) =>
-          save({
-            alwaysAllowed: [...settings.alwaysAllowed.filter((k) => k !== key), key].slice(-50),
-          }),
+        add: (key) => {
+          save({ alwaysAllowed: withGrant(settings.alwaysAllowed, key, true) });
+          shareGrant(key, true);
+        },
       },
     },
   );
@@ -2904,17 +2950,25 @@ export const startScreenCompanion = (input: {
         return { ok: false, error: "The server brain is off on this computer." };
       if (name === HIS_YES) {
         const what = typeof args["what"] === "string" ? args["what"] : "this";
+        // A key: he may say "always", and his server keeps it for every vessel.
+        const canStand = typeof args["key"] === "string";
+        let how: "always" | "words" | null = null;
         const answer = await askHandsFree(
           {
             title: "Tessaya asks",
             detail: what,
-            buttons: ["Go ahead", "Not now"],
-            cancel: 1,
+            buttons: canStand ? ["Go ahead", "Always allow", "Not now"] : ["Go ahead", "Not now"],
+            cancel: canStand ? 2 : 1,
             scoped: true,
           },
           `Shall I ${what}?`,
+          0,
+          false,
+          undefined,
+          (h) => (how = h),
         );
-        return { ok: true, text: answer === 0 ? "yes" : "no" };
+        const always = canStand && (answer === 1 || (answer === 0 && how === "always"));
+        return { ok: true, text: always ? "always" : answer === 0 ? "yes" : "no" };
       }
       const tool = buildTessayaTools(hisHost).find(
         (t) => t.name === name && t.shared === undefined,
@@ -4332,12 +4386,13 @@ export const startScreenCompanion = (input: {
           });
         }
       } else if (id === "s.social") save({ socialOn: value === true });
-      else if (id === "s.act")
+      else if (id === "s.act") {
+        if (value !== true) for (const key of settings.alwaysAllowed) shareGrant(key, false);
         save({
           actWithoutAsking: value === true,
           ...(value === true ? {} : { alwaysAllowed: [] }),
         });
-      else if (id === "s.hands") save({ remoteHands: value === true });
+      } else if (id === "s.hands") save({ remoteHands: value === true });
       else if (id === "s.cursor") save({ actCursor: value === true });
       else if (id === "s.handsAway") save({ remoteHandsAway: value === true });
       else if (id === "s.serverBrain") {
@@ -4345,8 +4400,10 @@ export const startScreenCompanion = (input: {
         void skillsToMemory();
         void tellServerAsks();
       } else if (id === "s.serverBrainHome") save({ serverBrainHome: value === true });
-      else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
-      else if (id === "s.learn") void learnFromLast();
+      else if (id === "s.capture") {
+        save({ captureApproval: value === true ? "always" : "ask" });
+        shareGrant(LOOK_GRANT, value === true);
+      } else if (id === "s.learn") void learnFromLast();
       else if (learnedAction(id) !== null) {
         const act = learnedAction(id)!;
         const accepted = readStates(skillsDir())[act.slug]?.state === "accepted";

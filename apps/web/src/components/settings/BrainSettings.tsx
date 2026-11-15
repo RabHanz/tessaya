@@ -22,6 +22,7 @@ import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { PromptLab } from "./PromptLabSettings";
+import { StandingYeses } from "./StandingYeses";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 
@@ -242,6 +243,7 @@ function BrainSections({ environmentId }: { readonly environmentId: EnvironmentI
       <Escalation environmentId={environmentId} />
       <Lines environmentId={environmentId} />
       <PromptLab environmentId={environmentId} />
+      <StandingYeses environmentId={environmentId} />
     </>
   );
 }

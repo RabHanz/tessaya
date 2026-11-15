@@ -13,7 +13,8 @@ import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
 import { mergeTemplates, type JobTemplate } from "@t3tools/tessaya-shared/jobTemplates";
-import { mergePack, packPrompt, type OsPack } from "@t3tools/tessaya-shared/osPack";
+import { leadsProject, mergePack, packPrompt, type OsPack } from "@t3tools/tessaya-shared/osPack";
+import type { TrustAgent } from "@t3tools/tessaya-shared/trust";
 import { OWNER_DIR, ownerLine, type OwnerFiles } from "@t3tools/tessaya-shared/ownerProfile";
 import { parseWakeStore, wakeModelOf } from "@t3tools/tessaya-shared/wakeModels";
 import * as Clock from "effect/Clock";
@@ -121,6 +122,25 @@ export const personasList = Effect.gen(function* () {
     personas: pack.personas.map((p) => ({ ...p, wakeModel: wakeModelOf(p.wake, store, now) })),
   };
 }).pipe(Effect.withSpan("OperatingSystemPack.personasList"));
+
+/**
+ * The turn's persona as the one trust check takes it: its tool list narrows, only a lead hands out work. None for a
+ * turn that names no persona this pack knows, so the gate stays as it was.
+ * shortcut: no known-projects list, so a project lead names the computer when its project is on two; pass the
+ * server's projects when a lead's room job is refused for it.
+ */
+export const trustAgentOf = Effect.fn("OperatingSystemPack.trustAgentOf")(function* (
+  persona: string | null | undefined,
+) {
+  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  if (Option.isNone(config) || persona == null) return undefined;
+  const found = readPack(NodePath.dirname(config.value.dbPath)).personas.find(
+    (p) => p.id === persona,
+  );
+  return found === undefined
+    ? undefined
+    : ({ ...found, leadsProject: (ref) => leadsProject(found, ref, []) } satisfies TrustAgent);
+});
 
 /** The persona's line about him for a server turn (`ownerLine`); the lead's when the turn names no persona. */
 export const ownerLineFor = Effect.fn("OperatingSystemPack.ownerLineFor")(function* (

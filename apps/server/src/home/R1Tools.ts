@@ -12,8 +12,15 @@ import {
   type MemberRole,
   OWNER_MEMBER_ID,
 } from "@t3tools/tessaya-shared/household";
-import { principalRefusal, reachAssurance, toolReach } from "@t3tools/tessaya-shared/trust";
-import { BATON_TOOL_PREFIX, judgeToolCall } from "@t3tools/tessaya-shared/operator";
+import {
+  decideTrust,
+  principalRefusal,
+  reachAssurance,
+  toolReach,
+  type TrustAgent,
+} from "@t3tools/tessaya-shared/trust";
+import { BATON_TOOL_PREFIX } from "@t3tools/tessaya-shared/operator";
+import { standingKey, stands } from "@t3tools/tessaya-shared/consent";
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
@@ -44,6 +51,8 @@ import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import { RoomTools, type RoomTool, type RoomToolSet, type ToolOutcome } from "./R1Brain.ts";
 import { NOT_HIS_VOICE_TO_FORGET, TurnOrigin } from "../tessaya/TessayaTurn.ts";
+import { hisOwnTurn, readGrants, setGrant } from "../tessaya/consent.ts";
+import { trustAgentOf } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
@@ -371,31 +380,37 @@ export const stepUpNeeds = (name: string, assurance: Assurance): Assurance | nul
 };
 
 /**
- * A job act as the desktop's gate judges it (operator.ts), so the R1 and the desktop keep one rule: a deny is refused,
- * an ask waits for his yes on a phone card whatever voice asked, and an allow goes on to the voice's own step-up.
+ * A job act as the desktop's gate judges it (`decideTrust`), so the R1 and the desktop keep one rule: the turn's
+ * persona narrows it (its tools; only a lead hands out work), a deny is refused, an ask waits for his yes (`card`
+ * names why, the key of a standing yes), and an allow goes on to the voice's own step-up.
  */
 export const jobVerdict = (
   name: string,
   input: unknown,
   tainted: boolean,
-): "allow" | "card" | { readonly refused: string } => {
+  agent?: TrustAgent,
+): "allow" | { readonly card: string } | { readonly refused: string } => {
   // Changing which prompt is live is his call each time, as a job's go-ahead is.
   if (name === "tessaya_prompt_lab") {
     const action = (input as { readonly action?: unknown } | null)?.action;
-    return action === "promote" || action === "rollback" ? "card" : "allow";
+    return action === "promote" || action === "rollback"
+      ? { card: "It changes which prompt is live." }
+      : "allow";
   }
   if (!JOB_TOOLS.has(name)) return "allow";
-  const verdict = judgeToolCall(
-    {
+  const verdict = decideTrust({
+    call: {
       tool: `${BATON_TOOL_PREFIX}${name}`,
       input: (typeof input === "object" && input !== null ? input : {}) as Record<string, unknown>,
     },
-    { actWithoutAsking: false, tainted },
-  );
+    context: { actWithoutAsking: false, tainted },
+    plan: null,
+    ...(agent === undefined ? {} : { agent }),
+  });
   return verdict.verdict === "deny"
     ? { refused: verdict.why }
     : verdict.verdict === "ask"
-      ? "card"
+      ? { card: verdict.why }
       : "allow";
 };
 /** The assurance a phone card's yes gives a card act: above any voice, so only the card runs it. */
@@ -555,25 +570,41 @@ const makeRunners = Effect.gen(function* () {
       if (!allowed.has(name))
         return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
       const origin = yield* TurnOrigin;
-      const judged = jobVerdict(name, input, origin?.tainted === true);
-      if (typeof judged === "object") return { text: judged.refused, isError: true } as ToolOutcome;
+      const judged = jobVerdict(
+        name,
+        input,
+        origin?.tainted === true,
+        yield* trustAgentOf(origin?.persona),
+      );
+      if (typeof judged === "object" && "refused" in judged)
+        return { text: judged.refused, isError: true } as ToolOutcome;
       // The desk with no turn is the desktop app's own call through its desk door: its gate already asked him.
       if (
-        judged === "card" &&
+        judged !== "allow" &&
         (origin !== null || vessel.holds) &&
         (origin?.assurance ?? 0) < CARD_YES
       ) {
+        const key = standingKey(name, judged.card);
+        const asCard = (o: NonNullable<typeof origin>) =>
+          run(name, raw, device).pipe(
+            Effect.provideService(TurnOrigin, { ...o, assurance: CARD_YES }),
+          );
+        // His "Always allow", given on any vessel, is his yes here; never a guest's or an unverified voice's.
+        if (
+          origin !== null &&
+          !origin.tainted &&
+          stands(yield* readGrants, key, { his: hisOwnTurn(origin) })
+        )
+          return yield* asCard(origin);
         const what = `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`;
         // A desk turn on the brain asks in his desktop's own approval box; his phone is asked only when it can't be.
         if (!vessel.holds && origin !== null) {
           const hands = yield* Effect.serviceOption(VesselHands);
           const yes = Option.isNone(hands)
             ? "unreachable"
-            : yield* askHisYes(hands.value, origin, what);
-          if (yes === "yes")
-            return yield* run(name, raw, device).pipe(
-              Effect.provideService(TurnOrigin, { ...origin, assurance: CARD_YES }),
-            );
+            : yield* askHisYes(hands.value, origin, what, origin.tainted === true ? null : key);
+          if (yes === "always") yield* setGrant(key, true);
+          if (yes === "yes" || yes === "always") return yield* asCard(origin);
           if (yes === "no")
             return {
               text: "He said no on his desktop. Nothing was done.",
