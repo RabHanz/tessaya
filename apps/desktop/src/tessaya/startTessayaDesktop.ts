@@ -884,6 +884,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       mainWindowUp: t3Up,
       direct,
+      onGrants: (keys) => screen?.adoptGrants(keys),
       privateMemory,
       household,
       wakeServer,

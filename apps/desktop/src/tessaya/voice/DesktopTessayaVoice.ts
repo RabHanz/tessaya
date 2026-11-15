@@ -1327,6 +1327,8 @@ export interface DesktopTessayaVoiceInput {
   readonly mainWindowUp?: () => Promise<boolean>;
   /** One Tessaya method on this machine's own server, for when T3's window is closed. */
   readonly direct?: (method: string, input: unknown, timeoutMs?: number) => Promise<unknown>;
+  /** His standing yeses as this machine's server holds them, from each settings sync. */
+  readonly onGrants?: (keys: ReadonlyArray<string>) => void;
   /** His private memory stores on this machine's server, for the Memory tab. */
   readonly privateMemory?: PrivateMemory;
   /** The household's members on this machine's server, for the Memory tab's Household area. */
@@ -9158,6 +9160,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       current: () => settings,
       apply: applyHome,
       controls: () => homeState().controls,
+      ...(input.onGrants === undefined ? {} : { onGrants: input.onGrants }),
     });
     const remoteLoop = () =>
       void remote
