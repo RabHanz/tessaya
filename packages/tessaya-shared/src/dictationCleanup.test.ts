@@ -338,9 +338,9 @@ describe("checkRewrite", () => {
       false,
     );
     expect(checkRewrite("Ask Bob now.", "Ask LaunchPad now.", [], screen).ok).toBe(false);
-    // A name written as a new word that sounds like it is a respelling; one written as another name is not.
+    // A name written as a word that sounds like it is a respelling ("Kegle" as Kaggle); one dropped is lost.
     expect(checkRewrite("Open TMAX on the box.", "Open tmux on the box.").ok).toBe(true);
-    expect(checkRewrite("Open TMAX on the box.", "Open Tmux on the box.").ok).toBe(false);
+    expect(checkRewrite("Open TMAX on the box.", "Open Tmux on the box.").ok).toBe(true);
     expect(checkRewrite("Open TMAX on the box.", "Open it on the box.").ok).toBe(false);
     // His split word joined is not a lost name.
     expect(checkRewrite("Tell Launch Pad today.", "Tell LaunchPad today.", [], screen).ok).toBe(
@@ -552,9 +552,43 @@ describe("checkRewrite on his 15 Nov refusals", () => {
     });
   });
 
-  it("passes a recogniser's capitals put right, and still refuses a name made lower case", () => {
+  it("passes a recogniser's capitals put right, and still refuses an acronym made lower case", () => {
     expect(checkRewrite("Can Kaggle do Ci tasks", "Can Kaggle do CI tasks?")).toEqual({ ok: true });
-    expect(checkRewrite("Pay Stripe today please", "Pay stripe today please.").ok).toBe(false);
+    // A plain word kept in small letters is kept: its capital came from the recogniser.
+    expect(checkRewrite("Pay Stripe today please", "Pay stripe today please.")).toEqual({
+      ok: true,
+    });
+    expect(checkRewrite("Pay AWS today please", "Pay aws today please.").ok).toBe(false);
+    expect(checkRewrite("Give me a TLDR of it now", "Give me a TL;DR of it now.")).toEqual({
+      ok: true,
+    });
+  });
+
+  it("passes his 15 Nov Kaggle question, which was refused as a lost name State", () => {
+    expect(
+      checkRewrite(
+        "So what is going on now and what is next? And what about the Kegle State? Are things happening there?",
+        "So what is going on now and what is next? And what about the Kaggle state? Are things happening there?",
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      checkRewrite(
+        "This can be a setting whether she is confined In the same monitor when thrown.",
+        "This can be a setting: whether she is confined to the same monitor when thrown.",
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("lets one of his words in for a word one letter off, and no further", () => {
+    const his = [{ phrase: "Quillon", replacement: null }];
+    expect(
+      checkRewrite(
+        "It is not connecting to the Quilon app.",
+        "It is not connecting to the Quillon app.",
+        his,
+      ),
+    ).toEqual({ ok: true });
+    expect(checkRewrite("Ask the Quiet app.", "Ask the Quillon app.", his).ok).toBe(false);
   });
 
   it("passes two of his words written as one name", () => {

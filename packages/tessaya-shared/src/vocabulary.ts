@@ -839,7 +839,9 @@ export const joinSplitTerms = (heard: string, entries: ReadonlyArray<VocabularyE
       const found = text.slice(start, end);
       if (found !== run.map((w) => w[0]).join(" ")) continue;
       const term = terms.get(found.replace(/ /g, "").toLowerCase());
-      if (term === undefined) continue;
+      // A phrase in small letters ("by the way") never takes a sentence's capital away.
+      if (term === undefined || (term === term.toLowerCase() && found.toLowerCase() === term))
+        continue;
       out += text.slice(from, start) + term;
       from = end;
       i += size - 1;

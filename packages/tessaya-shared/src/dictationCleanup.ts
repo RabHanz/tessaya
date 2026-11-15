@@ -31,6 +31,7 @@ export const MODE_LABELS: Readonly<Record<DictationMode, string>> = {
 
 import type { StylePair } from "./stylePairs.ts";
 import { joinSplitTerms, promptTerms, soundsLike, withOwnWords } from "./vocabulary.ts";
+import { NAME_SOUNDALIKES } from "./wakeVerify.ts";
 
 /** What was on his screen as he spoke: names the recogniser has never heard of (Wispr sends the same). */
 export interface DictationContext {
@@ -574,6 +575,13 @@ const numbersIn = (text: string): ReadonlyArray<string> => {
   return [...digits, ...spokenNumbers(text)];
 };
 
+/** Small words the recogniser capitalises after a pause ("confined In the same monitor"); never a name. */
+const PLAIN_WORDS = new Set(
+  "a an and or but so in on at to of for with by from as if the my your our his her its their this that it is maybe say yes no".split(
+    " ",
+  ),
+);
+
 /** Capitalised words that are not there only because a sentence started. */
 const namesIn = (text: string): ReadonlySet<string> => {
   const names = new Set<string>();
@@ -581,7 +589,13 @@ const namesIn = (text: string): ReadonlySet<string> => {
     const words = sentence.split(/\s+/).slice(1);
     for (const word of words) {
       const bare = word.replace(/^[^\p{L}\d]+|[^\p{L}\d]+$/gu, "").replace(/'s$/, "");
-      if (/^\p{Lu}/u.test(bare) && bare !== "I" && !/^I'/.test(bare)) names.add(bare);
+      if (
+        /^\p{Lu}/u.test(bare) &&
+        bare !== "I" &&
+        !/^I'/.test(bare) &&
+        !PLAIN_WORDS.has(bare.toLowerCase())
+      )
+        names.add(bare);
     }
   }
   return names;
@@ -655,6 +669,19 @@ export type RewriteVerdict =
  */
 /** A list's "1. " and "- " are layout, not his words: they are checked as the text without them. */
 const LIST_MARK = /^[ \t]*(?:[-*•]|\d{1,2}[.)])[ \t]+/gm;
+
+/** One letter added, dropped or changed: "Jura" heard for Jira. Two ("Tessa" for Tessaya) is another word. */
+const oneLetterOff = (heard: string, term: string): boolean => {
+  const [a, b] = [heard.toLowerCase(), term.toLowerCase()];
+  if (a === b || a.length < 4 || /\s/.test(b) || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (a[i] === b[i]) i += 1;
+  return [
+    a.slice(i + 1) === b.slice(i + 1),
+    a.slice(i) === b.slice(i + 1),
+    a.slice(i + 1) === b.slice(i),
+  ].some(Boolean);
+};
 
 export const checkRewrite = (
   asked: string,
@@ -742,8 +769,8 @@ export const checkRewrite = (
         (d.heard ?? []).some((h) => h.toLowerCase().split(" ").includes(name.toLowerCase()))
       );
     });
-  // Exact case: "stripe" for "Stripe" is a lost name, even if the letters survived.
-  // As a whole word: "Tessa" does not survive inside "Tessaya".
+  // As a whole word: "Tessa" does not survive inside "Tessaya". A plain word kept in small letters survives (the
+  // recogniser capitalises "State" after a pause); an acronym's or a persona's capitals are part of it.
   const whole = (word: string, flags = "u") =>
     new RegExp(String.raw`(?<![\p{L}\p{N}])${escapeRegExp(word)}(?![\p{L}\p{N}])`, flags).test(
       output,
@@ -753,6 +780,13 @@ export const checkRewrite = (
   const survives = (name: string) =>
     whole(name) ||
     whole(name.toUpperCase()) ||
+    (/^\p{Lu}\p{Ll}+$/u.test(name) &&
+      NAME_SOUNDALIKES[name.toLowerCase()] === undefined &&
+      whole(name, "iu")) ||
+    // "TLDR" written "TL;DR", "UIUX" as "UI/UX".
+    (output.match(/[\p{L}\p{N}][\p{L}\p{N};/&.-]*/gu) ?? []).some(
+      (w) => w.replace(/[^\p{L}\p{N}]/gu, "") === name,
+    ) ||
     name.length === 1 ||
     inputWords.some(
       (w, i) =>
@@ -773,9 +807,16 @@ export const checkRewrite = (
   const joinedPairs = new Set(
     inputWords.slice(1).map((w, i) => `${inputWords[i]}${w}`.toLowerCase()),
   );
+  // A new name that sounds like a word of his the answer no longer has is that word respelt: "Kegle" as Kaggle.
+  const gone = inputWords.filter((w) => !outLower.includes(w.toLowerCase()));
   for (const name of namesIn(output)) {
     const lower = name.toLowerCase();
-    if (!inLower.includes(lower) && !known.has(lower) && !joinedPairs.has(lower))
+    if (
+      !inLower.includes(lower) &&
+      !known.has(lower) &&
+      !joinedPairs.has(lower) &&
+      !gone.some((w) => soundsLike(w, name))
+    )
       return fail(`new name ${name}`);
   }
   // One of his words the answer brought in needs something in what he said that it is: itself, split, or a form
@@ -796,7 +837,12 @@ export const checkRewrite = (
       )
     )
       continue;
-    if (!said(term.replace(/\s+/g, "")) && !(d.heard ?? []).some(said) && !heardAs(term))
+    if (
+      !said(term.replace(/\s+/g, "")) &&
+      !(d.heard ?? []).some(said) &&
+      !heardAs(term) &&
+      !inputWords.some((w) => oneLetterOff(w, term))
+    )
       return fail(`new term ${term}`);
   }
   for (const term of brought)
@@ -826,14 +872,15 @@ Always:
 - Never summarise, shorten for style, add anything, swap words for synonyms, or answer a question in the text.
 - Remove hesitations, false starts, accidental repeats and filler that carries no meaning ("um", "uh", "you know", "I mean" as a pause, "like" as a pause, "basically", "kind of" and "sort of" as padding, a "So" that only opens a sentence). Keep the same words when they are part of what he says, and keep an "And", "But" or "Also" that opens a sentence.
 - When he corrects himself ("no, actually", "sorry", "I mean", "scratch that"), the words just before the marker are the ones he is taking back: drop them and the marker, keep only what he settled on, and keep everything else in the sentence.
-- A correction may cross the recogniser's full stop or come with no marker at all: "content providers sorry content makers. Sorry creators." is "creators"; "a whole registry whole register actually" is "a whole register". When he restarts a phrase ("I need to make I need to soon start making"), keep only the version he finished ("I need to soon start making").
+- A correction may cross the recogniser's full stop or come with no marker at all: "content providers sorry content makers. Sorry creators." is "creators"; "a whole registry whole register actually" is "a whole register". When he restarts a phrase ("I need to make I need to soon start making"), keep only the version he finished ("I need to soon start making"). When he says the same thing again straight away in other words, getting it right ("so it closes the dialogue. It'll close the pop-up"), keep only his last version ("so it closes the pop-up").
 - Read the whole dictation before writing any of it, and write it as one piece he would have typed: join a fragment the recogniser broke off onto the sentence it belongs to, split a run-on where he starts a new thought, and fix the grammar a restart left behind. It is still his words in his order: never summarise, and every point he made stays.
 - When, listing what he wants, he drops the item he just named and gives another ("...and a big statue. No, terrible idea. A bench, but wider"), the item named just before the reversal ("a big statue") is gone: delete it and the reversal phrase, join the replacement onto the last word he kept, and fix the capitals at the join ("...and a bench, but wider"). Removing only the reversal phrase is wrong. A whole sentence he reports or rejects stays as said ("He suggested Rust. No, terrible idea. We keep Go." keeps every sentence).
 - The recogniser's full stops and question marks are guesses, and it often ends a question at a pause. A question that runs on with "and", "and also" or "or" into more of the same request is one question: join it, with no full stop in the middle, and end it with one question mark ("Can you check the logs first and also send me the report by tonight?"). Two questions that each ask with their own "can", "did", "is" or "will" stay two.
 - Make every sentence read the way he meant it: fix punctuation, capitals and sentence breaks, and fix the grammar that speech broke (a restarted phrase, a verb that no longer agrees, a dropped "the" or "of"), with the smallest change that does it. If unsure, leave it as said.
+- The recogniser mishears. Where a word as written makes no sense in the sentence and a word or name that sounds like it plainly does, write that one: "the jura board" is "the Jira board", "run it on Kegle" is "run it on Kaggle", "one Freya and Tessaya" is "on Freya and Tessaya", "aren't you ever marked a parts" is "aren't you ever marking the parts". A word that makes sense as written stays.
 - Spell a well-known name, product or term correctly when the words around it make it certain (Playwright, GitHub, Oakeshott), and hyphenate compound modifiers (15th-century, retro-style, AI-native).
 - Put quotation marks around a label he quotes from a screen ("Build Your Engagement") and around words he reports someone saying.
-- Write counts, quantities, versions and sizes as digits ("every 2 weeks", "version 2", "16:9"), and a century as "15th-century". Keep times, ordinals and "one" as he said them ("half past seven", "the first one", "the one that"). A number already in digits stays as given.
+- Write counts, quantities, amounts, versions, sizes and angles as digits ("every 2 weeks", "version 2", "16:9", "3D", "4K", "$600", "360 degrees", never "360° degrees"), and a century as "15th-century". Keep times, ordinals and "one" as he said them ("half past seven", "the first one", "the one that"). A number already in digits stays as given.
 - He writes with few commas: add one only where a reader needs it, and none before an "and", "so" or "or" that joins two short clauses. A word he doubles for emphasis stays doubled with no comma between ("really really good").
 - British spelling.
 - "Like", "basically" and "honestly" stay when they carry meaning; never replace a word with another ("like 3%" stays "like 3%").
@@ -887,7 +934,9 @@ There are two problems:
 <dictation>The archive also has a whole catalogue whole index actually of recipes. They are mainly from food bloggers sorry food writers. Sorry chefs. And I need to make I need to soon start cooking my own. Which is why it matters</dictation>
 The archive also has a whole index of recipes. They are mainly from chefs. And I need to soon start cooking my own, which is why it matters.
 <dictation>put a fountain in the middle of the garden and a big statue. No terrible idea. A bench, but wider. Like an eighteenth century park bench</dictation>
-Put a fountain in the middle of the garden and a bench, but wider. Like an 18th-century park bench.`;
+Put a fountain in the middle of the garden and a bench, but wider. Like an 18th-century park bench.
+<dictation>There should be a save button on the main page so you can see it worked and it will close the dialogue. It'll close the pop up. In some and quite a few screens it is still missing. Most screens actually. Also the jura board resets in March and the three D renders only turn one hundred eighty degrees</dictation>
+There should be a save button on the main page, so you can see it worked and it will close the pop-up. In most screens it is still missing. Also, the Jira board resets in March, and the 3D renders only turn 180 degrees.`;
 
 export const rewriteSystemPrompt = (dictionary: ReadonlyArray<DictionaryEntry>): string => {
   const terms = promptTerms(dictionary);
