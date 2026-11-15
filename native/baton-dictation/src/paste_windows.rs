@@ -1,8 +1,11 @@
 //! Reliable clipboard paste on Windows. Adapted from Handy (MIT, Copyright (c) 2025 CJ Pais),
-//! `src-tauri/src/paste_tx/{mod,windows}.rs` at 7bfb2e2c: the transcript goes on the clipboard as
-//! a delayed-render format, so the target's read is a receipt, and the old clipboard comes back
-//! only once reads go quiet and only if nobody copied something newer. Auto-submit and Tauri are
-//! removed; everything else is theirs. Full notice: docs/baton/THIRD_PARTY_NOTICES.md.
+//! `src-tauri/src/paste_tx/{mod,windows}.rs` at 7bfb2e2c, and the old clipboard comes back only
+//! once the paste is done and only if nobody copied something newer. Auto-submit and Tauri are
+//! removed. Unlike Handy the transcript goes on as plain data, not a delayed-render promise: a
+//! watcher's read of a promise waits on our window, so Windows clipboard history still held the
+//! clipboard as the target pasted (4 of 10 missed on his laptop, 0.1.137). Whether it landed is
+//! read from the field instead (UI Automation, `paste_tx::compare`). Full notice:
+//! docs/baton/THIRD_PARTY_NOTICES.md.
 
 use std::sync::{mpsc::Sender, Arc, Mutex, Once};
 use std::thread;
@@ -10,8 +13,7 @@ use std::time::{Duration, Instant};
 
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{
-    GlobalFree, SetLastError, ERROR_SUCCESS, HANDLE, HGLOBAL, HINSTANCE, HWND, LPARAM, LRESULT,
-    WPARAM,
+    GlobalFree, HANDLE, HGLOBAL, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM,
 };
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardOwner, GetOpenClipboardWindow,
@@ -26,15 +28,16 @@ use windows::Win32::System::Ole::{
     CF_METAFILEPICT, CF_OWNERDISPLAY, CF_PALETTE, CF_UNICODETEXT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CopyImage, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
-    GetWindowLongPtrW, KillTimer, PostQuitMessage, RegisterClassW, SetTimer, SetWindowLongPtrW,
-    GDI_IMAGE_TYPE, GWLP_USERDATA, HWND_MESSAGE, IMAGE_FLAGS, MSG, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_DESTROYCLIPBOARD, WM_RENDERALLFORMATS, WM_RENDERFORMAT, WM_TIMER, WNDCLASSW,
+    CopyImage, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow, GetMessageW,
+    GetWindowLongPtrW, GetWindowThreadProcessId, KillTimer, PostQuitMessage, RegisterClassW, SetTimer,
+    SetWindowLongPtrW, GDI_IMAGE_TYPE, GWLP_USERDATA, HWND_MESSAGE, IMAGE_FLAGS, MSG, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WM_DESTROYCLIPBOARD, WM_TIMER, WNDCLASSW,
 };
 
 use crate::keys::{send_chord, PasteMethod};
 use crate::paste_tx::{
-    evaluate, held_at_chord, settle_before_chord, take_over, Held, TakeOver, TxState, WaitDecision, RESTORE_TIMEOUT,
+    compare, evaluate, held_at_chord, retry_chord, settle_before_chord, take_over, Held, Seen, TakeOver, TxState,
+    WaitDecision, RESTORE_TIMEOUT, VERIFY_WINDOW,
 };
 
 fn log(message: &str) {
@@ -91,28 +94,23 @@ unsafe fn open_clipboard(hwnd: HWND) -> Result<(), String> {
     Err(format!("OpenClipboard failed: {}", last.map(|e| e.to_string()).unwrap_or_default()))
 }
 
-/// Renders the promised transcript into the clipboard, which must already be
-/// open: the system opens it on our behalf for WM_RENDERFORMAT; every other
-/// caller has to wrap this in OpenClipboard/CloseClipboard itself.
-unsafe fn render_text(shared: &WinTxShared) {
-    let wide_text: Vec<u16> = shared
-        .text
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
-    let Ok(hg) = GlobalAlloc(GMEM_MOVEABLE, wide_text.len() * 2) else {
-        return;
-    };
+/// Puts the transcript on the clipboard, which the caller has open.
+unsafe fn render_text(shared: &WinTxShared) -> Result<(), String> {
+    let wide_text = wide(&shared.text);
+    let hg = GlobalAlloc(GMEM_MOVEABLE, wide_text.len() * 2).map_err(|e| format!("GlobalAlloc failed: {e}"))?;
     let ptr = GlobalLock(hg) as *mut u16;
     if ptr.is_null() {
         let _ = GlobalFree(Some(hg));
-        return;
+        return Err("GlobalLock failed".to_string());
     }
     std::ptr::copy_nonoverlapping(wide_text.as_ptr(), ptr, wide_text.len());
     let _ = GlobalUnlock(hg);
-    if SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(hg.0))).is_err() {
+    // SetClipboardData takes ownership of the handle on success.
+    if let Err(e) = SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(hg.0))) {
         let _ = GlobalFree(Some(hg));
+        return Err(format!("SetClipboardData failed: {e}"));
     }
+    Ok(())
 }
 
 unsafe extern "system" fn paste_wnd_proc(
@@ -123,45 +121,6 @@ unsafe extern "system" fn paste_wnd_proc(
 ) -> LRESULT {
     let shared = shared_ptr(hwnd);
     match msg {
-        WM_RENDERFORMAT => {
-            if !shared.is_null() {
-                let shared = &*shared;
-                if let Ok(mut st) = shared.state.lock() {
-                    let at = Instant::now();
-                    if st.record_receipt(at) {
-                        if let Some(injected) = st.injected_at {
-                            log(&format!(
-                                "[reliable-paste] clipboard read {}ms after chord",
-                                at.duration_since(injected).as_millis()
-                            ));
-                        }
-                    }
-                }
-                if wparam.0 as u32 == CF_UNICODETEXT.0 as u32 {
-                    render_text(shared);
-                }
-            }
-            LRESULT(0)
-        }
-        WM_RENDERALLFORMATS => {
-            // Sent when the window is destroyed while an unrendered promise is
-            // still on the clipboard — not a consumer read, so no receipt.
-            // Unlike WM_RENDERFORMAT the system does not open the clipboard on
-            // our behalf here: open it and confirm we still own it first.
-            if !shared.is_null() {
-                let shared = &*shared;
-                if OpenClipboard(Some(hwnd)).is_ok() {
-                    if GetClipboardOwner()
-                        .map(|owner| owner == hwnd)
-                        .unwrap_or(false)
-                    {
-                        render_text(shared);
-                    }
-                    let _ = CloseClipboard();
-                }
-            }
-            LRESULT(0)
-        }
         WM_DESTROYCLIPBOARD => {
             if !shared.is_null() {
                 if let Ok(mut st) = (&*shared).state.lock() {
@@ -261,15 +220,6 @@ fn flush_pending() {
     clear_pending(&previous);
 }
 
-/// Nothing read the transcript: it stays on the clipboard, and the app is told, so it is not lost.
-unsafe fn leave_transcript(shared: &WinTxShared) {
-    if OpenClipboard(None).is_ok() {
-        let _ = EmptyClipboard();
-        render_text(shared);
-        let _ = CloseClipboard();
-    }
-}
-
 /// Opts what is on the open clipboard out of clipboard history, cloud sync and clipboard
 /// managers (the formats Chrome uses for Incognito copies).
 unsafe fn mark_private() {
@@ -339,21 +289,17 @@ unsafe fn restore_snapshot(shared: &WinTxShared) -> bool {
     true
 }
 
-/// Ends one transaction: his clipboard back when the target read it, the words left when nothing did, and nothing
+/// Ends one transaction: his clipboard back when the target took it, the words left when it did not, and nothing
 /// touched when something else wrote the clipboard since. Called once, by its timer or by a newer paste.
 fn settle(shared: &WinTxShared) {
     let (receipt, ownership_lost, injection_failed) = match shared.state.lock() {
-        Ok(st) => (
-            st.any_receipt_after_injection(),
-            st.ownership_lost,
-            st.injection_failed,
-        ),
+        Ok(st) => (st.read(), st.ownership_lost, st.injection_failed),
         Err(_) => return,
     };
     if ownership_lost {
         log(&format!("paste: settling: clipboard ownership lost"));
     } else if receipt {
-        log(&format!("paste: settling: reads went quiet"));
+        log(&format!("paste: settling: pasted"));
     } else if injection_failed {
         log(&format!("paste: settling: chord injection failed"));
     } else {
@@ -361,10 +307,8 @@ fn settle(shared: &WinTxShared) {
     }
     let sequence = *shared.sequence.lock().unwrap();
     let still_ours = !ownership_lost && unsafe { GetClipboardSequenceNumber() } == sequence;
+    // Unread words are already on the clipboard as plain data, so leaving them is doing nothing.
     let restored = still_ours && receipt && unsafe { restore_snapshot(shared) };
-    if still_ours && !receipt {
-        unsafe { leave_transcript(shared) };
-    }
     if !still_ours {
         log(&format!("paste: clipboard changed externally; leaving it untouched"));
     }
@@ -439,12 +383,12 @@ unsafe fn snapshot_clipboard(hwnd: HWND, shared: &WinTxShared) -> Result<(), Str
     Ok(())
 }
 
-/// Publishes the transcript as a delayed-render promise plus clipboard
-/// history / cloud / monitoring opt-out markers (the same formats Chrome uses
-/// for Incognito copies). Returns the new clipboard sequence number.
-unsafe fn publish(hwnd: HWND) -> Result<u32, String> {
+/// Publishes the transcript plus clipboard history / cloud / monitoring opt-out
+/// markers (the same formats Chrome uses for Incognito copies). Returns the new
+/// clipboard sequence number.
+unsafe fn publish(hwnd: HWND, shared: &WinTxShared) -> Result<u32, String> {
     open_clipboard(hwnd)?;
-    let published = publish_formats();
+    let published = publish_formats(shared);
     let closed = CloseClipboard();
     published?;
     closed.map_err(|e| format!("CloseClipboard failed: {e}"))?;
@@ -455,24 +399,10 @@ unsafe fn publish(hwnd: HWND) -> Result<u32, String> {
 /// `publish` closes the clipboard on every path — bailing out while holding it
 /// open (and possibly already emptied) would strand the clipboard and leave
 /// the legacy fallback snapshotting nothing.
-unsafe fn publish_formats() -> Result<(), String> {
+unsafe fn publish_formats(shared: &WinTxShared) -> Result<(), String> {
     EmptyClipboard().map_err(|e| format!("EmptyClipboard failed: {e}"))?;
     mark_private();
-
-    // NULL handle = delayed rendering: we are only asked for the data (via
-    // WM_RENDERFORMAT) when a consumer actually reads it. SetClipboardData
-    // returns the handle it was given, so for delayed rendering success is
-    // also NULL and the windows crate reports it as an Err carrying
-    // GetLastError(). Only a nonzero thread error is a real failure, and the
-    // thread error must be cleared first so a stale value from an earlier
-    // call can't masquerade as one.
-    SetLastError(ERROR_SUCCESS);
-    if let Err(e) = SetClipboardData(CF_UNICODETEXT.0 as u32, None) {
-        if e.code().is_err() {
-            return Err(format!("SetClipboardData failed: {e}"));
-        }
-    }
-    Ok(())
+    render_text(shared)
 }
 
 fn on_timer(_hwnd: HWND, shared: &WinTxShared) {
@@ -558,7 +488,7 @@ fn pump_thread(shared: Arc<WinTxShared>, ready: Sender<Result<(), String>>) {
         );
 
         let published = match snapshot_clipboard(hwnd, &shared) {
-            Ok(()) => match publish(hwnd) {
+            Ok(()) => match publish(hwnd, &shared) {
                 Ok(sequence) => Ok(sequence),
                 Err(e) => {
                     // publish may have emptied the clipboard before failing;
@@ -611,6 +541,12 @@ pub fn run(
         owner: Mutex::new(0),
     });
 
+    // Read while the clipboard is published and settles, so it adds nothing in a field that answers quickly.
+    let (field_tx, field_rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let _ = field_tx.send(field_text());
+    });
+
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     let shared_for_pump = shared.clone();
     thread::spawn(move || pump_thread(shared_for_pump, ready_tx));
@@ -622,8 +558,10 @@ pub fn run(
         Ok(Err(e)) => return Err(e),
         Err(_) => return Err("reliable paste worker died before publishing".to_string()),
     }
-    log(&format!("paste: published transcript (delayed render)"));
+    log(&format!("paste: published transcript"));
     let settled = settle_before_chord(|| unsafe { GetOpenClipboardWindow().map(|h| h.0 as isize != 0).unwrap_or(false) }, thread::sleep);
+    let before = field_rx.recv_timeout(FIELD_DEADLINE).ok().flatten();
+    let target = unsafe { GetForegroundWindow() };
 
     // Only our own, unchanged transcript is pasted: if anything wrote the clipboard since we published, the chord
     // would paste that under his dictation's name.
@@ -652,6 +590,9 @@ pub fn run(
     // Mark injection *before* sending: enigo holds the chord for ~100ms and a
     // fast target may legitimately read while the chord is still held.
     shared.state.lock().unwrap().injected_at = Some(Instant::now());
+    let shared_for_verify = shared.clone();
+    let target_raw = target.0 as isize;
+    thread::spawn(move || verify(shared_for_verify, before, HWND(target_raw as *mut _), paste_method));
     match send_chord(enigo, paste_method) {
         Ok(()) => {
             log(&format!("paste: paste chord sent ({paste_method:?})"));
@@ -665,4 +606,93 @@ pub fn run(
     }
 
     Ok(())
+}
+
+/// How many characters before the caret are compared, and how long the paste waits for them before the chord.
+const FIELD_CHARS: i32 = 120;
+const FIELD_DEADLINE: Duration = Duration::from_millis(150);
+/// How long after the chord another process holding the clipboard counts as the reason it missed.
+const HOLD_WATCH: Duration = Duration::from_millis(60);
+
+/// The text before the caret in the focused field; None when UI Automation cannot say (or it is a password box).
+fn field_text() -> Option<String> {
+    crate::uia::caret_context(FIELD_CHARS).ok()?.get("before")?.as_str().map(str::to_string)
+}
+
+/// Whether a process other than ours and the target's opened the clipboard just after the chord.
+fn foreign_hold(target: HWND) -> bool {
+    unsafe {
+        let ours = std::process::id();
+        let mut target_pid = 0u32;
+        GetWindowThreadProcessId(target, Some(&mut target_pid as *mut u32));
+        let started = Instant::now();
+        // Spun, not slept: a watcher's hold lasts a few ms and a sleep on Windows can be 15 ms.
+        while started.elapsed() < HOLD_WATCH {
+            if let Ok(open) = GetOpenClipboardWindow() {
+                if open.0 as isize != 0 {
+                    let mut pid = 0u32;
+                    GetWindowThreadProcessId(open, Some(&mut pid as *mut u32));
+                    if pid != 0 && pid != ours && pid != target_pid {
+                        return true;
+                    }
+                }
+            }
+            thread::yield_now();
+        }
+        false
+    }
+}
+
+/// Polls the field until it shows the paste or `VERIFY_WINDOW` passes.
+fn watch_field(before: Option<&str>, from: Instant) -> Seen {
+    if before.is_none() {
+        return Seen::Unknown;
+    }
+    loop {
+        thread::sleep(Duration::from_millis(50));
+        let seen = compare(before, field_text().as_deref());
+        if seen != Seen::Missed || from.elapsed() >= VERIFY_WINDOW {
+            return seen;
+        }
+    }
+}
+
+/// After the chord: did the field take the words? One resend when a watcher held the clipboard and it did not.
+fn verify(shared: Arc<WinTxShared>, before: Option<String>, target: HWND, method: PasteMethod) {
+    let foreign = foreign_hold(target);
+    let mut retried = false;
+    let mut from = shared.state.lock().ok().and_then(|st| st.injected_at).unwrap_or_else(Instant::now);
+    let seen = loop {
+        let seen = watch_field(before.as_deref(), from);
+        let still_ours = unsafe {
+            GetClipboardSequenceNumber() == *shared.sequence.lock().unwrap() && GetForegroundWindow() == target
+        };
+        // A chord that failed part-way may have pasted already.
+        let off = shared.state.lock().map(|st| st.cancelled || st.injection_failed).unwrap_or(true);
+        if off || !retry_chord(seen, foreign, retried, still_ours) {
+            break seen;
+        }
+        retried = true;
+        crate::emit(serde_json::json!({"ev": "paste_check", "phase": "retry"}));
+        let sent = enigo::Enigo::new(&enigo::Settings::default())
+            .map_err(|e| e.to_string())
+            .and_then(|mut enigo| send_chord(&mut enigo, method));
+        if let Err(e) = sent {
+            log(&format!("paste: could not resend the chord: {e}"));
+            break seen;
+        }
+        from = Instant::now();
+    };
+    if let Ok(mut st) = shared.state.lock() {
+        if !st.cancelled {
+            st.seen = Some((seen, Instant::now()));
+        }
+    }
+    crate::emit(serde_json::json!({
+        "ev": "paste_check",
+        "phase": "verified",
+        "seen": match seen { Seen::Landed => "landed", Seen::Missed => "missed", Seen::Unknown => "unknown" },
+        "retried": retried,
+        "foreignHold": foreign,
+    }));
 }
