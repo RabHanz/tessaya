@@ -42,6 +42,18 @@ describe("ownerLine", () => {
     expect(ownerLine(persona("alter-ego"), { docs: {} }, TOOLS)).toBe("");
     expect(ownerLine(persona("alter-ego"), { likes: "LIKES", docs: {} }, TOOLS)).toContain("LIKES");
   });
+
+  it("keeps a profile past its first length whole, and says so when one is cut", () => {
+    const long = `${"a".repeat(3_000)} NEWEST`;
+    expect(ownerLine(persona("alter-ego"), { voice: long, docs: {} }, TOOLS)).toContain("NEWEST");
+    const cut = ownerLine(
+      persona("alter-ego"),
+      { voice: `${"a".repeat(5_000)} NEWEST`, docs: {} },
+      TOOLS,
+    );
+    expect(cut).not.toContain("NEWEST");
+    expect(cut).toContain("owner/voice.md needs shortening");
+  });
 });
 
 describe("ownerDoc", () => {

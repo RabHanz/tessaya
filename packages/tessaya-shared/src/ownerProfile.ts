@@ -6,8 +6,11 @@
 import type { Persona } from "./osPack.ts";
 
 export const OWNER_DIR = "owner";
-/** Every voice turn pays for these, so they stay small: about 700 and 170 tokens. */
-export const OWNER_VOICE_CHARS = 2_800;
+/**
+ * Every voice turn pays for these, so they stay small: about 1,000 and 170 tokens. Only `full` personas carry the
+ * profile, and the rules he accepts land at its end, so a cap at its first length cut his newest words first.
+ */
+export const OWNER_VOICE_CHARS = 4_000;
 export const OWNER_LIKES_CHARS = 700;
 /** What one read of his documents returns at most. */
 export const OWNER_DOC_CHARS = 6_000;
@@ -40,7 +43,11 @@ export const ownerLine = (
 ): string => {
   const reach = persona?.owner ?? "brief";
   if (reach === "none") return "";
-  const voice = clip(files.voice, OWNER_VOICE_CHARS);
+  const whole = (files.voice ?? "").trim();
+  const voice =
+    whole.length <= OWNER_VOICE_CHARS
+      ? whole
+      : `${whole.slice(0, OWNER_VOICE_CHARS)} (cut here: his profile is longer than ${OWNER_VOICE_CHARS} characters, so its end does not reach you; tell him owner/voice.md needs shortening)`;
   const likes = clip(files.likes, OWNER_LIKES_CHARS);
   const docs = Object.keys(files.docs).toSorted();
   const parts =
