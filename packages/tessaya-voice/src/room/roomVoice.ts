@@ -3,7 +3,7 @@
  * `voice/up`, asks her server, speaks on `voice/down` and stops when he cuts in. I/O is passed in for tests.
  * @module baton-voice/room/roomVoice
  */
-import { r1MoodOf, type LineEvent } from "@t3tools/tessaya-shared/expression";
+import { eyeClipOf, r1MoodOf, type LineEvent } from "@t3tools/tessaya-shared/expression";
 import { mostlyForeign } from "@t3tools/tessaya-shared/language";
 import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
@@ -2552,8 +2552,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (tail === "voice/intent/eye") {
         // Her server's mood for the eyes, through the loop, so the R1 has one writer (13 Nov: 40 of 155 refused while
         // the server held "thinking" over the loop's own moods). While its hold lasts, the loop's own moods wait.
-        const { mood, holdMs, reason } = json();
-        if (typeof mood === "string" && /^[a-z]{2,20}$/.test(mood)) {
+        const { mood: said, holdMs, reason } = json();
+        // One mood vocabulary: a clip, or a face-library mood shown as its clip; anything else never reaches the eyes.
+        const mood = typeof said === "string" ? eyeClipOf(said) : null;
+        if (mood !== null) {
           const hold = typeof holdMs === "number" && holdMs > 0 ? Math.min(holdMs, 30_000) : 0;
           eyeHold.set(id, deps.now() + hold);
           deps.log(
