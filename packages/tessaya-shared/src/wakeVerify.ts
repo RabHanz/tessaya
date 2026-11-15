@@ -264,6 +264,10 @@ export const wakeTrusted = (
   return setting !== undefined && score * setting.threshold >= TRUSTED_OUTPUT;
 };
 
+/** "Get me", "talk to", "switch back to", "hey": the words after one are who he is calling, on every vessel. */
+export const CALL_SLOT =
+  /\b(?:switch(?: me)?(?: back| over)? to|hand (?:me |it )?(?:over |back )?to|pass me (?:over |back )?to|put me (?:through |back )?(?:to|on to|onto)|(?:get|give|bring) me(?: back)?|(?:talk|speak) to|connect me (?:to|with)|hey|okay|ok)\s+/giu;
+
 const NOT_A_NAME = new Set([
   "me",
   "you",
@@ -298,6 +302,17 @@ export const nameAskedFor = (
     if ((key.length < 4 && n !== spoken.length) || NOT_A_NAME.has(head[0]!)) continue;
     const starts = names.filter((name) => keyOf([letters(name).replace(/ /g, "")]).startsWith(key));
     if (starts.length === 1) return { name: starts[0]!, words: n };
+    // Or a close spelling of the whole name: "Alfie" for Alfred.
+    const heard = head.join("");
+    const near = names.filter((name) => {
+      const target = letters(name).replace(/ /g, "");
+      return (
+        heard[0] === target[0] &&
+        heard.length >= target.length - 2 &&
+        editDistance(heard, target) <= Math.floor(target.length / 3)
+      );
+    });
+    if (near.length === 1) return { name: near[0]!, words: n };
   }
   return null;
 };
