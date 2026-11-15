@@ -192,7 +192,7 @@ const digest = (input: {
       : [`USER: ${input.feedback}`, "ASSISTANT: Understood — I'll get that right next time."]),
   ].join("\n");
 
-export const hermes = (model: string, cwd: string): Arm => {
+export const hermes = (model: string, cwd: string, claude: string): Arm => {
   let state = emptyHermes();
   return {
     id: "hermes",
@@ -239,6 +239,7 @@ export const hermes = (model: string, cwd: string): Arm => {
       const review = await runClaude({
         cwd,
         model,
+        claude,
         tools: false,
         system: `${hermesPrompt(state)}\n\nThe conversation:\n${digest({ goal: job.goal, steps: run.steps, results: run.results, final: run.final, feedback: outcome.feedback })}`,
         prompt: `${prompt}${REVIEW_TAIL}\n\nskills_list and skill_view, as you would have called them: ${JSON.stringify(library)}${reviewMemory ? `\n\nMEMORY.md entries: ${JSON.stringify(state.memory)}\nUSER.md entries: ${JSON.stringify(state.user)}` : ""}`,

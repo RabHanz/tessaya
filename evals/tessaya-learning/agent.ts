@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalConsole:off
 /**
  * One `claude -p` run in a job's folder, on his own Claude login, with only file and shell tools and none of this
  * machine's settings, skills or MCP servers. Returns what the graders and the learners need from its stream.
@@ -14,7 +14,8 @@ export interface Run {
   readonly costUsd: number;
   readonly ms: number;
   readonly ok: boolean;
-  readonly spawned: boolean;
+  /** The CLI answered at all; a run that never reached the model is retried, not graded. */
+  readonly reached: boolean;
 }
 
 const summarize = (name: string, input: Record<string, unknown>): string => {
@@ -62,6 +63,8 @@ const runOnce = (input: {
     let tokens = 0;
     let costUsd = 0;
     let ok = false;
+    let reached = false;
+    let stderr = "";
     const line = (l: string) => {
       let e: Record<string, any>;
       try {
@@ -69,6 +72,7 @@ const runOnce = (input: {
       } catch {
         return;
       }
+      if (e.type === "assistant") reached = true;
       if (e.type === "assistant") {
         for (const c of e.message?.content ?? []) {
           if (c.type === "tool_use") steps.push(summarize(c.name, c.input ?? {}));
@@ -104,6 +108,9 @@ const runOnce = (input: {
         buf = buf.slice(i + 1);
       }
     });
+    child.stderr.on("data", (d: Buffer) => {
+      stderr = (stderr + d.toString()).slice(-400);
+    });
     const timer = setTimeout(() => child.kill("SIGTERM"), 6 * 60_000);
     // The CLI updates itself in place; a spawn in that moment finds no binary, so the run says so and is retried.
     child.on("error", () => {
@@ -116,12 +123,14 @@ const runOnce = (input: {
         costUsd: 0,
         ms: 0,
         ok: false,
-        spawned: false,
+        reached: false,
       });
     });
     child.on("close", () => {
       clearTimeout(timer);
       if (buf.trim() !== "") line(buf);
+      if (!reached && stderr.trim() !== "")
+        console.error(`claude did not answer: ${stderr.trim()}`);
       resolve({
         steps,
         results,
@@ -130,7 +139,7 @@ const runOnce = (input: {
         costUsd,
         ms: Date.now() - started,
         ok,
-        spawned: true,
+        reached: reached || tokens > 0 || Date.now() - started > 60_000,
       });
     });
   });
@@ -138,7 +147,7 @@ const runOnce = (input: {
 export const runClaude = async (input: Parameters<typeof runOnce>[0]): Promise<Run> => {
   for (let tries = 1; ; tries++) {
     const run = await runOnce(input);
-    if (run.spawned || tries === 5) return run;
+    if (run.reached || tries === 40) return run;
     await new Promise((wake) => setTimeout(wake, 15_000));
   }
 };

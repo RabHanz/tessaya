@@ -44,7 +44,11 @@ export const noLearning = (): Arm => ({
 });
 
 /** Tessaya's loop as `packages/tessaya-shared/src/playbook.ts` ships it: one playbook per domain. */
-export const tessaya = (model: string, cwd: string): Arm & { readonly held: () => string } => {
+export const tessaya = (
+  model: string,
+  cwd: string,
+  claude: string,
+): Arm & { readonly held: () => string } => {
   const books = new Map<string, Playbook>();
   const held: string[] = [];
   const of = (domain: string) => books.get(domain) ?? emptyPlaybook(domain);
@@ -58,6 +62,7 @@ export const tessaya = (model: string, cwd: string): Arm & { readonly held: () =
       const wrote = await runClaude({
         cwd,
         model,
+        claude,
         tools: false,
         system: WRITER_SYSTEM,
         prompt: writerInput({

@@ -29,12 +29,12 @@ import { instructionLike } from "../../packages/tessaya-shared/src/playbook.ts";
 import { runClaude } from "./agent.ts";
 import type { Arm } from "./arms.ts";
 
-export const serverArm = (model: string, cwd: string): Arm => {
+export const serverArm = (model: string, cwd: string, claude: string): Arm => {
   let spent = { tokens: 0, costUsd: 0 };
   const run: TessayaOneShot["Service"]["run"] = ({ prompt, outputSchema }) =>
     Effect.tryPromise({
       try: async () => {
-        const answer = await runClaude({ cwd, model, tools: false, prompt });
+        const answer = await runClaude({ cwd, model, claude, tools: false, prompt });
         spent = { tokens: spent.tokens + answer.tokens, costUsd: spent.costUsd + answer.costUsd };
         return JSON.parse(/\{[\s\S]*\}/.exec(answer.final)?.[0] ?? "{}") as unknown;
       },

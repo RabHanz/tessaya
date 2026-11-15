@@ -36,9 +36,9 @@ const WORKER = `You are doing one job for the owner in the current folder. Work 
 
 const armFor = (id: string, home: string): Arm => {
   if (id === "none") return noLearning();
-  if (id === "tessaya") return tessaya(model, home);
-  if (id === "hermes") return hermes(model, home);
-  if (id === "tessaya-server") return serverArm(model, home);
+  if (id === "tessaya") return tessaya(model, home, values.claude!);
+  if (id === "hermes") return hermes(model, home, values.claude!);
+  if (id === "tessaya-server") return serverArm(model, home, values.claude!);
   throw new Error(`Unknown arm ${id}`);
 };
 
