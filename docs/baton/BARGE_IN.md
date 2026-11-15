@@ -35,8 +35,8 @@ does not subtract anything. It only has to tell a voice from what is left of her
    their words are not answered.
 
 Level is no guide to whose voice it is: a rule that a voice must rise 10 dB over the room's own loud moments kept a TV out,
-and kept him out of a busy room three times in four. Open mode is the default; a Tessel goes back to keyword with the retained
-`cmd/voice/talkover {"mode":"keyword"}` (empty returns to the default), or every Tessel with `R1_TALK_OVER=keyword`. It
+and kept him out of a busy room three times in four. Open mode is the default; Settings → Hardware → "Talk over her" on a Tessel is the one switch (the server keeps it and
+sends the retained `cmd/voice/talkover {"mode":"keyword"}`, empty when the Tessel is removed). There is no env override. It
 is keyword until someone has a voice profile here, and without the header (older firmware). Before 0.3.137 a Tessel
 on Bluetooth dropped every mic frame while her reply played, so nothing said over her reached the loop there.
 
