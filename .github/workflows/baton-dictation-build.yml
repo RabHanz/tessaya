@@ -46,9 +46,13 @@ jobs:
           export TRANSCRIBE_CMAKE_ARGS="$TRANSCRIBE_CMAKE_ARGS -DCMAKE_PREFIX_PATH=$sdk"
           # Nothing installs the VC++ redistributable, so neither the exe nor its modules may need it.
           export RUSTFLAGS="-C target-feature=+crt-static -L native=$sdk/Lib"
-          cargo test --release --locked --features gpu --manifest-path native/baton-dictation/Cargo.toml
           cargo build --release --locked --features gpu --manifest-path native/baton-dictation/Cargo.toml
           cd native/baton-dictation/target/release
+          # Cargo's newer build-dir layout (Rust 1.100) leaves transcribe-cpp-sys's DLL copies in build/, not beside the exe.
+          for f in build/*.dll; do [ -e "$f" ] && cp -f "$f" .; done
+          # Tests now run from a per-unit folder, so they find the DLLs through PATH.
+          export PATH="$PWD:$PATH"
+          cargo test --release --locked --features gpu --manifest-path ../../Cargo.toml
           for f in tessaya-voice.exe transcribe.dll ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll; do
             test -f "$f" || { echo "$f missing" >&2; exit 1; }
             if grep -aqiE 'MSVCP140|VCRUNTIME140' "$f"; then
