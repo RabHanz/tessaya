@@ -1,4 +1,5 @@
 /** The job tools' handlers: thin; BatonJobFlow does the work, and its words come back as one line to say. */
+import { houseZone } from "../../../tessaya/houseZone.ts";
 import { OrchestratorMcpFailure, ScheduledTaskId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -6,7 +7,6 @@ import * as Effect from "effect/Effect";
 import { TessayaCloudService } from "../../../tessaya/TessayaCloudService.ts";
 import { TessayaEngine } from "../../../tessaya/TessayaEngine.ts";
 import * as JobFlow from "../../../tessaya/TessayaJobFlow.ts";
-import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import { ScheduledTaskService } from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { TessayaRuntime, type TessayaServices } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
@@ -52,7 +52,7 @@ export const make = Effect.gen(function* () {
     iso === null
       ? Effect.succeed(null)
       : run(
-          Effect.flatMap(HomeAssistantService, (home) => home.timeZone).pipe(
+          houseZone().pipe(
             Effect.map((zone) =>
               new Intl.DateTimeFormat("en-GB", {
                 weekday: "short",
@@ -60,7 +60,7 @@ export const make = Effect.gen(function* () {
                 month: "short",
                 hour: "2-digit",
                 minute: "2-digit",
-                timeZone: zone === "UTC" ? undefined : zone,
+                timeZone: zone,
               }).format(DateTime.toDateUtc(DateTime.makeUnsafe(iso))),
             ),
           ),

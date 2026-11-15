@@ -5,6 +5,8 @@
  * plain line. Writing ahead runs on the routing table's `voice` row (persona speech), batched and capped per hour.
  */
 import { readQuietHours } from "./quietHours.ts";
+import { hourIn } from "@t3tools/tessaya-shared/brain";
+import { houseZone } from "./houseZone.ts";
 import {
   LINE_EVENTS,
   expressionOf,
@@ -39,7 +41,6 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
-import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 
@@ -105,23 +106,12 @@ const Written = Schema.Struct({
   ),
 });
 
-const hourIn = (at: number, timeZone: string): number => {
-  try {
-    return Number(
-      new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", hourCycle: "h23" }).format(at),
-    );
-  } catch {
-    return Math.floor(at / 3_600_000) % 24;
-  }
-};
-
 export const make = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const sql = yield* SqlClient.SqlClient;
   const oneShot = yield* TessayaOneShot;
   const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
   const scope = yield* Scope.Scope;
-  const home = yield* Effect.serviceOption(HomeAssistantService);
   const mood = yield* Effect.serviceOption(TessayaMood);
 
   const pack = () =>
@@ -131,10 +121,6 @@ export const make = Effect.gen(function* () {
     const { personas } = pack();
     return personas.find((p) => p.id === id) ?? personas.find((p) => p.lead) ?? personas[0];
   };
-  // The house's own clock picks the hour; the quiet hours' zone when there is no house.
-  const timeZone = Option.isNone(home)
-    ? Effect.succeed<string | null>(null)
-    : Effect.map(home.value.timeZone, (z): string | null => z);
 
   // shortcut: held in this server's memory, so a restart starts afresh (the pool and history refill in minutes);
   // persist when a repeat across a restart is heard.
@@ -231,7 +217,7 @@ export const make = Effect.gen(function* () {
     const current = yield* settings.getSettings.pipe(Effect.orElseSucceed(() => null));
     const at = yield* Clock.currentTimeMillis;
     const quiet = yield* quietHours;
-    const zone = (yield* timeZone) ?? quiet?.timeZone ?? "UTC";
+    const zone = yield* houseZone(quiet?.timeZone);
     return { current, at, quiet, zone };
   });
 

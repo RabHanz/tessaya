@@ -16,6 +16,7 @@ import {
   TessayaDesktopState,
   type TessayaRecordEntry,
 } from "@t3tools/tessaya-contracts";
+import { houseZone } from "../../../tessaya/houseZone.ts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Clock from "effect/Clock";
@@ -41,7 +42,6 @@ import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
-import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
@@ -116,12 +116,10 @@ const failed = (cause: unknown) =>
         : "Tessaya could not answer that.",
   });
 
-/** The household's time zone: its Home Assistant's, else this machine's. */
-const houseZone = Effect.gen(function* () {
+/** The household's zone, read with the MCP runtime's own services. */
+const runtimeZone = Effect.gen(function* () {
   const context = yield* TessayaRuntime;
-  const home = context === null ? Option.none() : Context.getOption(context, HomeAssistantService);
-  const zone = Option.isSome(home) ? yield* home.value.timeZone : "UTC";
-  return zone === "UTC" ? Intl.DateTimeFormat().resolvedOptions().timeZone : zone;
+  return yield* context === null ? houseZone() : houseZone().pipe(Effect.provideContext(context));
 });
 
 /** A time as ISO with the zone's own offset ("2026-11-13T08:26:31+05:00"). */
@@ -384,7 +382,7 @@ export const layer = McpToolAccess.toLayer(
           const { entries } = yield* call(
             handlers[BATON_RECORD_WS_METHODS.list]({ ...input, limit: input.limit ?? 30 }),
           );
-          return onHouseClock(entries, yield* Clock.currentTimeMillis, yield* houseZone);
+          return onHouseClock(entries, yield* Clock.currentTimeMillis, yield* runtimeZone);
         }),
       ),
       // Read as a client (MemoryViewer's default here): walls hold, no persona can be named, his own view is closed.

@@ -5,6 +5,7 @@
  * The RPC handlers, the desktop tools and the phone all call these; none holds the flow itself.
  */
 import { readQuietHours } from "./quietHours.ts";
+import { houseZone } from "./houseZone.ts";
 import {
   TessayaJobPlacementError,
   type TessayaJobLeadInput,
@@ -70,7 +71,6 @@ import * as Option from "effect/Option";
 import * as ServerConfig from "../config.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
-import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { TessayaEngine } from "./TessayaEngine.ts";
 import { spendOf, type Spend } from "./TessayaJobSpend.ts";
@@ -1145,8 +1145,7 @@ const sayOnOrigin = Effect.fn("BatonJobFlow.sayOnOrigin")(function* (
   const devices = yield* Effect.serviceOption(HomeDevices);
   if (Option.isNone(devices)) return;
   const now = yield* Clock.currentTimeMillis;
-  const house = yield* Effect.serviceOption(HomeAssistantService);
-  const zone = Option.isSome(house) ? yield* house.value.timeZone : "UTC";
+  const zone = yield* houseZone();
   // The household's quiet hours (Settings, the desktop or by voice); the default policy's until any are set.
   const quiet = yield* readQuietHours;
   if (inQuietHours(now, quiet ?? quietHoursOf(DEFAULT_POLICY.quietHours, zone))) return;
