@@ -190,6 +190,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "ic.dnd": "Do not disturb me",
     "ic.dnd.hint": 'Off. Say "don\'t disturb me till three" or pick a time.',
     "ic.dnd.until": 'On until {at}. Pick Off, or say "I\'m free".',
+    "ic.dnd.untilOff": 'On until you turn it off. Pick Off, or say "I\'m free".',
     "ic.dnd.off": "Off",
     "ic.dnd.1h": "For an hour",
     "ic.dnd.3h": "For three hours",
