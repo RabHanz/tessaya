@@ -704,7 +704,11 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_DESKTOP_SETTINGS_WS_METHODS.set]: (input) =>
       run(Effect.flatMap(TessayaDesktopSettings, (settings) => settings.set(input.patch))),
     [BATON_DESKTOP_SETTINGS_WS_METHODS.sync]: (input) =>
-      run(Effect.flatMap(TessayaDesktopSettings, (settings) => settings.sync(input))),
+      run(
+        Effect.flatMap(TessayaDesktopSettings, (settings) => settings.sync(input)).pipe(
+          Effect.flatMap((answer) => Effect.map(readGrants, (grants) => ({ ...answer, grants }))),
+        ),
+      ),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>
       run(
         Effect.flatMap(TessayaCommitmentService, (commitments) =>

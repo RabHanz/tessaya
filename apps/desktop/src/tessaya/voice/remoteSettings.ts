@@ -125,6 +125,8 @@ export const createRemoteSettings = (input: {
   readonly apply: (id: string, value: string | boolean) => void;
   /** Its Settings controls, published for voice when they change. */
   readonly controls?: () => ReadonlyArray<HomeControl>;
+  /** His standing yeses as this server holds them, from every sync. */
+  readonly onGrants?: (keys: ReadonlyArray<string>) => void;
   readonly now?: () => number;
 }) => {
   let applied = 0;
@@ -146,6 +148,8 @@ export const createRemoteSettings = (input: {
   /** One sync; true when it applied a change. */
   const tick = async (): Promise<boolean> => {
     const answer = decodeSync(await report());
+    if (answer._tag === "Some" && answer.value.grants !== undefined)
+      input.onGrants?.(answer.value.grants);
     const change = answer._tag === "Some" ? answer.value.change : null;
     if (change === null || change.version <= applied) return false;
     for (const [id, value] of controlsFor(change.patch)) input.apply(id, value);

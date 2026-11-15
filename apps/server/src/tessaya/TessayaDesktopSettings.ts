@@ -73,6 +73,8 @@ export class TessayaDesktopSettings extends Context.Service<
         }>;
       } | null;
     }>;
+    /** Ends a held sync now with no change, so the desktop's copy of something on this server (his standing yeses) follows at once. */
+    readonly nudge: Effect.Effect<void>;
   }
 >()("t3/tessaya/TessayaDesktopSettings") {}
 
@@ -219,7 +221,12 @@ const make = Effect.gen(function* () {
     return { change: pending };
   });
 
-  return TessayaDesktopSettings.of({ get: view, set, setControls, sync });
+  const nudge = Effect.gen(function* () {
+    yield* Deferred.succeed(wake, undefined);
+    wake = yield* Deferred.make<void>();
+  });
+
+  return TessayaDesktopSettings.of({ get: view, set, setControls, sync, nudge });
 });
 
 // Plain settings values only, which always serialise.

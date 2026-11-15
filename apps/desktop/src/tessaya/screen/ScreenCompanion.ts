@@ -543,6 +543,8 @@ export interface TurnTimings {
 }
 
 export interface ScreenCompanion {
+  /** His standing yeses as his server holds them (each settings sync carries them): this copy follows. */
+  readonly adoptGrants: (keys: ReadonlyArray<string>) => void;
   /** Runs one remote hands call behind the same gate and mouse guard as the assistant's own tools. */
   readonly remoteHands: {
     readonly enabled: () => boolean;
@@ -811,6 +813,8 @@ export const startScreenCompanion = (input: {
 
   // His standing yeses live on his server, so a yes given on the Tessel, phone or web holds here and the reverse.
   const adoptGrants = (keys: ReadonlyArray<string>) => {
+    // Until this copy's own yeses are on the server, the server's list would drop them: share them first.
+    if (!settings.grantsShared) return void pullGrants().catch(() => undefined);
     const looks = keys.includes(LOOK_GRANT) ? "always" : "ask";
     const rest = keys.filter((k) => k !== LOOK_GRANT);
     if (looks !== settings.captureApproval || rest.join("\n") !== settings.alwaysAllowed.join("\n"))
@@ -836,9 +840,7 @@ export const startScreenCompanion = (input: {
     };
     adoptGrants(r.keys);
   };
-  // shortcut: a revoke from another vessel reaches this copy within a minute; push it when that is too slow.
   void pullGrants().catch(() => undefined);
-  setInterval(() => void pullGrants().catch(() => undefined), 60_000).unref();
 
   let brains: BrainStatus | null = null;
   const checkBrains = async () => {
@@ -3951,6 +3953,7 @@ export const startScreenCompanion = (input: {
   };
 
   return {
+    adoptGrants,
     said,
     runStanding,
     setTransformHotkeys,

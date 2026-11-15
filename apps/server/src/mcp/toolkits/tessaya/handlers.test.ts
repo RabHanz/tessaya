@@ -668,6 +668,7 @@ it.effect("an agent's desktop settings change never lets devices look at his scr
       set: (patch) => Effect.sync(() => (sent.push(patch), view)),
       setControls: () => Effect.die("unused"),
       sync: () => Effect.die("unused"),
+      nudge: Effect.void,
     });
     yield* callTool(
       "full-access",

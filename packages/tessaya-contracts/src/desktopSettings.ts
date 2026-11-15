@@ -125,4 +125,6 @@ export const DesktopSettingsSyncResult = Schema.Struct({
       ),
     }),
   ),
+  /** His standing yeses on this server (`baton.consent.*`), for the desktop's copy; absent from older servers. */
+  grants: Schema.optionalKey(Schema.Array(Schema.String)),
 });

@@ -74,6 +74,7 @@ const setup = () => {
         return {} as never;
       }),
     sync: () => Effect.die("unused"),
+    nudge: Effect.void,
   });
   const layer = Layer.mergeAll(
     desktopLayer,

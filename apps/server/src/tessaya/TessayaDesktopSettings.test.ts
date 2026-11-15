@@ -16,6 +16,7 @@ import {
 } from "./TessayaDesktopSettings.ts";
 import { TessayaRecordService, layer as recordLayer } from "./TessayaRecordService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { readGrants, setGrant } from "./consent.ts";
 
 const before: DesktopVoiceSettings = {
   dictationCleanup: "local",
@@ -110,6 +111,18 @@ layer("BatonDesktopSettings", (it) => {
       assert.strictEqual((yield* Fiber.join(woken)).change, null);
       const rows = yield* (yield* TessayaRecordService).query({ kind: "desktop_settings" });
       assert.strictEqual(rows[0]?.outcome, "not applied");
+    }),
+  );
+  it.effect("a standing yes given or revoked elsewhere ends the desktop's held sync at once", () =>
+    Effect.gen(function* () {
+      const settings = yield* TessayaDesktopSettings;
+      const held = yield* settings
+        .sync({ effective: before, applied: 0 })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      // No clock moves: only the grant can end the hold.
+      yield* setGrant("tessaya:job_schedule", true);
+      assert.strictEqual((yield* Fiber.join(held)).change, null);
+      assert.deepStrictEqual(yield* readGrants, ["tessaya:job_schedule"]);
     }),
   );
 });

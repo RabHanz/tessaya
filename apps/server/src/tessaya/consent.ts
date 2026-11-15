@@ -6,6 +6,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
+
 /**
  * Whether a turn is him for a standing yes: his voice verified (Voice ID's session hold counts), or typed on a device he
  * signed in (desktop, phone, web) with no voice on it. A guest's or an unverified voice, an agent and a job are not.
@@ -42,5 +44,8 @@ export const setGrant = Effect.fn("Consent.set")(function* (key: string, allow: 
     yield* sql.value`INSERT INTO fabric_settings (key, value) VALUES (${CONSENT_KEY}, ${JSON.stringify(keys)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(
       Effect.orDie,
     );
+  // The desktop's held settings sync carries the list, so a revoke made elsewhere reaches its copy now.
+  const desk = yield* Effect.serviceOption(TessayaDesktopSettings);
+  if (Option.isSome(desk)) yield* desk.value.nudge;
   return keys;
 });
