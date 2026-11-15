@@ -125,6 +125,10 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
     });
     yield* fetching(api.cleanup(input));
     expect(yield* bodyModel(sent)).toBe("claude-sonnet-5-5");
+    // An alias, as he says it, reaches the API as the full id it names.
+    yield* settings.updateSettings({ brainModels: { cleanup: { model: "sonnet" } } });
+    yield* fetching(api.cleanup(input));
+    expect(yield* bodyModel(sent + 1)).toBe("claude-sonnet-5-5");
 
     upstream.mockResolvedValueOnce(new Response("nope", { status: 401 }));
     expect(yield* Effect.flip(fetching(api.cleanup(input)))).toMatchObject({
