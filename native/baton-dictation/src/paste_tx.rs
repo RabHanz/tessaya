@@ -153,7 +153,7 @@ pub fn held_at_chord(published_sequence: u32, sequence_now: u32, we_own_it: bool
 }
 
 /// Clipboard watchers (Windows clipboard history, Ditto, Wispr Flow) open the clipboard the moment the transcript is
-/// published. A chord landing then pastes nothing while the receipt still looks read: on his laptop 19 of 51
+/// published. A chord landing then pastes nothing while the receipt still looks read: on his laptop 22 of 50
 /// dictations (16 Nov). So the chord waits at least `SETTLE_MIN` and until nobody holds the clipboard, at most `SETTLE_MAX`.
 pub const SETTLE_MIN: Duration = Duration::from_millis(60);
 pub const SETTLE_MAX: Duration = Duration::from_millis(300);
