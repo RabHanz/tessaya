@@ -312,6 +312,40 @@ export const LINE_EVENTS = {
     mood: "hurt",
     gesture: "startle",
   }),
+  "moment.poked": spec("", "He poked her on his desktop with the mouse, a quick tap on her body.", {
+    priority: "ambient",
+    maxWords: 6,
+    mood: "surprised",
+    gesture: "giggleOnce",
+  }),
+  "moment.squished": spec(
+    "",
+    "He held her down on his desktop and squashed her flat; she just sprang back up.",
+    {
+      priority: "ambient",
+      maxWords: 6,
+      mood: "putout",
+      gesture: "dizzy",
+    },
+  ),
+  "moment.thrown": spec("", "He picked her up on his desktop and threw her; she flew and landed.", {
+    priority: "ambient",
+    maxWords: 7,
+    mood: "surprised",
+    gesture: "startle",
+  }),
+  "moment.petted": spec("", "He stroked her back and forth with the mouse on his desktop.", {
+    priority: "ambient",
+    maxWords: 6,
+    mood: "happy",
+    gesture: "giggleOnce",
+  }),
+  "moment.screen": spec("", "He moved her from one of his screens to another one.", {
+    priority: "ambient",
+    maxWords: 7,
+    mood: "curious",
+    gesture: "lookAway",
+  }),
 } as const satisfies Record<string, LineSpec>;
 
 export type LineEvent = keyof typeof LINE_EVENTS;

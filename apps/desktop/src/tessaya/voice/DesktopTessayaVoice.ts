@@ -41,6 +41,7 @@ import type {
 import {
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
+  BATON_VOICE_WS_METHODS,
   BATON_LEARN_WS_METHODS,
   tessayaPlaceOf,
 } from "@t3tools/tessaya-contracts";
@@ -4727,6 +4728,28 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     stateDir: input.stateDir,
     openSettings: () => home.open(),
     onNote: (kind, detail) => input.onNote?.(kind, detail),
+    // What he does to her body, worded by the one brain in the persona she wears (TessayaExpression).
+    ...(input.direct === undefined
+      ? {}
+      : {
+          express: (event) => {
+            const key = (
+              (settings.mascotFollows ? talking : null) ?? settings.mascotPersona
+            ).toLowerCase();
+            const persona = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find(
+              (p) => p.id === key || p.name.toLowerCase() === key,
+            );
+            return input.direct!(
+              BATON_VOICE_WS_METHODS.call,
+              {
+                kind: "act",
+                op: "express",
+                args: { event, ...(persona ? { persona: persona.id } : {}) },
+              },
+              8_000,
+            );
+          },
+        }),
   });
   /** The jobs as last read, so the mascot reacts to what changed (null until the first read). */
   let jobsSeen: ReadonlyArray<JobSnapshot> | null = null;
@@ -8943,6 +8966,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         idleSeconds: Electron.powerMonitor.getSystemIdleTime(),
       }),
       applySetting: (id, value) => applyHome(id, value),
+      onMascot: (act) => mascot.act(act),
       // A message from someone at home: a toast, its glance on the pill, and its sound (a placeholder cue for now).
       onNote: (value) => {
         const card = noteCardOf(value);

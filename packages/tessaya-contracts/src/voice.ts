@@ -9,7 +9,9 @@ import * as Schema from "effect/Schema";
 export const BATON_VOICE_WS_METHODS = { call: "baton.voice.call" } as const;
 export const BATON_VOICE_READ_OPS = ["library", "preview", "arbiter"] as const;
 /** `claim`, `speaking` and `ended` are the voice arbiter's (one responder per utterance); `answerFrom` sets the primary. */
+/** `express` is a vessel's moment (her desktop body poked, thrown, moved) as the brain words it, in her persona. */
 export const BATON_VOICE_ACT_OPS = [
+  "express",
   "setPersona",
   "setGoogleKey",
   "say",

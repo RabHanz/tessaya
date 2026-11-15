@@ -7,7 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { DEFAULT_OS_PACK, mergePack } from "@t3tools/tessaya-shared/osPack";
 
-import { bodyOf } from "./desktopMascot.ts";
+import { bodyOf, sayOf } from "./desktopMascot.ts";
 
 /** The shipped Character Studio rig (apps/web/public/companion), loaded as the stage page loads it. */
 const loadRig = () => {
@@ -118,5 +118,22 @@ describe("the body a persona wears (SPINE-UNIFY §10, P3)", () => {
     });
     expect(TCS.CHARACTERS["loom"]).toBeDefined();
     expect(bodyOf(pack.personas, "nobody")).toEqual({ persona: "custom" });
+  });
+});
+
+describe("her answer to what he did to her body", () => {
+  it("shows the brain's words, face and gesture, and drops anything that is not a plain name", () => {
+    expect(
+      sayOf({
+        ok: true,
+        value: { text: "Gently, if you please.", mood: "surprised", gesture: "giggleOnce" },
+      }),
+    ).toEqual({ text: "Gently, if you please.", mood: "surprised", gesture: "giggleOnce" });
+    expect(sayOf({ ok: true, value: { text: "", mood: "x);alert(1", gesture: "hop" } })).toEqual({
+      text: "",
+      gesture: "hop",
+    });
+    expect(sayOf({ ok: true, value: null })).toBeNull();
+    expect(sayOf(undefined)).toBeNull();
   });
 });

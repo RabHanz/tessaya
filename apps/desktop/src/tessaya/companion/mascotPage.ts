@@ -38,6 +38,8 @@ export const MASCOT_SCRIPT = String.raw`(() => {
  addEventListener("pointerup", up);
  svg.addEventListener("pointercancel", up);
  svg.addEventListener("lostpointercapture", up);
+ // a move with no button held means the release never came (seen on X11): let go now
+ svg.addEventListener("pointermove", (e) => { if (e.buttons === 0 && svg.hasPointerCapture(e.pointerId)) { svg.releasePointerCapture(e.pointerId); } });
  svg.addEventListener("contextmenu", (e) => { e.preventDefault(); ipc.send("baton-mascot:menu"); });
  window.mascot = {
   init(o) {
@@ -72,6 +74,21 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   walk(ms, dir) { if (rig && rig.walk) rig.walk(ms, dir); else if (rig) rig.play("hop"); },
   look(gx, gy) { if (rig && rig.look) rig.look(gx, gy); },
   impact(speed, landed) { if (rig && rig.impact) rig.impact(speed, landed !== false); },
+  // a moment as the brain worded it (tessaya-shared expression): her face and gesture, and the words above her head
+  say(e) {
+   if (!rig) return;
+   if (e.mood && TCS.EXPRESSIONS[e.mood]) rig.setExpression(e.mood, { brief: true });
+   if (e.gesture && e.gesture !== "none") rig.play(e.gesture);
+   if (!e.text) return;
+   let b = document.getElementById("say");
+   if (!b) {
+    b = document.createElement("div"); b.id = "say";
+    b.style.cssText = "position:absolute;left:50%;top:4%;transform:translateX(-50%);max-width:94%;padding:3px 8px;border-radius:10px;background:#fff;color:#1c1b19;border:1px solid #d9d6cf;font:600 11px/1.25 system-ui,sans-serif;text-align:center;pointer-events:none;transition:opacity .25s";
+    document.body.appendChild(b);
+   }
+   b.textContent = e.text; b.style.opacity = "1";
+   clearTimeout(b.t); b.t = setTimeout(() => { b.style.opacity = "0"; }, 1200 + 260 * e.text.split(/\s+/).length);
+  },
   press(a) { if (rig && rig.press) rig.press(a); },
   release() { if (rig && rig.release) rig.release(); },
   // a funny moment of her own (bodies.js funny, likeliest first) or the one named; what the window must do with it

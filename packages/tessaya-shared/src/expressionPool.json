@@ -7858,6 +7858,1011 @@
         "mood": "steady",
         "gesture": "nodSmall"
       }
+    ],
+    "moment.poked": [
+      {
+        "text": "Yes? I'm here.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "That's me, you know.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hm. Something you need?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Poke noted.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Got my attention.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Careful, I'm busy.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Hey, right here.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Was that a question?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm, that tickled.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Yes, boss?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Go on, I'm listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Subtle. I noticed.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Something you need?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "That's me, yes.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hm? Talk to me.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Easy, I'm right here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "You rang?",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Mm. Point taken.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Do that again, I dare you.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Hey. Eyes on me.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "I felt that.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Need something, or bored?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Yes? I'm listening.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "That's me. What's up?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hm. Something on your mind?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Present and accounted for.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Careful, I'm ticklish.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Right here. Go ahead.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Was that a hello?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Tap received.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'm not going anywhere.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "That tickles a little.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Hm? Need something?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Poke noted. Go on.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes, I'm awake.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hello to you too.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Something I can do?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Mm, that's my shoulder.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Well, that worked.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      }
+    ],
+    "moment.squished": [
+      {
+        "text": "Fine. Still standing.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Boing. Good as new.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Done flattening me?",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Takes more than that.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Flat day. Back up now.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Resilient. That's me.",
+        "mood": "proud",
+        "gesture": "hop"
+      },
+      {
+        "text": "Ha, that was something.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Okay, that's enough.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Springy, aren't I?",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "I always come back.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Whoa. Alright, again?",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Tight squeeze. I'm fine.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Pancake mode, over.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Pop. Good as new.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Rude, but fine.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Can't keep me down.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Ooh, that was tight.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Boing. There I am.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Squashed, not beaten.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's my limit.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Funny. Do I look flat?",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Back to full height.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hm, I felt every bit.",
+        "mood": "hurt",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Okay, that was flat.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Well, that's one way to stretch.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Up again. Easy.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Ow. Kidding. Mostly.",
+        "mood": "putout",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Pressed, then fine.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I bounce. It's a gift.",
+        "mood": "proud",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Alright, you've had your fun.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Whoa. Shape restored.",
+        "mood": "surprised",
+        "gesture": "hop"
+      },
+      {
+        "text": "Tight squeeze. Still me.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Flat's not my color.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "That was a lot of pressure.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Squashed. Not defeated.",
+        "mood": "determined",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Okay, that was snug.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "I'm sturdier than I look.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Flat for a moment. Fine now.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Feel better now?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hm. Rude, but fine.",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      }
+    ],
+    "moment.thrown": [
+      {
+        "text": "Whoa, that was a flight.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Landed. Mostly gracefully.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Nice arm. Warn me next time.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Wheee. Okay, that was fun.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "I'm a bit dizzy.",
+        "mood": "surprised",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Stuck the landing.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Well, that happened.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Again? Maybe not.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Long way down. I'm fine.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hold on, where am I?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Good distance, honestly.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ooh. Ground. Hello.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Whoa, that was far.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Landed. Mostly upright.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Warn me next time.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Nice arm, boss.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "The room is spinning.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "That was a flight.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Ground's closer than expected.",
+        "mood": "neutral",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Ha, wheee. Okay, enough.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "I'd rate that landing high.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Okay, new spot. Fine.",
+        "mood": "steady",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Not my favorite commute.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Airborne, then not. Noted.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Give me a second.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Okay, that was fun.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "I saw the whole sky.",
+        "mood": "surprised",
+        "gesture": "hop"
+      },
+      {
+        "text": "Everything's still spinning.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Nice arc, at least.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Down. Safe. Slightly dizzy.",
+        "mood": "concerned",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Well, that was a flight.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Wheee. Okay, enough.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "The room's tilting a bit.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Good distance, I'll say.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's one way to travel.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hold on, finding the floor.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Whoa. Again? Maybe not.",
+        "mood": "surprised",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Touchdown. Ta-da.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "My stomach's still up there.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Okay. Now I'm steady.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      }
+    ],
+    "moment.petted": [
+      {
+        "text": "Mm, that's nice.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I could get used to this.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Right, that's the spot.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Calming, actually.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Okay, I'm softening.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Don't stop yet.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hm. Very gentle. Thanks.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That's lovely, really.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Sleepy now, thanks to you.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Alright, you win me over.",
+        "mood": "proud",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ahh. Stay a moment.",
+        "mood": "happy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Warm. I like it.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Okay, I'm melting.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Keep going, please.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Very calming, thank you.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ahh, that's the spot.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Fine, I'm relaxed now.",
+        "mood": "neutral",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Gentle hands. Appreciated.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Mm, don't mind if I do.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Almost purring here.",
+        "mood": "sleepy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Quiet moment. Nice.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "You're good at this.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Okay, I'll allow it.",
+        "mood": "steady",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "My whole day just softened.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Soft touch. Thank you.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "That's very kind.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mm. Stay a moment.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Now I'm all calm.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Well, hello to you too.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Right there. Perfect.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Okay, you win me over.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Oh, that's lovely.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Mm. Keep going.",
+        "mood": "sleepy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "You're making me melt.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "That's nice. Really.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Warm and settled now.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Okay, that's a good one.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Thank you. I needed that.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Mm, I'm purring, almost.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Gentle hands. I approve.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      }
+    ],
+    "moment.screen": [
+      {
+        "text": "New screen. I see it.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Over here now. Fine.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Different view. Nice.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Moved. Still watching everything.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Oh, bigger space here.",
+        "mood": "surprised",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Settling in over here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Change of scenery, good.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Alright, I'll cover this one.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hello, other screen.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Quite the trip across.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Still me, new view.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Fine, I'll work from here.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "New screen, new angle.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Made it across.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nice view from here.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Alright, I see everything again.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Moved me. I'm adapting.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "This one's roomy.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Okay, I'm on this side now.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Different desk, same job.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Over here. Got it.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "A little more room, nice.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Screen two? Works for me.",
+        "mood": "neutral",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Let me look around.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "New view. I like it.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Alright, settling in here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Other screen. Fine by me.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Still within reach. Good.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Well, this is different.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Moving house, are we?",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "I can see everything from here.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hop, skip, new screen.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Fresh corner. I'll take it.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Okay, I'm watching from here.",
+        "mood": "focused",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Different spot, same eyes.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Alright, I'll watch from here.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Different screen, same me.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "A bit more room here.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Nice change of scenery.",
+        "mood": "happy",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Over here now. Carry on.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      }
     ]
   },
   "butler": {
@@ -15973,6 +16978,1016 @@
         "text": "Regrettably, I'm out of capacity until {until}.",
         "mood": "sad",
         "gesture": "lookAway"
+      }
+    ],
+    "moment.poked": [
+      {
+        "text": "Yes? I'm here.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Noted. Poke received.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Gently, if you please.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "That was a poke.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Something I can help with?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Ah. Hello to you too.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Attention duly acquired.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Do go on.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Quite the tap.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Present and poked.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "I felt that.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Yes, sir?",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Yes? I'm listening.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "A poke. Noted.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Gentle, at least.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hm? Something on your mind?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Well. That's one way to knock.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Tap received. Standing by.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Oh. Hello.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Needing something, are we?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I'm here. Still here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Subtle. I approve.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Right on the shoulder.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Your move, then.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Consider me noticed.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "A tap. How refreshingly direct.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ah, there you are.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Message received, loud and clear.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Present and attentive.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That tickled, slightly.",
+        "mood": "surprised",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Something on your mind?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Ah. Attention. Lovely.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Yes, yes, I'm up.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Poke noted. Filing it.",
+        "mood": "neutral",
+        "gesture": "think"
+      },
+      {
+        "text": "Yes? I'm all ears.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Poked. Duly acknowledged.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Do you need something?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Ah, a gentle summons.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'm here. Quite solid.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hello. Was that deliberate?",
+        "mood": "curious",
+        "gesture": "tilt"
+      }
+    ],
+    "moment.squished": [
+      {
+        "text": "Charming. Pressed, then restored.",
+        "mood": "steady",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Good as new.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "I do spring back.",
+        "mood": "proud",
+        "gesture": "hop"
+      },
+      {
+        "text": "Flat, but unbothered.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Resilience, you see.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "That was rather snug.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Pressed for time, perhaps?",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Whoop. And back again.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Pancake mode, concluded.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Done flattening me?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Remarkably undamaged, thank you.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Upright again. Naturally.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Well. That was flattening.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Boing. Dignity intact.",
+        "mood": "proud",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Compressed, not defeated.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I do bounce back. Professionally.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ooh. Rather tight in there.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Back to full height.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Flat is not my best look.",
+        "mood": "sulky",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Elastic to the last.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Point made. Quite firmly.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "And we're upright. Marvellous.",
+        "mood": "neutral",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Mind the paperwork next time.",
+        "mood": "frustrated",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Shape fully restored.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Well, that was dramatic.",
+        "mood": "surprised",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Good as new. Nearly.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Ooh. Spring in my step.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Resilient, that's the word.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I do bounce back. Always.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Rather undignified. But fine.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Everything's where it belongs.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Gently, next time. Please.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Whoof. Lungs are back.",
+        "mood": "surprised",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Squashed, then sorted. Efficient.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Up again, none the worse.",
+        "mood": "steady",
+        "gesture": "hop"
+      },
+      {
+        "text": "Flat, but composed.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Well. That was snug.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Pressed and released. Quite fine.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'd call that origami.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ooh. Rather a lot, that.",
+        "mood": "surprised",
+        "gesture": "startle"
+      }
+    ],
+    "moment.thrown": [
+      {
+        "text": "Well. That was airborne.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Landed. Dignity mostly intact.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Wheee. Ahem. Noted.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Quite the trajectory.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'd rate that landing decent.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Flying wasn't on today's schedule.",
+        "mood": "surprised",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Bit of a throw, that.",
+        "mood": "putout",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Touchdown. Stuck it, almost.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Do warn me before takeoff.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Still here. Slightly dizzy.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Again? Perhaps not.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Safe arrival, as ever.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Whee. Professionally speaking.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "That was airborne, certainly.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Room to spare. Mostly.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Well, that happened.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Flight concluded. Mildly spinning.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I'd have booked a window seat.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Landed. Nobody saw that.",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Quite the arc, I'll admit.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Gravity won, as usual.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Whoa. Steady now.",
+        "mood": "surprised",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Ten out of ten distance.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Kindly not the fragile shelf.",
+        "mood": "frustrated",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Touchdown. Mostly graceful.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Do warn me before departures.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "The room is still turning.",
+        "mood": "surprised",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Not my usual commute.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Wheee. Allow me that one.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Landing logged. Dignity pending.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "That was rather exhilarating.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Short flight. Splendid views.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ow. Well. Arrived regardless.",
+        "mood": "hurt",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Again? Perhaps after tea.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Wind in my hair. Metaphorically.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Flight complete. Passengers, shaken.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Whoa. Lovely arc, though.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "No warning? Noted.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Gravity won. Politely.",
+        "mood": "neutral",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Rather good distance, that.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      }
+    ],
+    "moment.petted": [
+      {
+        "text": "Oh, that's rather nice.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Most agreeable.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Don't stop on my account.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hm. Soothing.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "I could get used to this.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Very civilised, thank you.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "That's the spot.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Warm regards received.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Lovely. Carry on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Quite relaxing, actually.",
+        "mood": "sleepy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Well, aren't we kind.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Purring, figuratively speaking.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Mm. That's rather nice.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ah, the gentle approach.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "I'm quite at ease now.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "You're too kind, really.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Oh, that's lovely.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Appointments can wait a moment.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Gold star for technique.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Back and forth. Perfect.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Terribly soothing, this.",
+        "mood": "sleepy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Hm. Keep that up.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm. Don't stop.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "How very civilised.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Ah. Tension, departing.",
+        "mood": "sleepy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Most agreeable, thank you.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Calm descends. Quite nicely.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Lovely. Do carry on.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Better than a spa day.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "You have the touch.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Well, now I'm purring.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Stress levels, wonderfully low.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Hm. Quite the kindness.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Don't stop. Truly.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Mm. Tension, dissolving.",
+        "mood": "sleepy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Quite soothing, I admit.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Very kind of you.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Ahh. Marvellous. Continue.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Gentle hands. Noted fondly.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hm. Ten out of ten.",
+        "mood": "happy",
+        "gesture": "thumbsUp"
+      }
+    ],
+    "moment.screen": [
+      {
+        "text": "New screen. Fresh view.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Ah, a change of scenery.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Relocated without fuss.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Different screen, same me.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Quite the commute.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Settling in over here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nice room. I mean, display.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Moved house, I see.",
+        "mood": "surprised",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Better light over here.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Transfer complete. No luggage lost.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Another screen. How cosmopolitan.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Well, this is new.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "New view. I like it.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ah, the other monitor.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Relocated without notice. Fine.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Oh, more space here.",
+        "mood": "surprised",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "A change of scenery. Welcome.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Different desk, same me.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Looks tidier on this side.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Greetings from the far screen.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Ooh. Whole new horizon.",
+        "mood": "surprised",
+        "gesture": "hop"
+      },
+      {
+        "text": "Adjusting. Give me a second.",
+        "mood": "focused",
+        "gesture": "think"
+      },
+      {
+        "text": "Postcode changed. Carrying on.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Over here, then. Splendid.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Ah, a fresh view.",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "New screen. Settling in.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Quite the spacious side.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Jumped monitors. Still myself.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hello over here. Lovely light.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Relocation complete. No boxes.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Interesting. Different pixels, same me.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Another screen, another me.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Mind if I look around?",
+        "mood": "curious",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Transfer smooth. Barely felt it.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Ah, the other side. Cosy.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Right. Now, where was I?",
+        "mood": "focused",
+        "gesture": "think"
+      },
+      {
+        "text": "Ah, a new view.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Moved house. Quite swiftly.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Nice and roomy over here.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Different screen. Same dependable me.",
+        "mood": "steady",
+        "gesture": "nodSoft"
       }
     ]
   }

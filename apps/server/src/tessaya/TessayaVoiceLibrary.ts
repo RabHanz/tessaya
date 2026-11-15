@@ -18,6 +18,7 @@ import {
   type VoiceClip,
   type VoiceLibraryView,
 } from "@t3tools/tessaya-contracts";
+import { isLineEvent } from "@t3tools/tessaya-shared/expression";
 import { setPersonaField } from "@t3tools/tessaya-shared/personaFile";
 import { pronounce } from "@t3tools/tessaya-shared/pronounce";
 import {
@@ -42,6 +43,7 @@ import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import { serveArbiter } from "../home/VoiceArbiter.ts";
 import { readPack } from "./OperatingSystemPack.ts";
+import { TessayaExpression } from "./TessayaExpression.ts";
 
 export const GOOGLE_KEY_SECRET = "google-api-key";
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
@@ -401,6 +403,15 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
       }),
     );
   switch (input.op) {
+    case "express": {
+      const a = decode(Schema.Struct({ event: Text(16), persona: Schema.optionalKey(Text(60)) }));
+      if (Option.isNone(a) || !isLineEvent(a.value.event)) return bad;
+      const lines = yield* Effect.serviceOption(TessayaExpression);
+      const said = Option.isNone(lines)
+        ? null
+        : yield* lines.value.express(a.value.event, { persona: a.value.persona });
+      return { ok: true, value: said };
+    }
     case "library":
       return yield* answer(voices.library);
     case "preview": {
