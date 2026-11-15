@@ -1,4 +1,5 @@
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
+import { cleanupApiLimitMs } from "@t3tools/tessaya-shared/dictationCleanup";
 import { brainRoute, keyRefusal, type BrainRoute } from "@t3tools/tessaya-shared/brainRoutes";
 import {
   type BrainRole,
@@ -298,11 +299,10 @@ export const make = Effect.gen(function* () {
       const ms = (yield* Clock.currentTimeMillis) - started;
       return { configured: true, text: text.join("").trim(), ms } as const;
     },
-    (effect) =>
+    (effect, input) =>
       effect.pipe(
         Effect.timeoutOrElse({
-          // His p90 on 0.1.107 with a cold connection (2026-11-12); 1.2 s cut three of four answers at 1.05-1.3 s.
-          duration: "2500 millis",
+          duration: cleanupApiLimitMs(input.maxTokens),
           orElse: () => Effect.fail(new DictationCleanupError({ reason: "timeout" })),
         }),
       ),

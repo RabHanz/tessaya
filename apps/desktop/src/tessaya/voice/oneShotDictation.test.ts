@@ -40,13 +40,12 @@ describe("a twelve-minute dictation, all at once", () => {
     expect(saved.at(-1)).toEqual([]);
   });
 
-  it("inserts the raw text when the tidy-up fails, times out or comes back empty", async () => {
+  it("inserts the raw text when the tidy-up fails, times out or comes back empty, and the local tidy when refused", async () => {
     for (const clean of [
       async () => null,
       async () => {
         throw new Error("timed out");
       },
-      async () => ({ text: "Sentence 1.", stage: "fallback" }),
       async () => ({ text: "  ", stage: "model" }),
     ]) {
       const { oneShot, pasted } = harness(clean);
@@ -54,6 +53,14 @@ describe("a twelve-minute dictation, all at once", () => {
       expect(result).toMatchObject({ status: "pasted", failed: true });
       expect(pasted[0]).toBe(sentences.join(" "));
     }
+    // A refused model answer pastes the text tidied on this computer, and says why.
+    const { oneShot, pasted } = harness(async () => ({
+      text: "Tidied here.",
+      stage: "fallback",
+      why: "new number 200",
+    }));
+    expect(await oneShot.flush(null)).toMatchObject({ failed: true, why: "new number 200" });
+    expect(pasted[0]).toBe("Tidied here.");
   });
 
   it("keeps every chunk on disk until the paste lands, so nothing said is lost", async () => {

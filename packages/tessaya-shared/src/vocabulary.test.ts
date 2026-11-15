@@ -59,7 +59,8 @@ describe("vocabulary file", () => {
     // Her own names come first and carry how they are mis-heard; his words follow, most used first.
     expect(terms.slice(0, 3).map((t) => t.split(" ")[0])).toEqual(["Tessaya", "Wispr", "T3"]);
     expect(terms[3]).toBe("Tessaya Manager");
-    expect(terms.slice(4)).toEqual(["Parakeet", 'Baton (heard as "Buton")']);
+    expect(terms[4]).toBe("Tessel");
+    expect(terms.slice(5)).toEqual(["Parakeet", 'Baton (heard as "Buton")']);
     expect(entries.find((e) => e.phrase === "Baton")).toMatchObject({ source: "added", count: 2 });
   });
 });
