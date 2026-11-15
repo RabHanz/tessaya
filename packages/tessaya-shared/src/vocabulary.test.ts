@@ -91,6 +91,30 @@ describe("her own names", () => {
     ];
     for (const [heard, meant] of cases) expect(biasTranscript(heard, [])).toBe(meant);
   });
+
+  it("are the persona he calls on the Tessel, as its recogniser heard them (15 Nov), and only when said to her", () => {
+    const names = ["Tessaya", "Alfred", "Freya", "Sebastian"];
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ["Get me to say a little bit.", "Get me Tessaya little bit."],
+      ["I said get me to say a", "I said get me Tessaya"],
+      ["Let's talk to T.", "Let's talk to Tessaya."],
+      ["This best.", "Dismissed."],
+      ["This miss.", "Dismissed."],
+      ["Switch me back to Alfie.", "Switch me back to Alfred."],
+      // Controls: ordinary English after a call, a real name, her name already right, a term.
+      ["Get me to say a few words.", "Get me to say a few words."],
+      ["Get me to say yes.", "Get me to say yes."],
+      ["Talk to the team.", "Talk to the team."],
+      ["Talk to Tessa about it.", "Talk to Tessa about it."],
+      ["Speak to Tim.", "Speak to Tim."],
+      ["Talk to T3 code.", "Talk to T3 code."],
+      ["Let me talk to Sebastian.", "Let me talk to Sebastian."],
+    ];
+    for (const [heard, meant] of cases) expect(biasTranscript(heard, [], { names })).toBe(meant);
+    // Dictated, the same words stay as he said them.
+    expect(biasTranscript("Get me to say a little bit.", [])).toBe("Get me to say a little bit.");
+    expect(biasTranscript("This best.", [])).toBe("This best.");
+  });
 });
 
 describe("his taught words", () => {
