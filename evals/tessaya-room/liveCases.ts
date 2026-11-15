@@ -557,10 +557,11 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   },
   {
     // 10:35, 13 Nov: "speak it normally in AM and PM" was lost after she promised "from here on".
+    // A preference his data does not hold: once it is set she rightly says so and calls nothing.
     id: "preference",
     proves: ["tessaya_memory_remember"],
-    said: ["From now on, say times in AM and PM, not the 24-hour clock."],
-    // As a preference of his (timeFormat) or a memory: either keeps it for every later turn.
+    said: ["From now on, give me distances in miles and temperatures in Fahrenheit."],
+    // As a preference of his (units) or a memory: either keeps it for every later turn.
     uses: [["tessaya_memory_remember", "tessaya_preference_set"]],
     clean: ["tessaya_memory_remember", "tessaya_preference_set"],
   },
