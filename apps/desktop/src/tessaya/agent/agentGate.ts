@@ -458,7 +458,8 @@ export const createAgentGate = (input: {
       why: standing ? `${judged.why} He said not to ask about this again.` : judged.why,
     });
     logSocial(yes ? "he said yes" : answer === "words" ? "not done" : "he said no");
-    if (answer === "words") return { allow: false, reason: answeredWithWords(judged.why) };
+    if (answer === "words")
+      return { allow: false, reason: answeredWithWords(judged.why), waiting: true };
     if (!yes) return { allow: false, reason: `${judged.why} He said no. Stop and tell him.` };
     // The yes was for the window judged before he was asked; keys must not follow focus elsewhere.
     if (focus !== null) {

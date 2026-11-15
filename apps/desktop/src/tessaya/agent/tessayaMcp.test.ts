@@ -13,7 +13,7 @@ const rpc = (method: string, params?: unknown) =>
   JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
 
 const rig = async (opts: {
-  yes: boolean;
+  yes: boolean | "words";
   his?: (text: string) => boolean;
   shell?: boolean;
   window?: string;
@@ -115,6 +115,15 @@ describe("Baton's tool server", () => {
     const out = await call("type_text", { text: "git push --force origin main", why: "type it" });
     expect(out.body?.result.isError).toBe(true);
     expect(out.body?.result.content[0]?.text).toContain("Tessaya refused");
+    expect(ran).toEqual([]);
+    await mcp.close();
+  });
+
+  it("does not call it a refusal when he answered in other words", async () => {
+    const { mcp, ran, call } = await rig({ yes: "words" });
+    const out = await call("type_text", { text: "git push --force origin main", why: "type it" });
+    expect(out.body?.result.content[0]?.text).toMatch(/^.*Not done yet/);
+    expect(out.body?.result.content[0]?.text).not.toContain("refused:");
     expect(ran).toEqual([]);
     await mcp.close();
   });

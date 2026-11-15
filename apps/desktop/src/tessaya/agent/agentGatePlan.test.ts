@@ -253,6 +253,7 @@ describe("his answer to her question (2026-11-12)", () => {
     expect(await r.gate(enter)).toEqual({
       allow: false,
       reason: answeredWithWords("That may send what is typed."),
+      waiting: true,
     });
     expect(r.outcomes).toEqual(["he answered with other words"]);
   });
