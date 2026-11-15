@@ -48,14 +48,7 @@ describe("createIntercomTab", () => {
     });
     await tab.load();
     expect(tab.controls().map((c) => c.id)).toEqual(
-      expect.arrayContaining([
-        "ic.enabled",
-        "ic.quiet",
-        "ic.dnd",
-        "ic.consent:sara",
-        "ic.kinds",
-        "ic.who",
-      ]),
+      expect.arrayContaining(["ic.enabled", "ic.dnd", "ic.consent:sara", "ic.kinds", "ic.who"]),
     );
     calls.length = 0;
     tab.act("ic.enabled", true);

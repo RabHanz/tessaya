@@ -15,6 +15,7 @@ import { assert, it } from "@effect/vitest";
 import * as ServerConfig from "../config.ts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -729,6 +730,19 @@ layer("BatonJobFlow", (it) => {
       assert.deepEqual(spoken, [
         { device: "r1-desk", text: "The plan for Fix login is ready in its thread." },
       ]);
+      // His own quiet hours (Settings, the desktop or by voice) are the household's one record and hold it at noon.
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT OR REPLACE INTO fabric_settings (key, value) VALUES ('comms.quietHours', ${JSON.stringify({ from: "11:00", to: "13:00", timeZone: "UTC" })})`;
+      yield* jobs.agree(id);
+      yield* recordJobChanges(entry("working"), seen, said);
+      yield* jobs.refine(
+        id,
+        { by: "him", at: "2026-11-14T12:05:00Z", via: "voice", text: "y" },
+        true,
+      );
+      yield* recordJobChanges(entry("working"), seen, said);
+      assert.strictEqual(spoken.length, 1);
+      yield* sql`DELETE FROM fabric_settings WHERE key = 'comms.quietHours'`;
     }).pipe(
       // The layer's clock is shared, and the other tests count turns from time zero.
       Effect.ensuring(TestClock.setTime(0)),
