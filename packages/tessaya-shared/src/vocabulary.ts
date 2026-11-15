@@ -786,15 +786,93 @@ const applyScreenNames = (
   );
 };
 
+/** "Get me", "talk to", "switch back to": the words after it are who he is calling. */
+const CALL_SLOT =
+  /\b(?:get me|put me (?:through )?to|talk to|speak to|switch(?: me)?(?: back| over)? to|hand (?:me |it )?(?:over )?to|pass me (?:over )?to|hey|okay|ok)\s+/giu;
+/** What may follow a called name: the end, or a word that is not more of a noun phrase ("get me to say a few words"). */
+const AFTER_CALL =
+  /^(?:\s*(?:[,.!?;:]|$)|\s+(?:please|now|here|again|back|then|little|for|and)\b)/iu;
+/** A whole turn that is only a mis-heard word to her: "This best." and "This miss." for "Dismissed." (Tessel, 15 Nov). */
+const SPOKEN_ALONE: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^(?:this|dis|the) (?:best|miss|missed|mist|must)$/, "Dismissed."],
+];
+const nameLetters = (text: string) => text.toLowerCase().replace(/[^\p{L}]/gu, "");
+
+/**
+ * The persona he calls, heard as several words ("get me to say a", "let's talk to T"): the words after a call that
+ * sound like one of `names` together become that name. Only for words said to her, never for dictation.
+ */
+export const applyCalledNames = (text: string, names: ReadonlyArray<string>): string => {
+  const called = names.filter((n) => /^\p{L}+$/u.test(n) && n.length >= 4);
+  if (called.length === 0) return text;
+  const plain = text
+    .toLowerCase()
+    .replace(/[^a-z ]/g, "")
+    .trim();
+  for (const [heard, to] of SPOKEN_ALONE) if (heard.test(plain)) return to;
+  let out = "";
+  let from = 0;
+  for (const slot of text.matchAll(CALL_SLOT)) {
+    const at = slot.index + slot[0].length;
+    if (at < from) continue;
+    const run = [...text.slice(at).matchAll(/[\p{L}]+/gu)].slice(0, 4);
+    let best: { readonly end: number; readonly name: string; readonly cost: number } | null = null;
+    for (let k = 1; k <= run.length; k += 1) {
+      const words = run.slice(0, k);
+      // Words of one name are apart only by spaces.
+      if (
+        words.some(
+          (w, i) =>
+            i > 0 &&
+            !/^ +$/.test(
+              text.slice(at + words[i - 1]!.index + words[i - 1]![0].length, at + w.index),
+            ),
+        )
+      )
+        break;
+      const end = at + words.at(-1)!.index + words.at(-1)![0].length;
+      if (words[0]!.index !== 0 || !AFTER_CALL.test(text.slice(end))) continue;
+      const heard = nameLetters(words.map((w) => w[0]).join(""));
+      for (const name of called) {
+        const target = name.toLowerCase();
+        if (heard === target) continue;
+        // "Talk to T.": the name's first letter alone, when only one name starts with it.
+        const initial =
+          heard.length === 1 &&
+          heard === target[0] &&
+          called.filter((n) => n[0]!.toLowerCase() === heard).length === 1;
+        const cost = initial
+          ? 0
+          : Math.round((1 - similar(heard, target)) * Math.max(heard.length, target.length));
+        const near =
+          initial ||
+          (heard[0] === target[0] &&
+            heard.length >= target.length - 2 &&
+            cost <= Math.floor(target.length / 3) &&
+            !(k === 1 && FIRST_NAMES.has(heard)));
+        if (near && (best === null || cost < best.cost)) best = { end, name, cost };
+      }
+    }
+    if (best === null) continue;
+    out += text.slice(from, at) + best.name;
+    from = best.end;
+  }
+  return out + text.slice(from);
+};
+
 export const biasTranscript = (
   heardText: string,
   entries: ReadonlyArray<VocabularyEntry>,
-  context: { readonly screen?: ReadonlyArray<string> } = {},
+  context: {
+    readonly screen?: ReadonlyArray<string>;
+    /** The personas he can call, when these words were said to her (a voice turn), not dictated. */
+    readonly names?: ReadonlyArray<string>;
+  } = {},
 ): string => {
   const text = applyKnownNames(
     joinSplitTerms(
       applyScreenNames(
-        applyTaughtForms(applyOwnNames(heardText), entries),
+        applyTaughtForms(applyCalledNames(applyOwnNames(heardText), context.names ?? []), entries),
         entries,
         context.screen ?? [],
       ),

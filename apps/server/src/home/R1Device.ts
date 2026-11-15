@@ -649,7 +649,13 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
           Effect.map((s) => s.speechProjectCustomWords),
           Effect.orElseSucceed(() => []),
         );
-  const input = { ...raw, heard: biasTranscript(raw.heard, dictionaryEntries(words)) };
+  const pack = yield* r1Pack;
+  const input = {
+    ...raw,
+    heard: biasTranscript(raw.heard, dictionaryEntries(words), {
+      names: pack.personas.map((p) => p.name),
+    }),
+  };
   const home = yield* HomeAssistantService;
   // A replay turn has no device: its eyes and camera are his real R1's, so they stay still.
   const all = isReplay(input) ? [] : yield* home.devices;
@@ -677,7 +683,6 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     withHouse && /automation|remind|timer|schedule/i.test(input.heard)
       ? yield* home.automations({}).pipe(Effect.orElseSucceed(() => null))
       : null;
-  const pack = yield* r1Pack;
   const persona = calledPersona(pack, input.voice);
   // One pipeline for every vessel: this device is a thin adapter over TessayaTurn (MEMORY-V2-DESIGN.md §2.0).
   const timeZone = yield* home.timeZone;

@@ -46,6 +46,7 @@ import { createSmartTurn } from "./smartTurn.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { createWakeStream } from "./wakeStream.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
+import { biasTranscript } from "@t3tools/tessaya-shared/vocabulary";
 import { adoptTesselNames } from "./envNames.ts";
 
 const env = (key: string, fallback?: string): string => {
@@ -731,7 +732,17 @@ const main = async () => {
       embedding: model("embedding_model.onnx"),
       wakes: list.map((w) => ({ word: w.word, path: w.file, threshold: w.threshold })),
     });
-  const recognise = recognisers(() => online.size > 0);
+  const heard = recognisers(() => online.size > 0);
+  // The room's words get dictation's own name correction, with the personas he can call (one ear on every vessel).
+  const fix = (text: string) => biasTranscript(text, [], { names: roster.map((p) => p.name) });
+  const recognise = (): RecogniserTurn => {
+    const turn = heard();
+    return {
+      ...turn,
+      finish: async () => fix(await turn.finish()),
+      onPartial: (listener) => turn.onPartial?.((text) => listener(fix(text))),
+    };
+  };
   const wake =
     words.length === 0 || !NodeFS.existsSync(model("melspectrogram.onnx"))
       ? undefined
