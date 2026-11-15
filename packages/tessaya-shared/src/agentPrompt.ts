@@ -159,6 +159,8 @@ export const greetingLine = (
   said: string,
   random: () => number = Math.random,
   avoid?: number,
+  /** They spoke minutes ago: a time-of-day or how-are-you manner read as a fresh start to him. */
+  justSpoke = false,
 ): { readonly text: string; readonly manner: number } | null => {
   if (!GREETS.test(said)) return null;
   const choices = MANNERS.map((_, i) => i).filter((i) => i !== avoid);
@@ -166,7 +168,9 @@ export const greetingLine = (
   const opening = OPENINGS[Math.floor(random() * OPENINGS.length)]!;
   return {
     manner,
-    text: `greet him back this time ${MANNERS[manner]}; open with "${opening}" or a word like it, never his greeting word for word.`,
+    text: justSpoke
+      ? `you spoke with him a moment ago, so greet him back as the same conversation going on: open with "${opening}" or a word like it, a few words at most; no good morning, no how are you, nothing that starts afresh.`
+      : `greet him back this time ${MANNERS[manner]}; open with "${opening}" or a word like it, never his greeting word for word.`,
   };
 };
 

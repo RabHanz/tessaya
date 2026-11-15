@@ -355,7 +355,12 @@ export const createAssistantAgent = (input: {
     const lastOwn = recent.findLast(
       (t) => (t.route === "answer" || t.route === "look") && input.ownTurn?.(t) !== false,
     );
-    const greeting = greetingLine(text, input.random, lastManner);
+    const greeting = greetingLine(
+      text,
+      input.random,
+      lastManner,
+      lastOwn !== undefined && now() - Date.parse(lastOwn.at) < HAND_OFF_MS,
+    );
     if (greeting !== null) lastManner = greeting.manner;
     const header = contextLine({
       now: input.clockLine(),
