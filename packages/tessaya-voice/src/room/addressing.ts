@@ -3,15 +3,17 @@
  * from across the room. Everything else in the room (his dictation, a call, the TV) is not hers to answer.
  * @module baton-voice/room/addressing
  */
-import { nameAskedFor, wakeWordHeard, wakeWordLead } from "@t3tools/tessaya-shared/wakeVerify";
+import {
+  CALL_SLOT,
+  nameAskedFor,
+  wakeWordHeard,
+  wakeWordLead,
+} from "@t3tools/tessaya-shared/wakeVerify";
 
 /** His "Tessaya" on its own, as the R1 hears it: "Say yeah.", "You say ya?" (12 Nov), "To say uh" (13 Nov). */
 const TESSAYA_ALONE = /^(?:you |to |tuh )?say (?:yeah|ya|yah|uh)$/;
 /** The same, leading a sentence with a comma after it: "To say uh, can you hear me?" (13 Nov). */
 const TESSAYA_LEAD = /^(?:to|tuh) say,? (?:yeah|ya|yah|uh),/i;
-
-const SWITCH_TO =
-  /\b(?:switch(?: me)?(?: back| over)? to|hand (?:me |it )?(?:over |back )?to|pass me (?:over |back )?to|put me (?:through |back )?(?:to|on to|onto)|(?:get|give|bring) me(?: back)?|(?:talk|speak) to|connect me (?:to|with))\s+/gi;
 
 /**
  * The persona he asked for by a switch phrase ("get me Tessaya", "let's talk to Alfred"), and his words with the name
@@ -21,7 +23,7 @@ export const askedFor = (
   text: string,
   names: ReadonlyArray<string>,
 ): { readonly name: string; readonly text: string } | null => {
-  for (const m of text.matchAll(SWITCH_TO)) {
+  for (const m of text.matchAll(CALL_SLOT)) {
     const from = m.index + m[0].length;
     const asked = nameAskedFor(text.slice(from), names);
     if (asked === null) continue;

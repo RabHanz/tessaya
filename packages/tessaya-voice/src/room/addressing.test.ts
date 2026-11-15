@@ -62,12 +62,17 @@ describe("whether he was talking to her", () => {
     expect(calledName("Switch me over to Fraya.", names)).toBe("Freya");
     expect(calledName("Can you put me through to Onix?", names)).toBe("Onyx");
     expect(calledName("Give me Nova.", [...names, "Nova"])).toBe("Nova");
+    // The same resolver as the shared correction, so the room and the server agree on a near spelling.
+    expect(askedFor("Switch me back to Alfie.", names)?.text).toBe("Switch me back to Alfred.");
     for (const t of [
       "Get me a coffee.",
       "Give me the time.",
       "Talk to me.",
       "Can you get me to the station?",
       "Switch to the lamp.",
+      "Okay then.",
+      "Hey you.",
+      "Speak to Tim.",
     ])
       expect(askedFor(t, [...names, "Maya"])).toBeNull();
   });
