@@ -285,6 +285,39 @@ if (t3) {
   await shot("t3-settings-tessaya", t3, /Tessaya/);
 }
 
+// The whole app at rest, every process it runs (window, renderers, server, sidecars), from Windows' own counters:
+// the mascot row alone missed a window and server that idled at 1.5 s of CPU per 10 s on his laptop (MA-017).
+const IDLE_CPU_LIMIT_MS = 1_000;
+try {
+  await sleep(30_000);
+  const dir = join(exe, "..").replace(/'/g, "''");
+  const script =
+    `$d='${dir}'; $p=@{}; Get-CimInstance Win32_Process | ? { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, 'OrdinalIgnoreCase') } | % { $p[[int]$_.ProcessId]=$_.Name + ($(if ($_.CommandLine -match '--type=(\\S+)') { ' ' + $matches[1] } else { '' })) }; ` +
+    "$s={ $h=@{}; Get-CimInstance Win32_PerfRawData_PerfProc_Process | ? { $p.ContainsKey([int]$_.IDProcess) } | % { $h[[int]$_.IDProcess]=[double]$_.PercentProcessorTime }; $h }; " +
+    "$a=& $s; Start-Sleep 30; $b=& $s; " +
+    "$p.Keys | ? { $a.ContainsKey($_) -and $b.ContainsKey($_) } | % { [pscustomobject]@{ name=$p[$_]; ms=[math]::Round(($b[$_]-$a[$_])/30000) } } | ConvertTo-Json -Compress";
+  const per = [].concat(
+    JSON.parse(
+      execFileSync("powershell", ["-NoProfile", "-Command", script], {
+        encoding: "utf8",
+        timeout: 90_000,
+      }) || "[]",
+    ),
+  );
+  const total = per.reduce((sum, p) => sum + p.ms, 0);
+  row(
+    `the whole app at rest uses under ${IDLE_CPU_LIMIT_MS} ms of CPU per 10 s`,
+    total < IDLE_CPU_LIMIT_MS,
+    `${total} ms per 10 s: ${per
+      .filter((p) => p.ms > 0)
+      .toSorted((a, b) => b.ms - a.ms)
+      .map((p) => `${p.name} ${p.ms}`)
+      .join(", ")}`,
+  );
+} catch (error) {
+  row("measure the whole app at rest", false, error.message);
+}
+
 const failed = rows.filter((r) => r.ok === false);
 const md = [
   "| step | ok | detail |",

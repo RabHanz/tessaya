@@ -127,6 +127,8 @@ export const claudeConfigDirs = (): ReadonlyArray<string> => {
   );
 };
 
+const accounts = new Map<string, { readonly stamp: string; readonly account: string | null }>();
+
 /** The signed-in account of a config directory: its `oauthAccount` address, before the `@`. */
 export const accountOfConfigDir = (dir: string): string | null => {
   const home = NodeOS.homedir();
@@ -136,11 +138,18 @@ export const accountOfConfigDir = (dir: string): string | null => {
       ? NodePath.join(home, ".claude.json")
       : NodePath.join(dir, ".claude.json");
   try {
+    // .claude.json holds every project's history (megabytes) and is read on each sessions poll: parse it only when it changes.
+    const stat = NodeFS.statSync(file);
+    const stamp = `${stat.mtimeMs}:${stat.size}`;
+    const kept = accounts.get(file);
+    if (kept?.stamp === stamp) return kept.account;
     const parsed = JSON.parse(NodeFS.readFileSync(file, "utf8")) as {
       oauthAccount?: { emailAddress?: unknown };
     };
     const email = parsed.oauthAccount?.emailAddress;
-    return typeof email === "string" && email.includes("@") ? email.split("@")[0]! : null;
+    const account = typeof email === "string" && email.includes("@") ? email.split("@")[0]! : null;
+    accounts.set(file, { stamp, account });
+    return account;
   } catch {
     return null;
   }

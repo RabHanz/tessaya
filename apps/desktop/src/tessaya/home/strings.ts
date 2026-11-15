@@ -589,11 +589,20 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
 
 export const DEFAULT_LOCALE: Locale = "en";
 
+const tables = new Map<string, Readonly<Record<string, string>>>();
 /** A locale's table with English behind it, so a missing key is English, never blank. */
-export const tableFor = (locale: string): Readonly<Record<string, string>> => ({
-  ...STRINGS[DEFAULT_LOCALE],
-  ...(STRINGS as Readonly<Record<string, Readonly<Record<string, string>>>>)[locale],
-});
+export const tableFor = (locale: string): Readonly<Record<string, string>> => {
+  // Built once per locale: `text` is called per Settings row, and copying every string each time showed in idle profiles.
+  let table = tables.get(locale);
+  if (table === undefined) {
+    table = {
+      ...STRINGS[DEFAULT_LOCALE],
+      ...(STRINGS as Readonly<Record<string, Readonly<Record<string, string>>>>)[locale],
+    };
+    tables.set(locale, table);
+  }
+  return table;
+};
 
 export const fill = (
   template: string,

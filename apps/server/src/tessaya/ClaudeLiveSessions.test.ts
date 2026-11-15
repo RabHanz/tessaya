@@ -1,6 +1,12 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  accountOfConfigDir,
   herdrPaneRef,
   isDescriptorProcess,
   isTessayaOwnFolder,
@@ -61,6 +67,29 @@ describe("live Claude Code sessions from their own descriptors (D68)", () => {
       ),
     ).toBe("fab-api~w1:p1");
     expect(herdrPaneRef(new Map())).toBeNull();
+  });
+});
+
+describe("a config directory's signed-in account", () => {
+  it("is read again when its .claude.json changes, and kept while it does not", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-account-"));
+    const file = NodePath.join(dir, ".claude.json");
+    try {
+      NodeFS.writeFileSync(
+        file,
+        JSON.stringify({ oauthAccount: { emailAddress: "ann@example.com" } }),
+      );
+      expect(accountOfConfigDir(dir)).toBe("ann");
+      NodeFS.writeFileSync(
+        file,
+        JSON.stringify({ oauthAccount: { emailAddress: "bobby@example.com" } }),
+      );
+      expect(accountOfConfigDir(dir)).toBe("bobby");
+      NodeFS.rmSync(file);
+      expect(accountOfConfigDir(dir)).toBeNull();
+    } finally {
+      NodeFS.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
