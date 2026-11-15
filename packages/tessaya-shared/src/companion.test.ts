@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   cueFor,
   islandFaceShows,
+  jobLeadMoves,
   jobMoments,
   momentOf,
   wanders,
@@ -86,5 +87,24 @@ describe("jobMoments", () => {
   it("treats a job that waits for approval and then for input as one wait", () => {
     expect(jobMoments([job("a", "needs_approval")], [job("a", "needs_input")])).toEqual([]);
     expect(jobMoments([], [job("n", "done_unseen")])).toEqual([{ moment: "done", title: "Job n" }]);
+  });
+});
+
+describe("jobLeadMoves", () => {
+  const job = (id: string, lead?: string): JobSnapshot => ({
+    id,
+    title: `Job ${id}`,
+    state: "working",
+    ...(lead === undefined ? {} : { lead }),
+  });
+
+  it("names the personas a job passed between, and nothing on a first read or an unknown lead", () => {
+    expect(jobLeadMoves(null, [job("a", "executive")])).toEqual([]);
+    expect(
+      jobLeadMoves(
+        [job("a", "executive"), job("b", "butler"), job("c")],
+        [job("a", "butler"), job("b", "butler"), job("c", "executive"), job("d", "executive")],
+      ),
+    ).toEqual([{ from: "executive", to: "butler", title: "Job a" }]);
   });
 });

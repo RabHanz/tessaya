@@ -109,7 +109,24 @@ export interface JobSnapshot {
   readonly id: string;
   readonly title: string;
   readonly state: TessayaSessionState;
+  /** The persona leading it (a pack id), when the server says. */
+  readonly lead?: string;
 }
+
+/** Jobs whose lead persona changed since the last read: one persona handing work to another. */
+export const jobLeadMoves = (
+  prev: ReadonlyArray<JobSnapshot> | null,
+  next: ReadonlyArray<JobSnapshot>,
+): ReadonlyArray<{ readonly from: string; readonly to: string; readonly title: string }> => {
+  if (prev === null) return [];
+  const before = new Map(prev.map((job) => [job.id, job.lead]));
+  return next.flatMap((job) => {
+    const from = before.get(job.id);
+    return from === undefined || job.lead === undefined || from === job.lead
+      ? []
+      : [{ from, to: job.lead, title: job.title }];
+  });
+};
 
 const JOB_MOMENT: Partial<Record<TessayaSessionState, CompanionMoment>> = {
   done_unseen: "done",

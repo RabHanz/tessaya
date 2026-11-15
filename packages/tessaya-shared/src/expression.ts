@@ -340,6 +340,11 @@ export const LINE_EVENTS = {
     mood: "happy",
     gesture: "giggleOnce",
   }),
+  "moment.met": spec(
+    "",
+    "On his desktop she landed beside, or on top of, another of his personas' characters; she greets them.",
+    { priority: "ambient", maxWords: 7, mood: "happy", gesture: "wave" },
+  ),
   "moment.screen": spec("", "He moved her from one of his screens to another one.", {
     priority: "ambient",
     maxWords: 7,
