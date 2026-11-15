@@ -75,9 +75,15 @@ describe("a config directory's signed-in account", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "claude-account-"));
     const file = NodePath.join(dir, ".claude.json");
     try {
-      NodeFS.writeFileSync(file, JSON.stringify({ oauthAccount: { emailAddress: "ann@x.io" } }));
+      NodeFS.writeFileSync(
+        file,
+        JSON.stringify({ oauthAccount: { emailAddress: "ann@example.com" } }),
+      );
       expect(accountOfConfigDir(dir)).toBe("ann");
-      NodeFS.writeFileSync(file, JSON.stringify({ oauthAccount: { emailAddress: "bobby@x.io" } }));
+      NodeFS.writeFileSync(
+        file,
+        JSON.stringify({ oauthAccount: { emailAddress: "bobby@example.com" } }),
+      );
       expect(accountOfConfigDir(dir)).toBe("bobby");
       NodeFS.rmSync(file);
       expect(accountOfConfigDir(dir)).toBeNull();
