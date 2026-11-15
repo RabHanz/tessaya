@@ -164,7 +164,8 @@ const NOT_DONE =
 const REASONING =
   /\b(let me correct that|I'll ask him|I should ask|he (said|asked|wants|means)|(in|from|based on) the conversation|nothing in the conversation)\b/i;
 /** "X here." at the start of a turn (13 Nov). */
-const SELF_INTRO = /^\s*(\w+) here[.!,]/i;
+/** "Freya here." opens with a name; "Still here." is presence, not a name. */
+const SELF_INTRO = /^\s*(?!(?:Still|Right|Always|Back|Just|Now|Over)\b)\p{Lu}\w* here[.!,]/u;
 
 /**
  * With her brain down, each reply ends with a line of this persona's offline pool for its moment (after any hold

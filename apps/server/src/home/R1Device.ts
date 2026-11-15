@@ -784,7 +784,8 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     turn,
     names: pack.personas.map((p) => p.name),
     // The pipeline's conversation is empty after its idle window, the same one a greeting starts afresh after.
-    justSpoke: begun.conversation.turns.length > 0,
+    // A replay keeps no conversation here (it learns nothing), so the one it sends is its own.
+    justSpoke: begun.conversation.turns.length > 0 || (isReplay(input) && input.history.length > 0),
     // The answering persona's own tool list (its file's `tools:`), as the desktop applies it; null is all of them.
     allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
   };

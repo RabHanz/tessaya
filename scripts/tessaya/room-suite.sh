@@ -32,14 +32,17 @@ node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync(process.ar
 for s in home-assistant-token dictation-cleanup-anthropic; do
   [ -f "$from/secrets/$s.bin" ] && install -m 600 "$from/secrets/$s.bin" "$home/userdata/secrets/"
 done
-# --brain-down: a key the API refuses, so every brain call fails (the cases for her offline lines).
-case " ${*:3} " in *" --brain-down "*) printf 'sk-ant-brain-down' > "$home/userdata/secrets/dictation-cleanup-anthropic.bin" ;; esac
 node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1],'utf8'));f.writeFileSync(process.argv[2],JSON.stringify({deviceKey:d.deviceKey,mqttUrl:null,mqttUser:null,mqttPass:null,deviceId:null}),{mode:0o600})" \
   "$from/secrets/r1-device.bin" "$home/userdata/secrets/r1-device.bin"
 # Only the brain's key settings: provider accounts would reach his real account homes. One rule for Opus, so a case
 # can prove a rule sends its task straight there (a replay's own settings_set is a dry run).
 node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1],'utf8'));f.writeFileSync(process.argv[2],JSON.stringify({dictationCleanupCredentials:d.dictationCleanupCredentials,dictationCleanup:d.dictationCleanup,brainEscalation:{rules:[{when:'coding questions',then:'opus'}]}}))" \
   "$from/settings.json" "$home/userdata/settings.json"
+# --brain-down: a key the API refuses, so every brain call fails, and her own words on (the cases for her offline lines).
+case " ${*:3} " in *" --brain-down "*)
+  printf 'sk-ant-brain-down' > "$home/userdata/secrets/dictation-cleanup-anthropic.bin"
+  node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1],'utf8'));f.writeFileSync(process.argv[1],JSON.stringify({...d,tessayaExpression:true}))" "$home/userdata/settings.json" ;;
+esac
 port="$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
 TESSAYA_VOICE_POOL=lean "$t3" serve --base-dir "$home" --port "$port" --host 127.0.0.1 > "$home/server.log" 2>&1 &
 pid=$!

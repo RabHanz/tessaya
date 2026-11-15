@@ -140,6 +140,9 @@ const r1Say: Say = async (sentences, voices) => {
   const calls: Array<LiveCall> = [];
   const ms: Array<number> = [];
   for (const [i, sentence] of sentences.entries()) {
+    // A sentence the loop names another conversation for starts with none of the last one's history.
+    if (i > 0 && voices?.[i]?.["conversation"] !== voices?.[i - 1]?.["conversation"])
+      history.length = 0;
     history.push({ role: "user", content: sentence });
     const t = await turn(history, voices?.[i]);
     replies.push(t.reply);

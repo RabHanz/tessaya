@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { roomCases } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
+import POOL from "../../packages/tessaya-shared/src/expressionPool.json" with { type: "json" };
 import { liveCases, liveFailureOf, uncovered, unheldFailure, type LiveCall } from "./liveCases.ts";
 
 const caseOf = (id: string) => roomCases.find((c) => c.id === id)!;
@@ -68,6 +69,20 @@ describe("tessaya-room grader", () => {
 });
 
 describe("the room's live tool suite", () => {
+  it("passes her offline greetings from the persona's pool, and fails a repeat, a fresh start or a name", () => {
+    const again = liveCases.find((c) => c.id === "greet-again-brain-down")!;
+    const hello = POOL.companion["greet.hello"][0]!.text;
+    const lines = POOL.companion["greet.again"].slice(0, 4).map((l) => l.text);
+    expect(liveFailureOf(again, {}, [hello, ...lines], [])).toBeNull();
+    expect(liveFailureOf(again, {}, [hello, ...lines.slice(0, 3), lines[0]!], [])).toMatch(/twice/);
+    expect(
+      liveFailureOf(again, {}, [hello, "Good morning! How are you?", ...lines.slice(0, 3)], []),
+    ).toMatch(/afresh/);
+    const plain = liveCases.find((c) => c.id === "escalate-not")!;
+    expect(liveFailureOf(plain, {}, ["Still here. Go on."], [])).toBeNull();
+    expect(liveFailureOf(plain, {}, ["Freya here. Go on."], [])).toBe("introduced herself");
+  });
+
   it("checks the Record's answer by what it names, not by the word nothing", () => {
     const record = liveCases.find((c) => c.id === "record")!;
     const read: LiveCall = {
