@@ -160,6 +160,7 @@ export const MASCOT_ACTS = [
   "wave",
   "nod",
   "funny",
+  "signature",
   "sneeze",
   "yawn",
   "dizzy",

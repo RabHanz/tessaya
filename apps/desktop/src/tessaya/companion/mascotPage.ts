@@ -113,6 +113,25 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    b.textContent = e.text; b.style.opacity = "1";
    clearTimeout(b.t); b.t = setTimeout(() => { b.style.opacity = "0"; }, 1200 + 260 * e.text.split(/\s+/).length);
   },
+  // her character's own act (bodies.js quirk, its Studio idle set: Alfred's pocket watch, tie and monocle), picked by
+  // her personality: the formal and calm keep to their composed ones, the playful to the livelier
+  signature() {
+   if (!rig || !rig.physics) return null;
+   const P = rig.physics(), C = TCS.CHARACTERS[rig.character] || {}, T = rig.personality;
+   const own = [[P.quirk, 1.2 + T.play]].concat((C.idle || []).map(([k, w]) => [k, w * (0.6 + T.formal)]));
+   if (C.attach) own.push(["monocleOut", 0.6 + T.formal], ["pocketWatch", 0.5 + T.formal]);
+   let r = Math.random() * own.reduce((s, x) => s + x[1], 0);
+   const pick = (own.find((x) => (r -= x[1]) <= 0) || own[0])[0];
+   if (pick === "fidget") rig.fidget(); else rig.play(pick, { force: true });
+   return pick;
+  },
+  // what she does with a quiet minute, by her personality: a walk, a funny moment or her own act
+  idleChoice() {
+   const T = rig ? rig.personality : { energy: 0.5, play: 0.5, formal: 0.5 };
+   const w = [["walk", 0.4 + T.energy], ["funny", 0.2 + T.play], ["signature", 0.4 + T.formal * 0.6]];
+   let r = Math.random() * w.reduce((s, x) => s + x[1], 0);
+   return (w.find((x) => (r -= x[1]) <= 0) || w[0])[0];
+  },
   press(a) { if (rig && rig.press) rig.press(a); },
   release() { if (rig && rig.release) rig.release(); },
   // a funny moment of her own (bodies.js funny, likeliest first) or the one named; what the window must do with it
