@@ -156,6 +156,115 @@ export const removeEntry = (
   phrase: string,
 ): ReadonlyArray<VocabularyEntry> => entries.filter((entry) => !sameWord(entry.phrase, phrase));
 
+/** Adds or replaces: one entry per phrase, ignoring case. An empty phrase changes nothing. */
+export const addEntry = (
+  list: ReadonlyArray<VocabularyEntry>,
+  entry: { readonly phrase: string; readonly replacement: string | null },
+): ReadonlyArray<VocabularyEntry> => {
+  const phrase = entry.phrase.trim();
+  if (phrase.length === 0) return list;
+  const replacement =
+    entry.replacement === null || entry.replacement.trim().length === 0
+      ? null
+      : entry.replacement.trim();
+  const heard = list.find((e) => sameWord(e.phrase, phrase))?.heard;
+  return [
+    { phrase, replacement, source: "added", ...(heard === undefined ? {} : { heard }) },
+    ...list.filter((e) => !sameWord(e.phrase, phrase)),
+  ];
+};
+
+/** Changes the spelling or the phrase of one word and keeps what was learned about it. */
+export const editEntry = (
+  list: ReadonlyArray<VocabularyEntry>,
+  from: string,
+  to: { readonly phrase: string; readonly replacement: string | null },
+): ReadonlyArray<VocabularyEntry> => {
+  const old = list.find((e) => sameWord(e.phrase, from));
+  const phrase = to.phrase.trim();
+  if (old === undefined || phrase.length === 0) return list;
+  const replacement =
+    to.replacement === null || to.replacement.trim().length === 0 ? null : to.replacement.trim();
+  return list
+    .map((e) => (e === old ? { ...e, phrase, replacement } : e))
+    .filter((e, i, all) => e === old || !sameWord(e.phrase, phrase) || all.indexOf(e) === i);
+};
+
+/**
+ * Another copy's entries into this one: the same word keeps the higher count, every heard form, the later time and
+ * "added" when either says so. Merging twice changes nothing, so a copy may send what it has as often as it likes.
+ */
+export const mergeEntries = (
+  entries: ReadonlyArray<VocabularyEntry>,
+  incoming: ReadonlyArray<VocabularyEntry>,
+): ReadonlyArray<VocabularyEntry> => {
+  const all = [...entries];
+  for (const next of incoming) {
+    const at = all.findIndex(
+      (e) => sameWord(e.phrase, next.phrase) && (e.replacement ?? null) === next.replacement,
+    );
+    if (at < 0) {
+      all.push(next);
+      continue;
+    }
+    const old = all[at]!;
+    const heard = withHeard(old.phrase, [...(old.heard ?? []), ...(next.heard ?? [])]);
+    const { heard: _heard, ...rest } = old;
+    const lastSeen = [old.lastSeen, next.lastSeen]
+      .filter((t) => t !== undefined)
+      .sort()
+      .at(-1);
+    all[at] = {
+      ...rest,
+      source:
+        old.source === "added" || next.source === "added"
+          ? "added"
+          : (old.source ?? next.source ?? "added"),
+      count: Math.max(old.count ?? 1, next.count ?? 1),
+      ...(lastSeen === undefined ? {} : { lastSeen }),
+      ...heard,
+    };
+  }
+  return all;
+};
+
+const SOURCE_RANK: Record<VocabularySource, number> = { added: 0, learned: 1, wispr: 2 };
+const spellingKey = (value: string) => value.trim().normalize("NFC").toLocaleLowerCase();
+
+/**
+ * The upstream speech dictionary (`speechProjectCustomWords`) as the top `max` of his: added first, then learned by
+ * count, then Wispr. Each spelling is used once across the list and fits its 50 letters, as that contract requires.
+ */
+export const customWordsOf = (
+  entries: ReadonlyArray<VocabularyEntry>,
+  max = 100,
+): ReadonlyArray<{ readonly term: string; readonly aliases: ReadonlyArray<string> }> => {
+  const seen = new Set<string>();
+  const fresh = (spelling: string) => {
+    const key = spellingKey(spelling);
+    if (key.length === 0 || spelling.trim().length > 50 || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
+  return entries
+    .map((entry, i) => ({ entry, i }))
+    .sort(
+      (a, b) =>
+        SOURCE_RANK[a.entry.source ?? "added"] - SOURCE_RANK[b.entry.source ?? "added"] ||
+        (a.entry.source === "learned" ? (b.entry.count ?? 1) - (a.entry.count ?? 1) : 0) ||
+        a.i - b.i,
+    )
+    .flatMap(({ entry }) => {
+      const term = (entry.replacement ?? entry.phrase).trim();
+      if (!fresh(term)) return [];
+      const forms = [...(entry.replacement === null ? [] : [entry.phrase]), ...(entry.heard ?? [])];
+      const aliases: Array<string> = [];
+      for (const form of forms) if (aliases.length < 8 && fresh(form)) aliases.push(form.trim());
+      return [{ term, aliases }];
+    })
+    .slice(0, max);
+};
+
 /** "add Kubernetes to my dictionary": the word, or null when it is not that command. */
 export const parseAddToDictionary = (said: string): string | null => {
   const match =
