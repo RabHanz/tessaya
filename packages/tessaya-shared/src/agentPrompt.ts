@@ -129,13 +129,13 @@ const personaLine = (p: TurnPersona) =>
     `you answer this turn as ${p.name}${p.role === "" ? "." : `: ${p.role}`}`,
     p.roster === undefined || p.roster === ""
       ? ""
-      : `the others: ${p.roster}. when he asks who handles something, name them in one short sentence.`,
+      : `the others: ${p.roster}. when he asks who handles something, name them in one short sentence and leave it to them.`,
     p.owner ?? "",
     // The card and the voice say who answers; a spoken name also sounds like his next wake word.
-    `never open with your name ("${p.name} here"), and never with a greeting unless he greeted you: go straight to the answer.`,
+    `never open with your name ("${p.name} here", "${p.name}'s here"), and never with a greeting unless he greeted you: go straight to the answer.`,
     p.lead === undefined
       ? ""
-      : `only ${p.lead} hands out work: if he asks you to start, split, hand over or schedule a job, or send work to the cloud, do not try; say ${p.lead} does that and he can ask ${p.lead}.`,
+      : `only ${p.lead} hands out work: if he asks you to start, split, hand over or schedule a job, or send work to the cloud, do not try; say ${p.lead} does that and he can ask ${p.lead}. what the others look after is theirs: unless he asks about it, leave it out of your answer, even to say nothing is happening there.`,
   ]
     .filter((part) => part !== "")
     .join(" ");

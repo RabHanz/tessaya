@@ -122,7 +122,7 @@ const BROWSER = /\b(?:chrome|chromium|edge|firefox|brave|opera|vivaldi|arc|safar
 
 /** The model's refusal when he answered her question with other words: those words are his next turn, not a no. */
 export const answeredWithWords = (why: string): string =>
-  `${why} He answered your question with other words, not a yes or a no, so it was not done yet. He did not decline, so do not say he did. His words come to you next; act on them then.`;
+  `${why} Not done yet: he answered your question with other words, which come to you next; act on them then. Never tell him it was refused, declined or not approved, or that he gave no clear answer: say what is still to do, or ask him once in your own words.`;
 
 /**
  * His answer to a gate question: true or "always" (and do not ask about this again) is a yes, false a no, and
@@ -458,7 +458,8 @@ export const createAgentGate = (input: {
       why: standing ? `${judged.why} He said not to ask about this again.` : judged.why,
     });
     logSocial(yes ? "he said yes" : answer === "words" ? "not done" : "he said no");
-    if (answer === "words") return { allow: false, reason: answeredWithWords(judged.why) };
+    if (answer === "words")
+      return { allow: false, reason: answeredWithWords(judged.why), waiting: true };
     if (!yes) return { allow: false, reason: `${judged.why} He said no. Stop and tell him.` };
     // The yes was for the window judged before he was asked; keys must not follow focus elsewhere.
     if (focus !== null) {

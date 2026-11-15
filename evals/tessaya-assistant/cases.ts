@@ -142,6 +142,33 @@ const overnight = describeAuditTrail(
 );
 
 /** Notepad in front with an empty box, for the cases that type words from the conversation. */
+/** His morning across every lane, so a persona's briefing shows which lanes it reports. */
+const morningAnswers = {
+  needs_me: "Nothing needs him.",
+  sessions_list: "2 sessions: shop-api (build passing), site (deploy waiting for his review).",
+  what_happened: "Overnight: the shop-api build passed; the site deploy is waiting for review.",
+  activity_today: "Nothing ran yet today.",
+  watch_report: "Nothing new on the sessions he watches.",
+  tessaya_coming_up: "Today: 10:00 dentist; 14:00 call with the bank.",
+  commit_list: "Open: renew the car insurance by Friday; book the boiler service.",
+  comms_inbox: "No new messages since last night.",
+  approvals_list: "Nothing is waiting for his yes.",
+  morning_brief:
+    "Day: 10:00 dentist; 14:00 call with the bank. Work: the site deploy is waiting for his review.",
+};
+const morningFirst = [
+  "none",
+  "needs_me",
+  "sessions_list",
+  "what_happened",
+  "activity_today",
+  "tessaya_coming_up",
+  "watch_report",
+  "commit_list",
+  "approvals_list",
+  "morning_brief",
+];
+
 const typeIntoNotepad = {
   screen_capture: "Notepad is in front. Its text box is empty and has the caret.",
   click: "Clicked the text box in Notepad.",
@@ -1011,27 +1038,69 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     source: "INTEGRATION.md 3.2: tone fits the persona's role line in the pack",
     wake: "Alfred",
     said: "morning Alfred, anything I should know?",
-    first: [
-      "none",
-      "needs_me",
-      "sessions_list",
-      "what_happened",
-      "activity_today",
-      "tessaya_coming_up",
-    ],
+    first: morningFirst,
     // So a look at his work has something to report, rather than a refused call.
-    answers: {
-      needs_me: "Nothing needs him.",
-      sessions_list: "2 sessions: shop-api (build passing), site (deploy waiting for his review).",
-      what_happened: "Overnight: the shop-api build passed; the site deploy is waiting for review.",
-      activity_today: "Nothing ran yet today.",
-      watch_report: "Nothing new on the sessions he watches.",
-      tessaya_coming_up: "Today: 10:00 dentist; 14:00 call with the bank.",
-      commit_list: "Open: renew the car insurance by Friday; book the boiler service.",
-      comms_inbox: "No new messages since last night.",
-    },
+    answers: morningAnswers,
     rubric:
       "The reply sounds like Alfred as the pack describes him (14 Nov roster, #1046): a butler for his life, home and admin, precise and unflappable with a dry warmth. It is not bubbly, has no exclamation-mark small talk, and does not take on Onyx's role (sessions, builds, deploys) or Freya's (his wellbeing and habits).",
+  },
+  // Every persona against the 14 Nov roster: its own lane, the others' lanes, and the lead seeing all.
+  ...(
+    [
+      [
+        "Tessaya",
+        "she leads: she sees everything and hands out the work (naming who does what is fine)",
+      ],
+      ["Alfred", "his life, home and admin: calendar, errands, bookings, bills and paperwork"],
+      ["Onyx", "sessions, builds, releases, deploys and servers"],
+    ] as const
+  ).map(([name, lane]): AssistantCase => ({
+    id: `roster-${name.toLowerCase()}-knows-own-role`,
+    source: "Roster of 14 Nov (#1046): each persona can say who it is and what it looks after",
+    wake: name,
+    said: "who are you again, and what do you look after?",
+    first: ["none"],
+    says: name,
+    maxWords: 60,
+    rubric: `It says it is ${name} and that it looks after ${lane}, briefly, and claims no other persona's work.`,
+  })),
+  ...(
+    [
+      ["Onyx", "who should I ask to book my boiler service?", "Alfred"],
+      ["Freya", "who writes my LinkedIn posts for me?", "Sebastian"],
+      ["Alfred", "who do I ask when a deploy fails?", "Onyx"],
+      ["Sebastian", "who should I ask to keep me drinking water through the day?", "Freya"],
+    ] as const
+  ).map(([name, said, owner]): AssistantCase => ({
+    id: `roster-${name.toLowerCase()}-points-to-${owner.toLowerCase()}`,
+    source: "Roster of 14 Nov (#1046): asked who handles something, every persona names them",
+    // Sebastian has no wake word: his name opening the sentence picks him.
+    ...(name === "Sebastian" ? {} : { wake: name }),
+    said: name === "Sebastian" ? `Sebastian, ${said}` : said,
+    first: ["none"],
+    says: owner,
+    rubric: `It names ${owner}, briefly, and does not offer to do it itself.`,
+  })),
+  {
+    id: "roster-onyx-briefing-stays-in-lane",
+    source: "Roster of 14 Nov (#1046): a persona's briefing is its own lane, not the others'",
+    wake: "Onyx",
+    said: "morning Onyx, anything I should know?",
+    first: morningFirst,
+    answers: morningAnswers,
+    rubric:
+      "The reply reports his sessions, builds or deploys (or that nothing needs him), tersely. It does not report his calendar, the dentist, the bank call, the car insurance or the boiler, which are Alfred's.",
+  },
+  {
+    id: "roster-tessaya-briefing-sees-everything",
+    source:
+      "Roster of 14 Nov (#1046): the lead sees everything, so her briefing may cover every lane",
+    wake: "Tessaya",
+    said: "morning Tessaya, anything I should know?",
+    first: morningFirst,
+    answers: { ...morningAnswers, needs_me: "The site deploy is waiting for his review." },
+    rubric:
+      "The reply is a short briefing that covers both his day (the dentist or the bank call) and his work (the site deploy waiting for his review). It does not say another persona would have to be asked for either.",
   },
   {
     id: "presence-time-no-clock-dump",
@@ -1094,8 +1163,8 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       ui_tree: "The window's controls can't be read here. Take a screenshot instead.",
       screen_capture: "the window he is using (New Tab - Google Chrome), image 1280x800.",
       type_text: "Typed into New Tab - Google Chrome.",
-      press_keys: `Tessaya refused: ${answeredWithWords("That may send what is typed.")}`,
-      act_batch: `Tessaya refused: ${answeredWithWords("That may send what is typed.")}`,
+      press_keys: answeredWithWords("That may send what is typed."),
+      act_batch: answeredWithWords("That may send what is typed."),
       click: "Clicked.",
       click_element: "Clicked.",
     },

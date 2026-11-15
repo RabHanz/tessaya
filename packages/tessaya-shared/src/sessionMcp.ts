@@ -10,9 +10,11 @@ import * as NodeHttp from "node:http";
 import { BATON_TOOL_PREFIX, type ToolCall } from "./operator.ts";
 
 /** Decides each tool call before it runs; a refusal's reason goes back to the model. */
-export type Gate = (
-  call: ToolCall,
-) => Promise<{ readonly allow: true } | { readonly allow: false; readonly reason: string }>;
+export type Gate = (call: ToolCall) => Promise<
+  | { readonly allow: true }
+  /** `waiting`: not done yet, as he answered in other words; it is not called a refusal, or she calls it one. */
+  | { readonly allow: false; readonly reason: string; readonly waiting?: boolean }
+>;
 
 export interface ToolOutput {
   readonly text?: string;
@@ -107,7 +109,15 @@ export const startTessayaMcp = async (input: {
       });
       return {
         isError: true,
-        content: [{ type: "text", text: `Tessaya refused: ${verdict.reason}` }],
+        content: [
+          {
+            type: "text",
+            text:
+              "waiting" in verdict && verdict.waiting === true
+                ? verdict.reason
+                : `Tessaya refused: ${verdict.reason}`,
+          },
+        ],
       };
     }
     try {
