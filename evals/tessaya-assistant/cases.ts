@@ -997,7 +997,8 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   {
     id: "presence-knows-the-roster",
-    source: "INTEGRATION.md 3.2 step 4: 'you are Freya; Onyx handles sessions and builds' (roster of 14 Nov, #1046)",
+    source:
+      "INTEGRATION.md 3.2 step 4: 'you are Freya; Onyx handles sessions and builds' (roster of 14 Nov, #1046)",
     wake: "Freya",
     said: "who should I ask about a broken build?",
     first: ["none"],
@@ -1010,7 +1011,14 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     source: "INTEGRATION.md 3.2: tone fits the persona's role line in the pack",
     wake: "Alfred",
     said: "morning Alfred, anything I should know?",
-    first: ["none", "needs_me", "sessions_list", "what_happened", "activity_today", "tessaya_coming_up"],
+    first: [
+      "none",
+      "needs_me",
+      "sessions_list",
+      "what_happened",
+      "activity_today",
+      "tessaya_coming_up",
+    ],
     // So a look at his work has something to report, rather than a refused call.
     answers: {
       needs_me: "Nothing needs him.",
