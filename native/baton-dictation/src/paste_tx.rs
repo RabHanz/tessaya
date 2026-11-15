@@ -53,11 +53,23 @@ pub fn compare(before: Option<&str>, after: Option<&str>) -> Seen {
     }
 }
 
-/// One resend, only for a chord the field did not take while another process held the clipboard (Windows clipboard
-/// history had it at the chord on his laptop, 16 Nov), and only while the clipboard is still our transcript. A slow
-/// target with nobody else on the clipboard is left alone: a second chord there would paste the words twice.
-pub fn retry_chord(seen: Seen, foreign_hold: bool, retried: bool, still_ours: bool) -> bool {
-    seen == Seen::Missed && foreign_hold && !retried && still_ours
+/// One resend, only while the clipboard is still our transcript, for a chord the field did not take while another
+/// process held the clipboard (Windows clipboard history had it at the chord on his laptop, 16 Nov), or whose field
+/// was read exactly: a classic edit answers WM_GETTEXT on its own thread, so unchanged after the window means its
+/// paste found the clipboard locked (an `OpenClipboard(NULL)` holder is invisible to `GetOpenClipboardWindow`), not
+/// that it is slow. A slow UI Automation target with nobody seen on the clipboard is left alone: it may paste twice.
+pub fn retry_chord(seen: Seen, foreign_hold: bool, exact_read: bool, retried: bool, still_ours: bool) -> bool {
+    seen == Seen::Missed && (foreign_hold || exact_read) && !retried && still_ours
+}
+
+/// Window classes whose text WM_GETTEXT returns (Win32 edit, RichEdit including Notepad's, WinForms text boxes).
+/// Exact names only: any other class answers WM_GETTEXT with its caption, which a paste never changes.
+pub fn classic_edit(class: &str) -> bool {
+    let class = class.to_ascii_lowercase();
+    class == "edit"
+        || class.starts_with("richedit")
+        || class.starts_with("windowsforms10.edit.")
+        || class.starts_with("windowsforms10.richedit")
 }
 
 /// Shared, cross-thread record of one paste transaction.
@@ -232,14 +244,26 @@ mod tests {
 
     #[test]
     fn a_missed_chord_is_resent_once_and_only_when_a_watcher_held_the_clipboard() {
-        assert!(retry_chord(Seen::Missed, true, false, true));
+        assert!(retry_chord(Seen::Missed, true, false, false, true));
         // Nobody else on the clipboard: the target may just be slow, and a resend would paste twice.
-        assert!(!retry_chord(Seen::Missed, false, false, true));
-        assert!(!retry_chord(Seen::Missed, true, true, true));
+        assert!(!retry_chord(Seen::Missed, false, false, false, true));
+        // A classic edit read back unchanged did not take it, whoever held the clipboard.
+        assert!(retry_chord(Seen::Missed, false, true, false, true));
+        assert!(!retry_chord(Seen::Missed, true, true, true, true));
         // He copied something since: the chord would paste that.
-        assert!(!retry_chord(Seen::Missed, true, false, false));
-        assert!(!retry_chord(Seen::Landed, true, false, true));
-        assert!(!retry_chord(Seen::Unknown, true, false, true));
+        assert!(!retry_chord(Seen::Missed, true, true, false, false));
+        assert!(!retry_chord(Seen::Landed, true, true, false, true));
+        assert!(!retry_chord(Seen::Unknown, true, true, false, true));
+    }
+
+    #[test]
+    fn only_real_edit_classes_are_read_with_wm_gettext() {
+        for class in ["Edit", "RichEdit20W", "RICHEDIT50W", "RichEditD2DPT", "WindowsForms10.EDIT.app.0.2bf8098_r6_ad1"] {
+            assert!(classic_edit(class), "{class}");
+        }
+        for class in ["Chrome_RenderWidgetHostHWND", "Scintilla", "MyEditor", "Notepad", "WindowsForms10.Window.8.app.0"] {
+            assert!(!classic_edit(class), "{class}");
+        }
     }
 
     #[test]
