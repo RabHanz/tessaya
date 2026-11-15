@@ -62,6 +62,11 @@ export interface WakeStreamDeps {
     clip: Int16Array,
   ) => void;
   readonly log: (line: string) => void;
+  /**
+   * Words whose stage 1 is the Tessel's own wake model: its `event/wake/kws` pass with `best` at least `threshold`, then
+   * the same confirm, on the whole segment. Only for a Tessel that has sent one; openWakeWord then only logs these words.
+   */
+  readonly kwsWake?: ReadonlyArray<{ readonly word: string; readonly threshold: number }>;
   /** Keeps each whole segment for wake training when the host has it switched on. */
   readonly capture?: WakeCapture;
   readonly now?: () => number;
@@ -95,6 +100,12 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
   >();
   /** Per R1 and segment number: the R1's on-device verdict and ours, whichever came first, until both are in. */
   const pairs = new Map<string, { kws?: KwsEvent; ours?: string }>();
+  /** The Tessels that send `event/wake/kws`, and their ended segments still waiting on it (it comes just after the end). */
+  const kwsSeen = new Set<string>();
+  const ended = new Map<string, { pcm: Int16Array; woke: boolean }>();
+  const kwsWord = (name: unknown) =>
+    deps.kwsWake?.find((w) => w.word.toLowerCase() === String(name ?? "").toLowerCase());
+  const byKws = (id: string, word: string) => kwsSeen.has(id) && kwsWord(word) !== undefined;
   const pair = (id: string, seg: number, half: { kws?: KwsEvent; ours?: string }) => {
     const key = `${id}#${seg}`;
     const both = { ...pairs.get(key), ...half };
@@ -167,6 +178,10 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     d.done = true;
     const clip = d.heard.slice(-CONFIRM_SAMPLES);
     drop(d);
+    if (byKws(id, word)) {
+      d.outcome = `${word} fired (${output.toFixed(3)}/${threshold}), the Tessel's kws decides`;
+      return;
+    }
     const ratio = output / threshold;
     const trusted = wakeTrusted([{ word, threshold }], word, ratio);
     const texts = trusted ? [] : await deps.confirm(clip).catch(() => []);
@@ -196,6 +211,25 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     }
   };
 
+  /** Stage 1 by the Tessel's kws on a whole ended segment, then the same confirm as an openWakeWord fire. */
+  const kwsDecide = async (id: string, event: KwsEvent, pcm: Int16Array, woke: boolean) => {
+    const w = kwsWord(event.name);
+    const best = Number(event.best ?? 0);
+    if (w === undefined || woke || event.pass !== true || best < w.threshold || pcm.length === 0)
+      return;
+    const ratio = best / w.threshold;
+    const trusted = wakeTrusted([w], w.word, ratio);
+    const texts = trusted ? [] : await deps.confirm(pcm).catch(() => []);
+    const at = `kws ${best.toFixed(3)}/${w.threshold}, segment ${(pcm.length / RATE).toFixed(1)} s`;
+    if (trusted || texts.some((text) => wakeWordHeard(text, w.word, ratio))) {
+      deps.log(`[${id}] woken by ${w.word} (${at})`);
+      deps.onWake(id, w.word, speechLevel(pcm), Math.min(1, best), pcm);
+    } else
+      deps.log(
+        `[${id}] ${w.word} kws pass (${at}), not confirmed (${texts.map(heldBack).join("; ") || heldBack("")})`,
+      );
+  };
+
   return {
     /** One 60 ms frame of a voiced segment. */
     frame: (id: string, bytes: Uint8Array) => {
@@ -208,8 +242,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       );
       d.chain = d.chain.then(async () => {
         if (lost && (d.samples > 0 || d.done)) restart(d, await d.scorer);
-        if (deps.capture !== undefined && d.seg.length < KEEP_SAMPLES)
-          d.seg = join(d.seg, pcm).slice(0, KEEP_SAMPLES);
+        if (d.seg.length < KEEP_SAMPLES) d.seg = join(d.seg, pcm).slice(0, KEEP_SAMPLES);
         if (d.done) return;
         // A new segment on an old word list takes the reloaded one; a segment in progress keeps its own.
         if (d.samples === 0 && d.gen !== current.gen) {
@@ -226,7 +259,17 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     },
     /** The R1's own wake model's verdict on segment `seg` (`event/wake/kws`), logged beside stage 2's. */
     kws: (id: string, event: KwsEvent) => {
-      if (typeof event.seg === "number") pair(id, event.seg, { kws: event });
+      kwsSeen.add(id);
+      if (typeof event.seg === "number") {
+        const key = `${id}#${event.seg}`;
+        const done = ended.get(key);
+        ended.delete(key);
+        if (done !== undefined) {
+          const d = of(id);
+          d.chain = d.chain.then(() => kwsDecide(id, event, done.pcm, done.woke));
+        }
+        pair(id, event.seg, { kws: event });
+      }
       deps.capture?.kws(id, event);
     },
     /** The segment ended (`seg`: the R1's number for it): forget it, and listen afresh on the next one. */
@@ -263,6 +306,14 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
             },
             seg === undefined ? undefined : pairs.get(`${id}#${seg}`)?.kws,
           );
+        if (seg !== undefined && (deps.kwsWake?.length ?? 0) > 0) {
+          const early = pairs.get(`${id}#${seg}`)?.kws;
+          if (early !== undefined) await kwsDecide(id, early, d.seg, d.woke);
+          else {
+            ended.set(`${id}#${seg}`, { pcm: d.seg, woke: d.woke });
+            if (ended.size > 8) ended.delete(ended.keys().next().value!);
+          }
+        }
         if (seg !== undefined) pair(id, seg, { ours });
         restart(d, scorer);
       });

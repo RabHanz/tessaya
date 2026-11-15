@@ -799,6 +799,16 @@ const main = async () => {
               clip,
             ),
           log,
+          // `R1_KWS_WAKE=Tessaya=0.9,...` ("" for none). W2 real cascade (15 Nov): the kws at 0.9 beats openWakeWord on
+          // every row, 32 of his 41 held-out names against 16 at 0.63 against 0.84 false wakes/h; OR-ing both doubles them.
+          kwsWake: (process.env["R1_KWS_WAKE"] ?? "Tessaya=0.9")
+            .split(",")
+            .filter((pair) => pair.includes("="))
+            .map((pair) => {
+              const [word, threshold] = pair.split("=") as [string, string];
+              return { word: word.trim(), threshold: Number(threshold) };
+            })
+            .filter((w) => w.word !== "" && w.threshold > 0 && w.threshold <= 1),
           ...(capture === undefined ? {} : { capture }),
         });
   startCameraRelay();
