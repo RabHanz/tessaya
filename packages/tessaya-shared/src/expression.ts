@@ -10,7 +10,7 @@ import type {
   ExpressionPriority,
   R1Mood,
 } from "@t3tools/tessaya-contracts";
-import { EXPRESSION_GESTURES, EXPRESSION_MOODS } from "@t3tools/tessaya-contracts";
+import { EXPRESSION_GESTURES, EXPRESSION_MOODS, R1_MOODS } from "@t3tools/tessaya-contracts";
 
 import type { CompanionMotion } from "./companion.ts";
 import POOL from "./expressionPool.json" with { type: "json" };
@@ -452,6 +452,10 @@ const R1_MOOD: Readonly<Record<ExpressionMood, R1Mood>> = {
 };
 export const r1MoodOf = (mood: string): R1Mood | null =>
   Object.hasOwn(R1_MOOD, mood) ? R1_MOOD[mood as ExpressionMood] : null;
+
+/** The eye clip a mood shows: one of the nine clips as it is, a face-library mood through its clip, else nothing. */
+export const eyeClipOf = (mood: string): R1Mood | null =>
+  (R1_MOODS as ReadonlyArray<string>).includes(mood) ? (mood as R1Mood) : r1MoodOf(mood);
 
 /** The template with each slot replaced by its exact value; null when a value is missing. */
 export const fillLine = (

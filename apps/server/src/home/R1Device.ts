@@ -56,7 +56,6 @@ import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaVocabulary } from "../tessaya/TessayaVocabulary.ts";
 import { TessayaTurn, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
-import type { R1Mood as ContractR1Mood } from "@t3tools/tessaya-contracts";
 import { replyFor } from "../tessaya/PersonaLayers.ts";
 import {
   type ActOutcome,
@@ -72,6 +71,7 @@ import {
 } from "../tessaya/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
 import { isLineEvent, r1MoodOf } from "@t3tools/tessaya-shared/expression";
+import type { ExpressionMood } from "@t3tools/tessaya-contracts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -97,22 +97,21 @@ import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 const R1: HomeActor = { who: "Tessaya", surface: "r1" };
 
-export type R1Mood = ContractR1Mood | "worried";
-
 /** The room loop's inbox for eye moods (`roomVoice.ts`); it writes `cmd/eye/set` itself. */
 const eyeIntentTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/intent/eye`;
 
 /**
  * A mood the server would like the eyes to show, sent to the room loop as an intent: the loop is the device's one
  * writer and weighs it against its own (listening, speaking). Nothing when no R1 is set up.
+ * The mood is in the one vocabulary (`EXPRESSION_MOODS`) and goes as its eye clip.
  */
-const eyes = (device: R1Device | null, mood: R1Mood, holdMs: number, reason: string) =>
+const eyes = (device: R1Device | null, mood: ExpressionMood, holdMs: number, reason: string) =>
   device?.deviceId == null
     ? Effect.void
     : publishToDevice(
         device,
         eyeIntentTopic(device.deviceId),
-        JSON.stringify({ vessel: device.deviceId, mood, holdMs, reason }),
+        JSON.stringify({ vessel: device.deviceId, mood: r1MoodOf(mood), holdMs, reason }),
       ).pipe(Effect.ignore);
 
 /** His pronunciations (`voicePronounce`) for the room loop's voice: the whole map as JSON, retained for a late loop. */
@@ -687,7 +686,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   const all = isReplay(input) ? [] : yield* home.devices;
   // The R1 the turn came from; a caller that names none (older loops) means the first.
   const device = input.device === undefined ? (all[0] ?? null) : r1ById(all, input.device);
-  yield* eyes(device, "thinking", 15_000, "gathering the turn").pipe(Effect.forkDetach);
+  yield* eyes(device, "focused", 15_000, "gathering the turn").pipe(Effect.forkDetach);
   // The house's reads are independent: together, not one after another (gather took 40-680 ms, 15 Nov).
   const [status, actions, matches, timeZone] = yield* Effect.all(
     [
@@ -907,13 +906,13 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
   // A turn that went fine shows her mood when she has one (CS6), the same label her other bodies show.
   const affect = yield* Effect.serviceOption(TessayaMood);
   const felt = Option.isNone(affect) ? null : yield* affect.value.view(turn.persona, turn.timeZone);
-  const mood: R1Mood = outcomes.some((o) => o.status === "asked")
+  const mood: ExpressionMood = outcomes.some((o) => o.status === "asked")
     ? "curious"
     : outcomes.some((o) => !o.ok || o.status === "failed")
       ? "sad"
       : felt === null || felt.label === "neutral"
         ? "happy"
-        : (r1MoodOf(felt.label) ?? "happy");
+        : felt.label;
   yield* eyes(device, mood, 4000, felt === null ? "the turn's outcome" : `her mood: ${felt.label}`);
   const record = yield* Effect.serviceOption(TessayaRecordService);
   if (record._tag === "Some")
@@ -942,7 +941,7 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
     );
   if (Option.isNone(plan)) {
     // Her brain did not answer: the eyes say so, the words fill in.
-    yield* eyes(device, "worried", 6000, "the brain did not answer");
+    yield* eyes(device, "concerned", 6000, "the brain did not answer");
     return yield* sorry(input, "Sorry, I lost my train of thought. Say that again?");
   }
   const outcomes = yield* runActs(plan.value.acts);

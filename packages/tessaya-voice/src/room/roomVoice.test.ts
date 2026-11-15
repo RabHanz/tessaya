@@ -1917,6 +1917,18 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
       .map((p) => JSON.parse(String(p.payload)).mood as string);
     expect(moods).toEqual(["thinking"]);
     expect(logs).toContain(`[${DEV}] eye intent thinking for 15000 ms (brain)`);
+    // A face-library mood shows as its clip; a word outside the one vocabulary never reaches the nine clips.
+    for (const mood of ["concerned", "worried", "attentive"])
+      t.room.message(
+        `freya/r1/${DEV}/voice/intent/eye`,
+        Buffer.from(JSON.stringify({ vessel: "r1", mood, holdMs: 1000 })),
+      );
+    await t.feed(true, 20);
+    expect(
+      t.published
+        .filter((p) => p.topic.endsWith("/cmd/eye/set"))
+        .map((p) => JSON.parse(String(p.payload)).mood as string),
+    ).toEqual(["thinking", "sad"]);
   });
 });
 
