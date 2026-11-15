@@ -1830,7 +1830,9 @@ const make = Effect.gen(function* () {
       const deviceName = entry?.deviceId ? (registry.devices.get(entry.deviceId)?.name ?? "") : "";
       const hay =
         `${id} ${nameOf(id)} ${areaName} ${deviceName} ${(entry?.aliases ?? []).join(" ")}`.toLowerCase();
-      const hits = words.filter((w) => hay.includes(w)).length;
+      const tokens = new Set(hay.split(/[^\p{L}\p{N}]+/u));
+      // A short word ("on", "of") only counts whole, or it hits "button" and "cloud" and buries the device.
+      const hits = words.filter((w) => (w.length < 3 ? tokens.has(w) : hay.includes(w))).length;
       if (words.length > 0 && hits === 0) continue;
       const unavailable = offline(id) ? 0.5 : 0;
       scored.push({

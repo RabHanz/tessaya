@@ -247,6 +247,11 @@ it.effect("finds by words and room, toggles a light, and undoes it from the snap
       found.map((e) => [e.entityId, e.area]),
       [["light.study", "Study"]],
     );
+    // A short word counts only whole: "on" is not a hit for "automation" or "front".
+    assert.deepStrictEqual(
+      (yield* home.find({ text: "Turn on the fan", limit: 1 })).map((e) => e.entityId),
+      ["fan.fan"],
+    );
     const done = yield* home.call(
       {
         domain: "light",
