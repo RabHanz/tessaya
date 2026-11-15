@@ -623,7 +623,7 @@ pub fn run(
         Err(_) => return Err("reliable paste worker died before publishing".to_string()),
     }
     log(&format!("paste: published transcript (delayed render)"));
-    let settled = settle_before_chord(|| unsafe { GetOpenClipboardWindow().0 as isize != 0 }, thread::sleep);
+    let settled = settle_before_chord(|| unsafe { GetOpenClipboardWindow().map(|h| h.0 as isize != 0).unwrap_or(false) }, thread::sleep);
 
     // Only our own, unchanged transcript is pasted: if anything wrote the clipboard since we published, the chord
     // would paste that under his dictation's name.
