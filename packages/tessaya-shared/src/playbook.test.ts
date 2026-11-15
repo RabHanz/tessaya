@@ -259,6 +259,23 @@ describe("his corrections", () => {
     }).playbook;
     expect(p.lessons[0]).toMatchObject({ id: "L1", by: "told", harmful: 0, text: said });
   });
+
+  it("retires the lesson his newer correction contradicts, at once (feat: became added:)", () => {
+    let p = learnFromJob(
+      emptyPlaybook("release"),
+      {
+        ...job(1, false),
+        correction: 'Changelog entries start with "feat: ", like "- feat: dark mode".',
+      },
+      add(),
+    ).playbook;
+    p = learnFromJob(p, job(2, true, ["L1"]), none).playbook;
+    const switched =
+      'We switched: changelog entries now start with "added: ", like "- added: keyboard shortcuts" (not "feat: " any more).';
+    p = learnFromJob(p, { ...job(3, false, ["L1"]), correction: switched }, none).playbook;
+    expect(p.lessons).toMatchObject([{ id: "L1", by: "told", text: switched, from: "job-3" }]);
+    expect(playbookBlock(p)).not.toContain('start with "feat: "');
+  });
 });
 
 describe("what a playbook shows a job", () => {
