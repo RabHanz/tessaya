@@ -14,7 +14,7 @@ use windows::Win32::Foundation::{
     WPARAM,
 };
 use windows::Win32::System::DataExchange::{
-    CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardOwner,
+    CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardOwner, GetOpenClipboardWindow,
     GetClipboardSequenceNumber, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -34,7 +34,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::keys::{send_chord, PasteMethod};
 use crate::paste_tx::{
-    evaluate, held_at_chord, take_over, Held, TakeOver, TxState, WaitDecision, RESTORE_TIMEOUT,
+    evaluate, held_at_chord, settle_before_chord, take_over, Held, TakeOver, TxState, WaitDecision, RESTORE_TIMEOUT,
 };
 
 fn log(message: &str) {
@@ -623,6 +623,7 @@ pub fn run(
         Err(_) => return Err("reliable paste worker died before publishing".to_string()),
     }
     log(&format!("paste: published transcript (delayed render)"));
+    let settled = settle_before_chord(|| unsafe { GetOpenClipboardWindow().0 as isize != 0 }, thread::sleep);
 
     // Only our own, unchanged transcript is pasted: if anything wrote the clipboard since we published, the chord
     // would paste that under his dictation's name.
@@ -639,6 +640,7 @@ pub fn run(
         "phase": "chord",
         "held": if held == Held::Ours { "ours" } else { "other" },
         "chars": text.chars().count(),
+        "settleMs": settled.as_millis() as u64,
     }));
     if held == Held::Other {
         if let Ok(mut st) = shared.state.lock() {

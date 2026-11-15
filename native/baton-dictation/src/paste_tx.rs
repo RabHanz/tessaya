@@ -152,9 +152,42 @@ pub fn held_at_chord(published_sequence: u32, sequence_now: u32, we_own_it: bool
     }
 }
 
+/// Clipboard watchers (Windows clipboard history, Ditto, Wispr Flow) open the clipboard the moment the transcript is
+/// published. A chord landing then pastes nothing while the receipt still looks read: on his laptop 19 of 51
+/// dictations (16 Nov). So the chord waits at least `SETTLE_MIN` and until nobody holds the clipboard, at most `SETTLE_MAX`.
+pub const SETTLE_MIN: Duration = Duration::from_millis(60);
+pub const SETTLE_MAX: Duration = Duration::from_millis(300);
+const SETTLE_STEP: Duration = Duration::from_millis(5);
+
+/// Waits out the watchers; returns how long it waited. `held` says whether another window has the clipboard open.
+pub fn settle_before_chord(mut held: impl FnMut() -> bool, mut sleep: impl FnMut(Duration)) -> Duration {
+    let mut waited = Duration::ZERO;
+    while waited < SETTLE_MAX && (waited < SETTLE_MIN || held()) {
+        sleep(SETTLE_STEP);
+        waited += SETTLE_STEP;
+    }
+    waited
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_chord_waits_for_clipboard_watchers_then_goes() {
+        let none = settle_before_chord(|| false, |_| {});
+        assert_eq!(none, SETTLE_MIN);
+        let mut asks = 0;
+        let busy = settle_before_chord(
+            || {
+                asks += 1;
+                asks <= 10
+            },
+            |_| {},
+        );
+        assert_eq!(busy, SETTLE_MIN + SETTLE_STEP * 10);
+        assert_eq!(settle_before_chord(|| true, |_| {}), SETTLE_MAX);
+    }
 
     fn sent(at: Instant) -> TxState {
         let mut state = TxState::new(at);
