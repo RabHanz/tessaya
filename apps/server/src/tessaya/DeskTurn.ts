@@ -74,12 +74,14 @@ const deskData = (input: {
   readonly memory: string;
   readonly notice: string;
   readonly privateBlock: string;
+  readonly owner: string;
   readonly preferences: Readonly<Record<string, string>>;
   readonly conversation: ReadonlyArray<{ readonly role: string; readonly content: string }>;
   readonly notes: TurnNotes;
 }) =>
   [
     input.body.context ?? "",
+    input.owner,
     input.notes.work,
     input.notes.brain,
     input.notes.skills,
@@ -184,6 +186,7 @@ export const deskTurnStream = (
                   memory: begun.block,
                   notice: begun.notice ?? "",
                   privateBlock: begun.privateBlock,
+                  owner: begun.owner ?? "",
                   preferences: begun.preferences,
                   conversation: begun.conversation.turns,
                   notes,

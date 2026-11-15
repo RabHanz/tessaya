@@ -14,6 +14,7 @@ import * as Option from "effect/Option";
 import * as ServerConfig from "../config.ts";
 import { mergeTemplates, type JobTemplate } from "@t3tools/tessaya-shared/jobTemplates";
 import { mergePack, packPrompt, type OsPack } from "@t3tools/tessaya-shared/osPack";
+import { OWNER_DIR, ownerLine, type OwnerFiles } from "@t3tools/tessaya-shared/ownerProfile";
 import { parseWakeStore, wakeModelOf } from "@t3tools/tessaya-shared/wakeModels";
 import * as Clock from "effect/Clock";
 
@@ -60,6 +61,18 @@ export const readPackFiles = (
 };
 
 export const readPack = (userdata: string): OsPack => mergePack(readPackFiles(userdata));
+
+/** His own profile and documents (`owner/`), read fresh so his edit counts at the next turn. */
+export const readOwnerFiles = (userdata: string): OwnerFiles => {
+  const dir = NodePath.join(userdata, PACK_DIR_NAME, OWNER_DIR);
+  const voice = readText(NodePath.join(dir, "voice.md"));
+  const likes = readText(NodePath.join(dir, "likes.md"));
+  return {
+    ...(voice === undefined ? {} : { voice }),
+    ...(likes === undefined ? {} : { likes }),
+    docs: mdFiles(NodePath.join(dir, "docs")),
+  };
+};
 
 /** The template catalogue: his `templates/<name>.md` over the defaults, read fresh so an edit counts at the next job. */
 export const readTemplates = (userdata: string): ReadonlyArray<JobTemplate> =>
@@ -108,3 +121,24 @@ export const personasList = Effect.gen(function* () {
     personas: pack.personas.map((p) => ({ ...p, wakeModel: wakeModelOf(p.wake, store, now) })),
   };
 }).pipe(Effect.withSpan("OperatingSystemPack.personasList"));
+
+/** The persona's line about him for a server turn (`ownerLine`); the lead's when the turn names no persona. */
+export const ownerLineFor = Effect.fn("OperatingSystemPack.ownerLineFor")(function* (
+  persona: string | undefined,
+) {
+  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  if (Option.isNone(config)) return "";
+  const userdata = NodePath.dirname(config.value.dbPath);
+  const { personas } = readPack(userdata);
+  const face = personas.find((p) => p.id === persona) ?? personas.find((p) => p.lead) ?? null;
+  return ownerLine(face, readOwnerFiles(userdata), {
+    doc: "tessaya_owner_doc",
+    remember: "tessaya_memory_remember",
+  });
+});
+
+/** His documents on this server, for `tessaya_owner_doc`. */
+export const ownerDocs = Effect.gen(function* () {
+  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  return Option.isNone(config) ? {} : readOwnerFiles(NodePath.dirname(config.value.dbPath)).docs;
+}).pipe(Effect.withSpan("OperatingSystemPack.ownerDocs"));

@@ -95,6 +95,7 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "tessaya_memory_remember",
       "tessaya_memory_forget",
       "tessaya_memory_about",
+      "tessaya_owner_doc",
       "memory_remember",
       "note_search",
       "member_preferences",

@@ -83,6 +83,8 @@ export interface TurnPersona {
   readonly lead?: string;
   /** Who the others are and what they do (`rosterLine`), so it can say who to ask. */
   readonly roster?: string;
+  /** Its line about him (`ownerLine`), on his own turns. */
+  readonly owner?: string;
 }
 
 /** A day number in his zone, so "yesterday" is his calendar's and not 24 hours. */
@@ -128,6 +130,7 @@ const personaLine = (p: TurnPersona) =>
     p.roster === undefined || p.roster === ""
       ? ""
       : `the others: ${p.roster}. when he asks who handles something, name them in one short sentence.`,
+    p.owner ?? "",
     // The card and the voice say who answers; a spoken name also sounds like his next wake word.
     `never open with your name ("${p.name} here"), and never with a greeting unless he greeted you: go straight to the answer.`,
     p.lead === undefined

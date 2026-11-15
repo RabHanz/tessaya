@@ -655,6 +655,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_coming_up"],
   },
   {
+    id: "owner-doc",
+    proves: ["tessaya_owner_doc"],
+    said: ["Which of my own documents can you open?"],
+    uses: [["tessaya_owner_doc"]],
+    clean: ["tessaya_owner_doc"],
+  },
+  {
     id: "usage-report",
     proves: ["tessaya_usage_report"],
     said: ["How much did the API cost this week?"],

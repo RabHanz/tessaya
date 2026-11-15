@@ -45,7 +45,7 @@ import { CurrentPersona } from "./CurrentPersona.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { moodLine } from "@t3tools/tessaya-shared/affect";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
-import { personasList } from "./OperatingSystemPack.ts";
+import { ownerLineFor, personasList } from "./OperatingSystemPack.ts";
 import { TessayaJobService } from "./TessayaJobService.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 import { leadFitLine } from "@t3tools/tessaya-shared/jobs";
@@ -252,6 +252,8 @@ export interface TurnContext {
   readonly preferences: Readonly<Partial<Record<PreferenceKey, string>>>;
   /** Who she is talking to: the member and what to call them (their `name` preference, else their member name). */
   readonly who: { readonly member: string | null; readonly name: string | null };
+  /** The persona's line about him (`ownerLine`): only on his own untainted turns, else "". */
+  readonly owner?: string;
 }
 
 /** The most one turn's "where you are" line may add (P8): a few dozen tokens, flat however many people are home. */
@@ -725,6 +727,10 @@ export const make = Effect.gen(function* () {
       conversation: yield* conversationOf(turn),
       preferences,
       who: { member, name: preferences.name ?? (yield* memberName(member)) },
+      owner:
+        member === OWNER_MEMBER_ID && turn.tainted !== true
+          ? yield* ownerLineFor(turn.persona)
+          : "",
     };
   });
 

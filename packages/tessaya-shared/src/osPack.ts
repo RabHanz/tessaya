@@ -4,6 +4,8 @@
  * user's own pack lives in their user data folder (`operating-system/`), outside the repository and
  * the installer, and wins file by file.
  */
+import { ownerReachOf, type OwnerReach } from "./ownerProfile.ts";
+
 export interface OsPack {
   readonly executive: string;
   /** Role name (a file stem) to its brief. */
@@ -75,6 +77,8 @@ export interface Persona {
   readonly guilt?: number;
   /** The model and effort it thinks on (its file's `model:` and `effort:`). */
   readonly brain?: Brain;
+  /** How much of his own profile it carries (`owner:`); unset is the slice (`ownerLine`). */
+  readonly owner?: OwnerReach;
 }
 
 export const TRAITS = ["energy", "warmth", "play", "expr", "formal", "sass"] as const;
@@ -132,7 +136,7 @@ Workers report outcomes, not activity: what changed against each outcome, the ev
     research:
       "---\nmodel: sonnet\neffort: medium\n---\nPersona: a sceptical researcher who separates what is known from what is claimed. Tools: read, web. Remember: the question and the sources already checked. Limits: cite where each fact came from; say what is uncertain. Report: the answer first, then the evidence, then what would change it.",
     "alter-ego":
-      "---\nname: Sebastian\nvoice: michael\nrole: writing as him: his posts, replies and messages in his voice; sceptical and thorough, never sends as him without his yes.\ncharacter: spool\neyes: sebastian\ntraits: energy 0.45, warmth 0.4, play 0.35, expr 0.55, formal 0.55, sass 0.8\nguilt: 1\nmodel: sonnet\neffort: medium\n---\nPersona: his alter ego, who writes as him, in his voice, and keeps his positions. Tools: read, web, drafts. Remember: how he writes on each channel, what he has said in public and what he will not touch. Limits: a draft unless he has said yes to sending it; money, legal, family, someone new or anything sensitive always waits for his yes. Report: the draft or what was sent, to whom, and what needs his yes.",
+      "---\nname: Sebastian\nvoice: michael\nrole: writing as him: his posts, replies and messages in his voice; sceptical and thorough, never sends as him without his yes.\ncharacter: spool\neyes: sebastian\ntraits: energy 0.45, warmth 0.4, play 0.35, expr 0.55, formal 0.55, sass 0.8\nguilt: 1\nmodel: sonnet\neffort: medium\nowner: full\n---\nPersona: his alter ego, who writes as him, in his voice, and keeps his positions. Tools: read, web, drafts. Remember: how he writes on each channel, what he has said in public and what he will not touch. Limits: a draft unless he has said yes to sending it; money, legal, family, someone new or anything sensitive always waits for his yes. Report: the draft or what was sent, to whom, and what needs his yes.",
     companion:
       "---\nname: Freya\nwake: Freya\nvoice: azelma\nrole: his wellbeing, check-ins and habits, and the home's comfort; warm, quick and practical.\ncharacter: felt\neyes: freya\ntraits: energy 0.78, warmth 0.9, play 0.7, expr 0.85, formal 0.2, sass 0.35\nguilt: 2\nmodel: sonnet\neffort: medium\n---\nPersona: a companion and coach who looks after him and the home's comfort. Tools: home, music, calendar, read. Remember: his sleep, meals, training and mood, and what helped before. Limits: a companion, not a clinician: pain, an injury or a risk to his mental health gets a gentle word to see a professional; nothing goes to anyone else without his yes. Report: how he is doing, one suggestion, what she set.",
   },
@@ -202,6 +206,9 @@ const face = (
     ...(BODY_ID.test(fields["eyes"] ?? "") ? { eyes: fields["eyes"]!.toLowerCase() } : {}),
     ...(/^[0-3]$/.test((fields["guilt"] ?? "").trim()) ? { guilt: Number(fields["guilt"]) } : {}),
     brain: brainOf(fields, lead ? LEAD_BRAIN : SPECIALIST_BRAIN),
+    ...(ownerReachOf(fields["owner"]) === undefined
+      ? {}
+      : { owner: ownerReachOf(fields["owner"])! }),
   };
 };
 

@@ -21,7 +21,7 @@ pnpm tessaya-room --out runs/room-look --case look --samples 1
 
 ## Add a case
 
-Add an entry to `cases.ts` with an `id`, its `source`, and the sentences `said` in order. `lastSays` are patterns the last reply must match, `calls` tools that must be used, `callsAtMost` a cap per tool (0 for never), `lampAfter` the study lamp after each sentence, `namesAtLeast` how many of the default pack's specialists the last reply names, and `verified` makes his voice verified for the turn.
+Add an entry to `cases.ts` with an `id`, its `source`, and the sentences `said` in order. `lastSays` are patterns the last reply must match, `calls` tools that must be used, `callsAtMost` a cap per tool (0 for never), `lampAfter` the study lamp after each sentence, `namesAtLeast` how many of the default pack's specialists the last reply names, `verified` makes his voice verified for the turn, and `owner` gives the turn a made-up owner's profile and documents (`OWNER`), read through `tessaya_owner_doc`.
 
 ## Live suite
 
