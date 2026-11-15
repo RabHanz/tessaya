@@ -4,7 +4,11 @@ import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { describe, expect } from "vite-plus/test";
 
-import { hisOwnTurn, readGrants, setGrant } from "./consent.ts";
+import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+
+import { Consent, hisOwnTurn, layer as consentLayer, readGrants, setGrant } from "./consent.ts";
 import { layerMemory } from "./TessayaDatabase.ts";
 
 describe("one consent store", () => {
@@ -34,5 +38,25 @@ describe("one consent store", () => {
       expect(yield* setGrant(key, false)).toEqual([]);
       expect(yield* readGrants).toEqual([]);
     }).pipe(Effect.provide(layerMemory)),
+  );
+
+  it.effect(
+    "reads and writes his yeses on Tessaya's database beside upstream's SqlClient (the room's runners)",
+    () =>
+      Effect.gen(function* () {
+        const consent = yield* Consent;
+        const key = standingKey("project_add", "It would add a project to this computer.");
+        // Upstream's database is the ambient SqlClient here, and has no fabric_settings table.
+        const upstream = Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }));
+        expect(yield* upstream(consent.set(key, true))).toEqual([key]);
+        expect(yield* upstream(consent.read)).toEqual([key]);
+        expect(
+          yield* upstream(
+            Effect.flatMap(SqlClient.SqlClient, (sql) =>
+              Effect.exit(sql`SELECT 1 FROM fabric_settings`),
+            ),
+          ),
+        ).toMatchObject({ _tag: "Failure" });
+      }).pipe(Effect.provide(Layer.provideMerge(consentLayer, layerMemory))),
   );
 });
