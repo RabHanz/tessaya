@@ -62,6 +62,8 @@ import { busyFileOf, busyFilePath, writeBusyFile } from "./lifecycle/busyFile.ts
 import { createTessayaUpdater } from "./update/TessayaUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import { clockStyleOf, type ClockStyle } from "@t3tools/tessaya-shared/brain";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
 import { startDesktopTessayaVoice, type DesktopTessayaVoice } from "./voice/DesktopTessayaVoice.ts";
 import { createBridgeCatalogService } from "./sessions/catalogBridge.ts";
@@ -743,7 +745,18 @@ export const startTessayaDesktop = Effect.gen(function* () {
     };
     markPhase("screen-companion:begin");
     try {
+      // His 24-hour choice is a household preference on this server: every vessel's clock line reads it.
+      let clockStyle: ClockStyle = "12h";
+      const readClockStyle = () =>
+        void household("preferences", { id: OWNER_MEMBER_ID })
+          .then((r) => {
+            if (r.status === "done") clockStyle = clockStyleOf(r.preferences?.["timeFormat"]);
+          })
+          .catch(() => undefined);
+      readClockStyle();
+      setInterval(readClockStyle, 5 * 60_000).unref();
       screen = startScreenCompanion({
+        clockStyle: () => clockStyle,
         memberGrants: async (member) => {
           const listed = await household("list");
           const m = listed.members?.find((x) => x.id === member && x.state !== "leaving");

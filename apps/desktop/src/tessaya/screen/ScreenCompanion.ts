@@ -62,6 +62,7 @@ import * as NodePath from "node:path";
 import {
   ASSISTANT_PROMPT_INTRO,
   clockLine,
+  type ClockStyle,
   OPERATOR_PROMPT,
   guardDecision,
   instantDecision,
@@ -754,6 +755,8 @@ export const startScreenCompanion = (input: {
     member: string,
   ) => Promise<{ readonly role: MemberRole; readonly machine: boolean } | null>;
   readonly privateMemory?: PrivateMemory;
+  /** How he wants times said: his household `timeFormat`, read from this machine's server. */
+  readonly clockStyle?: () => ClockStyle;
   /** Baton's one voice, injected so this module never loads the voice models. */
   readonly speak: (text: string) => Promise<void>;
   /** A turn finished with nothing further coming, for the cue after a wake word. */
@@ -1627,7 +1630,7 @@ export const startScreenCompanion = (input: {
         [
           {
             type: "text",
-            text: `${goal}\n\n${clockLine(new Date())}\n(working in: ${home})${
+            text: `${goal}\n\n${clockLine(new Date(), undefined, input.clockStyle?.() ?? "12h")}\n(working in: ${home})${
               title === null ? "" : `\n(the window he is using, as data: ${title.label})`
             }`,
           },
@@ -1732,7 +1735,10 @@ export const startScreenCompanion = (input: {
       const title = screen || titlesAllowed() ? focus : null;
       const window = title === null ? "" : `\n\n(the window he is using: ${title.label})`;
       const raw = await current.vision.ask(
-        content(captured, `${question}${window}\n\n${clockLine(new Date())}`),
+        content(
+          captured,
+          `${question}${window}\n\n${clockLine(new Date(), undefined, input.clockStyle?.() ?? "12h")}`,
+        ),
         voice.feed,
       );
       return { raw, shots: captured.map((c) => c.shot) };
@@ -3076,7 +3082,7 @@ export const startScreenCompanion = (input: {
       nameOf,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       ownTurn: (t) => !outsideSaid.has(t.said),
-      clockLine: () => clockLine(new Date()),
+      clockLine: () => clockLine(new Date(), undefined, input.clockStyle?.() ?? "12h"),
       presence: async () => (await actions?.presence?.()) ?? "",
       images: () => imagesSent,
       notes: async (persona) => {
@@ -3203,7 +3209,7 @@ export const startScreenCompanion = (input: {
           },
         }),
       conversation: createConversationLog({ file }),
-      clockLine: () => clockLine(new Date()),
+      clockLine: () => clockLine(new Date(), undefined, input.clockStyle?.() ?? "12h"),
       notes: async () => {
         const frame =
           assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER))) +
@@ -3338,7 +3344,7 @@ export const startScreenCompanion = (input: {
         {
           text,
           context: contextLine({
-            now: clockLine(new Date()),
+            now: clockLine(new Date(), undefined, input.clockStyle?.() ?? "12h"),
             window: where.window,
             session: where.session,
             target: null,
