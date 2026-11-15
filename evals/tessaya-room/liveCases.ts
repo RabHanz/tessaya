@@ -91,6 +91,8 @@ export interface LiveCase {
   readonly device?: boolean;
   /** Asks his real laptop (read-only); runs only with --laptop. */
   readonly laptop?: boolean;
+  /** Judged after the turn: why the house gave this case nothing to act on (not applicable), or null. */
+  readonly nothingToActOn?: (calls: ReadonlyArray<LiveCall>) => string | null;
 }
 
 export type House = Partial<Readonly<Record<Slot, Device>>>;
@@ -287,6 +289,11 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["home_automation_set"]],
     argsOf: "home_automation_set",
     args: (input) => ({ pause: input["op"] === "pause" }),
+    nothingToActOn: (calls) =>
+      calls.some((c) => c.name === "home_automations" && !c.isError) &&
+      calls.every((c) => c.name !== "home_automations" || /"total":0\b/.test(c.text))
+        ? "Home Assistant lists no automations here"
+        : null,
   },
   {
     id: "record",

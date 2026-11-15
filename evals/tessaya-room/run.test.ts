@@ -104,6 +104,19 @@ describe("the room's live tool suite", () => {
     expect(failure("Four automations, one of them paused.")).toMatch(/said 4 total/);
   });
 
+  it("does not ask for a pause where the house lists no automations (the .157 gate, his home offline)", () => {
+    const pause = liveCases.find((c) => c.id === "automation-pause")!;
+    const listed = (total: number): LiveCall => ({
+      name: "home_automations",
+      input: { all: true },
+      isError: false,
+      text: JSON.stringify({ running: total, paused: 0, total, automations: [] }),
+    });
+    expect(pause.nothingToActOn?.([listed(0)])).toMatch(/no automations/);
+    expect(pause.nothingToActOn?.([listed(2)])).toBeNull();
+    expect(pause.nothingToActOn?.([])).toBeNull();
+  });
+
   it("fails a battery level the device did not give, and a camera she claims she used", () => {
     const read: LiveCall = {
       name: "device_read",

@@ -239,6 +239,12 @@ for (const c of cases) {
       console.log(`n/a   ${c.id}: no member has a voice on this server`);
       continue;
     }
+    const nothing = c.nothingToActOn?.(calls) ?? null;
+    if (nothing !== null) {
+      rows.push({ id: c.id, proves: c.proves, result: "n/a", why: nothing });
+      console.log(`n/a   ${c.id}: ${nothing}`);
+      continue;
+    }
     why = liveFailureOf(c, house, replies, calls) ?? (await stepUpFailure(c.stepUps, calls));
   } catch (error) {
     why = `the turn failed: ${String(error)}`;
