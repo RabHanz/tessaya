@@ -7,7 +7,8 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { SpeakerProfile } from "../speaker.ts";
+import { cosine, unitOrNull, type SpeakerProfile } from "../speaker.ts";
+import { vectorFromBase64, vectorToBase64 } from "../speakerStore.ts";
 
 /** A shared profile as her server sends it (the centroid as in speakers.json: base64 of float32). */
 export interface SharedProfile {
@@ -32,25 +33,8 @@ const NUDGE = 0.02;
 /** This R1's copy stays at least this close (cosine) to the shared base. */
 const MIN_BASE_COSINE = 0.97;
 
-const unit = (v: Float32Array): Float32Array => {
-  let n = 0;
-  for (const x of v) n += x * x;
-  const len = Math.sqrt(n) || 1;
-  return Float32Array.from(v, (x) => x / len);
-};
-const cosine = (a: Float32Array, b: Float32Array) => {
-  let d = 0;
-  for (let i = 0; i < a.length; i += 1) d += a[i]! * b[i]!;
-  return d;
-};
-const decode = (b64: string): Float32Array | null => {
-  const bytes = Buffer.from(b64, "base64");
-  if (bytes.length === 0 || bytes.length % 4 !== 0) return null;
-  const v = new Float32Array(new Uint8Array(bytes).buffer);
-  return v.every(Number.isFinite) ? v : null;
-};
-const encode = (v: Float32Array) =>
-  Buffer.from(v.buffer, v.byteOffset, v.byteLength).toString("base64");
+/** Length 1, or as it is when it has none (all zeros), which then never scores as anyone. */
+const unit = (v: Float32Array): Float32Array => unitOrNull(v) ?? v;
 
 export const parseShared = (payload: string): SharedProfile | null => {
   try {
@@ -62,7 +46,7 @@ export const parseShared = (payload: string): SharedProfile | null => {
       typeof p.model === "string" &&
       typeof p.centroid === "string" &&
       typeof p.version === "number" &&
-      decode(p.centroid) !== null
+      vectorFromBase64(p.centroid) !== null
       ? (p as SharedProfile)
       : null;
   } catch {
@@ -103,7 +87,7 @@ export const createProfileSync = (input: {
       }
       const bases = read();
       if ((bases[p.id]?.version ?? -1) >= p.version) return false;
-      const centroid = unit(decode(p.centroid)!);
+      const centroid = unit(vectorFromBase64(p.centroid)!);
       // His own enrolment made here becomes his shared profile: two profiles of one voice nearly tie and read as a guest.
       if (p.kind === "owner" && p.id !== "owner") input.store.remove("owner");
       input.store.save({
@@ -116,7 +100,7 @@ export const createProfileSync = (input: {
         sources: ["spoken"],
         enrolledAt: p.updatedAt,
       });
-      write({ ...bases, [p.id]: { version: p.version, base: encode(centroid) } });
+      write({ ...bases, [p.id]: { version: p.version, base: vectorToBase64(centroid) } });
       input.log(`voice profile ${p.id}: version ${p.version} from her server`);
       return true;
     },
@@ -137,11 +121,13 @@ export const createProfileSync = (input: {
       const profile = input.store.list().find((p) => p.id === id);
       if (base === undefined || profile === undefined || profile.centroid.length !== vector.length)
         return;
-      const b = decode(base.base);
+      const b = vectorFromBase64(base.base);
       if (b === null) return;
-      const v = unit(vector);
+      const v = unitOrNull(vector);
+      if (v === null) return;
       const next = unit(Float32Array.from(profile.centroid, (x, i) => x + NUDGE * (v[i]! - x)));
-      if (cosine(next, b) < MIN_BASE_COSINE) return;
+      // A NaN score (a zero or damaged vector) must never pass as close.
+      if (!(cosine(next, b) >= MIN_BASE_COSINE)) return;
       input.store.save({
         ...profile,
         centroid: next,

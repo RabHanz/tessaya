@@ -79,6 +79,11 @@ describe("enrol once, recognised everywhere: shared profiles and this R1's refin
     // Far from the base: many nudges stop before it drifts past the cap.
     for (let i = 0; i < 500; i += 1) r.sync.refine("member-1", vec(0, 1, 0));
     expect(r.store.list()[0]!.centroid[0]!).toBeGreaterThanOrEqual(0.969);
+    // A damaged turn (no length, or not a number) never moves it.
+    const settled = Array.from(r.store.list()[0]!.centroid);
+    r.sync.refine("member-1", Float32Array.from([0, 0, 0]));
+    r.sync.refine("member-1", Float32Array.from([Number.NaN, 0, 0]));
+    expect(Array.from(r.store.list()[0]!.centroid)).toEqual(settled);
     r.sync.setRefining(false);
     const before = Array.from(r.store.list()[0]!.centroid);
     r.sync.refine("member-1", vec(0.9, 0.3, 0));

@@ -26,7 +26,7 @@ import {
   UNVERIFIED,
   type SpeakerProfile,
 } from "../speaker.ts";
-import { createSpeakerStore } from "../speakerStore.ts";
+import { createSpeakerStore, vectorToBase64 } from "../speakerStore.ts";
 import { createLines, type LinesGot } from "./lines.ts";
 import { voicesOf } from "./segments.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
@@ -589,11 +589,7 @@ const main = async () => {
           name: p.name,
           kind: p.kind,
           model: p.model,
-          centroid: Buffer.from(
-            p.centroid.buffer,
-            p.centroid.byteOffset,
-            p.centroid.byteLength,
-          ).toString("base64"),
+          centroid: vectorToBase64(p.centroid),
           samples: p.samples,
           enrolledAt: p.enrolledAt,
           sources: p.sources,
