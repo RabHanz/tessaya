@@ -78,6 +78,7 @@ Flags:
 - `--arms none,hermes,tessaya` (add `tessaya-server` for the server path)
 - `--model sonnet`: the worker and the learners. Turns run on Sonnet by house rule.
 - `--per-family N`
+- `--claude <path>`: the CLI that runs the workers and the learners. A run that never reaches the model is retried for up to 10 minutes, not graded
 
 The run writes `rows.jsonl`, `summary.md`, and each job's folder with `run.json`: what the arm showed, the run, the
 outcome and the memory after the job.
