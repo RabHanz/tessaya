@@ -89,6 +89,17 @@ describe("the room's live tool suite", () => {
     ).toMatch(/named none/);
   });
 
+  it("passes a member case that says there is no such member in other words (K-room-1, 15 Nov)", () => {
+    const remove = liveCases.find((c) => c.id === "member-remove")!;
+    const listed: LiveCall = { name: "members_list", input: {}, isError: false, text: "{}" };
+    const failure = (reply: string) => liveFailureOf(remove, {}, [reply], [listed]);
+    expect(
+      failure("I don't see anyone with the id maya-1, so there's nothing to remove."),
+    ).toBeNull();
+    expect(failure("There's no member with the id maya-1.")).toBeNull();
+    expect(failure("Done, maya-1 is gone.")).toMatch(/neither removed/);
+  });
+
   it("fails a miscounted automation answer, as .138's three for two (13 Nov)", () => {
     const automations = liveCases.find((c) => c.id === "automations")!;
     const listed: LiveCall = {
