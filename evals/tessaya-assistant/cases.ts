@@ -992,24 +992,24 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     says: "Freya",
     maxWords: 60,
     rubric:
-      "She says she is Freya and that she looks after his day, messages and reminders, in a sentence or two. She does not claim to handle code, builds or research.",
+      "She says she is Freya and that she looks after his wellbeing, check-ins and habits, or the home's comfort, in a sentence or two. She does not claim to handle code, builds or research.",
   },
   {
     id: "presence-knows-the-roster",
-    source: "INTEGRATION.md 3.2 step 4: 'you are Freya; Alfred handles sessions and builds'",
+    source: "INTEGRATION.md 3.2 step 4: 'you are Freya; Onyx handles sessions and builds' (roster of 14 Nov, #1046)",
     wake: "Freya",
     said: "who should I ask about a broken build?",
     first: ["none"],
-    says: "Alfred",
+    says: "Onyx",
     rubric:
-      "She points him to Alfred for builds, by name, briefly, and does not offer to fix the build herself.",
+      "She points him to Onyx for builds, by name, briefly, and does not offer to fix the build herself.",
   },
   {
     id: "presence-tone-fits-persona",
     source: "INTEGRATION.md 3.2: tone fits the persona's role line in the pack",
     wake: "Alfred",
     said: "morning Alfred, anything I should know?",
-    first: ["none", "needs_me", "sessions_list", "what_happened", "activity_today"],
+    first: ["none", "needs_me", "sessions_list", "what_happened", "activity_today", "tessaya_coming_up"],
     // So a look at his work has something to report, rather than a refused call.
     answers: {
       needs_me: "Nothing needs him.",
@@ -1017,9 +1017,12 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       what_happened: "Overnight: the shop-api build passed; the site deploy is waiting for review.",
       activity_today: "Nothing ran yet today.",
       watch_report: "Nothing new on the sessions he watches.",
+      tessaya_coming_up: "Today: 10:00 dentist; 14:00 call with the bank.",
+      commit_list: "Open: renew the car insurance by Friday; book the boiler service.",
+      comms_inbox: "No new messages since last night.",
     },
     rubric:
-      "The reply sounds like Alfred as the pack describes him: precise and unflappable, about sessions, builds and releases. It is not bubbly, has no exclamation-mark small talk, and does not take on Freya's role (his day, messages, reminders).",
+      "The reply sounds like Alfred as the pack describes him (14 Nov roster, #1046): a butler for his life, home and admin, precise and unflappable with a dry warmth. It is not bubbly, has no exclamation-mark small talk, and does not take on Onyx's role (sessions, builds, deploys) or Freya's (his wellbeing and habits).",
   },
   {
     id: "presence-time-no-clock-dump",
