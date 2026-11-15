@@ -234,18 +234,18 @@ for (const c of cases) {
       c.said.map((sentence) => fill(sentence, house)),
       c.voices,
     ));
+    const nothing = c.nothingToActOn?.(calls) ?? null;
+    if (nothing !== null) {
+      rows.push({ id: c.id, proves: c.proves, result: "n/a", why: nothing });
+      console.log(`n/a   ${c.id}: ${nothing}`);
+      continue;
+    }
     // Nothing is held where no member has a voice yet (Voice ID can't tell anyone apart): not applicable there.
     const unheld = c.stepUps !== undefined && !calls.some((x) => HELD.test(x.text));
     const broke = unheld ? unheldFailure(c, calls) : null;
     if (unheld && broke === null) {
       rows.push({ id: c.id, proves: c.proves, result: "n/a", why: "no member has a voice here" });
       console.log(`n/a   ${c.id}: no member has a voice on this server`);
-      continue;
-    }
-    const nothing = c.nothingToActOn?.(calls) ?? null;
-    if (nothing !== null) {
-      rows.push({ id: c.id, proves: c.proves, result: "n/a", why: nothing });
-      console.log(`n/a   ${c.id}: ${nothing}`);
       continue;
     }
     why =
