@@ -8,6 +8,7 @@ import {
   correctionsBetween,
   addNever,
   isNever,
+  changesFromCustomWords,
   learnCorrection,
   mergeEntries,
   mergeWispr,
@@ -102,6 +103,33 @@ describe("two copies of his vocabulary", () => {
     ]);
     expect(mergeEntries(merged, desk)).toEqual(merged);
     expect(mergeEntries(merged, server)).toEqual(merged);
+  });
+});
+
+describe("an edit of T3's list in Settings", () => {
+  it("becomes the changes to his dictionary, a way out for each way in", () => {
+    const before = [
+      { term: "Kubernetes", aliases: ["cube nets", "kube"] },
+      { term: "Grafana", aliases: [] },
+    ];
+    const after = [
+      { term: "Kubernetes", aliases: ["kube", "kubernet"] },
+      { term: "Tailscale", aliases: ["tail scale"] },
+    ];
+    expect(changesFromCustomWords(before, after)).toEqual([
+      { verb: "unhear", phrase: "Kubernetes", form: "cube nets" },
+      { verb: "remove", phrase: "Grafana" },
+      {
+        verb: "learn",
+        entries: [{ phrase: "Kubernetes", replacement: null, heard: ["kubernet"] }],
+      },
+      { verb: "add", phrase: "Tailscale", replacement: null },
+      {
+        verb: "learn",
+        entries: [{ phrase: "Tailscale", replacement: null, heard: ["tail scale"] }],
+      },
+    ]);
+    expect(changesFromCustomWords(after, after)).toEqual([]);
   });
 });
 

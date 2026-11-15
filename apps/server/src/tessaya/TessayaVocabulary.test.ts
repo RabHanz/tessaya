@@ -86,7 +86,8 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
         yield* serveVoiceCall({
           kind: "act",
           op: "vocabularyChange",
-          args: { verb: "remove", phrase: "cube nets" },
+          // As T3's list names it: by how it is written.
+          args: { verb: "remove", phrase: "Kubernetes" },
         });
         expect(stored(file)).toEqual([]);
         expect((yield* customWords).map((w) => w.term)).not.toContain("Kubernetes");

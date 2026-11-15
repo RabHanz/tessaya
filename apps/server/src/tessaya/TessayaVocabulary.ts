@@ -15,6 +15,7 @@ import {
   mergeEntries,
   parseVocabulary,
   removeEntry,
+  removeHeard,
   type VocabularyEntry,
 } from "@t3tools/tessaya-shared/vocabulary";
 import { NAME_SOUNDALIKES } from "@t3tools/tessaya-shared/wakeVerify";
@@ -91,7 +92,14 @@ export const applyChange = (
     case "edit":
       return editEntry(entries, change.from, change);
     case "remove":
-      return removeEntry(entries, change.phrase);
+      // T3's list names a word by how it is written, which is the replacement of a heard-as entry.
+      return removeEntry(entries, change.phrase).filter(
+        (e) => !sameWord(e.replacement ?? "", change.phrase),
+      );
+    case "unhear":
+      return removeHeard(entries, change.phrase, change.form).filter(
+        (e) => !(sameWord(e.phrase, change.form) && sameWord(e.replacement ?? "", change.phrase)),
+      );
     case "learn":
       return mergeEntries(entries, parseVocabulary(change.entries));
   }

@@ -141,47 +141,55 @@ index 9294cc1a12ba7b4f84940632177d42110fc3231c..c04425b8d60e29690f02f33b293cf108
 +    ),
    );
 diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
-index 718a9dda93c0ed95020cf66522eaf2a06d05f7a7..b9bffd69b222f73bab87bd192869285eca96e370 100644
+index 718a9dda93c0ed95020cf66522eaf2a06d05f7a7..ec85cfd28ac35a056edf3e4e65c4fb9f2981acb8 100644
 --- a/packages/client-runtime/src/state/commandPermissions.test.ts
 +++ b/packages/client-runtime/src/state/commandPermissions.test.ts
-@@ -128,6 +128,42 @@ describe("command permissions", () => {
+@@ -128,6 +128,50 @@ describe("command permissions", () => {
      }),
    );
  
-+  it.effect("lets a read-only grant list an R1 but not rebind its buttons", () =>
-+    Effect.scoped(
-+      Effect.gen(function* () {
-+        const registry = yield* setup;
-+        const devices = createCommandPermissions(runtime, "baton.devices.call");
-+        const list = { kind: "read", op: "list", args: {} };
-+        const keyBind = { kind: "act", op: "keyBind", args: {} };
-+        registry.set(
-+          sessions(env),
-+          AsyncResult.success({
-+            ...grant(false),
-+            scopes: [AuthOrchestrationReadScope],
-+            permissions: [AuthOrchestrationReadScope],
-+          }),
-+        );
-+        expect(registry.get(devices.permissionAtom(env, list))).toBe(true);
-+        yield* devices.authorize(registry, env, list);
-+        expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(false);
-+        expect((yield* devices.authorize(registry, env, keyBind).pipe(Effect.flip))._tag).toBe(
-+          "EnvironmentAuthorizationError",
-+        );
-+        registry.set(
-+          sessions(env),
-+          AsyncResult.success({
-+            ...grant(true),
-+            scopes: [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
-+            permissions: [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
-+          }),
-+        );
-+        expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(true);
-+        yield* devices.authorize(registry, env, keyBind);
-+        expect(registry.get(devices.permissionAtom(other, keyBind))).toBe(false);
-+      }),
-+    ),
++  it.effect(
++    "lets a read-only grant list an R1 or his words but not rebind buttons or edit words",
++    () =>
++      Effect.scoped(
++        Effect.gen(function* () {
++          const registry = yield* setup;
++          const devices = createCommandPermissions(runtime, "baton.devices.call");
++          const list = { kind: "read", op: "list", args: {} };
++          const keyBind = { kind: "act", op: "keyBind", args: {} };
++          const voice = createCommandPermissions(runtime, "baton.voice.call");
++          const words = { kind: "read", op: "vocabulary", args: {} };
++          const addWord = { kind: "act", op: "vocabularyChange", args: {} };
++          registry.set(
++            sessions(env),
++            AsyncResult.success({
++              ...grant(false),
++              scopes: [AuthOrchestrationReadScope],
++              permissions: [AuthOrchestrationReadScope],
++            }),
++          );
++          expect(registry.get(devices.permissionAtom(env, list))).toBe(true);
++          yield* devices.authorize(registry, env, list);
++          expect(registry.get(voice.permissionAtom(env, words))).toBe(true);
++          expect(registry.get(voice.permissionAtom(env, addWord))).toBe(false);
++          expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(false);
++          expect((yield* devices.authorize(registry, env, keyBind).pipe(Effect.flip))._tag).toBe(
++            "EnvironmentAuthorizationError",
++          );
++          registry.set(
++            sessions(env),
++            AsyncResult.success({
++              ...grant(true),
++              scopes: [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
++              permissions: [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
++            }),
++          );
++          expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(true);
++          yield* devices.authorize(registry, env, keyBind);
++          expect(registry.get(voice.permissionAtom(env, addWord))).toBe(true);
++          expect(registry.get(devices.permissionAtom(other, keyBind))).toBe(false);
++        }),
++      ),
 +  );
 +
    it.effect("requires the destination provider grant to remove an incomplete connection", () =>
@@ -456,7 +464,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
    };
  }
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..28d76db5e7ec1ae6e40be8f5a03c15e0851ab5aa 100644
+index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..e63d8ee249346c09dae40dc3860b94684783d8e5 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
 @@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
@@ -467,19 +475,21 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..28d76db5e7ec1ae6e40be8f5a03c15e0
    AuthEnvironmentMaintainScope,
    AuthOrchestrationOperateScope,
    AuthOrchestrationReadScope,
-@@ -84,6 +85,11 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
+@@ -84,6 +85,13 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
  const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
  const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
  
 +/** Tessaya's device door (`BATON_DEVICES_WS_METHODS.call`); this package cannot import tessaya-contracts. */
 +const DEVICES_CALL = "baton.devices.call";
++/** Her voices and his dictionary (`BATON_VOICE_WS_METHODS.call`): reading is a read, any change is operate. */
++const VOICE_CALL = "baton.voice.call";
 +/** Her prompt lab (`BATON_PROMPT_LAB_WS_METHODS.call`): his prompts, the owner's settings. */
 +const PROMPT_LAB_CALL = "baton.promptLab.call";
 +
  export function clientRpcRequiredScopes(
    method: string,
    input: unknown,
-@@ -101,6 +107,16 @@ export function clientRpcRequiredScopes(
+@@ -101,6 +109,20 @@ export function clientRpcRequiredScopes(
      )
        return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
    }
@@ -492,6 +502,10 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..28d76db5e7ec1ae6e40be8f5a03c15e0
 +        ? [AuthOrchestrationReadScope, AuthTessayaCloudApproveScope]
 +        : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
 +  }
++  if (method === VOICE_CALL)
++    return (input as { kind?: unknown } | undefined)?.kind === "read"
++      ? [AuthOrchestrationReadScope]
++      : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
 +  if (method === PROMPT_LAB_CALL) return [AuthSettingsWriteScope];
    return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
      ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]

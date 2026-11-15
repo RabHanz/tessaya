@@ -51,6 +51,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { useAtomValue } from "@effect/atom-react";
+import { changesFromCustomWords } from "@t3tools/tessaya-shared/vocabulary";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { cn } from "~/lib/utils";
 import {
@@ -80,6 +82,8 @@ import { useTextGenerationTargets } from "../../textGenerators";
 import { useEnvironmentProviders, useEnvironments } from "../../state/environments";
 import { useEnvironmentScope } from "../../state/session";
 import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
+import { useAtomCommand } from "../../state/use-atom-command";
 import {
   useEnvironmentSpeechInput,
   useVoiceTranscriptionDestination,
@@ -473,8 +477,24 @@ function ProjectDictionaryRow() {
   const scope = useOptionalSettingsScope();
   const words = useScopedSettings((settings) => settings.speechProjectCustomWords);
   const updateScopedSettings = useUpdateScopedSettings();
+  const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
+  const environmentId = scope?.environment?.environmentId ?? null;
+  const canEditShared = useAtomValue(
+    tessayaWorkSessions.voiceCall.permissionAtom(environmentId, VOCABULARY_EDIT),
+  );
   if (scope === null) return null;
   const isProjectScope = scope.scope.kind === "project" || scope.scope.kind === "checkout";
+  // The environment's list is derived from his one dictionary, so its edits go there and come back as this setting.
+  const editShared = async (next: SpeechCustomWords) => {
+    if (environmentId === null) return;
+    for (const args of changesFromCustomWords(words, next)) {
+      const result = await voiceCall({
+        environmentId,
+        input: { ...VOCABULARY_EDIT, args: args as Record<string, unknown> },
+      });
+      if (result._tag !== "Success" || !result.value.ok) return;
+    }
+  };
   return (
     <SettingsRow
       serverScoped
@@ -484,20 +504,26 @@ function ProjectDictionaryRow() {
       description={
         isProjectScope
           ? `Used by everyone who dictates in ${scope.scope.label}.`
-          : "Used by everyone who dictates on this environment."
+          : "Your dictionary, used by dictation, the Tessel and everyone who dictates on this environment. Shows the 100 most used words."
       }
     >
       <div className="mt-3 pb-2">
         <DictionaryEditor
           label={isProjectScope ? "project dictionary" : "shared dictionary"}
           words={words}
-          disabled={scope.connectedEnvironments.length === 0}
-          onChange={(next) => updateScopedSettings({ speechProjectCustomWords: next })}
+          disabled={scope.connectedEnvironments.length === 0 || (!isProjectScope && !canEditShared)}
+          onChange={(next) =>
+            isProjectScope
+              ? updateScopedSettings({ speechProjectCustomWords: next })
+              : void editShared(next)
+          }
         />
       </div>
     </SettingsRow>
   );
 }
+
+const VOCABULARY_EDIT = { kind: "act", op: "vocabularyChange" } as const;
 
 /** Cleanup runs on the draft's environment, so its model is an environment setting there. */
 function CleanupModelRow() {

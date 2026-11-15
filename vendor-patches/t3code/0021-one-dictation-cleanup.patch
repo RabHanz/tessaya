@@ -68,10 +68,19 @@ index faa71137db0493e09fcf9d3f505dab27b360cda1..6127c0d213cafa800c54be3fcdcbfcf2
    if (isElectron) startElectronBrowserHost();
    startPreviewTitleRecording();
 diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f48297c320 100644
+index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e89c4fa2e 100644
 --- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-@@ -69,6 +69,7 @@ import {
+@@ -51,6 +51,8 @@ import {
+ } from "lucide-react";
+ import { useEffect, useRef, useState, type ReactNode } from "react";
+ 
++import { useAtomValue } from "@effect/atom-react";
++import { changesFromCustomWords } from "@t3tools/tessaya-shared/vocabulary";
+ import { useStableCallback } from "~/hooks/useStableCallback";
+ import { cn } from "~/lib/utils";
+ import {
+@@ -69,6 +71,7 @@ import {
    chooseTranscriptCleanup,
    useCleanupGrant,
  } from "../../speech/voiceConsent";
@@ -79,7 +88,16 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f4
  import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
  import { runEnvironmentSpeech } from "../../speech/runEnvironmentSpeech";
  import {
-@@ -126,6 +127,7 @@ import { ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
+@@ -79,6 +82,8 @@ import { useTextGenerationTargets } from "../../textGenerators";
+ import { useEnvironmentProviders, useEnvironments } from "../../state/environments";
+ import { useEnvironmentScope } from "../../state/session";
+ import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
++import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
++import { useAtomCommand } from "../../state/use-atom-command";
+ import {
+   useEnvironmentSpeechInput,
+   useVoiceTranscriptionDestination,
+@@ -126,6 +131,7 @@ import { ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
  import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
  import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
  import { AdvancedSettings } from "./AdvancedSettings";
@@ -87,7 +105,60 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f4
  import {
    SETTINGS_PICKER_TRIGGER_CLASSNAME,
    SettingsPageContainer,
-@@ -501,7 +503,6 @@ function ProjectDictionaryRow() {
+@@ -471,8 +477,24 @@ function ProjectDictionaryRow() {
+   const scope = useOptionalSettingsScope();
+   const words = useScopedSettings((settings) => settings.speechProjectCustomWords);
+   const updateScopedSettings = useUpdateScopedSettings();
++  const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
++  const environmentId = scope?.environment?.environmentId ?? null;
++  const canEditShared = useAtomValue(
++    tessayaWorkSessions.voiceCall.permissionAtom(environmentId, VOCABULARY_EDIT),
++  );
+   if (scope === null) return null;
+   const isProjectScope = scope.scope.kind === "project" || scope.scope.kind === "checkout";
++  // The environment's list is derived from his one dictionary, so its edits go there and come back as this setting.
++  const editShared = async (next: SpeechCustomWords) => {
++    if (environmentId === null) return;
++    for (const args of changesFromCustomWords(words, next)) {
++      const result = await voiceCall({
++        environmentId,
++        input: { ...VOCABULARY_EDIT, args: args as Record<string, unknown> },
++      });
++      if (result._tag !== "Success" || !result.value.ok) return;
++    }
++  };
+   return (
+     <SettingsRow
+       serverScoped
+@@ -482,26 +504,31 @@ function ProjectDictionaryRow() {
+       description={
+         isProjectScope
+           ? `Used by everyone who dictates in ${scope.scope.label}.`
+-          : "Used by everyone who dictates on this environment."
++          : "Your dictionary, used by dictation, the Tessel and everyone who dictates on this environment. Shows the 100 most used words."
+       }
+     >
+       <div className="mt-3 pb-2">
+         <DictionaryEditor
+           label={isProjectScope ? "project dictionary" : "shared dictionary"}
+           words={words}
+-          disabled={scope.connectedEnvironments.length === 0}
+-          onChange={(next) => updateScopedSettings({ speechProjectCustomWords: next })}
++          disabled={scope.connectedEnvironments.length === 0 || (!isProjectScope && !canEditShared)}
++          onChange={(next) =>
++            isProjectScope
++              ? updateScopedSettings({ speechProjectCustomWords: next })
++              : void editShared(next)
++          }
+         />
+       </div>
+     </SettingsRow>
+   );
+ }
+ 
++const VOCABULARY_EDIT = { kind: "act", op: "vocabularyChange" } as const;
++
+ /** Cleanup runs on the draft's environment, so its model is an environment setting there. */
  function CleanupModelRow() {
    const { environment, connectedEnvironments } = useSettingsScope();
    const settings = useScopedSettings();
@@ -95,7 +166,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f4
    const providersByEnvironment = useEnvironmentProviders();
    const providers =
      (environment?.serverConfig
-@@ -512,15 +513,13 @@ function CleanupModelRow() {
+@@ -512,15 +539,13 @@ function CleanupModelRow() {
      settings,
      providers: providers.filter((provider) => provider.supportsTextGeneration !== false),
      projectId: null,
@@ -114,7 +185,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f4
    const selection = resolveAppModelSelectionState(
      {
        ...settings,
-@@ -545,15 +544,18 @@ function CleanupModelRow() {
+@@ -545,15 +570,18 @@ function CleanupModelRow() {
        toastManager.add({ type: "error", title: "Cleanup model not saved", description: reason });
        return;
      }
@@ -137,7 +208,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f4
        control={
          connectedEnvironments.length === 0 ? (
            <span className="text-sm text-muted-foreground">Connect an environment first.</span>
-@@ -596,8 +598,8 @@ function CleanupModelRow() {
+@@ -596,8 +624,8 @@ function CleanupModelRow() {
                checked={dedicated}
                disabled={!dedicated && !hasProvider}
                onCheckedChange={(checked) =>
@@ -148,7 +219,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f4
                      ? createModelSelection(
                          settings.textGenerationModelSelection.instanceId,
                          settings.textGenerationModelSelection.model,
-@@ -1190,6 +1192,7 @@ function TranscriptionTest(props: {
+@@ -1190,6 +1218,7 @@ function TranscriptionTest(props: {
  
  export function VoiceSettingsPanel() {
    const cleanupEnabled = useCleanupGrant() !== null;
@@ -156,7 +227,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f4
    const settings = useClientSettings();
    const settingsScope = useOptionalSettingsScope();
    const destination = useVoiceTranscriptionDestination();
-@@ -1603,12 +1606,15 @@ export function VoiceSettingsPanel() {
+@@ -1603,12 +1632,15 @@ export function VoiceSettingsPanel() {
        <SettingsSection id={searchableSetting("speech-post-processing").id} title="Cleanup">
          <SettingsRow
            title="Clean up transcripts"
@@ -174,7 +245,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..ddd3536bf62e766ac09f2176550f14f4
              />
            }
          />
-@@ -1692,6 +1698,7 @@ export function VoiceSettingsPanel() {
+@@ -1692,6 +1724,7 @@ export function VoiceSettingsPanel() {
            />
          ) : null}
        </SettingsSection>
