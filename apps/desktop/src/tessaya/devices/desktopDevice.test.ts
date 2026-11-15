@@ -133,6 +133,6 @@ describe("the desktop as a vessel", () => {
       { id: "w3", ok: false, error: "She is not on the desktop right now." },
     ]);
     const manifest = sent[0]?.["manifest"] as { items: Array<{ id: string; values?: unknown }> };
-    expect(manifest.items.find((i) => i.id === "mascot.do")?.values).toContain("peek");
+    expect(manifest.items.find((i) => i.id === "mascot.do")?.values).toContain("signature");
   });
 });

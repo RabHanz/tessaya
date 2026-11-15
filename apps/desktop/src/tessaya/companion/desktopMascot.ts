@@ -251,8 +251,6 @@ const SNOOZE_MS = 60 * 60_000;
 /** A wander is considered once a minute, and taken about one time in six: every few minutes, never on a beat. */
 const WANDER_CHECK_MS = 60_000;
 const WANDER_CHANCE = 1 / 6;
-/** Of those moments, the share that is one of her funny moments instead of a walk. */
-const FUNNY_SHARE = 0.4;
 /** He is at the computer, but not typing this second. */
 const WANDER_IDLE_S: readonly [number, number] = [3, 120];
 
@@ -938,13 +936,29 @@ export const createDesktopMascot = (input: {
     });
   };
 
-  /** Lively only: now and then a short walk along her edge or one of her funny moments, while he is around and not typing this second. */
+  /**
+   * Lively only: now and then a short walk, one of her funny moments or her character's own act, as her personality
+   * leans (mascotPage idleChoice), while he is around and not typing this second.
+   */
   const wander = setInterval(() => {
     if (!wanders(options.motion) || win === null || !win.isVisible() || edge === null) return;
     if (dragging !== null || moving !== null || phase !== "idle" || sleeping || snoozed()) return;
     const idle = Electron.powerMonitor.getSystemIdleTime();
     if (idle < WANDER_IDLE_S[0] || idle > WANDER_IDLE_S[1] || Math.random() > WANDER_CHANCE) return;
-    if (Math.random() < FUNNY_SHARE) return funny();
+    const target = win;
+    void ready
+      .then(() => target.webContents.executeJavaScript("window.mascot.idleChoice()"))
+      .then((choice: unknown) => {
+        if (choice === "funny") funny();
+        else if (choice === "signature") call(`window.mascot.signature()`);
+        else walk();
+      })
+      .catch(() => undefined);
+  }, WANDER_CHECK_MS);
+  wander.unref();
+  /** A short walk along her edge in her own gait. */
+  const walk = () => {
+    if (edge === null || moving !== null || dragging !== null) return;
     const to = wanderTo(edge, x, Math.random());
     if (to === null) return;
     // a walk in her own gait (hops, a waddle, a glide) for the length of the glide
@@ -952,8 +966,7 @@ export const createDesktopMascot = (input: {
     x = to;
     save({ x: to });
     glide(standAt(edge, to, size()), 48);
-  }, WANDER_CHECK_MS);
-  wander.unref();
+  };
 
   scheduleWake();
 
@@ -1070,6 +1083,7 @@ export const createDesktopMascot = (input: {
       if (what === "window" || what === "taskbar" || what === "otherScreen") return goTo(what);
       const clip = ACT_CLIPS[what];
       if (clip !== undefined) call(`window.mascot.play(${JSON.stringify(clip)})`);
+      else if (what === "signature") call(`window.mascot.signature()`);
       else funny(what === "funny" ? undefined : what);
       return true;
     },
