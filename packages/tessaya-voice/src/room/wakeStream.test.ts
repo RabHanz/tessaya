@@ -12,7 +12,7 @@ const frame = (v: number) => {
 };
 
 /** Scores "Tessaya" 1.0 on a chunk carrying the marker value 7, else 0. */
-const rig = (heard: string) => {
+const rig = (heard: string, now?: () => number) => {
   const confirmed: number[] = [];
   const woken: string[] = [];
   const lines: string[] = [];
@@ -32,6 +32,7 @@ const rig = (heard: string) => {
     },
     onWake: (id, word) => woken.push(`${id} ${word}`),
     log: (line) => lines.push(line),
+    ...(now === undefined ? {} : { now }),
   });
   return { stream, confirmed, woken, lines };
 };
@@ -54,6 +55,21 @@ describe("waking her by name with no session open", () => {
     t.stream.frame("r1", frame(7));
     await t.stream.drained("r1");
     expect(t.woken).toEqual(["r1 Tessaya", "r1 Tessaya"]);
+  });
+
+  it("hears the next segment when the one that woke her never ended (15 Nov soak: every other name opened nothing)", async () => {
+    let t0 = 0;
+    const t = rig("Hey Tessaya.", () => t0);
+    for (let i = 0; i < 3; i += 1) t.stream.frame("r1", frame(7));
+    await t.stream.drained("r1");
+    // Her session starts mid-segment, so the R1 sends no voice/wake/end for it; the next name comes after the session.
+    t0 = 20_000;
+    t.stream.kws("r1", { seg: 4, score: 0.99, pass: true, name: "tessaya" });
+    for (let i = 0; i < 3; i += 1) t.stream.frame("r1", frame(7));
+    t.stream.end("r1", 4);
+    await t.stream.drained("r1");
+    expect(t.woken).toEqual(["r1 Tessaya", "r1 Tessaya"]);
+    expect(t.lines.filter((l) => /\] woken by/.test(l))).toHaveLength(2);
   });
 
   it("hears a newly trained word from the next segment, never by swapping mid-segment", async () => {
