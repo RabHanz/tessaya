@@ -77,7 +77,9 @@ export const escalationRulesLine = (settings: BrainEscalation): string | null =>
           (r, i) =>
             `${i + 1}. ${r.when} → ${r.then === "sonnet" ? "stay on Sonnet" : r.then === "ask" ? "ask him first" : "Opus"}`,
         )
-        .join("; ")}.`;
+        .join(
+          "; ",
+        )}. A hard task no rule covers (a plan, research, a judgement call) still goes to brain_escalate, with rule 0.`;
 };
 
 /** A request this long qualifies on its own (§2.1's hard signals). */
