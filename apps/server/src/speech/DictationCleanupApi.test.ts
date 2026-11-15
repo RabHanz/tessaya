@@ -1,6 +1,7 @@
 import { it } from "@effect/vitest";
 import { ProviderInstanceId } from "@t3tools/contracts";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
+import { refusedNote } from "@t3tools/tessaya-shared/dictationCleanup";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -103,6 +104,17 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
     yield* choose("codex", "gpt-6-luna", 2);
     yield* fetching(api.cleanup(input));
     expect(yield* bodyModel(2)).toBe("claude-haiku-5-5");
+
+    // The one retry: the refused answer and why go as their own turns after the dictation.
+    yield* fetching(api.cleanup({ ...input, refused: { answer: "Hello.", why: "lost name Ann" } }));
+    const retry = yield* Effect.promise(() =>
+      new Response(upstream.mock.calls[3]![1]?.body).text(),
+    );
+    expect(JSON.parse(retry).messages).toEqual([
+      { role: "user", content: "um hello" },
+      { role: "assistant", content: "Hello." },
+      { role: "user", content: refusedNote("lost name Ann") },
+    ]);
 
     // The spend guard: a role off the key's list is refused before anything is sent, and nothing falls back.
     const sent = upstream.mock.calls.length;

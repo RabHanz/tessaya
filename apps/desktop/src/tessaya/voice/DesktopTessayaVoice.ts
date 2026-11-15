@@ -53,6 +53,7 @@ import {
   MODE_LABELS,
   type CleanupLevel,
   type DictationMode,
+  type Refused,
 } from "@t3tools/tessaya-shared/dictationCleanup";
 import {
   createEchoGuard,
@@ -1357,6 +1358,7 @@ export interface DesktopTessayaVoiceInput {
     system: string,
     message: string,
     maxTokens: number,
+    refused?: Refused,
   ) => Promise<string | null>;
   /** Every session on every environment, running or stopped, with Resume and New session. */
   readonly catalog?: ReturnType<typeof import("../sessions/catalogRows.ts").createCatalog>;

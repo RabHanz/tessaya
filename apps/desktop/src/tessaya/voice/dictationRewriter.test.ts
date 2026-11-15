@@ -274,7 +274,11 @@ describe("makeRewriter", () => {
       start: (): VisionSession => {
         started += 1;
         return {
-          ask: async (content) => (content[0]?.type === "text" ? content[0].text : ""),
+          // Each answer passes, so a clean is one turn.
+          ask: async (content) =>
+            content[0]?.type === "text"
+              ? (/<dictation>(.*)<\/dictation>/.exec(content[0].text)?.[1] ?? "")
+              : "",
           alive: () => alive,
           dispose: () => {},
         };
