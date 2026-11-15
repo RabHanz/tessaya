@@ -3,7 +3,7 @@
  * spliced between them at a level matched to the speech before it, so a sigh is never louder than her voice. The output
  * is one streaming WAV (mono 16-bit, 24 kHz like Pocket and Gemini), the shape every player here already takes.
  */
-import type { SpeechPiece } from "./interjections.ts";
+import { speechPieces, type SpeechPiece } from "./interjections.ts";
 
 export const SPLICE_RATE = 24_000;
 /** Around a sound, so it does not run into the words. */
@@ -202,3 +202,14 @@ export async function* spliceSpeech(
     if (i < pieces.length - 1) yield bytesOf(silence(SPLICE_GAP_MS));
   }
 }
+
+/** A reply in a Pocket voice as one stream: plain words stream straight through; a stage direction is its sound, never words. */
+export const pocketSpeech = (
+  text: string,
+  voice: string,
+  say: (text: string) => AsyncIterable<Uint8Array>,
+): AsyncIterable<Uint8Array> => {
+  const pieces = speechPieces(text, voice);
+  const only = pieces.length === 1 ? pieces[0] : undefined;
+  return only?.kind === "text" ? say(only.text) : spliceSpeech(pieces, say);
+};

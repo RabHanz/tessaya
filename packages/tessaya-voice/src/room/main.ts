@@ -10,6 +10,7 @@ import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
 import * as NodePath from "node:path";
 
+import { pocketSpeech } from "@t3tools/tessaya-shared/speechSplice";
 import { pocketVoiceUrl } from "@t3tools/tessaya-shared/voiceLibrary";
 import { fetchSignedWake, wakeKey } from "@t3tools/tessaya-shared/wakeModels";
 
@@ -330,12 +331,16 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
     }
   };
   void warm(voices);
-  const speak = async function* (text: string, signal: AbortSignal, voice?: string) {
+  const say = async function* (text: string, signal: AbortSignal, voice?: string) {
     const res = await tts(text, signal, voice);
     if (!res.ok || res.body === null) throw new Error(`voice answered ${res.status}`);
+    yield* res.body as unknown as AsyncIterable<Uint8Array>;
+  };
+  // Her [laughs] or *sighs* is spliced in as the desktop does it; Pocket would read the word aloud (V-041).
+  const speak = async function* (text: string, signal: AbortSignal, voice?: string) {
     const read = createWavReader();
     const down = createResampler24to16();
-    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    for await (const chunk of pocketSpeech(text, voice ?? "", (t) => say(t, signal, voice))) {
       const pcm = down(read(chunk));
       if (pcm.length > 0) yield withGain(pcm, gains.get(voice ?? "") ?? 1);
     }
