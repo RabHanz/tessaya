@@ -58,7 +58,7 @@ import {
 import { DOWN_FRAME_BYTES, fromBytes, speechLevel, toBytes } from "./audio.ts";
 import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "../cueSounds.ts";
 import type { Affect } from "./senseVoice.ts";
-import type { KwsEvent } from "./wakeStream.ts";
+import type { KwsEvent, WakeRequest } from "./wakeStream.ts";
 import { segmentsOf, type TurnVoices } from "./segments.ts";
 import {
   createTurnTaking,
@@ -333,7 +333,7 @@ export interface RoomDeps {
   /** Her name with no session open (`voice/wake`): voiced segments only, never recognised beyond the wake check. */
   readonly wake?: {
     readonly frame: (deviceId: string, pcm: Uint8Array) => void;
-    readonly end: (deviceId: string, seg?: number) => void;
+    readonly end: (deviceId: string, seg?: number, sent?: number) => void;
     readonly kws?: (deviceId: string, event: KwsEvent) => void;
   };
 }
@@ -1290,13 +1290,17 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
     /** When the turn being heard began: the window is about when he started, not when recognition finished. */
     let turnStartedAt = 0;
-    /** `given` is a turn already in words (an R1 button's prompt): addressed to her, with no voice to read. */
+    /**
+     * `given` is a turn already in words (an R1 button's prompt): addressed to her, with no voice to read. `heard` is
+     * his voice already in words (a request in the same breath as her name): his turn, with `pcm` its voice.
+     */
     const answer = async (
       pcm: Int16Array,
       reason: string,
       lastVoice: number,
       startedAt: number,
       given?: string,
+      heard?: string,
     ) => {
       const turn = (turnNo += 1);
       const decidedAt = deps.now();
@@ -1320,8 +1324,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         affect: Affect | undefined,
         segments?: Tessaya["segments"],
       ) => envelopeOf(given, tainted, words, who, switched, via, speaker, affect, segments);
-      const current = given === undefined ? rec : null;
-      if (given === undefined) rec = null;
+      const current = given === undefined && heard === undefined ? rec : null;
+      if (current !== null) rec = null;
       const scored = (audio: Int16Array) =>
         deps.speaker?.(audio).then(
           (heard) => heldVoice(heard),
@@ -1428,7 +1432,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         tryGuess(words);
       });
       if (latest !== "") tryGuess(latest);
-      const raw = (given ?? (await current?.finish().catch(() => "")) ?? "").trim();
+      const raw = (given ?? heard ?? (await current?.finish().catch(() => "")) ?? "").trim();
       settled = true;
       if (given === undefined) {
         answeredSeq = seq;
@@ -2326,6 +2330,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       },
       /** An R1 button's prompt: answered as if he had said it to her. */
       ask: (text: string) => void answer(new Int16Array(0), "button", deps.now(), deps.now(), text),
+      /** What he asked in the same breath as her name, heard in her name's own segment: his first turn. */
+      asked: (pcm: Int16Array, request: WakeRequest) =>
+        void answer(pcm, "wake", request.endedAt, request.startedAt, undefined, request.text),
       /** He called this persona by name to wake her. */
       /** Her server holds an act until it knows who is speaking: she asks once, the reply decides (or S2). */
       stepUp: (act: string, shared: boolean, random: () => number = Math.random) => {
@@ -2484,6 +2491,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** Voice ID on her name's own clip, and how long it was. */
       readonly heard?: Promise<SpeakerIdentity | undefined>;
       readonly ms: number;
+      /** What he said after her name in the same breath, still being recognised, with the segment it is in. */
+      readonly request?: { readonly pcm: Int16Array; readonly words: Promise<WakeRequest | null> };
     }
   >();
   const start = (id: string, how = "audio") => {
@@ -2690,9 +2699,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         // S2 (not her name) proves someone is at this R1, for an act already waiting on who is speaking.
         if (!calledBy.has(id)) sessions.get(id)?.present();
         const s = start(id, "S2 or wake");
-        s.wake();
         const called = calledBy.get(id);
         calledBy.delete(id);
+        // Her name and a request in one breath: the request is his first turn, so no "I'm here" waits on it.
+        const request = called?.request;
+        if (request === undefined) s.wake();
+        else {
+          s.wake(false);
+          void request.words.then((r) => (r === null ? s.wake() : s.asked(request.pcm, r)));
+        }
         // S2 on this R1 (not her name): he chose this one, so the others yield to it.
         if (called === undefined) {
           quietUntil.delete(id);
@@ -2722,8 +2737,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         if (!muted.has(id)) deps.wake?.frame(id, payload);
       } else if (tail === "voice/wake/end") {
-        const seg = json()["seg"];
-        deps.wake?.end(id, typeof seg === "number" ? seg : undefined);
+        const { seg, sent } = json();
+        deps.wake?.end(
+          id,
+          typeof seg === "number" ? seg : undefined,
+          typeof sent === "number" ? sent : undefined,
+        );
       } else if (tail === "event/wake/kws") {
         deps.wake?.kws?.(id, json() as KwsEvent);
       } else if (tail === "cmd/voice/stop") stop(id);
@@ -2791,6 +2810,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       score = 1,
       /** Her name as heard, for Voice ID on the claim. */
       clip?: Int16Array,
+      /** What he said after her name in the same segment (`clip`), still being recognised. */
+      request?: Promise<WakeRequest | null>,
     ) => {
       if (sessions.has(id)) return;
       if (deps.now() < (quietUntil.get(id) ?? 0)) {
@@ -2802,6 +2823,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           word,
           level,
           ms: clip === undefined ? 0 : (clip.length / RATE) * 1000,
+          ...(request === undefined || clip === undefined
+            ? {}
+            : { request: { pcm: clip, words: request } }),
           ...(clip === undefined || deps.speaker === undefined
             ? {}
             : { heard: deps.speaker(clip).catch(() => undefined) }),

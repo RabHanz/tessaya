@@ -52,7 +52,7 @@ import {
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
-import { createWakeStream } from "./wakeStream.ts";
+import { createWakeStream, kwsEarlyCommand } from "./wakeStream.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 import { biasTranscript, type VocabularyEntry } from "@t3tools/tessaya-shared/vocabulary";
 import { adoptTesselNames } from "./envNames.ts";
@@ -665,6 +665,18 @@ const main = async () => {
           capBytes: Number(process.env["R1_WAKE_CAPTURE_MB"] ?? "1024") * 1_048_576,
           log,
         });
+  // `R1_KWS_WAKE=Tessaya=0.9,...` ("" for none). W2 real cascade (15 Nov): the kws at 0.9 beats openWakeWord on
+  // every row, 32 of his 41 held-out names against 16 at 0.63 against 0.84 false wakes/h; OR-ing both doubles them.
+  const kwsWake = (process.env["R1_KWS_WAKE"] ?? "Tessaya=0.9")
+    .split(",")
+    .filter((pair) => pair.includes("="))
+    .map((pair) => {
+      const [word, threshold] = pair.split("=") as [string, string];
+      return { word: word.trim(), threshold: Number(threshold) };
+    })
+    .filter((w) => w.word !== "" && w.threshold > 0 && w.threshold <= 1);
+  /** One clock for the wake stream and the room: a request's times in one are compared in the other. */
+  const now = () => performance.timeOrigin + performance.now();
   /** The R1s whose last word on `state/online` was "1": only then are the recognisers kept warm. */
   const online = new Set<string>();
   let room: ReturnType<typeof createRoomVoice> | null = null;
@@ -688,6 +700,7 @@ const main = async () => {
       "freya/r1/+/voice/wake",
       "freya/r1/+/voice/wake/end",
       "freya/r1/+/event/wake/kws",
+      "freya/r1/+/state/voice/kws",
       "freya/r1/+/state/mic",
       "freya/r1/+/state/voice",
       "freya/r1/+/event/key",
@@ -717,6 +730,19 @@ const main = async () => {
     onMessage: (t, p) => {
       const seen = /^freya\/r1\/([^/]+)\/state\/online$/.exec(t);
       if (seen !== null) String(p).trim() === "1" ? online.add(seen[1]!) : online.delete(seen[1]!);
+      // Her early kws threshold, which the Tessel loses on every boot: sent whenever it reports another.
+      const kws = /^(freya\/r1\/[^/]+)\/state\/voice\/kws$/.exec(t);
+      if (kws !== null) {
+        const send = (() => {
+          try {
+            return kwsEarlyCommand(JSON.parse(String(p)) as { early?: unknown }, kwsWake);
+          } catch {
+            return null;
+          }
+        })();
+        if (send !== null) mqtt.publish(`${kws[1]}/cmd/voice/kws`, send);
+        return;
+      }
       const started = /^freya\/r1\/([^/]+)\/event\/session\/start$/.exec(t);
       if (started !== null) capture?.session(started[1]!);
       // voice/profile[/<member>]: a shared profile (retained); empty on a member's topic clears that member.
@@ -812,25 +838,18 @@ const main = async () => {
                 return turn.finish();
               }),
             ),
-          onWake: (id, word, level, score, clip) =>
+          onWake: (id, word, level, score, clip, request) =>
             room?.woken(
               id,
               words.find((w) => w.word === word)?.persona ?? word,
               level,
               score,
               clip,
+              request,
             ),
           log,
-          // `R1_KWS_WAKE=Tessaya=0.9,...` ("" for none). W2 real cascade (15 Nov): the kws at 0.9 beats openWakeWord on
-          // every row, 32 of his 41 held-out names against 16 at 0.63 against 0.84 false wakes/h; OR-ing both doubles them.
-          kwsWake: (process.env["R1_KWS_WAKE"] ?? "Tessaya=0.9")
-            .split(",")
-            .filter((pair) => pair.includes("="))
-            .map((pair) => {
-              const [word, threshold] = pair.split("=") as [string, string];
-              return { word: word.trim(), threshold: Number(threshold) };
-            })
-            .filter((w) => w.word !== "" && w.threshold > 0 && w.threshold <= 1),
+          kwsWake,
+          now,
           ...(capture === undefined ? {} : { capture }),
         });
   startCameraRelay();
@@ -965,7 +984,7 @@ const main = async () => {
           : Math.max(Number.NEGATIVE_INFINITY, ...mine.map((p) => cosine(vector, p.centroid)));
       },
       members: () => store.list().some((p) => p.model === SPEAKER_MODEL_ID),
-      now: () => performance.timeOrigin + performance.now(),
+      now,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       log,
     },
