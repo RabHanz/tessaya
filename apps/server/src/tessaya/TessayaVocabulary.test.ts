@@ -110,7 +110,11 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
           expect(alfred).toEqual([
             expect.objectContaining({ phrase: "Alfie", replacement: "Alfred" }),
           ]);
-          expect(all.some((e) => e.phrase === "Tessaya" && e.replacement === null)).toBe(true);
+          // Each name carries its sound-alikes from the one list the wake check reads too.
+          expect(all.find((e) => e.phrase === "Tessaya")).toMatchObject({
+            replacement: null,
+            heard: expect.arrayContaining(["teseya", "tisia"]),
+          });
         }),
       { stored: JSON.stringify([{ phrase: "Alfie", replacement: "Alfred" }]) },
     ),

@@ -5,16 +5,57 @@
  * match is by sound-alike spelling, not exact text.
  */
 
-/** Other ways recognition writes a wake word, from how each one is said. */
-const ALIASES: Readonly<Record<string, ReadonlyArray<string>>> = {
-  // Not "Tessa", "Tessie" or "Theresa": they are other names, and near misses the model is trained against.
-  // "Teseya", "Teseah": his "Tessaya" on the R1's mic (13 Nov).
-  tessaya: ["tessaia", "tesaya", "tessa ya", "tesseya", "teh sayuh", "teseya", "teseah", "tesseah"],
-  sebastian: ["bastian", "sebastien", "sabastian", "sebastiane"],
-  alfred: ["alfrid", "alfread", "al fred"],
-  freya: ["fraya", "freia", "fria", "fray uh", "frayer", "freyer"],
-  onyx: ["onix", "onyks", "onicks", "onyx"],
+/**
+ * The one list of how recognition mis-writes each name (lower case), for the wake check, the room, dictation and the
+ * server's dictionary. `heard`: spellings nothing else has. `lead`: only as a sentence's first word ("…take the seat"
+ * is close to "teseat"). `addressed`: names of their own ("Tessa"), the wake word only when spoken to.
+ */
+export const NAME_SOUNDALIKES: Readonly<
+  Record<
+    string,
+    {
+      readonly heard: ReadonlyArray<string>;
+      readonly lead?: ReadonlyArray<string>;
+      readonly addressed?: ReadonlyArray<string>;
+    }
+  >
+> = {
+  tessaya: {
+    // Not "Tessa", "Tessie" or "Theresa" here: other names, and near misses the wake model is trained against.
+    // "Teseya", "Teseah": the R1's mic (13 Nov). "Tisia" to "Tes Saya": Parakeet on his Wispr clips (DICT-WISPR).
+    heard: [
+      "tessaia",
+      "tesaya",
+      "tessa ya",
+      "tesseya",
+      "teh sayuh",
+      "teseya",
+      "teseah",
+      "tesseah",
+      "tisia",
+      "tessia",
+      "tesia",
+      "tessay",
+      "tayya",
+      "te saya",
+      "tes saya",
+    ],
+    // 0.1.72 (Microsoft David): "Tessiot", "Tessayot", "Tessiah".
+    lead: ["teseat", "teseot", "tessiot", "tessayot", "tessiah"],
+    // "Seya", "Casea": across the room on the R1's one mic (12 Nov); "Casey" the same (13 Nov), a name of its own.
+    addressed: ["tessa", "seya", "casea", "casey"],
+  },
+  sebastian: { heard: ["bastian", "sebastien", "sabastian", "sebastiane"] },
+  alfred: { heard: ["alfrid", "alfread", "al fred"] },
+  freya: { heard: ["fraya", "freia", "fria", "fray uh", "frayer", "freyer"] },
+  onyx: { heard: ["onix", "onyks", "onicks"] },
 };
+
+const table = (pick: "heard" | "lead" | "addressed") =>
+  Object.fromEntries(
+    Object.entries(NAME_SOUNDALIKES).map(([name, forms]) => [name, forms[pick] ?? []]),
+  ) as Readonly<Record<string, ReadonlyArray<string>>>;
+const ALIASES = table("heard");
 
 /** Recognition sometimes writes the name in Cyrillic or Greek ("Тесая"): read it in Latin letters (after NFD, so й is и). */
 const LATIN: Readonly<Record<string, string>> = {
@@ -79,25 +120,8 @@ const LATIN: Readonly<Record<string, string>> = {
   ω: "o",
 };
 
-/**
- * How recognition writes a name at the start of a sentence, as one word nothing else is spelt like: only
- * there, never in the wake check, where "…take the seat" is close to "teseat". (0.1.68: the US TTS voice's
- * "Tessaya" came back as "Teseat" or "Teseot" in all 20 lines.)
- */
-const LEAD_SPELLINGS: Readonly<Record<string, ReadonlyArray<string>>> = {
-  // 0.1.72 (Microsoft David): "Tessiot", "Tessayot", "Tessiah".
-  tessaya: ["teseat", "teseot", "tessiot", "tessayot", "tessiah"],
-};
-
-/**
- * Spellings that are names of their own ("Tessa"): the wake word only when spoken to, as the whole clip, with a
- * comma after it, or with a question or request next. "Tessa said she would call me later" is about her.
- */
-const ADDRESSED_SPELLINGS: Readonly<Record<string, ReadonlyArray<string>>> = {
-  // "Seya" and "Casea": his "Tessaya" from across the room on the R1's one mic (12 Nov).
-  // "Casey": the same (13 Nov), and a name of its own, so only when spoken to.
-  tessaya: ["tessa", "seya", "casea", "casey"],
-};
+const LEAD_SPELLINGS = table("lead");
+const ADDRESSED_SPELLINGS = table("addressed");
 const ASKING =
   /^(?:what|whats|who|where|when|why|how|please|tell|open|show|send|start|set|remind|play|turn|give|find|check|bring|type|explain|look|read|stop)$/;
 /** "Tessa can you…", not "Tessa can't come": a modal counts only with "you" after it. */

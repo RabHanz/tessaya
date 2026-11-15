@@ -88,6 +88,7 @@ import {
   removeEntry,
   saveDictionary,
   type VocabEntry,
+  vocabularyChanges,
 } from "./dictionaryEdit.ts";
 import {
   addInput,
@@ -1766,6 +1767,34 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   try {
     seenWords = createJsonStore(seenPath, {}, isRecord).read() as SeenWords;
   } catch {}
+  /** What his server was last sent; empty at start, so the first save sends the whole list. */
+  let sentToServer: ReadonlyArray<VocabularyEntry> = [];
+  /** Saves the file and tells his server, which keeps T3's list and his other servers in step (ONE-EAR §7a). */
+  const syncServer = (next: ReadonlyArray<VocabularyEntry>) => {
+    const direct = input.direct;
+    if (direct === undefined) return;
+    const changes = vocabularyChanges(sentToServer, next);
+    sentToServer = next;
+    // shortcut: a remove each, so "forget learned" sends one per word; a batch verb if that list grows large.
+    void changes
+      .reduce<Promise<unknown>>(
+        (sent, args) =>
+          sent.then(() =>
+            direct(
+              BATON_VOICE_WS_METHODS.call,
+              { kind: "act", op: "vocabularyChange", args },
+              8_000,
+            ),
+          ),
+        Promise.resolve(),
+      )
+      // An older server without the store: the file stays the truth here, as before.
+      .catch(() => undefined);
+  };
+  const saveVocabulary = (next: ReadonlyArray<VocabularyEntry>) => {
+    saveDictionary(input.stateDir, next);
+    syncServer(next);
+  };
   const changeVocabulary = async (
     change: (
       entries: ReadonlyArray<VocabularyEntry>,
@@ -1774,7 +1803,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   ) => {
     // Re-read for his hand edits, synchronously so no other write lands in between.
     dictionary = change(readDictionary(input.stateDir, dictionary), new Date().toISOString());
-    saveDictionary(input.stateDir, dictionary);
+    saveVocabulary(dictionary);
   };
   const saveSeen = () => {
     try {
@@ -4699,6 +4728,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           snippets.put({ cue: cue.toLowerCase(), text, apps: [] });
       },
     });
+    syncServer(dictionary);
     void loadStylePairs({ stateDir: input.stateDir, appData: input.env["APPDATA"] }).then(
       (pairs) => {
         styleIndex = makeStyleIndex([
@@ -8023,7 +8053,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           const done = importDictionary(NodeFS.readFileSync(file, "utf8"));
           if (done.refused !== undefined) return void input.extras?.notice(done.refused);
           for (const r of done.rows) dictionary = addEntry(dictionary, r);
-          saveDictionary(input.stateDir, dictionary);
+          saveVocabulary(dictionary);
           input.extras?.notice(
             `Imported ${done.rows.length} words${done.skipped > 0 ? `; ${done.skipped} lines were skipped` : ""}.`,
           );
@@ -8058,7 +8088,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
             phrase: entry.phrase,
             replacement: typeof entry.replacement === "string" ? entry.replacement : null,
           });
-          saveDictionary(input.stateDir, dictionary);
+          saveVocabulary(dictionary);
         }
       } catch {
         // A malformed add from the page is ignored; the list stays as it was.
@@ -8071,7 +8101,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
             phrase: e.phrase,
             replacement: typeof e.replacement === "string" ? e.replacement : null,
           });
-          saveDictionary(input.stateDir, dictionary);
+          saveVocabulary(dictionary);
         }
       } catch {
         // A malformed edit is ignored; the list stays as it was.
@@ -8106,7 +8136,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     } else if (id === "d.forget") {
       rememberNever(dictionary.filter((e) => e.source === "learned").map((e) => e.phrase));
       dictionary = forgetLearned(dictionary);
-      saveDictionary(input.stateDir, dictionary);
+      saveVocabulary(dictionary);
     } else if (id === "d.unhear" && typeof value === "string") {
       try {
         const e = JSON.parse(value) as { phrase?: unknown; form?: unknown };
@@ -8114,7 +8144,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           // A form he took off is not taught again by a correction.
           rememberNever([e.form]);
           dictionary = removeHeard(dictionary, e.phrase, e.form);
-          saveDictionary(input.stateDir, dictionary);
+          saveVocabulary(dictionary);
         }
       } catch {
         // A malformed change is ignored; the list stays as it was.
@@ -8124,7 +8154,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       if (dictionary.some((e) => e.phrase === value && e.source !== "added"))
         rememberNever([value]);
       dictionary = removeEntry(dictionary, value);
-      saveDictionary(input.stateDir, dictionary);
+      saveVocabulary(dictionary);
     } else if (pluginOfControl(id) !== null) {
       const result = setPluginEnabled(claudeDir(), pluginOfControl(id)!, on);
       forgetFiles();

@@ -40,6 +40,7 @@ import { ServerSettingsService } from "../../../serverSettings.ts";
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { TessayaVocabulary } from "../../../tessaya/TessayaVocabulary.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -652,6 +653,42 @@ export const layer = McpToolAccess.toLayer(
               })),
               Effect.mapError(() => failed({ reason: "The pronunciation was not saved." })),
             ),
+      ),
+      // The one dictionary; a linked server's change is kept here and never sent on (TessayaVocabulary.toPeers).
+      tessaya_vocabulary: McpToolAccess.writes(
+        (input) =>
+          Effect.gen(function* () {
+            if (runtime === null || Option.isNone(Context.getOption(runtime, TessayaVocabulary)))
+              return yield* failed({ reason: "This server keeps no dictionary." });
+            const scope = yield* McpInvocationContext.McpInvocationContext;
+            const store = Context.get(runtime, TessayaVocabulary);
+            const change = input.change;
+            const all =
+              change === undefined
+                ? yield* store.read
+                : yield* store.change(change).pipe(
+                    Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+                    Effect.mapError((e) => failed({ reason: e.why })),
+                  );
+            const word =
+              change?.verb === "add" || change?.verb === "edit"
+                ? (change.replacement ?? change.phrase)
+                : "";
+            return {
+              words: all.map((e) => e.replacement ?? e.phrase),
+              line:
+                change === undefined
+                  ? `${all.length} words in the dictionary.`
+                  : change.verb === "add"
+                    ? `Added ${word} to your dictionary.`
+                    : change.verb === "edit"
+                      ? `${change.from} is now ${word}.`
+                      : change.verb === "remove"
+                        ? `Took ${change.phrase} out of your dictionary.`
+                        : "The dictionary is up to date.",
+            };
+          }),
+        { linkedCallers: "allowed" },
       ),
       // Only this agent's own requests: another agent's, the phone's and the web bar's are not its to read.
       tessaya_ask_status: McpToolAccess.reads((input) =>
