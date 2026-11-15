@@ -789,8 +789,11 @@ interface VoiceSettings {
   readonly noticeMode: "off" | "written" | "spoken";
   /** "22-8" is silent from 22:00 to 08:00; "none" is never silent. */
   readonly quietHours: string;
-  /** Nothing unprompted is said or offered while this is on. */
-  readonly doNotDisturb: boolean;
+  /**
+   * Nothing unprompted is said or offered until this time (epoch ms; 0 off): this desktop's copy of his one
+   * do-not-disturb on his server (comms `dnd`), which the Intercom tab, the phone and her voice set too.
+   */
+  readonly dndUntil: number;
   /** Same, until this time (epoch ms): the one-hour snooze. */
   readonly snoozeUntil: number;
   readonly briefMode: "off" | "written" | "spoken";
@@ -951,7 +954,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   micSilenceSeconds: DEFAULT_SILENCE_SECONDS,
   noticeMode: "written",
   quietHours: "22-8",
-  doNotDisturb: false,
+  dndUntil: 0,
   snoozeUntil: 0,
   briefMode: "written",
   awarenessWindow: false,
@@ -5806,14 +5809,31 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         quietHours: quietHoursOf(spec, Intl.DateTimeFormat().resolvedOptions().timeZone),
       })
       .catch(() => undefined);
-  void input
-    .comms?.("settings")
-    .then((r) => {
-      const quiet = r.settings?.quietHours ?? null;
-      if (quiet !== null && quietSpecOf(quiet) !== settings.quietHours)
-        save({ quietHours: quietSpecOf(quiet) });
-    })
-    .catch(() => undefined);
+  const shareDnd = (until: number) =>
+    void input
+      .comms?.("dnd", { until: until === 0 ? null : new Date(until).toISOString() })
+      .catch(() => undefined);
+  // A Do not disturb from before it lived on the server goes up once.
+  if ((settings as { doNotDisturb?: unknown }).doNotDisturb === true) {
+    const until = Date.now() + 365 * 24 * 60 * 60_000;
+    save({ dndUntil: until, doNotDisturb: false } as Partial<VoiceSettings>);
+    shareDnd(until);
+  }
+  const pullComms = () =>
+    void input
+      .comms?.("settings")
+      .then((r) => {
+        const quiet = r.settings?.quietHours ?? null;
+        if (quiet !== null && quietSpecOf(quiet) !== settings.quietHours)
+          save({ quietHours: quietSpecOf(quiet) });
+        const dnd = r.settings?.dndUntil;
+        const until = dnd == null ? 0 : Date.parse(dnd);
+        if (dnd !== undefined && until !== settings.dndUntil) save({ dndUntil: until });
+      })
+      .catch(() => undefined);
+  pullComms();
+  // shortcut: a change from the phone or her voice reaches this copy within a minute.
+  setInterval(pullComms, 60_000).unref();
   const intercomTab =
     input.comms === undefined || input.household === undefined
       ? null
@@ -5926,7 +5946,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     )?.findings ?? [];
   const toggleSnooze = () =>
     save({ snoozeUntil: Date.now() < settings.snoozeUntil ? 0 : Date.now() + HIDE_FOR_MS });
-  const silenced = (at: Date) => isSilenced(settings, at);
+  const silenced = (at: Date) =>
+    isSilenced({ ...settings, doNotDisturb: at.getTime() < settings.dndUntil }, at);
   const checkAttention = async () => {
     // With the direct door the watch is read from this machine's server, so T3's window need not be up.
     if (!serverReachable()) return;
@@ -7706,7 +7727,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         label: "Do not disturb",
         hint: "Nothing unprompted is said or offered, and no reminder is spoken, until you turn this off.",
         kind: "toggle",
-        on: settings.doNotDisturb,
+        on: Date.now() < settings.dndUntil,
       },
       {
         id: "v.snooze",
@@ -8351,8 +8372,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         [field]:
           id.endsWith(":save") && typeof value === "string" ? value.trim().slice(0, 300) : "",
       });
-    } else if (id === "v.dnd") save({ doNotDisturb: on });
-    else if (id === "v.snooze") toggleSnooze();
+    } else if (id === "v.dnd") {
+      // shortcut: "until you turn this off" is a year on the server's timed do-not-disturb.
+      const until = on ? Date.now() + 365 * 24 * 60 * 60_000 : 0;
+      save({ dndUntil: until });
+      shareDnd(until);
+    } else if (id === "v.snooze") toggleSnooze();
     else if (id === "q.setupDone") {
       save({ setupDone: true, setupOffered: true });
       NodeFS.rmSync(setupMarker, { force: true });
