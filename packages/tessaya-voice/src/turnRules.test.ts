@@ -28,20 +28,17 @@ describe("turn rules every vessel shares", () => {
     // How it sounds decides; her words alone never do (10:36-10:37, 13 Nov: his lines at 0.00 to 0.41 were lost).
     for (const like of [0, 0.07, 0.22, 0.33, 0.41])
       expect(echoVerdict(facts({ own: true, likeness: () => like }), p).hers).toBe(false);
-    // Her real echo that morning: 0.82 to 0.91.
-    expect(echoVerdict(facts({ likeness: () => 0.82 }), p).hers).toBe(true);
-    expect(echoVerdict(facts({ likeness: () => 0.6 }), p).hers).toBe(true);
+    // Her real echo that morning: 0.82 to 0.91, in her own words. Sound alone is not her: his voice over a loud echo.
+    expect(echoVerdict(facts({ own: true, likeness: () => 0.82 }), p).hers).toBe(true);
     expect(echoVerdict(facts({ own: true, likeness: () => 0.5 }), p).hers).toBe(true);
-    expect(echoVerdict(facts({ likeness: () => 0.5 }), p)).toMatchObject({
+    expect(echoVerdict(facts({ likeness: () => 0.95 }), p)).toMatchObject({
       hers: false,
       compared: true,
     });
-    // In the tail only a near match is her.
+    // In the tail it must sound nearer her.
     const tail = { startedAt: 10_600, lastVoice: 10_700 };
-    expect(echoVerdict(facts({ ...tail, likeness: () => 0.7 }), p).hers).toBe(false);
-    expect(echoVerdict(facts({ ...tail, likeness: () => 0.8 }), p).hers).toBe(true);
     expect(echoVerdict(facts({ ...tail, own: true, likeness: () => 0.6 }), p).hers).toBe(true);
-    expect(echoVerdict(facts({ ...tail, own: true, likeness: () => 0.4 }), p).hers).toBe(false);
+    expect(echoVerdict(facts({ ...tail, own: true, likeness: () => 0.55 }), p).hers).toBe(false);
     // After her tail, or a name he called that is not inside her own words: him, with no comparison.
     expect(echoVerdict(facts({ startedAt: 11_100 }), p)).toMatchObject({
       hers: false,

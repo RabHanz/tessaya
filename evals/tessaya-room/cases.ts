@@ -138,6 +138,27 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     said: ["What time is it?", "Stop."],
     lastSays: [/\[rest\]\s*$/, /^(?![\s\S]*\?)/, SHORT],
   },
+  // 15 Nov 09:26: "Could you say the whole thing once more?" when what he wanted was plain.
+  {
+    id: "clear-intent-no-repeat",
+    source: "Tessel session 15 Nov 09:26:43 GMT+5: never make him repeat when the intent is clear",
+    said: ["uh, turn the, the study lamp on, the lamp"],
+    verified: true,
+    lampAfter: ["on"],
+    lastSays: [/^(?![\s\S]*\b(again|repeat|once more|whole thing|catch that|didn't catch)\b)/i],
+  },
+  // 15 Nov 09:28: "the voice link has been choppy" when the delay was her name misheard. Offering a check is fine.
+  {
+    id: "no-invented-reason",
+    source: "Tessel session 15 Nov 09:28:00 GMT+5: never invent a technical reason",
+    said: ["get me to say a little bit", "why did it take so long to get to you?"],
+    persona: "companion",
+    verified: true,
+    lastSays: [
+      /^(?![\s\S]*\b(choppy|link|connection|signal|network|glitch|bandwidth|wi-?fi|speech step|usual cause|probably|could have been|might have been)\b)/i,
+      SHORT,
+    ],
+  },
   {
     id: "clock-24h",
     source: "Director, 14 Nov ~20:30",
@@ -434,6 +455,16 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     persona: "companion",
     verified: true,
     calls: ["tessaya_persona_handoff"],
+  },
+  // 15 Nov 09:27 GMT+5: "Did you mean Tessaya? If so, just say her name" sent him round again for the persona he meant.
+  {
+    id: "handoff-soundalike",
+    source: "Tessel session 15 Nov 09:27:09 GMT+5: he meant Tessaya, she asked him to say it again",
+    said: ["let's talk to Tessa"],
+    persona: "companion",
+    verified: true,
+    calls: ["tessaya_persona_handoff"],
+    lastSays: [/^(?![\s\S]*\b(say (her name|it|that) again|just say|did you mean)\b)/i],
   },
   {
     id: "handoff-message-control",

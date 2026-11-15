@@ -87,6 +87,9 @@ export const createTalkOver = (options: TalkOverOptions = {}): TalkOver => {
   const gain = new Float64Array(BANDS);
   const held = new Float64Array(BANDS);
   let learned = 0;
+  /** Hops of her sounding with the mic quiet or not, while no echo is found: headphones, where nothing comes back. */
+  let quietLive = 0;
+  let loudLive = 0;
   const noise = new Float64Array(BANDS).fill(1e-3);
   let sinceSearch = 0;
   const frame = new Float64Array(FFT);
@@ -143,6 +146,8 @@ export const createTalkOver = (options: TalkOverOptions = {}): TalkOver => {
       lag = Math.max(0, best - 1);
       gain.fill(0);
       learned = 0;
+      quietLive = 0;
+      loudLive = 0;
     }
   };
 
@@ -187,7 +192,14 @@ export const createTalkOver = (options: TalkOverOptions = {}): TalkOver => {
       floor += margin * pe[b]! + 4 * noise[b]!;
     }
     const rise = 10 * Math.log10(ys2 / floor);
-    const ready = learned >= READY_HOPS;
+    if (lag < 0 && Math.log(xs + 1e-30) > REF_LIVE) {
+      let floorNoise = 0;
+      for (let b = 0; b < BANDS; b += 1) floorNoise += noise[b]!;
+      if (ys < 4 * floorNoise) quietLive += 1;
+      else loudLive += 1;
+    }
+    // No echo at all (headphones): a second of her with the mic quiet nine hops in ten is a room learned as silent.
+    const ready = learned >= READY_HOPS || (quietLive >= READY_HOPS && quietLive >= 9 * loudLive);
     recent[hops % WINDOW] = ready && rise >= riseDb ? 1 : 0;
     let count = 0;
     for (const r of recent) count += r;
@@ -251,6 +263,8 @@ export const createTalkOver = (options: TalkOverOptions = {}): TalkOver => {
       lag = -1;
       gain.fill(0);
       learned = 0;
+      quietLive = 0;
+      loudLive = 0;
     },
     state: () => ({ latencyMs: lag * 16, learned }),
   };

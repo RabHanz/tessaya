@@ -63,11 +63,9 @@ export const echoVerdict = (
   if (!during && facts.lastVoice - p.upDelayMs > herEnd)
     return { hers: false, during, compared: false, likeness: 0 };
   const like = facts.likeness();
-  // How it sounds decides, never her words alone: on 13 Nov (10:36-10:37) lines of his at likeness 0.00 to 0.41 that
-  // shared words with her were lost, while her real echo measured 0.82 to 0.91. Her words only tip a near match.
-  const hers = during
-    ? like >= 0.6 || (like >= 0.5 && facts.own)
-    : like >= 0.75 || (like >= 0.6 && facts.own);
+  // Both her words and her sound: her words alone lost his lines on 13 Nov (likeness 0.00 to 0.41), and sound alone
+  // takes him for her when he talks over a loud echo (15 Nov host replay: his voice over it read 0.95).
+  const hers = facts.own && like >= (during ? 0.5 : 0.6);
   return { hers, during, compared: true, likeness: like };
 };
 

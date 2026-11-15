@@ -89,7 +89,8 @@ export const isOwnVoice = (heard: string, herLines: ReadonlyArray<string>): bool
   const h = words(heard);
   if (h.length === 0) return false;
   const need = h.length === 1 ? 1 : Math.ceil(h.length * 0.75);
-  return herLines.some((line) => {
+  // Her lines run on as one too: her first clause is sent alone, and a heard echo spans it and what follows.
+  return [...herLines, herLines.join(" ")].some((line) => {
     const her = words(line);
     for (let start = 0; start < her.length; start += 1) {
       let at = start;

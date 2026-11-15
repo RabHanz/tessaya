@@ -22,6 +22,9 @@ describe("stopIntent", () => {
       "Goodbye.",
       // 15 Nov, 09:11: answered, and she stayed awake.
       "Nothing, that would be all.",
+      // 15 Nov, 08:27 and 09:11: "dismissed" as the recogniser wrote it.
+      "This best.",
+      "This miss.",
     ])
       expect(stopIntent(t), t).toBe("dismiss");
     for (const t of [
@@ -33,6 +36,7 @@ describe("stopIntent", () => {
       "Fair enough.",
       "It's too quiet.",
       "I won't cancel it.",
+      "What's this best for?",
       "",
     ])
       expect(stopIntent(t), t).toBeNull();

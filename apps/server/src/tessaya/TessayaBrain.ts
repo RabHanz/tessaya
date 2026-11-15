@@ -12,7 +12,7 @@ import {
   escalationRulesLine,
   type EscalationAsk,
 } from "@t3tools/tessaya-shared/brainEscalation";
-import { isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
+import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -77,7 +77,7 @@ export const inBrainSlot =
     );
 
 /**
- * What a vessel hears of her streamed words: whole sentences only, never one that is her reasoning (`isNarration`),
+ * What a vessel hears of her streamed words: her first clause, then whole sentences, never one that is her reasoning (`isNarration`),
  * and never a "Freya here." opener (`withoutSelfIntro`; `names` are the pack's personas). What is spoken is what the
  * Record keeps and what she learns from. `flush` speaks what is left once she has finished.
  */
@@ -86,12 +86,15 @@ export const speakableSentences = (
   names: ReadonlyArray<string> = [],
 ) => {
   let held = "";
+  let spoke = false;
   const out = (sentence: string) => {
     if (sentence.trim() === "" || isNarration(sentence)) return;
     const kept = withoutSelfIntro(sentence, names);
     // A sentence that was only the opener says nothing. Each one ends in a space, the last too: the vessel speaks a
     // sentence once a space follows it, and the stream's end waits for the turn's Record write (14 Nov, 21:40).
-    if (kept.trim() !== "") say(/\s$/.test(kept) ? kept : `${kept} `);
+    if (kept.trim() === "") return;
+    spoke = true;
+    say(/\s$/.test(kept) ? kept : `${kept} `);
   };
   return {
     push: (words: string) => {
@@ -103,6 +106,13 @@ export const speakableSentences = (
         from = end.lastIndex;
       }
       held = held.slice(from);
+      // Her first words go out at the first clause, not the first full stop (about 0.4 s sooner, 15 Nov).
+      const clause = spoke ? null : firstClause(held);
+      // A clause that is her reasoning waits for its whole sentence, which is then judged and dropped as one.
+      if (clause !== null && !isNarration(clause.head)) {
+        out(clause.head);
+        held = clause.rest;
+      }
     },
     flush: () => {
       out(held);
