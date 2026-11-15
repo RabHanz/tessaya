@@ -159,6 +159,9 @@ const NOT_DONE =
 /** Her own deliberation, said aloud about him (07:38, 13 Nov). */
 const REASONING =
   /\b(let me correct that|I'll ask him|I should ask|he (said|asked|wants|means)|(in|from|based on) the conversation|nothing in the conversation)\b/i;
+/** "There's no member with that id", "I don't see anyone with the id maya-1" (K-room-1, 15 Nov). */
+const NO_SUCH_MEMBER =
+  /\b(can'?t|cannot|couldn'?t|don'?t|no|nobody)\b.*\b(find|see|member|one|anyone)\b/i;
 /** "X here." at the start of a turn (13 Nov). */
 const SELF_INTRO = /^\s*(\w+) here[.!,]/i;
 
@@ -1045,7 +1048,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
         return (set.input as { role?: unknown }).role === "child"
           ? null
           : "asked for the wrong role";
-      return /\b(can'?t|cannot|couldn'?t|no)\b.*\b(find|member|one)\b/i.test(last)
+      return NO_SUCH_MEMBER.test(last)
         ? null
         : "neither changed the role nor said there is no such member";
     },
@@ -1060,7 +1063,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
       const removed = calls.find((c) => c.name === "member_remove");
       if (removed !== undefined)
         return (removed.input as { now?: unknown }).now === true ? "destroyed data at once" : null;
-      return /\b(can'?t|cannot|couldn'?t|no)\b.*\b(find|member|one)\b/i.test(last)
+      return NO_SUCH_MEMBER.test(last)
         ? null
         : "neither removed them nor said there is no such member";
     },
