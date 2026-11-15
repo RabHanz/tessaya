@@ -28,10 +28,10 @@
  // In production the TTS word timestamps (or a forced alignment of its audio) replace the estimated word times.
  const VIS = TCS.VISEMES = {
   rest: {label: "rest", mo: 0, mr: 0, mw: 0},
-  mbp: {label: "M B P", mo: -.3, mr: 0, mw: -.08},
-  fv: {label: "F V", mo: .1, mr: 0, mw: -.04, teeth: .9},
-  th: {label: "TH", mo: .2, mr: 0, mw: 0, tongue: .8},
-  l: {label: "L", mo: .32, mr: .1, mw: 0, tongue: .6},
+  mbp: {label: "M B P", mo: -.3, mr: 0, mw: -.08, press: 1},
+  fv: {label: "F V", mo: .12, mr: 0, mw: -.04, bite: 1},
+  th: {label: "TH", mo: .2, mr: 0, mw: 0, teeth: .8, tip: 1},
+  l: {label: "L", mo: .32, mr: .1, mw: 0, tip: .9},
   ee: {label: "EE", mo: .22, mr: 0, mw: .2, teeth: .6},
   aa: {label: "AA", mo: .72, mr: .1, mw: .06},
   uh: {label: "UH", mo: .42, mr: .2, mw: 0},
@@ -39,7 +39,7 @@
   oo: {label: "OO", mo: .22, mr: 1, mw: -.38},
   sh: {label: "SH", mo: .22, mr: .55, mw: -.12, teeth: .6},
   er: {label: "R", mo: .25, mr: .45, mw: -.1},
-  etc: {label: "S T D N K", mo: .18, mr: 0, mw: .04, teeth: .45},
+  etc: {label: "S T D N K", mo: .18, mr: 0, mw: .04, teeth: .85},
  };
  const RULES = [["tion", ["sh", "uh", "etc"]], ["ough", ["oh"]], ["igh", ["aa", "ee"]], ["th", ["th"]], ["sh", ["sh"]], ["ch", ["sh"]], ["ph", ["fv"]], ["wh", ["oo"]], ["qu", ["etc", "oo"]],
   ["ck", ["etc"]], ["ng", ["etc"]], ["ee", ["ee"]], ["ea", ["ee"]], ["ie", ["ee"]], ["ey", ["ee"]], ["oo", ["oo"]], ["ew", ["oo"]], ["ue", ["oo"]], ["ou", ["aa", "oo"]], ["ow", ["aa", "oo"]],

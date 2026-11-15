@@ -83,8 +83,9 @@
   arc: 0, sarc: 0, chev: 0, star: 0, heart: 0, spiral: 0, dots: 0, wink: 0, big: 0, wet: 0, tear: 0,
   // brows: opacity, height (− up), slant (+ cross, − worried), curve, right brow raised
   bo: 0, by: 0, ba: 0, bc: .2, bas: 0,
-  // mouth: width, smile (− frown), open, round, sideways, tilt, wobble, teeth, tongue, one cheek puffed
-  mw: .82, mc: .42, mo: 0, mr: 0, mx: 0, mt: 0, mwob: 0, teeth: 0, tongue: 0, puff: 0,
+  // mouth: width, smile (− frown), open, round, sideways, tilt, wobble, teeth, tongue, one cheek puffed; for speech,
+  // upper teeth on the lower lip (F V), the tongue's tip up behind the teeth (L TH), lips pressed shut (M B P)
+  mw: .82, mc: .42, mo: 0, mr: 0, mx: 0, mt: 0, mwob: 0, teeth: 0, tongue: 0, puff: 0, bite: 0, tip: 0, press: 0,
   // cheeks and blush
   cheek: .3, blush: 0,
  };
@@ -94,7 +95,7 @@
  // reference recolours the whole character from about 0.3 s to 1.1 s and is halfway near 0.55 s). The body's colour,
  // aura and posture travel the whole way; the brows, eyes and mouth arrive spread from 0.5 to 0.9 s. Each value leaves
  // wherever it is on a slow-in, slow-out curve whose long tail keeps it moving to the end.
- const GROUP = (k) => /^(warm|cool|gloom|flush|glow|lift|lean|pitch|tilt)$/.test(k) ? "body" : /^(bo|by|ba|bc|bas)$/.test(k) ? "brow" : /^(mw|mc|mo|mr|mx|mt|mwob|teeth|tongue|puff|cheek|blush)$/.test(k) ? "mouth" : "eye";
+ const GROUP = (k) => /^(warm|cool|gloom|flush|glow|lift|lean|pitch|tilt)$/.test(k) ? "body" : /^(bo|by|ba|bc|bas)$/.test(k) ? "brow" : /^(mw|mc|mo|mr|mx|mt|mwob|teeth|tongue|puff|cheek|blush|bite|tip|press)$/.test(k) ? "mouth" : "eye";
  const TIMING = {body: [0, 2000], brow: [40, 520], eye: [130, 600], mouth: [220, 640]};
  const LAG = Object.fromEntries(Object.keys(N).map((k) => [k, TIMING[GROUP(k)][0]]));
  const DUR = Object.fromEntries(Object.keys(N).map((k) => [k, TIMING[GROUP(k)][1]]));
@@ -605,7 +606,9 @@
   }
   // mouth
   const mq = P(R.mx * F.mw * .6, F.mY), mcx = F.cx + mq.x, mcy = F.cy + mq.y, Wm = Math.max(6, F.mw * 1.22 * clamp(R.mw, .2, 1.4) * mq.s);
-  const curve = R.mc * F.mw * .42, open = clamp(R.mo, 0, 1.3) * F.mw * .8, round = clamp(R.mr, 0, 1), n = 18;
+  const bite = clamp(R.bite, 0, 1), tip = clamp(R.tip, 0, 1), press = clamp(R.press, 0, 1);
+  // a bite needs a sliver of open mouth for the teeth to show in
+  const curve = R.mc * F.mw * .42 * (1 - .5 * press), open = Math.max(clamp(R.mo, 0, 1.3), .28 * bite) * F.mw * .8, round = clamp(R.mr, 0, 1), n = 18;
   const up = [], lo = [];
   for (let i = 0; i <= n; i++) {
    const u = i / n * 2 - 1, x = u * Wm / 2, wob = R.mwob * 1.8 * Math.sin(u * PI * 2.5);
@@ -615,14 +618,16 @@
    up.push([lerp(x, rx, round), lerp(y, ryU, round)]); lo.push([lerp(x, rx, round), lerp(y2, ryL, round)]);
   }
   const tr = `translate(${f1(mcx)} ${f1(mcy)}) rotate(${f1(R.mt * 30 + R.tilt * 0)})`, mstroke = Math.max(2.6, F.mw * .1);
-  if (open > 1.2 || round > .5) {
+  if (open > 1.2 || round > .5 || bite > .3 || (R.teeth > .4 && open > .6)) {
    const d = smoothOpen(up) + "L" + lo.slice().reverse().map((q) => f1(q[0]) + " " + f1(q[1])).join("L") + "Z";
    const id = `mc${F.uid}`;
    o.push(`<g data-l="mouth-open" transform="${tr}"><clipPath id="${id}"><path d="${d}"/></clipPath><path d="${d}" fill="${pal.mouth}" stroke="${col}" stroke-width="${f1(mstroke * .7)}" stroke-linejoin="round"/>`
     + `<g clip-path="url(#${id})">${R.tongue > .05 ? `<ellipse cx="${f1(Wm * .08)}" cy="${f1(Math.max(...lo.map((q) => q[1])) + 1)}" rx="${f1(Wm * .3)}" ry="${f1(open * .45 + 2)}" fill="${pal.tongue}" opacity="${f1(clamp(R.tongue, 0, 1))}"/>` : ""}`
-    + `${R.teeth > .05 ? `<rect x="${f1(-Wm * .5)}" y="${f1(Math.min(...up.map((q) => q[1])) - 2)}" width="${f1(Wm)}" height="${f1(Math.max(3, open * .42))}" fill="#fbfaf5" opacity="${f1(R.teeth)}"/>${R.teeth > .6 && open < 12 ? `<path d="M${f1(-Wm * .5)} ${f1(Math.min(...up.map((q) => q[1])) + open * .5)}H${f1(Wm * .5)}" stroke="${pal.mouth}" stroke-width="1.2"/>` : ""}` : ""}</g></g>`);
+    + `${tip > .05 ? `<ellipse cx="0" cy="${f1(Math.min(...up.map((q) => q[1])) + open * .3 + 1)}" rx="${f1(Wm * .17)}" ry="${f1(open * .32 + 1.5)}" fill="${pal.tongue}" opacity="${f1(tip)}"/>` : ""}`
+    + `${Math.max(R.teeth, bite) > .05 ? `<rect x="${f1(-Wm * .5)}" y="${f1(Math.min(...up.map((q) => q[1])) - 2)}" width="${f1(Wm)}" height="${f1(lerp(Math.max(3, open * .42), open + 2, bite))}" fill="#fbfaf5" opacity="${f1(Math.max(R.teeth, bite))}"/>${R.teeth > .6 && open < 12 ? `<path d="M${f1(-Wm * .5)} ${f1(Math.min(...up.map((q) => q[1])) + open * .5)}H${f1(Wm * .5)}" stroke="${pal.mouth}" stroke-width="1.2"/>` : ""}` : ""}</g></g>`);
   } else {
-   o.push(`<g data-l="mouth-line" transform="${tr}"><path d="${smoothOpen(up)}" stroke="${col}" stroke-width="${f1(mstroke)}" fill="none" stroke-linecap="round"/>${R.tongue > .4 ? `<path d="M${f1(Wm * .05)} ${f1(curve * .5)}q${f1(Wm * .14)} ${f1(10)} ${f1(Wm * .28)} 0z" fill="${pal.tongue}"/>` : ""}</g>`);
+   // pressed lips: a firmer line, and the lower lip pushed up and out under it
+   o.push(`<g data-l="mouth-line" transform="${tr}"><path d="${smoothOpen(up)}" stroke="${col}" stroke-width="${f1(mstroke * (1 + .3 * press))}" fill="none" stroke-linecap="round"/>${press > .1 ? `<path d="M${f1(-Wm * .2)} ${f1(curve * .5 + mstroke * 1.1)}q${f1(Wm * .2)} ${f1(mstroke * 1.3)} ${f1(Wm * .4)} 0" stroke="${col}" stroke-width="${f1(mstroke * .45)}" fill="none" stroke-linecap="round" opacity="${f1(.55 * press)}"/>` : ""}${R.tongue > .4 ? `<path d="M${f1(Wm * .05)} ${f1(curve * .5)}q${f1(Wm * .14)} ${f1(10)} ${f1(Wm * .28)} 0z" fill="${pal.tongue}"/>` : ""}</g>`);
   }
   if (R.puff > .05) { const q = P(-(F.mw * .55 + 8), F.mY - 2); o.push(`<circle cx="${f1(F.cx + q.x)}" cy="${f1(F.cy + q.y)}" r="${f1(9 * R.puff * q.s)}" fill="${pal.cheek}" opacity="${f1(.35 * R.puff)}"/>`); }
   return {svg: o.join(""), eyes};
@@ -830,7 +835,7 @@
   // ── speech: the mouth follows the syllable envelope; gestures fire on their words ──
   function speak(plan, hooks = {}) {
    stopSpeech();
-   speech = {plan, hooks, t0: performance.now() + 80, fired: new Set(), word: -1, offset: 0};
+   speech = {plan, hooks, t0: performance.now(), fired: new Set(), word: -1, offset: 0};
    wake();
    return new Promise((res) => speech.done = res);
   }
@@ -1001,13 +1006,32 @@
      }
      const A = clamp(.3 + .7 * T.expr, .3, 1);
      // lip sync: blend the current viseme into the next over the last third of its time (coarticulation)
-     // a live audio source (lipsync.js) drives the mouth from the sound itself; text visemes are the fallback
+     // a live audio source drives the mouth from the sound itself; text visemes are the fallback. The jaw (how open)
+     // and the lips (shape, teeth, tongue) ease toward their targets separately, so shapes pass through real in-betweens;
+     // the jaw follows the voice's loudness within the shape's range, and M B P press the lips shut whatever the level.
      const live = speech.hooks.mouth && speech.hooks.mouth();
      if (live) {
-      const V = TCS.VISEMES[live.shape === "st" ? "etc" : live.shape] || TCS.VISEMES.aa, o = live.open;
-      Rv.mo = Math.max(0, Rv.mo + (live.shape === "mbp" ? -.3 * (1 - o) : (V.mo || 0) * .4 + o * .75)); Rv.mr += (V.mr || 0) * Math.min(1, o * 1.6); Rv.mw += (V.mw || 0) * Math.min(1, o * 1.6);
-      Rv.teeth = Math.max(Rv.teeth, (V.teeth || 0) * Math.min(1, o * 2)); Rv.tongue = Math.max(Rv.tongue, (V.tongue || 0) * o);
-      if (live.shape !== speech.vis) { speech.vis = live.shape; speech.hooks.onViseme && speech.hooks.onViseme(live.shape === "st" ? "etc" : live.shape); }
+      const name = live.shape === "st" ? "etc" : live.shape, V = TCS.VISEMES[name] || TCS.VISEMES.aa, o = live.open, shut = name === "mbp";
+      // one side of her mouth leads for a whole sentence, as a real one does
+      const L = speech.lip || (speech.lip = {mo: 0, mr: 0, mw: 0, teeth: 0, tongue: 0, bite: 0, tip: 0, press: 0, mc: 0, cheek: 0, at: now, env: 0, beat: 0, brow: 0, side: Math.random() < .5 ? -1 : 1}), dt = Math.min(.1, (now - L.at) / 1000); L.at = now;
+      // a stressed syllable is one louder than her running level: the jaw drops further, and a beat may lift the brows or blink
+      L.env += (o - L.env) * (1 - Math.exp(-dt / .45));
+      const stress = shut || name === "rest" ? 0 : clamp((o - L.env * 1.15) / .3, 0, 1);
+      if (stress > .55 && now - L.beat > 650) { L.beat = now; L.brow = 1; if (Math.random() < .3 && !eyesShaped()) play("blink"); }
+      L.brow *= Math.exp(-dt / .3);
+      // a hum presses harder with its sound and fills the cheeks a little; corners rise on EE, draw in on O and OO
+      const hum = shut ? clamp(o * 1.4, 0, 1) : 0;
+      const goal = {mo: shut ? -.35 - .12 * hum : name === "rest" ? 0 : (V.mo || 0) * (.6 + .7 * o) * (1 + .3 * stress), mr: (V.mr || 0) * (shut ? 0 : 1), mw: (V.mw || 0) - .04 * hum, teeth: V.teeth || 0, tongue: (V.tongue || 0) * o, bite: V.bite || 0, tip: V.tip || 0, press: shut ? 1 : 0,
+       mc: name === "ee" || name === "etc" ? .08 : name === "oo" || name === "oh" ? -.16 : 0, cheek: .25 * hum};
+      // closing for a stop is quick, opening a little slower, the lips' shape slower still
+      for (const k in goal) { const tau = k === "mo" ? (goal.mo < L.mo ? .025 : .04) : k === "press" ? .025 : .055; L[k] += (goal[k] - L[k]) * (1 - Math.exp(-dt / tau)); }
+      Rv.mo = Math.max(0, Rv.mo + L.mo); Rv.mr += L.mr; Rv.mw += L.mw; Rv.teeth = Math.max(Rv.teeth, L.teeth); Rv.tongue = Math.max(Rv.tongue, L.tongue);
+      Rv.bite = Math.max(Rv.bite, L.bite); Rv.tip = Math.max(Rv.tip, L.tip); Rv.press = Math.max(Rv.press, L.press);
+      const talking = clamp(L.env * 2, 0, 1);
+      Rv.mc += L.mc; Rv.cheek += L.cheek; Rv.mt += L.side * .05 * talking; Rv.mx += L.side * .03 * talking;
+      // the head and brows follow her stresses, not the text's guess at them
+      env = L.brow * .9;
+      if (name !== speech.vis) { speech.vis = name; speech.hooks.onViseme && speech.hooks.onViseme(name); }
      }
      const VS = live ? [] : (P.vis || []);
      let vi = -1; for (let i = 0; i < VS.length; i++) if (st >= VS[i].t) vi = i; else break;
@@ -1015,6 +1039,7 @@
       const cv = VS[vi], nv = VS[vi + 1], u = clamp((st - cv.t) / cv.d, 0, 1), bl = nv && nv.t - (cv.t + cv.d) < .08 ? ease(ramp(u, .66, 1)) : 0;
       const A1 = TCS.VISEMES[cv.v], A2 = nv ? TCS.VISEMES[nv.v] : A1, g = (k) => lerp(A1[k] || 0, A2[k] || 0, bl);
       Rv.mo = Math.max(0, Rv.mo + g("mo")); Rv.mr += g("mr"); Rv.mw += g("mw"); Rv.teeth = Math.max(Rv.teeth, g("teeth")); Rv.tongue = Math.max(Rv.tongue, g("tongue"));
+      Rv.bite = Math.max(Rv.bite, g("bite")); Rv.tip = Math.max(Rv.tip, g("tip")); Rv.press = Math.max(Rv.press, g("press"));
       if (cv.v !== speech.vis) { speech.vis = cv.v; speech.hooks.onViseme && speech.hooks.onViseme(cv.v); }
      } else if (!VS.length && !live) { Rv.mo += env * .62 * (1 - shape * .3); Rv.mr += env * shape * .7; Rv.mw += env * .08 * (1 - shape); }
      // prosody: loud syllables lift the head a little and nudge the brows

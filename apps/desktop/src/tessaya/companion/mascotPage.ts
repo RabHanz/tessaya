@@ -25,10 +25,11 @@ export const MASCOT_SCRIPT = String.raw`(() => {
  const svg = document.getElementById("c");
  let rig = null, persona = "", level = 0, sound = { zcr: 0, bright: 0 }, speaking = false;
  const ipc = window.mascotIpc;
- ipc.onLevel((v, shape) => { level = v; if (shape) sound = shape; });
- // Her mouth from the sound she is playing, as the Character Studio's lipsync.js reads it: the level opens the jaw (fast
- // attack, slow release, gated and normalised to this voice's running peak); hiss, brightness against her own average
- // and darkness pick one of its six shapes, each held at least 45 ms.
+ ipc.onLevel((v, shape) => { level = v; sound = shape || { zcr: 0, bright: 0 }; });
+ // Her mouth from the sound she is playing: the level opens the jaw (fast attack, slow release, gated and normalised to
+ // this voice's running peak). The shape is the viseme her reply's text aligned to this moment (visemes.ts) when there is
+ // one; until the alignment reaches it, hiss, brightness against her own average and darkness pick one of six, each
+ // held at least 45 ms, as the Character Studio's lipsync.js does.
  let cal, jaw, lastM, shapeNow, hold;
  const calibrate = () => { cal = { peak: 0.02, mean: 0, sd: 0.08, n: 0 }; jaw = 0; lastM = performance.now(); shapeNow = "mbp"; hold = 0; };
  calibrate();
@@ -40,8 +41,8 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   jaw += (target - jaw) * (1 - Math.exp(-dt / (target > jaw ? 0.03 : 0.085)));
   if (!gate) { cal.n++; const k = Math.max(0.02, 1 / cal.n); if (cal.n === 1) cal.mean = sound.bright; cal.mean += (sound.bright - cal.mean) * k; cal.sd += (Math.abs(sound.bright - cal.mean) - cal.sd) * k; }
   const z = (sound.bright - cal.mean) / Math.max(0.03, cal.sd * 1.25);
-  const next = gate || jaw < 0.08 ? "mbp" : sound.zcr > 0.22 && sound.bright > 0.35 ? "st" : sound.zcr > 0.14 && sound.bright > 0.25 && jaw < 0.45 ? "fv" : z < -0.55 ? "oh" : z > 0.55 ? "ee" : "aa";
-  hold -= dt; if (next !== shapeNow && hold <= 0) { shapeNow = next; hold = 0.045; }
+  const next = sound.viseme ? sound.viseme : gate || jaw < 0.08 ? "rest" : sound.zcr > 0.22 && sound.bright > 0.35 ? "st" : sound.zcr > 0.14 && sound.bright > 0.25 && jaw < 0.45 ? "fv" : z < -0.55 ? "oh" : z > 0.55 ? "ee" : "aa";
+  hold -= dt; if (sound.viseme || (next !== shapeNow && hold <= 0)) { if (next !== shapeNow) hold = 0.045; shapeNow = next; }
   return { open: jaw, shape: shapeNow };
  };
  const forever = { words: [], syl: [], events: [], vis: [], end: 1e9 };

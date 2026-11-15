@@ -7,6 +7,8 @@
  */
 import * as Electron from "electron";
 
+import { createVisemeTrack } from "@t3tools/tessaya-shared/visemes";
+
 import {
   FRAME_MS,
   heardAtMs,
@@ -89,7 +91,7 @@ export const createVoicePlayer = (
   });
 
   return {
-    play: async (wav) => {
+    play: async (wav, text) => {
       const mine = ++stamp;
       const target = open();
       await ready;
@@ -98,6 +100,8 @@ export const createVoicePlayer = (
       let odd = Buffer.alloc(0);
       let opened = false;
       let rate = 24_000;
+      let track: ReturnType<typeof createVisemeTrack> | null = null;
+      let sent = 0;
       let bytes = 0;
       const pulses = new Set<ReturnType<typeof setTimeout>>();
       try {
@@ -115,6 +119,7 @@ export const createVoicePlayer = (
             );
             rate = format.rate;
             opened = true;
+            if (text !== undefined) track = createVisemeTrack(text, rate);
             pcm = head.subarray(format.start);
           }
           const joined = Buffer.concat([odd, pcm]);
@@ -127,24 +132,30 @@ export const createVoicePlayer = (
             `window.push("${samples.toString("base64")}")`,
           );
           const heard = heardAtMs(clock);
-          onReference?.(
-            new Int16Array(
-              samples.buffer.slice(samples.byteOffset, samples.byteOffset + samples.length),
-            ),
-            rate,
-            heard,
+          const pcm16 = new Int16Array(
+            samples.buffer.slice(samples.byteOffset, samples.byteOffset + samples.length),
           );
+          onReference?.(pcm16, rate, heard);
+          track?.push(pcm16);
+          // ms into the sentence this chunk starts at, on the track's clock
+          const into = (sent / rate) * 1000 - heard;
+          sent += pcm16.length;
           for (const frame of speechFrames(samples, rate, heard)) {
             const pulse = setTimeout(
               () => {
                 pulses.delete(pulse);
-                onLevel(pcmLevel(frame.pcm), pcmShape(frame.pcm));
+                const viseme = track?.at(frame.atMs + into);
+                onLevel(pcmLevel(frame.pcm), {
+                  ...pcmShape(frame.pcm),
+                  ...(viseme === undefined ? {} : { viseme }),
+                });
               },
               frame.atMs - MOUTH_LEAD_MS - Date.now(),
             );
             pulses.add(pulse);
           }
         }
+        track?.end();
         if (bytes === 0) return false;
         if (!target.isDestroyed()) await run("window.finish()");
         return true;
