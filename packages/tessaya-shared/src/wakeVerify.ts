@@ -40,8 +40,22 @@ export const NAME_SOUNDALIKES: Readonly<
       "te saya",
       "tes saya",
     ],
-    // 0.1.72 (Microsoft David): "Tessiot", "Tessayot", "Tessiah".
-    lead: ["teseat", "teseot", "tessiot", "tessayot", "tessiah"],
+    // 0.1.72 (Microsoft David): "Tessiot", "Tessayot", "Tessiah". "Eseya" to "Esseia": her name with a soft "T"
+    // before a request, as the room's two recognisers wrote 21 of 22 one-breath clips (16 Nov).
+    lead: [
+      "teseat",
+      "teseot",
+      "tessiot",
+      "tessayot",
+      "tessiah",
+      "eseya",
+      "esseya",
+      "essaya",
+      "esaya",
+      "isaya",
+      "esia",
+      "esseia",
+    ],
     // "Seya", "Casea": across the room on the R1's one mic (12 Nov); "Casey" the same (13 Nov), a name of its own.
     addressed: ["tessa", "seya", "casea", "casey"],
   },

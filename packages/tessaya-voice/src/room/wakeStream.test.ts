@@ -133,6 +133,36 @@ describe("waking her by name with no session open", () => {
     [["Tessaya, are you there?"], "are you there?"],
     [["Hey Tessaya, turn on the fan."], "turn on the fan."],
     [["", "Tessaya, what's the weather like?"], "what's the weather like?"],
+    // The room's general then personal recogniser on the 22 one-breath bench clips (16 Nov): her name's "T" goes soft.
+    [
+      ["Eseya, what's on my calendar tomorrow?", "Esseya, what's on my calendar tomorrow?"],
+      "what's on my calendar tomorrow?",
+    ],
+    [["Isaya, you there?", "Essaya, you there?"], "you there?"],
+    [
+      ["Esaya, how many days until Christmas?", "Esia, how many days until Christmas?"],
+      "how many days until Christmas?",
+    ],
+    [
+      ["Esia, what's the capital of Portugal?", "Esseia, what's the capital of Portugal?"],
+      "what's the capital of Portugal?",
+    ],
+    [
+      [
+        "Essay yeah, give me a quick tip for sleeping better.",
+        "Essaya, give me a quick tip for sleeping better.",
+      ],
+      "give me a quick tip for sleeping better.",
+    ],
+    [["", "Esseia, are you there?"], "are you there?"],
+    // The near misses as the same recognisers wrote them stay names of their own.
+    [["Vanessa, what time is it?"], null],
+    [["Odessa, what time is it?"], null],
+    [["Teresa, what time is it?"], null],
+    [["Messiah, what time is it?"], null],
+    [["Isaiah, what time is it?"], null],
+    [["Necessary, what time is it?"], null],
+    [["Tess, hi."], null],
     [["Tessaya."], null],
     [["Tessaya, um."], null],
     [["I told Tessaya about it."], null],
