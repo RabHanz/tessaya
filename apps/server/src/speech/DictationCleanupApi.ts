@@ -125,6 +125,14 @@ export type ConverseRoute = Pick<BrainRoute, "role" | "model" | "effort">;
  * Thinking off before the first word, the way each model allows it: Sonnet 5.5 refuses `disabled` and takes
  * `between_tools`; Opus 5.5 can't turn it off, so its effort carries the speed.
  */
+/** Claude Code's aliases, which a routing row may name, are unknown to the API: it answers 404 to "sonnet". */
+const API_MODEL: Readonly<Record<string, string>> = {
+  haiku: "claude-haiku-5-5",
+  sonnet: "claude-sonnet-5-5",
+  opus: "claude-opus-5-5",
+};
+const apiModel = (model: string) => API_MODEL[model] ?? model;
+
 const quickThinking = (model: string) =>
   /opus/.test(model)
     ? {}
@@ -258,12 +266,12 @@ export const make = Effect.gen(function* () {
       const request = yield* authorized(
         HttpClientRequest.post(`${API}/messages`).pipe(
           HttpClientRequest.bodyJsonUnsafe({
-            model: route.model,
+            model: apiModel(route.model),
             max_tokens: input.maxTokens,
             system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
             messages: [{ role: "user", content: input.message }],
             // As measured in the cleanup A/B: no thinking at low effort, the fastest Haiku answer.
-            ...quickThinking(route.model),
+            ...quickThinking(apiModel(route.model)),
             output_config: { effort: route.effort ?? "low" },
           }),
         ),
@@ -319,7 +327,7 @@ export const make = Effect.gen(function* () {
         const request = yield* authorized(
           HttpClientRequest.post(`${API}/messages`).pipe(
             HttpClientRequest.bodyJsonUnsafe({
-              model: route.model,
+              model: apiModel(route.model),
               max_tokens: input.maxTokens,
               stream: true,
               system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
@@ -327,7 +335,7 @@ export const make = Effect.gen(function* () {
               ...(tools.length === 0
                 ? {}
                 : { tools, tool_choice: { type: input.toolChoice ?? "auto" } }),
-              ...quickThinking(route.model),
+              ...quickThinking(apiModel(route.model)),
               ...(route.effort === null ? {} : { output_config: { effort: route.effort } }),
             }),
           ),
