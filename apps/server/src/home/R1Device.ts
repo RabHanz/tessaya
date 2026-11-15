@@ -23,7 +23,7 @@ import {
   WAKE_WORD,
 } from "@t3tools/tessaya-shared/assistantPrompt";
 import { recordText } from "@t3tools/tessaya-shared/audit";
-import { clockStyleOf, spokenTime, type ClockStyle } from "@t3tools/tessaya-shared/brain";
+import { clockLine, clockStyleOf } from "@t3tools/tessaya-shared/brain";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
 import { REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import {
@@ -51,6 +51,7 @@ import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
 import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { TessayaRuntime } from "../tessaya/TessayaRpcHandlers.ts";
 import { MemoryViewer } from "../tessaya/TessayaMemoryService.ts";
+import { houseZone } from "../tessaya/houseZone.ts";
 import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaTurn, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
@@ -235,13 +236,6 @@ export const limitResets = (detail: string): string | null => {
 };
 
 const quoted = (value: unknown) => JSON.stringify(value);
-
-/**
- * Now, on the house's clock, as she should say it (never UTC unless the house is on it). The spoken form comes with it:
- * from "10:36" alone the room's model said "twenty-six minutes to eleven" (13 Nov), as the desktop's did (0.1.78).
- */
-export const houseTime = (ms: number, timeZone: string, style: ClockStyle = "12h") =>
-  `${new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "full", timeStyle: "short", hourCycle: style === "12h" ? "h12" : "h23" }).format(ms)} (${timeZone}), said as ${spokenTime(ms, timeZone, style)} (tell him the time in just those words)`;
 
 export interface R1Context {
   readonly heard: string;
@@ -533,6 +527,12 @@ export const namedIn = (
 const taintedOf = (voice: unknown): boolean =>
   typeof voice === "object" && voice !== null && "tainted" in voice && voice.tainted === true;
 
+/** The zone the room loop runs in (`tz`), the last guess before this machine's. */
+const zoneOfVoice = (voice: unknown): string | undefined =>
+  typeof voice === "object" && voice !== null && "tz" in voice && typeof voice.tz === "string"
+    ? voice.tz
+    : undefined;
+
 /** The exchange before this one, so "yes, from now on" has a referent when it is learned from. */
 const previousOf = (history: R1Heard["history"]): string | null => {
   const last = history.slice(-2).map((t) => `${t.role}: ${t.content}`);
@@ -674,7 +674,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
       withHouse
         ? home.find({ text: input.heard, limit: 8 }).pipe(Effect.orElseSucceed(() => []))
         : Effect.succeed([]),
-      home.timeZone,
+      houseZone(zoneOfVoice(input.voice)),
     ],
     { concurrency: "unbounded" },
   );
@@ -746,7 +746,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     switched: switchedPersona(input.voice),
     roster: rosterLine(pack.personas, persona?.id ?? ""),
     // The speaker's own 12- or 24-hour clock; a room of several voices hears the default.
-    now: houseTime(
+    now: clockLine(
       yield* Clock.currentTimeMillis,
       timeZone,
       clockStyleOf(people.length > 0 ? undefined : begun.preferences.timeFormat),

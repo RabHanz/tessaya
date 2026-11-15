@@ -94,6 +94,7 @@ const recalls: Array<{ text?: string; agent?: string; budgetTokens?: number; vie
 /** The next recall fails, as a memory store that is down does. */
 const recallFails = { next: false };
 const memory = Layer.succeed(TessayaMemoryService, {
+  meta: () => Effect.succeed(null),
   recall: (context: (typeof recalls)[number]) =>
     Effect.gen(function* () {
       recalls.push({ ...context, viewer: yield* MemoryViewer });

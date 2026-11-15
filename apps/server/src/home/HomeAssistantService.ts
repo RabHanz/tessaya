@@ -4,6 +4,7 @@
  * is risk-checked (`homeRisk`), snapshotted with HA's `scene.create` for undo, and logged to the Record and HA's logbook.
  * Temporary automations carry a time condition too, so they go inert on time even with this server down.
  */
+import { zoneOf } from "@t3tools/tessaya-shared/brain";
 import * as NodeCrypto from "node:crypto";
 import type {
   HomeActionRow,
@@ -178,8 +179,8 @@ export class HomeAssistantService extends Context.Service<
   HomeAssistantService,
   {
     readonly status: Effect.Effect<HomeStatus>;
-    /** The house's own time zone from Home Assistant's config ("UTC" until connected), for anything said aloud. */
-    readonly timeZone: Effect.Effect<string>;
+    /** The house's own time zone from Home Assistant's config, null until it has said; callers use `houseZone`. */
+    readonly timeZone: Effect.Effect<string | null>;
     /** Validates first (an admin user, since automations need one), then stores the token in the secret store. */
     readonly connect: (input: {
       readonly url: string;
@@ -423,7 +424,7 @@ const make = Effect.gen(function* () {
     entities: 0,
     line: "Home Assistant is not connected.",
   };
-  let timeZone = "UTC";
+  let timeZone: string | null = null;
   let loop: Fiber.Fiber<void> | null = null;
   // Settles when the newest session first connects or fails, so `connect` answers with where it landed.
   let settled = yield* Deferred.make<void>();
@@ -619,7 +620,7 @@ const make = Effect.gen(function* () {
         const config = asRecord(
           yield* l.command({ type: "get_config" }).pipe(Effect.orElseSucceed(() => ({}))),
         );
-        timeZone = typeof config["time_zone"] === "string" ? config["time_zone"] : "UTC";
+        timeZone = typeof config["time_zone"] === "string" ? config["time_zone"] : null;
         yield* loadRegistries(l).pipe(Effect.ignore);
         states.clear();
         yield* l.subscribe({ type: "subscribe_entities" }, applyDiff).pipe(Effect.ignore);
@@ -1221,16 +1222,18 @@ const make = Effect.gen(function* () {
   };
   const clockTime = (ms: number) =>
     new Intl.DateTimeFormat("en-GB", {
-      timeZone,
+      timeZone: zoneOf(timeZone),
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
       hourCycle: "h23",
     }).format(new Date(ms));
   const localTime = (ms: number) =>
-    new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "medium", timeStyle: "short" }).format(
-      new Date(ms),
-    );
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: zoneOf(timeZone),
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(ms));
 
   const labelAutomation = Effect.fn("HomeAssistant.labelAutomation")(
     function* (id: string) {

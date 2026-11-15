@@ -16,7 +16,6 @@ import { startTessayaMcp } from "../../apps/desktop/src/tessaya/agent/tessayaMcp
 import { toolUsesOf } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
 import {
   calledPersona,
-  houseTime,
   LOOK,
   R1_STREAM_SYSTEM,
   r1Data,
@@ -31,6 +30,7 @@ import {
 import type { ActOutcome } from "../../apps/server/src/tessaya/TessayaBrain.ts";
 import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speakingVolume.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
+import { clockLine } from "../../packages/tessaya-shared/src/brain.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/osPack.ts";
 import { ownerDoc, ownerLine } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { OWNER, roomCases, type RoomCase } from "./cases.ts";
@@ -426,8 +426,8 @@ const context = (
     c.verified === true
       ? { speaker: { kind: "owner", personId: "owner", verified: true, inherited: false } }
       : undefined,
-  // His clock as the server gives it (houseTime), with the time as it is said; 10:15 on 12 Nov in Karachi.
-  now: houseTime(Date.UTC(2026, 10, 12, 5, 15), "Asia/Karachi", c.clock ?? "12h"),
+  // His clock as the server gives it (clockLine), with the time as it is said; 10:15 on 12 Nov in Karachi.
+  now: clockLine(Date.UTC(2026, 10, 12, 5, 15), "Asia/Karachi", c.clock ?? "12h"),
   // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.
   persona: c.persona === undefined ? null : calledPersona(DEFAULT_OS_PACK, { persona: c.persona }),
   switched: c.persona !== undefined && turn === 0,

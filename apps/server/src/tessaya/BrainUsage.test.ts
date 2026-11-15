@@ -135,15 +135,13 @@ it.effect(
     ),
 );
 
-it("reads his day and month in his zone, and a zone it doesn't know as not one", () => {
+it("reads his day and month in his zone", () => {
   // 20:00 UTC on 31 Oct is 01:00 on 1 Nov in Karachi: his month has begun.
   const at = Date.UTC(2026, 9, 31, 20);
   expect(BrainUsage.periodStarts("Asia/Karachi", at)).toEqual({
     day: Date.UTC(2026, 9, 31, 19),
     month: Date.UTC(2026, 9, 31, 19),
   });
-  expect(BrainUsage.knownZone("Asia/Karachi")).toBe(true);
-  expect(BrainUsage.knownZone("Mars/Olympus")).toBe(false);
 });
 
 it("loads first in plain Node, as the evals import it", () => {

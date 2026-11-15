@@ -133,6 +133,26 @@ const TENS = ["", "", "twenty", "thirty", "forty", "fifty"];
 const inWords = (n: number): string =>
   n < 20 ? ONES[n]! : `${TENS[Math.floor(n / 10)]}${n % 10 === 0 ? "" : `-${ONES[n % 10]}`}`;
 
+const named = (zone: string): string | null => {
+  try {
+    return new Intl.DateTimeFormat("en-GB", { timeZone: zone }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+};
+
+/** The first of these that is a real zone (a house's, his learned one, a device's), else this machine's own. */
+export const zoneOf = (...zones: ReadonlyArray<string | null | undefined>): string =>
+  zones
+    .map((z) => (z === null || z === undefined || z === "" ? null : named(z)))
+    .find((z) => z !== null) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** The hour (0-23) on that zone's clock. */
+export const hourIn = (at: Date | number, timeZone: string): number =>
+  Number(
+    new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone }).format(at),
+  );
+
 /** How a person wants times said: their `timeFormat` preference, else 12-hour (no household locale exists yet). */
 export type ClockStyle = "12h" | "24h";
 export const clockStyleOf = (timeFormat: string | undefined): ClockStyle =>
@@ -140,9 +160,14 @@ export const clockStyleOf = (timeFormat: string | undefined): ClockStyle =>
 
 /**
  * The clock, as the model should read it: his own zone, never a time read off a screen; background, not words to say.
- * The time is also given as it is said: from "11:32" alone a fast model said "twenty-eight minutes past eleven" (0.1.78).
+ * The time is also given as it is said: from "11:32" alone a fast model said "twenty-eight minutes past eleven" (0.1.78),
+ * and without "in just those words" Haiku dropped the a.m. on the Tessel (15 Nov eval, clock-12h).
  */
-export const clockLine = (now: Date, timeZone?: string, style: ClockStyle = "12h"): string => {
+export const clockLine = (
+  now: Date | number,
+  timeZone?: string,
+  style: ClockStyle = "12h",
+): string => {
   const zone = timeZone === undefined ? {} : { timeZone };
   return `(his clock, for your reference: ${new Intl.DateTimeFormat("en-GB", {
     weekday: "long",
@@ -154,7 +179,7 @@ export const clockLine = (now: Date, timeZone?: string, style: ClockStyle = "12h
     timeZoneName: "short",
     hourCycle: style === "12h" ? "h12" : "h23",
     ...zone,
-  }).format(now)}; said as ${spokenTime(now, timeZone, style)})`;
+  }).format(now)}; said as ${spokenTime(now, timeZone, style)}, in just those words)`;
 };
 
 /**

@@ -4,6 +4,8 @@
  * and dollars at list price when an API key paid (a subscription row says null: the plan paid). The first slice of
  * ACCOUNTS-IDENTITY C-2's usage ledger, not a second ledger. A failed write is logged and never fails the call.
  */
+import { zoneOf } from "@t3tools/tessaya-shared/brain";
+import { houseZone } from "./houseZone.ts";
 import * as NodePath from "node:path";
 
 import { credentialOf } from "@t3tools/tessaya-shared/brainRoutes";
@@ -12,11 +14,9 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
-import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { priceUsage, type RateTable } from "../usage/usagePricing.ts";
 import * as TessayaDatabase from "./TessayaDatabase.ts";
@@ -137,15 +137,6 @@ export const zoneOffsetMs = (timeZone: string, at: number): number => {
   return wall - Math.floor(at / 1000) * 1000;
 };
 
-/** A zone `Intl` knows: a client's string is checked before any date math throws on it. */
-export const knownZone = (timeZone: string) => {
-  try {
-    return new Intl.DateTimeFormat("en-US", { timeZone }).resolvedOptions().timeZone !== "";
-  } catch {
-    return false;
-  }
-};
-
 /** Where in his day and month `at` falls: both starts, in ms. */
 export const periodStarts = (timeZone: string, at: number) => {
   const offset = zoneOffsetMs(timeZone, at);
@@ -228,14 +219,6 @@ export class BrainUsage extends Context.Service<
   }
 >()("t3/tessaya/BrainUsage") {}
 
-/** His zone: the house's, else this machine's. Read where the call is made, so any caller can record. */
-const houseZone = Effect.gen(function* () {
-  const home = yield* Effect.serviceOption(HomeAssistantService);
-  return Option.isSome(home)
-    ? yield* home.value.timeZone
-    : Intl.DateTimeFormat().resolvedOptions().timeZone;
-});
-
 /** `readRateList` gives the price list, or null before T3's usage page has ever fetched one. */
 export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => RateTable | null) {
   const sql = yield* SqlClient.SqlClient;
@@ -274,7 +257,7 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
   ) {
     const limits = (yield* settings.getSettings).brainSpendAlert;
     if (Object.keys(limits).length === 0) return;
-    const after = yield* spendNow(yield* houseZone, at);
+    const after = yield* spendNow(yield* houseZone(), at);
     for (const crossed of crossedBy(limits, after, { role, dollars })) {
       yield* Effect.logInfo("brain: a spend alert was reached", { ...crossed });
       yield* notes.append({
@@ -369,8 +352,7 @@ export const brainUsageReport = Effect.fn("BrainUsage.report")(function* (input:
 }) {
   const usage = yield* BrainUsage;
   const now = yield* Clock.currentTimeMillis;
-  const timeZone =
-    input.timeZone !== "" && knownZone(input.timeZone) ? input.timeZone : yield* houseZone;
+  const timeZone = zoneOf(input.timeZone, yield* houseZone());
   const since = periodStarts(timeZone, now - (input.days - 1) * 86_400_000).day;
   return {
     totals: yield* usage.totals({ since, timeZone }),

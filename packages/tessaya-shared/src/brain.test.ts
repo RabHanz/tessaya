@@ -60,11 +60,14 @@ describe("live facts", () => {
   it("gives plain answers the clock in the machine's zone, and keeps clock and web questions off the screen", async () => {
     const { clockLine, clockStyleOf, ASSISTANT_PROMPT_INTRO } = await import("./brain.ts");
     expect(clockLine(new Date("2026-11-01T10:07:00Z"), "Asia/Karachi")).toBe(
-      "(his clock, for your reference: Sunday, 1 November 2026 at 03:07 pm GMT+5; said as three oh seven p.m.)",
+      "(his clock, for your reference: Sunday, 1 November 2026 at 03:07 pm GMT+5; said as three oh seven p.m., in just those words)",
     );
     // 0.1.78: at 11:32 the fast model said "twenty-eight minutes past eleven"; the words leave nothing to work out.
     // Given both forms it read both aloud ("five past one, or fifty-five to two"), so there is one.
-    const said = (iso: string) => clockLine(new Date(iso), "Asia/Karachi").split("said as ")[1];
+    const said = (iso: string) =>
+      clockLine(new Date(iso), "Asia/Karachi")
+        .split("said as ")[1]
+        ?.replace(", in just those words", "");
     expect(said("2026-11-08T06:32:00Z")).toBe("eleven thirty-two a.m.)");
     expect(said("2026-11-08T07:00:00Z")).toBe("noon)");
     expect(said("2026-11-08T19:00:00Z")).toBe("midnight)");
@@ -78,13 +81,18 @@ describe("live facts", () => {
     expect(said("2026-11-15T13:00:00Z")).toBe("six p.m.)");
     // 14 Nov: his clock is his preference; 24-hour reads the clock as it is.
     const said24 = (iso: string) =>
-      clockLine(new Date(iso), "Asia/Karachi", "24h").split("said as ")[1];
+      clockLine(new Date(iso), "Asia/Karachi", "24h")
+        .split("said as ")[1]
+        ?.replace(", in just those words", "");
     expect(said24("2026-11-14T15:20:00Z")).toBe("twenty twenty)");
     expect(said24("2026-11-14T03:05:00Z")).toBe("oh eight oh five)");
     expect(said24("2026-11-14T13:00:00Z")).toBe("eighteen hundred)");
     expect(clockStyleOf("24-hour")).toBe("24h");
     expect(clockStyleOf("12-hour with AM/PM")).toBe("12h");
     expect(clockStyleOf(undefined)).toBe("12h");
+    const { zoneOf } = await import("./brain.ts");
+    expect(zoneOf(null, "", "Mars/Olympus", "Asia/Karachi")).toBe("Asia/Karachi");
+    expect(zoneOf("Mars/Olympus")).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
     expect(ASSISTANT_PROMPT_INTRO).toMatch(/never read a clock off the screen/);
   });
 });

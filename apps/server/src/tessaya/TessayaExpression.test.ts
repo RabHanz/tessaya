@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { LINE_EVENTS, lineId } from "@t3tools/tessaya-shared/expression";
 import type { BrainRole } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
@@ -47,6 +48,7 @@ const setup = (
     Layer.provideMerge(fake.layer),
     Layer.provideMerge(ServerSettingsService.layerTest(settings)),
     Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(Layer.mock(HomeAssistantService)({ timeZone: Effect.succeed("UTC") })),
   );
   return { ...fake, layer };
 };
@@ -83,7 +85,7 @@ it.effect(
     const t = setup({ tessayaExpression: true }, ["{title}: wrapped.", "{title}, all finished."]);
     return Effect.gen(function* () {
       const x = yield* TessayaExpression;
-      // The test clock starts at midnight UTC, and there is no house: night.
+      // The test clock starts at midnight UTC, and the house is on UTC: night.
       yield* x.writeAhead("executive", "night", "job.done");
       const facts = { title: "Q3 report (v2)" };
       const first = yield* x.express("job.done", { person: "sara", facts });
