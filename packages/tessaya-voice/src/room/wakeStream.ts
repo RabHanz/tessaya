@@ -4,7 +4,7 @@
  * desktop does. Nothing else from the stream is recognised or kept; a segment is dropped once it ends or fires.
  * @module baton-voice/room/wakeStream
  */
-import { wakeTrusted, wakeWordHeard } from "@t3tools/tessaya-shared/wakeVerify";
+import { wakeTrusted, wakeWordHeard, wakeWordLead } from "@t3tools/tessaya-shared/wakeVerify";
 
 import { heldBack } from "./addressing.ts";
 import { speechLevel } from "./audio.ts";
@@ -38,6 +38,8 @@ export interface KwsEvent {
   readonly best?: number;
   readonly ms?: number;
   readonly n?: number;
+  /** The 20 ms feature frame (from the segment start) where its first scored window ends; windows are 15 apart. */
+  readonly first?: number;
 }
 
 export interface WakeScorer {
@@ -219,9 +221,19 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       return;
     const ratio = best / w.threshold;
     const trusted = wakeTrusted([w], w.word, ratio);
-    const texts = trusted ? [] : await deps.confirm(pcm).catch(() => []);
+    // The 2 s up to the passing window (the last one scored), as an openWakeWord fire's clip: the name ends it.
+    const end =
+      typeof event.first === "number"
+        ? Math.min(pcm.length, (event.first + 15 * Math.max(0, (event.n ?? 1) - 1) + 1) * 320)
+        : pcm.length;
+    const clip = pcm.slice(Math.max(0, end - CONFIRM_SAMPLES), end);
+    const texts = trusted ? [] : await deps.confirm(clip).catch(() => []);
     const at = `kws ${best.toFixed(3)}/${w.threshold}, segment ${(pcm.length / RATE).toFixed(1)} s`;
-    if (trusted || texts.some((text) => wakeWordHeard(text, w.word, ratio))) {
+    // His name then his request in one breath ("Tessaya, are you there?") leads the text instead of ending it.
+    const heard = (text: string) =>
+      wakeWordHeard(text, w.word, ratio) ||
+      wakeWordLead(text.trim().split(/\s+/).filter(Boolean), [w.word]) > 0;
+    if (trusted || texts.some(heard)) {
       deps.log(`[${id}] woken by ${w.word} (${at})`);
       deps.onWake(id, w.word, speechLevel(pcm), Math.min(1, best), pcm);
     } else

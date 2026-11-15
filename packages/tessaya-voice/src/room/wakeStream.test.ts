@@ -66,7 +66,11 @@ describe("waking her by name with no session open", () => {
   it("on a Tessel that sends its own kws, its pass decides her name on the whole segment and openWakeWord only logs (W2, 15 Nov)", async () => {
     let heard = "Hey Tessaya.";
     const t = rig(() => heard, undefined, [{ word: "Tessaya", threshold: 0.9 }]);
-    const segment = async (seg: number, kws: { pass: boolean; best: number }, kwsFirst = false) => {
+    const segment = async (
+      seg: number,
+      kws: { pass: boolean; best: number; first?: number; n?: number },
+      kwsFirst = false,
+    ) => {
       const event = { seg, name: "tessaya", score: 0, ...kws };
       if (kwsFirst) t.stream.kws("r1", event);
       for (let i = 0; i < 4; i += 1) t.stream.frame("r1", frame(7));
@@ -95,6 +99,21 @@ describe("waking her by name with no session open", () => {
     expect(t.lines.join("\n")).toMatch(
       /Tessaya kws pass \(kws 0\.950\/0\.9, segment 0\.2 s\), not confirmed/,
     );
+    // His real wakes (15 Nov 23:36-23:48 GMT+5): the confirm hears the 2 s up to the passing window, not the
+    // whole segment, and his name then a request in one breath ("Tessaya, are you there?", #4bd9c385) wakes her.
+    heard = "Tessaya, are you there?";
+    await segment(7, { pass: true, best: 0.95, first: 5, n: 1 });
+    expect(t.woken).toHaveLength(4);
+    expect(t.confirmed.at(-1)).toBe(6 * 320);
+    heard = "So I said, Tessaya.";
+    // The last scored window passed: 15 frames on per window, and never past the segment's end.
+    await segment(8, { pass: true, best: 0.95, first: 0, n: 2 });
+    expect(t.woken).toHaveLength(5);
+    expect(t.confirmed.at(-1)).toBe(4 * 960);
+    // A name only in the middle is still not hers.
+    heard = "I told Tessaya about it.";
+    await segment(9, { pass: true, best: 0.95 });
+    expect(t.woken).toHaveLength(5);
   });
 
   it("hears the next segment when the one that woke her never ended (15 Nov soak: every other name opened nothing)", async () => {
