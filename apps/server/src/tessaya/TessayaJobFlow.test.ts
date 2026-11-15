@@ -597,7 +597,7 @@ layer("BatonJobFlow", (it) => {
         });
         assert.deepEqual(
           launched.slice(-2).map((l) => l.modelSelection.model),
-          ["sonnet", "lead-model"],
+          ["opus", "lead-model"],
         );
       } finally {
         NodeFS.rmSync(dir, { recursive: true, force: true });

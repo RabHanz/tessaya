@@ -130,10 +130,12 @@ describe("the roster", () => {
     expect(leadsProject(pack.personas[0]!, at("tax", null), [])).toBe(true);
   });
 
-  it("runs each persona on the model and effort its file names: the lead on Opus, specialists on Sonnet", () => {
+  it("runs each persona on the model and effort its file names: the lead on Opus, Sebastian on Opus, other specialists on Sonnet", () => {
     const opus = { model: "opus", effort: "medium" };
     const sonnet = { model: "sonnet", effort: "medium" };
     expect(modelOf(DEFAULT_OS_PACK, "executive")).toEqual(opus);
+    // Writing as him: Opus sounded more like him than Sonnet in the owner-voice bench.
+    expect(modelOf(DEFAULT_OS_PACK, "alter-ego")).toEqual(opus);
     expect(modelOf(DEFAULT_OS_PACK, "companion")).toEqual(sonnet);
     // A role with no face of its own is still a specialist.
     expect(modelOf(DEFAULT_OS_PACK, "marketing")).toEqual(sonnet);
