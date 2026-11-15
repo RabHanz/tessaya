@@ -1,11 +1,12 @@
 /**
  * Her name heard with no session open: the R1 sends only voiced segments (`voice/wake`, ended on `voice/wake/end`),
  * the desktop's own wake models score them, and a fire is confirmed in text from the clip just before it, as the
- * desktop does. Nothing else from the stream is recognised or kept; a segment is dropped once it ends or fires.
+ * desktop does. Only a segment that woke her is recognised whole (his request in the same breath); nothing else is kept.
  * @module baton-voice/room/wakeStream
  */
 import { wakeTrusted, wakeWordHeard, wakeWordLead } from "@t3tools/tessaya-shared/wakeVerify";
 
+import { stripWake } from "../modeMachine.ts";
 import { heldBack } from "./addressing.ts";
 import { speechLevel } from "./audio.ts";
 import type { WakeCapture } from "./wakeCapture.ts";
@@ -28,6 +29,44 @@ const CONFIRM_SAMPLES = 2 * RATE;
  * segment was ignored whole (15 Nov soak: 5 of 18 names heard opened nothing).
  */
 const SEGMENT_GAP_MS = 3_000;
+/** The Tessel's wake frames are 60 ms each, so `sent` on `voice/wake/end` says how much of the stream is the segment. */
+const FRAME_SAMPLES = 960;
+/** The silence the Tessel waits before it ends a segment: his last word came this long before `voice/wake/end`. */
+const END_SILENCE_MS = 480;
+
+/** What he asked in the same breath as her name ("Tessaya, what time is it?"), said from `startedAt` to `endedAt`. */
+export interface WakeRequest {
+  readonly text: string;
+  readonly startedAt: number;
+  readonly endedAt: number;
+}
+
+/** His words after her name leading `texts` (one per recogniser), or null for her name alone or a name not leading. */
+export const requestAfterName = (texts: ReadonlyArray<string>, word: string): string | null => {
+  for (const text of texts) {
+    const rest = stripWake(text, [word]).trim();
+    if (
+      rest !== text.trim() &&
+      /[\p{L}\p{N}]/u.test(rest) &&
+      !/^(?:um+|uh+|er+|hm+|mm+|ah+|oh)[.,!?]*$/i.test(rest)
+    )
+      return rest;
+  }
+  return null;
+};
+
+/**
+ * The `cmd/voice/kws` that sets the Tessel's early kws threshold, for its retained `state/voice/kws` (early in
+ * thousandths), or null when it already holds it. The Tessel does not save it, so each boot reports 0 and gets it again.
+ */
+export const kwsEarlyCommand = (
+  state: { readonly early?: unknown },
+  kwsWake: ReadonlyArray<{ readonly threshold: number }>,
+): string | null => {
+  if (kwsWake.length === 0) return null;
+  const early = Math.min(...kwsWake.map((w) => w.threshold));
+  return state.early === Math.round(early * 1000) ? null : JSON.stringify({ early });
+};
 
 /** `event/wake/kws`: the R1's on-device wake model on one segment (firmware contract). */
 export interface KwsEvent {
@@ -40,6 +79,8 @@ export interface KwsEvent {
   readonly n?: number;
   /** The 20 ms feature frame (from the segment start) where its first scored window ends; windows are 15 apart. */
   readonly first?: number;
+  /** Sent at the first window over the early threshold (`cmd/voice/kws {"early"}`), before the segment ends. */
+  readonly early?: boolean;
 }
 
 export interface WakeScorer {
@@ -55,13 +96,17 @@ export interface WakeStreamDeps {
   readonly scorer: () => Promise<WakeScorer>;
   /** The confirm clip only, read by each recogniser asked (general, and his personal one): any may hear the name. */
   readonly confirm: (pcm: Int16Array) => Promise<ReadonlyArray<string>>;
-  /** `level`: how loud his name was (dBFS), so the session can tell his voice from a far-off room. */
+  /**
+   * `level`: how loud his name was (dBFS), so the session can tell his voice from a far-off room. `request`: on a kws
+   * wake, what he said after her name in the same segment (null for her name alone), still being recognised.
+   */
   readonly onWake: (
     deviceId: string,
     word: string,
     level: number,
     score: number,
     clip: Int16Array,
+    request?: Promise<WakeRequest | null>,
   ) => void;
   readonly log: (line: string) => void;
   /**
@@ -104,7 +149,11 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
   const pairs = new Map<string, { kws?: KwsEvent; ours?: string }>();
   /** The Tessels that send `event/wake/kws`, and their ended segments still waiting on it (it comes just after the end). */
   const kwsSeen = new Set<string>();
-  const ended = new Map<string, { pcm: Int16Array; woke: boolean }>();
+  const ended = new Map<string, { pcm: Int16Array; woke: boolean; at: number }>();
+  /** The Tessels whose `voice/wake/end` says how many frames it sent: their segments are cut to that, not to gaps. */
+  const sentSeen = new Set<string>();
+  /** An early kws pass's confirm, begun when it came, before the segment ended. */
+  const earlyConfirm = new Map<string, Promise<ReadonlyArray<string>>>();
   const kwsWord = (name: unknown) =>
     deps.kwsWake?.find((w) => w.word.toLowerCase() === String(name ?? "").toLowerCase());
   const byKws = (id: string, word: string) => kwsSeen.has(id) && kwsWord(word) !== undefined;
@@ -213,29 +262,62 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     }
   };
 
-  /** Stage 1 by the Tessel's kws on a whole ended segment, then the same confirm as an openWakeWord fire. */
-  const kwsDecide = async (id: string, event: KwsEvent, pcm: Int16Array, woke: boolean) => {
+  /** The 2 s up to the passing window (the last one scored), as an openWakeWord fire's clip: the name ends it. */
+  const kwsClipEnd = (event: KwsEvent, length: number) =>
+    typeof event.first === "number"
+      ? Math.min(length, (event.first + 15 * Math.max(0, (event.n ?? 1) - 1) + 1) * 320)
+      : length;
+  const kwsPass = (event: KwsEvent) => {
     const w = kwsWord(event.name);
     const best = Number(event.best ?? 0);
-    if (w === undefined || woke || event.pass !== true || best < w.threshold || pcm.length === 0)
-      return;
+    return w === undefined || event.pass !== true || best < w.threshold
+      ? undefined
+      : { w, best, trusted: wakeTrusted([w], w.word, best / w.threshold) };
+  };
+  const confirmClip = (event: KwsEvent, pcm: Int16Array, trusted: boolean) => {
+    const end = kwsClipEnd(event, pcm.length);
+    return trusted
+      ? Promise.resolve([])
+      : deps.confirm(pcm.slice(Math.max(0, end - CONFIRM_SAMPLES), end)).catch(() => []);
+  };
+
+  /** Stage 1 by the Tessel's kws on a whole ended segment, then the same confirm as an openWakeWord fire. */
+  const kwsDecide = async (
+    id: string,
+    event: KwsEvent,
+    pcm: Int16Array,
+    woke: boolean,
+    endedAt: number,
+  ) => {
+    const pass = kwsPass(event);
+    const early = earlyConfirm.get(`${id}#${event.seg}`);
+    earlyConfirm.delete(`${id}#${event.seg}`);
+    if (pass === undefined || woke || pcm.length === 0) return;
+    const { w, best, trusted } = pass;
     const ratio = best / w.threshold;
-    const trusted = wakeTrusted([w], w.word, ratio);
-    // The 2 s up to the passing window (the last one scored), as an openWakeWord fire's clip: the name ends it.
-    const end =
-      typeof event.first === "number"
-        ? Math.min(pcm.length, (event.first + 15 * Math.max(0, (event.n ?? 1) - 1) + 1) * 320)
-        : pcm.length;
-    const clip = pcm.slice(Math.max(0, end - CONFIRM_SAMPLES), end);
-    const texts = trusted ? [] : await deps.confirm(clip).catch(() => []);
+    // The whole segment, for his request after her name; it also confirms a name the 2 s clip cut into.
+    const whole = deps.confirm(pcm).catch((): ReadonlyArray<string> => []);
+    const texts = await (early ?? confirmClip(event, pcm, trusted));
     const at = `kws ${best.toFixed(3)}/${w.threshold}, segment ${(pcm.length / RATE).toFixed(1)} s`;
     // His name then his request in one breath ("Tessaya, are you there?") leads the text instead of ending it.
-    const heard = (text: string) =>
-      wakeWordHeard(text, w.word, ratio) ||
+    const leads = (text: string) =>
       wakeWordLead(text.trim().split(/\s+/).filter(Boolean), [w.word]) > 0;
-    if (trusted || texts.some(heard)) {
+    const heard = (text: string) => wakeWordHeard(text, w.word, ratio) || leads(text);
+    if (trusted || texts.some(heard) || (await whole).some(leads)) {
       deps.log(`[${id}] woken by ${w.word} (${at})`);
-      deps.onWake(id, w.word, speechLevel(pcm), Math.min(1, best), pcm);
+      const request = whole.then((all) => {
+        const text = requestAfterName(all, w.word);
+        if (text !== null)
+          deps.log(`[${id}] her name and a request in one breath (${heldBack(text)})`);
+        return text === null
+          ? null
+          : {
+              text,
+              startedAt: endedAt - (pcm.length / RATE) * 1000,
+              endedAt: endedAt - END_SILENCE_MS,
+            };
+      });
+      deps.onWake(id, w.word, speechLevel(pcm), Math.min(1, best), pcm, request);
     } else
       deps.log(
         `[${id}] ${w.word} kws pass (${at}), not confirmed (${texts.map(heldBack).join("; ") || heldBack("")})`,
@@ -253,8 +335,10 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length - (bytes.length % 2)),
       );
       d.chain = d.chain.then(async () => {
-        if (lost && (d.samples > 0 || d.done)) restart(d, await d.scorer);
-        if (d.seg.length < KEEP_SAMPLES) d.seg = join(d.seg, pcm).slice(0, KEEP_SAMPLES);
+        // A Tessel that counts its frames: a gap inside a segment is a stalled link, not a lost end (16 Nov: 2.5 s
+        // segments heard as 0.1-0.4 s after a 10 s hole), and the end's count drops what came before it.
+        if (lost && (d.done || (d.samples > 0 && !sentSeen.has(id)))) restart(d, await d.scorer);
+        d.seg = join(d.seg, pcm).slice(-KEEP_SAMPLES);
         if (d.done) return;
         // A new segment on an old word list takes the reloaded one; a segment in progress keeps its own.
         if (d.samples === 0 && d.gen !== current.gen) {
@@ -278,17 +362,33 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         ended.delete(key);
         if (done !== undefined) {
           const d = of(id);
-          d.chain = d.chain.then(() => kwsDecide(id, event, done.pcm, done.woke));
+          d.chain = d.chain.then(() => kwsDecide(id, event, done.pcm, done.woke, done.at));
+        } else if (event.early === true) {
+          // At the first window over the early threshold, mid-segment: the confirm starts now, not at its end.
+          const pass = kwsPass(event);
+          const d = devices.get(id);
+          if (pass !== undefined && d !== undefined)
+            d.chain = d.chain.then(() => {
+              if (d.seg.length >= kwsClipEnd(event, Number.POSITIVE_INFINITY))
+                earlyConfirm.set(key, confirmClip(event, d.seg, pass.trusted));
+              if (earlyConfirm.size > 8) earlyConfirm.delete(earlyConfirm.keys().next().value!);
+            });
         }
         pair(id, event.seg, { kws: event });
       }
       deps.capture?.kws(id, event);
     },
-    /** The segment ended (`seg`: the R1's number for it): forget it, and listen afresh on the next one. */
-    end: (id: string, seg?: number) => {
+    /**
+     * The segment ended (`seg`: the R1's number for it, `sent`: its frame count): forget it, and listen afresh on the
+     * next one.
+     */
+    end: (id: string, seg?: number, sent?: number) => {
       const d = devices.get(id);
       if (d === undefined) return;
+      const endedAt = now();
+      if (typeof sent === "number") sentSeen.add(id);
       d.chain = d.chain.then(async () => {
+        if (typeof sent === "number" && sent > 0) d.seg = d.seg.slice(-sent * FRAME_SAMPLES);
         const scorer = await d.scorer;
         // The name at the very end of a segment still gets scored.
         if (!d.done && d.samples > 0) {
@@ -320,9 +420,9 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
           );
         if (seg !== undefined && (deps.kwsWake?.length ?? 0) > 0) {
           const early = pairs.get(`${id}#${seg}`)?.kws;
-          if (early !== undefined) await kwsDecide(id, early, d.seg, d.woke);
+          if (early !== undefined) await kwsDecide(id, early, d.seg, d.woke, endedAt);
           else {
-            ended.set(`${id}#${seg}`, { pcm: d.seg, woke: d.woke });
+            ended.set(`${id}#${seg}`, { pcm: d.seg, woke: d.woke, at: endedAt });
             if (ended.size > 8) ended.delete(ended.keys().next().value!);
           }
         }

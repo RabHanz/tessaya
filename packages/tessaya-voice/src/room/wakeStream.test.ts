@@ -4,7 +4,13 @@ import * as NodeFS from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createOpenWakeWordScorer } from "../providers/onnx.ts";
-import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
+import {
+  createWakeStream,
+  kwsEarlyCommand,
+  requestAfterName,
+  type WakeRequest,
+  type WakeScorer,
+} from "./wakeStream.ts";
 
 const frame = (v: number) => {
   const pcm = new Int16Array(960).fill(v);
@@ -19,6 +25,7 @@ const rig = (
 ) => {
   const confirmed: number[] = [];
   const woken: string[] = [];
+  const requests: Array<Promise<WakeRequest | null> | undefined> = [];
   const lines: string[] = [];
   const stream = createWakeStream({
     words: [
@@ -35,12 +42,15 @@ const rig = (
       const said = typeof heard === "function" ? heard() : heard;
       return typeof said === "string" ? [said] : said;
     },
-    onWake: (id, word) => woken.push(`${id} ${word}`),
+    onWake: (id, word, _level, _score, _clip, request) => {
+      woken.push(`${id} ${word}`);
+      requests.push(request);
+    },
     log: (line) => lines.push(line),
     ...(now === undefined ? {} : { now }),
     ...(kwsWake === undefined ? {} : { kwsWake }),
   });
-  return { stream, confirmed, woken, lines };
+  return { stream, confirmed, woken, requests, lines };
 };
 
 describe("waking her by name with no session open", () => {
@@ -88,11 +98,12 @@ describe("waking her by name with no session open", () => {
     await segment(3, { pass: false, best: 0.2 });
     await segment(4, { pass: true, best: 0.6 });
     expect(t.woken).toHaveLength(2);
-    // Sure enough to need no text, whichever of the end and the kws event comes first.
+    // Sure enough to need no confirm, whichever of the end and the kws event comes first: only the whole segment is
+    // recognised, for a request after her name.
     const asked = t.confirmed.length;
     await segment(5, { pass: true, best: 0.9995 }, true);
     expect(t.woken).toHaveLength(3);
-    expect(t.confirmed.length).toBe(asked);
+    expect(t.confirmed.length).toBe(asked + 1);
     heard = "Testing again.";
     await segment(6, { pass: true, best: 0.95 });
     expect(t.woken).toHaveLength(3);
@@ -114,6 +125,49 @@ describe("waking her by name with no session open", () => {
     heard = "I told Tessaya about it.";
     await segment(9, { pass: true, best: 0.95 });
     expect(t.woken).toHaveLength(5);
+  });
+
+  it.each([
+    // The one-breath requests the recogniser wrote from his Tessel (13-16 Nov).
+    [["Tessaya, what time is it?"], "what time is it?"],
+    [["Tessaya, are you there?"], "are you there?"],
+    [["Hey Tessaya, turn on the fan."], "turn on the fan."],
+    [["", "Tessaya, what's the weather like?"], "what's the weather like?"],
+    [["Tessaya."], null],
+    [["Tessaya, um."], null],
+    [["I told Tessaya about it."], null],
+  ])("finds the request after her name in %j", (texts, request) => {
+    expect(requestAfterName(texts, "Tessaya")).toBe(request);
+  });
+
+  it("an early kws pass starts the confirm mid-segment, and the request after her name goes with the wake (16 Nov)", async () => {
+    let t0 = 10_000;
+    const t = rig(["Tessaya, what time is it?"], () => t0, [{ word: "Tessaya", threshold: 0.9 }]);
+    for (let i = 0; i < 20; i += 1) t.stream.frame("r1", frame(1));
+    // The first window over 0.9 ends at feature frame 50 (1.0 s): sent then, with the rest of his request to come.
+    t.stream.kws("r1", {
+      seg: 9,
+      name: "tessaya",
+      pass: true,
+      best: 0.95,
+      first: 50,
+      n: 1,
+      early: true,
+    });
+    await t.stream.drained("r1");
+    expect(t.confirmed).toEqual([51 * 320]);
+    for (let i = 0; i < 30; i += 1) t.stream.frame("r1", frame(1));
+    t0 = 13_000;
+    t.stream.end("r1", 9, 50);
+    await t.stream.drained("r1");
+    expect(t.woken).toEqual(["r1 Tessaya"]);
+    // One more read, of the whole segment; the clip's confirm is not asked again.
+    expect(t.confirmed).toEqual([51 * 320, 50 * 960]);
+    expect(await t.requests[0]).toEqual({
+      text: "what time is it?",
+      startedAt: 10_000,
+      endedAt: 12_520,
+    });
   });
 
   it("hears the next segment when the one that woke her never ended (15 Nov soak: every other name opened nothing)", async () => {
@@ -141,6 +195,30 @@ describe("waking her by name with no session open", () => {
     t.stream.end("r1", 5);
     await t.stream.drained("r1");
     expect(t.woken).toEqual(["r1 Tessaya"]);
+  });
+
+  it("keeps a whole segment over a stall once the Tessel counts its frames (16 Nov: 2.5 s heard as 0.1-0.4 s)", async () => {
+    let t0 = 0;
+    const t = rig("Tessaya, what time is it?", () => t0, [{ word: "Tessaya", threshold: 0.9 }]);
+    t.stream.frame("r1", frame(1));
+    t.stream.end("r1", 1, 1);
+    for (let i = 0; i < 30; i += 1) t.stream.frame("r1", frame(1));
+    t0 = 10_000;
+    for (let i = 0; i < 8; i += 1) t.stream.frame("r1", frame(1));
+    t.stream.end("r1", 2, 38);
+    t.stream.kws("r1", { seg: 2, name: "tessaya", pass: true, best: 0.95 });
+    await t.stream.drained("r1");
+    expect(t.woken).toEqual(["r1 Tessaya"]);
+    expect(t.confirmed).toEqual([38 * 960, 32_000]);
+    expect(t.lines.join("\n")).toMatch(/segment 2\.3 s/);
+  });
+
+  it("sends the Tessel its early kws threshold until it reports it (it is lost on every boot)", () => {
+    const kws = [{ word: "Tessaya", threshold: 0.9 }];
+    expect(kwsEarlyCommand({ early: 0 }, kws)).toBe('{"early":0.9}');
+    expect(kwsEarlyCommand({}, kws)).toBe('{"early":0.9}');
+    expect(kwsEarlyCommand({ early: 900 }, kws)).toBeNull();
+    expect(kwsEarlyCommand({ early: 0 }, [])).toBeNull();
   });
 
   it("hears a newly trained word from the next segment, never by swapping mid-segment", async () => {

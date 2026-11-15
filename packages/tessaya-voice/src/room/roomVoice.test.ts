@@ -7,7 +7,7 @@ import type { SpeakerIdentity } from "../speaker.ts";
 import { UNVERIFIED } from "../speaker.ts";
 import { PILL_SOUNDS, renderSound } from "../cueSounds.ts";
 import { speechLike } from "../echoSim.ts";
-import { toBytes } from "./audio.ts";
+import { speechLevel, toBytes } from "./audio.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
   createRoomVoice,
@@ -888,6 +888,26 @@ describe("waking by name with no session open", () => {
     t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
     expect(frames).toEqual([DEV, DEV]);
     expect(t.room.session(DEV)).toBeUndefined();
+  });
+
+  it('answers the request he said in the same breath as her name, with no "I\'m here" first (16 Nov: 0 of 22 answered)', async () => {
+    const logs: string[] = [];
+    const t = setup({ log: (l) => logs.push(l) });
+    const segment = new Int16Array(3 * 16_000).fill(2_000);
+    // The request is in her name's own segment, so it is as loud as the name was.
+    t.room.woken(
+      DEV,
+      "Tessaya",
+      speechLevel(segment),
+      1,
+      segment,
+      Promise.resolve({ text: "what time is it?", startedAt: 0, endedAt: 900 }),
+    );
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    const m = await t.metrics;
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual(["what time is it?"]);
+    expect(m).toMatchObject({ reason: "wake", text: "what time is it?" });
+    expect(logs.some((l) => l.includes("her name alone"))).toBe(false);
   });
 
   it("keeps the session her name just opened while the rest of that wake segment arrives (03:30 replay, 13 Nov)", async () => {
