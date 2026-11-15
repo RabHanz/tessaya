@@ -4,7 +4,7 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd298c23eb 100644
+index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944dc50237d 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -37,6 +37,7 @@ import { ThreadFind, ThreadFindCanvas } from "./chat/ThreadFindProvider";
@@ -72,7 +72,26 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
    });
    const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
    const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
-@@ -1834,7 +1846,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1651,10 +1663,17 @@ export default function ChatView(props: ChatViewProps) {
+     data: useAtomValue(gitStatusAtom ? chatGitStatusAtom(gitStatusAtom) : NO_CHAT_GIT_STATUS_ATOM),
+     refresh: useEnvironmentQueryRefresh(gitStatusAtom).refresh,
+   };
++  const refreshLocalGitStatus = useAtomCommand(vcsEnvironment.refreshLocalStatus, {
++    reportFailure: false,
++  });
+   useWorkspaceMutationRefresh({
+     enabled: gitStatusCwd !== null,
+     mutationId: workspaceMutationId,
+-    refresh: gitStatusQuery.refresh,
++    // Resubscribing would resend the whole status, and its activity reports, on every tool call.
++    refresh: () => {
++      if (gitStatusCwd === null) return;
++      void refreshLocalGitStatus({ environmentId, input: { cwd: gitStatusCwd, localOnly: true } });
++    },
+     resourceKey: `git-status:${activeThreadKey ?? ""}:${gitStatusCwd ?? ""}`,
+   });
+   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+@@ -1834,7 +1853,7 @@ export default function ChatView(props: ChatViewProps) {
    });
  
    const focusComposer = () => {
@@ -81,7 +100,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
    };
    const focusComposerStable = useStableCallback(focusComposer);
    const canInterruptRunningThread =
-@@ -2573,6 +2585,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2573,6 +2592,7 @@ export default function ChatView(props: ChatViewProps) {
      });
      return item ? [item] : [];
    });
@@ -89,7 +108,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
    const limitRecoveryBanner =
      limitRecoveryRun !== null && activeThreadShell !== null
        ? usageLimitRecoveryBannerItem({
-@@ -2640,7 +2653,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2640,7 +2660,9 @@ export default function ChatView(props: ChatViewProps) {
              }),
            ]
          : [];
@@ -100,7 +119,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
      const extensionStatusBanner = extensionStatusBannerItem(
        deriveProviderExtensionStatuses(serverProjection),
      );
-@@ -2789,12 +2804,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2789,12 +2811,13 @@ export default function ChatView(props: ChatViewProps) {
    useEffect(() => {
      if (embedded) return;
      return window.desktopBridge?.onMenuAction((action) => {
@@ -116,7 +135,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3289,8 +3305,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3289,8 +3312,10 @@ export default function ChatView(props: ChatViewProps) {
      />
    );
    const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
@@ -128,7 +147,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
        showMaximizeControl={!shouldUsePlanSidebarSheet}
        rightPanelOpen={rightPanelOpen}
        animationsActive={panelAnimationsActive}
-@@ -3318,7 +3336,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3318,7 +3343,9 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -139,7 +158,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3345,13 +3365,12 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3345,13 +3372,12 @@ export default function ChatView(props: ChatViewProps) {
                COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
              )}
            >
@@ -154,7 +173,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
              {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
-@@ -3369,6 +3388,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3369,6 +3395,9 @@ export default function ChatView(props: ChatViewProps) {
                  : {})}
                {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
              />
@@ -164,7 +183,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
            </header>
          )}
  
-@@ -3696,6 +3718,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3696,6 +3725,7 @@ export default function ChatView(props: ChatViewProps) {
                                  runtimeMode={runtimeMode}
                                  defaultRuntimeMode={defaultRuntimeMode}
                                  lockedProvider={modelPickerLockedProvider}
@@ -172,7 +191,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..1cadb347c4277d38b0999e0171a788dd
                                  providerStatuses={providerStatuses as ServerProvider[]}
                                  providerCatalogKnown={serverConfig !== null}
                                  activeProjectDefaultModelSelection={
-@@ -4049,7 +4072,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -4049,7 +4079,7 @@ export default function ChatView(props: ChatViewProps) {
        cwd={activeWorkspaceRoot}
        checkpoints={serverProjection?.checkpoints}
      >

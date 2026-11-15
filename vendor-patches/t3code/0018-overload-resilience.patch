@@ -2,6 +2,18 @@ Overload resilience (laptop incident, 2026-11-11): a Windows backend notices its
 (Windows keeps the dead parent's id as ppid) and exits instead of holding the port and state lock, and a
 refreshing query does not cancel and re-send a read still in flight on its interval.
 
+diff --git a/apps/server/integration/transferBudgetV2.integration.test.ts b/apps/server/integration/transferBudgetV2.integration.test.ts
+index 4aaac3b9e30e9a599c438b8a37bb00e8a3cff6e5..ec2e83a2446db1cb090cf024120b0260fefa0c86 100644
+--- a/apps/server/integration/transferBudgetV2.integration.test.ts
++++ b/apps/server/integration/transferBudgetV2.integration.test.ts
+@@ -123,6 +123,7 @@ const CLIENT_SHELL_SUBSCRIPTION = {
+   requestCompletionMarker: true,
+   omitIdleSubagents: true,
+   omitOlderSettled: true,
++  omitUnchangedPullRequests: true,
+ } satisfies Required<Omit<OrchestrationV2SubscribeShellInput, ShellResumeField>>;
+ const query = (optIns: Readonly<Record<string, string>>) => new URLSearchParams(optIns).toString();
+ const CLIENT_BOUNDED_QUERY = query(CLIENT_BOUNDED_OPT_INS);
 diff --git a/apps/server/src/launcherWatch.test.ts b/apps/server/src/launcherWatch.test.ts
 index 1482804c61e0edb6229342692ee353cffd477897..0afbb7e52cb5b861281d378db9760807d8bc0003 100644
 --- a/apps/server/src/launcherWatch.test.ts
@@ -88,6 +100,169 @@ index ca109422c95a88ee861bd48da067a0bfc629b935..ad3f430f20b50b1d4e71c5a6e4d92e46
        ? Effect.flatMap(Effect.sleep(interval), () => poll)
        : Effect.logWarning("desktop launcher is gone; shutting down the backend", {
            launcherPid,
+diff --git a/apps/server/src/orchestration-v2/ShellStream.test.ts b/apps/server/src/orchestration-v2/ShellStream.test.ts
+index fbc610235dd01d5f9441f6afcac9aab644ab2d9a..59c6e6ee4eafe79887b5f26cae2df2a85d360260 100644
+--- a/apps/server/src/orchestration-v2/ShellStream.test.ts
++++ b/apps/server/src/orchestration-v2/ShellStream.test.ts
+@@ -23,6 +23,7 @@ import {
+   dedupeShellEnrichment,
+   omitIdleSubagentShells,
+   omitOlderSettledShells,
++  omitUnchangedPullRequests,
+   shellStreamItemFromEnrichmentRefresh,
+   shellStreamItemsFromInitialSnapshot,
+   shouldPublishShellApplicationEvent,
+@@ -684,6 +685,94 @@ describe("skipUnchangedThreadShells", () => {
+       Effect.map((items) => Array.from(items, (item) => ("sequence" in item ? item.sequence : -1))),
+     );
+ 
++  it.effect("omitUnchangedPullRequests sends a thread's links only when they change", () =>
++    Effect.gen(function* () {
++      // A long-lived thread like the Director's: 46 merged PR links, about 38 KB as a shell.
++      const link = (number: number) => ({
++        host: "github.com",
++        repository: "rabhanz/ventureos",
++        number,
++        url: `https://github.com/RabHanz/VentureOS/pull/${number}`,
++        source: "created" as const,
++        linkedAt: "2026-10-29T15:50:50.177Z",
++        snapshot: {
++          state: "merged" as const,
++          title: "A pull request title of typical length for this repository's history",
++          headBranch: "docs/some-branch",
++          baseBranch: "main",
++          isDraft: false,
++          updatedAt: "2026-10-29T15:50:58Z",
++          syncedAt: "2026-10-29T15:52:09.243Z",
++          closedAt: "2026-10-29T15:50:58Z",
++          mergedAt: "2026-10-29T15:50:58Z",
++          author: {
++            login: "RabHanz",
++            name: null,
++            avatarUrl:
++              "https://avatars.githubusercontent.com/u/53461530?u=4151290527442b5f1edd&v=4",
++          },
++          additions: 2,
++          deletions: 2,
++          changedFiles: 2,
++          reviewDecision: null,
++          checksState: "passing" as const,
++          mergeability: "unknown" as const,
++        },
++        stack: null,
++      });
++      const links = Array.from({ length: 46 }, (_, index) => link(4300 + index));
++      const thread = (status: OrchestrationV2ThreadShell["status"], pullRequests = links) =>
++        shell("live", { status, pullRequests } as Partial<OrchestrationV2ThreadShell>);
++      const update = (
++        sequence: number,
++        thread: OrchestrationV2ThreadShell,
++      ): OrchestrationV2ShellStreamItem => ({
++        kind: "thread.updated",
++        sequence,
++        location: "active",
++        thread,
++      });
++      const items: ReadonlyArray<OrchestrationV2ShellStreamItem> = [
++        { kind: "snapshot", snapshot: { ...emptyShellSnapshot, threads: [thread("running")] } },
++        ...Array.from({ length: 10 }, (_, index) =>
++          update(index + 1, thread(index % 2 === 0 ? "waiting" : "running")),
++        ),
++        update(11, thread("running", [...links, link(4400)])),
++        {
++          kind: "thread.removed",
++          sequence: 12,
++          location: "active",
++          threadId: ThreadId.make("live"),
++        },
++        update(13, thread("running")),
++      ];
++      const measure = (stream: Stream.Stream<OrchestrationV2ShellStreamItem>) =>
++        Stream.runCollect(stream).pipe(
++          Effect.map((sent) =>
++            Array.from(sent, (item) => ({
++              bytes: JSON.stringify(item).length,
++              links: "thread" in item ? (item.thread.pullRequests?.length ?? 0) : null,
++            })),
++          ),
++        );
++      const before = yield* measure(Stream.fromIterable(items));
++      const after = yield* measure(omitUnchangedPullRequests(Stream.fromIterable(items)));
++      const updateBytes = (sent: typeof before) =>
++        sent.slice(1, 11).reduce((total, item) => total + item.bytes, 0);
++
++      expect(after.length).toBe(before.length);
++      expect(updateBytes(before) / 10).toBeGreaterThan(30_000);
++      expect(updateBytes(after) / 10).toBeLessThan(2_000);
++      expect(after.map((item) => item.links)).toEqual([
++        null,
++        ...Array.from({ length: 10 }, () => 0),
++        47,
++        null,
++        46,
++      ]);
++    }),
++  );
++
+   it.effect("sends the next update after a removal", () =>
+     Effect.gen(function* () {
+       const sent = yield* run([
+diff --git a/apps/server/src/orchestration-v2/ShellStream.ts b/apps/server/src/orchestration-v2/ShellStream.ts
+index 5ee1005b16830aa1704672a18143f133816edbbb..f6445f7f7b7485e3eb44e25915fe2ed511f2678e 100644
+--- a/apps/server/src/orchestration-v2/ShellStream.ts
++++ b/apps/server/src/orchestration-v2/ShellStream.ts
+@@ -788,6 +788,51 @@ export function skipUnchangedThreadShells<A extends OrchestrationV2ShellStreamIt
+   });
+ }
+ 
++const samePullRequests = Schema.toEquivalence(ThreadShellSchema.fields.pullRequests);
++
++/** Drop `pullRequests` from a thread update when this stream already delivered the same links. */
++export function omitUnchangedPullRequests<A extends OrchestrationV2ShellStreamItem, E, R>(
++  stream: Stream.Stream<A, E, R>,
++): Stream.Stream<A, E, R> {
++  return Stream.suspend(() => {
++    const sent = new Map<ThreadId, OrchestrationV2ThreadShell["pullRequests"]>();
++    return stream.pipe(
++      Stream.map((item): A => {
++        switch (item.kind) {
++          case "snapshot":
++            // Enrichment snapshots carry no rows; an authoritative one replaces the client's rows.
++            if (item.resolvedRepositoryIdentityRoots === undefined) sent.clear();
++            for (const thread of item.snapshot.threads) sent.set(thread.id, thread.pullRequests);
++            return item;
++          case "thread.removed":
++            sent.delete(item.threadId);
++            return item;
++          case "thread.updated": {
++            const { id, pullRequests } = item.thread;
++            if (item.location !== "active") {
++              sent.delete(id);
++              return item;
++            }
++            if (
++              pullRequests !== undefined &&
++              pullRequests.length > 0 &&
++              sent.has(id) &&
++              samePullRequests(sent.get(id), pullRequests)
++            ) {
++              const { pullRequests: _unchanged, ...thread } = item.thread;
++              return { ...item, thread };
++            }
++            sent.set(id, pullRequests);
++            return item;
++          }
++          default:
++            return item;
++        }
++      }),
++    );
++  });
++}
++
+ export function shellStreamItemFromThreadShell(input: {
+   readonly stored: Extract<ShellApplicationEvent, { readonly event: unknown }>;
+   readonly shell: OrchestrationV2ThreadShell | null;
 diff --git a/apps/web/src/observability/clientTracing.ts b/apps/web/src/observability/clientTracing.ts
 index 82b5927087e38218aabd6242c7fa191846671401..2c6a9e1deb88f9303e4e3fa585464ac3c469867b 100644
 --- a/apps/web/src/observability/clientTracing.ts
@@ -194,3 +369,111 @@ index 736b10fdeeacae65f2415ee8da921237cb6e3bf6..27a9b9576e5490d71ce748d58b67a6f4
            // @effect-diagnostics-next-line globalTimers:off - Mirrors `Atom.withRefresh`, outside an Effect runtime.
            const handle = setTimeout(() => get.refresh(self), intervalMs);
            get.addFinalizer(() => clearTimeout(handle));
+diff --git a/packages/client-runtime/src/state/shell.ts b/packages/client-runtime/src/state/shell.ts
+index 86584c4a03faadf3a276a4f42e4b211bc10e5241..eee1d6e8c11a046c23690cf5ce1588b633740a1b 100644
+--- a/packages/client-runtime/src/state/shell.ts
++++ b/packages/client-runtime/src/state/shell.ts
+@@ -684,6 +684,7 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
+         const omission = {
+           ...(omitIdleSubagents ? { omitIdleSubagents: true as const } : {}),
+           ...(omitOlderSettled ? { omitOlderSettled: true as const } : {}),
++          omitUnchangedPullRequests: true as const,
+         };
+         if (Option.isNone(current.snapshot) || !(resumingHeldRows || loaded?.kind === "snapshot")) {
+           return { ...omission, requestCompletionMarker: true as const };
+diff --git a/packages/client-runtime/src/state/shellReducer.test.ts b/packages/client-runtime/src/state/shellReducer.test.ts
+index f98a14c3ed32d481330474b51a182f40f57b9eb4..0825d4464411562810465b1d350c44532c1d627d 100644
+--- a/packages/client-runtime/src/state/shellReducer.test.ts
++++ b/packages/client-runtime/src/state/shellReducer.test.ts
+@@ -330,6 +330,23 @@ describe("reuseUnchangedThreadShells", () => {
+     expect(next.threads[0]?.pullRequests).toBe(linked.pullRequests);
+   });
+ 
++  it("keeps a row's links through thread updates that omit them, one or batched", () => {
++    const { pullRequests: _links, ...withoutLinks } = linked;
++    const previous = { ...v2ShellSnapshot, threads: [linked] };
++    const update = (sequence: number): ShellStreamEvent => ({
++      kind: "thread.updated",
++      sequence,
++      location: "active",
++      thread: { ...withoutLinks, status: "running" },
++    });
++    const single = applyShellStreamEvent(previous, update(5));
++    const batched = applyShellStreamEvents(previous, [update(5), update(6)]);
++    for (const next of [single, batched]) {
++      expect(next.threads[0]?.status).toBe("running");
++      expect(next.threads[0]?.pullRequests).toBe(linked.pullRequests);
++    }
++  });
++
+   it("keeps an explicit link removal when metadata also changes", () => {
+     const updated = { ...linked, title: "Renamed", pullRequests: [] };
+     const incoming = { ...v2ShellSnapshot, threads: [updated] };
+diff --git a/packages/client-runtime/src/state/shellReducer.ts b/packages/client-runtime/src/state/shellReducer.ts
+index 2ef7dea533f3cafa276b0992ff6c489591a61d0b..5529473eca41de1ee44bf9ee421765aa8f38d233 100644
+--- a/packages/client-runtime/src/state/shellReducer.ts
++++ b/packages/client-runtime/src/state/shellReducer.ts
+@@ -9,6 +9,16 @@ import {
+ import * as Schema from "effect/Schema";
+ 
+ const sameThreadShell = Schema.toEquivalence(OrchestrationV2ThreadShell);
++
++/** A `thread.updated` without `pullRequests` keeps the row's links (`omitUnchangedPullRequests`). */
++function withHeldPullRequests(
++  previous: OrchestrationV2ThreadShell | undefined,
++  thread: OrchestrationV2ThreadShell,
++): OrchestrationV2ThreadShell {
++  return thread.pullRequests === undefined && previous?.pullRequests !== undefined
++    ? { ...thread, pullRequests: previous.pullRequests }
++    : thread;
++}
+ const sameProjectShell = Schema.toEquivalence(OrchestrationProjectShell);
+ const sameLinks = Schema.toEquivalence(Schema.UndefinedOr(Schema.Array(ThreadPullRequestLink)));
+ const sameRepositoryIdentity = Schema.toEquivalence(
+@@ -160,7 +170,8 @@ export function applyShellStreamEvent(
+         event.location === "active"
+           ? snapshot.threads.find((thread) => thread.id === event.thread.id)
+           : undefined;
+-      if (existing !== undefined && sameThreadShell(existing, event.thread)) {
++      const next = withHeldPullRequests(existing, event.thread);
++      if (existing !== undefined && sameThreadShell(existing, next)) {
+         return { ...snapshot, snapshotSequence: event.sequence };
+       }
+       const withoutThread = (threads: OrchestrationV2ShellSnapshot["threads"]) =>
+@@ -169,7 +180,7 @@ export function applyShellStreamEvent(
+         ...snapshot,
+         threads:
+           event.location === "active"
+-            ? upsertById(snapshot.threads, event.thread)
++            ? upsertById(snapshot.threads, next)
+             : withoutThread(snapshot.threads),
+         // The archive has its own bounded query/subscription. Older servers may
+         // still send archive-located deltas here; remove them from the normal
+@@ -243,8 +254,9 @@ export function applyShellStreamEvents(
+         const id = event.thread.id;
+         if (event.location === "active") {
+           const previous = threads.get(id);
+-          if (previous !== undefined && sameThreadShell(previous, event.thread)) break;
+-          threads.set(event.thread);
++          const next = withHeldPullRequests(previous, event.thread);
++          if (previous !== undefined && sameThreadShell(previous, next)) break;
++          threads.set(next);
+         } else {
+           threads.remove(id);
+         }
+diff --git a/packages/client-runtime/src/state/vcs.ts b/packages/client-runtime/src/state/vcs.ts
+index 310515ceb9915b0ace6621d335254de728ba3790..81b657e9308a40661c768fb5ffb8dea4ed757aa6 100644
+--- a/packages/client-runtime/src/state/vcs.ts
++++ b/packages/client-runtime/src/state/vcs.ts
+@@ -341,6 +341,11 @@ export function createVcsEnvironmentAtoms<R, E>(
+       concurrency: vcsCommandConcurrency,
+       onSettled: invalidateRefs,
+     }),
++    // Re-reads local status into the open status stream, which then sends only what changed.
++    refreshLocalStatus: createEnvironmentRpcCommand(runtime, {
++      label: "environment-data:vcs:refresh-local-status",
++      tag: WS_METHODS.vcsRefreshStatus,
++    }),
+     // Outside the serial queue: it only reads status, and a checkout picked right after opening
+     // the picker must not wait behind that read.
+     refreshLocalStatusForPicker: createEnvironmentRpcCommand(runtime, {
