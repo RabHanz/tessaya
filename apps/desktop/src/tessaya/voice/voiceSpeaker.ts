@@ -91,6 +91,42 @@ export const pcmShape = (pcm: Buffer): VoiceShape => {
     : { zcr: crossings / n, bright: Math.min(1, change / (4 * energy)) };
 };
 
+/** The player page's clocks when it schedules a chunk: its AudioContext's, and the speaker's output timestamp. */
+export interface AudioClock {
+  /** Context time (s) the chunk's first sample is scheduled at. */
+  readonly at: number;
+  readonly currentTime: number;
+  /** getOutputTimestamp(): the context time leaving the speaker, and the page's performance time it does (0 before it starts). */
+  readonly contextTime: number;
+  readonly performanceTime: number;
+  readonly timeOrigin: number;
+  readonly now: number;
+  /** outputLatency, or baseLatency where there is none (s). */
+  readonly latency: number;
+}
+
+/** Epoch ms the chunk's first sample is heard, from the audio clock, never from when the chunk or the page's reply arrived. */
+export const heardAtMs = (clock: AudioClock): number =>
+  clock.performanceTime > 0
+    ? clock.timeOrigin + clock.performanceTime + (clock.at - clock.contextTime) * 1000
+    : clock.timeOrigin + clock.now + (clock.at - clock.currentTime + clock.latency) * 1000;
+
+/** Her level and mouth shape are read every this long of sound, so the mouth follows syllables, not chunks. */
+export const FRAME_MS = 40;
+
+/** A chunk of 16-bit mono in FRAME_MS frames, each with the epoch ms it is heard. */
+export const speechFrames = (
+  samples: Buffer,
+  rate: number,
+  heardAt: number,
+): Array<{ readonly atMs: number; readonly pcm: Buffer }> => {
+  const step = Math.max(2, Math.round((rate * FRAME_MS) / 1000) * 2);
+  const frames = [];
+  for (let at = 0; at < samples.length; at += step)
+    frames.push({ atMs: heardAt + (at / 2 / rate) * 1000, pcm: samples.subarray(at, at + step) });
+  return frames;
+};
+
 /** Reads ahead into memory, so generation runs on while the sentence before is still playing. */
 const readAhead = (
   source: AsyncIterable<Buffer>,
