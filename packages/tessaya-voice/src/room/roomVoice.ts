@@ -472,19 +472,23 @@ const PIECE_GAP = new Int16Array(RATE / 5);
  * ("about how I speak" came out "about" + "Or" + "Speak.", 15 Nov 09:10). The joined pieces' words stand when the second
  * pass fails or hears clearly fewer words, so nothing he said is dropped.
  */
-export const wholeSentence = async (
-  joined: string,
-  pieces: ReadonlyArray<Int16Array>,
-  recognise: ((pcm: Int16Array) => Promise<string>) | undefined,
-): Promise<string> => {
-  if (recognise === undefined || pieces.length < 2) return joined;
+const joinedAudio = (pieces: ReadonlyArray<Int16Array>) => {
   const all = new Int16Array(pieces.reduce((n, p) => n + p.length + PIECE_GAP.length, 0));
   let at = 0;
   for (const p of pieces) {
     all.set(p, at);
     at += p.length + PIECE_GAP.length;
   }
-  const again = (await recognise(all).catch(() => "")).trim();
+  return all;
+};
+
+export const wholeSentence = async (
+  joined: string,
+  pieces: ReadonlyArray<Int16Array>,
+  recognise: ((pcm: Int16Array) => Promise<string>) | undefined,
+): Promise<string> => {
+  if (recognise === undefined || pieces.length < 2) return joined;
+  const again = (await recognise(joinedAudio(pieces)).catch(() => "")).trim();
   const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
   return again !== "" && words(again) >= 0.8 * words(joined) ? again : joined;
 };
@@ -1301,13 +1305,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       ) => envelopeOf(given, tainted, words, who, switched, via, speaker, affect, segments);
       const current = given === undefined ? rec : null;
       if (given === undefined) rec = null;
-      const speakerP =
-        given === undefined
-          ? deps.speaker?.(pcm).then(
-              (heard) => heldVoice(heard),
-              () => heldVoice(UNVERIFIED(deps.now())),
-            )
-          : undefined;
+      const scored = (audio: Int16Array) =>
+        deps.speaker?.(audio).then(
+          (heard) => heldVoice(heard),
+          () => heldVoice(UNVERIFIED(deps.now())),
+        );
+      let speakerP = given === undefined ? scored(pcm) : undefined;
       const affectP = given === undefined ? deps.affect?.(pcm).catch(() => undefined) : undefined;
       const voicesP = given === undefined ? deps.voices?.(pcm).catch(() => undefined) : undefined;
       let affectNow: Awaited<typeof affectP>;
@@ -1315,8 +1318,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // Who spoke never waits on how they sounded: tied to the mood reader, a ready Voice ID was dropped (15 Nov).
       let speakerNow: { readonly identity: Awaited<typeof speakerP> } | null =
         speakerP === undefined ? { identity: undefined } : null;
-      void speakerP?.then((identity) => (speakerNow = { identity }));
-      const sides = Promise.all([speakerP, affectP]);
+      const settle = (p: typeof speakerP) =>
+        void p?.then((identity) => {
+          if (speakerP === p) speakerNow = { identity };
+        });
+      settle(speakerP);
+      let sides = Promise.all([speakerP, affectP]);
       // What she would send her brain for these words, or null when this turn would not be answered.
       const seq = starts;
       const viaOf = (called: string | null, at: number): Tessaya["via"] =>
@@ -1597,7 +1604,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         carry = null;
       }
-      if (pieces.length > 1) text = await wholeSentence(text, pieces, deps.preview);
+      if (pieces.length > 1) {
+        // Voice ID on the whole sentence, not its last piece: "And" alone scored him as unverified (15 Nov).
+        if (given === undefined && deps.speaker !== undefined) {
+          speakerP = scored(joinedAudio(pieces));
+          speakerNow = null;
+          settle(speakerP);
+          sides = Promise.all([speakerP, affectP]);
+        }
+        text = await wholeSentence(text, pieces, deps.preview);
+      }
       text = askedFor(text, names)?.text ?? text;
       const called = calledName(text, names);
       // Another device of his is answering: what this one hears now is her voice from there, or his to that one.

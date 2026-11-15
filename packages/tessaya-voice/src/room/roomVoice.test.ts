@@ -1476,6 +1476,42 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     },
   );
 
+  it("scores Voice ID on the whole joined sentence, not its last piece (15 Nov)", async () => {
+    const holds: Array<() => void> = [];
+    const scored: number[] = [];
+    const t = setup({
+      recognise: heardInTurn(["Is it possible to", "have you turn it on for just one minute."]),
+      // One piece is too short to tell; the whole sentence is his.
+      speaker: async (pcm) => {
+        scored.push(pcm.length);
+        return pcm.length > 30 * 960
+          ? {
+              kind: "owner",
+              personId: "member-1",
+              name: "Rab",
+              confidence: 0.8,
+              verified: true,
+              inherited: false,
+              at: 0,
+            }
+          : UNVERIFIED(0);
+      },
+      sleep: async (ms) => {
+        if (ms === ROOM_CONFIG.joinMs) await new Promise<void>((r) => holds.push(r));
+        else t.advance(ms);
+      },
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    for (const release of holds) release();
+    await t.feed(false, 20);
+    expect(scored.at(-1)).toBeGreaterThan(2 * 20 * 960);
+    expect(t.brainCalls[0]!.tessaya.speaker?.kind).toBe("owner");
+  });
+
   it("joins a sentence he paused in to its rest and answers it once (07:39:13)", async () => {
     const holds: Array<() => void> = [];
     const t = setup({
