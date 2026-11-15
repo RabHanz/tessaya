@@ -17,6 +17,7 @@ import {
   removeEntry,
   type VocabularyEntry,
 } from "@t3tools/tessaya-shared/vocabulary";
+import { NAME_SOUNDALIKES } from "@t3tools/tessaya-shared/wakeVerify";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -58,6 +59,12 @@ export class TessayaVocabulary extends Context.Service<
 
 const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** A name's mis-writings from the one list (`NAME_SOUNDALIKES`), as heard forms its entry carries. */
+const soundAlikes = (name: string): { readonly heard?: ReadonlyArray<string> } => {
+  const heard = NAME_SOUNDALIKES[name.toLowerCase()]?.heard ?? [];
+  return heard.length === 0 ? {} : { heard };
+};
+
 /** Names as entries spelt their way, leaving out any he already has (as a phrase or as what it becomes). */
 export const withNames = (
   stored: ReadonlyArray<VocabularyEntry>,
@@ -69,7 +76,7 @@ export const withNames = (
   for (const raw of names) {
     const name = raw.replace(/\s+/g, " ").trim();
     if (name.length > 0 && name.length <= 50 && /\p{L}/u.test(name) && !has(name, all))
-      all.push({ phrase: name, replacement: null });
+      all.push({ phrase: name, replacement: null, ...soundAlikes(name) });
   }
   return all;
 };

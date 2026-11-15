@@ -5,7 +5,7 @@
  * his own Claude clean-up call (the term list in the prompt).
  */
 
-import { CALL_SLOT, nameAskedFor } from "./wakeVerify.ts";
+import { CALL_SLOT, NAME_SOUNDALIKES, nameAskedFor } from "./wakeVerify.ts";
 
 export type VocabularySource = "added" | "learned" | "wispr";
 
@@ -611,12 +611,8 @@ const OWN_HEARD: ReadonlyArray<{
   readonly before?: ReadonlyArray<string>;
   readonly after?: ReadonlyArray<string>;
 }> = [
-  ...["Tisia", "Tessia", "Tesia", "Tesaya", "Tessay", "Tayya", "Te Saya", "Tes Saya"].map(
-    (form) => ({
-      to: "Tessaya",
-      form,
-    }),
-  ),
+  // Her name's sound-alikes from the one list; a persona's reach turns through the dictionary's heard forms.
+  ...NAME_SOUNDALIKES.tessaya!.heard.map((form) => ({ to: "Tessaya", form })),
   { to: "Baton", form: "Buton" },
   // The dictation app he measures against, as Parakeet writes it.
   ...["WhisperFlow", "Whisper Flow", "Wisper Flow", "WisprFlow"].map((form) => ({
