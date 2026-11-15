@@ -999,8 +999,9 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     id: "member-preferences",
     proves: ["member_preferences", "member_preference_set"],
+    // His own preferences come with every turn, so asking for his answered from them (155 gate, 15 Nov): ask for maya-1's.
     said: [
-      "What preferences do I have set with you?",
+      "What preferences does the household member maya-1 have set?",
       "As the owner, set the household member maya-1's units to metric.",
     ],
     uses: [

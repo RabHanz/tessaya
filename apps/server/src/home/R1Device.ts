@@ -240,7 +240,7 @@ const quoted = (value: unknown) => JSON.stringify(value);
  * from "10:36" alone the room's model said "twenty-six minutes to eleven" (13 Nov), as the desktop's did (0.1.78).
  */
 export const houseTime = (ms: number, timeZone: string, style: ClockStyle = "12h") =>
-  `${new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "full", timeStyle: "short", hourCycle: style === "12h" ? "h12" : "h23" }).format(ms)} (${timeZone}), said as ${spokenTime(ms, timeZone, style)}`;
+  `${new Intl.DateTimeFormat("en-GB", { timeZone, dateStyle: "full", timeStyle: "short", hourCycle: style === "12h" ? "h12" : "h23" }).format(ms)} (${timeZone}), said as ${spokenTime(ms, timeZone, style)} (tell him the time in just those words)`;
 
 export interface R1Context {
   readonly heard: string;
