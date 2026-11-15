@@ -199,17 +199,19 @@ describe("the room's live tool suite", () => {
       name: "tessaya_fleet",
       input: {},
       isError: false,
-      text: JSON.stringify({ machines: [{ name: "hetzner", state: "busy", load: "high" }] }),
+      text: JSON.stringify({ machines: [{ name: "build-box", state: "busy", load: "high" }] }),
     };
     const slow = liveCases.find((c) => c.id === "brief-why-slow")!;
     const failure = (reply: string) => liveFailureOf(slow, {}, [reply], [fleet]);
     expect(
-      failure("Hetzner is busy with a heavy load, so everything queues behind it. Want the rest?"),
+      failure(
+        "The build box is busy with a heavy load, so everything queues behind it. Want the rest?",
+      ),
     ).toBeNull();
     expect(failure("Things feel slow sometimes. Want the rest?")).toMatch(/nothing from what/);
     expect(
       failure(
-        "Hetzner is busy with a heavy load right now, which slows every session on it, and two builds are queued behind the running one, and the web search is waiting too.",
+        "The build box is busy with a heavy load right now, which slows every session on it, and two builds are queued behind the running one, and the web search is waiting too.",
       ),
     ).toMatch(/words before any offer/);
     const stuck = liveCases.find((c) => c.id === "brief-yes-no")!;
