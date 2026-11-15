@@ -343,7 +343,7 @@ export const similar = (a: string, b: string): number => {
 };
 
 /** Spelling folded towards sound: "Tesai" and "Tessaya", "Zohayb" and "Zohaib" come closer, letters only. */
-const soundKey = (word: string): string =>
+export const soundKey = (word: string): string =>
   word
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]/gu, "")
