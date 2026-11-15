@@ -25,7 +25,7 @@ import {
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { clockLine, clockStyleOf } from "@t3tools/tessaya-shared/brain";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
-import { REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
+import { REST_MARK, stopIntent } from "@t3tools/tessaya-shared/stopPhrases";
 import {
   DEFAULT_OS_PACK,
   rosterLine,
@@ -70,7 +70,12 @@ import {
   sessionTools,
 } from "../tessaya/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
-import { greetEvent, isLineEvent, r1MoodOf } from "@t3tools/tessaya-shared/expression";
+import {
+  farewellEvent,
+  greetEvent,
+  isLineEvent,
+  r1MoodOf,
+} from "@t3tools/tessaya-shared/expression";
 import type { ExpressionMood } from "@t3tools/tessaya-contracts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
@@ -945,10 +950,14 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
     // Her brain did not answer: the eyes say so, the words fill in.
     yield* eyes(device, "concerned", 6000, "the brain did not answer");
     const plain = "Sorry, I lost my train of thought. Say that again?";
-    const greet = greetEvent(input.heard, justSpoke);
-    return greet === null
-      ? yield* sorry(input, plain)
-      : ((yield* expressOr(greet, { ...lineWho(input), plain }))?.text ?? plain);
+    const moment =
+      greetEvent(input.heard, justSpoke) ??
+      (stopIntent(input.heard) === "dismiss" ? farewellEvent(input.heard) : null);
+    if (moment === null) return yield* sorry(input, plain);
+    const said = (yield* expressOr(moment, { ...lineWho(input), plain }))?.text ?? plain;
+    // Kept in the conversation, so his next greeting is "hi again", not a fresh hello.
+    yield* r1Commit(device, input, said, [], turn);
+    return said;
   }
   const outcomes = yield* runActs(plan.value.acts);
   const said = spokenReply(

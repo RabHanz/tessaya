@@ -68,12 +68,12 @@ export const LINE_EVENTS = {
   ),
   "greet.hello": spec(
     "Hello.",
-    "He greeted her, the first words in a while; she greets him back in a few words, offering no help. Any hour.",
+    "He greeted her, the first words of a new conversation (minutes or days since the last, she cannot tell which); she greets him back in a few words, offering no help and saying nothing of how long it has been. Any hour.",
     { maxWords: 7, mood: "happy", gesture: "wave" },
   ),
   "greet.again": spec(
     "Hi again.",
-    "He greeted her again minutes after they last spoke: the same conversation going on, so a few words, no good morning, no how are you, nothing that starts afresh.",
+    "He greeted her again minutes after they last spoke: the same conversation going on, so a few words, no good morning, no how are you, nothing that starts afresh, and no remark on how soon or why he is back.",
     { maxWords: 5, mood: "happy", gesture: "nodSmall" },
   ),
   "filler.hold": spec("One moment.", "He asked something and her answer is a few seconds away.", {
@@ -285,12 +285,12 @@ export const LINE_EVENTS = {
   }),
   "end.bye": spec(
     "Bye for now.",
-    "He said goodbye to end the conversation; a short warm farewell before she rests, never an offer to help later. Any hour, so no good night.",
+    "He said goodbye to end the conversation; a short warm farewell before she rests, never an offer to help later and no claim about what she will do or how things stand. Any hour, so no good night.",
     { maxWords: 6, mood: "happy", gesture: "wave" },
   ),
   "end.night": spec(
     "Good night.",
-    "He said good night to end the conversation, off to sleep; a short soft good night before she rests, never an offer to help later.",
+    "He said good night to end the conversation, off to sleep; a short soft good night before she rests, never an offer to help later and no claim about what she will do or how things stand.",
     { maxWords: 6, mood: "sleepy", gesture: "nodSoft" },
   ),
   "id.failed": spec(
@@ -379,7 +379,7 @@ export const LINE_EVENTS = {
   }),
   "moment.idle": spec(
     "",
-    "On his desktop he has worked quietly a while; she says a small remark to herself, needing no answer. She knows nothing of his work, devices or room right now, so no claim about any of them, and never calls him he.",
+    "On his desktop he has worked quietly a while; she says a small remark to herself, needing no answer. She knows nothing of his work, devices or room right now, so no claim about any of them, no offer of help, and never calls him he.",
     { priority: "ambient", maxWords: 8, mood: "curious", gesture: "lookAway" },
   ),
 } as const satisfies Record<string, LineSpec>;
@@ -556,6 +556,7 @@ export const mayExpress = (
 export interface LinesPersona {
   readonly name: string;
   readonly role: string;
+  readonly traits?: Readonly<Partial<Record<string, number>>>;
 }
 
 /**
@@ -593,6 +594,15 @@ export const linesPrompt = (input: {
   });
   return [
     `You are ${input.persona.name}, a voice assistant who lives in his devices: ${input.persona.role}`,
+    ...(input.persona.traits === undefined
+      ? []
+      : [
+          `Your temperament, each 0 to 1 (formal: how formal your words are; play: how playful; sass: how dry or cheeky): ${Object.entries(
+            input.persona.traits,
+          )
+            .map(([k, v]) => `${k} ${v}`)
+            .join(", ")}. Your words keep to it.`,
+        ]),
     `Write ${input.perEvent} different spoken lines for each moment below, in your own voice and character, ${input.slot === undefined ? "fit for any time of day" : `for the ${input.slot}`}.`,
     "Each line is said aloud as it is, so: natural speech, short, warm or dry as fits you, never the same shape twice.",
     "Never describe what you are doing or thinking, never introduce yourself by name (except where a moment is about that), no stage directions, no emoji, no numbers: real names and numbers arrive only through the {slots}.",

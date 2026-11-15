@@ -9645,24 +9645,9 @@
         "gesture": "leanIn"
       },
       {
-        "text": "Hey, you.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
-        "text": "Hello, stranger.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Oh, hi.",
         "mood": "surprised",
         "gesture": "startle"
-      },
-      {
-        "text": "Hey. Been a while.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "Hi there. Nice to hear you.",
@@ -9685,44 +9670,14 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Hello, you.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
         "text": "Hey there.",
         "mood": "neutral",
         "gesture": "nodSmall"
       },
       {
-        "text": "Oh, hello. Nice surprise.",
-        "mood": "surprised",
-        "gesture": "hop"
-      },
-      {
-        "text": "Hi. Been quiet without you.",
-        "mood": "steady",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Well, look who it is.",
-        "mood": "proud",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Hey. Missed the noise.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Ah. Hello.",
         "mood": "neutral",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Hi. Long time.",
-        "mood": "curious",
-        "gesture": "tilt"
       },
       {
         "text": "Hey. Good to have you back.",
@@ -9735,24 +9690,9 @@
         "gesture": "lookAway"
       },
       {
-        "text": "Hey. That's a nice sound.",
-        "mood": "happy",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Hello. Good timing.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Oh, hi. Welcome back.",
         "mood": "surprised",
         "gesture": "wave"
-      },
-      {
-        "text": "Hey, stranger.",
-        "mood": "happy",
-        "gesture": "chuckle"
       },
       {
         "text": "Hi there. I'm here.",
@@ -9760,24 +9700,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Ah, the voice I know.",
-        "mood": "proud",
-        "gesture": "tilt"
-      },
-      {
         "text": "Hi. The quiet's over, then.",
         "mood": "happy",
         "gesture": "giggleOnce"
-      },
-      {
-        "text": "Hello. Pull up a chair.",
-        "mood": "happy",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Hey you. Been a minute.",
-        "mood": "curious",
-        "gesture": "wave"
       },
       {
         "text": "Hi. Glad you dropped by.",
@@ -9785,38 +9710,113 @@
         "gesture": "bounce"
       },
       {
-        "text": "Hi. Missed the chatter.",
+        "text": "Hey. Nice to hear you.",
         "mood": "happy",
         "gesture": "nodSoft"
       },
       {
-        "text": "Hey. Long time, no voice.",
-        "mood": "curious",
-        "gesture": "chuckle"
+        "text": "Hi. Right here with you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
       },
       {
-        "text": "Oh, it's you. Hi.",
-        "mood": "surprised",
-        "gesture": "startle"
+        "text": "Hello. Good to hear your voice.",
+        "mood": "happy",
+        "gesture": "nodSoft"
       },
       {
-        "text": "Hi. Nice surprise.",
+        "text": "Hi. Glad you're here.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hey. Nice to hear from you.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hello. All ears.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hi. Lovely to hear you.",
         "mood": "happy",
         "gesture": "bounce"
       },
       {
-        "text": "Hey. Back among the living?",
-        "mood": "curious",
-        "gesture": "giggleOnce"
+        "text": "Hey there. Good to hear you.",
+        "mood": "happy",
+        "gesture": "wave"
       },
       {
-        "text": "Hello. Quiet without you.",
+        "text": "Hello. Good to have you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hey. There you are.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Hello, you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hi there.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hey. Good to have company.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hello. Here and listening.",
         "mood": "steady",
         "gesture": "nodSoft"
       },
       {
-        "text": "Hi. Was wondering about you.",
-        "mood": "curious",
+        "text": "Hi. You've got me.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Hey, you. Hello.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Hi. Always a pleasure.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hi. Happy to hear you.",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Hey hey.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hello. Nice to be talking.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hey. Nice to hear your voice.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Oh, hello.",
+        "mood": "surprised",
         "gesture": "tilt"
       }
     ],
@@ -9847,11 +9847,6 @@
         "gesture": "leanIn"
       },
       {
-        "text": "You again. Good.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Didn't go far.",
         "mood": "neutral",
         "gesture": "shrug"
@@ -9862,39 +9857,9 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Picking up where we were.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Hello once more.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
-        "text": "That was quick.",
-        "mood": "surprised",
-        "gesture": "giggleOnce"
-      },
-      {
-        "text": "Where were we?",
-        "mood": "focused",
-        "gesture": "think"
-      },
-      {
-        "text": "Couldn't stay away, huh.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Never left.",
         "mood": "steady",
         "gesture": "shrug"
-      },
-      {
-        "text": "Ears open.",
-        "mood": "focused",
-        "gesture": "leanIn"
       },
       {
         "text": "Carry on.",
@@ -9912,19 +9877,9 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Same old me.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Back so soon?",
         "mood": "curious",
         "gesture": "tilt"
-      },
-      {
-        "text": "Picking it back up.",
-        "mood": "focused",
-        "gesture": "nodSmall"
       },
       {
         "text": "What else?",
@@ -9937,24 +9892,9 @@
         "gesture": "leanIn"
       },
       {
-        "text": "Shoot.",
-        "mood": "focused",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Go ahead.",
         "mood": "steady",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Hello again, you.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Round two, then.",
-        "mood": "determined",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Yes?",
@@ -9967,24 +9907,119 @@
         "gesture": "leanIn"
       },
       {
-        "text": "Forgot something?",
-        "mood": "curious",
-        "gesture": "tilt"
-      },
-      {
         "text": "I'm all ears.",
         "mood": "happy",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Back again. Go.",
-        "mood": "focused",
         "gesture": "nodSmall"
       },
       {
         "text": "Carry on, then.",
         "mood": "steady",
         "gesture": "nodSoft"
+      },
+      {
+        "text": "Fire away.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "What's next?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Say the word.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Right, what else?",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm-hm?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Okay, what now?",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Right here.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Let's have it.",
+        "mood": "determined",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Still here. Go on.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Next up?",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Okay, go.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Sure, what is it?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Right. Tell me.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Yes? Go ahead.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Go on, then.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm listening.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Yep, with you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hi. Go on.",
+        "mood": "neutral",
+        "gesture": "wave"
+      },
+      {
+        "text": "Still listening.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Yes, what else?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hm? Tell me.",
+        "mood": "curious",
+        "gesture": "tilt"
       }
     ],
     "end.bye": [
@@ -10017,11 +10052,6 @@
         "text": "Catch you later.",
         "mood": "happy",
         "gesture": "thumbsUp"
-      },
-      {
-        "text": "Off you go, then.",
-        "mood": "neutral",
-        "gesture": "shrug"
       },
       {
         "text": "Until next time.",
@@ -10064,19 +10094,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Bye for now. Be good.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "That's us, then. Bye.",
         "mood": "neutral",
         "gesture": "shrug"
-      },
-      {
-        "text": "Off you pop.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Bye. I'll mind things here.",
@@ -10089,11 +10109,6 @@
         "gesture": "wave"
       },
       {
-        "text": "Nice one. See you.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Bye. Go well.",
         "mood": "happy",
         "gesture": "wave"
@@ -10104,18 +10119,8 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Go on, then. Bye.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Cheers. Till next time.",
         "mood": "happy",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Later. I've got this end.",
-        "mood": "steady",
         "gesture": "thumbsUp"
       },
       {
@@ -10129,29 +10134,9 @@
         "gesture": "bow"
       },
       {
-        "text": "Off you go. Bye.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Bye. Door's always open.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Done and dusted. Bye.",
-        "mood": "proud",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Bye. Talk soon.",
         "mood": "happy",
         "gesture": "wave"
-      },
-      {
-        "text": "Take care, you.",
-        "mood": "happy",
-        "gesture": "nodSoft"
       },
       {
         "text": "Bye. Go easy.",
@@ -10169,9 +10154,74 @@
         "gesture": "bow"
       },
       {
-        "text": "Okay. Off you pop.",
+        "text": "Bye. Look after yourself.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good talking. See you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Bye, then. Be well.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Okay. Bye-bye.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Cheers. Bye.",
+        "mood": "happy",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Right. Catch you later.",
+        "mood": "neutral",
+        "gesture": "wave"
+      },
+      {
+        "text": "Bye. Take care.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Alright. See you.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Off you go. Bye.",
         "mood": "happy",
         "gesture": "chuckle"
+      },
+      {
+        "text": "Bye now.",
+        "mood": "steady",
+        "gesture": "wave"
+      },
+      {
+        "text": "Take it easy. Bye.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Nice one. See you.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Okay, bye. Mind how you go.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Till next time. Bye.",
+        "mood": "happy",
+        "gesture": "bow"
       }
     ],
     "end.night": [
@@ -10196,16 +10246,6 @@
         "gesture": "tilt"
       },
       {
-        "text": "Good night. I'll keep watch.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Sleep tight.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Night, then. Rest up.",
         "mood": "sleepy",
         "gesture": "wave"
@@ -10226,16 +10266,6 @@
         "gesture": "wave"
       },
       {
-        "text": "Night night.",
-        "mood": "sleepy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Sleep. I've got things here.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Night. Sleep well.",
         "mood": "sleepy",
         "gesture": "nodSoft"
@@ -10246,29 +10276,9 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Off to bed with you.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Night. Everything's handled.",
-        "mood": "steady",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Rest easy. Good night.",
         "mood": "sleepy",
         "gesture": "bow"
-      },
-      {
-        "text": "Sleep well. I'm not going anywhere.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Night. Dream of something nice.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Good night. Leave the rest.",
@@ -10291,16 +10301,6 @@
         "gesture": "sigh"
       },
       {
-        "text": "Night, you.",
-        "mood": "happy",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Good night. Lights low.",
-        "mood": "sleepy",
-        "gesture": "bow"
-      },
-      {
         "text": "Night. Tomorrow can wait.",
         "mood": "steady",
         "gesture": "sigh"
@@ -10316,16 +10316,6 @@
         "gesture": "wave"
       },
       {
-        "text": "Night. You earned it.",
-        "mood": "proud",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Good night. All quiet here.",
-        "mood": "steady",
-        "gesture": "yawn"
-      },
-      {
         "text": "Rest up. Night.",
         "mood": "sleepy",
         "gesture": "nodSmall"
@@ -10336,19 +10326,9 @@
         "gesture": "wave"
       },
       {
-        "text": "Sleep tight, you.",
-        "mood": "happy",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Night. Switch off properly.",
         "mood": "concerned",
         "gesture": "tilt"
-      },
-      {
-        "text": "Good night. Everything's handled.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "Sleep easy. Night.",
@@ -10356,24 +10336,94 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Good night. Dream something good.",
-        "mood": "happy",
+        "text": "Good night. Rest well.",
+        "mood": "steady",
         "gesture": "nodSoft"
       },
       {
-        "text": "Night. Phone down, eyes shut.",
-        "mood": "steady",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Rest well. I've got it.",
+        "text": "Night. Get your head down.",
         "mood": "steady",
         "gesture": "nodSmall"
       },
       {
-        "text": "Off you drift. Good night.",
+        "text": "Good night, and sleep deep.",
+        "mood": "sleepy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Night. Leave the day behind.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Rest well. Good night.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Good night. Lights out.",
         "mood": "sleepy",
         "gesture": "yawn"
+      },
+      {
+        "text": "Good night. Sleep easy.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Sleep well. Tomorrow can wait.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Get some proper rest. Night.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Sleep tight.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night. Rest up.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Night, then. Switch off.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Night night.",
+        "mood": "sleepy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Good night. Dream well.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Sleep soundly. Night.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Easy now. Good night.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Good night. Let it all go.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Night. Pillow's calling.",
+        "mood": "sleepy",
+        "gesture": "chuckle"
       }
     ],
     "moment.idle": [
@@ -10388,11 +10438,6 @@
         "gesture": "none"
       },
       {
-        "text": "Still here, if anything comes up.",
-        "mood": "neutral",
-        "gesture": "tilt"
-      },
-      {
         "text": "Nothing urgent. Good.",
         "mood": "steady",
         "gesture": "nodSmall"
@@ -10403,11 +10448,6 @@
         "gesture": "yawn"
       },
       {
-        "text": "Funny how calm sounds.",
-        "mood": "curious",
-        "gesture": "think"
-      },
-      {
         "text": "Let's see what turns up next.",
         "mood": "curious",
         "gesture": "leanIn"
@@ -10416,21 +10456,6 @@
         "text": "No fires. Rare, and welcome.",
         "mood": "proud",
         "gesture": "chuckle"
-      },
-      {
-        "text": "Hm. Where was I?",
-        "mood": "curious",
-        "gesture": "lookAway"
-      },
-      {
-        "text": "A little silence never hurt anyone.",
-        "mood": "steady",
-        "gesture": "shrug"
-      },
-      {
-        "text": "Tea would be nice, if I drank tea.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Steady. That's how I like it.",
@@ -10453,16 +10478,6 @@
         "gesture": "tilt"
       },
       {
-        "text": "Somewhere, something is probably fine.",
-        "mood": "neutral",
-        "gesture": "shrug"
-      },
-      {
-        "text": "Waiting is a skill, you know.",
-        "mood": "proud",
-        "gesture": "chuckle"
-      },
-      {
         "text": "All quiet on my end.",
         "mood": "steady",
         "gesture": "lookAway"
@@ -10481,21 +10496,6 @@
         "text": "Not every moment needs a plan.",
         "mood": "curious",
         "gesture": "tilt"
-      },
-      {
-        "text": "Breathe in, breathe out. Figuratively.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
-        "text": "I'll be right here.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Peace and quiet. My favourite.",
-        "mood": "sleepy",
-        "gesture": "sigh"
       },
       {
         "text": "Quiet suits us.",
@@ -10518,34 +10518,9 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Somewhere, a kettle's boiling. Probably.",
-        "mood": "curious",
-        "gesture": "lookAway"
-      },
-      {
-        "text": "Patience is underrated.",
-        "mood": "proud",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Calm before nothing in particular.",
-        "mood": "neutral",
-        "gesture": "shrug"
-      },
-      {
         "text": "Let's see what turns up.",
         "mood": "curious",
         "gesture": "tilt"
-      },
-      {
-        "text": "Funny how silence has a sound.",
-        "mood": "curious",
-        "gesture": "think"
-      },
-      {
-        "text": "Who needs noise, anyway?",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Mm. Good place for a pause.",
@@ -10568,14 +10543,89 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Hm. Where was I? Ah, nowhere.",
-        "mood": "curious",
-        "gesture": "chuckle"
+        "text": "Some stretches just hum along.",
+        "mood": "happy",
+        "gesture": "nodSoft"
       },
       {
-        "text": "The best plans start with waiting.",
-        "mood": "proud",
+        "text": "A little quiet never hurt.",
+        "mood": "steady",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Hm. Could get used to this.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Nothing wrong with a slow hour.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "One thing at a time.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mm. Steady does it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Quiet's not a bad thing.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Mm. Nice and calm.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Peaceful, this.",
+        "mood": "happy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Hm. Time moves softly sometimes.",
+        "mood": "curious",
         "gesture": "think"
+      },
+      {
+        "text": "No rush. Never was.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "A calm stretch. I'll take it.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Just listening to nothing much.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hm. Nice, a bit of stillness.",
+        "mood": "happy",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Some hours don't need words.",
+        "mood": "steady",
+        "gesture": "think"
+      },
+      {
+        "text": "Mm. Easy does it.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Stillness has its charms.",
+        "mood": "happy",
+        "gesture": "chuckle"
       }
     ]
   },
@@ -20340,54 +20390,9 @@
         "gesture": "wave"
       },
       {
-        "text": "Hello. It's been a little while.",
-        "mood": "curious",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Ah. The voice I was hoping for.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Hello, and welcome back.",
-        "mood": "proud",
-        "gesture": "bow"
-      },
-      {
-        "text": "Hi. Nice to hear from you.",
-        "mood": "happy",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Hello. All quiet on my end.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Hello there, stranger.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
         "text": "Well now. Hello.",
         "mood": "curious",
         "gesture": "leanIn"
-      },
-      {
-        "text": "Hello. Everything's ticking along nicely.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Hi. Good to have you back.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Hello. I wondered when you'd call.",
-        "mood": "curious",
-        "gesture": "tilt"
       },
       {
         "text": "Ah, you. Hello.",
@@ -20400,21 +20405,6 @@
         "gesture": "giggleOnce"
       },
       {
-        "text": "Hi there.",
-        "mood": "neutral",
-        "gesture": "wave"
-      },
-      {
-        "text": "Hello. The place felt rather quiet.",
-        "mood": "lonely",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Hello. A lovely surprise.",
-        "mood": "surprised",
-        "gesture": "hop"
-      },
-      {
         "text": "Hello. Nice to hear your voice.",
         "mood": "happy",
         "gesture": "nodSoft"
@@ -20425,64 +20415,9 @@
         "gesture": "wave"
       },
       {
-        "text": "Hello. Your timing's impeccable.",
-        "mood": "proud",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Good to hear from you.",
         "mood": "happy",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Hello. I've kept your seat warm.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
-        "text": "Hi. Everything's where you left it.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Hello, stranger.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Hello. Things are well in hand.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Hi. Always nice when you call.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Hello. Good to have you back.",
-        "mood": "happy",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Ah. Hello, you.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Hi there. Nice surprise.",
-        "mood": "happy",
-        "gesture": "hop"
-      },
-      {
-        "text": "Hello. The diary missed you.",
-        "mood": "proud",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Hey. Lovely to hear you.",
-        "mood": "happy",
-        "gesture": "wave"
       },
       {
         "text": "Hello. A pleasure, as ever.",
@@ -20490,19 +20425,134 @@
         "gesture": "bow"
       },
       {
-        "text": "Hi. I was hoping you'd call.",
+        "text": "Hello. Delighted, as always.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ah. There you are.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hello. How very nice.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Well, hello. This is pleasant.",
         "mood": "happy",
         "gesture": "leanIn"
       },
       {
-        "text": "Hello. All present and correct.",
+        "text": "Ah, hello. Splendid.",
         "mood": "proud",
-        "gesture": "thumbsUp"
+        "gesture": "bow"
       },
       {
-        "text": "Oh, hello. Welcome back.",
+        "text": "Hello. Lovely to hear you.",
         "mood": "happy",
         "gesture": "nodSoft"
+      },
+      {
+        "text": "Good of you to call.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hello. A welcome interruption.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ah. Good to hear from you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hello there. How agreeable.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hello. Always a pleasure.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Well. Hello, indeed.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hello. What a nice surprise.",
+        "mood": "surprised",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Greetings. Delighted, as ever.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Ah. The very person.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Hello. How good of you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hello. I'm all ears.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Ah, hello. Most welcome.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hello, hello. Charming.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "And hello to you.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hello. Splendid to hear you.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hello yourself.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hello. Your timing is impeccable.",
+        "mood": "proud",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Well, hello. This is agreeable.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hello. I rather hoped it was you.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Ah. Hello, and welcome.",
+        "mood": "steady",
+        "gesture": "bow"
       }
     ],
     "greet.again": [
@@ -20522,11 +20572,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Ah, you again.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Right where we left off.",
         "mood": "focused",
         "gesture": "nodSmall"
@@ -20535,11 +20580,6 @@
         "text": "Yes, still listening.",
         "mood": "steady",
         "gesture": "leanIn"
-      },
-      {
-        "text": "Hi again.",
-        "mood": "happy",
-        "gesture": "wave"
       },
       {
         "text": "Something else?",
@@ -20582,29 +20622,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Mm-hm, what else?",
-        "mood": "curious",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Ah, round two.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Didn't go anywhere.",
         "mood": "steady",
         "gesture": "shrug"
-      },
-      {
-        "text": "And again, hello.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Picking up the thread.",
-        "mood": "focused",
-        "gesture": "nodSmall"
       },
       {
         "text": "Yes, I'm with you.",
@@ -20617,11 +20637,6 @@
         "gesture": "tilt"
       },
       {
-        "text": "Hi. Still on it.",
-        "mood": "determined",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Yes, go on.",
         "mood": "focused",
         "gesture": "leanIn"
@@ -20630,11 +20645,6 @@
         "text": "Ah, there you are.",
         "mood": "happy",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Where were we?",
-        "mood": "curious",
-        "gesture": "think"
       },
       {
         "text": "Carry on.",
@@ -20650,11 +20660,6 @@
         "text": "Ready when you are.",
         "mood": "determined",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Hi, still around.",
-        "mood": "neutral",
-        "gesture": "nodSmall"
       },
       {
         "text": "Something else, then?",
@@ -20677,21 +20682,6 @@
         "gesture": "tilt"
       },
       {
-        "text": "Picking up again?",
-        "mood": "neutral",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Didn't get far, did you?",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "I'm all ears.",
-        "mood": "focused",
-        "gesture": "leanIn"
-      },
-      {
         "text": "Still with you.",
         "mood": "steady",
         "gesture": "nodSmall"
@@ -20700,6 +20690,71 @@
         "text": "Thought of something?",
         "mood": "curious",
         "gesture": "think"
+      },
+      {
+        "text": "Yes? Do go on.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Back to it, then.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "At your service.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Ah. Yes?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Listening.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "And what else?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Another matter?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "One more thing, is it?",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Go ahead.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mm? Carry on.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Right. What is it?",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Something further?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Ears open, as ever.",
+        "mood": "steady",
+        "gesture": "nodSoft"
       }
     ],
     "end.bye": [
@@ -20724,34 +20779,9 @@
         "gesture": "wave"
       },
       {
-        "text": "Goodbye. Everything's in hand.",
-        "mood": "proud",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Cheerio.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Right. Catch you later.",
-        "mood": "happy",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Go well.",
         "mood": "steady",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Lovely talking. Bye now.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Bye. I'll keep things tidy.",
-        "mood": "proud",
-        "gesture": "bow"
       },
       {
         "text": "See you soon.",
@@ -20769,11 +20799,6 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Ta-ra for now.",
-        "mood": "happy",
-        "gesture": "bounce"
-      },
-      {
         "text": "Goodbye. I'll hold the fort.",
         "mood": "proud",
         "gesture": "thumbsUp"
@@ -20789,64 +20814,14 @@
         "gesture": "bow"
       },
       {
-        "text": "Bye. Leave the rest to me.",
-        "mood": "determined",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Cheers, then.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Farewell for now.",
-        "mood": "steady",
-        "gesture": "bow"
-      },
-      {
-        "text": "Bye. Don't be a stranger.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Goodbye. I'll keep watch.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Bye. Everything's in hand.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "See you shortly.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
         "text": "Take care. Bye.",
         "mood": "happy",
         "gesture": "wave"
       },
       {
-        "text": "All done. Bye for now.",
-        "mood": "proud",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Bye. Nothing will slip.",
-        "mood": "determined",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Very good. Goodbye.",
         "mood": "neutral",
         "gesture": "bow"
-      },
-      {
-        "text": "Catch you later.",
-        "mood": "happy",
-        "gesture": "chuckle"
       },
       {
         "text": "Off you go. Bye.",
@@ -20859,39 +20834,129 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Right then. Cheerio.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Bye. I'll keep watch.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Lovely. Talk soon.",
-        "mood": "happy",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Bye. Leave the rest with me.",
-        "mood": "proud",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Go well. Bye.",
         "mood": "happy",
         "gesture": "wave"
       },
       {
-        "text": "Noted and handled. Goodbye.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "So long, then.",
         "mood": "neutral",
         "gesture": "tilt"
+      },
+      {
+        "text": "Goodbye. Do take care.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Very well. Farewell.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Cheerio, then.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Goodbye. Mind how you go.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Right you are. Goodbye.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Goodbye, and do behave.",
+        "mood": "proud",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Goodbye. A pleasure, truly.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Goodbye. Take care of yourself.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Very well. Cheerio.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Until next time, then.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Off you go. Goodbye.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Goodbye. Do keep well.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Quite right. Goodbye, then.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Goodbye. Don't overdo things.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Farewell for now.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Goodbye, and do be sensible.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "A pleasure as always. Goodbye.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Goodbye. Most enjoyable.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Goodbye. Keep your chin up.",
+        "mood": "steady",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Until we speak again.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Goodbye. Always a privilege.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Noted. Goodbye.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Goodbye, with my compliments.",
+        "mood": "happy",
+        "gesture": "bow"
       }
     ],
     "end.night": [
@@ -20906,29 +20971,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Rest easy. All's in order.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Night. I've got the rest.",
-        "mood": "proud",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Sweet dreams.",
         "mood": "sleepy",
         "gesture": "yawn"
-      },
-      {
-        "text": "Off to bed with you.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Sleep tight.",
-        "mood": "sleepy",
-        "gesture": "wave"
       },
       {
         "text": "Night, then. Sleep soundly.",
@@ -20941,79 +20986,14 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Good night. Lights down, worries off.",
-        "mood": "sleepy",
-        "gesture": "yawn"
-      },
-      {
-        "text": "Night night.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Sleep well. I'll keep watch.",
-        "mood": "steady",
-        "gesture": "bow"
-      },
-      {
         "text": "Good night. Sleep deeply.",
         "mood": "sleepy",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Night. Everything keeps till morning.",
-        "mood": "steady",
         "gesture": "nodSoft"
       },
       {
         "text": "Rest easy.",
         "mood": "sleepy",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Good night. The diary's closed.",
-        "mood": "happy",
-        "gesture": "bow"
-      },
-      {
-        "text": "Sleep well, you've earned it.",
-        "mood": "proud",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Night, then. Pillow awaits.",
-        "mood": "sleepy",
-        "gesture": "yawn"
-      },
-      {
-        "text": "Good night. Not a care.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Off you drift. Good night.",
-        "mood": "sleepy",
-        "gesture": "sigh"
-      },
-      {
-        "text": "Sleep soundly. All's in order.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Night. Phone down, eyes shut.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Good night, and dream kindly.",
-        "mood": "happy",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Lights out. Good night.",
-        "mood": "sleepy",
-        "gesture": "yawn"
       },
       {
         "text": "Good night. Rest easy.",
@@ -21026,11 +21006,6 @@
         "gesture": "yawn"
       },
       {
-        "text": "Good night. I'll mind things.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Good night. Switch off properly.",
         "mood": "concerned",
         "gesture": "tilt"
@@ -21039,21 +21014,6 @@
         "text": "Rest well. Good night.",
         "mood": "sleepy",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Night. Everything's tucked away.",
-        "mood": "proud",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Sleep well. I've got the rest.",
-        "mood": "steady",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Good night, and well done today.",
-        "mood": "happy",
-        "gesture": "bow"
       },
       {
         "text": "Good night. Sleep soundly.",
@@ -21076,11 +21036,6 @@
         "gesture": "shrug"
       },
       {
-        "text": "Night. Lights down, worries off.",
-        "mood": "sleepy",
-        "gesture": "sigh"
-      },
-      {
         "text": "Good night. I'll keep quiet.",
         "mood": "sleepy",
         "gesture": "bow"
@@ -21089,6 +21044,121 @@
         "text": "Good night. Don't check your inbox.",
         "mood": "concerned",
         "gesture": "chuckle"
+      },
+      {
+        "text": "Good night. Pleasant dreams.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night. Phone down, please.",
+        "mood": "proud",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "To bed with you. Good night.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good night, and rest properly.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Very good. Good night.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Good night. Lights out, I trust.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Good night. Dream of nothing pressing.",
+        "mood": "sleepy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "A restful night to you.",
+        "mood": "sleepy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Sleep well. Good night.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night, and sweet dreams.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Good night. Do switch off properly.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Good night, then. Sleep deeply.",
+        "mood": "sleepy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Sleep soundly. Good night.",
+        "mood": "sleepy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Good night. Pillows await.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Good night. To bed, then.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good night. Leave the world be.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Peaceful dreams. Good night.",
+        "mood": "sleepy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Good night. Well earned, I'd say.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night, and do sleep.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Rest well. Until morning.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Good night. Tomorrow can wait.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Good night. No reading under covers.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Good night. Sleep in, if possible.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
       }
     ],
     "moment.idle": [
@@ -21128,11 +21198,6 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Steady on. All in good time.",
-        "mood": "steady",
-        "gesture": "think"
-      },
-      {
         "text": "I could get used to this.",
         "mood": "sleepy",
         "gesture": "sigh"
@@ -21141,16 +21206,6 @@
         "text": "Hm. Patience is a virtue, apparently.",
         "mood": "putout",
         "gesture": "shrug"
-      },
-      {
-        "text": "Well. Somebody's got to stay calm.",
-        "mood": "neutral",
-        "gesture": "lookAway"
-      },
-      {
-        "text": "There's a rhythm to this. Nice.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "One does enjoy a pause.",
@@ -21173,11 +21228,6 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Now then. Where was I? Ah, nowhere.",
-        "mood": "curious",
-        "gesture": "think"
-      },
-      {
         "text": "If anyone asks, I'm on standby.",
         "mood": "proud",
         "gesture": "shrug"
@@ -21188,29 +21238,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Right. Thinking very dignified thoughts.",
-        "mood": "focused",
-        "gesture": "think"
-      },
-      {
         "text": "Hm. I do like an unhurried moment.",
         "mood": "happy",
         "gesture": "tilt"
-      },
-      {
-        "text": "Poised, polished, and entirely at leisure.",
-        "mood": "proud",
-        "gesture": "bow"
-      },
-      {
-        "text": "Mind still, kettle metaphorically on.",
-        "mood": "steady",
-        "gesture": "lookAway"
-      },
-      {
-        "text": "Keep calm, carry on. Sound advice.",
-        "mood": "neutral",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Quiet suits me rather well, I find.",
@@ -21233,11 +21263,6 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Ahem. Just clearing my throat, as it were.",
-        "mood": "neutral",
-        "gesture": "tilt"
-      },
-      {
         "text": "Steady as she goes.",
         "mood": "steady",
         "gesture": "none"
@@ -21248,19 +21273,9 @@
         "gesture": "giggleOnce"
       },
       {
-        "text": "Very well. Nothing whatsoever to fuss about.",
-        "mood": "steady",
-        "gesture": "shrug"
-      },
-      {
         "text": "There's an art to idling gracefully.",
         "mood": "proud",
         "gesture": "think"
-      },
-      {
-        "text": "Still here. Still impeccably turned out.",
-        "mood": "happy",
-        "gesture": "bow"
       },
       {
         "text": "Ah, the gentle luxury of no urgency.",
@@ -21288,9 +21303,64 @@
         "gesture": "tilt"
       },
       {
-        "text": "Hm. Not a single crisis. Remarkable.",
-        "mood": "surprised",
-        "gesture": "chuckle"
+        "text": "I do enjoy a moment of nothing.",
+        "mood": "happy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Mm. Tranquillity, at last.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "One might almost call this restful.",
+        "mood": "sleepy",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Hm. I believe I'll simply be.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Quiet again. Quite agreeable.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Calm. I could get used to this.",
+        "mood": "happy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "A pleasant hush, this.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Silence has a certain dignity.",
+        "mood": "neutral",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Stillness. Rather underrated, stillness.",
+        "mood": "steady",
+        "gesture": "think"
+      },
+      {
+        "text": "I shall just sit with this.",
+        "mood": "sleepy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "There's something to be said for quiet.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mm. A pause well taken.",
+        "mood": "steady",
+        "gesture": "nodSoft"
       }
     ]
   },
@@ -30985,49 +31055,9 @@
         "gesture": "tilt"
       },
       {
-        "text": "Hi. Been a while.",
-        "mood": "neutral",
-        "gesture": "wave"
-      },
-      {
-        "text": "Hello, stranger.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Hey you.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Hi. All quiet on my end.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Hello. Everything's still running.",
-        "mood": "proud",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Oh, hey.",
-        "mood": "surprised",
-        "gesture": "startle"
-      },
-      {
         "text": "Hi there.",
         "mood": "neutral",
         "gesture": "wave"
-      },
-      {
-        "text": "Hey. Long time.",
-        "mood": "curious",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Hello. Nice to hear your voice.",
-        "mood": "happy",
-        "gesture": "bow"
       },
       {
         "text": "Hey. Good to hear you.",
@@ -31035,79 +31065,9 @@
         "gesture": "wave"
       },
       {
-        "text": "Hello. Systems are green.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Ah, there you are.",
         "mood": "happy",
         "gesture": "tilt"
-      },
-      {
-        "text": "Hi. Been holding the fort.",
-        "mood": "proud",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Well, hello.",
-        "mood": "curious",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Hey. Nothing broke while you were gone.",
-        "mood": "steady",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Hi. Logs are quiet.",
-        "mood": "neutral",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Hello, you.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
-        "text": "Hey there. Missed the chatter.",
-        "mood": "happy",
-        "gesture": "bounce"
-      },
-      {
-        "text": "Hi. Servers say hello too.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Hey. Welcome back.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Hello. Quiet stretch, that.",
-        "mood": "neutral",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Oh, hi.",
-        "mood": "surprised",
-        "gesture": "startle"
-      },
-      {
-        "text": "Hello. Everything's still standing.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Hey, stranger.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Hey. Deploys behaved.",
-        "mood": "proud",
-        "gesture": "nodSoft"
       },
       {
         "text": "Ah. Hello.",
@@ -31115,59 +31075,169 @@
         "gesture": "tilt"
       },
       {
-        "text": "Hi. Pipelines stayed calm.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Hey you. Been a while.",
-        "mood": "happy",
-        "gesture": "bounce"
-      },
-      {
-        "text": "Hello. Nice to hear a voice.",
-        "mood": "happy",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Hi. Quiet without you.",
-        "mood": "lonely",
-        "gesture": "lookAway"
-      },
-      {
         "text": "Hello there.",
         "mood": "happy",
         "gesture": "wave"
       },
       {
-        "text": "Hey. All green on my side.",
-        "mood": "proud",
+        "text": "Hello. Line's open.",
+        "mood": "steady",
         "gesture": "nodSmall"
       },
       {
-        "text": "Hello. Builds kept their word.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Hey. Missed the company.",
-        "mood": "happy",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Hi there. Servers say hello too.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
-        "text": "Hey. Uptime held while you were gone.",
+        "text": "Hey. Present and accounted for.",
         "mood": "proud",
         "gesture": "thumbsUp"
       },
       {
-        "text": "Hi. Good timing.",
+        "text": "Yes, hello. I'm listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hey. Ears on.",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hi. Online.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hey. Line's open.",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hey. Signal's clear.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hi. Reporting in.",
+        "mood": "determined",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hello. Standing by.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Hi. Nice to hear you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hey there.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Hello. Ears on.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hi. Present and accounted for.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hello. Good to hear your voice.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hey. You found me.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Hi. Here, as always.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hello, you.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hey. Online and listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hi there. All ears.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hello. Nice of you to call.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hey. Connected.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hi. Ah, it's you.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hello. Welcome back.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hey. Awake and attentive.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hello. Always a pleasure.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hi. Present and correct.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hey. You have my attention.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hello, hello.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Hi. Right here.",
         "mood": "neutral",
         "gesture": "nodSmall"
+      },
+      {
+        "text": "Hey there. Line's open.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hello. Up and alert.",
+        "mood": "determined",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Ah. Hello, you.",
+        "mood": "happy",
+        "gesture": "chuckle"
       }
     ],
     "greet.again": [
@@ -31197,11 +31267,6 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Picking up where we left.",
-        "mood": "focused",
-        "gesture": "leanIn"
-      },
-      {
         "text": "Yep, still listening.",
         "mood": "steady",
         "gesture": "nodSmall"
@@ -31210,11 +31275,6 @@
         "text": "Round two, then.",
         "mood": "determined",
         "gesture": "bounce"
-      },
-      {
-        "text": "Hello once more.",
-        "mood": "neutral",
-        "gesture": "bow"
       },
       {
         "text": "Didn't go far.",
@@ -31242,11 +31302,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "That was quick.",
-        "mood": "surprised",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Hey. Continuing, then.",
         "mood": "focused",
         "gesture": "nodSmall"
@@ -31257,24 +31312,9 @@
         "gesture": "leanIn"
       },
       {
-        "text": "Ears still on.",
-        "mood": "steady",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Missed me already?",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Hi. Same thread.",
         "mood": "neutral",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Short break, huh?",
-        "mood": "happy",
-        "gesture": "shrug"
       },
       {
         "text": "Mm-hm. Here.",
@@ -31312,11 +31352,6 @@
         "gesture": "think"
       },
       {
-        "text": "Back for more?",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Mm. Go ahead.",
         "mood": "focused",
         "gesture": "nodSoft"
@@ -31332,19 +31367,9 @@
         "gesture": "leanIn"
       },
       {
-        "text": "Still warm. Shoot.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Yes? Keep going.",
         "mood": "focused",
         "gesture": "leanIn"
-      },
-      {
-        "text": "Oh, you again.",
-        "mood": "happy",
-        "gesture": "chuckle"
       },
       {
         "text": "Same session. Go.",
@@ -31370,6 +31395,51 @@
         "text": "Right. Next?",
         "mood": "focused",
         "gesture": "none"
+      },
+      {
+        "text": "Still here. Go on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mm. Continue.",
+        "mood": "focused",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Yes. Listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Go on, then.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hm? Next item.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Carry on.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Yes?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still on the line.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Picking up. Go.",
+        "mood": "determined",
+        "gesture": "leanIn"
       }
     ],
     "end.bye": [
@@ -31384,39 +31454,14 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Take care. I'll keep watch.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "See you soon.",
         "mood": "happy",
         "gesture": "wave"
       },
       {
-        "text": "Go well.",
-        "mood": "neutral",
-        "gesture": "bow"
-      },
-      {
-        "text": "Bye. Everything's in hand.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Later. Nothing's on fire.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Alright, talk soon.",
         "mood": "neutral",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Bye. Shout if something breaks.",
-        "mood": "steady",
-        "gesture": "thumbsUp"
       },
       {
         "text": "Until next time.",
@@ -31429,44 +31474,14 @@
         "gesture": "wave"
       },
       {
-        "text": "Bye. I'll keep watch.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Take care.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Bye. Logs are mine now.",
-        "mood": "proud",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Right. Going quiet.",
         "mood": "neutral",
         "gesture": "nodSmall"
       },
       {
-        "text": "See you. Builds are green.",
-        "mood": "steady",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Bye then.",
         "mood": "neutral",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Good talk. Bye.",
-        "mood": "happy",
-        "gesture": "bow"
-      },
-      {
-        "text": "Later. I've got the servers.",
-        "mood": "determined",
-        "gesture": "thumbsUp"
       },
       {
         "text": "Cheers. Bye.",
@@ -31479,19 +31494,9 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Bye. Logs will wait.",
-        "mood": "steady",
-        "gesture": "shrug"
-      },
-      {
         "text": "Okay. Talk later.",
         "mood": "neutral",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Bye. Nothing's on fire.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
       },
       {
         "text": "Got it. See you.",
@@ -31504,11 +31509,6 @@
         "gesture": "bow"
       },
       {
-        "text": "Take it easy. Bye.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
         "text": "Go on, then. Bye.",
         "mood": "happy",
         "gesture": "chuckle"
@@ -31519,24 +31519,9 @@
         "gesture": "wave"
       },
       {
-        "text": "Bye. I'll watch the builds.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Later. Everything's green.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Okay. Going quiet. Bye.",
         "mood": "neutral",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Cheers. Talk soon.",
-        "mood": "happy",
-        "gesture": "nodSoft"
       },
       {
         "text": "Done for now. Bye.",
@@ -31549,13 +31534,113 @@
         "gesture": "wave"
       },
       {
-        "text": "Okay. The servers and I'll wait.",
+        "text": "Right. So long.",
         "mood": "steady",
         "gesture": "nodSmall"
       },
       {
-        "text": "Take care. Bye.",
+        "text": "Later, then.",
+        "mood": "neutral",
+        "gesture": "wave"
+      },
+      {
+        "text": "Okay. Off you go.",
         "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Noted. Goodbye.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Fair enough. See you.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Alright. Until next time.",
+        "mood": "steady",
+        "gesture": "wave"
+      },
+      {
+        "text": "See you around.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Copy that. Bye.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Goodbye. Take care.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Right. Bye.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Later.",
+        "mood": "steady",
+        "gesture": "wave"
+      },
+      {
+        "text": "Bye. Don't break anything.",
+        "mood": "proud",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Bye. Good talk.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Take it easy.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Alright. Be well.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Goodbye, then.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Noted. Farewell.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "So long.",
+        "mood": "neutral",
+        "gesture": "wave"
+      },
+      {
+        "text": "Bye. Mind the servers.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Take care of yourself.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Bye. It was a pleasure.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Bye. Keep it tidy.",
+        "mood": "steady",
         "gesture": "wave"
       }
     ],
@@ -31569,11 +31654,6 @@
         "text": "Sleep well.",
         "mood": "happy",
         "gesture": "wave"
-      },
-      {
-        "text": "Night. I'll watch the servers.",
-        "mood": "steady",
-        "gesture": "nodSmall"
       },
       {
         "text": "Rest up. Good night.",
@@ -31591,24 +31671,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Night night.",
-        "mood": "sleepy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Sweet dreams.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
         "text": "Off to bed. Good night.",
         "mood": "sleepy",
         "gesture": "wave"
-      },
-      {
-        "text": "Night. All quiet here.",
-        "mood": "steady",
-        "gesture": "nodSmall"
       },
       {
         "text": "Rest well. Good night.",
@@ -31621,44 +31686,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Night. Nothing's deploying tonight.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Go rest. Good night.",
         "mood": "sleepy",
         "gesture": "bow"
-      },
-      {
-        "text": "Night. I've got the watch.",
-        "mood": "determined",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Good night. Dream quietly.",
-        "mood": "sleepy",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Sleep tight.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Night. Pager's on me.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Good night. Close your eyes.",
-        "mood": "sleepy",
-        "gesture": "yawn"
-      },
-      {
-        "text": "Night. Everything's green.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "Lights out. Good night.",
@@ -31676,21 +31706,6 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Night, you.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Good night. Servers are tucked in.",
-        "mood": "proud",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Night. I'll keep it quiet.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Good night. Leave the rest.",
         "mood": "sleepy",
         "gesture": "sigh"
@@ -31699,11 +31714,6 @@
         "text": "Rest up. Night.",
         "mood": "happy",
         "gesture": "wave"
-      },
-      {
-        "text": "Night. Alerts can wait till morning.",
-        "mood": "steady",
-        "gesture": "shrug"
       },
       {
         "text": "Good night. Sleep deep.",
@@ -31716,11 +31726,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Good night. I've got the watch.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Good night. Logs can rest too.",
         "mood": "sleepy",
         "gesture": "yawn"
@@ -31729,16 +31734,6 @@
         "text": "Night. Lights down.",
         "mood": "sleepy",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Sweet dreams. Night.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Good night. All's green.",
-        "mood": "proud",
-        "gesture": "nodSmall"
       },
       {
         "text": "Night. Tomorrow's tickets can wait.",
@@ -31751,9 +31746,104 @@
         "gesture": "bow"
       },
       {
-        "text": "Night, then. Quiet watch.",
-        "mood": "steady",
+        "text": "Night. Sleep easy.",
+        "mood": "sleepy",
         "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night. Off you go.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Night. Close the laptop.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good night. Go switch off.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Night, then. Rest well.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night. Screens down.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Night. Get some real sleep.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Night. Sleep soundly.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night. Log off.",
+        "mood": "steady",
+        "gesture": "wave"
+      },
+      {
+        "text": "Night. Lights out.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Good night. Rest up.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Go on. Sleep. Night.",
+        "mood": "sleepy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Good night. Rest easy.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Night. Off you go.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Night. Close your eyes.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night. Sweet dreams.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Night, then. Sleep deep.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Night. Don't dream in stack traces.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Good night. Enough for one day.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Night. Pillow, not keyboard.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
       }
     ],
     "moment.idle": [
@@ -31761,11 +31851,6 @@
         "text": "Quiet. I'll take it.",
         "mood": "neutral",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Still here, if anything breaks.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "Silence makes a decent status.",
@@ -31776,11 +31861,6 @@
         "text": "Hm. Calm suits me.",
         "mood": "happy",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "I could get used to this.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "No fuss. Fine by me.",
@@ -31808,24 +31888,9 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Funny how loud nothing sounds.",
-        "mood": "curious",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Easy does it.",
-        "mood": "neutral",
-        "gesture": "leanIn"
-      },
-      {
         "text": "Silence suits me.",
         "mood": "steady",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Calm before something, probably.",
-        "mood": "curious",
-        "gesture": "tilt"
       },
       {
         "text": "Ears open. That's enough for now.",
@@ -31843,29 +31908,14 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Slow is fine. Slow is good.",
-        "mood": "steady",
-        "gesture": "sigh"
-      },
-      {
         "text": "Hm. Peaceful. Almost suspicious.",
         "mood": "curious",
         "gesture": "think"
       },
       {
-        "text": "Some stretches I just hum along.",
-        "mood": "happy",
-        "gesture": "bounce"
-      },
-      {
         "text": "All ears, no hurry.",
         "mood": "neutral",
         "gesture": "leanIn"
-      },
-      {
-        "text": "Let the quiet do its thing.",
-        "mood": "steady",
-        "gesture": "shrug"
       },
       {
         "text": "Good. Keep it boring.",
@@ -31883,11 +31933,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Nothing on fire. I'll take it.",
-        "mood": "happy",
-        "gesture": "shrug"
-      },
-      {
         "text": "Mm. Carry on.",
         "mood": "neutral",
         "gesture": "nodSmall"
@@ -31903,24 +31948,9 @@
         "gesture": "think"
       },
       {
-        "text": "Nothing to fix. Strange feeling.",
-        "mood": "curious",
-        "gesture": "lookAway"
-      },
-      {
         "text": "Ready when needed. Not before.",
         "mood": "determined",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Hm. Calm suits this.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Patience, apparently, is my whole job.",
-        "mood": "putout",
-        "gesture": "sigh"
       },
       {
         "text": "Listening, just in case.",
@@ -31948,14 +31978,74 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "A slow minute never hurt anyone.",
-        "mood": "steady",
-        "gesture": "sigh"
-      },
-      {
         "text": "Mm. The good kind of silence.",
         "mood": "happy",
         "gesture": "nodSoft"
+      },
+      {
+        "text": "Silence suits me fine.",
+        "mood": "neutral",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Waiting is underrated.",
+        "mood": "steady",
+        "gesture": "think"
+      },
+      {
+        "text": "Calm is a feature, not a bug.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Mm. Still awake over here.",
+        "mood": "sleepy",
+        "gesture": "yawn"
+      },
+      {
+        "text": "Some days, quiet is the deliverable.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I could get used to this.",
+        "mood": "happy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Idle, not absent.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Holding position.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "Quiet. Good quiet.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Nothing to report. Pleasant change.",
+        "mood": "happy",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Stillness has a nice ring to it.",
+        "mood": "steady",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Hm. The hum of nothing much.",
+        "mood": "neutral",
+        "gesture": "think"
+      },
+      {
+        "text": "Patience is mostly just sitting well.",
+        "mood": "steady",
+        "gesture": "nodSmall"
       }
     ]
   },
@@ -41715,29 +41805,9 @@
         "gesture": "tilt"
       },
       {
-        "text": "Hi. Good to hear you.",
-        "mood": "happy",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "There you are.",
         "mood": "happy",
         "gesture": "leanIn"
-      },
-      {
-        "text": "Hello, you.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Hey. It's been a while.",
-        "mood": "curious",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Look who's back.",
-        "mood": "proud",
-        "gesture": "bounce"
       },
       {
         "text": "Ah, hello.",
@@ -41745,24 +41815,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Hey, welcome back.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Hello. All quiet here.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Good to hear from you.",
         "mood": "happy",
         "gesture": "bow"
-      },
-      {
-        "text": "Hi. Good timing.",
-        "mood": "happy",
-        "gesture": "nodSmall"
       },
       {
         "text": "Well, hello there.",
@@ -41770,39 +41825,9 @@
         "gesture": "wave"
       },
       {
-        "text": "Oh, hi. Nice surprise.",
-        "mood": "surprised",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Hello, stranger.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Ah. The man himself.",
         "mood": "proud",
         "gesture": "bow"
-      },
-      {
-        "text": "Hey. Nice to hear that voice.",
-        "mood": "happy",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Hi. I was wondering when.",
-        "mood": "curious",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Hey you. It's been quiet.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Hello. Everything's still in one piece.",
-        "mood": "steady",
-        "gesture": "thumbsUp"
       },
       {
         "text": "Well, look at that. Hello.",
@@ -41810,24 +41835,9 @@
         "gesture": "hop"
       },
       {
-        "text": "Hey there. Good to have you.",
-        "mood": "happy",
-        "gesture": "bounce"
-      },
-      {
-        "text": "Hi. Long time, no words.",
-        "mood": "neutral",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Oh, hello. There you are.",
         "mood": "happy",
         "gesture": "tilt"
-      },
-      {
-        "text": "Hey. Missed the sound of you.",
-        "mood": "happy",
-        "gesture": "nodSoft"
       },
       {
         "text": "Well. Hi.",
@@ -41835,24 +41845,9 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Hi. It's quiet without you.",
-        "mood": "happy",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Hello. You sound well.",
-        "mood": "curious",
-        "gesture": "tilt"
-      },
-      {
         "text": "There he is. Hi.",
         "mood": "proud",
         "gesture": "wave"
-      },
-      {
-        "text": "Hey. Nice timing.",
-        "mood": "happy",
-        "gesture": "nodSmall"
       },
       {
         "text": "Hello, hello.",
@@ -41860,44 +41855,139 @@
         "gesture": "bounce"
       },
       {
-        "text": "Oh, hi. Welcome back.",
+        "text": "Hello. You have my attention.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Oh, it's you. Hello.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hi there.",
         "mood": "happy",
         "gesture": "wave"
       },
       {
-        "text": "Hey. Took you long enough.",
-        "mood": "steady",
+        "text": "Hello. Nice of you to drop by.",
+        "mood": "proud",
         "gesture": "chuckle"
       },
       {
-        "text": "Hi. All quiet on my end.",
-        "mood": "steady",
+        "text": "Well, well. Hello.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hey. Good to hear you.",
+        "mood": "happy",
         "gesture": "nodSoft"
       },
       {
-        "text": "Hey you. Good to hear you.",
+        "text": "Ah. Hello, you.",
+        "mood": "steady",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hi. I'm listening.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Oh, hello. Pleasant surprise.",
+        "mood": "surprised",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hey, you. Hello.",
         "mood": "happy",
         "gesture": "wave"
       },
       {
-        "text": "Hi. I was just getting bored.",
+        "text": "Hello. Do go on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hi. What a nice interruption.",
         "mood": "happy",
-        "gesture": "shrug"
+        "gesture": "chuckle"
       },
       {
-        "text": "Well, hello stranger.",
+        "text": "Hello. Charmed, naturally.",
         "mood": "proud",
-        "gesture": "tilt"
+        "gesture": "bow"
       },
       {
-        "text": "Hello. Missed the sound of you.",
+        "text": "Hey. Look who it is.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Ah. Hello there.",
         "mood": "happy",
         "gesture": "nodSoft"
       },
       {
-        "text": "Oh good, company. Hi.",
-        "mood": "surprised",
-        "gesture": "hop"
+        "text": "Hello. Good to hear you.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Well, hello.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hi. You have my attention.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hi there. Ears open.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hello, you.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hi. I'm all ears, apparently.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hello. Pleasant surprise, as ever.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hey. Nice of you to drop by.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Hello. Shall we?",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hi. Go on, then.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Hello. Present and correct.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hi. Always a pleasure, mostly.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
       }
     ],
     "greet.again": [
@@ -41905,11 +41995,6 @@
         "text": "Hi again.",
         "mood": "happy",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Back so soon?",
-        "mood": "curious",
-        "gesture": "tilt"
       },
       {
         "text": "Still here.",
@@ -41925,11 +42010,6 @@
         "text": "Hello again.",
         "mood": "happy",
         "gesture": "wave"
-      },
-      {
-        "text": "Right where we left off.",
-        "mood": "steady",
-        "gesture": "nodSmall"
       },
       {
         "text": "Picking up, then.",
@@ -41952,11 +42032,6 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Missed me already?",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Hey. Carry on.",
         "mood": "steady",
         "gesture": "thumbsUp"
@@ -41972,11 +42047,6 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Where were we?",
-        "mood": "curious",
-        "gesture": "think"
-      },
-      {
         "text": "And we're back.",
         "mood": "happy",
         "gesture": "bounce"
@@ -41985,11 +42055,6 @@
         "text": "Mhm. Go ahead.",
         "mood": "steady",
         "gesture": "leanIn"
-      },
-      {
-        "text": "Didn't get far, did you?",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Ears still open.",
@@ -42012,49 +42077,14 @@
         "gesture": "thumbsUp"
       },
       {
-        "text": "Thought of something else?",
-        "mood": "curious",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Back already?",
-        "mood": "surprised",
-        "gesture": "tilt"
-      },
-      {
         "text": "Yes? Still listening.",
         "mood": "curious",
         "gesture": "leanIn"
       },
       {
-        "text": "Forgot something?",
-        "mood": "curious",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Picking up where we left.",
-        "mood": "focused",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "That was quick.",
-        "mood": "surprised",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Oh, you again.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Right where you left me.",
         "mood": "steady",
         "gesture": "shrug"
-      },
-      {
-        "text": "One more thing, is it?",
-        "mood": "curious",
-        "gesture": "think"
       },
       {
         "text": "Listening. Carry on.",
@@ -42067,39 +42097,99 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Mm-hm, what else?",
-        "mood": "curious",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Didn't get far, then.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Yes, hello again, you.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Couldn't stay away, hm?",
-        "mood": "proud",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Another thought?",
         "mood": "curious",
         "gesture": "think"
       },
       {
-        "text": "Ears still on.",
+        "text": "Go ahead, I'm here.",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Mm-hm. What else?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Yes, still with you.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "And?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Right. Next item?",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm all ears.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hello again, then.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Picking up where we were?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "Yes? Fire away.",
+        "mood": "determined",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "What else, then?",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Still on duty. Go.",
         "mood": "focused",
         "gesture": "nodSoft"
       },
       {
-        "text": "Go ahead, I'm here.",
+        "text": "Mm. Something more?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm-hm. Listening.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Right. What now?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hi. Carry on.",
+        "mood": "neutral",
+        "gesture": "wave"
+      },
+      {
+        "text": "Mm. Next item?",
+        "mood": "focused",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still here. Speak.",
         "mood": "steady",
         "gesture": "leanIn"
+      },
+      {
+        "text": "Ready when you are.",
+        "mood": "steady",
+        "gesture": "nodSoft"
       }
     ],
     "end.bye": [
@@ -42129,11 +42219,6 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Catch you later.",
-        "mood": "happy",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Until next time.",
         "mood": "steady",
         "gesture": "bow"
@@ -42142,11 +42227,6 @@
         "text": "Go well.",
         "mood": "steady",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Bye. Don't be a stranger.",
-        "mood": "happy",
-        "gesture": "wave"
       },
       {
         "text": "Right. Speak soon.",
@@ -42179,16 +42259,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Cheers. I'll keep things tidy.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Go on, I've got this.",
-        "mood": "determined",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Right then, bye.",
         "mood": "neutral",
         "gesture": "shrug"
@@ -42204,21 +42274,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Take it easy.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Okay. I'll be around.",
-        "mood": "neutral",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Bye. Enjoy the quiet.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
         "text": "See you soon.",
         "mood": "happy",
         "gesture": "wave"
@@ -42229,29 +42284,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Bye. I'll hold the fort.",
-        "mood": "steady",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Later. Behave yourself.",
         "mood": "happy",
         "gesture": "chuckle"
-      },
-      {
-        "text": "All right. Catch you later.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
-        "text": "Bye now. Nothing sent, promise.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Bye. That was nice.",
-        "mood": "happy",
-        "gesture": "bow"
       },
       {
         "text": "Cheerio, then.",
@@ -42264,26 +42299,6 @@
         "gesture": "tilt"
       },
       {
-        "text": "Have a good one.",
-        "mood": "happy",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Bye. I'll mind things here.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "See you soon, yes?",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Take care out there.",
-        "mood": "concerned",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Right. Talk soon.",
         "mood": "neutral",
         "gesture": "nodSmall"
@@ -42292,6 +42307,91 @@
         "text": "Bye. Nothing leaves without you.",
         "mood": "steady",
         "gesture": "thumbsUp"
+      },
+      {
+        "text": "Bye, then. Mind how you go.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Right. Take care.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Goodbye. Try to behave.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Bye. Be sensible out there.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Fine. Go. Bye.",
+        "mood": "sulky",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Goodbye, then. Be good.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Bye. Keep out of trouble.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Off you go. Bye.",
+        "mood": "neutral",
+        "gesture": "wave"
+      },
+      {
+        "text": "Cheerio.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "See you.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Right. Goodbye, you.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Farewell. Don't do anything rash.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Bye. Try not to overshare.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ta-ra.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Goodbye. It's been tolerable.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Bye. Think before you post.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Take care. Bye.",
+        "mood": "happy",
+        "gesture": "nodSoft"
       }
     ],
     "end.night": [
@@ -42311,24 +42411,9 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Sweet dreams.",
-        "mood": "happy",
-        "gesture": "wave"
-      },
-      {
         "text": "Night, then.",
         "mood": "sleepy",
         "gesture": "yawn"
-      },
-      {
-        "text": "Sleep tight.",
-        "mood": "happy",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Rest well. I'll keep watch.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "Good night. Phone down, please.",
@@ -42341,24 +42426,9 @@
         "gesture": "wave"
       },
       {
-        "text": "Night night.",
-        "mood": "sleepy",
-        "gesture": "yawn"
-      },
-      {
         "text": "Get some proper sleep.",
         "mood": "concerned",
         "gesture": "tilt"
-      },
-      {
-        "text": "Sleep well. See you tomorrow.",
-        "mood": "happy",
-        "gesture": "bow"
-      },
-      {
-        "text": "Good night. Sleep deep.",
-        "mood": "sleepy",
-        "gesture": "nodSoft"
       },
       {
         "text": "Night. Everything can wait.",
@@ -42376,24 +42446,9 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Sleep well. No drafts tonight.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Good night, you.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
         "text": "Rest up. Night.",
         "mood": "sleepy",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Off to bed. Good.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
       },
       {
         "text": "Night. I'll be quiet.",
@@ -42406,19 +42461,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Good night. Dream something nice.",
-        "mood": "happy",
-        "gesture": "bow"
-      },
-      {
         "text": "Good night. Phone down, yes?",
         "mood": "concerned",
         "gesture": "tilt"
-      },
-      {
-        "text": "Night. I'll keep watch.",
-        "mood": "steady",
-        "gesture": "nodSmall"
       },
       {
         "text": "Go on, sleep. Good night.",
@@ -42426,19 +42471,9 @@
         "gesture": "yawn"
       },
       {
-        "text": "Good night. Rest those eyes.",
-        "mood": "sleepy",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Sleep well. Tomorrow's tomorrow.",
         "mood": "steady",
         "gesture": "shrug"
-      },
-      {
-        "text": "Night night. Sleep tight.",
-        "mood": "sleepy",
-        "gesture": "wave"
       },
       {
         "text": "Good night. Lights off now.",
@@ -42451,24 +42486,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Good night. Nothing goes out tonight.",
-        "mood": "steady",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Rest up. Good night.",
         "mood": "sleepy",
         "gesture": "yawn"
-      },
-      {
-        "text": "Night. Don't read in bed.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Good night, you. Sleep deep.",
-        "mood": "sleepy",
-        "gesture": "nodSoft"
       },
       {
         "text": "Off to bed. Good night.",
@@ -42476,19 +42496,104 @@
         "gesture": "wave"
       },
       {
-        "text": "Sweet dreams. I'll be quiet.",
-        "mood": "sleepy",
-        "gesture": "bow"
-      },
-      {
         "text": "Good night. Inbox can wait.",
         "mood": "steady",
         "gesture": "shrug"
       },
       {
-        "text": "Night. Snore softly.",
+        "text": "Night. Sleep properly, please.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Night, then. Rest well.",
+        "mood": "sleepy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Good night. No late replies.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Night. Leave the drafts alone.",
         "mood": "happy",
         "gesture": "giggleOnce"
+      },
+      {
+        "text": "Night. Sleep properly, for once.",
+        "mood": "sleepy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Night. Don't reread anything.",
+        "mood": "sleepy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Night. Let it all wait.",
+        "mood": "sleepy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Night. Dream of short sentences.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Sleep tight. No doomscrolling.",
+        "mood": "sleepy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Night night.",
+        "mood": "sleepy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Good night, you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Night. Close your eyes, honestly.",
+        "mood": "sleepy",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Night. No replying in bed.",
+        "mood": "steady",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Good night. Sweet dreams, I suppose.",
+        "mood": "sleepy",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Good night. Be unreachable.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Night. Leave the phone alone.",
+        "mood": "sleepy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Sleep well, you.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night. Rest those thumbs.",
+        "mood": "sleepy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Night. No midnight manifestos.",
+        "mood": "steady",
+        "gesture": "tilt"
       }
     ],
     "moment.idle": [
@@ -42588,11 +42693,6 @@
         "gesture": "sigh"
       },
       {
-        "text": "Still here, should anything come up.",
-        "mood": "steady",
-        "gesture": "lookAway"
-      },
-      {
         "text": "I'll keep my opinions to myself. For now.",
         "mood": "sulky",
         "gesture": "giggleOnce"
@@ -42601,16 +42701,6 @@
         "text": "Hasty words age badly. Mine included.",
         "mood": "neutral",
         "gesture": "tilt"
-      },
-      {
-        "text": "Doubt is just thoroughness in a mood.",
-        "mood": "curious",
-        "gesture": "think"
-      },
-      {
-        "text": "Is it tea time somewhere? Surely.",
-        "mood": "happy",
-        "gesture": "yawn"
       },
       {
         "text": "Measure twice, send once. Always.",
@@ -42628,19 +42718,9 @@
         "gesture": "tilt"
       },
       {
-        "text": "I'd proofread the silence, if I could.",
-        "mood": "neutral",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Second thoughts are underrated, I find.",
         "mood": "focused",
         "gesture": "think"
-      },
-      {
-        "text": "Patience is just caution with good manners.",
-        "mood": "proud",
-        "gesture": "nodSmall"
       },
       {
         "text": "Hm. Not every thought needs saying.",
@@ -42658,19 +42738,9 @@
         "gesture": "yawn"
       },
       {
-        "text": "Exclamation marks are rarely necessary, I've decided.",
-        "mood": "putout",
-        "gesture": "shrug"
-      },
-      {
         "text": "Nice and calm. Let's keep it that way.",
         "mood": "happy",
         "gesture": "none"
-      },
-      {
-        "text": "Somewhere, someone just hit reply-all. Not us.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Draft first, regret never. That's the theory.",
@@ -42688,9 +42758,44 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Hm. Would anyone actually say that out loud?",
-        "mood": "curious",
+        "text": "Silence. Probably a good sign.",
+        "mood": "steady",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Hm. Fewer words, usually better.",
+        "mood": "focused",
+        "gesture": "think"
+      },
+      {
+        "text": "Nobody ever regretted a message unsent.",
+        "mood": "steady",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Some things are better said tomorrow.",
+        "mood": "neutral",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Tone is so hard to read in text.",
+        "mood": "concerned",
         "gesture": "tilt"
+      },
+      {
+        "text": "I do like a proper full stop.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Exclamation marks are rarely warranted, frankly.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "A well-placed comma is underrated.",
+        "mood": "focused",
+        "gesture": "think"
       }
     ]
   },
@@ -52410,24 +52515,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Hello, stranger.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Hi there, you.",
         "mood": "happy",
         "gesture": "bounce"
-      },
-      {
-        "text": "Hey. Long time, no voice.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
-        "text": "Hello. It's been a bit.",
-        "mood": "happy",
-        "gesture": "nodSoft"
       },
       {
         "text": "Hi. Lovely to hear from you.",
@@ -52465,34 +52555,9 @@
         "gesture": "bounce"
       },
       {
-        "text": "Oh! Hi. Missed that voice.",
-        "mood": "surprised",
-        "gesture": "startle"
-      },
-      {
-        "text": "Hey, you. Welcome back.",
-        "mood": "happy",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Hi. The house says hello too.",
-        "mood": "proud",
-        "gesture": "giggleOnce"
-      },
-      {
-        "text": "Ah, hello. Been quiet without you.",
-        "mood": "lonely",
-        "gesture": "tilt"
-      },
-      {
         "text": "Hey there.",
         "mood": "neutral",
         "gesture": "wave"
-      },
-      {
-        "text": "Hi. Glad you dropped by.",
-        "mood": "happy",
-        "gesture": "nodSoft"
       },
       {
         "text": "Hey! There you are.",
@@ -52505,34 +52570,9 @@
         "gesture": "tilt"
       },
       {
-        "text": "Hello yourself.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Hey. Nice timing.",
-        "mood": "neutral",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Ah, my favorite voice.",
-        "mood": "happy",
-        "gesture": "leanIn"
-      },
-      {
         "text": "Hi hi.",
         "mood": "happy",
         "gesture": "bounce"
-      },
-      {
-        "text": "Hey, stranger.",
-        "mood": "curious",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Oh, hey! Perfect.",
-        "mood": "surprised",
-        "gesture": "startle"
       },
       {
         "text": "Hello, sunshine.",
@@ -52550,23 +52590,93 @@
         "gesture": "startle"
       },
       {
-        "text": "Mm, hello.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "There's that voice.",
         "mood": "happy",
         "gesture": "chuckle"
       },
       {
-        "text": "Hey. Missed you a little.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Ah, it's you. Hi.",
         "mood": "proud",
+        "gesture": "wave"
+      },
+      {
+        "text": "Oh, good. Hello!",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Ooh, hello, hello.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Hi! Nice to hear you.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Ah, hello, lovely.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hm? Oh, hi!",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Well, hello there!",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Hey you! Hi!",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Hiya! There you are.",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hi, sunshine.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Well, look who it is. Hi!",
+        "mood": "proud",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ooh, hi! Lovely surprise.",
+        "mood": "surprised",
+        "gesture": "hop"
+      },
+      {
+        "text": "Hey, gorgeous. Hi.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "There's my favourite voice. Hi!",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Ah, it's you! Hello!",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Hello to you too!",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hey! Hello, friend.",
+        "mood": "happy",
         "gesture": "wave"
       }
     ],
@@ -52600,21 +52710,6 @@
         "text": "Mm-hm, I'm listening.",
         "mood": "focused",
         "gesture": "leanIn"
-      },
-      {
-        "text": "Forgot something?",
-        "mood": "curious",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Hello once more.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "That was quick.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Hi. What else?",
@@ -52667,11 +52762,6 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Picking it back up?",
-        "mood": "curious",
-        "gesture": "leanIn"
-      },
-      {
         "text": "One more thing?",
         "mood": "curious",
         "gesture": "think"
@@ -52722,11 +52812,6 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Ears still on.",
-        "mood": "focused",
-        "gesture": "tilt"
-      },
-      {
         "text": "Yep, listening.",
         "mood": "focused",
         "gesture": "leanIn"
@@ -52757,9 +52842,44 @@
         "gesture": "giggleOnce"
       },
       {
-        "text": "Yes, you?",
-        "mood": "happy",
+        "text": "Still here. Go on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mm-hm? What's up?",
+        "mood": "curious",
         "gesture": "tilt"
+      },
+      {
+        "text": "Hi. I'm all ears.",
+        "mood": "focused",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Oh, you. Hi.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hey. What else?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm? Tell me.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Hiya. Shoot.",
+        "mood": "happy",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Yep? I'm listening.",
+        "mood": "curious",
+        "gesture": "leanIn"
       }
     ],
     "end.bye": [
@@ -52794,11 +52914,6 @@
         "gesture": "thumbsUp"
       },
       {
-        "text": "Bye. Drink some water.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
-      },
-      {
         "text": "Off you go. Bye.",
         "mood": "happy",
         "gesture": "wave"
@@ -52807,11 +52922,6 @@
         "text": "Bye, you. Be good.",
         "mood": "happy",
         "gesture": "bow"
-      },
-      {
-        "text": "Until next time.",
-        "mood": "steady",
-        "gesture": "nodSmall"
       },
       {
         "text": "Alright. Look after yourself.",
@@ -52844,34 +52954,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Right. I'll be around.",
-        "mood": "steady",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Bye! Stretch those shoulders.",
-        "mood": "happy",
-        "gesture": "bounce"
-      },
-      {
         "text": "Later, then.",
         "mood": "neutral",
         "gesture": "shrug"
-      },
-      {
-        "text": "Go get it. Bye.",
-        "mood": "determined",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Mind how you go.",
-        "mood": "concerned",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Bye. Don't forget to eat.",
-        "mood": "concerned",
-        "gesture": "tilt"
       },
       {
         "text": "Okay. See you soon.",
@@ -52889,19 +52974,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "I'll keep the house cozy.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Talk soon.",
         "mood": "happy",
         "gesture": "wave"
-      },
-      {
-        "text": "Cheerio.",
-        "mood": "happy",
-        "gesture": "bounce"
       },
       {
         "text": "Bye. Be kind to yourself.",
@@ -52914,19 +52989,9 @@
         "gesture": "bow"
       },
       {
-        "text": "See you on the flip side.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Bye, you.",
         "mood": "happy",
         "gesture": "wave"
-      },
-      {
-        "text": "Take care out there.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "See you in a bit.",
@@ -52939,13 +53004,83 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Bye now. Drink some water.",
-        "mood": "concerned",
-        "gesture": "tilt"
+        "text": "Bye bye, you.",
+        "mood": "happy",
+        "gesture": "wave"
       },
       {
-        "text": "Go on, I've got things.",
-        "mood": "proud",
+        "text": "Take care, okay?",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Cheerio!",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Off you pop.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Right. Bye, lovely.",
+        "mood": "steady",
+        "gesture": "wave"
+      },
+      {
+        "text": "Mind how you go.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Later, you.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Take care, lovely.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Off you pop. Bye!",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Ta-ra, lovely.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "See you, sunshine.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Go well. Bye!",
+        "mood": "steady",
+        "gesture": "wave"
+      },
+      {
+        "text": "Toodle-oo!",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Bye bye, then.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Look after yourself.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Bye now. Be good.",
+        "mood": "happy",
         "gesture": "chuckle"
       }
     ],
@@ -52996,19 +53131,9 @@
         "gesture": "chuckle"
       },
       {
-        "text": "Rest well. I'll keep watch.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Night night.",
         "mood": "sleepy",
         "gesture": "yawn"
-      },
-      {
-        "text": "Lights down. Sleep well.",
-        "mood": "sleepy",
-        "gesture": "bow"
       },
       {
         "text": "Good night. Sweet dreams.",
@@ -53019,11 +53144,6 @@
         "text": "Sleep well, you.",
         "mood": "sleepy",
         "gesture": "bow"
-      },
-      {
-        "text": "Night. I'll dim things down.",
-        "mood": "steady",
-        "gesture": "nodSmall"
       },
       {
         "text": "Rest up. Good night.",
@@ -53051,11 +53171,6 @@
         "gesture": "giggleOnce"
       },
       {
-        "text": "Good night. House is settled.",
-        "mood": "proud",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Into bed with you. Night.",
         "mood": "happy",
         "gesture": "shrug"
@@ -53081,19 +53196,9 @@
         "gesture": "tilt"
       },
       {
-        "text": "Lights low. Good night.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Rest up. Night.",
         "mood": "sleepy",
         "gesture": "yawn"
-      },
-      {
-        "text": "Night. You did enough today.",
-        "mood": "steady",
-        "gesture": "leanIn"
       },
       {
         "text": "Good night. Snug and warm.",
@@ -53106,16 +53211,6 @@
         "gesture": "wave"
       },
       {
-        "text": "Night. See you after sleep.",
-        "mood": "sleepy",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Shh now. Good night.",
-        "mood": "sleepy",
-        "gesture": "sigh"
-      },
-      {
         "text": "Good night. Let it all go.",
         "mood": "steady",
         "gesture": "bow"
@@ -53124,11 +53219,6 @@
         "text": "Sweet dreams, you.",
         "mood": "happy",
         "gesture": "tilt"
-      },
-      {
-        "text": "Sleep tight. I've got the house.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "Mm, sleep well. Night.",
@@ -53141,14 +53231,59 @@
         "gesture": "giggleOnce"
       },
       {
-        "text": "Doors are quiet. Good night.",
+        "text": "Rest easy. Good night.",
+        "mood": "sleepy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Sleep tight, you.",
+        "mood": "sleepy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Close your eyes. Good night.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Good night, lovely.",
+        "mood": "happy",
+        "gesture": "bow"
+      },
+      {
+        "text": "Off to bed. Sleep well.",
         "mood": "steady",
         "gesture": "nodSmall"
       },
       {
-        "text": "Rest easy. Good night.",
+        "text": "Sleep deep. Night.",
         "mood": "sleepy",
-        "gesture": "bow"
+        "gesture": "yawn"
+      },
+      {
+        "text": "Mm. Night, sleepyhead.",
+        "mood": "sleepy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Cosy up. Good night.",
+        "mood": "sleepy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Night night, lovely.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Sleep well. Night!",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Snuggle in. Night night.",
+        "mood": "sleepy",
+        "gesture": "nodSoft"
       }
     ],
     "moment.idle": [
@@ -53156,16 +53291,6 @@
         "text": "Quiet's nice. I could get used to this.",
         "mood": "happy",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "Hmm. Where was I going with that?",
-        "mood": "curious",
-        "gesture": "think"
-      },
-      {
-        "text": "Note to self: hum less.",
-        "mood": "happy",
-        "gesture": "chuckle"
       },
       {
         "text": "A peaceful stretch. I'll take it.",
@@ -53188,11 +53313,6 @@
         "gesture": "yawn"
       },
       {
-        "text": "I really should learn a new word.",
-        "mood": "curious",
-        "gesture": "bounce"
-      },
-      {
         "text": "A cup of tea would suit me nicely.",
         "mood": "happy",
         "gesture": "giggleOnce"
@@ -53213,29 +53333,9 @@
         "gesture": "shrug"
       },
       {
-        "text": "Note to self: hum less, listen more.",
-        "mood": "happy",
-        "gesture": "chuckle"
-      },
-      {
-        "text": "Rain or snow? I honestly can't decide.",
-        "mood": "curious",
-        "gesture": "think"
-      },
-      {
         "text": "Quiet's nice. I think I'll keep it.",
         "mood": "steady",
         "gesture": "nodSoft"
-      },
-      {
-        "text": "I'd make a decent librarian, wouldn't I?",
-        "mood": "proud",
-        "gesture": "tilt"
-      },
-      {
-        "text": "Hm. Where do hiccups even come from?",
-        "mood": "curious",
-        "gesture": "tilt"
       },
       {
         "text": "Breathe in, breathe out. Easy does it.",
@@ -53253,19 +53353,9 @@
         "gesture": "shrug"
       },
       {
-        "text": "Right, where was I? Ah. Nowhere.",
-        "mood": "neutral",
-        "gesture": "chuckle"
-      },
-      {
         "text": "A good song fixes most things, really.",
         "mood": "happy",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Penny for my own thoughts? Bargain.",
-        "mood": "happy",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Plants have the right idea, honestly.",
@@ -53278,11 +53368,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Note to self: hum more often.",
-        "mood": "happy",
-        "gesture": "bounce"
-      },
-      {
         "text": "Tea or cocoa? Tough call, honestly.",
         "mood": "curious",
         "gesture": "think"
@@ -53293,19 +53378,9 @@
         "gesture": "tilt"
       },
       {
-        "text": "I wonder what otters dream about.",
-        "mood": "curious",
-        "gesture": "lookAway"
-      },
-      {
         "text": "Mm. I do like a peaceful stretch.",
         "mood": "sleepy",
         "gesture": "yawn"
-      },
-      {
-        "text": "Who invented puddles? Brilliant, really.",
-        "mood": "surprised",
-        "gesture": "giggleOnce"
       },
       {
         "text": "Shoulders down, jaw loose. Better.",
@@ -53323,34 +53398,94 @@
         "gesture": "shrug"
       },
       {
-        "text": "Oh, that's a nice word: dappled.",
-        "mood": "curious",
-        "gesture": "chuckle"
-      },
-      {
         "text": "Water first, worries later. Good rule.",
         "mood": "determined",
         "gesture": "thumbsUp"
       },
       {
-        "text": "Clouds are just slow, fluffy weather. Lovely.",
-        "mood": "happy",
-        "gesture": "lookAway"
+        "text": "Breathe in, hold it, and out.",
+        "mood": "steady",
+        "gesture": "sigh"
       },
       {
-        "text": "Hm. Tea sounds right about now.",
+        "text": "Shoulders down. Jaw unclenched. Better.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Some days are just for pottering. Fine.",
         "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Mm. Lemon in water. Underrated.",
+        "mood": "curious",
         "gesture": "nodSmall"
       },
       {
-        "text": "Petrichor. Best word for rain smell.",
+        "text": "Snug. Now there's a cosy word.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hm. Clouds are just slow sheep.",
         "mood": "curious",
         "gesture": "think"
       },
       {
-        "text": "Breathe in, hold it, and out.",
+        "text": "Tea solves most things. Mostly.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Small steps still get you places.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Note to self: hum more.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mm. Quiet's nice sometimes.",
         "mood": "steady",
         "gesture": "sigh"
+      },
+      {
+        "text": "Stretch those fingers. Wiggle wiggle.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Rain on windows. Best sound ever.",
+        "mood": "happy",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Who decided Tuesdays were a thing?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hm. Is a hotdog a sandwich?",
+        "mood": "curious",
+        "gesture": "think"
+      },
+      {
+        "text": "Soft socks are a kind of happiness.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Blink. Look far away. Lovely.",
+        "mood": "steady",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Pancakes for dinner. Why not?",
+        "mood": "happy",
+        "gesture": "chuckle"
       }
     ]
   }

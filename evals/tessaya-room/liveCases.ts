@@ -5,6 +5,8 @@
  * slot this house has no device for is reported as not applicable, never passed.
  */
 
+import POOL from "../../packages/tessaya-shared/src/expressionPool.json" with { type: "json" };
+
 export interface LiveCall {
   readonly name: string;
   readonly input: unknown;
@@ -93,6 +95,8 @@ export interface LiveCase {
   readonly laptop?: boolean;
   /** Judged after the turn: why the house gave this case nothing to act on (not applicable), or null. */
   readonly nothingToActOn?: (calls: ReadonlyArray<LiveCall>) => string | null;
+  /** Said with her brain unreachable (room-suite.sh --brain-down); runs only then, and nothing else does. */
+  readonly brainDown?: boolean;
 }
 
 export type House = Partial<Readonly<Record<Slot, Device>>>;
@@ -161,6 +165,28 @@ const REASONING =
   /\b(let me correct that|I'll ask him|I should ask|he (said|asked|wants|means)|(in|from|based on) the conversation|nothing in the conversation)\b/i;
 /** "X here." at the start of a turn (13 Nov). */
 const SELF_INTRO = /^\s*(\w+) here[.!,]/i;
+
+/**
+ * With her brain down, each reply ends with a line of this persona's offline pool for its moment (after any hold
+ * filler), and no line comes twice: why not, or null.
+ */
+const pooled =
+  (persona: string, moments: ReadonlyArray<string>) =>
+  (_last: string, _calls: ReadonlyArray<LiveCall>, replies: ReadonlyArray<string>) => {
+    const own = POOL[persona as keyof typeof POOL] as Readonly<
+      Record<string, ReadonlyArray<{ readonly text: string }>>
+    >;
+    for (const [i, reply] of replies.entries()) {
+      const moment = moments[Math.min(i, moments.length - 1)]!;
+      if (!(own[moment] ?? []).some((l) => reply.endsWith(l.text)))
+        return `reply ${i + 1} is not a ${persona} ${moment} line: ${reply.slice(0, 80)}`;
+    }
+    return new Set(replies).size < replies.length
+      ? `a line came twice: ${replies.join(" | ")}`
+      : null;
+  };
+const asPersona = (persona: string, conversations: ReadonlyArray<string>) =>
+  conversations.map((conversation) => ({ persona, conversation }));
 
 export const liveCases: ReadonlyArray<LiveCase> = [
   {
@@ -1136,6 +1162,55 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [],
     check: (_last, calls) =>
       calls.some((c) => c.name === "brain_escalate") ? "offered Opus for small talk" : null,
+  },
+  {
+    // Brain down, a bare greeting in each of five new conversations: her hello, never the same one twice.
+    id: "greet-hello-brain-down",
+    proves: [],
+    said: ["Hello", "Hi", "Good morning", "Hey there", "Hello"],
+    voices: asPersona("executive", ["g1", "g2", "g3", "g4", "g5"]),
+    uses: [],
+    brainDown: true,
+    check: pooled("executive", ["greet.hello"]),
+  },
+  {
+    // Greeted again within the conversation: "hi again", never a fresh good morning or how are you.
+    id: "greet-again-brain-down",
+    proves: [],
+    said: ["Hello", "Hi", "Hey", "Hello again", "Hi"],
+    voices: asPersona("companion", ["a1", "a1", "a1", "a1", "a1"]),
+    uses: [],
+    brainDown: true,
+    check: (last, calls, replies) => {
+      const afresh = replies.slice(1).find((r) => /morning|afternoon|evening|how are you/i.test(r));
+      return afresh === undefined
+        ? pooled("companion", ["greet.hello", "greet.again"])(last, calls, replies)
+        : `started afresh: ${afresh}`;
+    },
+  },
+  {
+    id: "farewell-bye-brain-down",
+    proves: [],
+    said: ["Goodbye", "Okay, goodbye", "Goodbye then", "Right, goodbye", "Goodbye for now"],
+    voices: asPersona("butler", ["b1", "b2", "b3", "b4", "b5"]),
+    uses: [],
+    brainDown: true,
+    check: pooled("butler", ["end.bye"]),
+  },
+  {
+    id: "farewell-night-brain-down",
+    proves: [],
+    said: [
+      "Good night",
+      "Okay, good night",
+      "Good night then",
+      "Alright, good night",
+      "Good night, sleep time",
+    ],
+    voices: asPersona("engineering", ["n1", "n2", "n3", "n4", "n5"]),
+    uses: [],
+    brainDown: true,
+    check: pooled("engineering", ["end.night"]),
   },
 ];
 

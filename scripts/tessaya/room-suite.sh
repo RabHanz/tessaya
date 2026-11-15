@@ -8,7 +8,7 @@
 # the R1's device key without its MQTT login, the brain's key): his house is read live, its writes and his phone asks
 # are dry runs, his R1 and his live database are never touched. Exit 0 when every case passes or does not apply.
 set -euo pipefail
-t3="${1:?usage: room-suite.sh <t3 binary> [userdata dir] [--laptop] [--case <id>]...}"
+t3="${1:?usage: room-suite.sh <t3 binary> [userdata dir] [--laptop] [--brain-down] [--case <id>]...}"
 from="${2:-$HOME/.t3/userdata}"
 here="$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)"
 [ -f "$from/secrets/r1-device.bin" ] || { echo "room-suite: no R1 set up in $from" >&2; exit 1; }
@@ -32,6 +32,8 @@ node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync(process.ar
 for s in home-assistant-token dictation-cleanup-anthropic; do
   [ -f "$from/secrets/$s.bin" ] && install -m 600 "$from/secrets/$s.bin" "$home/userdata/secrets/"
 done
+# --brain-down: a key the API refuses, so every brain call fails (the cases for her offline lines).
+case " ${*:3} " in *" --brain-down "*) printf 'sk-ant-brain-down' > "$home/userdata/secrets/dictation-cleanup-anthropic.bin" ;; esac
 node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1],'utf8'));f.writeFileSync(process.argv[2],JSON.stringify({deviceKey:d.deviceKey,mqttUrl:null,mqttUser:null,mqttPass:null,deviceId:null}),{mode:0o600})" \
   "$from/secrets/r1-device.bin" "$home/userdata/secrets/r1-device.bin"
 # Only the brain's key settings: provider accounts would reach his real account homes. One rule for Opus, so a case

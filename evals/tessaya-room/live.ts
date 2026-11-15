@@ -31,6 +31,8 @@ const { values } = NodeUtil.parseArgs({
     out: { type: "string" },
     case: { type: "string", multiple: true },
     laptop: { type: "boolean", default: false },
+    // The server was started with her brain unreachable (room-suite.sh --brain-down): only the cases for that run.
+    "brain-down": { type: "boolean", default: false },
     // r1 (default): the pretend R1 through the server's brain. desktop: his desktop's Tessaya (desktop.ts), a
     // `claude -p` on your own login; an eval to run nightly or on demand, not the deploy gate.
     vessel: { type: "string", default: "r1" },
@@ -120,7 +122,8 @@ const discover = async (
 const cases = liveCases.filter(
   (c) =>
     (values.case === undefined || values.case.includes(c.id)) &&
-    (c.laptop !== true || values.laptop === true),
+    (c.laptop !== true || values.laptop === true) &&
+    (c.brainDown === true) === values["brain-down"],
 );
 /** One case's sentences through the vessel under test: replies, the trace of its tool calls, and each turn's time. */
 type Say = (
