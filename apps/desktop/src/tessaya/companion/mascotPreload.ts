@@ -9,10 +9,13 @@ contextBridge.exposeInMainWorld("mascotIpc", {
     if (typeof channel === "string" && channel.startsWith("baton-mascot:"))
       ipcRenderer.send(channel, ...args);
   },
-  onLevel: (listener: (level: number, shape?: { zcr: number; bright: number }) => void) => {
+  onLevel: (
+    listener: (level: number, shape?: { zcr: number; bright: number; viseme?: string }) => void,
+  ) => {
     ipcRenderer.on(
       "baton-mascot:level",
-      (_event, level: number, shape?: { zcr: number; bright: number }) => listener(level, shape),
+      (_event, level: number, shape?: { zcr: number; bright: number; viseme?: string }) =>
+        listener(level, shape),
     );
   },
 });

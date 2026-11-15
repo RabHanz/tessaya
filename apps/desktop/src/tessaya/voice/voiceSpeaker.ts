@@ -18,11 +18,13 @@ import {
 import { isNarration } from "@t3tools/tessaya-shared/narration";
 import { pronounce } from "@t3tools/tessaya-shared/pronounce";
 import { withProsody } from "@t3tools/tessaya-shared/prosody";
+import type { Viseme } from "@t3tools/tessaya-shared/visemes";
 import { spliceSpeech } from "@t3tools/tessaya-shared/speechSplice";
 
 /** Plays a WAV as its bytes arrive; resolves false if there was nothing to play. */
 export interface VoicePlayer {
-  readonly play: (wav: AsyncIterable<Buffer>) => Promise<boolean>;
+  /** `text` is what the audio says, when it says only that: her mouth shapes are aligned to it (visemes.ts). */
+  readonly play: (wav: AsyncIterable<Buffer>, text?: string) => Promise<boolean>;
   readonly stop: () => void;
   /** Lower the voice while someone may be talking over it; `false` brings it back. */
   readonly duck?: (on: boolean) => void;
@@ -70,6 +72,8 @@ export const pcmLevel = (pcm: Buffer): number => {
 export interface VoiceShape {
   readonly zcr: number;
   readonly bright: number;
+  /** The mouth shape the reply's text aligned here, when the alignment has reached this far. */
+  readonly viseme?: Viseme;
 }
 export const pcmShape = (pcm: Buffer): VoiceShape => {
   let crossings = 0;
@@ -261,7 +265,9 @@ export const createSpeaker = (input: {
       })(),
     );
     generating = source.finished;
-    return source;
+    // plain words only: a spliced sigh or laugh is sound the text does not have
+    const plain = pieces.length === 1 && pieces[0]?.kind === "text" ? pieces[0].text : undefined;
+    return { ...source, text: plain };
   };
 
   const run = (raw: string, pick: () => VoiceChoice, force: boolean): Promise<void> => {
@@ -283,7 +289,7 @@ export const createSpeaker = (input: {
     // A sentence queued behind another of the same reply is "continuing": it may start with a breath.
     const continuing = queued > 0;
     const first = pick();
-    let source: ReturnType<typeof readAhead> | null = null;
+    let source: ReturnType<typeof startSource> | null = null;
     if (first.kind === "synth") {
       source = startSource(first, mine, raw, continuing);
     }
@@ -309,7 +315,7 @@ export const createSpeaker = (input: {
         input.onUnavailable?.(text);
       } else {
         input.onPlaying?.(text);
-        const played = await input.player.play(source.stream).catch(() => false);
+        const played = await input.player.play(source.stream, source.text).catch(() => false);
         if (mine === generation && !played) input.onUnavailable?.(text);
       }
     });
