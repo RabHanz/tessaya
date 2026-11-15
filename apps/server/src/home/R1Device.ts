@@ -664,14 +664,13 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   const device = input.device === undefined ? (all[0] ?? null) : r1ById(all, input.device);
   yield* eyes(device, "thinking", 15_000, "gathering the turn").pipe(Effect.forkDetach);
   // The house's reads are independent: together, not one after another (gather took 40-680 ms, 15 Nov).
-  const [status, actions, matches, pack, timeZone] = yield* Effect.all(
+  const [status, actions, matches, timeZone] = yield* Effect.all(
     [
       home.status,
       home.actions(1),
       withHouse
         ? home.find({ text: input.heard, limit: 8 }).pipe(Effect.orElseSucceed(() => []))
         : Effect.succeed([]),
-      r1Pack,
       home.timeZone,
     ],
     { concurrency: "unbounded" },
