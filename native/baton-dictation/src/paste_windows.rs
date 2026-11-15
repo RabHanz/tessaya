@@ -4,7 +4,7 @@
 //! removed. Unlike Handy the transcript goes on as plain data, not a delayed-render promise: a
 //! watcher's read of a promise waits on our window, so Windows clipboard history still held the
 //! clipboard as the target pasted (4 of 10 missed on his laptop, 0.1.137). Whether it landed is
-//! read from the field instead (UI Automation, `paste_tx::compare`). Full notice:
+//! read from the field instead (WM_GETTEXT for classic edits, else UI Automation; `paste_tx::compare`). Full notice:
 //! docs/baton/THIRD_PARTY_NOTICES.md.
 
 use std::sync::{mpsc::Sender, Arc, Mutex, Once};
@@ -28,16 +28,17 @@ use windows::Win32::System::Ole::{
     CF_METAFILEPICT, CF_OWNERDISPLAY, CF_PALETTE, CF_UNICODETEXT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CopyImage, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow, GetMessageW,
-    GetWindowLongPtrW, GetWindowThreadProcessId, KillTimer, PostQuitMessage, RegisterClassW, SetTimer,
-    SetWindowLongPtrW, GDI_IMAGE_TYPE, GWLP_USERDATA, HWND_MESSAGE, IMAGE_FLAGS, MSG, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_DESTROYCLIPBOARD, WM_TIMER, WNDCLASSW,
+    CopyImage, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClassNameW, GetForegroundWindow,
+    GetGUIThreadInfo, GetMessageW, GetWindowLongPtrW, GetWindowLongW, GetWindowThreadProcessId, KillTimer,
+    PostQuitMessage, RegisterClassW, SendMessageTimeoutW, SetTimer, SetWindowLongPtrW, GDI_IMAGE_TYPE, GUITHREADINFO,
+    GWLP_USERDATA, GWL_STYLE, HWND_MESSAGE, IMAGE_FLAGS, MSG, SMTO_ABORTIFHUNG, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WM_DESTROYCLIPBOARD, WM_GETTEXT, WM_GETTEXTLENGTH, WM_TIMER, WNDCLASSW,
 };
 
 use crate::keys::{send_chord, PasteMethod};
 use crate::paste_tx::{
-    compare, evaluate, held_at_chord, retry_chord, settle_before_chord, take_over, unreadable, Held, Seen, TakeOver,
-    TxState, WaitDecision, RESTORE_TIMEOUT, VERIFY_WINDOW,
+    classic_edit, compare, evaluate, held_at_chord, retry_chord, settle_before_chord, take_over, unreadable, Held, Seen,
+    TakeOver, TxState, WaitDecision, RESTORE_TIMEOUT, VERIFY_WINDOW,
 };
 
 fn log(message: &str) {
@@ -589,8 +590,11 @@ pub fn run(
     shared.state.lock().unwrap().injected_at = Some(Instant::now());
     let shared_for_verify = shared.clone();
     let target_raw = target.0 as isize;
-    thread::spawn(move || verify(shared_for_verify, before, HWND(target_raw as *mut _), paste_method));
-    match send_chord(enigo, paste_method) {
+    let (sent_tx, sent_rx) = std::sync::mpsc::channel();
+    thread::spawn(move || verify(shared_for_verify, before, HWND(target_raw as *mut _), paste_method, sent_rx));
+    let chord = send_chord(enigo, paste_method);
+    let _ = sent_tx.send(Instant::now());
+    match chord {
         Ok(()) => {
             log(&format!("paste: paste chord sent ({paste_method:?})"));
         }
@@ -615,8 +619,50 @@ const HOLD_WATCH: Duration = Duration::from_millis(60);
 /// shortcut: kept for the sidecar's life by handle; a window that later becomes readable stays skipped.
 static UNREADABLE: Mutex<Vec<isize>> = Mutex::new(Vec::new());
 
-/// The text before the caret in the focused field; None when UI Automation cannot say (or it is a password box).
-fn field_text() -> Option<String> {
+/// The focused control of the target's thread when it is a classic edit or RichEdit that is not a password box.
+fn classic_focus(target: HWND) -> Option<HWND> {
+    unsafe {
+        let thread = GetWindowThreadProcessId(target, None);
+        let mut info = GUITHREADINFO { cbSize: std::mem::size_of::<GUITHREADINFO>() as u32, ..Default::default() };
+        GetGUIThreadInfo(thread, &mut info).ok()?;
+        let focus = info.hwndFocus;
+        let mut class = [0u16; 64];
+        let len = GetClassNameW(focus, &mut class);
+        const ES_PASSWORD: i32 = 0x20;
+        (len > 0 && classic_edit(&String::from_utf16_lossy(&class[..len as usize]))
+            && GetWindowLongW(focus, GWL_STYLE) & ES_PASSWORD == 0)
+            .then_some(focus)
+    }
+}
+
+/// The control's whole text plus its selection (a paste over an identical selection still moves it). UI Automation
+/// returns nothing for these controls, so they are read with WM_GETTEXT on their own thread, 50 ms at most per call.
+fn classic_text(edit: HWND) -> Option<String> {
+    const EM_GETSEL: u32 = 0x00B0;
+    const MAX_CHARS: usize = 1 << 20;
+    let send = |msg: u32, wparam: usize, lparam: isize| -> Option<usize> {
+        let mut result = 0usize;
+        let ok = unsafe {
+            SendMessageTimeoutW(edit, msg, WPARAM(wparam), LPARAM(lparam), SMTO_ABORTIFHUNG, 50, Some(&mut result))
+        };
+        (ok.0 != 0).then_some(result)
+    };
+    let len = send(WM_GETTEXTLENGTH, 0, 0)?;
+    if len > MAX_CHARS {
+        return None;
+    }
+    let mut buffer = vec![0u16; len + 1];
+    let copied = send(WM_GETTEXT, buffer.len(), buffer.as_mut_ptr() as isize)?.min(len);
+    let selection = send(EM_GETSEL, 0, 0)?;
+    Some(format!("{selection}|{}", String::from_utf16_lossy(&buffer[..copied])))
+}
+
+/// What the focused field holds, compared before and after the chord; None when it cannot be read (or is a password
+/// box). Classic edits are read exactly; anything else gets the text before the caret from UI Automation.
+fn field_text(target: HWND) -> Option<String> {
+    if let Some(edit) = classic_focus(target) {
+        return classic_text(edit);
+    }
     crate::uia::caret_context(FIELD_CHARS).ok()?.get("before")?.as_str().map(str::to_string)
 }
 
@@ -629,7 +675,7 @@ fn probe(target: isize) -> std::sync::mpsc::Receiver<Option<String>> {
     }
     thread::spawn(move || {
         let started = Instant::now();
-        let text = field_text();
+        let text = field_text(HWND(target as *mut _));
         if unreadable(text.is_none(), started.elapsed()) {
             if let Ok(mut windows) = UNREADABLE.lock() {
                 if !windows.contains(&target) {
@@ -682,10 +728,19 @@ fn watch_field(before: Option<&str>, target: isize, from: Instant) -> Seen {
 }
 
 /// After the chord: did the field take the words? One resend when a watcher held the clipboard and it did not.
-fn verify(shared: Arc<WinTxShared>, before: Option<String>, target: HWND, method: PasteMethod) {
+fn verify(
+    shared: Arc<WinTxShared>,
+    before: Option<String>,
+    target: HWND,
+    method: PasteMethod,
+    sent: std::sync::mpsc::Receiver<Instant>,
+) {
     let foreign = foreign_hold(target);
+    let exact = before.is_some() && classic_focus(target).is_some();
     let mut retried = false;
-    let mut from = shared.state.lock().ok().and_then(|st| st.injected_at).unwrap_or_else(Instant::now);
+    // Counted from the chord's end: it can wait up to 1.5 s for his modifiers, and a window that ran out before the
+    // keys went would read as missed and paste twice.
+    let mut from = sent.recv_timeout(Duration::from_secs(3)).unwrap_or_else(|_| Instant::now());
     let seen = loop {
         let seen = watch_field(before.as_deref(), target.0 as isize, from);
         let still_ours = unsafe {
@@ -693,7 +748,7 @@ fn verify(shared: Arc<WinTxShared>, before: Option<String>, target: HWND, method
         };
         // A chord that failed part-way may have pasted already.
         let off = shared.state.lock().map(|st| st.cancelled || st.injection_failed).unwrap_or(true);
-        if off || !retry_chord(seen, foreign, retried, still_ours) {
+        if off || !retry_chord(seen, foreign, exact, retried, still_ours) {
             break seen;
         }
         retried = true;
@@ -718,5 +773,6 @@ fn verify(shared: Arc<WinTxShared>, before: Option<String>, target: HWND, method
         "seen": match seen { Seen::Landed => "landed", Seen::Missed => "missed", Seen::Unknown => "unknown" },
         "retried": retried,
         "foreignHold": foreign,
+        "exact": exact,
     }));
 }
