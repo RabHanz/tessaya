@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-11-02T11:06:50.059Z",
-  "runUrl": "https://github.com/RabHanz/baton/actions/runs/41432536944",
+  "generatedAt": "2026-11-15T11:38:54.735Z",
+  "runUrl": "https://github.com/RabHanz/tessaya/actions/runs/43706774277",
   "versions": {
-    "main": "34850ef370",
-    "release": "baton-v0.1.39"
+    "main": "11d84ae658",
+    "release": "baton-v0.1.132"
   },
   "checks": [
     {
@@ -19,22 +19,22 @@
     {
       "name": "intent harness",
       "ref": "main",
-      "result": "fail"
+      "result": "pass"
     },
     {
       "name": "memory evals",
       "ref": "release",
-      "result": "skipped"
+      "result": "pass"
     },
     {
       "name": "employee spine",
       "ref": "release",
-      "result": "skipped"
+      "result": "pass"
     },
     {
       "name": "intent harness",
       "ref": "release",
-      "result": "fail"
+      "result": "pass"
     },
     {
       "name": "voice proof and stranger install",
@@ -48,6 +48,11 @@
     },
     {
       "name": "hands loop",
+      "ref": "main",
+      "result": "pass"
+    },
+    {
+      "name": "every Tessaya test",
       "ref": "main",
       "result": "pass"
     }
