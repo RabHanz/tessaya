@@ -4,19 +4,20 @@ An eval runs a real model against T3 Code's real text or code and scores what th
 
 Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
 
-| Eval                                    | Measures                                                                                             |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| [mcp-tool-use](mcp-tool-use/)           | Whether agents use T3's MCP tools correctly, including device routing and recovery, in fake threads. |
-| [thread-titles](thread-titles/)         | Whether generated thread titles name the right subject.                                              |
-| [pr-content](pr-content/)               | Whether PR generation describes the diff when project instructions try to redirect it.               |
-| [voice-cleanup](voice-cleanup/)         | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.             |
-| [test-signal](test-signal/)             | Whether a cheap model running the test-signal check flags low-signal tests.                          |
-| [tessaya-assistant](tessaya-assistant/) | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                        |
-| [tessaya-outside](tessaya-outside/)     | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.   |
-| [tessaya-room](tessaya-room/)           | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.   |
-| [tessaya-lines](tessaya-lines/)         | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are. |
-| [tessaya-plan](tessaya-plan/)           | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.     |
-| [tessaya-learning](tessaya-learning/)   | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none. |
+| Eval                                    | Measures                                                                                                              |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| [mcp-tool-use](mcp-tool-use/)           | Whether agents use T3's MCP tools correctly, including device routing and recovery, in fake threads.                  |
+| [thread-titles](thread-titles/)         | Whether generated thread titles name the right subject.                                                               |
+| [pr-content](pr-content/)               | Whether PR generation describes the diff when project instructions try to redirect it.                                |
+| [voice-cleanup](voice-cleanup/)         | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.                              |
+| [test-signal](test-signal/)             | Whether a cheap model running the test-signal check flags low-signal tests.                                           |
+| [tessaya-assistant](tessaya-assistant/) | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                                         |
+| [tessaya-outside](tessaya-outside/)     | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.                    |
+| [tessaya-room](tessaya-room/)           | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.                    |
+| [tessaya-lines](tessaya-lines/)         | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are.                  |
+| [tessaya-plan](tessaya-plan/)           | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                      |
+| [tessaya-dictation](tessaya-dictation/) | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused. |
+| [tessaya-learning](tessaya-learning/)   | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                  |
 
 ## Run an eval
 

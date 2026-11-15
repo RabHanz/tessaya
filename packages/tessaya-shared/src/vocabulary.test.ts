@@ -8,6 +8,7 @@ import {
   correctionsBetween,
   addNever,
   isNever,
+  joinSplitTerms,
   changesFromCustomWords,
   learnCorrection,
   mergeEntries,
@@ -581,6 +582,18 @@ describe("applyKnownNames", () => {
     const words = [{ phrase: "LaunchPad", replacement: null }];
     expect(biasTranscript("Launch Pad also has a register. So this Tesia content", words)).toBe(
       "LaunchPad also has a register. So this Tessaya content",
+    );
+  });
+});
+
+describe("joinSplitTerms", () => {
+  it("joins his split word, and never takes a sentence's capital from a phrase in small letters", () => {
+    const his = [
+      { phrase: "LaunchPad", replacement: null },
+      { phrase: "btw", replacement: "by the way" },
+    ];
+    expect(joinSplitTerms("By the way, Launch Pad is up. And by the way it works.", his)).toBe(
+      "By the way, LaunchPad is up. And by the way it works.",
     );
   });
 });
