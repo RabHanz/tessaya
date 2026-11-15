@@ -375,7 +375,24 @@ export const learnFromJob = (p: Playbook, outcome: JobOutcome, delta: PlaybookDe
               people: [],
             },
           ]
-        : lessons.map((l) => (l === same ? { ...l, seen: jobs } : l));
+        : lessons.map((l) =>
+            l !== same
+              ? l
+              : l.by === "him" || l.text === own
+                ? { ...l, seen: jobs }
+                : // His newer words on the same topic replace the lesson they correct ("feat:" became "added:").
+                  {
+                    ...l,
+                    text: own,
+                    helpful: 0,
+                    harmful: 0,
+                    proven: false,
+                    by: "told",
+                    from: outcome.job,
+                    seen: jobs,
+                    people: [],
+                  },
+          );
   }
   for (const text of delta.add.slice(0, ADDS_PER_JOB)) {
     const why = refuseLesson(text, privateTexts);
