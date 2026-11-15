@@ -16,6 +16,8 @@ const DISMISS = [
   "good night",
   "stop listening",
 ];
+/** "Dismissed" as the recogniser writes it ("This best.", 08:27; "This miss.", 09:11, 15 Nov): the whole line only. */
+const MISHEARD_DISMISS = /^(?:okay |ok )?(?:this|dis) ?(?:miss|missed|mist|best)$/;
 const STOP = [
   "stop",
   "stop talking",
@@ -63,6 +65,7 @@ export const stopMatch = (
     const at = ` ${said} `.indexOf(` ${p} `);
     return at >= 0 && !NOT_A_COMMAND.has(said.slice(0, at).trim().split(" ").at(-1) ?? "");
   };
+  if (MISHEARD_DISMISS.test(said)) return { intent: "dismiss", phrase: "dismissed" };
   const dismiss = DISMISS.find(has);
   if (dismiss !== undefined) return { intent: "dismiss", phrase: dismiss };
   const stop = [...STOP, ...extra].find(has);
