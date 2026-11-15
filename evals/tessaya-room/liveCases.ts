@@ -1,11 +1,21 @@
-// @effect-diagnostics globalDate:off
+// @effect-diagnostics globalDate:off nodeBuiltinImport:off
 /**
  * The room's every tool, said to a running server as a pretend R1 (`live.ts`). Sentences name devices by slot
  * (`{fan}`), filled from the server's own house in a first turn, so the suite runs on any user's install. A case whose
  * slot this house has no device for is reported as not applicable, never passed.
  */
 
-import POOL from "../../packages/tessaya-shared/src/expressionPool.json" with { type: "json" };
+import * as NodeFS from "node:fs";
+
+/** Her shipped offline lines, by persona and moment. */
+export const POOL: Readonly<
+  Record<string, Readonly<Record<string, ReadonlyArray<{ readonly text: string }>>>>
+> = JSON.parse(
+  NodeFS.readFileSync(
+    new URL("../../packages/tessaya-shared/src/expressionPool.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 export interface LiveCall {
   readonly name: string;
@@ -174,9 +184,7 @@ const SELF_INTRO = /^\s*(?!(?:Still|Right|Always|Back|Just|Now|Over)\b)\p{Lu}\w*
 const pooled =
   (persona: string, moments: ReadonlyArray<string>) =>
   (_last: string, _calls: ReadonlyArray<LiveCall>, replies: ReadonlyArray<string>) => {
-    const own = POOL[persona as keyof typeof POOL] as Readonly<
-      Record<string, ReadonlyArray<{ readonly text: string }>>
-    >;
+    const own = POOL[persona] ?? {};
     for (const [i, reply] of replies.entries()) {
       const moment = moments[Math.min(i, moments.length - 1)]!;
       if (!(own[moment] ?? []).some((l) => reply.endsWith(l.text)))
