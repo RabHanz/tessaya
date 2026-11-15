@@ -4,6 +4,7 @@
  * (words, mood, gesture) out. Picking never waits on a model: wordings written ahead, then the shipped pool, then the
  * plain line. Writing ahead runs on the routing table's `voice` row (persona speech), batched and capped per hour.
  */
+import { readQuietHours } from "./quietHours.ts";
 import {
   LINE_EVENTS,
   expressionOf,
@@ -23,12 +24,7 @@ import {
 } from "@t3tools/tessaya-shared/expression";
 import { inQuietHours } from "@t3tools/tessaya-shared/comms";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
-import {
-  CommsQuietHours,
-  EXPRESSION_GESTURES,
-  EXPRESSION_MOODS,
-  type Expression,
-} from "@t3tools/tessaya-contracts";
+import { EXPRESSION_GESTURES, EXPRESSION_MOODS, type Expression } from "@t3tools/tessaya-contracts";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -109,8 +105,6 @@ const Written = Schema.Struct({
   ),
 });
 
-const decodeQuiet = Schema.decodeUnknownOption(Schema.fromJsonString(CommsQuietHours));
-
 const hourIn = (at: number, timeZone: string): number => {
   try {
     return Number(
@@ -150,14 +144,7 @@ export const make = Effect.gen(function* () {
   const tried = new Map<string, number>();
   let writing = false;
 
-  const quietHours = sql<{
-    value: string;
-  }>`SELECT value FROM fabric_settings WHERE key = ${"comms.quietHours"}`.pipe(
-    Effect.map((rows) =>
-      rows[0] === undefined ? null : Option.getOrNull(decodeQuiet(rows[0].value)),
-    ),
-    Effect.orElseSucceed(() => null),
-  );
+  const quietHours = readQuietHours.pipe(Effect.provideService(SqlClient.SqlClient, sql));
 
   const writeAhead: TessayaExpression["Service"]["writeAhead"] = Effect.fn(
     "TessayaExpression.writeAhead",

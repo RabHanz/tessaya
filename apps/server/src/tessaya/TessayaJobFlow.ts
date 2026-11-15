@@ -4,6 +4,7 @@
  * words verbatim, and only his agreement (or a standing "start" grant at plan time) lets it work.
  * The RPC handlers, the desktop tools and the phone all call these; none holds the flow itself.
  */
+import { readQuietHours } from "./quietHours.ts";
 import {
   TessayaJobPlacementError,
   type TessayaJobLeadInput,
@@ -33,7 +34,7 @@ import {
   retryRefusal,
   retryText,
 } from "@t3tools/tessaya-shared/jobReport";
-import { inQuietHours } from "@t3tools/tessaya-shared/attention";
+import { inQuietHours, quietHoursOf } from "@t3tools/tessaya-shared/comms";
 import { DEFAULT_POLICY } from "@t3tools/tessaya-shared/initiative";
 import {
   jobChanges,
@@ -1146,13 +1147,9 @@ const sayOnOrigin = Effect.fn("BatonJobFlow.sayOnOrigin")(function* (
   const now = yield* Clock.currentTimeMillis;
   const house = yield* Effect.serviceOption(HomeAssistantService);
   const zone = Option.isSome(house) ? yield* house.value.timeZone : "UTC";
-  // shortcut: the desktop's own quiet hours never reach the server, so the default policy's hold here.
-  const hour = Number(
-    new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: zone }).format(
-      now,
-    ),
-  );
-  if (inQuietHours(DEFAULT_POLICY.quietHours, hour)) return;
+  // The household's quiet hours (Settings, the desktop or by voice); the default policy's until any are set.
+  const quiet = yield* readQuietHours;
+  if (inQuietHours(now, quiet ?? quietHoursOf(DEFAULT_POLICY.quietHours, zone))) return;
   const recent = said.filter((at) => now - at < 3_600_000);
   if (recent.length >= DEFAULT_POLICY.maxPerHour) return;
   said.splice(0, said.length, ...recent, now);

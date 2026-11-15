@@ -103,7 +103,12 @@ import {
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/tessaya-shared/approvals";
-import { COMMS_SOUND_PLACEHOLDER, noteCardOf } from "@t3tools/tessaya-shared/comms";
+import {
+  COMMS_SOUND_PLACEHOLDER,
+  noteCardOf,
+  quietHoursOf,
+  quietSpecOf,
+} from "@t3tools/tessaya-shared/comms";
 import { createIntercomTab, type CommsCall } from "../home/intercomTab.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 import { releasesUrl, repoSlug } from "@t3tools/tessaya-shared/repo";
@@ -5794,6 +5799,21 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
               }
             : {}),
         });
+  // Quiet hours are the household's one record (`comms.quietHours`, read by every vessel); this file is its copy.
+  const shareQuiet = (spec: string) =>
+    void input
+      .comms?.("settings", {
+        quietHours: quietHoursOf(spec, Intl.DateTimeFormat().resolvedOptions().timeZone),
+      })
+      .catch(() => undefined);
+  void input
+    .comms?.("settings")
+    .then((r) => {
+      const quiet = r.settings?.quietHours ?? null;
+      if (quiet !== null && quietSpecOf(quiet) !== settings.quietHours)
+        save({ quietHours: quietSpecOf(quiet) });
+    })
+    .catch(() => undefined);
   const intercomTab =
     input.comms === undefined || input.household === undefined
       ? null
@@ -7707,6 +7727,15 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           { value: "22-8", label: "10 pm to 8 am" },
           { value: "23-7", label: "11 pm to 7 am" },
           { value: "0-9", label: "Midnight to 9 am" },
+          // Set elsewhere (the phone, the server's Settings) to hours not listed here.
+          ...(["none", "22-8", "23-7", "0-9"].includes(settings.quietHours)
+            ? []
+            : [
+                {
+                  value: settings.quietHours,
+                  label: settings.quietHours.replace("-", ":00 to ") + ":00",
+                },
+              ]),
         ],
       },
       {
@@ -8811,6 +8840,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       /^(none|\d{1,2}-\d{1,2})$/.test(value)
     ) {
       save({ quietHours: value });
+      shareQuiet(value);
     } else if (id === "v.pillRest") {
       save({ pillAtRest: on });
       pill.setRest(on);

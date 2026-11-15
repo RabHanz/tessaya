@@ -136,7 +136,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "intro.hardware.text": `Your ${DEVICE} and the things around it: NFC tags, the room brain, its speaker and sounds.`,
     "intro.intercom.title": "Intercom",
     "intro.intercom.text":
-      "Messages and announcements between the people here: whether they're on, quiet hours, your do-not-disturb, who may drop in on you, and the emergencies.",
+      "Messages and announcements between the people here: whether they're on, your do-not-disturb, who may drop in on you, and the emergencies.",
     "intro.homeassistant.title": "Home Assistant",
     "intro.homeassistant.text":
       "Connect Home Assistant so Tessaya can turn on lights and switches in a room when you ask.",
@@ -187,10 +187,6 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
       "People here message and announce to each other through Tessaya. Off: nothing is sent or played anywhere.",
     "ic.on": "On",
     "ic.off": "Off: the owner turns them on",
-    "ic.quiet": "Quiet hours",
-    "ic.quiet.hint":
-      "Messages arrive silently on screens and wait for speakers. Only an adult's urgent message, or an emergency, sounds.",
-    "ic.quiet.none": "None",
     "ic.dnd": "Do not disturb me",
     "ic.dnd.hint": 'Off. Say "don\'t disturb me till three" or pick a time.',
     "ic.dnd.until": 'On until {at}. Pick Off, or say "I\'m free".',

@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off
 /**
- * The Intercom page (COMMS-DESIGN §5, Devices area): messages on or off, quiet hours, your do-not-disturb, the
+ * The Intercom page (COMMS-DESIGN §5, Devices area): messages on or off, your do-not-disturb, the
  * emergencies the owner defines (and one sounding now), and who may drop in on you. The server owns every rule; this
  * only asks `/tessaya/comms` and draws.
  */
@@ -19,8 +19,6 @@ import { text } from "./strings.ts";
 /** One request to `/tessaya/comms`; rejects with the server's reason in plain words. */
 export type CommsCall = (op: string, args?: Record<string, unknown>) => Promise<CommsCallResult>;
 
-/** Quiet hours he picks from, as "from-to" in his own time zone; "" is none. */
-const QUIET = ["", "21:00-07:00", "22:00-07:00", "22:00-08:00", "23:00-07:00", "23:00-08:00"];
 const DND = ["", "1h", "3h", "morning"] as const;
 const WHO = ["any", "adults", "owner"] as const;
 const CONSENTS = ["knock", "allow", "never"] as const;
@@ -111,20 +109,6 @@ export const intercomControls = (s: {
           detail: text(set.enabled ? "ic.on" : "ic.off"),
         },
   );
-  const quiet = set.quietHours === null ? "" : `${set.quietHours.from}-${set.quietHours.to}`;
-  if (s.owner)
-    rows.push({
-      id: "ic.quiet",
-      section,
-      label: text("ic.quiet"),
-      hint: text("ic.quiet.hint"),
-      kind: "choice",
-      value: QUIET.includes(quiet) ? quiet : "",
-      options: [...new Set([...QUIET, quiet])].map((q) => ({
-        value: q,
-        label: q === "" ? text("ic.quiet.none") : q.replace("-", " to "),
-      })),
-    });
   rows.push({
     id: "ic.dnd",
     section,
@@ -255,15 +239,7 @@ export const createIntercomTab = (input: {
       if (!id.startsWith("ic.")) return false;
       const [kind, rest = ""] = id.slice(3).split(":");
       if (kind === "enabled") run("settings", { enabled: value === true });
-      else if (kind === "quiet" && typeof value === "string") {
-        const [from, to] = value.split("-");
-        run("settings", {
-          quietHours:
-            from === undefined || to === undefined || value === ""
-              ? null
-              : { from, to, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-        });
-      } else if (kind === "dnd" && typeof value === "string")
+      else if (kind === "dnd" && typeof value === "string")
         run("dnd", { until: dndUntil(value, input.now?.() ?? new Date()) });
       else if (kind === "alarm") run(rest === "later" ? "emergencyCancel" : "emergencyAck");
       else if (kind === "who" && WHO.includes(value as (typeof WHO)[number]))

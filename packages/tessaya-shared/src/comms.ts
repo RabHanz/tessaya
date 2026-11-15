@@ -362,6 +362,18 @@ export const inQuietHours = (at: number, quiet: CommsQuietHours | null): boolean
   return from <= to ? now >= from && now < to : now >= from || now < to;
 };
 
+/** The desktop's spelling ("22-8", "none") of the household's one quiet hours record (whole hours). */
+export const quietSpecOf = (quiet: CommsQuietHours | null): string =>
+  quiet === null ? "none" : `${Number(quiet.from.slice(0, 2))}-${Number(quiet.to.slice(0, 2))}`;
+
+/** "22-8" in a zone as the household record; "none" or anything else is no quiet hours. */
+export const quietHoursOf = (spec: string, timeZone: string): CommsQuietHours | null => {
+  const m = /^(\d{1,2})-(\d{1,2})$/.exec(spec);
+  if (m === null || Number(m[1]) > 23 || Number(m[2]) > 23) return null;
+  const at = (hour: string) => `${hour.padStart(2, "0")}:00`;
+  return { from: at(m[1]!), to: at(m[2]!), timeZone };
+};
+
 /**
  * Whether a note sounds through quiet hours or do-not-disturb: only an urgent one from an owner, admin or adult
  * (§5.3). Everything else arrives silently on screens and waits for speakers.

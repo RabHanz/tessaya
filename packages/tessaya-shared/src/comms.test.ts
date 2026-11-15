@@ -7,6 +7,8 @@ import {
   commsCaps,
   fallbackForms,
   inQuietHours,
+  quietHoursOf,
+  quietSpecOf,
   noteCardOf,
   parseAddress,
   renderNote,
@@ -181,6 +183,16 @@ describe("quiet hours", () => {
   it("reads the window in its own zone and wraps past midnight", () => {
     expect(inQuietHours(at, { from: "22:00", to: "07:00", timeZone: "Asia/Karachi" })).toBe(true);
     expect(inQuietHours(at, { from: "22:00", to: "07:00", timeZone: "Europe/London" })).toBe(false);
+    // The desktop's "22-8" and the server's record are one setting (one store, 15 Nov).
+    expect(quietHoursOf("22-8", "Asia/Karachi")).toEqual({
+      from: "22:00",
+      to: "08:00",
+      timeZone: "Asia/Karachi",
+    });
+    expect(quietSpecOf(quietHoursOf("0-9", "UTC"))).toBe("0-9");
+    expect(quietSpecOf({ from: "22:30", to: "07:00", timeZone: "UTC" })).toBe("22-7");
+    expect(quietHoursOf("none", "UTC")).toBeNull();
+    expect(quietHoursOf("25-8", "UTC")).toBeNull();
     expect(inQuietHours(at, { from: "13:00", to: "18:00", timeZone: "Europe/London" })).toBe(true);
     expect(inQuietHours(at, null)).toBe(false);
     expect(inQuietHours(at, { from: "22:00", to: "07:00", timeZone: "Nowhere/Else" })).toBe(false);
