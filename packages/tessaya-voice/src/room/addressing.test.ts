@@ -112,6 +112,13 @@ describe("whether he was talking to her", () => {
       ["Hello to you. It's just gone twenty to one.", "Hello to you."],
     ];
     for (const [her, heard] of echoes) expect(isOwnVoice(heard, [her])).toBe(true);
+    // Her first clause goes out as its own line: an echo across it and the rest is still hers.
+    expect(
+      isOwnVoice("It's seven forty here and the sun is up", [
+        "It's seven forty here,",
+        "and the sun is up.",
+      ]),
+    ).toBe(true);
     // His own words while she spoke or just after.
     for (const [her, heard] of [
       ["Yes, I can hear you.", "What time is it?"],

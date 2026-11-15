@@ -898,7 +898,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (sentAway && at - dismissedAt < 3_000) return;
       dismissedAt = at;
       stops += 1;
-      if (speaking()) interrupt();
+      if (speaking() || hold !== null) interrupt();
       carry = null;
       if (!silent(id)) speakNow(own("end.ack", "Okay."));
       restGently(at);
@@ -909,8 +909,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** She stops now and listens: her reply flushed, any turn on its way cancelled, the window open for his next words. */
     const stopHer = (why: string) => {
       stops += 1;
-      // Her whole reply may already be on the R1 (sent up to 0.7 s ahead): still audible is still flushed.
-      if (speaking()) interrupt();
+      // Her whole reply may already be on the R1 (sent up to 0.7 s ahead): still audible is still flushed. Paused,
+      // the hold goes too, or its voice check stops her again every 0.3 s (09:28:22-24, 15 Nov).
+      if (speaking() || hold !== null) interrupt();
       openUntil = deps.now() + config.followMs;
       invited = false;
       face("neutral");
@@ -1024,8 +1025,46 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
       for (const h of held) await out(h);
     };
+    // Live speech renders first: on the 2-thread TTS her pre-rendered acks queued a live reply 9.5 s (15 Nov, 09:26).
+    let liveRenders = 0;
+    const liveDone: Array<() => void> = [];
+    const aheadRenders = new Set<AbortController>();
+    async function* speakLive(text: string, signal: AbortSignal, voice: string | undefined) {
+      liveRenders += 1;
+      for (const c of aheadRenders) c.abort();
+      try {
+        yield* deps.speak(text, signal, voice);
+      } finally {
+        liveRenders -= 1;
+        if (liveRenders === 0) for (const go of liveDone.splice(0)) go();
+      }
+    }
+    /** A line rendered ahead of need: it waits for live speech, and is cut by it and redone after. */
+    const renderAhead = async (line: string, voice: string) => {
+      for (let tries = 0; tries < 3; tries += 1) {
+        if (liveRenders > 0) await new Promise<void>((go) => liveDone.push(go));
+        const control = new AbortController();
+        aheadRenders.add(control);
+        const chunks: Int16Array[] = [];
+        try {
+          for await (const pcm of deps.speak(spoken(line), control.signal, voice)) {
+            if (control.signal.aborted) break;
+            chunks.push(pcm);
+          }
+          if (!control.signal.aborted) {
+            ackAudio.set(`${voice}|${line}`, chunks);
+            return;
+          }
+        } catch {
+          // Not rendered: said live instead when it comes up.
+          if (!control.signal.aborted) return;
+        } finally {
+          aheadRenders.delete(control);
+        }
+      }
+    };
     const say = (text: string, signal: AbortSignal, onFirstAudio?: () => void) =>
-      play(deps.speak(spoken(text), signal, voiceNow()), signal, onFirstAudio, config.prerollMs);
+      play(speakLive(spoken(text), signal, voiceNow()), signal, onFirstAudio, config.prerollMs);
 
     /** Starts her voice on `text` at once (after the sentence before it), buffering what it says for `play`. */
     let synthesis: Promise<void> = Promise.resolve();
@@ -1041,7 +1080,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       };
       synthesis = synthesis.then(async () => {
         try {
-          for await (const pcm of deps.speak(spoken(text), signal, voice)) {
+          for await (const pcm of speakLive(spoken(text), signal, voice)) {
             if (signal.aborted) break;
             chunks.push(pcm);
             nudge();
@@ -1119,16 +1158,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (config.acknowledge !== "voice" || voice === undefined || ackRendered.has(voice)) return;
       ackRendered.add(voice);
       void (async () => {
-        for (const line of ackLines(persona?.id ?? "")) {
-          const chunks: Int16Array[] = [];
-          try {
-            for await (const pcm of deps.speak(spoken(line), new AbortController().signal, voice))
-              chunks.push(pcm);
-            ackAudio.set(`${voice}|${line}`, chunks);
-          } catch {
-            // Not rendered: said live instead when it comes up.
-          }
-        }
+        for (const line of ackLines(persona?.id ?? "")) await renderAhead(line, voice);
       })();
     };
     /** Her own next acknowledgements, rendered ahead like the plain ones so they play at once. */
@@ -1140,17 +1170,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         lines.upcoming(persona?.id ?? "", recog?.member ?? undefined, event),
       );
       void (async () => {
-        for (const line of next) {
-          if (ackAudio.has(`${voice}|${line}`)) continue;
-          const chunks: Int16Array[] = [];
-          try {
-            for await (const pcm of deps.speak(spoken(line), new AbortController().signal, voice))
-              chunks.push(pcm);
-            ackAudio.set(`${voice}|${line}`, chunks);
-          } catch {
-            // Not rendered: said live instead when it comes up.
-          }
-        }
+        for (const line of next)
+          if (!ackAudio.has(`${voice}|${line}`)) await renderAhead(line, voice);
       })();
     };
     let lastExchangeAt = Number.NEGATIVE_INFINITY;
@@ -1668,7 +1689,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         known !== null || someoneAdmitted
           ? Promise.resolve(true)
           : Promise.race([
-              sides.then(([late]) => late === undefined || admits(late, config.gate, "turn")),
+              sides.then(([late]) => {
+                if (late === undefined || admits(late, config.gate, "turn")) return true;
+                // Logged apart from a stop or a lost claim, which all read "cut off" (09:28:06, 15 Nov).
+                deps.log(`[${id}] turn ${turn}: Voice ID heard a ${late.kind} voice; not answered`);
+                return false;
+              }),
               deps.sleep(config.sideMs).then(() => true),
             ]);
       if (!admits(identity, config.gate, "turn") && !someoneAdmitted) {
@@ -1749,6 +1775,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         let buffer = "";
         let firstSentenceAt: number | null = null;
         let speakingChain = Promise.resolve();
+        let lost = false;
+        const won = async () => {
+          const ok = await gateOf(id);
+          if (!ok && !lost) deps.log(`[${id}] turn ${turn}: another R1 answers`);
+          lost ||= !ok;
+          return ok;
+        };
         const enqueue = (whole: string) => {
           // Never "Alfred here." on every turn (10:36:57, 13 Nov): his persona is already known.
           const sentence = withoutSelfIntro(whole, names);
@@ -1767,7 +1800,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           speakingChain = speakingChain.then(async () =>
             // The arbiter is asked alongside, never before (13 Nov: a 1.3-1.7 s claim round in front of every wake);
             // only her voice waits for its answer, and a lost claim is never heard.
-            !(await gateOf(id)) || !(await admitted) || control.signal.aborted
+            !(await won()) || !(await admitted) || control.signal.aborted
               ? control.abort()
               : play(
                   audio,
@@ -1810,7 +1843,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           // the rest about half a second later (13 Nov, Sonnet).
           if (firstSentenceAt === null) {
             const clause = firstClause(buffer);
-            if (clause !== null) {
+            // A clause of her reasoning waits for its whole sentence, judged and dropped as one.
+            if (clause !== null && !isNarration(clause.head)) {
               enqueue(clause.head);
               buffer = clause.rest;
             }
@@ -2041,7 +2075,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         followHold(hold, heard);
         return;
       }
-      if (!heard || !speaking() || enrolling() || bench.has(id) || lastProb < config.turn.stopProb)
+      // Only her sound can be talked over: a reply still thinking is his own voice going on (09:26:47, 15 Nov).
+      if (
+        !heard ||
+        deps.now() >= playUntil + config.downDelayMs ||
+        enrolling() ||
+        bench.has(id) ||
+        lastProb < config.turn.stopProb
+      )
         return;
       if (deps.now() - cutByVoiceAt < 1_000 || deps.now() - soundingFrom < ONSET_GRACE_MS) return;
       // Someone across the room is far quieter than he is; whose voice it is decides the rest.

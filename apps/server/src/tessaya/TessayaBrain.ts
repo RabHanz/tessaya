@@ -88,12 +88,13 @@ export const speakableSentences = (
   let held = "";
   let spoke = false;
   const out = (sentence: string) => {
-    spoke = true;
     if (sentence.trim() === "" || isNarration(sentence)) return;
     const kept = withoutSelfIntro(sentence, names);
     // A sentence that was only the opener says nothing. Each one ends in a space, the last too: the vessel speaks a
     // sentence once a space follows it, and the stream's end waits for the turn's Record write (14 Nov, 21:40).
-    if (kept.trim() !== "") say(/\s$/.test(kept) ? kept : `${kept} `);
+    if (kept.trim() === "") return;
+    spoke = true;
+    say(/\s$/.test(kept) ? kept : `${kept} `);
   };
   return {
     push: (words: string) => {
@@ -107,7 +108,8 @@ export const speakableSentences = (
       held = held.slice(from);
       // Her first words go out at the first clause, not the first full stop (about 0.4 s sooner, 15 Nov).
       const clause = spoke ? null : firstClause(held);
-      if (clause !== null) {
+      // A clause that is her reasoning waits for its whole sentence, which is then judged and dropped as one.
+      if (clause !== null && !isNarration(clause.head)) {
         out(clause.head);
         held = clause.rest;
       }

@@ -1563,10 +1563,16 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     // Her reply as speech-like sound, and the R1's 0.3.92 uplink: each frame says how much of her it has played.
     const her = Int16Array.from(speechLike(6, 3, 190), (v) => v * 32768);
     const run = async (mode: "open" | "keyword", him: boolean, likeness = 0.6, enrolled = true) => {
+      const logs: string[] = [];
       const t = setup({
+        log: (l) => logs.push(l),
         member: async () => likeness,
         members: () => enrolled,
-        recognise: heardInTurn(["What time is it?", "No, I meant in London."]),
+        // Her echo alone is recognised as her own words so far (her first clause), which with her sound make it hers.
+        recognise: heardInTurn([
+          "What time is it?",
+          him ? "No, I meant in London." : "It's seven forty here.",
+        ]),
         vad: () => ({
           score: async (w) =>
             Math.sqrt(w.reduce((a, v) => a + v * v, 0) / w.length) > 300 ? 0.9 : 0.05,
@@ -1630,11 +1636,14 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
         asked: t.brainCalls.map((c) => c.messages.at(-1)!.content),
         // All of her reply reached the R1 in the end (a pause sends again what the flush dropped).
         sentAll: sent() >= her.length * 2,
+        stopped: logs.filter((l) => l.endsWith("talked over; she stopped")).length,
       };
     };
+    // Stopped once: the hold goes with her, so its voice check never stops her again (09:28:22-24, 15 Nov).
     expect(await run("open", true)).toMatchObject({
       flushed: true,
       asked: ["What time is it?", "No, I meant in London."],
+      stopped: 1,
     });
     // Her own voice coming back is not him.
     expect((await run("open", false)).flushed).toBe(false);
@@ -1643,6 +1652,7 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       flushed: true,
       asked: ["What time is it?"],
       sentAll: true,
+      stopped: 0,
     });
     // Keyword mode never pauses her for a voice, but his whole turn over her is still his: answered
     // (14 Nov, 21:39), while another voice's is not.
@@ -2402,6 +2412,36 @@ describe("her name alone, then nothing (16:36:43, 13 Nov: the red light and sile
     }
     expect(said).toHaveLength(3);
     for (let i = 1; i < said.length; i += 1) expect(said[i]).not.toBe(said[i - 1]);
+  });
+
+  it("renders her lines ahead only around live speech: his reply never queues behind them (09:26, 15 Nov)", async () => {
+    const renders: Array<{ text: string; signal: AbortSignal }> = [];
+    const t = setup(
+      {
+        speak: async function* (text, signal) {
+          renders.push({ text, signal });
+          // A line ahead renders until it is cut: only her live reply finishes.
+          if (!/study|Done/.test(text))
+            await new Promise((go) => signal.addEventListener("abort", go));
+          yield new Int16Array(3_200);
+        },
+        sleep: async (ms) => {
+          if (ms !== 1_200) t.advance(ms);
+          else await new Promise<void>(() => undefined);
+        },
+      },
+      { ...ROOM_CONFIG, acknowledge: "voice" },
+    );
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    const ahead = renders.slice();
+    expect(ahead).toHaveLength(1);
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.metrics;
+    expect(ahead[0]!.signal.aborted).toBe(true);
+    // Redone once no live line renders, and left to finish.
+    expect(renders.at(-1)).toMatchObject({ text: ahead[0]!.text });
+    expect(renders.at(-1)!.signal.aborted).toBe(false);
   });
 
   it("is a sound with 'tone' and nothing with 'off'", async () => {
