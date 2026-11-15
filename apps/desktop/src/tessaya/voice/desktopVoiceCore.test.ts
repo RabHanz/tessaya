@@ -31,6 +31,7 @@ import {
   sessionMessageSentence,
   type VoiceIntentRequest,
   liveTimings,
+  withCorrection,
   withPreempt,
 } from "./desktopVoiceCore.ts";
 import { makeWavFileAudioInput, wavDeviceId } from "./WavFileAudioInput.ts";
@@ -304,6 +305,29 @@ describe("how long the voice listens", () => {
     expect(live.commandWindowMs).toBe(8_000);
     expect(live.conversationMs).toBe(120_000);
     expect(liveTimings(DEFAULT_TIMINGS).commandWindowMs).toBe(DEFAULT_TIMINGS.commandWindowMs);
+  });
+});
+
+describe("the shared correction", () => {
+  it("gives the brain his words to her as dictation would write them, thinking ahead or not", async () => {
+    const seen: string[] = [];
+    const router = withCorrection(
+      {
+        route: async (effect) => {
+          if (effect.kind === "command") seen.push(effect.text);
+          return { kind: "none" };
+        },
+        prepare: async (effect) => {
+          seen.push(effect.text);
+          return async () => ({ kind: "none" });
+        },
+      },
+      (text) => text.replace("to say a", "Tessaya"),
+    );
+    const effect = { kind: "command", text: "get me to say a", inheritedTarget: null } as const;
+    await router.route(effect, { bus: emptyContextBus, now: 0 });
+    await router.prepare!(effect, { bus: emptyContextBus, now: 0 });
+    expect(seen).toEqual(["get me Tessaya", "get me Tessaya"]);
   });
 });
 

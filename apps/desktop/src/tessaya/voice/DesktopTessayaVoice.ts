@@ -549,6 +549,7 @@ import {
   learnCorrection,
   observeWording,
   addNever,
+  biasTranscript,
   parseNever,
   type NeverList,
   parseAddToDictionary,
@@ -1206,6 +1207,8 @@ export interface VoiceCoreHooks {
   readonly onEvent: (event: VoiceCoreEvent) => void;
   /** "Add X to my dictionary": the reply to speak, or null when the words were something else. */
   readonly vocabulary: (text: string) => Promise<string | null>;
+  /** His words to her, corrected with his dictionary and the personas he can call, as the room and the server do. */
+  readonly correct: (text: string) => string;
   /** How long he must be quiet for a turn to be over, read each turn. */
   readonly waitMs: () => number;
   /** How long the command window and the conversation stay open. */
@@ -5342,6 +5345,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           return null;
         }
       },
+      correct: (text) =>
+        biasTranscript(text, dictionaryForCleanup(), {
+          names: readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.map((p) => p.name),
+        }),
       vocabulary: async (text) => {
         const word = parseAddToDictionary(text);
         if (word === null) return null;
