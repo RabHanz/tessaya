@@ -12,7 +12,7 @@ const frame = (v: number) => {
 };
 
 /** Scores "Tessaya" 1.0 on a chunk carrying the marker value 7, else 0. */
-const rig = (heard: string, now?: () => number) => {
+const rig = (heard: string | ReadonlyArray<string>, now?: () => number) => {
   const confirmed: number[] = [];
   const woken: string[] = [];
   const lines: string[] = [];
@@ -28,7 +28,7 @@ const rig = (heard: string, now?: () => number) => {
     }),
     confirm: async (pcm) => {
       confirmed.push(pcm.length);
-      return heard;
+      return typeof heard === "string" ? [heard] : heard;
     },
     onWake: (id, word) => woken.push(`${id} ${word}`),
     log: (line) => lines.push(line),
@@ -135,6 +135,17 @@ describe("waking her by name with no session open", () => {
     expect(tv.woken).toEqual([]);
   });
 
+  it("wakes when any recogniser hears the name: his personal one heard names the general one left empty (15 Nov)", async () => {
+    const personal = rig(["", "Tessaya."]);
+    for (let i = 0; i < 4; i += 1) personal.stream.frame("r1", frame(7));
+    await personal.stream.drained("r1");
+    expect(personal.woken).toEqual(["r1 Tessaya"]);
+    const neither = rig(["", "Testing again."]);
+    for (let i = 0; i < 4; i += 1) neither.stream.frame("r1", frame(7));
+    await neither.stream.drained("r1");
+    expect(neither.woken).toEqual([]);
+  });
+
   it("hears his name in a segment shorter than the model's 1.28 s of context (01:41, 13 Nov)", async () => {
     const woken: string[] = [];
     // Like openWakeWord: nothing until 16 chunks since the last reset, then 1.0 on the name.
@@ -148,7 +159,7 @@ describe("waking her by name with no session open", () => {
         },
         score: async (chunk) => [(seen += 1) >= 16 && chunk.includes(7) ? 1 : 0],
       }),
-      confirm: async () => "Tessaya.",
+      confirm: async () => ["Tessaya."],
       onWake: (id, word) => woken.push(`${id} ${word}`),
       log: () => undefined,
     });
@@ -182,7 +193,7 @@ describe("her name through the loop's own wake path, with the real models", () =
           embedding: model("embedding_model.onnx"),
           wakes: [{ word: "Tessaya", path: model("tessaya.onnx"), threshold: 0.99 }],
         }),
-      confirm: async () => "Tessaya",
+      confirm: async () => ["Tessaya"],
       onWake: (id, word) => woken.push(`${id} ${word}`),
       log: (l) => logs.push(l),
     });

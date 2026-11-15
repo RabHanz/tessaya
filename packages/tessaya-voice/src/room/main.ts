@@ -756,6 +756,7 @@ const main = async () => {
       wakes: list.map((w) => ({ word: w.word, path: w.file, threshold: w.threshold })),
     });
   const heard = recognisers(() => online.size > 0);
+  const personalConfirm = (process.env["R1_PERSONAL_RECOGNIZERS"] ?? "").trim() !== "";
   // The room's words get dictation's own correction: his dictionary and the personas he can call (one ear).
   let vocabulary: ReadonlyArray<VocabularyEntry> = [];
   const readVocabulary = async () => {
@@ -779,11 +780,16 @@ const main = async () => {
       : createWakeStream({
           words,
           scorer: scorerFor(words),
-          confirm: (pcm) => {
-            const turn = recognise();
-            turn.feed(pcm);
-            return turn.finish();
-          },
+          // His personal model beside the general one: the general one leaves some of his names empty. W2 cascade (15 Nov):
+          // 31 of his 41 names against 27 behind the kws, the same false wakes on his speech and LibriSpeech (ML-001).
+          confirm: (pcm) =>
+            Promise.all(
+              (personalConfirm ? [false, true] : [false]).map((owner) => {
+                const turn = recognise({ owner });
+                turn.feed(pcm);
+                return turn.finish();
+              }),
+            ),
           onWake: (id, word, level, score, clip) =>
             room?.woken(
               id,
