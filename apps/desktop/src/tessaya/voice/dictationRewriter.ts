@@ -16,6 +16,7 @@ import {
   type DictationContext,
   type DictationMode,
   type DictionaryEntry,
+  type Refused,
 } from "@t3tools/tessaya-shared/dictationCleanup";
 import type { StylePair } from "@t3tools/tessaya-shared/stylePairs";
 
@@ -107,7 +108,13 @@ export const makeRewriter = (input: {
    * The optional direct API path: his own Anthropic key, kept by the server and used for nothing else. With a key
    * saved, every clean-up goes to it and a failure inserts the local text; only with none (null) does the session answer.
    */
-  readonly api?: (system: string, message: string, maxTokens: number) => Promise<string | null>;
+  /** `refused` makes it the one retry: the refused answer and the reason go as their own turns after `message`. */
+  readonly api?: (
+    system: string,
+    message: string,
+    maxTokens: number,
+    refused?: Refused,
+  ) => Promise<string | null>;
   /**
    * While true (a dictation key is bound at the claude level), a session is always up: one that ends is replaced
    * at once and idling never ends it, so no dictation waits for Claude Code to start (about 2 s of 3.4 s cold).
@@ -117,12 +124,18 @@ export const makeRewriter = (input: {
   readonly examples?: (text: string, mode: DictationMode) => ReadonlyArray<StylePair>;
 }): Rewriter => {
   // Text already set out on this machine (a list) is only polished: examples there cost lists (18 → 12 of his 52).
-  const message = (text: string, mode: DictationMode, context?: DictationContext) =>
+  const message = (
+    text: string,
+    mode: DictationMode,
+    context?: DictationContext,
+    refused?: Refused,
+  ) =>
     rewriteMessage(
       text,
       mode,
       context,
       text.includes("\n") ? [] : (input.examples?.(text, mode) ?? []),
+      refused,
     );
   let session: VisionSession | null = null;
   let turns = 0;
@@ -178,8 +191,9 @@ export const makeRewriter = (input: {
     text: string,
     mode: DictationMode,
     context?: DictationContext,
+    refused?: Refused,
   ): Promise<string> => {
-    const answer = get().ask([{ type: "text", text: message(text, mode, context) }]);
+    const answer = get().ask([{ type: "text", text: message(text, mode, context, refused) }]);
     busy = answer.catch(() => undefined);
     return answer.then((a) => a.trim());
   };
@@ -196,6 +210,7 @@ export const makeRewriter = (input: {
     text: string,
     mode: DictationMode,
     context?: DictationContext,
+    refused?: Refused,
   ): Promise<string | null> => {
     if (input.api === undefined) return null;
     try {
@@ -203,6 +218,7 @@ export const makeRewriter = (input: {
         rewriteSystemPrompt(input.dictionary()),
         message(text, mode, context),
         64 + Math.ceil(text.length / 2),
+        refused,
       );
       apiAnswers = answer !== null;
       noKey = answer === null;
@@ -228,15 +244,16 @@ export const makeRewriter = (input: {
     mode: DictationMode,
     final: boolean,
     context?: DictationContext,
+    refused?: Refused,
   ): Promise<string> => {
-    const paid = final || keyRoute() ? await viaApi(text, mode, context) : null;
-    return paid === null ? viaSession(text, mode, context) : paid.trim();
+    const paid = final || keyRoute() ? await viaApi(text, mode, context, refused) : null;
+    return paid === null ? viaSession(text, mode, context, refused) : paid.trim();
   };
   const timedOut = () => new Error(apiWhy === null ? "timed out" : `timed out after key ${apiWhy}`);
   /** The real clean's question, against a deadline counted from when `clean` was called. */
   const askBy =
     (deadline: number, context?: DictationContext) =>
-    async (text: string, mode: DictationMode): Promise<string> => {
+    async (text: string, mode: DictationMode, refused?: Refused): Promise<string> => {
       let sent = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -244,7 +261,7 @@ export const makeRewriter = (input: {
           busy.then(() => {
             if (Date.now() >= deadline) throw timedOut();
             sent = true;
-            return send(text, mode, true, context);
+            return send(text, mode, true, context, refused);
           }),
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => reject(timedOut()), deadline - Date.now());
@@ -268,7 +285,7 @@ export const makeRewriter = (input: {
 
   const run = (
     { raw, mode, level, context }: CleanInput,
-    ask: (text: string, mode: DictationMode) => Promise<string>,
+    ask: (text: string, mode: DictationMode, refused?: Refused) => Promise<string>,
   ) =>
     cleanDictation({
       ...(context === undefined ? {} : { context }),
@@ -293,8 +310,8 @@ export const makeRewriter = (input: {
     guessing = job !== undefined;
     if (job === undefined) return;
     // A guess is not counted against the session's turns, and is never timed out here: the session's own limit holds.
-    const cleaned = run(job.input, (text, mode) =>
-      busy.then(() => send(text, mode, false, job.input.context)),
+    const cleaned = run(job.input, (text, mode, refused) =>
+      busy.then(() => send(text, mode, false, job.input.context, refused)),
     );
     guesses.set(job.key, cleaned);
     void cleaned

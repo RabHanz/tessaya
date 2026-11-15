@@ -1,5 +1,5 @@
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
-import { cleanupApiLimitMs } from "@t3tools/tessaya-shared/dictationCleanup";
+import { cleanupApiLimitMs, refusedNote } from "@t3tools/tessaya-shared/dictationCleanup";
 import { brainRoute, keyRefusal, type BrainRoute } from "@t3tools/tessaya-shared/brainRoutes";
 import {
   type BrainRole,
@@ -131,6 +131,7 @@ export interface DictationCleanupRequest {
   readonly system: string;
   readonly message: string;
   readonly maxTokens: number;
+  readonly refused?: { readonly answer: string; readonly why: string } | undefined;
 }
 export interface ConverseRequest {
   readonly system: string;
@@ -296,7 +297,15 @@ export const make = Effect.gen(function* () {
             model: apiModel(route.model),
             max_tokens: input.maxTokens,
             system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
-            messages: [{ role: "user", content: input.message }],
+            messages: [
+              { role: "user", content: input.message },
+              ...(input.refused === undefined
+                ? []
+                : [
+                    { role: "assistant", content: input.refused.answer },
+                    { role: "user", content: refusedNote(input.refused.why) },
+                  ]),
+            ],
             // As measured in the cleanup A/B: no thinking at low effort, the fastest Haiku answer.
             ...quickThinking(apiModel(route.model)),
             output_config: { effort: route.effort ?? "low" },

@@ -891,10 +891,10 @@ export const startTessayaDesktop = Effect.gen(function* () {
       comms,
       // His Anthropic key cleans every dictation when he saved one; a failure (its reason in the error) inserts the
       // local text, never the subscription. The wait is the server's limit, with a little for the hop.
-      cleanupApi: async (system, message, maxTokens) => {
+      cleanupApi: async (system, message, maxTokens, refused) => {
         const answer = (await direct(
           "baton.dictation.cleanupApi",
-          { system, message, maxTokens },
+          { system, message, maxTokens, ...(refused === undefined ? {} : { refused }) },
           cleanupApiLimitMs(maxTokens) + 300,
         )) as { readonly configured?: boolean; readonly text?: unknown };
         return answer?.configured === true && typeof answer.text === "string" ? answer.text : null;
