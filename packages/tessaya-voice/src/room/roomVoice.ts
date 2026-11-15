@@ -408,7 +408,7 @@ export const ROOM_CONFIG: RoomConfig = {
   inhouse: new Set(),
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
   languages: ["en"],
-  talkOver: "keyword",
+  talkOver: "open",
   personaFollows: false,
 };
 

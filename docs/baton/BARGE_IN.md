@@ -6,12 +6,12 @@ voice is in the microphone.
 
 ## What exists now
 
-| Path                                                  | Over speakers                                                             | On headphones                                                                  |
-| ----------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Wake word, stop phrase                                | as before                                                                 | as before                                                                      |
-| Esc, the pill's stop, the hotkey (the pill builder's) | always                                                                    | always                                                                         |
-| Talking over her                                      | the echo guard (setting "Cut in by talking over her", **off by default**) | on: the mic cannot hear her, so speech over her voice cuts in                  |
-| On the Tessel                                         | keyword (stop phrase or her name) by default; open talk-over per Tessel   | Bluetooth output: not yet covered (the latency below is the onboard speaker's) |
+| Path                                                  | Over speakers                                                             | On headphones                                                         |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Wake word, stop phrase                                | as before                                                                 | as before                                                             |
+| Esc, the pill's stop, the hotkey (the pill builder's) | always                                                                    | always                                                                |
+| Talking over her                                      | the echo guard (setting "Cut in by talking over her", **off by default**) | on: the mic cannot hear her, so speech over her voice cuts in         |
+| On the Tessel                                         | open talk-over once a household voice is enrolled, else keyword           | firmware 0.3.137 and later send the mic while a Bluetooth reply plays |
 
 On a cut-in the voice **ducks to 25% at 40 ms** of his speech and **stops at 120 ms**, well inside 300 ms, and the core listens from the
 moment he started (the words since the onset are kept, as for a late wake). If it was only a blip the voice comes back up. Settings, on the
@@ -35,9 +35,10 @@ does not subtract anything. It only has to tell a voice from what is left of her
    their words are not answered.
 
 Level is no guide to whose voice it is: a rule that a voice must rise 10 dB over the room's own loud moments kept a TV out,
-and kept him out of a busy room three times in four. Open mode is per Tessel (retained `cmd/voice/talkover {"mode":"open"}`,
-`"keyword"` or empty goes back, or `TESSEL_TALK_OVER=open`), and it is keyword until someone has a voice profile here, or
-without the header (older firmware).
+and kept him out of a busy room three times in four. Open mode is the default; a Tessel goes back to keyword with the retained
+`cmd/voice/talkover {"mode":"keyword"}` (empty returns to the default), or every Tessel with `R1_TALK_OVER=keyword`. It
+is keyword until someone has a voice profile here, and without the header (older firmware). Before 0.3.137 a Tessel
+on Bluetooth dropped every mic frame while her reply played, so nothing said over her reached the loop there.
 
 Measured (`scripts/tessaya/talkover-eval.ts`, 14 Nov). His recorded voice is mixed in at the Tessel mic level, and a profile
 from his desk-mic clips stands in for his Tessel enrolment. The time is from his first word to the pause (the flush's trip to

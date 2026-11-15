@@ -524,61 +524,73 @@ describe("answering only when he is talking to her", () => {
     ).toEqual([]);
   });
 
-  it("drops her echo by how it sounds, partly cancelled and with her persona's name in it (09:00 sweep, 13 Nov)", async () => {
-    const t = setup(
-      {
-        recognise: said(["Can I talk to someone else?", "Freya, I can take that over."]),
-        brain: async function* (input) {
-          t.brainCalls.push(input);
-          yield "Freya, I can take that over. Tell me what you need.";
+  // Firmware 0.3.137 sends the mic while a Bluetooth reply plays: her echo then arrives after its buffer and the sink.
+  it.each([0, 1_300])(
+    "drops her echo by how it sounds, partly cancelled and with her persona's name in it (09:00 sweep, 13 Nov; Bluetooth buffer %i ms)",
+    async (btMs) => {
+      const t = setup(
+        {
+          recognise: said(["Can I talk to someone else?", "Freya, I can take that over."]),
+          brain: async function* (input) {
+            t.brainCalls.push(input);
+            yield "Freya, I can take that over. Tell me what you need.";
+          },
+          speak: async function* () {
+            for (let i = 0; i < 10; i += 1) yield voice(3_200, 210, 3.1, i * 3_200);
+          },
         },
-        speak: async function* () {
-          for (let i = 0; i < 10; i += 1) yield voice(3_200, 210, 3.1, i * 3_200);
-        },
-      },
-      { ...QUIET, leadMs: 60_000, prerollMs: 0 },
-    );
-    const played: Array<{ at: number; pcm: Int16Array }> = [];
-    const publish = t.deps.publish;
-    (t.deps as { publish: RoomDeps["publish"] }).publish = (topic, payload) => {
-      if (topic.endsWith("/voice/down"))
-        played.push({
-          at: t.deps.now(),
-          pcm: new Int16Array(Uint8Array.from(payload as Uint8Array).buffer),
-        });
-      publish(topic, payload);
-    };
-    t.s2();
-    await t.feed(true, 20);
-    await t.feed(false, 8);
-    // What the mic hears while she plays: her voice, mostly cancelled, under a little of the room.
-    const room = voice(960 * 80, 333, 5.3);
-    let sounds = 0;
-    let k = 0;
-    for (let idle = 0; idle < 20;) {
-      const f = played[k];
-      if (f === undefined) {
-        idle += 1;
-        await t.feed(false, 1);
-        continue;
-      }
-      idle = 0;
-      sounds = Math.max(f.at + ROOM_CONFIG.downDelayMs, sounds + 60);
-      await t.deps.sleep(Math.max(0, sounds + 180 - t.deps.now()));
-      const noise = room.subarray((k % 80) * 960, (k % 80) * 960 + 960);
-      t.room.message(
-        `freya/r1/${DEV}/voice/up`,
-        toBytes(f.pcm.map((v, i) => Math.round(v * 0.25 + noise[i]! * 0.03))),
+        { ...QUIET, leadMs: 60_000, prerollMs: 0 },
       );
-      k += 1;
-      await t.room.session(DEV)!.drained();
-    }
-    await t.feed(false, 60);
-    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
-      "Can I talk to someone else?",
-    ]);
-    expect(t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona"))).toEqual([]);
-  });
+      const played: Array<{ at: number; pcm: Int16Array }> = [];
+      const publish = t.deps.publish;
+      (t.deps as { publish: RoomDeps["publish"] }).publish = (topic, payload) => {
+        if (topic.endsWith("/voice/down"))
+          played.push({
+            at: t.deps.now(),
+            pcm: new Int16Array(Uint8Array.from(payload as Uint8Array).buffer),
+          });
+        publish(topic, payload);
+      };
+      if (btMs > 0)
+        t.room.message(
+          `freya/r1/${DEV}/state/voice`,
+          Buffer.from(JSON.stringify({ ev: "out", out: "bt", bt_latency_ms: btMs })),
+        );
+      t.s2();
+      await t.feed(true, 20);
+      await t.feed(false, 8);
+      // What the mic hears while she plays: her voice, mostly cancelled, under a little of the room.
+      const room = voice(960 * 80, 333, 5.3);
+      let sounds = 0;
+      let k = 0;
+      for (let idle = 0; idle < 20;) {
+        const f = played[k];
+        if (f === undefined) {
+          idle += 1;
+          await t.feed(false, 1);
+          continue;
+        }
+        idle = 0;
+        sounds = Math.max(
+          f.at + ROOM_CONFIG.downDelayMs + (btMs > 0 ? btMs + 150 : 0),
+          sounds + 60,
+        );
+        await t.deps.sleep(Math.max(0, sounds + 180 - t.deps.now()));
+        const noise = room.subarray((k % 80) * 960, (k % 80) * 960 + 960);
+        t.room.message(
+          `freya/r1/${DEV}/voice/up`,
+          toBytes(f.pcm.map((v, i) => Math.round(v * 0.25 + noise[i]! * 0.03))),
+        );
+        k += 1;
+        await t.room.session(DEV)!.drained();
+      }
+      await t.feed(false, 60);
+      expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+        "Can I talk to someone else?",
+      ]);
+      expect(t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona"))).toEqual([]);
+    },
+  );
 
   it("never answers a turn heard before the R1 muted itself (08:39, 08:45 and 08:50, 13 Nov)", async () => {
     let finished: (text: string) => void = () => undefined;
@@ -1591,7 +1603,7 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       asked: ["What time is it?"],
       sentAll: true,
     });
-    // Keyword mode (the default) never pauses her for a voice, but his whole turn over her is still his: answered
+    // Keyword mode never pauses her for a voice, but his whole turn over her is still his: answered
     // (14 Nov, 21:39), while another voice's is not.
     expect((await run("keyword", true)).asked).toEqual([
       "What time is it?",

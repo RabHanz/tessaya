@@ -135,6 +135,23 @@ const captures = async (
   const silero = process.env["SILERO"];
   // PROFILE=<dir of 16 kHz s16le clips>: a household profile (their mean CAM++ vector) for the voice check.
   const member = await (async () => {
+    // PROFILE_JSON=<speakers.json>: the household as the Tessel enrolled it, scored as the room loop does (best centroid).
+    const stored = process.env["PROFILE_JSON"];
+    if (stored !== undefined) {
+      const embedder = await createSpeakerEmbedder(process.env["CAMPLUS"]!, "campplus", 2);
+      const centroids = (
+        JSON.parse(NodeFS.readFileSync(stored, "utf8")) as Array<{ centroid: string }>
+      ).map((p) => {
+        const b = Buffer.from(p.centroid, "base64");
+        return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.length));
+      });
+      return async (pcm: Int16Array) => {
+        const v = await embedder.embed(pcm);
+        return v === null
+          ? Number.NEGATIVE_INFINITY
+          : Math.max(Number.NEGATIVE_INFINITY, ...centroids.map((c) => cosine(v, c)));
+      };
+    }
     const dir = process.env["PROFILE"];
     if (dir === undefined) return null;
     const embedder = await createSpeakerEmbedder(process.env["CAMPLUS"]!, "campplus", 2);

@@ -900,8 +900,8 @@ const main = async () => {
         .filter(Boolean),
       // Her name alone: a spoken "I'm here" (voice), a sound (tone) or only her look (off).
       acknowledge: ((v) => (v === "tone" || v === "off" ? v : "voice"))(process.env["R1_ACK"]),
-      // Over her voice: keyword (a stop phrase or her name) unless R1_TALK_OVER=open; per R1 on cmd/voice/talkover.
-      talkOver: process.env["R1_TALK_OVER"] === "open" ? "open" : "keyword",
+      // Over her voice: open (a household voice stops her) unless R1_TALK_OVER=keyword; per R1 on cmd/voice/talkover.
+      talkOver: process.env["R1_TALK_OVER"] === "keyword" ? "keyword" : "open",
       // A member's session opens on the persona they last talked to anywhere (R1_PERSONA_FOLLOWS=1; off by default).
       personaFollows: process.env["R1_PERSONA_FOLLOWS"] === "1",
     },
