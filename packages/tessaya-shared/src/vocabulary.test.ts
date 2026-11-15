@@ -76,7 +76,7 @@ describe("two copies of his vocabulary", () => {
         count: 4,
         heard: ["cube"],
       },
-      { phrase: "Hetzner", replacement: null, source: "added" as const, count: 1 },
+      { phrase: "Grafana", replacement: null, source: "added" as const, count: 1 },
     ];
     const server = [
       {

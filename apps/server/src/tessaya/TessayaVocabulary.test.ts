@@ -121,11 +121,11 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
       (file) =>
         Effect.gen(function* () {
           expect(stored(file)).toEqual([
-            expect.objectContaining({ phrase: "Hetzner", heard: ["Hetsner"] }),
+            expect.objectContaining({ phrase: "Grafana", heard: ["Grafanna"] }),
           ]);
-          expect(yield* customWords).toContainEqual({ term: "Hetzner", aliases: ["Hetsner"] });
+          expect(yield* customWords).toContainEqual({ term: "Grafana", aliases: ["Grafanna"] });
         }),
-      { words: [{ term: "Hetzner", aliases: ["Hetsner"] }] },
+      { words: [{ term: "Grafana", aliases: ["Grafanna"] }] },
     ),
   );
 
