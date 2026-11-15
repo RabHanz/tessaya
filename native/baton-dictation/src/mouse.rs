@@ -123,6 +123,13 @@ pub struct State {
     down: Vec<Button>,
 }
 
+impl State {
+    /// A press is held back waiting for its chord partner: only then does time alone change anything.
+    pub fn holding(&self) -> bool {
+        self.held.is_some()
+    }
+}
+
 pub fn reduce(state: &mut State, ev: Ev, cfg: &Config) -> Vec<Action> {
     let mut actions = Vec::new();
     let t = match ev {
@@ -253,6 +260,11 @@ mod tests {
 
     #[test]
     fn a_held_press_is_replayed_when_no_second_comes_and_a_quick_click_keeps_its_order() {
+        let (cfg, mut state) = (chord(), State::default());
+        reduce(&mut state, Down(Left, 0), &cfg);
+        assert!(state.holding(), "the ticker must run while a press waits");
+        reduce(&mut state, Tick(60), &cfg);
+        assert!(!state.holding(), "and may sleep once it is replayed");
         assert_eq!(
             run(&chord(), &[Down(Left, 0), Tick(60), Up(Left, 400)]),
             vec![vec![Consume], vec![ReplayDown(Left)], vec![Pass]]

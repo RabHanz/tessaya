@@ -14,7 +14,8 @@ import * as PrimaryEnvironmentHttpLayer from "../environments/primary/httpLayer"
 import { isElectron } from "../env";
 import { APP_VERSION } from "~/branding";
 
-const DEFAULT_EXPORT_INTERVAL_MS = 1_000;
+// The server's own default: at 1 s two idle windows sent a trace request a second (MA-017).
+const DEFAULT_EXPORT_INTERVAL_MS = 10_000;
 interface NavigatorUserAgentData {
   readonly platform: string;
   readonly mobile: boolean;

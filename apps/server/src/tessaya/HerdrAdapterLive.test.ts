@@ -14,6 +14,7 @@ import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
 import type * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, it } from "@effect/vitest";
 
 import { AdoptedRuntimeAdapter } from "./AdoptedSessionService.ts";
@@ -25,6 +26,7 @@ import {
   splitPaneRef,
   parseHerdrForeground,
   parseHerdrSnapshot,
+  rememberMissing,
   toCandidate,
   type HerdrCommandResult,
 } from "./HerdrAdapterLive.ts";
@@ -306,6 +308,27 @@ describe("discovery against the captured CLI", () => {
       expect(result.available).toBe(false);
       expect(result.reason).toContain("herdr is not installed on this environment");
     }),
+  );
+
+  it.effect(
+    "looks for a missing binary again only after a while, and at once once it is found",
+    () =>
+      Effect.gen(function* () {
+        let spawns = 0;
+        let installed = false;
+        const run = yield* rememberMissing(() => {
+          spawns++;
+          return Effect.succeed(installed ? ok(SNAPSHOT) : missing());
+        });
+        expect((yield* run(["api", "snapshot"])).notInstalled).toBe(true);
+        expect((yield* run(["api", "snapshot"])).notInstalled).toBe(true);
+        expect(spawns).toBe(1);
+        installed = true;
+        yield* TestClock.adjust("5 minutes");
+        expect((yield* run(["api", "snapshot"])).notInstalled).toBe(false);
+        expect((yield* run(["api", "snapshot"])).notInstalled).toBe(false);
+        expect(spawns).toBe(3);
+      }),
   );
 });
 

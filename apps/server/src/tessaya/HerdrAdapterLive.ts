@@ -38,9 +38,11 @@ import {
   type AdoptedSessionCandidate,
 } from "@t3tools/tessaya-contracts";
 import { mapHerdrPaneState } from "@t3tools/tessaya-shared/adoptedSession";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 
 import { AdoptedRuntimeAdapter } from "./AdoptedSessionService.ts";
 
@@ -130,7 +132,34 @@ const runHerdrProcess = (args: ReadonlyArray<string>): Effect.Effect<HerdrComman
     });
   });
 
-export const cliLayer = Layer.succeed(HerdrCli, { run: runHerdrProcess });
+/** While no `herdr` binary is found, it is looked for again only this often. */
+const MISSING_RECHECK_MS = 5 * 60_000;
+
+/**
+ * A machine without Herdr answers "not installed" from memory for a while instead of searching PATH and failing a
+ * spawn on every session list: on Windows that was a steady share of the idle server's CPU (MA-017).
+ */
+export const rememberMissing = (
+  run: (args: ReadonlyArray<string>) => Effect.Effect<HerdrCommandResult>,
+): Effect.Effect<(args: ReadonlyArray<string>) => Effect.Effect<HerdrCommandResult>> =>
+  Effect.map(
+    Ref.make(0),
+    (missingUntil) => (args) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        if (now < (yield* Ref.get(missingUntil))) {
+          return { stdout: "", stderr: "", exitCode: 1, notInstalled: true };
+        }
+        const result = yield* run(args);
+        yield* Ref.set(missingUntil, result.notInstalled ? now + MISSING_RECHECK_MS : 0);
+        return result;
+      }),
+  );
+
+export const cliLayer = Layer.effect(
+  HerdrCli,
+  Effect.map(rememberMissing(runHerdrProcess), (run) => ({ run })),
+);
 
 // ---------------------------------------------------------------------------
 // Reading what Herdr prints
