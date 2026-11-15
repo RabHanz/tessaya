@@ -6,6 +6,8 @@
  */
 import * as NodeCrypto from "node:crypto";
 
+import { WAKE_WORDS } from "./wakeWords.ts";
+
 export const WAKE_TARGETS = ["room", "desktop", "r1"] as const;
 export type WakeTarget = (typeof WAKE_TARGETS)[number];
 export const WAKE_FORMATS = ["openwakeword-onnx", "kws-dscnn-int8", "r1-kws-pack"] as const;
@@ -58,7 +60,7 @@ export interface WakeRequest {
 export const CLAIM_LAPSE_MS = 6 * 60 * 60_000;
 export const VERSIONS_KEPT = 3;
 /** The words the app ships trained models for (desktop and R1). */
-export const SHIPPED_WAKE_WORDS = ["tessaya", "alfred", "freya", "sebastian", "onyx"];
+export const SHIPPED_WAKE_WORDS = WAKE_WORDS.map((w) => w.word.toLowerCase());
 
 export const EMPTY_WAKE_STORE: WakeStore = { words: {}, personas: {} };
 const WORD = /^[a-z][a-z' -]{0,40}$/;
