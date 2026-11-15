@@ -246,6 +246,8 @@ export interface R1Context {
   readonly heard: string;
   /** The speaker's private-memory block when the pipeline's gate allows it (`TessayaTurn.begin`); else "". */
   readonly privateBlock: string;
+  /** The persona's line about him (`ownerLine`), for his own turn on the tools route; absent otherwise. */
+  readonly owner?: string;
   readonly history: ReadonlyArray<{ readonly role: string; readonly content: string }>;
   readonly devices: unknown;
   readonly lastAction: unknown;
@@ -393,6 +395,7 @@ export const ROOM_SYSTEM = [
 export const roomData = (input: R1Context) =>
   [
     ...personaLine(input.persona, input.switched),
+    ...(input.owner === undefined || input.owner === "" ? [] : [input.owner]),
     `Now, on the house's clock: ${input.now}.`,
     `Who else he can talk to here, by saying their name: ${input.roster}.`,
     ...(input.lastAction === null
@@ -709,6 +712,8 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     heard: input.heard,
     // Several voices: the room hears the reply, so nothing private, and each person's own preferences below.
     privateBlock: acts || people.length > 0 ? "" : begun.privateBlock,
+    // The acts form has no tool to open his documents or keep a correction, so it goes without.
+    ...(acts || people.length > 0 || !begun.owner ? {} : { owner: begun.owner }),
     // The conversation he is having with her on any vessel; the loop's own when the pipeline has none yet.
     history: withoutSelfIntros(
       begun.conversation.turns.length > 0 ? begun.conversation.turns : input.history,

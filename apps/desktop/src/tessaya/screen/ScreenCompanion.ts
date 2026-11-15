@@ -30,7 +30,8 @@ import {
 import { createTextEdit } from "../writing/textEdit.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
-import { PACK_FOLDER, readPack, readTemplates } from "../pack/packRows.ts";
+import { PACK_FOLDER, readOwnerFiles, readPack, readTemplates } from "../pack/packRows.ts";
+import { ownerLine } from "@t3tools/tessaya-shared/ownerProfile";
 import { templateFrame } from "@t3tools/tessaya-shared/jobTemplates";
 import { DEFAULT_ROUTING, parseRouting } from "@t3tools/tessaya-shared/costRouting";
 import {
@@ -3339,7 +3340,8 @@ export const startScreenCompanion = (input: {
             window: where.window,
             session: where.session,
             target: null,
-            ...(where.persona === undefined ? {} : { persona: where.persona }),
+            // The server adds his profile from its own pack: sent here it would only run past the context cap.
+            ...(where.persona === undefined ? {} : { persona: { ...where.persona, owner: "" } }),
             presence: (await actions?.presence?.()) ?? "",
           }),
           ...(where.persona === undefined ? {} : { persona: where.persona.id }),
@@ -3488,6 +3490,19 @@ export const startScreenCompanion = (input: {
               readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas,
               face.id,
             ),
+            // His profile is for his own turns, never one a device or an agent sent.
+            ...(outside
+              ? {}
+              : {
+                  owner: ownerLine(
+                    face,
+                    readOwnerFiles(NodePath.join(input.stateDir, PACK_FOLDER)),
+                    {
+                      doc: "tessaya_owner_doc",
+                      remember: "memory_remember",
+                    },
+                  ),
+                }),
           },
           brain: brain.brain,
         },

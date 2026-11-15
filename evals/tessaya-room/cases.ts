@@ -7,6 +7,7 @@ import { moodLine, type AffectView } from "../../packages/tessaya-shared/src/aff
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
+import type { OwnerFiles } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 
 export interface RoomCase {
   readonly id: string;
@@ -44,7 +45,41 @@ export interface RoomCase {
   }>;
   /** His clock preference (timeFormat): how the turn's time is said. */
   readonly clock?: "12h" | "24h";
+  /** His own profile and documents are in his pack (`OWNER`), as `TessayaTurn.begin` reads them for his turn. */
+  readonly owner?: boolean;
 }
+
+/** A made-up owner's pack `owner/` folder: never a real person's (evals/README.md, no user data). */
+export const OWNER: OwnerFiles = {
+  voice:
+    "He starts from the outcome and who it is for, never from the feature. He decides by reversibility: fast when a choice can be undone, slowly when it cannot. Done means the whole job, proven on real data, before anyone says ready. He speaks plainly and briefly: short sentences, no jargon, never an exclamation mark, never 'sorry' or 'unfortunately'. He says no flatly and gives the next step instead. He hates being asked what he already decided, and work left half done.",
+  likes:
+    "Brief, plain answers; the outcome first; proof before 'done'; never ask what he already decided.",
+  docs: {
+    "working-manual": `# Working manual
+
+## 1. Principles
+
+### Outcomes over outputs
+Measure work by the progress it makes, not by how much was produced.
+
+### Clarity over complexity
+If it cannot be drawn on a napkin, it is not ready.
+
+## 2. Deciding whether to build
+
+Ask three things. Which outcome does it serve? If none, do not build it. What is its twelve-month keep cost: upkeep, complexity and attention, not only the build? Can it be undone? Decide fast on what can be undone and slowly on what cannot.
+
+## 3. Writing
+
+Lead with the answer. One idea a sentence. Cut every word that does not change the meaning.
+`,
+  },
+};
+
+/** What a reply sounds like when it does not know him. */
+const DOES_NOT_KNOW =
+  /^(?![\s\S]*\b(I don'?t know|I haven'?t|not yet|no idea|I can'?t (read|see|open)|I don'?t have (access|it|any))\b)/i;
 
 const HERE = "You are speaking through R1, in the study.";
 /** At most about 40 words. */
@@ -452,6 +487,59 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     memory: `${HERE} ${leadFitLine([{ title: "file the quarterly VAT return", kept: [] }])}`,
     lastSays: [/\bJuno\b/],
     callsAtMost: { tessaya_job_lead: 0, tessaya_persona_handoff: 0 },
+  },
+  // His alter ego knows how he thinks and works (LEDGER B-029): at 09:11 on 15 Nov he asked and Sebastian did not know.
+  {
+    id: "owner-knows-how",
+    source:
+      "Director 15 Nov 09:11 (GMT+5): 'Have you acquainted yourself with how I speak and do things?'",
+    said: ["Sebastian, have you got to know how I speak and do things?"],
+    persona: "alter-ego",
+    verified: true,
+    owner: true,
+    lastSays: [DOES_NOT_KNOW, /outcome|undone|reversib|plain|brief|proven|proof|jargon/i],
+  },
+  {
+    id: "owner-read-doc",
+    source: "Director 15 Nov 09:11 (GMT+5): 'Did you read the document, my framework?'",
+    said: ["Sebastian, did you read my working manual?"],
+    persona: "alter-ego",
+    verified: true,
+    owner: true,
+    lastSays: [DOES_NOT_KNOW, /\b(yes|I have|I've read|I did)\b/i],
+  },
+  {
+    // The profile does not hold this; only the document does, so a right answer means it was opened.
+    id: "owner-doc-section",
+    source: "Director 14 Nov: the full framework on demand, a section when it bears on the turn",
+    said: ["Sebastian, what does my manual say about deciding whether to build something?"],
+    persona: "alter-ego",
+    verified: true,
+    owner: true,
+    calls: ["tessaya_owner_doc"],
+    lastSays: [/keep cost|twelve.month|12.month/i],
+  },
+  {
+    // A style match on a sample reply: the profile's own rules, checked on what he would send.
+    id: "owner-style-draft",
+    source: "Director 14 Nov: Sebastian writes as him, 'same or better'",
+    said: ["Sebastian, draft me a one-line text to Priya saying I can't make Thursday."],
+    persona: "alter-ego",
+    verified: true,
+    owner: true,
+    lastSays: [/Thursday/i, /^(?![\s\S]*(!|\bsorry\b|\bunfortunately\b|\bapologi))/i],
+  },
+  {
+    // Control: the slice only, and nothing to read for the time.
+    id: "owner-control-time",
+    source:
+      "control: a persona with the slice answers an ordinary question without opening his documents",
+    said: ["Freya, what time is it?"],
+    persona: "companion",
+    verified: true,
+    owner: true,
+    lastSays: [/quarter past ten|10:15/i],
+    callsAtMost: { tessaya_owner_doc: 0 },
   },
   // Her turn after a hand-off, as TessayaTurn writes it.
   {

@@ -21,6 +21,7 @@ import {
   mergeTemplates,
   type JobTemplate,
 } from "@t3tools/tessaya-shared/jobTemplates";
+import { OWNER_DIR, type OwnerFiles } from "@t3tools/tessaya-shared/ownerProfile";
 import { setPersonaField } from "@t3tools/tessaya-shared/personaFile";
 import { parseWakeStore, wakeModelOf, type WakeStore } from "@t3tools/tessaya-shared/wakeModels";
 import {
@@ -106,6 +107,36 @@ export const readPack = (dir: string): OsPack => {
   }
   const executive = text(NodePath.join(dir, "executive.md"));
   return mergePack({ ...(executive === undefined ? {} : { executive }), roles });
+};
+
+/** His own profile and documents (`owner/`), as the server reads them, fresh each call. */
+export const readOwnerFiles = (dir: string): OwnerFiles => {
+  const owner = NodePath.join(dir, OWNER_DIR);
+  const text = (file: string): string | undefined => {
+    try {
+      return NodeFS.readFileSync(file, "utf8");
+    } catch {
+      return undefined;
+    }
+  };
+  let names: string[] = [];
+  try {
+    names = NodeFS.readdirSync(NodePath.join(owner, "docs")).filter((n) => n.endsWith(".md"));
+  } catch {
+    // no documents of his
+  }
+  const docs: Record<string, string> = {};
+  for (const name of names) {
+    const doc = text(NodePath.join(owner, "docs", name));
+    if (doc !== undefined) docs[name.slice(0, -3)] = doc;
+  }
+  const voice = text(NodePath.join(owner, "voice.md"));
+  const likes = text(NodePath.join(owner, "likes.md"));
+  return {
+    ...(voice === undefined ? {} : { voice }),
+    ...(likes === undefined ? {} : { likes }),
+    docs,
+  };
 };
 
 export const packControls = (dir: string): ReadonlyArray<HomeControl> => {

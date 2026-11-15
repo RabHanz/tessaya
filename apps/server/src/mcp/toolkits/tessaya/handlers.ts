@@ -27,6 +27,7 @@ import * as Schema from "effect/Schema";
 import { accountByWords } from "@t3tools/tessaya-shared/accountRoom";
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { ownerDoc } from "@t3tools/tessaya-shared/ownerProfile";
 
 import { clientMessageFrom, withAgentMessageFrom } from "../../../tessaya/AgentMessageFrom.ts";
 import { gateMessage } from "../../../tessaya/AgentMessageGate.ts";
@@ -38,6 +39,7 @@ import { ServerSettingsService } from "../../../serverSettings.ts";
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -495,6 +497,15 @@ export const layer = McpToolAccess.toLayer(
       // Read as a client (MemoryViewer's default here): walls hold.
       tessaya_coming_up: McpToolAccess.reads(() =>
         call(withTurn((turn) => Effect.map(turn.comingUp, (items) => ({ items })))),
+      ),
+      // His own documents: his turns and his own agents only, never a guest's or a tainted one.
+      tessaya_owner_doc: McpToolAccess.reads((input) =>
+        Effect.gen(function* () {
+          const origin = yield* TurnOrigin;
+          if (origin !== null && (origin.member !== OWNER_MEMBER_ID || origin.tainted))
+            return { text: "Those documents are his, so I only open them for him." };
+          return { text: ownerDoc(yield* ownerDocs, input) };
+        }),
       ),
       tessaya_usage_report: McpToolAccess.reads((input) =>
         // No zone: the house's, read where the brain's services are.

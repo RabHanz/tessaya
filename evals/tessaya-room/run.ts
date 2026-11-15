@@ -32,7 +32,8 @@ import type { ActOutcome } from "../../apps/server/src/tessaya/TessayaBrain.ts";
 import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speakingVolume.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/osPack.ts";
-import { roomCases, type RoomCase } from "./cases.ts";
+import { ownerDoc, ownerLine } from "../../packages/tessaya-shared/src/ownerProfile.ts";
+import { OWNER, roomCases, type RoomCase } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
 
 const { values } = NodeUtil.parseArgs({
@@ -384,6 +385,8 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       };
     case "device_button":
       return { ok: true, value: { status: "done", line: "Saved." } };
+    case "tessaya_owner_doc":
+      return { text: ownerDoc(OWNER.docs, args as { name?: string; section?: string }) };
     case "laptop_ask":
       return { ok: false, error: "your laptop isn't linked to this server, so I can't see it." };
     default:
@@ -432,6 +435,16 @@ const context = (
     [...DEFAULT_OS_PACK.personas, ...(c.team ?? []).map((p) => ({ ...p, lead: false }))],
     c.persona ?? "",
   ),
+  // As OperatingSystemPack.ownerLineFor gives it: the called persona's, else the lead's.
+  ...(c.owner === true
+    ? {
+        owner: ownerLine(
+          DEFAULT_OS_PACK.personas.find((p) => p.id === c.persona) ?? DEFAULT_OS_PACK.personas[0]!,
+          OWNER,
+          { doc: "tessaya_owner_doc", remember: "tessaya_memory_remember" },
+        ),
+      }
+    : {}),
 });
 
 const claude = (args: ReadonlyArray<string>, cwd: string) =>

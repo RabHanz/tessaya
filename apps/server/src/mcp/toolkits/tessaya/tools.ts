@@ -478,6 +478,26 @@ const ComingUpTool = Tool.make("tessaya_coming_up", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const OwnerDocTool = Tool.make("tessaya_owner_doc", {
+  ...shared,
+  description:
+    "Read his own documents (how he thinks, decides and works) that the turn's lines name. No name: what there is and their sections. A name: that document, or its sections when it is long. A name and a section: that section. Read only the part the answer needs, then answer in your own words; never read it out whole.",
+  parameters: Schema.Struct({
+    name: Schema.optional(Schema.String.check(Schema.isMaxLength(80))),
+    section: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(120)).annotate({
+        description: 'Words from the section\'s heading, such as "decision" or "principles".',
+      }),
+    ),
+  }),
+  success: Schema.Struct({ text: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const UsageReportTool = Tool.make("tessaya_usage_report", {
   ...shared,
   description:
@@ -678,6 +698,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryForgetTool,
   MemoryAboutTool,
   ComingUpTool,
+  OwnerDocTool,
   UsageReportTool,
   PromptLabTool,
   WhosHomeTool,
