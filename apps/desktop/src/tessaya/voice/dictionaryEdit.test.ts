@@ -12,6 +12,7 @@ import {
   forgetLearned,
   removeEntry,
   saveDictionary,
+  vocabularyChanges,
 } from "./dictionaryEdit.ts";
 import { dictionaryPath, importWispr, readDictionary } from "./dictationRewriter.ts";
 
@@ -47,6 +48,20 @@ describe("the vocabulary", () => {
     ]);
     expect(editEntry(list, "missing", { phrase: "x", replacement: null })).toBe(list);
   });
+  it("tells his server each save as removes and one merge, and the whole list the first time", () => {
+    const start = addEntry(addEntry([], { phrase: "Grafana", replacement: null }), {
+      phrase: "cube nets",
+      replacement: "Kubernetes",
+    });
+    expect(vocabularyChanges([], start)).toEqual([{ verb: "learn", entries: start }]);
+    const edited = editEntry(start, "cube nets", { phrase: "kube", replacement: "Kubernetes" });
+    expect(vocabularyChanges(start, edited)).toEqual([
+      { verb: "remove", phrase: "cube nets" },
+      { verb: "learn", entries: [edited.find((e) => e.phrase === "kube")] },
+    ]);
+    expect(vocabularyChanges(edited, edited)).toEqual([]);
+  });
+
   it("forgets what Tessaya learned and keeps what he added", () => {
     const list = [
       { phrase: "a", replacement: null, source: "learned" as const },

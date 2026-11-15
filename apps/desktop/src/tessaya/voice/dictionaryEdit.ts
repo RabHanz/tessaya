@@ -23,5 +23,30 @@ export { addEntry, editEntry, removeEntry };
 export const forgetLearned = (list: ReadonlyArray<VocabEntry>): ReadonlyArray<VocabEntry> =>
   list.filter((e) => e.source !== "learned");
 
+const keyOf = (e: VocabEntry) => `${e.phrase.trim().toLowerCase()}\u0000${e.replacement ?? ""}`;
+
+/**
+ * What his server needs to hold the same list: each word gone, then everything new or changed as one merge. Sent after
+ * every save, so the server (the same file on his own machine) can tell T3's list and his other servers.
+ */
+export const vocabularyChanges = (
+  before: ReadonlyArray<VocabEntry>,
+  after: ReadonlyArray<VocabEntry>,
+): ReadonlyArray<
+  | { readonly verb: "remove"; readonly phrase: string }
+  | { readonly verb: "learn"; readonly entries: ReadonlyArray<VocabEntry> }
+> => {
+  const kept = new Set(after.map((e) => e.phrase.trim().toLowerCase()));
+  const old = new Map(before.map((e) => [keyOf(e), JSON.stringify(e)]));
+  const removed = [...new Set(before.map((e) => e.phrase.trim()))].filter(
+    (phrase) => !kept.has(phrase.toLowerCase()),
+  );
+  const changed = after.filter((e) => old.get(keyOf(e)) !== JSON.stringify(e));
+  return [
+    ...removed.map((phrase) => ({ verb: "remove" as const, phrase })),
+    ...(changed.length === 0 ? [] : [{ verb: "learn" as const, entries: changed }]),
+  ];
+};
+
 export const saveDictionary = (stateDir: string, list: ReadonlyArray<VocabEntry>): void =>
   writeJsonFile(NodePath.join(stateDir, "voice", "dictionary.json"), list);

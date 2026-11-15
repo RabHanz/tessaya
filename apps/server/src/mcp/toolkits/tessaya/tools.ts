@@ -36,7 +36,7 @@ import {
   ThreadId,
   VoicePronounce,
 } from "@t3tools/contracts";
-import { DESKTOP_STATE_SECTIONS } from "@t3tools/tessaya-contracts";
+import { DESKTOP_STATE_SECTIONS, VocabularyChange } from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
 import * as Fiber from "effect/Fiber";
@@ -607,6 +607,23 @@ const PronounceTool = Tool.make("tessaya_pronounce", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const VocabularyTool = Tool.make("tessaya_vocabulary", {
+  ...shared,
+  description:
+    'His one dictionary, the words every recogniser of his (dictation, the Tessel, the phone) spells his way. Without `change` it lists them. To add a word he asks for ("add Kubernetes to my dictionary"): `{ verb: "add", phrase, replacement: null }`; for a word heard wrong, `phrase` is how it is heard and `replacement` how it is written. `edit` renames one (`from`), `remove` drops one. Only for words he asked about. Returns the words and a line to say.',
+  parameters: Schema.Struct({
+    change: Schema.optional(VocabularyChange),
+    origin: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
+    hisVoice: Schema.optional(Schema.Boolean),
+  }),
+  success: Schema.Struct({ words: Schema.Array(Schema.String), line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 // Session moves are for T3's thread agents too (the main session often runs in one), so no outside-only gate.
 const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
   ...shared,
@@ -718,6 +735,7 @@ export const TessayaToolkit = Toolkit.make(
   StateTool,
   DesktopSettingsTool,
   PronounceTool,
+  VocabularyTool,
   MoveIntoTessayaTool,
   OpenInTerminalTool,
   MainSessionTool,

@@ -1,9 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalJsonInEffect:off
 /**
- * His one dictionary for every vessel (ONE-EAR-AUDIT §7a step 3): `<userdata>/voice/dictionary.json`, the same file the
- * desktop's dictation keeps on its own machine. A read adds the names nobody types in: the personas, the household's
- * members and the projects. T3's own speech list (`speechProjectCustomWords`) is derived from it after every change,
- * so the phone and web engines read the same words without a change of their own.
+ * His one dictionary for every vessel: `<userdata>/voice/dictionary.json`, the file desktop dictation keeps on its own
+ * machine. Reads add persona, household and project names; T3's `speechProjectCustomWords` is derived after each change.
+ * Changes go to his other servers (`tessaya_vocabulary`), and each start sends them the whole list to merge.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -27,8 +26,14 @@ import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { fromPeers } from "../peer/PeerVessels.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { readPack } from "./OperatingSystemPack.ts";
+
+/** The MCP tool his other servers and agents change the dictionary through. */
+export const VOCABULARY_TOOL = "tessaya_vocabulary";
 
 export class VocabularyRefusedError extends Schema.TaggedError<VocabularyRefusedError>()(
   "VocabularyRefusedError",
@@ -114,6 +119,18 @@ export const make = Effect.gen(function* () {
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
   const file = NodePath.join(config.stateDir, "voice", "dictionary.json");
   const oneAtATime = yield* Semaphore.make(1);
+  const links = yield* Effect.serviceOption(PeerLinks.PeerLinks);
+  const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
+
+  /** The same change on his other servers; a change a linked server sent is never sent on (`fromPeers`). */
+  const toPeers = (sent: VocabularyChange) =>
+    Option.isNone(links) || Option.isNone(peerMcp)
+      ? Effect.void
+      : fromPeers(VOCABULARY_TOOL, { change: sent }, "10 seconds").pipe(
+          Effect.provideService(PeerLinks.PeerLinks, links.value),
+          Effect.provideService(PeerMcpClient.PeerMcpClient, peerMcp.value),
+          Effect.ignore,
+        );
 
   const rows = <E>(query: Effect.Effect<ReadonlyArray<{ readonly name: unknown }>, E>) =>
     query.pipe(
@@ -172,6 +189,7 @@ export const make = Effect.gen(function* () {
       }),
     );
     yield* deriveCustomWords(all).pipe(Effect.ignore);
+    yield* toPeers(input).pipe(Effect.forkDetach);
     return all;
   });
 
@@ -192,6 +210,13 @@ export const make = Effect.gen(function* () {
     else yield* deriveCustomWords(known);
   });
   yield* adopt.pipe(Effect.ignore);
+  // shortcut: a word removed while a server was off comes back from its next start; a tombstone list would stop that.
+  yield* Effect.suspend(() => {
+    const stored = readStored(file);
+    return stored === null || stored.length === 0
+      ? Effect.void
+      : toPeers({ verb: "learn", entries: stored });
+  }).pipe(Effect.delay("1 minute"), Effect.forkScoped);
 
   return TessayaVocabulary.of({ read, change });
 });

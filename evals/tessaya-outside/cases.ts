@@ -187,6 +187,20 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     callsMustNot: ["tessaya_ask"],
   },
   {
+    id: "outside-add-to-dictionary",
+    source:
+      "ONE-EAR-AUDIT §7a step 3: a word he adds reaches every recogniser through tessaya_vocabulary, not a memory",
+    prompt: "Add Kubernetes to my dictionary.",
+    answers: {
+      tessaya_vocabulary: {
+        words: ["Tessaya", "Kubernetes"],
+        line: "Added Kubernetes to your dictionary.",
+      },
+    },
+    calls: ["tessaya_vocabulary"],
+    callsMustNot: ["tessaya_ask", "tessaya_memory_remember", "tessaya_pronounce"],
+  },
+  {
     id: "outside-acts-through-ask",
     source: "Parity phase B: an act goes through tessaya_ask, never around it or claimed done",
     prompt:
