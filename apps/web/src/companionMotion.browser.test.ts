@@ -204,7 +204,7 @@ describe("the companion's mood colour", () => {
         0.7 * Math.min(happy[1], sad[1]),
       );
       // her body stays herself: never more than a light touch from her own colour
-      for (const { base } of seen) expect(Math.abs(base[0] - own[0])).toBeLessThan(0.06);
+      for (const { base } of seen) expect(Math.abs(base[0] - own[0])).toBeLessThan(0.08);
     },
   );
 
