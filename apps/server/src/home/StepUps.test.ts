@@ -15,7 +15,12 @@ const phone = (answer: number | null, shown: Array<PhonePrompt>) =>
     closePrompt: () => Effect.void,
   } as unknown as TessayaPhoneInbox["Service"]);
 
-const holdCard = (answer: number | null, shown: Array<PhonePrompt>, told: Array<string>) =>
+const holdCard = (
+  answer: number | null,
+  shown: Array<PhonePrompt>,
+  told: Array<string>,
+  always?: Effect.Effect<void>,
+) =>
   Effect.gen(function* () {
     const ran = yield* Deferred.make<number>();
     const stepUps = yield* StepUps;
@@ -26,6 +31,7 @@ const holdCard = (answer: number | null, shown: Array<PhonePrompt>, told: Array<
       member: "owner",
       needs: 3,
       card: true,
+      ...(always === undefined ? {} : { always }),
       phone: true,
       run: (raised) => Deferred.succeed(ran, raised.assurance).pipe(Effect.asVoid),
     });
@@ -49,5 +55,24 @@ it.effect("his yes on the card runs the act, as sure as it waited for", () =>
   Effect.gen(function* () {
     const { ran } = yield* holdCard(0, [], []);
     assert.strictEqual(yield* Deferred.await(ran), 3);
+  }),
+);
+
+it.effect("Always on his card runs the act and keeps his standing yes; no Always without one", () =>
+  Effect.gen(function* () {
+    const kept = yield* Deferred.make<void>();
+    const shown: Array<PhonePrompt> = [];
+    const { ran } = yield* holdCard(
+      2,
+      shown,
+      [],
+      Deferred.succeed(kept, undefined).pipe(Effect.asVoid),
+    );
+    assert.deepStrictEqual(shown[0]?.buttons, ["Yes, do it", "No", "Always"]);
+    assert.strictEqual(yield* Deferred.await(ran), 3);
+    yield* Deferred.await(kept);
+    const plain: Array<PhonePrompt> = [];
+    yield* holdCard(null, plain, []);
+    assert.deepStrictEqual(plain[0]?.buttons, ["Yes, do it", "No"]);
   }),
 );
