@@ -89,6 +89,7 @@ export type DeviceCommand =
   | { readonly op: "say"; readonly text: string }
   | { readonly op: "mute"; readonly muted: boolean }
   | { readonly op: "earcons"; readonly on: boolean }
+  | { readonly op: "talkOver"; readonly open: boolean }
   | { readonly op: "keyBind"; readonly slot: R1KeySlot; readonly bind: R1KeyBinding }
   | { readonly op: "display"; readonly set: DeviceDisplaySet }
   | { readonly op: "transport"; readonly transport: DeviceTransport }
@@ -595,6 +596,8 @@ interface Saved {
   muted: Record<string, boolean>;
   /** R1s with her listening and closing sounds off (the room loop plays them by default). */
   earconsOff: Record<string, boolean>;
+  /** R1s where only her name or a stop phrase cuts her off; the room loop lets any household voice by default. */
+  talkOverKeyword: Record<string, boolean>;
   /** Per R1: the level she last set by voice, so a step has a base before the firmware reports one. */
   volume: Record<string, number>;
   tags: Record<string, { label: string; action: DeviceTagAction }>;
@@ -795,6 +798,7 @@ const make = Effect.gen(function* () {
         transport: (value["transport"] ?? {}) as Saved["transport"],
         muted: (value["muted"] ?? {}) as Saved["muted"],
         earconsOff: (value["earconsOff"] ?? {}) as Saved["earconsOff"],
+        talkOverKeyword: (value["talkOverKeyword"] ?? {}) as Saved["talkOverKeyword"],
         volume: (value["volume"] ?? {}) as Saved["volume"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
         keys: (value["keys"] ?? {}) as Saved["keys"],
@@ -1388,6 +1392,20 @@ const make = Effect.gen(function* () {
     return { reg, item };
   });
 
+  // Retained, as the earcons are, so the room loop has his choice again after a restart.
+  const talkOver = (id: string, open: boolean) =>
+    change((s) => {
+      if (open) delete s.talkOverKeyword[id];
+      else s.talkOverKeyword[id] = true;
+    }).pipe(
+      Effect.andThen(publish(id, "cmd/voice/talkover", { mode: open ? "open" : "keyword" }, true)),
+      Effect.as<DeviceOutcome>({
+        status: "done",
+        line: open
+          ? "You can cut her off by talking over her."
+          : "Only her name or a stop phrase cuts her off now.",
+      }),
+    );
   const run = Effect.fn("HomeDevices.run")(function* (
     id: string,
     c: DeviceCommand,
@@ -1454,6 +1472,8 @@ const make = Effect.gen(function* () {
             ? "Her listening and closing sounds are on."
             : "Her listening and closing sounds are off.",
         );
+      case "talkOver":
+        return yield* talkOver(id, c.open);
       case "keyBind": {
         const spec = R1_KEY_SLOTS[c.slot];
         const device = c.bind.kind === "device" ? c.bind.do : "none";
@@ -1545,9 +1565,11 @@ const make = Effect.gen(function* () {
           delete s.transport[id];
           delete s.muted[id];
           delete s.earconsOff[id];
+          delete s.talkOverKeyword[id];
           delete s.keys[id];
         });
-        yield* publish(id, "cmd/voice/earcons", "", true);
+        for (const kept of ["cmd/voice/earcons", "cmd/voice/talkover"])
+          yield* publish(id, kept, "", true);
         yield* registry.forget(id);
         yield* home.removeDevice(id);
         // Its live link to this server's hub closes now; its next login is refused.
@@ -1774,6 +1796,7 @@ const make = Effect.gen(function* () {
       mood: t("eye.mood"),
       muted: saved.muted[id] === true,
       earcons: saved.earconsOff[id] !== true,
+      talkOver: saved.talkOverKeyword[id] !== true,
       volume: n("audio.volume"),
       keys: Object.fromEntries(
         (Object.keys(R1_KEY_SLOTS) as Array<R1KeySlot>)

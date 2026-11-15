@@ -144,6 +144,9 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   earcons: op(Schema.Struct({ id: Id, on: Schema.Boolean }), (a, devices, by) =>
     devices.command(a.id, { op: "earcons", on: a.on }, by),
   ),
+  talkOver: op(Schema.Struct({ id: Id, open: Schema.Boolean }), (a, devices, by) =>
+    devices.command(a.id, { op: "talkOver", open: a.open }, by),
+  ),
   volume: op(
     Schema.Struct({
       id: Id,

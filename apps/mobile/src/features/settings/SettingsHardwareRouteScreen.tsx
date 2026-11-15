@@ -655,6 +655,18 @@ function DeviceControls({
             onPress={() => void run("act", "earcons", { id, on: !d.earcons })}
           />
         </Row>
+        <Row
+          divider
+          title="Talk over her"
+          description="Any voice of your household stops her mid-sentence. Off: only her name or a stop phrase does."
+        >
+          <ControlPill
+            variant="pill"
+            label={d.talkOver !== false ? "Turn off" : "Turn on"}
+            disabled={off}
+            onPress={() => void run("act", "talkOver", { id, open: d.talkOver === false })}
+          />
+        </Row>
         <Row divider title="Screen" description={displayLine(d)}>
           {DISPLAY_CHOICES.map(([value, label]) => (
             <ControlPill

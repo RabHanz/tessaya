@@ -219,6 +219,13 @@ it.effect(
         { topic: "cmd/voice/earcons", payload: { on: false }, retain: true },
       ]);
       assert.isFalse((yield* devices.overview).devices[0]!.earcons);
+      // Talking over her, kept the same way: his choice in Settings is the one the room loop runs.
+      sent.length = 0;
+      yield* devices.command(ID, { op: "talkOver", open: false }, me);
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/voice/talkover", payload: { mode: "keyword" }, retain: true },
+      ]);
+      assert.isFalse((yield* devices.overview).devices[0]!.talkOver);
     }).pipe(Effect.provide(layer));
   },
 );

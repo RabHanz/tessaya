@@ -648,6 +648,18 @@ function DeviceControls({
             />
           }
         />
+        <SettingsRow
+          title="Talk over her"
+          description="Any voice of your household stops her mid-sentence. Off: only her name or a stop phrase does."
+          control={
+            <Switch
+              checked={d.talkOver !== false}
+              disabled={off}
+              aria-label="Talk over her"
+              onCheckedChange={(open) => void run("act", "talkOver", { id, open })}
+            />
+          }
+        />
         <SettingsRow title="Screen" description={displayLine(d)}>
           <div className="flex flex-wrap gap-2 pt-2">
             <Select
