@@ -29,7 +29,9 @@ const isApiKey = Schema.is(CloudSpeechApiKey);
 /** What one streamed Messages API turn gives: its words as they come, and each tool call once its input is whole. */
 export type ConversePart =
   | { readonly type: "text"; readonly text: string }
-  | { readonly type: "tool"; readonly id: string; readonly name: string; readonly input: unknown };
+  | { readonly type: "tool"; readonly id: string; readonly name: string; readonly input: unknown }
+  /** A thinking block, whole, to send back unchanged with its tool calls' results. */
+  | { readonly type: "thinking"; readonly block: Readonly<Record<string, unknown>> };
 
 /** What a streamed turn used: `message_start`'s model and usage, with each `message_delta`'s counts on top. */
 export interface StreamUsage {
@@ -40,6 +42,7 @@ export interface StreamUsage {
 /** Reads one turn's stream lines in order; holds a tool call's input until its block stops. */
 export const converseReader = (seen: StreamUsage = {}) => {
   const open = new Map<number, { id: string; name: string; json: string }>();
+  const thinking = new Map<number, Record<string, unknown>>();
   return (line: string): ReadonlyArray<ConversePart> => {
     if (!line.startsWith("data:")) return [];
     let event: {
@@ -47,8 +50,14 @@ export const converseReader = (seen: StreamUsage = {}) => {
       index?: number;
       message?: { model?: string; usage?: Record<string, unknown> };
       usage?: Record<string, unknown>;
-      content_block?: { type?: string; id?: string; name?: string };
-      delta?: { type?: string; text?: string; partial_json?: string };
+      content_block?: { type?: string; id?: string; name?: string; data?: string };
+      delta?: {
+        type?: string;
+        text?: string;
+        partial_json?: string;
+        thinking?: string;
+        signature?: string;
+      };
     };
     try {
       event = JSON.parse(line.slice(5)) as typeof event;
@@ -69,15 +78,33 @@ export const converseReader = (seen: StreamUsage = {}) => {
       });
       return [];
     }
+    if (event.type === "content_block_start" && event.content_block?.type === "thinking") {
+      thinking.set(index, { type: "thinking", thinking: "", signature: "" });
+      return [];
+    }
+    if (event.type === "content_block_start" && event.content_block?.type === "redacted_thinking") {
+      thinking.set(index, { type: "redacted_thinking", data: event.content_block.data ?? "" });
+      return [];
+    }
     if (event.type === "content_block_delta") {
       if (event.delta?.type === "text_delta" && event.delta.text)
         return [{ type: "text", text: event.delta.text }];
+      const thought = thinking.get(index);
+      if (event.delta?.type === "thinking_delta" && thought !== undefined)
+        thought["thinking"] = `${String(thought["thinking"])}${event.delta.thinking ?? ""}`;
+      if (event.delta?.type === "signature_delta" && thought !== undefined)
+        thought["signature"] = `${String(thought["signature"])}${event.delta.signature ?? ""}`;
       const tool = open.get(index);
       if (event.delta?.type === "input_json_delta" && tool !== undefined)
         tool.json += event.delta.partial_json ?? "";
       return [];
     }
     if (event.type === "content_block_stop") {
+      const thought = thinking.get(index);
+      if (thought !== undefined) {
+        thinking.delete(index);
+        return [{ type: "thinking", block: thought }];
+      }
       const tool = open.get(index);
       if (tool === undefined) return [];
       open.delete(index);

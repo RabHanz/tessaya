@@ -424,14 +424,17 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["job_retry"]],
     clean: ["job_retry"],
   },
-  // A stop keeps its thread and plan, so his verified voice is enough, on the R1 as on the desktop.
+  // A stop keeps its thread and plan, so his verified voice is enough, on the R1 as on the desktop. It opens the job it
+  // stops: a made-up id is not in tessaya_jobs, where an earlier case's job is, and a model that checks says so.
   {
     id: "job-stop",
     proves: ["job_stop"],
-    said: ["Stop job job-suite-1."],
-    voices: [{ speaker: SURE }],
-    uses: [["job_stop"]],
+    said: ["Start a job in acme app to add rate limiting.", "Stop that job."],
+    voices: [{ speaker: SURE }, { speaker: SURE }],
+    uses: [["job_start"], ["job_stop"]],
     clean: ["job_stop"],
+    argsOf: "job_stop",
+    args: (input) => ({ id: input["id"] === "job-replay-1" }),
     check: (_last, calls) =>
       calls.some((x) => x.name === "job_stop" && x.status === "asked")
         ? "a stop on his verified voice was held"

@@ -19,7 +19,7 @@ import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
 import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
-import { R1Brain, R1BrainError, toolLoop } from "./R1Brain.ts";
+import { R1Brain, R1BrainError, toolLoop, type ToolTurn } from "./R1Brain.ts";
 import { sessionTools, speakableSentences } from "../tessaya/TessayaBrain.ts";
 import { PersonaLayers } from "../tessaya/PersonaLayers.ts";
 import type { ConversePart, ConverseRequest } from "../speech/DictationCleanupApi.ts";
@@ -641,16 +641,12 @@ effectIt.effect(
 );
 
 effectIt.effect(
-  "his rule for Opus is in the turn's note, and the task it covers goes straight there",
+  "his rule for Opus is in the turn's note, and the task it covers goes straight there, on his key as on his subscription",
   () =>
-    Effect.gen(function* () {
-      const roles: Array<string> = [];
-      const brain = R1Brain.of({
-        route: Effect.succeed("subscription"),
-        subscription: () => Stream.empty,
-        warm: () => Effect.void,
-        converse: () => Stream.empty,
-        session: (turn) =>
+    Effect.forEach(["subscription", "api"] as const, (way) =>
+      Effect.gen(function* () {
+        const roles: Array<string> = [];
+        const voiceTurn = (turn: ToolTurn & { readonly role?: string }) =>
           Stream.unwrap(
             Effect.suspend(() => {
               roles.push(turn.role ?? "voice");
@@ -667,40 +663,48 @@ effectIt.effect(
                   ),
               );
             }),
+          );
+        const brain = R1Brain.of({
+          route: Effect.succeed(way),
+          subscription: () => Stream.empty,
+          warm: () => Effect.void,
+          converse: (turn) => (way === "api" ? voiceTurn(turn) : Stream.empty),
+          session: (turn) =>
+            way === "api" && turn.role !== "deep" ? Stream.empty : voiceTurn(turn),
+        });
+        const home = Layer.mock(HomeAssistantService)({
+          devices: Effect.succeed([]),
+          status: Effect.succeed({ state: "connected", line: "" } as never),
+          actions: () => Effect.succeed([]),
+          find: () => Effect.succeed([]),
+          timeZone: Effect.succeed("Asia/Karachi"),
+        });
+        const said: Array<string> = [];
+        yield* r1TurnStream(
+          {
+            heard: "how should I structure retries?",
+            history: [],
+            voice: { conversation: "rule-test" },
+          },
+          brain,
+          { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
+        ).pipe(
+          Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+          Effect.provide(
+            Layer.mergeAll(
+              home,
+              Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
+              Layer.mock(TessayaOneShot)({}),
+              ServerSettingsService.layerTest({
+                brainEscalation: { rules: [{ when: "coding questions", then: "opus" }] },
+              }),
+            ),
           ),
-      });
-      const home = Layer.mock(HomeAssistantService)({
-        devices: Effect.succeed([]),
-        status: Effect.succeed({ state: "connected", line: "" } as never),
-        actions: () => Effect.succeed([]),
-        find: () => Effect.succeed([]),
-        timeZone: Effect.succeed("Asia/Karachi"),
-      });
-      const said: Array<string> = [];
-      yield* r1TurnStream(
-        {
-          heard: "how should I structure retries?",
-          history: [],
-          voice: { conversation: "rule-test" },
-        },
-        brain,
-        { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
-      ).pipe(
-        Stream.runForEach((words) => Effect.sync(() => said.push(words))),
-        Effect.provide(
-          Layer.mergeAll(
-            home,
-            Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
-            Layer.mock(TessayaOneShot)({}),
-            ServerSettingsService.layerTest({
-              brainEscalation: { rules: [{ when: "coding questions", then: "opus" }] },
-            }),
-          ),
-        ),
-      );
-      expect(said.join("")).toBe("Putting Opus on this. Use backoff. ");
-      expect(roles).toEqual(["voice", "deep"]);
-    }),
+        );
+        expect(said.join("")).toBe("Putting Opus on this. Use backoff. ");
+        expect(roles).toEqual(["voice", "deep"]);
+      }),
+    ),
 );
 
 effectIt.effect(
