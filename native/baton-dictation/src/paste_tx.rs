@@ -1,43 +1,73 @@
-//! The pure half of a clipboard paste transaction (Handy's `paste_tx`, MIT, see paste_windows.rs): when the target
-//! has read, when to settle, and whether a new paste may take the clipboard yet. No platform calls, so it is tested on
-//! any machine (`rustc --edition 2021 --test src/paste_tx.rs`).
+//! The pure half of a clipboard paste transaction (Handy's `paste_tx`, MIT, see paste_windows.rs): whether the field
+//! took the words, when to settle, and whether a new paste may take the clipboard yet. No platform calls, so it is
+//! tested on any machine (`rustc --edition 2021 --test src/paste_tx.rs`).
 
 use std::time::{Duration, Instant};
 
-/// How long after the *last* observed read the transcript stays on the clipboard before restoring. Covers
-/// applications that read the clipboard several times per paste (e.g. Chromium probe-then-read).
+/// How long the transcript stays on the clipboard once the field shows it, for a target that reads more than once
+/// per paste (e.g. Chromium probe-then-read).
 pub const QUIET_PERIOD: Duration = Duration::from_millis(200);
 
-/// Upper bound on how long the transcript may occupy the clipboard before we restore regardless of receipts.
+/// A field UI Automation cannot read gives no sign the paste landed, so his clipboard comes back this long after the
+/// chord. shortcut: a target slower than this pastes his old clipboard; widen it if one shows up.
+pub const BLIND_RESTORE: Duration = Duration::from_millis(1000);
+
+/// Upper bound on how long the transcript may occupy the clipboard before we settle regardless.
 pub const RESTORE_TIMEOUT: Duration = Duration::from_secs(8);
 
-/// When the chord could not be injected at all, no legitimate receipt can arrive, so restore quickly.
+/// When the chord could not be injected at all, nothing can paste it, so settle quickly.
 pub const FAILED_INJECTION_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// A new paste waits no longer than this for an unread chord: past it the old one is left unread (its words kept),
 /// so a dead target never holds the sidecar's loop, and his key presses, for the full restore timeout.
 pub const UNREAD_TAKEOVER: Duration = Duration::from_millis(1500);
 
+/// How long after a chord the field may take to show the words before it counts as missed.
+pub const VERIFY_WINDOW: Duration = Duration::from_millis(500);
+
+/// What the focused field showed after the chord.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Seen {
+    Landed,
+    /// Readable before and after, and unchanged: nothing was pasted.
+    Missed,
+    /// UI Automation could not read it, before or after.
+    Unknown,
+}
+
+/// The text before the caret, read just before the chord and again after it.
+pub fn compare(before: Option<&str>, after: Option<&str>) -> Seen {
+    match (before, after) {
+        (Some(before), Some(after)) if before == after => Seen::Missed,
+        (Some(_), Some(_)) => Seen::Landed,
+        _ => Seen::Unknown,
+    }
+}
+
+/// One resend, only for a chord the field did not take while another process held the clipboard (Windows clipboard
+/// history had it at the chord on his laptop, 16 Nov), and only while the clipboard is still our transcript. A slow
+/// target with nobody else on the clipboard is left alone: a second chord there would paste the words twice.
+pub fn retry_chord(seen: Seen, foreign_hold: bool, retried: bool, still_ours: bool) -> bool {
+    seen == Seen::Missed && foreign_hold && !retried && still_ours
+}
+
 /// Shared, cross-thread record of one paste transaction.
 #[derive(Debug)]
 pub struct TxState {
     /// When the transcript was published to the clipboard.
     pub published_at: Instant,
-    /// When the paste chord was injected. Only receipts *after* this count as evidence the target read the
-    /// transcript; earlier reads are eager third parties reacting to the clipboard change itself.
+    /// When the paste chord was injected.
     pub injected_at: Option<Instant>,
     /// The chord could not be sent; short-circuit the wait.
     pub injection_failed: bool,
-    /// Times at which a consumer requested the clipboard data.
-    pub receipts: Vec<Instant>,
+    /// What the field showed after the chord (and its one resend), and when that was known.
+    pub seen: Option<(Seen, Instant)>,
     /// Someone else took clipboard ownership (user copied elsewhere, ...).
     pub ownership_lost: bool,
     /// Settled: restored, left or handed on. Set once.
     pub cancelled: bool,
     /// A newer paste settled it; its own timer only tears down.
     pub taken_over: bool,
-    /// First post-injection receipt has been logged.
-    pub logged_receipt: bool,
 }
 
 impl TxState {
@@ -46,36 +76,16 @@ impl TxState {
             published_at: now,
             injected_at: None,
             injection_failed: false,
-            receipts: Vec::new(),
+            seen: None,
             ownership_lost: false,
             cancelled: false,
             taken_over: false,
-            logged_receipt: false,
         }
     }
 
-    /// Records a read receipt; true for the first one that counts as evidence (after the chord).
-    pub fn record_receipt(&mut self, at: Instant) -> bool {
-        self.receipts.push(at);
-        if self.logged_receipt {
-            return false;
-        }
-        match self.injected_at {
-            Some(injected) if at >= injected => {
-                self.logged_receipt = true;
-                true
-            }
-            _ => false,
-        }
-    }
-
-    pub fn last_receipt_after_injection(&self) -> Option<Instant> {
-        let injected = self.injected_at?;
-        self.receipts.iter().copied().rev().find(|t| *t >= injected)
-    }
-
-    pub fn any_receipt_after_injection(&self) -> bool {
-        self.last_receipt_after_injection().is_some()
+    /// Read unless the field showed it was not: a field that cannot be read is taken to have pasted.
+    pub fn read(&self) -> bool {
+        matches!(self.seen, Some((Seen::Landed | Seen::Unknown, _)))
     }
 }
 
@@ -86,15 +96,19 @@ pub enum WaitDecision {
     Finish,
 }
 
-/// Given the current transaction state, keep waiting for the target to read, or finish now.
+/// Given the current transaction state, keep waiting for the field to show the words, or finish now.
 pub fn evaluate(state: &TxState, now: Instant) -> WaitDecision {
     if state.ownership_lost || state.cancelled {
         return WaitDecision::Finish;
     }
-    if let Some(last) = state.last_receipt_after_injection() {
-        if now.duration_since(last) >= QUIET_PERIOD {
-            return WaitDecision::Finish;
-        }
+    let done = match state.seen {
+        Some((Seen::Landed, at)) => now.duration_since(at) >= QUIET_PERIOD,
+        Some((Seen::Unknown, at)) => now.duration_since(state.injected_at.unwrap_or(at)) >= BLIND_RESTORE,
+        Some((Seen::Missed, _)) => true,
+        None => false,
+    };
+    if done {
+        return WaitDecision::Finish;
     }
     let deadline = if state.injection_failed {
         FAILED_INJECTION_TIMEOUT
@@ -112,26 +126,21 @@ pub fn evaluate(state: &TxState, now: Instant) -> WaitDecision {
 pub enum TakeOver {
     /// Its target may still read it: wait.
     Wait,
-    /// It is done (read and quiet, timed out, or his copy replaced it): let it settle as it would on its own.
+    /// It is done (shown and quiet, timed out, or his copy replaced it): let it settle as it would on its own.
     Settle,
-    /// Its chord has gone unread too long: leave its words where he can get them and go on.
+    /// Its chord has gone unconfirmed too long: leave its words where he can get them and go on.
     LeaveUnread,
 }
 
 /// Settling the previous paste before its target had read it put his old clipboard back under a Ctrl+V still on its
 /// way, so that is what got pasted (0.1.79). A new paste waits as the previous one would on its own, but never more
-/// than `UNREAD_TAKEOVER` for a chord nothing has read.
+/// than `UNREAD_TAKEOVER` for a chord nothing has confirmed.
 pub fn take_over(previous: &TxState, now: Instant) -> TakeOver {
     if evaluate(previous, now) == WaitDecision::Finish {
         return TakeOver::Settle;
     }
     match previous.injected_at {
-        Some(injected)
-            if !previous.any_receipt_after_injection()
-                && now.duration_since(injected) >= UNREAD_TAKEOVER =>
-        {
-            TakeOver::LeaveUnread
-        }
+        Some(injected) if !previous.read() && now.duration_since(injected) >= UNREAD_TAKEOVER => TakeOver::LeaveUnread,
         _ => TakeOver::Wait,
     }
 }
@@ -153,8 +162,8 @@ pub fn held_at_chord(published_sequence: u32, sequence_now: u32, we_own_it: bool
 }
 
 /// Clipboard watchers (Windows clipboard history, Ditto, Wispr Flow) open the clipboard the moment the transcript is
-/// published. A chord landing then pastes nothing while the receipt still looks read: on his laptop 22 of 50
-/// dictations (16 Nov). So the chord waits at least `SETTLE_MIN` and until nobody holds the clipboard, at most `SETTLE_MAX`.
+/// published. A chord landing then pastes nothing: on his laptop 22 of 50 dictations (16 Nov). So the chord waits at
+/// least `SETTLE_MIN` and until nobody holds the clipboard, at most `SETTLE_MAX`.
 pub const SETTLE_MIN: Duration = Duration::from_millis(60);
 pub const SETTLE_MAX: Duration = Duration::from_millis(300);
 const SETTLE_STEP: Duration = Duration::from_millis(5);
@@ -196,24 +205,65 @@ mod tests {
     }
 
     #[test]
-    fn a_new_paste_waits_while_the_last_chord_is_unread() {
+    fn the_field_before_and_after_the_chord_says_whether_it_landed() {
+        assert_eq!(compare(Some("hello "), Some("hello world")), Seen::Landed);
+        assert_eq!(compare(Some("hello "), Some("hello ")), Seen::Missed);
+        // An empty field that reads back empty took nothing either.
+        assert_eq!(compare(Some(""), Some("")), Seen::Missed);
+        assert_eq!(compare(None, Some("hello")), Seen::Unknown);
+        assert_eq!(compare(Some("hello "), None), Seen::Unknown);
+    }
+
+    #[test]
+    fn a_missed_chord_is_resent_once_and_only_when_a_watcher_held_the_clipboard() {
+        assert!(retry_chord(Seen::Missed, true, false, true));
+        // Nobody else on the clipboard: the target may just be slow, and a resend would paste twice.
+        assert!(!retry_chord(Seen::Missed, false, false, true));
+        assert!(!retry_chord(Seen::Missed, true, true, true));
+        // He copied something since: the chord would paste that.
+        assert!(!retry_chord(Seen::Missed, true, false, false));
+        assert!(!retry_chord(Seen::Landed, true, false, true));
+        assert!(!retry_chord(Seen::Unknown, true, false, true));
+    }
+
+    #[test]
+    fn it_settles_after_the_quiet_period_once_shown_and_blind_after_a_second() {
+        let t0 = Instant::now();
+        let mut shown = sent(t0);
+        shown.seen = Some((Seen::Landed, t0 + Duration::from_millis(80)));
+        assert_eq!(evaluate(&shown, t0 + Duration::from_millis(200)), WaitDecision::KeepWaiting);
+        assert_eq!(evaluate(&shown, t0 + Duration::from_millis(280)), WaitDecision::Finish);
+        assert!(shown.read());
+        let mut blind = sent(t0);
+        blind.seen = Some((Seen::Unknown, t0));
+        assert_eq!(evaluate(&blind, t0 + Duration::from_millis(900)), WaitDecision::KeepWaiting);
+        assert_eq!(evaluate(&blind, t0 + BLIND_RESTORE), WaitDecision::Finish);
+        assert!(blind.read());
+        let mut missed = sent(t0);
+        missed.seen = Some((Seen::Missed, t0 + Duration::from_millis(500)));
+        assert_eq!(evaluate(&missed, t0 + Duration::from_millis(500)), WaitDecision::Finish);
+        assert!(!missed.read());
+    }
+
+    #[test]
+    fn a_new_paste_waits_while_the_last_chord_is_unconfirmed() {
         let t0 = Instant::now();
         let previous = sent(t0);
-        // The second flush arrives 100 ms after the first Ctrl+V, which the target has not read yet.
+        // The second flush arrives 100 ms after the first Ctrl+V, which the field does not show yet.
         assert_eq!(take_over(&previous, t0 + Duration::from_millis(100)), TakeOver::Wait);
     }
 
     #[test]
-    fn a_new_paste_waits_until_the_reads_go_quiet() {
+    fn a_new_paste_waits_until_the_shown_paste_goes_quiet() {
         let t0 = Instant::now();
         let mut previous = sent(t0);
-        previous.record_receipt(t0 + Duration::from_millis(40));
+        previous.seen = Some((Seen::Landed, t0 + Duration::from_millis(40)));
         assert_eq!(take_over(&previous, t0 + Duration::from_millis(100)), TakeOver::Wait);
         assert_eq!(take_over(&previous, t0 + Duration::from_millis(260)), TakeOver::Settle);
     }
 
     #[test]
-    fn an_unread_chord_is_left_unread_after_a_second_and_a_half_not_restored_over() {
+    fn an_unconfirmed_chord_is_left_unread_after_a_second_and_a_half_not_restored_over() {
         let t0 = Instant::now();
         let previous = sent(t0);
         assert_eq!(take_over(&previous, t0 + Duration::from_millis(1400)), TakeOver::Wait);
@@ -230,16 +280,6 @@ mod tests {
         let mut failed = TxState::new(t0);
         failed.injection_failed = true;
         assert_eq!(take_over(&failed, t0 + FAILED_INJECTION_TIMEOUT), TakeOver::Settle);
-    }
-
-    #[test]
-    fn a_read_before_the_chord_is_not_the_targets() {
-        let t0 = Instant::now();
-        let mut state = TxState::new(t0);
-        assert!(!state.record_receipt(t0 + Duration::from_millis(5)));
-        state.injected_at = Some(t0 + Duration::from_millis(10));
-        assert!(!state.any_receipt_after_injection());
-        assert!(state.record_receipt(t0 + Duration::from_millis(30)));
     }
 
     #[test]

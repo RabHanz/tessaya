@@ -276,12 +276,19 @@ export type DictationEvent =
   /** Every raw edge of the hold key, ms on the helper's clock, for the turn log. */
   | { readonly ev: "key_edge"; readonly down: boolean; readonly at: number }
   | { readonly ev: "error"; readonly message: string; readonly dictation?: number }
-  /** Just before the chord, what the clipboard held (ours or something else); when settled, whether it was read. */
+  /**
+   * Just before the chord, what the clipboard held (ours or something else); after it, whether the field showed the
+   * words (and the one resend when a watcher held the clipboard); when settled, whether it was read.
+   */
   | {
       readonly ev: "paste_check";
-      readonly phase: "chord" | "settled";
+      readonly phase: "chord" | "retry" | "verified" | "settled";
       readonly held?: "ours" | "other";
       readonly chars?: number;
+      readonly settleMs?: number;
+      readonly seen?: "landed" | "missed" | "unknown";
+      readonly retried?: boolean;
+      readonly foreignHold?: boolean;
       readonly read?: boolean;
       readonly restored?: boolean;
       readonly changedOutside?: boolean;
