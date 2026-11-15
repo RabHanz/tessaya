@@ -5,7 +5,7 @@
 
 use std::sync::mpsc::channel;
 use std::sync::Mutex;
-use std::thread::{self, JoinHandle};
+use std::thread::{self, JoinHandle, Thread};
 use std::time::{Duration, Instant};
 
 use serde_json::json;
@@ -38,6 +38,15 @@ struct Live {
 
 static LIVE: Mutex<Option<Live>> = Mutex::new(None);
 static THREAD: Mutex<Option<(u32, JoinHandle<()>)>> = Mutex::new(None);
+static TICKER: Mutex<Option<Thread>> = Mutex::new(None);
+
+fn wake_ticker() {
+    if let Ok(ticker) = TICKER.lock() {
+        if let Some(thread) = ticker.as_ref() {
+            thread.unpark();
+        }
+    }
+}
 
 fn send(button: Button, down: bool) {
     let (flag, data): (MOUSE_EVENT_FLAGS, u32) = match (button, down) {
@@ -93,6 +102,7 @@ unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRE
                     },
                     Err(_) => vec![Action::Pass],
                 };
+                wake_ticker();
                 let replays = actions.iter().any(|a| matches!(a, Action::ReplayDown(_)));
                 let consumed = actions.iter().any(|a| matches!(a, Action::Consume));
                 for action in &actions {
@@ -164,26 +174,34 @@ fn start() {
                 *thread = Some((id, handle));
             }
             // A held press whose partner never came is replayed when its window runs out, even
-            // with no further mouse event to wake the hook.
-            thread::spawn(|| loop {
-                thread::sleep(Duration::from_millis(10));
-                let actions = match LIVE.lock() {
-                    Ok(mut guard) => match guard.as_mut() {
-                        Some(live) => {
-                            let t = live.started.elapsed().as_millis() as u64;
-                            let Live { cfg, state, .. } = live;
-                            reduce(state, Ev::Tick(t), cfg)
-                        }
-                        None => return,
-                    },
-                    Err(_) => return,
+            // with no further mouse event to wake the hook. With nothing held it sleeps until the
+            // hook holds a press, instead of waking 100 times a second for nothing (MA-017).
+            let ticker = thread::spawn(|| loop {
+                let actions = {
+                    let Ok(mut guard) = LIVE.lock() else { return };
+                    let Some(live) = guard.as_mut() else { return };
+                    if live.state.holding() {
+                        let t = live.started.elapsed().as_millis() as u64;
+                        let Live { cfg, state, .. } = live;
+                        Some(reduce(state, Ev::Tick(t), cfg))
+                    } else {
+                        None
+                    }
+                };
+                let Some(actions) = actions else {
+                    thread::park();
+                    continue;
                 };
                 for action in actions {
                     if let Action::ReplayDown(b) = action {
                         send(b, true);
                     }
                 }
+                thread::sleep(Duration::from_millis(10));
             });
+            if let Ok(mut slot) = TICKER.lock() {
+                *slot = Some(ticker.thread().clone());
+            }
         }
         _ => emit(json!({"ev": "error", "message": "The mouse hook could not start."})),
     }
@@ -192,6 +210,12 @@ fn start() {
 pub fn stop() {
     if let Ok(mut live) = LIVE.lock() {
         *live = None;
+    }
+    // A sleeping ticker wakes, finds no bindings and ends.
+    if let Ok(mut ticker) = TICKER.lock() {
+        if let Some(thread) = ticker.take() {
+            thread.unpark();
+        }
     }
     if let Ok(mut thread) = THREAD.lock() {
         if let Some((id, handle)) = thread.take() {

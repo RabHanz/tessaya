@@ -44,7 +44,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use enigo::Enigo;
 #[cfg(not(target_os = "linux"))]
 use enigo::Settings;
-use handy_keys::{Hotkey, HotkeyManager, HotkeyState};
+use handy_keys::{Hotkey, HotkeyId, HotkeyManager, HotkeyState};
 #[cfg(not(windows))]
 use handy_keys::{Key, KeyboardListener};
 use handy_recorder::{
@@ -1239,12 +1239,69 @@ fn paste_text(enigo: &mut Option<Enigo>, text: &str, method: PasteMethod) -> Res
     }
 }
 
-/// Dropping it stops the hook threads: the manager's by its flag, the chord hook's (Windows) by its thread id.
-struct Keys(Arc<AtomicBool>, #[cfg_attr(not(windows), allow(dead_code))] Option<u32>);
+/// The hotkey manager, one for the sidecar's life. Its reader blocks on the next press instead of polling every 5 ms
+/// (200 wake-ups a second at rest, MA-017), so a rebind swaps the hotkeys it holds rather than the manager.
+struct Hotkeys {
+    manager: HotkeyManager,
+    /// Where presses go, the hotkeys bound now, and which of them hold: a press of an unbound one is dropped.
+    route: Mutex<Option<HotkeyRoute>>,
+}
+
+struct HotkeyRoute {
+    tx: Sender<Msg>,
+    bound: Vec<HotkeyId>,
+    hold: Vec<HotkeyId>,
+    clock: Instant,
+}
+
+// SAFETY: only `recv` touches the manager's receiver (the part that is not Sync), and only the reader thread calls it;
+// `register` and `unregister` lock the manager's own state.
+unsafe impl Sync for Hotkeys {}
+
+static HOTKEYS: Mutex<Option<Arc<Hotkeys>>> = Mutex::new(None);
+
+fn hotkeys() -> Result<Arc<Hotkeys>, String> {
+    let mut slot = HOTKEYS.lock().map_err(|e| e.to_string())?;
+    if let Some(hub) = slot.as_ref() {
+        return Ok(hub.clone());
+    }
+    // `new_with_blocking`: a chord with a key must not also reach the focused app.
+    let manager = HotkeyManager::new_with_blocking().map_err(|e| e.to_string())?;
+    let hub = Arc::new(Hotkeys { manager, route: Mutex::new(None) });
+    let reader = hub.clone();
+    thread::spawn(move || {
+        while let Ok(event) = reader.manager.recv() {
+            let Ok(route) = reader.route.lock() else { return };
+            let Some(route) = route.as_ref().filter(|r| r.bound.contains(&event.id)) else { continue };
+            let pressed = event.state == HotkeyState::Pressed;
+            let at = route.clock.elapsed().as_secs_f64() * 1000.0;
+            let _ = route.tx.send(Msg::Key { hold: route.hold.contains(&event.id), pressed, at });
+        }
+    });
+    *slot = Some(hub.clone());
+    Ok(hub)
+}
+
+/// Unbinds the hotkeys it bound from the shared manager.
+fn unbind(ids: &[HotkeyId]) {
+    let Ok(slot) = HOTKEYS.lock() else { return };
+    let Some(hub) = slot.as_ref() else { return };
+    for id in ids {
+        let _ = hub.manager.unregister(*id);
+    }
+    if let Ok(mut route) = hub.route.lock() {
+        *route = None;
+    };
+}
+
+/// Dropping it stops the hooks: the manager's hotkeys are unbound, the chord hook's thread (Windows) is stopped by its
+/// id, and the chord listener's (elsewhere) by its flag.
+struct Keys(Arc<AtomicBool>, #[cfg_attr(not(windows), allow(dead_code))] Option<u32>, Vec<HotkeyId>);
 
 impl Drop for Keys {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Relaxed);
+        unbind(&self.2);
         #[cfg(windows)]
         if let Some(thread) = self.1 {
             chord_windows::stop(thread);
@@ -1269,28 +1326,27 @@ fn start_keys(config: &Config, tx: &Sender<Msg>, clock: Instant) -> Result<Optio
     }
     let toggles = config.toggle.iter().map(parse).collect::<Result<Vec<_>, _>>()?;
     let stop = Arc::new(AtomicBool::new(false));
+    let mut bound = Vec::new();
     if !keyed.is_empty() || !toggles.is_empty() {
-        // `new_with_blocking`: a chord with a key must not also reach the focused app.
-        let manager = HotkeyManager::new_with_blocking().map_err(|e| e.to_string())?;
-        let register = |hotkeys: Vec<Hotkey>| -> Result<Vec<_>, String> {
-            hotkeys.into_iter().map(|h| manager.register(h).map_err(|e| e.to_string())).collect()
-        };
-        let hold = register(keyed)?;
-        register(toggles)?;
-        let stopped = stop.clone();
-        let tx = tx.clone();
-        thread::spawn(move || {
-            while !stopped.load(Ordering::Relaxed) {
-                match manager.try_recv() {
-                    Some(event) => {
-                        let pressed = event.state == HotkeyState::Pressed;
-                        let at = clock.elapsed().as_secs_f64() * 1000.0;
-                        let _ = tx.send(Msg::Key { hold: hold.contains(&event.id), pressed, at });
+        let hub = hotkeys()?;
+        let mut hold = Vec::new();
+        for (hotkey, is_hold) in keyed.into_iter().map(|h| (h, true)).chain(toggles.into_iter().map(|h| (h, false))) {
+            match hub.manager.register(hotkey) {
+                Ok(id) => {
+                    bound.push(id);
+                    if is_hold {
+                        hold.push(id);
                     }
-                    None => thread::sleep(Duration::from_millis(5)),
+                }
+                Err(e) => {
+                    unbind(&bound);
+                    return Err(e.to_string());
                 }
             }
-        });
+        }
+        if let Ok(mut route) = hub.route.lock() {
+            *route = Some(HotkeyRoute { tx: tx.clone(), bound: bound.clone(), hold, clock });
+        };
     }
     #[cfg(not(windows))]
     fn key_code(key: Key) -> u32 {
@@ -1315,9 +1371,11 @@ fn start_keys(config: &Config, tx: &Sender<Msg>, clock: Instant) -> Result<Optio
         thread::spawn(move || {
             let mut machines: Vec<Chord> = chords.into_iter().map(Chord::new).collect();
             while !stopped.load(Ordering::Relaxed) {
-                let Some(event) = listener.try_recv() else {
-                    thread::sleep(Duration::from_millis(5));
-                    continue;
+                // Blocks until a key moves; the timeout only bounds how long a stop takes to be seen.
+                let event = match listener.recv_timeout(Duration::from_millis(250)) {
+                    Ok(event) => event,
+                    Err(handy_keys::Error::Timeout) => continue,
+                    Err(_) => return,
                 };
                 let ev = match (event.changed_modifier, event.key) {
                     (Some(side), _) => ChordEv::Mod(side, event.is_key_down),
@@ -1337,7 +1395,7 @@ fn start_keys(config: &Config, tx: &Sender<Msg>, clock: Instant) -> Result<Optio
             }
         });
     }
-    Ok(Some(Keys(stop, hook)))
+    Ok(Some(Keys(stop, hook, bound)))
 }
 
 /// Hands the microphone to the engine as it arrives.

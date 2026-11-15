@@ -288,8 +288,62 @@ if (t3) {
 // The whole app at rest, every process it runs (window, renderers, server, sidecars), from Windows' own counters:
 // the mascot row alone missed a window and server that idled at 1.5 s of CPU per 10 s on his laptop (MA-017).
 const IDLE_CPU_LIMIT_MS = 1_000;
+// A fresh install idles far lighter than his laptop: it has no saved remote computer that cannot be reached and no
+// detached window. Both are what his idle measured with (MA-017), so the measurement runs with both.
+if (t3) {
+  try {
+    const seeded = await t3.evaluate(async () => {
+      const bridge = window.desktopBridge;
+      const doc = JSON.parse((await bridge.getConnectionCatalog()) ?? "null") ?? {
+        schemaVersion: 1,
+        targets: [],
+        profiles: [],
+        credentials: [],
+        remoteDpopTokens: [],
+        disabledEnvironmentIds: [],
+      };
+      const id = "smoke-unreachable";
+      const environmentId = "smoke-unreachable-environment";
+      const label = "Unreachable (smoke)";
+      // 192.0.2.1 is TEST-NET-1: never routed, so every attempt waits out its timeout like a sleeping tailnet host.
+      doc.targets.push({ _tag: "BearerConnectionTarget", environmentId, label, connectionId: id });
+      doc.profiles.push({
+        _tag: "BearerConnectionProfile",
+        connectionId: id,
+        environmentId,
+        label,
+        httpBaseUrl: "http://192.0.2.1:3773/",
+        wsBaseUrl: "ws://192.0.2.1:3773/",
+      });
+      doc.credentials.push({
+        connectionId: id,
+        credential: { _tag: "BearerConnectionCredential", token: "smoke" },
+      });
+      const saved = await bridge.setConnectionCatalog(JSON.stringify(doc));
+      const base = `${location.protocol}//${location.host}${location.pathname}`;
+      const popout = window.open(
+        `${base}?batonWindow=smoke-popout#/`,
+        "baton-window-smoke-popout",
+        "popup,width=900,height=700",
+      );
+      return { saved, popout: popout !== null };
+    });
+    await t3.reload().catch(() => undefined);
+    row(
+      "idle seeded with an unreachable remote computer and a detached window",
+      seeded.saved && seeded.popout,
+      JSON.stringify(seeded),
+    );
+  } catch (error) {
+    row(
+      "idle seeded with an unreachable remote computer and a detached window",
+      false,
+      error.message,
+    );
+  }
+}
 try {
-  await sleep(30_000);
+  await sleep(60_000);
   const dir = join(exe, "..").replace(/'/g, "''");
   const script =
     `$d='${dir}'; $p=@{}; Get-CimInstance Win32_Process | ? { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, 'OrdinalIgnoreCase') } | % { $p[[int]$_.ProcessId]=$_.Name + ($(if ($_.CommandLine -match '--type=(\\S+)') { ' ' + $matches[1] } else { '' })) }; ` +
