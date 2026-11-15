@@ -936,6 +936,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
         stopStt,
         onEvent,
         vocabulary,
+        correct,
         waitMs,
         listening,
         verifyWake,
@@ -1000,6 +1001,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
               onEvent(event);
             },
             vocabulary,
+            correct,
             waitMs,
             listening,
             verifyWake,

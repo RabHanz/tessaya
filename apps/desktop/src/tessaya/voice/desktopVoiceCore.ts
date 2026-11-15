@@ -233,6 +233,26 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
   },
 });
 
+/** His words to her, corrected as dictation corrects them (his dictionary, the personas he calls), before anything reads them. */
+export const withCorrection = (
+  inner: VoiceRouter,
+  correct: (text: string) => string,
+): VoiceRouter => {
+  const prepare = inner.prepare;
+  return {
+    route: (effect, context) =>
+      inner.route(
+        effect.kind === "command" ? { ...effect, text: correct(effect.text) } : effect,
+        context,
+      ),
+    ...(prepare === undefined
+      ? {}
+      : {
+          prepare: (effect, context) => prepare({ ...effect, text: correct(effect.text) }, context),
+        }),
+  };
+};
+
 /** A spoken command Baton answers itself (adding a word to his dictionary) before the brain sees it. */
 export const withPreempt = (
   inner: VoiceRouter,
@@ -305,6 +325,8 @@ export const createDesktopVoiceCore = async (input: {
   readonly origin?: number;
   readonly brain?: BrainVoiceHook;
   readonly vocabulary?: (text: string) => Promise<string | null>;
+  /** The shared correction for words said to her (dictation's `biasTranscript` with the personas' names). */
+  readonly correct?: (text: string) => string;
   readonly waitMs?: () => number;
   /** How long the command window and the conversation stay open, read each time they are used. */
   readonly listening?: () => { readonly commandWindowMs: number; readonly conversationMs: number };
@@ -383,10 +405,13 @@ export const createDesktopVoiceCore = async (input: {
     ),
     tts: input.tts === undefined ? createOsTts(input.platform) : input.tts,
     router: ((router) =>
-      input.vocabulary === undefined ? router : withPreempt(router, input.vocabulary))(
-      input.brain === undefined
-        ? createVoiceRouter(input.intent)
-        : withBrainRoutes(createVoiceRouter(input.intent), input.brain),
+      input.correct === undefined ? router : withCorrection(router, input.correct))(
+      ((router) =>
+        input.vocabulary === undefined ? router : withPreempt(router, input.vocabulary))(
+        input.brain === undefined
+          ? createVoiceRouter(input.intent)
+          : withBrainRoutes(createVoiceRouter(input.intent), input.brain),
+      ),
     ),
     ...(input.origin === undefined ? {} : { origin: input.origin }),
     ...(input.waitMs === undefined ? {} : { waitMs: input.waitMs }),
