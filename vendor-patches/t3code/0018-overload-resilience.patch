@@ -101,7 +101,7 @@ index ca109422c95a88ee861bd48da067a0bfc629b935..ad3f430f20b50b1d4e71c5a6e4d92e46
        : Effect.logWarning("desktop launcher is gone; shutting down the backend", {
            launcherPid,
 diff --git a/apps/server/src/orchestration-v2/ShellStream.test.ts b/apps/server/src/orchestration-v2/ShellStream.test.ts
-index fbc610235dd01d5f9441f6afcac9aab644ab2d9a..59c6e6ee4eafe79887b5f26cae2df2a85d360260 100644
+index fbc610235dd01d5f9441f6afcac9aab644ab2d9a..5ae2be2f878951a53e645fb4510719156dc718db 100644
 --- a/apps/server/src/orchestration-v2/ShellStream.test.ts
 +++ b/apps/server/src/orchestration-v2/ShellStream.test.ts
 @@ -23,6 +23,7 @@ import {
@@ -118,12 +118,12 @@ index fbc610235dd01d5f9441f6afcac9aab644ab2d9a..59c6e6ee4eafe79887b5f26cae2df2a8
  
 +  it.effect("omitUnchangedPullRequests sends a thread's links only when they change", () =>
 +    Effect.gen(function* () {
-+      // A long-lived thread like the Director's: 46 merged PR links, about 38 KB as a shell.
++      // A long-lived thread that has collected many PRs (46 links, about 35 KB as a shell).
 +      const link = (number: number) => ({
 +        host: "github.com",
-+        repository: "rabhanz/ventureos",
++        repository: "example/project",
 +        number,
-+        url: `https://github.com/RabHanz/VentureOS/pull/${number}`,
++        url: `https://github.com/example/project/pull/${number}`,
 +        source: "created" as const,
 +        linkedAt: "2026-10-29T15:50:50.177Z",
 +        snapshot: {
@@ -137,10 +137,10 @@ index fbc610235dd01d5f9441f6afcac9aab644ab2d9a..59c6e6ee4eafe79887b5f26cae2df2a8
 +          closedAt: "2026-10-29T15:50:58Z",
 +          mergedAt: "2026-10-29T15:50:58Z",
 +          author: {
-+            login: "RabHanz",
++            login: "octocat",
 +            name: null,
 +            avatarUrl:
-+              "https://avatars.githubusercontent.com/u/53461530?u=4151290527442b5f1edd&v=4",
++              "https://avatars.githubusercontent.com/u/1000000?u=0000000000000000000000&v=4",
 +          },
 +          additions: 2,
 +          deletions: 2,

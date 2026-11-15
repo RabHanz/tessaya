@@ -687,12 +687,12 @@ describe("skipUnchangedThreadShells", () => {
 
   it.effect("omitUnchangedPullRequests sends a thread's links only when they change", () =>
     Effect.gen(function* () {
-      // A long-lived thread like the Director's: 46 merged PR links, about 38 KB as a shell.
+      // A long-lived thread that has collected many PRs (46 links, about 35 KB as a shell).
       const link = (number: number) => ({
         host: "github.com",
-        repository: "rabhanz/ventureos",
+        repository: "example/project",
         number,
-        url: `https://github.com/RabHanz/VentureOS/pull/${number}`,
+        url: `https://github.com/example/project/pull/${number}`,
         source: "created" as const,
         linkedAt: "2026-10-29T15:50:50.177Z",
         snapshot: {
@@ -706,10 +706,10 @@ describe("skipUnchangedThreadShells", () => {
           closedAt: "2026-10-29T15:50:58Z",
           mergedAt: "2026-10-29T15:50:58Z",
           author: {
-            login: "RabHanz",
+            login: "octocat",
             name: null,
             avatarUrl:
-              "https://avatars.githubusercontent.com/u/53461530?u=4151290527442b5f1edd&v=4",
+              "https://avatars.githubusercontent.com/u/1000000?u=0000000000000000000000&v=4",
           },
           additions: 2,
           deletions: 2,
