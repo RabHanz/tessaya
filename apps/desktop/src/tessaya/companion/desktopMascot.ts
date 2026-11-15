@@ -51,6 +51,8 @@ import {
   resting,
   screenOf,
   stepFlight,
+  bumpOf,
+  type Standing,
   throwVelocity,
   type Flight,
 } from "./mascotPhysics.ts";
@@ -144,7 +146,8 @@ export type MascotMoment =
   | "moment.petted"
   | "moment.screen"
   | "moment.met"
-  | "moment.idle";
+  | "moment.idle"
+  | "moment.bumped";
 /** One answer at a time, and none sooner than this after the last: a flurry of pokes gets one line. */
 const MOMENT_GAP_MS = 6_000;
 /** Her body's half-width and height inside her window, as shares of its size (the rig's body at rest). */
@@ -170,6 +173,10 @@ export interface CrowdMember {
   readonly greet: (side: number, under: boolean) => void;
   /** Has her look toward a side and do one of her acts (a hand-off between personas). */
   readonly gesture: (act: MascotAct, side: number) => void;
+  /** Her body while she stands still, for another flying into her; null otherwise. */
+  readonly standing: () => Standing | null;
+  /** Another flew into her: she is knocked along at this speed (px/s, its sign the way). */
+  readonly knock: (vx: number) => void;
 }
 export type Crowd = Set<CrowdMember>;
 
@@ -490,7 +497,7 @@ export const createDesktopMascot = (input: {
     hitTimer = null;
   };
   /** Something happened to her body: her character reacts in its own way and returns to her mood by itself (rig.react). */
-  const react = (kind: "pickup" | "land" | "wall" | "poke" | "pet", speed = 0) =>
+  const react = (kind: "pickup" | "land" | "wall" | "poke" | "pet" | "bump", speed = 0) =>
     call(`window.mascot.react(${JSON.stringify(kind)},${Math.round(speed)})`);
   /** Her eyes follow the cursor while it is near; sent only when the look changes. */
   let looking = "";
@@ -733,6 +740,10 @@ export const createDesktopMascot = (input: {
     const screens = options.screens === "one" && from !== undefined ? [from] : every;
     shrugOff();
     const all = [...edgesFor({ displays: screens, window: fg, size: size() }), ...heads()];
+    const standing = others().flatMap((m) => {
+      const body = m.standing();
+      return body === null ? [] : [{ m, body }];
+    });
     let flight = start;
     let owed = 0;
     let last = Date.now();
@@ -755,6 +766,19 @@ export const createDesktopMascot = (input: {
         // every landing and wall is felt: a squash by its speed that springs back
         for (const event of next.events)
           if (event.speed > IMPACT_SPEED) react(event.kind, event.speed);
+        const bump = bumpOf({
+          flight,
+          half: size() * BODY_HALF,
+          tall: size() * BODY_TALL,
+          bounce: profile.bounce,
+          others: standing.map((s) => s.body),
+        });
+        if (bump !== null) {
+          const [hit] = standing.splice(bump.index, 1);
+          flight = bump.flight;
+          if (Math.abs(bump.push) > IMPACT_SPEED) react("bump", Math.abs(bump.push));
+          hit!.m.knock(bump.push);
+        }
       }
       if (!resting(flight) || flight.on === null) {
         target.setBounds(box({ x: flight.x - size() / 2, y: flight.y - size() * FOOT_SHARE }));
@@ -1008,6 +1032,25 @@ export const createDesktopMascot = (input: {
       const b = target.getBounds();
       fling({ x: b.x + size() / 2, y: b.y + size() * FOOT_SHARE, vx: 0, vy: 0, on: null });
     },
+    standing: () =>
+      still() && edge !== null
+        ? { x: middle(), y: edge.y, half: size() * BODY_HALF, tall: size() * BODY_TALL }
+        : null,
+    knock: (vx) => {
+      const target = win;
+      if (dragging !== null || target === null || target.isDestroyed()) return;
+      call(`window.mascot.look(${vx > 0 ? -0.9 : 0.9},0)`);
+      if (Math.abs(vx) > IMPACT_SPEED) react("bump", Math.abs(vx));
+      const b = target.getBounds();
+      fling({
+        x: b.x + size() / 2,
+        y: b.y + size() * FOOT_SHARE,
+        vx,
+        vy: -Math.abs(vx) / 4,
+        on: null,
+      });
+      if (Math.abs(vx) > IMPACT_SPEED) moment("moment.bumped");
+    },
     greet: (side, under) => {
       call(`window.mascot.look(${side * 0.9},0)`);
       call(`window.mascot.react(${JSON.stringify(under ? "under" : "hello")},${under ? 700 : 0})`);
@@ -1023,6 +1066,9 @@ export const createDesktopMascot = (input: {
   return {
     setOptions: (next) => {
       const rebuild = next.size !== options.size || next.motion !== options.motion;
+      // Turning her on in Settings is his way back from "Hide until tomorrow" and a snooze.
+      if (next.on && !options.on && (hidden() || snoozed()))
+        save({ hiddenUntil: 0, snoozeUntil: 0 });
       options = next;
       if (rebuild && win !== null && !win.isDestroyed()) win.destroy();
       apply();

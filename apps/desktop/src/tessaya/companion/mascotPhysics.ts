@@ -234,3 +234,42 @@ export const throwVelocity = (
   const k = speed > MAX_THROW ? MAX_THROW / speed : 1;
   return { vx: vx * k, vy: vy * k };
 };
+
+/** Another character standing still: her feet, and half her body's width and her height. */
+export interface Standing {
+  readonly x: number;
+  readonly y: number;
+  readonly half: number;
+  readonly tall: number;
+}
+
+/**
+ * Flying sideways into one who stands still (the sandbox's collide): she bounces back off and knocks the other along.
+ * Equal weights, so `push` is the other's new speed. A flier above the other's head lands on it instead (an edge).
+ * shortcut: equal masses, not bodies.js mass; pass masses in if a heavy Pebble should barely budge.
+ */
+export const bumpOf = (input: {
+  readonly flight: Flight;
+  readonly half: number;
+  readonly tall: number;
+  readonly bounce: number;
+  readonly others: ReadonlyArray<Standing>;
+}): { readonly index: number; readonly flight: Flight; readonly push: number } | null => {
+  const { flight: f, half, tall } = input;
+  if (Math.abs(f.vx) < REST_SPEED) return null;
+  const index = input.others.findIndex(
+    (o) =>
+      Math.abs(o.x - f.x) < half + o.half &&
+      Math.sign(o.x - f.x) === Math.sign(f.vx) &&
+      f.y > o.y - o.tall * 0.6 &&
+      f.y - tall < o.y,
+  );
+  if (index < 0) return null;
+  const o = input.others[index]!;
+  const e = Math.min(input.bounce + 0.25, 1);
+  return {
+    index,
+    flight: { ...f, x: o.x - Math.sign(f.vx) * (half + o.half), vx: (f.vx * (1 - e)) / 2 },
+    push: (f.vx * (1 + e)) / 2,
+  };
+};
