@@ -2,7 +2,7 @@
  * that lag on the rig's secondary spring, and a fidget of its own. All original, all from the craft of weaving. */
 (function (g) {
  "use strict";
- const TCS = g.TCS, {clamp, lerp, f1, blob, pink, smoothClosed, smoothOpen, mixHex, bell, ease, ramp} = TCS.util;
+ const TCS = g.TCS, {clamp, lerp, f1, blob, pink, smoothClosed, smoothOpen, mixHex, mixLch, bell, ease, ramp} = TCS.util;
  const PI = Math.PI, TAU = PI * 2;
  const INK = "#1f1b1d", IVORY = "#F4F0E6";
  const common = {shine: "#ffffff", mouth: "#3a1a22", tongue: "#E66F7A", cheek: "#F08A90", star: "#F2B33D", heart: "#E2506A", zzz: "#7d8a99", steam: "#d9dde3"};
@@ -92,10 +92,10 @@
  // Drop: a drop of dye whose colour follows her mood; the tip wobbles on its own
  {
   const W = 172, H = 196;
-  const MOOD = {Joy: "#E6A23C", Love: "#E07085", Sad: "#4E7FBF", Sulky: "#6E6FA8", Angry: "#D2444B", Sleepy: "#6C4C8E", Surprise: "#E2B341", Curious: "#2F9C8F", Calm: "#2A8C96"};
   C.drop = {id: "drop", name: "Drop", idea: "A drop of dye. Her colour follows her mood: woad when calm, gold when happy, indigo when sad, madder when cross.",
    pal: Object.assign({}, common, {base: "#2A8C96", light: "#8fd6d6", dark: "#0e4b52", rim: "#ffffff", rimO: .6, eye: "#10202a", gloss: .85, edge: "#0e4b52"}),
-   palette(R, expr) { const c = MOOD[TCS.EXPRESSIONS[expr].g] || MOOD.Calm; return Object.assign({}, this.pal, {base: c, light: mixHex(c, "#ffffff", .55), dark: mixHex(c, "#000000", .5), edge: mixHex(c, "#000000", .55)}); },
+   // her body takes the mood's own light (rig.js LIGHT), blended over the change rather than switched
+   palette(R) { const c = mixLch(this.pal.base, [R.lightL, R.lightC, R.lightH], clamp(R.lightW * 2.4, 0, 1)); return Object.assign({}, this.pal, {base: c, light: mixHex(c, "#ffffff", .55), dark: mixHex(c, "#000000", .5), edge: mixHex(c, "#000000", .55)}); },
    face: {R: 92, curv: .9, y: 22, ex: 32, eyY: -8, ew: 25, eh: 38, mY: 26, mw: 28, bg: 9},
    body(R, ctx) {
     const pts = [], n = 64, sx = R.sx, sy = R.sy, tipX = ctx.sec.x * .9;
@@ -484,7 +484,7 @@
   const H = 172;
   C.mark = {id: "mark", name: "Mark", idea: "The original Loom: the Tessaya mark itself, nine woven bars and no face. The bars bloom, huddle, spread, lie down to sleep, circle while she thinks and pulse with her voice.",
    pal: Object.assign({}, common, {base: "#1F7A82", light: "#7cc9c6", dark: "#0b3f45", rim: "#c9f1ec", eye: "#0b3f45", edge: "#0b3f45", zzz: "#7d8a99"}),
-   palette(R) { const c = R.flush > .25 ? "#B5404B" : R.gloom > .2 ? "#3E5C93" : (R.glow > .3 || R.star > .4) ? "#C8862E" : "#1F7A82"; return Object.assign({}, this.pal, {base: c, light: mixHex(c, "#ffffff", .5), dark: mixHex(c, "#000000", .55), edge: mixHex(c, "#000000", .6)}); },
+   palette(R) { const c = mixLch(this.pal.base, [R.lightL, R.lightC, R.lightH], clamp(R.lightW * 2.4, 0, 1)); return Object.assign({}, this.pal, {base: c, light: mixHex(c, "#ffffff", .5), dark: mixHex(c, "#000000", .55), edge: mixHex(c, "#000000", .6)}); },
    noFace: true, noHands: true,
    face: {R: 90, curv: .9, y: 0, ex: 30, eyY: -10, ew: 24, eh: 36, mY: 26, mw: 26, bg: 9},
    body(R, ctx) {
@@ -492,7 +492,8 @@
     const happy = clamp(Math.max(R.mc - .4, 0) * 1.6 + R.arc * .5 + R.star * .6 + R.chev * .4, 0, 1), sad = clamp(-R.mc * 1.2 + R.gloom, 0, 1);
     const surprise = clamp(R.mo * R.mr * 1.6, 0, 1), sleep = clamp(Math.max(R.sarc, (R.lu - .35) / .4), 0, 1), think = (ex === "thinking" || ex === "searching") ? 1 : 0;
     const spread = (1 + .16 * happy + .28 * surprise - .12 * sad) * R.sx, speak = clamp(R.mo, 0, 1.2) * (1 - surprise);
-    let out = "";
+    // the bars' gradient is drawn with them, so it follows her mood's colour (a defs one would keep her first colour)
+    let out = `<linearGradient id="mk${ctx.uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${pal.light}"/><stop offset="1" stop-color="${pal.base}"/></linearGradient>`;
     BARS.forEach((m, i) => {
      let x = m.x * spread, y = m.y * spread + 10 * sad, a = m.a, l = m.l;
      if (sleep > 0) { x = lerp(x, (i % 2 ? 7 : -7), sleep); y = lerp(y, (i - 4) * 9 + 18, sleep); a = lerp(a, 0, sleep); l = lerp(l, 30 + (i % 3) * 12, sleep); }
@@ -506,7 +507,6 @@
     });
     return {d: "M0 0Z", h, hw: 92 * R.sx, top: -h, cy, front: out};
    },
-   defs: (uid, p) => `<linearGradient id="mk${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${p.light}"/><stop offset="1" stop-color="${p.base}"/></linearGradient>`,
    fidget: {dur: 1300, fn: (t, a) => ({d: {sx: .05 * a * Math.sin(t * TAU * 2) * bell(t, 0, 1), tilt: 6 * Math.sin(t * TAU) * bell(t, 0, 1)}})},
   };
  }

@@ -67,7 +67,37 @@
  }
  function hex(c) { const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
  function mixHex(a, b, t) { const A = hex(a), B = hex(b); return "#" + A.map((v, i) => Math.round(lerp(v, B[i], t)).toString(16).padStart(2, "0")).join(""); }
- TCS.util = {clamp, lerp, f1, bell, ramp, ease, hold, smoothClosed, smoothOpen, poly, blob, pink, projector, mixHex};
+ // Mood colour is mixed in OKLab (perceptual): an RGB mix of two hues passes through grey (Director, 15 Nov: "murky").
+ const lin = (c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4, gam = (c) => c <= .0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - .055;
+ function lab(c) {
+  const [r, gg, b] = hex(c).map((v) => lin(v / 255));
+  const l = Math.cbrt(.4122214708 * r + .5363325363 * gg + .0514459929 * b), m = Math.cbrt(.2119034982 * r + .6806995451 * gg + .1073969566 * b), s = Math.cbrt(.0883024619 * r + .2817188376 * gg + .6299787005 * b);
+  return [.2104542553 * l + .793617785 * m - .0040720468 * s, 1.9779984951 * l - 2.428592205 * m + .4505937099 * s, .0259040371 * l + .7827717662 * m - .808675766 * s];
+ }
+ function rgbOf(L, a, b) {
+  const l = (L + .3963377774 * a + .2158037573 * b) ** 3, m = (L - .1055613458 * a - .0638541728 * b) ** 3, s = (L - .0894841775 * a - 1.291485548 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + .2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - .3413193965 * s, -.0041960863 * l - .7034186147 * m + 1.707614701 * s];
+ }
+ const inGamut = (c) => c.every((v) => v >= -1e-4 && v <= 1.0001);
+ /** OKLab to hex; out of gamut it gives up chroma, keeping lightness and hue (clipping a channel would shift the hue). */
+ function hexLab(L, a, b) {
+  L = clamp(L, 0, 1); let c = rgbOf(L, a, b);
+  if (!inGamut(c)) { let lo = 0, hi = 1; for (let i = 0; i < 14; i++) { const k = (lo + hi) / 2; if (inGamut(rgbOf(L, a * k, b * k))) lo = k; else hi = k; } c = rgbOf(L, a * lo, b * lo); }
+  return "#" + c.map((v) => Math.round(clamp(gam(Math.max(0, v)), 0, 1) * 255).toString(16).padStart(2, "0")).join("");
+ }
+ const lch = (c) => { const [L, a, b] = lab(c); return [L, Math.hypot(a, b), Math.atan2(b, a) * 180 / PI]; };
+ const hexLch = (L, C, h) => hexLab(L, C * Math.cos(h * PI / 180), C * Math.sin(h * PI / 180));
+ /** A colour mixed toward an OKLCH target by t (and lightened by dL), its chroma held at the blend of the two so it
+  * never dips grey; a near-neutral keeps the plain mix, as rescaling its leftover would invent a hue. */
+ function mixLch(c, T, t, dL = 0) {
+  if (t <= 0 && !dL) return c;
+  const A = lab(c), ta = T[1] * Math.cos(T[2] * PI / 180), tb = T[1] * Math.sin(T[2] * PI / 180);
+  let a = lerp(A[1], ta, t), b = lerp(A[2], tb, t);
+  const CA = Math.hypot(A[1], A[2]), want = lerp(CA, T[1], t), got = Math.hypot(a, b), k = clamp((CA - .02) / .06, 0, 1);
+  if (got > 1e-4) { const f = lerp(1, want / got, k); a *= f; b *= f; }
+  return hexLab(lerp(A[0], T[0], t) + dL, a, b);
+ }
+ TCS.util = {clamp, lerp, f1, bell, ramp, ease, hold, smoothClosed, smoothOpen, poly, blob, pink, projector, mixHex, lch, hexLch, mixLch};
 
  // ── The rig's numbers ──────────────────────────────────────────────────────────────────────────────────────────
  const N = {
@@ -75,8 +105,9 @@
   sx: 1, sy: 1, lift: 0, lean: 0, tilt: 0, yaw: 0, pitch: 0, zoom: 1, app: 0,
   // body tint: anger flush, a cold gloom, a warm glow behind
   flush: 0, gloom: 0, glow: 0,
-  // the mood's colour through the whole body: warmer and brighter as it rises, cooler blue-grey as it falls
-  warm: 0, cool: 0,
+  // the mood's light on her (OKLCH: lightness, chroma, hue in degrees, strength, exposure): her body keeps its own
+  // colour and the mood colours her rim, key light, bounce, halo and the glint in her eyes
+  lightL: .7, lightC: 0, lightH: 0, lightW: 0, lightE: 0,
   // eyes: size, spacing, height, gaze; upper lid close and slant (+ inner down = cross, − outer down = sad); lower lid push
   ew: 1, eh: 1, gap: 1, ey: 0, gx: 0, gy: 0, lu: 0, la: 0, ll: .12,
   // eye styles, crossfaded: happy arcs, sleeping arcs, squeezed > <, stars, hearts, spirals, loading dots, wink, one eye bigger
@@ -95,7 +126,7 @@
  // reference recolours the whole character from about 0.3 s to 1.1 s and is halfway near 0.55 s). The body's colour,
  // aura and posture travel the whole way; the brows, eyes and mouth arrive spread from 0.5 to 0.9 s. Each value leaves
  // wherever it is on a slow-in, slow-out curve whose long tail keeps it moving to the end.
- const GROUP = (k) => /^(warm|cool|gloom|flush|glow|lift|lean|pitch|tilt)$/.test(k) ? "body" : /^(bo|by|ba|bc|bas)$/.test(k) ? "brow" : /^(mw|mc|mo|mr|mx|mt|mwob|teeth|tongue|puff|cheek|blush|bite|tip|press)$/.test(k) ? "mouth" : "eye";
+ const GROUP = (k) => /^(light[LCHWE]|gloom|flush|glow|lift|lean|pitch|tilt)$/.test(k) ? "body" : /^(bo|by|ba|bc|bas)$/.test(k) ? "brow" : /^(mw|mc|mo|mr|mx|mt|mwob|teeth|tongue|puff|cheek|blush|bite|tip|press)$/.test(k) ? "mouth" : "eye";
  const TIMING = {body: [0, 2000], brow: [40, 520], eye: [130, 600], mouth: [220, 640]};
  const LAG = Object.fromEntries(Object.keys(N).map((k) => [k, TIMING[GROUP(k)][0]]));
  const DUR = Object.fromEntries(Object.keys(N).map((k) => [k, TIMING[GROUP(k)][1]]));
@@ -105,6 +136,12 @@
  // t^0.55 over 2 s: the reference's change is visible on 40 of its 47 frames)
  const longTail = (x) => .5 - .5 * Math.cos(PI * Math.pow(x, .55));
  const VALENCE = {Joy: 1, Love: .9, Surprise: .8, Curious: .4, Angry: .3, Calm: 0, Sulky: -.6, Sad: -1, Sleepy: -.8};
+ // each mood's light, from the brand's dyes (Weld, Madder, Woad and its deep vat, Damson): how strong, and an exposure
+ // shift; Calm is her own colour, unlit
+ const DYE = {weld: "#F2B33D", madder: "#CF3F4A", woad: "#2A8C96", indigo: "#3B5BA5", damson: "#774A9A", rose: "#E07085"};
+ const LIGHT = {Joy: [DYE.weld, .42, .03], Love: [DYE.rose, .32, .02], Surprise: [DYE.weld, .3, .03], Curious: [DYE.woad, .22, 0], Calm: [null, 0, 0],
+  Sad: [DYE.indigo, .45, -.04], Sulky: [DYE.damson, .35, -.03], Angry: [DYE.madder, .38, 0], Sleepy: [DYE.damson, .42, -.05]};
+ const MOODED = ["lift", "pitch", "glow", "lightL", "lightC", "lightH", "lightW", "lightE", "gloom", "flush"];
  const STYLE = new Set(["arc", "sarc", "chev", "star", "heart", "spiral", "dots", "wink"]);
  TCS.NEUTRAL = N;
 
@@ -724,6 +761,19 @@
   let raf = 0, last = 0, frames = 0, running = false, beatOnly = false, beatFrame = 0, destroyed = false, blinkTimer = 0, idleTimer = 0, lastVariant = {}, dyn = "";
   const stats = {frames: 0, since: performance.now()};
   let B = null, F = null;
+  /** Her palette in the mood's light (N.light*): her own colour, a touch of the mood in its shadows, the mood on her rim,
+   * eye glint, key light, bounce and halo. Worked out again only when the palette or the light has changed. */
+  let litKey = "", litPal = null;
+  function lit(p, R) {
+   const w = clamp(R.lightW, 0, 1), e = R.lightE, L = R.lightL, C = R.lightC, h = R.lightH;
+   const key = p.light + p.base + p.dark + [w, e, L, C, h].map((v) => v.toFixed(3)).join();
+   if (key === litKey) return litPal;
+   const k = clamp(w * 2.2, 0, 1);
+   litKey = key; litPal = {...p, light: mixLch(p.light, [.95, C * .35, h], w * .25, e * .6), base: mixLch(p.base, [L, C, h], w * .2, e * .6), dark: mixLch(p.dark, [Math.min(L, .42), C * .85, h], w * .65, e * .3),
+    rim: mixLch(p.rim || "#ffffff", [.9, Math.min(.13, C * .7), h], k), rimO: lerp(p.rimO ?? .55, .92, k), shine: mixLch(p.shine || "#ffffff", [.96, C * .25, h], k * .6),
+    key: hexLch(.86, Math.min(.14, C * .8), h), bounce: hexLch(clamp(L, .5, .72), C, h), halo: hexLch(Math.max(L, .74), C, h)};
+   return litPal;
+  }
 
   function defs() {
    const p = ch.pal;
@@ -733,14 +783,16 @@
     + `<radialGradient id="gs${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#000" stop-opacity=".32"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`
     + `<radialGradient id="ck${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.cheek}" stop-opacity=".95"/><stop offset="1" stop-color="${p.cheek}" stop-opacity="0"/></radialGradient>`
     + `<radialGradient id="fl${uid}" cx=".5" cy=".15" r=".8"><stop offset="0" stop-color="#e2403f" stop-opacity=".75"/><stop offset="1" stop-color="#e2403f" stop-opacity="0"/></radialGradient>`
-    + `<linearGradient id="gl${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b4a7a" stop-opacity=".7"/><stop offset=".6" stop-color="#3b4a7a" stop-opacity="0"/></linearGradient>`
-    + `<radialGradient id="gw${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.glow || p.light}" stop-opacity=".55"/><stop offset="1" stop-color="${p.glow || p.light}" stop-opacity="0"/></radialGradient><radialGradient id="aw${uid}" cx=".5" cy=".5" r=".5"><stop offset=".35" stop-color="#FFC85C" stop-opacity=".5"/><stop offset="1" stop-color="#FFC85C" stop-opacity="0"/></radialGradient><radialGradient id="ac${uid}" cx=".5" cy=".5" r=".5"><stop offset=".35" stop-color="#7F9CC8" stop-opacity=".5"/><stop offset="1" stop-color="#7F9CC8" stop-opacity="0"/></radialGradient>`
+    + `<linearGradient id="lk${uid}" x1="0" y1="0" x2=".7" y2="1"><stop offset="0" stop-opacity=".9"/><stop offset=".6" stop-opacity="0"/></linearGradient><radialGradient id="lb${uid}" cx=".5" cy="1" r=".6"><stop offset="0" stop-opacity=".85"/><stop offset="1" stop-opacity="0"/></radialGradient>`
+    + `<radialGradient id="gw${uid}" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="${p.glow || p.light}" stop-opacity=".55"/><stop offset="1" stop-color="${p.glow || p.light}" stop-opacity="0"/></radialGradient><radialGradient id="aw${uid}" cx=".5" cy=".5" r=".5"><stop offset=".3" stop-opacity=".55"/><stop offset="1" stop-opacity="0"/></radialGradient>`
     + `<clipPath id="cl${uid}"><path/></clipPath>` + (ch.defs ? ch.defs(uid, p) : "");
 
    L.defs.insertAdjacentHTML("beforeend", `<mask id="re${uid}" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600"><path fill="none" stroke="#fff" stroke-width="16"/></mask><mask id="rc${uid}" maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600"><g mask="url(#re${uid})"></g></mask>`);
    L.rc = L.defs.querySelector(`#rc${uid} g`); L.rcEdge = L.defs.querySelector(`#re${uid} path`);
    L.clip = L.defs.querySelector(`#cl${uid} path`);
    L.stops = [...L.defs.querySelectorAll(`#bg${uid} stop`)];
+   L.lights = ["aw", "lk", "lb"].map((id) => [...L.defs.querySelectorAll(`#${id}${uid} stop`)]);
+   L.bd.style.isolation = "isolate"; // the mood's light blends with her body only
    L.bd.setAttribute("clip-path", `url(#cl${uid})`); L.fc.setAttribute("clip-path", `url(#cl${uid})`);
    dyn = "";
   }
@@ -755,11 +807,15 @@
    }
    tgt.sx = 1 + (tgt.sx - 1); // keep
    // posture follows the mood: up and a little back when it rises, down and forward when it falls
-   // and a warm aura swells behind her as it rises (a falling mood greys through its own gloom)
-   if (brief) { for (const k of ["lift", "pitch", "glow", "warm", "cool", "gloom", "flush"]) tgt[k] = mood[k] ?? tgt[k]; return; }
+   if (brief) { for (const k of MOODED) tgt[k] = mood[k] ?? tgt[k]; return; }
    const v = VALENCE[ex.g] ?? 0; tgt.lift += -6 * v * A; tgt.pitch += -.03 * v * A; tgt.glow += Math.max(0, v) * .4 * A;
-   tgt.warm = clamp(Math.max(0, v) * .9, 0, .8); tgt.cool = clamp(Math.max(0, -v) * .9, 0, .8);
-   for (const k of ["lift", "pitch", "glow", "warm", "cool", "gloom", "flush"]) mood[k] = tgt[k];
+   // the mood's light turns the short way round the hue wheel at full chroma; out of her own colour (no light yet) it
+   // takes the new dye at once and only fades in; back to calm it keeps its colour and only fades out
+   const [dye, lw, le] = LIGHT[ex.g] || LIGHT.Calm;
+   if (dye) { const [L, C, h] = lch(dye); if (cur.lightW < .02) { cur.lightL = L; cur.lightC = C; cur.lightH = h; } tgt.lightL = L; tgt.lightC = C; tgt.lightH = cur.lightH + ((h - cur.lightH) % 360 + 540) % 360 - 180; }
+   else { tgt.lightL = cur.lightL; tgt.lightC = cur.lightC; tgt.lightH = cur.lightH; }
+   tgt.lightW = lw; tgt.lightE = le;
+   for (const k of MOODED) mood[k] = tgt[k];
   }
   /** She hit something at this speed (px/s): a squash as deep as she is soft, springing back as she is soft (plush ones
    * wobble, rigid ones barely give); landing, a quick squint as she hits, never in the air. */
@@ -1088,10 +1144,9 @@
    }
 
    // body
-   const pal0 = ch.palette ? ch.palette(Rv, brief ? moodName : expr) : ch.pal, wm = clamp(Rv.warm, 0, 1), co = clamp(Rv.cool, 0, 1);
-   const tone = (c, w, k) => mixHex(mixHex(c, w, wm), k, co);
-   const pal = wm + co < .002 ? pal0 : {...pal0, light: tone(pal0.light, "#FFE7A3", "#C9D6EA"), base: tone(pal0.base, "#FFC85C", "#93A9CC"), dark: tone(pal0.dark, "#E8A23C", "#5F7397")};
+   const pal = lit(ch.palette ? ch.palette(Rv, brief ? moodName : expr) : ch.pal, Rv);
    { const key = pal.base + pal.light + pal.dark; if (key !== dyn) { dyn = key; L.stops[0].setAttribute("stop-color", pal.light); L.stops[1].setAttribute("stop-color", pal.base); L.stops[2].setAttribute("stop-color", pal.dark); } }
+   if (pal.halo !== L.halo) { L.halo = pal.halo; [pal.halo, pal.key, pal.bounce].forEach((c, i) => { for (const st of L.lights[i]) st.setAttribute("stop-color", c); }); }
    const ctx = {t: now / 1000, uid, sec, pal, R: Rv, expr, proj: projector(ch.face.R, ch.face.curv ?? 1, clamp(Rv.yaw, -(ch.face.yawMax ?? 2), ch.face.yawMax ?? 2), Rv.pitch)};
    B = ch.body(Rv, ctx);
    // the deformed outline: the body, its clip (so the face and textures inside follow) and the parts on it move with it
@@ -1110,11 +1165,12 @@
    const rim = `<path d="${B.d}" fill="${pal.rim}" opacity="${pal.rimO ?? .55}"/><path d="${B.d}" fill="url(#bg${uid})" transform="translate(${f1(-3.5 - Rv.yaw * 2)} -4)"/>`;
    const hi = `<ellipse cx="${f1(-B.hw * .36 - yawS)}" cy="${f1(B.top + B.h * .22)}" rx="${f1(B.hw * .42)}" ry="${f1(B.h * .2)}" fill="url(#hl${uid})" transform="rotate(-24 ${f1(-B.hw * .36 - yawS)} ${f1(B.top + B.h * .22)})"/>`;
    const core = `<ellipse cx="${f1(B.hw * .5 - yawS)}" cy="${f1(B.cy + B.h * .3)}" rx="${f1(B.hw * .85)}" ry="${f1(B.h * .45)}" fill="url(#cs${uid})" opacity=".55"/>`;
-   const tint = (Rv.flush > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#fl${uid})" opacity="${f1(clamp(Rv.flush, 0, 1))}"/>` : "")
-    + (Rv.gloom > .02 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#gl${uid})" opacity="${f1(clamp(Rv.gloom, 0, 1) * .45)}"/>` : "");
+   const wash = (id, o, blend) => o > .005 ? `<rect x="-200" y="${f1(B.top)}" width="400" height="${f1(B.h)}" fill="url(#${id}${uid})" opacity="${o.toFixed(3)}"${blend ? ` style="mix-blend-mode:${blend}"` : ""}/>` : "";
+   // the mood's key light (soft-light from the top left) and its bounce from below, then an angry flush
+   const tint = wash("lk", clamp(Rv.lightW * 1.4, 0, .6), "soft-light") + wash("lb", clamp(Rv.lightW * .9, 0, .42), "screen") + wash("fl", clamp(Rv.flush * .8, 0, 1));
    // where a sleeve passes behind the edge, the plain body fill covers the rim highlight (no light seam beside the sleeve)
    // the body's colours are in its gradient's stops; naming them here rebuilds the layer when they change, so it repaints
-   put(L.bd, rim + `<g mask="url(#rc${uid})" data-tone="${dyn}"><path d="${B.d}" fill="url(#bg${uid})"/></g>` + (B.body || "") + core + hi + tint);
+   put(L.bd, rim + `<g mask="url(#rc${uid})" data-tone="${dyn}${L.halo || ""}"><path d="${B.d}" fill="url(#bg${uid})"/></g>` + (B.body || "") + core + hi + tint);
    if (L.rcEdge) L.rcEdge.setAttribute("d", B.d);
    const back = B.back || "";
    const face = ch.noFace ? {svg: "", eyes: drawFace(Rv, F, pal, now / 1000, spinT).eyes} : drawFace(Rv, F, pal, now / 1000, spinT);
@@ -1124,10 +1180,10 @@
    // contact shadow and the glow behind her
    const lift = Rv.lift, ls = clamp(1 + lift / 90, .45, 1.1);
    put(L.sh, `<ellipse cx="${f1(Rv.lean * 1.2)}" cy="${GROUND + 2}" rx="${f1(B.hw * 1.02 * ls)}" ry="${f1(10 * ls)}" fill="url(#gs${uid})" opacity="${f1(.9 * ls)}"/>`);
-   // the mood's aura: a soft warm or cool light round her that colours with the body (the reference's background shifts);
+   // the mood's halo: a soft light round her in the mood's colour (the reference's background shifts);
    // it fades out inside her own window, so the desktop never shows its edge
-   const aura = (id, o) => o > .01 ? `<ellipse cx="0" cy="${f1(GROUND + B.cy)}" rx="${f1(B.hw * 1.5)}" ry="${f1(B.h * .75)}" fill="url(#${id}${uid})" opacity="${(clamp(o, 0, 1)).toFixed(3)}"/>` : "";
-   put(L.glow, aura("aw", Rv.warm * 1.15) + aura("ac", Rv.cool * 1.15) + (Rv.glow > .03 ? `<circle cx="0" cy="${f1(GROUND + B.cy)}" r="${f1(B.hw * 1.45)}" fill="url(#gw${uid})" opacity="${f1(clamp(Rv.glow, 0, 1))}"/>` : ""));
+   const aura = (id, o) => o > .01 ? `<ellipse cx="0" cy="${f1(GROUND + B.cy)}" rx="${f1(B.hw * 1.7)}" ry="${f1(B.h * .78)}" fill="url(#${id}${uid})" opacity="${(clamp(o, 0, 1)).toFixed(3)}"/>` : "";
+   put(L.glow, aura("aw", Rv.lightW * 1.9) + (Rv.glow > .03 ? `<circle cx="0" cy="${f1(GROUND + B.cy)}" r="${f1(B.hw * 1.45)}" fill="url(#gw${uid})" opacity="${f1(clamp(Rv.glow, 0, 1))}"/>` : ""));
    // her soft body squashes and stretches as a whole, feet on the ground, her area held (sideways = 1 / height): a cartoon
    // pancake spreads as wide as it flattens
    const [qa0, qb] = phys().squash, qa = soft.flat ? .32 : qa0, sq = soft.y >= 0 ? 1 + (qb - 1) * Math.tanh(soft.y / (qb - 1)) : 1 - (1 - qa) * Math.tanh(-soft.y / (1 - qa)), squash = Math.abs(sq - 1) > 1e-3 ? ` scale(${(1 / sq).toFixed(4)} ${sq.toFixed(4)})` : "";

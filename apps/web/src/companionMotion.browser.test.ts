@@ -10,7 +10,13 @@ interface Rig {
   stats: { frames: number };
   destroy: () => void;
 }
+type Lch = [number, number, number];
 interface Studio {
+  util: {
+    lch: (hex: string) => Lch;
+    hexLch: (L: number, C: number, h: number) => string;
+    mixLch: (hex: string, target: Lch, t: number) => string;
+  };
   PERSONAS: Record<string, { character: string; traits: object }>;
   create: (svg: SVGElement, opts: object) => Rig;
 }
@@ -43,13 +49,16 @@ const mount = (TCS: Studio, persona: string, character?: string, options: object
     const eyes = [...svg.querySelectorAll('[data-l="eye-base"]')].flatMap((g) =>
       (g.firstElementChild?.getAttribute("d")?.match(/-?\d+(\.\d+)?/g) ?? []).map(Number),
     );
-    const tone =
+    const base =
       svg.querySelector('radialGradient[id^="bg"] stop:nth-child(2)')?.getAttribute("stop-color") ??
       "#000000";
+    const rim = svg.querySelector("g.bd > path")?.getAttribute("fill") ?? "#000000";
     return {
-      // the body's colour (8-bit, as drawn) and the mood aura's strength around her
-      colour: [1, 3, 5].map((i) => parseInt(tone.slice(i, i + 2), 16)),
-      aura: [...svg.querySelectorAll('[fill^="url(#aw"],[fill^="url(#ac"]')].reduce(
+      // the mood's light on her rim (8-bit, as drawn), her body's own colour, and the mood's halo round her
+      colour: [1, 3, 5].map((i) => parseInt(rim.slice(i, i + 2), 16)),
+      rim,
+      base,
+      aura: [...svg.querySelectorAll('[fill^="url(#aw"]')].reduce(
         (a, e) => a + Number(e.getAttribute("opacity")),
         0,
       ),
@@ -106,13 +115,13 @@ describe("the companion's changes of expression", () => {
       m.rig.setExpression(expression);
       // two seconds at 60 a second: the whole change, colour included
       const seen = [before, ...m.frames(120)];
-      // the motion bar (14 Nov): the body's colour moves on at least 40 of the 45 steps a 30-a-second film shows in its
+      // the motion bar (14 Nov): the mood's colour moves on at least 40 of the 45 steps a 30-a-second film shows in its
       // first 1.5 s, and is halfway there between 0.45 and 0.7 s
       const away = seen.map((s) => Math.hypot(...s.colour.map((c, k) => c - before.colour[k]!)));
       const total = away.at(-1)!;
       expect(total).toBeGreaterThan(20);
       const film = away.filter((_, i) => i % 2 === 0).slice(0, 46);
-      // a step shows a change when the body's colour or the aura moved (the colour alone is 8-bit, so its slow ends round)
+      // a step shows a change when the mood's colour or the halo moved (the colour alone is 8-bit, so its slow ends round)
       const auras = seen
         .map((s) => s.aura)
         .filter((_, i) => i % 2 === 0)
@@ -148,6 +157,78 @@ describe("the companion's changes of expression", () => {
         expect(first).toBeLessThan(0.1);
         expect(snaps).toBe(0);
       }
+    },
+  );
+});
+
+describe("the companion's mood colour", () => {
+  it("mixes perceptually: no grey between two dyes, no invented hue, no clipped hue out of gamut", async () => {
+    const { util } = await studio();
+    const [weld, indigo] = [util.lch("#F2B33D"), util.lch("#3B5BA5")];
+    // a round trip is exact to the 8-bit colour
+    for (const hex of ["#f2b33d", "#3b5ba5", "#e8dcc4", "#1f7a82"])
+      expect(util.hexLch(...util.lch(hex))).toBe(hex);
+    // halfway between opposite dyes keeps their chroma (an RGB mix halves it)
+    for (const t of [0.25, 0.5, 0.75])
+      expect(util.lch(util.mixLch("#F2B33D", indigo, t))[1]).toBeGreaterThan(
+        0.9 * Math.min(weld[1], indigo[1]),
+      );
+    // a near-neutral takes the dye's own hue, not a leftover one
+    const grey = util.lch(util.mixLch("#808080", indigo, 0.3));
+    expect(Math.abs(grey[2] - indigo[2])).toBeLessThan(20);
+    // more chroma than sRGB holds keeps its hue and gives up chroma
+    const out = util.lch(util.hexLch(0.7, 0.4, weld[2]));
+    expect(Math.abs(out[2] - weld[2])).toBeLessThan(3);
+  });
+
+  it.each([["tessaya"], ["freya"]])(
+    "%s keeps her own colour while the mood's light turns happy to sad without going grey",
+    async (persona) => {
+      const TCS = await studio();
+      using _random = vi.spyOn(Math, "random").mockReturnValue(0.999);
+      using _timers = fakeTimers();
+      using m = mount(TCS, persona);
+      const own = TCS.util.lch(m.sample().base);
+      m.rig.setExpression("happy");
+      m.frames(150);
+      const happy = TCS.util.lch(m.sample().rim);
+      m.rig.setExpression("sad");
+      const seen = m
+        .frames(130)
+        .map((s) => ({ rim: TCS.util.lch(s.rim), base: TCS.util.lch(s.base) }));
+      const sad = seen.at(-1)!.rim;
+      // the light turns from gold to indigo
+      expect(Math.abs(((sad[2] - happy[2] + 540) % 360) - 180)).toBeGreaterThan(120);
+      // at full chroma all the way (today's RGB mix fell to a khaki grey halfway)
+      expect(Math.min(...seen.map((s) => s.rim[1]))).toBeGreaterThan(
+        0.7 * Math.min(happy[1], sad[1]),
+      );
+      // her body stays herself: never more than a light touch from her own colour
+      for (const { base } of seen) expect(Math.abs(base[0] - own[0])).toBeLessThan(0.06);
+    },
+  );
+
+  it.each([["drop"], ["mark"]])(
+    "%s, whose body is the mood's dye, blends from one mood's colour to the next",
+    async (character) => {
+      const TCS = await studio();
+      using _random = vi.spyOn(Math, "random").mockReturnValue(0.999);
+      using _timers = fakeTimers();
+      using m = mount(TCS, "tessaya", character);
+      m.rig.setExpression("happy");
+      m.frames(150);
+      const start = m.sample().base;
+      m.rig.setExpression("sad");
+      const lab = (hex: string) => {
+        const [L, C, h] = TCS.util.lch(hex);
+        return [L, C * Math.cos((h * Math.PI) / 180), C * Math.sin((h * Math.PI) / 180)];
+      };
+      const path = [start, ...m.frames(130).map((s) => s.base)].map(lab);
+      const steps = path.slice(1).map((p, i) => Math.hypot(...p.map((v, k) => v - path[i]![k]!)));
+      const total = steps.reduce((a, b) => a + b, 0);
+      expect(total).toBeGreaterThan(0.15);
+      // no switch: no single frame carries more than a tenth of the change
+      expect(Math.max(...steps)).toBeLessThan(total * 0.1);
     },
   );
 });
