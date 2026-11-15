@@ -123,6 +123,12 @@ export const bodyOf = (personas: ReadonlyArray<Persona>, chosen: string): Person
 export const mascotChoices = (personas: ReadonlyArray<Persona>) =>
   personas.map((p) => ({ value: p.name.toLowerCase(), label: p.name }));
 
+/** Who else is on his desktop: "none", "all", or one persona by its lower-case name. */
+export const parseMascotCrew = (value: unknown): string =>
+  value === "all" || (typeof value === "string" && /^[a-z][a-z0-9 -]{0,40}$/.test(value))
+    ? value
+    : "none";
+
 export const parseMascotPersona = (value: unknown): string =>
   typeof value === "string" && /^[a-z][a-z0-9 -]{0,40}$/i.test(value)
     ? value.toLowerCase()
@@ -136,9 +142,36 @@ export type MascotMoment =
   | "moment.squished"
   | "moment.thrown"
   | "moment.petted"
-  | "moment.screen";
+  | "moment.screen"
+  | "moment.met";
 /** One answer at a time, and none sooner than this after the last: a flurry of pokes gets one line. */
 const MOMENT_GAP_MS = 6_000;
+/** Her body's half-width and height inside her window, as shares of its size (the rig's body at rest). */
+const BODY_HALF = 0.26;
+const BODY_TALL = 0.47;
+/** Two at rest closer than this many of her widths meet; a pair greets again only after this long apart. */
+const MEET_SIZES = 1.3;
+const MET_AGAIN_MS = 5 * 60_000;
+
+/**
+ * The other characters on his desktop (one window each), so they can stand on each other's heads, bump apart and
+ * greet. Each member is one mascot; the set is shared by every mascot the desktop made.
+ */
+export interface CrowdMember {
+  readonly id: string;
+  /** Her head as an edge another can stand on, while she rests; null otherwise. */
+  readonly head: () => Edge | null;
+  /** Where she stands (her feet), while she rests on an edge. */
+  readonly feet: () => { readonly x: number; readonly y: number; readonly display: number } | null;
+  /** The one under her moved: she falls from where she is. */
+  readonly fall: () => void;
+  /** Another greets her from this side (-1 left, 1 right); landed on her when `under`. */
+  readonly greet: (side: number, under: boolean) => void;
+  /** Has her look toward a side and do one of her acts (a hand-off between personas). */
+  readonly gesture: (act: MascotAct, side: number) => void;
+}
+export type Crowd = Set<CrowdMember>;
+
 /** A mood weaker than this (TessayaMood intensity, 0 to 1) is her plain rest. */
 const MOOD_SHOWN = 0.2;
 /** A throw at least this fast is one she remarks on. */
@@ -256,6 +289,11 @@ export const createDesktopMascot = (input: {
   readonly companionDir: string;
   readonly stateDir: string;
   readonly openSettings: () => void;
+  /** Her place file's name beside the others' (one per character on his desktop); unset is the first. */
+  readonly key?: string;
+  readonly crowd?: Crowd;
+  /** Her place in the line-up, so characters first shown together do not stand in one spot. */
+  readonly slot?: number;
   readonly onNote?: (kind: string, detail: Record<string, unknown>) => void;
   /**
    * What he did to her body, for the brain to word in her persona (the voice door's `express`). The physics never waits
@@ -265,7 +303,10 @@ export const createDesktopMascot = (input: {
   /** Her answer's words aloud, in her voice (the caller keeps quiet hours and Do not disturb). */
   readonly speak?: (text: string) => void;
 }): DesktopMascot => {
-  const file = NodePath.join(input.stateDir, "baton-mascot.json");
+  const file = NodePath.join(
+    input.stateDir,
+    input.key === undefined ? "baton-mascot.json" : `baton-mascot-${input.key}.json`,
+  );
   let saved = readSaved(file);
   const save = (next: Saved) => {
     saved = { ...saved, ...next };
@@ -321,7 +362,51 @@ export const createDesktopMascot = (input: {
   const snoozed = () => (saved.snoozeUntil ?? 0) > Date.now();
   const hidden = () => (saved.hiddenUntil ?? 0) > Date.now();
   const wanted = () => options.on && !hidden() && !fullscreen;
+  const others = () => [...(input.crowd ?? [])].filter((m) => m !== self);
+  /** The heads of the others at rest: edges she can land and stand on. */
+  const heads = () => others().flatMap((m) => m.head() ?? []);
+  // Heads are for landing on in flight only: placing her (his window, the taskbar, a menu pick) never picks one.
   const edges = () => edgesFor({ displays: displays(), window: fg, size: size() });
+  /** Whoever stands on her head falls when she moves. */
+  let leaving = false;
+  const shrugOff = () => {
+    const mine = self.head();
+    if (mine === null) return;
+    leaving = true;
+    for (const m of others()) {
+      const f = m.feet();
+      if (f !== null && Math.abs(f.y - mine.y) < 2 && f.x >= mine.x1 - 4 && f.x <= mine.x2 + 4)
+        m.fall();
+    }
+    leaving = false;
+  };
+  const met = new Map<string, number>();
+  /** At rest: a head she landed on is told, and a neighbour close by is greeted (both, once in a while). */
+  const meet = () => {
+    const here = self.feet();
+    if (here === null) return;
+    const now = Date.now();
+    for (const m of others()) {
+      const there = m.feet();
+      const head = m.head();
+      const under =
+        head !== null && Math.abs(head.y - here.y) < 2 && here.x >= head.x1 && here.x <= head.x2;
+      const near =
+        there !== null &&
+        there.display === here.display &&
+        Math.abs(there.y - here.y) < 4 &&
+        Math.abs(there.x - here.x) < size() * MEET_SIZES;
+      const fresh = now - (met.get(m.id) ?? 0) >= MET_AGAIN_MS;
+      if (!under && !(near && fresh)) continue;
+      const side = (there?.x ?? here.x) < here.x ? -1 : 1;
+      m.greet(-side, under);
+      if (!fresh) continue;
+      met.set(m.id, now);
+      call(`window.mascot.look(${side * 0.9},0)`);
+      call(`window.mascot.react("hello",0)`);
+      moment("moment.met");
+    }
+  };
 
   const call = (code: string) => {
     const target = win;
@@ -392,7 +477,10 @@ export const createDesktopMascot = (input: {
           Infinity,
         )
       : (all.find((e) => e.kind === "window") ?? landing(all, x, 0));
-    const at = x >= home.x1 && x <= home.x2 ? x : home.x2 - size();
+    const at =
+      x >= home.x1 && x <= home.x2
+        ? x
+        : Math.max(home.x1 + size() / 2, home.x2 - size() * (1 + 1.2 * (input.slot ?? 0)));
     standOn(home, at);
   };
 
@@ -642,7 +730,8 @@ export const createDesktopMascot = (input: {
     const every = displays();
     const from = screenOf(every, start.x, start.y - size() / 4);
     const screens = options.screens === "one" && from !== undefined ? [from] : every;
-    const all = edgesFor({ displays: screens, window: fg, size: size() });
+    shrugOff();
+    const all = [...edgesFor({ displays: screens, window: fg, size: size() }), ...heads()];
     let flight = start;
     let owed = 0;
     let last = Date.now();
@@ -680,6 +769,7 @@ export const createDesktopMascot = (input: {
       save({ x, placed: edge.kind === "floor" });
       target.setBounds(box(standAt(edge, x, size())));
       cue(momentOf(phase) ?? "rest");
+      meet();
       if (byHand && pickedFrom !== undefined && edge.display !== pickedFrom)
         moment("moment.screen");
       else if (byHand && thrown) moment("moment.thrown");
@@ -737,6 +827,7 @@ export const createDesktopMascot = (input: {
     const target = win;
     if (!mine(event) || target === null || dragging !== null) return;
     stopMoving();
+    shrugOff();
     pickedFrom = edge?.display;
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
@@ -786,9 +877,6 @@ export const createDesktopMascot = (input: {
   Electron.screen.on("display-removed", onDisplays);
   Electron.screen.on("display-metrics-changed", onDisplays);
 
-  /** Her body's half-width and height inside her window, as shares of its size (the rig's body at rest). */
-  const BODY_HALF = 0.26;
-  const BODY_TALL = 0.47;
   /**
    * One of her own funny moments (bodies.js `funny`), or the one named. The rig acts; the window does what the act
    * needs of the world: a sneeze's hop, hanging off the end of his window, peeking in from the side of her screen.
@@ -869,6 +957,52 @@ export const createDesktopMascot = (input: {
 
   scheduleWake();
 
+  /** Her window's middle, where her feet are. */
+  const middle = () => {
+    const b = win?.getBounds();
+    return b === undefined ? x : b.x + size() / 2;
+  };
+  const still = () =>
+    edge !== null &&
+    moving === null &&
+    dragging === null &&
+    !leaving &&
+    win !== null &&
+    win.isVisible();
+  const self: CrowdMember = {
+    id: input.key ?? "first",
+    head: () => {
+      if (!still() || edge === null) return null;
+      const s = size();
+      const cx = middle();
+      return {
+        kind: "window",
+        x1: cx - s * BODY_HALF,
+        x2: cx + s * BODY_HALF,
+        y: edge.y - s * BODY_TALL,
+        display: edge.display,
+      };
+    },
+    feet: () =>
+      still() && edge !== null ? { x: middle(), y: edge.y, display: edge.display } : null,
+    fall: () => {
+      const target = win;
+      if (dragging !== null || target === null || target.isDestroyed()) return;
+      const b = target.getBounds();
+      fling({ x: b.x + size() / 2, y: b.y + size() * FOOT_SHARE, vx: 0, vy: 0, on: null });
+    },
+    greet: (side, under) => {
+      call(`window.mascot.look(${side * 0.9},0)`);
+      call(`window.mascot.react(${JSON.stringify(under ? "under" : "hello")},${under ? 700 : 0})`);
+    },
+    gesture: (act, side) => {
+      call(`window.mascot.look(${side * 0.9},0)`);
+      const clip = ACT_CLIPS[act];
+      if (clip !== undefined) call(`window.mascot.play(${JSON.stringify(clip)})`);
+    },
+  };
+  input.crowd?.add(self);
+
   return {
     setOptions: (next) => {
       const rebuild = next.size !== options.size || next.motion !== options.motion;
@@ -945,6 +1079,7 @@ export const createDesktopMascot = (input: {
       cue(on ? "asleep" : "rest");
     },
     dispose: () => {
+      input.crowd?.delete(self);
       clearInterval(wander);
       if (wakeTimer !== null) clearTimeout(wakeTimer);
       Electron.ipcMain.removeListener("baton-mascot:press", onPress);

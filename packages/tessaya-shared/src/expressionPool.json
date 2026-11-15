@@ -8863,6 +8863,208 @@
         "mood": "neutral",
         "gesture": "nodSoft"
       }
+    ],
+    "moment.met": [
+      {
+        "text": "Oh, hello there.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Well, look who's here.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hey, didn't see you.",
+        "mood": "surprised",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Morning, neighbor. Or whatever it is.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ah, sorry, landed close.",
+        "mood": "concerned",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hi. Nice spot you have.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Oh. You're here too.",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Fancy meeting you here.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hey you. Room for me?",
+        "mood": "happy",
+        "gesture": "hop"
+      },
+      {
+        "text": "Hello. Carry on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Oh, hi. Small desktop.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "There you are.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Oh. Didn't see you there.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Morning, neighbor.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Well, this is cozy.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hi. Don't mind me.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ah, we share the pixels.",
+        "mood": "curious",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hello again, you.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Mind if I stay?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Oops. Right on you.",
+        "mood": "concerned",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Good, company.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Small world, this screen.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Hey. Keep working, I'll shuffle.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Oh. We meet.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Room for one more?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Sorry, landed a bit close.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Good to see you here.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Carry on, I'll find a corner.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Well. Neighbors.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Didn't expect you here.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Ah, a familiar face.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Pardon me, just passing through.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hey, you. All good?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Nice spot you have.",
+        "mood": "proud",
+        "gesture": "thumbsUp"
+      },
+      {
+        "text": "Oh, there you are.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Mind if I sit here?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Small desktop, isn't it.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hello again, friend.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Oops, landed on you.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "All quiet on your side?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      }
     ]
   },
   "butler": {
@@ -17988,6 +18190,208 @@
         "text": "Different screen. Same dependable me.",
         "mood": "steady",
         "gesture": "nodSoft"
+      }
+    ],
+    "moment.met": [
+      {
+        "text": "Ah, good day to you.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Well, hello there. Mind the cushions.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Pardon the intrusion. Lovely to see you.",
+        "mood": "neutral",
+        "gesture": "bow"
+      },
+      {
+        "text": "Oh, we've company. Splendid.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Fancy meeting you on this desktop.",
+        "mood": "curious",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Forgive the landing. Hello.",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Ah, a colleague. How do you do?",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hello, you. Room for one more?",
+        "mood": "happy",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Well now, small world, this.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Good to see a familiar face.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hello there. Do carry on.",
+        "mood": "steady",
+        "gesture": "wave"
+      },
+      {
+        "text": "Ah, good day. Mind the landing.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hello. Didn't expect company up here.",
+        "mood": "surprised",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Pardon me. Am I interrupting?",
+        "mood": "curious",
+        "gesture": "bow"
+      },
+      {
+        "text": "Well, hello. Do make yourself comfortable.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "A familiar face. How reassuring.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Oh, hello. Shall we share?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Ah, there you are.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Terribly sorry. Gravity, you understand.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hello, friend. Busy day?",
+        "mood": "curious",
+        "gesture": "wave"
+      },
+      {
+        "text": "Good to see you. Truly.",
+        "mood": "proud",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Oh, hello. Quite the coincidence.",
+        "mood": "surprised",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Evening, morning, whichever. Hello.",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Well, this is cozy.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Ah. A colleague. Splendid.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Do mind the landing. Hello.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Fancy meeting you here.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hello there. Room for one more?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Ah, company. I do approve.",
+        "mood": "proud",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Hello, you. Keeping well?",
+        "mood": "happy",
+        "gesture": "wave"
+      },
+      {
+        "text": "Excuse me. Dropping in, as it were.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "There you are. I'd hoped so.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Hello. Do carry on.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Oh, how nice. A neighbour.",
+        "mood": "happy",
+        "gesture": "giggleOnce"
+      },
+      {
+        "text": "Good day. Mind if I join you?",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Well. This is cosy.",
+        "mood": "happy",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Ah, a familiar face. Splendid.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Pardon the landing. Quite deliberate.",
+        "mood": "proud",
+        "gesture": "bow"
+      },
+      {
+        "text": "Hello, neighbour. All in order?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mind the gap. I'm joining you.",
+        "mood": "neutral",
+        "gesture": "hop"
       }
     ]
   }
