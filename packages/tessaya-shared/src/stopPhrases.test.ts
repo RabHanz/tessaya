@@ -11,6 +11,7 @@ describe("stopIntent", () => {
       "Enough, thanks.",
       "Be quiet.",
       "Never mind.",
+      "No, stop.",
     ])
       expect(stopIntent(t), t).toBe("stop");
     for (const t of ["Dismissed.", "Dismiss.", "Okay, dismissed.", "That's all.", "Goodbye."])
@@ -19,6 +20,11 @@ describe("stopIntent", () => {
       "What time is it?",
       "The bus stop is on the corner of the road outside.",
       "Twenty to one, in the morning.",
+      // 15 Nov, 08:21: talk that holds a stop word is not a stop.
+      "Yeah yeah, I'll stop.",
+      "Fair enough.",
+      "It's too quiet.",
+      "I won't cancel it.",
       "",
     ])
       expect(stopIntent(t), t).toBeNull();

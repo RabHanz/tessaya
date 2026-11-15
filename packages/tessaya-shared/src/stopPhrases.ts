@@ -38,17 +38,39 @@ const plain = (text: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/** A word right before the phrase that makes it talk, not a command: "I'll stop", "fair enough", "it's quiet" (15 Nov). */
+const NOT_A_COMMAND = new Set(
+  "i i'll i'd i'm we we'll you'll they he she it it's is was to don't didn't not can't won't will would should could gonna the a bus too so very really fair good big long close keep".split(
+    " ",
+  ),
+);
+
 /**
- * "dismiss" or "stop" when the line is one of those phrases (with a few words around it at most: "okay, stop",
+ * The phrase that makes the line a "dismiss" or a "stop" (with a few words around it at most: "okay, stop",
  * "stop, stop", "enough, thanks"), else null. A long sentence that merely contains "stop" is not one.
  */
+export const stopMatch = (
+  text: string,
+  extra: ReadonlyArray<string> = [],
+): { readonly intent: "dismiss" | "stop"; readonly phrase: string } | null => {
+  const said = plain(text);
+  if (said === "" || said.split(" ").length > 5) return null;
+  const has = (phrase: string) => {
+    const p = plain(phrase);
+    if (p === "") return false;
+    const at = ` ${said} `.indexOf(` ${p} `);
+    return at >= 0 && !NOT_A_COMMAND.has(said.slice(0, at).trim().split(" ").at(-1) ?? "");
+  };
+  const dismiss = DISMISS.find(has);
+  if (dismiss !== undefined) return { intent: "dismiss", phrase: dismiss };
+  const stop = [...STOP, ...extra].find(has);
+  return stop === undefined ? null : { intent: "stop", phrase: stop };
+};
+
 export const stopIntent = (
   text: string,
   extra: ReadonlyArray<string> = [],
-): "dismiss" | "stop" | null => {
-  const said = plain(text);
-  if (said === "" || said.split(" ").length > 5) return null;
-  const has = (phrase: string) => ` ${said} `.includes(` ${plain(phrase)} `);
-  if (DISMISS.some(has)) return "dismiss";
-  return STOP.some(has) || extra.filter((p) => plain(p) !== "").some(has) ? "stop" : null;
-};
+): "dismiss" | "stop" | null => stopMatch(text, extra)?.intent ?? null;
+
+/** The room brain's own "he is done": the end of a reply that closes the conversation, never said (15 Nov). */
+export const REST_MARK = "[rest]";
