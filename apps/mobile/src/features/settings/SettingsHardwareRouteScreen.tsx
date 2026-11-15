@@ -28,6 +28,8 @@ import {
   deviceStatusLine,
   tesselHosts,
   toneFamilyOf,
+  EYE_STYLE_CHOICES,
+  eyeStyleLine,
   type TesselSeen,
   displayChoiceOf,
   displayLine,
@@ -666,6 +668,17 @@ function DeviceControls({
             disabled={off}
             onPress={() => void run("act", "talkOver", { id, open: d.talkOver === false })}
           />
+        </Row>
+        <Row divider title="Eyes" description={eyeStyleLine(d)}>
+          {EYE_STYLE_CHOICES.map(([value, label]) => (
+            <ControlPill
+              key={value}
+              variant={value === (d.eyeStyle ?? "alive") ? "primary" : "pill"}
+              label={label}
+              disabled={off}
+              onPress={() => void run("act", "eyeStyle", { id, style: value })}
+            />
+          ))}
         </Row>
         <Row divider title="Screen" description={displayLine(d)}>
           {DISPLAY_CHOICES.map(([value, label]) => (

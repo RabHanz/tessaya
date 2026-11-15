@@ -28,6 +28,7 @@ export const BATON_DEVICES_ACT_OPS = [
   "say",
   "mute",
   "earcons",
+  "eyeStyle",
   "talkOver",
   "volume",
   "keyBind",
@@ -198,6 +199,11 @@ export const R1KeyBinding = Schema.Union([
 export type R1KeyBinding = typeof R1KeyBinding.Type;
 
 /** The screen's rotation: the accelerometer's (auto), pinned upright or upside down, or "the way it stands now is upright". */
+/** The look of the Tessel's eyes (firmware `cmd/eye/style`, smp-0.3.142): Alive looks around and breathes; Glass lights the iris with the mood. */
+export const R1_EYE_STYLES = ["alive", "glass", "classic"] as const;
+export type R1EyeStyle = (typeof R1_EYE_STYLES)[number];
+export const R1_EYE_STYLE_DEFAULT: R1EyeStyle = "alive";
+
 export const DEVICE_DISPLAY_SETS = ["auto", "normal", "flipped", "calibrate"] as const;
 export type DeviceDisplaySet = (typeof DEVICE_DISPLAY_SETS)[number];
 
@@ -298,6 +304,8 @@ export const DeviceView = Schema.Struct({
   muted: Schema.Boolean,
   /** Her listening and closing sounds on this R1 (the room loop's cues). */
   earcons: Schema.Boolean,
+  /** The look of its eyes, his choice per device; Alive until he picks another. */
+  eyeStyle: Schema.optionalKey(Schema.Literals(R1_EYE_STYLES)),
   /** Any household voice cuts her off on this R1 (open); off, only her name or a stop phrase does (keyword). */
   talkOver: Schema.optionalKey(Schema.Boolean),
   /** How loud she speaks, 0-100, as the R1 reports it; null on firmware without a volume command. */

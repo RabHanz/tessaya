@@ -30,6 +30,8 @@ import {
   clock,
   deviceStatusLine,
   toneFamilyOf,
+  EYE_STYLE_CHOICES,
+  eyeStyleLine,
   displayChoiceOf,
   displayLine,
   keyBindingFrom,
@@ -658,6 +660,29 @@ function DeviceControls({
               aria-label="Talk over her"
               onCheckedChange={(open) => void run("act", "talkOver", { id, open })}
             />
+          }
+        />
+        <SettingsRow
+          title="Eyes"
+          description={eyeStyleLine(d)}
+          control={
+            <Select
+              value={d.eyeStyle ?? "alive"}
+              onValueChange={(style) => void run("act", "eyeStyle", { id, style })}
+            >
+              <SelectTrigger size="sm" aria-label="Eye style" disabled={off}>
+                <SelectValue>
+                  {EYE_STYLE_CHOICES.find(([v]) => v === (d.eyeStyle ?? "alive"))?.[1]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup>
+                {EYE_STYLE_CHOICES.map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
           }
         />
         <SettingsRow title="Screen" description={displayLine(d)}>

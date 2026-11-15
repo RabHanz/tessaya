@@ -226,6 +226,24 @@ it.effect(
         { topic: "cmd/voice/talkover", payload: { mode: "keyword" }, retain: true },
       ]);
       assert.isFalse((yield* devices.overview).devices[0]!.talkOver);
+      // The eye style, kept and retained so the Tessel gets it on every reconnect; Alive is the default and not stored.
+      assert.strictEqual((yield* devices.overview).devices[0]!.eyeStyle, "alive");
+      sent.length = 0;
+      yield* devices.command(ID, { op: "eyeStyle", style: "glass" }, me);
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/eye/style", payload: { style: "glass" }, retain: true },
+      ]);
+      assert.strictEqual((yield* devices.overview).devices[0]!.eyeStyle, "glass");
+      sent.length = 0;
+      yield* devices.receive(`${root}/state/online`, "0");
+      yield* devices.receive(`${root}/state/online`, "1");
+      assert.deepInclude(sent, {
+        topic: "cmd/eye/style",
+        payload: { style: "glass" },
+        retain: true,
+      });
+      yield* devices.command(ID, { op: "eyeStyle", style: "alive" }, me);
+      assert.strictEqual((yield* devices.overview).devices[0]!.eyeStyle, "alive");
     }).pipe(Effect.provide(layer));
   },
 );
@@ -846,6 +864,14 @@ it.effect(
               safety: "owner",
               privacy: true,
             },
+            {
+              id: "eye.style",
+              label: "Eyes style",
+              type: "enum",
+              values: ["classic", "glass", "alive"],
+              access: "read,write",
+              safety: "free",
+            },
           ],
         }),
       );
@@ -868,6 +894,13 @@ it.effect(
         .pipe(Effect.forkChild({ startImmediately: true }));
       yield* devices.receive(`${root}/state/item/ack`, '{"cmd":"item/audio.volume","ok":true}');
       assert.strictEqual((yield* Fiber.join(ack)).line, "Volume on R1 is now 30.");
+      // "Make her eyes glassy": the item write takes the Settings path, so the choice is saved and retained.
+      sent.length = 0;
+      yield* call("act", "set", { id: ID, itemId: "eye.style", value: "glass" });
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/eye/style", payload: { style: "glass" }, retain: true },
+      ]);
+      assert.strictEqual((yield* devices.overview).devices[0]!.eyeStyle, "glass");
       // confirm: she asks him first; his yes in the conversation lets it run.
       const first = yield* devices.command(
         ID,

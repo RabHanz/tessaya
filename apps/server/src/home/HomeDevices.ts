@@ -14,7 +14,10 @@ import {
   R1_DEVICE_DOS,
   R1_KEY_SLOTS,
   R1_KEY_SLOTS_V2,
+  R1_EYE_STYLE_DEFAULT,
+  R1_EYE_STYLES,
   R1_MOODS,
+  type R1EyeStyle,
   type R1DeviceDo,
   type R1KeyBinding,
   type R1KeySlot,
@@ -89,6 +92,7 @@ export type DeviceCommand =
   | { readonly op: "say"; readonly text: string }
   | { readonly op: "mute"; readonly muted: boolean }
   | { readonly op: "earcons"; readonly on: boolean }
+  | { readonly op: "eyeStyle"; readonly style: R1EyeStyle }
   | { readonly op: "talkOver"; readonly open: boolean }
   | { readonly op: "keyBind"; readonly slot: R1KeySlot; readonly bind: R1KeyBinding }
   | { readonly op: "display"; readonly set: DeviceDisplaySet }
@@ -598,6 +602,8 @@ interface Saved {
   earconsOff: Record<string, boolean>;
   /** R1s where only her name or a stop phrase cuts her off; the room loop lets any household voice by default. */
   talkOverKeyword: Record<string, boolean>;
+  /** Per R1: the eye style he picked; absent is the default (Alive). */
+  eyeStyle: Record<string, R1EyeStyle>;
   /** Per R1: the level she last set by voice, so a step has a base before the firmware reports one. */
   volume: Record<string, number>;
   tags: Record<string, { label: string; action: DeviceTagAction }>;
@@ -799,6 +805,7 @@ const make = Effect.gen(function* () {
         muted: (value["muted"] ?? {}) as Saved["muted"],
         earconsOff: (value["earconsOff"] ?? {}) as Saved["earconsOff"],
         talkOverKeyword: (value["talkOverKeyword"] ?? {}) as Saved["talkOverKeyword"],
+        eyeStyle: (value["eyeStyle"] ?? {}) as Saved["eyeStyle"],
         volume: (value["volume"] ?? {}) as Saved["volume"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
         keys: (value["keys"] ?? {}) as Saved["keys"],
@@ -1120,6 +1127,12 @@ const make = Effect.gen(function* () {
     if (result.cameOnline) yield* rearm(result.id).pipe(Effect.forkIn(scope));
     if (result.cameOnline) yield* sendVoices([result.id], sharedVoices, []);
     if (result.cameOnline) yield* prefsOnline(result.id);
+    // A server restart empties the hub's retained copy; the Tessel saves its style, but a change made while it was away
+    // must still reach it.
+    if (result.cameOnline) {
+      const style = (yield* readSaved).eyeStyle[result.id];
+      if (style !== undefined) yield* publish(result.id, "cmd/eye/style", { style }, true);
+    }
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
     if (tail === "event/key") yield* runKey(result.id, json(payload));
@@ -1472,6 +1485,20 @@ const make = Effect.gen(function* () {
             ? "Her listening and closing sounds are on."
             : "Her listening and closing sounds are off.",
         );
+      case "eyeStyle":
+        yield* change((s) => {
+          if (c.style === R1_EYE_STYLE_DEFAULT) delete s.eyeStyle[id];
+          else s.eyeStyle[id] = c.style;
+        });
+        // Retained, so the Tessel gets it on every reconnect; the firmware also keeps it over a reboot.
+        yield* publish(id, "cmd/eye/style", { style: c.style }, true);
+        return done(
+          c.style === "alive"
+            ? "Her eyes are alive now: they look around and breathe."
+            : c.style === "glass"
+              ? "Her eyes are glass now: her mood lights them."
+              : "Her eyes are back to classic.",
+        );
       case "talkOver":
         return yield* talkOver(id, c.open);
       case "keyBind": {
@@ -1566,9 +1593,10 @@ const make = Effect.gen(function* () {
           delete s.muted[id];
           delete s.earconsOff[id];
           delete s.talkOverKeyword[id];
+          delete s.eyeStyle[id];
           delete s.keys[id];
         });
-        for (const kept of ["cmd/voice/earcons", "cmd/voice/talkover"])
+        for (const kept of ["cmd/voice/earcons", "cmd/voice/talkover", "cmd/eye/style"])
           yield* publish(id, kept, "", true);
         yield* registry.forget(id);
         yield* home.removeDevice(id);
@@ -1664,6 +1692,15 @@ const make = Effect.gen(function* () {
         // The R1's picture keeps its own path: the window the upload is accepted in.
         if (reg.via === "mqtt" && c.itemId === "camera.capture" && by.dryRun !== true)
           return yield* run(id, { op: "camera" }, by);
+        // The eye style is his saved, retained choice, so a voice or agent change takes the Settings path.
+        const style = R1_EYE_STYLES.find((s) => s === c.value);
+        if (
+          reg.via === "mqtt" &&
+          c.itemId === "eye.style" &&
+          style !== undefined &&
+          by.dryRun !== true
+        )
+          return yield* run(id, { op: "eyeStyle", style }, by);
         const bt = btTargetOf(c.itemId, c.value, item.values);
         if (reg.via === "mqtt" && bt !== null) return yield* btGo(id, bt, by);
         if (by.dryRun === true)
@@ -1796,6 +1833,7 @@ const make = Effect.gen(function* () {
       mood: t("eye.mood"),
       muted: saved.muted[id] === true,
       earcons: saved.earconsOff[id] !== true,
+      eyeStyle: saved.eyeStyle[id] ?? R1_EYE_STYLE_DEFAULT,
       talkOver: saved.talkOverKeyword[id] !== true,
       volume: n("audio.volume"),
       keys: Object.fromEntries(
