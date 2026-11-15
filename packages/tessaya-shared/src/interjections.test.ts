@@ -5,6 +5,7 @@ import {
   rmsOf,
   SPLICE_GAP_MS,
   SPLICE_RATE,
+  pocketSpeech,
   spliceSpeech,
   streamingWavHeader,
 } from "./speechSplice.ts";
@@ -133,6 +134,29 @@ describe("splicing sounds between words", () => {
     })();
     const out = await collect(spliceSpeech(speechPieces("Fine.", "anna"), () => odd));
     expect([...out]).toEqual([...pcm]);
+  });
+
+  it("never hands a Pocket voice the tag word, and streams plain words untouched", async () => {
+    const said: string[] = [];
+    const say = (text: string) => {
+      said.push(text);
+      return wav(10, 100);
+    };
+    for (const line of [
+      "[laughter] That's brilliant.",
+      "That's brilliant. <laugh>",
+      "[sigh] Fine.",
+    ])
+      await collect(pocketSpeech(line, "anna", say));
+    expect(said.some((t) => /laugh|sigh|[[\]<>]/i.test(t))).toBe(false);
+    expect(said).toEqual(["Ha ha.", "That's brilliant.", "That's brilliant.", "Ha ha.", "Fine."]);
+    const plain = wav(10, 100);
+    const out = pocketSpeech("Done.", "anna", (text) => {
+      said.push(text);
+      return plain;
+    });
+    expect(out).toBe(plain);
+    expect(said.at(-1)).toBe("Done.");
   });
 
   it("says a laugh in the same voice at its own gain", async () => {
