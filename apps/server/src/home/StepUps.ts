@@ -35,6 +35,8 @@ export interface HeldAct {
    * for that yes, and only the card releases it, as `needs` (above what any voice gives).
    */
   readonly card?: boolean;
+  /** A card act he may answer "Always": this keeps his standing yes (only offered on his own turn). */
+  readonly always?: Effect.Effect<void>;
   readonly run: HeldRun;
 }
 
@@ -104,7 +106,8 @@ const make = Effect.gen(function* () {
           ? {
               title: "Tessaya wants your yes",
               detail: `Asked on ${act.device}: ${act.what}.`,
-              buttons: ["Yes, do it", "No"],
+              buttons:
+                act.always === undefined ? ["Yes, do it", "No"] : ["Yes, do it", "No", "Always"],
               // Only a phone that may approve answers it, as the house's owner asks are.
               needs: "cloud-approve" as const,
             }
@@ -120,11 +123,15 @@ const make = Effect.gen(function* () {
       yield* phone.promptAnswer(id).pipe(
         Effect.repeat({ schedule: Schedule.spaced("2 seconds"), until: (a) => a !== null }),
         Effect.timeoutOption(`${HELD_MS} millis`),
-        Effect.flatMap((answer) =>
-          Option.isSome(answer) && answer.value === 0
-            ? release(id, { member: act.member, assurance: act.card === true ? act.needs : 2 })
-            : Effect.sync(() => void held.delete(id)),
-        ),
+        Effect.flatMap((answer) => {
+          const always = Option.isSome(answer) && answer.value === 2 ? act.always : undefined;
+          return always !== undefined || (Option.isSome(answer) && answer.value === 0)
+            ? Effect.andThen(
+                always ?? Effect.void,
+                release(id, { member: act.member, assurance: act.card === true ? act.needs : 2 }),
+              )
+            : Effect.sync(() => void held.delete(id));
+        }),
         Effect.ignore,
         Effect.forkDetach,
       );

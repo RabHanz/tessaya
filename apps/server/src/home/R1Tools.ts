@@ -631,6 +631,9 @@ const makeRunners = Effect.gen(function* () {
           member: origin.member ?? null,
           needs: CARD_YES,
           card: true,
+          ...(!origin.tainted && hisOwnTurn(origin)
+            ? { always: Effect.asVoid(setGrant(key, true)) }
+            : {}),
           phone: !at.startsWith("replay-"),
           run: (raised) =>
             run(name, raw, device).pipe(
