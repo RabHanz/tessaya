@@ -69,6 +69,8 @@ export const VocabularyChange = Schema.Union([
     replacement: Schema.NullOr(VocabularyText),
   }),
   Schema.Struct({ verb: Schema.Literal("remove"), phrase: VocabularyText }),
+  /** One way the word is heard, taken off it. */
+  Schema.Struct({ verb: Schema.Literal("unhear"), phrase: VocabularyText, form: VocabularyText }),
   Schema.Struct({
     verb: Schema.Literal("learn"),
     entries: Schema.Array(Schema.Unknown).check(Schema.isMaxLength(5_000)),

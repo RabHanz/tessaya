@@ -5,6 +5,8 @@
  * his own Claude clean-up call (the term list in the prompt).
  */
 
+import type { VocabularyChange } from "@t3tools/tessaya-contracts";
+
 import { CALL_SLOT, NAME_SOUNDALIKES, nameAskedFor } from "./wakeVerify.ts";
 
 export type VocabularySource = "added" | "learned" | "wispr";
@@ -269,6 +271,44 @@ export const customWordsOf = (
       return [{ term, aliases }];
     })
     .slice(0, max);
+};
+
+/** An edit of T3's dictionary list (Settings → Voice on web and phone) as changes to his one dictionary. */
+export const changesFromCustomWords = (
+  before: ReadonlyArray<{ readonly term: string; readonly aliases: ReadonlyArray<string> }>,
+  after: ReadonlyArray<{ readonly term: string; readonly aliases: ReadonlyArray<string> }>,
+): ReadonlyArray<VocabularyChange> => {
+  const find = (list: typeof before, term: string) => list.find((w) => sameWord(w.term, term));
+  const missing = (list: ReadonlyArray<string>, form: string) =>
+    !list.some((f) => sameWord(f, form));
+  return [
+    ...before.flatMap((old): ReadonlyArray<VocabularyChange> => {
+      const now = find(after, old.term);
+      if (now === undefined) return [{ verb: "remove", phrase: old.term }];
+      return old.aliases
+        .filter((form) => missing(now.aliases, form))
+        .map((form) => ({ verb: "unhear", phrase: old.term, form }));
+    }),
+    ...after.flatMap((now): ReadonlyArray<VocabularyChange> => {
+      const old = find(before, now.term);
+      if (old === undefined)
+        return [
+          { verb: "add", phrase: now.term, replacement: null },
+          ...(now.aliases.length === 0
+            ? []
+            : [
+                {
+                  verb: "learn" as const,
+                  entries: [{ phrase: now.term, replacement: null, heard: now.aliases }],
+                },
+              ]),
+        ];
+      const added = now.aliases.filter((form) => missing(old.aliases, form));
+      return added.length === 0
+        ? []
+        : [{ verb: "learn", entries: [{ phrase: now.term, replacement: null, heard: added }] }];
+    }),
+  ];
 };
 
 /** "add Kubernetes to my dictionary": the word, or null when it is not that command. */

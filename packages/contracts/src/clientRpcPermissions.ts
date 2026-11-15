@@ -87,6 +87,8 @@ const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
 
 /** Tessaya's device door (`BATON_DEVICES_WS_METHODS.call`); this package cannot import tessaya-contracts. */
 const DEVICES_CALL = "baton.devices.call";
+/** Her voices and his dictionary (`BATON_VOICE_WS_METHODS.call`): reading is a read, any change is operate. */
+const VOICE_CALL = "baton.voice.call";
 /** Her prompt lab (`BATON_PROMPT_LAB_WS_METHODS.call`): his prompts, the owner's settings. */
 const PROMPT_LAB_CALL = "baton.promptLab.call";
 
@@ -116,6 +118,10 @@ export function clientRpcRequiredScopes(
         ? [AuthOrchestrationReadScope, AuthTessayaCloudApproveScope]
         : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   }
+  if (method === VOICE_CALL)
+    return (input as { kind?: unknown } | undefined)?.kind === "read"
+      ? [AuthOrchestrationReadScope]
+      : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   if (method === PROMPT_LAB_CALL) return [AuthSettingsWriteScope];
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]
