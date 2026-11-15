@@ -1,90 +1,15 @@
 {
-  "at": "2026-11-14T22:37:57.890Z",
-  "result": "conflict",
+  "at": "2026-11-15T22:37:42.387Z",
+  "result": "disk",
   "ok": false,
   "pin": "41156481b1c2a9ea8f8b97680b76f17685387d38",
-  "target": "ab2bf940f620f4ddf920588eb6c6cc88f2e67428",
-  "behindCommits": 453,
-  "oldestUnsyncedDays": 1,
-  "conflictingPatches": [
-    "0001-build.patch",
-    "0002-server-hooks.patch",
-    "0004-claude-account-home.patch",
-    "0007-desktop.patch",
-    "0008-web-panes.patch",
-    "0009-threads-media.patch",
-    "0011-baton-cloud-approve-scope.patch",
-    "0014-provider-change-guard.patch"
-  ],
-  "conflictingFiles": [
-    "apps/desktop/src/app/DesktopApp.ts",
-    "apps/desktop/src/window/DesktopWindow.ts",
-    "apps/mobile/package.json",
-    "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
-    "apps/server/src/auth/EnvironmentAuth.test.ts",
-    "apps/server/src/auth/PairingGrantStore.ts",
-    "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts",
-    "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts",
-    "apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
-    "apps/server/src/project/AgentSessionImporter.ts",
-    "apps/web/src/components/ChatView.tsx",
-    "apps/web/src/components/chat/useComposerProviderModel.ts",
-    "packages/contracts/src/settings.ts"
-  ],
-  "touching": {
-    "apps/desktop/src/app/DesktopApp.ts": [
-      "88d4d06ea3 perf(desktop): provider checks no longer compete with server startup (#35712)"
-    ],
-    "apps/desktop/src/window/DesktopWindow.ts": [
-      "68bc28196d fix(desktop): Settings opens while the separate preview window has focus (#36747)",
-      "1535f3f32e fix(desktop): theme changes no longer stop at windows without a title bar overlay (#28081)"
-    ],
-    "apps/mobile/package.json": [
-      "e4f066da21 fix(mobile): long-pressed iOS blockquotes no longer draw over the thread (#36461)"
-    ],
-    "apps/mobile/src/features/threads/thread-list-v2-items.tsx": [
-      "47474723cb fix(web): clear failed badges when threads are opened (#28616)",
-      "2d80cb6bc7 fix(clients): live working timers count on the host's clock (#36420)"
-    ],
-    "apps/server/src/auth/EnvironmentAuth.test.ts": [
-      "a2edd281df feat(connect): require approval for new T3 Connect devices (#36419)"
-    ],
-    "apps/server/src/auth/PairingGrantStore.ts": [
-      "a2edd281df feat(connect): require approval for new T3 Connect devices (#36419)"
-    ],
-    "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts": [
-      "56b9dbc87b fix(server): Claude /rename now retitles the T3 thread (#36879)",
-      "3eadb214e8 fix(server): switching the Claude model no longer blocks a later provider switch (#34498)",
-      "dbbbe8b0d6 fix(server): show Claude's root refusal when it exits before the turn starts (#34621)"
-    ],
-    "apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts": [
-      "5393882fb8 fix(mcp): return delegated task handles before client timeouts (#15622)",
-      "b60abf32e0 perf(server): Windows process launches no longer block the RPC thread (#32260)",
-      "56b9dbc87b fix(server): Claude /rename now retitles the T3 thread (#36879)"
-    ],
-    "apps/server/src/orchestration-v2/ProviderTurnStartService.ts": [
-      "c76ba848ab fix(server): a failed turn start no longer leaves the thread stuck starting (#14424)",
-      "7d4f242375 fix(server): turn recovery covers interrupted and cancelled runs' abandoned turns (#34639)",
-      "9e19b7f7e1 feat(server): resume stopped provider threads natively (#36526)"
-    ],
-    "apps/server/src/project/AgentSessionImporter.ts": [
-      "13f89ae0a7 fix(server): repeated imports reach older worktree history (#36608)",
-      "91fa913be9 fix(server): partial import retries no longer certify missing messages (#36604)"
-    ],
-    "apps/web/src/components/ChatView.tsx": [
-      "1f45f14ae8 fix(web): queued images open in the image viewer (#33298)",
-      "3b18dc2935 fix(web): manual compaction counts history beyond the loaded page (#25445)",
-      "b2259d3c6c fix(web): show working state while provider sessions start (#23590)"
-    ],
-    "apps/web/src/components/chat/useComposerProviderModel.ts": [
-      "ac180919a6 fix(web): seeded models yield to started thread selections (#24619)"
-    ],
-    "packages/contracts/src/settings.ts": [
-      "a2edd281df feat(connect): require approval for new T3 Connect devices (#36419)",
-      "42057b82d0 feat: agents can restyle T3 Code with theme colors and CSS (#35247)"
-    ]
-  },
+  "target": "f5d86e31e82ff5db595426c06598493a6d587f2b",
+  "behindCommits": 832,
+  "oldestUnsyncedDays": 2,
+  "conflictingPatches": [],
+  "conflictingFiles": [],
+  "touching": {},
   "pr": null,
-  "log": "/home/dev/.t3/baton-autosync/20261114T223728Z.log",
-  "hint": "A patch no longer applies. Resolve the files below on a branch from main, run patches.sh refresh and verify, open the PR."
+  "log": "/home/dev/.t3/baton-autosync/20261115T223718Z.log",
+  "hint": "Skipped: the volume is below its free-space floor."
 }
