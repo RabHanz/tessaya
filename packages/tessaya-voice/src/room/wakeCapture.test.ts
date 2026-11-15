@@ -33,7 +33,7 @@ describe("keeping wake segments for training", () => {
         reset: () => undefined,
         score: async (chunk) => [chunk.includes(7) ? 0.995 : 0],
       }),
-      confirm: async () => "Hey Tessaya.",
+      confirm: async () => ["Hey Tessaya."],
       onWake: () => undefined,
       log: () => undefined,
       capture,

@@ -903,7 +903,7 @@ describe("waking by name with no session open", () => {
         },
         score: async (chunk) => [(seen += 1) >= 16 && chunk.includes(7) ? 1 : 0],
       }),
-      confirm: async () => "Tessaya.",
+      confirm: async () => ["Tessaya."],
       onWake: (id, word) => room?.woken(id, word),
       log: () => undefined,
     });

@@ -51,8 +51,8 @@ export interface WakeStreamDeps {
   readonly words: ReadonlyArray<{ readonly word: string; readonly threshold: number }>;
   /** A fresh scorer per R1 (openWakeWord is stateful). */
   readonly scorer: () => Promise<WakeScorer>;
-  /** The recogniser on the confirm clip only. */
-  readonly confirm: (pcm: Int16Array) => Promise<string>;
+  /** The confirm clip only, read by each recogniser asked (general, and his personal one): any may hear the name. */
+  readonly confirm: (pcm: Int16Array) => Promise<ReadonlyArray<string>>;
   /** `level`: how loud his name was (dBFS), so the session can tell his voice from a far-off room. */
   readonly onWake: (
     deviceId: string,
@@ -169,17 +169,19 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     drop(d);
     const ratio = output / threshold;
     const trusted = wakeTrusted([{ word, threshold }], word, ratio);
-    const text = trusted ? "" : await deps.confirm(clip).catch(() => "");
+    const texts = trusted ? [] : await deps.confirm(clip).catch(() => []);
     // The score goes in the line: a segment that fires gets no "wake segment" line of its own (13 Nov audit).
     const at = `${output.toFixed(3)}/${threshold} after ${(d.samples / RATE).toFixed(1)} s`;
-    if (trusted || wakeWordHeard(text, word, ratio)) {
+    if (trusted || texts.some((text) => wakeWordHeard(text, word, ratio))) {
       d.outcome = `woken by ${word} (${at})`;
       d.woke = true;
       deps.log(`[${id}] woken by ${word} (${at})`);
       deps.onWake(id, word, speechLevel(clip), Math.min(1, output), clip);
     } else {
       d.outcome = `${word} fired (${at}), not confirmed`;
-      deps.log(`[${id}] ${word} fired (${at}), not confirmed (${heldBack(text)})`);
+      deps.log(
+        `[${id}] ${word} fired (${at}), not confirmed (${texts.map(heldBack).join("; ") || heldBack("")})`,
+      );
     }
   };
 
