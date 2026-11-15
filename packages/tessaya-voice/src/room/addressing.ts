@@ -33,7 +33,7 @@ export const calledName = (text: string, names: ReadonlyArray<string>): string |
 
 /** He is done with her for now: no follow-up window after her reply, only her name or S2 wakes her. */
 export const isDismissal = (text: string): boolean =>
-  /\b(?:dismiss(?:ed)?|that'?s all|that will be all|that'?ll be all|go to sleep|goodbye|good night|stop listening)\b/i.test(
+  /\b(?:dismiss(?:ed)?|that(?:'?s| is| will be|'?ll be| would be|'?d be) all|go to sleep|goodbye|good night|stop listening)\b/i.test(
     text,
   );
 
@@ -86,7 +86,7 @@ export const isOwnVoice = (heard: string, herLines: ReadonlyArray<string>): bool
 
 /** Words a sentence does not end on: "Is it possible to", "Like the", "Pages because" (13 Nov) were him pausing. */
 const UNFINISHED =
-  /\b(?:to|the|a|an|and|or|but|because|if|of|for|with|my|your|our|their|whose|can|could|would|should|will|shall|need|needs|want|wants|gonna|wanna)$/i;
+  /\b(?:to|the|a|an|and|or|but|because|if|of|for|with|about|from|into|than|whether|my|your|our|their|whose|can|could|would|should|will|shall|need|needs|want|wants|gonna|wanna)$/i;
 
 /** He stopped mid-sentence: what he says next belongs to it, so it is not answered on its own. */
 export const isUnfinished = (text: string): boolean => {

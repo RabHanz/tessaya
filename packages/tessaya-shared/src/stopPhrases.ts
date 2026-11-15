@@ -9,6 +9,8 @@ const DISMISS = [
   "that's all",
   "that will be all",
   "that'll be all",
+  "that would be all",
+  "that'd be all",
   "go to sleep",
   "goodbye",
   "good night",

@@ -1435,6 +1435,47 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     };
   };
 
+  it.each([
+    // The recogniser hears the whole sentence from all its pieces' audio.
+    [
+      "And how much would you say you have acquainted yourself about how I speak and do things?",
+      "And how much would you say you have acquainted yourself about how I speak and do things?",
+    ],
+    // A second pass that fails or hears far less keeps every word of the pieces.
+    ["", "And how much would you say you have acquainted yourself about Or Speak."],
+    ["Speak.", "And how much would you say you have acquainted yourself about Or Speak."],
+  ])(
+    "recognises a sentence he paused in twice again as one (15 Nov, 09:10: second pass %j)",
+    async (again, asked) => {
+      const holds: Array<() => void> = [];
+      const previews: number[] = [];
+      const t = setup({
+        recognise: heardInTurn([
+          "And how much would you say you have acquainted yourself about",
+          "Or",
+          "Speak.",
+        ]),
+        // An early start's preview of one piece hears nothing; only the whole sentence is read again.
+        preview: async (pcm) => (previews.push(pcm.length), pcm.length > 2 * 20 * 960 ? again : ""),
+        smartTurn: async () => 0.9,
+        sleep: async (ms) => {
+          if (ms === ROOM_CONFIG.joinMs) await new Promise<void>((r) => holds.push(r));
+          else t.advance(ms);
+        },
+      });
+      t.s2();
+      for (let i = 0; i < 3; i += 1) {
+        await t.feed(true, 20);
+        await t.feed(false, 8);
+      }
+      for (const release of holds) release();
+      await t.feed(false, 20);
+      expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([asked]);
+      // All three pieces' audio in one pass.
+      expect(previews.at(-1)).toBeGreaterThan(3 * 20 * 960);
+    },
+  );
+
   it("joins a sentence he paused in to its rest and answers it once (07:39:13)", async () => {
     const holds: Array<() => void> = [];
     const t = setup({

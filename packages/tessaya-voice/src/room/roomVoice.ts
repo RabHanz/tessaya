@@ -469,6 +469,31 @@ export const firstClause = (
   return m === null ? null : { head: m[1]!, rest: text.slice(m[0].length) };
 };
 
+/** The silence put between a held sentence's pieces when they are recognised again as one. */
+const PIECE_GAP = new Int16Array(RATE / 5);
+
+/**
+ * A sentence he paused in, recognised again from all its pieces' audio: each piece alone loses the words cut at a pause
+ * ("about how I speak" came out "about" + "Or" + "Speak.", 15 Nov 09:10). The joined pieces' words stand when the second
+ * pass fails or hears clearly fewer words, so nothing he said is dropped.
+ */
+export const wholeSentence = async (
+  joined: string,
+  pieces: ReadonlyArray<Int16Array>,
+  recognise: ((pcm: Int16Array) => Promise<string>) | undefined,
+): Promise<string> => {
+  if (recognise === undefined || pieces.length < 2) return joined;
+  const all = new Int16Array(pieces.reduce((n, p) => n + p.length + PIECE_GAP.length, 0));
+  let at = 0;
+  for (const p of pieces) {
+    all.set(p, at);
+    at += p.length + PIECE_GAP.length;
+  }
+  const again = (await recognise(all).catch(() => "")).trim();
+  const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+  return again !== "" && words(again) >= 0.8 * words(joined) ? again : joined;
+};
+
 /** Whole sentences out of a growing reply, keeping the unfinished tail. */
 export const splitSentences = (
   text: string,
@@ -542,7 +567,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** Mic turns begun so far: words that arrive after a newer turn of his began are not answered on their own. */
     let starts = 0;
     /** His words held for his next turn: a sentence he paused in, or one his next turn overtook (13 Nov, 07:39). */
-    let carry: { readonly text: string; readonly at: number; readonly since: number } | null = null;
+    let carry: {
+      readonly text: string;
+      readonly at: number;
+      readonly since: number;
+      /** Each piece's audio, in order: the joined sentence is recognised again as one. */
+      readonly pieces: ReadonlyArray<Int16Array>;
+    } | null = null;
     /** The turn being answered; a fragment of his that starts before she is heard is joined to it, not answered apart. */
     let current_: {
       readonly text: string;
@@ -550,6 +581,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       firstAt: number | null;
       readonly entry: { role: "user"; content: string };
       merged: boolean;
+      readonly pieces: ReadonlyArray<Int16Array>;
     } | null = null;
     /** Her recent downlink, kept only while a bench asks for its turns (`cmd/voice/no-reply` with `keep`). */
     const played: Array<{ at: number; pcm: Int16Array }> = [];
@@ -1493,9 +1525,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       let text = mine ? raw : "";
+      let pieces: ReadonlyArray<Int16Array> = mine ? [pcm] : [];
       if (held !== null && carry === held) {
         carry = null;
         text = `${held.text} ${text}`.trim();
+        pieces = [...held.pieces, ...pieces];
       }
       // The rest of a turn of his still being answered and not yet heard: one sentence, answered once. Once she has
       // started answering it, it is answered as it was, never asked again.
@@ -1511,6 +1545,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const at = history.indexOf(prev.entry);
         if (at >= 0) history.splice(at, 1);
         text = `${prev.text} ${text}`;
+        pieces = [...prev.pieces, ...pieces];
       }
       if (text !== raw) {
         kept?.control.abort();
@@ -1524,7 +1559,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         (isUnfinished(text) || starts > seq) &&
         deps.now() - since < config.joinMs + 500
       ) {
-        const hold = { text, at: deps.now(), since };
+        const hold = { text, at: deps.now(), since, pieces };
         carry = hold;
         kept?.control.abort();
         if (starts === seq) await deps.sleep(config.joinMs);
@@ -1534,6 +1569,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         carry = null;
       }
+      if (pieces.length > 1) text = await wholeSentence(text, pieces, deps.preview);
       const called = calledName(text, names);
       // Another device of his is answering: what this one hears now is her voice from there, or his to that one.
       if (given === undefined && deps.now() < (quietUntil.get(id) ?? 0)) {
@@ -1682,7 +1718,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       openUntil = Number.POSITIVE_INFINITY;
       const entry = { role: "user" as const, content: text };
       history.push(entry);
-      const me = { text, endedAt: lastVoice, firstAt: null as number | null, entry, merged: false };
+      const me = {
+        text,
+        endedAt: lastVoice,
+        firstAt: null as number | null,
+        entry,
+        merged: false,
+        pieces,
+      };
       current_ = me;
       // One reply at a time: two playing at once interleave their frames on the downlink, which sounds chopped.
       // Still audible counts too: her last reply may already be on the R1.
