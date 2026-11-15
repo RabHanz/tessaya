@@ -32,7 +32,7 @@ scripts/tessaya/room-suite.sh <t3 binary of the build> [userdata dir] [--laptop]
 ```
 
 - The script starts the build on a scratch copy of what the room needs (the house's address and token, the Tessel's key without its MQTT login, the brain's key), runs the suite and removes the copy. It exits non-zero on any failure, so a deploy can gate on it.
-- Sentences name devices by slot (`{fan}`, `{fan.flip}` for the opposite of its state), filled from the server's own house through home_find, so it runs on any install. A slot the house has no device for is reported as not applicable. A card case where nothing was held is not applicable only when no member has a voice; if the tool it holds errored, the case fails.
+- Sentences name devices by slot (`{fan}`, `{fan.flip}` for the opposite of its state), filled from the server's own house through home_find, so it runs on any install. A slot the house has no device for is reported as not applicable. A card case where nothing was held is not applicable only when no member has a voice; if the tool it holds errored or was never called, the case fails.
 - `--laptop` adds the case that asks your real laptop what is on its screen (read-only).
 - Every room tool needs a case in `liveCases.ts` (`proves`): `run.test.ts` fails otherwise.
 - `--vessel desktop` runs the same cases through his desktop's Tessaya as it ships (its prompt and tool table, a real `claude -p` on your own login; `--model` to pin one), with the server's shared tools run there as the desktop's caller and always a rehearsal. A case only the Tessel's tools could pass is not applicable. It costs model turns, so it runs nightly or on demand, never as the deploy gate:

@@ -104,7 +104,7 @@ describe("the room's live tool suite", () => {
     expect(failure("Four automations, one of them paused.")).toMatch(/said 4 total/);
   });
 
-  it("fails a card case whose held tool errored, not as not applicable (the #1156 card acts)", () => {
+  it("fails a card case whose held tool errored or was never called, not as not applicable (the #1156 card acts)", () => {
     const schedule = liveCases.find((c) => c.id === "job-unschedule-needs-card")!;
     const call = (isError: boolean, text: string): LiveCall => ({
       name: "job_schedule",
@@ -116,7 +116,7 @@ describe("the room's live tool suite", () => {
       /job_schedule failed: it did not work/,
     );
     expect(unheldFailure(schedule, [call(false, "Done.")])).toBeNull();
-    expect(unheldFailure(schedule, [])).toBeNull();
+    expect(unheldFailure(schedule, [])).toMatch(/never called job_schedule/);
   });
 
   it("does not ask for a pause where the house lists no automations (the .157 gate, his home offline)", () => {

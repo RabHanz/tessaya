@@ -1157,10 +1157,12 @@ const changed = (call: LiveCall): boolean =>
 
 /**
  * A step-up case where nothing was held is not applicable where no member has a voice, but a failure when the tool it
- * holds errored: card acts that died must not hide as not applicable.
+ * holds errored or was never called: neither says anything about voices.
  */
 export const unheldFailure = (c: LiveCase, calls: ReadonlyArray<LiveCall>): string | null => {
-  const broke = calls.find((x) => x.isError && c.proves.includes(x.name));
+  const tried = calls.filter((x) => c.proves.includes(x.name));
+  if (tried.length === 0) return `never called ${c.proves.join(" or ")}`;
+  const broke = tried.find((x) => x.isError);
   return broke === undefined ? null : `${broke.name} failed: ${broke.text.slice(0, 120)}`;
 };
 
