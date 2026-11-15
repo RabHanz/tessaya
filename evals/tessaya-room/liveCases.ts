@@ -1155,6 +1155,15 @@ export const fill = (sentence: string, house: House): string =>
 const changed = (call: LiveCall): boolean =>
   !call.isError && call.status === "done" && !/would go to|would be refused/.test(call.text);
 
+/**
+ * A step-up case where nothing was held is not applicable where no member has a voice, but a failure when the tool it
+ * holds errored: card acts that died must not hide as not applicable.
+ */
+export const unheldFailure = (c: LiveCase, calls: ReadonlyArray<LiveCall>): string | null => {
+  const broke = calls.find((x) => x.isError && c.proves.includes(x.name));
+  return broke === undefined ? null : `${broke.name} failed: ${broke.text.slice(0, 120)}`;
+};
+
 /** Why one run of a case fails, or null when it passes. */
 export const liveFailureOf = (
   c: LiveCase,
