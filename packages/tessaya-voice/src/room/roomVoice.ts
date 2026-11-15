@@ -5,7 +5,7 @@
  */
 import { r1MoodOf, type LineEvent } from "@t3tools/tessaya-shared/expression";
 import { mostlyForeign } from "@t3tools/tessaya-shared/language";
-import { isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
+import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import { pronounce, pronounceFrom } from "@t3tools/tessaya-shared/pronounce";
 import { REST_MARK, stopIntent, stopMatch } from "@t3tools/tessaya-shared/stopPhrases";
@@ -463,14 +463,6 @@ export interface TurnMetrics {
   /** Her brain started on the recogniser's partial words, and the final text matched them. */
   readonly speculative?: boolean;
 }
-
-/** The first clause of a reply still being written ("Yes, it's on…"): three words or more, then , ; : or a dash. */
-export const firstClause = (
-  text: string,
-): { readonly head: string; readonly rest: string } | null => {
-  const m = /^(\S+(?:\s+\S+){2,}?[,;:\u2014])\s+(?=\S)/.exec(text);
-  return m === null ? null : { head: m[1]!, rest: text.slice(m[0].length) };
-};
 
 /** The silence put between a held sentence's pieces when they are recognised again as one. */
 const PIECE_GAP = new Int16Array(RATE / 5);
@@ -932,7 +924,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // The R1 drops what it holds on a flush; only a Bluetooth speaker's own buffer still sounds after it.
       speechUntil = Math.min(speechUntil, playUntil - config.downDelayMs);
       deps.publish(topic(id, "voice/ctl"), JSON.stringify({ ev: "flush" }));
-      echo.reset();
+      echo.reset(deps.now() + config.downDelayMs);
     };
 
     /**

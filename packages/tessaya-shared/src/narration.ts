@@ -44,3 +44,11 @@ export const withoutSelfIntro = (sentence: string, names: ReadonlyArray<string>)
     .replace(new RegExp(`^\\s*(?:${alt}) here(?:[.,:!\\u2014-]+\\s*|\\s*$)`, "i"), "")
     .trim();
 };
+
+/** The first clause of a reply still being written ("Yes, it's on…"): three words or more, then , ; : or a dash. */
+export const firstClause = (
+  text: string,
+): { readonly head: string; readonly rest: string } | null => {
+  const m = /^(\S+(?:\s+\S+){2,}?[,;:\u2014])\s+(?=\S)/.exec(text);
+  return m === null ? null : { head: m[1]!, rest: text.slice(m[0].length) };
+};

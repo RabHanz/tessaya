@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { EnrolCard } from "@t3tools/tessaya-contracts";
+import { firstClause } from "@t3tools/tessaya-shared/narration";
 
 import type { SpeakerIdentity } from "../speaker.ts";
 import { UNVERIFIED } from "../speaker.ts";
@@ -10,7 +11,6 @@ import { toBytes } from "./audio.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
   createRoomVoice,
-  firstClause,
   ROOM_CONFIG,
   servedRoster,
   splitSentences,

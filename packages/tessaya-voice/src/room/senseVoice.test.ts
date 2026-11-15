@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import { expect, it } from "vite-plus/test";
 
-import { lowFrameRate, readOnnxMetadata } from "./senseVoice.ts";
+import { likeliest, lowFrameRate, readOnnxMetadata } from "./senseVoice.ts";
 
 it("stacks 7 frames every 6 like FunASR's apply_lfr, repeating the first frame in front and the last at the end", () => {
   const frames = 8;
@@ -35,4 +35,9 @@ it("reads the exporter's string metadata from the model file's tail", () => {
     lfr_window_size: "7",
     neg_mean: "-1,-2",
   });
+});
+
+it("reads the mood as the likeliest real emotion, never the EMO_UNKNOWN that tops most English turns", () => {
+  // Ids 1..3 are HAPPY, NEUTRAL, SAD; 4 is EMO_UNKNOWN, the plain argmax.
+  expect(likeliest(Float32Array.from([0, 1.5, 2.5, 0.2, 9]), [1, 2, 3])).toBe(2);
 });

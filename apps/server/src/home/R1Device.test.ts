@@ -216,6 +216,20 @@ describe("her reasoning is never said aloud (13 Nov audit, R1-P8)", () => {
     expect(said.join("")).toBe("Got it, nothing else is waiting on you. ");
   });
 
+  it("sends her first clause before its sentence ends, then whole sentences", () => {
+    const said: Array<string> = [];
+    const s = speakableSentences((sentence) => said.push(sentence));
+    s.push("The office fan is on, and the");
+    expect(said).toEqual(["The office fan is on, "]);
+    s.push(" lamp too. It's warm, so I left it.");
+    s.flush();
+    expect(said).toEqual([
+      "The office fan is on, ",
+      "and the lamp too. ",
+      "It's warm, so I left it. ",
+    ]);
+  });
+
   it("never speaks, records or learns her own name as an opener", () => {
     // His 13 Nov R1 session: every Alfred turn began "Alfred here." and a role pitch.
     const names = ["Tessaya", "Alfred", "Freya"];

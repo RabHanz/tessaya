@@ -12,7 +12,7 @@ import {
   escalationRulesLine,
   type EscalationAsk,
 } from "@t3tools/tessaya-shared/brainEscalation";
-import { isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
+import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -77,7 +77,7 @@ export const inBrainSlot =
     );
 
 /**
- * What a vessel hears of her streamed words: whole sentences only, never one that is her reasoning (`isNarration`),
+ * What a vessel hears of her streamed words: her first clause, then whole sentences, never one that is her reasoning (`isNarration`),
  * and never a "Freya here." opener (`withoutSelfIntro`; `names` are the pack's personas). What is spoken is what the
  * Record keeps and what she learns from. `flush` speaks what is left once she has finished.
  */
@@ -86,7 +86,9 @@ export const speakableSentences = (
   names: ReadonlyArray<string> = [],
 ) => {
   let held = "";
+  let spoke = false;
   const out = (sentence: string) => {
+    spoke = true;
     if (sentence.trim() === "" || isNarration(sentence)) return;
     const kept = withoutSelfIntro(sentence, names);
     // A sentence that was only the opener says nothing. Each one ends in a space, the last too: the vessel speaks a
@@ -103,6 +105,12 @@ export const speakableSentences = (
         from = end.lastIndex;
       }
       held = held.slice(from);
+      // Her first words go out at the first clause, not the first full stop (about 0.4 s sooner, 15 Nov).
+      const clause = spoke ? null : firstClause(held);
+      if (clause !== null) {
+        out(clause.head);
+        held = clause.rest;
+      }
     },
     flush: () => {
       out(held);

@@ -23,6 +23,9 @@ export const EMOTIONS = [
   "DISGUSTED",
   "SURPRISED",
 ] as const;
+/** The id among `ids` with the highest logit. */
+export const likeliest = (logits: Float32Array, ids: ReadonlyArray<number>): number =>
+  ids.reduce((b, id) => (logits[id]! > logits[b]! ? id : b), ids[0] ?? 0);
 export type Emotion = Lowercase<(typeof EMOTIONS)[number]> | "unknown";
 
 export interface Affect {
@@ -122,6 +125,7 @@ export const createSenseVoice = async (input: {
     interOpNumThreads: 1,
     executionMode: "sequential",
   });
+  const emotionIds = EMOTIONS.map((e) => tokens.indexOf(`<|${e}|>`)).filter((id) => id >= 0);
   const tag = (id: number) => /^<\|(.+)\|>$/.exec(tokens[id] ?? "")?.[1] ?? "";
   return {
     analyse: async (pcm) => {
@@ -150,7 +154,10 @@ export const createSenseVoice = async (input: {
         return id;
       });
       // The first four steps are tags: language, emotion, event, text norm. Then CTC (0 is blank).
-      const emotionTag = tag(best[1] ?? 0);
+      // Step 1 is the emotion, but its plain argmax is EMO_UNKNOWN or OTHER on most English turns (15 Nov, his clips):
+      // the mood is the likeliest of the seven real ones.
+      const emotionTag =
+        steps > 1 ? tag(likeliest(data.subarray(vocab, 2 * vocab), emotionIds)) : "";
       const event = tag(best[2] ?? 0);
       let text = "";
       for (let t = 4, prev = -1; t < steps; t += 1) {

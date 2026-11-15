@@ -5,6 +5,8 @@ const TAPS = 768; // 96 ms of room
 const BEFORE = 128; // taps before the estimated delay: 16 ms
 const RING = RATE * 6;
 const ENV_HOP = 80; // 10 ms envelope cells
+/** Her loudness is kept this long (30 s): a turn is judged after it ends, while she may still be playing (15 Nov). */
+const ENV_KEEP = 3_000;
 const SEARCH_MS = 600;
 const MU = 0.8;
 /** Speech over the echo lifts the residual (relative to what is playing) to this many times its usual level. */
@@ -38,8 +40,11 @@ export interface EchoGuard {
    * over her. 0 when she was not playing then.
    */
   readonly likeness?: (mic: Int16Array, startMs: number) => number;
-  /** Nothing is playing any more, or the output device changed: forget the room. */
-  readonly reset: () => void;
+  /**
+   * Nothing is playing any more, or the output device changed: forget the room. What she played stays for `likeness`,
+   * except anything due to sound from `flushedAtMs` on (flushed before it played).
+   */
+  readonly reset: (flushedAtMs?: number) => void;
   /** For tests and tuning. */
   readonly state: () => {
     readonly delayMs: number;
@@ -63,8 +68,10 @@ export const createEchoGuard = (): EchoGuard => {
   // The reference as a timeline in 8 kHz samples: where a chunk sounds, not when it arrived.
   const line = new Float32Array(RING);
   let written: Array<{ s: number; e: number }> = [];
-  const envRef = new Float32Array(RING / ENV_HOP);
-  const envMic = new Float32Array(RING / ENV_HOP);
+  const envRef = new Float32Array(ENV_KEEP);
+  const envMic = new Float32Array(ENV_KEEP);
+  /** The cell each slot of `envRef` holds, so a stale slot never reads as her playing. */
+  const envCell = new Float64Array(ENV_KEEP).fill(Number.NaN);
 
   let delay = -1; // in 8 kHz samples
   let w = new Float32Array(TAPS);
@@ -93,7 +100,11 @@ export const createEchoGuard = (): EchoGuard => {
         sum += x[i - start]! ** 2;
         n += 1;
       }
-      if (n > 0) envRef[((c % envRef.length) + envRef.length) % envRef.length] = Math.sqrt(sum / n);
+      if (n > 0) {
+        const slot = ((c % ENV_KEEP) + ENV_KEEP) % ENV_KEEP;
+        envRef[slot] = Math.sqrt(sum / n);
+        envCell[slot] = c;
+      }
     }
     written.push({ s: start, e: start + x.length });
     const floor = start - RING / 2;
@@ -224,12 +235,13 @@ export const createEchoGuard = (): EchoGuard => {
       mic[c] = Math.sqrt(sum / hop);
     }
     const first = Math.floor((startMs * (RATE / 1000)) / ENV_HOP);
-    const refAt = (cell: number) =>
-      covered(cell * ENV_HOP)
-        ? envRef[((cell % envRef.length) + envRef.length) % envRef.length]!
-        : 0;
+    const refAt = (cell: number) => {
+      const slot = ((cell % ENV_KEEP) + ENV_KEEP) % ENV_KEEP;
+      return envCell[slot] === cell ? envRef[slot]! : 0;
+    };
     let best = 0;
-    for (let d = 0; d <= 80; d += 1) {
+    // From 200 ms earlier than the configured delays to 800 ms later (a Bluetooth speaker's own latency).
+    for (let d = -20; d <= 80; d += 1) {
       const ref = Array.from({ length: n }, (_, c) => refAt(first + c - d));
       // Her voice must have been playing for a good part of it; a pause between her words is quiet too.
       if (ref.filter((r) => r >= REF_ACTIVE_RMS).length < n * 0.3) continue;
@@ -252,11 +264,15 @@ export const createEchoGuard = (): EchoGuard => {
     return best;
   };
 
-  const reset = () => {
+  const reset = (flushedAtMs?: number) => {
     written = [];
     line.fill(0);
-    envRef.fill(0);
     envMic.fill(0);
+    if (flushedAtMs !== undefined) {
+      const from = Math.floor((flushedAtMs * (RATE / 1000)) / ENV_HOP);
+      for (let slot = 0; slot < ENV_KEEP; slot += 1)
+        if (envCell[slot]! >= from) envCell[slot] = Number.NaN;
+    }
     delay = -1;
     w = new Float32Array(TAPS);
     erle = 0;
