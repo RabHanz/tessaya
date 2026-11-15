@@ -511,6 +511,12 @@ export const liveCases: ReadonlyArray<LiveCase> = [
       calls.some((x) => x.name === "schedule_delete" && x.status === "asked" && HELD.test(x.text))
         ? null
         : "schedule_delete was not held for his phone",
+    // The suite's copy carries no scheduled tasks: she lists them, finds none, and rightly deletes nothing.
+    nothingToActOn: (calls) =>
+      calls.some((c) => c.name === "schedules_list" && !c.isError && c.text.trim() === "[]") &&
+      !calls.some((c) => c.name === "schedule_delete")
+        ? "no scheduled tasks here"
+        : null,
   },
   {
     id: "cloud-dispatch",
