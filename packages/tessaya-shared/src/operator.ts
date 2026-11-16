@@ -181,6 +181,8 @@ export const ROOM_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "project_add",
   "environment_maintain",
   "access_manage",
+  "intercom_switch",
+  "memory_sync_switch",
 ]);
 /** Tools only a remote hands session has; the assistant's own table never holds them. */
 export const REMOTE_ONLY_TOOLS: ReadonlySet<string> = new Set([
@@ -232,6 +234,8 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "project_add",
   "environment_maintain",
   "access_manage",
+  "intercom_switch",
+  "memory_sync_switch",
   "text_transform",
   "text_undo",
   "text_command",
@@ -532,6 +536,18 @@ const judgeTessayaTool = (name: string, call: ToolCall, context: JudgeContext): 
       return call.input["op"] === "links"
         ? { verdict: "allow" }
         : { verdict: "ask", why: "It would change who can reach your work.", risky: true };
+    case "intercom_switch":
+    case "memory_sync_switch":
+      // On shares his home's messages or his memory across devices and servers: his yes. Off and a read are free.
+      return call.input["on"] === true
+        ? {
+            verdict: "ask",
+            why:
+              name === "intercom_switch"
+                ? "It would turn on the intercom across this home's devices."
+                : "It would share your memory with your other servers.",
+          }
+        : { verdict: "allow" };
     case "project_add":
       // A new folder, a clone or a registered checkout on this computer: his yes, every time.
       return { verdict: "ask", why: "It would add a project to this computer." };

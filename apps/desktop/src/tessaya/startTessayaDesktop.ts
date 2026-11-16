@@ -908,6 +908,11 @@ export const startTessayaDesktop = Effect.gen(function* () {
         )) as { readonly configured?: boolean; readonly text?: unknown };
         return answer?.configured === true && typeof answer.text === "string" ? answer.text : null;
       },
+      // A row in the one usage record for each clean-up his plan answered; a missed row never holds dictation up.
+      cleanupUsage: (used) =>
+        void Promise.resolve(direct("baton.dictation.cleanupUsage", used, 5_000)).catch(
+          () => undefined,
+        ),
       ...(screen === null ? {} : { extras: screen }),
       sessions,
       catalog,

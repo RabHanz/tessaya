@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 export const BATON_DICTATION_WS_METHODS = {
   cleanupApi: "baton.dictation.cleanupApi",
   cleanupApiStatus: "baton.dictation.cleanupApiStatus",
+  cleanupUsage: "baton.dictation.cleanupUsage",
 } as const;
 
 export const TessayaDictationCleanupInput = Schema.Struct({
@@ -24,3 +25,10 @@ export const TessayaDictationCleanupResult = Schema.Union([
   Schema.Struct({ configured: Schema.Literal(true), text: Schema.String, ms: Schema.Number }),
 ]);
 export const TessayaDictationCleanupStatus = Schema.Struct({ configured: Schema.Boolean });
+
+/** A clean-up his own Claude plan answered on the desktop: its `result` event's usage, for the one usage record. */
+export const TessayaDictationCleanupUsageInput = Schema.Struct({
+  model: Schema.String.check(Schema.isMaxLength(200)),
+  usage: Schema.optional(Schema.Unknown),
+  modelUsage: Schema.optional(Schema.Unknown),
+});

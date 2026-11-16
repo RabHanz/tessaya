@@ -402,7 +402,10 @@ export type ComposerDictationReply =
       readonly prior?: string;
       readonly replyingTo?: string;
     }
-  /** He sent a message he dictated into: `written` is what dictation put in, `kept` what he sent, so his fixes teach. */
+  /**
+   * His fixes, to teach: `written` is the draft as dictation left it and `kept` what he sent, or `written` a word he
+   * selected and `kept` what he said in its place.
+   */
   | { readonly type: "sent"; readonly id: number; readonly written: string; readonly kept: string }
   | { readonly type: "action"; readonly id: number; readonly insert: boolean }
   | { readonly type: "released"; readonly id: number };

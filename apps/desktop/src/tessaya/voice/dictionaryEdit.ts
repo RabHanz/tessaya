@@ -9,6 +9,8 @@ import * as NodePath from "node:path";
 import {
   addEntry,
   editEntry,
+  mergeEntries,
+  parseVocabulary,
   removeEntry,
   type VocabularyEntry,
 } from "@t3tools/tessaya-shared/vocabulary";
@@ -50,3 +52,21 @@ export const vocabularyChanges = (
 
 export const saveDictionary = (stateDir: string, list: ReadonlyArray<VocabEntry>): void =>
   writeJsonFile(NodePath.join(stateDir, "voice", "dictionary.json"), list);
+
+/**
+ * His server's list (`vocabulary` read) against this machine's: with nothing of his waiting to reach the server, its
+ * stored words are the list, removals included; otherwise both, and his are sent (`push`). Names the server adds on
+ * reading (personas, household, projects) carry no source and stay the server's.
+ */
+export const fromServer = (
+  local: ReadonlyArray<VocabEntry>,
+  sent: ReadonlyArray<VocabEntry>,
+  server: ReadonlyArray<unknown>,
+): { readonly next: ReadonlyArray<VocabEntry>; readonly push: boolean } => {
+  const stored = parseVocabulary(
+    server.filter((e) => typeof e === "object" && e !== null && "source" in e),
+  );
+  return vocabularyChanges(sent, local).length > 0
+    ? { next: mergeEntries(local, stored), push: true }
+    : { next: stored, push: false };
+};

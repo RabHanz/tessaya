@@ -1,4 +1,5 @@
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
+import * as NodeModule from "node:module";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 
 import appleAppSiteAssociation from "../web/public/.well-known/apple-app-site-association.json";
@@ -57,4 +58,19 @@ it("gives the tessaya variant its own identity, Expo project and Apple team", as
   expect(tessaya.owner).toBe("rabhanz");
   expect(tessaya.updates?.url).toBe(`https://u.expo.dev/${tessaya.extra?.eas?.projectId}`);
   expect(tessaya.updates?.url).not.toBe(production.updates?.url);
+});
+
+it("asks iOS only for the TAG NFC format, never NDEF", async () => {
+  const config = await loadConfig("production");
+  const [name, props] = config.plugins!.find(
+    (p): p is [string, object] => Array.isArray(p) && p[0] === "react-native-nfc-manager",
+  )!;
+  const withNfc = NodeModule.createRequire(import.meta.url)(`${name}/app.plugin.js`);
+  const withMods = withNfc({ name: "x", slug: "x" }, props);
+  const { modResults } = await withMods.mods.ios.entitlements({
+    ...withMods,
+    modResults: {},
+    modRequest: { platform: "ios" },
+  });
+  expect(modResults["com.apple.developer.nfc.readersession.formats"]).toEqual(["TAG"]);
 });

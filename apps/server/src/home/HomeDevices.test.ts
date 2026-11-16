@@ -1501,6 +1501,11 @@ it("plays a private reply only on an output tagged private, open ones only when 
     how: "also",
   });
   assert.isNull(HomeDevices.privateTagOf({ name: "my headphones" }));
+  assert.deepStrictEqual(HomeDevices.privateTagOf({ name: "my headphones", privateCap: 140 }), {
+    name: "my headphones",
+    how: null,
+    cap: 100,
+  });
 });
 
 it.effect(
@@ -1528,6 +1533,13 @@ it.effect(
       assert.strictEqual(yield* devices.routeReply(ID, "private", true), "hold");
       yield* devices.holdPrivate(ID, "the held words");
       assert.deepStrictEqual(sent, []);
+      // His phone says one is waiting, never what it says.
+      const inbox = yield* TessayaPhoneInbox;
+      const card = () =>
+        inbox.pending.pipe(Effect.map((p) => p.filter((c) => c.id.startsWith("held-"))));
+      const [waiting] = yield* card();
+      assert.strictEqual(waiting?.title, "A private reply is waiting");
+      assert.notInclude(waiting?.detail ?? "", "held words");
 
       // They connect: routed there with a hold, and said only once the firmware is on them.
       yield* devices.receive(
@@ -1549,6 +1561,7 @@ it.effect(
       yield* devices.receive(`${root}/state/audio/output`, '{"out":"bt","wanted":"bt"}');
       yield* Effect.yieldNow;
       assert.deepStrictEqual(said(), [{ topic: "voice/say", payload: { text: "the held words" } }]);
+      assert.deepStrictEqual(yield* card(), []);
 
       // "You can use your speaker for private too": only while he is alone with her.
       const tagged = yield* devices.command(
@@ -1557,6 +1570,18 @@ it.effect(
         him,
       );
       assert.include(tagged.line, "only when you're alone with me");
+      // "Keep private replies quiet on your speaker": a cap, the classes kept.
+      const capped = yield* devices.command(
+        ID,
+        { op: "item", itemId: "audio.output", value: { name: "your speaker", privateCap: 30 } },
+        him,
+      );
+      assert.include(capped.line, "30%");
+      const speaker = (yield* devices.overview).devices
+        .find((d) => d.id === ID)
+        ?.speaker?.outputs?.find((o) => o.id === "speaker");
+      assert.strictEqual(speaker?.privateCap, 30);
+      assert.include(speaker?.classes ?? [], "private");
       yield* devices.receive(
         `${root}/state/bt`,
         JSON.stringify({ state: "idle", mac: HP, out: "onboard", wanted: "speaker", saved: true }),

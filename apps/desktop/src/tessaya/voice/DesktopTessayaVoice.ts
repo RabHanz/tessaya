@@ -91,6 +91,7 @@ import {
   saveDictionary,
   type VocabEntry,
   vocabularyChanges,
+  fromServer,
 } from "./dictionaryEdit.ts";
 import {
   addInput,
@@ -104,6 +105,13 @@ import {
   type Binding,
   type BindingInput,
 } from "../bindings/bindings.ts";
+import {
+  claimsFor,
+  deckDeviceId,
+  deckManifest,
+  startAirdeckLink,
+  type Remote,
+} from "../airdeck/airdeckLink.ts";
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/tessaya-shared/approvals";
@@ -676,6 +684,10 @@ import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTy
 /** His zone on this computer: days ahead are counted in it. */
 const hisZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+/** How long "camera on now" has to be heard before the camera opens. */
+const CAMERA_NOTICE_MS = 1_200;
+/** The tray dot while the webcam is open. */
+const CAMERA_ON_COLOR = "#D8505C";
 /** How long the hold key is down before its pill shows: the helper's tap cutoff (SHORT_TAP_MS), so a tap never flashes. */
 const PRESS_SHOW_MS = 200;
 // Windows types into whatever has focus; there is no narrower target to name.
@@ -870,8 +882,12 @@ interface VoiceSettings {
   readonly dictationCleanupChosen?: boolean;
   /** The pill once said Claude can tidy dictation too; it never says it again. */
   readonly cleanupOffered?: boolean;
-  /** A family alias, on his subscription. */
+  /** A family alias: Sonnet unless he picked another (the Director, 16 Nov). */
   readonly cleanupModel: string;
+  /** He picked the model himself; a "haiku" an older build saved for him moves to Sonnet. */
+  readonly cleanupModelChosen?: boolean;
+  /** His own Claude plan first and his key only while it is out or at its limit, or his key first. */
+  readonly cleanupRoute: "subscription" | "key";
   readonly claudeBinary: string;
   /** His writing mode for an app, by exe name; anything else is chosen from the app. */
   readonly appModes: Readonly<Record<string, DictationMode>>;
@@ -995,7 +1011,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   gpuRecognition: "auto",
   // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
-  cleanupModel: "haiku",
+  cleanupModel: "sonnet",
+  cleanupRoute: "subscription",
   claudeBinary: "claude",
   appModes: {},
   wakeWords: FRESH_WAKE_WORDS,
@@ -1080,6 +1097,11 @@ export const readSettings = (path: string): VoiceSettings => {
       composerMic: saved["composerMic"] === "t3" ? "t3" : "tessaya",
       micAwake: micAwakeOf(saved["micAwake"]),
       showWords: saved["showWords"] !== false,
+      cleanupModel:
+        saved["cleanupModelChosen"] === true && typeof saved["cleanupModel"] === "string"
+          ? saved["cleanupModel"]
+          : "sonnet",
+      cleanupRoute: saved["cleanupRoute"] === "key" ? "key" : "subscription",
       openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       devicesMayLook: saved["devicesMayLook"] === true,
@@ -1372,6 +1394,12 @@ export interface DesktopTessayaVoiceInput {
     maxTokens: number,
     refused?: Refused,
   ) => Promise<string | null>;
+  /** A clean-up his own plan answered: its usage, for the one usage record on his server. */
+  readonly cleanupUsage?: (used: {
+    readonly model: string;
+    readonly usage?: unknown;
+    readonly modelUsage?: unknown;
+  }) => void;
   /** Every session on every environment, running or stopped, with Resume and New session. */
   readonly catalog?: ReturnType<typeof import("../sessions/catalogRows.ts").createCatalog>;
   /** Baton's self-update (D137): its rows, its action, and whether one is waiting. */
@@ -1461,6 +1489,17 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   let faceStatus: string | null = null;
   let palmStatus: string | null = null;
   let faceOnlooker = false;
+  /** The webcam is open for a face or palm check: the tray turns red and says so until it closes. */
+  let cameraOn = false;
+  // Announced on the pill and aloud before the engine opens the camera, and a beat to hear it first.
+  const announceCamera = () => {
+    input.extras?.announce("Camera on now.", true);
+    return new Promise<void>((resolve) => setTimeout(resolve, CAMERA_NOTICE_MS));
+  };
+  const showCamera = (open: boolean) => {
+    cameraOn = open;
+    render();
+  };
   let faceMembers: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
@@ -1471,6 +1510,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     platform: input.platform,
     exe: faceEnginePath(input.env),
     on: () => settings.faceCheck,
+    announce: announceCamera,
+    onCamera: showCamera,
     progress: (message) => {
       faceStatus = message;
       pushHome();
@@ -1483,6 +1524,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     exe: faceEnginePath(input.env),
     on: () => settings.palmCheck,
     modality: "palm",
+    announce: announceCamera,
+    onCamera: showCamera,
     progress: (message) => {
       palmStatus = message;
       pushHome();
@@ -1802,6 +1845,29 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     saveDictionary(input.stateDir, next);
     syncServer(next);
   };
+  /**
+   * His one dictionary is his server's: words he taught on his phone, a Tessel or another computer come here too, and
+   * the file the recogniser reads follows. While a change of his has not reached it, his words are kept and sent.
+   */
+  const pullVocabulary = async () => {
+    const direct = input.direct;
+    if (direct === undefined) return;
+    const answer = (await direct(
+      BATON_VOICE_WS_METHODS.call,
+      { kind: "read", op: "vocabulary" },
+      8_000,
+    ).catch(() => null)) as { readonly ok?: unknown; readonly value?: unknown } | null;
+    if (answer?.ok !== true || !Array.isArray(answer.value)) return;
+    const local = readDictionary(input.stateDir, dictionary);
+    const { next, push } = fromServer(local, sentToServer, answer.value);
+    dictionary = next;
+    if (push) return saveVocabulary(next);
+    sentToServer = next;
+    if (JSON.stringify(next) !== JSON.stringify(local)) saveDictionary(input.stateDir, next);
+  };
+  const VOCABULARY_PULL_MS = 5 * 60_000;
+  setTimeout(() => void pullVocabulary(), 5_000).unref();
+  setInterval(() => void pullVocabulary(), VOCABULARY_PULL_MS).unref();
   const changeVocabulary = async (
     change: (
       entries: ReadonlyArray<VocabularyEntry>,
@@ -1986,7 +2052,14 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   let styleIndex: ReturnType<typeof makeStyleIndex> | null = null;
   const rewriter = makeRewriter({
     claudeBinary: settings.claudeBinary,
-    model: settings.cleanupModel,
+    model: () => settings.cleanupModel,
+    route: () => settings.cleanupRoute,
+    onSessionResult: (event) =>
+      input.cleanupUsage?.({
+        model: settings.cleanupModel,
+        usage: event["usage"],
+        modelUsage: event["modelUsage"],
+      }),
     workDir: NodePath.join(input.stateDir, "voice", "cleanup"),
     env: input.env,
     platform: input.platform,
@@ -3025,7 +3098,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     const on = (id: string) =>
       input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
     return {
-      color: hudView(state).color,
+      color: cameraOn ? CAMERA_ON_COLOR : hudView(state).color,
       caps: [settings.enabled, on("s.capture"), on("s.act")],
       muted: state === "muted",
       badge: input.updates?.ready() ?? false,
@@ -3045,7 +3118,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       NodePath.join(ART_DIR, taskbarIconFile(settings.palette, taskbarDark ? "dark" : "light")),
       input.platform,
     );
-    const tip = `Tessaya: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`;
+    const tip = `Tessaya: ${cameraOn ? "Camera on" : hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`;
     if (tip !== trayTip) tray.setToolTip((trayTip = tip));
     rebuildMenu();
   };
@@ -3937,6 +4010,13 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       .find((row) => row.def.id === action)
       ?.inputs.flatMap((i) => (i.type === "key" ? [i.accelerator] : [])) ?? [];
   let bindingsNote: string | null = null;
+  /** The Airdeck remotes airdeck-core knows, from its hello, and the bindings row waiting for one of their buttons. */
+  let remotes: ReadonlyArray<Remote> = [];
+  let remoteListen: { readonly action: string; readonly until: number } | null = null;
+  const remoteTapOnly = () =>
+    new Set(
+      remotes.flatMap((r) => r.buttons.filter((b) => b.tapOnly).map((b) => `${r.id}/${b.id}`)),
+    );
   /** Keys Windows or another app would not give up: said on the page, never a binding that silently does nothing. */
   let takenNote: string | null = null;
   /** The provider's own HTTPS API on his key; plain fetch, as the adapters are pure and take any fetch. */
@@ -6682,6 +6762,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       bindingsNote: bindingsNote ?? takenNote,
       mouseReady: mouseHookReady,
       mouseButtons: input.platform === "win32",
+      remoteButtons: Object.fromEntries(
+        remotes.flatMap((r) => r.buttons.map((b) => [`${r.id}/${b.id}`, `${r.name} ${b.label}`])),
+      ),
       usage: input.sessions?.usage() ?? [],
       lifecycle,
       paths: [
@@ -7285,6 +7368,32 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           { value: "local", label: "On this computer (instant)" },
           { value: "off", label: "Off" },
         ],
+      },
+      {
+        id: "v.cleanupModel",
+        section: "Dictation",
+        label: "Clean-up model",
+        hint: "Sonnet fixes more misheard words from context; Haiku is a little quicker.",
+        kind: "choice",
+        value: settings.cleanupModel,
+        options: [
+          { value: "sonnet", label: "Sonnet" },
+          { value: "haiku", label: "Haiku" },
+        ],
+        disabled: settings.dictationCleanup !== "claude",
+      },
+      {
+        id: "v.cleanupRoute",
+        section: "Dictation",
+        label: "Clean up through",
+        hint: "Your Claude plan first, with your API key only while the plan is unavailable or at its limit; or your API key first.",
+        kind: "choice",
+        value: settings.cleanupRoute,
+        options: [
+          { value: "subscription", label: "Claude plan first" },
+          { value: "key", label: "API key first" },
+        ],
+        disabled: settings.dictationCleanup !== "claude",
       },
       {
         id: "v.dictation",
@@ -8251,7 +8360,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           const parsed = parseBindings([{ action, inputs: [JSON.parse(value)] }])[0]?.inputs[0];
           if (parsed === undefined) bindingsNote = "That input could not be read.";
           else {
-            const change = addInput(settings.bindings, action, row.inputs, parsed);
+            const change = addInput(settings.bindings, action, row.inputs, parsed, remoteTapOnly());
             if ("error" in change) bindingsNote = change.error;
             else next = change.saved;
           }
@@ -8260,6 +8369,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         }
       } else if (verb === "remove" && typeof value === "number" && row !== undefined) {
         next = removeInput(settings.bindings, action, row.inputs, value);
+      } else if (verb === "listen") {
+        // The page waits for a remote button for this row; a stale wait (Escape, a key instead) ends on its own.
+        remoteListen = value === true ? { action, until: Date.now() + 30_000 } : null;
       } else if (verb === "clear") next = withBinding(settings.bindings, action, []);
       else if (verb === "reset") next = withBinding(settings.bindings, action, "reset");
       else if (verb === "resetAll") next = [];
@@ -8746,6 +8858,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.download") requestDictation();
     else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
       save({ dictationCleanupChosen: true, dictationCleanup: value });
+      syncCleanupSession();
+    } else if (id === "v.cleanupModel" && (value === "sonnet" || value === "haiku")) {
+      save({ cleanupModelChosen: true, cleanupModel: value });
+      syncCleanupSession();
+    } else if (id === "v.cleanupRoute" && (value === "subscription" || value === "key")) {
+      save({ cleanupRoute: value });
       syncCleanupSession();
     } else if ((id === "v.language:add" || id === "v.language:rm") && typeof value === "string") {
       // His personal model is a v3 fine-tune: the same languages.
@@ -9278,6 +9396,123 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       (ask?.click as (() => void) | undefined)?.();
     },
   });
+  /** One of the bindings page's actions, from a remote's button or a registry write (a rule, the brain, an agent). */
+  const runAction = (id: string): boolean => {
+    if (id === "toggle") {
+      sidecar?.toggle();
+      return sidecar !== null;
+    }
+    const handler = handlers[id];
+    handler?.();
+    return handler !== undefined;
+  };
+  // The Airdeck remote (L-142): bound buttons run their action here at once (a hold lasts while the button is down),
+  // and every press of a button Tessaya owns is an event on that remote's registry device, for rules and the brain.
+  const deckLog = (line: string) => {
+    try {
+      NodeFS.appendFileSync(
+        NodePath.join(input.logDir, "airdeck.log"),
+        `${new Date().toISOString()} ${line}\n`,
+      );
+    } catch {}
+  };
+  const deckManifestSent = new Set<string>();
+  const deckPublish = (
+    remote: Remote,
+    values: ReadonlyArray<{ itemId: string; value: unknown }>,
+  ) => {
+    const direct = input.direct;
+    if (direct === undefined) return;
+    const id = deckDeviceId(remote.id);
+    const withManifest = !deckManifestSent.has(id);
+    void direct(
+      BATON_DEVICES_WS_METHODS.call,
+      {
+        kind: "vessel",
+        op: "publish",
+        args: { deviceId: id, ...(withManifest ? { manifest: deckManifest(remote) } : {}), values },
+      },
+      10_000,
+    ).then(
+      (r) => {
+        if ((r as { ok?: unknown } | null)?.ok === true) deckManifestSent.add(id);
+        else deckManifestSent.delete(id);
+      },
+      () => deckManifestSent.delete(id),
+    );
+  };
+  const boundRemoteButtons = () =>
+    currentBindings().flatMap((row) =>
+      row.inputs.flatMap((i) => (i.type === "remote" ? [i.button] : [])),
+    );
+  const deck =
+    input.platform === "win32" && process.env["LOCALAPPDATA"] !== undefined
+      ? startAirdeckLink({
+          localAppData: process.env["LOCALAPPDATA"],
+          log: deckLog,
+          onHello: (list) => {
+            remotes = list;
+            deckLog(
+              `core: ${list.map((r) => `${r.id}${r.connected ? " connected" : ""}`).join(", ")}`,
+            );
+            deck?.claim(claimsFor(remotes, boundRemoteButtons()));
+            for (const r of list)
+              if (r.connected) deckPublish(r, [{ itemId: "connected", value: true }]);
+            home.refresh();
+          },
+          onDevice: (id, connected) => {
+            remotes = remotes.map((r) => (r.id === id ? { ...r, connected } : r));
+            const remote = remotes.find((r) => r.id === id);
+            deckLog(`${id} ${connected ? "connected" : "unplugged"}`);
+            if (remote !== undefined)
+              deckPublish(remote, [{ itemId: "connected", value: connected }]);
+          },
+          onButton: (id, button, down, mine) => {
+            const key = `${id}/${button}`;
+            const listen = remoteListen;
+            if (down && listen !== null && listen.until > Date.now()) {
+              remoteListen = null;
+              const row = currentBindings().find((r) => r.def.id === listen.action);
+              if (row === undefined) return;
+              const change = addInput(
+                settings.bindings,
+                listen.action,
+                row.inputs,
+                { type: "remote", button: key },
+                remoteTapOnly(),
+              );
+              bindingsNote = "error" in change ? change.error : null;
+              if ("saved" in change) {
+                save({ bindings: change.saved });
+                applyBindings();
+              }
+              deckLog(
+                `${key} bound to ${listen.action}${"error" in change ? ` refused: ${change.error}` : ""}`,
+              );
+              return home.refresh();
+            }
+            if (!mine) return;
+            const rows = currentBindings().filter((r) =>
+              r.inputs.some((i) => i.type === "remote" && i.button === key),
+            );
+            for (const row of rows) {
+              if (row.def.id === "hold") {
+                if (down) sidecar?.start();
+                else sidecar?.finish();
+              } else if (down) runAction(row.def.id);
+            }
+            if (down) {
+              const remote = remotes.find((r) => r.id === id);
+              if (remote !== undefined)
+                deckPublish(remote, [{ itemId: `press.${button}`, value: "press" }]);
+            }
+            deckLog(
+              `${key} ${down ? "down" : "up"}${rows.length === 0 ? "" : ` -> ${rows.map((r) => r.def.id).join(", ")}`}`,
+            );
+          },
+        })
+      : null;
+  if (deck !== null) Electron.app.on("will-quit", deck.stop);
   /** Puts every key he has set in place, and takes the old ones away. Mouse buttons go to the hook. */
   const applyBindings = () => {
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
@@ -9314,6 +9549,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     const toggleKey = first("toggle") ?? settings.toggleKey;
     if (holdKey !== settings.holdKey || toggleKey !== settings.toggleKey)
       save({ holdKey, toggleKey });
+    deck?.claim(claimsFor(remotes, boundRemoteButtons()));
     configureDictation();
     // Unbinding the last dictation key ends the Claude session it kept warm.
     syncCleanupSession();
@@ -9363,6 +9599,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       }),
       applySetting: (id, value) => applyHome(id, value),
       onMascot: (act) => mascot.act(act),
+      onAction: runAction,
       // A message from someone at home: a toast, its glance on the pill, and its sound (a placeholder cue for now).
       onNote: (value) => {
         const card = noteCardOf(value);

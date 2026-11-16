@@ -7,7 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { biometricAssurance } from "@t3tools/tessaya-shared/biometrics";
 
-import { createFaceCheck, type FaceRun } from "./faceCheck.ts";
+import { ANNOUNCE_AGAIN_MS, createFaceCheck, type FaceRun } from "./faceCheck.ts";
 
 const setup = (
   results: Array<{ ok: boolean; reason: string; faces?: number; per?: number[] }>,
@@ -17,7 +17,11 @@ const setup = (
   const exe = NodePath.join(dir, "faceid.exe");
   NodeFS.writeFileSync(exe, "");
   const calls: string[][] = [];
+  const said: number[] = [];
+  const camera: boolean[] = [];
   let on = true;
+  let release: (() => void) | null = null;
+  let held = false;
   const run: FaceRun = async (args) => {
     calls.push([...args]);
     if (args[0]?.endsWith("enroll")) NodeFS.writeFileSync(args[2]!, "sealed");
@@ -40,8 +44,22 @@ const setup = (
     run,
     now: () => clock,
     modality,
+    announce: () => {
+      said.push(calls.length);
+      return held ? new Promise<void>((r) => (release = r)) : Promise.resolve();
+    },
+    onCamera: (open) => camera.push(open),
   });
-  return { face, calls, off: () => (on = false), tick: (ms: number) => (clock += ms) };
+  return {
+    face,
+    calls,
+    said,
+    camera,
+    hold: () => (held = true),
+    release: () => release?.(),
+    off: () => (on = false),
+    tick: (ms: number) => (clock += ms),
+  };
 };
 
 describe("createFaceCheck", () => {
@@ -103,6 +121,37 @@ describe("createFaceCheck", () => {
     ]);
     await t.face.enrol({ id: "owner", name: "You" });
     expect(await t.face.scan()).toMatchObject({ others: 1, live: false });
+  });
+
+  it("says the camera is on before it opens, shows it while open, and once for a watch's run of scans", async () => {
+    const t = setup([]);
+    t.hold();
+    const enrolled = t.face.enrol({ id: "owner", name: "You" });
+    await Promise.resolve();
+    expect(t.said).toEqual([0]);
+    expect(t.calls).toEqual([]);
+    t.release();
+    await enrolled;
+    expect(t.calls[0]?.[0]).toBe("enroll");
+    expect(t.camera).toEqual([true, false]);
+    t.tick(5_000);
+    await t.face.scan();
+    expect(t.said).toEqual([0]);
+    t.tick(ANNOUNCE_AGAIN_MS + 1);
+    const later = t.face.scan();
+    await Promise.resolve();
+    expect(t.said).toEqual([0, 2]);
+    expect(t.calls.length).toBe(2);
+    t.release();
+    await later;
+    expect(t.calls.length).toBe(3);
+  });
+
+  it("deleting a template opens no camera and says nothing", async () => {
+    const t = setup([]);
+    await t.face.enrol({ id: "owner", name: "You" });
+    await t.face.remove("owner");
+    expect(t.said).toEqual([0]);
   });
 
   it("palm runs the engine's palm commands with the screen flash, in its own store", async () => {

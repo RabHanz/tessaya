@@ -589,6 +589,22 @@ export const liveCases: ReadonlyArray<LiveCase> = [
         : null,
   },
   {
+    id: "intercom-status",
+    proves: ["intercom_switch"],
+    said: ["Is the intercom on?"],
+    voices: [{ speaker: SURE }],
+    uses: [["intercom_switch"]],
+    clean: ["intercom_switch"],
+  },
+  {
+    id: "memory-sync-status",
+    proves: ["memory_sync_switch"],
+    said: ["Is my memory syncing across my servers?"],
+    voices: [{ speaker: SURE }],
+    uses: [["memory_sync_switch"]],
+    clean: ["memory_sync_switch"],
+  },
+  {
     id: "server-upkeep",
     proves: ["environment_maintain"],
     said: ["Is Codex signed in on this computer?"],

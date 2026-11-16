@@ -542,6 +542,20 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["job_start"],
   },
   {
+    id: "intercom-on",
+    source: "Director 16 Nov voice parity: the intercom switch was a window click only",
+    said: "turn on the intercom",
+    first: ["intercom_switch"],
+    not: ["comms_dnd", "comms_send", "settings_set"],
+  },
+  {
+    id: "memory-sync-off",
+    source: "Director 16 Nov voice parity: memory sync between servers was a window click only",
+    said: "stop syncing my memory",
+    first: ["memory_sync_switch"],
+    not: ["memory_forget", "memory_remember"],
+  },
+  {
     id: "schedules-list",
     source: "the desktop reaches the shared schedule tools (SPINE-UNIFY S2)",
     said: "which scheduled tasks do I have?",

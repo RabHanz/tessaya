@@ -58,6 +58,9 @@ export const faceEnginePath = (env: Readonly<Record<string, string | undefined>>
   env["TESSAYA_FACEID"] ??
   NodePath.join(env["ProgramFiles"] ?? "C:\\Program Files", "FaceUnlock", "faceid.exe");
 
+/** The camera unused this long is announced again before it opens. */
+export const ANNOUNCE_AGAIN_MS = 60_000;
+
 interface Consent {
   readonly member: string;
   readonly name: string;
@@ -76,12 +79,33 @@ export const createFaceCheck = (input: {
   readonly now?: () => number;
   /** Palm runs the same sidecar's palm commands, with its own templates, consents and limit. */
   readonly modality?: "face" | "palm";
+  /**
+   * Says "camera on now" (pill and voice) and resolves once said; the camera opens only after it. The Director, 15 Nov:
+   * a camera light he did not hear about reads as spying.
+   */
+  readonly announce: () => Promise<void>;
+  /** The visible indicator: true while the camera is open, false once it closed. */
+  readonly onCamera?: (on: boolean) => void;
 }) => {
   const modality = input.modality ?? "face";
   const cmd = (c: "enroll" | "verify") => (modality === "palm" ? `palm-${c}` : c);
   const dir = NodePath.join(input.stateDir, modality);
-  const run = input.run ?? runFaceEngine(input.exe);
+  const engine = input.run ?? runFaceEngine(input.exe);
   const now = input.now ?? Date.now;
+  /** When the camera was last announced or in use: a watch's scans every few seconds are one announcement. */
+  let cameraAt: number | null = null;
+  /** Every run that opens the camera: announced first unless it was in use a moment ago, shown while open. */
+  const run: FaceRun = async (args, onLine) => {
+    if (cameraAt === null || now() - cameraAt > ANNOUNCE_AGAIN_MS) await input.announce();
+    cameraAt = now();
+    input.onCamera?.(true);
+    try {
+      return await engine(args, onLine);
+    } finally {
+      cameraAt = now();
+      input.onCamera?.(false);
+    }
+  };
   const tmpl = (member: string) => NodePath.join(dir, `${encodeURIComponent(member)}.bin`);
   const consentFile = NodePath.join(dir, "consent.json");
   let limit: BiometricLimit = BIOMETRIC_LIMIT_START;
@@ -160,7 +184,7 @@ export const createFaceCheck = (input: {
     /** Deletes a member's template and consent. Works with the setting off: deleting must always be possible. */
     remove: async (member: string): Promise<void> => {
       if (NodeFS.existsSync(tmpl(member)) && NodeFS.existsSync(input.exe))
-        await run(["delete", "--template", tmpl(member)], () => {});
+        await engine(["delete", "--template", tmpl(member)], () => {});
       NodeFS.rmSync(tmpl(member), { force: true });
       writeConsents(consents().filter((c) => c.member !== member));
       input.onNote?.(`${modality}_deleted`, {});

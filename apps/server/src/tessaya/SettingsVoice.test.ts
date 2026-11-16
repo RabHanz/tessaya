@@ -9,7 +9,16 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { layerMemory as TessayaDatabaseMemory } from "./TessayaDatabase.ts";
 import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
 import { TessayaPhoneInbox, layer as inboxLayer } from "./TessayaPhoneInbox.ts";
-import { allSettings, choicesOf, findSettings, setSetting, SETTINGS } from "./SettingsVoice.ts";
+import {
+  allSettings,
+  answerBatch,
+  choicesOf,
+  findSettings,
+  setSetting,
+  setSettings,
+  SETTINGS,
+} from "./SettingsVoice.ts";
+import { TurnOrigin } from "./TurnOrigin.ts";
 
 it("every setting has a voice path and a safety class; a never one says why", () => {
   const keys = SETTINGS.map((s) => `${s.store}.${s.key}`).toSorted();
@@ -161,6 +170,68 @@ it.effect(
       const away = yield* setSetting({ key: "showWords", value: true, why: "x", who: "Tessaya" });
       assert.strictEqual(away.status, "failed");
       assert.include(away.line, "not connected to this server");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "several changes go to his phone as one card; only his verified voice answers it, and a risky yes stays on his phone",
+  () => {
+    const { desktop, layer } = setup();
+    return Effect.gen(function* () {
+      const many = yield* setSettings({
+        changes: [
+          { key: "holdKeyCues", value: false },
+          { key: "holdKey", value: "F8" },
+          { key: "enableDeviceSupport", value: true },
+          { key: "dictationCleanupCredentials", value: {} },
+        ],
+        why: "set me up",
+        who: "Tessaya",
+      });
+      assert.deepStrictEqual(
+        many.results.map((r) => r.status),
+        ["done", "asked", "asked", "refused"],
+      );
+      const inbox = yield* TessayaPhoneInbox;
+      const [card] = yield* inbox.pending;
+      assert.include(card?.detail ?? "", '1. the key he holds to dictate: "F9" to "F8"');
+      assert.deepStrictEqual(card?.buttons, ["Approve all", "Review each", "Deny"]);
+
+      const voice = (hisVoice: boolean, answer: "approve" | "deny") =>
+        answerBatch(answer).pipe(
+          Effect.provideService(TurnOrigin, {
+            kind: "device",
+            id: "tessel",
+            label: "Tessel",
+            hisVoice,
+            member: "owner",
+            assurance: 2,
+          }),
+        );
+      assert.isFalse((yield* voice(false, "approve")).ok);
+      // A voice is A2; a card that needs his device's yes stays there.
+      assert.include((yield* voice(true, "approve")).line, "your own device");
+      assert.strictEqual((yield* inbox.pending)[0]?.id, card?.id);
+
+      assert.isTrue(yield* inbox.answerPrompt(card!.id, 0));
+      yield* TestClock.adjust("2 seconds");
+      assert.strictEqual(desktop.holdKey, "F8");
+      const server = yield* (yield* ServerSettingsService).getSettings;
+      assert.isTrue(server.enableDeviceSupport);
+
+      yield* setSettings({
+        changes: [
+          { key: "holdKey", value: "F9" },
+          { key: "enableDeviceSupport", value: false },
+        ],
+        why: "put them back",
+        who: "Tessaya",
+      });
+      assert.isTrue((yield* voice(true, "deny")).ok);
+      yield* TestClock.adjust("2 seconds");
+      assert.strictEqual(desktop.holdKey, "F8");
+      assert.lengthOf(yield* inbox.pending, 0);
     }).pipe(Effect.provide(layer));
   },
 );

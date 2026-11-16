@@ -11,6 +11,7 @@ import type { DeviceItem, DeviceManifest, DeviceWrite } from "@t3tools/tessaya-c
 
 import { MASCOT_ACTS, isMascotAct } from "@t3tools/tessaya-shared/companion";
 
+import { ACTIONS } from "../bindings/bindings.ts";
 import type { HomeControl } from "../home/tessayaHome.ts";
 
 /** Voice choices that are this machine's hardware, as registry items. */
@@ -190,6 +191,12 @@ export const desktopManifest = (input: {
         "has her character on this computer's desktop do a gesture or a funny moment, or go to his window, the taskbar or the other screen",
         { access: "write", values: [...MASCOT_ACTS] },
       ),
+      // The bindings page's actions, so a rule (a remote's button), the brain or an agent runs them as a key would.
+      ...DESK_ACTIONS.map((a) =>
+        item(`${ACTION_PREFIX}${a.id}`, a.label, "action", "actions", a.hint.toLowerCase(), {
+          access: "write",
+        }),
+      ),
       item("screen.list", "Screens", "string", "system", "the screens connected to this computer"),
       item(
         "power.on_battery",
@@ -321,6 +328,9 @@ export const desktopValues = (
 };
 
 export const MASCOT_ITEM = "mascot.do";
+export const ACTION_PREFIX = "action.";
+/** Hold to dictate needs a key that stays down, which a registry write is not. */
+const DESK_ACTIONS = ACTIONS.filter((a) => a.id !== "hold");
 
 /** A write for one of its items, as the voice setting it changes; null for an item it does not take writes on. */
 export const settingOfWrite = (
@@ -379,6 +389,8 @@ export const startDesktopDevice = (input: {
   readonly onNote: (note: unknown) => void;
   /** The desktop companion asked to act; false when she is not on the desktop or cannot now. */
   readonly onMascot: (act: (typeof MASCOT_ACTS)[number]) => boolean;
+  /** Runs one of the bindings page's actions; false when it has no handler here. */
+  readonly onAction: (id: string) => boolean;
   /** Calls `poke` when something it reads changed (a screen, power, lock); returns how to stop. */
   readonly onChange: (poke: () => void) => () => void;
 }) => {
@@ -436,6 +448,15 @@ export const startDesktopDevice = (input: {
             isMascotAct(w.value) && input.onMascot(w.value)
               ? { id: w.id, ok: true }
               : { id: w.id, ok: false, error: "She is not on the desktop right now." },
+          );
+          continue;
+        }
+        if (w.itemId.startsWith(ACTION_PREFIX)) {
+          const id = w.itemId.slice(ACTION_PREFIX.length);
+          acks.push(
+            DESK_ACTIONS.some((a) => a.id === id) && input.onAction(id)
+              ? { id: w.id, ok: true }
+              : { id: w.id, ok: false, error: "This computer cannot do that now." },
           );
           continue;
         }
