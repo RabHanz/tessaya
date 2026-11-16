@@ -3,6 +3,7 @@
  * anything he could at this keyboard. Each tool call comes here before it runs, whichever harness
  * made it, and code decides. A model's reply can never widen this.
  */
+import { appCommandAsks } from "./appCommands.ts";
 import { highRiskSubject } from "./intentParser.ts";
 import { detectSecret } from "./memory.ts";
 import { dangerousCommand, sensitiveAction } from "./screenCompanion.ts";
@@ -194,6 +195,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   ...BATON_QUIET,
   ...BATON_POINTER,
   "act_batch",
+  "app_command",
   "drag",
   "type_text",
   "press_keys",
@@ -347,6 +349,15 @@ const judgeTessayaTool = (name: string, call: ToolCall, context: JudgeContext): 
   }
   const outgoing = context.tainted && context.textIsHis !== true;
   switch (name) {
+    case "app_command": {
+      // A view of his own app is free; a send, a closed terminal or a script waits for his yes.
+      const why = appCommandAsks(
+        typeof call.input["script"] === "string"
+          ? `script.${call.input["script"]}.run`
+          : String(call.input["command"] ?? ""),
+      );
+      return why === null ? { verdict: "allow" } : { verdict: "ask", why };
+    }
     case "drag":
       return { verdict: "ask", why: "It wants to drag something." };
     case "type_text":

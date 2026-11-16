@@ -42,6 +42,7 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { toastManager } from "./ui/toast";
+import { registerMenuAction } from "../shortcuts/dispatcher";
 
 const PREVIEW_FORWARDED_COMMANDS = [
   "workspace.focusNext",
@@ -182,12 +183,12 @@ export function ReopenClosedViewShortcut() {
       if (!event.repeat) enqueueReopen();
     };
     window.addEventListener("keydown", onKeyDown, true);
-    const unsubscribe = window.desktopBridge?.onMenuAction((action) => {
-      if (action === "view.reopenClosed" && !isCommandPaletteOpen()) enqueueReopen();
+    const unsubscribe = registerMenuAction("view.reopenClosed", () => {
+      if (!isCommandPaletteOpen()) enqueueReopen();
     });
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
-      unsubscribe?.();
+      unsubscribe();
     };
   }, [keybindings, previewOpen, terminalOpen]);
 
