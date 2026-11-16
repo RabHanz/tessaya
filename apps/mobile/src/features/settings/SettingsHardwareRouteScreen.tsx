@@ -74,6 +74,7 @@ import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 import { BodiesSection } from "./BodiesSection";
 import { R1SetupSection } from "./R1SetupSection";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
+import { WifiSection } from "./WifiSection";
 import { DEVICE, FLASH_TOOL } from "@t3tools/tessaya-shared/productNames";
 
 const QUIET = { reportFailure: false } as const;
@@ -778,6 +779,8 @@ function DeviceControls({
       {d.speaker === null ? null : (
         <SpeakerSection device={d} busy={busy} run={run} prefix={prefix} />
       )}
+
+      <WifiSection device={d} busy={busy} run={run} prefix={prefix} />
 
       <TagsSection device={d} tags={tags} busy={busy} run={run} prefix={prefix} />
 
