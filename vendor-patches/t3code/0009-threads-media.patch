@@ -2236,7 +2236,7 @@ index e2097ed4a46c482ca5eac5873d3e6d2eae0844be..b0f44a3dc54be617b64c77a93f8cb41e
    return end ? text.slice(0, end.index + end[0].length) : text;
  }
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index bf6b53666f4d724ec4e0b64e3e3932a4580f8ec0..f48d3c3f05be8f974e905baec9b2c80811e2dbbe 100644
+index bf6b53666f4d724ec4e0b64e3e3932a4580f8ec0..d7aa8d416be562449091d168f0f3a3ec36a7ae90 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -1426,6 +1426,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
@@ -2279,6 +2279,18 @@ index bf6b53666f4d724ec4e0b64e3e3932a4580f8ec0..f48d3c3f05be8f974e905baec9b2c808
    }),
  ]);
  export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
+@@ -3904,6 +3912,11 @@ export const OrchestrationV2SubscribeShellInput = Schema.Struct({
+    * `getOlderSettledThreads`. Send only to servers that advertise `shellOlderSettled`.
+    */
+   omitOlderSettled: Schema.optionalKey(Schema.Boolean),
++  /**
++   * A `thread.updated` leaves out `pullRequests` when they equal the ones this stream last sent
++   * for that thread; the client keeps its row's links. Older servers ignore it and send them all.
++   */
++  omitUnchangedPullRequests: Schema.optionalKey(Schema.Literal(true)),
+ });
+ export type OrchestrationV2SubscribeShellInput = typeof OrchestrationV2SubscribeShellInput.Type;
+ 
 diff --git a/packages/shared/package.json b/packages/shared/package.json
 index ba0b394f26d0c5e136b3cb6ed37259ce5b76dd03..82846356721d943ecdc64258d4bacf4a2026f808 100644
 --- a/packages/shared/package.json

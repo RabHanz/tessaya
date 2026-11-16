@@ -330,6 +330,23 @@ describe("reuseUnchangedThreadShells", () => {
     expect(next.threads[0]?.pullRequests).toBe(linked.pullRequests);
   });
 
+  it("keeps a row's links through thread updates that omit them, one or batched", () => {
+    const { pullRequests: _links, ...withoutLinks } = linked;
+    const previous = { ...v2ShellSnapshot, threads: [linked] };
+    const update = (sequence: number): ShellStreamEvent => ({
+      kind: "thread.updated",
+      sequence,
+      location: "active",
+      thread: { ...withoutLinks, status: "running" },
+    });
+    const single = applyShellStreamEvent(previous, update(5));
+    const batched = applyShellStreamEvents(previous, [update(5), update(6)]);
+    for (const next of [single, batched]) {
+      expect(next.threads[0]?.status).toBe("running");
+      expect(next.threads[0]?.pullRequests).toBe(linked.pullRequests);
+    }
+  });
+
   it("keeps an explicit link removal when metadata also changes", () => {
     const updated = { ...linked, title: "Renamed", pullRequests: [] };
     const incoming = { ...v2ShellSnapshot, threads: [updated] };

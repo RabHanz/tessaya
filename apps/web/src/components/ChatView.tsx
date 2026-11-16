@@ -1663,10 +1663,17 @@ export default function ChatView(props: ChatViewProps) {
     data: useAtomValue(gitStatusAtom ? chatGitStatusAtom(gitStatusAtom) : NO_CHAT_GIT_STATUS_ATOM),
     refresh: useEnvironmentQueryRefresh(gitStatusAtom).refresh,
   };
+  const refreshLocalGitStatus = useAtomCommand(vcsEnvironment.refreshLocalStatus, {
+    reportFailure: false,
+  });
   useWorkspaceMutationRefresh({
     enabled: gitStatusCwd !== null,
     mutationId: workspaceMutationId,
-    refresh: gitStatusQuery.refresh,
+    // Resubscribing would resend the whole status, and its activity reports, on every tool call.
+    refresh: () => {
+      if (gitStatusCwd === null) return;
+      void refreshLocalGitStatus({ environmentId, input: { cwd: gitStatusCwd, localOnly: true } });
+    },
     resourceKey: `git-status:${activeThreadKey ?? ""}:${gitStatusCwd ?? ""}`,
   });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);

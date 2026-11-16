@@ -3912,6 +3912,11 @@ export const OrchestrationV2SubscribeShellInput = Schema.Struct({
    * `getOlderSettledThreads`. Send only to servers that advertise `shellOlderSettled`.
    */
   omitOlderSettled: Schema.optionalKey(Schema.Boolean),
+  /**
+   * A `thread.updated` leaves out `pullRequests` when they equal the ones this stream last sent
+   * for that thread; the client keeps its row's links. Older servers ignore it and send them all.
+   */
+  omitUnchangedPullRequests: Schema.optionalKey(Schema.Literal(true)),
 });
 export type OrchestrationV2SubscribeShellInput = typeof OrchestrationV2SubscribeShellInput.Type;
 

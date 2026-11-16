@@ -1924,10 +1924,18 @@ index 6fee790bc4bdaea8920685ef9894451f717f8046..31d144e287edd19cb9ff95428931cfbf
      }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
    );
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..25b9788e8b57ae7197b110f72806742a69eb7e49 100644
+index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ababb0be1f 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -235,6 +235,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+@@ -140,6 +140,7 @@ import {
+   resumeIdentityRoots,
+   shellStreamItemsFromResumeSnapshot,
+   shouldPublishShellApplicationEvent,
++  omitUnchangedPullRequests,
+   skipUnchangedThreadShells,
+   toShellApplicationEvent,
+   type ShellApplicationEvent,
+@@ -235,6 +236,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
  import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
  import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
  import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
@@ -1938,7 +1946,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..25b9788e8b57ae7197b110f72806742a
  import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
  import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
  import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
-@@ -707,13 +711,14 @@ function projectFileFailureContext(
+@@ -707,13 +712,14 @@ function projectFileFailureContext(
  const PROVIDER_STATUS_DEBOUNCE_MS = 200;
  
  // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
@@ -1955,7 +1963,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..25b9788e8b57ae7197b110f72806742a
  const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
  type SplitWsRpc = Extract<
    ServerWsRpc,
-@@ -723,7 +728,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
+@@ -723,7 +729,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
    SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
  const isOtherWsRpc = (rpc: ServerWsRpc): rpc is Exclude<ServerWsRpc, SplitWsRpc> =>
    !isSplitWsRpc(rpc);
@@ -1964,7 +1972,28 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..25b9788e8b57ae7197b110f72806742a
  const SplitWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isSplitWsRpc));
  const OtherWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isOtherWsRpc));
  function toAuthAccessStreamEvent(
-@@ -1945,7 +1950,7 @@ export const layerWsRpc = (
+@@ -1130,6 +1136,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
+     readonly requestCompletionMarker?: boolean;
+     readonly omitIdleSubagents?: boolean;
+     readonly omitOlderSettled?: boolean;
++    readonly omitUnchangedPullRequests?: true;
+   }) {
+     const sql = yield* SqlClient.SqlClient;
+     const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+@@ -1400,8 +1407,10 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
+       ),
+     );
+ 
+-    return stream.pipe(
+-      dedupeShellEnrichment,
++    const deduped = dedupeShellEnrichment(stream);
++    return (
++      input.omitUnchangedPullRequests === true ? omitUnchangedPullRequests(deduped) : deduped
++    ).pipe(
+       Stream.mapError(
+         (cause) =>
+           new OrchestrationV2GetShellSnapshotError({
+@@ -1945,7 +1954,7 @@ export const layerWsRpc = (
          return yield* mutateProjectWithClone(projectService, projectCloneTracker, mutation);
        });
  
@@ -1973,7 +2002,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..25b9788e8b57ae7197b110f72806742a
          [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
            Effect.annotateCurrentSpan({
              "orchestration_v2.command_id": command.commandId,
-@@ -3508,8 +3513,11 @@ export const layerWsRpc = (
+@@ -3508,8 +3517,11 @@ export const layerWsRpc = (
        const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
          handlers;
        return Context.merge(
@@ -1987,7 +2016,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..25b9788e8b57ae7197b110f72806742a
        );
      }),
    );
-@@ -3584,7 +3592,7 @@ export const layer = Layer.unwrap(
+@@ -3584,7 +3596,7 @@ export const layer = Layer.unwrap(
                          })
                          .pipe(Effect.ignore);
                  }),
