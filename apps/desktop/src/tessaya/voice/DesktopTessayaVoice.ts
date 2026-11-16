@@ -2404,6 +2404,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   };
   let toolNames: ReadonlyArray<string> | null = null;
   const audioDir = NodePath.join(input.stateDir, "voice", "recordings");
+  // A stat of every recording: background loops rebuild Home's controls every few seconds, and a figure a minute old is fine.
+  const recordingSpace = cachedFor(60_000, () => spaceUsed(audioDir));
   // A proof run's recorded files are not his words: they leave nothing in History or in the recordings.
   const testRun = (process.env["BATON_TEST_WAV"] ?? "") !== "";
   const keepSettings = (): KeepSettings => ({
@@ -3137,8 +3139,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
 
   const deviceName = () => choiceSummary(choice).mic ?? "System microphone";
   const markOptions = (): MarkOptions => {
+    const screenControls = input.extras?.controls() ?? [];
     const on = (id: string) =>
-      input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
+      screenControls.some((c) => c.id === id && c.kind === "toggle" && c.on);
     return {
       color: cameraOn ? CAMERA_ON_COLOR : hudView(state).color,
       caps: [settings.enabled, on("s.capture"), on("s.act")],
@@ -7114,9 +7117,13 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       backupNote = null;
     }
   };
+  // Each store read below is a sync disk read on the main thread: read each once per build, not once per row.
   const trustData = () => {
+    const screenControls = input.extras?.controls() ?? [];
+    const standing = standingStore.load();
+    const runs = userJobStore.runs();
     const on = (id: string) =>
-      input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
+      screenControls.some((c) => c.id === id && c.kind === "toggle" && c.on);
     return {
       screenAlways: on("s.capture"),
       chrome: on("s.chrome"),
@@ -7145,12 +7152,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           title: j.title,
           what: j.what,
           owner: ownerOf(j).name,
-          on: standingStore.load().on[j.id] === true,
-          count: standingStore.load().counts[j.id] ?? 0,
-          ...(j.trigger.kind === "time" ? { missed: missedRunOf(standingStore.load(), j.id) } : {}),
-          ...(j.trigger.kind === "event"
-            ? { quiet: standingStore.load().quiet?.[j.id] === true }
-            : {}),
+          on: standing.on[j.id] === true,
+          count: standing.counts[j.id] ?? 0,
+          ...(j.trigger.kind === "time" ? { missed: missedRunOf(standing, j.id) } : {}),
+          ...(j.trigger.kind === "event" ? { quiet: standing.quiet?.[j.id] === true } : {}),
         })),
         // A rule and a schedule hand work out, which only the lead does: they are the lead's.
         ...rulesCache.map(({ rule }) => ({
@@ -7170,12 +7175,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           what: `${whenText(j.trigger)[0]!.toUpperCase()}${whenText(j.trigger).slice(1)}: ${j.instruction}`,
           owner: j.owner === "executive" ? leadName() : j.owner,
           on: j.on,
-          count: userJobStore.runs().filter((r) => r.id === j.id).length,
+          count: runs.filter((r) => r.id === j.id).length,
           ...(() => {
-            const last = userJobStore
-              .runs()
-              .filter((r) => r.id === j.id)
-              .at(-1);
+            const last = runs.filter((r) => r.id === j.id).at(-1);
             return last === undefined ? {} : { lastRun: { status: last.status, at: last.at } };
           })(),
           instruction: j.instruction,
@@ -7211,7 +7213,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   };
   // The device and remote-settings loops need only the controls, not the status mark or Home extras.
   const homeControls = (): HomeState["controls"] => {
-    const recordingBytes = spaceUsed(audioDir);
+    const recordingBytes = recordingSpace();
     return [
       ...at("approvals"),
       ...approvalControls(
@@ -9099,6 +9101,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         for (const path of clipPaths(turn.audio)) NodeFS.rmSync(path, { force: true });
         history?.update(turn.id, { audio: null });
       }
+      recordingSpace.reset();
       render();
     } else if (id === "v.pillPlace" && value === "taskbar") {
       save({ pillEdge: "bottom" });
