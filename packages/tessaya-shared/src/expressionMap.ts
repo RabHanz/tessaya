@@ -6,6 +6,7 @@
  */
 import { R1_MOODS, type ExpressionMood } from "@t3tools/tessaya-contracts";
 import type { HandledHow } from "./affect.ts";
+import type { HapticHardware } from "./haptics.ts";
 
 export type Dye = "weld" | "madder" | "woad" | "indigo" | "damson" | "rose";
 
@@ -189,8 +190,8 @@ export interface VesselManifest {
   readonly light?: boolean;
   /** A speaker: the voice's style, its blocked tags and her one sound. */
   readonly voice?: boolean;
-  /** A vibration motor, by kind: an ERM spins up and coasts, so its patterns are pulses, never crisp clicks. */
-  readonly haptic?: "erm" | "lra";
+  /** Its vibration hardware; haptics.ts renders each pattern natively for it. */
+  readonly haptic?: HapticHardware;
 }
 
 /** Every vessel that shows her mood, by role. */
@@ -202,7 +203,7 @@ export const VESSELS = {
     face: [...FACE_LIBRARY, ...R1_MOODS],
     props: ["reading", "magnifier", "mask"],
     voice: true,
-    haptic: "erm",
+    haptic: { kind: "erm" },
   },
   // Props are the Character Studio's (apps/web/public/companion/props.js).
   mascot: {

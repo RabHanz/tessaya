@@ -88,6 +88,7 @@ import {
   renderFor,
   type HapticPattern,
 } from "@t3tools/tessaya-shared/expressionMap";
+import { renderHaptic } from "@t3tools/tessaya-shared/haptics";
 import { houseZone } from "../tessaya/houseZone.ts";
 import * as Stream from "effect/Stream";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -1456,7 +1457,10 @@ const make = Effect.gen(function* () {
       batteryPct: typeof pct === "number" ? pct : null,
       charging: typeof charging === "boolean" ? charging : null,
     });
-    if (level !== null) yield* publish(id, "cmd/haptic", { p: pattern, lvl: level });
+    if (level === null) return null;
+    // The Tessel's manifest says ERM: its firmware owns the pulses, so the rendering is the name and level.
+    const shown = renderHaptic(VESSELS.tessel.haptic, pattern, level);
+    if (shown.kind === "erm") yield* publish(id, "cmd/haptic", { p: shown.p, lvl: shown.lvl });
     return level;
   });
   // Her mood's own buzz as it arrives (EMOTIONS' haptic), at most every 30 minutes so a mood never nags.
