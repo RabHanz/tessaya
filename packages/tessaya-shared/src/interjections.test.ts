@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { hasDirection, speechPieces, withoutDirections } from "./interjections.ts";
+import { voiceClips } from "./voiceClips.ts";
 import {
+  breath,
   rmsOf,
   SPLICE_GAP_MS,
   SPLICE_RATE,
@@ -60,6 +62,19 @@ describe("interjections before the voice", () => {
       "[gesture:pause]",
       "[gesture:pause]",
     ]);
+    // A smile is heard (a soft amused "hmh"), a nod is not.
+    expect(texts(speechPieces("*smiles*", "anna"))).toEqual(["[smile:say]"]);
+  });
+
+  it("gives a persona voice its own clip for a sound Pocket reads as silence, and others what they had", () => {
+    for (const said of ["*coughs*", "*yawns*", "*sniffs*", "*gasps*", "*sighs*"])
+      expect(texts(speechPieces(said, "eve"))[0]).toMatch(/:clip]$/);
+    expect(texts(speechPieces("*coughs* *gasps* *sighs*", "anna"))).toEqual([
+      "[cough:pause]",
+      "[gasp:breath]",
+      "[sigh:breath]",
+    ]);
+    expect(texts(speechPieces("*deep breath*", "eve"))).toEqual(["[breath:breath]"]);
   });
 
   it("keeps emphasis and asides that are not directions", () => {
@@ -157,6 +172,34 @@ describe("splicing sounds between words", () => {
     });
     expect(out).toBe(plain);
     expect(said.at(-1)).toBe("Done.");
+  });
+
+  it("plays a voice's clip at its share of her level, a different take each time, never clipped", async () => {
+    const set = voiceClips("eve", "cough");
+    if (set?.kind !== "sound") throw new Error("eve has her own cough");
+    const [one, two] = set.variants.map((v) => Math.round((v.length * SPLICE_RATE) / set.rate));
+    const pcm = await collect(
+      spliceSpeech(speechPieces("Right. *coughs* *coughs*", "eve"), () => wav(1000, 3000)),
+    );
+    const gap = (SPLICE_GAP_MS / 1000) * SPLICE_RATE;
+    // The words, a gap, her first cough, a gap each side of the next, then her second, a different take.
+    expect(pcm.length).toBe(1000 + gap + one! + 2 * gap + two!);
+    const first = pcm.slice(1000 + gap, 1000 + gap + one!);
+    const second = pcm.slice(pcm.length - two!);
+    expect(first.length === second.length && first.every((v, i) => v === second[i])).toBe(false);
+    expect(rmsOf(first)).toBeCloseTo((3000 / 32768) * 0.8, 2);
+    expect(Math.max(...first.map(Math.abs))).toBeLessThan(32767);
+  });
+
+  it("makes a gasp a sharp bright inhale, not the sigh's soft breath at another length", () => {
+    const crossings = (pcm: Int16Array) =>
+      pcm.reduce((n, v, i) => n + (i > 0 && Math.sign(v) !== Math.sign(pcm[i - 1]!) ? 1 : 0), 0);
+    const soft = breath(260, 0.05);
+    const inhale = breath(260, 0.05, SPLICE_RATE, 7, true);
+    expect(crossings(inhale)).toBeGreaterThan(crossings(soft) * 1.5);
+    // It is near full strength a fifth of the way in, where the soft breath is still rising.
+    const at = (pcm: Int16Array) => rmsOf(pcm.slice(pcm.length / 5 - 240, pcm.length / 5 + 240));
+    expect(at(inhale) / rmsOf(inhale)).toBeGreaterThan(at(soft) / rmsOf(soft));
   });
 
   it("says a laugh in the same voice at its own gain", async () => {

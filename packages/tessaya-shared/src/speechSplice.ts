@@ -4,6 +4,7 @@
  * is one streaming WAV (mono 16-bit, 24 kHz like Pocket and Gemini), the shape every player here already takes.
  */
 import { speechPieces, type SpeechPiece } from "./interjections.ts";
+import { voiceClips } from "./voiceClips.ts";
 
 export const SPLICE_RATE = 24_000;
 /** Around a sound, so it does not run into the words. */
@@ -43,12 +44,16 @@ export const rmsOf = (pcm: Int16Array): number => {
   return pcm.length === 0 ? 0 : Math.sqrt(sum / pcm.length);
 };
 
-/** A soft breath: low-passed noise under a rise-and-fall envelope, at the given RMS. Seeded, so tests repeat. */
+/**
+ * A soft breath: low-passed noise under a rise-and-fall envelope, at the given RMS. An inhale (a gasp) is brighter,
+ * rises fast and stops short, so it is never heard as the same breath. Seeded, so tests repeat.
+ */
 export const breath = (
   ms: number,
   rms: number,
   rate: number = SPLICE_RATE,
   seed = 7,
+  inhale = false,
 ): Int16Array => {
   const out = new Int16Array(Math.round((ms / 1000) * rate));
   let state = seed >>> 0;
@@ -56,8 +61,11 @@ export const breath = (
   const raw = new Float32Array(out.length);
   for (let i = 0; i < out.length; i += 1) {
     state = (state * 1664525 + 1013904223) >>> 0;
-    low += 0.18 * ((state / 0xffffffff) * 2 - 1 - low);
-    raw[i] = low * Math.sin((Math.PI * i) / Math.max(1, out.length - 1)) ** 2;
+    low += (inhale ? 0.55 : 0.18) * ((state / 0xffffffff) * 2 - 1 - low);
+    const t = i / Math.max(1, out.length - 1);
+    raw[i] =
+      low *
+      (inhale ? Math.min(1, t / 0.12) * Math.min(1, (1 - t) / 0.06) : Math.sin(Math.PI * t) ** 2);
   }
   let sum = 0;
   for (const v of raw) sum += v * v;
@@ -68,7 +76,7 @@ export const breath = (
 };
 
 const scaled = (pcm: Int16Array, gain: number): Int16Array =>
-  gain === 1 ? pcm : pcm.map((v) => Math.round(v * gain));
+  gain === 1 ? pcm : pcm.map((v) => Math.max(-32768, Math.min(32767, Math.round(v * gain))));
 
 /** Linear resampling, for a piece that did not come at the stream's rate. */
 const resample = (pcm: Int16Array, from: number, to: number): Int16Array => {
@@ -167,6 +175,20 @@ async function* streamSamples(stream: AsyncIterable<Uint8Array>): AsyncGenerator
   }
 }
 
+const turns = new Map<string, number>();
+
+/** The voice's clip, its next variant so a cough never repeats back to back, at the given RMS. */
+const clipAt = (voice: string, name: string, rms: number): Int16Array => {
+  const set = voiceClips(voice, name);
+  if (set?.kind !== "sound" || set.variants.length === 0) return silence(0);
+  const key = `${voice}/${name}`;
+  const turn = turns.get(key) ?? 0;
+  turns.set(key, turn + 1);
+  const pcm = resample(set.variants[turn % set.variants.length]!, set.rate, SPLICE_RATE);
+  const own = rmsOf(pcm);
+  return own === 0 ? pcm : scaled(pcm, rms / own);
+};
+
 /**
  * The pieces as one stream. `say` synthesises one text in this voice (a WAV stream). A text piece streams as it is
  * synthesised; a sound follows the words before it, so its level can match them.
@@ -195,8 +217,10 @@ export async function* spliceSpeech(
       sound.kind === "pause"
         ? silence(sound.ms)
         : sound.kind === "breath"
-          ? breath(sound.ms, level * 0.3)
-          : scaled(await samplesOf(say(sound.text)), sound.gain);
+          ? breath(sound.ms, level * 0.3, SPLICE_RATE, 7, sound.inhale)
+          : sound.kind === "clip"
+            ? clipAt(sound.voice, sound.name, level * sound.gain)
+            : scaled(await samplesOf(say(sound.text)), sound.gain);
     yield bytesOf(gap);
     yield bytesOf(body);
     if (i < pieces.length - 1) yield bytesOf(silence(SPLICE_GAP_MS));
