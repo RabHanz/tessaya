@@ -133,8 +133,11 @@ const READY_MS = 30_000;
 const THREADS = "2";
 
 export interface PocketEngine {
-  /** The chosen voice, or null while its files are not here, which starts fetching them. */
-  readonly synthesise: (voice: PocketVoice) => Synthesise | null;
+  /**
+   * The chosen voice, or null while its files are not here, which starts fetching them. `reference` is a voice
+   * embedding URL that conditions every line instead, such as one of its affect clips (VOXTA I5).
+   */
+  readonly synthesise: (voice: PocketVoice, reference?: string) => Synthesise | null;
   /**
    * Resolves true once the voice's files are here (fetching them if need be), false when they
    * cannot be: an unsupported machine, or a download that failed.
@@ -328,7 +331,7 @@ export const createPocketEngine = (input: {
 
   return {
     ensure,
-    synthesise: (voice) => {
+    synthesise: (voice, reference) => {
       if (build === undefined) return null;
       if (!present(voice)) {
         void ensure(voice);
@@ -351,7 +354,10 @@ export const createPocketEngine = (input: {
           const response = await fetch(`http://127.0.0.1:${port}/tts`, {
             method: "POST",
             headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ text }).toString(),
+            body: new URLSearchParams({
+              text,
+              ...(reference === undefined ? {} : { voice_url: reference }),
+            }).toString(),
             signal: abort.signal,
           });
           if (!response.ok || response.body === null) {

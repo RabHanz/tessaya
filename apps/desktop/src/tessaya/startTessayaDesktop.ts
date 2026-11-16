@@ -51,6 +51,7 @@ import {
 } from "@t3tools/tessaya-contracts";
 import { approvalRecord } from "@t3tools/tessaya-shared/approvals";
 import { DEFAULT_POCKET_VOICE } from "@t3tools/tessaya-shared/voiceLibrary";
+import { affectReference } from "@t3tools/tessaya-shared/voiceClips";
 import { inFlightLine } from "@t3tools/tessaya-shared/turnsInFlight";
 import { releasesUrl } from "@t3tools/tessaya-shared/repo";
 import { adoptTessayaEnv } from "@t3tools/tessaya-shared/tessayaEnv";
@@ -382,13 +383,19 @@ export const startTessayaDesktop = Effect.gen(function* () {
     let lastWake: string | null | undefined;
     /** Words of the current desk reply already handed to the player, so a layer's word cues count the whole reply. */
     let cueBase = 0;
+    /** A persona layer's tone for the reply being said (VOXTA I5): each line goes in that voice's affect clip. */
+    let lineAffect: string | null = null;
+    let deskTurns = 0;
     /** Tessaya's own voice, waited for while it loads. The OS voice only when he chose it. */
     const chooseVoice = (
       name: PocketVoice | "system",
       cloud: string | null = null,
     ): VoiceChoice => {
       if (name === "system") return { kind: "system" };
-      const synth = pocket.synthesise(name);
+      // A clone reference conditions the whole line, never spliced; a voice without that clip says it plainly.
+      const reference =
+        lineAffect === null || cloud !== null ? undefined : affectReference(name, lineAffect);
+      const synth = pocket.synthesise(name, reference);
       if (synth === null) return { kind: "wait", ready: pocket.ensure(name) };
       return cloud === null || Date.now() < cloudQuietUntil
         ? { kind: "synth", synth, voice: name }
@@ -444,7 +451,11 @@ export const startTessayaDesktop = Effect.gen(function* () {
         chooseVoice(screen?.voice() ?? DEFAULT_POCKET_VOICE, screen?.cloudVoice() ?? null),
       player: voicePlayer,
       silent: () => screen?.writtenOnly() ?? false,
-      onActive: (active) => voice?.onSpeaking(active),
+      onActive: (active) => {
+        // The reply's tone ends with its speech; whatever she says next is in her plain voice.
+        if (!active && deskTurns === 0) lineAffect = null;
+        voice?.onSpeaking(active);
+      },
       onText: (text) => voice?.onSpoken(text),
       respellings: () => voice?.respellings() ?? {},
       onPlaying: (text) => voice?.onPlaying(text),
@@ -631,6 +642,19 @@ export const startTessayaDesktop = Effect.gen(function* () {
       signal: AbortSignal,
     ): Promise<void> => {
       cueBase = 0;
+      lineAffect = null;
+      deskTurns += 1;
+      try {
+        await deskTurnOnce(body, onWords, signal);
+      } finally {
+        deskTurns -= 1;
+      }
+    };
+    const deskTurnOnce = async (
+      body: unknown,
+      onWords: (words: string) => void,
+      signal: AbortSignal,
+    ): Promise<void> => {
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
       if (config._tag === "None") throw new Error("The local server is not ready.");
@@ -642,7 +666,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       });
       if (!response.ok || response.body === null)
         throw new Error(`The server brain did not answer (${response.status}).`);
-      await readDeskTurn(response.body, onWords);
+      await readDeskTurn(response.body, onWords, (affect) => void (lineAffect = affect));
     };
     // His private stores live on this machine's own server: always asked here, never through T3's window.
     const privateMemory = createPrivateMemory((op, args = {}) =>

@@ -35,3 +35,14 @@ export const voiceClips = (voice: string, name: string): VoiceClipSet | undefine
   sets.set(key, set);
   return set;
 };
+
+/**
+ * The embedding a line in this tone is spoken with: the voice's `affect-<name>` reference, when it has one. Pocket's
+ * /tts takes it only as an http(s) or hf:// URL (3.3.0 refuses a local path or file://), so a reference is kept as one.
+ */
+export const affectReference = (voice: string, affect: string): string | undefined => {
+  const set = voiceClips(voice, `affect-${affect}`);
+  return set?.kind === "reference"
+    ? set.embeddings.find((e) => /^(https?|hf):\/\//.test(e))
+    : undefined;
+};
