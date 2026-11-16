@@ -75,7 +75,16 @@ interface CleanInput {
   readonly mode: DictationMode;
   readonly level: CleanupLevel;
   readonly context?: DictationContext;
+  /**
+   * The message so far right before the caret, made of his earlier dictations into this chat box: with his key it is
+   * cleaned again with these words as one, so a repeat or correction across presses is settled (`message` says it was).
+   */
+  readonly prior?: string;
 }
+
+/** The words the model reads: his earlier dictations in this message, then these. */
+const allSaid = (c: CleanInput): string =>
+  c.prior === undefined || c.prior.trim() === "" ? c.raw : `${c.prior.trim()} ${c.raw.trim()}`;
 
 export interface Rewriter {
   /** Called when recording starts, so the session is up by the time he stops. */
@@ -85,9 +94,14 @@ export interface Rewriter {
    * the default) the last one too, so after release only what changed since is left to clean (about 1 s a turn).
    */
   readonly speculate: (input: CleanInput & { readonly pause?: boolean }) => void;
-  readonly clean: (
-    input: CleanInput,
-  ) => Promise<CleanedText & { readonly ms: number; readonly speculated: boolean }>;
+  readonly clean: (input: CleanInput) => Promise<
+    CleanedText & {
+      readonly ms: number;
+      readonly speculated: boolean;
+      /** The text is the whole message (`prior` and these words), to go in place of `prior`. */
+      readonly message: boolean;
+    }
+  >;
   readonly dispose: () => void;
 }
 
@@ -346,8 +360,10 @@ export const makeRewriter = (input: {
 
   return {
     warm,
-    speculate: ({ pause = true, ...c }) => {
-      if (c.level !== "claude") return;
+    speculate: ({ pause = true, ...said }) => {
+      if (said.level !== "claude") return;
+      // With his key release cleans the message whole, so that is what a pause guesses.
+      const c = keyRoute() ? { ...said, raw: allSaid(said) } : said;
       // His key cleans the whole dictation at release, so a pause guesses the whole: if he stops there, release takes it.
       const pieces = keyRoute()
         ? pause && c.raw.trim() !== ""
@@ -365,84 +381,134 @@ export const makeRewriter = (input: {
       }
       if (!guessing) nextGuess();
     },
-    clean: async (c) => {
+    clean: async (said) => {
       const started = Date.now();
-      const limit = input.limitMs ?? hardLimitMs(c.raw);
-      const deadline =
-        started +
-        (apiAnswers ? Math.min(limit, input.releaseBudgetMs ?? RELEASE_BUDGET_MS) : limit);
       // The real clean goes before any guess still waiting.
       queue = [];
       const ready = new Map(guesses);
       const done = new Map(answered);
       guesses.clear();
       answered.clear();
-      const waitFor = async (cleaned: Promise<CleanedText>, by = deadline) => {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const answer = await Promise.race([
-          cleaned.catch(() => null),
-          new Promise<null>((resolve) => {
-            timer = setTimeout(() => resolve(null), by - Date.now());
-          }),
-        ]);
-        clearTimeout(timer);
-        return answer;
-      };
-      const wholeBy = started + (input.wholeLimitMs ?? wholeLimitMs(c.raw));
-      if (keyRoute()) {
-        // The whole guessed at his last pause, answered or still on its way, is sooner than asking again now.
-        const key = keyOf(c, c.raw);
-        const pending = ready.get(key);
-        const guessed =
-          done.get(key) ?? (pending === undefined ? null : await waitFor(pending, wholeBy));
-        if (guessed !== null && usable(guessed))
-          return { ...guessed, ms: Date.now() - started, speculated: true };
-      }
-      const pieces = dictationPieces(c.raw, c.mode);
-      // With his key, more than one sentence is also cleaned whole, so a correction or fragment that crosses a
-      // sentence is settled; the pieces below, cleaned meanwhile, are pasted only if the whole does not come back.
-      const whole = pieces.length > 1 && keyRoute() ? run(c, askBy(wholeBy, c.context)) : null;
-      // Each piece cleaned while he spoke is taken as it is; the pieces left, side by side, are cleaned together now.
-      const parts: CleanedText[] = [];
-      let left: string[] = [];
-      let guessedAll = true;
-      const cleanLeft = async () => {
-        if (left.length === 0) return;
-        parts.push(await run({ ...c, raw: left.join(" ") }, askBy(deadline, c.context)));
-        left = [];
-        guessedAll = false;
-      };
-      for (const piece of pieces) {
-        const key = keyOf(c, piece);
-        const guess = ready.get(key);
-        // A guess still running is waited for on the subscription, where a new ask would queue behind it anyway; with
-        // his key the piece is asked again at once instead, which is faster than the session's turn.
-        const guessed =
-          done.get(key) ?? (guess === undefined || keyRoute() ? null : await waitFor(guess));
-        if (guessed === null || !usable(guessed)) {
-          left.push(piece);
-          continue;
+      const cleanAlone = async (
+        c: CleanInput,
+        wholeOnly = false,
+      ): Promise<CleanedText & { readonly ms: number; readonly speculated: boolean }> => {
+        const limit = input.limitMs ?? hardLimitMs(c.raw);
+        const deadline =
+          started +
+          (apiAnswers ? Math.min(limit, input.releaseBudgetMs ?? RELEASE_BUDGET_MS) : limit);
+        const waitFor = async (cleaned: Promise<CleanedText>, by = deadline) => {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const answer = await Promise.race([
+            cleaned.catch(() => null),
+            new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), by - Date.now());
+            }),
+          ]);
+          clearTimeout(timer);
+          return answer;
+        };
+        const wholeBy = started + (input.wholeLimitMs ?? wholeLimitMs(c.raw));
+        if (keyRoute()) {
+          // The whole guessed at his last pause, answered or still on its way, is sooner than asking again now.
+          const key = keyOf(c, c.raw);
+          const pending = ready.get(key);
+          const guessed =
+            done.get(key) ?? (pending === undefined ? null : await waitFor(pending, wholeBy));
+          if (guessed !== null && usable(guessed))
+            return { ...guessed, ms: Date.now() - started, speculated: true };
+        }
+        // The message pass is one call against the whole limit: what it would fall back to is cleaned alongside it.
+        if (wholeOnly) {
+          const cleaned = await run(c, askBy(wholeBy, c.context));
+          return { ...cleaned, ms: Date.now() - started, speculated: false };
+        }
+        const pieces = dictationPieces(c.raw, c.mode);
+        // With his key, more than one sentence is also cleaned whole, so a correction or fragment that crosses a
+        // sentence is settled; the pieces below, cleaned meanwhile, are pasted only if the whole does not come back.
+        const whole = pieces.length > 1 && keyRoute() ? run(c, askBy(wholeBy, c.context)) : null;
+        // Each piece cleaned while he spoke is taken as it is; the pieces left, side by side, are cleaned together now.
+        const parts: CleanedText[] = [];
+        let left: string[] = [];
+        let guessedAll = true;
+        const cleanLeft = async () => {
+          if (left.length === 0) return;
+          parts.push(await run({ ...c, raw: left.join(" ") }, askBy(deadline, c.context)));
+          left = [];
+          guessedAll = false;
+        };
+        for (const piece of pieces) {
+          const key = keyOf(c, piece);
+          const guess = ready.get(key);
+          // A guess still running is waited for on the subscription, where a new ask would queue behind it anyway; with
+          // his key the piece is asked again at once instead, which is faster than the session's turn.
+          const guessed =
+            done.get(key) ?? (guess === undefined || keyRoute() ? null : await waitFor(guess));
+          if (guessed === null || !usable(guessed)) {
+            left.push(piece);
+            continue;
+          }
+          await cleanLeft();
+          parts.push(guessed);
         }
         await cleanLeft();
-        parts.push(guessed);
-      }
-      await cleanLeft();
-      if (parts.length === 0) parts.push(await run(c, askBy(deadline, c.context)));
-      const settled = await whole?.catch(() => null);
-      if (settled?.stage === "model")
-        return { ...settled, ms: Date.now() - started, speculated: false };
-      const fellBack = parts.find((part) => part.stage === "fallback");
-      const cleaned: CleanedText = {
-        text: parts
-          .map((part) => part.text.trim())
-          .filter((text) => text !== "")
-          .join(" "),
-        stage:
-          fellBack?.stage ??
-          (parts.some((part) => part.stage === "model") ? "model" : parts[0]!.stage),
-        ...(fellBack?.why === undefined ? {} : { why: fellBack.why }),
+        if (parts.length === 0) parts.push(await run(c, askBy(deadline, c.context)));
+        const settled = await whole?.catch(() => null);
+        if (settled?.stage === "model")
+          return { ...settled, ms: Date.now() - started, speculated: false };
+        // The whole did not come back, so the sentences cleaned on their own go in, and the reason goes with them.
+        const fellBack = parts.find((part) => part.stage === "fallback");
+        const why =
+          fellBack?.why ?? (whole === null ? undefined : `whole pass ${settled?.why ?? "failed"}`);
+        const cleaned: CleanedText = {
+          text: parts
+            .map((part) => part.text.trim())
+            .filter((text) => text !== "")
+            .join(" "),
+          stage:
+            fellBack?.stage ??
+            (parts.some((part) => part.stage === "model") ? "model" : parts[0]!.stage),
+          ...(why === undefined ? {} : { why }),
+        };
+        return { ...cleaned, ms: Date.now() - started, speculated: guessedAll };
       };
-      return { ...cleaned, ms: Date.now() - started, speculated: guessedAll };
+      const all = allSaid(said);
+      if (all === said.raw || !keyRoute() || said.level !== "claude")
+        return { ...(await cleanAlone(said)), message: false };
+      // The message guessed at his last pause, answered or on its way: nothing else is asked unless it fails.
+      const pendingWhole = ready.get(keyOf(said, all));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const answeredWhole =
+        done.get(keyOf(said, all)) ??
+        (pendingWhole === undefined
+          ? undefined
+          : await Promise.race([
+              pendingWhole.catch(() => undefined),
+              new Promise<undefined>((resolve) => {
+                timer = setTimeout(
+                  () => resolve(undefined),
+                  input.wholeLimitMs ?? wholeLimitMs(all),
+                );
+              }),
+            ]));
+      clearTimeout(timer);
+      if (answeredWhole !== undefined && usable(answeredWhole))
+        return { ...answeredWhole, ms: Date.now() - started, speculated: true, message: true };
+      // These words on their own run meanwhile: if the message pass fails or runs out of time, they go in instead.
+      const message = cleanAlone({ ...said, raw: all }, true).catch(() => null);
+      const alone = cleanAlone(said);
+      const whole = await message;
+      if (whole?.stage === "model") {
+        void alone.catch(() => undefined);
+        return { ...whole, message: true };
+      }
+      const drafted = await alone;
+      return {
+        ...drafted,
+        why: drafted.why ?? `message pass ${whole?.why ?? "failed"}`,
+        ms: Date.now() - started,
+        message: false,
+      };
     },
     dispose: drop,
   };

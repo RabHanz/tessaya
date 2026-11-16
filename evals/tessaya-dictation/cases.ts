@@ -5,6 +5,8 @@
 export interface DictationCase {
   readonly id: string;
   readonly heard: string;
+  /** What the desktop sends beside it, such as the chat reply he is answering. */
+  readonly context?: { readonly replyingTo?: string };
   readonly dictionary?: ReadonlyArray<{
     readonly phrase: string;
     readonly replacement: string | null;
@@ -64,5 +66,30 @@ export const CASES: ReadonlyArray<DictationCase> = [
     dictionary: [{ phrase: "btw", replacement: "by the way" }],
     must: ["By the way"],
     never: [],
+  },
+  // 16 Nov: a phrase said again after a pause stayed twice ("defaulted off. Defaulted off.").
+  {
+    id: "said-again-after-a-pause",
+    heard: "Which of the alerts are still muted for now? Kept on mute. Kept on mute.",
+    must: ["alerts", "mute"],
+    never: ["mute. kept on mute", "mute kept on mute"],
+  },
+  // His message so far (cleaned already) and the next press, cleaned as one: the correction crosses the presses.
+  {
+    id: "correction-across-presses",
+    heard:
+      "Send the invoice to the Leeds office today and copy Sam. Sorry not Leeds. The Bristol office.",
+    must: ["Bristol office", "Sam"],
+    never: ["Leeds"],
+  },
+  {
+    id: "misheard-fixed-by-the-reply",
+    heard: "Can you rotate the token for back please and rerun it tonight?",
+    context: {
+      replyingTo:
+        "The nightly backup to Backblaze failed again at 02:00 because its token expired.",
+    },
+    must: ["Backblaze"],
+    never: ["back please"],
   },
 ];

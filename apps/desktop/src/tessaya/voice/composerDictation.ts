@@ -29,6 +29,8 @@ interface Session {
   readonly target: ComposerTarget;
   /** Null while the claim is out. */
   claimed: boolean | null;
+  /** What the chat box said as it claimed: his message so far before the caret, and the reply he is answering. */
+  said: { readonly prior?: string; readonly replyingTo?: string };
   claim: Promise<boolean>;
 }
 
@@ -38,6 +40,8 @@ export const createComposerDictation = (input: {
   readonly onAction: (insert: boolean) => void;
   /** The chat box let the dictation go (he moved to another field): the pill shows it again. */
   readonly onRelease?: () => void;
+  /** He sent a message he had dictated into, as `written` and as he sent it. */
+  readonly onSent?: (written: string, kept: string) => void;
 }) => {
   let seq = 0;
   let session: Session | null = null;
@@ -90,7 +94,7 @@ export const createComposerDictation = (input: {
           if (session === s) s.claimed = ok;
           return ok && session === s;
         });
-      const s: Session = { id, target, claimed: null, claim: Promise.resolve(false) };
+      const s: Session = { id, target, claimed: null, said: {}, claim: Promise.resolve(false) };
       session = s;
       s.claim = claimed(s);
       return s.claim;
@@ -101,14 +105,35 @@ export const createComposerDictation = (input: {
     level: (db: number) => tell((id) => ({ type: "level", id, db })),
     words: (text: string) => tell((id) => ({ type: "words", id, text })),
     finish: () => tell((id) => ({ type: "finish", id })),
-    /** The cleaned words: true when the composer took them; false pastes them as before. */
-    commit: (text: string): Promise<boolean> => {
+    /** The claimed chat box's message so far and the reply he is answering (none until it claims). */
+    said: () => {
+      const s = live();
+      return s?.claimed === true ? s.said : {};
+    },
+    /**
+     * The cleaned words: true when the composer took them; false pastes them as before. With `replace`, `text` is the
+     * whole message and goes in place of `replace.prior`, or `replace.alone` does if the box changed.
+     */
+    commit: (
+      text: string,
+      replace?: { readonly prior: string; readonly alone: string },
+    ): Promise<boolean> => {
       const s = live();
       if (s === null) return Promise.resolve(false);
       session = null;
       // A claim still out is a claim missed: nothing waits on it any more.
       if (s.claimed !== true) return Promise.resolve(false);
-      return ask(s, { type: "commit", id: s.id, text }, "took", COMMIT_MS);
+      return ask(
+        s,
+        {
+          type: "commit",
+          id: s.id,
+          text,
+          ...(replace === undefined ? {} : { replace: replace.prior, alone: replace.alone }),
+        },
+        "took",
+        COMMIT_MS,
+      );
     },
     /** Nothing came of it, or ✕ / Esc threw it away: the composer puts the draft back as it was. */
     cancel: () => {
@@ -117,6 +142,12 @@ export const createComposerDictation = (input: {
         s.target.send({ type: "cancel", id: s.id });
     },
     reply: (reply: ComposerDictationReply) => {
+      if (reply.type === "sent") return input.onSent?.(reply.written, reply.kept);
+      if (reply.type === "claimed" && session?.id === reply.id)
+        session.said = {
+          ...(reply.prior === undefined ? {} : { prior: reply.prior }),
+          ...(reply.replyingTo === undefined ? {} : { replyingTo: reply.replyingTo }),
+        };
       if (reply.type === "action") {
         if (session?.id === reply.id) input.onAction(reply.insert);
         return;

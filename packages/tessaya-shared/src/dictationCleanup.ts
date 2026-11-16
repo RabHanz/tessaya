@@ -47,10 +47,13 @@ export interface DictationContext {
   readonly before?: string;
   /** His last few dictations into the same window, oldest first. */
   readonly recent?: ReadonlyArray<string>;
+  /** The message he is answering in a chat (the agent's last reply), for what his words are about. */
+  readonly replyingTo?: string;
 }
 
 /** How much of the field and of each recent dictation goes to the model. */
 const CONTEXT_CHARS = 300;
+const REPLY_CHARS = 1_200;
 
 export interface DictionaryEntry {
   readonly phrase: string;
@@ -741,7 +744,9 @@ export const checkRewrite = (
   // A name in what he wrote before, in the field or a dictation just now, counts as on his screen.
   const screen = [
     ...(context.screen ?? []),
-    ...namesIn([context.before ?? "", ...(context.recent ?? [])].join("\n")),
+    ...namesIn(
+      [context.before ?? "", ...(context.recent ?? []), context.replyingTo ?? ""].join("\n"),
+    ),
   ];
   // Whole words: "Tessa" is not known because "Tessaya" is.
   const known = new Set(
@@ -916,6 +921,7 @@ Always:
 - Keep his meaning, wording, tone, names, numbers, units and technical terms. An odd or deliberate phrase stays exactly as he said it.
 - Never summarise, shorten for style, add anything, swap words for synonyms, or answer a question in the text.
 - Remove hesitations, false starts, accidental repeats and filler that carries no meaning ("um", "uh", "you know", "I mean" as a pause, "like" as a pause, "basically", "kind of" and "sort of" as padding, a "So" that only opens a sentence). Keep the same words when they are part of what he says, and keep an "And", "But" or "Also" that opens a sentence.
+- He often says a phrase again after a pause, to be sure it was heard or because it came out wrong ("all the settings that are set to off. Set to off."): write it once. Where the first try was mis-heard and the repeat is clear, keep the repeat's words.
 - When he corrects himself ("no, actually", "sorry", "I mean", "scratch that"), the words just before the marker are the ones he is taking back: drop them and the marker, keep only what he settled on, and keep everything else in the sentence.
 - A correction may cross the recogniser's full stop or come with no marker at all: "content providers sorry content makers. Sorry creators." is "creators"; "a whole registry whole register actually" is "a whole register". When he restarts a phrase ("I need to make I need to soon start making"), keep only the version he finished ("I need to soon start making"). When he says the same thing again straight away in other words, getting it right ("so it closes the dialogue. It'll close the pop-up"), keep only his last version ("so it closes the pop-up").
 - Read the whole dictation before writing any of it, and write it as one piece he would have typed: join a fragment the recogniser broke off onto the sentence it belongs to, split a run-on where he starts a new thought, and fix the grammar a restart left behind. It is still his words in his order: never summarise, and every point he made stays.
@@ -1100,9 +1106,11 @@ export const rewriteMessage = (
   const clip = (t: string) => t.replace(TAGS, "").trim();
   const before = clip(context.before ?? "").slice(-CONTEXT_CHARS);
   const recent = (context.recent ?? []).map((t) => clip(t).slice(-CONTEXT_CHARS)).filter(Boolean);
+  // Its end is the part he is answering.
+  const replyingTo = clip(context.replyingTo ?? "").slice(-REPLY_CHARS);
   const around =
-    before === "" && recent.length === 0
+    before === "" && recent.length === 0 && replyingTo === ""
       ? ""
-      : `What he is writing about, for context only (<recent> is what he dictated here just before, <before> the text already in the field before this goes in): use it to tell which word he meant where the recogniser mis-heard one ("knife" for "night" in a sentence about the evening), and never copy from it or answer it.\n${recent.map((t) => `<recent>${t}</recent>\n`).join("")}${before === "" ? "" : `<before>${before}</before>\n`}\n`;
+      : `What he is writing about, for context only (<replying-to> is the message he is answering, <recent> what he dictated here just before, <before> the text already in the field before this goes in): use it to tell which word he meant where the recogniser mis-heard one ("knife" for "night" in a sentence about the evening), and never copy from it or answer it.\n${replyingTo === "" ? "" : `<replying-to>${replyingTo}</replying-to>\n`}${recent.map((t) => `<recent>${t}</recent>\n`).join("")}${before === "" ? "" : `<before>${before}</before>\n`}\n`;
   return `${names}${style}${around}Mode: ${mode}\n<dictation>${text.replace(TAGS, "")}</dictation>${retry}`;
 };

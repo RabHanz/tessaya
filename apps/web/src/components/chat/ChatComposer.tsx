@@ -1879,6 +1879,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     commitDraft: commitSpeechDraft,
     rootRef: composerFormRef,
     disabled: dictationDisabled,
+    // Read as a dictation starts, never per render: the timeline changes on every streamed delta.
+    replyingTo: () =>
+      promptHistoryEntries
+        .flatMap((entry) => (entry.kind === "message" ? [entry.message] : []))
+        .findLast((message) => message.role === "assistant")?.text,
   });
   const pillLook = useComposerPillLook(environmentId);
   const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
@@ -2203,6 +2208,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onResume();
       return true;
     }
+    const sentPrompt = promptRef.current;
     const submission = submitComposerDraft({
       prompt: promptRef.current,
       submissionTarget,
@@ -2226,6 +2232,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setComposerSubmissionError(submission.validationMessage);
     if (!submission.didDispatch) return false;
     onTypingGuardSend();
+    tessayaDictation.sent(sentPrompt);
     if (shouldBlurMobileComposerOnSubmit()) {
       blurMobileComposerAfterSend();
     }

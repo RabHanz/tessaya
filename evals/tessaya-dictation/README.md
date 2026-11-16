@@ -1,6 +1,6 @@
 # Tessaya dictation
 
-Checks Tessaya's own dictation clean-up (`rewriteSystemPrompt`, `checkRewrite` and the one retry, as `cleanDictation` in `packages/tessaya-shared/src/dictationCleanup.ts` runs them) on made-up dictations shaped like the ones where it fell short of Wispr Flow: a phrase said again in other words, a correction with no marker across sentences, mis-heard words, spoken numbers, a capital the recogniser put on a plain word, and a dictionary entry in small letters.
+Checks Tessaya's own dictation clean-up (`rewriteSystemPrompt`, `checkRewrite` and the one retry, as `cleanDictation` in `packages/tessaya-shared/src/dictationCleanup.ts` runs them) on made-up dictations shaped like the ones where it fell short of Wispr Flow: a phrase said again in other words, a correction with no marker across sentences, mis-heard words, spoken numbers, a capital the recogniser put on a plain word, a dictionary entry in small letters, a phrase said again after a pause, a correction across two presses (his message so far cleaned with the next one), and a mis-hearing the chat reply he is answering settles.
 
 A case passes when the model's text is pasted (not refused for the local tidy) and holds every word in `must` and none in `never`.
 

@@ -144,6 +144,29 @@ it("takes the desktop's dictation, commits its words at the caret in one go, and
     .element(screen.getByLabelText("Draft"))
     .toHaveValue("Let's ship the retry on Friday. Can you check the cold start? Also add a test.");
   await expect.element(screen.getByLabelText("Phase")).toHaveTextContent("idle");
+
+  // The next press is told his message so far, and its words cleaned with it go in place of it.
+  const box = screen.getByLabelText("Draft").element() as HTMLTextAreaElement;
+  const end = box.value.indexOf("start?") + "start?".length;
+  box.setSelectionRange(end, end);
+  expect(channel.send({ type: "start", id: 3, mode: "held" })).toEqual({
+    type: "claimed",
+    id: 3,
+    ok: true,
+    prior: "Can you check the cold start?",
+  });
+  channel.send({
+    type: "commit",
+    id: 3,
+    text: "Can you check the cold start today?",
+    replace: "Can you check the cold start?",
+    alone: "Today.",
+  });
+  await expect
+    .element(screen.getByLabelText("Draft"))
+    .toHaveValue(
+      "Let's ship the retry on Friday. Can you check the cold start today? Also add a test.",
+    );
 });
 
 it("puts the words in the draft as it is when they land, even if it changed under the dictation", async () => {

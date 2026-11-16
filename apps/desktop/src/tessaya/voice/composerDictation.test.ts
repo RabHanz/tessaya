@@ -6,9 +6,14 @@ import { waveEngine } from "@t3tools/tessaya-shared/waveform";
 import { COMMIT_MS, createComposerDictation, routePill } from "./composerDictation.ts";
 
 /** A chat box that answers as `answer` says, or never when it returns null. */
-const box = (answer: (m: ComposerDictationMessage) => boolean | null, focused = true) => {
+const box = (
+  answer: (m: ComposerDictationMessage) => boolean | null,
+  focused = true,
+  said: { readonly prior?: string; readonly replyingTo?: string } = {},
+) => {
   const sent: ComposerDictationMessage[] = [];
   const actions: boolean[] = [];
+  const sends: Array<readonly [string, string]> = [];
   const composer = createComposerDictation({
     target: () => ({
       focused: () => focused,
@@ -16,25 +21,31 @@ const box = (answer: (m: ComposerDictationMessage) => boolean | null, focused = 
         sent.push(m);
         const ok = answer(m);
         if (ok === null) return;
-        if (m.type === "start") composer.reply({ type: "claimed", id: m.id, ok });
+        if (m.type === "start") composer.reply({ type: "claimed", id: m.id, ok, ...said });
         if (m.type === "commit") composer.reply({ type: "took", id: m.id, ok });
       },
       gone: () => false,
     }),
     onAction: (insert) => actions.push(insert),
+    onSent: (written, kept) => sends.push([written, kept]),
   });
-  return { composer, sent, actions };
+  return { composer, sent, actions, sends };
 };
 
 describe("dictation into our own chat box", () => {
   it("a claimed dictation streams to the composer and its words are taken, not pasted", async () => {
-    const { composer, sent } = box(() => true);
+    const { composer, sent, sends } = box(() => true, true, { prior: "Hi.", replyingTo: "Done?" });
     expect(await composer.start("held")).toBe(true);
+    // What the box said as it claimed is the clean-up's: his message so far and the reply he answers.
+    expect(composer.said()).toEqual({ prior: "Hi.", replyingTo: "Done?" });
     composer.words("can you");
     composer.level(0.2);
-    expect(await composer.commit("Can you?")).toBe(true);
+    expect(await composer.commit("Hi. Can you?", { prior: "Hi.", alone: "Can you?" })).toBe(true);
     expect(sent.map((m) => m.type)).toEqual(["start", "words", "level", "commit"]);
+    expect(sent.at(-1)).toMatchObject({ text: "Hi. Can you?", replace: "Hi.", alone: "Can you?" });
     expect(composer.active()).toBe(false);
+    composer.reply({ type: "sent", id: 0, written: "Hi. Can you?", kept: "Hi. Can we?" });
+    expect(sends).toEqual([["Hi. Can you?", "Hi. Can we?"]]);
   });
 
   it("a composer that does not take the words in time leaves them to today's paste", async () => {

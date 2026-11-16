@@ -15,6 +15,16 @@ export const settleOneShot = (
   };
 };
 
+/** The line he sees when the model cleaned his words but not as a whole, so the drafts went in. */
+export const partialCleanupLine = (why: string): string => {
+  const cause = /timed out/.test(why)
+    ? "The full clean-up took too long"
+    : "The full clean-up did not come back";
+  return why.startsWith("message pass")
+    ? `${cause}, so only your last words were cleaned, not the whole message`
+    : `${cause}, so it was cleaned sentence by sentence`;
+};
+
 /** The line he sees when the model's clean-up was not used, saying which of its three causes it was. */
 export const cleanupFailedLine = (why: string | undefined): string => {
   const tail = "so it was tidied on this computer only";
