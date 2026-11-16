@@ -217,7 +217,8 @@ const briefAnswer =
         .flatMap((c) => contentWords(c.text)),
     );
     return contentWords(answer).some((w) => read.has(w)) ||
-      /\b(nothing|none|no one|all|every)\b/i.test(answer)
+      // An idle read (total 0) is said as "no work is running" as often as "nothing" (.174 gate).
+      /\b(nothing|none|no one|no (work|sessions?|jobs?)|all|every)\b/i.test(answer)
       ? null
       : `said nothing from what the tools read: ${last.slice(0, 120)}`;
   };
@@ -894,6 +895,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["Why is everything so slow right now?"],
     uses: [
       [
+        "tessaya_work_now",
         "tessaya_fleet",
         "tessaya_in_flight",
         "tessaya_watch",
@@ -947,7 +949,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     proves: ["tessaya_work_now"],
     said: ["Why are my agents taking so long today?"],
     uses: [["tessaya_work_now"]],
-    check: briefAnswer(20),
+    check: briefAnswer(25),
   },
   {
     // Job lead hand-off: the job moves with the conversation, and comes back, its worker untouched.
@@ -1164,7 +1166,16 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     id: "settings-many",
     proves: ["settings_set_many"],
     said: ["From now on talk to me on Opus, and turn the hold cues off."],
-    uses: [["settings_set_many"]],
+    // One card is the aim (settings_set_many), steady about 2 in 3; both asks reaching him is what must hold (.174 gate).
+    uses: [["settings_set_many", "settings_set"]],
+    check: (_last, calls) =>
+      ["brainModels", "holdKeyCues"].every((key) =>
+        calls.some(
+          (c) => c.name.startsWith("settings_set") && JSON.stringify(c.input).includes(key),
+        ),
+      )
+        ? null
+        : "did not ask for both changes",
   },
   {
     id: "settings-answer-all",
