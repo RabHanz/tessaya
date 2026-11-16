@@ -46,7 +46,12 @@ export const answerAsk = Effect.fn("AskWorker.answer")(function* (
     askVessel(ask),
   ).pipe(
     Stream.runCollect,
-    Effect.map((words) => [...words].join("").trim()),
+    Effect.map((said) =>
+      [...said]
+        .filter((w) => typeof w === "string")
+        .join("")
+        .trim(),
+    ),
   );
   if (said === "") return yield* inbox.fail(ask.id, "The brain did not answer.");
   return yield* inbox.answer(ask.id, said, said);

@@ -380,6 +380,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
     let dictating = false;
     /** Undefined until a wake; null for a hotkey, which answers as the lead. */
     let lastWake: string | null | undefined;
+    /** Words of the current desk reply already handed to the player, so a layer's word cues count the whole reply. */
+    let cueBase = 0;
     /** Tessaya's own voice, waited for while it loads. The OS voice only when he chose it. */
     const chooseVoice = (
       name: PocketVoice | "system",
@@ -427,6 +429,14 @@ export const startTessayaDesktop = Effect.gen(function* () {
       (level, shape) => voice?.onSpeechLevel(level, shape),
       () => screen?.volume() ?? 1,
       (pcm, rate, soundsAtMs) => voice?.onReference(pcm, rate, soundsAtMs),
+      // While a layer session is open here, each word she reaches re-times its device acts (VOXTA I4).
+      (text) => {
+        if (!layerLink.isOpen()) return null;
+        const base = cueBase;
+        cueBase += text.split(/\s+/).filter((w) => w !== "").length;
+        return (word) =>
+          void layerPost("cue", { vessel: "desktop", word: base + word }).catch(() => undefined);
+      },
     );
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
@@ -520,17 +530,25 @@ export const startTessayaDesktop = Effect.gen(function* () {
     sendVisionUsageTo((row) => void direct("baton.brain.record", row).catch(() => undefined));
     // An owner-only persona layer on this machine's server, in internal builds only: the first 404 stops it.
     const layerKeyFile = NodePath.join(environment.stateDir, "tessaya-layer-device.key");
+    const layerFetch = async (path: string, body: unknown) => {
+      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      if (config._tag === "None") throw new Error("The local server is not ready.");
+      return fetch(new URL(path, config.value.httpBaseUrl), {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
+      });
+    };
+    /** A call to the layer's own routes, under the page its server named. */
+    const layerPost = async (path: string, body: unknown) => {
+      const page = layerLink.page();
+      if (page !== null) await layerFetch(`${page}/${path}`, body);
+    };
     const layerLink = startPersonaLayerLink({
       post: async (body) => {
-        const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
-        const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
-        if (config._tag === "None") throw new Error("The local server is not ready.");
-        const response = await fetch(new URL("/tessaya/layer/_desk", config.value.httpBaseUrl), {
-          method: "POST",
-          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(10_000),
-        });
+        const response = await layerFetch("/tessaya/layer/_desk", body);
         if (response.status === 404) return null;
         if (!response.ok) throw new Error(`layer link ${response.status}`);
         const answer = (await response.json()) as { open?: unknown; page?: unknown };
@@ -612,6 +630,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       onWords: (words: string) => void,
       signal: AbortSignal,
     ): Promise<void> => {
+      cueBase = 0;
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
       if (config._tag === "None") throw new Error("The local server is not ready.");
