@@ -1046,7 +1046,11 @@ function layerClaudeProviderAdapterRegistryReplay(
               config: DEFAULT_CLAUDE_SETTINGS,
             },
             {},
-          ).pipe(Effect.map((adapter) => [adapter])),
+          ).pipe(
+            // A replay never reads the developer's own Claude login (a machine token makes sessions movable).
+            Effect.provideService(HostProcess.HomeDirectory, tmpRoot),
+            Effect.map((adapter) => [adapter]),
+          ),
         ),
       ),
       Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),

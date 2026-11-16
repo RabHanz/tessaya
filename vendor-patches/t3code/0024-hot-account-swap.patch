@@ -111,6 +111,23 @@ index 416592a57fe79823f3da9c4c0fc5b1cb41aa4436..229bf4957cdd271cf22efebb858d93fd
  
  export const assertFullAccess = (context: Caller, message: string) =>
    context.limits.runtimeMode === "full-access" && context.limits.interactionMode === "default"
+diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.testkit.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.testkit.ts
+index 9977ea942a21a49f9c073fefbbff4027058ca0bd..b9d19e705b0646202adee7152932429bce5d9f4d 100644
+--- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.testkit.ts
++++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.testkit.ts
+@@ -1046,7 +1046,11 @@ function layerClaudeProviderAdapterRegistryReplay(
+               config: DEFAULT_CLAUDE_SETTINGS,
+             },
+             {},
+-          ).pipe(Effect.map((adapter) => [adapter])),
++          ).pipe(
++            // A replay never reads the developer's own Claude login (a machine token makes sessions movable).
++            Effect.provideService(HostProcess.HomeDirectory, tmpRoot),
++            Effect.map((adapter) => [adapter]),
++          ),
+         ),
+       ),
+       Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 diff --git a/apps/server/src/orchestration-v2/EffectOutbox.ts b/apps/server/src/orchestration-v2/EffectOutbox.ts
 index eb1209158cc74f98d0ac0b168b41c2f9a7e01f55..5269da7eff43d5de3e82e6eb9a65d8ab13fa048c 100644
 --- a/apps/server/src/orchestration-v2/EffectOutbox.ts
@@ -201,7 +218,7 @@ index 3ede421ad72ab34e82506e69f1b5a2bf06890bae..d1eec2fcb20844a184fe22ebe4799790
            closeInstance: () => Effect.void,
            release: () => Effect.void,
 diff --git a/packages/provider-core/src/server/ProviderAdapter.ts b/packages/provider-core/src/server/ProviderAdapter.ts
-index 5b1b6301fa48bf0268d1e7bd83f788b4927d59ea..a609bf2eeb75e924c8aad5ebf30c92d8b183b2c5 100644
+index 5b1b6301fa48bf0268d1e7bd83f788b4927d59ea..e29b8260daecbb567cff4e6cfca69016d6fafe04 100644
 --- a/packages/provider-core/src/server/ProviderAdapter.ts
 +++ b/packages/provider-core/src/server/ProviderAdapter.ts
 @@ -37,7 +37,10 @@ import {
@@ -215,7 +232,7 @@ index 5b1b6301fa48bf0268d1e7bd83f788b4927d59ea..a609bf2eeb75e924c8aad5ebf30c92d8
  import type * as Stream from "effect/Stream";
  
  import type {
-@@ -658,6 +661,13 @@ export type ProviderAdapterV2SubagentOutcome = {
+@@ -658,6 +661,15 @@ export type ProviderAdapterV2SubagentOutcome = {
    readonly result: OrchestrationV2Subagent["result"];
  };
  
@@ -223,13 +240,15 @@ index 5b1b6301fa48bf0268d1e7bd83f788b4927d59ea..a609bf2eeb75e924c8aad5ebf30c92d8
 +export interface ProviderAdapterV2AccountLogin {
 +  readonly instanceId: ProviderInstanceId;
 +  readonly secret: Redacted.Redacted<string>;
++  /** A machine login: a moved session links to this file and follows it, instead of a copy of `secret`. */
++  readonly file?: string;
 +  readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
 +}
 +
  export interface ProviderAdapterV2SessionRuntime {
    readonly instanceId: ProviderInstanceId;
    readonly driver: ProviderDriverKind;
-@@ -674,6 +684,8 @@ export interface ProviderAdapterV2SessionRuntime {
+@@ -674,6 +686,8 @@ export interface ProviderAdapterV2SessionRuntime {
      providerThread: OrchestrationV2ProviderThread,
      options?: { readonly includeSubagents?: boolean },
    ) => Effect.Effect<boolean>;
@@ -238,7 +257,7 @@ index 5b1b6301fa48bf0268d1e7bd83f788b4927d59ea..a609bf2eeb75e924c8aad5ebf30c92d8
    /**
     * Set only if all session background tasks and tool calls end with its process. Releasing the
     * session then clears its task roster and interrupts its open tool calls; otherwise threads
-@@ -778,5 +790,7 @@ export class ProviderAdapterV2 extends Context.Service<
+@@ -778,5 +792,7 @@ export class ProviderAdapterV2 extends Context.Service<
      readonly openSession: (
        input: ProviderAdapterV2OpenSessionInput,
      ) => Effect.Effect<ProviderAdapterV2SessionRuntime, ProviderAdapterV2Error, Scope.Scope>;

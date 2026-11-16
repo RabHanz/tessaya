@@ -6,6 +6,8 @@
  */
 // @effect-diagnostics-next-line nodeBuiltinImport:off - links and an atomic rename, as ClaudeAccountHome.
 import * as NodeFSP from "node:fs/promises";
+// @effect-diagnostics-next-line nodeBuiltinImport:off - one sync read of the machine login when a session opens.
+import * as NodeFS from "node:fs";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - paths for the calls above.
 import * as NodePath from "node:path";
 
@@ -39,6 +41,40 @@ const readJsonObject = async (file: string): Promise<Record<string, unknown>> =>
   } catch {
     return {};
   }
+};
+
+/**
+ * The token of a login file holding a plain token and no refresh token (cswap's setup-token slots), else undefined.
+ * Claude never rewrites such a file, so a session may follow it by link; a refreshing login is never copied.
+ */
+export const plainTokenOf = (file: string): string | undefined => {
+  try {
+    const parsed = JSON.parse(NodeFS.readFileSync(file, "utf8")) as {
+      readonly claudeAiOauth?: { readonly accessToken?: unknown; readonly refreshToken?: unknown };
+    };
+    const oauth = parsed.claudeAiOauth;
+    return typeof oauth?.accessToken === "string" &&
+      oauth.accessToken.length > 0 &&
+      (oauth.refreshToken === null || oauth.refreshToken === undefined)
+      ? oauth.accessToken
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** The login file of a Claude home: the instance's config dir, else ~/.claude. */
+export const claudeLoginFile = (environment: NodeJS.ProcessEnv, homeDirectory: string): string =>
+  NodePath.join(
+    NodePath.resolve(environment.CLAUDE_CONFIG_DIR ?? NodePath.join(homeDirectory, ".claude")),
+    CREDENTIALS,
+  );
+
+/** Points the session's login at `file` by an atomic rename; its mtime differs from the copy's, so it is re-read. */
+const linkLogin = async (dir: string, file: string, tmpName: string): Promise<void> => {
+  const tmp = NodePath.join(dir, tmpName);
+  await NodeFSP.symlink(file, tmp);
+  await NodeFSP.rename(tmp, NodePath.join(dir, CREDENTIALS));
 };
 
 /** Links every entry of `home` into `dir` that `dir` lacks. Idempotent; runs before each spawn. */
@@ -105,16 +141,23 @@ export const makeClaudeSessionLogin = (input: {
   readonly homeDirectory: string;
   readonly onUsageLimits: ProviderAdapterV2AccountLogin["onUsageLimits"] | undefined;
 }): ClaudeSessionLogin | null => {
-  const token = input.environment.CLAUDE_CODE_OAUTH_TOKEN?.trim();
-  if (input.root === undefined || token === undefined || token.length === 0) return null;
-  const home = NodePath.resolve(
-    input.environment.CLAUDE_CONFIG_DIR ?? NodePath.join(input.homeDirectory, ".claude"),
-  );
+  const token = input.environment.CLAUDE_CODE_OAUTH_TOKEN?.trim() ?? "";
+  const machineFile = claudeLoginFile(input.environment, input.homeDirectory);
+  // No token setting: the machine's own login, movable only while it holds a plain token.
+  const follows = token.length === 0 && plainTokenOf(machineFile) !== undefined;
+  if (input.root === undefined || (token.length === 0 && !follows)) return null;
+  const home = NodePath.dirname(machineFile);
   const dir = NodePath.join(input.root, input.providerSessionId.replace(/[^A-Za-z0-9_-]/g, "_"));
-  let current = token;
+  let current: { readonly secret: string } | { readonly file: string } = follows
+    ? { file: machineFile }
+    : { secret: token };
   let writes = 0;
-  const write = (secret: string) =>
-    writeLogin(home, dir, secret, `.credentials.${process.pid}.${(writes += 1)}.tmp`);
+  const write = (login: typeof current) => {
+    const tmpName = `.credentials.${process.pid}.${(writes += 1)}.tmp`;
+    return "file" in login
+      ? linkLogin(dir, login.file, tmpName)
+      : writeLogin(home, dir, login.secret, tmpName);
+  };
   let currentUsageLimits = input.onUsageLimits;
   let seeded = false;
   return {
@@ -134,9 +177,12 @@ export const makeClaudeSessionLogin = (input: {
     switchTo: (login) =>
       Effect.tryPromise({
         try: async () => {
-          const secret = Redacted.value(login.secret);
-          if (seeded) await write(secret);
-          current = secret;
+          const next =
+            login.file === undefined
+              ? { secret: Redacted.value(login.secret) }
+              : { file: login.file };
+          if (seeded) await write(next);
+          current = next;
           currentUsageLimits = login.onUsageLimits;
           return true;
         },

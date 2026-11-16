@@ -194,7 +194,9 @@ import {
   resolveClaudeHomePath,
 } from "../../provider/Drivers/ClaudeHome.ts";
 import {
+  claudeLoginFile,
   makeClaudeSessionLogin,
+  plainTokenOf,
   pruneClaudeSessionLogins,
 } from "../../provider/Drivers/ClaudeSessionLogin.ts";
 import * as TessayaClaudeAccountHome from "../../provider/Drivers/ClaudeAccountHome.ts";
@@ -5307,6 +5309,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   const hostPlatform = yield* HostProcess.Platform;
   const sessionLoginHomeDirectory = yield* HostProcess.HomeDirectory;
   const accountToken = adapterOptions.environment.CLAUDE_CODE_OAUTH_TOKEN?.trim() ?? "";
+  // shortcut: read once at startup; a machine login cswap later turns into a plain token is movable after a restart.
+  const machineLoginFile =
+    accountToken.length === 0
+      ? claudeLoginFile(adapterOptions.environment, sessionLoginHomeDirectory)
+      : undefined;
+  const machineToken = machineLoginFile === undefined ? undefined : plainTokenOf(machineLoginFile);
   const customHome =
     adapterOptions.settings.homePath.trim().length > 0 ||
     adapterOptions.environment.CLAUDE_CONFIG_DIR !== hostEnvironment.CLAUDE_CONFIG_DIR;
@@ -5528,12 +5536,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
     driver: CLAUDE_PROVIDER,
-    ...(adapterOptions.sessionLoginsDir === undefined || accountToken.length === 0
+    ...(adapterOptions.sessionLoginsDir === undefined ||
+    (accountToken.length === 0 && machineToken === undefined)
       ? {}
       : {
           accountLogin: {
             instanceId: adapterOptions.instanceId,
-            secret: Redacted.make(accountToken),
+            secret: Redacted.make(machineToken ?? accountToken),
+            ...(machineToken === undefined || machineLoginFile === undefined
+              ? {}
+              : { file: machineLoginFile }),
             ...(adapterOptions.onUsageLimits === undefined
               ? {}
               : { onUsageLimits: adapterOptions.onUsageLimits }),

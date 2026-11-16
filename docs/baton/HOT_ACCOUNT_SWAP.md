@@ -20,8 +20,11 @@ So a token instance's process never gets the token in its environment. It runs w
 - the dir stays after the session closes and is pruned after a week unused: a dying process still writes, and with
   its links gone its last transcript lines would land in a dir nobody reads.
 
-A login with a refresh token (the default `~/.claude` login) is not copied, because Claude rotates it in place and a
-copy would strand the original. Sessions on it keep the old behaviour.
+An instance with no token setting runs on the machine's login (`~/.claude`). When that login is a plain token
+(cswap's setup-token slots), its session's `.credentials.json` is a link to it, so cswap's machine switch still
+reaches the session; a move to another account replaces the link with a real file, and a move back relinks
+(`ProviderAdapterV2AccountLogin.file`). A login with a refresh token is never copied or linked, because Claude
+rotates it in place and a copy would strand the original. Sessions on it keep the old behaviour.
 
 ## The switch
 
