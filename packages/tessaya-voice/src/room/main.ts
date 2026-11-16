@@ -720,13 +720,19 @@ const main = async () => {
         }
       }
       if (/^freya\/r1\/[^/]+\/voice\/refine$/.test(t)) {
-        const on = (() => {
+        const ask = (() => {
           try {
-            return (JSON.parse(String(p)) as { on?: unknown }).on !== false;
+            return JSON.parse(String(p)) as { on?: unknown; reset?: unknown };
           } catch {
-            return true;
+            return {};
           }
         })();
+        if (ask.reset === true) {
+          sharedProfiles.reset();
+          log("voice profile refinement on this R1: reset to the shared profiles");
+          return;
+        }
+        const on = ask.on !== false;
         sharedProfiles.setRefining(on);
         log(`voice profile refinement on this R1: ${on ? "on" : "off"}`);
         return;
