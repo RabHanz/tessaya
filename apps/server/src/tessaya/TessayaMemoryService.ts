@@ -51,7 +51,12 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { TessayaMemoryEmbedder } from "./TessayaMemoryEmbedder.ts";
 import { cosine, nearest, rrf, vectorFromBytes, vectorToBytes } from "./memoryVectors.ts";
-import { entityFacts, mentions } from "@t3tools/tessaya-shared/memoryEntities";
+import {
+  entityFacts,
+  mentions,
+  OWNER_END,
+  relationFacts,
+} from "@t3tools/tessaya-shared/memoryEntities";
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
@@ -611,6 +616,25 @@ export const make = Effect.gen(function* () {
     Effect.orElseSucceed(() => []),
   );
 
+  /** Set when `entityNamed` makes an entity: earlier items that name it are linked too. */
+  let made = false;
+  /** The entity of this name, made (as a person or an event) when no entity has it yet. */
+  const entityNamed = Effect.fn("BatonMemoryService.entityNamed")(function* (
+    name: string,
+    kind: "person" | "event",
+    at: string,
+  ) {
+    const known = (yield* entities).find((e) => e.name.toLowerCase() === name.toLowerCase());
+    if (known !== undefined) return known.id;
+    made = true;
+    const id = globalThis.crypto.randomUUID();
+    yield* sql`
+      INSERT INTO fabric_memory_entities (id, name, aliases_json, updated_at, kind)
+      VALUES (${id}, ${name}, '[]', ${at}, ${kind})
+    `.pipe(Effect.orDie);
+    return id;
+  });
+
   /** Links the item to every entity it names, after learning any new entity or alias its own words state. */
   const noteEntities = Effect.fn("BatonMemoryService.noteEntities")(function* (item: MemoryItem) {
     // A skill's steps name windows and tools, not people or projects of his.
@@ -630,6 +654,17 @@ export const make = Effect.gen(function* () {
         ON CONFLICT (id) DO UPDATE SET aliases_json = excluded.aliases_json, updated_at = excluded.updated_at
       `.pipe(Effect.orDie);
     }
+    // The people graph's edges this item states (HOUSEHOLD-DESIGN §11): "Ali is Sara's sister", "Sara was at the party".
+    yield* sql`DELETE FROM fabric_memory_edges WHERE item_id = ${item.id}`.pipe(Effect.orDie);
+    for (const r of relationFacts(item.text)) {
+      const from = yield* entityNamed(r.from, "person", at);
+      const to = r.toKind === "owner" ? OWNER_END : yield* entityNamed(r.to, r.toKind, at);
+      yield* sql`
+        INSERT OR IGNORE INTO fabric_memory_edges (from_id, relation, to_id, item_id, confidence, at)
+        VALUES (${from}, ${r.relation}, ${to}, ${item.id}, ${item.confidence}, ${at})
+      `.pipe(Effect.orDie);
+    }
+    if (made) [grew, made] = [true, false];
     const all = yield* entities;
     // A new name or alias reaches back: earlier items that say "my sister" now belong to Maya too.
     const items = grew
@@ -664,6 +699,7 @@ export const make = Effect.gen(function* () {
       // Forgotten means forgotten: its earlier wordings go with it.
       Effect.andThen(sql`DELETE FROM fabric_memory_versions WHERE item_id = ${id}`),
       Effect.andThen(sql`DELETE FROM fabric_memory_links WHERE item_id = ${id}`),
+      Effect.andThen(sql`DELETE FROM fabric_memory_edges WHERE item_id = ${id}`),
       Effect.orDie,
     );
 

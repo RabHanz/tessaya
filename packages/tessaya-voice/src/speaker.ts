@@ -188,7 +188,15 @@ export interface SpeakerIdentity {
   readonly own?: { readonly score: number; readonly ms: number };
   /** His by his session's evidence, not this turn's own score: his path, never an owner-only act (`verified` false). */
   readonly lifted?: true;
+  /**
+   * A guest's own embedding (base64 float32) for her server's people graph, so she knows them next time
+   * (HOUSEHOLD-DESIGN §11). Numbers, never audio; only on a clip long enough to file.
+   */
+  readonly print?: { readonly model: string; readonly vector: string; readonly ms: number };
 }
+
+/** A stranger's clip shorter than this is too unsure to file (his own 2.2 s turns scored 0.27 against his profile). */
+export const PRINT_MIN_MS = 2_000;
 
 /** A short follow-up ("yes", "stop") keeps the last verdict this long, and only for listening. */
 export const INHERIT_MS = 15_000;

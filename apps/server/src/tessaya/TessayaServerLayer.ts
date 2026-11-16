@@ -45,6 +45,7 @@ import * as TessayaHousehold from "./TessayaHousehold.ts";
 import * as TessayaComms from "./TessayaComms.ts";
 import * as VoiceForgets from "./VoiceForgets.ts";
 import * as MemberPreferences from "./MemberPreferences.ts";
+import * as TessayaPeople from "./TessayaPeople.ts";
 import * as TessayaPresence from "./TessayaPresence.ts";
 import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
@@ -311,6 +312,8 @@ const servicesInner = IntentService.layer.pipe(
       MemberPreferences.layer,
       // Where each member is, from every vessel's signals (B-043): the turn, comms, job news and the Tessels share it.
       TessayaPresence.layer,
+      // Who a voice that is no member is, across vessels (HOUSEHOLD-DESIGN §11): the household's people ops answer here.
+      TessayaPeople.layer,
       expressionLayer,
       CurrentPersona.layer,
       // Her mood per persona (CS6): the turn writes it, every vessel's face and words read it.

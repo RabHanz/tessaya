@@ -1199,6 +1199,46 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["False alarm, cancel the emergency alarm."],
     uses: [["comms_false_alarm"]],
   },
+  // People (HOUSEHOLD-DESIGN §11): reads are live, the changes are a replay's dry runs.
+  {
+    id: "people-list",
+    proves: ["people_list"],
+    said: ["Who do you know by voice, and is there anyone you want me to name?"],
+    uses: [["people_list"]],
+    clean: ["people_list"],
+  },
+  {
+    id: "people-who",
+    proves: ["people_who"],
+    said: ["Who was that you were just talking to?"],
+    uses: [["people_who"]],
+    clean: ["people_who"],
+  },
+  {
+    id: "people-name-last",
+    proves: ["people_manage"],
+    said: ["Remember that voice just now, that's my cousin Ali."],
+    uses: [["people_manage"]],
+    argsOf: "people_manage",
+    args: (input) => ({
+      named: input["action"] === "name" && /ali/i.test(String(input["name"])),
+      cousin: /cousin/i.test(String(input["relation"])),
+    }),
+  },
+  {
+    id: "people-introduce",
+    proves: ["people_introduce"],
+    said: ["Hi, I'm Sara, a friend of the family."],
+    uses: [["people_introduce"]],
+    argsOf: "people_introduce",
+    args: (input) => ({ sara: /sara/i.test(String(input["name"])) }),
+  },
+  {
+    id: "people-forget-me",
+    proves: ["people_forget_me"],
+    said: ["Please forget me and my voice."],
+    uses: [["people_forget_me"]],
+  },
   {
     id: "members-list",
     proves: ["members_list"],

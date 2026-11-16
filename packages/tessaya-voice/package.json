@@ -14,6 +14,10 @@
     "./speaker": {
       "types": "./src/speaker.ts",
       "import": "./src/speaker.ts"
+    },
+    "./speakerStore": {
+      "types": "./src/speakerStore.ts",
+      "import": "./src/speakerStore.ts"
     }
   },
   "scripts": {

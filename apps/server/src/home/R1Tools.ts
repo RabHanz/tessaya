@@ -117,6 +117,12 @@ const ROOM_TOOLS = [
   "member_preferences",
   "member_preference_set",
   "household_home_server",
+  // People she knows by voice or from his memory (HOUSEHOLD-DESIGN §11).
+  "people_who",
+  "people_introduce",
+  "people_forget_me",
+  "people_list",
+  "people_manage",
   // Messages and announcements between the people here (COMMS-DESIGN C-1).
   "comms_send",
   "comms_inbox",
@@ -386,7 +392,9 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
                           ? `${(input as { to: string }).to} has this conversation now: say so in a few words.`
                           : "Handed back: say so in a few words.",
                     })
-                  : name === "tessaya_wake_word_change" || name === "tessaya_job_lead"
+                  : name === "tessaya_wake_word_change" ||
+                      name === "tessaya_job_lead" ||
+                      name.startsWith("people_")
                     ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
                     : name === "tessaya_memory_forget"
                       ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })

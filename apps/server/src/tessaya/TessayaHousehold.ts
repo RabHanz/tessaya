@@ -46,6 +46,7 @@ import { foldSpelling, spellBack } from "@t3tools/tessaya-shared/spelling";
 import { presenceReason } from "@t3tools/tessaya-shared/presence";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
+import { TessayaPeople } from "./TessayaPeople.ts";
 import {
   keyFromJson,
   keyToJson,
@@ -191,6 +192,7 @@ export const make = Effect.gen(function* () {
   const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
   const links = yield* Effect.serviceOption(PeerLinks.PeerLinks);
   const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
+  const people = yield* Effect.serviceOption(TessayaPeople);
 
   /** The linked server holding the members (its label), or null: this one. */
   const homeOn = Effect.map(
@@ -805,6 +807,22 @@ export const make = Effect.gen(function* () {
   ) {
     const c = yield* HouseholdCaller;
     const role = yield* callerRole;
+    // People answers guests too ("I'm Ali", "forget me"): it decides by role itself (HOUSEHOLD-DESIGN §11).
+    if (
+      input.op === "peopleObserve" ||
+      input.op === "peopleList" ||
+      input.op === "peopleWho" ||
+      input.op === "peopleIntroduce" ||
+      input.op === "peopleForgetMe" ||
+      input.op === "peopleManage"
+    )
+      return Option.isNone(people)
+        ? refused("People aren't kept on this server.")
+        : yield* people.value.call(input, {
+            role,
+            assurance: c.assurance,
+            tainted: c.tainted,
+          });
     // Guests, unknown voices and removed members see nothing of who lives here.
     if (role === null || role === "guest")
       return refused("Only members of this home can see that.");

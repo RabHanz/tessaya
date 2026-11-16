@@ -49,6 +49,7 @@ import { DeviceTools } from "../devices/tools.ts";
 import { HomeTools } from "../home/tools.ts";
 import { JobTools } from "../jobs/tools.ts";
 import { MembersTools } from "../members/tools.ts";
+import { PeopleTools } from "../people/tools.ts";
 import { CommsTools } from "../comms/tools.ts";
 import { AccountTools } from "../accounts/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
@@ -739,6 +740,7 @@ export const TessayaToolkit = Toolkit.make(
   ...DeviceTools,
   ...SettingsTools,
   ...MembersTools,
+  ...PeopleTools,
   ...CommsTools,
   ...JobTools,
   ...AccountTools,

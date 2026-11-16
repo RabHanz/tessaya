@@ -227,6 +227,52 @@ layer("TessayaTurn", (it) => {
   );
 
   it.effect(
+    "a guest's voiceprint goes to the people graph as nobody, and her line for them comes back",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const observed: Array<[string, string | null]> = [];
+        const home = TessayaHousehold.of({
+          call: (input: TessayaHouseholdCallInput) =>
+            Effect.gen(function* () {
+              observed.push([input.op, (yield* HouseholdCaller).member]);
+              return input.op === "peopleObserve"
+                ? {
+                    status: "done" as const,
+                    line: "",
+                    person: {
+                      id: "p1",
+                      name: "Ali",
+                      status: "guest" as const,
+                      recognised: true,
+                      line: "You know this voice: it is Ali.",
+                    },
+                  }
+                : { status: "done" as const, line: "" };
+            }),
+        } as never);
+        const print = { model: "m1", vector: "AAAAAA==", ms: 3_000 };
+        const guest = { kind: "guest" as const, personId: null, verified: false, inherited: false };
+        const there = <A, E>(work: Effect.Effect<A, E>) =>
+          Effect.provideService(work, TessayaHousehold, home);
+        const heard = yield* there(
+          turn.begin({ vessel: device, text: "hi", speaker: guest, print }),
+        );
+        assert.include(heard.block, "it is Ali");
+        assert.deepStrictEqual([heard.who.person, heard.who.name], ["p1", "Ali"]);
+        assert.deepInclude(observed, ["peopleObserve", null]);
+        // His voice, and a replay, never file a print.
+        observed.length = 0;
+        const him = { kind: "owner" as const, personId: "owner", verified: true, inherited: false };
+        yield* there(turn.begin({ vessel: device, text: "hi", speaker: him, print }));
+        yield* there(
+          turn.begin({ vessel: device, text: "hi", speaker: guest, print, rehearsal: true }),
+        );
+        assert.notDeepInclude(observed, ["peopleObserve", null]);
+      }),
+  );
+
+  it.effect(
     "where the members live on another server, preferences are read and changed there",
     () =>
       Effect.gen(function* () {

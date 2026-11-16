@@ -25,6 +25,7 @@ import {
   enrol,
   identityOf,
   ownerScoreOf,
+  PRINT_MIN_MS,
   TEST_SPEAKER_ID,
   trustTestSpeaker,
   UNVERIFIED,
@@ -861,7 +862,15 @@ const main = async () => {
     const judged = identityOf(decide("steer"), decide("act"), at);
     if (judged.personId === TEST_SPEAKER_ID) return trustTestSpeaker(judged, Date.now(), until);
     const own = ownerScoreOf(vector, profiles, SPEAKER_MODEL_ID);
-    const identity = own === null ? judged : { ...judged, own: { score: own, ms: clips[0]!.ms } };
+    const scored = own === null ? judged : { ...judged, own: { score: own, ms: clips[0]!.ms } };
+    // A guest's voice goes to her server's people graph, so she knows them next time: numbers, never audio.
+    const identity =
+      scored.kind === "guest" && clips[0]!.ms >= PRINT_MIN_MS
+        ? {
+            ...scored,
+            print: { model: SPEAKER_MODEL_ID, vector: vectorToBase64(vector), ms: clips[0]!.ms },
+          }
+        : scored;
     // Only a turn it was sure of refines this R1's copy: verified, long enough to stand alone, well above the cut-off.
     if (
       identity.verified &&
