@@ -96,7 +96,7 @@ import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
 import { R1Updates } from "./R1Updates.ts";
 import { R1_FIRMWARE } from "@t3tools/tessaya-shared/r1Firmware";
-import { DEVICE } from "@t3tools/tessaya-shared/productNames";
+import { DEVICE, DEVICE_LINES } from "@t3tools/tessaya-shared/productNames";
 
 /** settings is him in Settings → Devices (the RPC checked his scope); anyone else asks before camera or reboot. */
 export interface DeviceActor {
@@ -1633,9 +1633,13 @@ const make = Effect.gen(function* () {
         return yield* answered(why, line);
       }
       case "line": {
-        const name = (c.line ?? "").trim();
-        if (!/^[A-Za-z]{2,8}$/.test(name))
-          return yield* new DeviceRefusedError({ why: "A line name is 2 to 8 letters." });
+        const name = DEVICE_LINES.find(
+          (l) => l.toLowerCase() === (c.line ?? "").trim().toLowerCase(),
+        );
+        if (name === undefined)
+          return yield* new DeviceRefusedError({
+            why: `The line is one of ${DEVICE_LINES.join(", ")}.`,
+          });
         if (by.dryRun === true) return outcome(`Its setup network would be ${name}-xxxx.`);
         const why = yield* netSend(id, "line", [{ line: name }]);
         yield* audit(by, id, `${DEVICE} line ${name}`, Option.isSome(why) ? "done" : "sent");

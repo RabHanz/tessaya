@@ -316,7 +316,7 @@ export type DeviceWifiNetwork = typeof DeviceWifiNetwork.Type;
 /**
  * The `wifi` op: `first` (`ssid`, his words matched to a saved name), `order` (first choice first), `forget` (never
  * the last), `add` (`ssid`, `password`, `hotspot`, `backup`: save without switching; Settings only, a password is
- * never spoken), `line` (its setup network's name, 2 to 8 letters). The device keeps the list.
+ * never spoken), `line` (its setup network's name, one of DEVICE_LINES). The device keeps the list.
  */
 export const DEVICE_WIFI_ACTIONS = ["first", "order", "forget", "add", "line"] as const;
 export type DeviceWifiAction = (typeof DEVICE_WIFI_ACTIONS)[number];
