@@ -1689,6 +1689,12 @@ it.effect(
         me,
       );
       assert.include(last.error ?? "", "only Wi-Fi");
+      // A line is one of the product's, as the phone's pills offer them; any other word is refused.
+      const line = yield* serveDevicesCall(
+        { kind: "act", op: "wifi", args: { id: ID, action: "line", line: "Robot" } },
+        me,
+      );
+      assert.include(line.error ?? "", "Tumble");
     }).pipe(Effect.provide(layer));
   },
 );
