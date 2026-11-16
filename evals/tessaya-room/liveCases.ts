@@ -1213,6 +1213,30 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     }),
   },
   {
+    id: "bt-listen-headset",
+    device: true,
+    proves: [],
+    said: ["Listen through my headphones."],
+    voices: [{ speaker: SURE }],
+    uses: [["device_set"]],
+    argsOf: "device_set",
+    args: (input) => ({
+      "the headset's mic": input["itemId"] === "audio.input" && input["value"] === "headset",
+    }),
+  },
+  {
+    id: "bt-listen-own-mic",
+    device: true,
+    proves: [],
+    said: ["Use your own mic."],
+    voices: [{ speaker: SURE }],
+    uses: [["device_set"]],
+    argsOf: "device_set",
+    args: (input) => ({
+      "her own mic": input["itemId"] === "audio.input" && input["value"] === "mic",
+    }),
+  },
+  {
     id: "bt-pair-new",
     device: true,
     proves: [],

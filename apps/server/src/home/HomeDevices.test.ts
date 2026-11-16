@@ -1376,7 +1376,92 @@ it("routes to the first output in his order that can play now, paging one above 
     OFFICE,
   ]);
   assert.deepStrictEqual(HomeDevices.outputOrderOf([OFFICE, "speaker", HP], [HP]), ["speaker", HP]);
+  // Inputs: her own mic first by default; a headset hears only while it is the linked device with HFP up.
+  assert.deepStrictEqual(HomeDevices.inputOrderOf(undefined, [HP]), ["mic", HP]);
+  assert.deepStrictEqual(HomeDevices.inputOrderOf([HP, "mic"], [HP, OFFICE]), [HP, "mic", OFFICE]);
+  const inputs: Array<[Array<string>, string | null, boolean, "headset" | "mic"]> = [
+    // order, linked, hfp, input
+    [["mic", HP], HP, true, "mic"],
+    [[HP, "mic"], HP, true, "headset"],
+    [[HP, "mic"], HP, false, "mic"],
+    [[HP, "mic"], null, true, "mic"],
+    [[OFFICE, HP, "mic"], HP, true, "headset"],
+  ];
+  for (const [order, linked, hfp, want] of inputs)
+    assert.strictEqual(HomeDevices.inputOf(order, linked, hfp), want, JSON.stringify(order));
 });
+
+it.effect(
+  "sends the mic his input order gives, only to firmware that reports the headset link",
+  () => {
+    const { sent, layer } = setup();
+    const HP = "AA:00:00:00:00:46";
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const her = { who: "Tessaya via R1", surface: "assistant" } as const;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(`${root}/state/caps`, '{"bt_speaker":true}');
+      yield* devices.receive(
+        `${root}/state/bt/bonds`,
+        JSON.stringify({ devices: [{ mac: HP, connected: true }] }),
+      );
+      const inputSends = () => sent.filter((s) => s.topic === "cmd/bt/input");
+      // Older firmware: no hfp field, so no cmd/bt/input and no input list.
+      yield* devices.receive(
+        `${root}/state/bt`,
+        JSON.stringify({
+          state: "connected",
+          mac: HP,
+          wanted: "speaker",
+          out: "onboard",
+          saved: true,
+        }),
+      );
+      assert.deepStrictEqual(inputSends(), []);
+      const inputs = () =>
+        Effect.map(devices.overview, (o) =>
+          o.devices[0]!.speaker!.inputs?.map((x) => `${x.id}:${x.state}`),
+        );
+      assert.isUndefined(yield* inputs());
+      // smp 0.3.151 on her own mic: the default order agrees, nothing to send.
+      const bt = (hfp: boolean, input: string) =>
+        devices.receive(
+          `${root}/state/bt`,
+          JSON.stringify({ state: "connected", mac: HP, saved: true, hfp, sco: "off", input }),
+        );
+      yield* bt(true, "mic");
+      assert.deepStrictEqual(inputSends(), []);
+      assert.deepStrictEqual(yield* inputs(), ["mic:listening", `${HP}:ready`]);
+      // "Listen through my headphones": first at once, and sent.
+      const moved = yield* devices.command(
+        ID,
+        { op: "item", itemId: "audio.input", value: "headset" },
+        her,
+      );
+      assert.strictEqual(moved.status, "done");
+      assert.deepStrictEqual(
+        inputSends().map((s) => s.payload),
+        [{ in: "headset" }],
+      );
+      yield* bt(true, "headset");
+      assert.deepStrictEqual(yield* inputs(), [`${HP}:listening`, "mic:ready"]);
+      // The headset link drops: back to her own mic on that report.
+      yield* bt(false, "headset");
+      assert.deepStrictEqual(inputSends().at(-1)?.payload, { in: "mic" });
+      yield* bt(false, "mic");
+      // His order from Settings, mic first, is kept for the next link.
+      sent.length = 0;
+      const order = yield* serveDevicesCall(
+        { kind: "act", op: "speaker", args: { id: ID, action: "inputs", order: ["mic", HP] } },
+        me,
+      );
+      assert.isTrue(order.ok);
+      yield* bt(true, "mic");
+      assert.deepStrictEqual(inputSends(), []);
+    }).pipe(Effect.provide(layer));
+  },
+);
 
 it.effect(
   "keeps her on her own speaker over linked headphones, obeys his order at once, and moves on when a route stalls",

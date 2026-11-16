@@ -1436,6 +1436,35 @@ function SpeakerSection({
           ))}
         </Row>
       )}
+      {s.inputs?.map((o, i, all) => (
+        <Row
+          key={`in:${o.id}`}
+          divider
+          title={`${i + 1}. ${outputLabel(o)}`}
+          description={
+            i === 0
+              ? `${OUTPUT_STATE_LINE[o.state]}. She listens through the first one that can hear now.`
+              : OUTPUT_STATE_LINE[o.state]
+          }
+        >
+          <ControlPill
+            variant="pill"
+            label="Move up"
+            disabled={off || i === 0}
+            onPress={() =>
+              void run("act", "speaker", { id, action: "inputs", order: moveOutput(all, o.id, -1) })
+            }
+          />
+          <ControlPill
+            variant="pill"
+            label="Move down"
+            disabled={off || i === all.length - 1}
+            onPress={() =>
+              void run("act", "speaker", { id, action: "inputs", order: moveOutput(all, o.id, 1) })
+            }
+          />
+        </Row>
+      ))}
       <Row divider title="Pair a device" description={scanLine(s)}>
         <ControlPill
           variant="pill"

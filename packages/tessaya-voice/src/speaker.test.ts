@@ -11,6 +11,7 @@ import {
   holdVoice,
   identityOf,
   NO_HOLD,
+  profilesFor,
   speakerPath,
   TEST_SPEAKER_ID,
   trustTestSpeaker,
@@ -151,6 +152,23 @@ describe("decideSpeaker fails closed", () => {
     });
     // One long clip and two short ones: scored as one clip, at the one-clip cut-off.
     expect(mixed).toMatchObject({ kind: "owner", score: expect.closeTo(single.steer + 0.02, 5) });
+  });
+});
+
+describe("profilesFor", () => {
+  it("takes each person's profile for the input, else the one from her mic", () => {
+    const p = (id: string, x: number) => ({
+      id,
+      name: id,
+      kind: "saved" as const,
+      model: "m",
+      centroid: Float32Array.from([x]),
+      samples: 3,
+      sources: ["spoken" as const],
+      enrolledAt: "2026-11-16T00:00:00.000Z",
+    });
+    const got = profilesFor([p("him", 2)], [p("him", 1), p("sara", 1)]);
+    expect(got.map((g) => `${g.id}:${g.centroid[0]}`)).toEqual(["him:2", "sara:1"]);
   });
 });
 
