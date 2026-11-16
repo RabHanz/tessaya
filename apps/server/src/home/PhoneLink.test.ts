@@ -5,9 +5,9 @@ import { makeMicBuffer, nearBy, parseRoute } from "./PhoneLink.ts";
 it("is near only on the R1's own network", () => {
   const cases: Array<[string | null, string | null, string | null, boolean]> = [
     // R1's address, phone's Wi-Fi address, phone's address as the server sees it
-    ["192.168.10.40", "192.168.10.23", "100.70.1.2", true],
+    ["192.168.10.40", "192.168.10.23", "198.51.100.7", true],
     ["::ffff:192.168.10.40", "192.168.10.23", null, true],
-    ["192.168.10.40", "192.168.1.23", "100.70.1.2", false],
+    ["192.168.10.40", "192.168.1.23", "198.51.100.7", false],
     ["203.0.113.9", null, "203.0.113.9", true],
     ["203.0.113.9", "10.0.0.4", "198.51.100.1", false],
     [null, "192.168.10.23", "192.168.10.23", false],
