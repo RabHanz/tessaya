@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { entityFacts, mentions } from "./memoryEntities.ts";
+import { entityFacts, mentions, OWNER_END, relationFacts } from "./memoryEntities.ts";
 
 describe("who or what a statement names", () => {
   it("reads 'X is my Y', 'my Y is X', 'X is the Y' and 'X is the name of Y'", () => {
@@ -41,5 +41,34 @@ describe("who or what a statement names", () => {
     expect(mentions("what can't Maya eat", maya)).toBe(true);
     expect(mentions("my sisterhood group meets Fridays", maya)).toBe(false);
     expect(mentions("the bins go out on Tuesday", maya)).toBe(false);
+  });
+});
+
+describe("the edges a statement draws (people graph)", () => {
+  it("reads people to people, to him, and to events", () => {
+    expect(relationFacts("Ali is Sara's younger sister.")).toEqual([
+      { from: "Ali", relation: "sister", to: "Sara", toKind: "person" },
+    ]);
+    expect(relationFacts("Ali is my cousin from Lahore")).toEqual([
+      { from: "Ali", relation: "cousin", to: OWNER_END, toKind: "owner" },
+    ]);
+    expect(relationFacts("My dentist is Dr Qadri")).toEqual([
+      { from: "Dr Qadri", relation: "dentist", to: OWNER_END, toKind: "owner" },
+    ]);
+    expect(relationFacts("Omar works with me at Meliura")[0]?.relation).toBe("works with");
+    expect(relationFacts("Sara was at the birthday party on Saturday")).toEqual([
+      { from: "Sara", relation: "was at", to: "the birthday party", toKind: "event" },
+    ]);
+    expect(relationFacts("Sara came to our party")[0]?.to).toBe("the party");
+  });
+
+  it("draws nothing from sentences without two ends", () => {
+    for (const text of [
+      "The bins go out on Tuesday",
+      "It is my turn",
+      "Ali was at home",
+      "He is my cousin",
+    ])
+      expect(relationFacts(text)).toEqual([]);
   });
 });

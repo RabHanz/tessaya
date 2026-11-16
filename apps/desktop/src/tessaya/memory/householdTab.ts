@@ -11,6 +11,7 @@ import type {
 
 import type { HomeControl } from "../home/tessayaHome.ts";
 import { text } from "../home/strings.ts";
+import { createPeopleSection } from "./peopleSection.ts";
 
 /** One request to `/tessaya/household`; rejects with the server's reason in plain words. */
 export type HouseholdCall = (
@@ -403,6 +404,7 @@ export const createHouseholdTab = (input: {
   let prefsFor: string | null = null;
   let prefs: Readonly<Record<string, string>> = {};
   let presence: TessayaHouseholdCallResult["presence"] = [];
+  const people = createPeopleSection({ call: input.call, refresh: input.refresh });
 
   const load = async () => {
     try {
@@ -417,6 +419,7 @@ export const createHouseholdTab = (input: {
           ? {}
           : ((await input.call("preferences", { id: prefsFor })).preferences ?? {});
       presence = (await input.call("home")).presence ?? [];
+      await people.load();
     } catch (e) {
       status = e instanceof Error ? e.message : text("hh.failed");
     }
@@ -445,9 +448,9 @@ export const createHouseholdTab = (input: {
   return {
     load,
     /** Resolves once every request it was asked for has answered. */
-    settled: () => busy,
-    controls: (): ReadonlyArray<HomeControl> =>
-      householdControls({
+    settled: () => Promise.all([busy, people.settled()]).then(() => undefined),
+    controls: (): ReadonlyArray<HomeControl> => [
+      ...householdControls({
         members,
         inviteRole,
         code,
@@ -460,9 +463,12 @@ export const createHouseholdTab = (input: {
         presence,
         ...(input.windowsAccount === undefined ? {} : { windowsAccount: input.windowsAccount }),
       }),
+      ...people.controls(members),
+    ],
     /** Handles a click on one of its controls; false when the id is not its own. */
     act: (id: string, value: unknown): boolean => {
       if (!id.startsWith("m.hh.")) return false;
+      if (people.act(id, value)) return true;
       const body = id.slice("m.hh.".length);
       const at = body.indexOf(":");
       const kind = at < 0 ? body : body.slice(0, at);

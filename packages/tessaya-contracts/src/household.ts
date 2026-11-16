@@ -70,6 +70,14 @@ export const TessayaVoiceProfile = Schema.Struct({
 export type TessayaVoiceProfile = typeof TessayaVoiceProfile.Type;
 
 const Ref = { id: TrimmedNonEmptyString };
+const VesselId = Schema.String.check(Schema.isMaxLength(128));
+/** One clip's speaker embedding (base64 float32) from a vessel's Voice ID model. */
+export const TessayaVoicePrint = Schema.Struct({
+  model: TrimmedNonEmptyString.check(Schema.isMaxLength(80)),
+  vector: Schema.String.check(Schema.isMaxLength(16_384)),
+  ms: Schema.Number,
+});
+export type TessayaVoicePrint = typeof TessayaVoicePrint.Type;
 const op = <const O extends string, F extends Schema.Struct.Fields>(name: O, fields: F) =>
   Schema.Struct({ op: Schema.Literal(name), ...fields });
 
@@ -155,8 +163,101 @@ export const TessayaHouseholdCallInput = Schema.Union([
     }),
     fresh: Schema.Boolean,
   }),
+  /**
+   * People (HOUSEHOLD-DESIGN §11). A vessel's turn from a voice that is no member: its voiceprint (numbers, never
+   * audio) is filed with the voice it matches, or as someone new; the answer is who it is and what she is told.
+   */
+  op("peopleObserve", {
+    vessel: VesselId,
+    said: Schema.String.check(Schema.isMaxLength(400)),
+    print: TessayaVoicePrint,
+  }),
+  /** Every person she knows by voice or by relation, what she keeps and why, the suggestions, and how long. */
+  op("peopleList", {}),
+  /** Who someone is and how he knows them, what they last talked about, who was at an event or here on a day. */
+  op("peopleWho", {
+    name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(120))),
+    event: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(120))),
+    day: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(10))),
+    vessel: Schema.optionalKey(VesselId),
+  }),
+  /** The voice just heard on this vessel tells its name; from then on she remembers them. */
+  op("peopleIntroduce", {
+    vessel: VesselId,
+    name: TrimmedNonEmptyString.check(Schema.isMaxLength(60)),
+  }),
+  /** The voice just heard on this vessel asks to be forgotten: its voiceprint and what it said go now. */
+  op("peopleForgetMe", { vessel: VesselId, confirmed: Schema.optionalKey(Schema.Boolean) }),
+  /**
+   * The owner's (and for some, an admin's) changes. `id` "last" is the last voice heard on `vessel` that is no member.
+   * merge and forget are the owner's alone.
+   */
+  op("peopleManage", {
+    action: Schema.Literals([
+      "name",
+      "merge",
+      "split",
+      "notSame",
+      "notPerson",
+      "setStatus",
+      "save",
+      "unsave",
+      "ask",
+      "forget",
+      "retention",
+      "restore",
+      "purge",
+      "bin",
+    ]),
+    id: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(140))),
+    into: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(140))),
+    name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+    /** With `name`: how he knows them ("cousin", "works with me"), kept as his own memory. */
+    relation: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+    status: Schema.optionalKey(Schema.Literals(["member", "guest"])),
+    /** With `setStatus` member: the household member this voice is. */
+    member: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(140))),
+    /** With `ask`: whether she may ask this voice's name (no `id`: anyone's). */
+    on: Schema.optionalKey(Schema.Boolean),
+    /** With `forget`: said back and answered yes; without it, nothing goes and she asks. */
+    confirmed: Schema.optionalKey(Schema.Boolean),
+    /** With `retention`: days an unnamed voice is kept (0, the default: until forgotten); with `bin`: restore days. */
+    days: Schema.optionalKey(Schema.Number),
+    vessel: Schema.optionalKey(VesselId),
+  }),
 ]);
 export type TessayaHouseholdCallInput = typeof TessayaHouseholdCallInput.Type;
+
+export const TessayaPersonStatus = Schema.Literals(["member", "guest", "unknown", "not_person"]);
+export const TessayaPerson = Schema.Struct({
+  id: Schema.String,
+  /** Null: a voice she hasn't been told the name of. */
+  name: Schema.NullOr(Schema.String),
+  status: TessayaPersonStatus,
+  /** What his memory says about them, each with the memory that says it (the why). */
+  relations: Schema.Array(
+    Schema.Struct({ text: Schema.String, why: Schema.NullOr(Schema.String) }),
+  ),
+  /** Turns their voice was heard in. */
+  heard: Schema.Number,
+  firstSeen: Schema.NullOr(Schema.String),
+  lastSeen: Schema.NullOr(Schema.String),
+  /** When an unnamed voice and what it said are deleted; null: kept until someone asks her to forget. */
+  keepUntil: Schema.NullOr(Schema.String),
+  askName: Schema.Boolean,
+  impression: Schema.NullOr(Schema.String),
+  topics: Schema.Array(Schema.Struct({ at: Schema.String, said: Schema.String })),
+});
+export type TessayaPerson = typeof TessayaPerson.Type;
+export const TessayaPeopleSuggestion = Schema.Struct({
+  kind: Schema.Literals(["same", "name", "split"]),
+  id: Schema.String,
+  /** With `same`: the other person. */
+  other: Schema.NullOr(Schema.String),
+  score: Schema.NullOr(Schema.Number),
+  line: Schema.String,
+});
+export type TessayaPeopleSuggestion = typeof TessayaPeopleSuggestion.Type;
 
 export const TessayaHouseholdCallResult = Schema.Struct({
   /** done: changed now. asked: sent to the owner's approving device, changes on a yes. refused: with why. */
@@ -208,5 +309,34 @@ export const TessayaHouseholdCallResult = Schema.Struct({
   ),
   /** With `preferences`: that member's, by key. */
   preferences: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  /** With `peopleObserve` and `peopleIntroduce`: the voice's person, and the line she is given for this turn. */
+  person: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.NullOr(Schema.String),
+        status: TessayaPersonStatus,
+        recognised: Schema.Boolean,
+        line: Schema.String,
+      }),
+    ),
+  ),
+  /** With `peopleList`: everyone, the suggestions, how long unsaved voices are kept, and whether she asks names. */
+  people: Schema.optionalKey(Schema.Array(TessayaPerson)),
+  suggestions: Schema.optionalKey(Schema.Array(TessayaPeopleSuggestion)),
+  retentionDays: Schema.optionalKey(Schema.Number),
+  /** Recently forgotten: restorable for `binDays`, then deleted for good. `by`: owner, themselves or expiry. */
+  forgotten: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.NullOr(Schema.String),
+        by: Schema.String,
+        at: Schema.String,
+      }),
+    ),
+  ),
+  binDays: Schema.optionalKey(Schema.Number),
+  askNames: Schema.optionalKey(Schema.Boolean),
 });
 export type TessayaHouseholdCallResult = typeof TessayaHouseholdCallResult.Type;

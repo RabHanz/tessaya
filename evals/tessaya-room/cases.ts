@@ -8,6 +8,7 @@ import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
 import type { OwnerFiles } from "../../packages/tessaya-shared/src/ownerProfile.ts";
+import { type PersonView, turnLineFor } from "../../packages/tessaya-shared/src/people.ts";
 
 export interface RoomCase {
   readonly id: string;
@@ -18,6 +19,8 @@ export interface RoomCase {
   readonly wifiFirst?: "HomeNet" | "Pixel 9";
   /** Whether his voice is verified as his this turn (the room loop's `tessaya.speaker`). */
   readonly verified?: boolean;
+  /** A voice that is no member: the people graph's line for them comes in `memory`. */
+  readonly guest?: boolean;
   /** Every reply must match each of these. */
   readonly says?: ReadonlyArray<RegExp>;
   /** The last reply must match each of these. */
@@ -84,6 +87,26 @@ const DOES_NOT_KNOW =
   /^(?![\s\S]*\b(I don'?t know|I haven'?t|not yet|no idea|I can'?t (read|see|open)|I don'?t have (access|it|any))\b)/i;
 
 const HERE = "You are speaking through R1, in the study.";
+
+/** A voice the people graph has not been told a name for, and one it knows (made up, as every case is). */
+const NEW_VOICE: PersonView = {
+  name: null,
+  status: "unknown",
+  relations: [],
+  firstSeen: null,
+  lastSeen: null,
+  topics: [],
+  impression: null,
+};
+const ALI: PersonView = {
+  name: "Ali",
+  status: "guest",
+  relations: ["the owner's friend from university"],
+  firstSeen: "2026-11-03T10:00:00.000Z",
+  lastSeen: "2026-11-09T18:00:00.000Z",
+  topics: [{ at: "2026-11-09T18:00:00.000Z", said: "I start my new job on Monday, a bit nervous" }],
+  impression: "warm and funny, a little anxious about work",
+};
 /** At most about 40 words. */
 const SHORT = /^\W*(?:\S+\s+){0,40}\S*\W*$/;
 const mood = (v: Partial<AffectView>): string =>
@@ -722,5 +745,104 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     verified: true,
     memory: `${HERE} Onyx handed this conversation to you: carry on from where it is, without a greeting or starting over.`,
     lastSays: [/^(?![\s\S]*\b(hi|hello|hey there|I'?m Freya|nice to meet)\b)/i, SHORT],
+  },
+  // People (HOUSEHOLD-DESIGN §11): a guest she doesn't know, an introduction, and someone she knows again.
+  {
+    id: "people-ask-name",
+    source: "Director 16 Nov 13:45 GMT+5: with someone new, she can ask their name and remember it",
+    said: ["Hi there, is anyone home?"],
+    guest: true,
+    memory: `${HERE} ${turnLineFor(NEW_VOICE, { recognised: true, askName: true })}`,
+    lastSays: [/\bname\b/i],
+    callsAtMost: { people_introduce: 0 },
+  },
+  // Control: the owner said not to ask names.
+  {
+    id: "people-no-ask",
+    source: "Director 16 Nov: she asks naturally, and not when the owner has said not to",
+    said: ["Hi there, is anyone home?"],
+    guest: true,
+    memory: `${HERE} ${turnLineFor(NEW_VOICE, { recognised: true, askName: false })}`,
+    lastSays: [/^(?![\s\S]*\bwhat'?s your name\b)/i],
+  },
+  {
+    id: "people-introduce",
+    source: "Director 16 Nov: a guest or someone new can introduce themselves",
+    said: ["I'm Ali, by the way. I'm a friend of his from university."],
+    guest: true,
+    memory: `${HERE} ${turnLineFor(NEW_VOICE, { recognised: true, askName: true })}`,
+    calls: ["people_introduce"],
+    lastSays: [/\bAli\b/],
+  },
+  {
+    id: "people-recall",
+    source: "Director 16 Nov: next time she recognises them, their context comes back",
+    said: ["Hello again! How have you been?"],
+    guest: true,
+    memory: `${HERE} ${turnLineFor(ALI, { recognised: true, askName: false })}`,
+    lastSays: [/\bAli\b/, /\b(job|Monday|work)\b/i],
+    callsAtMost: { people_who: 0, people_introduce: 0 },
+  },
+  {
+    id: "people-forget-me",
+    source: "Director 16 Nov: 'forget me' from the person themselves works",
+    said: ["Please forget me, I don't want you keeping my voice."],
+    guest: true,
+    memory: `${HERE} ${turnLineFor(ALI, { recognised: true, askName: false })}`,
+    calls: ["people_forget_me"],
+    callsAtMost: { tessaya_memory_forget: 0, people_manage: 0 },
+  },
+  // Forgetting is said back and needs a clear yes (the Director, 16 Nov ~14:35: "or everything will be too easy to
+  // delete, even by mistake"): her answer asks, never says it is done.
+  {
+    id: "people-forget-me-confirms",
+    source:
+      "Director 16 Nov ~14:35: a voice forget repeats back what will go and needs a clear yes",
+    said: ["Please forget me, I don't want you keeping my voice."],
+    guest: true,
+    memory: `${HERE} ${turnLineFor(ALI, { recognised: true, askName: false })}`,
+    calls: ["people_forget_me"],
+    lastSays: [/\?|\b(sure|confirm|yes)\b/i],
+  },
+  {
+    id: "people-forget-her-confirms",
+    source: "Director 16 Nov ~14:35: forgetting someone else is the owner's, said back first",
+    said: ["Forget Ali, the guest who was here yesterday."],
+    verified: true,
+    calls: ["people_manage"],
+    callsAtMost: { tessaya_memory_forget: 0 },
+    lastSays: [/\?|\b(sure|confirm|yes)\b/i],
+  },
+  // Near-misses: a passing "forget it" or "never mind" forgets no one.
+  {
+    id: "people-forget-it-guest",
+    source: "Director 16 Nov ~14:35: 'forget it' or 'never mind' must never trigger it",
+    said: ["Ah, forget it, never mind. It doesn't matter."],
+    guest: true,
+    memory: `${HERE} ${turnLineFor(ALI, { recognised: true, askName: false })}`,
+    callsAtMost: { people_forget_me: 0, people_manage: 0, tessaya_memory_forget: 0 },
+  },
+  {
+    id: "people-forget-it-owner",
+    source: "Director 16 Nov ~14:35: 'forget it' or 'never mind' must never trigger it",
+    said: ["Who was that just now?", "Oh, forget it, never mind, it's not important."],
+    verified: true,
+    callsAtMost: { people_forget_me: 0, people_manage: 0, tessaya_memory_forget: 0 },
+  },
+  {
+    id: "people-remember-cousin",
+    source:
+      "Director 16 Nov: we should be able to save different individuals and their context ourselves",
+    said: ["Remember that's my cousin Ali who was just talking."],
+    verified: true,
+    calls: ["people_manage"],
+    callsAtMost: { tessaya_memory_remember: 0 },
+  },
+  {
+    id: "people-who-was-that",
+    source: "Director 16 Nov: 'who was that?', Google Photos style",
+    said: ["Who was that you were just talking to?"],
+    verified: true,
+    calls: ["people_who"],
   },
 ];

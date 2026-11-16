@@ -450,6 +450,30 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       return { ok: true, value: { "net.ssid": "HomeNet", "net.state": "online" } };
     case "device_button":
       return { ok: true, value: { status: "done", line: "Saved." } };
+    // One made-up guest the fake house's people know.
+    case "people_list":
+    case "people_who":
+      return {
+        ok: true,
+        value: {
+          status: "done",
+          line: "Ali (id p-ali): a guest, the owner's friend from university; heard 4 times, last yesterday.",
+          people: [{ id: "p-ali", name: "Ali", status: "guest", heard: 4 }],
+        },
+      };
+    // As TessayaPeople answers: a forget is said back first, and goes only on a confirmed second call.
+    case "people_forget_me":
+    case "people_manage":
+      return (args as { confirmed?: unknown }).confirmed === true ||
+        (name === "people_manage" && (args as { action?: unknown }).action !== "forget")
+        ? { ok: true, value: { status: "done", line: "Done." } }
+        : {
+            ok: true,
+            value: {
+              status: "asked",
+              line: "Before I do: forgetting them removes their voice and 3 things they said. Ask for a clear yes, then call again with confirmed.",
+            },
+          };
     case "tessaya_owner_doc":
       return { text: ownerDoc(OWNER.docs, args as { name?: string; section?: string }) };
     case "laptop_ask":
@@ -490,7 +514,9 @@ const context = (
   voice:
     c.verified === true
       ? { speaker: { kind: "owner", personId: "owner", verified: true, inherited: false } }
-      : undefined,
+      : c.guest === true
+        ? { speaker: { kind: "guest", personId: null, verified: false, inherited: false } }
+        : undefined,
   // His clock as the server gives it (clockLine), with the time as it is said; 10:15 on 12 Nov in Karachi.
   now: clockLine(Date.UTC(2026, 10, 12, 5, 15), "Asia/Karachi", c.clock ?? "12h"),
   // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.

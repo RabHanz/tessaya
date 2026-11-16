@@ -102,3 +102,64 @@ export const mentions = (text: string, entity: EntityFact): boolean => {
     ),
   );
 };
+
+/** The owner, as the far end of a relation his own words state ("Ali is my cousin": Ali, cousin, him). */
+export const OWNER_END = "owner";
+
+export interface RelationFact {
+  readonly from: string;
+  /** "cousin", "sister", "works with", "was at". */
+  readonly relation: string;
+  /** A name, an event's phrase ("the party"), or `OWNER_END`. */
+  readonly to: string;
+  readonly toKind: "person" | "event" | "owner";
+}
+
+/**
+ * The edges a statement draws between people, and from people to events (HOUSEHOLD-DESIGN §11): "Ali is Sara's
+ * sister", "Ali is my cousin", "my cousin is Ali", "Ali works with me", "Ali was at the party". Plain rules, as
+ * `entityFacts`; a sentence they miss still names its people, so recall finds it by name.
+ */
+export const relationFacts = (text: string): ReadonlyArray<RelationFact> => {
+  const facts: Array<RelationFact> = [];
+  const named = (n: string | undefined) => n !== undefined && !NOT_NAMES.has(n);
+  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+    const s = sentence.trim();
+    let m = new RegExp(`^${NAME} is ${NAME}[’']s ([a-z][a-z ]*)`).exec(s);
+    if (m !== null && named(m[1]) && named(m[2])) {
+      const relation = phraseAliases(relation_(m[3]!), true).at(-1);
+      if (relation !== undefined)
+        facts.push({ from: m[1]!, relation, to: m[2]!, toKind: "person" });
+      continue;
+    }
+    m = new RegExp(`^${NAME} is (?:my|our) ([a-z][a-z ]*)`).exec(s);
+    if (m !== null && named(m[1])) {
+      const relation = phraseAliases(relation_(m[2]!), true).at(-1);
+      if (relation !== undefined)
+        facts.push({ from: m[1]!, relation, to: OWNER_END, toKind: "owner" });
+      continue;
+    }
+    m = new RegExp(`^(?:My|Our) ([a-z][a-z ]*?) is ${NAME}\\b`).exec(s);
+    if (m !== null && named(m[2])) {
+      const relation = phraseAliases(m[1]!, true).at(-1)!;
+      facts.push({ from: m[2]!, relation, to: OWNER_END, toKind: "owner" });
+      continue;
+    }
+    m = new RegExp(`^${NAME} (?:works|worked) with (?:me|us)\\b`).exec(s);
+    if (m !== null && named(m[1])) {
+      facts.push({ from: m[1]!, relation: "works with", to: OWNER_END, toKind: "owner" });
+      continue;
+    }
+    m = new RegExp(`^${NAME} (?:was|came) (?:at|to) ((?:the|my|our|his|her) [a-z][a-z' ]*)`).exec(
+      s,
+    );
+    if (m !== null && named(m[1])) {
+      const event = relation_(m[2]!).replace(/^(?:my|our|his|her) /, "the ");
+      if (event.split(" ").length > 1)
+        facts.push({ from: m[1]!, relation: "was at", to: event, toKind: "event" });
+    }
+  }
+  return facts;
+};
+
+const relation_ = (rest: string): string => rest.split(PHRASE_END)[0]!.trim().toLowerCase();

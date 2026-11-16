@@ -52,7 +52,7 @@ import { ownerLineFor, personasList } from "./OperatingSystemPack.ts";
 import { TessayaJobService } from "./TessayaJobService.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 import { leadFitLine } from "@t3tools/tessaya-shared/jobs";
-import type { RegisteredDevice } from "@t3tools/tessaya-contracts";
+import type { RegisteredDevice, TessayaVoicePrint } from "@t3tools/tessaya-contracts";
 
 export { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
 
@@ -97,6 +97,11 @@ export interface TurnEnvelope {
    * subject that names a member badly. Filled from `SessionMember` by `begin` and `end` when the vessel does not say.
    */
   readonly member?: string | null | undefined;
+  /**
+   * A voice that is no member: this turn's speaker embedding (numbers, never audio), so the people graph knows them
+   * next time (HOUSEHOLD-DESIGN §11). Sent only for a guest's voice.
+   */
+  readonly print?: TessayaVoicePrint | undefined;
 }
 
 /**
@@ -262,7 +267,12 @@ export interface TurnContext {
   /** How the person she is talking to likes things (their own, never another member's); empty for a guest. */
   readonly preferences: Readonly<Partial<Record<PreferenceKey, string>>>;
   /** Who she is talking to: the member and what to call them (their `name` preference, else their member name). */
-  readonly who: { readonly member: string | null; readonly name: string | null };
+  readonly who: {
+    readonly member: string | null;
+    readonly name: string | null;
+    /** The people graph's id for a voice that is no member (MA-021's key for a stranger); null otherwise. */
+    readonly person?: string | null;
+  };
   /** The persona's line about him (`ownerLine`): only on his own untainted turns, else "". */
   readonly owner?: string;
 }
@@ -462,6 +472,37 @@ export const make = Effect.gen(function* () {
     Effect.map((rows) => (rows[0]?.value ?? "") || null),
     Effect.orElseSucceed(() => null),
   );
+
+  /**
+   * A guest's voice, filed in the people graph on the household's home (HOUSEHOLD-DESIGN §11): who they are, if she has
+   * met them, and her line for them. Never a member's voice, a shared room's mixed one, or a replay.
+   */
+  const personFor = Effect.fn("TessayaTurn.personFor")(function* (turn: TurnEnvelope) {
+    if (
+      turn.print === undefined ||
+      turn.rehearsal === true ||
+      turn.sharedRoom === true ||
+      turn.speaker?.kind !== "guest"
+    )
+      return null;
+    const household = yield* Effect.serviceOption(TessayaHousehold);
+    if (Option.isNone(household)) return null;
+    const heard = yield* household.value
+      .call({
+        op: "peopleObserve",
+        vessel: turn.vessel.id,
+        said: turn.text.slice(0, 400),
+        print: turn.print,
+      })
+      .pipe(
+        Effect.provideService(HouseholdCaller, {
+          member: null,
+          assurance: 0,
+          via: "Tessaya, hearing a voice",
+        }),
+      );
+    return heard.person ?? null;
+  });
 
   /** The household's own call (routed to the home when it lives elsewhere), as this member asking for themselves. */
   const askHousehold = Effect.fn("TessayaTurn.askHousehold")(function* (
@@ -712,6 +753,7 @@ export const make = Effect.gen(function* () {
     if (turn.turnRef !== undefined && sentence.ids.length > 0)
       yield* memory.markUsed(turn.turnRef, sentence.ids);
     const member = turnIdentity(turn).member;
+    const person = yield* personFor(turn);
     yield* notePresence(turn);
     const preferences = yield* preferencesOf(member);
     const waiting = yield* waitingLine(turn, member, preferences.name ?? null);
@@ -730,14 +772,26 @@ export const make = Effect.gen(function* () {
     if (handed !== "") handedTo.delete(key);
     return {
       notice: waiting,
-      block: [here, handed, board, standing.block, extra, nameOnceLine(turn.nameOnce)]
+      block: [
+        here,
+        handed,
+        board,
+        standing.block,
+        extra,
+        nameOnceLine(turn.nameOnce),
+        person?.line ?? "",
+      ]
         .filter((b) => b !== "")
         .join("\n\n"),
       ids: sentence.ids,
       privateBlock: turn.sharedRoom === true ? "" : yield* privateFor(turn),
       conversation: yield* conversationOf(turn),
       preferences,
-      who: { member, name: preferences.name ?? (yield* memberName(member)) },
+      who: {
+        member,
+        name: preferences.name ?? (yield* memberName(member)) ?? person?.name ?? null,
+        person: person?.id ?? null,
+      },
       owner:
         member === OWNER_MEMBER_ID && turn.tainted !== true
           ? yield* ownerLineFor(turn.persona)

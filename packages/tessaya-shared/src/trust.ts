@@ -87,6 +87,10 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "trust_show",
       // Who answers their own conversation: anyone may pass it to another persona.
       "tessaya_persona_handoff",
+      // People: a guest names or forgets themselves; what anyone hears of others is the service's to decide.
+      "people_who",
+      "people_introduce",
+      "people_forget_me",
     ].map((t) => [t, "general" as const]),
   ),
   ...Object.fromEntries(
@@ -144,6 +148,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "member_rename",
       "member_preference_set",
       "household_home_server",
+      "people_list",
+      "people_manage",
       // The device's button map is shared by everyone in the home.
       "device_button",
     ].map((t) => [t, "household" as const]),

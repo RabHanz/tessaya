@@ -136,7 +136,7 @@ describe("the Household area", () => {
     await t.settle();
     const ops = t.calls
       .map(([op]) => op)
-      .filter((op) => !["list", "preferences", "home"].includes(op));
+      .filter((op) => !["list", "preferences", "home", "peopleList"].includes(op));
     expect(ops).toEqual(["setPreference", "hello", "stepUp", "setRole", "remove"]);
     expect(t.calls).toContainEqual(["stepUp", { hello: "laptop\\rab" }]);
   });
