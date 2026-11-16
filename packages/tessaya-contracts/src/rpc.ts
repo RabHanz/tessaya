@@ -195,7 +195,12 @@ import {
 import { BATON_CLOUD_WS_METHODS, TessayaCloudCallInput, TessayaCloudCallResult } from "./cloud.ts";
 import { BATON_HOME_WS_METHODS, TessayaHomeCallInput, TessayaHomeCallResult } from "./home.ts";
 import { BATON_VOICE_WS_METHODS, TessayaVoiceCallInput, TessayaVoiceCallResult } from "./voice.ts";
-import { BATON_BRAIN_WS_METHODS, BrainUsageInput, BrainUsageResult } from "./brainUsage.ts";
+import {
+  BATON_BRAIN_WS_METHODS,
+  BrainUsageInput,
+  BrainUsageRecordInput,
+  BrainUsageResult,
+} from "./brainUsage.ts";
 import {
   BATON_PERSONAS_WS_METHODS,
   TessayaPersonasListInput,
@@ -827,6 +832,11 @@ const WsTessayaBrainUsageRpc = Rpc.make(BATON_BRAIN_WS_METHODS.usage, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsTessayaBrainRecordRpc = Rpc.make(BATON_BRAIN_WS_METHODS.record, {
+  payload: BrainUsageRecordInput,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsTessayaPersonasListRpc = Rpc.make(BATON_PERSONAS_WS_METHODS.list, {
   payload: TessayaPersonasListInput,
   success: TessayaPersonasListResult,
@@ -1068,6 +1078,7 @@ const BATON_RPCS = [
   WsTessayaRecordListRpc,
   WsTessayaRecordAppendRpc,
   WsTessayaBrainUsageRpc,
+  WsTessayaBrainRecordRpc,
   WsTessayaPersonasListRpc,
   WsTessayaPromptLabRpc,
   WsTessayaDictationCleanupApiRpc,

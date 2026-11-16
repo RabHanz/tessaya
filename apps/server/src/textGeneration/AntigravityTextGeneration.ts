@@ -268,6 +268,9 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
                 },
               ],
             });
+            yield* TextGenerationOperations.reportUsage(
+              TextGenerationOperations.acpTokens(result.usage, true),
+            );
             if (yield* Deferred.isDone(rejected)) {
               return yield* Deferred.await(rejected);
             }

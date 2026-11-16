@@ -32,6 +32,7 @@ import {
   hasClaudeManagedMcpConfig,
   makeClaudeEnvironment,
 } from "../provider/Drivers/ClaudeHome.ts";
+import { cliTokens } from "../tessaya/BrainUsage.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
 /** `--tools` takes bare names; patterns go in the allow list. */
@@ -328,6 +329,13 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     const envelope = isClaudeOutputEnvelope(output)
       ? output
       : output.findLast((message) => message.type === "result");
+    const raw = Option.getOrUndefined(decodeJsonOption(rawStdout));
+    yield* TextGenerationOperations.reportUsage(
+      cliTokens(
+        Array.isArray(raw) ? raw.findLast((message) => message?.type === "result") : raw,
+        resolvedModelSelection.model,
+      ),
+    );
 
     const decodeOutput = Schema.decodeEffect(outputSchemaJson);
     return yield* decodeOutput(envelope?.structured_output).pipe(

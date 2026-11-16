@@ -1,3 +1,4 @@
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
@@ -52,6 +53,58 @@ export const withoutInvestigation =
     request.investigate
       ? Effect.fail(investigationUnsupported(request.operation, provider))
       : run(request);
+
+/** One generation's tokens; `input` is the uncached part. `model` when the reply names the one that ran. */
+export interface Tokens {
+  readonly model?: string;
+  readonly input: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  readonly output: number;
+}
+
+/** Where a driver hands back what its call used; the caller that records usage provides it. */
+export const UsageSink = Context.Reference<((tokens: ReadonlyArray<Tokens>) => void) | undefined>(
+  "@t3tools/provider-core/textGenerationOperations/UsageSink",
+  { defaultValue: () => undefined },
+);
+
+export const reportUsage = Effect.fn("TextGenerationOperations.reportUsage")(function* (
+  tokens: ReadonlyArray<Tokens>,
+) {
+  (yield* UsageSink)?.(tokens);
+});
+
+const nonNegative = (value: number | null | undefined) =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+
+/** An ACP PromptResponse's `usage`: its input counts the cache, except Gemini's, which also leaves thoughts out of output. */
+export const acpTokens = (
+  usage:
+    | {
+        readonly inputTokens: number;
+        readonly outputTokens: number;
+        readonly cachedReadTokens?: number | null | undefined;
+        readonly cachedWriteTokens?: number | null | undefined;
+        readonly thoughtTokens?: number | null | undefined;
+      }
+    | null
+    | undefined,
+  gemini = false,
+): ReadonlyArray<Tokens> => {
+  if (usage == null) return [];
+  const cacheRead = nonNegative(usage.cachedReadTokens);
+  const cacheWrite = nonNegative(usage.cachedWriteTokens);
+  const input = nonNegative(usage.inputTokens);
+  return [
+    {
+      input: gemini ? input : Math.max(0, input - cacheRead - cacheWrite),
+      cacheRead,
+      cacheWrite,
+      output: nonNegative(usage.outputTokens) + (gemini ? nonNegative(usage.thoughtTokens) : 0),
+    },
+  ];
+};
 
 export const decodeJsonReply = <S extends Schema.Top>(
   request: Pick<Request<S>, "operation" | "outputSchema">,

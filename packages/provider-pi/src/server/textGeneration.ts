@@ -105,6 +105,19 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function* 
               piRecordString(message, "stopReason") === "error"
                 ? piTurnErrorDetail(piRecordString(message, "errorMessage"))
                 : undefined;
+            const usage = (message as { usage?: Record<string, unknown> } | undefined)?.usage;
+            const count = (key: string) =>
+              typeof usage?.[key] === "number" ? (usage[key] as number) : 0;
+            if (usage !== undefined) {
+              yield* TextGenerationOperations.reportUsage([
+                {
+                  input: count("input"),
+                  cacheRead: count("cacheRead"),
+                  cacheWrite: count("cacheWrite"),
+                  output: count("output"),
+                },
+              ]);
+            }
           }
         }
       });

@@ -69,6 +69,7 @@ import { startDesktopTessayaVoice, type DesktopTessayaVoice } from "./voice/Desk
 import { createBridgeCatalogService } from "./sessions/catalogBridge.ts";
 import { createCatalog } from "./sessions/catalogRows.ts";
 import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
+import { sendVisionUsageTo } from "./screen/claudeVision.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
 import { createVoicePlayer } from "./voice/voicePlayer.ts";
 import { createPocketEngine, type PocketVoice } from "./voice/pocketVoice.ts";
@@ -515,6 +516,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
     };
     const direct = (method: string, body: unknown, timeoutMs?: number) =>
       own(`/tessaya/desk/${method}`, body, timeoutMs);
+    // Her desktop calls on his own `claude` (looks, rewrites, clean-up) go to the one usage ledger; a lost row is not retried.
+    sendVisionUsageTo((row) => void direct("baton.brain.record", row).catch(() => undefined));
     // An owner-only persona layer on this machine's server, in internal builds only: the first 404 stops it.
     const layerKeyFile = NodePath.join(environment.stateDir, "tessaya-layer-device.key");
     const layerLink = startPersonaLayerLink({

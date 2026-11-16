@@ -61,6 +61,23 @@ const codexMcpServerOffFlags = (names: ReadonlyArray<string>) =>
     .filter((name) => !name.includes(".") && !name.includes("="))
     .flatMap((name) => ["--config", `mcp_servers.${name}.enabled=false`]);
 const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
+/** `codex exec --json`'s `turn.completed` usage, whose input counts the cached part. */
+const codexExecTokens = (stdout: string): ReadonlyArray<TextGenerationOperations.Tokens> =>
+  stdout.split("\n").flatMap((line) => {
+    if (!line.includes('"turn.completed"')) return [];
+    try {
+      const usage = JSON.parse(line)?.usage;
+      return TextGenerationOperations.acpTokens({
+        inputTokens: usage?.input_tokens ?? 0,
+        cachedReadTokens: usage?.cached_input_tokens,
+        outputTokens: usage?.output_tokens ?? 0,
+      });
+    } catch {
+      return [];
+    }
+  });
+
 export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(function* (
   codexConfig: CodexSettings,
   environment?: NodeJS.ProcessEnv,
@@ -319,6 +336,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           // After launch args, so a launch arg's enabled=true cannot turn a server back on.
           ...codexMcpServerOffFlags(enabledMcpServers),
           "--ephemeral",
+          "--json",
           "--skip-git-repo-check",
           "-s",
           "read-only",
@@ -379,6 +397,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
               : `Codex CLI command failed with code ${exitCode}.`,
         });
       }
+      yield* TextGenerationOperations.reportUsage(codexExecTokens(stdout));
     });
 
     const cleanup = Effect.all([removeTempFileDir(schemaPath), removeTempFileDir(outputPath)], {

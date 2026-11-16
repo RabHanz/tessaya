@@ -9,7 +9,41 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
+import { cliTokens, LEDGERED_DIR } from "@t3tools/tessaya-shared/brainRoutes";
 import type { ToolCall } from "@t3tools/tessaya-shared/operator";
+import type { BrainUsageRecordInput } from "@t3tools/tessaya-contracts";
+
+/** Where each answer's tokens go: the desktop points it at its server's usage ledger once at start. */
+let usageSink: ((row: BrainUsageRecordInput) => void) | undefined;
+export const sendVisionUsageTo = (sink: typeof usageSink) => {
+  usageSink = sink;
+};
+
+/** One answer's ledger rows, one per model it used; an answer with no counts says so. */
+export const usageRowsOf = (
+  line: string,
+  model: string,
+  feature: string,
+): ReadonlyArray<BrainUsageRecordInput> => {
+  let event: { type?: unknown; is_error?: unknown };
+  try {
+    event = JSON.parse(line);
+  } catch {
+    return [];
+  }
+  if (event.type !== "result") return [];
+  const failed = event.is_error === true;
+  const used = cliTokens(event, model);
+  const rows =
+    used.length > 0 ? used : [{ model, input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }];
+  return rows.map((tokens) => ({
+    role: "vision",
+    provider: "claude",
+    ...tokens,
+    outcome: failed ? "failed" : used.length > 0 ? "ok" : "unmeasured",
+    feature,
+  }));
+};
 
 export type VisionContent =
   | { readonly type: "text"; readonly text: string }
@@ -58,6 +92,8 @@ export interface VisionSessionOptions {
   readonly chrome?: boolean;
   /** `--effort`; medium when absent, and none for the fast router model. */
   readonly effort?: string;
+  /** What the usage ledger files its answers under; `screen` when absent. */
+  readonly feature?: string;
 }
 
 /** Files, shell and the web. Nothing that outlives the turn, such as schedules or triggers. */
@@ -281,7 +317,9 @@ export const spawnable = (
 };
 
 export const startVisionSession = (options: VisionSessionOptions): VisionSession => {
-  NodeFS.mkdirSync(options.workDir, { recursive: true });
+  // Run from a ledgered folder, so a server on this machine skips the transcript the ledger already counts.
+  const ledgered = NodePath.join(options.workDir, LEDGERED_DIR);
+  NodeFS.mkdirSync(ledgered, { recursive: true });
   const promptFile = NodePath.join(
     options.workDir,
     `prompt-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`,
@@ -318,7 +356,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
       options.effort,
     ).map((a) => (viaShell ? `"${a}"` : a)),
     {
-      cwd: options.cwd ?? options.workDir,
+      cwd: options.cwd ?? ledgered,
       env: {
         ...subscriptionEnv(options.env),
         ...(mcpFile === undefined ? {} : { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" }),
@@ -395,8 +433,13 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
     if (delta !== null) return waiting[0]?.onDelta?.(delta);
     const result = resultOf(line);
     if (result === null) return;
+    // A caller with its own result handler (dictation clean-up) records its usage itself.
     if (options.onResult !== undefined)
       options.onResult(JSON.parse(line) as Record<string, unknown>);
+    // shortcut: an operator turn in his own folder stays in the transcript scan's count, not the ledger's.
+    else if (options.cwd === undefined)
+      for (const row of usageRowsOf(line, options.model, options.feature ?? "screen"))
+        usageSink?.(row);
     const next = waiting.shift();
     if (next === undefined) return;
     if (result.ok) next.resolve(result.text);

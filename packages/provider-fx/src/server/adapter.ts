@@ -188,6 +188,8 @@ function makeFxAcpAdapterFlavor(options: FxAdapterV2Options): AcpAdapterV2Flavor
     sessionModeForPolicy: fxSessionModeForPolicy,
     permissionDisposition: fxPermissionDisposition,
     extractSubagentUpdate: extractFxSubagentUpdate,
+    // Recorded fx turns report each prompt's own counters (turn 2 output does not include turn 1).
+    reportsPerTurnPromptUsage: true,
     ...(options.assertComplete === undefined ? {} : { assertComplete: options.assertComplete }),
   };
 }

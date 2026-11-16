@@ -82,36 +82,41 @@ export const make = Effect.gen(function* () {
   const installationGate = yield* ProviderInstallationGate.ProviderInstallationGate;
   const textGenerators = yield* TextGenerators.TextGenerators;
   const usage = yield* Effect.serviceOption(BrainUsage);
-  /** Every generation is a paid call: one usage row each, failed ones too. Drivers report no tokens yet. */
+  /** Every generation is a paid call: one usage row per model it used, failed ones too. */
   const recorded = <A>(
     operation: TextGenerationOp,
     invoke: Effect.Effect<A, TextGenerationError>,
     selection: ModelSelection,
-  ) =>
-    Option.isNone(usage)
-      ? invoke
-      : invoke.pipe(
-          Effect.onExit((exit) =>
-            Effect.gen(function* () {
-              const instance = yield* registry.getInstance(selection.instanceId);
-              const auth =
-                instance === undefined ? undefined : (yield* instance.snapshot.getSnapshot).auth;
-              yield* usage.value.record({
-                role: "agent",
-                billing: billingOfAuth(auth?.type),
-                provider: selection.instanceId,
-                credential: `instance:${selection.instanceId}`,
-                model: selection.model,
-                input: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-                output: 0,
-                outcome: Exit.isSuccess(exit) ? "unmeasured" : "failed",
-                attribution: { feature: operation, origin: "user" },
-              });
-            }).pipe(Effect.ignore),
-          ),
-        );
+  ) => {
+    if (Option.isNone(usage)) return invoke;
+    const used: Array<TextGenerationOperations.Tokens> = [];
+    return invoke.pipe(
+      Effect.provideService(TextGenerationOperations.UsageSink, (tokens) => used.push(...tokens)),
+      Effect.onExit((exit) =>
+        Effect.gen(function* () {
+          const instance = yield* registry.getInstance(selection.instanceId);
+          const auth =
+            instance === undefined ? undefined : (yield* instance.snapshot.getSnapshot).auth;
+          const rows =
+            used.length > 0
+              ? used
+              : [{ input: 0, cacheRead: 0, cacheWrite: 0, output: 0 } as const];
+          for (const tokens of rows) {
+            yield* usage.value.record({
+              role: "agent",
+              billing: billingOfAuth(auth?.type),
+              provider: selection.instanceId,
+              credential: `instance:${selection.instanceId}`,
+              ...tokens,
+              model: tokens.model ?? selection.model,
+              outcome: Exit.isFailure(exit) ? "failed" : used.length > 0 ? "ok" : "unmeasured",
+              attribution: { feature: operation, origin: "user" },
+            });
+          }
+        }).pipe(Effect.ignore),
+      ),
+    );
+  };
   const generate = Effect.fn("TextGeneration.generate")(function* <A>(
     operation: TextGenerationOp,
     selection: ModelSelection,

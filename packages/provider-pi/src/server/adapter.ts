@@ -23,6 +23,7 @@ import {
   type ProviderInstanceId,
   type MessageId,
   type OrchestrationV2ProviderTurnTokenUsage,
+  type TurnTokenUsage,
 } from "@t3tools/contracts";
 import { PiSettings } from "../settings.ts";
 import * as Cause from "effect/Cause";
@@ -380,6 +381,15 @@ interface ActivePiTurn {
   stopTreeRefs?: PiTurnTreeRefs | null;
   /** The provider/model Pi reported on its latest assistant message. */
   reportedModel?: string;
+  /** Summed usage of this turn's assistant messages; null until one reports usage. */
+  usage: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    reasoning?: number;
+  } | null;
+  sawSubagent: boolean;
 }
 
 interface PiTurnTreeRefs {
@@ -885,6 +895,26 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         };
       };
 
+      const piTurnTokenUsage = (turn: ActivePiTurn, complete: boolean): TurnTokenUsage => {
+        const usage = turn.usage;
+        const hasSubagents = turn.sawSubagent;
+        if (usage === null) {
+          return { usageScope: "main_agent", usageStatus: "unavailable", hasSubagents };
+        }
+        return {
+          usageScope: "main_agent",
+          usageStatus: complete ? "complete" : "partial",
+          hasSubagents,
+          inputTokens: usage.input + usage.cacheRead + usage.cacheWrite,
+          outputTokens: usage.output,
+          cachedInputTokens: usage.cacheRead,
+          cacheCreationTokens: usage.cacheWrite,
+          ...(usage.reasoning === undefined
+            ? {}
+            : { reasoningTokens: Math.min(usage.reasoning, usage.output) }),
+        };
+      };
+
       const readTokenUsage = (fallbackUsedTokens: number | null, updatedAt: DateTime.Utc) =>
         request({ type: "get_session_stats" }, 2_000).pipe(
           Effect.map((stats) => tokenUsageFromStats(stats, fallbackUsedTokens, updatedAt)),
@@ -1291,6 +1321,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           },
         });
         if (toolName === "subagent") {
+          turn.sawSubagent = true;
           yield* emitSubagentTasks(turn, toolCallId, resultRecord, completed);
         }
       });
@@ -1768,6 +1799,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               : { nativeTurnRef: treeRefs.nativeTurnRef }),
             status: interrupted ? "interrupted" : failure !== null ? "failed" : "completed",
             completedAt,
+            turnTokenUsage: piTurnTokenUsage(turn, !interrupted && failure === null),
             ...(tokenUsage === undefined ? {} : { tokenUsage }),
             ...(turn.reportedModel === undefined ? {} : { model: turn.reportedModel }),
           },
@@ -2028,6 +2060,24 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             const reportedModelId = recordString(message, "model");
             if (reportedProvider && reportedModelId) {
               turn.reportedModel = `${reportedProvider}/${reportedModelId}`;
+            }
+            const usage = recordField(message, "usage");
+            const input = nonNegativeInteger(usage, "input");
+            const output = nonNegativeInteger(usage, "output");
+            if (input !== undefined && output !== undefined) {
+              const reasoning = nonNegativeInteger(usage, "reasoning");
+              const previous = turn.usage;
+              turn.usage = {
+                input: (previous?.input ?? 0) + input,
+                output: (previous?.output ?? 0) + output,
+                cacheRead:
+                  (previous?.cacheRead ?? 0) + (nonNegativeInteger(usage, "cacheRead") ?? 0),
+                cacheWrite:
+                  (previous?.cacheWrite ?? 0) + (nonNegativeInteger(usage, "cacheWrite") ?? 0),
+                ...(reasoning === undefined && previous?.reasoning === undefined
+                  ? {}
+                  : { reasoning: (previous?.reasoning ?? 0) + (reasoning ?? 0) }),
+              };
             }
             if (recordString(message, "stopReason") === "error" && turn.failure === null) {
               turn.failure = makeProviderFailure({
@@ -2914,6 +2964,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 compactCommand !== null || (payload?.message.trimStart().startsWith("/") ?? false),
               latestCompactionAfterTokens: null,
               lastLiveUsedTokens: null,
+              usage: null,
+              sawSubagent: false,
               settleProbeGeneration: 0,
               settleWhenIdle: false,
               sawCompaction: false,

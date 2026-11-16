@@ -180,10 +180,21 @@ it.effect("keeps what each call was for, counts a report once, and drills down t
       outcome: "failed",
       attribution: { feature: "intent", origin: "user" },
     });
+    // A look on the desktop, on his own `claude`: his plan, filed under the desktop.
+    yield* BrainUsage.recordDesktopUsage({
+      ...tokens,
+      role: "vision",
+      provider: "claude",
+      outcome: "ok",
+      feature: "screen",
+    });
     const totals = yield* usage.totals({ since: 0, timeZone: "Asia/Karachi" });
-    expect(totals.map((t) => [t.feature, t.persona, t.calls, t.listDollars])).toEqual([
-      ["job", "alter-ego", 1, expect.closeTo(0.001, 9)],
-      ["intent", null, 1, null],
+    expect(
+      totals.map((t) => [t.feature, t.persona, t.surface, t.billing, t.calls, t.listDollars]),
+    ).toEqual([
+      ["job", "alter-ego", null, "subscription", 1, expect.closeTo(0.001, 9)],
+      ["intent", null, null, "subscription", 1, null],
+      ["screen", null, "desktop", "subscription", 1, expect.closeTo(0.001, 9)],
     ]);
     const calls = yield* usage.calls({
       since: 0,
