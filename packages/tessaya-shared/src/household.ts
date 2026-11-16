@@ -174,7 +174,16 @@ export const PREFERENCE_KEYS: Readonly<Record<TessayaPreferenceKey, string>> = {
   follow:
     'whether her own lines follow them to the vessel they are nearest ("follow me": on, the default) or stay where they asked (off)',
   pronouns: 'the pronouns she uses for them ("she/her", "he/him", "they/them"); unset is "they"',
+  devices:
+    "their own phones, laptops and headphones by name or network (MAC) address, comma-separated, so she knows when they are on the home Wi-Fi and whose headphones are on",
+  location:
+    "whether their phone may tell her when they arrive home or leave (on or off; off until they say on); never where they are",
+  camera:
+    "whether a camera may notice they are at a computer (on or off; off until they say on); she says when it is on and keeps no picture",
 };
+/** An opt-in (location, camera): off until they say yes. */
+export const optedIn = (value: string | undefined): boolean =>
+  value !== undefined && /^\s*(?:on|yes|y|true|allow(?:ed)?|ok(?:ay)?|sure)\b/i.test(value);
 /** "Follow me" is on until they say off. */
 export const followOn = (value: string | undefined): boolean =>
   value === undefined || !/^\s*(?:off|no|n|false|stay|don'?t)\b/i.test(value);

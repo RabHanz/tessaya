@@ -26,6 +26,7 @@ import {
   layer as privateLayer,
 } from "./TessayaPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold, layer as householdLayer } from "./TessayaHousehold.ts";
+import * as TessayaPresence from "./TessayaPresence.ts";
 import { VoiceForgets } from "./VoiceForgets.ts";
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import { authenticator, ORIGIN } from "./testing/softPasskey.ts";
@@ -525,6 +526,45 @@ describe("one voice profile per member, on the home", () => {
         const renamed = yield* as(self)(call({ op: "rename", id: zayd.id, name: "Zayd Khan" }));
         assert.strictEqual(renamed.line, "Zayd is now Zayd Khan.");
       }),
+    ));
+
+  test("a vessel's presence report places its own member; location and camera only once they turn them on", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const presence = yield* TessayaPresence.TessayaPresence;
+        const here = (signal: "foreground" | "home" | "seen") =>
+          as(owner)(call({ op: "here", signal, vessel: "phone-1" }));
+        assert.strictEqual((yield* here("foreground")).status, "done");
+        assert.strictEqual((yield* here("home")).status, "refused");
+        assert.strictEqual((yield* here("seen")).status, "refused");
+        const sources = () =>
+          Effect.map(presence.estimate(), (e) =>
+            e.members.find((m) => m.member === "owner")!.evidence.map((x) => x.source),
+          );
+        assert.deepStrictEqual(yield* sources(), ["phoneApp"]);
+        for (const key of ["location", "camera"] as const)
+          yield* as(owner)(call({ op: "setPreference", id: "owner", key, value: "on" }));
+        // A network address is kept as typed, not read as a spelled name.
+        const devices = yield* as(owner)(
+          call({
+            op: "setPreference",
+            id: "owner",
+            key: "devices",
+            value: "AA:BB:CC:DD:EE:01, Pixel",
+          }),
+        );
+        assert.strictEqual(devices.preferences?.devices, "AA:BB:CC:DD:EE:01, Pixel");
+        assert.strictEqual((yield* here("home")).status, "done");
+        assert.strictEqual((yield* here("seen")).status, "done");
+        assert.deepStrictEqual((yield* sources()).toSorted(), ["camera", "home", "phoneApp"]);
+        // Whose a Tessel is is the owner's or an admin's to say, and only for a room vessel.
+        assert.strictEqual(
+          (yield* as(owner)(call({ op: "setVesselMember", vessel: "nope", member: "owner" })))
+            .status,
+          "refused",
+        );
+      }).pipe(Effect.provide(TessayaPresence.layer)),
     ));
 
   test("a step-up raises only that session to A3 for 5 minutes: their PIN, or Windows Hello on an account that is theirs alone", () =>

@@ -96,6 +96,7 @@ const RESTORABLE = new Set([
   "water_heater",
   "vacuum",
 ]);
+const PRESENCE_CLASSES = new Set(["occupancy", "presence", "motion"]);
 /** Attributes worth a model's glance; the rest stay in the cache. */
 const KEY_ATTRIBUTES = [
   "device_class",
@@ -111,6 +112,7 @@ const KEY_ATTRIBUTES = [
   "volume_level",
   "current_position",
   "preset_mode",
+  "message",
 ];
 
 export class HomeRefusedError extends Schema.TaggedError<HomeRefusedError>()("HomeRefusedError", {
@@ -196,6 +198,8 @@ export class HomeAssistantService extends Context.Service<
       readonly domain?: string;
       readonly limit?: number;
     }) => Effect.Effect<ReadonlyArray<HomeEntity>, HomeRefusedError>;
+    /** People, routers' device trackers, calendars and occupancy sensors from this server's own link, for presence. */
+    readonly presenceEntities: Effect.Effect<ReadonlyArray<HomeEntity>>;
     readonly state: (entityId: string) => Effect.Effect<HomeEntity | null, HomeRefusedError>;
     readonly history: (
       entityId: string,
@@ -1950,6 +1954,18 @@ const make = Effect.gen(function* () {
     connect,
     disconnect,
     find,
+    presenceEntities: Effect.sync(() =>
+      [...states.keys()].flatMap((id) => {
+        const domain = id.split(".")[0] ?? "";
+        const cls = String(states.get(id)?.a["device_class"] ?? "");
+        const wanted =
+          domain === "person" ||
+          domain === "device_tracker" ||
+          domain === "calendar" ||
+          (domain === "binary_sensor" && PRESENCE_CLASSES.has(cls));
+        return wanted ? (summary(id) ?? []) : [];
+      }),
+    ),
     state: Effect.fn("HomeAssistant.state")(function* (entityId: string) {
       const forwarded = yield* viaPeer("home_state", { entityId });
       if (forwarded !== null) return forwarded as HomeEntity;

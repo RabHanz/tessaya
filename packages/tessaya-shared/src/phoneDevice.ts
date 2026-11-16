@@ -12,6 +12,10 @@ export interface PhoneFacts {
   readonly motion: boolean;
 }
 
+/** A value in a vessel publish that says where its member is (B-043), noted as presence and never kept as an item. */
+export const HERE_ITEM = "presence.here";
+export const HERE_SIGNALS = ["foreground", "background", "home", "away"] as const;
+
 export const phoneDeviceId = (installId: string): string =>
   `phone-${
     installId

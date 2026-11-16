@@ -48,6 +48,7 @@ import * as TessayaComms from "./TessayaComms.ts";
 import * as VoiceForgets from "./VoiceForgets.ts";
 import * as MemberPreferences from "./MemberPreferences.ts";
 import * as TessayaPeople from "./TessayaPeople.ts";
+import * as PresenceFeeds from "./PresenceFeeds.ts";
 import * as TessayaPresence from "./TessayaPresence.ts";
 import * as TurnLiveContext from "./TurnLiveContext.ts";
 import * as TessayaPulse from "./TessayaPulse.ts";
@@ -229,7 +230,9 @@ const servicesInner = Layer.mergeAll(
   // One turn pipeline for every vessel; it reads the memory, learning and private stores provided below it.
   Layer.provideMerge(TessayaTurn.layer),
   // Shared slots for the brain and the learning loop, across every vessel (§2.0a).
-  Layer.provideMerge(TurnPools.layer),
+  // Presence that watches (B-043): the home network and Home Assistant into TessayaPresence, over the house below.
+  // One step with the pools: the pipe holds 20.
+  Layer.provideMerge(Layer.mergeAll(TurnPools.layer, PresenceFeeds.layer)),
   Layer.provideMerge(
     Layer.mergeAll(
       // One work-session service for the whole server, so a mutation arriving on one client's

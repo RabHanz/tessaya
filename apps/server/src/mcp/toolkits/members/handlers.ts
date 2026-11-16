@@ -75,6 +75,13 @@ export const make = Effect.gen(function* () {
         value: typeof input["value"] === "string" && input["value"] !== "" ? input["value"] : null,
       }),
     ),
+    member_vessel: McpToolAccess.writes((input: Args) =>
+      run({
+        op: "setVesselMember",
+        vessel: String(input["vessel"] ?? ""),
+        member: typeof input["id"] === "string" ? input["id"] : null,
+      }),
+    ),
     household_home_server: McpToolAccess.writes((input: Args) =>
       run({ op: "setHome", on: typeof input["on"] === "string" ? input["on"] : null }),
     ),

@@ -118,11 +118,25 @@ const PreferencesTool = Tool.make("member_preferences", {
 const PreferenceSetTool = Tool.make("member_preference_set", {
   ...shared,
   description:
-    "Set or clear another member's preference, which only the owner may do (the speaker's own go through tessaya_preference_set). `key` is name, persona, voice, units, timeFormat, news, music, wakeTraining (on or off: whether their enrolled voice may train her wake words) or pronouns (she/her, he/him, they/them); an empty `value` clears it. Say the line back.",
+    "Set or clear another member's preference, which only the owner may do (the speaker's own go through tessaya_preference_set). `key` is name, persona, voice, units, timeFormat, news, music, wakeTraining (on or off: whether their enrolled voice may train her wake words), devices (their phones, laptops and headphones by name or MAC address, comma-separated), location or camera (on or off, off until they say on: their phone telling her home or away, a camera noticing them at a computer) or pronouns (she/her, he/him, they/them); an empty `value` clears it. Say the line back.",
   parameters: Schema.Struct({
     id: Id,
     key: TessayaPreferenceKey,
     value: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const VesselTool = Tool.make("member_vessel", {
+  ...shared,
+  description:
+    'Say whose a Tessel is ("the kitchen Tessel is Sara\'s"), so the headphones on it and someone picking it up count for that member; null gives it back to the whole home. The owner or an admin only. `vessel` is the device id from device_list.',
+  parameters: Schema.Struct({
+    vessel: Schema.String.check(Schema.isMaxLength(128)),
+    id: Schema.NullOr(Id),
   }),
 })
   .annotate(Tool.Readonly, false)
@@ -186,6 +200,7 @@ export const MembersTools = [
   RenameTool,
   PreferencesTool,
   PreferenceSetTool,
+  VesselTool,
   HomeServerTool,
   PeerTool,
   VoiceForgetTool,

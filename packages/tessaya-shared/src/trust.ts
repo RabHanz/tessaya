@@ -149,6 +149,7 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "member_restore",
       "member_rename",
       "member_preference_set",
+      "member_vessel",
       "household_home_server",
       "people_list",
       "people_manage",

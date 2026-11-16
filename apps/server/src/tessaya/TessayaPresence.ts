@@ -4,7 +4,7 @@
  * `@presence`), so every server's estimate is the same and "away" means away from every vessel (B-044).
  */
 import { commsCaps } from "@t3tools/tessaya-shared/comms";
-import { followOn } from "@t3tools/tessaya-shared/household";
+import { followOn, optedIn } from "@t3tools/tessaya-shared/household";
 import {
   PRESENCE_FORGET_MS,
   PRESENCE_SOURCES,
@@ -170,6 +170,42 @@ export const whereToSay = Effect.fn("TessayaPresence.whereToSay")(function* (
   });
   yield* Effect.annotateCurrentSpan({ action: route.action, why: route.why });
   return route.action === "speak" ? route.vessel : null;
+});
+
+/** What a member's own vessel says of them: the app came to the front or went away, home or away, a camera saw them. */
+export type HereSignal = "foreground" | "background" | "home" | "away" | "seen";
+const HERE_SOURCE = {
+  foreground: "phoneApp",
+  background: "phoneAppAway",
+  home: "home",
+  away: "away",
+  seen: "camera",
+} as const;
+
+/**
+ * Notes a vessel's report of its own member (the phone over its vessel publish, any client over the household op);
+ * the geofence and the camera only with their `location` and `camera` on. Null when noted, else why not.
+ */
+export const noteHere = Effect.fn("TessayaPresence.noteHere")(function* (
+  member: string,
+  signal: HereSignal,
+  vessel: string | null,
+) {
+  const presence = yield* Effect.serviceOption(TessayaPresence);
+  if (Option.isNone(presence)) return "Presence isn't kept on this server.";
+  // Opt-ins read this server's copy: with the members on another server they stay off, never on by mistake.
+  const prefs = yield* Effect.serviceOption(MemberPreferences);
+  const mine = Option.isNone(prefs) ? {} : yield* prefs.value.of(member);
+  if ((signal === "home" || signal === "away") && !optedIn(mine.location))
+    return "Their location is off.";
+  if (signal === "seen" && !optedIn(mine.camera)) return "Their camera is off.";
+  const placed = signal === "foreground" || signal === "seen";
+  yield* presence.value.note({
+    member,
+    source: HERE_SOURCE[signal],
+    vessel: placed ? vessel : null,
+  });
+  return null;
 });
 
 /** Who is at this vessel now, members and guests, surest first (`peopleAt`); nobody without the store. */
