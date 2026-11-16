@@ -33,6 +33,8 @@ const QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 export const MAX_CHILD_FAILURES = 3;
 /** Before each new child after a failure: 5 s, 10 s, 20 s. */
 const BACKOFF_MS = 5_000;
+/** An idle child is let go (its model is ~180 MB resident) and started again on the next sentence, as the ASR model is. */
+const IDLE_MS = 10 * 60_000;
 
 /** The model run failed or timed out; recall then goes on without this sentence's vector. */
 export class TessayaMemoryEmbedError extends Schema.TaggedError<TessayaMemoryEmbedError>()(
@@ -144,6 +146,19 @@ export const makeEmbedder = Effect.fn("BatonMemoryEmbedder.make")(function* (
   let notBefore = 0;
   let next = 0;
   const waiting = new Map<number, (reply: { data?: Float32Array; error?: string }) => void>();
+  let idle: ReturnType<typeof setTimeout> | null = null;
+  const stopWhenIdle = () => {
+    if (idle !== null) clearTimeout(idle);
+    idle = setTimeout(() => {
+      idle = null;
+      if (child === null || waiting.size > 0) return;
+      const done = child;
+      // Cleared first, so its exit is not counted as a failure.
+      child = null;
+      done.kill();
+    }, IDLE_MS);
+    idle.unref();
+  };
   const start = (): NodeChildProcess.ChildProcess => {
     const made = NodeChildProcess.spawn(
       executable,
@@ -179,7 +194,12 @@ export const makeEmbedder = Effect.fn("BatonMemoryEmbedder.make")(function* (
     made.channel?.unref();
     return made;
   };
-  yield* Effect.addFinalizer(() => Effect.sync(() => child?.kill()));
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      if (idle !== null) clearTimeout(idle);
+      child?.kill();
+    }),
+  );
 
   const run = (ids: ReadonlyArray<number>) =>
     new Promise<Float32Array>((resolve, reject) => {
@@ -195,6 +215,7 @@ export const makeEmbedder = Effect.fn("BatonMemoryEmbedder.make")(function* (
       }, CALL_MS);
       waiting.set(id, (reply) => {
         clearTimeout(timer);
+        stopWhenIdle();
         if (reply.data !== undefined) resolve(reply.data);
         else reject(new Error(reply.error ?? "no answer"));
       });
