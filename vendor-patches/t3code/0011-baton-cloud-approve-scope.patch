@@ -467,7 +467,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
    };
  }
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..46ff38ce4840cd787f8ff2fdc550b93a04e9e2ff 100644
+index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..38213c0548af78973a9816aac74c67ef68d3e1cf 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
 @@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
@@ -478,7 +478,7 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..46ff38ce4840cd787f8ff2fdc550b93a
    AuthEnvironmentMaintainScope,
    AuthOrchestrationOperateScope,
    AuthOrchestrationReadScope,
-@@ -84,6 +85,13 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
+@@ -84,6 +85,15 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
  const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
  const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
  
@@ -488,11 +488,13 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..46ff38ce4840cd787f8ff2fdc550b93a
 +const VOICE_CALL = "baton.voice.call";
 +/** Her prompt lab (`BATON_PROMPT_LAB_WS_METHODS.call`): his prompts, the owner's settings. */
 +const PROMPT_LAB_CALL = "baton.promptLab.call";
++/** His roster (`BATON_PERSONAS_WS_METHODS.change`): hire, edit, retire, restore; the owner's settings. */
++const PERSONA_CHANGE = "baton.personas.change";
 +
  export function clientRpcRequiredScopes(
    method: string,
    input: unknown,
-@@ -101,6 +109,25 @@ export function clientRpcRequiredScopes(
+@@ -101,6 +111,25 @@ export function clientRpcRequiredScopes(
      )
        return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
    }
@@ -514,7 +516,7 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..46ff38ce4840cd787f8ff2fdc550b93a
 +        ? [AuthOrchestrationReadScope, AuthTessayaCloudApproveScope]
 +        : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
 +  }
-+  if (method === PROMPT_LAB_CALL) return [AuthSettingsWriteScope];
++  if (method === PROMPT_LAB_CALL || method === PERSONA_CHANGE) return [AuthSettingsWriteScope];
    return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
      ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]
      : [];
