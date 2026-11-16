@@ -1738,9 +1738,9 @@ export const liveFailureOf = (
   return null;
 };
 
-/** One filler a turn, from whichever side says it ("One moment. One moment." in the 13 Nov gate). */
+/** One filler a turn, from whichever side says it ("One moment. One moment." 13 Nov, "One moment. Checking." 17 Nov). */
 const FILLER_TWICE =
-  /(?:One moment|Let me look that up)\.[\s\S]*(?:One moment|Let me look that up)\./i;
+  /(?:One moment|Let me look that up|Looking|Checking)\.[\s\S]*(?:One moment|Let me look that up|Looking|Checking)\./i;
 
 /** The tools the suite has no case for: a new tool fails the suite until it has one. */
 export const uncovered = (tools: ReadonlyArray<string>): ReadonlyArray<string> =>

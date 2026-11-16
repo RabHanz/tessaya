@@ -175,6 +175,10 @@ describe("the room's live tool suite", () => {
     const wish = liveCases.find((c) => c.id === "direct-wish")!;
     const failure = (reply: string) => liveFailureOf(wish, {}, [reply], [kept]);
     expect(failure("One moment. Done, twenty-four hour times from now on.")).toBeNull();
+    // The route's hold and her own pre-tool line both went out (17 Nov gate).
+    expect(failure("One moment. Checking. Done, twenty-four hour times from now on.")).toMatch(
+      /filler twice/,
+    );
     expect(failure("Done, 24-hour from now on. It's twenty-three twenty-seven right now.")).toMatch(
       /last reply/,
     );
