@@ -473,7 +473,7 @@ export class TessayaVoiceLibrary extends Context.Service<
       readonly affect: string;
       readonly wav: Uint8Array;
     }) => Effect.Effect<{ readonly affect: string; readonly clip: VoiceClip }, VoiceRefusedError>;
-    /** A clone's embedding file for this machine's Pocket, by this start's key; null for anything else. */
+    /** A clone's embedding file for this machine's Pocket, by this server's key; null for anything else. */
     readonly embedding: (key: string, file: string) => Effect.Effect<Uint8Array | null>;
     readonly setHfToken: (token: string | null) => Effect.Effect<void, VoiceRefusedError>;
     readonly setPersona: (input: {
@@ -505,8 +505,13 @@ export const make = Effect.gen(function* () {
   const embeddingOf = (id: string) => NodePath.join(clonesDir, `${id}.safetensors`);
   const affectOf = (id: string, affect: string) =>
     NodePath.join(clonesDir, `${id}.affect-${affect}.safetensors`);
-  // Pocket fetches an embedding by URL and cannot send a token: this start's key is the secret in its path.
-  const embedKey = NodeCrypto.randomBytes(16).toString("hex");
+  // Pocket fetches an embedding by URL and cannot send a token: a kept key is the secret in its path, so the room
+  // loop's roster stays good across restarts. A store that cannot keep it gets a key for this start only.
+  const embedKey = Buffer.from(
+    yield* secrets
+      .getOrCreateRandom("voice-embedding-key", 16)
+      .pipe(Effect.orElseSucceed(() => NodeCrypto.randomBytes(16))),
+  ).toString("hex");
   // Tessaya's own database, captured here: a tool's caller may run beside upstream's SqlClient (consent.ts).
   const consent = yield* Effect.serviceOption(Consent);
   const grants = Option.isSome(consent) ? consent.value.read : readGrants;

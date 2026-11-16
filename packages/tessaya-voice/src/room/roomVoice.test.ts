@@ -1303,7 +1303,14 @@ describe("what Tessaya's Devices page can ask of the room", () => {
     expect(servedRoster({ personas: [{ id: "x", name: "" }] })).toBeNull();
     const roster = servedRoster({
       personas: [
-        { id: "nova", name: "Nova", wake: null, voice: "alba", lead: false },
+        {
+          id: "nova",
+          name: "Nova",
+          wake: null,
+          voice: "alba",
+          lead: false,
+          cloneUrl: "/tessaya/voice/embedding/k/c.safetensors",
+        },
         { id: "bad", voice: "eve" },
         {
           id: "executive",
@@ -1317,7 +1324,13 @@ describe("what Tessaya's Devices page can ask of the room", () => {
     });
     expect(roster).toEqual([
       { id: "executive", name: "Tessaya", voice: "eve", eyes: "tessaya" },
-      { id: "nova", name: "Nova", voice: "alba" },
+      // Her clone's path rides along; main.ts speaks it only where its Pocket can fetch it.
+      {
+        id: "nova",
+        name: "Nova",
+        voice: "alba",
+        cloneUrl: "/tessaya/voice/embedding/k/c.safetensors",
+      },
     ]);
     t.room.personas(roster!);
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"nova"}'));

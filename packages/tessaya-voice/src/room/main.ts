@@ -230,7 +230,10 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         text,
-        ...(voice === undefined ? {} : { voice_url: pocketVoiceUrl(voice) }),
+        // A clone is its own URL already; a library voice is named.
+        ...(voice === undefined
+          ? {}
+          : { voice_url: /^https?:\/\//.test(voice) ? voice : pocketVoiceUrl(voice) }),
       }).toString(),
       signal,
     });
@@ -295,10 +298,25 @@ const servedPersonas = async (url: string, key: string): Promise<RoomPersona[] |
       headers: { authorization: `Bearer ${key}` },
       signal: AbortSignal.timeout(5_000),
     });
-    return res.ok ? servedRoster(await res.json()) : null;
+    const roster = res.ok ? servedRoster(await res.json()) : null;
+    return roster === null ? null : Promise.all(roster.map((p) => withClone(p, url)));
   } catch {
     return null;
   }
+};
+
+/**
+ * A persona's saved clone as its voice (M-046), when this loop's Pocket can fetch it: her server serves it on loopback
+ * only, so a loop on another machine, or a clone whose consent he withdrew, keeps the persona's Pocket voice.
+ */
+const withClone = async (p: RoomPersona, brainUrl: string): Promise<RoomPersona> => {
+  if (p.cloneUrl === undefined) return p;
+  const at = new URL(p.cloneUrl, brainUrl);
+  at.hostname = "127.0.0.1";
+  const ok = await fetch(at, { signal: AbortSignal.timeout(5_000) })
+    .then(async (r) => (await r.arrayBuffer(), r.ok))
+    .catch(() => false);
+  return ok ? { ...p, voice: at.href } : p;
 };
 
 /** A word the room listens for; `version` is her signed model's, for a word she trained. */

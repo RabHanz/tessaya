@@ -692,7 +692,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       cueBase = 0;
       lineAffect = null;
       deskTurns += 1;
-      // The embedding key changes when the server restarts: the turn's voice reads this start's.
+      // A clone saved or a tone recorded since the last turn is spoken from this one.
       void refreshClones().catch(() => undefined);
       try {
         await deskTurnOnce(body, onWords, signal);
