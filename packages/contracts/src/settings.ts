@@ -1368,6 +1368,25 @@ export const VoicePronounce = Schema.Record(
   Schema.String.check(Schema.isMaxLength(80)),
 );
 
+/** How hard a Tessel must be shaken or lifted to count: low ignores desk bumps best, high feels a gentle pick-up. */
+export const TessayaMotionSensitivity = Schema.Literals(["low", "normal", "high"]);
+export type TessayaMotionSensitivity = typeof TessayaMotionSensitivity.Type;
+export const TessayaMotionSettings = Schema.Struct({
+  sensitivity: TessayaMotionSensitivity,
+  lifted: Schema.Boolean,
+  setdown: Schema.Boolean,
+  shaken: Schema.Boolean,
+  dropped: Schema.Boolean,
+});
+export type TessayaMotionSettings = typeof TessayaMotionSettings.Type;
+export const DEFAULT_TESSAYA_MOTION: TessayaMotionSettings = {
+  sensitivity: "normal",
+  lifted: true,
+  setdown: true,
+  shaken: true,
+  dropped: true,
+};
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1433,6 +1452,10 @@ export const ServerSettings = Schema.Struct({
   // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
   companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("calm" as const)),
+  ),
+  // Tessaya: how a Tessel answers being moved (its motion sensor), and how hard a move must be to count.
+  tessayaMotion: TessayaMotionSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_MOTION)),
   ),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
@@ -1898,6 +1921,15 @@ export const ServerSettingsPatch = Schema.Struct({
     }),
   ),
   companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
+  tessayaMotion: Schema.optionalKey(
+    Schema.Struct({
+      sensitivity: Schema.optionalKey(TessayaMotionSensitivity),
+      lifted: Schema.optionalKey(Schema.Boolean),
+      setdown: Schema.optionalKey(Schema.Boolean),
+      shaken: Schema.optionalKey(Schema.Boolean),
+      dropped: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   cloudSpeechCredentials: Schema.optionalKey(
     Schema.Struct({

@@ -62,6 +62,13 @@ describe("affect", () => {
     expect(run([{ kind: "his_voice", emotion: "other" }]).reaction).toEqual(run([]).reaction);
   });
 
+  it("feels being handled as a quick reaction, never as her mood", () => {
+    const dropped = run([{ kind: "handled", how: "dropped" }]);
+    expect(dropped.reaction.valence).toBeLessThan(0);
+    expect(dropped.mood).toEqual(run([]).mood);
+    expect(run([{ kind: "handled", how: "lifted" }]).reaction.curiosity).toBeGreaterThan(0);
+  });
+
   it("misses him inside the guilt dial, and the return resolves once", () => {
     const seen = run([{ kind: "his_turn", day: "d1" }]);
     const later = { ...day, now: 9 * H };

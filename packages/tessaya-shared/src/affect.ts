@@ -101,7 +101,21 @@ export type AffectEvent =
   /** How his voice sounded, as the room heard it (SenseVoice's label): she meets it, warmer when he sounds low. */
   | { readonly kind: "his_voice"; readonly emotion: string }
   /** A job she or a persona leads finished or failed (the Record's job rows): the world, not him. */
-  | { readonly kind: "job"; readonly ok: boolean };
+  | { readonly kind: "job"; readonly ok: boolean }
+  /** Her body was moved (the Tessel's motion sensor): a quick reaction only, never her mood. */
+  | { readonly kind: "handled"; readonly how: HandledHow };
+
+export const HANDLED_HOWS = ["lifted", "carried", "setdown", "shaken", "dropped"] as const;
+export type HandledHow = (typeof HANDLED_HOWS)[number];
+const HANDLED: Readonly<
+  Record<HandledHow, { readonly change: Partial<Record<AffectDim, number>>; readonly why: string }>
+> = {
+  lifted: { change: { arousal: 0.04, curiosity: 0.03 }, why: "he picked her up" },
+  carried: { change: { arousal: 0.04, curiosity: 0.03 }, why: "he carried her about" },
+  setdown: { change: { arousal: -0.03 }, why: "he put her down" },
+  shaken: { change: { arousal: 0.1, valence: -0.06 }, why: "he shook her" },
+  dropped: { change: { arousal: 0.12, valence: -0.1 }, why: "he dropped her" },
+};
 
 /** How his words treated her, as a model judged them (`tonePrompt`); "none" moves nothing. */
 export const HIS_TONES = ["apology", "praise", "warmth", "rude"] as const;
@@ -225,6 +239,11 @@ const react = (
           mood: add(at.mood, { confidence: -0.08 }),
         },
         reason: "he corrected her",
+      };
+    case "handled":
+      return {
+        state: { ...at, reaction: add(at.reaction, HANDLED[event.how].change) },
+        reason: HANDLED[event.how].why,
       };
     case "his_voice": {
       const change = VOICE_REACTION[event.emotion];

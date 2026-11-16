@@ -2101,7 +2101,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..ef8e99a2850ea1fa6ca57a61cf70de62cf5ff09c 100644
+index 49470541d90be695ad24df030ca6522682a82611..853c3228278b283a1f0ae9ccbac9df08778f9e32 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2119,7 +2119,7 @@ index 49470541d90be695ad24df030ca6522682a82611..ef8e99a2850ea1fa6ca57a61cf70de62
  import { ProjectScript, type ProjectMutation } from "./project.ts";
  import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
  import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
-@@ -1349,6 +1357,16 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -1349,6 +1357,35 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
@@ -2133,10 +2133,29 @@ index 49470541d90be695ad24df030ca6522682a82611..ef8e99a2850ea1fa6ca57a61cf70de62
 +  Schema.String.check(Schema.isMaxLength(60)),
 +  Schema.String.check(Schema.isMaxLength(80)),
 +);
++
++/** How hard a Tessel must be shaken or lifted to count: low ignores desk bumps best, high feels a gentle pick-up. */
++export const TessayaMotionSensitivity = Schema.Literals(["low", "normal", "high"]);
++export type TessayaMotionSensitivity = typeof TessayaMotionSensitivity.Type;
++export const TessayaMotionSettings = Schema.Struct({
++  sensitivity: TessayaMotionSensitivity,
++  lifted: Schema.Boolean,
++  setdown: Schema.Boolean,
++  shaken: Schema.Boolean,
++  dropped: Schema.Boolean,
++});
++export type TessayaMotionSettings = typeof TessayaMotionSettings.Type;
++export const DEFAULT_TESSAYA_MOTION: TessayaMotionSettings = {
++  sensitivity: "normal",
++  lifted: true,
++  setdown: true,
++  shaken: true,
++  dropped: true,
++};
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1372,6 +1390,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1372,6 +1409,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -2148,7 +2167,7 @@ index 49470541d90be695ad24df030ca6522682a82611..ef8e99a2850ea1fa6ca57a61cf70de62
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1405,35 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1424,39 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2181,10 +2200,14 @@ index 49470541d90be695ad24df030ca6522682a82611..ef8e99a2850ea1fa6ca57a61cf70de62
 +  companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
 +    Schema.withDecodingDefault(Effect.succeed("calm" as const)),
 +  ),
++  // Tessaya: how a Tessel answers being moved (its motion sensor), and how hard a move must be to count.
++  tessayaMotion: TessayaMotionSettings.pipe(
++    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_MOTION)),
++  ),
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1443,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1466,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2198,7 +2221,7 @@ index 49470541d90be695ad24df030ca6522682a82611..ef8e99a2850ea1fa6ca57a61cf70de62
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +1881,23 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +1904,32 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2219,10 +2242,19 @@ index 49470541d90be695ad24df030ca6522682a82611..ef8e99a2850ea1fa6ca57a61cf70de62
 +    }),
 +  ),
 +  companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
++  tessayaMotion: Schema.optionalKey(
++    Schema.Struct({
++      sensitivity: Schema.optionalKey(TessayaMotionSensitivity),
++      lifted: Schema.optionalKey(Schema.Boolean),
++      setdown: Schema.optionalKey(Schema.Boolean),
++      shaken: Schema.optionalKey(Schema.Boolean),
++      dropped: Schema.optionalKey(Schema.Boolean),
++    }),
++  ),
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +1906,23 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +1938,23 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2246,7 +2278,7 @@ index 49470541d90be695ad24df030ca6522682a82611..ef8e99a2850ea1fa6ca57a61cf70de62
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2172,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2204,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

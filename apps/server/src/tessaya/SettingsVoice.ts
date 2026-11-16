@@ -52,6 +52,9 @@ export const SERVER_SETTINGS_VOICE: {
   companionMotion: free(
     "how much is said and done unprompted: lively, calm, or important only (less chatter)",
   ),
+  tessayaMotion: free(
+    'how the Tessel reacts when picked up, put down, shaken or dropped: each on or off, and how hard a move must be (sensitivity low, normal or high). Its value is an object: {"sensitivity": "normal", "lifted": true, "setdown": true, "shaken": true, "dropped": true}',
+  ),
   newSessionsRun: free("whether new sessions run in Tessaya or a terminal"),
   mainThreadId: owner("which thread is the main session"),
   continueThreadsAfterServerUpdate: confirm("continuing sessions after the server updates"),

@@ -72,7 +72,23 @@ import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { expressOr } from "../tessaya/TessayaExpression.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
-import { sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
+import { LINE_EVENTS, sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
+import { inQuietHours } from "@t3tools/tessaya-shared/comms";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { DEFAULT_TESSAYA_MOTION, type TessayaMotionSensitivity } from "@t3tools/contracts";
+import * as Stream from "effect/Stream";
+import { ServerSettingsService } from "../serverSettings.ts";
+import { TessayaMood } from "../tessaya/TessayaMood.ts";
+import { readDndUntil, readQuietHours } from "../tessaya/quietHours.ts";
+import {
+  MOTION_LINE,
+  MOTION_TUNING,
+  freshSeen,
+  motionAllowed,
+  motionMoment,
+  type MotionMoment,
+  type MotionSeen,
+} from "./tesselMotion.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
 import { R1Updates } from "./R1Updates.ts";
@@ -1252,6 +1268,79 @@ const make = Effect.gen(function* () {
     ).pipe(Effect.ignore);
   });
 
+  // Being moved (§9.7M S3): her mood, her eyes and a line of her own, through the same paths as every other moment.
+  const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
+  const mood = yield* Effect.serviceOption(TessayaMood);
+  const motionSeen = new Map<string, MotionSeen>();
+  const lastMoved = new Map<string, { at: number; said: number }>();
+  const motionSettings =
+    serverSettings._tag === "Some"
+      ? serverSettings.value.getSettings.pipe(
+          Effect.map((s) => s.tessayaMotion),
+          Effect.orElseSucceed(() => DEFAULT_TESSAYA_MOTION),
+        )
+      : Effect.succeed(DEFAULT_TESSAYA_MOTION);
+  /** His sensitivity on the Tessel's own thresholds; it keeps them across reboots, sent again when it comes online. */
+  const tune = (id: string, sensitivity: TessayaMotionSensitivity) =>
+    Effect.all([
+      publish(id, "cmd/imu/set", {
+        key: "shake_light_min",
+        value: MOTION_TUNING[sensitivity].shake,
+      }),
+      publish(id, "cmd/imu/set", { key: "pickup_dz_min", value: MOTION_TUNING[sensitivity].lift }),
+    ]);
+  if (serverSettings._tag === "Some")
+    yield* serverSettings.value.streamChanges.pipe(
+      Stream.map((s) => s.tessayaMotion.sensitivity),
+      Stream.changes,
+      Stream.runForEach((sensitivity) =>
+        Effect.forEach([...heard.keys()], (id) => tune(id, sensitivity), { discard: true }),
+      ),
+      Effect.forkIn(scope),
+    );
+  const moved = Effect.fn("HomeDevices.moved")(function* (id: string, m: MotionMoment) {
+    if (!motionAllowed(yield* motionSettings, m.how)) return;
+    const now = yield* Clock.currentTimeMillis;
+    const last = lastMoved.get(id) ?? { at: -Infinity, said: -Infinity };
+    // One answer per handling: the firmware sends a shake every 2.5 s while it lasts.
+    if (!m.strong && now - last.at < 4_000) return;
+    const withSql = <A, E>(e: Effect.Effect<A, E, SqlClient.SqlClient>) =>
+      Effect.provideService(e, SqlClient.SqlClient, sql);
+    const quiet =
+      inQuietHours(now, yield* withSql(readQuietHours)) ||
+      (yield* withSql(readDndUntil(OWNER_MEMBER_ID))) !== null;
+    if (quiet && m.how !== "dropped") return;
+    if (mood._tag === "Some") yield* mood.value.note(undefined, { kind: "handled", how: m.how });
+    const event = MOTION_LINE[m.how];
+    // A line at most every 20 s, never over a conversation unless it is strong; the eyes answer every time.
+    const said =
+      !quiet && (m.strong || now - last.said >= 20_000)
+        ? yield* expressOr(event, { busy: m.busy })
+        : null;
+    lastMoved.set(id, { at: now, said: said === null ? last.said : now });
+    if (said !== null) yield* publish(id, "voice/say", sayPayload(said));
+    else
+      yield* publish(id, "voice/intent/eye", {
+        vessel: id,
+        mood: LINE_EVENTS[event].mood,
+        holdMs: 2_500,
+        reason: `moved: ${m.how}`,
+      });
+    yield* Effect.logInfo("tessel moved", {
+      device: id,
+      how: m.how,
+      strong: m.strong,
+      busy: m.busy,
+      said: said?.text ?? null,
+    });
+    yield* audit(
+      { who: `the ${DEVICE}'s motion sensor`, surface: "agent" },
+      id,
+      `moved: ${m.how}`,
+      said === null ? "her eyes answered" : `she said "${said.text}"`,
+    );
+  });
+
   const handle = Effect.fn("HomeDevices.handle")(function* (topic: string, payload: string) {
     const now = yield* Clock.currentTimeMillis;
     const [, , tailId, ...tailRest] = topic.split("/");
@@ -1291,6 +1380,14 @@ const make = Effect.gen(function* () {
     // Picked up, moved, touched or pressed: someone is at this Tessel, not yet who (B-043).
     if (Option.isSome(presence) && HANDLED.has(tail))
       yield* presence.value.note({ member: null, source: "handled", vessel: result.id });
+    const seen = motionSeen.get(result.id) ?? freshSeen();
+    motionSeen.set(result.id, seen);
+    if (result.cameOnline) {
+      seen.live = false;
+      yield* tune(result.id, (yield* motionSettings).sensitivity);
+    }
+    const motion = motionMoment(tail, json(payload), seen, now);
+    if (motion !== null) yield* moved(result.id, motion);
     if (tail === "event/key") yield* runKey(result.id, json(payload));
     // A long touch on the head is Tessaya's (the firmware stops her on a tap itself).
     else if (tail === "event/touch" && json(payload)?.["gesture"] === "long")
