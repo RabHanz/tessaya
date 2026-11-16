@@ -172,7 +172,7 @@ const brief =
     OFFER.test(last)
       ? `tacked on an offer: ${last.slice(0, 80)}`
       : last
-            .replace(/^(One moment|Looking)\.\s*/i, "")
+            .replace(/^((One moment|Looking|Checking)\.\s*)+/i, "")
             .split(/[.!?](?:\s|$)/)
             .filter((x) => x.trim() !== "").length > max
         ? `more than ${max} sentences: ${last.slice(0, 120)}`
@@ -205,8 +205,10 @@ const saysFromWorkNow = (
 const briefAnswer =
   (max: number, offer = true) =>
   (last: string, calls: ReadonlyArray<LiveCall>): string | null => {
-    const answer = last.replace(/^(One moment|Looking)\.\s*/i, "").replace(MORE_OFFER, "");
-    if (!offer && answer !== last.replace(/^(One moment|Looking)\.\s*/i, ""))
+    const answer = last
+      .replace(/^((One moment|Looking|Checking)\.\s*)+/i, "")
+      .replace(MORE_OFFER, "");
+    if (!offer && answer !== last.replace(/^((One moment|Looking|Checking)\.\s*)+/i, ""))
       return `offered more on a simple question: ${last.slice(0, 120)}`;
     if (OFFER.test(answer)) return `tacked on an offer: ${last.slice(0, 120)}`;
     const words = answer.split(/\s+/).filter((w) => w !== "").length;
