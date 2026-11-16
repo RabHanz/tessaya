@@ -161,9 +161,9 @@ it.effect("keeps a device to its own topics, and gives the bus and the server ev
     yield* bus.send(subscribePacket(1, ["freya/r1/+/state/#"]));
     expect([...bus.got.at(-1)!.body]).toEqual([0, 1, 0]);
     // A room loop is a bus client hearing the R1s' voice; a device or the server's own link is not one.
-    expect(hub.busHears("freya/r1/x/voice/up")).toBe(0);
+    expect(hub.busHears("freya/r1/x/voice/up")).toEqual([]);
     yield* bus.send(subscribePacket(2, ["freya/r1/+/voice/up"]));
-    expect(hub.busHears("freya/r1/x/voice/up")).toBe(1);
+    expect(hub.busHears("freya/r1/x/voice/up")).toEqual(["loop"]);
     // r1-b's publish under r1-a's prefix is dropped; its own reaches the bus and the server, not r1-a.
     yield* b.send(publishPacket("freya/r1/r1-a/state/online", Buffer.from("x")));
     yield* b.send(publishPacket("freya/r1/r1-b/state/online", Buffer.from("1")));

@@ -637,6 +637,8 @@ const main = async () => {
     url:
       process.env["R1_MQTT_URL"] || `mqtt://${env("R1_MQTT_HOST")}:${env("R1_MQTT_PORT", "1883")}`,
     clientId: `tessaya-room-${process.pid}`,
+    // A short heartbeat: the hub drops a silent loop after 9 s, so a standby on the hub's server takes the room.
+    keepAliveS: 6,
     user: env("R1_MQTT_USER"),
     pass: secret("R1_MQTT_PASS_FILE"),
     subscribe: [

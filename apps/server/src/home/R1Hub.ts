@@ -463,9 +463,9 @@ export const makeHub = (
   const connected = (id: string) =>
     [...sessions.values()].some((s) => s.grant?.kind === "device" && s.grant.id === id);
 
-  /** Bus clients hearing this topic: room loops, when the topic is an R1's voice. */
+  /** Client ids of the bus clients hearing this topic: room loops, when the topic is an R1's voice. */
   const busHears = (topic: string) =>
-    [...sessions.values()].filter((s) => s.hears?.(topic) === true).length;
+    [...sessions].filter(([, s]) => s.hears?.(topic) === true).map(([id]) => id);
 
   /** The address an R1 is connected from now, for "is his phone on its network". */
   const remoteOf = (id: string) =>
