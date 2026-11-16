@@ -1,0 +1,103 @@
+diff --git a/apps/mobile/app.config.test.ts b/apps/mobile/app.config.test.ts
+index 9be2204d5132c981804fa616a26a9c14b0b63fd6..9e96ebe161e7c99f17dba6f527591fe403a273cb 100644
+--- a/apps/mobile/app.config.test.ts
++++ b/apps/mobile/app.config.test.ts
+@@ -21,7 +21,7 @@ async function loadConfig(variant: string | undefined) {
+ 
+ it.each(["prod", ""])("rejects APP_VARIANT=%j before selecting production IDs", async (value) => {
+   await expect(loadConfig(value)).rejects.toThrow(
+-    "APP_VARIANT must be development, preview, or production.",
++    "APP_VARIANT must be development, preview, production, or tessaya.",
+   );
+ });
+ 
+@@ -45,3 +45,16 @@ it.each([
+   ]);
+   expect(assetLinks.map((link) => link.target.package_name)).toContain(identifier);
+ });
++
++it("gives the tessaya variant its own identity, Expo project and Apple team", async () => {
++  const production = await loadConfig("production");
++  await expect(loadConfig("tessaya")).rejects.toThrow("TESSAYA_IOS_BUNDLE_ID");
++  vi.stubEnv("TESSAYA_IOS_BUNDLE_ID", "com.example.mine");
++  const tessaya = await loadConfig("tessaya");
++  expect(production.extra?.eas?.projectId).toBe("d763fcb8-d37c-41ea-a773-b54a0ab4a454");
++  expect(tessaya.ios?.bundleIdentifier).toBe("com.example.mine");
++  expect(tessaya.ios?.appleTeamId).toBe("W6HK93B4Q5");
++  expect(tessaya.owner).toBe("rabhanz");
++  expect(tessaya.updates?.url).toBe(`https://u.expo.dev/${tessaya.extra?.eas?.projectId}`);
++  expect(tessaya.updates?.url).not.toBe(production.updates?.url);
++});
+diff --git a/apps/mobile/eas.json b/apps/mobile/eas.json
+index 3667f582e1edb140dd6ff6b1da529a14555d86e4..b4e663edc3126e689a77d080fb2237185140afe4 100644
+--- a/apps/mobile/eas.json
++++ b/apps/mobile/eas.json
+@@ -79,6 +79,19 @@
+       "ios": {
+         "image": "macos-tahoe-26.6-xcode-27.1"
+       }
++    },
++    "tessaya": {
++      "extends": "production",
++      "env": {
++        "APP_VARIANT": "tessaya",
++        "NODE_OPTIONS": "--max-old-space-size=4096",
++        "SOURCEMAP_FILE": "/tmp/t3code-ios-main.jsbundle.map"
++      },
++      "channel": "tessaya",
++      "android": {
++        "buildType": "apk",
++        "gradleCommand": ":app:assembleRelease -x lintVitalAnalyzeRelease -x lintVitalRelease"
++      }
+     }
+   },
+   "submit": {
+@@ -92,6 +105,11 @@
+       "android": {
+         "track": "internal"
+       }
++    },
++    "tessaya": {
++      "ios": {
++        "appleTeamId": "W6HK93B4Q5"
++      }
+     }
+   }
+ }
+diff --git a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
+index 096513c0e0a3c191cfc5adf2cd109a67c8dcdb63..11f3791c105097d1c15eb9b1a7a54f1e96e5e43e 100644
+--- a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
++++ b/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
+@@ -14,6 +14,7 @@ import {
+   isAppUpdateCheckAvailable,
+   registerHiddenUpdateTap,
+   runAppUpdateCheck,
++  runningUpdateLabel,
+ } from "../updates/app-updates";
+ import { SettingsRow } from "./components/SettingsRow";
+ import { SettingsSection } from "./components/SettingsSection";
+@@ -53,7 +54,7 @@ function AppSettingsSection() {
+   // Match app.config.ts's production fallback to avoid mislabeling builds as development.
+   const variant = (Constants.expoConfig?.extra?.appVariant as string | undefined) ?? "production";
+   const variantLabel = variant === "production" ? "" : capitalize(variant);
+-  const versionLabel = variantLabel ? `${version} · ${variantLabel}` : version;
++  const versionLabel = [version, variantLabel, runningUpdateLabel()].filter(Boolean).join(" · ");
+   const updateCheckAvailable = isAppUpdateCheckAvailable();
+   const busy =
+     updateState === "checking" || updateState === "downloading" || updateState === "restarting";
+diff --git a/apps/mobile/src/features/updates/app-updates.ts b/apps/mobile/src/features/updates/app-updates.ts
+index 914bb3797685a501e06307b7459fe5f0960f22d1..46c16b4fcfe9806268c7c40e48b03001493bf438 100644
+--- a/apps/mobile/src/features/updates/app-updates.ts
++++ b/apps/mobile/src/features/updates/app-updates.ts
+@@ -91,6 +91,11 @@ export function isAppUpdateCheckAvailable(client: Pick<AppUpdateClient, "isEnabl
+   return client.isEnabled && !(typeof __DEV__ !== "undefined" && __DEV__);
+ }
+ 
++/** Short id of the over-the-air update running now, or null when the build's own bundle runs. */
++export function runningUpdateLabel(): string | null {
++  return Updates.isEmbeddedLaunch ? null : (Updates.updateId?.slice(0, 8) ?? null);
++}
++
+ export function registerHiddenUpdateTap(count: number): {
+   readonly nextCount: number;
+   readonly shouldCheck: boolean;
