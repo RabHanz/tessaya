@@ -1,0 +1,59 @@
+diff --git a/apps/server/src/environment/ServerEnvironmentLabel.test.ts b/apps/server/src/environment/ServerEnvironmentLabel.test.ts
+index 7e0cf0a99607e5804b8c5cc145df623b96778b4e..a5af398e45badf587665db8d22ea26c8f3644957 100644
+--- a/apps/server/src/environment/ServerEnvironmentLabel.test.ts
++++ b/apps/server/src/environment/ServerEnvironmentLabel.test.ts
+@@ -1,5 +1,6 @@
+ import { assert, it } from "@effect/vitest";
+ import * as HostProcess from "@t3tools/shared/HostProcess";
++import * as ConfigProvider from "effect/ConfigProvider";
+ import * as Effect from "effect/Effect";
+ import * as Fiber from "effect/Fiber";
+ import * as FileSystem from "effect/FileSystem";
+@@ -50,3 +51,22 @@ it.effect("falls back to the hostname when hostnamectl never answers", () =>
+     assert.equal(yield* Fiber.join(label), "devbox");
+   }),
+ );
++
++it.effect("uses TESSAYA_SERVER_LABEL before the machine's names", () =>
++  Effect.gen(function* () {
++    const label = yield* resolveServerEnvironmentLabel({ cwdBaseName: "project" }).pipe(
++      Effect.provideService(HostProcess.Platform, "linux"),
++      Effect.provideService(HostProcess.Hostname, "devbox"),
++      Effect.provide(
++        Layer.mergeAll(
++          FileSystem.layerNoop({ exists: () => Effect.succeed(false) }),
++          ProcessRunner.layer.pipe(
++            Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, neverExits)),
++          ),
++          ConfigProvider.layer(ConfigProvider.fromUnknown({ TESSAYA_SERVER_LABEL: " Tessaya " })),
++        ),
++      ),
++    );
++    assert.equal(label, "Tessaya");
++  }),
++);
+diff --git a/apps/server/src/environment/ServerEnvironmentLabel.ts b/apps/server/src/environment/ServerEnvironmentLabel.ts
+index fc59928cc5bc68a5b7a31e8defaa6dc255a2a221..166c7b7ee537c141af9f42ba73a6a87aefc22fc1 100644
+--- a/apps/server/src/environment/ServerEnvironmentLabel.ts
++++ b/apps/server/src/environment/ServerEnvironmentLabel.ts
+@@ -1,4 +1,5 @@
+ import * as HostProcess from "@t3tools/shared/HostProcess";
++import * as Config from "effect/Config";
+ import * as Effect from "effect/Effect";
+ import * as FileSystem from "effect/FileSystem";
+ import * as Option from "effect/Option";
+@@ -184,6 +185,14 @@ const resolveFriendlyHostLabel = Effect.fn("resolveFriendlyHostLabel")(function*
+ export const resolveServerEnvironmentLabel = Effect.fn("resolveServerEnvironmentLabel")(function* (
+   input: ResolveServerEnvironmentLabelInput,
+ ) {
++  // Tessaya: the server's own name, before the machine's (which other products on the box share).
++  const ownLabel = normalizeLabel(
++    yield* Config.String("TESSAYA_SERVER_LABEL").pipe(Config.withDefault("")),
++  );
++  if (ownLabel) {
++    return ownLabel;
++  }
++
+   const friendlyHostLabel = yield* resolveFriendlyHostLabel();
+   if (friendlyHostLabel) {
+     return friendlyHostLabel;
