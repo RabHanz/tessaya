@@ -50,6 +50,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaPeople } from "./TessayaPeople.ts";
+import { emitAction } from "./turnActions.ts";
 
 /** One person's row in Settings' inner state: how she feels toward them, why, her opinion and their story. */
 interface InnerPerson {
@@ -527,6 +528,15 @@ const make = Effect.gen(function* () {
         undefined,
         member,
       );
+      // Her opinion moving is an action with its reason, as her understanding's writes are.
+      yield* emitAction({
+        kind: "mood.opinion",
+        actor: { kind: "persona", id: persona ?? "lead", certainty: 1 },
+        subject: member ?? "room",
+        persona: persona ?? null,
+        outcome: String(op.lean),
+        data: { why: op.why.trim().slice(0, 200) },
+      });
       // A stranger's opinion is also the people graph's: the owner sees it in People, and it rides their own turns.
       if (Option.isSome(people) && !(yield* isMember(member)))
         yield* people.value

@@ -51,6 +51,7 @@ import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import { RoomTools, type RoomTool, type RoomToolSet, type ToolOutcome } from "./R1Brain.ts";
 import { NOT_HIS_VOICE_TO_FORGET, TurnOrigin } from "../tessaya/TessayaTurn.ts";
+import { traced } from "../provenance/ActionLog.ts";
 import { Consent, hisOwnTurn } from "../tessaya/consent.ts";
 import { trustAgentOf } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
@@ -768,8 +769,29 @@ const makeRunners = Effect.gen(function* () {
         client: device?.startsWith("replay-") === true ? vessel.replay : vessel.client,
         linkedEnvironments: false,
       };
+      // A change by voice is an action, as the same call over /mcp is; reads stay out of the log.
+      const logged = changesSomething(name)
+        ? traced({
+            kind: "tool.call",
+            actor:
+              origin === null
+                ? { kind: "system", id: vessel.client.sessionId, certainty: 1 }
+                : {
+                    kind:
+                      origin.member == null || origin.member === OWNER_MEMBER_ID
+                        ? "owner"
+                        : "member",
+                    id: origin.member ?? OWNER_MEMBER_ID,
+                    certainty: origin.assurance ?? 0,
+                  },
+            subject: name,
+            persona: origin?.persona ?? null,
+            evidence: device === undefined ? [] : [{ kind: "device", ref: device }],
+          })
+        : <A, E, R>(effect: Effect.Effect<A, E, R>) => effect;
       const last = yield* toolkit.handle(name as SharedName, input as never).pipe(
         Effect.flatMap(Stream.runLast),
+        logged,
         Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
         Effect.provideService(ThreadManagement.ThreadManagementService, threads),
         Effect.catchCause((cause) =>
