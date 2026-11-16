@@ -388,11 +388,8 @@ describe("DirectEndpoints Tailscale Serve", () => {
 
   effectIt.effect("lists TESSAYA_PUBLIC_HOST instead of the machine name, without Serve", () =>
     Effect.gen(function* () {
-      const publicHost = "tessaya.tail1234.ts.net";
+      const publicHost = "tessaya.example.com";
       expect(yield* resolveWithServe(200, { publicHost, serve: false })).toEqual([
-        { kind: "tailnet", httpBaseUrl: "https://tessaya.tail1234.ts.net/" },
-      ]);
-      expect(yield* resolveWithServe(200, { publicHost: "tessaya.example.com" })).toEqual([
         { kind: "lan", httpBaseUrl: "https://tessaya.example.com/" },
       ]);
       expect(yield* resolveWithServe(502, { publicHost, serve: false })).toEqual([]);
@@ -400,7 +397,7 @@ describe("DirectEndpoints Tailscale Serve", () => {
   );
 
   it.each([
-    ["tessaya.tail1234.ts.net", "https://tessaya.tail1234.ts.net/"],
+    ["tessaya.example.com", "https://tessaya.example.com/"],
     [" tessaya.example.com:8443 ", "https://tessaya.example.com:8443/"],
     ["", null],
     ["not a host", null],

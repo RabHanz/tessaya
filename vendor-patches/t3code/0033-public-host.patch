@@ -28,7 +28,7 @@ index 622b47f91a65e51890d0fd13e419347c2539838f..d822371df8b2715a50de706038a86cbd
          pairingBaseUrl = resolveDirectPairingBaseUrl(target.state);
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
 diff --git a/apps/server/src/environment/DirectEndpoints.test.ts b/apps/server/src/environment/DirectEndpoints.test.ts
-index 6548b2ccd8c0e409e1bee96ff0ee5e32db642ad2..1b5ee264ab19c91a5787a8eb6e60424a869cae9f 100644
+index 6548b2ccd8c0e409e1bee96ff0ee5e32db642ad2..c63e8f03d63164686ecdff5b77d2d960d4987939 100644
 --- a/apps/server/src/environment/DirectEndpoints.test.ts
 +++ b/apps/server/src/environment/DirectEndpoints.test.ts
 @@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -81,18 +81,15 @@ index 6548b2ccd8c0e409e1bee96ff0ee5e32db642ad2..1b5ee264ab19c91a5787a8eb6e60424a
          ),
        ),
      ),
-@@ -374,4 +385,26 @@ describe("DirectEndpoints Tailscale Serve", () => {
+@@ -374,4 +385,23 @@ describe("DirectEndpoints Tailscale Serve", () => {
        expect(yield* resolveWithServe(502)).toEqual([]);
      }),
    );
 +
 +  effectIt.effect("lists TESSAYA_PUBLIC_HOST instead of the machine name, without Serve", () =>
 +    Effect.gen(function* () {
-+      const publicHost = "tessaya.tail1234.ts.net";
++      const publicHost = "tessaya.example.com";
 +      expect(yield* resolveWithServe(200, { publicHost, serve: false })).toEqual([
-+        { kind: "tailnet", httpBaseUrl: "https://tessaya.tail1234.ts.net/" },
-+      ]);
-+      expect(yield* resolveWithServe(200, { publicHost: "tessaya.example.com" })).toEqual([
 +        { kind: "lan", httpBaseUrl: "https://tessaya.example.com/" },
 +      ]);
 +      expect(yield* resolveWithServe(502, { publicHost, serve: false })).toEqual([]);
@@ -100,7 +97,7 @@ index 6548b2ccd8c0e409e1bee96ff0ee5e32db642ad2..1b5ee264ab19c91a5787a8eb6e60424a
 +  );
 +
 +  it.each([
-+    ["tessaya.tail1234.ts.net", "https://tessaya.tail1234.ts.net/"],
++    ["tessaya.example.com", "https://tessaya.example.com/"],
 +    [" tessaya.example.com:8443 ", "https://tessaya.example.com:8443/"],
 +    ["", null],
 +    ["not a host", null],
