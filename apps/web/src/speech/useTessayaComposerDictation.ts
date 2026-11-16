@@ -166,6 +166,8 @@ export function useTessayaComposerDictation(input: {
 }): TessayaComposerDictation {
   /** What Tessaya's dictations put in this draft since it was last sent, as one message. */
   const dictated = useRef("");
+  /** The draft as his last dictation left it: what he sends is read against it, whatever he fixed since. */
+  const leftAs = useRef("");
   const [state, dispatch] = useReducer(stepDictation, IDLE_DICTATION);
   const latest = useRef(state);
   const level = useRef(SILENT_DB);
@@ -280,6 +282,16 @@ export function useTessayaComposerDictation(input: {
       const prior = replacing ? undefined : priorAt(draft, dictated.current);
       dictated.current = prior === undefined ? words : `${prior} ${words}`;
       const committed = insertWords(base, words);
+      leftAs.current = committed.text;
+      // Words he selected and said again (a mis-heard word put right by voice) teach as a fix he typed would.
+      const selected = draft.text.slice(draft.selection.start, draft.selection.end).trim();
+      if (!replacing && selected !== "" && words !== "")
+        batonDesktopBridge()?.replyComposerDictation?.({
+          type: "sent",
+          id: 0,
+          written: selected,
+          kept: words,
+        });
       step({ type: "final", text: words, committed });
       input.commitDraft(committed.text, committed.selection);
       return true;
@@ -326,8 +338,9 @@ export function useTessayaComposerDictation(input: {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes this composer to the desktop's dictation channel and focus reports
   useEffect(() => listen({ take: onDesktop, root, ready, said }), [onDesktop, root, ready, said]);
   const sent = useStableCallback((text: string) => {
-    const written = dictated.current.trim();
+    const written = leftAs.current.trim();
     dictated.current = "";
+    leftAs.current = "";
     if (written !== "")
       batonDesktopBridge()?.replyComposerDictation?.({ type: "sent", id: 0, written, kept: text });
   });

@@ -69,6 +69,13 @@ const TURNS_PER_SESSION = 20;
 const RELEASE_BUDGET_MS = 1_800;
 /** Recording starts closer together than this share one warm call. */
 const KEY_WARM_GAP_MS = 2_000;
+/**
+ * His plan's warm session, at release: Sonnet answered his presses in 0.96 s p50 and 1.28 s p95 (16 Nov, warm, effort
+ * low), so past this the local text goes in and the session is let rest.
+ */
+const SESSION_BUDGET_MS = 3_000;
+/** A plan that failed or hit its limit rests this long, his key answering meanwhile, then is tried again. */
+const SESSION_REST_MS = 5 * 60_000;
 
 interface CleanInput {
   readonly raw: string;
@@ -107,7 +114,8 @@ export interface Rewriter {
 
 export const makeRewriter = (input: {
   readonly claudeBinary: string;
-  readonly model: string;
+  /** A model he can change in Settings: a session on another model is replaced at the next clean-up. */
+  readonly model: string | (() => string);
   readonly workDir: string;
   readonly env: NodeJS.ProcessEnv;
   readonly platform: string;
@@ -138,6 +146,13 @@ export const makeRewriter = (input: {
   readonly keepWarm?: () => boolean;
   /** His own past dictations most like this one, with what he kept (stylePairs.ts); shown to the model as examples. */
   readonly examples?: (text: string, mode: DictationMode) => ReadonlyArray<StylePair>;
+  /**
+   * "subscription": his own Claude plan answers first, his key only while the plan is out or at its limit (the
+   * Director, 16 Nov). "key": his key first, as before. Absent is "key".
+   */
+  readonly route?: () => "subscription" | "key";
+  /** Each answer from his plan's session, for the usage record. */
+  readonly onSessionResult?: (event: Record<string, unknown>) => void;
 }): Rewriter => {
   // Text already set out on this machine (a list) is only polished: examples there cost lists (18 → 12 of his 52).
   const message = (
@@ -170,10 +185,13 @@ export const makeRewriter = (input: {
     if (input.keepWarm?.() === true) warmSession();
   };
   let prompt = "";
+  let sessionModel = "";
   const get = (): VisionSession => {
     // A word he just taught is in the next clean-up, not the next session.
     const current = rewriteSystemPrompt(input.dictionary());
-    if (current !== prompt || session?.alive() === false) drop();
+    const model = typeof input.model === "string" ? input.model : input.model();
+    if (current !== prompt || model !== sessionModel || session?.alive() === false) drop();
+    sessionModel = model;
     prompt = current;
     if (idle !== null) clearTimeout(idle);
     idle = setTimeout(() => {
@@ -181,12 +199,15 @@ export const makeRewriter = (input: {
     }, IDLE_MS);
     session ??= (input.start ?? startVisionSession)({
       claudeBinary: input.claudeBinary,
-      model: input.model,
+      model,
       systemPrompt: current,
       workDir: input.workDir,
       env: input.env,
       platform: input.platform,
       timeoutMs: 60_000,
+      // A clean-up is a rewrite, not a problem to think through: Sonnet at low effort answered in about 1 s.
+      effort: "low",
+      ...(input.onSessionResult === undefined ? {} : { onResult: input.onSessionResult }),
     });
     return session;
   };
@@ -207,8 +228,8 @@ export const makeRewriter = (input: {
       .catch(() => undefined);
   };
   const warmSession = () => {
-    // With a key, no subscription session is kept for clean-up: it only ever answers when there is no key.
-    if (keyRoute() && keySeen) return;
+    // Key first: no subscription session is kept for clean-up, it only answers when there is no key.
+    if (!planFirst() && keyRoute() && keySeen) return;
     try {
       get();
     } catch {
@@ -216,7 +237,7 @@ export const makeRewriter = (input: {
     }
   };
   const warm = () => {
-    if (keyRoute()) warmKey();
+    if (keyRoute() && !planFirst()) warmKey();
     warmSession();
   };
 
@@ -235,6 +256,14 @@ export const makeRewriter = (input: {
   /** The server said no key is saved: only then does the subscription session clean up. */
   let noKey = false;
   const keyRoute = () => input.api !== undefined && !noKey;
+  /** Until then his plan rests (it failed, timed out or hit its limit) and his key answers. */
+  let restUntil = 0;
+  const planFirst = () => input.route?.() === "subscription" && Date.now() >= restUntil;
+  const rest = () => {
+    restUntil = Date.now() + SESSION_REST_MS;
+  };
+  /** Either route answers a whole dictation in about a second: release cleans it whole, and pauses guess the whole. */
+  const quick = () => keyRoute() || planFirst();
   /** His key has answered or failed at least once, so a key is saved and the session is not needed. */
   let keySeen = false;
   /** His key answered the last clean, so release gets the short budget; until then the first call has the full limit. */
@@ -259,12 +288,12 @@ export const makeRewriter = (input: {
       noKey = answer === null;
       keySeen = apiAnswers;
       apiWhy = null;
-      if (keySeen) drop();
+      if (keySeen && !planFirst()) drop();
       return answer;
     } catch (error) {
       apiAnswers = false;
       keySeen = true;
-      drop();
+      if (!planFirst()) drop();
       apiWhy = (error instanceof Error ? error.message : "") || "failed";
       throw new Error(`key ${apiWhy}`);
     }
@@ -281,6 +310,19 @@ export const makeRewriter = (input: {
     context?: DictationContext,
     refused?: Refused,
   ): Promise<string> => {
+    if (planFirst()) {
+      try {
+        return await viaSession(text, mode, context, refused);
+      } catch (error) {
+        // Out, or at its limit: his key answers this one and the next few minutes.
+        rest();
+        drop();
+        if (!keyRoute()) throw error;
+      }
+      const paid = await viaApi(text, mode, context, refused);
+      if (paid === null) throw new Error("no plan and no key");
+      return paid.trim();
+    }
     const paid = final || keyRoute() ? await viaApi(text, mode, context, refused) : null;
     return paid === null ? viaSession(text, mode, context, refused) : paid.trim();
   };
@@ -308,6 +350,8 @@ export const makeRewriter = (input: {
         // Our own late answer would be read as the next dictation's, so that session goes and the next starts now.
         // Still waiting behind a guess, nothing of ours was asked: the session stays.
         if (sent) {
+          // His plan too slow at release: it rests, and his key takes the next ones.
+          if (planFirst() && keyRoute()) rest();
           drop();
           warmSession();
         }
@@ -363,9 +407,9 @@ export const makeRewriter = (input: {
     speculate: ({ pause = true, ...said }) => {
       if (said.level !== "claude") return;
       // With his key release cleans the message whole, so that is what a pause guesses.
-      const c = keyRoute() ? { ...said, raw: allSaid(said) } : said;
+      const c = quick() ? { ...said, raw: allSaid(said) } : said;
       // His key cleans the whole dictation at release, so a pause guesses the whole: if he stops there, release takes it.
-      const pieces = keyRoute()
+      const pieces = quick()
         ? pause && c.raw.trim() !== ""
           ? [c.raw]
           : []
@@ -396,7 +440,11 @@ export const makeRewriter = (input: {
         const limit = input.limitMs ?? hardLimitMs(c.raw);
         const deadline =
           started +
-          (apiAnswers ? Math.min(limit, input.releaseBudgetMs ?? RELEASE_BUDGET_MS) : limit);
+          (planFirst()
+            ? Math.min(limit, SESSION_BUDGET_MS)
+            : apiAnswers
+              ? Math.min(limit, input.releaseBudgetMs ?? RELEASE_BUDGET_MS)
+              : limit);
         const waitFor = async (cleaned: Promise<CleanedText>, by = deadline) => {
           let timer: ReturnType<typeof setTimeout> | undefined;
           const answer = await Promise.race([
@@ -409,7 +457,7 @@ export const makeRewriter = (input: {
           return answer;
         };
         const wholeBy = started + (input.wholeLimitMs ?? wholeLimitMs(c.raw));
-        if (keyRoute()) {
+        if (quick()) {
           // The whole guessed at his last pause, answered or still on its way, is sooner than asking again now.
           const key = keyOf(c, c.raw);
           const pending = ready.get(key);
@@ -418,15 +466,17 @@ export const makeRewriter = (input: {
           if (guessed !== null && usable(guessed))
             return { ...guessed, ms: Date.now() - started, speculated: true };
         }
-        // The message pass is one call against the whole limit: what it would fall back to is cleaned alongside it.
-        if (wholeOnly) {
-          const cleaned = await run(c, askBy(wholeBy, c.context));
+        // One call against the whole limit: the message pass, whose fallback is cleaned alongside it, and anything his
+        // plan answers, one question at a time, so sentences asked one by one would only queue behind it.
+        if (wholeOnly || planFirst()) {
+          const by = planFirst() ? Math.max(wholeBy, deadline) : wholeBy;
+          const cleaned = await run(c, askBy(by, c.context));
           return { ...cleaned, ms: Date.now() - started, speculated: false };
         }
         const pieces = dictationPieces(c.raw, c.mode);
         // With his key, more than one sentence is also cleaned whole, so a correction or fragment that crosses a
         // sentence is settled; the pieces below, cleaned meanwhile, are pasted only if the whole does not come back.
-        const whole = pieces.length > 1 && keyRoute() ? run(c, askBy(wholeBy, c.context)) : null;
+        const whole = pieces.length > 1 && quick() ? run(c, askBy(wholeBy, c.context)) : null;
         // Each piece cleaned while he spoke is taken as it is; the pieces left, side by side, are cleaned together now.
         const parts: CleanedText[] = [];
         let left: string[] = [];
@@ -473,7 +523,7 @@ export const makeRewriter = (input: {
         return { ...cleaned, ms: Date.now() - started, speculated: guessedAll };
       };
       const all = allSaid(said);
-      if (all === said.raw || !keyRoute() || said.level !== "claude")
+      if (all === said.raw || !quick() || said.level !== "claude")
         return { ...(await cleanAlone(said)), message: false };
       // The message guessed at his last pause, answered or on its way: nothing else is asked unless it fails.
       const pendingWhole = ready.get(keyOf(said, all));
@@ -496,13 +546,14 @@ export const makeRewriter = (input: {
         return { ...answeredWhole, ms: Date.now() - started, speculated: true, message: true };
       // These words on their own run meanwhile: if the message pass fails or runs out of time, they go in instead.
       const message = cleanAlone({ ...said, raw: all }, true).catch(() => null);
-      const alone = cleanAlone(said);
+      // His plan answers one question at a time: the press alone is asked only if the message pass fails.
+      const alone = planFirst() ? null : cleanAlone(said);
       const whole = await message;
       if (whole?.stage === "model") {
-        void alone.catch(() => undefined);
+        void alone?.catch(() => undefined);
         return { ...whole, message: true };
       }
-      const drafted = await alone;
+      const drafted = await (alone ?? cleanAlone(said, true));
       return {
         ...drafted,
         why: drafted.why ?? `message pass ${whole?.why ?? "failed"}`,
