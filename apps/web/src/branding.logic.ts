@@ -1,5 +1,8 @@
 const NIGHTLY_SERVER_VERSION_PATTERN = /^[^-+]+-(?:nightly|preview)\.\d{8}\.\d+$/;
 
+/** The web build's name. Desktop injects its own branding over it. */
+export const WEB_APP_BASE_NAME = "Tessaya";
+
 export function formatAppDisplayName(input: {
   readonly baseName: string;
   readonly stageLabel: string;
