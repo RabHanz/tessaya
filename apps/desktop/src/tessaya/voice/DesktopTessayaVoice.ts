@@ -8,6 +8,8 @@
  */
 import type { PlanLease } from "@t3tools/tessaya-shared/planLease";
 import { shoulderSurf } from "@t3tools/tessaya-shared/biometrics";
+import { effectFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import type { Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/tessaya-shared/household";
 import { createFaceCheck, faceEnginePath } from "../face/faceCheck.ts";
 import {
@@ -1474,6 +1476,8 @@ export interface DesktopTessayaVoice {
   readonly onActivity: (label: string | null, caption?: string) => void;
   /** The persona answering him now: with "Follows who is talking" on, her body becomes that persona's. */
   readonly face: (name: string) => void;
+  /** Her voice reached a stage direction (`*laughs*`): her body's face for it, the face shown or null (VOXTA-STUDY G7). */
+  readonly effect: (nonverbal: Nonverbal) => string | null;
   /** A lesson or drive sound, through the pill's own cue path. */
   readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** How loud Baton's voice is right now, for the pill. */
@@ -9839,6 +9843,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       if (!settings.mascotFollows || name.toLowerCase() === talking) return;
       talking = name.toLowerCase();
       syncMascot?.();
+    },
+    effect: (nonverbal) => {
+      const face = effectFor(VESSELS.mascot, nonverbal).face;
+      return face !== null && voiceBody().expression(face) ? face : null;
     },
     cue: (name) => pill.cue(name),
     onActivity: (label, caption) =>

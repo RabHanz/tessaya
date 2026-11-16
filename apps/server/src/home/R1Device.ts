@@ -32,7 +32,8 @@ import {
   repairVerdict,
   type HeardWord,
 } from "@t3tools/tessaya-shared/transcriptRepair";
-import { emitAction } from "../tessaya/turnActions.ts";
+import { effectFired, emitAction } from "../tessaya/turnActions.ts";
+import { NONVERBALS } from "@t3tools/tessaya-shared/interjections";
 import {
   DEFAULT_OS_PACK,
   rosterLine,
@@ -81,7 +82,7 @@ import {
 } from "../tessaya/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
 import { eyeClipOf, greetEvent, isLineEvent } from "@t3tools/tessaya-shared/expression";
-import { renderFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import { effectFor, renderFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
 import { type ExpressionMood, TessayaVoicePrint } from "@t3tools/tessaya-contracts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
@@ -1379,6 +1380,15 @@ const decodeChat = Schema.decodeUnknownOption(Schema.fromJsonString(ChatBody));
 const decodePlayed = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ callId: Schema.String.check(Schema.isMaxLength(64)) })),
 );
+const decodeEffect = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      deviceId: Schema.String.check(Schema.isMaxLength(64)),
+      nonverbal: Schema.Literals(NONVERBALS),
+      face: Schema.NullOr(Schema.String.check(Schema.isMaxLength(32))),
+    }),
+  ),
+);
 const textOf = (content: unknown): string =>
   typeof content === "string"
     ? content
@@ -1575,6 +1585,44 @@ export const routes = HttpRouter.use((router) =>
       return HttpServerResponse.jsonUnsafe({ committed: found });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     for (const root of DEVICE_API_ROOTS) yield* router.add("POST", `${root}/turns/played`, played);
+    // The loop reached a stage direction's word (VOXTA-STUDY G7): her buzz plays at his haptic settings, and it is logged.
+    const effect = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
+      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      const body = decodeEffect(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
+      if (body._tag === "None") return error(400, "That is not an effect.");
+      const { deviceId, nonverbal, face } = body.value;
+      const pattern = effectFor(VESSELS.tessel, nonverbal).haptic;
+      const devices = Context.getOption(context, HomeDevices);
+      // His haptics setting, quiet hours, placement and battery decide whether it is felt; the outcome says which.
+      const outcome =
+        pattern !== null && Option.isSome(devices)
+          ? yield* devices.value
+              .command(
+                deviceId,
+                { op: "haptic", pattern, category: "reactions" },
+                { who: `the ${DEVICE}'s voice`, surface: "agent" },
+              )
+              .pipe(
+                Effect.map((o) => o.line),
+                Effect.orElseSucceed(() => "refused"),
+              )
+          : undefined;
+      yield* effectFired({
+        vessel: deviceId,
+        nonverbal,
+        face,
+        haptic: pattern,
+        ...(outcome === undefined ? {} : { outcome }),
+      });
+      return HttpServerResponse.jsonUnsafe({ haptic: pattern });
+    }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
+    for (const root of DEVICE_API_ROOTS) yield* router.add("POST", `${root}/turns/effect`, effect);
     // The home server's personas, for the room loop's roster, voices, wake words and eyes (SPINE-UNIFY §10, P2).
     const personas = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;

@@ -236,6 +236,8 @@ export interface DesktopMascot {
   readonly bounds: () => Rect | null;
   /** Her mood from the spine (TessayaMood, CS6) and how strongly, which she wears at rest. */
   readonly mood: (label: string, intensity: number) => void;
+  /** A face for a moment of her speech (a laugh), which her rig lets go of by itself; false when she is not showing. */
+  readonly expression: (face: string) => boolean;
   /** A job finished, failed or started waiting for him. */
   readonly react: (moment: CompanionMoment) => void;
   /** The window he is in (DIP, null when unknown) and whether it fills its screen. */
@@ -1113,6 +1115,11 @@ export const createDesktopMascot = (input: {
         dragging === null
       )
         cue("rest");
+    },
+    expression: (face) => {
+      if (win === null || !win.isVisible()) return false;
+      call(`window.mascot.say(${JSON.stringify({ mood: face })})`);
+      return true;
     },
     react: (moment) => {
       if (win !== null && win.isVisible()) cue(moment);

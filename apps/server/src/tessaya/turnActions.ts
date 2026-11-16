@@ -23,3 +23,20 @@ export interface TurnAction {
 
 /** Into the action log: queued, never fails or blocks the turn. */
 export const emitAction = (action: TurnAction) => Effect.asVoid(logAction(action));
+
+/** A word-timed effect a vessel fired as her voice reached its word (VOXTA-STUDY G7): what it showed and buzzed. */
+export const effectFired = (fired: {
+  readonly vessel: string;
+  readonly nonverbal: string;
+  readonly face: string | null;
+  readonly haptic: string | null;
+  /** What the device answered for the buzz (his haptics setting may have kept it still). */
+  readonly outcome?: string;
+}) =>
+  emitAction({
+    kind: "turn.effect.fired",
+    actor: { kind: "device", id: fired.vessel, certainty: 1 },
+    subject: fired.nonverbal,
+    ...(fired.outcome === undefined ? {} : { outcome: fired.outcome }),
+    data: { face: fired.face, haptic: fired.haptic },
+  });

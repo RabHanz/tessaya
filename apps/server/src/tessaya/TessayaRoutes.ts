@@ -5,6 +5,8 @@
  */
 import { PRIVATE_KIND } from "@t3tools/tessaya-shared/provenance";
 import { emitActionSync } from "../provenance/ActionLog.ts";
+import { effectFired } from "./turnActions.ts";
+import { NONVERBALS } from "@t3tools/tessaya-shared/interjections";
 import * as NodePath from "node:path";
 
 import {
@@ -327,6 +329,12 @@ export const routes = HttpRouter.use((router) =>
     const deskTools = yield* DeskTools;
     const decodeToolCall = Schema.decodeUnknownOption(DeskToolCall);
     const decodeDeskTurn = Schema.decodeUnknownOption(DeskTurnBody);
+    const decodeDeskEffect = Schema.decodeUnknownOption(
+      Schema.Struct({
+        nonverbal: Schema.Literals(NONVERBALS),
+        face: Schema.NullOr(Schema.String.check(Schema.isMaxLength(32))),
+      }),
+    );
     const decodePeerTurn = Schema.decodeUnknownOption(PeerTurnBody);
     const deskToolsAnswer = Effect.fn("BatonTessayaRoutes.deskTools")(function* (
       calledAs: string,
@@ -402,6 +410,16 @@ export const routes = HttpRouter.use((router) =>
           inbox.setBrainAnswers(on === true),
         ).pipe(Effect.provideContext(context));
         return HttpServerResponse.jsonUnsafe({ value: { on: on === true } });
+      }
+      // Her voice reached a stage direction's word on the desktop (VOXTA-STUDY G7): logged, the desktop has no motor.
+      if (calledAs === "effect") {
+        if (!session.value.scopes.includes(AuthTessayaHandsHostScope))
+          return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
+        const body = decodeDeskEffect(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
+        if (body._tag === "None")
+          return HttpServerResponse.jsonUnsafe({ message: "Not an effect." }, { status: 400 });
+        yield* effectFired({ vessel: "desktop", ...body.value, haptic: null });
+        return HttpServerResponse.jsonUnsafe({});
       }
       // His sentence at the desk, through the one brain (SPINE-UNIFY S4): only the desktop app's own session sends it.
       if (calledAs === "turn") {

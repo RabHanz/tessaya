@@ -573,8 +573,11 @@ export const createVisemeTrack = (text: string, rate: number) => {
       if (opensWithHum && track.every((s) => s.viseme === "rest" || s.hum === true)) return "mbp";
       return ms < trusted ? visemeAt(track, ms) : undefined;
     },
-    /** The word of the text (whitespace-split index) sounding at the sound's ms, once the alignment trusts it there. */
-    wordAt: (ms: number): number | undefined => {
+    /**
+     * The word of the text (whitespace-split index) sounding at the sound's ms, once the alignment trusts it there;
+     * null for a pause between words (where a spliced sound plays).
+     */
+    wordAt: (ms: number): number | null | undefined => {
       if (!live) return undefined;
       refresh();
       if (ms >= trusted || ms < 0) return undefined;
@@ -583,7 +586,7 @@ export const createVisemeTrack = (text: string, rate: number) => {
         alongAt = pathAt;
       }
       const unit = along[Math.floor(ms / ALIGN_HOP_MS)];
-      return unit === undefined ? undefined : units[unit]?.word;
+      return unit === undefined ? undefined : (units[unit]?.word ?? null);
     },
   };
 };

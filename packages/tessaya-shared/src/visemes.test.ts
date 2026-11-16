@@ -134,7 +134,8 @@ describe("a sentence's shapes as its audio streams in", () => {
     // 250 ms arrived: the last 150 ms is not trusted yet, nor which word it is (the private layer's cue, VOXTA I4)
     expect(track.at(150)).toBeUndefined();
     expect(track.wordAt(150)).toBeUndefined();
-    expect(track.wordAt(50)).toBeUndefined();
+    // trusted, but before the first word: a pause, where a spliced sound would play
+    expect(track.wordAt(50)).toBeNull();
     track.push(pcm.subarray(rate * 0.25));
     track.end();
     expect(track.wordAt(200)).toBe(0);

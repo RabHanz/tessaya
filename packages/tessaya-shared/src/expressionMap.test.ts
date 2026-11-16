@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { EMOTIONS, PROP_AT, VESSELS, clipFor, faceFor, renderFor } from "./expressionMap.ts";
+import {
+  EMOTIONS,
+  FACE_LIBRARY,
+  NONVERBAL_LOOKS,
+  PROP_AT,
+  VESSELS,
+  clipFor,
+  effectFor,
+  faceFor,
+  renderFor,
+} from "./expressionMap.ts";
 
 describe("clips by name", () => {
   const body = {
@@ -38,6 +48,15 @@ describe("the expression map", () => {
       for (const k of look.kin) expect(names, `${label} kin ${k}`).toContain(k);
       for (const p of look.props ?? []) expect(props, `${label} prop ${p}`).toContain(p);
     }
+    // A stage direction's face is one every face library draws, so it is never dropped as unknown.
+    for (const [sound, look] of Object.entries(NONVERBAL_LOOKS))
+      if (look.face !== undefined) expect(FACE_LIBRARY, sound).toContain(look.face);
+  });
+
+  it("a stage direction buzzes only a vessel with a motor", () => {
+    expect(effectFor(VESSELS.tessel, "laugh")).toEqual({ face: "laughing", haptic: "giggle" });
+    expect(effectFor(VESSELS.mascot, "laugh")).toEqual({ face: "laughing", haptic: null });
+    expect(effectFor(VESSELS.speaker, "gasp")).toEqual({ face: null, haptic: null });
   });
 
   it("every emotion draws a face on every vessel with one, falling back through its kin", () => {
