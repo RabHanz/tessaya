@@ -24,6 +24,8 @@ export const JOB_TOOL_TEXT = {
     "His scheduled tasks on this computer: each one's id, title, whether it is on, when it runs next (his house's clock) and how the last run went.",
   schedule_run_now:
     "Run one scheduled task now, by its id from schedules_list. It starts its run and does not wait for it to finish.",
+  schedule_pause:
+    "Pause one scheduled task by its id from schedules_list (on: false), or resume a paused one (on: true). Pausing keeps it to resume later; resuming asks his phone first.",
   schedule_delete:
     "Delete one scheduled task by its id from schedules_list; it stops for good. His phone asks him first. A job's own schedule comes off with job_schedule instead.",
 } as const;

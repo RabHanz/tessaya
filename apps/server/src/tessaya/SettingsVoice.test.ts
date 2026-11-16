@@ -65,7 +65,7 @@ const setup = () => {
     // A list and a button of the window's Settings (16 Nov parity: they had no voice path).
     {
       id: "v.language",
-      label: "Languages she listens for",
+      label: "Languages",
       section: "Voice",
       value: "English",
       voice: "free" as const,
@@ -74,7 +74,7 @@ const setup = () => {
     },
     {
       id: "v.testVoice",
-      label: "Hear her voice",
+      label: "Play the welcome",
       section: "Voice",
       value: "Play",
       voice: "free" as const,

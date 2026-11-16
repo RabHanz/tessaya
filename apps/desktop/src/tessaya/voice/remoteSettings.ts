@@ -12,7 +12,7 @@ import {
 import * as Schema from "effect/Schema";
 
 import type { HomeControl } from "../home/tessayaHome.ts";
-import { SETTINGS, tabOf } from "../home/tabs.ts";
+import { tabOf, type TabId } from "../home/tabs.ts";
 
 const decodeSync = Schema.decodeUnknownOption(DesktopSettingsSyncResult);
 
@@ -56,10 +56,36 @@ const CONTROL: Record<keyof DesktopVoiceSettingsPatch, string> = {
 };
 
 /**
- * How each Settings category's controls may change by voice; a control may say otherwise (`voice`). Typed over the
- * categories, so a new one without a voice class does not compile.
+ * How each tab's controls may change by voice; a control may say otherwise (`voice`). Null: a page of his own items
+ * (sessions, memories, jobs), reached through their own tools rather than one control each. Typed over every tab, so
+ * a new one without a voice class does not compile.
  */
-const TAB_VOICE: Record<(typeof SETTINGS)[number]["id"], DesktopSettingsControl["voice"]> = {
+const TAB_VOICE: Record<TabId, DesktopSettingsControl["voice"] | null> = {
+  dictation: "free",
+  snippets: "free",
+  style: "free",
+  transforms: "free",
+  intercom: "free",
+  hardware: "confirm",
+  cloud: "owner",
+  homeassistant: "owner",
+  phone: "owner",
+  setup: null,
+  home: null,
+  now: null,
+  insights: null,
+  scratchpad: null,
+  sessions: null,
+  approvals: null,
+  jobs: null,
+  history: null,
+  memory: null,
+  vault: null,
+  tools: null,
+  usage: null,
+  trust: null,
+  learn: null,
+  help: null,
   accounts: "owner",
   apis: "owner",
   brain: "owner",
@@ -89,13 +115,14 @@ export const voiceControls = (
   const typed = new Set(Object.values(CONTROL));
   const published = controls.flatMap((c): ReadonlyArray<DesktopSettingsControl> => {
     const tab = c.tab ?? tabOf(c.id);
-    if (!(tab in TAB_VOICE) || typed.has(c.id) || c.disabled === true) return [];
+    const tabVoice = TAB_VOICE[tab];
+    if (tabVoice === null || typed.has(c.id) || c.disabled === true) return [];
     const base = {
       id: c.id.slice(0, 120),
       label: c.label.slice(0, 200),
       section: c.section.slice(0, 80),
       ...(c.hint === undefined ? {} : { hint: c.hint.slice(0, 400) }),
-      voice: c.voice ?? TAB_VOICE[tab as keyof typeof TAB_VOICE],
+      voice: c.voice ?? tabVoice,
     };
     if (c.kind === "toggle") return [{ ...base, value: c.on }];
     if (c.kind === "choice")

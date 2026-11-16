@@ -279,7 +279,8 @@ const controlValue =
     if (control.kind === "action")
       return value === true || value === "press" ? Option.some({ [key]: true }) : Option.none();
     if (control.kind === "list") {
-      const op = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+      const op =
+        typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
       const add = typeof op["add"] === "string" ? op["add"].trim() : "";
       const remove = typeof op["remove"] === "string" ? op["remove"].trim() : "";
       const item = control.items?.find((i) => i.toLowerCase() === remove.toLowerCase());
@@ -339,7 +340,8 @@ const apply = Effect.fn("SettingsVoice.apply")(function* (entry: SettingEntry, p
     const desktop = yield* Effect.serviceOption(TessayaDesktopSettings);
     if (Option.isNone(desktop)) return false;
     const value = (patch as Record<string, unknown>)[entry.key];
-    const list = entry.control.kind === "list" ? (value as { add?: string; remove?: string }) : null;
+    const list =
+      entry.control.kind === "list" ? (value as { add?: string; remove?: string }) : null;
     // A list's line and Remove, as the window sends them (`<id>:add`, `<id>:rm`).
     yield* desktop.value.setControls([
       list === null

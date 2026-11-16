@@ -130,6 +130,7 @@ describe("createRemoteSettings", () => {
         kind: "list",
         items: ["English"],
         placeholder: "Add a language",
+        tab: "voice",
       },
       {
         id: "v.keys",

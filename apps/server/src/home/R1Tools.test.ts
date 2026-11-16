@@ -159,6 +159,9 @@ describe("the room's tools for a replay", () => {
     expect(jobVerdict("project_add", { repository: "acme/app" }, false)).toHaveProperty("card");
     expect(jobVerdict("schedule_delete", { id: "t1" }, false)).toHaveProperty("card");
     expect(jobVerdict("schedule_run_now", { id: "t1" }, false)).toBe("allow");
+    // Pausing stops spending, so his voice is enough; resuming starts unattended runs again, so it waits.
+    expect(jobVerdict("schedule_pause", { id: "t1", on: false }, false)).toBe("allow");
+    expect(jobVerdict("schedule_pause", { id: "t1", on: true }, false)).toHaveProperty("card");
     expect(jobVerdict("cloud_dispatch", { repo: "acme/app" }, false)).toBe("allow");
     // The prompt lab: trying variants is free to ask for; making one live, or rolling back, waits for his yes.
     expect(jobVerdict("tessaya_prompt_lab", { action: "run" }, false)).toBe("allow");

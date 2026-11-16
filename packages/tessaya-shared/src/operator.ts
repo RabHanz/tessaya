@@ -175,6 +175,7 @@ const BATON_QUIET = new Set([
 export const ROOM_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "schedules_list",
   "schedule_run_now",
+  "schedule_pause",
   "schedule_delete",
   "project_add",
 ]);
@@ -222,6 +223,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "job_delete",
   "skill_draft",
   "schedule_run_now",
+  "schedule_pause",
   "schedule_delete",
   "project_add",
   "text_transform",
@@ -488,6 +490,11 @@ const judgeTessayaTool = (name: string, call: ToolCall, context: JudgeContext): 
       // A run he asked for of a task he already set up: his voice is enough, unless it follows something read.
       return outgoing
         ? { verdict: "ask", why: "It follows something it read." }
+        : { verdict: "allow" };
+    case "schedule_pause":
+      // Pausing stops spending and is undone by resuming; resuming starts unattended runs again, so it asks.
+      return call.input["on"] === true
+        ? { verdict: "ask", why: "It would start a scheduled task running again." }
         : { verdict: "allow" };
     case "schedule_delete":
       return { verdict: "ask", why: "It would delete a scheduled task." };

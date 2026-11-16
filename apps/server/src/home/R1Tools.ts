@@ -135,6 +135,7 @@ const ROOM_TOOLS = [
   "job_schedule",
   "schedules_list",
   "schedule_run_now",
+  "schedule_pause",
   "schedule_delete",
   "project_add",
   "cloud_dispatch",
@@ -161,7 +162,8 @@ type ToolName = keyof typeof TessayaToolkit.tools;
 export const NOT_IN_ROOM: {
   readonly [K in Exclude<ToolName, (typeof ROOM_TOOLS)[number]>]: string;
 } = {
-  tessaya_desktop_settings: "settings_find, settings_get and settings_set reach the same desktop fields",
+  tessaya_desktop_settings:
+    "settings_find, settings_get and settings_set reach the same desktop fields",
   tessaya_session_defaults:
     "settings_get reads newSessionsRun and mainThreadId, and settings_set changes them",
   tessaya_voice_arbiter: "only his other servers call it, never a person",
