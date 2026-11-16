@@ -77,6 +77,7 @@ import { spendOf, type Spend } from "./TessayaJobSpend.ts";
 import { planningFrame, readPack, readTemplates } from "./OperatingSystemPack.ts";
 import { expressOr } from "./TessayaExpression.ts";
 import { accountPause, routeFor } from "./BrainRoutes.ts";
+import { billingOfAuth } from "@t3tools/tessaya-shared/brainRoutes";
 import { DEFAULT_ROUTING, ROUTINE_EFFORT } from "@t3tools/tessaya-shared/costRouting";
 import { modelOf, roleFor, type Brain } from "@t3tools/tessaya-shared/osPack";
 import { assignJob, templateBrief, type JobTemplate } from "@t3tools/tessaya-shared/jobTemplates";
@@ -107,6 +108,14 @@ const routesByTable = Effect.fn("BatonJobFlow.routesByTable")(function* (
   if (Option.isNone(registry)) return true;
   const instance = yield* registry.value.getInstance(instanceId);
   return instance === undefined || instance.driverKind === "claudeAgent";
+});
+
+/** Who pays for this instance's turns, read from its login; his plan when no registry or snapshot says otherwise. */
+const billingOf = Effect.fn("BatonJobFlow.billingOf")(function* (instanceId: ProviderInstanceId) {
+  const registry = yield* Effect.serviceOption(ProviderRegistry.ProviderRegistry);
+  if (Option.isNone(registry)) return "subscription" as const;
+  const providers = yield* registry.value.getProviders;
+  return billingOfAuth(providers.find((p) => p.instanceId === instanceId)?.auth.type);
 });
 
 /** A Claude worker on a model alias and its effort; the alias resolves to the newest model of that size. */
@@ -219,7 +228,14 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
     input.modelSelection.model ===
       DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] &&
     (yield* routesByTable(input.modelSelection.instanceId))
-      ? onBrain(input.modelSelection, modelOf(readPack(userdata), "executive"))
+      ? onBrain(
+          input.modelSelection,
+          modelOf(
+            readPack(userdata),
+            "executive",
+            yield* billingOf(input.modelSelection.instanceId),
+          ),
+        )
       : input.modelSelection;
   const terms = yield* jobs.create({
     id,
@@ -902,7 +918,14 @@ const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
           ? onBrain(shell.modelSelection, yield* routineBrain)
           : input.role !== undefined &&
               shell.modelSelection.model === modelOf(readPack(userdata), "executive").model
-            ? onBrain(shell.modelSelection, modelOf(readPack(userdata), input.role))
+            ? onBrain(
+                shell.modelSelection,
+                modelOf(
+                  readPack(userdata),
+                  input.role,
+                  yield* billingOf(shell.modelSelection.instanceId),
+                ),
+              )
             : shell.modelSelection,
       runtimeMode: "approval-required",
     },
