@@ -1,8 +1,11 @@
 // @effect-diagnostics unsafeEffectTypeAssertion:off
 import { expect, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { McpServer } from "effect/ai";
+import { McpSchema, McpServer, Tool } from "effect/ai";
 
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { JobTools } from "../jobs/tools.ts";
 import { TessayaToolkit } from "./tools.ts";
 
 // The server's own registration, not a copy of its rule: a tool whose parameters do not encode to an object schema
@@ -25,5 +28,31 @@ it.effect("every Tessaya tool registers with the MCP server", () =>
     ) as Effect.Effect<void>;
     yield* registration;
     expect(registered.toSorted()).toEqual(Object.keys(TessayaToolkit.tools).toSorted());
+  }),
+);
+
+// An agent signed in from outside never sees the acts a vessel runs for him (stop a job, run a schedule): it asks
+// through tessaya_ask, and the job handlers refuse it too (jobs/handlers.ts roomOnly).
+it.effect("an outside agent is not shown the job and schedule acts; the room is", () =>
+  Effect.gen(function* () {
+    const shown = (sessionId: string) =>
+      Effect.sync(() =>
+        Object.values(TessayaToolkit.tools)
+          .filter((tool: Tool.Any) => {
+            const enabled = Context.getOrUndefined(tool.annotations, McpSchema.EnabledWhen);
+            return enabled === undefined || enabled({ protocolVersion: "", capabilities: {} });
+          })
+          .map((tool) => tool.name),
+      ).pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, {
+          client: { sessionId, label: "an agent", access: "full-access" },
+        } as McpInvocationContext.McpInvocationContext["Service"]),
+      );
+    const outside = yield* shown("outside-agent");
+    const room = yield* shown("r1-room");
+    const acts = JobTools.map((tool) => tool.name);
+    expect(acts.filter((name) => outside.includes(name))).toEqual([]);
+    expect(acts.filter((name) => !room.includes(name))).toEqual([]);
+    expect(outside).toContain("tessaya_ask");
   }),
 );

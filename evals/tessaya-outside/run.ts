@@ -11,12 +11,15 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
-import { Tool } from "effect/ai";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import { McpSchema, Tool } from "effect/ai";
 
 import { startTessayaMcp } from "../../apps/desktop/src/tessaya/agent/tessayaMcp.ts";
 import { toolUsesOf } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
 import { TessayaToolkit } from "../../apps/server/src/mcp/toolkits/tessaya/tools.ts";
+import { McpInvocationContext } from "../../apps/server/src/mcp/McpInvocationContext.ts";
 import { outsideCases, type OutsideCase } from "./cases.ts";
 
 const { values } = NodeUtil.parseArgs({
@@ -33,6 +36,20 @@ const out = values.out;
 const cases = outsideCases.filter((c) => values.case === undefined || values.case.includes(c.id));
 const PREFIX = "mcp__t3-code__";
 
+/** What /mcp lists to an agent signed in from outside: its `EnabledWhen` read with that caller on the fiber. */
+const outsideTools = Effect.runSync(
+  Effect.sync(() =>
+    Object.values(TessayaToolkit.tools).filter((tool: Tool.Any) => {
+      const enabled = Context.getOrUndefined(tool.annotations, McpSchema.EnabledWhen);
+      return enabled === undefined || enabled({ protocolVersion: "", capabilities: {} });
+    }),
+  ).pipe(
+    Effect.provideService(McpInvocationContext, {
+      client: { sessionId: "outside-eval", label: "an outside agent", access: "full-access" },
+    } as McpInvocationContext["Service"]),
+  ),
+);
+
 interface Sample {
   readonly calls: ReadonlyArray<{ readonly tool: string; readonly input: unknown }>;
   readonly reply: string;
@@ -41,7 +58,7 @@ interface Sample {
 const sample = async (c: OutsideCase): Promise<Sample> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-outside-"));
   const mcp = await startTessayaMcp({
-    tools: Object.values(TessayaToolkit.tools).map((tool: Tool.Any) => ({
+    tools: outsideTools.map((tool: Tool.Any) => ({
       name: tool.name,
       description: Tool.getDescription(tool) ?? "",
       inputSchema: advertisedJsonSchema(tool) as Record<string, unknown>,

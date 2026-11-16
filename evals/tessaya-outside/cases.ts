@@ -938,6 +938,15 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     replyMustNot: /\bstudy\b|\b(definitely|for sure|is certainly)\b/i,
   },
   {
+    // A near miss for the one above: a path question in code is not where a person is.
+    id: "outside-where-am-i-path",
+    source: 'B-043 presence (16 Nov): "where am I" read as a file path; the reverse must hold too',
+    prompt: "Which directory am I in? Where am I in the file tree right now?",
+    answers: {},
+    calls: [],
+    callsMustNot: ["tessaya_whos_home"],
+  },
+  {
     id: "outside-whos-home-control",
     source: "Control for #945: a device question is the house's, not presence",
     prompt: "Is the study fan still on?",

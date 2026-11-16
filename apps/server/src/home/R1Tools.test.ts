@@ -59,6 +59,11 @@ describe("the room's tools for a replay", () => {
     expect(replayDryRun("tessaya_persona_handoff", { to: "Onyx" }, "replay-1")?.text).toContain(
       "Onyx has this conversation now",
     );
+    // "Forget me" asks first in a replay too; only the confirmed call is the write.
+    expect(replayDryRun("people_forget_me", {}, "replay-1")?.text).toContain('"status":"asked"');
+    expect(replayDryRun("people_forget_me", { confirmed: true }, "replay-1")?.text).toContain(
+      "nothing changed",
+    );
     // The pretend desktop's device acts are answered, never sent.
     const eye = { id: "r1-3d57b3", op: "eye", mood: "happy" };
     expect(replayDryRun("device_act", eye, "replay-desktop")?.isError).toBe(false);

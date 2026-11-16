@@ -61,7 +61,7 @@ const ExplainTool = Tool.make("settings_explain", {
 const SetTool = Tool.make("settings_set", {
   ...shared,
   description:
-    "Change one setting to a value it takes. Free settings change at once: say in plain words what changed and that he can say 'change it back' (set it to the old value given). Confirm and owner settings come back `asked`: sent to his phone for a yes, so say it waits for him and never that it changed. Never settings are refused with the reason.",
+    "Change one setting to a value it takes. Free settings change at once: say in plain words what changed and that he can say 'change it back' (set it to the old value given). Confirm and owner settings come back `asked`: sent to his phone for a yes, so say it waits for him and never that it changed. Never settings are refused with the reason. Two or more changes asked in one breath go in one settings_set_many instead.",
   parameters: Schema.Struct({
     key: Key,
     value: Schema.Unknown.annotate({

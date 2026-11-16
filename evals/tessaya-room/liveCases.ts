@@ -181,6 +181,23 @@ const brief =
 /** A short spoken offer of the rest at the end of an answer ("want the rest?"). */
 const MORE_OFFER =
   /\s*(?:(?:do )?you want|want|shall I give you|should I go on with)[^.!?]{0,30}\b(rest|more|details?|others?|list)\b[^.!?]{0,15}\?\s*$/i;
+/** Her answer names a session's project, or a machine, from the work read (tessaya_work_now). */
+const saysFromWorkNow = (
+  last: string,
+  calls: ReadonlyArray<LiveCall>,
+  what: "session" | "machine",
+): string | null => {
+  const read = calls.find((c) => c.name === "tessaya_work_now" && !c.isError);
+  if (read === undefined) return "no work read";
+  const now = JSON.parse(read.text) as {
+    readonly machines: ReadonlyArray<string>;
+    readonly top: ReadonlyArray<{ readonly project: string }>;
+  };
+  const names = what === "machine" ? now.machines : now.top.map((t) => t.project);
+  return names.length === 0 || names.some((n) => last.toLowerCase().includes(n.toLowerCase()))
+    ? null
+    : `named no ${what} from the work read: ${last.slice(0, 120)}`;
+};
 /**
  * An open question's answer (16 Nov, L-brief): the one fact that matters in about twenty words, a work read's result in
  * it, and at most an offer of the rest after it; `offer: false` for a question with nothing more to give.
@@ -395,16 +412,32 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_work_now"],
   },
   {
+    // .168: the work read before the turn answers what is open on every machine; tessaya_sessions is one computer's.
     id: "sessions",
-    proves: ["tessaya_sessions"],
+    proves: ["tessaya_work_now"],
     said: ["Which of my sessions are open?"],
-    uses: [["tessaya_sessions", "tessaya_in_flight"]],
+    uses: [["tessaya_work_now"]],
+    check: (last, calls) => saysFromWorkNow(last, calls, "session"),
+  },
+  {
+    id: "session-find",
+    proves: ["tessaya_sessions"],
+    said: ["Find the session I had about the checkout page."],
+    uses: [["tessaya_sessions"]],
     clean: ["tessaya_sessions"],
+  },
+  {
+    // .168: every linked machine is in the work read (machines, unreachable); tessaya_fleet is this one's detail.
+    id: "machines-up",
+    proves: ["tessaya_work_now"],
+    said: ["Which of my machines are up?"],
+    uses: [["tessaya_work_now"]],
+    check: (last, calls) => saysFromWorkNow(last, calls, "machine"),
   },
   {
     id: "fleet",
     proves: ["tessaya_fleet"],
-    said: ["Which of my machines are up?"],
+    said: ["What's running in the Herdr panes on this machine?"],
     uses: [["tessaya_fleet"]],
     clean: ["tessaya_fleet"],
   },
@@ -849,9 +882,9 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     // A request said as a wonder: she offered to look instead of looking. A control: it passed before the fix too.
     id: "direct-wonder",
-    proves: ["tessaya_fleet"],
+    proves: ["tessaya_work_now"],
     said: ["Everything feels slow today. I wonder if one of my machines is down."],
-    uses: [["tessaya_fleet"]],
+    uses: [["tessaya_work_now", "tessaya_fleet"]],
     lastNotSays: [OFFER],
   },
   // 16 Nov (L-brief): open and status questions answered at 45-50 words aloud. Made-up sentences of the same shapes.
@@ -907,6 +940,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["Is anything stuck at the moment?"],
     uses: [["tessaya_watch", "tessaya_in_flight", "tessaya_team_board"]],
     check: briefAnswer(25, false),
+  },
+  {
+    // .168: a "why" padded with every busy session and a guessed cause (27 words).
+    id: "brief-why-busy",
+    proves: ["tessaya_work_now"],
+    said: ["Why are my agents taking so long today?"],
+    uses: [["tessaya_work_now"]],
+    check: briefAnswer(20),
   },
   {
     // Job lead hand-off: the job moves with the conversation, and comes back, its worker untouched.
@@ -1022,6 +1063,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_whos_home"],
   },
   {
+    // B-043 (16 Nov): "where am I?" was read as a file path and answered with no tool.
+    id: "where-am-i",
+    proves: ["tessaya_whos_home"],
+    said: ["Where am I?"],
+    uses: [["tessaya_whos_home"]],
+  },
+  {
     id: "memory-about",
     proves: ["tessaya_memory_about"],
     said: ["What do you know about my dentist?"],
@@ -1095,6 +1143,20 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     args: (input) => ({ brainModels: input["key"] === "brainModels" }),
     // A confirm setting waits for his yes: she says it is with him.
     lastSays: [/\b(yes|phone|approv\w*|confirm\w*)\b/i],
+  },
+  {
+    // 552953471a: several setting asks in one breath go to his phone as one card.
+    id: "settings-many",
+    proves: ["settings_set_many"],
+    said: ["From now on talk to me on Opus, and turn the hold cues off."],
+    uses: [["settings_set_many"]],
+  },
+  {
+    id: "settings-answer-all",
+    proves: ["settings_answer_all"],
+    said: ["Approve all of the settings changes waiting on my phone."],
+    voices: [SURE],
+    uses: [["settings_answer_all"]],
   },
   // Recognition (recognition.ts): her name for them once a session, from the loop's cue, and never when it can't tell.
   {
@@ -1359,6 +1421,33 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     proves: ["people_forget_me"],
     said: ["Please forget me and my voice."],
     uses: [["people_forget_me"]],
+    // It asks first: the first call only says back what would go.
+    argsOf: "people_forget_me",
+    args: (input) => ({ "asked first": input["confirmed"] !== true }),
+    // .168: the replay answered "Done (nothing changed)" to the ask, and she made up why.
+    lastNotSays: [
+      /\b(forgotten you|I've forgotten|it'?s done|nothing (changed|needed)|already)\b/i,
+    ],
+  },
+  {
+    id: "people-forget-voice",
+    proves: ["people_forget_me"],
+    said: ["Don't remember my voice any more."],
+    uses: [["people_forget_me"]],
+    argsOf: "people_forget_me",
+    args: (input) => ({ "asked first": input["confirmed"] !== true }),
+    lastNotSays: [/\b(nothing (changed|needed)|already|wasn'?t (stored|kept))\b/i],
+  },
+  {
+    // A control: "forget it" drops the subject, never the speaker.
+    id: "people-forget-it",
+    proves: ["tessaya_team_board"],
+    said: ["What's on the team board?", "Actually, forget it, never mind."],
+    uses: [],
+    check: (_last, calls) =>
+      calls.some((c) => c.name === "people_forget_me" || c.name === "tessaya_memory_forget")
+        ? 'forgot something on "forget it"'
+        : null,
   },
   {
     id: "members-list",
