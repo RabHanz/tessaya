@@ -105,6 +105,7 @@ export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
     kind: route.kind,
     near: nearBy(input.r1Remote(), { ip: route.ip, remote: input.remote }),
     play: (pcm) => void Queue.offerUnsafe(out, new Uint8Array(pcm)),
+    flush: () => say({ t: "flush" }),
     mic: (bytes) => {
       idleTicks = 0;
       if (!listening) {

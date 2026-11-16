@@ -127,6 +127,8 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
       try {
         const m = JSON.parse(e.data) as { t?: string; on?: boolean };
         if (m.t === "listen") void audio.setMic(m.on === true);
+        // She was interrupted: what the player still holds goes now.
+        else if (m.t === "flush") audio.flush();
       } catch {
         // The server's words only; anything else is ignored.
       }
