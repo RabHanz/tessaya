@@ -15,13 +15,14 @@ describe("her words from the server's desk turn", () => {
     const said: Array<string> = [];
     await readDeskTurn(
       streamOf([
-        'data: {"words":"It\'s ',
+        'data: {"affect":"tender"}\n\ndata: {"words":"It\'s ',
         'Notepad. "}\n\ndata: {"words":"Done."}\n',
         "\ndata: [DONE]\n\n",
       ]),
       (w) => said.push(w),
+      (a) => said.push(`<${a}>`),
     );
-    expect(said).toEqual(["It's Notepad. ", "Done."]);
+    expect(said).toEqual(["<tender>", "It's Notepad. ", "Done."]);
   });
 
   it("fails when the stream ends before her turn did", async () => {

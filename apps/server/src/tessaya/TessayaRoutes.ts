@@ -13,6 +13,7 @@ import {
   TessayaPrivateCallResult,
   TessayaRpcGroup,
 } from "@t3tools/tessaya-contracts";
+import { deskEvent } from "@t3tools/tessaya-shared/deskTurnStream";
 import { buildPhoneState } from "@t3tools/tessaya-shared/phone";
 import { AuthTessayaHandsHostScope } from "@t3tools/contracts";
 import { watchFleet } from "@t3tools/tessaya-shared/watch";
@@ -428,7 +429,7 @@ export const routes = HttpRouter.use((router) =>
           turn.pipe(
             Stream.provideService(SessionMember, memberOfSubject(session.value.subject)),
             Stream.provideContext(context),
-            Stream.map((words) => `data: ${JSON.stringify({ words })}\n\n`),
+            Stream.map(deskEvent),
             Stream.concat(Stream.make("data: [DONE]\n\n")),
             Stream.encodeText,
           ),
@@ -627,7 +628,7 @@ export const routes = HttpRouter.use((router) =>
         return HttpServerResponse.stream(
           servePeerTurn(body.value, client.value.sessionId, deskTools).pipe(
             Stream.provideContext(context),
-            Stream.map((words) => `data: ${JSON.stringify({ words })}\n\n`),
+            Stream.map(deskEvent),
             Stream.concat(Stream.make("data: [DONE]\n\n")),
             Stream.encodeText,
           ),

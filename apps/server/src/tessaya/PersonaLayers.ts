@@ -43,6 +43,8 @@ export interface LayerReply {
   readonly gesture: string;
   readonly intensity: number;
   readonly look?: string;
+  /** The speaking voice's affect clip for this line ("tender"): the vessel says the whole line in that reference. */
+  readonly affect?: string;
 }
 
 export interface LayerHttpRequest {
