@@ -151,7 +151,7 @@ export function lowerOomScore({
   }
 }
 
-/** Every Claude config directory's sessions folder (same list as ClaudeLiveSessions.ts). */
+/** Every Claude config directory's sessions folder; keep in step with ClaudeLiveSessions.ts. */
 export function sessionsDirs() {
   if (process.env.BATON_CLAUDE_SESSIONS_DIR) return [process.env.BATON_CLAUDE_SESSIONS_DIR];
   const home = NodeOS.homedir();
@@ -164,6 +164,12 @@ export function sessionsDirs() {
   };
   add(NodePath.join(home, ".local", "share", "claude-swap", "sessions"), () => true);
   add(home, (name) => name.startsWith(".claude-"));
+  // tessaya-claude's per-conversation dirs (LIVE-ACCOUNT); missing these made every live session look stopped.
+  add(
+    process.env.TESSAYA_CLAUDE_THREADS ??
+      NodePath.join(home, ".local", "share", "tessaya", "claude-threads"),
+    (name) => !name.startsWith("."),
+  );
   for (const extra of (process.env.BATON_CLAUDE_CONFIG_DIRS ?? "").split(":"))
     if (extra) dirs.push(extra);
   return [...new Set(dirs)].map((dir) => NodePath.join(dir, "sessions"));

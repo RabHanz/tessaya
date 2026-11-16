@@ -53,6 +53,7 @@ import {
   maybeNote,
   run,
   sendFailure,
+  sessionsDirs,
 } from "./baton-live-acp.mjs";
 import {
   parsePanePrompt,
@@ -1482,4 +1483,18 @@ NodeTest.test("a dialog that is not a permission prompt never gets Allow pressed
     parsePanePrompt(screen).options.map((o) => o.label),
     ["Cancel (Esc)"],
   );
+});
+
+NodeTest.test("sessionsDirs includes tessaya-claude's per-conversation dirs", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "threads-"));
+  NodeFS.mkdirSync(NodePath.join(root, "s-abc", "sessions"), { recursive: true });
+  const saved = { ...process.env };
+  delete process.env.BATON_CLAUDE_SESSIONS_DIR;
+  process.env.TESSAYA_CLAUDE_THREADS = root;
+  try {
+    NodeAssert.ok(sessionsDirs().includes(NodePath.join(root, "s-abc", "sessions")));
+  } finally {
+    process.env = saved;
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
 });
