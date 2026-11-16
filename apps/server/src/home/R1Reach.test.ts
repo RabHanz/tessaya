@@ -71,8 +71,8 @@ it("gives every hub a slot in his order, and every server the same list, so she 
     composeEndpoints({ hubs: [big, cloud, laptop], fallback: ["ws://old/mqtt"], proxy: "" }).broker,
   ).toEqual([big.at(-1), cloud[0], laptop[0], "ws://old/mqtt"]);
   const known = [
-    { id: "env-home", label: "onnyx" },
-    { id: "env-cloud", label: "hetzner" },
+    { id: "env-home", label: "home" },
+    { id: "env-cloud", label: "cloud" },
     { id: "env-laptop", label: "laptop" },
   ];
   // No saved order: the hub the device was given first stays first on every server, the rest by name.
@@ -85,8 +85,8 @@ it("gives every hub a slot in his order, and every server the same list, so she 
   // His order wins; a hub he has not placed yet goes after it, and one that is gone drops out.
   expect(hubOrder({ saved: ["env-cloud", "env-gone"], known, first: "env-home" })).toEqual([
     "env-cloud",
-    "env-laptop",
     "env-home",
+    "env-laptop",
   ]);
 });
 
@@ -102,7 +102,7 @@ it.effect("on the standby hub, keeps the first hub first and says which one the 
     };
     const HOME = "wss://home.example.net/api/r1/mqtt";
     const stamps: Record<string, Record<string, { v: unknown; at: number; by: string }>> = {
-      [HUBS_RECORD]: { "env-home": { v: { label: "onnyx", urls: [HOME] }, at: 5, by: "env-home" } },
+      [HUBS_RECORD]: { "env-home": { v: { label: "home", urls: [HOME] }, at: 5, by: "env-home" } },
       "r1-a": { key: { v: {}, at: 5, by: "env-home" } },
     };
     const layer = R1ReachModule.layer.pipe(
@@ -155,7 +155,7 @@ it.effect("on the standby hub, keeps the first hub first and says which one the 
         `wss://cloud.example.net${HUB}`,
       ]);
       expect((yield* reach.hubs("r1-a")).map((h) => `${h.label}:${h.current}`)).toEqual([
-        "onnyx:false",
+        "home:false",
         "this server:true",
       ]);
     }).pipe(Effect.provide(layer));

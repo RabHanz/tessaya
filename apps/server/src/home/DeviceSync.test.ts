@@ -47,7 +47,7 @@ it.effect(
     let record: R1Device = {
       deviceId: "r1-a",
       deviceKey: "0".repeat(32),
-      mqttUrl: "mqtt://100.64.0.1:1883",
+      mqttUrl: "mqtt://10.0.0.9:1883",
       mqttUser: "brain",
       mqttPass: "pw",
     };

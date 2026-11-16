@@ -17,7 +17,6 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { fromPeers } from "../peer/PeerVessels.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { R1Hub } from "./R1Hub.ts";
 
@@ -186,13 +185,36 @@ const make = Effect.gen(function* () {
   /** Every record to every linked server, and theirs back. */
   const swap = Effect.gen(function* () {
     if (Option.isNone(links) || Option.isNone(peerMcp)) return;
-    const answers = yield* fromPeers(DEVICE_SYNC_TOOL, { records: state }, "10 seconds").pipe(
-      Effect.provideService(PeerLinks.PeerLinks, links.value),
-      Effect.provideService(PeerMcpClient.PeerMcpClient, peerMcp.value),
+    if (!(yield* links.value.enabled)) return;
+    // Called directly, not through PeerVessels: that module reaches the MCP handlers, an import cycle from here.
+    const linked = (yield* links.value.list.pipe(Effect.orElseSucceed(() => []))).filter(
+      (l) => l.status !== "expired",
     );
-    for (const { value } of answers)
-      if (typeof value === "object" && value !== null && "records" in value)
-        yield* merge((value as { records: unknown }).records);
+    yield* Effect.forEach(
+      linked,
+      (link) =>
+        peerMcp.value
+          .call({
+            environmentId: link.environmentId,
+            tool: DEVICE_SYNC_TOOL,
+            arguments: { records: state },
+            limits: { runtimeMode: "approval-required", interactionMode: "default" },
+            success: Schema.Unknown,
+          })
+          .pipe(
+            Effect.timeout("10 seconds"),
+            Effect.option,
+            Effect.flatMap((answer) =>
+              answer._tag === "Some" &&
+              typeof answer.value === "object" &&
+              answer.value !== null &&
+              "records" in answer.value
+                ? merge((answer.value as { records: unknown }).records)
+                : Effect.void,
+            ),
+          ),
+      { concurrency: "unbounded", discard: true },
+    );
   }).pipe(Effect.withSpan("DeviceSync.swap"));
 
   // The key: what this server's hub admits the device by. A local change (a pairing, a rotation, a forget) is told from
