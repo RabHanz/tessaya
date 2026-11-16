@@ -872,7 +872,12 @@ export const checkRewrite = (
       !known.has(lower) &&
       !joinedPairs.has(lower) &&
       !gone.some((w) => soundsLike(w, name)) &&
-      !soundsAcross(name)
+      !soundsAcross(name) &&
+      // "type seat" written "Type-C": every longer part of the name is a word he said.
+      !(
+        name.includes("-") &&
+        name.split("-").every((part) => part.length <= 2 || inLower.includes(part.toLowerCase()))
+      )
     )
       return fail(`new name ${name}`);
   }
@@ -939,6 +944,7 @@ Always:
 - The recogniser's full stops and question marks are guesses, and it often ends a question at a pause. A question that runs on with "and", "and also" or "or" into more of the same request is one question: join it, with no full stop in the middle, and end it with one question mark ("Can you check the logs first and also send me the report by tonight?"). Two questions that each ask with their own "can", "did", "is" or "will" stay two.
 - Make every sentence read the way he meant it: fix punctuation, capitals and sentence breaks, and fix the grammar that speech broke (a restarted phrase, a verb that no longer agrees, a dropped "the" or "of"), with the smallest change that does it. If unsure, leave it as said.
 - The recogniser mishears. Where a word as written makes no sense in the sentence and a word or name that sounds like it plainly does, write that one: "the jura board" is "the Jira board", "run it on Kegle" is "run it on Kaggle", "one Freya and Tessaya" is "on Freya and Tessaya", "aren't you ever marked a parts" is "aren't you ever marking the parts". A word that makes sense as written stays.
+- Its mis-hearing is often a real word, or two, that reads as grammar but not as sense: judge each word against what the sentence is about, not only its grammar. In a sentence about computers, cables, phones or apps, "sink the folder" is "sync the folder", "plug it into the USB hob" is "the USB hub", "it will not pair over blue" is "pair over Bluetooth" (a term heard with a syllable lost); in a sentence about printing, "the proofs came out", not "the proves". Write the word that sounds like it and fits his topic. When no such word plainly fits, leave the words exactly as said: never guess a meaning or write a new phrase for words you cannot place ("It doesn't want you." stays).
 - Spell a well-known name, product or term correctly when the words around it make it certain (Playwright, GitHub, Oakeshott), and hyphenate compound modifiers (15th-century, retro-style, AI-native).
 - Put quotation marks around a label he quotes from a screen ("Build Your Engagement") and around words he reports someone saying.
 - Write counts, quantities, amounts, versions, sizes and angles as digits ("every 2 weeks", "version 2", "16:9", "3D", "4K", "$600", "360 degrees", never "360° degrees"), and a century as "15th-century". Keep times, ordinals and "one" as he said them ("half past seven", "the first one", "the one that"). A number already in digits stays as given.

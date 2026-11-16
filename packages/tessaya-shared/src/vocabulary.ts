@@ -705,6 +705,22 @@ export const learnCorrection = (
   };
 };
 
+/** One edit is seen twice, by the field watch and by the diff at send (3 s apart on 16 Nov): within this, once. */
+export const SAME_FIX_MS = 10 * 60_000;
+
+/** The fixes not taught in the last `SAME_FIX_MS`; marks them taught at `now` in `taughtAt`. */
+export const unseenFixes = <Fix extends { readonly heard: string; readonly meant: string }>(
+  taughtAt: Map<string, number>,
+  fixes: ReadonlyArray<Fix>,
+  now: number,
+): ReadonlyArray<Fix> =>
+  fixes.filter((fix) => {
+    const key = `${fix.heard.toLowerCase()}>${fix.meant}`;
+    const fresh = now - (taughtAt.get(key) ?? -Infinity) >= SAME_FIX_MS;
+    if (fresh) taughtAt.set(key, now);
+    return fresh;
+  });
+
 /** Undoes one taught form: off the word, and the word too when that form was all it had learned. */
 export const unteach = (
   entries: ReadonlyArray<VocabularyEntry>,

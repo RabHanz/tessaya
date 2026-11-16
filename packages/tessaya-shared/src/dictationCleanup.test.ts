@@ -342,6 +342,9 @@ describe("checkRewrite", () => {
     expect(checkRewrite("Open TMAX on the box.", "Open tmux on the box.").ok).toBe(true);
     expect(checkRewrite("Open TMAX on the box.", "Open Tmux on the box.").ok).toBe(true);
     expect(checkRewrite("Open TMAX on the box.", "Open it on the box.").ok).toBe(false);
+    // "type seat" heard for Type-C (16 Nov): his own "type" with a letter is that term; a new long part is not.
+    expect(checkRewrite("It has a type seat plug.", "It has a Type-C plug.").ok).toBe(true);
+    expect(checkRewrite("It has a type seat plug.", "It has a Lightning-C plug.").ok).toBe(false);
     // His split word joined is not a lost name.
     expect(checkRewrite("Tell Launch Pad today.", "Tell LaunchPad today.", [], screen).ok).toBe(
       true,

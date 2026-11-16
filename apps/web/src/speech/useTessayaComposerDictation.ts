@@ -298,6 +298,14 @@ export function useTessayaComposerDictation(input: {
     }
     return true;
   });
+  const cancel = useStableCallback(() => {
+    const id = desktopId.current;
+    if (id === null) return input.speech.cancel();
+    batonDesktopBridge()?.replyComposerDictation?.({ type: "action", id, insert: false });
+    // Cleared here too: a desktop that has already let this dictation go never answers.
+    desktopId.current = null;
+    step({ type: "cancel" });
+  });
   // While Tessaya's dictation runs here he can still click or move the caret: the words follow it, and a field outside
   // this chat box taking the keyboard hands the dictation back to the desktop, which pastes it there.
   const listening = state.phase === "listening" || state.phase === "working";
@@ -307,6 +315,10 @@ export function useTessayaComposerDictation(input: {
     const inside = () => input.rootRef.current?.contains(document.activeElement) === true;
     const onSelection = () => {
       if (desktopId.current !== null && inside()) step({ type: "rebase", base: readDraft() });
+    };
+    // While the desktop records it holds Esc itself, so an Esc that reaches the page is ✕.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && desktopId.current !== null && !event.defaultPrevented) cancel();
     };
     const onFocus = (event: FocusEvent) => {
       const id = desktopId.current;
@@ -320,11 +332,13 @@ export function useTessayaComposerDictation(input: {
     const moves = ["selectionchange", "select", "keyup", "pointerup"] as const;
     for (const type of moves) document.addEventListener(type, onSelection, true);
     document.addEventListener("focusin", onFocus);
+    document.addEventListener("keydown", onKey);
     return () => {
       for (const type of moves) document.removeEventListener(type, onSelection, true);
       document.removeEventListener("focusin", onFocus);
+      document.removeEventListener("keydown", onKey);
     };
-  }, [listening, input.rootRef, readDraft, step]);
+  }, [listening, input.rootRef, readDraft, step, cancel]);
   const root = useStableCallback(() => input.rootRef.current);
   const ready = useStableCallback(() => !input.disabled);
   const said = useStableCallback(() => {
@@ -351,12 +365,6 @@ export function useTessayaComposerDictation(input: {
       batonDesktopBridge()?.replyComposerDictation?.({ type: "action", id, insert: true });
     else if (input.speech.state.phase === "post-processing") input.speech.skipPostProcessing();
     else void input.speech.stop();
-  });
-  const cancel = useStableCallback(() => {
-    const id = desktopId.current;
-    if (id !== null)
-      batonDesktopBridge()?.replyComposerDictation?.({ type: "action", id, insert: false });
-    else input.speech.cancel();
   });
 
   return {

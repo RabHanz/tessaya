@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { waveEngine } from "@t3tools/tessaya-shared/waveform";
 
-import { COMMIT_MS, createComposerDictation, routePill } from "./composerDictation.ts";
+import { CLAIM_MS, COMMIT_MS, createComposerDictation, routePill } from "./composerDictation.ts";
 
 /** A chat box that answers as `answer` says, or never when it returns null. */
 const box = (
@@ -86,6 +86,23 @@ describe("dictation into our own chat box", () => {
     composer.words("more words");
     expect(await composer.commit("More words.")).toBe(false);
     expect(sent.map((m) => m.type)).toEqual(["start"]);
+  });
+
+  it("a claim that comes too late is let go, so the chat box's pill never stays up while the words paste", async () => {
+    vi.useFakeTimers();
+    try {
+      const { composer, sent } = box(() => null);
+      const claim = composer.start("free");
+      await vi.advanceTimersByTimeAsync(CLAIM_MS);
+      expect(await claim).toBe(false);
+      expect(sent).toEqual([
+        { type: "start", id: 1, mode: "free" },
+        { type: "cancel", id: 1 },
+      ]);
+      expect(await composer.commit("Hello")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a window with no composer gets the pill: the claim fails and nothing more is sent", async () => {

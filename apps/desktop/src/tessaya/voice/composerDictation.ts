@@ -51,6 +51,8 @@ export const createComposerDictation = (input: {
       const key = `${s.id}:${type}`;
       const timer = setTimeout(() => {
         waits.delete(key);
+        // A claim that lands late would hold the chat box's pill up forever while the words paste: it is let go.
+        if (type === "claimed" && !s.target.gone()) s.target.send({ type: "cancel", id: s.id });
         resolve(false);
       }, ms);
       waits.set(key, (ok) => {
