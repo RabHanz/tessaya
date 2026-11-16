@@ -186,12 +186,23 @@ fn abandon(dictation: Option<(SyncSender<Feed>, usize)>) {
     }
 }
 
+/// The model file's name without its extension ("parakeet-tdt-0.6b-v3-Q8_0"): which calibrated bounds judge its words.
+fn model_name() -> String {
+    std::env::var("RECOGNIZER_MODEL")
+        .ok()
+        .and_then(|m| std::path::Path::new(&m).file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_default()
+}
+
 fn reply_line(reply: Reply) -> Value {
     match reply {
         Reply::Partial { text, pause } => json!({"ev": "partial", "text": text, "pause": pause}),
-        Reply::Text { text, infer_ms, pieces, reused, release_ms } => json!({
+        Reply::Text { text, infer_ms, pieces, reused, release_ms, words } => json!({
             "ev": "text", "text": text, "inferMs": infer_ms, "pieces": pieces, "reused": reused,
             "releaseMs": release_ms,
+            // Each word's confidence, null where the model gives none, and the model they were heard by (V-018).
+            "words": words.iter().map(|(w, p)| json!({"w": w, "p": if p.is_finite() { json!(p) } else { Value::Null }})).collect::<Vec<_>>(),
+            "model": model_name(),
         }),
         Reply::Error(message) => json!({"ev": "error", "message": message}),
     }
@@ -252,7 +263,14 @@ mod tests {
         let job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
         socket.send(Message::text(r#"{"cmd":"end"}"#)).unwrap();
         let started = Instant::now();
-        let reply = Reply::Text { text: "what time is it".into(), infer_ms: 0, pieces: 1, reused: false, release_ms: 0 };
+        let reply = Reply::Text {
+            text: "what time is it".into(),
+            infer_ms: 0,
+            pieces: 1,
+            reused: false,
+            release_ms: 0,
+            words: Vec::new(),
+        };
         job.replies.send(reply).unwrap();
         assert_eq!(next_text(&mut socket)["text"], "what time is it");
         // A shared socket lock held by the reader kept this waiting 5 to 25 s on 14 Nov; well under the 2 s silence limit.

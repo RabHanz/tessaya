@@ -15,6 +15,11 @@ import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-sha
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import { pronounce, pronounceFrom } from "@t3tools/tessaya-shared/pronounce";
 import { REST_MARK, stopIntent, stopMatch } from "@t3tools/tessaya-shared/stopPhrases";
+import {
+  repairBoundsFor,
+  repairVerdict,
+  type HeardWord,
+} from "@t3tools/tessaya-shared/transcriptRepair";
 
 import { createEchoGuard } from "../echoGuard.ts";
 import { createTalkOver, createVoiceLevel, voiceCheckDue, type TalkOver } from "../talkOver.ts";
@@ -168,6 +173,11 @@ export interface RecogniserTurn {
   readonly feed: (pcm: Int16Array) => void;
   /** The final text once the audio has ended. */
   readonly finish: () => Promise<string>;
+  /** After `finish`: each word with its confidence, and the model that heard it; null where it gave none. */
+  readonly words?: () => {
+    readonly words: ReadonlyArray<HeardWord>;
+    readonly model: string;
+  } | null;
   readonly cancel: () => void;
   /** Each partial the recogniser sends while it still works (its words so far); the room guesses ahead with them. */
   readonly onPartial?: (listener: (text: string) => void) => void;
@@ -263,6 +273,10 @@ export interface Tessaya {
   readonly emotion?: { readonly label: string; readonly events: ReadonlyArray<string> };
   /** A guess on his partial words: the server records and learns from it only once `played` says it was heard. */
   readonly speculative?: true;
+  /** Each word with the recogniser's confidence (transcript repair, V-018), when it gave them for these words. */
+  readonly heardWords?: ReadonlyArray<HeardWord>;
+  /** The recogniser model that scored `heardWords`, whose calibrated bounds judge them. */
+  readonly recogniser?: string;
   readonly callId?: string;
   /** Several people this turn, in speaking order: each one's words with their own voice (absent for one voice). */
   readonly segments?: ReadonlyArray<{ readonly speaker: SpeakerIdentity; readonly words: string }>;
@@ -873,6 +887,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       speaker: SpeakerIdentity,
       affect: Affect | undefined,
       segments?: Tessaya["segments"],
+      scored?: { readonly words: ReadonlyArray<HeardWord>; readonly model: string } | null,
     ): Tessaya => ({
       vessel: { kind: "device", id },
       origin: given === undefined ? "voice" : "button",
@@ -891,6 +906,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         ? {}
         : { emotion: { label: affect.emotion, events: affect.events } }),
       ...(segments === undefined ? {} : { segments }),
+      ...(scored == null ? {} : { heardWords: scored.words, recogniser: scored.model }),
     });
 
     /**
@@ -1445,7 +1461,23 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         speaker: SpeakerIdentity,
         affect: Affect | undefined,
         segments?: Tessaya["segments"],
-      ) => envelopeOf(given, tainted, words, who, switched, via, speaker, affect, segments);
+      ) =>
+        envelopeOf(
+          given,
+          tainted,
+          words,
+          who,
+          switched,
+          via,
+          speaker,
+          affect,
+          segments,
+          // Scores only for the very words they scored (not a joined or corrected turn).
+          heardScores !== null && sameWords(heardScores.words.map((w) => w.text).join(" "), words)
+            ? heardScores
+            : null,
+        );
+      let heardScores: ReturnType<NonNullable<RecogniserTurn["words"]>> = null;
       const current = given === undefined && heard === undefined ? rec : null;
       if (current !== null) rec = null;
       // The whole sentence re-scored replaces its first piece's verdict in his session, never adds to it.
@@ -1620,6 +1652,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           deps.log(
             `[${id}] turn ${turn}: the ${DEVICE} was muted or stopped; not answered (${heldBack(raw)})`,
           );
+        return;
+      }
+      heardScores = current?.words?.() ?? null;
+      // Pure noise, or words the recogniser never really heard (V-018): no turn, and nothing said about it.
+      if (
+        given === undefined &&
+        raw !== "" &&
+        heardScores !== null &&
+        sameWords(heardScores.words.map((w) => w.text).join(" "), raw) &&
+        repairVerdict(heardScores.words, repairBoundsFor(heardScores.model)).kind === "drop"
+      ) {
+        kept?.control.abort();
+        deps.log(`[${id}] turn ${turn}: noise, not words; not answered (${heldBack(raw)})`);
         return;
       }
       // Words he paused in, held for this turn: joined to it, or answered alone when this one is not his to her.
