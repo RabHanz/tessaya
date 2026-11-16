@@ -3,7 +3,7 @@
 The Tessel's in-house voice loop (`src/room`), run on the voice host next to the Tessel. Design and trade-offs:
 `tessaya-ops/research/R1-OFF-AGORA.md`.
 
-- **Layout** under `~/r1-voice`: `node/` (Node 24), `app/` (the esbuild bundle of `src/room/main.ts` and `replay.ts`
+- **Layout** under `~/r1-voice`: `node/` (Node 24), `app/` (the esbuild bundle of `src/room/main.ts`, `replay.ts` and `transcribe.ts`
   plus `onnxruntime-node`), `models/`, `secrets/` (0700), `state/` (Voice ID profile, `metrics.ndjson`), `env`.
 - **Models:**
   - `silero_vad.onnx` (native/baton-dictation/models).
@@ -29,6 +29,12 @@ The Tessel's in-house voice loop (`src/room`), run on the voice host next to the
   enable --now tessel-voice`, and check `systemctl --user status tessel-voice`. Its env file and folder stay `~/r1-voice`.
 - **Gate before a Tessel is switched to it:** `node app/replay.mjs <his wavs>` with the same env. It plays his recordings
   as a pretend Tessel (`replay-1`) and prints the end-of-voice to first-sound time per clip, then p50 and p90.
+- **Transcribe a long recording** (a fallback when a video has no captions):
+  `~/r1-voice/node/bin/node ~/r1-voice/app/transcribe.mjs [--engine sensevoice|parakeet] <file> > out.txt` prints one
+  `[mm:ss] words` line per speech stretch, and its speed and peak memory on stderr. Any format ffmpeg reads works.
+  It runs at nice 19, one file at a time (a second call waits on the lock), with one stretch of at most 25 s in memory.
+  `sensevoice` (default) runs in its own process and uses nothing the room loop does; `parakeet` is the room's own
+  recogniser and better on English, but each stretch queues with live turns there, so use it only when the room is quiet.
 - **Switch a Tessel** (no firmware change): publish `{"mode":"inhouse"}` to `freya/r1/<id>/cmd/voice/mode`. To go back,
   publish `{"mode":"agora"}`.
 - **Voice ID enrolment through the R1:** publish anything to `freya/r1/<id>/voice/enrol` while he is by it. She asks him
