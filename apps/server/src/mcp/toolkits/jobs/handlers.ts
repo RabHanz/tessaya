@@ -23,13 +23,17 @@ import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import { StorageCleanup } from "../../../storageCleanup.ts";
 
 import { TessayaCloudService } from "../../../tessaya/TessayaCloudService.ts";
+import { TessayaComms } from "../../../tessaya/TessayaComms.ts";
 import { TessayaEngine } from "../../../tessaya/TessayaEngine.ts";
+import { HouseholdCaller } from "../../../tessaya/TessayaHousehold.ts";
+import { TessayaMemorySync } from "../../../tessaya/TessayaMemorySync.ts";
 import * as JobFlow from "../../../tessaya/TessayaJobFlow.ts";
 import { ScheduledTaskService } from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { TessayaRuntime, type TessayaServices } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
+import { commsCaller } from "../comms/handlers.ts";
 import { type JobInput, ROOM_SESSIONS } from "./tools.ts";
 
 const refused = (message: string) =>
@@ -386,6 +390,44 @@ export const make = Effect.gen(function* () {
           line: `Linked ${linked.label} with ${linked.access} access. To undo, unlink it.`,
         } satisfies Reply;
       }),
+    ),
+    intercom_switch: act((input: JobInput<"intercom_switch">) =>
+      Effect.gen(function* () {
+        const caller = yield* commsCaller;
+        const result = yield* run(
+          Effect.flatMap(TessayaComms, (comms) =>
+            comms.call(
+              input.on === undefined ? { op: "settings" } : { op: "settings", enabled: input.on },
+            ),
+          ).pipe(Effect.provideService(HouseholdCaller, caller)),
+        );
+        if (result.status === "refused") return { id: null, line: result.line } satisfies Reply;
+        const on = result.settings?.enabled === true;
+        return {
+          id: null,
+          line: on
+            ? `The intercom is on: messages and announcements reach the people and devices in this home.${input.on === true ? " To stop it, turn the intercom off." : ""}`
+            : `The intercom is off: no messages or announcements go between devices here.${input.on === false ? " Turning it on again asks his phone first." : ""}`,
+        } satisfies Reply;
+      }),
+    ),
+    memory_sync_switch: act((input: JobInput<"memory_sync_switch">) =>
+      run(
+        Effect.gen(function* () {
+          const sync = yield* TessayaMemorySync;
+          if (input.on !== undefined) yield* sync.setEnabled(input.on);
+          const state = yield* sync.state;
+          const servers = state.peers.map((p) => p.label).join(", ");
+          return {
+            id: null,
+            line: !state.enabled
+              ? `Memory sync is off: his memory stays on this server only.${input.on === false ? " Turning it on again asks his phone first." : ""}`
+              : state.peers.length === 0
+                ? "Memory sync is on, but no other server is linked yet; link one in Settings, Memory."
+                : `Memory sync is on with ${servers}.${input.on === true ? " To stop it, say stop syncing my memory." : ""}`,
+          } satisfies Reply;
+        }),
+      ),
     ),
     job_start: act((input: JobInput<"job_start">) =>
       Effect.gen(function* () {
