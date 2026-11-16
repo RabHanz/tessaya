@@ -124,16 +124,20 @@ it.effect("a voice tap takes her reply from the R1 alone and swaps its mic frame
     const phone: Array<string> = [];
     hub.tapVoice("r1-a", {
       down: (p) => phone.push(p.toString("utf8")),
+      ctl: (p) => phone.push(`ctl:${p.toString("utf8")}`),
       up: (p) => Buffer.from(`phone-${p.toString("utf8")}`),
     });
     yield* bus.send(publishPacket("freya/r1/r1-a/voice/down", Buffer.from("hi")));
     yield* a.send(publishPacket("freya/r1/r1-a/voice/up", Buffer.from("mic")));
-    expect(phone).toEqual(["hi"]);
+    // Her flush on barge-in reaches the phone as well as the Tessel.
+    yield* bus.send(publishPacket("freya/r1/r1-a/voice/ctl", Buffer.from("flush")));
+    expect(phone).toEqual(["hi", "ctl:flush"]);
     expect(a.publishes()).toEqual([]);
     // Every other listener still hears her reply.
     expect(bus.publishes()).toEqual([
       "freya/r1/r1-a/voice/down=hi",
       "freya/r1/r1-a/voice/up=phone-mic",
+      "freya/r1/r1-a/voice/ctl=flush",
     ]);
     hub.tapVoice("r1-a", null);
     yield* bus.send(publishPacket("freya/r1/r1-a/voice/down", Buffer.from("back")));

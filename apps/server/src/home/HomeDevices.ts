@@ -517,6 +517,8 @@ export interface PhoneLink {
   /** On the R1's own network now; a phone away from home never takes her voice. */
   readonly near: boolean;
   readonly play: (pcm: Buffer) => void;
+  /** Drops what it still holds of her voice: she was interrupted. */
+  readonly flush: () => void;
   /** That many bytes of its mic, silence where it has none yet. */
   readonly mic: (bytes: number) => Buffer;
 }
@@ -527,6 +529,15 @@ const UP_FLAG_HEADSET = 16;
 export const UP_FLAG_PHONE = 32;
 
 /** The R1's mic frame with its PCM swapped for the phone's, its header (the R1's clock) kept. Pure. */
+/** The room loop's `voice/ctl` flush (`{"ev":"flush"}`). */
+const isFlush = (payload: Buffer): boolean => {
+  try {
+    return (JSON.parse(payload.toString("utf8")) as { ev?: unknown }).ev === "flush";
+  } catch {
+    return false;
+  }
+};
+
 export const phoneFrame = (frame: Buffer, link: Pick<PhoneLink, "kind" | "mic">): Buffer => {
   const aligned = frame.length > UP_HEADER && (frame.length - UP_HEADER) % 2 === 0;
   if (!aligned) return link.mic(frame.length);
@@ -1937,7 +1948,15 @@ const make = Effect.gen(function* () {
     const { down, up } = t;
     // A phone gone mid-reply drops the rest (a private reply never falls back) until the route moves.
     hub.value.tapVoice(id, {
-      ...(down === null ? {} : { down: (pcm: Buffer) => link(down)?.play(pcm) }),
+      ...(down === null
+        ? {}
+        : {
+            down: (pcm: Buffer) => link(down)?.play(pcm),
+            // Interrupted, she stops on the phone as on her speaker, not after its queue plays out.
+            ctl: (payload: Buffer) => {
+              if (isFlush(payload)) link(down)?.flush();
+            },
+          }),
       ...(up === null
         ? {}
         : {
@@ -2982,13 +3001,16 @@ const make = Effect.gen(function* () {
     // Which mic hears him (not a firmware item): his words put that one first, at once, like audio.output.
     if (c.op === "item" && c.itemId === "audio.input") {
       const sp = heard.get(id)?.speaker;
-      if (sp?.hfp === undefined)
+      const phone = nearPhones(id).find((l) => closedKind(l.kind)) ?? null;
+      if (sp?.hfp === undefined && phone === null)
         return yield* new DeviceRefusedError({
           why: `The ${DEVICE}'s firmware can't listen through headphones yet.`,
         });
       const order = inputOrderOf((yield* readSaved).inputs[id], bondsOf(id));
       const first =
-        c.value === "mic" ? OWN_MIC : (sp.linked ?? order.find((o) => o !== OWN_MIC) ?? null);
+        c.value === "mic"
+          ? OWN_MIC
+          : (phone?.id ?? sp?.linked ?? order.find((o) => o !== OWN_MIC) ?? null);
       if (first === null)
         return yield* new DeviceRefusedError({
           why: `Nothing is paired yet, so she listens through the ${DEVICE}'s own mic. Pair headphones first.`,
@@ -2999,7 +3021,9 @@ const make = Effect.gen(function* () {
         line:
           first === OWN_MIC
             ? `She listens through the ${DEVICE}'s own mic first now.`
-            : `She listens through your headphones first now, and through the ${DEVICE}'s own mic whenever they aren't connected.`,
+            : phone !== null && first === phone.id
+              ? `She listens through ${phone.name} first now, and through the ${DEVICE}'s own mic whenever it isn't linked.`
+              : `She listens through your headphones first now, and through the ${DEVICE}'s own mic whenever they aren't connected.`,
       } satisfies DeviceOutcome;
     }
     const tag = c.op === "item" && c.itemId === "audio.output" ? privateTagOf(c.value) : null;

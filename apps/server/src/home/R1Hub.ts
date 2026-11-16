@@ -101,6 +101,8 @@ interface Subscriber {
 export interface HubTap {
   readonly down?: (payload: Buffer) => void;
   readonly up?: (payload: Buffer) => Buffer;
+  /** The loop's `voice/ctl` for that Tessel (a flush on barge-in); the Tessel still gets it too. */
+  readonly ctl?: (payload: Buffer) => void;
 }
 
 const str = (body: Buffer, at: number): [Buffer, number] => {
@@ -234,6 +236,7 @@ export const makeHub = (
     if (tap?.up !== undefined && (rest === "voice/up" || rest === "voice/up/tainted"))
       payload = tap.up(payload);
     const taken = tap?.down !== undefined && rest === "voice/down";
+    if (tap?.ctl !== undefined && rest === "voice/ctl") tap.ctl(payload);
     if (taken) tap.down!(payload);
     if (retain) {
       if (payload.length === 0) retained.delete(topic);
