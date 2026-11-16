@@ -43,6 +43,23 @@ describe("vocabulary file", () => {
       { phrase: "Tessaya", replacement: null, source: "wispr", count: 1, heard: ["Tisia"] },
     ]);
     expect(parseVocabulary({})).toEqual([]);
+    // His laptop's list (16 Nov): a word added with its sentence's stop beside the same word, one entry.
+    expect(
+      parseVocabulary([
+        { phrase: "Tessaya", replacement: null, source: "learned", heard: ["Tsaya"] },
+        { phrase: "Tessaya.", replacement: null, source: "added", heard: ["Tsaya", "Tisia"] },
+        { phrase: "Sol.md", replacement: null },
+      ]),
+    ).toEqual([
+      {
+        phrase: "Tessaya",
+        replacement: null,
+        source: "added",
+        count: 1,
+        heard: ["Tsaya", "Tisia"],
+      },
+      { phrase: "Sol.md", replacement: null, source: "added", count: 1 },
+    ]);
   });
 
   it("lists the most used terms first, and keeps 'added' once he says it himself", () => {
@@ -64,7 +81,8 @@ describe("vocabulary file", () => {
     expect(terms.slice(0, 3).map((t) => t.split(" ")[0])).toEqual(["Tessaya", "Wispr", "T3"]);
     expect(terms[3]).toBe("Tessaya Manager");
     expect(terms[4]).toBe("Tessel");
-    expect(terms.slice(5)).toEqual(["Parakeet", 'Baton (heard as "Buton")']);
+    // An old name (Baton) is not one of her own: it carries no forms of hers.
+    expect(terms.slice(5)).toEqual(["Parakeet", "Baton"]);
     expect(entries.find((e) => e.phrase === "Baton")).toMatchObject({ source: "added", count: 2 });
   });
 });
@@ -141,7 +159,6 @@ describe("her own names", () => {
       ["Quick update on Tisia.", "Quick update on Tessaya."],
       ["Go over the whole of Teceyas code.", "Go over the whole of Tessaya's code."],
       ["To say um", "Tessaya"],
-      ["Ship the Buton build.", "Ship the Baton build."],
       ["Move it into D3 code.", "Move it into T3 code."],
       // The dictation app he measures against (0.1.91).
       ["Compare it with WhisperFlow.", "Compare it with Wispr Flow."],
@@ -208,7 +225,7 @@ describe("his taught words", () => {
     for (const [heard, meant] of cases) expect(biasTranscript(heard, his)).toBe(meant);
     // The model hears of an everyday form only as a maybe.
     expect(promptTerms(his)).toContain(
-      'Baton (heard as "Buton"; sometimes heard as "button", only where it names this)',
+      'Baton (sometimes heard as "button", only where it names this)',
     );
   });
 

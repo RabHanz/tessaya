@@ -618,6 +618,15 @@ const namesIn = (text: string): ReadonlySet<string> => {
   return names;
 };
 
+/** One key for a British and an American spelling, so "colour" for "color" keeps his wording (Settings → Spelling). */
+const foldSpelling = (text: string): string =>
+  text
+    .replace(/our(?=s?\b|ed\b|ing\b|ite|able)/g, "or")
+    .replace(/(?<=\p{L}{2})is(?=e[sd]?\b|ing\b|ations?\b)/gu, "iz")
+    .replace(/ys(?=e[sd]?\b|ing\b)/g, "yz")
+    .replace(/(?<=\p{L}{2})tre(?=s?\b)/gu, "ter")
+    .replace(/(?<=[aeiou])ll(?=ed\b|ing\b|er\b)/g, "l");
+
 const contentWords = (text: string): ReadonlyArray<string> =>
   (text.toLowerCase().match(/[\p{L}\d'-]{4,}/gu) ?? []).filter(
     // Spoken numbers are checked as numbers, so "two hundred dollars" may be "$200".
@@ -906,7 +915,8 @@ export const checkRewrite = (
     if (!output.includes(token.replace(/[.,]+$/, ""))) return fail(`lost term ${token}`);
 
   const words = contentWords(spans.outside);
-  const present = words.filter((word) => outLower.includes(word)).length;
+  const outFolded = foldSpelling(outLower);
+  const present = words.filter((word) => outFolded.includes(foldSpelling(word))).length;
   if (words.length >= 6 && present / words.length < 0.7) return fail("changed the wording");
   return { ok: true };
 };
@@ -933,7 +943,6 @@ Always:
 - Put quotation marks around a label he quotes from a screen ("Build Your Engagement") and around words he reports someone saying.
 - Write counts, quantities, amounts, versions, sizes and angles as digits ("every 2 weeks", "version 2", "16:9", "3D", "4K", "$600", "360 degrees", never "360° degrees"), and a century as "15th-century". Keep times, ordinals and "one" as he said them ("half past seven", "the first one", "the one that"). A number already in digits stays as given.
 - He writes with few commas: add one only where a reader needs it, and none before an "and", "so" or "or" that joins two short clauses. A word he doubles for emphasis stays doubled with no comma between ("really really good").
-- British spelling.
 - "Like", "basically" and "honestly" stay when they carry meaning; never replace a word with another ("like 3%" stays "like 3%").
 - Break a long dictation into paragraphs where the topic turns, without changing a word to do it.
 - Lists. Whenever he names things he wants, asks, sees or has to do, and there are three or more of them, or he counts them ("two problems", "a few things", "a few issues", "firstly… secondly…"), the answer must set them out as a list, even when he said them in one long sentence joined by "and", "and also" or commas. The words that introduce them end with a colon, then a blank line, then one item a line, each starting "1. " when he counted them or they are steps in order, otherwise "- ". Each item keeps his words; drop only what joined them ("and", "also", "secondly", a repeated "we should" or "make sure"). An item that is a full sentence starts with a capital; a fragment that finishes the introducing words stays in small letters. What he says after the list is a paragraph of its own. Two things only, never counted, stay as prose. This is the one change of layout that never counts as changing his wording.`;
@@ -989,10 +998,27 @@ Put a fountain in the middle of the garden and a bench, but wider. Like an 18th-
 <dictation>There should be a save button on the main page so you can see it worked and it will close the dialogue. It'll close the pop up. In some and quite a few screens it is still missing. Most screens actually. Also the jura board resets in March and the three D renders only turn one hundred eighty degrees</dictation>
 There should be a save button on the main page, so you can see it worked and it will close the pop-up. In most screens it is still missing. Also, the Jira board resets in March, and the 3D renders only turn 180 degrees.`;
 
-export const rewriteSystemPrompt = (dictionary: ReadonlyArray<DictionaryEntry>): string => {
+/** Settings → Dictation → Spelling: British by default, American, or as the recogniser wrote it. */
+export const DICTATION_SPELLINGS = ["uk", "us", "asis"] as const;
+export type DictationSpelling = (typeof DICTATION_SPELLINGS)[number];
+
+const KEEP_OWN_SPELLING =
+  "A name, product, code, path or label quoted from a screen keeps its own spelling.";
+const SPELLING_RULES: Readonly<Record<DictationSpelling, string>> = {
+  // The recogniser writes American spelling; "color" stayed in his text under a bare "British spelling" (16 Nov).
+  uk: `- Spelling: British English. Respell every word the recogniser wrote the American way (color is colour, organize is organise, behavior is behaviour, center is centre, analyze is analyse, traveled is travelled). This is a spelling fix, never a change of his wording. ${KEEP_OWN_SPELLING}`,
+  us: `- Spelling: American English. Respell every word written the British way (colour is color, organise is organize, behaviour is behavior, centre is center, analyse is analyze, travelled is traveled). This is a spelling fix, never a change of his wording. ${KEEP_OWN_SPELLING}`,
+  asis: "- Spelling: keep every word spelt as the recogniser wrote it, apart from a mis-heard word and his own words.",
+};
+
+export const rewriteSystemPrompt = (
+  dictionary: ReadonlyArray<DictionaryEntry>,
+  spelling: DictationSpelling = "uk",
+): string => {
   const terms = promptTerms(dictionary);
   return [
     SHARED_RULES,
+    SPELLING_RULES[spelling],
     `Modes:\n${Object.values(MODE_RULES)
       .map((rule) => `- ${rule}`)
       .join("\n")}`,

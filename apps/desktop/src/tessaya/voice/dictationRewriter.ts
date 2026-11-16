@@ -15,6 +15,7 @@ import {
   type CleanupLevel,
   type DictationContext,
   type DictationMode,
+  type DictationSpelling,
   type DictionaryEntry,
   type Refused,
 } from "@t3tools/tessaya-shared/dictationCleanup";
@@ -120,6 +121,7 @@ export const makeRewriter = (input: {
   readonly env: NodeJS.ProcessEnv;
   readonly platform: string;
   readonly dictionary: () => ReadonlyArray<DictionaryEntry>;
+  readonly spelling?: () => DictationSpelling;
   /** Replaces `hardLimitMs`, for the lab and for tests. */
   readonly limitMs?: number;
   /** Replaces `wholeLimitMs`, for the lab and for tests. */
@@ -188,7 +190,7 @@ export const makeRewriter = (input: {
   let sessionModel = "";
   const get = (): VisionSession => {
     // A word he just taught is in the next clean-up, not the next session.
-    const current = rewriteSystemPrompt(input.dictionary());
+    const current = rewriteSystemPrompt(input.dictionary(), input.spelling?.());
     const model = typeof input.model === "string" ? input.model : input.model();
     if (current !== prompt || model !== sessionModel || session?.alive() === false) drop();
     sessionModel = model;
@@ -221,7 +223,11 @@ export const makeRewriter = (input: {
     if (input.api === undefined || Date.now() - keyWarmedAt < KEY_WARM_GAP_MS) return;
     keyWarmedAt = Date.now();
     void input
-      .api(rewriteSystemPrompt(input.dictionary()), rewriteMessage("", "default"), 0)
+      .api(
+        rewriteSystemPrompt(input.dictionary(), input.spelling?.()),
+        rewriteMessage("", "default"),
+        0,
+      )
       .then((answer) => {
         if (answer === null) noKey = true;
       })
@@ -279,7 +285,7 @@ export const makeRewriter = (input: {
     if (input.api === undefined) return null;
     try {
       const answer = await input.api(
-        rewriteSystemPrompt(input.dictionary()),
+        rewriteSystemPrompt(input.dictionary(), input.spelling?.()),
         message(text, mode, context),
         64 + Math.ceil(text.length / 2),
         refused,
