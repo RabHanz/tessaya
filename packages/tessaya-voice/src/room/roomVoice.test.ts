@@ -310,6 +310,35 @@ describe("the room voice loop", () => {
     const m = await t.metrics;
     expect(m.text).toBe("turn on the study light");
   });
+
+  it("shows a stage direction's face and asks for its buzz on its word, once her sentence is playing (G7)", async () => {
+    const fired: Array<{ args: readonly unknown[]; framesBefore: number }> = [];
+    const t = setup({
+      brain: async function* () {
+        yield "That's great *laughs* you did it.";
+      },
+      speak: async function* () {
+        yield new Int16Array(16_000);
+      },
+      effect: (...args) =>
+        fired.push({
+          args,
+          framesBefore: t.published.filter((p) => p.topic.endsWith("/voice/down")).length,
+        }),
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.metrics;
+    await t.feed(false, 30);
+    expect(fired.map((f) => f.args)).toEqual([[DEV, "laugh", "laughing"]]);
+    expect(fired[0]!.framesBefore).toBeGreaterThan(0);
+    expect(
+      t.published.some(
+        (p) => p.topic.endsWith("/cmd/eye/set") && String(p.payload) === '{"mood":"laughing"}',
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("answering only when he is talking to her", () => {

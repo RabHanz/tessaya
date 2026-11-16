@@ -982,6 +982,13 @@ const main = async () => {
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
       link: link(env("R1_BRAIN_URL")),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
+      effect: (deviceId, nonverbal, face) =>
+        void fetch(env("R1_BRAIN_URL").replace(/\/chat\/completions$/, "/turns/effect"), {
+          method: "POST",
+          headers: { authorization: `Bearer ${deviceKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ deviceId, nonverbal, face }),
+          signal: AbortSignal.timeout(3_000),
+        }).catch((error: unknown) => log(`effect ${nonverbal} not sent: ${String(error)}`)),
       forget: (personId) => {
         sharedProfiles.clear(personId);
         headsetStore.remove(personId);

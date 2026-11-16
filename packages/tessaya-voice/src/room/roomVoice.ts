@@ -10,7 +10,15 @@ import {
   greetEvent,
   type LineEvent,
 } from "@t3tools/tessaya-shared/expression";
+import { effectFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import { speechPieces, type Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { mostlyForeign } from "@t3tools/tessaya-shared/language";
+import {
+  fireAtMs,
+  saidText,
+  soundAnchors,
+  type SentenceClock,
+} from "@t3tools/tessaya-shared/speechEffects";
 import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import { pronounce, pronounceFrom } from "@t3tools/tessaya-shared/pronounce";
@@ -340,6 +348,8 @@ export interface RoomDeps {
   readonly lines?: RoomLines;
   /** A guess's reply was played to him in full: the server may now record it and learn from it. */
   readonly played?: (callId: string) => void;
+  /** Her voice reached a stage direction's word: the server buzzes it at his haptic settings and logs what showed. */
+  readonly effect?: (deviceId: string, nonverbal: Nonverbal, face: string | null) => void;
   readonly log: (line: string) => void;
   /** 0 to 1, for her varied lines (Math.random when absent). */
   readonly random?: () => number;
@@ -1151,6 +1161,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       signal: AbortSignal,
       onFirstAudio?: () => void,
       prerollMs = 0,
+      /** When its first sample will sound under the R1's speaker, on this loop's clock. */
+      onStart?: (soundsAtMs: number) => void,
     ) => {
       let first = false;
       let held: Int16Array[] = [];
@@ -1160,6 +1172,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (!marked) {
           marked = true;
           phraseStarts = [...phraseStarts, downSamples].slice(-12);
+          onStart?.(Math.max(deps.now(), playUntil) + config.downDelayMs);
         }
         await send(pcm, signal, () => {
           if (!first) onFirstAudio?.();
@@ -1224,7 +1237,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
     /** Starts her voice on `text` at once (after the sentence before it), buffering what it says for `play`. */
     let synthesis: Promise<void> = Promise.resolve();
-    const ahead = (text: string, signal: AbortSignal): AsyncIterable<Int16Array> => {
+    const ahead = (
+      text: string,
+      signal: AbortSignal,
+      /** Its whole length in ms, once it is all made. */
+      onMade?: (ms: number) => void,
+    ): AsyncIterable<Int16Array> => {
       const voice = voiceNow();
       const chunks: Int16Array[] = [];
       let done = false;
@@ -1236,11 +1254,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       };
       synthesis = synthesis.then(async () => {
         try {
+          let samples = 0;
           for await (const pcm of speakLive(spoken(text), signal, voice)) {
             if (signal.aborted) break;
             chunks.push(pcm);
+            samples += pcm.length;
             nudge();
           }
+          if (!signal.aborted) onMade?.((samples / RATE) * 1000);
         } catch (error) {
           failed = error;
         } finally {
@@ -1272,11 +1293,43 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
     // Sent away always shows at once; otherwise a mood of her server's that still holds is not overwritten.
     const face = (mood: string) => {
-      if (mood !== "sleepy" && deps.now() < (eyeHold.get(id) ?? 0)) return;
+      if (mood !== "sleepy" && deps.now() < (eyeHold.get(id) ?? 0)) return false;
       // At rest the eyes return to her mood (`voice/intent/rest`), not a blank neutral.
       eye("cmd/eye/set", (mood === "neutral" ? restFace.get(id) : undefined) ?? { mood });
+      return true;
     };
     const gesture = (name: string) => eye("cmd/eye/gesture", { name });
+    /**
+     * A sentence's stage directions on the words they sit before (VOXTA-STUDY G7), timed on this loop's playback
+     * clock: by letters across the sentence's measured length, as the R1 has no aligner. Null when it has none.
+     */
+    const wordEffects = (text: string, signal: AbortSignal) => {
+      const pieces = speechPieces(spoken(text), voiceNow() ?? "");
+      const sounds = soundAnchors(pieces).filter((s) => {
+        const e = effectFor(VESSELS.tessel, s.nonverbal);
+        return e.face !== null || e.haptic !== null;
+      });
+      if (sounds.length === 0) return null;
+      let clock: SentenceClock = { startMs: null, durationMs: null, text: saidText(pieces) };
+      const schedule = (next: Partial<SentenceClock>) => {
+        clock = { ...clock, ...next };
+        const timeline = { nowMs: deps.now(), sentences: [clock], endMs: null };
+        const at = sounds.map((s) =>
+          fireAtMs({ at: "speech", sentence: 0, word: s.word }, timeline),
+        );
+        if (at.includes(null)) return;
+        for (const [i, s] of sounds.entries())
+          void deps.sleep(Math.max(0, at[i]! - deps.now())).then(() => {
+            if (signal.aborted) return;
+            const look = effectFor(VESSELS.tessel, s.nonverbal).face;
+            deps.effect?.(id, s.nonverbal, look !== null && face(look) ? look : null);
+          });
+      };
+      return {
+        onMade: (durationMs: number) => schedule({ durationMs }),
+        onStart: (startMs: number) => schedule({ startMs }),
+      };
+    };
     /** The persona's own eyes (the eye lane's looks; firmware without them ignores the topic). */
     const look = () => eye("cmd/eye/persona", { name: persona?.eyes ?? GENERIC_EYES });
     /** Her own words for one of the loop's moments, her eyes showing its mood; `plain` while they are off. */
@@ -2069,7 +2122,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           saying(sentence);
           const preroll = firstSentenceAt === null ? config.prerollMs : 0;
           firstSentenceAt ??= deps.now();
-          const audio = ahead(sentence, control.signal);
+          const effects = wordEffects(sentence, control.signal);
+          const audio = ahead(sentence, control.signal, effects?.onMade);
           speakingChain = speakingChain.then(async () =>
             // The arbiter is asked alongside, never before (13 Nov: a 1.3-1.7 s claim round in front of every wake);
             // only her voice waits for its answer, and a lost claim is never heard.
@@ -2086,6 +2140,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
                     }
                   },
                   preroll,
+                  effects?.onStart,
                 ),
           );
           // If the brain's stream fails first, the catch below skips `await speakingChain`: an abort must not crash us.

@@ -7,6 +7,7 @@
 import { R1_MOODS, type ExpressionMood } from "@t3tools/tessaya-contracts";
 import type { HandledHow } from "./affect.ts";
 import type { HapticHardware } from "./haptics.ts";
+import type { Nonverbal } from "./interjections.ts";
 
 export type Dye = "weld" | "madder" | "woad" | "indigo" | "damson" | "rose";
 
@@ -266,10 +267,51 @@ export const renderFor = (m: VesselManifest, label: string, intensity: number): 
 };
 
 /**
+ * What a stage direction she writes (`*laughs*`) shows as it sounds (VOXTA-STUDY G7), by face library names; none for
+ * a sound whose feeling depends on the line (a sigh can be relief or sorrow), or for a pause.
+ */
+export const NONVERBAL_LOOKS: Readonly<
+  Record<Nonverbal, { readonly face?: string; readonly haptic?: HapticPattern }>
+> = {
+  laugh: { face: "laughing", haptic: "giggle" },
+  chuckle: { face: "happy" },
+  giggle: { face: "giggle", haptic: "giggle" },
+  gasp: { face: "surprised", haptic: "startle" },
+  smile: { face: "happy" },
+  scoff: { face: "unimpressed" },
+  groan: { face: "annoyed" },
+  yawn: { face: "sleepy" },
+  sigh: {},
+  breath: {},
+  cough: {},
+  sniff: {},
+  gesture: {},
+};
+
+/** A direction's effect on one vessel: the face it draws and the buzz its motor plays, null for none. */
+export const effectFor = (
+  m: VesselManifest,
+  nonverbal: Nonverbal,
+): { readonly face: string | null; readonly haptic: HapticPattern | null } => {
+  const look = NONVERBAL_LOOKS[nonverbal];
+  return {
+    face: look.face !== undefined && m.face?.includes(look.face) === true ? look.face : null,
+    haptic: m.haptic === undefined ? null : (look.haptic ?? null),
+  };
+};
+
+/**
  * What a body is doing, for its clips (VOXTA-STUDY G8): `Idle`, `Listening`, `Thinking` and `Talking` loop; `Reaction`
  * plays once as the emotion arrives; `Fidget` breaks a long idle. `<Emotion>_<State>_Fixed` is held for a whole reply.
  */
-export const CLIP_STATES = ["Idle", "Listening", "Thinking", "Talking", "Reaction", "Fidget"] as const;
+export const CLIP_STATES = [
+  "Idle",
+  "Listening",
+  "Thinking",
+  "Talking",
+  "Reaction",
+  "Fidget",
+] as const;
 export type ClipState = (typeof CLIP_STATES)[number];
 
 const titled = (label: string) => label.charAt(0).toUpperCase() + label.slice(1);
@@ -292,7 +334,9 @@ export const clipFor = (
     const base = `${titled(name)}_${state}`;
     if (options.wholeReply === true && clips.includes(`${base}_Fixed`)) return `${base}_Fixed`;
     const variants = clips
-      .filter((c) => c === base || (c.startsWith(`${base}_`) && /^\d+$/.test(c.slice(base.length + 1))))
+      .filter(
+        (c) => c === base || (c.startsWith(`${base}_`) && /^\d+$/.test(c.slice(base.length + 1))),
+      )
       .toSorted();
     if (variants.length > 0) return variants[(options.turn ?? 0) % variants.length]!;
   }

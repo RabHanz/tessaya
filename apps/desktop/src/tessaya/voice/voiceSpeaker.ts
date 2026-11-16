@@ -20,11 +20,19 @@ import { pronounce } from "@t3tools/tessaya-shared/pronounce";
 import { withProsody } from "@t3tools/tessaya-shared/prosody";
 import type { Viseme } from "@t3tools/tessaya-shared/visemes";
 import { spliceSpeech } from "@t3tools/tessaya-shared/speechSplice";
+import { saidText, soundAnchors, type SoundAnchor } from "@t3tools/tessaya-shared/speechEffects";
 
 /** Plays a WAV as its bytes arrive; resolves false if there was nothing to play. */
 export interface VoicePlayer {
-  /** `text` is what the audio says, when it says only that: her mouth shapes are aligned to it (visemes.ts). */
-  readonly play: (wav: AsyncIterable<Buffer>, text?: string) => Promise<boolean>;
+  /**
+   * `text` is what the audio says, when it says only that: her mouth shapes are aligned to it (visemes.ts). `sounds`
+   * are its stage directions, each fired on its word (speechEffects.ts).
+   */
+  readonly play: (
+    wav: AsyncIterable<Buffer>,
+    text?: string,
+    sounds?: ReadonlyArray<SoundAnchor>,
+  ) => Promise<boolean>;
   readonly stop: () => void;
   /** Lower the voice while someone may be talking over it; `false` brings it back. */
   readonly duck?: (on: boolean) => void;
@@ -267,13 +275,8 @@ export const createSpeaker = (input: {
     generating = source.finished;
     // What the audio says: its words and any sound said as words ("Ha ha."). A spliced breath or pause (one starts most
     // sentences after the first) is a gap the alignment allows for.
-    const said = pieces.some((p) => p.kind === "text")
-      ? pieces
-          .map((p) => (p.kind === "text" ? p.text : p.sound.kind === "say" ? p.sound.text : ""))
-          .join(" ")
-          .trim()
-      : undefined;
-    return { ...source, text: said };
+    const said = pieces.some((p) => p.kind === "text") ? saidText(pieces) : undefined;
+    return { ...source, text: said, sounds: soundAnchors(pieces) };
   };
 
   const run = (raw: string, pick: () => VoiceChoice, force: boolean): Promise<void> => {
@@ -321,7 +324,9 @@ export const createSpeaker = (input: {
         input.onUnavailable?.(text);
       } else {
         input.onPlaying?.(text);
-        const played = await input.player.play(source.stream, source.text).catch(() => false);
+        const played = await input.player
+          .play(source.stream, source.text, source.sounds)
+          .catch(() => false);
         if (mine === generation && !played) input.onUnavailable?.(text);
       }
     });

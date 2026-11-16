@@ -436,13 +436,23 @@ export const startTessayaDesktop = Effect.gen(function* () {
       (level, shape) => voice?.onSpeechLevel(level, shape),
       () => screen?.volume() ?? 1,
       (pcm, rate, soundsAtMs) => voice?.onReference(pcm, rate, soundsAtMs),
-      // While a layer session is open here, each word she reaches re-times its device acts (VOXTA I4).
-      (text) => {
-        if (!layerLink.isOpen()) return null;
+      // While a layer session is open here, each word she reaches re-times its device acts (VOXTA I4); a stage
+      // direction's face lands as her voice reaches it (VOXTA-STUDY G7).
+      (text, sounds) => {
+        const layer = layerLink.isOpen();
+        if (!layer && sounds.length === 0) return null;
         const base = cueBase;
-        cueBase += text.split(/\s+/).filter((w) => w !== "").length;
-        return (word) =>
-          void layerPost("cue", { vessel: "desktop", word: base + word }).catch(() => undefined);
+        if (layer) cueBase += text.split(/\s+/).filter((w) => w !== "").length;
+        let next = 0;
+        return (word, sounding) => {
+          if (layer && sounding)
+            void layerPost("cue", { vessel: "desktop", word: base + word }).catch(() => undefined);
+          for (; next < sounds.length && sounds[next]!.word <= word; next += 1) {
+            const { nonverbal } = sounds[next]!;
+            const face = voice?.effect(nonverbal) ?? null;
+            if (face !== null) void direct("effect", { nonverbal, face }).catch(() => undefined);
+          }
+        };
       },
     );
     const speaker = createSpeaker({
