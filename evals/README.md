@@ -21,7 +21,7 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [tessaya-dictation](tessaya-dictation/)         | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused.   |
 | [tessaya-learning](tessaya-learning/)           | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                    |
 | [tessaya-pulse](tessaya-pulse/)                 | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                     |
-| [tessaya-group](tessaya-group/)                 | Who speaks next in a group of personas: turn-taking, addressing by name, and the stop at the speaker budget.            |
+| [tessaya-group](tessaya-group/)                 | Who speaks next in a group of personas, the stop at the speaker budget, and whether a speaker reads the room.           |
 
 ## Run an eval
 

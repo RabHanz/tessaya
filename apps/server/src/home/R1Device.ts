@@ -26,6 +26,7 @@ import { recordText } from "@t3tools/tessaya-shared/audit";
 import { clockLine, clockStyleOf } from "@t3tools/tessaya-shared/brain";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
 import { memberOfSpeaker } from "@t3tools/tessaya-shared/household";
+import { speakerMark } from "@t3tools/tessaya-shared/groupTalk";
 import { REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import {
   repairBoundsFor,
@@ -67,6 +68,7 @@ import { TessayaMood } from "../tessaya/TessayaMood.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { TessayaCast } from "../tessaya/TessayaCast.ts";
 import { peopleHere } from "../tessaya/TessayaPresence.ts";
+import { groupFor, groupTurn } from "../tessaya/GroupTalk.ts";
 import { replyFor } from "../tessaya/PersonaLayers.ts";
 import {
   type ActOutcome,
@@ -774,6 +776,27 @@ const r1Layer = Effect.fn("R1Device.layer")(function* (input: R1Heard) {
   );
 });
 
+/** His conversation's group of personas for this turn (M-021), as `groupFor` allows it; null for one persona. */
+const r1Group = Effect.fn("R1Device.group")(function* (input: R1Heard) {
+  const pack = yield* r1Pack;
+  const turn = r1Envelope(input, pack, undefined);
+  const found = yield* groupFor(
+    turnsOf(turn, input.voice).length > 1 ? { ...turn, sharedRoom: true } : turn,
+    pack.personas,
+  );
+  return found === null ? null : { ...found, turn, personas: pack.personas };
+});
+
+/** The same heard words, answered as one group member (the lead answers as itself). */
+const asSpeaker = (input: R1Heard, persona: string): R1Heard => ({
+  ...input,
+  voice: {
+    ...(typeof input.voice === "object" && input.voice !== null ? input.voice : {}),
+    persona,
+    switched: false,
+  },
+});
+
 /** Said on her speaker instead of a private reply no output may play now; it gives nothing away. */
 const PRIVATE_HELD_LINE = "I'll tell you when your headphones are on.";
 
@@ -1022,7 +1045,9 @@ const r1Finish = Effect.fn("R1Device.finish")(function* (
   const now = yield* Clock.currentTimeMillis;
   for (const [id, held] of unplayed)
     if (now - held.at > UNPLAYED_MS || unplayed.size >= UNPLAYED_MAX) unplayed.delete(id);
-  unplayed.set(callId, { at: now, commit: Effect.ignore(commit) });
+  // A group's speakers share the guess: each one's record waits behind the one before.
+  const before = unplayed.get(callId)?.commit ?? Effect.void;
+  unplayed.set(callId, { at: now, commit: Effect.andThen(before, Effect.ignore(commit)) });
 });
 
 /**
@@ -1190,6 +1215,8 @@ const r1Vessel = (
   tools: RoomToolSet,
   fillers?: { readonly hold: string; readonly web: string },
   failed?: (detail: string) => void,
+  /** In a group: who speaks, whether first, and what it is told of the others (`groupLine`). */
+  group?: { readonly name: string; readonly first: boolean; readonly line: string },
 ) => ({
   system: ROOM_SYSTEM,
   ...(failed === undefined ? {} : { failed }),
@@ -1200,10 +1227,12 @@ const r1Vessel = (
   hold: (name: string) => heldForGuess(input.voice, name),
   gather: r1Gather(input, true, false).pipe(
     Effect.map(({ device, context, turn, names, allowed }) => ({
-      turn,
+      turn:
+        group === undefined ? turn : { ...turn, group: { name: group.name, first: group.first } },
       names,
       allowed,
-      user: (notes: TurnNotes) => roomData({ ...context, ...notes }),
+      user: (notes: TurnNotes) =>
+        [group?.line ?? "", roomData({ ...context, ...notes })].filter((l) => l !== "").join("\n"),
       readBefore:
         Array.isArray(context.devices) && context.devices.length > 0
           ? [
@@ -1232,7 +1261,9 @@ export const r1TurnStream = (
 ) =>
   Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
     Effect.gen(function* () {
-      const layered = yield* r1Layer(input);
+      // His conversation's group answers before any one persona's layer (M-021); the acts form has no group.
+      const group = tools === null ? null : yield* r1Group(input);
+      const layered = group === null ? yield* r1Layer(input) : null;
       if (layered !== null) {
         Queue.offerUnsafe(queue, (yield* r1Route(input, layered.text))!);
         return yield* Queue.end(queue);
@@ -1271,6 +1302,45 @@ export const r1TurnStream = (
         say(line?.text ?? `My accounts are out of capacity until ${limited ?? "later"}.`);
         return yield* Queue.end(queue);
       });
+      if (group !== null && tools !== null) {
+        const spoken = yield* groupTurn({
+          ...group,
+          speak: Effect.fn("R1Device.groupSpeak")(function* (
+            speaker: Persona,
+            line: string,
+            first: boolean,
+          ) {
+            const as = asSpeaker(input, speaker.id);
+            // The loop switches voice and eyes here, queued behind the last speaker's words.
+            Queue.offerUnsafe(queue, speakerMark(speaker.id));
+            const own = yield* r1Layer(as);
+            if (own !== null) {
+              const text = (yield* r1Route(as, own.text))!;
+              Queue.offerUnsafe(queue, text);
+              return text;
+            }
+            const vessel = r1Vessel(as, tools, fillers, failed, {
+              name: speaker.name,
+              first,
+              line,
+            });
+            const via = way === "subscription" ? "session" : "api";
+            const said = yield* brainTurn(vessel, brain, say, via, calls).pipe(
+              Effect.orElseSucceed(() => null),
+            );
+            // His key failed before a word: the subscription his table names, as for one persona.
+            return said !== null || way !== "auto"
+              ? said
+              : yield* brainTurn(vessel, brain, say, "session", calls).pipe(
+                  Effect.orElseSucceed(() => null),
+                );
+          }),
+        });
+        if (spoken.length > 0) return yield* Queue.end(queue);
+        if (limited !== null) return yield* outOfCapacity;
+        say("Sorry, something went wrong on my side.");
+        return yield* Queue.end(queue);
+      }
       if (way === "subscription" && tools !== null) {
         const done = yield* brainTurn(
           r1Vessel(input, tools, fillers, failed),

@@ -21,6 +21,8 @@ import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
 import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
+import * as CurrentPersona from "../tessaya/CurrentPersona.ts";
+import { groupConversation } from "../tessaya/GroupTalk.ts";
 import { R1Brain, R1BrainError, toolLoop, type ToolTurn } from "./R1Brain.ts";
 import { sessionTools, speakableSentences } from "../tessaya/TessayaBrain.ts";
 import { PersonaLayers } from "../tessaya/PersonaLayers.ts";
@@ -795,6 +797,68 @@ effectIt.effect(
         run: () => Effect.die("no tools"),
       }).pipe(Stream.runDrain, Effect.provide(services));
       expect(recorded).toHaveLength(2);
+    }),
+);
+
+effectIt.effect(
+  "a group answers on the Tessel: each speaker marked before its own words, and a guess records every speaker once played (M-021)",
+  () =>
+    Effect.gen(function* () {
+      let recorded: Array<string> = [];
+      const brain = R1Brain.of({
+        route: Effect.succeed("api"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        session: () => Stream.empty,
+        converse: (turn) =>
+          toolLoop(
+            (request) =>
+              Stream.make<Array<ConversePart>>({
+                type: "text",
+                text: `Agreed (${/you \((\w+)\)/.exec(JSON.stringify(request))?.[1] ?? "nobody"}).`,
+              }),
+            turn,
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.succeed([]),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(TessayaRecordService)({
+        append: (entry: { readonly detail?: string }) =>
+          Effect.sync(() => {
+            recorded = [...recorded, entry.detail ?? ""];
+          }) as never,
+      });
+      const services = Layer.mergeAll(
+        home,
+        record,
+        Layer.mock(TessayaOneShot)({}),
+        CurrentPersona.layer,
+      );
+      const heard = {
+        heard: "Alfred and Freya, what do you think?",
+        history: [],
+        voice: { speculative: true, callId: "group" },
+      };
+      const said = yield* Effect.gen(function* () {
+        const current = yield* CurrentPersona.CurrentPersona;
+        yield* current.setGroup(
+          groupConversation(r1Envelope(heard, DEFAULT_OS_PACK, undefined), false),
+          { mode: "answer", members: [{ id: "butler" }, { id: "companion" }] },
+        );
+        const said = yield* r1TurnStream(heard, brain, {
+          specs: [],
+          run: () => Effect.die("no tools"),
+        }).pipe(Stream.runCollect);
+        yield* r1Played("group");
+        return said;
+      }).pipe(Effect.provide(services));
+      expect([...said].join("")).toBe("[as:butler]Agreed (Alfred). [as:companion]Agreed (Freya). ");
+      expect(recorded).toEqual(["Agreed (Alfred).", "Agreed (Freya)."]);
     }),
 );
 
