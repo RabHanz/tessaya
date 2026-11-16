@@ -235,6 +235,8 @@ it.effect("keeps the token in the secret store only, and refuses one HA refuses"
     assert.notInclude(JSON.stringify(status), TOKEN);
     assert.strictEqual((yield* home.disconnect).state, "off");
     assert.isFalse(stored.has(HomeAssistantService.TOKEN_SECRET));
+    // A house with no token settles at once, so the room's ready door never waits on it.
+    yield* home.settled;
   }).pipe(Effect.provide(layer));
 });
 

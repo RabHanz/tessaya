@@ -153,6 +153,11 @@ const desktop =
       ).desktopVessel({ server: values.server, key, claude: values.claude, model: values.model })
     : null;
 const say: Say = desktop?.say ?? r1Say;
+// The server answers once its house has connected or failed and his work was read once: no case runs cold.
+const ready = await fetch(`${values.server}/api/devices/r1/v1/ready`, {
+  headers: { authorization: `Bearer ${key}` },
+});
+if (!ready.ok) throw new Error(`The server is not ready: ${ready.status} ${await ready.text()}`);
 const house = await discover([...new Set(cases.flatMap(slotsOf))], async (domain) => {
   if (desktop !== null) {
     // Found directly: the house is the same whichever vessel asks, and this costs no model turn.

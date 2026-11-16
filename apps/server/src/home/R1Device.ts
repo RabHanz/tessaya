@@ -1637,6 +1637,27 @@ export const routes = HttpRouter.use((router) =>
       );
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     for (const root of DEVICE_API_ROOTS) yield* router.add("GET", `${root}/personas`, personas);
+    // Answers once the house has connected or failed and his work has been read once, so the first turn after a start
+    // reads both before the turn like any other (the .174 room gate's cold first case).
+    const ready = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const home = yield* Effect.flatMap(HomeAssistantService, Effect.succeed).pipe(
+        Effect.provideContext(context),
+      );
+      const all = yield* home.devices.pipe(Effect.provideContext(context));
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
+      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      // Bounded: a house that never answers must not hold the request open.
+      yield* home.settled.pipe(Effect.timeout("30 seconds"), Effect.ignore);
+      if (tools !== null)
+        yield* Effect.all([tools.run("tessaya_watch", {}), tools.run("tessaya_work_now", {})], {
+          concurrency: "unbounded",
+          discard: true,
+        }).pipe(Effect.provideContext(context), Effect.ignore);
+      return HttpServerResponse.jsonUnsafe({ home: (yield* home.status).state });
+    }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
+    for (const root of DEVICE_API_ROOTS) yield* router.add("GET", `${root}/ready`, ready);
     // His one dictionary, for the room loop's own correction before it addresses anyone (ONE-EAR-AUDIT §7a).
     const vocabulary = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;

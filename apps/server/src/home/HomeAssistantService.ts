@@ -179,6 +179,8 @@ export class HomeAssistantService extends Context.Service<
   HomeAssistantService,
   {
     readonly status: Effect.Effect<HomeStatus>;
+    /** Done once the current connection attempt has connected or failed, so a caller never reads a house still connecting. */
+    readonly settled: Effect.Effect<void>;
     /** The house's own time zone from Home Assistant's config, null until it has said; callers use `houseZone`. */
     readonly timeZone: Effect.Effect<string | null>;
     /** Validates first (an admin user, since automations need one), then stores the token in the secret store. */
@@ -661,6 +663,7 @@ const make = Effect.gen(function* () {
         line: "Home Assistant is not connected.",
       };
       loop = null;
+      yield* Deferred.succeed(settled, undefined);
       return;
     }
     // Reconnect with backoff, up to a minute apart; a refused token waits for a new one.
@@ -1941,6 +1944,8 @@ const make = Effect.gen(function* () {
 
   return HomeAssistantService.of({
     status: Effect.sync(() => ({ ...status, entities: states.size })),
+    // `start` replaces the Deferred: read it at call time, not at construction.
+    settled: Effect.suspend(() => Deferred.await(settled)),
     timeZone: Effect.sync(() => timeZone),
     connect,
     disconnect,
