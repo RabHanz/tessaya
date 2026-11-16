@@ -383,8 +383,9 @@ const make = Effect.gen(function* () {
 
   return TessayaCast.of({
     view: bodies,
-    wearing: (body) =>
-      Effect.map(bodies, (v) => v.bodies.find((b) => b.id === body)?.wearing ?? null),
+    wearing: Effect.fn("TessayaCast.wearing")(function* (body: string) {
+      return (yield* bodies).bodies.find((b) => b.id === body)?.wearing ?? null;
+    }),
     call,
     told,
     touch: Effect.fn("TessayaCast.touch")(function* (body: string) {
@@ -394,7 +395,9 @@ const make = Effect.gen(function* () {
       visits.set(body, next);
       if (v.crewBefore === undefined) yield* share(body, next);
     }),
-    listen: (listener) => Effect.sync(() => void listeners.add(listener)),
+    listen: Effect.fn("TessayaCast.listen")((listener: Listener) =>
+      Effect.sync(() => void listeners.add(listener)),
+    ),
   });
 });
 

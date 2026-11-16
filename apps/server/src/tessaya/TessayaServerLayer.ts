@@ -289,13 +289,6 @@ const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
       R1Brain.layer(R1Device.R1_STREAM_SYSTEM),
     ),
   ),
-  // Who wears which body: under every vessel's owner, over the registry, the desktop's settings and CurrentPersona.
-  Layer.provideMerge(
-    TessayaCast.layer.pipe(
-      Layer.provide(DeviceRegistry.layer),
-      Layer.provide(TessayaDesktopSettings.layer),
-    ),
-  ),
   // Beside the mergeAll above, not in it: one more member there loses its types.
   // The household's members, over the private stores it shreds; asks for the owner's yes go through the phone inbox.
   // A private store is only a member's: the store service asks the household, from its home server.
@@ -334,6 +327,12 @@ const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
       TessayaPeople.layer,
       expressionLayer,
       CurrentPersona.layer,
+      // Who wears which body (Settings → Cast): its siblings here are invisible to it, so they are provided.
+      TessayaCast.layer.pipe(
+        Layer.provide(CurrentPersona.layer),
+        Layer.provide(DeviceRegistry.layer),
+        Layer.provide(TessayaDesktopSettings.layer),
+      ),
       // Her mood per persona (CS6): the turn writes it, every vessel's face and words read it.
       TessayaMood.layer.pipe(Layer.provide(TessayaOneShot.layer)),
       PersonaLayers.layer,

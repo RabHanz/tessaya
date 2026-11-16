@@ -27,7 +27,7 @@ const device = (deviceId: string, kind: string, name: string, member?: string) =
     ...(member === undefined ? {} : { member }),
   }) as const;
 
-const setup = (extra: Layer.Layer<DeviceSync> = Layer.empty) => {
+const setup = (extra: Layer.Layer<DeviceSync> | Layer.Layer<never> = Layer.empty) => {
   const controls: Array<{ id: string; value: string | boolean }> = [
     { id: "v.mascotPersona", value: "freya" },
     { id: "v.mascotFollows", value: false },
@@ -43,7 +43,7 @@ const setup = (extra: Layer.Layer<DeviceSync> = Layer.empty) => {
   const desktop = Layer.succeed(TessayaDesktopSettings)(
     TessayaDesktopSettings.of({
       get: Effect.sync(() => ({ controls }) as never),
-      setControls: (changes) =>
+      setControls: (changes: ReadonlyArray<{ id: string; value: string | boolean }>) =>
         Effect.sync(() => {
           for (const c of changes) {
             const at = controls.findIndex((x) => x.id === c.id);
@@ -68,7 +68,7 @@ const setup = (extra: Layer.Layer<DeviceSync> = Layer.empty) => {
 };
 
 const body = (view: { bodies: ReadonlyArray<{ id: string }> }, id: string) =>
-  view.bodies.find((b) => b.id === id) as {
+  view.bodies.find((b) => b.id === id) as unknown as {
     wearing: string | null;
     why: string;
     on: ReadonlyArray<string>;
