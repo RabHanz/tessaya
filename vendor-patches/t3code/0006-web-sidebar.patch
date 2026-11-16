@@ -8326,19 +8326,20 @@ index 89ab26f51b9a05b91681d943c0bc756e8f76816e..3164c6177970edc82002e3bddafef623
        <SidebarProviderStack
          thread={thread}
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
-index a59604a63f42677944af7d30518af23e207d170f..a786b047840dc34178d8c02bcfeeb1eb3a632504 100644
+index a59604a63f42677944af7d30518af23e207d170f..95741e9117716e8c7d59ade46a92ccda738b71e5 100644
 --- a/apps/web/src/routes/__root.tsx
 +++ b/apps/web/src/routes/__root.tsx
-@@ -27,6 +27,8 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
+@@ -27,6 +27,9 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
  import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
  import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
  import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
 +import { isMainWindow } from "../components/panes/tessayaWindows";
 +import { useTessayaPanesStore } from "../components/panes/tessayaPanesStore";
++import { LaptopRouteHost } from "../tessayaLaptopRoute";
  import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
  import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
  import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
-@@ -149,6 +151,8 @@ function RootRouteBranch() {
+@@ -149,6 +152,8 @@ function RootRouteBranch() {
    // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
    const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
    if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
@@ -8347,7 +8348,7 @@ index a59604a63f42677944af7d30518af23e207d170f..a786b047840dc34178d8c02bcfeeb1eb
    const hostedPromptLinkLanding = useHostedPromptLinkLanding(
      authGateState.status === "hosted-static",
    );
-@@ -173,6 +177,8 @@ function RootRouteBranch() {
+@@ -173,6 +178,8 @@ function RootRouteBranch() {
    if (authGateState.status !== "authenticated" && authGateState.status !== "hosted-static") {
      return <Outlet />;
    }
@@ -8356,12 +8357,13 @@ index a59604a63f42677944af7d30518af23e207d170f..a786b047840dc34178d8c02bcfeeb1eb
  
    // Settings can reopen /welcome mid-session, so it mounts everything the app does except the
    // first-run gate and the event router, whose first navigation would leave the page.
-@@ -186,7 +192,7 @@ function RootRouteBranch() {
+@@ -186,7 +193,8 @@ function RootRouteBranch() {
        <RelayClientInstallDialog />
        <ConnectOnboardingDialog />
        <SshPasswordPromptDialog />
 -      <SnapShotCoordinator />
 +      {isMainWindow() ? <SnapShotCoordinator /> : null}
++      {isMainWindow() && primaryEnvironmentAuthenticated ? <LaptopRouteHost /> : null}
        <ReopenClosedViewShortcut />
        <ConfirmDialogHost />
        <CustomSnoozeDialogHost />
