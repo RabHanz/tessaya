@@ -1360,6 +1360,22 @@ it.effect("knows his saved devices from the R1's bonds and says when one has for
   }).pipe(Effect.provide(layer));
 });
 
+it("swaps an R1 mic frame's PCM for the phone's, keeping its header and marking the source", () => {
+  const head = Buffer.alloc(16);
+  head.writeUInt32LE(7, 0);
+  head.writeUInt16LE(1, 12);
+  const frame = Buffer.concat([head, Buffer.alloc(1920, 1)]);
+  const out = HomeDevices.phoneFrame(frame, {
+    kind: "headphones",
+    mic: (n) => Buffer.alloc(n, 9),
+  });
+  assert.strictEqual(out.readUInt32LE(0), 7);
+  assert.strictEqual(out.readUInt16LE(12), 1 | 16 | HomeDevices.UP_FLAG_PHONE);
+  assert.deepStrictEqual([out.length, out[16], out.at(-1)], [frame.length, 9, 9]);
+  const loud = HomeDevices.phoneFrame(frame, { kind: "speaker", mic: (n) => Buffer.alloc(n) });
+  assert.strictEqual(loud.readUInt16LE(12), 1 | HomeDevices.UP_FLAG_PHONE);
+});
+
 it("routes to the first output in his order that can play now, paging one above her speaker", () => {
   const HP = "AA:00:00:00:00:46";
   const OFFICE = "BB:00:00:00:00:77";
@@ -1371,6 +1387,10 @@ it("routes to the first output in his order that can play now, paging one above 
     [[HP, "speaker", OFFICE], [], [], { to: "bt", mac: HP }],
     [[HP, "speaker"], [HP], [HP], { to: "speaker" }],
     [[HP, OFFICE, "speaker"], [HP, OFFICE], [HP], { to: "bt", mac: OFFICE }],
+    // His phone plays while its app holds the route; one not linked is never paged.
+    [["phone:x", "speaker"], ["phone:x"], [], { to: "phone", id: "phone:x" }],
+    [["phone:x", HP, "speaker"], [], [], { to: "bt", mac: HP }],
+    [["phone:x", "speaker"], [], [], { to: "speaker" }],
   ];
   for (const [order, connected, skipped, want] of cases)
     assert.deepStrictEqual(
@@ -1386,6 +1406,11 @@ it("routes to the first output in his order that can play now, paging one above 
     OFFICE,
   ]);
   assert.deepStrictEqual(HomeDevices.outputOrderOf([OFFICE, "speaker", HP], [HP]), ["speaker", HP]);
+  // A phone keeps its place while its app is closed.
+  assert.deepStrictEqual(HomeDevices.outputOrderOf(["phone:x", "speaker"], []), [
+    "phone:x",
+    "speaker",
+  ]);
   // Inputs: her own mic first by default; a headset hears only while it is the linked device with HFP up.
   assert.deepStrictEqual(HomeDevices.inputOrderOf(undefined, [HP]), ["mic", HP]);
   assert.deepStrictEqual(HomeDevices.inputOrderOf([HP, "mic"], [HP, OFFICE]), [HP, "mic", OFFICE]);
@@ -1584,6 +1609,13 @@ it("plays a private reply only on an output tagged private, open ones only when 
   assert.isNull(target(["speaker", HP], [], [], true));
   assert.isNull(target([HP, "speaker"], [HP], [HP], true));
   assert.isNull(target([HP, "speaker"], [HP], [], true, false));
+  // The server itself drops a gone phone's reply, so a phone needs no firmware hold.
+  assert.strictEqual(
+    target(["phone:x", "speaker"], ["phone:x"], [], false, false, {
+      "phone:x": { private: true, closed: true },
+    }),
+    "phone:x",
+  );
   assert.strictEqual(target(["speaker", HP], [HP], [], true), HP);
   // A guest in the room, or a voice not verified: never an open output, even tagged.
   assert.isNull(target([ROOM, "speaker"], [ROOM], [], false));
