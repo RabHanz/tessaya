@@ -5,8 +5,36 @@
  * no surface keeps its own emotion table.
  */
 import { R1_MOODS, type ExpressionMood } from "@t3tools/tessaya-contracts";
+import type { HandledHow } from "./affect.ts";
 
 export type Dye = "weld" | "madder" | "woad" | "indigo" | "damson" | "rose";
+
+/**
+ * Buzz patterns by name (R-079). A vessel's own firmware owns each one's pulses (the Tessel's r1bt_haptic.h, in this
+ * order), so the server only names a pattern and a level, never streams a waveform.
+ */
+export const HAPTIC_PATTERNS = [
+  "tap",
+  "double_tap",
+  "purr",
+  "giggle",
+  "startle",
+  "thump",
+  "heartbeat",
+  "nudge",
+] as const;
+export type HapticPattern = (typeof HAPTIC_PATTERNS)[number];
+
+/** The buzz each moment gets; none for a set-down, since a rattle on a hard desk sounds cheap. */
+export const MOMENT_HAPTICS = {
+  lifted: "purr",
+  carried: null,
+  setdown: null,
+  shaken: "giggle",
+  dropped: "startle",
+  wake: "double_tap",
+  note: "nudge",
+} as const satisfies Readonly<Record<HandledHow | "wake" | "note", HapticPattern | null>>;
 
 export interface EmotionLook {
   /** What to draw when a vessel lacks this one, nearest first; neutral is always the last resort. */
@@ -21,6 +49,8 @@ export interface EmotionLook {
   readonly style: string;
   /** The light's dye (§5.4, MA-016). */
   readonly dye?: Dye;
+  /** A buzz that may carry it once as it arrives, where a vessel has a motor. */
+  readonly haptic?: HapticPattern;
 }
 
 const NO_LAUGH = ["[laughs]", "[excited]"];
@@ -28,7 +58,13 @@ const NO_LAUGH = ["[laughs]", "[excited]"];
 /** Every label the spine can show, and how. Keyed by the contract's list, so a new label cannot ship without a row. */
 export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
   neutral: { kin: [], style: "calm, clear" },
-  happy: { kin: [], sound: "laugh", style: "warm, lightly smiling", dye: "weld" },
+  happy: {
+    kin: [],
+    sound: "laugh",
+    style: "warm, lightly smiling",
+    dye: "weld",
+    haptic: "purr",
+  },
   proud: {
     kin: ["happy"],
     props: ["crown"],
@@ -56,7 +92,12 @@ export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
     style: "clear and brisk",
     dye: "woad",
   },
-  surprised: { kin: ["surprise", "curious"], style: "brightly surprised", dye: "weld" },
+  surprised: {
+    kin: ["surprise", "curious"],
+    style: "brightly surprised",
+    dye: "weld",
+    haptic: "tap",
+  },
   sleepy: {
     kin: ["asleep"],
     props: ["nightcap", "mask"],
@@ -82,6 +123,7 @@ export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
     blocks: NO_LAUGH,
     style: "gentle, a little quieter, warm",
     dye: "indigo",
+    haptic: "heartbeat",
   },
   hurt: {
     kin: ["sad"],
@@ -90,14 +132,26 @@ export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
     style: "gentle, a little quieter",
     dye: "indigo",
   },
-  lonely: { kin: ["sad"], sound: "sigh", style: "wistful, then bright", dye: "indigo" },
+  lonely: {
+    kin: ["sad"],
+    sound: "sigh",
+    style: "wistful, then bright",
+    dye: "indigo",
+    haptic: "heartbeat",
+  },
   sulky: {
     kin: ["putout", "pout", "sad"],
     sound: "sigh",
     style: "a little flat, playful",
     dye: "damson",
+    haptic: "thump",
   },
-  putout: { kin: ["sulky", "pout", "sad"], style: "a little flat, playful", dye: "damson" },
+  putout: {
+    kin: ["sulky", "pout", "sad"],
+    style: "a little flat, playful",
+    dye: "damson",
+    haptic: "thump",
+  },
   frustrated: {
     kin: ["annoyed", "angry", "focused"],
     blocks: ["[laughs]"],
@@ -135,6 +189,8 @@ export interface VesselManifest {
   readonly light?: boolean;
   /** A speaker: the voice's style, its blocked tags and her one sound. */
   readonly voice?: boolean;
+  /** A vibration motor, by kind: an ERM spins up and coasts, so its patterns are pulses, never crisp clicks. */
+  readonly haptic?: "erm" | "lra";
 }
 
 /** Every vessel that shows her mood, by role. */
@@ -146,6 +202,7 @@ export const VESSELS = {
     face: [...FACE_LIBRARY, ...R1_MOODS],
     props: ["reading", "magnifier", "mask"],
     voice: true,
+    haptic: "erm",
   },
   // Props are the Character Studio's (apps/web/public/companion/props.js).
   mascot: {
@@ -168,6 +225,8 @@ export interface Rendering {
     readonly sound: "sigh" | "laugh" | null;
     readonly blocks: ReadonlyArray<string>;
   };
+  /** The buzz, null for none. Absent when the vessel has no motor. */
+  readonly haptic?: HapticPattern | null;
 }
 
 const lookOf = (label: string): EmotionLook =>
@@ -199,5 +258,6 @@ export const renderFor = (m: VesselManifest, label: string, intensity: number): 
     ...(m.voice === true
       ? { voice: { style: look.style, sound: look.sound ?? null, blocks: look.blocks ?? [] } }
       : {}),
+    ...(m.haptic === undefined ? {} : { haptic: look.haptic ?? null }),
   };
 };

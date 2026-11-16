@@ -302,7 +302,7 @@ layer("TessayaComms", (it) => {
       assert.deepStrictEqual(sent.delivered, ["r1-kitchen", "desk-1"]);
       assert.deepStrictEqual(
         h.said.map((x) => `${x.id} ${x.op}${x.text === undefined ? "" : ` ${x.text}`}`),
-        ["r1-kitchen eye", "r1-kitchen say From Sara: The car's here"],
+        ["r1-kitchen eye", "r1-kitchen haptic", "r1-kitchen say From Sara: The car's here"],
       );
       assert.deepStrictEqual(
         h.written.map((w) => `${w.id} ${(w.value as { id: string }).id}`),

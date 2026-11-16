@@ -3,8 +3,13 @@
  * and does the answering. Firmware 0.3.95+ publishes `event/motion` for every move over its threshold and
  * `state/placement` as it changes; a gentle pick-up often moves only the placement (16 Nov: lifted to carried, no lift).
  */
-import type { TessayaMotionSensitivity, TessayaMotionSettings } from "@t3tools/contracts";
+import type {
+  TessayaHapticSettings,
+  TessayaMotionSensitivity,
+  TessayaMotionSettings,
+} from "@t3tools/contracts";
 import type { HandledHow } from "@t3tools/tessaya-shared/affect";
+import type { HapticPattern } from "@t3tools/tessaya-shared/expressionMap";
 import type { LineEvent } from "@t3tools/tessaya-shared/expression";
 
 export interface MotionSeen {
@@ -54,6 +59,48 @@ export const MOTION_TUNING: Readonly<
   low: { shake: 13_000, lift: 9_000 },
   normal: { shake: 9_000, lift: 6_000 },
   high: { shake: 6_000, lift: 4_500 },
+};
+
+export type HapticCategory = "reactions" | "moods" | "wake" | "reminders";
+export interface HapticAsk {
+  readonly pattern: HapticPattern;
+  readonly category: HapticCategory;
+  readonly placement: string | null;
+  /** Quiet hours or his do-not-disturb, unless what asks may break them (an urgent note). */
+  readonly quiet: boolean;
+  readonly batteryPct: number | null;
+  readonly charging: boolean | null;
+}
+const HAPTIC_LEVEL = { off: 0, low: 1, normal: 2, high: 3 } as const;
+/** A rattle on a hard surface sounds cheap: one level softer there. */
+const HARD = new Set(["desk", "dock", "bench"]);
+/** In a pocket or a bag, or by the bed: nobody feels it, or it wakes him. */
+const UNFELT = new Set(["carried", "bedside"]);
+
+/**
+ * The level (firmware `cmd/haptic` lvl 1-3) a Tessel plays a pattern at, or null for none: his setting, quiet, where
+ * she is, then her battery. The firmware adds its own budget and ducks while she speaks.
+ */
+export const hapticLevel = (s: TessayaHapticSettings, a: HapticAsk): 1 | 2 | 3 | null => {
+  let level: number = HAPTIC_LEVEL[s.intensity];
+  if (level === 0 || !s[a.category] || a.quiet) return null;
+  const at = a.placement;
+  if (at !== null && UNFELT.has(at)) return null;
+  // Face down is his do-not-disturb: a reminder's nudge is all that comes through.
+  if (at === "face_down" && a.pattern !== "nudge") return null;
+  // A wake or a reminder buzz is for a hand; on a desk her eyes and voice carry them.
+  if (
+    (a.category === "wake" || a.category === "reminders") &&
+    at !== "handheld" &&
+    at !== "face_down"
+  )
+    return null;
+  if (at !== null && HARD.has(at)) level -= 1;
+  if (a.batteryPct !== null && a.charging !== true) {
+    if (a.batteryPct < 10) return null;
+    if (a.batteryPct < 25) level -= 1;
+  }
+  return Math.max(1, level) as 1 | 2 | 3;
 };
 
 type Body = Readonly<Record<string, unknown>> | null;

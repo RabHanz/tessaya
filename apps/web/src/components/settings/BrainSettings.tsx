@@ -243,6 +243,7 @@ function BrainSections({ environmentId }: { readonly environmentId: EnvironmentI
       <Escalation environmentId={environmentId} />
       <Lines environmentId={environmentId} />
       <BeingMoved environmentId={environmentId} />
+      <Haptics environmentId={environmentId} />
       <PromptLab environmentId={environmentId} />
       <StandingYeses environmentId={environmentId} />
     </>
@@ -347,6 +348,65 @@ function BeingMoved({ environmentId }: { readonly environmentId: EnvironmentId }
               aria-label={row.title}
               checked={moved[row.key]}
               onCheckedChange={(on) => update({ tessayaMotion: { [row.key]: on } })}
+            />
+          }
+        />
+      ))}
+    </SettingsSection>
+  );
+}
+
+const HAPTIC_LABELS: Readonly<Record<string, string>> = {
+  off: "Off",
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+};
+const HAPTIC_ROWS = [
+  {
+    key: "reactions",
+    title: "Being moved",
+    description: "A purr when picked up, a giggle when shaken, a jolt when dropped.",
+  },
+  { key: "moods", title: "Moods", description: "A rare, soft beat when her mood changes." },
+  { key: "wake", title: "Listening", description: "A double tap in your hand when she hears you." },
+  {
+    key: "reminders",
+    title: "Reminders",
+    description: "A nudge in your hand or face down. Quiet hours stay still unless it's urgent.",
+  },
+] as const;
+
+/** The Tessel's vibration: how strong, and what may buzz. Softer on a desk and on a low battery by itself. */
+function Haptics({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const haptics = useEnvironmentSettings(environmentId, (s) => s.tessayaHaptics);
+  const update = useUpdateEnvironmentSettings(environmentId);
+  return (
+    <SettingsSection title="Haptics">
+      <SettingsRow
+        title="Vibration"
+        description="How strongly the Tessel buzzes. Off keeps it still everywhere."
+        control={
+          <Choice
+            label="Vibration strength"
+            value={haptics.intensity}
+            options={["off", "low", "normal", "high"] as const}
+            labels={HAPTIC_LABELS}
+            onChange={(next) => update({ tessayaHaptics: { intensity: next } })}
+          />
+        }
+      />
+      {HAPTIC_ROWS.map((row) => (
+        <SettingsRow
+          key={row.key}
+          title={row.title}
+          description={row.description}
+          control={
+            <Switch
+              aria-label={`Vibrate for ${row.title.toLowerCase()}`}
+              checked={haptics[row.key]}
+              disabled={haptics.intensity === "off"}
+              onCheckedChange={(on) => update({ tessayaHaptics: { [row.key]: on } })}
             />
           }
         />

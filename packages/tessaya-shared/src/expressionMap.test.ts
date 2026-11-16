@@ -37,6 +37,9 @@ describe("the expression map", () => {
     // The Tessel has no crown; focused falls to its next prop, reading.
     expect(renderFor(VESSELS.tessel, "proud", 1).prop).toBeNull();
     expect(renderFor(VESSELS.tessel, "focused", 1).prop).toBe("reading");
+    // A motor buzzes the mood's own pattern; a mood without one stays still.
+    expect(renderFor(VESSELS.tessel, "sulky", 0.3).haptic).toBe("thump");
+    expect(renderFor(VESSELS.tessel, "focused", 1).haptic).toBeNull();
     expect(renderFor(VESSELS.pill, "proud", 1)).toEqual({ face: "proud" });
     expect(renderFor({ id: "lamp", light: true }, "sad", 1)).toEqual({ face: null, dye: "indigo" });
     expect(renderFor(VESSELS.speaker, "concerned", 1).voice).toEqual({
