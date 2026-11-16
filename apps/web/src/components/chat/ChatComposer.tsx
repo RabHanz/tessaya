@@ -146,6 +146,7 @@ import {
   dictatingAttribute,
 } from "./TessayaComposerDictation";
 import { placeholderWhile } from "@t3tools/tessaya-shared/composerDictation";
+import { pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
@@ -874,6 +875,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     supportsAttachmentUploads,
   ]);
 
+  // A live thread on its session shows that session, not an account a stale draft remembers.
+  const draftProvider =
+    activeThread && activeThreadModelSelection && composerDraft.activeProvider
+      ? pinnedLiveSelection(
+          activeThread.id,
+          { instanceId: composerDraft.activeProvider },
+          { instanceId: activeThreadModelSelection.instanceId },
+        ).instanceId
+      : (composerDraft.activeProvider ?? null);
   const {
     providerInstanceEntries,
     selectedProviderEntry,
@@ -894,7 +904,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectModelSelection: activeProjectDefaultModelSelection,
     promptInjectionState: getComposerPromptInjectionState(prompt),
     candidateInstanceIds: [
-      composerDraft.activeProvider ?? null,
+      draftProvider,
       activeThread?.runtime?.providerInstanceId,
       activeThreadModelSelection?.instanceId,
       activeProjectDefaultModelSelection?.instanceId,
@@ -904,7 +914,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       activeThread?.runtime?.providerInstanceId ?? activeThreadModelSelection?.instanceId,
     handoffInstanceId:
       lockedProvider === null && composerDraft.modelSelectionExplicit === true
-        ? composerDraft.activeProvider
+        ? draftProvider
         : null,
   });
   const noProviderAvailable =

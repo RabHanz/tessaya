@@ -108,6 +108,7 @@ import type { AppBarSearch } from "../../components/ui/AppBar";
 import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
 import { TessayaAccountRow, useLiveSheetChange, useSessionEffort } from "./TessayaAccountRow";
 import { tessayaProviderGroups, liveTraits } from "./tessayaCatalog";
+import { pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
 import { takeAccountsFilter } from "./TessayaThreadHeader";
 import {
   compatibleRuntimeModeForChoices,
@@ -1408,7 +1409,12 @@ export function ExistingThreadSettingsRouteScreen({
     selectedEnvironmentRuntime?.serverConfig ?? null,
     selectedThreadCwd,
   );
-  const modelSelection = draftSettings.modelSelection ?? selectedThread.modelSelection;
+  // A live thread on its session picks against that session, so an account pick moves it (--switch), not the draft.
+  const modelSelection = pinnedLiveSelection(
+    selectedThread.id,
+    draftSettings.modelSelection ?? selectedThread.modelSelection,
+    selectedThread.modelSelection,
+  );
   const lockedProviderInstanceId = threadAllowsProviderSwitch({
     thread: selectedThread,
     projection: structure?.projection,
