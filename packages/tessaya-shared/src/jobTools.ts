@@ -26,6 +26,10 @@ export const JOB_TOOL_TEXT = {
     "Run one scheduled task now, by its id from schedules_list. It starts its run and does not wait for it to finish.",
   schedule_pause:
     "Pause one scheduled task by its id from schedules_list (on: false), or resume a paused one (on: true). Pausing keeps it to resume later; resuming asks his phone first.",
+  environment_maintain:
+    "Look after this computer's T3 server, by op. providers: each coding assistant here, whether it is ready and signed in. refresh_providers: check them all again now. sign_in_methods (provider): how that assistant is signed in, with each method's id. sign_out (provider, method from sign_in_methods): remove that sign-in; signing in again is done in Settings, not by voice. clean_storage: run his storage clean-up now, by his own rules in Settings (old worktrees, browser files, logs); what it removes is gone. reclaim_space: give the database's free space back to the disk, which restarts the server for a minute. Changes ask his phone first.",
+  access_manage:
+    "Who and what may reach his work, by op. links: the other T3 environments this one is linked to. link (url, pairing_code from the other machine, access): link one, so agents here can work there. unlink (environment_id from links): forget a link; linking again needs a fresh pairing code. share_thread (thread_id): make a guest link that lets one person watch that thread and suggest messages for 24 hours; it cannot be taken back early. answer_link_request (thread_id, answer: decline, or use_existing with environment_id, or link with url and pairing_code): answer an agent's waiting request to link a machine. Changes ask his phone first.",
   schedule_delete:
     "Delete one scheduled task by its id from schedules_list; it stops for good. His phone asks him first. A job's own schedule comes off with job_schedule instead.",
 } as const;

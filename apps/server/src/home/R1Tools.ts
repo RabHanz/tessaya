@@ -152,6 +152,9 @@ const ROOM_TOOLS = [
   "weave_list",
   "device_owner",
   "device_tag",
+  // The server's upkeep and who may reach his work (guarded RPCs, 16 Nov parity): owner only, changes on his yes.
+  "environment_maintain",
+  "access_manage",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 
 type ToolName = keyof typeof TessayaToolkit.tools;
