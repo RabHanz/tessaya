@@ -367,7 +367,7 @@ export interface HomeExtra {
     /** Up to four ways to do it; empty is off on purpose. */
     readonly inputs: ReadonlyArray<
       | { readonly type: "key"; readonly accelerator: string }
-      | { readonly type: "mouse"; readonly button: string }
+      | { readonly type: "mouse" | "remote"; readonly button: string }
     >;
     readonly isDefault: boolean;
     readonly conflictsWith: ReadonlyArray<string>;
