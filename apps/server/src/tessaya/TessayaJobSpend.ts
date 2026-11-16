@@ -8,6 +8,8 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import type { OrchestrationV2ProviderTurn } from "@t3tools/contracts";
+import type { BrainUsageUnit } from "@t3tools/tessaya-contracts";
+import * as DateTime from "effect/DateTime";
 
 import { parseRateTable, priceUsage, type RateTable } from "../usage/usagePricing.ts";
 
@@ -83,4 +85,94 @@ export const spendOfTurns = (
     else dollars = (dollars ?? 0) + priced.costUsd;
   }
   return { tokens, dollars, partial };
+};
+
+type TurnRun = {
+  readonly turn: Pick<
+    OrchestrationV2ProviderTurn,
+    "id" | "status" | "turnTokenUsage" | "model" | "completedAt"
+  >;
+  readonly runId: string | null;
+  readonly scheduledTaskId: string | null;
+};
+
+/** One job's provider turns, each with its run and the scheduled task that started that run, if one did. */
+export interface JobTurns {
+  readonly id: string;
+  readonly label: string;
+  readonly turns: ReadonlyArray<TurnRun>;
+}
+
+/**
+ * Each job's and each schedule's provider turns finished since `since`, at list price; a schedule is the runs its
+ * task started in the job's thread. shortcut: a turn's login is not known here, so it carries `listDollars`, never
+ * API dollars; read the instance's billing if jobs ever run on an API key.
+ */
+export const turnUnits = (
+  jobs: ReadonlyArray<JobTurns>,
+  since: number,
+  rates: RateTable | null,
+): ReadonlyArray<BrainUsageUnit> => {
+  const groups = new Map<
+    string,
+    { kind: BrainUsageUnit["kind"]; id: string; label: string; turns: Array<TurnRun> }
+  >();
+  const add = (kind: BrainUsageUnit["kind"], id: string, label: string, turn: TurnRun) => {
+    const group = groups.get(`${kind}:${id}`) ?? { kind, id, label, turns: [] };
+    group.turns.push(turn);
+    groups.set(`${kind}:${id}`, group);
+  };
+  for (const job of jobs) {
+    for (const t of job.turns) {
+      if (t.turn.completedAt === null || DateTime.toEpochMillis(t.turn.completedAt) < since)
+        continue;
+      add("job", job.id, job.label, t);
+      if (t.scheduledTaskId !== null)
+        add("schedule", t.scheduledTaskId, `${job.label} (scheduled)`, t);
+    }
+  }
+  return [...groups.values()].map(({ kind, id, label, turns }) => {
+    const spend = spendOfTurns(
+      turns.map((t) => t.turn),
+      rates,
+    );
+    return {
+      kind,
+      id,
+      label,
+      runs: new Set(turns.map((t) => t.runId ?? t.turn.id)).size,
+      calls: turns.length,
+      tokens: spend.tokens,
+      dollars: null,
+      listDollars: spend.dollars,
+    };
+  });
+};
+
+const plus = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : a + b);
+
+/** The ledger's units and the turns' as one line per job or schedule, costliest first. */
+export const mergeUnits = (
+  ledger: ReadonlyArray<BrainUsageUnit>,
+  turns: ReadonlyArray<BrainUsageUnit>,
+): ReadonlyArray<BrainUsageUnit> => {
+  const out = new Map(turns.map((u) => [`${u.kind}:${u.id}`, u]));
+  for (const u of ledger) {
+    const t = out.get(`${u.kind}:${u.id}`);
+    out.set(
+      `${u.kind}:${u.id}`,
+      t === undefined
+        ? u
+        : {
+            ...t,
+            calls: t.calls + u.calls,
+            tokens: t.tokens + u.tokens,
+            dollars: plus(t.dollars, u.dollars),
+            listDollars: plus(t.listDollars, u.listDollars),
+          },
+    );
+  }
+  return [...out.values()].toSorted(
+    (a, b) => (b.listDollars ?? 0) - (a.listDollars ?? 0) || b.tokens - a.tokens,
+  );
 };

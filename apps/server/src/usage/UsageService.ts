@@ -39,6 +39,7 @@ import type {
   TranscriptUsageFormat,
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
+import { BrainUsage } from "../tessaya/BrainUsage.ts";
 import { canonicalModelFilter, resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
@@ -160,6 +161,7 @@ export const make = Effect.gen(function* () {
   const hostEnvironment = yield* HostProcess.Environment;
   const hostname = yield* HostProcess.Hostname;
   const readerContext = yield* Effect.context<BuiltInUsageReadersEnv>();
+  const ledger = yield* Effect.serviceOption(BrainUsage);
 
   const fileCache: ScanCache = new Map();
   // Reads from concurrent windows can still hold the original record after it is corrected.
@@ -1044,6 +1046,19 @@ export const make = Effect.gen(function* () {
           ? { refreshing: true }
           : {}),
       });
+    }
+
+    // Tessaya's own calls, which the scan skips (isLedgeredDir) or never sees, count from her usage ledger.
+    if (Option.isSome(ledger)) {
+      const add = (record: UsageRecord, sourcePath: string) => aggregator.add(record, sourcePath);
+      sources.push(
+        ...(yield* ledger.value.intoUsage({
+          sinceMs: windowStartMs,
+          untilMs: windowEndMs,
+          hostId,
+          add,
+        })),
+      );
     }
 
     const pruned = pruneScanCache(fileCache, retentionCutoffMs);

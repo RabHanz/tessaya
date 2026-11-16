@@ -98,10 +98,12 @@ export const BrainUsageTotal = Schema.Struct({
 });
 export type BrainUsageTotal = typeof BrainUsageTotal.Type;
 
-/** A schedule's or a job's own cost: a schedule per run, a job in all. */
+/** A schedule's or a job's own cost in the range: its provider turns and its calls in the ledger. */
 export const BrainUsageUnit = Schema.Struct({
   kind: Schema.Literals(["schedule", "job"]),
   id: Schema.String,
+  /** The job's title; absent for an id no job names. */
+  label: Schema.optional(Schema.String),
   runs: Schema.Number,
   calls: Schema.Number,
   tokens: Schema.Number,

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { spendOfTurns } from "./TessayaJobSpend.ts";
+import { ProviderTurnId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+
+import { mergeUnits, spendOfTurns, turnUnits } from "./TessayaJobSpend.ts";
 import { parseRateTable } from "../usage/usagePricing.ts";
 
 const rates = parseRateTable({
@@ -50,5 +53,64 @@ describe("a job's spend from its provider turns", () => {
       dollars: null,
       partial: true,
     });
+  });
+});
+
+describe("each job's and schedule's cost on the Usage page", () => {
+  const at = (iso: string) => DateTime.makeUnsafe(iso);
+  const ran = (id: string, runId: string, task: string | null, completed: string) => ({
+    turn: { ...turn(1_000), id: ProviderTurnId.make(id), completedAt: at(completed) },
+    runId,
+    scheduledTaskId: task,
+  });
+  const since = Date.parse("2026-11-10T00:00:00Z");
+
+  it("counts a job's turns in the range, and a schedule's per run it started", () => {
+    const units = turnUnits(
+      [
+        {
+          id: "job-1",
+          label: "Weekly report",
+          turns: [
+            ran("t1", "r1", null, "2026-11-11T10:00:00Z"),
+            ran("t2", "r2", "task-1", "2026-11-12T10:00:00Z"),
+            // A retry in the same run is one run.
+            ran("t3", "r2", "task-1", "2026-11-12T10:05:00Z"),
+            ran("t4", "r3", "task-1", "2026-11-13T10:00:00Z"),
+            ran("old", "r0", "task-1", "2026-11-01T10:00:00Z"),
+          ],
+        },
+      ],
+      since,
+      rates,
+    );
+    expect(units.map((u) => [u.kind, u.id, u.label, u.runs, u.calls, u.tokens])).toEqual([
+      ["job", "job-1", "Weekly report", 3, 4, 4 * 3_000],
+      ["schedule", "task-1", "Weekly report (scheduled)", 2, 3, 3 * 3_000],
+    ]);
+    // The plan's turns carry their list price only.
+    expect(units[1]?.dollars).toBeNull();
+    expect(units[1]?.listDollars).toBeCloseTo(3 * (0.003 + 0.0003 + 0.015), 9);
+  });
+
+  it("adds the ledger's calls to the same job, and keeps the ledger's own units", () => {
+    const fromTurns = turnUnits(
+      [{ id: "job-1", label: "Report", turns: [ran("t1", "r1", null, "2026-11-11T10:00:00Z")] }],
+      since,
+      rates,
+    );
+    const unit = { runs: 1, calls: 2, tokens: 100, dollars: 0.01, listDollars: 0.01 };
+    const merged = mergeUnits(
+      [
+        { kind: "job", id: "job-1", ...unit },
+        { kind: "schedule", id: "standing", ...unit },
+      ],
+      fromTurns,
+    );
+    expect(merged.map((u) => [u.kind, u.id, u.label, u.calls, u.tokens, u.dollars])).toEqual([
+      ["job", "job-1", "Report", 3, 3_100, 0.01],
+      ["schedule", "standing", undefined, 2, 100, 0.01],
+    ]);
+    expect(merged[0]?.listDollars).toBeCloseTo(0.01 + 0.003 + 0.0003 + 0.015, 9);
   });
 });
