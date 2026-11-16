@@ -68,7 +68,7 @@ describe("enrol once, recognised everywhere: shared profiles and this R1's refin
     r.done();
   });
 
-  it("refines its own copy 2% toward a sure turn, never far from the base, not when switched off, and a new version restarts it", () => {
+  it("refines its own copy 2% toward a sure turn, never far from the base, not when switched off; a reset or a new version restarts it", () => {
     const r = rig();
     r.sync.shared(parseShared(shared(1, vec(1, 0, 0)))!);
     r.sync.refine("member-1", vec(0.9, 0.3, 0));
@@ -84,6 +84,10 @@ describe("enrol once, recognised everywhere: shared profiles and this R1's refin
     r.sync.refine("member-1", Float32Array.from([0, 0, 0]));
     r.sync.refine("member-1", Float32Array.from([Number.NaN, 0, 0]));
     expect(Array.from(r.store.list()[0]!.centroid)).toEqual(settled);
+    r.sync.reset();
+    expect(Array.from(r.store.list()[0]!.centroid)).toEqual([1, 0, 0]);
+    expect(r.store.list()[0]!.sources).not.toContain("adapted");
+    r.sync.refine("member-1", vec(0.9, 0.3, 0));
     r.sync.setRefining(false);
     const before = Array.from(r.store.list()[0]!.centroid);
     r.sync.refine("member-1", vec(0.9, 0.3, 0));
