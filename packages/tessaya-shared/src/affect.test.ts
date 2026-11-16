@@ -17,6 +17,7 @@ import {
   type PersonaAffect,
   freshAffect,
   guiltOf,
+  faceLine,
   moodLine,
   shown,
   type AffectEvent,
@@ -202,6 +203,13 @@ describe("affect", () => {
     );
     expect(away).toContain("away 9 h");
     expect(away.length).toBeLessThan(400);
+  });
+
+  it("tells anyone what her face shows, with a general reason and nothing personal", () => {
+    expect(faceLine(affectView(freshAffect(0), "executive", day))).toBe("");
+    const lonely = faceLine({ label: "lonely" });
+    expect(lonely).toContain("lonely");
+    expect(lonely).toContain("quiet here");
   });
 });
 

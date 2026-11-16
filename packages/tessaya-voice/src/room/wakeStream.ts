@@ -34,6 +34,12 @@ const SEGMENT_GAP_MS = 3_000;
 const FRAME_SAMPLES = 960;
 /** The silence the Tessel waits before it ends a segment: his last word came this long before `voice/wake/end`. */
 const END_SILENCE_MS = 480;
+/**
+ * Another name this near its own bar in the same segment: the models cannot tell which he said, so neither wakes her.
+ * 16 Nov 12:35Z his repeated "Tessaya" scored Freya 1.05x and Tessaya 0.99x and opened Freya; no other of 217 fires
+ * in 1,745 kept segments had a second name over 0.3x.
+ */
+const RIVAL_SHARE = 0.5;
 
 /** What he asked in the same breath as her name ("Tessaya, what time is it?"), said from `startedAt` to `endedAt`. */
 export interface WakeRequest {
@@ -269,11 +275,20 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       d.outcome = `${word} fired (${output.toFixed(3)}/${threshold}), the Tessel's kws decides`;
       return;
     }
+    // The score goes in the line: a segment that fires gets no "wake segment" line of its own (13 Nov audit).
+    const at = `${output.toFixed(3)}/${threshold} after ${(d.samples / RATE).toFixed(1)} s`;
+    const rival = d.words.findIndex(
+      (w, i) => w.word !== word && (d.best[i] ?? 0) >= RIVAL_SHARE * w.threshold,
+    );
+    if (rival >= 0) {
+      const other = `${d.words[rival]!.word} ${(d.best[rival] ?? 0).toFixed(3)}/${d.words[rival]!.threshold}`;
+      d.outcome = `${word} fired (${at}) with ${other}, not a wake`;
+      deps.log(`[${id}] ${word} fired (${at}) but ${other} too: not sure which name, not a wake`);
+      return;
+    }
     const ratio = output / threshold;
     const trusted = wakeTrusted([{ word, threshold }], word, ratio);
     const texts = trusted ? [] : await deps.confirm(clip).catch(() => []);
-    // The score goes in the line: a segment that fires gets no "wake segment" line of its own (13 Nov audit).
-    const at = `${output.toFixed(3)}/${threshold} after ${(d.samples / RATE).toFixed(1)} s`;
     if (trusted || texts.some((text) => wakeWordHeard(text, word, ratio))) {
       d.outcome = `woken by ${word} (${at})`;
       d.woke = true;

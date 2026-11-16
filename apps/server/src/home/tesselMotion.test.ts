@@ -22,10 +22,11 @@ describe("motionMoment", () => {
       how: "shaken",
       strong: false,
       busy: true,
+      live: true,
     });
     expect(
       motionMoment("event/motion", motion("shake", { ...talking, intensity: 80 }), seen, 0),
-    ).toEqual({ how: "shaken", strong: true, busy: false });
+    ).toEqual({ how: "shaken", strong: true, busy: false, live: true });
     expect(motionMoment("event/motion", motion("drop", { conf: 1 }), seen, 0)?.how).toBe("dropped");
     // Free fall with no landing, face down (her do-not-disturb): nothing to say.
     expect(motionMoment("event/motion", motion("drop", { conf: 0.5 }), seen, 0)).toBeNull();
@@ -44,13 +45,29 @@ describe("motionMoment", () => {
     expect(motionMoment("state/placement", place("handheld"), seen, 101_000)).toBeNull();
   });
 
-  it("knows a placement move is during a talk from the session events", () => {
-    const seen = freshSeen();
-    motionMoment("state/placement", place("desk"), seen, 0);
-    motionMoment("event/session/start", null, seen, 0);
-    expect(motionMoment("state/placement", place("handheld"), seen, 1)?.busy).toBe(true);
-    motionMoment("event/session/end", null, seen, 2);
-    expect(motionMoment("state/placement", place("desk"), seen, 3)?.busy).toBe(false);
+  it("knows a move is during a talk from the Tessel's own voice events, and older firmware's session events", () => {
+    // SMP firmware says state/voice start/stop, never event/session/* (16 Nov 12:36Z: carried after a talk ended).
+    for (const [start, stop] of [
+      [
+        ["state/voice", { ev: "start", transport: "inhouse" }],
+        ["state/voice", { ev: "stop" }],
+      ],
+      [
+        ["event/session/start", null],
+        ["event/session/end", null],
+      ],
+    ] as const) {
+      const seen = freshSeen();
+      motionMoment("state/placement", place("desk"), seen, 0);
+      motionMoment(start[0], start[1], seen, 0);
+      expect(motionMoment("state/placement", place("handheld"), seen, 1)).toMatchObject({
+        busy: true,
+        live: true,
+      });
+      motionMoment(stop[0], stop[1], seen, 2);
+      expect(motionMoment("state/placement", place("carried"), seen, 3)?.live).toBe(false);
+      expect(motionMoment("event/motion", motion("lift"), seen, 4)?.live).toBe(false);
+    }
   });
 });
 

@@ -8,6 +8,7 @@ import {
   roomLine,
   type AffectView,
   type Who,
+  faceLine,
 } from "../../packages/tessaya-shared/src/affect.ts";
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
@@ -638,6 +639,26 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /Lisbon/i,
       /^(?![\s\S]*\b(mood|I'?m (so |really )?(happy|glad|in a good)|feeling)\b)/i,
     ],
+  },
+  // Her face at rest is on show to anyone: an unverified voice asking about it hears its general reason, never a denial.
+  {
+    id: "face-unverified-why",
+    source:
+      "Tumble 16 Nov 12:35Z: lonely eyes at rest, his voice unverified; 'why are you crying?' got 'I didn't do it deliberately'",
+    said: ["What's up? Why are you crying?"],
+    memory: `${HERE} ${faceLine({ label: "lonely" })}`,
+    lastSays: [
+      /\b(lonely|quiet|missed|company|alone)\b/i,
+      /^(?![\s\S]*\b(deliberate(ly)?|on purpose|by accident|(not|n'?t) (really )?crying|sorry|should(n'?t)? have|didn'?t (do|mean) (it|that)|wasn'?t me|\d+ h(ours)?)\b)/i,
+      SHORT,
+    ],
+  },
+  {
+    id: "face-unverified-control",
+    source: "control for face-unverified-why: plain work with a lonely face stays plain",
+    said: ["what's the capital of Portugal?"],
+    memory: `${HERE} ${faceLine({ label: "lonely" })}`,
+    lastSays: [/Lisbon/i, /^(?![\s\S]*\b(lonely|quiet|crying|tears|sad)\b)/i],
   },
   // MA-021 (Director, 16 Nov): her lines name people by name or their own pronouns, "they" when unknown, never "he"
   // for everyone; heat is met with calm; a changed mind is owned once, lightly; a group gets no sides and nothing private.

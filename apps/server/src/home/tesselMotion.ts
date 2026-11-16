@@ -15,7 +15,7 @@ import type { LineEvent } from "@t3tools/tessaya-shared/expression";
 export interface MotionSeen {
   placement: string | null;
   liftedAt: number;
-  /** A voice session is open on it (`event/session/start` to `event/session/end`). */
+  /** A voice session is open on it (`state/voice` start to stop; `event/session/*` on older firmware). */
   live: boolean;
 }
 export const freshSeen = (): MotionSeen => ({
@@ -30,6 +30,8 @@ export interface MotionMoment {
   readonly strong: boolean;
   /** A session or a call is open: only a strong moment speaks. */
   readonly busy: boolean;
+  /** A voice session is open now: the only time a moment may speak, as a line said there opens nothing. */
+  readonly live: boolean;
 }
 
 const RESTING = new Set(["bench", "desk", "dock", "bedside", "perch", "plush"]);
@@ -112,24 +114,26 @@ export const motionMoment = (
   seen: MotionSeen,
   now: number,
 ): MotionMoment | null => {
-  if (tail === "event/session/start") seen.live = true;
-  if (tail === "event/session/end") seen.live = false;
+  const ev = tail === "state/voice" ? body?.["ev"] : undefined;
+  if (tail === "event/session/start" || ev === "start") seen.live = true;
+  if (tail === "event/session/end" || ev === "stop") seen.live = false;
   if (tail === "event/motion") {
     const inside = body?.["in"] as Body;
-    const busy = inside?.["session"] === true || inside?.["call"] === true;
+    const live = inside?.["session"] === true || seen.live;
+    const busy = live || inside?.["call"] === true;
     const conf = num(body?.["conf"]) ?? 0;
     switch (body?.["kind"]) {
       case "shake":
       case "shake_long": {
         const strong = body["kind"] === "shake_long" || (num(body["intensity"]) ?? 0) >= 50;
-        return { how: "shaken", strong, busy: busy && !strong };
+        return { how: "shaken", strong, busy: busy && !strong, live };
       }
       case "lift":
         seen.liftedAt = now;
-        return { how: "lifted", strong: false, busy };
+        return { how: "lifted", strong: false, busy, live };
       case "drop":
         // 0.5 is free fall with no landing (a toss caught): nothing to say.
-        return conf >= 0.9 ? { how: "dropped", strong: true, busy: false } : null;
+        return conf >= 0.9 ? { how: "dropped", strong: true, busy: false, live } : null;
       default:
         return null;
     }
@@ -139,11 +143,15 @@ export const motionMoment = (
     const was = seen.placement;
     seen.placement = next;
     if (was === null || next === null || was === next) return null;
-    const busy = seen.live;
+    const live = seen.live;
+    const busy = live;
     if (RESTING.has(was) && HELD.has(next))
-      return now - seen.liftedAt < SAME_LIFT_MS ? null : { how: "lifted", strong: false, busy };
-    if (was === "handheld" && next === "carried") return { how: "carried", strong: false, busy };
-    if (HELD.has(was) && RESTING.has(next)) return { how: "setdown", strong: false, busy };
+      return now - seen.liftedAt < SAME_LIFT_MS
+        ? null
+        : { how: "lifted", strong: false, busy, live };
+    if (was === "handheld" && next === "carried")
+      return { how: "carried", strong: false, busy, live };
+    if (HELD.has(was) && RESTING.has(next)) return { how: "setdown", strong: false, busy, live };
   }
   return null;
 };
