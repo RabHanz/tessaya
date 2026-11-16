@@ -22,6 +22,7 @@ import {
   type PrivateTurn,
   type SpeakerLike,
 } from "@t3tools/tessaya-shared/privateMemory";
+import { PRESENCE_BARS, presenceReason } from "@t3tools/tessaya-shared/presence";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -44,6 +45,7 @@ import { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
 import { TurnPools } from "./TurnPools.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { make as makePresence, TessayaPresence } from "./TessayaPresence.ts";
 import { moodLine } from "@t3tools/tessaya-shared/affect";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { ownerLineFor, personasList } from "./OperatingSystemPack.ts";
@@ -192,13 +194,19 @@ export interface WhoIsHome {
   } | null;
   /** Their own devices: how many are connected now, and minutes since one was (0 while connected). */
   readonly devices: { readonly connected: number; readonly minutesAgo: number } | null;
-  /** Heard within the last half hour, or a device connected now. */
+  /** Fused confidence at or over PRESENCE_BARS.around: heard in about the last half hour, or a device connected now. */
   readonly likelyHome: boolean;
+  /** Fused confidence they are around, 0..1. */
+  readonly confidence: number;
+  /** The vessel they are most likely nearest (its name), and how sure. */
+  readonly nearest: {
+    readonly vessel: string;
+    readonly name: string;
+    readonly confidence: number;
+  } | null;
+  /** Why, strongest first, in words ("heard your voice on Tessel, 3 min ago"). */
+  readonly reasons: ReadonlyArray<string>;
 }
-/** Heard this recently: likely still home. */
-const PRESENCE_HOME_MS = 30 * 60_000;
-/** Forgotten after a day: presence is a state, never a history. */
-const PRESENCE_FORGET_MS = 24 * 60 * 60_000;
 
 /** A member asked to keep something and has no store of their own yet. */
 export const NO_STORE_FOR_MEMBER =
@@ -750,10 +758,10 @@ export const make = Effect.gen(function* () {
       ? null
       : yield* registry.value.get(turn.vessel.id).pipe(Effect.orElseSucceed(() => null));
     if (member === null || turn.sharedRoom === true) return hereLine(device, null);
-    const now = yield* Clock.currentTimeMillis;
     const names: string[] = [];
-    for (const [who, s] of seen)
-      if (now - s.at <= PRESENCE_HOME_MS) names.push((yield* memberName(who)) ?? who);
+    for (const p of (yield* presence.estimate()).members)
+      if (p.confidence >= PRESENCE_BARS.around)
+        names.push((yield* memberName(p.member)) ?? p.member);
     return hereLine(device, names);
   });
 
@@ -872,8 +880,16 @@ export const make = Effect.gen(function* () {
     return commsWaitingLine(name ?? (yield* memberName(member)) ?? "them", waiting);
   });
 
-  // shortcut: in this server's memory, as HOUSEHOLD-DESIGN §7 asks (a state, not a history); a restart forgets it.
-  const seen = new Map<string, { at: number; via: string; vessel: string }>();
+  // The one presence store (B-043); a turn built alone (a test) keeps its own.
+  const presence =
+    Option.getOrUndefined(yield* Effect.serviceOption(TessayaPresence)) ?? (yield* makePresence);
+  const vesselName = Effect.fn("TessayaTurn.vesselName")(function* (id: string) {
+    const registry = yield* Effect.serviceOption(DeviceRegistry);
+    const device = Option.isNone(registry)
+      ? null
+      : yield* registry.value.get(id).pipe(Effect.orElseSucceed(() => null));
+    return device?.name ?? id;
+  });
   /**
    * Who was just here: a voice verified on its own audio (A2) on a vessel, or a member's own signed-in device typing.
    * A guess (an unverified or carried-over voice), a guest, a replay or a turn not said to her proves nothing.
@@ -882,9 +898,10 @@ export const make = Effect.gen(function* () {
     if (turn.rehearsal === true || turn.addressed === false) return;
     const identity = turnIdentity(turn);
     if (identity.member === null || identity.assurance < 2) return;
-    seen.set(identity.member, {
-      at: yield* Clock.currentTimeMillis,
-      via: turn.origin ?? `${turn.vessel.kind} ${turn.vessel.id}`,
+    yield* presence.note({
+      member: identity.member,
+      // A verified voice, or a member's own signed-in device typing.
+      source: turn.speaker === null || turn.speaker === undefined ? "typed" : "voice",
       vessel: turn.vessel.id,
     });
   });
@@ -903,26 +920,49 @@ export const make = Effect.gen(function* () {
           },
     ).pipe(Effect.orElseSucceed(() => null));
     const devices = new Map((asked?.around ?? []).map((d) => [d.id, d]));
+    // Their own devices: connected now, or when one last was.
+    const estimate = yield* presence.estimate(
+      [...devices.values()].map((d) => ({
+        member: d.id,
+        source: "device",
+        vessel: null,
+        at: d.connected > 0 ? now : now - d.minutesAgo * 60_000,
+      })),
+    );
     const out: Array<WhoIsHome> = [];
-    for (const [member, s] of seen) {
-      if (now - s.at > PRESENCE_FORGET_MS) seen.delete(member);
-    }
-    for (const member of new Set([...seen.keys(), ...devices.keys()])) {
-      const s = seen.get(member);
-      const d = devices.get(member);
-      const heard =
-        s === undefined
-          ? null
-          : { via: s.via, vessel: s.vessel, minutesAgo: Math.floor((now - s.at) / 60_000) };
+    for (const p of estimate.members) {
+      const d = devices.get(p.member);
+      const heard = p.evidence.find((e) => e.source === "voice" || e.source === "typed");
+      const reasons: Array<string> = [];
+      for (const e of p.evidence)
+        reasons.push(presenceReason(e, e.vessel === null ? null : yield* vesselName(e.vessel)));
       out.push({
-        member,
+        member: p.member,
         name:
-          (yield* preferencesOf(member)).name ?? d?.name ?? (yield* memberName(member)) ?? member,
-        heard,
+          (yield* preferencesOf(p.member)).name ??
+          d?.name ??
+          (yield* memberName(p.member)) ??
+          p.member,
+        heard:
+          heard === undefined || heard.vessel === null
+            ? null
+            : {
+                via: yield* vesselName(heard.vessel),
+                vessel: heard.vessel,
+                minutesAgo: heard.minutesAgo,
+              },
         devices: d === undefined ? null : { connected: d.connected, minutesAgo: d.minutesAgo },
-        likelyHome:
-          (s !== undefined && now - s.at <= PRESENCE_HOME_MS) ||
-          (d !== undefined && d.connected > 0),
+        likelyHome: p.confidence >= PRESENCE_BARS.around,
+        confidence: Math.round(p.confidence * 100) / 100,
+        nearest:
+          p.nearest === null
+            ? null
+            : {
+                vessel: p.nearest.vessel,
+                name: yield* vesselName(p.nearest.vessel),
+                confidence: Math.round(p.nearest.confidence * 100) / 100,
+              },
+        reasons,
       });
     }
     const latest = (p: WhoIsHome) =>

@@ -5,6 +5,8 @@
  * The RPC handlers, the desktop tools and the phone all call these; none holds the flow itself.
  */
 import { readQuietHours } from "./quietHours.ts";
+import { whereToSay } from "./TessayaPresence.ts";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { houseZone } from "./houseZone.ts";
 import {
   TessayaJobPlacementError,
@@ -1135,8 +1137,9 @@ export const jobRecordSeed = Effect.fn("BatonJobFlow.jobRecordSeed")(function* (
 });
 
 /**
- * A job's change said on the R1 he asked it on (voice/say opens a session there, so he can answer): never in quiet
- * hours, and at most the nudge budget an hour. The Record row is kept either way, so nothing is lost when it is quiet.
+ * A job's change said where he is (voice/say opens a session there, so he can answer): the vessel he is nearest, the
+ * one he asked on with "follow me" off, and nowhere when he can't be placed (B-043); never in quiet hours, and at most
+ * the nudge budget an hour. The Record row is kept either way, so nothing is lost when it stays quiet.
  */
 const sayOnOrigin = Effect.fn("BatonJobFlow.sayOnOrigin")(function* (
   device: string,
@@ -1152,9 +1155,12 @@ const sayOnOrigin = Effect.fn("BatonJobFlow.sayOnOrigin")(function* (
   if (inQuietHours(now, quiet ?? quietHoursOf(DEFAULT_POLICY.quietHours, zone))) return;
   const recent = said.filter((at) => now - at < 3_600_000);
   if (recent.length >= DEFAULT_POLICY.maxPerHour) return;
+  // shortcut: a job is the owner's until it carries the member who asked; then pass theirs.
+  const where = yield* whereToSay(OWNER_MEMBER_ID, device);
+  if (where === null) return;
   said.splice(0, said.length, ...recent, now);
   yield* devices.value
-    .command(device, { op: "say", text: line }, { who: "Tessaya", surface: "assistant" })
+    .command(where, { op: "say", text: line }, { who: "Tessaya", surface: "assistant" })
     .pipe(Effect.ignoreCause({ log: true }));
 });
 

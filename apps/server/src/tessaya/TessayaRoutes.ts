@@ -16,6 +16,7 @@ import {
 import { buildPhoneState } from "@t3tools/tessaya-shared/phone";
 import { AuthTessayaHandsHostScope } from "@t3tools/contracts";
 import { watchFleet } from "@t3tools/tessaya-shared/watch";
+import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Option from "effect/Option";
@@ -45,6 +46,7 @@ import {
   syncCredentialOf,
 } from "./TessayaRpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./TessayaMemoryService.ts";
+import { TessayaPresence } from "./TessayaPresence.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
 import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
 import { runAskWorker } from "./AskWorker.ts";
@@ -680,14 +682,15 @@ export const deskReport = (body: unknown) => {
 const DESK_SIGNALS = new Set(["screenLocked", "sleep", "call", "screenShared", "recording"]);
 
 /**
- * Who is near a vessel, for a layer's Tessel rule: "alone" only when the owner is the one member likely home and was
- * just heard on that vessel; another member likely home is "others"; anything less is "unknown", which fails closed.
+ * Who is near a vessel, for a layer's Tessel rule: "alone" only when the owner is the one member likely home and is
+ * placed at that vessel past the alone bar; another member likely home is "others"; anything less is "unknown", which
+ * fails closed.
  */
 const presenceOn = Effect.fn("TessayaRoutes.presenceOn")(function* (vessel: string) {
   const home = (yield* (yield* TessayaTurn).whoIsHome).filter((p) => p.likelyHome);
   if (home.some((p) => p.member !== OWNER_MEMBER_ID)) return "others" as const;
   const owner = home.find((p) => p.member === OWNER_MEMBER_ID);
-  return owner?.heard?.vessel === vessel && owner.heard.minutesAgo <= 5
+  return owner?.nearest?.vessel === vessel && owner.nearest.confidence >= PRESENCE_BARS.alone
     ? ("alone" as const)
     : ("unknown" as const);
 });
@@ -765,6 +768,16 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       const desk = deskReport(body);
       if (desk.key !== null) deviceKey = desk.key;
       for (const kind of desk.signals) for (const l of registry.value.all) l.signal({ kind });
+      // A locked or sleeping desktop: they stepped away from it (B-043).
+      if (caller.member !== null && desk.signals.some((k) => k === "screenLocked" || k === "sleep"))
+        yield* Effect.serviceOption(TessayaPresence).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.void,
+              onSome: (p) => p.note({ member: caller.member, source: "deskAway", vessel: null }),
+            }),
+          ),
+        );
       return HttpServerResponse.jsonUnsafe(
         {
           open: registry.value.all.some((l) => l.active?.("desktop") === true),

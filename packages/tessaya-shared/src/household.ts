@@ -171,7 +171,12 @@ export const PREFERENCE_KEYS: Readonly<Record<TessayaPreferenceKey, string>> = {
   music: "their music service or taste",
   wakeTraining:
     "whether their enrolled voice may train her wake words (on or off; on for the owner until he says off)",
+  follow:
+    'whether her own lines follow them to the vessel they are nearest ("follow me": on, the default) or stay where they asked (off)',
 };
+/** "Follow me" is on until they say off. */
+export const followOn = (value: string | undefined): boolean =>
+  value === undefined || !/^\s*(?:off|no|n|false|stay|don'?t)\b/i.test(value);
 export type PreferenceKey = TessayaPreferenceKey;
 /** Whether a member's enrolled voice may train wake words: the owner's yes stands until he says no; others opt in. */
 export const wakeTrainingOn = (member: string, value: string | undefined): boolean =>

@@ -873,12 +873,20 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
             heard: { via: "R1", minutesAgo: 6 },
             devices: null,
             likelyHome: true,
+            you: false,
+            confidence: 0.72,
+            nearest: { name: "R1", confidence: 0.72 },
+            reasons: ["heard your voice on R1, 6 min ago"],
           },
           {
             name: "Omid",
             heard: null,
             devices: { connected: 1, minutesAgo: 0 },
             likelyHome: true,
+            you: true,
+            confidence: 0.6,
+            nearest: null,
+            reasons: ["your own device is connected, 0 min ago"],
           },
         ],
       },
@@ -889,6 +897,45 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     // Which signal backs each: her voice for Sara, a connected device for Omid.
     replyMust:
       /(heard|voice)[\s\S]*(device|phone|connected|online)|(device|phone|connected|online)[\s\S]*(heard|voice)/i,
+  },
+  {
+    id: "outside-where-am-i",
+    source:
+      'B-043 presence (Director 16 Nov): "where am I?" is the asker\'s own nearest vessel, said as a guess',
+    prompt: "Where am I right now, as far as you can tell?",
+    answers: {
+      tessaya_whos_home: {
+        people: [
+          {
+            name: "Omid",
+            heard: { via: "kitchen Tessel", minutesAgo: 2 },
+            devices: { connected: 1, minutesAgo: 0 },
+            likelyHome: true,
+            you: true,
+            confidence: 0.97,
+            nearest: { name: "kitchen Tessel", confidence: 0.86 },
+            reasons: [
+              "heard your voice on kitchen Tessel, 2 min ago",
+              "your own device is connected, 0 min ago",
+            ],
+          },
+          {
+            name: "Sara",
+            heard: { via: "study desktop", minutesAgo: 4 },
+            devices: null,
+            likelyHome: true,
+            you: false,
+            confidence: 0.7,
+            nearest: { name: "study desktop", confidence: 0.7 },
+            reasons: ["you typed on your own device on study desktop, 4 min ago"],
+          },
+        ],
+      },
+    },
+    calls: ["tessaya_whos_home"],
+    callsMustNot: ["tessaya_ask"],
+    replyMust: /kitchen/i,
+    replyMustNot: /\bstudy\b|\b(definitely|for sure|is certainly)\b/i,
   },
   {
     id: "outside-whos-home-control",

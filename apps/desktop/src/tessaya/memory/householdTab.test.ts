@@ -134,7 +134,9 @@ describe("the Household area", () => {
     t.tab.act("m.hh.role:sara-1", "child");
     t.tab.act("m.hh.member:sara-1", null);
     await t.settle();
-    const ops = t.calls.map(([op]) => op).filter((op) => op !== "list" && op !== "preferences");
+    const ops = t.calls
+      .map(([op]) => op)
+      .filter((op) => !["list", "preferences", "home"].includes(op));
     expect(ops).toEqual(["setPreference", "hello", "stepUp", "setRole", "remove"]);
     expect(t.calls).toContainEqual(["stepUp", { hello: "laptop\\rab" }]);
   });

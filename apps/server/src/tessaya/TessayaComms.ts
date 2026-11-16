@@ -29,6 +29,7 @@ import {
   trimForms,
 } from "@t3tools/tessaya-shared/comms";
 import { planDelivery, type DeliveryTarget } from "@t3tools/tessaya-shared/commsDelivery";
+import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import {
   EMERGENCY_MAX_MS,
   EMERGENCY_REPEAT_MS,
@@ -379,10 +380,11 @@ export const make = Effect.gen(function* () {
         caps: commsCaps(d),
         personalOf: personalOf(d),
       })),
+      // Followed to the vessel they are placed at past the bar, from every presence signal (B-043).
       presence: heard.flatMap((h) =>
-        h.heard === null
+        h.nearest === null || h.nearest.confidence < PRESENCE_BARS.present
           ? []
-          : [{ member: h.member, vessel: h.heard.vessel, minutesAgo: h.heard.minutesAgo }],
+          : [{ member: h.member, vessel: h.nearest.vessel, minutesAgo: 0 }],
       ),
       quietNow: inQuietHours(yield* Clock.currentTimeMillis, yield* quietHours),
       dnd,

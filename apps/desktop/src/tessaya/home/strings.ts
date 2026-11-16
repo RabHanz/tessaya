@@ -216,6 +216,12 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "ic.alarm.ok": "Okay",
     "ic.alarm.false": "False alarm",
     "hh.section": "Household",
+    "hh.here.section": "Who's here",
+    "hh.here.label": "Where she thinks each of you is",
+    "hh.here.privacy":
+      "A guess from your voice, your own devices, a Tessel being picked up and your desktop locking. Her own lines go only to the device you're nearest; otherwise she stays quiet. Kept on this server, in memory, forgotten within a day. No camera unless you turn on the face check.",
+    "hh.here.near": "{name}: near {vessel} ({pct}% sure)",
+    "hh.here.around": "{name}: around, not placed ({pct}% sure)",
     "hh.hint":
       "Who lives here and what each person may do. Adding someone gives them a code for their own phone; then they enrol their voice here.",
     "hh.role.owner": "Owner",

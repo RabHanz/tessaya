@@ -45,6 +45,7 @@ import * as TessayaHousehold from "./TessayaHousehold.ts";
 import * as TessayaComms from "./TessayaComms.ts";
 import * as VoiceForgets from "./VoiceForgets.ts";
 import * as MemberPreferences from "./MemberPreferences.ts";
+import * as TessayaPresence from "./TessayaPresence.ts";
 import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
 import * as TurnPools from "./TurnPools.ts";
@@ -308,6 +309,8 @@ const servicesInner = IntentService.layer.pipe(
   Layer.provideMerge(
     Layer.mergeAll(
       MemberPreferences.layer,
+      // Where each member is, from every vessel's signals (B-043): the turn, comms, job news and the Tessels share it.
+      TessayaPresence.layer,
       expressionLayer,
       CurrentPersona.layer,
       // Her mood per persona (CS6): the turn writes it, every vessel's face and words read it.

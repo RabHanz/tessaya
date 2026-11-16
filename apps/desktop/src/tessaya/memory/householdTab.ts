@@ -210,6 +210,8 @@ export const householdControls = (s: {
   readonly prefs: Readonly<Record<string, string>>;
   /** This computer's Windows account, on Windows. */
   readonly windowsAccount?: string;
+  /** Where each member likely is and why (B-043). */
+  readonly presence?: TessayaHouseholdCallResult["presence"];
 }): ReadonlyArray<HomeControl> => {
   const section = text("hh.section");
   const rows: Array<HomeControl> = [];
@@ -315,6 +317,31 @@ export const householdControls = (s: {
       status: "ok",
       detail: text("hh.code.until", { at: time(s.code.until) }),
     });
+  const here = text("hh.here.section");
+  rows.push({
+    id: "m.hh.here",
+    section: here,
+    label: text("hh.here.label"),
+    kind: "check",
+    status: "ok",
+    detail: text("hh.here.privacy"),
+  });
+  for (const p of s.presence ?? [])
+    rows.push({
+      id: `m.hh.here:${p.id}`,
+      section: here,
+      label:
+        p.nearest === null
+          ? text("hh.here.around", { name: p.name, pct: String(Math.round(p.confidence * 100)) })
+          : text("hh.here.near", {
+              name: p.name,
+              vessel: p.nearest.name,
+              pct: String(Math.round(p.nearest.confidence * 100)),
+            }),
+      kind: "check",
+      status: p.confidence >= 0.6 ? "ok" : "warn",
+      detail: p.reasons.join("; "),
+    });
   if (s.status !== null)
     rows.push({
       id: "m.hh.status",
@@ -375,6 +402,7 @@ export const createHouseholdTab = (input: {
   let confirmNow: string | null = null;
   let prefsFor: string | null = null;
   let prefs: Readonly<Record<string, string>> = {};
+  let presence: TessayaHouseholdCallResult["presence"] = [];
 
   const load = async () => {
     try {
@@ -388,6 +416,7 @@ export const createHouseholdTab = (input: {
         prefsFor === null
           ? {}
           : ((await input.call("preferences", { id: prefsFor })).preferences ?? {});
+      presence = (await input.call("home")).presence ?? [];
     } catch (e) {
       status = e instanceof Error ? e.message : text("hh.failed");
     }
@@ -428,6 +457,7 @@ export const createHouseholdTab = (input: {
         peers,
         prefsFor,
         prefs,
+        presence,
         ...(input.windowsAccount === undefined ? {} : { windowsAccount: input.windowsAccount }),
       }),
     /** Handles a click on one of its controls; false when the id is not its own. */
