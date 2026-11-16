@@ -67,20 +67,32 @@ describe("the vocabulary", () => {
     // Back from the server: a word taught on his phone arrives, one removed there goes, its derived names stay out.
     const server = [
       { phrase: "Grafana", replacement: null, source: "added" },
-      { phrase: "onnyx", replacement: null, source: "learned", count: 1, heard: ["Onyx"] },
+      {
+        phrase: "Brightwell",
+        replacement: null,
+        source: "learned",
+        count: 1,
+        heard: ["Bright well"],
+      },
       { phrase: "Freya", replacement: null },
     ];
     expect(fromServer(edited, edited, server)).toEqual({
       next: [
         { phrase: "Grafana", replacement: null, source: "added", count: 1 },
-        { phrase: "onnyx", replacement: null, source: "learned", count: 1, heard: ["Onyx"] },
+        {
+          phrase: "Brightwell",
+          replacement: null,
+          source: "learned",
+          count: 1,
+          heard: ["Bright well"],
+        },
       ],
       push: false,
     });
     // His own change not yet on the server: kept, and sent with the server's words.
     const pending = fromServer(edited, start, server);
     expect(pending.push).toBe(true);
-    expect(pending.next.map((e) => e.phrase)).toEqual(["kube", "Grafana", "onnyx"]);
+    expect(pending.next.map((e) => e.phrase)).toEqual(["kube", "Grafana", "Brightwell"]);
   });
 
   it("forgets what Tessaya learned and keeps what he added", () => {
