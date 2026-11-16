@@ -714,7 +714,15 @@ export const make = Effect.gen(function* () {
   const forget = Effect.fn("BatonMemoryService.forget")(function* (id: string) {
     const item = yield* read(id);
     if (item === null || !(yield* viewFor(undefined, true))(item)) return false;
-    yield* remove(id, yield* nowIso);
+    const at = yield* nowIso;
+    // An understanding's earlier wordings carry the same facts, and the next rewrite reads them: they go together.
+    const chain =
+      item.kind === "understanding"
+        ? yield* sql<{ id: string }>`
+            SELECT id FROM fabric_memory_items WHERE kind = 'understanding' AND scope_ref IS ${item.scopeRef}
+          `.pipe(Effect.orDie)
+        : [];
+    for (const each of new Set([id, ...chain.map((r) => r.id)])) yield* remove(each, at);
     return true;
   });
 

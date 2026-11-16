@@ -30,6 +30,7 @@ import {
 import { createTextEdit } from "../writing/textEdit.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
+import { deskAction, settingsSaved } from "../deskAction.ts";
 import { PACK_FOLDER, readOwnerFiles, readPack, readTemplates } from "../pack/packRows.ts";
 import { ownerLine } from "@t3tools/tessaya-shared/ownerProfile";
 import { templateFrame } from "@t3tools/tessaya-shared/jobTemplates";
@@ -814,6 +815,7 @@ export const startScreenCompanion = (input: {
   };
   let settings = read();
   const save = (next: Partial<ScreenSettings>) => {
+    settingsSaved(input.direct, "desktop.screen", settings, next);
     settings = { ...settings, ...next };
     writeJsonFile(settingsPath, changedFrom(settings, DEFAULTS));
     input.onChange?.();
@@ -2511,6 +2513,8 @@ export const startScreenCompanion = (input: {
   // The assistant's last numbered tree: a click by number is refused once any other caller numbered a list.
   let lastTree: number | undefined;
   const toolHost: ToolHost = {
+    acted: (tool, outcome) =>
+      deskAction(input.direct, { kind: "desk.tool", subject: tool, outcome }),
     // The index lives on one server (D5); this machine's server answers from it or from the paired peer that holds it.
     history: async (ask) => {
       if (input.direct === undefined) return "The history index is not available here.";
