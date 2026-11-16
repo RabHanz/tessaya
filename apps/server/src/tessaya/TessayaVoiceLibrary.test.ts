@@ -156,6 +156,7 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
                   energy: 0.5,
                   awayHours: null,
                   guilt: "off" as const,
+                  why: [],
                 };
               }),
             note: () => Effect.void,
