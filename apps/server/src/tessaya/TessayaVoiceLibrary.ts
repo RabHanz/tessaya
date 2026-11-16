@@ -7,6 +7,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
+import * as NodeModule from "node:module";
 import * as NodePath from "node:path";
 import * as NodeStream from "node:stream";
 import * as NodeStreamPromises from "node:stream/promises";
@@ -46,7 +47,9 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import { CAMPLUS_POLICY, cosine, createSpeakerEmbedder } from "@t3tools/tessaya-voice";
+import { fbank } from "@t3tools/tessaya-voice/fbank";
+import { CAMPLUS_POLICY, cosine, unitOrNull } from "@t3tools/tessaya-voice/speaker";
+import type * as Ort from "onnxruntime-node";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -266,13 +269,22 @@ const cloneConfig = async (files: PocketFiles, weights: string): Promise<string>
 const oneSpeaker = async (modelsDir: string, pcm: Pcm): Promise<boolean | null> => {
   const model = NodePath.join(modelsDir, SPEAKER_MODEL_FILE);
   if (!NodeFS.existsSync(model)) return null;
-  const embedder = await createSpeakerEmbedder(model, "clone-check", 1);
+  // Resolved from disk, as TessayaMemoryEmbedder does: the server's single executable cannot import it.
+  const ort = NodeModule.createRequire(import.meta.url)("onnxruntime-node") as typeof Ort;
+  const session = await ort.InferenceSession.create(model, { intraOpNumThreads: 1 });
+  const embed = async (part: Int16Array) => {
+    const { frames, data } = fbank(part);
+    if (frames === 0) return null;
+    const out = await session.run({
+      [session.inputNames[0]!]: new ort.Tensor("float32", data, [1, frames, 80]),
+    });
+    return unitOrNull(Float32Array.from(Object.values(out)[0]!.data as Float32Array));
+  };
   const mono = resample(pcm, 16_000);
   const half = Math.floor(mono.length / 2);
-  const [a, b] = await Promise.all([
-    embedder.embed(mono.subarray(0, half)),
-    embedder.embed(mono.subarray(half)),
-  ]);
+  const a = await embed(mono.subarray(0, half));
+  const b = await embed(mono.subarray(half));
+  await session.release();
   return a === null || b === null ? null : cosine(a, b) >= CAMPLUS_POLICY.single.steer;
 };
 
