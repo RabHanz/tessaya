@@ -99,6 +99,8 @@ export const intercomControls = (s: {
           hint: text("ic.enabled.hint"),
           kind: "toggle",
           on: set.enabled,
+          // Turning it on by voice waits for his yes either way; intercom_switch turns it off at once.
+          voice: "owner",
         }
       : {
           id: "ic.enabled",

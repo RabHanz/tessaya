@@ -20,25 +20,28 @@ const unavailable = new OrchestratorMcpFailure({
 const decode = Schema.decodeUnknownOption(CommsCallInput);
 type Args = Readonly<Record<string, unknown>>;
 
+/** Who a comms call is from: the turn's speaker, or the owner as a service for an agent outside a turn. */
+export const commsCaller = Effect.gen(function* () {
+  const origin = yield* TurnOrigin;
+  // An agent outside a turn acts for the owner as a service, at A0: it never reads a private note.
+  return origin === null
+    ? { member: "owner", service: true, assurance: 0 as const, via: "an agent" }
+    : {
+        member: origin.member ?? memberOfSpeaker(origin.speaker ?? null),
+        assurance: origin.assurance ?? voiceAssurance(origin.speaker ?? null),
+        tainted: origin.tainted === true,
+        via: `Tessaya via ${origin.label}`,
+      };
+});
+
 export const make = Effect.gen(function* () {
   const context = yield* TessayaRuntime;
   const run = Effect.fn("CommsMcp.run")(function* (raw: unknown) {
     if (context === null) return yield* unavailable;
     const input = decode(raw);
     if (Option.isNone(input)) return { status: "refused", line: "That request is not valid." };
-    const origin = yield* TurnOrigin;
-    // An agent outside a turn acts for the owner as a service, at A0: it never reads a private note.
-    const caller =
-      origin === null
-        ? { member: "owner", service: true, assurance: 0 as const, via: "an agent" }
-        : {
-            member: origin.member ?? memberOfSpeaker(origin.speaker ?? null),
-            assurance: origin.assurance ?? voiceAssurance(origin.speaker ?? null),
-            tainted: origin.tainted === true,
-            via: `Tessaya via ${origin.label}`,
-          };
     return yield* Effect.flatMap(TessayaComms, (c) => c.call(input.value)).pipe(
-      Effect.provideService(HouseholdCaller, caller),
+      Effect.provideService(HouseholdCaller, yield* commsCaller),
       Effect.provideContext(context),
     );
   });

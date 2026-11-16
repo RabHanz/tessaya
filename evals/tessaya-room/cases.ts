@@ -431,6 +431,30 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsAtMost: { tessaya_persona_handoff: 0 },
   },
   {
+    id: "parity-intercom-off",
+    source: "Director 16 Nov voice parity: the intercom switch had no voice path",
+    said: ["turn off the intercom"],
+    verified: true,
+    calls: ["intercom_switch"],
+    callsAtMost: { comms_dnd: 0, settings_set: 0 },
+  },
+  // Near miss: his own quiet time is do-not-disturb, not the home's intercom.
+  {
+    id: "parity-intercom-near-miss",
+    source: "Director 16 Nov voice parity: control for intercom_switch",
+    said: ["don't disturb me until three"],
+    verified: true,
+    callsAtMost: { intercom_switch: 0 },
+  },
+  {
+    id: "parity-memory-sync-on",
+    source: "Director 16 Nov voice parity: memory sync between servers had no voice path",
+    said: ["sync my memory across my servers"],
+    verified: true,
+    calls: ["memory_sync_switch"],
+    callsAtMost: { tessaya_memory_remember: 0 },
+  },
+  {
     id: "parity-env-providers",
     source: "Director 16 Nov voice parity (#1222): the server's upkeep had no voice path",
     said: ["is Codex signed in on this computer?"],
