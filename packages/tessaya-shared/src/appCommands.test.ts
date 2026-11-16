@@ -1,12 +1,19 @@
 import { STATIC_KEYBINDING_COMMANDS } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { APP_COMMAND_VOICE, appCommandAsks, appCommandLine, VOICED_APP_COMMANDS } from "./appCommands.ts";
+import {
+  APP_COMMAND_VOICE,
+  appCommandAsks,
+  appCommandLine,
+  VOICED_APP_COMMANDS,
+} from "./appCommands.ts";
 import { judgeToolCall } from "./operator.ts";
 
 describe("app commands by voice", () => {
   it("every app command has a voice line or says why it has none", () => {
-    expect(Object.keys(APP_COMMAND_VOICE).toSorted()).toEqual([...STATIC_KEYBINDING_COMMANDS].toSorted());
+    expect(Object.keys(APP_COMMAND_VOICE).toSorted()).toEqual(
+      [...STATIC_KEYBINDING_COMMANDS].toSorted(),
+    );
     for (const [command, entry] of Object.entries(APP_COMMAND_VOICE)) {
       if ("never" in entry) expect(entry.never.length, command).toBeGreaterThan(10);
       else expect(VOICED_APP_COMMANDS, command).toContain(command);
