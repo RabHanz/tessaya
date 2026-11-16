@@ -8,6 +8,7 @@ import { followOn } from "@t3tools/tessaya-shared/household";
 import {
   PRESENCE_FORGET_MS,
   fusePresence,
+  peopleAt,
   routeProactive,
   type PresenceSignal,
   type ProactiveKind,
@@ -31,6 +32,8 @@ export class TessayaPresence extends Context.Service<
     readonly note: (
       signal: Omit<PresenceSignal, "at"> & { readonly at?: number },
     ) => Effect.Effect<void>;
+    /** Drops one person's signals ("forget me"), or moves them onto `into` (two people found to be one). */
+    readonly forget: (member: string, into?: string) => Effect.Effect<void>;
     /** Every member's estimate from the kept signals plus these read-time ones (devices connected now). */
     readonly estimate: (
       extra?: ReadonlyArray<PresenceSignal>,
@@ -53,6 +56,7 @@ export const make = Effect.sync(() => {
       member: signal.member,
       source: signal.source,
       vessel: signal.vessel,
+      ...(signal.guest === true ? { guest: true } : {}),
       at: signal.at ?? now,
     });
     for (const [k, s] of kept)
@@ -64,7 +68,15 @@ export const make = Effect.sync(() => {
     const now = yield* Clock.currentTimeMillis;
     return { ...fusePresence([...kept.values(), ...extra], now), now };
   });
-  return TessayaPresence.of({ note, estimate });
+  const forget = (member: string, into?: string) =>
+    Effect.sync(() => {
+      for (const [k, s] of kept)
+        if (s.member === member) {
+          kept.delete(k);
+          if (into !== undefined) kept.set(keyOf({ ...s, member: into }), { ...s, member: into });
+        }
+    });
+  return TessayaPresence.of({ note, estimate, forget });
 });
 
 export const layer = Layer.effect(TessayaPresence, make);
@@ -98,4 +110,13 @@ export const whereToSay = Effect.fn("TessayaPresence.whereToSay")(function* (
   });
   yield* Effect.annotateCurrentSpan({ action: route.action, why: route.why });
   return route.action === "speak" ? route.vessel : null;
+});
+
+/** Who is at this vessel now, members and guests, surest first (`peopleAt`); nobody without the store. */
+export const peopleHere = Effect.fn("TessayaPresence.peopleHere")(function* (
+  vessel: string,
+  bar?: number,
+) {
+  const presence = yield* Effect.serviceOption(TessayaPresence);
+  return Option.isNone(presence) ? [] : peopleAt(yield* presence.value.estimate(), vessel, bar);
 });

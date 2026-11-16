@@ -1200,6 +1200,8 @@ const make = Effect.gen(function* () {
   // an empty retained message clears a member who has none left.
   const prefs = yield* Effect.serviceOption(MemberPreferences);
   const presence = yield* Effect.serviceOption(TessayaPresence);
+  /** Tessels with headphones linked now, so only a real disconnect cancels them. */
+  const phonesOn = new Set<string>();
   const sendPrefs = (ids: ReadonlyArray<string>, member: string, now: VoiceDefaults | null) =>
     Effect.forEach(ids, (id) => publish(id, `voice/prefs/${member}`, now ?? "", true), {
       discard: true,
@@ -1589,6 +1591,18 @@ const make = Effect.gen(function* () {
     // Picked up, moved, touched or pressed: someone is at this Tessel, not yet who (B-043).
     if (Option.isSome(presence) && HANDLED.has(tail))
       yield* presence.value.note({ member: null, source: "handled", vessel: result.id });
+    // Headphones on a Tessel's Bluetooth: its member is within range of it; off, they took them off (B-043).
+    if (Option.isSome(presence) && tail === "state/bt") {
+      const linked = heard.get(result.id)?.speaker?.linked ?? null;
+      const on = linked !== null && closedKind((yield* kindsOf(result.id)).get(linked));
+      // shortcut: a Tessel names no member, so its headphones are the owner's; per-member once B-002 ties Tessels.
+      const member = (yield* registry.get(result.id))?.member ?? OWNER_MEMBER_ID;
+      if (on) yield* presence.value.note({ member, source: "headphones", vessel: result.id });
+      else if (phonesOn.has(result.id))
+        yield* presence.value.note({ member, source: "headphonesOff", vessel: null });
+      if (on) phonesOn.add(result.id);
+      else phonesOn.delete(result.id);
+    }
     const seen = motionSeen.get(result.id) ?? freshSeen();
     motionSeen.set(result.id, seen);
     if (result.cameOnline) {
@@ -1780,7 +1794,7 @@ const make = Effect.gen(function* () {
     for (const k of knownFrom(yield* registry.value(id, "bt.known")))
       kinds.set(k.mac.toUpperCase(), k.kind);
     const saved = heard.get(id)?.speaker?.saved;
-    if (saved != null && !kinds.has(saved.mac.toUpperCase()))
+    if (saved != null && kinds.get(saved.mac.toUpperCase()) === undefined)
       kinds.set(saved.mac.toUpperCase(), saved.kind);
     return kinds;
   });

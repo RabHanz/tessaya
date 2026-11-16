@@ -190,9 +190,15 @@ export const originOf = (turn: TurnEnvelope) => ({
 export const NOT_HIS_VOICE_TO_FORGET =
   "I can forget that only when I know it's your voice. You can forget it in Memory on your desktop or phone.";
 
+/** How a guest reads in "who's here": the people graph names them only to the owner. */
+const GUEST_NAME = "a guest";
+
 /** One member she has lately heard, or whose devices are connected, and which of the two backs the guess. */
 export interface WhoIsHome {
+  /** A member id, or a guest's people-graph id. */
   readonly member: string;
+  /** Someone she heard who is no member: present, never named or followed here. */
+  readonly guest: boolean;
   readonly name: string;
   /** Last verified voice or own-device turn: where (the vessel, "Tessel", "desktop"), its id, and how long ago. */
   readonly heard: {
@@ -818,7 +824,7 @@ export const make = Effect.gen(function* () {
     const names: string[] = [];
     for (const p of (yield* presence.estimate()).members)
       if (p.confidence >= PRESENCE_BARS.around)
-        names.push((yield* memberName(p.member)) ?? p.member);
+        names.push(p.guest ? GUEST_NAME : ((yield* memberName(p.member)) ?? p.member));
     return hereLine(device, names);
   });
 
@@ -998,15 +1004,19 @@ export const make = Effect.gen(function* () {
       const d = devices.get(p.member);
       const heard = p.evidence.find((e) => e.source === "voice" || e.source === "typed");
       const reasons: Array<string> = [];
-      for (const e of p.evidence)
-        reasons.push(presenceReason(e, e.vessel === null ? null : yield* vesselName(e.vessel)));
+      for (const e of p.evidence) {
+        const reason = presenceReason(e, e.vessel === null ? null : yield* vesselName(e.vessel));
+        reasons.push(p.guest ? reason.replace(/\byour\b/, "their") : reason);
+      }
       out.push({
         member: p.member,
-        name:
-          (yield* preferencesOf(p.member)).name ??
-          d?.name ??
-          (yield* memberName(p.member)) ??
-          p.member,
+        guest: p.guest,
+        name: p.guest
+          ? GUEST_NAME
+          : ((yield* preferencesOf(p.member)).name ??
+            d?.name ??
+            (yield* memberName(p.member)) ??
+            p.member),
         heard:
           heard === undefined || heard.vessel === null
             ? null

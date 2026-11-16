@@ -25,6 +25,7 @@ import {
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { clockLine, clockStyleOf } from "@t3tools/tessaya-shared/brain";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
+import { memberOfSpeaker } from "@t3tools/tessaya-shared/household";
 import { REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import {
   DEFAULT_OS_PACK,
@@ -56,6 +57,7 @@ import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaVocabulary } from "../tessaya/TessayaVocabulary.ts";
 import { TessayaTurn, moodMember, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
+import { peopleHere } from "../tessaya/TessayaPresence.ts";
 import { replyFor } from "../tessaya/PersonaLayers.ts";
 import {
   type ActOutcome,
@@ -724,9 +726,15 @@ const r1Route = Effect.fn("R1Device.route")(function* (input: R1Heard, text: str
   // No hub here (the Agora bridge, a replay): there are no outputs to choose between.
   if (Option.isNone(devices) || isReplay(input)) return text;
   const s = speakerOf(input.voice);
-  const alone =
-    s?.kind === "owner" && s.verified && !s.inherited && (segmentsOf(input.voice)?.length ?? 1) < 2;
   if (input.device === undefined) return text === null ? null : PRIVATE_HELD_LINE;
+  // Alone: his verified voice the only one in this turn, and nobody else, member or guest, placed here (B-043).
+  const me = memberOfSpeaker(s ?? null);
+  const alone =
+    s?.kind === "owner" &&
+    s.verified &&
+    !s.inherited &&
+    (segmentsOf(input.voice)?.length ?? 1) < 2 &&
+    (yield* peopleHere(input.device)).every((p) => p.member === me);
   if (text === null) {
     yield* devices.value.routeReply(input.device, alone ? "personal" : "normal", alone);
     return null;

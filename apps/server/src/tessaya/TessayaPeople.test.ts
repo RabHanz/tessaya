@@ -8,6 +8,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { layerMemory as TessayaDatabaseMemory } from "./TessayaDatabase.ts";
 import { layer as memoryLayer, TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { make, type PeopleCaller, TessayaPeople } from "./TessayaPeople.ts";
+import { layer as presenceLayer, peopleHere } from "./TessayaPresence.ts";
 
 const DIM = 16;
 const basis = (i: number) => {
@@ -31,6 +32,7 @@ const ADULT: PeopleCaller = { role: "adult", assurance: 2 };
 const GUEST: PeopleCaller = { role: null, assurance: 0 };
 
 const peopleLayer = Layer.effect(TessayaPeople, make).pipe(
+  Layer.provideMerge(presenceLayer),
   Layer.provideMerge(memoryLayer),
   Layer.provideMerge(TessayaDatabaseMemory),
 );
@@ -151,7 +153,10 @@ describe("TessayaPeople", () => {
         assert.strictEqual(split.status, "done");
         assert.lengthOf((yield* call({ op: "peopleList" }, OWNER)).people!, 2);
         // "Remember that's my cousin Ali": the last voice named, saved, and how he knows them.
-        yield* hear("tessel-1", ALI, "hi again");
+        yield* TestClock.adjust("1 second");
+        const again = yield* hear("tessel-1", ALI, "hi again");
+        // A guest counts as present where they were heard (B-043).
+        assert.deepInclude((yield* peopleHere("tessel-1"))[0], { member: again.id, guest: true });
         const named = yield* call(
           {
             op: "peopleManage",

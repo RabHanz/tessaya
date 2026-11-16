@@ -679,7 +679,14 @@ export const deskReport = (body: unknown) => {
       : [],
   };
 };
-const DESK_SIGNALS = new Set(["screenLocked", "sleep", "call", "screenShared", "recording"]);
+const DESK_SIGNALS = new Set([
+  "screenLocked",
+  "sleep",
+  "idle",
+  "call",
+  "screenShared",
+  "recording",
+]);
 
 /**
  * Who is near a vessel, for a layer's Tessel rule: "alone" only when the owner is the one member likely home and is
@@ -768,13 +775,18 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       const desk = deskReport(body);
       if (desk.key !== null) deviceKey = desk.key;
       for (const kind of desk.signals) for (const l of registry.value.all) l.signal({ kind });
-      // A locked or sleeping desktop: they stepped away from it (B-043).
-      if (caller.member !== null && desk.signals.some((k) => k === "screenLocked" || k === "sleep"))
+      // A locked, sleeping or long-idle desktop: they stepped away from it (B-043).
+      const away = desk.signals.some((k) => k === "screenLocked" || k === "sleep")
+        ? "deskAway"
+        : desk.signals.includes("idle")
+          ? "deskIdle"
+          : null;
+      if (caller.member !== null && away !== null)
         yield* Effect.serviceOption(TessayaPresence).pipe(
           Effect.flatMap(
             Option.match({
               onNone: () => Effect.void,
-              onSome: (p) => p.note({ member: caller.member, source: "deskAway", vessel: null }),
+              onSome: (p) => p.note({ member: caller.member, source: away, vessel: null }),
             }),
           ),
         );

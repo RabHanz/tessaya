@@ -596,6 +596,13 @@ export const startTessayaDesktop = Effect.gen(function* () {
       args.some((a) => a.startsWith(`${TESSAYA_SCHEME}://layer`));
     Electron.powerMonitor.on("lock-screen", () => void layerLink.signal("screenLocked"));
     Electron.powerMonitor.on("suspend", () => void layerLink.signal("sleep"));
+    // Five minutes untouched: they stepped away (presence, B-043). Electron has no idle event, so a cheap minute check.
+    let idle = false;
+    setInterval(() => {
+      const now = Electron.powerMonitor.getSystemIdleState(300) === "idle";
+      if (now && !idle) void layerLink.signal("idle");
+      idle = now;
+    }, 60_000).unref();
     // His sentence through the one brain on this machine's server (SPINE-UNIFY S4): her words as they stream.
     const deskTurn = async (
       body: unknown,
