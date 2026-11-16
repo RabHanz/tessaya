@@ -1097,6 +1097,21 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_cast"],
   },
   {
+    // Read only: her action log.
+    id: "activity-recent",
+    proves: ["tessaya_activity"],
+    said: ["What did you do in the last hour?"],
+    uses: [["tessaya_activity"]],
+    clean: ["tessaya_activity"],
+  },
+  {
+    // Read only: "status" starts no group.
+    id: "group-status",
+    proves: ["tessaya_group"],
+    said: ["Who is in the group conversation right now?"],
+    uses: [["tessaya_group"]],
+  },
+  {
     id: "memory-about",
     proves: ["tessaya_memory_about"],
     said: ["What do you know about my dentist?"],
