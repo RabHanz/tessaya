@@ -410,7 +410,8 @@ describe("answering only when he is talking to her", () => {
     expect(voices.at(-1)).toBe("eve");
     expect(
       t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload)),
-    ).toEqual(['{"name":"alfred"}', '{"name":"tessaya"}']);
+      // No acknowledgement here, so the sweep asks for Alfred's look again.
+    ).toEqual(['{"name":"alfred"}', '{"name":"alfred"}', '{"name":"tessaya"}']);
   });
 
   it("does not chain into a conversation with the room (19:05, 12 Nov): audio alone opens nothing, a stray 'yeah' extends nothing", async () => {
