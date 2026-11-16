@@ -118,10 +118,15 @@ export function clientRpcRequiredScopes(
         ? [AuthOrchestrationReadScope, AuthTessayaCloudApproveScope]
         : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   }
-  if (method === VOICE_CALL)
-    return (input as { kind?: unknown } | undefined)?.kind === "read"
+  // Cloning a voice, and speaking in a clone, is the owner's: the approval scope, as the devices' owner kind.
+  if (method === VOICE_CALL) {
+    const kind = (input as { kind?: unknown } | undefined)?.kind;
+    return kind === "read"
       ? [AuthOrchestrationReadScope]
-      : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
+      : kind === "owner"
+        ? [AuthOrchestrationReadScope, AuthTessayaCloudApproveScope]
+        : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
+  }
   if (method === PROMPT_LAB_CALL) return [AuthSettingsWriteScope];
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]

@@ -30,6 +30,7 @@ import {
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
+import { VoicePlayground } from "./VoicePlayground";
 
 const NO_CLOUD = "none";
 const voiceKey = (voice: Pick<LibraryVoiceView, "engine" | "id">) => `${voice.engine}:${voice.id}`;
@@ -58,7 +59,7 @@ export function VoiceLibrarySections() {
 function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
   const call = async (
-    kind: "read" | "act",
+    kind: "read" | "act" | "owner",
     op: string,
     args: Record<string, unknown> = {},
   ): Promise<TessayaVoiceCallResult> => {
@@ -155,6 +156,7 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
 
   return (
     <>
+      <VoicePlayground library={library} call={call} onChanged={refresh} />
       <SettingsSection id="voice-personas" title="Persona voices">
         <SettingsRow
           title="Who speaks in which voice"

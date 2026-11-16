@@ -410,10 +410,11 @@ export const missingTessayaScope = (
     desktopOnly.push(AuthOrchestrationOperateScope);
   else if (deviceKind === "owner") desktopOnly.push(AuthTessayaCloudApproveScope);
   else if (deviceKind !== undefined && deviceKind !== "read") return AuthOrchestrationOperateScope;
-  // A voice call likewise: listing and previews are reads, changing a voice or the key is operate.
+  // A voice call likewise: listing and previews are reads, changing a voice or the key is operate, a clone is owner.
   const voiceKind =
     tag === BATON_VOICE_WS_METHODS.call ? (fields as { kind?: unknown }).kind : undefined;
   if (voiceKind === "act") desktopOnly.push(AuthOrchestrationOperateScope);
+  else if (voiceKind === "owner") desktopOnly.push(AuthTessayaCloudApproveScope);
   else if (voiceKind !== undefined && voiceKind !== "read") return AuthOrchestrationOperateScope;
   return [...all, ...desktopOnly].find((scope) => !scopes.includes(scope)) ?? null;
 };

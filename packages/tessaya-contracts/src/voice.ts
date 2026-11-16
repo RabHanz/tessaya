@@ -1,8 +1,8 @@
 /**
  * The voice library (Settings → Voice, each persona's picker, the R1 and the phone): every voice this environment
  * can speak in, a preview line in any of them, and each persona's choice. One method whose `kind` sets the scope,
- * like the house's: `read` lists and previews; `act` changes a persona's voice, saves the Google key, or says a line
- * in a cloud voice.
+ * like the house's: `read` lists and previews; `act` changes a persona's voice, saves the Google key, or says a line;
+ * `owner` (the approval scope) clones a voice from his clip, keeps or deletes a clone, and speaks in one.
  */
 import * as Schema from "effect/Schema";
 
@@ -17,6 +17,14 @@ export const BATON_VOICE_READ_OPS = [
 ] as const;
 /** `claim`, `speaking` and `ended` are the voice arbiter's (one responder per utterance); `answerFrom` sets the primary. */
 /** `express` is a vessel's moment (her desktop body poked, thrown, moved) as the brain words it, in her persona. */
+/** Cloning needs his "my voice, or I have their permission" yes, recorded in the one consent store. */
+export const BATON_VOICE_OWNER_OPS = [
+  "clone",
+  "saveClone",
+  "deleteClone",
+  "say",
+  "setHfToken",
+] as const;
 export const BATON_VOICE_ACT_OPS = [
   "express",
   "setPersona",
@@ -79,7 +87,7 @@ export const VocabularyChange = Schema.Union([
 export type VocabularyChange = typeof VocabularyChange.Type;
 
 export const TessayaVoiceCallInput = Schema.Struct({
-  kind: Schema.Literals(["read", "act"]),
+  kind: Schema.Literals(["read", "act", "owner"]),
   op: Schema.String.check(Schema.isMaxLength(40)),
   args: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
@@ -122,6 +130,13 @@ export const PersonaVoiceRow = Schema.Struct({
 });
 export type PersonaVoiceRow = typeof PersonaVoiceRow.Type;
 
+export const SavedCloneView = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  createdAt: Schema.String,
+});
+export type SavedCloneView = typeof SavedCloneView.Type;
+
 export const VoiceLibraryView = Schema.Struct({
   pocket: Schema.Array(LibraryVoiceView),
   /** Null until a Google key is saved in Settings → APIs. */
@@ -130,11 +145,27 @@ export const VoiceLibraryView = Schema.Struct({
   /** Whether this environment can make a preview: Pocket's files are here, a Google key is saved. */
   previews: Schema.Struct({ pocket: Schema.Boolean, cloud: Schema.Boolean }),
   previewLine: Schema.String,
+  /** His saved clones whose consent stands, in this environment's own data and never synced; speaking is owner-only. */
+  clones: Schema.optionalKey(Schema.Array(SavedCloneView)),
+  /** Cloning here: Pocket is installed, and the gated cloning weights are already on this machine. */
+  cloning: Schema.optionalKey(Schema.Struct({ pocket: Schema.Boolean, weights: Schema.Boolean })),
 });
 export type VoiceLibraryView = typeof VoiceLibraryView.Type;
 
 export const VoiceClip = Schema.Struct({
   mime: Schema.Literal("audio/wav"),
   base64: Schema.String,
+  /** A cloned voice's line: synthetic speech, also stamped in the WAV's own INFO chunk. */
+  synthetic: Schema.optionalKey(Schema.Boolean),
 });
 export type VoiceClip = typeof VoiceClip.Type;
+
+/** A test voice made from his clip: try it, then save it under a name, or the next clone replaces it. */
+export const CloneResult = Schema.Struct({
+  id: Schema.String,
+  seconds: Schema.Number,
+  /** Null when this machine has no Voice ID model to check that the clip is one voice. */
+  oneSpeaker: Schema.NullOr(Schema.Boolean),
+  clip: VoiceClip,
+});
+export type CloneResult = typeof CloneResult.Type;

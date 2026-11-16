@@ -154,6 +154,18 @@ describe("who may import memory from a folder", () => {
     expect(
       missingTessayaScope(voice, [AuthOrchestrationReadScope], { ...preview, kind: "act" }),
     ).toBe(AuthOrchestrationOperateScope);
+    // Cloning a voice is the owner's: operate is not enough.
+    const clone = { kind: "owner", op: "clone", args: {} };
+    expect(missingTessayaScope(voice, AuthStandardClientScopes, clone)).toBe(
+      AuthTessayaCloudApproveScope,
+    );
+    expect(
+      missingTessayaScope(
+        voice,
+        [...AuthStandardClientScopes, AuthTessayaCloudApproveScope],
+        clone,
+      ),
+    ).toBeNull();
   });
 
   it("scopes a devices call by its kind: read looks, act operates, owner needs the approval scope", () => {
