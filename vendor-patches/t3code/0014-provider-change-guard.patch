@@ -78,10 +78,33 @@ index c64215ed26cd374b173de56d499e5debc3938265..69693f67f7b409610b1418fcac12b18d
            text: queuedMessage.text,
            attachments: queuedMessage.attachments,
 diff --git a/apps/mobile/src/state/use-thread-composer-state.ts b/apps/mobile/src/state/use-thread-composer-state.ts
-index a3a191d54cbd11f9aa69a6c5e38de84d5f6497c6..da94541f3c81186fa8c59328e49db5c613920c34 100644
+index a3a191d54cbd11f9aa69a6c5e38de84d5f6497c6..2fa81b9922010b70523f03bec133d11f19b4e74b 100644
 --- a/apps/mobile/src/state/use-thread-composer-state.ts
 +++ b/apps/mobile/src/state/use-thread-composer-state.ts
-@@ -808,6 +808,7 @@ export function useThreadComposerState(input: {
+@@ -8,6 +8,7 @@ import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
+ import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
+ import { threadSteersDuringCompaction } from "@t3tools/client-runtime/state/thread-workflows";
+ import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
++import { pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
+ import {
+   announcedRun,
+   isDetailBehindShell,
+@@ -319,7 +320,13 @@ export function useThreadComposerState(input: {
+   const selectedDraft = useComposerDraftSettings(selectedThreadKey);
+   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
+   const selectedThread = selectedThreadShell;
+-  const modelSelection = selectedDraft.modelSelection ?? selectedThread?.modelSelection ?? null;
++  const modelSelection = selectedThread
++    ? pinnedLiveSelection(
++        selectedThread.id,
++        selectedDraft.modelSelection ?? selectedThread.modelSelection,
++        selectedThread.modelSelection,
++      )
++    : (selectedDraft.modelSelection ?? null);
+   const serverConfig = selectedEnvironmentRuntime?.serverConfig;
+   const pendingHandoff = resolvePendingHandoff(
+     selectedThreadProjection?.projection,
+@@ -808,6 +815,7 @@ export function useThreadComposerState(input: {
        attachments,
        context: draft.context,
        modelSelection,
@@ -89,7 +112,7 @@ index a3a191d54cbd11f9aa69a6c5e38de84d5f6497c6..da94541f3c81186fa8c59328e49db5c6
        runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
        ...(compactBeforeSend
-@@ -929,6 +930,7 @@ export function useThreadComposerState(input: {
+@@ -929,6 +937,7 @@ export function useThreadComposerState(input: {
      cancelQueuedRunEdit,
      onRemoveQueuedEditAttachment,
      modelSelection,
@@ -1224,6 +1247,44 @@ index 66b2a9f6b3fd389370e8977521bb64389a1d6f7e..f9dd1500e292f985ee44b472dbce02ee
                runtimeMode,
                interactionMode: DEFAULT_INTERACTION_MODE,
                createdAt,
+diff --git a/packages/client-runtime/src/handoff.test.ts b/packages/client-runtime/src/handoff.test.ts
+index d2f5fb4e789033f471800acf8d0393287dede607..41009891a7fa171a4d1e2a665adc5bc07b537265 100644
+--- a/packages/client-runtime/src/handoff.test.ts
++++ b/packages/client-runtime/src/handoff.test.ts
+@@ -173,6 +173,20 @@ describe("pending context handoff", () => {
+       resolvePendingHandoff(projection, { instanceId: to, model: "target" }, providers),
+     ).toBeNull();
+   });
++  it("never shows on a thread answered by a live terminal session", () => {
++    const live = ProviderInstanceId.make("baton-live");
++    const liveThread = {
++      ...projection,
++      runs: [{ ...projection.runs[0]!, ...run("source", 1, live, "claude-code") }],
++    };
++    const providers = [
++      { instanceId: live, driver: "acpRegistry" },
++      { instanceId: to, driver: "claudeAgent" },
++    ] as unknown as ServerProvider[];
++    expect(
++      resolvePendingHandoff(liveThread, { instanceId: to, model: "claude-opus-5-5" }, providers),
++    ).toBeNull();
++  });
+ });
+ 
+ describe("model switch change", () => {
+diff --git a/packages/client-runtime/src/handoff.ts b/packages/client-runtime/src/handoff.ts
+index 48a1227429312f786b4ee34f370cd9de2099d990..9c98d57678b81e4cd3af769da7e2a8a592f1d6eb 100644
+--- a/packages/client-runtime/src/handoff.ts
++++ b/packages/client-runtime/src/handoff.ts
+@@ -39,6 +39,8 @@ export function resolvePendingHandoff(
+       (run.startedAt !== null || (run.status === "starting" && run.contextHandoffId !== null)),
+   )?.modelSelection;
+   if (from === undefined || selection == null) return null;
++  // A live terminal session (Tessaya's `baton-live`) keeps its own context; sends stay on it (pinnedLiveSelection).
++  if (from.instanceId === "baton-live") return null;
+   const source = providers.find((provider) => provider.instanceId === from.instanceId);
+   const target = providers.find((provider) => provider.instanceId === selection.instanceId);
+   const needsHandoff =
 diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
 index c6f5c8c34166ee7a3c8858de4c16c9bfdffcef57..f1163fc706e887aac0313807d24519e8ede8dd9d 100644
 --- a/packages/client-runtime/src/operations/commands.ts

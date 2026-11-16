@@ -173,6 +173,20 @@ describe("pending context handoff", () => {
       resolvePendingHandoff(projection, { instanceId: to, model: "target" }, providers),
     ).toBeNull();
   });
+  it("never shows on a thread answered by a live terminal session", () => {
+    const live = ProviderInstanceId.make("baton-live");
+    const liveThread = {
+      ...projection,
+      runs: [{ ...projection.runs[0]!, ...run("source", 1, live, "claude-code") }],
+    };
+    const providers = [
+      { instanceId: live, driver: "acpRegistry" },
+      { instanceId: to, driver: "claudeAgent" },
+    ] as unknown as ServerProvider[];
+    expect(
+      resolvePendingHandoff(liveThread, { instanceId: to, model: "claude-opus-5-5" }, providers),
+    ).toBeNull();
+  });
 });
 
 describe("model switch change", () => {
