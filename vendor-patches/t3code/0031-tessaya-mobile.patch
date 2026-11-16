@@ -179,7 +179,7 @@ index d20d199119b051799bf36797e0898787d2faf02f..95cb0e9f71064a98bca794e241c5cd56
        const imageSetDir = path.join(catalogDir, IMAGE_SET);
        fs.mkdirSync(imageSetDir, { recursive: true });
 diff --git a/apps/mobile/src/App.tsx b/apps/mobile/src/App.tsx
-index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..c4e7d3c6d8c7e9571069f98f4032be636066a598 100644
+index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..354a35cb6b6b2c08996e8b19ed44826ac7f043ef 100644
 --- a/apps/mobile/src/App.tsx
 +++ b/apps/mobile/src/App.tsx
 @@ -24,6 +24,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
@@ -190,7 +190,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..c4e7d3c6d8c7e9571069f98f4032be63
  import * as Dialog from "./components/ui/Dialog";
  import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
  import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
-@@ -104,6 +105,10 @@ import {
+@@ -104,6 +105,11 @@ import {
  import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
  import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
  import { installAppUpdateChecks } from "./features/updates/app-updates";
@@ -198,10 +198,11 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..c4e7d3c6d8c7e9571069f98f4032be63
 +  TessayaLaunchSting,
 +  markTessayaLaunchReady,
 +} from "./features/tessaya/launch/TessayaLaunchSting";
++import { TessayaWelcome } from "./features/tessaya/welcome/TessayaWelcome";
  
  import "../global.css";
  
-@@ -248,6 +253,7 @@ function SplashScreenCoordinator() {
+@@ -248,6 +254,7 @@ function SplashScreenCoordinator() {
      hidden.current = true;
      settleLaunchSplashHomeRows();
      void SplashScreen.hide();
@@ -209,7 +210,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..c4e7d3c6d8c7e9571069f98f4032be63
    }, [isReady, shellCachesRead, homeRowsPending, waitEnded]);
  
    return null;
-@@ -297,6 +303,7 @@ function AppContent() {
+@@ -297,13 +304,16 @@ function AppContent() {
                  />
                  <Dialog.Host />
                  <ThreadArrangementHost />
@@ -217,7 +218,8 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..c4e7d3c6d8c7e9571069f98f4032be63
                  <ProjectChipIconRasterizer />
                </NativeLayoutMetricsProvider>
              </GlobalVoiceInputControl>
-@@ -304,6 +311,7 @@ function AppContent() {
+             <OverlayPortalHost />
++            <TessayaWelcome />
            </SafeAreaProvider>
          </KeyboardProvider>
        </GestureHandlerRootView>
@@ -435,10 +437,10 @@ index 0750705315fa2aead4296c31931854df5b8bcfe5..12bcef06ba2965b24a82522eaa6b3788
 +  return [trimmed];
  }
 diff --git a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
-index 096513c0e0a3c191cfc5adf2cd109a67c8dcdb63..93ae250910a122500bf4a93e6f16eafe07d7595f 100644
+index 096513c0e0a3c191cfc5adf2cd109a67c8dcdb63..65a0cb59fb7b32cd47334493d5da453d0e203c02 100644
 --- a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
-@@ -14,10 +14,13 @@ import {
+@@ -14,10 +14,14 @@ import {
    isAppUpdateCheckAvailable,
    registerHiddenUpdateTap,
    runAppUpdateCheck,
@@ -449,18 +451,21 @@ index 096513c0e0a3c191cfc5adf2cd109a67c8dcdb63..93ae250910a122500bf4a93e6f16eafe
  import { SettingsScreen } from "./components/SettingsScreen";
 +import { UpstreamCreditSection } from "./upstreamCredit";
 +import { IS_TESSAYA_APP } from "../../lib/tessayaBrand";
++import { MeetTessayaSection } from "../tessaya/welcome/TessayaWelcome";
  
  export function SettingsAboutRouteScreen() {
    const insets = useSafeAreaInsets();
-@@ -32,6 +35,7 @@ export function SettingsAboutRouteScreen() {
+@@ -31,7 +35,9 @@ export function SettingsAboutRouteScreen() {
+         contentContainerClassName="gap-6 px-5 pt-4"
          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
        >
++        <MeetTessayaSection />
          <AppSettingsSection />
 +        <UpstreamCreditSection />
        </ScrollView>
      </SettingsScreen>
    );
-@@ -53,7 +57,7 @@ function AppSettingsSection() {
+@@ -53,7 +59,7 @@ function AppSettingsSection() {
    // Match app.config.ts's production fallback to avoid mislabeling builds as development.
    const variant = (Constants.expoConfig?.extra?.appVariant as string | undefined) ?? "production";
    const variantLabel = variant === "production" ? "" : capitalize(variant);
@@ -469,7 +474,7 @@ index 096513c0e0a3c191cfc5adf2cd109a67c8dcdb63..93ae250910a122500bf4a93e6f16eafe
    const updateCheckAvailable = isAppUpdateCheckAvailable();
    const busy =
      updateState === "checking" || updateState === "downloading" || updateState === "restarting";
-@@ -127,7 +131,10 @@ function AppSettingsSection() {
+@@ -127,7 +133,10 @@ function AppSettingsSection() {
          label="Open source licenses"
          target="SettingsOpenSourceLicenses"
        />

@@ -40,6 +40,21 @@ export function markTessayaLaunchReady() {
   for (const listener of readyListeners) listener();
 }
 
+let handedOff = !IS_TESSAYA_APP;
+const handOffListeners = new Set<() => void>();
+const subscribeHandOff = (listener: () => void) => {
+  handOffListeners.add(listener);
+  return () => handOffListeners.delete(listener);
+};
+/** True once the sting starts fading out: what follows it can enter now. Reduced motion never plays it. */
+export function useTessayaStingHandedOff() {
+  return useSyncExternalStore(subscribeHandOff, () => handedOff);
+}
+function markHandedOff() {
+  handedOff = true;
+  for (const listener of handOffListeners) listener();
+}
+
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 /**
@@ -70,6 +85,7 @@ function Sting() {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fades the sting out (a Reanimated value) once the film and the app are both done
   useEffect(() => {
     if (!ready || !played) return;
+    markHandedOff();
     opacity.set(
       withTiming(0, { duration: FADE_MS }, (finished) => {
         if (finished) scheduleOnRN(setGone, true);
