@@ -1,0 +1,250 @@
+Tessaya: every app command by voice. The shortcut dispatcher runs a command by name (runCommand), and desktop menu
+actions go through one app-wide listener (registerMenuAction), so Tessaya's app_command reaches every keybinding.
+
+diff --git a/apps/web/src/components/AppSidebarLayout.tsx b/apps/web/src/components/AppSidebarLayout.tsx
+index e4f3d690113e5db8dd37354115f54f36ae987e1d..7baf41a47cacc9964160a1cdb4eb448f35d59a8e 100644
+--- a/apps/web/src/components/AppSidebarLayout.tsx
++++ b/apps/web/src/components/AppSidebarLayout.tsx
+@@ -359,12 +359,10 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
+     };
+ 
+     window.addEventListener("keydown", onKeyDown, true);
+-    const unsubscribe = window.desktopBridge?.onMenuAction((action) => {
+-      if (action === "sidebar.toggle") toggleSidebar();
+-    });
++    const unsubscribe = registerMenuAction("sidebar.toggle", toggleSidebar);
+     return () => {
+       window.removeEventListener("keydown", onKeyDown, true);
+-      unsubscribe?.();
++      unsubscribe();
+     };
+   }, [keybindings, showSidebar, toggleSidebar, usagePageOpen]);
+ 
+diff --git a/apps/web/src/components/ReopenClosedViewShortcut.tsx b/apps/web/src/components/ReopenClosedViewShortcut.tsx
+index dfb68fe27e80a0ed6029b4e7c1c3622a44be0169..dfefbcd9abdc0cf3574413942771d715b090ec96 100644
+--- a/apps/web/src/components/ReopenClosedViewShortcut.tsx
++++ b/apps/web/src/components/ReopenClosedViewShortcut.tsx
+@@ -42,6 +42,7 @@ import {
+   resolveThreadRouteTarget,
+ } from "../threadRoutes";
+ import { toastManager } from "./ui/toast";
++import { registerMenuAction } from "../shortcuts/dispatcher";
+ 
+ const PREVIEW_FORWARDED_COMMANDS = [
+   "workspace.focusNext",
+@@ -182,12 +183,12 @@ export function ReopenClosedViewShortcut() {
+       if (!event.repeat) enqueueReopen();
+     };
+     window.addEventListener("keydown", onKeyDown, true);
+-    const unsubscribe = window.desktopBridge?.onMenuAction((action) => {
+-      if (action === "view.reopenClosed" && !isCommandPaletteOpen()) enqueueReopen();
++    const unsubscribe = registerMenuAction("view.reopenClosed", () => {
++      if (!isCommandPaletteOpen()) enqueueReopen();
+     });
+     return () => {
+       window.removeEventListener("keydown", onKeyDown, true);
+-      unsubscribe?.();
++      unsubscribe();
+     };
+   }, [keybindings, previewOpen, terminalOpen]);
+ 
+diff --git a/apps/web/src/components/preview/PreviewView.browser.test.tsx b/apps/web/src/components/preview/PreviewView.browser.test.tsx
+index 2766cf6abf097d622d8ca1e4d1f7cd52c6000de8..9cb43f27e99c1c4fb3480289c257835ba81174f2 100644
+--- a/apps/web/src/components/preview/PreviewView.browser.test.tsx
++++ b/apps/web/src/components/preview/PreviewView.browser.test.tsx
+@@ -420,7 +420,7 @@ describe("PreviewView", () => {
+     );
+     await forward();
+     await expect.element(address).not.toHaveFocus();
+-    expect(listeners.size).toBe(0);
++    // One app-wide menu-action listener (shortcuts/dispatcher.ts) stays; a hidden view only drops its handler.
+   });
+ 
+   it("focuses the address bar each time the focus-url shortcut fires", async () => {
+diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
+index f7cb3082491e9270e191b10b9ca197543c717742..266dc7a2d4dbdd4c4d29de7f66347fa072cd3cdc 100644
+--- a/apps/web/src/components/preview/PreviewView.tsx
++++ b/apps/web/src/components/preview/PreviewView.tsx
+@@ -102,6 +102,7 @@ import {
+ import { stackedThreadToast, toastManager } from "~/components/ui/toast";
+ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+ import { observeResize } from "~/lib/observeResize";
++import { registerMenuAction } from "~/shortcuts/dispatcher";
+ 
+ interface Props {
+   threadRef: ScopedThreadRef;
+@@ -951,16 +952,18 @@ export function PreviewView({
+     const unsubscribeAction = subscribePreviewAction((action) => onPreviewAction(action));
+     // A focused page swallows its own keydowns, so the desktop forwards these
+     // shortcuts from the guest as menu actions instead.
+-    const unsubscribeMenu = window.desktopBridge?.onMenuAction((action) => {
+-      if (action === "preview.focusUrl") onPreviewAction("focus-url");
+-      if (action === "preview.zoomIn") onPreviewAction("zoom-in");
+-      if (action === "preview.zoomOut") onPreviewAction("zoom-out");
+-      if (action === "preview.resetZoom") onPreviewAction("reset-zoom");
+-      if (action === "preview.find") onPreviewAction("find");
+-    });
++    const unsubscribeMenu = (
++      [
++        ["preview.focusUrl", "focus-url"],
++        ["preview.zoomIn", "zoom-in"],
++        ["preview.zoomOut", "zoom-out"],
++        ["preview.resetZoom", "reset-zoom"],
++        ["preview.find", "find"],
++      ] as const
++    ).map(([command, action]) => registerMenuAction(command, () => onPreviewAction(action)));
+     return () => {
+       unsubscribeAction();
+-      unsubscribeMenu?.();
++      for (const unsubscribe of unsubscribeMenu) unsubscribe();
+     };
+   }, [visible]);
+ 
+diff --git a/apps/web/src/shortcuts/dispatcher.browser.test.ts b/apps/web/src/shortcuts/dispatcher.browser.test.ts
+index b9bf6c4e4b7d333f8fb53216d394f6970bf94b34..609a939cbb2bfdc1de1125143b2398432190753a 100644
+--- a/apps/web/src/shortcuts/dispatcher.browser.test.ts
++++ b/apps/web/src/shortcuts/dispatcher.browser.test.ts
+@@ -1,7 +1,24 @@
+ import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
+ import { describe, expect, it, vi } from "vite-plus/test";
+ 
+-import { dispatchMenuAction, registerCommands, registerMenuAction } from "./dispatcher";
++import { dispatchMenuAction, registerCommands, registerMenuAction, runCommand } from "./dispatcher";
++
++// The terminal and usage page listen for their own keys: a command run by name presses one.
++vi.mock(import("~/state/server"), async (original) => {
++  const actual = await original();
++  const { Atom } = await import("effect/reactivity");
++  const { compileResolvedKeybindingsConfig } = await import("@t3tools/shared/keybindings");
++  return {
++    ...actual,
++    primaryServerKeybindingsAtom: Atom.make(
++      compileResolvedKeybindingsConfig([
++        { key: "c", command: "usage.cost" },
++        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
++        { key: "mod+d", command: "diff.toggle", when: "!terminalFocus" },
++      ]),
++    ),
++  };
++});
+ 
+ function bindings(entries: ReadonlyArray<[string, KeybindingCommand]>): ResolvedKeybindingsConfig {
+   return entries.map(([key, command]) => ({
+@@ -144,4 +161,36 @@ describe("command dispatcher", () => {
+     expect(newer).toHaveBeenCalledOnce();
+     expect(older).toHaveBeenCalledOnce();
+   });
++
++  it("runs a command by name: the newest live scope, then a menu action, then a raw listener's own key", () => {
++    const older = vi.fn();
++    const newer = vi.fn();
++    const menu = vi.fn();
++    const raw = vi.fn((event: KeyboardEvent) => {
++      if (event.key === "c") event.preventDefault();
++    });
++    const diff = vi.fn();
++    using stack = new DisposableStack();
++    stack.defer(registerCommands({ "chat.new": older }, { keybindings }));
++    stack.defer(registerCommands({ "chat.new": newer }, { keybindings }));
++    stack.defer(registerCommands({ "chat.new": vi.fn() }, { keybindings, when: () => false }));
++    stack.defer(registerCommands({ "diff.toggle": diff }));
++    stack.defer(registerMenuAction("sidebar.toggle", menu));
++    window.addEventListener("keydown", raw);
++    stack.defer(() => window.removeEventListener("keydown", raw));
++
++    expect(runCommand("chat.new")).toBe(true);
++    expect(runCommand("sidebar.toggle")).toBe(true);
++    expect(runCommand("usage.cost")).toBe(true);
++    // Outside a terminal its key is the diff's: not pressed, and nothing open took it.
++    expect(runCommand("terminal.split")).toBe(false);
++    expect(runCommand("usage.open")).toBe(false);
++
++    expect(newer).toHaveBeenCalledOnce();
++    expect(older).not.toHaveBeenCalled();
++    expect(menu).toHaveBeenCalledOnce();
++    expect(raw).toHaveBeenCalledOnce();
++    expect(diff).not.toHaveBeenCalled();
++    expect(window.__t3RunCommand?.("chat.new")).toBe("ran");
++  });
+ });
+diff --git a/apps/web/src/shortcuts/dispatcher.ts b/apps/web/src/shortcuts/dispatcher.ts
+index 9e361e825db7fbff877cb3059e3fe0a48659b330..94e8feaa44b23e93df7c3060f7c3f91ccd8c48ab 100644
+--- a/apps/web/src/shortcuts/dispatcher.ts
++++ b/apps/web/src/shortcuts/dispatcher.ts
+@@ -2,6 +2,7 @@ import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/cont
+ 
+ import { resolveShortcutCommand, type ShortcutMatchContext } from "../keybindings";
+ import { isEditableFocused } from "../lib/editableFocus";
++import { isMacPlatform } from "../lib/utils";
+ import { isPreviewFocused } from "../lib/previewFocus";
+ import { isTerminalFocused } from "../lib/terminalFocus";
+ import { isModelPickerOpen } from "../modelPickerVisibility";
+@@ -153,6 +154,68 @@ function ensureMenuActionListener() {
+   bridge.onMenuAction(dispatchMenuAction);
+ }
+ 
++/**
++ * Runs a command by name, as its key would but without the key's focus context: the newest live scope with a handler
++ * for it, then a desktop menu action of that name. False when nothing open takes it.
++ */
++export function runCommand(command: string): boolean {
++  const event = new KeyboardEvent("keydown", { cancelable: true });
++  for (const scopes of [captureScopes, globalScopes]) {
++    for (let index = scopes.length - 1; index >= 0; index -= 1) {
++      const scope = scopes[index];
++      if (scope === undefined || (scope.options.when && !scope.options.when(event))) continue;
++      const handler = scope.commands[command as KeybindingCommand];
++      if (handler !== undefined && handler(event) !== false) return true;
++    }
++  }
++  const menu = menuActionHandlers.get(command)?.at(-1);
++  if (menu !== undefined) {
++    menu();
++    return true;
++  }
++  return pressBoundKey(command);
++}
++
++/**
++ * The rest listen for their key themselves (the terminal, the usage page): press a key bound to it, unless here that
++ * key runs another command. Handled when a listener took it.
++ */
++function pressBoundKey(command: string): boolean {
++  if (typeof document === "undefined") return false;
++  const keybindings = appAtomRegistry.get(primaryServerKeybindingsAtom);
++  const target = document.activeElement ?? document.body;
++  const mac = isMacPlatform(navigator.platform);
++  for (const rule of keybindings) {
++    if (rule.command !== command) continue;
++    const { shortcut } = rule;
++    const event = new KeyboardEvent("keydown", {
++      key: shortcut.key,
++      metaKey: shortcut.metaKey || (shortcut.modKey && mac),
++      ctrlKey: shortcut.ctrlKey || (shortcut.modKey && !mac),
++      shiftKey: shortcut.shiftKey,
++      altKey: shortcut.altKey,
++      bubbles: true,
++      cancelable: true,
++    });
++    const here = resolveShortcutCommand(event, keybindings, {
++      context: { ...readFocusContext(event), editableFocus: isEditableFocused(target) },
++    });
++    if (here !== null && here !== command) continue;
++    target.dispatchEvent(event);
++    return event.defaultPrevented;
++  }
++  return false;
++}
++
++declare global {
++  interface Window {
++    /** The desktop assistant's app_command runs commands through here. */
++    __t3RunCommand?: (command: string) => "ran" | "idle";
++  }
++}
++if (typeof window !== "undefined")
++  window.__t3RunCommand = (command) => (runCommand(command) ? "ran" : "idle");
++
+ /** Desktop menu actions; the newest handler for an action wins. */
+ export function registerMenuAction(action: string, handler: MenuActionHandler): () => void {
+   ensureMenuActionListener();

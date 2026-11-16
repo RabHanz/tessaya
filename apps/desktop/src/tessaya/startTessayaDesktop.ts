@@ -770,6 +770,15 @@ export const startTessayaDesktop = Effect.gen(function* () {
         platform: environment.platform,
         env: hostEnvironment,
         direct,
+        appCommand: async (command) => {
+          const main = await Effect.runPromiseWith(context)(desktopWindow.revealOrCreateMain);
+          // The web app installs this global (shortcuts/dispatcher.ts); an older one has none.
+          const result: unknown = await main.webContents.executeJavaScript(
+            `window.__t3RunCommand?.(${JSON.stringify(command)}) ?? "absent"`,
+            true,
+          );
+          return result === "ran" || result === "idle" ? result : "absent";
+        },
         deskTurn,
         privateMemory,
         speak: (text) => {

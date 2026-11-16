@@ -4,7 +4,7 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944dc50237d 100644
+index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..0a0d96a4eda65a0e5be5562f18545c1668bb2208 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -37,6 +37,7 @@ import { ThreadFind, ThreadFindCanvas } from "./chat/ThreadFindProvider";
@@ -15,7 +15,15 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
  import { isThreadEnvironmentLocked, resolveDraftHeroState } from "./ChatView.logic";
  import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
  import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
-@@ -353,7 +354,7 @@ import {
+@@ -158,6 +159,7 @@ import { buildThreadRouteParams } from "../threadRoutes";
+ import { useTheme } from "../hooks/useTheme";
+ import { copyThreadReference } from "../lib/copyThreadReference";
+ import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
++import { registerMenuAction } from "../shortcuts/dispatcher";
+ import { useMediaQuery } from "../hooks/useMediaQuery";
+ import { FileMetadataThreadProvider } from "../hooks/FileMetadataThreadProvider";
+ import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
+@@ -353,7 +355,7 @@ import {
    shouldRefocusComposerOnWindowFocus,
  } from "./ChatView.logic";
  import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -24,7 +32,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
  import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
  import { appAtomRegistry } from "../rpc/atomRegistry";
  import { assetEnvironment } from "../state/assets";
-@@ -404,6 +405,8 @@ type ChatViewProps =
+@@ -404,6 +406,8 @@ type ChatViewProps =
        threadId: ThreadId;
        onDiffPanelOpen?: () => void;
        reserveTitleBarControlInset?: boolean;
@@ -33,7 +41,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
        forceExpandedMobileComposer?: boolean;
        /** A side chat in its parent's right panel; the parent keeps the keyboard and workspace UI. */
        embedded?: SideChatParentPanel;
-@@ -415,6 +418,7 @@ type ChatViewProps =
+@@ -415,6 +419,7 @@ type ChatViewProps =
        threadId: ThreadId;
        onDiffPanelOpen?: () => void;
        reserveTitleBarControlInset?: boolean;
@@ -41,7 +49,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
        forceExpandedMobileComposer?: boolean;
        embedded?: never;
        routeKind: "draft";
-@@ -432,6 +436,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -432,6 +437,7 @@ export default function ChatView(props: ChatViewProps) {
      routeKind,
      onDiffPanelOpen,
      reserveTitleBarControlInset = true,
@@ -49,7 +57,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
      forceExpandedMobileComposer = false,
      embedded: parentPanel,
    } = props;
-@@ -509,7 +514,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -509,7 +515,10 @@ export default function ChatView(props: ChatViewProps) {
          });
    const promptRef = useRef("");
    const localComposerRef = useRef<ChatComposerHandle | null>(null);
@@ -61,7 +69,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
    const queuedRunEdit = useQueuedRunEdit({
      environmentId,
      routeThreadRef,
-@@ -1341,6 +1349,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1341,6 +1350,10 @@ export default function ChatView(props: ChatViewProps) {
      ],
      lockedProvider,
      lockedInstanceId: activeRuntime?.providerInstanceId ?? activeThreadModelInstanceId,
@@ -72,7 +80,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
    });
    const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
    const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
-@@ -1651,10 +1663,17 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1651,10 +1664,17 @@ export default function ChatView(props: ChatViewProps) {
      data: useAtomValue(gitStatusAtom ? chatGitStatusAtom(gitStatusAtom) : NO_CHAT_GIT_STATUS_ATOM),
      refresh: useEnvironmentQueryRefresh(gitStatusAtom).refresh,
    };
@@ -91,7 +99,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
      resourceKey: `git-status:${activeThreadKey ?? ""}:${gitStatusCwd ?? ""}`,
    });
    const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-@@ -1834,7 +1853,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1834,7 +1854,7 @@ export default function ChatView(props: ChatViewProps) {
    });
  
    const focusComposer = () => {
@@ -100,7 +108,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
    };
    const focusComposerStable = useStableCallback(focusComposer);
    const canInterruptRunningThread =
-@@ -2573,6 +2592,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2573,6 +2593,7 @@ export default function ChatView(props: ChatViewProps) {
      });
      return item ? [item] : [];
    });
@@ -108,7 +116,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
    const limitRecoveryBanner =
      limitRecoveryRun !== null && activeThreadShell !== null
        ? usageLimitRecoveryBannerItem({
-@@ -2640,7 +2660,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2640,7 +2661,9 @@ export default function ChatView(props: ChatViewProps) {
              }),
            ]
          : [];
@@ -119,15 +127,26 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
      const extensionStatusBanner = extensionStatusBannerItem(
        deriveProviderExtensionStatuses(serverProjection),
      );
-@@ -2789,12 +2811,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2787,14 +2810,19 @@ export default function ChatView(props: ChatViewProps) {
+   // A focused desktop browser page forwards these chords as menu actions.
+   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle the right panel
    useEffect(() => {
-     if (embedded) return;
-     return window.desktopBridge?.onMenuAction((action) => {
-+      if (backgroundThread) return;
-       if (action === "rightPanel.toggle") toggleRightPanelStable();
-       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
-     });
+-    if (embedded) return;
+-    return window.desktopBridge?.onMenuAction((action) => {
+-      if (action === "rightPanel.toggle") toggleRightPanelStable();
+-      else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
+-    });
 -  }, [embedded, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
++    if (embedded || backgroundThread) return;
++    const disposeToggle = registerMenuAction("rightPanel.toggle", toggleRightPanelStable);
++    const disposeMaximize = registerMenuAction(
++      "rightPanel.toggleMaximized",
++      toggleRightPanelMaximizedStable,
++    );
++    return () => {
++      disposeToggle();
++      disposeMaximize();
++    };
 +  }, [embedded, backgroundThread, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
  
 -  usePasteToFocusComposer(embedded ? null : activeThreadId, composerRef);
@@ -135,7 +154,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3289,8 +3312,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3289,8 +3317,10 @@ export default function ChatView(props: ChatViewProps) {
      />
    );
    const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
@@ -147,7 +166,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
        showMaximizeControl={!shouldUsePlanSidebarSheet}
        rightPanelOpen={rightPanelOpen}
        animationsActive={panelAnimationsActive}
-@@ -3318,7 +3343,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3318,7 +3348,9 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -158,7 +177,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3345,13 +3372,12 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3345,13 +3377,12 @@ export default function ChatView(props: ChatViewProps) {
                COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
              )}
            >
@@ -173,7 +192,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
              {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
-@@ -3369,6 +3395,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3369,6 +3400,9 @@ export default function ChatView(props: ChatViewProps) {
                  : {})}
                {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
              />
@@ -183,7 +202,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
            </header>
          )}
  
-@@ -3696,6 +3725,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3696,6 +3730,7 @@ export default function ChatView(props: ChatViewProps) {
                                  runtimeMode={runtimeMode}
                                  defaultRuntimeMode={defaultRuntimeMode}
                                  lockedProvider={modelPickerLockedProvider}
@@ -191,7 +210,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..b493963ffb7a09132f2fc10d5a771944
                                  providerStatuses={providerStatuses as ServerProvider[]}
                                  providerCatalogKnown={serverConfig !== null}
                                  activeProjectDefaultModelSelection={
-@@ -4049,7 +4079,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -4049,7 +4084,7 @@ export default function ChatView(props: ChatViewProps) {
        cwd={activeWorkspaceRoot}
        checkpoints={serverProjection?.checkpoints}
      >

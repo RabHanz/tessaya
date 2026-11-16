@@ -102,6 +102,7 @@ import {
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { observeResize } from "~/lib/observeResize";
+import { registerMenuAction } from "~/shortcuts/dispatcher";
 
 interface Props {
   threadRef: ScopedThreadRef;
@@ -951,16 +952,18 @@ export function PreviewView({
     const unsubscribeAction = subscribePreviewAction((action) => onPreviewAction(action));
     // A focused page swallows its own keydowns, so the desktop forwards these
     // shortcuts from the guest as menu actions instead.
-    const unsubscribeMenu = window.desktopBridge?.onMenuAction((action) => {
-      if (action === "preview.focusUrl") onPreviewAction("focus-url");
-      if (action === "preview.zoomIn") onPreviewAction("zoom-in");
-      if (action === "preview.zoomOut") onPreviewAction("zoom-out");
-      if (action === "preview.resetZoom") onPreviewAction("reset-zoom");
-      if (action === "preview.find") onPreviewAction("find");
-    });
+    const unsubscribeMenu = (
+      [
+        ["preview.focusUrl", "focus-url"],
+        ["preview.zoomIn", "zoom-in"],
+        ["preview.zoomOut", "zoom-out"],
+        ["preview.resetZoom", "reset-zoom"],
+        ["preview.find", "find"],
+      ] as const
+    ).map(([command, action]) => registerMenuAction(command, () => onPreviewAction(action)));
     return () => {
       unsubscribeAction();
-      unsubscribeMenu?.();
+      for (const unsubscribe of unsubscribeMenu) unsubscribe();
     };
   }, [visible]);
 

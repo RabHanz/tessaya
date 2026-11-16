@@ -202,6 +202,20 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["needs_me"],
   },
   {
+    id: "app-command-usage",
+    model: "haiku",
+    source: "Director 16 Nov voice parity: no keybinding command had a voice path",
+    said: "open the usage view",
+    first: ["app_command"],
+  },
+  {
+    id: "app-command-sidebar",
+    model: "haiku",
+    source: "Director 16 Nov voice parity: no keybinding command had a voice path",
+    said: "hide the sidebar in the sessions window",
+    first: ["app_command"],
+  },
+  {
     id: "needs-me",
     model: "haiku",
     source: "INT-4: the prompt sent 'what needs me' to fleet_status and needs_me at once",

@@ -2,6 +2,7 @@ import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/cont
 
 import { resolveShortcutCommand, type ShortcutMatchContext } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
+import { isMacPlatform } from "../lib/utils";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
@@ -152,6 +153,68 @@ function ensureMenuActionListener() {
   menuActionInstalled = true;
   bridge.onMenuAction(dispatchMenuAction);
 }
+
+/**
+ * Runs a command by name, as its key would but without the key's focus context: the newest live scope with a handler
+ * for it, then a desktop menu action of that name. False when nothing open takes it.
+ */
+export function runCommand(command: string): boolean {
+  const event = new KeyboardEvent("keydown", { cancelable: true });
+  for (const scopes of [captureScopes, globalScopes]) {
+    for (let index = scopes.length - 1; index >= 0; index -= 1) {
+      const scope = scopes[index];
+      if (scope === undefined || (scope.options.when && !scope.options.when(event))) continue;
+      const handler = scope.commands[command as KeybindingCommand];
+      if (handler !== undefined && handler(event) !== false) return true;
+    }
+  }
+  const menu = menuActionHandlers.get(command)?.at(-1);
+  if (menu !== undefined) {
+    menu();
+    return true;
+  }
+  return pressBoundKey(command);
+}
+
+/**
+ * The rest listen for their key themselves (the terminal, the usage page): press a key bound to it, unless here that
+ * key runs another command. Handled when a listener took it.
+ */
+function pressBoundKey(command: string): boolean {
+  if (typeof document === "undefined") return false;
+  const keybindings = appAtomRegistry.get(primaryServerKeybindingsAtom);
+  const target = document.activeElement ?? document.body;
+  const mac = isMacPlatform(navigator.platform);
+  for (const rule of keybindings) {
+    if (rule.command !== command) continue;
+    const { shortcut } = rule;
+    const event = new KeyboardEvent("keydown", {
+      key: shortcut.key,
+      metaKey: shortcut.metaKey || (shortcut.modKey && mac),
+      ctrlKey: shortcut.ctrlKey || (shortcut.modKey && !mac),
+      shiftKey: shortcut.shiftKey,
+      altKey: shortcut.altKey,
+      bubbles: true,
+      cancelable: true,
+    });
+    const here = resolveShortcutCommand(event, keybindings, {
+      context: { ...readFocusContext(event), editableFocus: isEditableFocused(target) },
+    });
+    if (here !== null && here !== command) continue;
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+  return false;
+}
+
+declare global {
+  interface Window {
+    /** The desktop assistant's app_command runs commands through here. */
+    __t3RunCommand?: (command: string) => "ran" | "idle";
+  }
+}
+if (typeof window !== "undefined")
+  window.__t3RunCommand = (command) => (runCommand(command) ? "ran" : "idle");
 
 /** Desktop menu actions; the newest handler for an action wins. */
 export function registerMenuAction(action: string, handler: MenuActionHandler): () => void {

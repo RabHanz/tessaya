@@ -753,6 +753,8 @@ export const startScreenCompanion = (input: {
   readonly env: NodeJS.ProcessEnv;
   /** This machine's own server, whether or not T3's window is up. */
   readonly direct?: (method: string, body: unknown) => Promise<unknown>;
+  /** One of the app's commands in T3's window (app_command). */
+  readonly appCommand?: (command: string) => Promise<"ran" | "idle" | "absent">;
   /** His sentence through the one brain on this machine's server; her words stream to `onWords`. */
   readonly deskTurn?: (
     body: unknown,
@@ -2805,6 +2807,7 @@ export const startScreenCompanion = (input: {
       return "Pressed.";
     },
     ...(input.direct === undefined ? {} : { threadSession: threadSessionVia(input.direct) }),
+    ...(input.appCommand === undefined ? {} : { appCommand: input.appCommand }),
     ...(input.direct === undefined ? {} : { shared: sharedVia(input.direct) }),
     sessions: async () => actions?.sessionsList?.() ?? "No sessions are listed here yet.",
     ...(input.catalog === undefined ? {} : { catalog: lateCatalog(input.catalog) }),

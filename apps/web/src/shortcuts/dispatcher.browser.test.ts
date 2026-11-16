@@ -1,7 +1,24 @@
 import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { dispatchMenuAction, registerCommands, registerMenuAction } from "./dispatcher";
+import { dispatchMenuAction, registerCommands, registerMenuAction, runCommand } from "./dispatcher";
+
+// The terminal and usage page listen for their own keys: a command run by name presses one.
+vi.mock(import("~/state/server"), async (original) => {
+  const actual = await original();
+  const { Atom } = await import("effect/reactivity");
+  const { compileResolvedKeybindingsConfig } = await import("@t3tools/shared/keybindings");
+  return {
+    ...actual,
+    primaryServerKeybindingsAtom: Atom.make(
+      compileResolvedKeybindingsConfig([
+        { key: "c", command: "usage.cost" },
+        { key: "mod+d", command: "terminal.split", when: "terminalFocus" },
+        { key: "mod+d", command: "diff.toggle", when: "!terminalFocus" },
+      ]),
+    ),
+  };
+});
 
 function bindings(entries: ReadonlyArray<[string, KeybindingCommand]>): ResolvedKeybindingsConfig {
   return entries.map(([key, command]) => ({
@@ -143,5 +160,37 @@ describe("command dispatcher", () => {
 
     expect(newer).toHaveBeenCalledOnce();
     expect(older).toHaveBeenCalledOnce();
+  });
+
+  it("runs a command by name: the newest live scope, then a menu action, then a raw listener's own key", () => {
+    const older = vi.fn();
+    const newer = vi.fn();
+    const menu = vi.fn();
+    const raw = vi.fn((event: KeyboardEvent) => {
+      if (event.key === "c") event.preventDefault();
+    });
+    const diff = vi.fn();
+    using stack = new DisposableStack();
+    stack.defer(registerCommands({ "chat.new": older }, { keybindings }));
+    stack.defer(registerCommands({ "chat.new": newer }, { keybindings }));
+    stack.defer(registerCommands({ "chat.new": vi.fn() }, { keybindings, when: () => false }));
+    stack.defer(registerCommands({ "diff.toggle": diff }));
+    stack.defer(registerMenuAction("sidebar.toggle", menu));
+    window.addEventListener("keydown", raw);
+    stack.defer(() => window.removeEventListener("keydown", raw));
+
+    expect(runCommand("chat.new")).toBe(true);
+    expect(runCommand("sidebar.toggle")).toBe(true);
+    expect(runCommand("usage.cost")).toBe(true);
+    // Outside a terminal its key is the diff's: not pressed, and nothing open took it.
+    expect(runCommand("terminal.split")).toBe(false);
+    expect(runCommand("usage.open")).toBe(false);
+
+    expect(newer).toHaveBeenCalledOnce();
+    expect(older).not.toHaveBeenCalled();
+    expect(menu).toHaveBeenCalledOnce();
+    expect(raw).toHaveBeenCalledOnce();
+    expect(diff).not.toHaveBeenCalled();
+    expect(window.__t3RunCommand?.("chat.new")).toBe("ran");
   });
 });
