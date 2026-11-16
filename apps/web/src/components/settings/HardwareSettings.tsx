@@ -47,6 +47,7 @@ import {
   btKindNoun,
   displaySupported,
   outputLabels,
+  privateClasses,
   scanLine,
   tesselHosts,
   type TesselSeen,
@@ -1133,6 +1134,14 @@ function SpeakerSection({
               outputs={s.outputs}
               disabled={off}
               onOrder={(order) => void run("act", "speaker", { id, action: "order", order })}
+              onPrivate={(o, on) =>
+                void run("act", "speaker", {
+                  id,
+                  action: "classes",
+                  target: o.id,
+                  classes: privateClasses(o, on),
+                })
+              }
             />
           </div>
         </SettingsRow>

@@ -9,6 +9,7 @@ import {
   R1_KEY_SLOTS,
   type BtKind,
   type DeviceOutputEntry,
+  type OutputClass,
   type DeviceSpeaker,
   type DeviceTagAction,
   type DeviceView,
@@ -89,6 +90,12 @@ export const moveOutput = (
   ids.splice(from, 1);
   ids.splice(to, 0, id);
   return ids;
+};
+
+/** Its classes with private on or off; the others as they are. */
+export const privateClasses = (o: DeviceOutputEntry, on: boolean): Array<OutputClass> => {
+  const rest = (o.classes ?? ["personal", "normal", "alerts"]).filter((c) => c !== "private");
+  return on ? ["private", ...rest] : rest;
 };
 
 export const outputLabel = (o: DeviceOutputEntry): string =>

@@ -49,6 +49,7 @@ import {
   OUTPUT_STATE_LINE,
   moveOutput,
   outputLabel,
+  privateClasses,
   scanLine,
 } from "@t3tools/tessaya-shared/deviceView";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -1384,6 +1385,19 @@ function SpeakerSection({
               disabled={off || i === all.length - 1}
               onPress={() =>
                 void run("act", "speaker", { id, action: "order", order: moveOutput(all, o.id, 1) })
+              }
+            />
+            <ControlPill
+              variant={o.classes?.includes("private") === true ? "primary" : "pill"}
+              label="Private replies"
+              disabled={off}
+              onPress={() =>
+                void run("act", "speaker", {
+                  id,
+                  action: "classes",
+                  target: o.id,
+                  classes: privateClasses(o, o.classes?.includes("private") !== true),
+                })
               }
             />
           </Row>

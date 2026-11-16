@@ -667,6 +667,31 @@ const r1Layer = Effect.fn("R1Device.layer")(function* (input: R1Heard) {
   );
 });
 
+/** Said on her speaker instead of a private reply no output may play now; it gives nothing away. */
+const PRIVATE_HELD_LINE = "I'll tell you when your headphones are on.";
+
+/**
+ * Puts the Tessel on an output tagged for this reply before it plays. A private reply (`text`) plays only where he
+ * tagged private outputs, open ones only when his verified voice is alone with her; otherwise it is held and the
+ * neutral line is said instead. Null `text`: an ordinary reply, personal when he is alone with her.
+ */
+const r1Route = Effect.fn("R1Device.route")(function* (input: R1Heard, text: string | null) {
+  const devices = yield* Effect.serviceOption(HomeDevices);
+  // No hub here (the Agora bridge, a replay): there are no outputs to choose between.
+  if (Option.isNone(devices) || isReplay(input)) return text;
+  const s = speakerOf(input.voice);
+  const alone =
+    s?.kind === "owner" && s.verified && !s.inherited && (segmentsOf(input.voice)?.length ?? 1) < 2;
+  if (input.device === undefined) return text === null ? null : PRIVATE_HELD_LINE;
+  if (text === null) {
+    yield* devices.value.routeReply(input.device, alone ? "personal" : "normal", alone);
+    return null;
+  }
+  if ((yield* devices.value.routeReply(input.device, "private", alone)) === "play") return text;
+  yield* devices.value.holdPrivate(input.device, text);
+  return PRIVATE_HELD_LINE;
+});
+
 export const r1Gather = Effect.fn("R1Device.gather")(function* (
   raw: R1Heard,
   withHouse = true,
@@ -943,7 +968,8 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
 /** One turn, whatever carried his words: the Agora bridge, or the room voice loop. */
 const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   const layered = yield* r1Layer(input);
-  if (layered !== null) return layered.text;
+  if (layered !== null) return (yield* r1Route(input, layered.text))!;
+  yield* r1Route(input, null);
   const { device, context, turn, names, justSpoke } = yield* r1Gather(input);
   const oneShot = yield* TessayaOneShot;
   const plan = yield* oneShot
@@ -1094,9 +1120,10 @@ export const r1TurnStream = (
     Effect.gen(function* () {
       const layered = yield* r1Layer(input);
       if (layered !== null) {
-        Queue.offerUnsafe(queue, layered.text);
+        Queue.offerUnsafe(queue, (yield* r1Route(input, layered.text))!);
         return yield* Queue.end(queue);
       }
+      yield* r1Route(input, null);
       let offered = false;
       // Her fillers for this turn, picked before a word so the slow path never waits on them.
       const who = lineWho(input);

@@ -223,6 +223,7 @@ export const DEVICE_SPEAKER_ACTIONS = [
   "forget",
   "route",
   "order",
+  "classes",
 ] as const;
 export type DeviceSpeakerAction = (typeof DEVICE_SPEAKER_ACTIONS)[number];
 /** auto: the Bluetooth speaker while it streams, else the R1's own speaker. */
@@ -236,6 +237,12 @@ export type BtKind = (typeof BT_KINDS)[number];
 
 /** Her own speaker's id in the output order; every other entry is a Bluetooth address. */
 export const OWN_SPEAKER = "speaker";
+/**
+ * What a reply carries: private (owner-only replies an internal build may add), personal (his own data), normal, and
+ * alerts (what she says unasked). Each output plays only the classes it is tagged with.
+ */
+export const OUTPUT_CLASSES = ["private", "personal", "normal", "alerts"] as const;
+export type OutputClass = (typeof OUTPUT_CLASSES)[number];
 /** playing: replies go there now; ready: it could take the next reply; paired: not connected; stalled: skipped a while. */
 export const DEVICE_OUTPUT_STATES = ["playing", "ready", "paired", "stalled"] as const;
 export const DeviceOutputEntry = Schema.Struct({
@@ -243,6 +250,10 @@ export const DeviceOutputEntry = Schema.Struct({
   name: Schema.String,
   kind: Schema.optionalKey(Schema.Literals(BT_KINDS)),
   state: Schema.Literals(DEVICE_OUTPUT_STATES),
+  /** What it may play; a private reply plays only on an output tagged private, and never anywhere else. */
+  classes: Schema.optionalKey(Schema.Array(Schema.Literals(OUTPUT_CLASSES))),
+  /** The level private replies play at here (0-100), when lower than the usual: a whisper. */
+  privateCap: Schema.optionalKey(Schema.Number),
 });
 export type DeviceOutputEntry = typeof DeviceOutputEntry.Type;
 

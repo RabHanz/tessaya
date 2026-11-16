@@ -7,6 +7,7 @@ import {
   DEVICE_DISPLAY_SETS,
   DEVICE_SPEAKER_ACTIONS,
   DEVICE_SPEAKER_OUTPUTS,
+  OUTPUT_CLASSES,
   BATON_DEVICES_OWNER_OPS,
   BATON_DEVICES_READ_OPS,
   DeviceWatchInput,
@@ -195,6 +196,12 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
       /** `order`: her own speaker ("speaker") and Bluetooth addresses, first choice first. */
       order: Schema.optionalKey(
         Schema.Array(Schema.String.check(Schema.isMaxLength(17))).check(Schema.isMaxLength(16)),
+      ),
+      /** `classes`: the output (`target`, "speaker" or an address) and what it may play, with a private level. */
+      target: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(17))),
+      classes: Schema.optionalKey(Schema.Array(Schema.Literals(OUTPUT_CLASSES))),
+      privateCap: Schema.optionalKey(
+        Schema.NullOr(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 100 }))),
       ),
     }),
     (a, devices, by) => devices.command(a.id, { op: "speaker", ...a }, by),
