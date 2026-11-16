@@ -270,7 +270,10 @@ function useSettingsIndexSections(): SettingsListSection[] {
   return [
     {
       title: "Talking to Tessaya",
-      rows: [page("SettingsVoice", "mic", "Voice and dictation")],
+      rows: [
+        page("SettingsVoice", "mic", "Voice and dictation"),
+        serverPage("SettingsPersonas", "person.badge.plus", "Personas"),
+      ],
     },
     {
       title: "Working for you",
