@@ -9,13 +9,14 @@ import { expect } from "vite-plus/test";
 import { R1Brain, type SessionToolTurn } from "../home/R1Brain.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
 import { deskTurnStream } from "./DeskTurn.ts";
-import { TessayaTurn } from "./TessayaTurn.ts";
+import { TessayaTurn, type TurnEnvelope } from "./TessayaTurn.ts";
 import { type PersonaLayer, PersonaLayers } from "./PersonaLayers.ts";
 
 const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
   Effect.gen(function* () {
     const seen: Array<SessionToolTurn> = [];
     const touched: Array<string> = [];
+    const begun: Array<TurnEnvelope> = [];
     const hands = createHandsBroker({ now: () => 0, newId: () => "c1" });
     // The desktop is listening and offers its screen.
     void hands.take(1, [
@@ -26,6 +27,11 @@ const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
         text: "what's on my screen?",
         context: "the window he is using (data): Notepad",
         claudeBinary: "C:\\claude.exe",
+        words: [
+          { text: "what's", p: 0.98 },
+          { text: "on", p: null },
+        ],
+        recogniser: "parakeet-tdt-0.6b-v3-Q8_0",
       },
       { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
       ownMachine,
@@ -48,8 +54,11 @@ const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
             }),
           ),
           Layer.mock(TessayaTurn)({
-            begin: () =>
-              Effect.sync(() => touched.push("begin")).pipe(
+            begin: (turn) =>
+              Effect.sync(() => {
+                touched.push("begin");
+                begun.push(turn);
+              }).pipe(
                 Effect.as({
                   block: "he likes short answers",
                   ids: [],
@@ -76,6 +85,7 @@ const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
       events: [...said],
       turn: seen[0],
       touched,
+      begun,
     };
   });
 
@@ -83,8 +93,16 @@ effectIt.effect(
   "his sentence at the desk reaches the one brain with memory, the conversation from any vessel and the desktop's hands",
   () =>
     Effect.gen(function* () {
-      const { said, turn: seenTurn } = yield* run(true);
+      const { said, turn: seenTurn, begun } = yield* run(true);
       const turn = seenTurn!;
+      // His words' confidences reach transcript repair, judged on that recogniser's bounds.
+      expect(begun[0]).toMatchObject({
+        words: [
+          { text: "what's", p: 0.98 },
+          { text: "on", p: null },
+        ],
+        recogniser: "parakeet-tdt-0.6b-v3-Q8_0",
+      });
       expect(said).toBe("It's Notepad. ");
       expect(turn.system.startsWith(AGENT_PROMPT)).toBe(true);
       expect(turn.vessel).toBe("desktop");

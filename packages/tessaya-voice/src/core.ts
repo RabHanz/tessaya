@@ -48,6 +48,7 @@ import type { RouteOutcome, VoiceRouter } from "./router.ts";
 import {
   SET_ASIDE,
   VOICE_SAMPLE_RATE,
+  type HeardScores,
   type SttProvider,
   type TtsProvider,
   type VadProvider,
@@ -455,6 +456,8 @@ export const createVoiceCore = (input: {
   } | null = null;
   /** Whose voice the words going to the router are (Voice ID); null when unknown or typed. */
   let speakerNow: SpeakerIdentity | null = null;
+  /** How sure the recogniser was of each word of the clip going to the router; null when typed or unscored. */
+  let heardNow: HeardScores | null = null;
   const wakeOf = (text: string) => namedWake(text, timings.wakeWords ?? []) ?? addressee;
   const thinkAhead = (text: string, cutIn: CutIn | null) => {
     ahead = null;
@@ -557,6 +560,7 @@ export const createVoiceCore = (input: {
               wake: addressee,
               cutIn: steer,
               speaker: speakerNow,
+              heard: heardNow,
             }),
         ...(turn ? [dropped] : []),
       ]);
@@ -621,6 +625,7 @@ export const createVoiceCore = (input: {
       if (NOISE.test(cleaned)) return;
       lastTranscript = cleaned;
       speakerNow = null;
+      heardNow = null;
       emit({ type: "transcript", text: cleaned, at: now() });
       await dispatch({ type: "utterance", text: cleaned, at: now() });
     });
@@ -751,7 +756,10 @@ export const createVoiceCore = (input: {
       // Voice ID: a voice the switches keep out opens no turn and gets no reply (the wake drop).
       if (identity !== null && input.speaker?.admits(identity, "turn") === false)
         return emit({ type: "dropped", text: cleaned, reason: `${identity.kind} voice` });
-      if (!dictating) speakerNow = identity;
+      if (!dictating) {
+        speakerNow = identity;
+        heardNow = input.stt.scores?.(text) ?? null;
+      }
       const said = turn.prefix === null ? cleaned : `${turn.prefix} ${cleaned}`;
       // In the follow-up window nobody said the name: only what reads as meant for Tessaya goes on, and
       // the rest is let go without extending the window, so a TV in the room cannot keep it open.
