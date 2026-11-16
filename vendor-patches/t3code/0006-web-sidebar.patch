@@ -47,7 +47,7 @@ index 7e1ae602f979db00d082c795aee4973f39cbd30f..401bd01c2aab6ea28fd39fcdf0621e16
      const actions: string[] = [];
      return Effect.gen(function* () {
 diff --git a/apps/web/index.html b/apps/web/index.html
-index 1a8bc02e19c9df28efecf541427a03ef657e7fd4..c61883f90fdab325b58af080ee47d72c1ad4bc24 100644
+index 1a8bc02e19c9df28efecf541427a03ef657e7fd4..91f3eca7b57e720c603214b8531a786ed66113eb 100644
 --- a/apps/web/index.html
 +++ b/apps/web/index.html
 @@ -8,6 +8,7 @@
@@ -58,7 +58,13 @@ index 1a8bc02e19c9df28efecf541427a03ef657e7fd4..c61883f90fdab325b58af080ee47d72c
      <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
      <link rel="manifest" href="/manifest.webmanifest" />
      <script>
-@@ -680,9 +681,7 @@
+@@ -675,14 +676,12 @@
+       if (desktopDisplayName) document.title = desktopDisplayName;
+     </script>
+     <!-- vite.config.ts stamps the web build's channel into this title. -->
+-    <title>T3 Code</title>
++    <title>Tessaya</title>
+   </head>
    <body>
      <div id="root">
        <div id="boot-shell">

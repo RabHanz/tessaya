@@ -1,0 +1,245 @@
+Web boot: a start that neither renders nor fails shows the boot error screen after 20s, naming the
+stage (app files or startup), instead of spinning on the starting screen. The web build is named
+Tessaya (tab title, boot screen); desktop keeps its injected branding.
+
+diff --git a/apps/web/src/branding.logic.ts b/apps/web/src/branding.logic.ts
+index f53103d904ad0545fbd377ff9aab31a873554c72..4c3f076ebd34bc4f4d3e15ec3c7bb89bb6bc3cfb 100644
+--- a/apps/web/src/branding.logic.ts
++++ b/apps/web/src/branding.logic.ts
+@@ -1,5 +1,8 @@
+ const NIGHTLY_SERVER_VERSION_PATTERN = /^[^-+]+-(?:nightly|preview)\.\d{8}\.\d+$/;
+ 
++/** The web build's name. Desktop injects its own branding over it. */
++export const WEB_APP_BASE_NAME = "Tessaya";
++
+ export function formatAppDisplayName(input: {
+   readonly baseName: string;
+   readonly stageLabel: string;
+diff --git a/apps/web/src/branding.ts b/apps/web/src/branding.ts
+index bf5b76f0dd1b7a4dd698ea943eaa0cc0520c2b82..75e671b24598801c5623c19aad69926f64e00e30 100644
+--- a/apps/web/src/branding.ts
++++ b/apps/web/src/branding.ts
+@@ -1,5 +1,6 @@
+ import type { DesktopAppBranding } from "@t3tools/contracts";
+ import {
++  WEB_APP_BASE_NAME,
+   formatAppDisplayName,
+   resolveHostedAppChannelLabel,
+   resolveWebAppStageLabel,
+@@ -19,7 +20,7 @@ const hostedAppChannel = import.meta.env.VITE_HOSTED_APP_CHANNEL?.trim().toLower
+ export const HOSTED_APP_CHANNEL =
+   hostedAppChannel === "latest" || hostedAppChannel === "nightly" ? hostedAppChannel : null;
+ export const HOSTED_APP_CHANNEL_LABEL = resolveHostedAppChannelLabel(HOSTED_APP_CHANNEL);
+-export const APP_BASE_NAME = injectedDesktopAppBranding?.baseName ?? "T3 Code";
++export const APP_BASE_NAME = injectedDesktopAppBranding?.baseName ?? WEB_APP_BASE_NAME;
+ export const APP_STAGE_LABEL =
+   injectedDesktopAppBranding?.stageLabel ??
+   resolveWebAppStageLabel({
+diff --git a/apps/web/src/lib/bootError.test.ts b/apps/web/src/lib/bootError.test.ts
+index e04e8bef2cfb48cf3da2fcd928389388de8d028b..11c3e53e7521a205650c8b08a28dc8153803dc84 100644
+--- a/apps/web/src/lib/bootError.test.ts
++++ b/apps/web/src/lib/bootError.test.ts
+@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
+ 
+ import {
+   type BootErrorEnvironment,
++  BootStallError,
+   buildErrorReport,
+   resolveTriageCommand,
+   updateActionFor,
++  watchBoot,
+ } from "./bootError";
+ 
+ const desktopWith = (getState: () => Promise<DesktopCliCommandState>) =>
+@@ -131,3 +133,44 @@ describe("updateActionFor", () => {
+     expect(updateActionFor(undefined)).toBeNull();
+   });
+ });
++
++describe("watchBoot", () => {
++  const never = new Promise<never>(() => {});
++
++  it("reports a stall while the app files or the startup never settle", async () => {
++    vi.useFakeTimers();
++    try {
++      for (const [load, stage] of [
++        [() => never, "files"],
++        [async () => ({ startup: never }), "startup"],
++      ] as const) {
++        const onFailure = vi.fn();
++        void watchBoot(load, onFailure, 1_000);
++        await vi.advanceTimersByTimeAsync(999);
++        expect(onFailure).not.toHaveBeenCalled();
++        await vi.advanceTimersByTimeAsync(1);
++        expect(onFailure).toHaveBeenCalledWith(new BootStallError({ stage }));
++      }
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
++  it("stays quiet once started and passes a startup error through", async () => {
++    vi.useFakeTimers();
++    try {
++      const started = vi.fn();
++      await watchBoot(async () => ({ startup: Promise.resolve() }), started, 1_000);
++      await vi.advanceTimersByTimeAsync(5_000);
++      expect(started).not.toHaveBeenCalled();
++
++      const failed = vi.fn();
++      const error = new Error("chunk failed");
++      await watchBoot(async () => ({ startup: Promise.reject(error) }), failed, 1_000);
++      await vi.advanceTimersByTimeAsync(5_000);
++      expect(failed.mock.calls).toEqual([[error]]);
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++});
+diff --git a/apps/web/src/lib/bootError.ts b/apps/web/src/lib/bootError.ts
+index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a3727c6d2c5 100644
+--- a/apps/web/src/lib/bootError.ts
++++ b/apps/web/src/lib/bootError.ts
+@@ -1,5 +1,7 @@
+ import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
+ 
++import { APP_BASE_NAME } from "../branding";
++
+ const FALLBACK_TRIAGE_COMMAND = "npx t3 triage";
+ const DOWNLOAD_URL = "https://t3.codes/download";
+ const ISSUE_URL = "https://github.com/pingdotgg/t3code/issues/new";
+@@ -7,6 +9,7 @@ const LAST_FAILURE_KEY = "t3code:boot-failed-at";
+ const REPEAT_FAILURE_MS = 5 * 60_000;
+ const MAX_CAUSES = 3;
+ const MAX_ERROR_CHARS = 6_000;
++const BOOT_STALL_MS = 20_000;
+ const COPY_BLOCKED = "Copy was blocked. The text is selected so you can copy it manually.";
+ const UPDATE_DOWNLOAD_FAILED = "The update download failed. Try Download update again.";
+ const UPDATE_INSTALL_FAILED = "The update install failed. Try Restart to update again.";
+@@ -51,6 +54,41 @@ export function updateActionFor(state: DesktopUpdateState | null | undefined) {
+   }
+ }
+ 
++/** Startup that neither renders nor fails, for example a stalled chunk download or session check. */
++// @effect-diagnostics-next-line extendsNativeError:off -- the boot chunk loads no Effect runtime.
++export class BootStallError extends Error {
++  readonly stage: "files" | "startup";
++  constructor(input: { readonly stage: "files" | "startup" }) {
++    super(
++      input.stage === "files"
++        ? "The app files did not finish downloading."
++        : "The app loaded but did not finish starting.",
++    );
++    this.name = "BootStallError";
++    this.stage = input.stage;
++  }
++}
++
++/** Shows a startup failure instead of the starting screen when the app neither renders nor fails. */
++export async function watchBoot(
++  load: () => Promise<{ readonly startup: Promise<unknown> }>,
++  onFailure: (error: unknown) => void,
++  stallMs = BOOT_STALL_MS,
++) {
++  let stage: BootStallError["stage"] = "files";
++  // A late render still replaces the message, so a slow start recovers on its own.
++  const stall = setTimeout(() => onFailure(new BootStallError({ stage })), stallMs);
++  try {
++    const { startup } = await load();
++    stage = "startup";
++    await startup;
++  } catch (error) {
++    onFailure(error);
++  } finally {
++    clearTimeout(stall);
++  }
++}
++
+ function safeString(value: unknown) {
+   try {
+     return String(value);
+@@ -255,7 +293,7 @@ function mountUpdateButton(
+ }
+ 
+ export function showBootError(error: unknown) {
+-  console.error("T3 Code failed to start.", error);
++  console.error(`${APP_BASE_NAME} failed to start.`, error);
+   const bootShell = document.getElementById("boot-shell");
+   if (!bootShell) return;
+ 
+@@ -273,12 +311,21 @@ export function showBootError(error: unknown) {
+     announcement = setTimeout(() => (status.textContent = text), 100);
+   };
+ 
++  const stalled = error instanceof BootStallError;
+   const message = element("div", {}, [
+-    element("h1", { textContent: "T3 Code failed to start" }),
++    element("h1", {
++      textContent: stalled
++        ? `${APP_BASE_NAME} is taking too long to start`
++        : `${APP_BASE_NAME} failed to start`,
++    }),
+     element("p", {
+       textContent: offline
+         ? "This browser appears to be offline. Check the connection, then reload."
+-        : "We are not sure why. Try a reload first.",
++        : !stalled
++          ? "We are not sure why. Try a reload first."
++          : error.stage === "files"
++            ? "The app's files have not finished downloading from this server. Check the connection, then reload."
++            : "It may be waiting on its server. Check that the server is running and reachable from this device, then reload.",
+     }),
+   ]);
+   message.setAttribute("role", "alert");
+@@ -344,7 +391,7 @@ export function showBootError(error: unknown) {
+ 
+   const issue = new URL(ISSUE_URL);
+   issue.searchParams.set("template", "bug_report.yml");
+-  issue.searchParams.set("title", "T3 Code failed to start");
++  issue.searchParams.set("title", `${APP_BASE_NAME} failed to start`);
+   issue.searchParams.set("area", "apps/web");
+   issue.searchParams.set("version", `${environment.version} (${environment.channel})`);
+   issue.searchParams.set("environment", `${environment.surface}, ${environment.platform}`);
+@@ -360,14 +407,13 @@ export function showBootError(error: unknown) {
+             nightly ? `${DOWNLOAD_URL}?channel=nightly` : DOWNLOAD_URL,
+             nightly
+               ? "Download and reinstall the latest nightly build"
+-              : "Download and reinstall T3 Code",
++              : `Download and reinstall ${APP_BASE_NAME}`,
+           ),
+         ]
+       : []),
+     element("div", {}, [
+       element("p", {
+-        textContent:
+-          "Run this on the computer that runs T3 Code. Your agent can check the local logs and help you file a bug report.",
++        textContent: `Run this on the computer that runs ${APP_BASE_NAME}. Your agent can check the local logs and help you file a bug report.`,
+       }),
+       element("div", { id: "boot-error-command" }, [command, copyCommand]),
+     ]),
+diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
+index 63f1f1f737ebeac2adf0119005742bd3c69464ca..ac5eb404b885d57f79112c844946b6f2431d65c1 100644
+--- a/apps/web/vite.config.ts
++++ b/apps/web/vite.config.ts
+@@ -22,7 +22,11 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
+ import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
+ import { tailwindPlugins } from "./vite/tailwind";
+ import { warmBundledDevPlugin } from "./vite/warmBundledDev";
+-import { formatAppDisplayName, resolveWebAppStageLabel } from "./src/branding.logic";
++import {
++  WEB_APP_BASE_NAME,
++  formatAppDisplayName,
++  resolveWebAppStageLabel,
++} from "./src/branding.logic";
+ 
+ const repoEnv = loadRepoEnv();
+ Object.assign(process.env, repoEnv);
+@@ -282,7 +286,7 @@ function bootstrapTitlePlugin(): Plugin {
+         hostedAppChannel: configuredHostedAppChannel,
+         development,
+       });
+-      const title = formatAppDisplayName({ baseName: "T3 Code", stageLabel });
++      const title = formatAppDisplayName({ baseName: WEB_APP_BASE_NAME, stageLabel });
+       return html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
+     },
+   };
