@@ -14,6 +14,7 @@ const dirs = [
   "packages/tessaya-voice",
   "packages/tessaya-contracts",
   "scripts/tessaya",
+  "evals",
 ];
 const baselineFile = NodePath.join(root, "scripts/tessaya/typecheck-baseline.txt");
 
@@ -32,7 +33,14 @@ for (const dir of dirs) {
     console.error(`${dir}: the typecheck failed without a diagnostic\n${out.slice(-2000)}`);
     process.exit(1);
   }
-  for (const l of lines) found.add(`${dir}/${l.replace(/\(\d+,\d+\)/, "")}`);
+  // Positions drift between commits, so keys drop them; numbering repeats keeps one baseline line from hiding new copies.
+  const seen = new Map();
+  for (const l of lines) {
+    const key = `${dir}/${l.replace(/\(\d+,\d+\)/, "")}`;
+    const n = (seen.get(key) ?? 0) + 1;
+    seen.set(key, n);
+    found.add(n > 1 ? `${key} #${n}` : key);
+  }
 }
 
 if (process.argv.includes("--write")) {
