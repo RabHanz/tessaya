@@ -343,6 +343,12 @@ object AgentNotifications {
 
   private fun manager(context: Context) = context.getSystemService(NotificationManager::class.java)
 
+  // A rebranded build ships its own small icon as expo-notifications' notification_icon.
+  private fun appNotificationIcon(context: Context): Int =
+    context.resources.getIdentifier("notification_icon", "drawable", context.packageName)
+      .takeIf { it != 0 && !context.packageName.startsWith("com.t3tools.") }
+      ?: R.drawable.agent_activity_mark
+
   private fun channels(context: Context) {
     if (Build.VERSION.SDK_INT >= 26) {
       manager(context).createNotificationChannels(
@@ -370,7 +376,7 @@ object AgentNotifications {
         }
       )
       .setDefaults(if (channel == ALERT_CHANNEL) Notification.DEFAULT_ALL else 0)
-      .setSmallIcon(R.drawable.agent_activity_mark)
+      .setSmallIcon(appNotificationIcon(context))
       .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
       .setShowWhen(false)
 

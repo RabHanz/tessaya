@@ -19,13 +19,15 @@ export const TESSAYA_VARIANT = {
     appIcon: icon,
     iosIcon: icon,
     splashIcon: icon,
-    androidAdaptiveForeground: "./assets/android-icon-foreground.png",
+    androidAdaptiveForeground: "./assets/tessaya-android-icon-foreground.png",
     androidAdaptiveBackgroundColor: "#14505A",
     androidAdaptiveBackgroundImage: undefined,
-    androidSplashIcon: "./assets/android-splash-icon-prod.png",
-    androidMonochromeIcon: "./assets/android-icon-mark.png",
-    androidNotificationIcon: "./assets/android-notification-icon.png",
-    androidNotificationColor: "#FFFFFF",
+    androidSplashIcon: "./assets/tessaya-android-splash-icon.png",
+    androidMonochromeIcon: "./assets/tessaya-android-icon-mark.png",
+    androidNotificationIcon: "./assets/tessaya-android-notification-icon.png",
+    androidNotificationColor: "#14505A",
+    // The icon's own teal, so launch is one unbroken tile in light and dark.
+    splashBackgroundColor: "#14505A",
   },
 } as const;
 
@@ -44,3 +46,15 @@ const TESSAYA_EAS = {
   projectId: "dba25d42-105c-4f99-9157-643bc3cffc4f",
   appleTeamId: "W6HK93B4Q5",
 } as const;
+
+/** Permission prompts, widget names and other native strings say Tessaya, never T3 Code. */
+export function tessayaRebrand<T>(value: T): T {
+  if (typeof value === "string") return value.replace(/\bT3 Code\b/g, "Tessaya") as T;
+  if (Array.isArray(value)) return value.map(tessayaRebrand) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, tessayaRebrand(entry)]),
+    ) as T;
+  }
+  return value;
+}
