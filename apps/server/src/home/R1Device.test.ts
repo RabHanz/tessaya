@@ -1,4 +1,5 @@
-import { TurnOrigin } from "../tessaya/TessayaTurn.ts";
+import { TurnOrigin, moodMember } from "../tessaya/TessayaTurn.ts";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { it as effectIt } from "@effect/vitest";
 import { BAR_NOT_CONNECTED } from "@t3tools/tessaya-shared/phoneRelay";
 import { EnvironmentId, type PeerLinkSummary } from "@t3tools/contracts";
@@ -1024,14 +1025,14 @@ effectIt.effect(
     }),
 );
 
-it("shows her mood on his verified turns only, so her eyes never say what her words weren't told", () => {
+it("shows a relationship on that person's verified turns only, so her eyes never say what her words weren't told", () => {
   const turn = (speaker: Partial<SpeakerLike>) =>
     ({ vessel: { kind: "device", id: "r1-his" }, text: "hi", ...voiceOf(speaker) }) as never;
-  const sulky = { label: "sulky" as const };
   // 16 Nov 06:20: his short turns were not verified yet; she said "pretty calm" behind sulky eyes.
-  expect(turnFace(turn({ verified: false, kind: "unverified" }), [], sulky).mood).toBe("happy");
-  expect(turnFace(turn({}), [], sulky)).toEqual({ mood: "sulky", reason: "her mood: sulky" });
-  expect(turnFace(turn({}), [], null).mood).toBe("happy");
+  expect(moodMember(turn({ verified: false, kind: "unverified" }))).toBeNull();
+  expect(moodMember(turn({}))).toBe(OWNER_MEMBER_ID);
+  expect(turnFace([], { label: "sulky" })).toEqual({ mood: "sulky", reason: "her mood: sulky" });
+  expect(turnFace([], null).mood).toBe("happy");
 });
 
 effectIt.effect("a replay turn never reaches his real R1's eyes; his own turn does", () =>
