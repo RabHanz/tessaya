@@ -134,6 +134,29 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
     ),
   );
 
+  it.effect("never takes back an ordinary word the store dropped from T3's list", () =>
+    withStore(
+      (file) =>
+        Effect.gen(function* () {
+          // His laptop on 0.1.147: the learned "pass" was dropped on read, then came back as his own from T3's list.
+          expect(stored(file)).not.toContainEqual(expect.objectContaining({ source: "added" }));
+          const terms = (yield* customWords).map((w) => w.term);
+          expect(terms).toContain("Kaggle");
+          expect(terms).not.toContain("pass");
+        }),
+      {
+        stored: JSON.stringify([
+          { phrase: "pass", replacement: null, source: "learned", count: 1, heard: ["past"] },
+          { phrase: "Kaggle", replacement: null, source: "learned", count: 3 },
+        ]),
+        words: [
+          { term: "pass", aliases: ["past"] },
+          { term: "Kaggle", aliases: [] },
+        ],
+      },
+    ),
+  );
+
   it.effect("never overwrites a file it cannot read", () =>
     withStore(
       (file) =>
