@@ -83,6 +83,33 @@ describe("affect", () => {
     ).toBe("neutral");
   });
 
+  it("meets how he treats her: rudeness hurts (sad, never frustrated at him), sorry and warmth lift it", () => {
+    const hurt = run([{ kind: "rude" }]);
+    expect(affectView(hurt, "companion", day).label).toBe("sad");
+    expect(affectView(run([{ kind: "rude" }, { kind: "apology" }]), "companion", day).label).toBe(
+      "happy",
+    );
+    // However hurt, his sorry lets the reaction go and halves the low mood.
+    const low = run([{ kind: "rude" }, { kind: "rude" }]);
+    expect(affectView(low, "executive", day).label).toBe("sad");
+    const sorry = run([{ kind: "apology" }], low);
+    expect(sorry.reaction.valence).toBeCloseTo(0.15);
+    expect(sorry.mood.valence).toBeCloseTo(-0.05);
+    expect(affectView(run([{ kind: "warmth" }]), "companion", day).label).toBe("happy");
+    // A sorry to a happy mood takes nothing away from it.
+    expect(run([{ kind: "apology" }], run([{ kind: "praise" }])).mood.valence ?? 0).toBe(0);
+  });
+
+  it("sounds the mood out loud only, through the shared stage directions", () => {
+    const sad = affectView(run([{ kind: "rude" }]), "companion", day);
+    expect(moodLine(sad, true)).toContain("*sighs*");
+    expect(moodLine(sad)).not.toContain("*sighs*");
+    expect(moodLine(affectView(run([{ kind: "warmth" }]), "companion", day), true)).toContain(
+      "[laughs]",
+    );
+    expect(moodLine(affectView(freshAffect(0), "executive", day), true)).toBe("");
+  });
+
   it("grows the bond once a day up to its cap, and it never falls because he is away", () => {
     let s = freshAffect(0);
     for (let i = 0; i < 30; i++) s = appraise(s, { kind: "his_turn", day: `d${i}` }, 0, 0.15).state;

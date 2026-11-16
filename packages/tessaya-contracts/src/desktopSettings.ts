@@ -83,6 +83,12 @@ export const DesktopSettingsControl = Schema.Struct({
     Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(40)),
   ),
   voice: Schema.Literals(SETTING_CLASSES),
+  /** A button (`value` is its label) or a list he adds to and removes from; absent for a toggle or a choice. */
+  kind: Schema.optionalKey(Schema.Literals(["action", "list"])),
+  /** A list's items now. */
+  items: Schema.optionalKey(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(60)),
+  ),
 });
 export type DesktopSettingsControl = typeof DesktopSettingsControl.Type;
 

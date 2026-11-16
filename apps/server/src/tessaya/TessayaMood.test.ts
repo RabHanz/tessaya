@@ -111,3 +111,46 @@ it.effect("how his voice sounds moves her mood on his turn, never on someone els
     assert.isAbove(yield* warmth, 0.1);
   }).pipe(Effect.provide(setup())),
 );
+
+it.effect(
+  "his words move her through the cheap model's tone: sorry lifts her, a plain ask moves nothing",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const mood = yield* TessayaMood;
+      const sql = yield* SqlClient.SqlClient;
+      yield* mood.hisWords("companion", "turn the lamp on");
+      assert.deepStrictEqual(yield* sql`SELECT persona FROM tessaya_affect_state`, []);
+      yield* mood.hisWords("companion", "you are useless");
+      assert.strictEqual((yield* mood.view("companion")).label, "sad");
+      yield* mood.hisWords("companion", "sorry, I did not mean that");
+      assert.strictEqual((yield* mood.view("companion")).label, "happy");
+      const rows = yield* sql<{ reason: string }>`SELECT reason FROM tessaya_affect_state`;
+      assert.deepStrictEqual(rows, [{ reason: "he said sorry" }]);
+    }).pipe(
+      Effect.provide(
+        moodLayer.pipe(
+          Layer.provideMerge(
+            Layer.mock(TessayaOneShot)({
+              run: ({ prompt }) => {
+                const said = /<said>(.*)<\/said>/s.exec(prompt)?.[1] ?? "";
+                return Effect.succeed({
+                  tone: said.includes("sorry")
+                    ? "apology"
+                    : said.includes("useless")
+                      ? "rude"
+                      : "none",
+                }) as never;
+              },
+            }),
+          ),
+          Layer.provideMerge(
+            ServerSettingsService.layerTest({
+              tessayaMood: { enabled: true, intensity: 0.6, bondCap: 0.15 },
+            }),
+          ),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      ),
+    ),
+);

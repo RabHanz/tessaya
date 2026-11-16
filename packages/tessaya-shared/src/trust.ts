@@ -92,6 +92,7 @@ const REACH: Readonly<Record<string, ToolReach>> = {
   ...Object.fromEntries(
     [
       "tessaya_memory_search",
+      "tessaya_memory_history",
       "tessaya_memory_remember",
       "tessaya_memory_forget",
       "tessaya_memory_about",

@@ -134,6 +134,20 @@ export const createProfileSync = (input: {
         sources: [...new Set([...profile.sources, "adapted" as const])],
       });
     },
+    /** This R1's copies back to their shared bases, refinements dropped (`voice/refine {"reset":true}`). */
+    reset: () => {
+      const bases = read();
+      for (const profile of input.store.list()) {
+        const base = bases[profile.id];
+        const b = base === undefined ? null : vectorFromBase64(base.base);
+        if (b !== null)
+          input.store.save({
+            ...profile,
+            centroid: b,
+            sources: profile.sources.filter((s) => s !== "adapted"),
+          });
+      }
+    },
     /** This R1's refinement switch (on by default). */
     setRefining: (on: boolean) => {
       refining = on;

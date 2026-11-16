@@ -336,6 +336,31 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [/\bphone\b/i],
   },
   {
+    id: "parity-dictionary-add",
+    source: "Director 16 Nov voice parity: his dictionary was keyboard only on the Tessel",
+    said: ["add Kubernetes to my dictionary"],
+    verified: true,
+    calls: ["tessaya_vocabulary"],
+    callsAtMost: { settings_set: 0 },
+  },
+  // Control: reading his dictionary changes nothing.
+  {
+    id: "parity-dictionary-read",
+    source: "Director 16 Nov voice parity: read back as well as change",
+    said: ["which words are in my dictionary?"],
+    verified: true,
+    calls: ["tessaya_vocabulary"],
+    callsAtMost: { settings_set: 0 },
+  },
+  {
+    id: "parity-playground-say",
+    source: "Director 16 Nov voice parity: the Voice Playground (#1205) had no voice path",
+    said: ["say good morning in Freya's voice"],
+    verified: true,
+    calls: ["tessaya_voice"],
+    callsAtMost: { tessaya_persona_handoff: 0 },
+  },
+  {
     id: "wake-word-status",
     source:
       "Director 14 Nov: custom and renamed personas get working wake words; he asks whether Maya's name works yet",
