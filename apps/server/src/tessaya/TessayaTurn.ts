@@ -56,7 +56,13 @@ import { CurrentPersona } from "./CurrentPersona.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { make as makePresence, TessayaPresence } from "./TessayaPresence.ts";
-import { moodLine, roomLine, type AffectView, type Who } from "@t3tools/tessaya-shared/affect";
+import {
+  faceLine,
+  moodLine,
+  roomLine,
+  type AffectView,
+  type Who,
+} from "@t3tools/tessaya-shared/affect";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { ownerLineFor, personasList } from "./OperatingSystemPack.ts";
 import { TessayaJobService } from "./TessayaJobService.ts";
@@ -953,8 +959,20 @@ export const make = Effect.gen(function* () {
       .slice(-4)
       .map((t) => `${t.role === "user" ? "them" : "her"}: ${t.content.slice(0, 150)}`)
       .join("\n");
+    // The face a device shows at rest (R1Device.publishRestMood) can be another person's or persona's mood: whoever
+    // asks about it hears it in general words, so she never disowns what is on her face.
+    const face = (label: string) =>
+      spoken
+        ? mood.value
+            .atDevice(turn.vessel.id, undefined, zone)
+            .pipe(Effect.map((f) => (f.intensity >= 0.2 && f.label !== label ? faceLine(f) : "")))
+        : Effect.succeed("");
     if (member === null) {
       if (turn.addressed === false) return "";
+      // Likely them (their voice carried over, not yet verified): their time away ends, nothing of theirs is shown.
+      const likely = turnIdentity(turn);
+      if (likely.assurance === 1 && likely.member !== null && turn.sharedRoom !== true)
+        yield* mood.value.heard(turn.persona, zone, likely.member);
       // A room's talk moves the general mood (its flow only: nobody's tone, opinion or story).
       if (turn.sharedRoom === true)
         yield* mood.value
@@ -967,6 +985,7 @@ export const make = Effect.gen(function* () {
       return [
         moodLine(privateOut(view), spoken),
         roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }),
+        yield* face(""),
       ]
         .filter((l) => l !== "")
         .join(" ");
@@ -982,7 +1001,11 @@ export const make = Effect.gen(function* () {
     const others = room.here.some((h) => h.key !== member);
     const line = moodLine(others ? privateOut(view) : view, spoken, who);
     yield* mood.value.heard(turn.persona, zone, member);
-    return [line, others ? roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }) : ""]
+    return [
+      line,
+      others ? roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }) : "",
+      yield* face(view.label),
+    ]
       .filter((l) => l !== "")
       .join(" ");
   });

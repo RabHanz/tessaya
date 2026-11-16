@@ -1640,11 +1640,9 @@ const make = Effect.gen(function* () {
     const feel = MOMENT_HAPTICS[m.how];
     if (feel !== null && !buzzed) yield* buzz(id, feel, "reactions", quiet);
     const event = MOTION_LINE[m.how];
-    // A line at most every 20 s, never over a conversation unless it is strong; the eyes answer every time.
-    const said =
-      !quiet && (m.strong || now - last.said >= 20_000)
-        ? yield* expressOr(event, { busy: m.busy })
-        : null;
+    // Said only into a session already open, and over it only when strong: a moment never opens one, so handling her
+    // is eyes and a buzz (16 Nov 12:36Z: carried and set down after "talk to you later", she spoke and listened twice).
+    const said = !quiet && m.live && m.strong ? yield* expressOr(event, { busy: m.busy }) : null;
     lastMoved.set(id, { at: now, said: said === null ? last.said : now });
     if (said !== null) yield* publish(id, "voice/say", sayPayload(said));
     else

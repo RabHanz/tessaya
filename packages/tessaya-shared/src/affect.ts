@@ -1042,6 +1042,30 @@ export const roomLine = (room: {
   ].join(" ");
 };
 
+/** Her face's mood in words anyone may hear: no one's name, no hours, nothing from a person's own relationship. */
+const FACE_REASON: Partial<Record<ExpressionMood, string>> = {
+  lonely: "it has been quiet here for a while",
+  putout: "it has been quiet here for a while",
+  sulky: "it has been quiet here for a while",
+  sleepy: "it is late",
+  happy: "the day has gone well",
+  proud: "the day has gone well",
+  curious: "something caught your interest",
+  focused: "there is work on",
+  frustrated: "some things today did not go to plan",
+  sad: "some things today did not go to plan",
+};
+
+/**
+ * What her eyes on this device show now, for anyone asking (16 Nov: an unverified voice asked "why are you crying?" and
+ * she denied it). General words only; a verified person's own reasons stay in `moodLine`.
+ */
+export const faceLine = (face: Pick<AffectView, "label">): string => {
+  if (face.label === "neutral") return "";
+  const reason = FACE_REASON[face.label];
+  return `Your eyes show ${face.label} right now${reason === undefined ? "" : ` (${reason})`}. Asked about your face, say it warmly as your own feeling, in those general words: no denial, no apology.`;
+};
+
 /** Events about one person (their words, tone, voice, time away): their relationship. Tasks and jobs are the world's. */
 const PERSONAL: ReadonlySet<AffectEvent["kind"]> = new Set([
   "his_turn",
