@@ -32,6 +32,13 @@ import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
 import { VoicePlayground } from "./VoicePlayground";
 
+/** The owner's `mood` op: the spine's label for a persona, how strongly, and the reasons it logged. */
+interface PersonaMood {
+  readonly label: string;
+  readonly intensity: number;
+  readonly why?: ReadonlyArray<string>;
+}
+
 const NO_CLOUD = "none";
 const voiceKey = (voice: Pick<LibraryVoiceView, "engine" | "id">) => `${voice.engine}:${voice.id}`;
 const hint = (voice: LibraryVoiceView) =>
@@ -70,10 +77,23 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
   };
   const [library, setLibrary] = useState<VoiceLibraryView | null>(null);
   const [note, setNote] = useState("");
+  const [moods, setMoods] = useState<Readonly<Record<string, PersonaMood | null>>>({});
+  const readMoods = async (personas: ReadonlyArray<PersonaVoiceRow>) => {
+    const read = await Promise.all(
+      personas.map(async (p) => {
+        const reply = await call("owner", "mood", { persona: p.id });
+        return [p.id, reply.ok ? (reply.value as PersonaMood | null) : null] as const;
+      }),
+    );
+    setMoods(Object.fromEntries(read));
+  };
   const refresh = async () => {
     const reply = await call("read", "library");
-    if (reply.ok) setLibrary(reply.value as VoiceLibraryView);
-    else setNote(reply.error ?? "The voice library could not be read.");
+    if (reply.ok) {
+      const next = reply.value as VoiceLibraryView;
+      setLibrary(next);
+      await readMoods(next.personas);
+    } else setNote(reply.error ?? "The voice library could not be read.");
   };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the environment's voice library once per environment
   useEffect(() => {
@@ -173,6 +193,37 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
             onPick={(engine, voice) => void setPersona(persona.id, engine, voice)}
           />
         ))}
+      </SettingsSection>
+      <SettingsSection id="voice-moods" title="Inner state">
+        <SettingsRow
+          title="How each persona feels now, and why"
+          description="This is a working state that shapes how Tessaya talks. It is not a claim of feelings."
+          control={
+            <Button size="sm" variant="outline" onClick={() => void readMoods(library.personas)}>
+              Check again
+            </Button>
+          }
+        />
+        {library.personas.map((persona) => {
+          const mood = moods[persona.id];
+          return (
+            <SettingsRow
+              key={persona.id}
+              title={
+                mood == null
+                  ? persona.name
+                  : `${persona.name}: ${mood.label}${mood.intensity < 0.5 ? ", mildly" : ""}`
+              }
+              description={
+                mood == null
+                  ? "The mood could not be read."
+                  : (mood.why ?? []).length > 0
+                    ? `Because ${(mood.why ?? []).join("; ")}.`
+                    : "Nothing has moved this mood lately."
+              }
+            />
+          );
+        })}
       </SettingsSection>
       <SettingsSection id="voice-library" title="Voices on this machine">
         <SettingsRow

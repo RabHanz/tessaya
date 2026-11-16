@@ -8,11 +8,11 @@ import type {
   ExpressionGesture,
   ExpressionMood,
   ExpressionPriority,
-  R1Mood,
 } from "@t3tools/tessaya-contracts";
 import { EXPRESSION_GESTURES, EXPRESSION_MOODS, R1_MOODS } from "@t3tools/tessaya-contracts";
 
 import type { CompanionMotion } from "./companion.ts";
+import { faceFor, isEmotion, VESSELS } from "./expressionMap.ts";
 import POOL from "./expressionPool.json" with { type: "json" };
 import { isGreeting } from "./agentPrompt.ts";
 import { isNarration } from "./narration.ts";
@@ -476,39 +476,14 @@ export const lineProblem = (event: LineEvent, line: Line): string | null => {
   return null;
 };
 
-/** The R1's eyes have fewer moods than the face library: the nearest one. */
-const R1_MOOD: Readonly<Record<ExpressionMood, R1Mood>> = {
-  neutral: "neutral",
-  happy: "happy",
-  proud: "happy",
-  curious: "curious",
-  focused: "thinking",
-  determined: "thinking",
-  surprised: "surprise",
-  sleepy: "sleepy",
-  concerned: "sad",
-  steady: "neutral",
-  sad: "sad",
-  hurt: "sad",
-  lonely: "sad",
-  sulky: "angry",
-  putout: "angry",
-  frustrated: "angry",
-  angry: "angry",
-};
-const r1MoodOf = (mood: string): R1Mood | null =>
-  Object.hasOwn(R1_MOOD, mood) ? R1_MOOD[mood as ExpressionMood] : null;
-
 /**
- * What the Tessel's eyes show for a mood: one of the nine clips, or a face-library mood by its own name (the SMP face
- * draws each since 3.30, so sulky is a pout, not angry's red scowl), "steady" through its clip; else nothing.
+ * What the Tessel's eyes show for a mood, from its manifest (expressionMap.ts): the mood by its own name when the eyes
+ * draw it, else its nearest kin; null for a word outside the one vocabulary (the spine's labels, the old eye clips).
  */
-export const eyeClipOf = (mood: string): R1Mood | ExpressionMood | null =>
-  (R1_MOODS as ReadonlyArray<string>).includes(mood)
-    ? (mood as R1Mood)
-    : mood !== "steady" && (EXPRESSION_MOODS as ReadonlyArray<string>).includes(mood)
-      ? (mood as ExpressionMood)
-      : r1MoodOf(mood);
+export const eyeClipOf = (mood: string): string | null =>
+  isEmotion(mood) || (R1_MOODS as ReadonlyArray<string>).includes(mood)
+    ? faceFor(VESSELS.tessel, mood)
+    : null;
 
 /** The template with each slot replaced by its exact value; null when a value is missing. */
 export const fillLine = (

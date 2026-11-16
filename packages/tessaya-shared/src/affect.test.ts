@@ -15,6 +15,8 @@ import {
 
 const H = 3_600_000;
 const day = { now: 0, hour: 12, guilt: "light" as const, settings: DEFAULT_AFFECT_SETTINGS };
+/** Past a flash's hold (the hurt after a rude word lasts 90 s). */
+const later = { ...day, now: 2 * 60_000 };
 const run = (events: ReadonlyArray<AffectEvent>, s: AffectState = freshAffect(0), at = 0) =>
   events.reduce((acc, e) => appraise(acc, e, at, 0.15).state, s);
 
@@ -85,13 +87,16 @@ describe("affect", () => {
 
   it("meets how he treats her: rudeness hurts (sad, never frustrated at him), sorry and warmth lift it", () => {
     const hurt = run([{ kind: "rude" }]);
-    expect(affectView(hurt, "companion", day).label).toBe("sad");
+    // The face shows a short hurt, then the low mood under it; she can say why.
+    expect(affectView(hurt, "companion", day).label).toBe("hurt");
+    expect(affectView(hurt, "companion", later).label).toBe("sad");
+    expect(affectView(hurt, "companion", later).why).toEqual(["he was rude to her"]);
     expect(affectView(run([{ kind: "rude" }, { kind: "apology" }]), "companion", day).label).toBe(
       "happy",
     );
     // However hurt, his sorry lets the reaction go and halves the low mood.
     const low = run([{ kind: "rude" }, { kind: "rude" }]);
-    expect(affectView(low, "executive", day).label).toBe("sad");
+    expect(affectView(low, "executive", later).label).toBe("sad");
     const sorry = run([{ kind: "apology" }], low);
     expect(sorry.reaction.valence).toBeCloseTo(0.15);
     expect(sorry.mood.valence).toBeCloseTo(-0.05);
@@ -100,8 +105,27 @@ describe("affect", () => {
     expect(run([{ kind: "apology" }], run([{ kind: "praise" }])).mood.valence ?? 0).toBe(0);
   });
 
+  it("holds labels from real events: jobs failing build to cross at the world, his low voice to concern", () => {
+    const fail = { kind: "job", ok: false } as const;
+    const label = (events: ReadonlyArray<AffectEvent>, s?: AffectState) =>
+      affectView(run(events, s), "executive", day).label;
+    expect(label([fail])).toBe("determined");
+    expect(label([fail, fail])).toBe("frustrated");
+    expect(label([fail, fail, fail, fail])).toBe("angry");
+    expect(label([fail, fail, { kind: "job", ok: true }])).not.toBe("frustrated");
+    // An hour on, old failures no longer count.
+    expect(
+      affectView(run([fail], run([fail, fail]), 2 * H), "executive", { ...day, now: 2 * H }).label,
+    ).toBe("determined");
+    expect(label([{ kind: "his_voice", emotion: "sad" }])).toBe("concerned");
+    expect(label([{ kind: "rude" }, { kind: "apology" }])).not.toBe("hurt");
+    const why = affectView(run([fail, fail]), "executive", day);
+    expect(why.intensity).toBeGreaterThanOrEqual(0.7);
+    expect(why.why).toEqual(["a job failed"]);
+  });
+
   it("sounds the mood out loud only, through the shared stage directions", () => {
-    const sad = affectView(run([{ kind: "rude" }]), "companion", day);
+    const sad = affectView(run([{ kind: "rude" }]), "companion", later);
     expect(moodLine(sad, true)).toContain("*sighs*");
     expect(moodLine(sad)).not.toContain("*sighs*");
     expect(moodLine(affectView(run([{ kind: "warmth" }]), "companion", day), true)).toContain(

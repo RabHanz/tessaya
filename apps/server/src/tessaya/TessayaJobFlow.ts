@@ -89,6 +89,7 @@ import {
   rememberJobDomain,
 } from "./TessayaPlaybook.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
+import { TessayaMood } from "./TessayaMood.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
@@ -1171,6 +1172,7 @@ export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(funct
   const projects = new Map((yield* (yield* TessayaEngine).projects).map((p) => [p.id, p.title]));
   const personas = yield* (yield* TessayaJobService).personas();
   const roster = readPack(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath)).personas;
+  const mood = yield* Effect.serviceOption(TessayaMood);
   for (const { job, outcome } of changes) {
     const projectId = entries.find((e) => e.workSessionId === job.workSessionId)?.projectId;
     const persona = personas.get(job.workSessionId);
@@ -1183,6 +1185,10 @@ export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(funct
       subject: job.title,
       outcome,
     });
+    // The world moves her mood too (EMOTION §4): the persona the job is for, else the lead.
+    const ended = jobMoment(outcome)?.event;
+    if ((ended === "job.done" || ended === "job.failed") && Option.isSome(mood))
+      yield* mood.value.note(persona, { kind: "job", ok: ended === "job.done" });
     const origin = origins.get(job.workSessionId);
     const line = jobNotice(job.title, outcome);
     if (origin !== undefined && line !== null) {

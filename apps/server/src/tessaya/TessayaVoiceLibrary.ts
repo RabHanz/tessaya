@@ -816,7 +816,15 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
       const mood = yield* Effect.serviceOption(TessayaMood);
       if (Option.isNone(mood)) return { ok: true, value: null };
       const felt = yield* mood.value.view(a.value.persona);
-      return { ok: true, value: { label: felt.label, intensity: felt.intensity } };
+      // Why is the owner's alone (EMOTION §8.1): anyone else gets enough for the face.
+      return {
+        ok: true,
+        value: {
+          label: felt.label,
+          intensity: felt.intensity,
+          ...(input.kind === "owner" ? { why: felt.why } : {}),
+        },
+      };
     }
     case "library":
       return yield* answer(voices.library);

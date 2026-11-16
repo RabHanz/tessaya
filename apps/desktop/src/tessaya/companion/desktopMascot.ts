@@ -433,7 +433,8 @@ export const createDesktopMascot = (input: {
     const shown = sleeping ? "asleep" : snoozed() && moment === "rest" ? "asleep" : moment;
     const next = cueFor(shown, options.motion);
     if (next === null) return;
-    const worn = shown === "rest" && restMood !== null ? { ...next, ...restMood } : next;
+    // Plain rest puts a mood's prop away.
+    const worn = shown === "rest" ? { ...next, ...(restMood ?? { prop: null }) } : next;
     call(`window.mascot.cue(${JSON.stringify(worn)})`);
   };
 

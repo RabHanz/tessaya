@@ -71,6 +71,7 @@ import {
 } from "../tessaya/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
 import { eyeClipOf, greetEvent, isLineEvent } from "@t3tools/tessaya-shared/expression";
+import { renderFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
 import type { ExpressionMood } from "@t3tools/tessaya-contracts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
@@ -136,6 +137,32 @@ const publishPronunciations = Effect.fn("R1Device.publishPronunciations")(functi
   }, Effect.ignore);
   yield* publish((yield* settings.value.getSettings).voicePronounce);
   yield* Stream.runForEach(changes, (s) => publish(s.voicePronounce));
+});
+
+/** Her resting mood for the room loop: the face it returns to between replies, retained for a late loop. */
+const restTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/intent/rest`;
+
+/**
+ * Her lead's mood as each Tessel draws it at rest (expressionMap's tessel manifest: the eyes and the prop over them),
+ * sent only when it shows differently, so the eyes follow the one state between turns too.
+ */
+const publishRestMood = Effect.fn("R1Device.publishRestMood")(function* () {
+  const mood = yield* Effect.serviceOption(TessayaMood);
+  if (Option.isNone(mood)) return;
+  const zone = yield* houseZone();
+  yield* Stream.runForEach(mood.value.changes(undefined, zone), (felt) =>
+    Effect.gen(function* () {
+      const shown = renderFor(
+        VESSELS.tessel,
+        felt.intensity >= 0.2 ? felt.label : "neutral",
+        felt.intensity,
+      );
+      const json = JSON.stringify({ mood: shown.face, accessory: shown.prop ?? "auto" });
+      for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices))
+        if (device.deviceId !== null)
+          yield* publishToDevice(device, restTopic(device.deviceId), json, true);
+    }).pipe(Effect.ignore),
+  );
 });
 
 const Act = Schema.Struct({
@@ -1307,6 +1334,7 @@ export const routes = HttpRouter.use((router) =>
       Effect.ignore,
       Effect.forkScoped,
     );
+    yield* publishRestMood().pipe(Effect.provideContext(context), Effect.ignore, Effect.forkScoped);
     // The room's tools (R1Tools.layer); without them the key route speaks in the acts form as before.
     const tools = yield* RoomTools;
     const chat = Effect.gen(function* () {

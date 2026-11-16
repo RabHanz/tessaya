@@ -5,6 +5,7 @@
  */
 import type { TessayaSessionState } from "@t3tools/tessaya-contracts";
 
+import { faceFor, renderFor, VESSELS } from "./expressionMap.ts";
 import type { TurnPhase } from "./voiceTurn.ts";
 
 /** Lively: every reaction and an occasional wander. Calm (default): reactions without the extra acts. Important
@@ -32,18 +33,19 @@ export interface CompanionCue {
   readonly fx?: string;
   /** How strongly her face shows it, 0 to 1; unset is the rig's own default. */
   readonly intensity?: number;
+  /** The prop her mood brings; null puts the mood's prop away; unset leaves props as they are. */
+  readonly prop?: string | null;
 }
 
-/** The brain's moods and gestures (tessaya-contracts expression.ts) the rig names differently. */
-const RIG_MOOD: Readonly<Record<string, string>> = { steady: "calm" };
 /** Gestures named after one of the rig's loops, as the one-off act that shows them. */
 const RIG_GESTURE: Readonly<Record<string, string>> = {
   think: "lookAway",
   bounce: "hop",
   dizzy: "wobble",
 };
+/** A brain mood as the rig draws it (the mascot's manifest); a word the rig has by name passes through. */
 export const rigMoodOf = (mood: string): string =>
-  Object.hasOwn(RIG_MOOD, mood) ? RIG_MOOD[mood]! : mood;
+  VESSELS.mascot.face.includes(mood) ? mood : (faceFor(VESSELS.mascot, mood) ?? mood);
 export const rigGestureOf = (gesture: string): string =>
   Object.hasOwn(RIG_GESTURE, gesture) ? RIG_GESTURE[gesture]! : gesture;
 
@@ -57,13 +59,20 @@ const MOOD_SHOWN = 0.2;
 export const restFaceOf = (
   label: string,
   intensity: number,
-): { readonly expression: string; readonly intensity: number } | null =>
-  /^[a-z]{2,20}$/.test(label) && label !== "neutral" && intensity >= MOOD_SHOWN
-    ? {
-        expression: rigMoodOf(label),
-        intensity: Math.round((0.45 + 0.55 * Math.min(1, intensity)) * 10) / 10,
-      }
-    : null;
+): {
+  readonly expression: string;
+  readonly intensity: number;
+  /** The prop the mood brings (expressionMap.ts), null to put a mood's prop away. */
+  readonly prop: string | null;
+} | null => {
+  if (!/^[a-z]{2,20}$/.test(label) || label === "neutral" || intensity < MOOD_SHOWN) return null;
+  const shown = renderFor(VESSELS.mascot, label, intensity);
+  return {
+    expression: shown.face ?? rigMoodOf(label),
+    intensity: Math.round((0.45 + 0.55 * Math.min(1, intensity)) * 10) / 10,
+    prop: shown.prop ?? null,
+  };
+};
 
 const CUES: Readonly<Record<CompanionMoment, CompanionCue>> = {
   rest: { expression: "neutral" },

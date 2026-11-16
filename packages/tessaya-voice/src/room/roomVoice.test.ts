@@ -1978,6 +1978,23 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
         .map((p) => JSON.parse(String(p.payload)).mood as string),
     ).toEqual(["thinking", "concerned"]);
   });
+
+  it("wears her rest mood with its prop between turns, and plain neutral once it clears", () => {
+    const t = setup();
+    t.s2();
+    const rest = (body: object) =>
+      t.room.message(`freya/r1/${DEV}/voice/intent/rest`, Buffer.from(JSON.stringify(body)));
+    rest({ mood: "focused", accessory: "reading" });
+    rest({ mood: "giddy" });
+    expect(
+      t.published
+        .filter((p) => p.topic.endsWith("/cmd/eye/set"))
+        .map((p) => JSON.parse(String(p.payload))),
+    ).toEqual([
+      { mood: "focused", accessory: "reading" },
+      { mood: "neutral", accessory: "auto" },
+    ]);
+  });
 });
 
 describe("one responder per utterance (the server's voice arbiter, R1-P7)", () => {
