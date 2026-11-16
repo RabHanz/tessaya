@@ -210,7 +210,9 @@ export const allSettings = Effect.gen(function* () {
           ? `; a button, "${c.value}": value true presses it`
           : c.kind === "list"
             ? `; a list: value {"add": "…"} or {"remove": "…"}`
-            : ""
+            : c.kind === "editor"
+              ? `; a text he edits, which starts "${c.value}": value {"save": "the whole new text"}${c.resettable === true ? ' or {"reset": true} for the default' : ""}`
+              : ""
       }`,
       class: c.voice,
       ...(c.voice === "never" ? { why: "his desktop keeps it out of voice" } : {}),
@@ -271,6 +273,8 @@ const shown = (value: unknown): string => {
   const text = JSON.stringify(value ?? null);
   return text.length > 200 ? `${text.slice(0, 200)}…` : text;
 };
+/** The most of an editor's text one spoken change carries (the sync's own bound). */
+const EDITOR_MAX = 4000;
 /** A control's value as it takes it: true or false for a toggle, one of its options (any case) for a choice. */
 const controlValue =
   (key: string, control: DesktopSettingsControl) =>
@@ -286,6 +290,19 @@ const controlValue =
       const item = control.items?.find((i) => i.toLowerCase() === remove.toLowerCase());
       if (add !== "" && add.length <= 200) return Option.some({ [key]: { add } });
       return item === undefined ? Option.none() : Option.some({ [key]: { remove: item } });
+    }
+    if (control.kind === "editor") {
+      const op =
+        typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+      if (op["reset"] === true)
+        return control.resettable === true
+          ? Option.some({ [key]: { reset: true } })
+          : Option.none();
+      const raw = typeof value === "string" || typeof value === "number" ? value : op["save"];
+      const save = typeof raw === "string" || typeof raw === "number" ? String(raw).trim() : "";
+      return save !== "" && save.length <= EDITOR_MAX
+        ? Option.some({ [key]: { save } })
+        : Option.none();
     }
     if (control.options === undefined)
       return typeof value === "boolean" ? Option.some({ [key]: value }) : Option.none();
@@ -340,15 +357,19 @@ const apply = Effect.fn("SettingsVoice.apply")(function* (entry: SettingEntry, p
     const desktop = yield* Effect.serviceOption(TessayaDesktopSettings);
     if (Option.isNone(desktop)) return false;
     const value = (patch as Record<string, unknown>)[entry.key];
-    const list =
-      entry.control.kind === "list" ? (value as { add?: string; remove?: string }) : null;
-    // A list's line and Remove, as the window sends them (`<id>:add`, `<id>:rm`).
+    const id = entry.control.id;
+    const op = value as { add?: string; remove?: string; save?: string; reset?: true };
+    // A list's line and Remove, an editor's Save and Use default, as the window sends them.
     yield* desktop.value.setControls([
-      list === null
-        ? { id: entry.control.id, value: value as string | boolean }
-        : list.add !== undefined
-          ? { id: `${entry.control.id}:add`, value: list.add }
-          : { id: `${entry.control.id}:rm`, value: list.remove! },
+      entry.control.kind === "list"
+        ? op.add !== undefined
+          ? { id: `${id}:add`, value: op.add }
+          : { id: `${id}:rm`, value: op.remove! }
+        : entry.control.kind === "editor"
+          ? op.save !== undefined
+            ? { id: `${id}:save`, value: op.save }
+            : { id: `${id}:reset`, value: true }
+          : { id, value: value as string | boolean },
     ]);
     return true;
   }
@@ -384,6 +405,19 @@ const linesOf = (entry: SettingEntry, was: unknown, now: unknown) => {
       : {
           changed: `remove "${op.remove}" from ${control.label}`,
           done: `Removed "${op.remove}" from ${control.label}. To undo, add it back.`,
+        };
+  }
+  if (control?.kind === "editor") {
+    const op = now as { save?: string; reset?: true };
+    const before = `It was ${shown(was)}${String(was).length >= 200 ? " (its start)" : ""}.`;
+    return op.save === undefined
+      ? {
+          changed: `put ${control.label} back to its default text`,
+          done: `${control.label} is back to its default text. ${before} To undo, save that text again.`,
+        }
+      : {
+          changed: `replace ${control.label} with ${shown(op.save)}`,
+          done: `Saved ${control.label} as ${shown(op.save)}. ${before} To undo, save that text again${control.resettable === true ? ", or reset it to the default" : ""}.`,
         };
   }
   const changed = `${entry.say}: ${shown(was)} to ${shown(now)}`;
