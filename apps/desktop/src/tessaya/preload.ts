@@ -33,6 +33,13 @@ export function exposeTessayaDesktopBridge(): void {
       ipcRenderer.on(Channels.BATON_VOICE_REQUEST_CHANNEL, listener);
       return () => ipcRenderer.removeListener(Channels.BATON_VOICE_REQUEST_CHANNEL, listener);
     },
+    tonePass: () => ipcRenderer.invoke(Channels.BATON_HISTORY_TONE_PASS_CHANNEL),
+    toneTurn: (id, action) =>
+      ipcRenderer.invoke(
+        Channels.BATON_HISTORY_ACT_CHANNEL,
+        id,
+        action === "play" ? "play" : `tone:${action ?? ""}`,
+      ),
     setBatonUsage: (usage) => ipcRenderer.send(Channels.BATON_USAGE_CHANNEL, usage),
     onR1BlePairing: (handler) => {
       const listener = (_event: Electron.IpcRendererEvent, message: unknown) => {

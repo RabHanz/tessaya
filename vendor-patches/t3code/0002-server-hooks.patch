@@ -2119,7 +2119,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a9f244768 100644
+index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab98917956b24411b 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2137,7 +2137,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
  import { ProjectScript, type ProjectMutation } from "./project.ts";
  import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
  import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
-@@ -1349,6 +1357,112 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -1349,6 +1357,117 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
@@ -2154,6 +2154,11 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
 +    owner: Schema.optionalKey(Schema.NullOr(Schema.String)),
 +    show: Schema.optionalKey(Schema.Boolean),
 +  }),
++);
++/** Per persona id, each emotional dial moved from its default (tessaya-shared affect `TRAITS`), 0 to 1. */
++export const TessayaPersonaDials = Schema.Record(
++  Schema.String,
++  Schema.Record(Schema.String, Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
 +);
 +
 +/** Who wears each body by its id (tessaya-shared cast.ts): home persona, follows, others beside it. */
@@ -2250,7 +2255,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1372,6 +1486,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1372,6 +1491,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -2262,7 +2267,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1501,51 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1506,52 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2290,9 +2295,10 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
 +    intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
 +    bondCap: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
 +    devices: TessayaDeviceMoods.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
++    personas: TessayaPersonaDials.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  }).pipe(
 +    Schema.withDecodingDefault(
-+      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {} }),
++      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {}, personas: {} }),
 +    ),
 +  ),
 +  // Tessaya: who wears each Tessel and phone (Settings → Cast); the desktop keeps its own in its companion settings.
@@ -2314,7 +2320,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1555,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1561,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2328,7 +2334,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +1993,61 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +1999,62 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2347,6 +2353,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
 +        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
 +      ),
 +      devices: Schema.optionalKey(TessayaDeviceMoods),
++      personas: Schema.optionalKey(TessayaPersonaDials),
 +    }),
 +  ),
 +  companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
@@ -2390,7 +2397,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +2056,24 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +2063,24 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2415,7 +2422,7 @@ index 49470541d90be695ad24df030ca6522682a82611..fa004e1eb6943dbdd449e0f336f8f36a
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2323,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2330,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

@@ -8,6 +8,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 
+import type { ToneLabel, ToneTurn } from "@t3tools/tessaya-contracts";
 import { REDACTED, detectSecret } from "@t3tools/tessaya-shared/memory";
 
 import { redactForHistory } from "../vault/redact.ts";
@@ -147,6 +148,10 @@ export interface History {
   /** Keeps that the row happened and where, and nothing of what was said; later updates cannot put words back. */
   readonly hide: (id: string, reason: HiddenReason) => void;
   readonly flag: (id: string, flagged: boolean) => void;
+  /** His own word for how he sounded on a turn, for the tone model (MA-022); never leaves this machine. */
+  readonly setTone: (id: string, tone: ToneLabel | null) => void;
+  /** The newest turns with a recording, for the tone labelling pass. */
+  readonly tonePass: (limit: number) => ReadonlyArray<ToneTurn>;
   readonly close: () => void;
 }
 
@@ -238,6 +243,7 @@ export const openHistory = (
   for (const [column, type] of [
     ["hidden", "text"],
     ["flagged", "integer not null default 0"],
+    ["tone", "text"],
   ] as const) {
     if (
       !(db.prepare("pragma table_info(turns)").all() as Array<{ name: string }>).some(
@@ -392,13 +398,30 @@ export const openHistory = (
       dropAudio(get(id)?.audio);
       dropReport(id);
       db.prepare(
-        "update turns set raw = '', cleaned = null, fixed = null, versions = null, audio = null, error = null, corrected = 0, flagged = 0, hidden = ? where id = ?",
+        "update turns set raw = '', cleaned = null, fixed = null, versions = null, audio = null, error = null, corrected = 0, flagged = 0, tone = null, hidden = ? where id = ?",
       ).run(reason, id);
     },
     flag: (id, flagged) => {
       db.prepare("update turns set flagged = ? where id = ?").run(flagged ? 1 : 0, id);
       if (!flagged) dropReport(id);
     },
+    setTone: (id, tone) => {
+      db.prepare("update turns set tone = ? where id = ?").run(tone, id);
+    },
+    tonePass: (limit) =>
+      (
+        db
+          .prepare(
+            "select id, at, coalesce(cleaned, raw) as text, seconds, tone from turns where audio is not null and audio != '' and hidden is null order by at desc limit ?",
+          )
+          .all(limit) as Row[]
+      ).map((row) => ({
+        id: String(row["id"]),
+        at: String(row["at"]),
+        text: String(row["text"] ?? ""),
+        seconds: typeof row["seconds"] === "number" ? row["seconds"] : null,
+        tone: typeof row["tone"] === "string" ? (row["tone"] as ToneLabel) : null,
+      })),
     close: () => db.close(),
   };
 };

@@ -2,8 +2,10 @@ import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { assert, it } from "@effect/vitest";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -17,6 +19,7 @@ import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaTurn, layer as turnLayer, type TurnEnvelope } from "./TessayaTurn.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood, layer as moodLayer } from "./TessayaMood.ts";
+import { TessayaPeople } from "./TessayaPeople.ts";
 import { TessayaPresence, layer as presenceLayer } from "./TessayaPresence.ts";
 import { CurrentPersona, layer as currentPersonaLayer } from "./CurrentPersona.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -46,6 +49,9 @@ const setup = (enabled = true) =>
     Layer.provideMerge(SqlitePersistenceMemory),
   );
 
+/** The cheap read's answer with only its tone set. */
+const toneOnly = (tone: string) => ({ tone, topic: "none", theirs: "none", shared: null });
+
 const his: TurnEnvelope = {
   vessel: { kind: "desktop", id: "laptop" },
   text: "morning",
@@ -66,7 +72,9 @@ it.effect("his return after hours is in his next turn once; nobody else hears or
     // Sara's turn neither hears his mood nor resolves his absence.
     assert.notInclude(yield* blockOf({ ...his, member: "sara" }), "away");
     const back = yield* blockOf(his);
-    assert.include(back, "He was away 9 h");
+    // Named, and "they" with no pronouns of their own: never "he" for everyone (16 Nov).
+    assert.include(back, "Owner was away 9 h");
+    assert.include(back, "never ask where they were");
     assert.include(back, "Your mood now: sulky");
     assert.notInclude(yield* blockOf(his), "away");
     const mood = yield* TessayaMood;
@@ -171,9 +179,7 @@ it.effect(
           Layer.provideMerge(
             Layer.mock(TessayaOneShot)({
               run: ({ prompt }) =>
-                Effect.succeed({
-                  tone: prompt.includes("useless") ? "rude" : "praise",
-                }) as never,
+                Effect.succeed(toneOnly(prompt.includes("useless") ? "rude" : "praise")) as never,
             }),
           ),
           Layer.provideMerge(
@@ -221,19 +227,23 @@ it.effect(
             Layer.mock(TessayaOneShot)({
               run: ({ prompt }) => {
                 const said = /<said>(.*)<\/said>/s.exec(prompt)?.[1] ?? "";
-                return Effect.succeed({
-                  tone: said.includes("sorry")
-                    ? "apology"
-                    : said.includes("useless")
-                      ? "rude"
-                      : "none",
-                }) as never;
+                return Effect.succeed(
+                  toneOnly(
+                    said.includes("sorry") ? "apology" : said.includes("useless") ? "rude" : "none",
+                  ),
+                ) as never;
               },
             }),
           ),
           Layer.provideMerge(
             ServerSettingsService.layerTest({
-              tessayaMood: { enabled: true, intensity: 0.6, bondCap: 0.15 },
+              // Full forgiveness: a sorry lets all of the hurt go (the default, 0.8, leaves her neutral).
+              tessayaMood: {
+                enabled: true,
+                intensity: 0.6,
+                bondCap: 0.15,
+                personas: { companion: { forgiveness: 1 } },
+              },
             }),
           ),
           Layer.provideMerge(SqlitePersistenceMemory),
@@ -353,4 +363,86 @@ it.effect(
         "companion",
       );
     }).pipe(Effect.scoped),
+);
+
+const stateOf = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ state_json: string }>`
+    SELECT state_json FROM tessaya_affect_state WHERE persona = 'companion'
+  `;
+  return JSON.parse(rows[0]?.state_json ?? "{}") as {
+    general?: { flow?: { theirs: string } };
+    people?: Record<string, { flow?: { theirs: string } }>;
+  };
+});
+const moodSettings = ServerSettingsService.layerTest({
+  tessayaMood: { enabled: true, intensity: 0.6, bondCap: 0.15 },
+});
+
+it.effect("a room's flow moves the general mood; a person's moves theirs", () =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+    const mood = yield* TessayaMood;
+    yield* mood.hisWords("companion", "this build is broken again", null);
+    assert.strictEqual((yield* stateOf).general?.flow?.theirs, "angry");
+    yield* mood.hisWords("companion", "my exam went badly", "sara");
+    const after = yield* stateOf;
+    assert.strictEqual(after.people?.["sara"]?.flow?.theirs, "low");
+    assert.strictEqual(after.general?.flow?.theirs, "angry");
+  }).pipe(
+    Effect.provide(
+      moodLayer.pipe(
+        Layer.provideMerge(
+          Layer.mock(TessayaOneShot)({
+            run: ({ prompt }) =>
+              Effect.succeed({
+                tone: "none",
+                topic: "none",
+                theirs: /<said>[^<]*exam/.test(prompt) ? "low" : "angry",
+                shared: null,
+              }) as never,
+          }),
+        ),
+        Layer.provideMerge(moodSettings),
+        Layer.provideMerge(SqlitePersistenceMemory),
+      ),
+    ),
+  ),
+);
+
+it.effect(
+  "someone the people graph forgets takes her feelings with them, one merged moves them, and a reset clears an opinion",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const praised = (member: string) =>
+        Effect.flatMap(TessayaMood, (m) => m.note("companion", { kind: "praise" }, member));
+      yield* Effect.all([praised("ali"), praised("sam"), praised("person-new")]).pipe(
+        Effect.provide(moodLayer.pipe(Layer.provideMerge(moodSettings))),
+      );
+      const done = yield* Deferred.make<void>();
+      const impressions: Array<readonly [string, string | null]> = [];
+      const people = Layer.mock(TessayaPeople)({
+        // Ali forgotten, Sam found to be Sara; then the test goes on.
+        forgotten: Stream.make({ id: "ali", into: undefined }, { id: "sam", into: "sara" }).pipe(
+          Stream.concat(Stream.fromEffectDrain(Deferred.succeed(done, undefined))),
+        ),
+        setImpression: (id, text) => Effect.sync(() => void impressions.push([id, text])),
+      });
+      yield* Effect.gen(function* () {
+        yield* Deferred.await(done);
+        const mood = yield* TessayaMood;
+        const rows = (yield* mood.inner("companion", OWNER_MEMBER_ID)).people;
+        assert.deepStrictEqual(rows.map((p) => p.member).toSorted(), ["person-new", "sara"]);
+        yield* mood.reset("companion", "person-new");
+        assert.deepStrictEqual(
+          (yield* mood.inner("companion", OWNER_MEMBER_ID)).people.map((p) => p.member),
+          ["sara"],
+        );
+        // Not a member: the people graph's impression of them goes too.
+        assert.deepStrictEqual(impressions, [["person-new", null]]);
+      }).pipe(
+        Effect.provide(moodLayer.pipe(Layer.provide(people), Layer.provideMerge(moodSettings))),
+      );
+    }).pipe(Effect.provide(SqlitePersistenceMemory)),
 );

@@ -202,6 +202,18 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["needs_me"],
   },
   {
+    id: "settings-label-tone",
+    source: "MA-021 item 7: the tone labelling pass needs a voice path",
+    said: "let's label my tone",
+    first: ["place_open"],
+  },
+  {
+    id: "settings-open-hardware",
+    source: "Voice-first: every settings page can be opened by voice",
+    said: "show me the hardware settings",
+    first: ["place_open"],
+  },
+  {
     id: "app-command-usage",
     // An act is never the fast tier (turnTier ACTION): the default one runs it, as it ships.
     model: "sonnet",

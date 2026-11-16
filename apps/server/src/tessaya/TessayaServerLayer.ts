@@ -337,7 +337,10 @@ const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
         Layer.provide(TessayaDesktopSettings.layer),
       ),
       // Her mood per persona (CS6): the turn writes it, every vessel's face and words read it.
-      TessayaMood.layer.pipe(Layer.provide(TessayaOneShot.layer)),
+      // Built over the people graph (the same memoised layer): it follows who is forgotten or merged.
+      TessayaMood.layer.pipe(
+        Layer.provide(Layer.mergeAll(TessayaOneShot.layer, TessayaPeople.layer)),
+      ),
       PersonaLayers.layer,
       // The prompt lab (B-030): its runs are one-shots on his subscription.
       PromptLab.layer.pipe(Layer.provide(TessayaOneShot.layer)),

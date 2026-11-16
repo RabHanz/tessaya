@@ -1403,7 +1403,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
     {
       name: "place_open",
       description:
-        "Open Tessaya's own window at one of her pages. 'Add my phone', 'pair my phone' or 'set up my phone' is phone: it shows the QR the phone app scans to connect to this machine and every machine linked to it. Then tell him to scan it in the phone app (Environments, Add environment, Scan).",
+        "Open Tessaya's own window at one of her pages. 'Add my phone', 'pair my phone' or 'set up my phone' is phone: it shows the QR the phone app scans to connect to this machine and every machine linked to it. Then tell him to scan it in the phone app (Environments, Add environment, Scan). 'Let's label my tone' is personas: its Inner state holds the tone labelling pass.",
       inputSchema: object({ place: { enum: TESSAYA_PLACES.map((p) => p.id) } }, ["place"]),
       run: async (a) => {
         const place = str(a, "place", 40);

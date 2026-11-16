@@ -43,7 +43,9 @@ import {
   BATON_DEVICES_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  TONE_LABELS,
   tessayaPlaceOf,
+  type ToneLabel,
 } from "@t3tools/tessaya-contracts";
 import {
   chooseMode,
@@ -2583,6 +2585,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       ? []
       : listHistory(typeof query === "string" ? query : ""),
   );
+  // The tone labelling pass (Settings → Inner state): 40 newest recorded turns; the labels stay on this machine.
+  Electron.ipcMain.handle("baton-history:tone-pass", (event) =>
+    Electron.BrowserWindow.fromWebContents(event.sender) === null || history === null
+      ? []
+      : history.tonePass(40),
+  );
   Electron.ipcMain.handle("baton-history:delete-many", (event, ids: unknown) => {
     if (Electron.BrowserWindow.fromWebContents(event.sender) === null || history === null) return 0;
     if (!Array.isArray(ids)) return 0;
@@ -2617,6 +2625,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       return after === null ? null : { ...withMenu(after), taught };
     } else if (action === "extract") {
       return extractAudio(turn, Electron.BrowserWindow.fromWebContents(event.sender));
+    } else if (action.startsWith("tone:")) {
+      const tone = action.slice("tone:".length);
+      history.setTone(
+        id,
+        (TONE_LABELS as ReadonlyArray<string>).includes(tone) ? (tone as ToneLabel) : null,
+      );
     } else if (action === "flag" || action === "unflag") {
       flagTurn(turn, action === "flag");
     } else if (action.startsWith("copy_version:")) {

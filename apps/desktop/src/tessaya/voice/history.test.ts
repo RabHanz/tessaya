@@ -211,6 +211,47 @@ describe("history", () => {
     history.close();
   });
 
+  it("the tone pass lists only recorded turns he can hear, newest first, with his label; hiding one drops it", () => {
+    let n = 0;
+    const history = openHistory(":memory:", () => `t${(n += 1)}`);
+    const turn = (at: string, audio: string | null) =>
+      history.add({
+        at,
+        kind: "spoken",
+        app: "",
+        raw: "fine thanks",
+        cleaned: null,
+        status: "none",
+        model: null,
+        delivery: null,
+        error: null,
+        audio,
+      });
+    const old = turn("2026-11-08T10:00:00.000Z", "C:/a.webm");
+    turn("2026-11-08T11:00:00.000Z", null);
+    const recent = turn("2026-11-08T12:00:00.000Z", "C:/b.webm");
+    history.setTone(old, "tired");
+    expect(history.tonePass(40)).toEqual([
+      {
+        id: recent,
+        at: "2026-11-08T12:00:00.000Z",
+        text: "fine thanks",
+        seconds: null,
+        tone: null,
+      },
+      {
+        id: old,
+        at: "2026-11-08T10:00:00.000Z",
+        text: "fine thanks",
+        seconds: null,
+        tone: "tired",
+      },
+    ]);
+    history.hide(old, "private app");
+    expect(history.tonePass(40).map((t) => t.id)).toEqual([recent]);
+    history.close();
+  });
+
   it("delete removes the words and the recording; a flag can be taken back", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "history-"));
     const clips = [NodePath.join(dir, "a.webm"), NodePath.join(dir, "b.webm")];
