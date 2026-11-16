@@ -6,6 +6,7 @@
 import type { ExpressionMood } from "@t3tools/tessaya-contracts";
 
 import { renderFor, VESSELS } from "./expressionMap.ts";
+import { PRESENCE_BARS, type PresenceEstimate } from "./presence.ts";
 
 export const AFFECT_DIMS = [
   "valence",
@@ -633,21 +634,30 @@ export const deviceOwnerOf = (
   };
 };
 
-/** How long a turn at a vessel decides whose relationship its face shows. */
-export const HERE_MS = 10 * 60_000;
-
 /**
- * Whose relationship a device's face shows now: whoever was just identified there; nobody's after a guest or an unsure
- * voice; else, quiet a while, its owner's when it may show it.
+ * Whose relationship a device's face shows now, from the one presence estimate (B-043): the one person placed there
+ * when nobody else is; nobody's with several people, or someone she can't name (a guest, a Tessel picked up); else,
+ * with nobody around it, its owner's when it may show it. `vessels` are the ids presence knows it by.
  */
 export const faceMemberAt = (input: {
   readonly owner: string | null;
   readonly show: boolean;
-  readonly heard: { readonly member: string | null; readonly at: number } | null;
-  readonly now: number;
-}): string | null =>
-  input.heard !== null && input.now - input.heard.at < HERE_MS
-    ? input.heard.member
-    : input.show
-      ? input.owner
-      : null;
+  readonly vessels: ReadonlyArray<string>;
+  readonly estimate: PresenceEstimate;
+}): string | null => {
+  const at = new Set(input.vessels);
+  const here = input.estimate.members.filter(
+    (m) =>
+      m.nearest !== null &&
+      at.has(m.nearest.vessel) &&
+      m.nearest.confidence >= PRESENCE_BARS.present,
+  );
+  const anyone = Math.max(0, ...input.vessels.map((v) => input.estimate.occupied.get(v) ?? 0));
+  if (here.length === 1) {
+    // What the rest of the evidence there adds over theirs (presence fuses as 1 - Π(1 - p)).
+    const others = 1 - (1 - anyone) / Math.max(1e-6, 1 - here[0]!.nearest!.confidence);
+    return others < PRESENCE_BARS.around ? here[0]!.member : null;
+  }
+  if (here.length === 0 && anyone < PRESENCE_BARS.around) return input.show ? input.owner : null;
+  return null;
+};

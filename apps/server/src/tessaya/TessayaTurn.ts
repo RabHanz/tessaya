@@ -760,7 +760,7 @@ export const make = Effect.gen(function* () {
     yield* notePresence(turn);
     const preferences = yield* preferencesOf(member);
     const waiting = yield* waitingLine(turn, member, preferences.name ?? null);
-    const here = [yield* hereFor(turn, member), yield* moodFor(turn)]
+    const here = [yield* hereFor(turn, member), yield* moodFor(turn, person?.id ?? null)]
       .filter((l) => l !== "")
       .join(" ");
     const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
@@ -823,14 +823,17 @@ export const make = Effect.gen(function* () {
   });
 
   /**
-   * Her mood for the turn (CS6): an identified member's relationship over the general mood, read before their turn
-   * counts, so a return after hours is still in it; then the turn is heard. Anyone else gets the general mood, no why.
+   * Her mood for the turn (CS6): the identified person's relationship over the general mood (a member, else a guest the
+   * people graph knows by voice), read before their turn counts, so a return after hours is still in it; then the turn
+   * is heard. Anyone else gets the general mood, no why.
    */
-  const moodFor = Effect.fn("TessayaTurn.moodFor")(function* (turn: TurnEnvelope) {
+  const moodFor = Effect.fn("TessayaTurn.moodFor")(function* (
+    turn: TurnEnvelope,
+    person: string | null,
+  ) {
     const mood = yield* Effect.serviceOption(TessayaMood);
     if (Option.isNone(mood) || turn.rehearsal === true) return "";
-    const member = moodMember(turn);
-    yield* mood.value.here(turn.vessel.id, member);
+    const member = moodMember(turn) ?? (turn.addressed === false ? null : person);
     const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
     const spoken = turn.vessel.kind === "device";
     if (member === null) {

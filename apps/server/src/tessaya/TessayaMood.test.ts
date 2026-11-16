@@ -15,6 +15,7 @@ import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaTurn, layer as turnLayer, type TurnEnvelope } from "./TessayaTurn.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood, layer as moodLayer } from "./TessayaMood.ts";
+import { TessayaPresence, layer as presenceLayer } from "./TessayaPresence.ts";
 
 const learning = Layer.mock(TessayaMemoryLearning)({
   learn: () => Effect.succeed({ stored: 1, held: 0, corrections: 1 }),
@@ -126,7 +127,7 @@ it.effect(
 );
 
 it.effect(
-  "each person sees only their own row; the owner sees all; an owned device shows its owner's until someone else is heard there",
+  "each person sees only their own row; the owner sees all; an owned device shows its owner's only with nobody else there",
   () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
@@ -143,17 +144,18 @@ it.effect(
       assert.deepStrictEqual(all.people.map((p) => p.member).toSorted(), [OWNER_MEMBER_ID, "sara"]);
       // A guest's view never carries anyone's.
       assert.deepStrictEqual((yield* mood.inner("companion", "guest")).people, []);
-      // The Tessel tied to Sara with her mood on: hers at rest; a guest heard there, the general mood; Sara again, hers.
+      // The Tessel tied to Sara with her mood on: hers at rest; someone unnamed there, the general mood; he alone there,
+      // his; nobody around a while, hers again. Who is there is the one presence estimate.
+      const presence = yield* TessayaPresence;
+      const why = Effect.map(mood.atDevice("tessel-1", "companion"), (v) => v.why);
       assert.strictEqual((yield* mood.atDevice("tessel-1", "companion")).label, "hurt");
-      yield* mood.here("tessel-1", null);
-      assert.strictEqual((yield* mood.atDevice("tessel-1", "companion")).label, "neutral");
-      yield* mood.here("tessel-1", OWNER_MEMBER_ID);
-      assert.strictEqual((yield* mood.atDevice("tessel-1", "companion")).label, "proud");
-      yield* TestClock.adjust("11 minutes");
-      // Quiet a while: its owner's again, never his.
-      assert.deepStrictEqual((yield* mood.atDevice("tessel-1", "companion")).why, [
-        "they were rude to her",
-      ]);
+      yield* presence.note({ member: null, source: "handled", vessel: "tessel-1" });
+      assert.deepStrictEqual(yield* why, []);
+      yield* TestClock.adjust("30 minutes");
+      yield* presence.note({ member: OWNER_MEMBER_ID, source: "voice", vessel: "tessel-1" });
+      assert.deepStrictEqual(yield* why, ["they praised her"]);
+      yield* TestClock.adjust("2 hours");
+      assert.deepStrictEqual(yield* why, ["they were rude to her"]);
       // An untied device shows only the general mood.
       assert.strictEqual((yield* mood.atDevice("tessel-2", "companion")).label, "neutral");
     }).pipe(
@@ -177,6 +179,7 @@ it.effect(
               },
             }),
           ),
+          Layer.provideMerge(presenceLayer),
           Layer.provideMerge(SqlitePersistenceMemory),
         ),
       ),

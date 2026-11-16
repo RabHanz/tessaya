@@ -37,6 +37,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import { TessayaPresence } from "./TessayaPresence.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
@@ -71,9 +72,7 @@ export class TessayaMood extends Context.Service<
       timeZone: string | undefined,
       member: string,
     ) => Effect.Effect<void>;
-    /** Who a turn at a vessel came from: the member identified, or null for a guest or an unsure voice. */
-    readonly here: (vessel: string, member: string | null) => Effect.Effect<void>;
-    /** A device's face at rest: whoever was just identified there, else its owner's when it may show it. */
+    /** A device's face at rest, from the one presence estimate: the one person there, else its owner's when allowed. */
     readonly atDevice: (
       device: string,
       persona: string | undefined,
@@ -145,8 +144,6 @@ const make = Effect.gen(function* () {
   /** A write happened: listeners read the view again. */
   const moved = yield* PubSub.sliding<void>(1);
   const oneShot = yield* Effect.serviceOption(TessayaOneShot);
-  // shortcut: in memory, so a restart forgets who was at a vessel; it decides a face for only HERE_MS anyway.
-  const atVessel = new Map<string, { readonly member: string | null; readonly at: number }>();
 
   const pack = () =>
     Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath));
@@ -266,12 +263,6 @@ const make = Effect.gen(function* () {
     heard: Effect.fn("TessayaMood.heard")(function* (persona, timeZone, member) {
       yield* apply(persona, (day) => ({ kind: "his_turn", day }), timeZone, member);
     }),
-    here: Effect.fn("TessayaMood.here")(function* (vessel, member) {
-      const now = yield* Clock.currentTimeMillis;
-      const before = atVessel.get(vessel);
-      atVessel.set(vessel, { member, at: now });
-      if (before?.member !== member) yield* PubSub.publish(moved, undefined);
-    }),
     atDevice: Effect.fn("TessayaMood.atDevice")(function* (device, personaId, timeZone) {
       const { persona, state, ctx } = yield* readNow(personaId, timeZone);
       const registry = yield* Effect.serviceOption(DeviceRegistry);
@@ -279,10 +270,16 @@ const make = Effect.gen(function* () {
         ? null
         : yield* registry.value.get(device).pipe(Effect.orElseSucceed(() => null));
       const owned = deviceOwnerOf(known, ctx.settings.devices?.[device], OWNER_MEMBER_ID);
-      // shortcut: desktop turns name their vessel "desktop", not the device; key them by device when a second desktop matters.
-      const heard =
-        atVessel.get(device) ?? (known?.kind === "desktop" ? atVessel.get("desktop") : undefined);
-      const member = faceMemberAt({ ...owned, heard: heard ?? null, now: ctx.now });
+      const presence = yield* Effect.serviceOption(TessayaPresence);
+      const estimate = Option.isNone(presence)
+        ? { members: [], occupied: new Map<string, number>() }
+        : yield* presence.value.estimate();
+      const member = faceMemberAt({
+        ...owned,
+        // shortcut: desktop turns note their vessel as "desktop", not the device; split when a second desktop matters.
+        vessels: known?.kind === "desktop" ? [device, "desktop"] : [device],
+        estimate,
+      });
       return personaView(state, persona, ctx, member);
     }),
     inner: Effect.fn("TessayaMood.inner")(function* (personaId, viewer, timeZone) {

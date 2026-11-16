@@ -8,7 +8,6 @@ import {
   decay,
   deviceOwnerOf,
   faceMemberAt,
-  HERE_MS,
   personaAffectOf,
   personaView,
   type PersonaAffect,
@@ -19,6 +18,7 @@ import {
   type AffectEvent,
   type AffectState,
 } from "./affect.ts";
+import { fusePresence, type PresenceSignal } from "./presence.ts";
 
 const H = 3_600_000;
 const day = { now: 0, hour: 12, guilt: "light" as const, settings: DEFAULT_AFFECT_SETTINGS };
@@ -275,13 +275,36 @@ describe("relationships", () => {
       show: false,
     });
     expect(deviceOwnerOf({ via: "client" }, { show: false }, "owner").show).toBe(false);
-    const now = HERE_MS * 3;
-    const at = (heard: { member: string | null; at: number } | null) =>
-      faceMemberAt({ ...desk, heard, now });
-    expect(at(null)).toBe("sara");
-    expect(at({ member: "owner", at: now - 60_000 })).toBe("owner");
-    expect(at({ member: null, at: now - 60_000 })).toBeNull();
-    expect(at({ member: null, at: now - HERE_MS })).toBe("sara");
-    expect(faceMemberAt({ owner: "sara", show: false, heard: null, now })).toBeNull();
+    const now = 2 * H;
+    const at = (signals: ReadonlyArray<Omit<PresenceSignal, "at"> & { minutesAgo: number }>) =>
+      faceMemberAt({
+        ...desk,
+        vessels: ["desk"],
+        estimate: fusePresence(
+          signals.map((s) => ({ ...s, at: now - s.minutesAgo * 60_000 })),
+          now,
+        ),
+      });
+    const voice = (member: string | null, minutesAgo = 1) => ({
+      member,
+      source: "voice",
+      vessel: "desk",
+      minutesAgo,
+    });
+    expect(at([])).toBe("sara");
+    expect(at([voice("owner")])).toBe("owner");
+    // A guest (or anyone she can't name) there, or two people: nobody's.
+    expect(at([voice(null)])).toBeNull();
+    expect(at([voice("owner"), voice("sara")])).toBeNull();
+    // Once they have gone quiet a while, its owner's again.
+    expect(at([voice(null, 90)])).toBe("sara");
+    expect(
+      faceMemberAt({
+        owner: "sara",
+        show: false,
+        vessels: ["desk"],
+        estimate: fusePresence([], now),
+      }),
+    ).toBeNull();
   });
 });
