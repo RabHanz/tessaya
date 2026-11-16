@@ -18,6 +18,7 @@ export const SETTINGS_PAGE_TARGETS = [
   "SettingsHome",
   "SettingsHardware",
   "SettingsTeam",
+  "SettingsPersonas",
   "SettingsCast",
   "SettingsPulse",
   "SettingsBrainUsage",

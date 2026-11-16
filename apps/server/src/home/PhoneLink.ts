@@ -1,7 +1,8 @@
 /**
- * The phone route (`/api/tessel/phone?device=&phone=&name=`): binary down is her reply, binary up its mic (both PCM
- * 16 kHz mono s16le, as `voice/down`), the mic only after `{"t":"listen","on":true}`. Text up is
- * `{"t":"route","kind","name","ip"}` on every route or network change. HomeDevices decides when the phone is used.
+ * The phone route (`/api/tessel/phone?device=&phone=&name=`): binary is her reply down and its mic up (PCM 16 kHz
+ * mono s16le), the mic only after `{"t":"listen","on":true}`. Text up is `route` (kind, name, ip, haptic, gain) on
+ * every change and `talk` for its headset's button; text down is `listen`, `flush` and `haptic` (a rendering for the
+ * motor its route named). HomeDevices decides when the phone is used.
  */
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -9,6 +10,7 @@ import * as Queue from "effect/Queue";
 import * as Socket from "effect/socket/Socket";
 
 import { BT_KINDS, type BtKind } from "@t3tools/tessaya-contracts";
+import { renderHaptic, type HapticHardware } from "@t3tools/tessaya-shared/haptics";
 import { PHONE, type PhoneLink } from "./HomeDevices.ts";
 
 export const PHONE_LINK_PATH = "/api/tessel/phone";
@@ -61,18 +63,44 @@ export interface PhoneRoute {
   readonly kind: BtKind;
   readonly name: string | null;
   readonly ip: string | null;
+  /** The phone's motor, as its native player reports it; null: it cannot buzz. */
+  readonly haptic: HapticHardware | null;
+  /** Its feel-test correction (1: as designed). */
+  readonly gain: number;
 }
 
-/** A `route` message from the phone, or null. Its payload is the phone's, so data. */
-export const parseRoute = (text: string): PhoneRoute | null => {
+const PRIMITIVES: ReadonlyArray<unknown> = ["CLICK", "TICK", "THUD", "QUICK_RISE"];
+const hardwareOf = (v: unknown): HapticHardware | null => {
+  if (typeof v !== "object" || v === null) return null;
+  const h = v as Record<string, unknown>;
+  if (h["kind"] === "core-haptics") return { kind: "core-haptics" };
+  if (h["kind"] !== "android") return null;
+  const primitives = Array.isArray(h["primitives"])
+    ? h["primitives"].filter((x): x is "CLICK" => PRIMITIVES.includes(x))
+    : [];
+  return { kind: "android", primitives, amplitude: h["amplitude"] === true };
+};
+
+/** A message from the phone: its route, or its headset's button; null for anything else. Its payload is data. */
+export const parsePhoneText = (text: string): PhoneRoute | "talk" | null => {
   try {
     const v = JSON.parse(text) as Record<string, unknown>;
+    if (v["t"] === "talk") return "talk";
     if (v["t"] !== "route") return null;
     const kind = (BT_KINDS as ReadonlyArray<unknown>).includes(v["kind"])
       ? (v["kind"] as BtKind)
       : "speaker";
     const str = (x: unknown) => (typeof x === "string" && x.length <= 80 ? x : null);
-    return { kind, name: str(v["name"]), ip: str(v["ip"]) };
+    const gain = v["gain"];
+    return {
+      kind,
+      name: str(v["name"]),
+      ip: str(v["ip"]),
+      haptic: hardwareOf(v["haptic"]),
+      // The same bounds as gainFromFeel, so a phone cannot max or mute its motor.
+      gain:
+        typeof gain === "number" && Number.isFinite(gain) ? Math.min(2, Math.max(0.4, gain)) : 1,
+    };
   } catch {
     return null;
   }
@@ -88,6 +116,8 @@ export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
     readonly remote: string | null;
     readonly r1Remote: () => string | null;
     readonly changed: (link: PhoneLink, open: boolean) => Effect.Effect<void>;
+    /** Its headset's button was pressed. */
+    readonly talk: (link: PhoneLink) => Effect.Effect<void>;
   },
 ) {
   const writer = yield* socket.writer;
@@ -106,6 +136,10 @@ export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
     near: nearBy(input.r1Remote(), { ip: route.ip, remote: input.remote }),
     play: (pcm) => void Queue.offerUnsafe(out, new Uint8Array(pcm)),
     flush: () => say({ t: "flush" }),
+    buzz: (pattern, level) => {
+      if (route.haptic !== null)
+        say({ t: "haptic", r: renderHaptic(route.haptic, pattern, level, route.gain) });
+    },
     mic: (bytes) => {
       idleTicks = 0;
       if (!listening) {
@@ -115,7 +149,7 @@ export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
       return mic.take(bytes);
     },
   });
-  let route: PhoneRoute = { kind: "speaker", name: null, ip: null };
+  let route: PhoneRoute = { kind: "speaker", name: null, ip: null, haptic: null, gain: 1 };
   let link = linkOf(route);
   yield* input.changed(link, true);
   const read = Effect.forever(
@@ -125,8 +159,12 @@ export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
           if (listening) mic.push(frame);
           continue;
         }
-        const next = parseRoute(frame);
+        const next = parsePhoneText(frame);
         if (next === null) continue;
+        if (next === "talk") {
+          yield* input.talk(link);
+          continue;
+        }
         route = next;
         link = linkOf(route);
         yield* input.changed(link, true);

@@ -96,6 +96,7 @@ import { SettingsHomeRouteScreen } from "./features/settings/SettingsHomeRouteSc
 import { SettingsHardwareRouteScreen } from "./features/settings/SettingsHardwareRouteScreen";
 import { SettingsTeamRouteScreen } from "./features/settings/SettingsTeamRouteScreen";
 import { SettingsCastRouteScreen } from "./features/settings/SettingsCastRouteScreen";
+import { SettingsPersonasRouteScreen } from "./features/settings/SettingsPersonasRouteScreen";
 import { SettingsPulseRouteScreen } from "./features/settings/SettingsPulseRouteScreen";
 import { SettingsBrainUsageRouteScreen } from "./features/settings/SettingsBrainUsageRouteScreen";
 import { SettingsActivityRouteScreen } from "./features/settings/SettingsActivityRouteScreen";
@@ -231,6 +232,11 @@ const SETTINGS_SCREENS = {
     screen: SettingsTeamRouteScreen,
     linking: "settings/team",
     options: settingsPage("Team"),
+  }),
+  SettingsPersonas: createNativeStackScreen({
+    screen: SettingsPersonasRouteScreen,
+    linking: "settings/personas",
+    options: settingsPage("Personas"),
   }),
   SettingsCast: createNativeStackScreen({
     screen: SettingsCastRouteScreen,

@@ -1,10 +1,12 @@
 /**
  * The phone route: this phone plays her replies on whatever it is playing through (AirPods, headphones) and lends its
  * mic, so a Tessel's own radio stays on Wi-Fi. One Tessel at a time, chosen in Settings → Hardware; the server's output
- * and input orders decide when the phone is used (apps/server/src/home/PhoneLink.ts).
+ * and input orders decide when the phone is used (apps/server/src/home/PhoneLink.ts). Its headset's button starts a
+ * talk on that Tessel, and her buzz on the word plays on this phone's own motor.
  */
 import { resolveDeviceHubAccess } from "@t3tools/client-runtime/state/deviceHubAccess";
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { HapticRendering } from "@t3tools/tessaya-shared/haptics";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
@@ -13,6 +15,7 @@ import { File, Paths } from "expo-file-system";
 import * as Network from "expo-network";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { Haptics } from "../../../modules/t3-haptics";
 import { PhoneAudio, type PhoneAudioRoute } from "../../../modules/t3-phone-audio";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { useEnvironmentQuery } from "../../state/query";
@@ -80,6 +83,15 @@ const installId =
   "phone";
 const phoneName = Device.deviceName ?? Device.modelName ?? "Phone";
 
+/** The server's words only; anything else is ignored. */
+const parse = (text: string): { t?: string; on?: boolean; r?: HapticRendering } => {
+  try {
+    return JSON.parse(text) as { t?: string };
+  } catch {
+    return {};
+  }
+};
+
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
 /** Holds the link while a Tessel is chosen; mounted once at the app root. */
@@ -109,12 +121,23 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
         .catch(() => null)
         .then((ip) => {
           if (ws.readyState === WebSocket.OPEN)
-            ws.send(JSON.stringify({ t: "route", kind: kindOf(r), name: r.name, ip }));
+            ws.send(
+              JSON.stringify({
+                t: "route",
+                kind: kindOf(r),
+                name: r.name,
+                ip,
+                haptic: Haptics?.hardware() ?? null,
+              }),
+            );
         });
     const subs = [
       audio.addListener("onRoute", sendRoute),
       audio.addListener("onMic", (e) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(decode(e.pcm).buffer);
+      }),
+      audio.addListener("onButton", () => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "talk" }));
       }),
     ];
     ws.onopen = () =>
@@ -124,14 +147,11 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
         .catch(() => ws.close());
     ws.onmessage = (e) => {
       if (typeof e.data !== "string") return audio.play(new Uint8Array(e.data as ArrayBuffer));
-      try {
-        const m = JSON.parse(e.data) as { t?: string; on?: boolean };
-        if (m.t === "listen") void audio.setMic(m.on === true);
-        // She was interrupted: what the player still holds goes now.
-        else if (m.t === "flush") audio.flush();
-      } catch {
-        // The server's words only; anything else is ignored.
-      }
+      const m = parse(e.data);
+      if (m.t === "listen") void audio.setMic(m.on === true);
+      // She was interrupted: what the player still holds goes now.
+      else if (m.t === "flush") audio.flush();
+      else if (m.t === "haptic" && m.r !== undefined) Haptics?.play(m.r);
     };
     // A dropped link comes back with a fresh ticket; the server routes to her speaker meanwhile.
     ws.onclose = () => {

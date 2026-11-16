@@ -323,6 +323,14 @@ export const routes = HttpRouter.use((router) =>
         face: Schema.NullOr(Schema.String.check(Schema.isMaxLength(32))),
       }),
     );
+    // What the desktop did on its own (a hands step, an app command, a Settings save): names and outcomes, no content.
+    const decodeDeskAction = Schema.decodeUnknownOption(
+      Schema.Struct({
+        kind: Schema.Literals(["desk.tool", "settings.changed"]),
+        subject: Schema.String.check(Schema.isPattern(/^[\w.-]{1,80}$/)),
+        outcome: Schema.optional(Schema.Literals(["ok", "fail"])),
+      }),
+    );
     const decodePeerTurn = Schema.decodeUnknownOption(PeerTurnBody);
     const deskToolsAnswer = Effect.fn("BatonTessayaRoutes.deskTools")(function* (
       calledAs: string,
@@ -407,6 +415,31 @@ export const routes = HttpRouter.use((router) =>
         if (body._tag === "None")
           return HttpServerResponse.jsonUnsafe({ message: "Not an effect." }, { status: 400 });
         yield* effectFired({ vessel: "desktop", ...body.value, haptic: null });
+        return HttpServerResponse.jsonUnsafe({});
+      }
+      if (calledAs === "action") {
+        if (!session.value.scopes.includes(AuthTessayaHandsHostScope))
+          return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
+        const body = decodeDeskAction(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
+        if (body._tag === "None")
+          return HttpServerResponse.jsonUnsafe({ message: "Not an action." }, { status: 400 });
+        const member = memberOfSubject(session.value.subject);
+        yield* emitAction({
+          ...body.value,
+          // A hands step is hers; a Settings save is whoever signed this desktop in.
+          actor:
+            body.value.kind === "desk.tool"
+              ? { kind: "persona", certainty: 1 }
+              : {
+                  kind: member === null ? "owner" : "member",
+                  id: member ?? OWNER_MEMBER_ID,
+                  certainty: 0.8,
+                },
+          evidence: [
+            { kind: "device", ref: "desktop" },
+            { kind: "session", ref: String(session.value.sessionId) },
+          ],
+        });
         return HttpServerResponse.jsonUnsafe({});
       }
       // What her look at his screen saw (G6): her next two turns at the desk know it, then it is gone.
@@ -695,7 +728,7 @@ export const routes = HttpRouter.use((router) =>
     yield* router.add("GET", "/tessaya/api/*", api);
     yield* router.add("POST", "/tessaya/api/*", api);
     // A clone's embedding for this machine's own Pocket (`voice_url`, which sends no token): only from loopback with
-    // no proxy or tunnel in between, under the key this start's library view hands out (VOXTA G1).
+    // no proxy or tunnel in between, under the key its library view hands out (VOXTA G1).
     yield* router.add(
       "GET",
       `${EMBEDDING_ROUTE}*`,

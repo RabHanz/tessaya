@@ -1,5 +1,6 @@
 import AVFoundation
 import ExpoModulesCore
+import MediaPlayer
 
 private let frameBytes = 1920
 private let wireFormat = AVAudioFormat(
@@ -14,13 +15,16 @@ public class T3PhoneAudioModule: Module {
   private var running = false
   private var micOn = false
   private var observers: [NSObjectProtocol] = []
+  private var buttonTargets: [Any] = []
+  // A mixable session never gets remote commands (an AirPods stem press), so it mixes only while another app plays.
+  private var mixable = true
   // Touched only by the input tap thread, reset before a new tap is installed.
   private var pending = Data()
 
   public func definition() -> ModuleDefinition {
     Name("T3PhoneAudio")
 
-    Events("onMic", "onRoute", "onState")
+    Events("onMic", "onRoute", "onState", "onButton")
 
     AsyncFunction("start") { () throws -> [String: Any] in
       try self.queue.sync { try self.begin() }
@@ -59,10 +63,12 @@ public class T3PhoneAudioModule: Module {
 
   private func begin() throws {
     guard !running else { return }
+    mixable = AVAudioSession.sharedInstance().isOtherAudioPlaying
     try configureSession()
     try AVAudioSession.sharedInstance().setActive(true)
     running = true
     observe()
+    DispatchQueue.main.async { self.listenForButtons() }
     do { try rebuild() } catch {
       end()
       throw error
@@ -75,6 +81,7 @@ public class T3PhoneAudioModule: Module {
     micOn = false
     observers.forEach { NotificationCenter.default.removeObserver($0) }
     observers = []
+    DispatchQueue.main.async { self.stopButtons() }
     teardown()
     try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
   }
@@ -83,6 +90,8 @@ public class T3PhoneAudioModule: Module {
     guard running else { throw PhoneAudioException("Call start() before setMic().") }
     guard on != micOn else { return }
     micOn = on
+    // A talk just ended and nothing else plays: take the stem press back.
+    if !on && mixable && !AVAudioSession.sharedInstance().isOtherAudioPlaying { mixable = false }
     do {
       try configureSession()
       try rebuild()
@@ -100,9 +109,11 @@ public class T3PhoneAudioModule: Module {
   // .voiceChat forces HFP on Bluetooth, so it is only used while capturing to keep A2DP quality otherwise.
   private func configureSession() throws {
     let session = AVAudioSession.sharedInstance()
-    try session.setCategory(
-      .playAndRecord, mode: micOn ? .voiceChat : .default,
-      options: [.allowBluetooth, .allowBluetoothA2DP, .duckOthers])
+    var options: AVAudioSession.CategoryOptions = [.allowBluetooth, .allowBluetoothA2DP]
+    if mixable { options.insert(.duckOthers) }
+    try session.setCategory(.playAndRecord, mode: micOn ? .voiceChat : .default, options: options)
+    // Her buzz on the word still lands while the mic is open.
+    try? session.setAllowHapticsAndSystemSoundsDuringRecording(true)
     guard micOn else {
       try? session.setPreferredInput(nil)
       return
@@ -225,6 +236,18 @@ public class T3PhoneAudioModule: Module {
 
   private func interrupted(_ began: Bool) {
     guard running else { return }
+    // His music took the session: she carries on beside it, ducking it, and the stem press is the music's.
+    if began && !mixable {
+      mixable = true
+      do {
+        try configureSession()
+        try AVAudioSession.sharedInstance().setActive(true)
+        try rebuild()
+        return
+      } catch {
+        sendEvent("onState", ["state": "error", "message": error.localizedDescription])
+      }
+    }
     if began {
       teardown()
       sendEvent("onState", ["state": "interrupted"])
@@ -242,6 +265,31 @@ public class T3PhoneAudioModule: Module {
   private func restart() {
     do { try rebuild() } catch {
       sendEvent("onState", ["state": "error", "message": error.localizedDescription])
+    }
+  }
+
+  private func listenForButtons() {
+    let center = MPRemoteCommandCenter.shared()
+    let press: (MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus = { [weak self] _ in
+      self?.sendEvent("onButton", ["button": "play-pause"])
+      return .success
+    }
+    buttonTargets = [center.togglePlayPauseCommand, center.playCommand, center.pauseCommand].map {
+      $0.addTarget(handler: press)
+    }
+    MPNowPlayingInfoCenter.default().nowPlayingInfo = [MPMediaItemPropertyTitle: "Tessaya"]
+  }
+
+  private func stopButtons() {
+    let center = MPRemoteCommandCenter.shared()
+    for target in buttonTargets {
+      for command in [center.togglePlayPauseCommand, center.playCommand, center.pauseCommand] {
+        command.removeTarget(target)
+      }
+    }
+    buttonTargets = []
+    if MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String == "Tessaya" {
+      MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
   }
 

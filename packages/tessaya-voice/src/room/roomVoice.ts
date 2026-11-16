@@ -129,6 +129,8 @@ export interface RoomPersona {
   readonly cueMood?: string;
   /** Its look on the R1's eyes (`cmd/eye/persona`); without one, the generic look. */
   readonly eyes?: string;
+  /** Its saved clone on her server (a path); main.ts makes it the voice when this machine's Pocket can fetch it. */
+  readonly cloneUrl?: string;
 }
 
 /** What a body needs of a persona record, from her server's roster or the default pack. */
@@ -139,6 +141,8 @@ export interface ServedPersona {
   readonly voice: string;
   readonly lead: boolean;
   readonly eyes?: string;
+  /** Its saved clone's embedding on her server (a path), spoken when this loop's Pocket can fetch it. */
+  readonly cloneUrl?: string;
 }
 
 /** The room's roster from her server's personas: the lead first, each called by its wake word or its name. */
@@ -150,6 +154,7 @@ export const roomPersonas = (personas: ReadonlyArray<ServedPersona>): RoomPerson
       name: p.wake ?? p.name,
       voice: p.voice,
       ...(p.eyes === undefined ? {} : { eyes: p.eyes }),
+      ...(p.cloneUrl === undefined ? {} : { cloneUrl: p.cloneUrl }),
     }));
 
 /** `GET .../personas` as her server answered it, each record checked; null when nothing usable came back. */
@@ -161,6 +166,7 @@ export const servedRoster = (body: unknown): RoomPersona[] | null => {
     const [id, name, voice] = [text(p?.["id"]), text(p?.["name"]), text(p?.["voice"])];
     if (id === undefined || name === undefined || voice === undefined) return [];
     const eyes = text(p["eyes"]);
+    const cloneUrl = text(p["cloneUrl"]);
     return [
       {
         id,
@@ -169,6 +175,7 @@ export const servedRoster = (body: unknown): RoomPersona[] | null => {
         wake: text(p["wake"]) ?? null,
         lead: p["lead"] === true,
         ...(eyes ? { eyes } : {}),
+        ...(cloneUrl ? { cloneUrl } : {}),
       },
     ];
   });

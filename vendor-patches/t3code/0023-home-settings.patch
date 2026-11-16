@@ -1,8 +1,8 @@
 diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
-index b2ad65cf053741a30cda0333ad86ace107ab7ad6..c09d39db62e0e9f1c011a26386d6d3afe63ff3ba 100644
+index b2ad65cf053741a30cda0333ad86ace107ab7ad6..29596bd14aa34edc841481f129a83a92f9131813 100644
 --- a/apps/mobile/src/Stack.tsx
 +++ b/apps/mobile/src/Stack.tsx
-@@ -92,6 +92,15 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
+@@ -92,6 +92,16 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
  import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
  import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
  import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
@@ -10,6 +10,7 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..c09d39db62e0e9f1c011a26386d6d3af
 +import { SettingsHardwareRouteScreen } from "./features/settings/SettingsHardwareRouteScreen";
 +import { SettingsTeamRouteScreen } from "./features/settings/SettingsTeamRouteScreen";
 +import { SettingsCastRouteScreen } from "./features/settings/SettingsCastRouteScreen";
++import { SettingsPersonasRouteScreen } from "./features/settings/SettingsPersonasRouteScreen";
 +import { SettingsPulseRouteScreen } from "./features/settings/SettingsPulseRouteScreen";
 +import { SettingsBrainUsageRouteScreen } from "./features/settings/SettingsBrainUsageRouteScreen";
 +import { SettingsActivityRouteScreen } from "./features/settings/SettingsActivityRouteScreen";
@@ -18,7 +19,7 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..c09d39db62e0e9f1c011a26386d6d3af
  import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
  import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
  import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
-@@ -208,6 +217,51 @@ const SETTINGS_SCREENS = {
+@@ -208,6 +218,56 @@ const SETTINGS_SCREENS = {
      linking: "settings/provider-accounts",
      options: settingsPage("Providers"),
    }),
@@ -36,6 +37,11 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..c09d39db62e0e9f1c011a26386d6d3af
 +    screen: SettingsTeamRouteScreen,
 +    linking: "settings/team",
 +    options: settingsPage("Team"),
++  }),
++  SettingsPersonas: createNativeStackScreen({
++    screen: SettingsPersonasRouteScreen,
++    linking: "settings/personas",
++    options: settingsPage("Personas"),
 +  }),
 +  SettingsCast: createNativeStackScreen({
 +    screen: SettingsCastRouteScreen,
@@ -71,10 +77,10 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..c09d39db62e0e9f1c011a26386d6d3af
      screen: SettingsEnvironmentMaintenanceRouteScreen,
      linking: "settings/maintenance",
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 50ad81383addc75250b37025d1bfb43ce05a9da5..37a2c4c7af96b844189247d6b6cc85a3dac4d9ea 100644
+index 50ad81383addc75250b37025d1bfb43ce05a9da5..75a0ea0d88661352b1b92fec597aad584d0e6f78 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-@@ -266,8 +266,31 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -266,8 +266,34 @@ function useSettingsIndexSections(): SettingsListSection[] {
    ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
    const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
      page(target, icon, label, { disabled: noServerTargets });
@@ -83,7 +89,10 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..37a2c4c7af96b844189247d6b6cc85a3
    return [
 +    {
 +      title: "Talking to Tessaya",
-+      rows: [page("SettingsVoice", "mic", "Voice and dictation")],
++      rows: [
++        page("SettingsVoice", "mic", "Voice and dictation"),
++        serverPage("SettingsPersonas", "person.badge.plus", "Personas"),
++      ],
 +    },
 +    {
 +      title: "Working for you",
@@ -107,7 +116,7 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..37a2c4c7af96b844189247d6b6cc85a3
      {
        rows: [
          page("SettingsOrganization", "gearshape", gt("General")),
-@@ -282,7 +305,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -282,7 +308,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
            ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
            : []),
          page("SettingsKeyboard", "keyboard", gt("Keyboard")),
@@ -130,16 +139,17 @@ index ce61dec7cfe69d5100b15fb3ac4766fec44e2e82..b773f4084130aeb25860b70d5e1e9cbc
        navigation.navigate(props.fullScreenTarget);
      } else {
 diff --git a/apps/mobile/src/features/settings/components/settings-page-targets.ts b/apps/mobile/src/features/settings/components/settings-page-targets.ts
-index a92922a66d1e3525b89f0e68de7da337f6770ce2..f21c8a6ed1f6e0099f5b15f86be80362ba45e4e9 100644
+index a92922a66d1e3525b89f0e68de7da337f6770ce2..7c6202113817640a3ad07b7457429e9668a332d3 100644
 --- a/apps/mobile/src/features/settings/components/settings-page-targets.ts
 +++ b/apps/mobile/src/features/settings/components/settings-page-targets.ts
-@@ -15,6 +15,15 @@ export const SETTINGS_PAGE_TARGETS = [
+@@ -15,6 +15,16 @@ export const SETTINGS_PAGE_TARGETS = [
    "SettingsLabs",
    "SettingsEnvironmentMaintenance",
    "SettingsProviderAccounts",
 +  "SettingsHome",
 +  "SettingsHardware",
 +  "SettingsTeam",
++  "SettingsPersonas",
 +  "SettingsCast",
 +  "SettingsPulse",
 +  "SettingsBrainUsage",

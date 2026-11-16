@@ -1930,3 +1930,34 @@ it.effect("answers being moved on the Tessel's eyes, once per handling, at his s
     assert.deepStrictEqual(sent[0]?.payload, { p: "giggle", lvl: 2 });
   }).pipe(Effect.provide(layer));
 });
+
+it.effect(
+  "starts a talk from a linked phone's headset button only when it is near and the Tessel is not muted",
+  () => {
+    const { topics, sent, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      const link = (near: boolean): HomeDevices.PhoneLink => ({
+        id: `${HomeDevices.PHONE}iphone`,
+        name: "iPhone",
+        kind: "headphones",
+        near,
+        play: () => {},
+        flush: () => {},
+        buzz: () => {},
+        mic: (bytes) => Buffer.alloc(bytes),
+      });
+      sent.length = 0;
+      yield* devices.phoneTalk(ID, link(false));
+      assert.notInclude(topics(), "cmd/voice/start");
+      yield* devices.phoneTalk(ID, link(true));
+      assert.include(topics(), "cmd/voice/start");
+      sent.length = 0;
+      yield* devices.command(ID, { op: "mute", muted: true }, me);
+      yield* devices.phoneTalk(ID, link(true));
+      assert.notInclude(topics(), "cmd/voice/start");
+    }).pipe(Effect.provide(layer));
+  },
+);
