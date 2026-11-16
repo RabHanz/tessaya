@@ -147,7 +147,7 @@ const make = Effect.gen(function* () {
         : "action: null (the rule's action is already fixed).",
     ].join("\n");
     return yield* oneShot.value
-      .run({ prompt, outputSchema: Judged, role: "intent" })
+      .run({ prompt, outputSchema: Judged, role: "intent", feature: "device-trigger" })
       .pipe(Effect.orElseSucceed(() => null));
   });
 

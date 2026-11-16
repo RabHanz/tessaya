@@ -53,6 +53,7 @@ import { CAMPLUS_POLICY, cosine, unitOrNull } from "@t3tools/tessaya-voice/speak
 import type * as Ort from "onnxruntime-node";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
+import { BrainUsage, type CallTokens } from "./BrainUsage.ts";
 import * as ServerConfig from "../config.ts";
 import { serveArbiter } from "../home/VoiceArbiter.ts";
 import { Consent, readGrants, setGrant } from "./consent.ts";
@@ -345,7 +346,28 @@ export const geminiAudio = (reply: unknown): Buffer | null => {
   return null;
 };
 
-const geminiSay = async (key: string, voice: string, text: string): Promise<Buffer> => {
+/** The interaction's token counts, when its reply carries them. */
+// shortcut: reads both the Interactions (`usage.total_*_tokens`) and generateContent (`usageMetadata`) shapes; pin
+// to one when Google's TTS reply format settles.
+export const geminiTokens = (reply: unknown): CallTokens | null => {
+  const r = (reply ?? {}) as {
+    usage?: Record<string, unknown>;
+    usageMetadata?: Record<string, unknown>;
+  };
+  const n = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+  const input = n(r.usage?.["total_input_tokens"] ?? r.usageMetadata?.["promptTokenCount"]);
+  const output = n(r.usage?.["total_output_tokens"] ?? r.usageMetadata?.["candidatesTokenCount"]);
+  return input + output === 0
+    ? null
+    : { model: GEMINI_MODEL, input, cacheRead: 0, cacheWrite: 0, output };
+};
+
+const geminiSay = async (
+  key: string,
+  voice: string,
+  text: string,
+): Promise<{ readonly audio: Buffer; readonly tokens: CallTokens | null }> => {
   const response = await fetch(GEMINI_URL, {
     method: "POST",
     // The key goes only into this request's header: never a log or a reply.
@@ -362,9 +384,10 @@ const geminiSay = async (key: string, voice: string, text: string): Promise<Buff
   if (response.status === 401 || response.status === 403)
     throw new Error("Google rejected the key saved in Settings → APIs.");
   if (!response.ok) throw new Error(`Google’s voice answered ${response.status}.`);
-  const audio = geminiAudio(await response.json().catch(() => null));
+  const reply: unknown = await response.json().catch(() => null);
+  const audio = geminiAudio(reply);
   if (audio === null) throw new Error("Google’s voice sent no audio.");
-  return audio;
+  return { audio, tokens: geminiTokens(reply) };
 };
 
 const view = (voice: LibraryVoice): LibraryVoiceView => ({
@@ -449,6 +472,7 @@ export class TessayaVoiceLibrary extends Context.Service<
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const secrets = yield* ServerSecretStore;
+  const usage = yield* BrainUsage;
   const userdata = config.stateDir;
   const packDir = NodePath.join(userdata, "operating-system");
   const pocketRoot = NodePath.join(userdata, "voice", "pocket");
@@ -533,10 +557,20 @@ export const make = Effect.gen(function* () {
         why: "Save a Google key in Settings → APIs to use cloud voices.",
       });
     }
-    return yield* Effect.tryPromise({
+    const said = yield* Effect.tryPromise({
       try: () => geminiSay(key.value, voice, text),
       catch: refuse,
     });
+    yield* usage.record({
+      ...(said.tokens ?? { model: GEMINI_MODEL, input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }),
+      role: "speech",
+      provider: "google",
+      credential: "apiKey:google",
+      billing: "apiKey",
+      ...(said.tokens === null ? { outcome: "unmeasured" as const } : {}),
+      attribution: { feature: "voice-cloud", origin: "user" },
+    });
+    return said.audio;
   });
 
   const preview = Effect.fn("BatonVoiceLibrary.preview")(function* (input: {

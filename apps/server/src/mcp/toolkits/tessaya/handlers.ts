@@ -533,6 +533,7 @@ export const layer = McpToolAccess.toLayer(
           handlers[BATON_BRAIN_WS_METHODS.usage]({
             days: Math.round(input.days ?? 7),
             timeZone: "",
+            ...(input.detail === undefined ? {} : { detail: input.detail }),
           }),
         ),
       ),

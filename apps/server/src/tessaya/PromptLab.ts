@@ -138,7 +138,14 @@ const make = Effect.gen(function* () {
           );
           const replies = yield* Effect.forEach(scenarios, (scenario) =>
             oneShot
-              .run({ prompt: scenario.said, outputSchema: Reply, role: "voice", model, system })
+              .run({
+                prompt: scenario.said,
+                outputSchema: Reply,
+                role: "voice",
+                feature: "prompt-lab",
+                model,
+                system,
+              })
               .pipe(
                 Effect.map((r) => r.reply),
                 Effect.catch((error) => Effect.succeed(`(no reply: ${error.detail})`)),

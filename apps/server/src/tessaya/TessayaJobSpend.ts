@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**
  * What a job's worker has spent, from the worker's own session transcript (Claude Code's project
  * logs and Codex's rollout logs), priced with the rate list T3's usage page already keeps on disk.
@@ -84,18 +84,29 @@ const usageOfFile = (file: { path: string; kind: Kind }): ReadonlyArray<ModelUsa
   }
 };
 
+/** The one price list: T3's usage page's rates and the day it fetched them (the price version on each usage row). */
+export interface PriceList {
+  readonly table: RateTable;
+  /** "2026-11-14": the fetch day, so a row says which prices made its dollars. */
+  readonly version: string;
+}
+
 /** The rate list T3's usage page keeps (usage-model-rates.json), or null before it has ever been fetched. */
-export const readRates = (stateDir: string): RateTable | null => {
+export const readPriceList = (stateDir: string): PriceList | null => {
   try {
     const raw = JSON.parse(
       NodeFS.readFileSync(NodePath.join(stateDir, "usage-model-rates.json"), "utf8"),
-    ) as { document?: unknown };
+    ) as { document?: unknown; fetchedAtMs?: unknown };
     const table = parseRateTable(raw.document);
-    return table.size > 0 ? table : null;
+    const at = typeof raw.fetchedAtMs === "number" ? raw.fetchedAtMs : 0;
+    return table.size > 0 ? { table, version: new Date(at).toISOString().slice(0, 10) } : null;
   } catch {
     return null;
   }
 };
+
+export const readRates = (stateDir: string): RateTable | null =>
+  readPriceList(stateDir)?.table ?? null;
 
 export interface Spend {
   readonly tokens: number;

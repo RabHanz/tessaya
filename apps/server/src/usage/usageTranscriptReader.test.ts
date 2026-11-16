@@ -89,6 +89,10 @@ describe("compressed transcripts", () => {
     await NodeFSP.writeFile(NodePath.join(nested, "unrelated.zst"), "ignored");
     await NodeFSP.writeFile(NodePath.join(nested, "partial.jsonl.zst.tmp"), "ignored");
     await NodeFSP.utimes(old, 1, 1);
+    // Tessaya's own CLI calls: her usage ledger records them, so the scan must not count them again.
+    const hers = NodePath.join(dir, "-tmp-tessaya-ledgered");
+    await NodeFSP.mkdir(hers);
+    await NodeFSP.writeFile(NodePath.join(hers, "one-shot.jsonl"), claudeLine(4, 13));
 
     const listed = await listTranscriptFiles(dir, Date.parse("2026-01-01T00:00:00Z"));
     assert.deepStrictEqual(

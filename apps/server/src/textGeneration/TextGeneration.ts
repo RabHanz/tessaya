@@ -8,6 +8,8 @@ import {
   resolveProjectProviderInstanceEnabled,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
 import { exhaustedUsageWindow } from "@t3tools/shared/usageLimits";
 import { fallbackTextGenerationModelSelection } from "@t3tools/shared/serverSettings";
 import * as ServerSettings from "../serverSettings.ts";
@@ -21,6 +23,8 @@ import * as SourceControlProviderRegistry from "../sourceControl/SourceControlPr
 import * as ThreadTitleLinks from "./ThreadTitleLinks.ts";
 import * as TextGenerators from "./TextGenerators.ts";
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
+import { billingOfAuth } from "@t3tools/tessaya-shared/brainRoutes";
+import { BrainUsage } from "../tessaya/BrainUsage.ts";
 
 export type {
   BranchNameGenerationInput,
@@ -77,6 +81,37 @@ export const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const installationGate = yield* ProviderInstallationGate.ProviderInstallationGate;
   const textGenerators = yield* TextGenerators.TextGenerators;
+  const usage = yield* Effect.serviceOption(BrainUsage);
+  /** Every generation is a paid call: one usage row each, failed ones too. Drivers report no tokens yet. */
+  const recorded = <A>(
+    operation: TextGenerationOp,
+    invoke: Effect.Effect<A, TextGenerationError>,
+    selection: ModelSelection,
+  ) =>
+    Option.isNone(usage)
+      ? invoke
+      : invoke.pipe(
+          Effect.onExit((exit) =>
+            Effect.gen(function* () {
+              const instance = yield* registry.getInstance(selection.instanceId);
+              const auth =
+                instance === undefined ? undefined : (yield* instance.snapshot.getSnapshot).auth;
+              yield* usage.value.record({
+                role: "agent",
+                billing: billingOfAuth(auth?.type),
+                provider: selection.instanceId,
+                credential: `instance:${selection.instanceId}`,
+                model: selection.model,
+                input: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                output: 0,
+                outcome: Exit.isSuccess(exit) ? "unmeasured" : "failed",
+                attribution: { feature: operation, origin: "user" },
+              });
+            }).pipe(Effect.ignore),
+          ),
+        );
   const generate = Effect.fn("TextGeneration.generate")(function* <A>(
     operation: TextGenerationOp,
     selection: ModelSelection,
@@ -92,8 +127,9 @@ export const make = Effect.gen(function* () {
     const textGeneratorCannotRun =
       textGenerator !== undefined && operation === "generateReviewGuide";
     if (textGenerator !== undefined && !textGeneratorCannotRun) {
-      return yield* invoke(
-        TextGenerationOperations.fromRunner("TextGenerator", textGenerator),
+      return yield* recorded(
+        operation,
+        invoke(TextGenerationOperations.fromRunner("TextGenerator", textGenerator), selection),
         selection,
       );
     }
@@ -155,7 +191,7 @@ export const make = Effect.gen(function* () {
     return yield* installationGate.execute(
       selection.instanceId,
       resolveInstance(registry, operation, selection.instanceId).pipe(
-        Effect.flatMap((service) => invoke(service, selection)),
+        Effect.flatMap((service) => recorded(operation, invoke(service, selection), selection)),
       ),
     );
   });

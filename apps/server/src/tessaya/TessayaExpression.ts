@@ -164,13 +164,15 @@ export const make = Effect.gen(function* () {
         thin.map((e) => [e, (written.get(key(e)) ?? []).map((l) => l.text).slice(-8)]),
       ),
     });
-    const result = yield* oneShot.run({ prompt, outputSchema: Written, role: "voice" }).pipe(
-      Effect.tapError((e) =>
-        Effect.logWarning("expression: writing ahead failed", { why: e.detail }),
-      ),
-      Effect.option,
-      Effect.ensuring(Effect.sync(() => void (writing = false))),
-    );
+    const result = yield* oneShot
+      .run({ prompt, outputSchema: Written, role: "voice", feature: "lines" })
+      .pipe(
+        Effect.tapError((e) =>
+          Effect.logWarning("expression: writing ahead failed", { why: e.detail }),
+        ),
+        Effect.option,
+        Effect.ensuring(Effect.sync(() => void (writing = false))),
+      );
     if (Option.isNone(result)) return 0;
     let added = 0;
     for (const moment of result.value.moments) {

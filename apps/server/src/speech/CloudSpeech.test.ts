@@ -8,7 +8,18 @@ import * as Redacted from "effect/Redacted";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { expect, vi } from "vite-plus/test";
 import * as ServerSettings from "../serverSettings.ts";
+import * as BrainUsage from "../tessaya/BrainUsage.ts";
 import * as CloudSpeech from "./CloudSpeech.ts";
+
+/** The service on a ledger that keeps each row it is handed. */
+const onLedger = (rows: Array<BrainUsage.UsageRow> = []) =>
+  Layer.effect(CloudSpeech.CloudSpeech, CloudSpeech.make).pipe(
+    Layer.provide(
+      Layer.mock(BrainUsage.BrainUsage)({
+        record: (row) => Effect.sync(() => void rows.push(row)),
+      }),
+    ),
+  );
 
 it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved key", (provider) =>
   Effect.gen(function* () {
@@ -16,13 +27,14 @@ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved
       provider: SecretProviderId.make("work"),
       reference: "op://Work/Voice/key",
     };
+    const rows: Array<BrainUsage.UsageRow> = [];
     let resolved: string | undefined;
     let cached: string | undefined;
     const read = vi.fn(() => Effect.sync(() => [(cached ??= resolved)]));
     const upstream = vi.fn<typeof fetch>(async () => Response.json({ text: "hello" }));
     const service = yield* CloudSpeech.CloudSpeech.pipe(
       Effect.provide(
-        CloudSpeech.layer.pipe(
+        onLedger(rows).pipe(
           Layer.provide(FetchHttpClient.layer),
           Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
           Layer.provide(
@@ -53,6 +65,16 @@ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved
     yield* Effect.flip(transcribe(new Uint8Array(3)));
     expect(upstream).not.toHaveBeenCalled();
     expect(yield* transcribe()).toBe("hello");
+    // The key paid for two samples of audio; the refused and unsent tries recorded nothing.
+    expect(rows).toEqual([
+      expect.objectContaining({
+        role: "speech",
+        provider,
+        billing: "apiKey",
+        audioMs: 0,
+        attribution: { feature: "dictation-cloud", origin: "user" },
+      }),
+    ]);
     const [url, init] = upstream.mock.calls[0]!;
     expect(String(url)).toBe(
       {
@@ -105,7 +127,7 @@ it.effect("uploads to OpenRouter only for a listed exact model, as zero-retentio
     );
     const service = yield* CloudSpeech.CloudSpeech.pipe(
       Effect.provide(
-        CloudSpeech.layer.pipe(
+        onLedger().pipe(
           Layer.provide(FetchHttpClient.layer),
           Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
           Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),
@@ -163,7 +185,7 @@ it.effect("removing a key while a catalog read is pending prevents the upload", 
   Effect.gen(function* () {
     const service = yield* CloudSpeech.CloudSpeech.pipe(
       Effect.provide(
-        CloudSpeech.layer.pipe(
+        onLedger().pipe(
           Layer.provide(FetchHttpClient.layer),
           Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
           Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),

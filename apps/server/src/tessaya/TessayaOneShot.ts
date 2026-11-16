@@ -20,7 +20,9 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { toJsonSchemaObject } from "@t3tools/provider-core/server/textGenerationUtils";
 
 import { deferredRole, onSubscription, routeFor } from "./BrainRoutes.ts";
-import { BrainUsage, cliTokens, layer as brainUsageLayer } from "./BrainUsage.ts";
+import type { UsageAttribution } from "@t3tools/tessaya-contracts";
+
+import { BrainUsage, cliTokens, ledgeredCwd, layer as brainUsageLayer } from "./BrainUsage.ts";
 
 const TIMEOUT = "90 seconds";
 
@@ -37,6 +39,10 @@ export class TessayaOneShot extends Context.Service<
       readonly outputSchema: S;
       /** Which kind of work this is: the brain's routing table picks the model (BrainRoutes). */
       readonly role: BrainRole;
+      /** The product feature this call serves, for its usage row: `synopsis`, `intent`, `lines`… */
+      readonly feature: string;
+      /** More of what it was for and what started it; her own upkeep on the server when absent. */
+      readonly attribution?: Partial<UsageAttribution>;
       /** A model he chose for this call (the prompt lab), still on his subscription. */
       readonly model?: string;
       /** Replaces Claude Code's own system prompt. */
@@ -62,6 +68,8 @@ export const make = Effect.gen(function* () {
     prompt,
     outputSchema,
     role,
+    feature,
+    attribution,
     system,
     ...chosen
   }) =>
@@ -82,6 +90,11 @@ export const make = Effect.gen(function* () {
         return yield* new TessayaOneShotError({ detail: path.refused });
       }
       const model = chosen.model ?? path.model;
+      const row = {
+        role,
+        credential: "subscription",
+        attribution: { origin: "system", surface: "server", ...attribution, feature },
+      } as const;
       // @effect-diagnostics-next-line globalJsonInEffect:off - a JSON Schema object, always serialisable.
       const jsonSchema = JSON.stringify(toJsonSchemaObject(outputSchema));
       const command = ChildProcess.make(
@@ -107,7 +120,11 @@ export const make = Effect.gen(function* () {
           "dontAsk",
           ...(system === undefined ? [] : ["--system-prompt", system]),
         ],
-        { stdin: { stream: Stream.encodeText(Stream.make(prompt)) }, forceKillAfter: "1 second" },
+        {
+          cwd: ledgeredCwd(),
+          stdin: { stream: Stream.encodeText(Stream.make(prompt)) },
+          forceKillAfter: "1 second",
+        },
       );
       const stdout = yield* Effect.scoped(
         Effect.gen(function* () {
@@ -134,13 +151,24 @@ export const make = Effect.gen(function* () {
             ? cause
             : new TessayaOneShotError({ detail: String(cause) }),
         ),
+        // A call that ran and failed still spent: its row says so, with no tokens it could count.
+        Effect.tapError(() =>
+          usage.record({
+            ...row,
+            model,
+            input: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            output: 0,
+            outcome: "failed",
+          }),
+        ),
       );
       const result = yield* Effect.try({
         try: () => resultOf(stdout),
         catch: () => new TessayaOneShotError({ detail: "claude returned output that is not JSON" }),
       });
-      for (const tokens of cliTokens(result, model))
-        yield* usage.record({ ...tokens, role, credential: "subscription" });
+      for (const tokens of cliTokens(result, model)) yield* usage.record({ ...row, ...tokens });
       return yield* Schema.decodeUnknownEffect(outputSchema)(result?.structured_output).pipe(
         Effect.mapError(
           () => new TessayaOneShotError({ detail: "claude returned invalid structured output" }),
