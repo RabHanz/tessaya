@@ -201,6 +201,8 @@ export interface SpeakerIdentity {
   readonly own?: { readonly score: number; readonly ms: number };
   /** His by his session's evidence, not this turn's own score: his path, never an owner-only act (`verified` false). */
   readonly lifted?: true;
+  /** The replay check on the room mic: "heard" a loudspeaker (a guest), or "unchecked" (it could not run: never verified). */
+  readonly replay?: "heard" | "unchecked";
   /** `verified` by his session (three turns averaged, or a hold), not this turn's own clips: never opens anything private. */
   readonly session?: true;
   /**
@@ -293,7 +295,7 @@ export const holdVoice = (
     const scores = [...hold.scores, own ?? 0].slice(-3);
     const averaged =
       scores.length === 3 && scores.reduce((a, b) => a + b, 0) / 3 >= policy.averaged.act;
-    const verified = identity.verified || averaged || held;
+    const verified = identity.replay === undefined && (identity.verified || averaged || held);
     return {
       hold: { verifiedAt: verified ? now : hold.verifiedAt, scores, evidence },
       identity: {
@@ -359,6 +361,30 @@ export const withName = (turn: SpeakerIdentity, joined: SpeakerIdentity): Speake
         lifted: true,
       }
     : turn;
+
+/**
+ * The replay check's verdict on a room-mic turn (V-045): a loudspeaker playing a voice, his own recordings or a clone of
+ * him, is a guest whatever its voice scores, and ends his session. With no verdict (no model, or it failed) the turn keeps
+ * its path but never opens an owner-only act: never fail open.
+ */
+/** The replay model's logit cut-off: CALIBRATE (1% of his live clips over it). */
+export const REPLAY_CUT = 0;
+export const replayChecked = (
+  identity: SpeakerIdentity,
+  logit: number | null,
+  cut: number,
+): SpeakerIdentity => {
+  if (logit === null || !Number.isFinite(logit))
+    return { ...identity, verified: false, replay: "unchecked" };
+  return logit >= cut
+    ? {
+        ...UNVERIFIED(identity.at),
+        kind: "guest",
+        confidence: identity.confidence,
+        replay: "heard",
+      }
+    : identity;
+};
 
 /** His profile's cosine to one clip, the best of his owner profiles for this model; null with none. */
 export const ownerScoreOf = (

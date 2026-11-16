@@ -13,6 +13,7 @@ import {
   memberByVoice,
   NO_HOLD,
   profilesFor,
+  replayChecked,
   speakerPath,
   TEST_SPEAKER_ID,
   trustTestSpeaker,
@@ -377,6 +378,32 @@ describe("the speaker identity", () => {
     expect(memberByVoice(0.33, 2)).toBe("other");
     expect(memberByVoice(0.33, 2, true)).toBe("member");
     expect(memberByVoice(0.25, 2, true)).toBe("other");
+  });
+
+  it("takes a loudspeaker for a guest and never verifies a turn the replay check could not judge", () => {
+    const him: SpeakerIdentity = {
+      ...UNVERIFIED(0),
+      kind: "owner",
+      personId: "owner",
+      confidence: 0.7,
+      verified: true,
+      own: { score: 0.7, ms: 4_000 },
+    };
+    expect(replayChecked(him, -3, 0)).toBe(him);
+    const played = replayChecked(him, 2, 0);
+    expect(played).toMatchObject({
+      kind: "guest",
+      personId: null,
+      verified: false,
+      replay: "heard",
+    });
+    // A replay ends his session, so nothing it said lends evidence to the next turn.
+    expect(holdVoice(holdVoice(NO_HOLD, him, 0).hold, played, 1).hold).toEqual(NO_HOLD);
+    const unjudged = replayChecked(him, null, 0);
+    expect(unjudged).toMatchObject({ kind: "owner", verified: false, replay: "unchecked" });
+    // Not even his held session verifies it.
+    const held = holdVoice(NO_HOLD, him, 0).hold;
+    expect(holdVoice(held, unjudged, 1).identity.verified).toBe(false);
   });
 
   const who = (kind: SpeakerIdentity["kind"], more: Partial<SpeakerIdentity> = {}) => ({

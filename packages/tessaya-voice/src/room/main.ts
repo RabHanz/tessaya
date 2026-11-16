@@ -16,6 +16,7 @@ import { fetchSignedWake, wakeKey } from "@t3tools/tessaya-shared/wakeModels";
 
 import { gainLimiter, integratedLufs, loudnessGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
+import { createReplayCheck } from "../providers/replayOnnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import {
   ACT_SINGLE_MS,
@@ -25,6 +26,8 @@ import {
   enrol,
   identityOf,
   ownerScoreOf,
+  REPLAY_CUT,
+  replayChecked,
   PRINT_MIN_MS,
   profilesFor,
   TEST_SPEAKER_ID,
@@ -567,6 +570,10 @@ const main = async () => {
       })
     : null;
   const embedder = await createSpeakerEmbedder(model("campplus.onnx"), SPEAKER_MODEL_ID, 1);
+  // Without the model every room-mic turn stays unverified (replayChecked): owner-only acts then need the step-up.
+  const replayCheck = NodeFS.existsSync(model("replay.onnx"))
+    ? await createReplayCheck(model("replay.onnx")).catch(() => null)
+    : null;
   const store = createSpeakerStore(state);
   /** Profiles learnt on his headset's mic (another channel and codec than hers), apart from the mic's. */
   const headsetStore = createSpeakerStore(state, "headset");
@@ -880,6 +887,8 @@ const main = async () => {
   };
   const speakerOf = async (pcm: Int16Array, input: VoiceInput = "mic") => {
     const at = Date.now();
+    const live =
+      input === "mic" ? (replayCheck?.logit(pcm).catch(() => null) ?? Promise.resolve(null)) : null;
     const vector = await embedder.embed(pcm);
     if (vector === null) return UNVERIFIED(at);
     const clips = [{ vector, ms: (pcm.length / 16_000) * 1000 }];
@@ -891,7 +900,8 @@ const main = async () => {
     const judged = identityOf(decide("steer"), decide("act"), at);
     if (judged.personId === TEST_SPEAKER_ID) return trustTestSpeaker(judged, Date.now(), until);
     const own = ownerScoreOf(vector, profiles, SPEAKER_MODEL_ID);
-    const scored = own === null ? judged : { ...judged, own: { score: own, ms: clips[0]!.ms } };
+    const owned = own === null ? judged : { ...judged, own: { score: own, ms: clips[0]!.ms } };
+    const scored = live === null ? owned : replayChecked(owned, await live, REPLAY_CUT);
     // A guest's voice goes to her server's people graph, so she knows them next time: numbers, never audio.
     const identity =
       scored.kind === "guest" && clips[0]!.ms >= PRINT_MIN_MS
