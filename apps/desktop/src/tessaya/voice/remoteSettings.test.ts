@@ -30,7 +30,7 @@ describe("createRemoteSettings", () => {
       claudeBinary: "C:/secret/claude.exe",
     };
     const sent: Array<{ effective: unknown; applied: number }> = [];
-    const clicked: Array<readonly [string, string | boolean]> = [];
+    const clicked: Array<readonly [string, string | boolean | null]> = [];
     let change: unknown = {
       version: 7,
       patch: {
@@ -114,14 +114,43 @@ describe("createRemoteSettings", () => {
       // A setting already typed, and something that is not a setting, stay out.
       { id: "v.showWords", section: "Dictation", label: "Show words", kind: "toggle", on: true },
       { id: "n:thread-1", section: "Sessions", label: "A session", kind: "action", button: "Open" },
+      // A button presses as his click, and waits for his yes unless it says it is free; a secret list is never voiced.
+      {
+        id: "v.redoIntro",
+        section: "Voice",
+        label: "Hear the intro again",
+        kind: "action",
+        button: "Play",
+        value: "intro",
+      },
+      {
+        id: "v.language",
+        section: "Voice",
+        label: "Languages",
+        kind: "list",
+        items: ["English"],
+        placeholder: "Add a language",
+      },
+      {
+        id: "v.keys",
+        section: "Voice",
+        label: "Cloud keys",
+        kind: "list",
+        items: ["sk-1"],
+        placeholder: "Paste a key",
+        secret: true,
+      },
     ];
-    expect(voiceControls(controls).map((c) => [c.id, c.voice])).toEqual([
-      ["v.conversation", "free"],
-      ["v.rateChoice", "free"],
-      ["rs.share", "owner"],
+    expect(voiceControls(controls).map((c) => [c.id, c.voice, c.kind, c.items])).toEqual([
+      ["v.conversation", "free", undefined, undefined],
+      ["v.rateChoice", "free", undefined, undefined],
+      ["rs.share", "owner", undefined, undefined],
+      ["v.language", "free", "list", ["English"]],
+      ["v.keys", "never", "list", []],
+      ["v.redoIntro", "confirm", "action", undefined],
     ]);
     const sent: Array<{ controls?: unknown }> = [];
-    const clicked: Array<readonly [string, string | boolean]> = [];
+    const clicked: Array<readonly [string, string | boolean | null]> = [];
     let change: unknown = null;
     const remote = createRemoteSettings({
       sync: async (body) => (sent.push(body), { change }),
@@ -136,5 +165,8 @@ describe("createRemoteSettings", () => {
     change = { version: 3, patch: {}, controls: [{ id: "v.rateChoice", value: "slower" }] };
     expect(await remote.tick()).toBe(true);
     expect(clicked).toEqual([["v.rateChoice", "slower"]]);
+    change = { version: 4, patch: {}, controls: [{ id: "v.redoIntro", value: true }] };
+    expect(await remote.tick()).toBe(true);
+    expect(clicked.at(-1)).toEqual(["v.redoIntro", "intro"]);
   });
 });

@@ -8,6 +8,7 @@ import {
   CORE_TOOLS,
   DESK_TOOL_SPECS,
   jobVerdict,
+  NOT_IN_ROOM,
   replayDryRun,
   roomRefusal,
   ROOM_TOOL_SPECS,
@@ -19,6 +20,20 @@ const decodes = (name: keyof typeof TessayaToolkit.tools, input: unknown) => {
   const decode = Schema.decodeUnknownOption(TessayaToolkit.tools[name].parametersSchema);
   return Option.isSome(decode(asAdvertised(spec, input)));
 };
+
+describe("voice parity", () => {
+  it("every Tessaya tool is in the room or says why not (16 Nov)", () => {
+    const room = new Set(ROOM_TOOL_SPECS.map((s) => s.name));
+    for (const name of Object.keys(TessayaToolkit.tools)) {
+      const why = (NOT_IN_ROOM as Record<string, string>)[name];
+      expect(room.has(name) !== (why !== undefined), name).toBe(true);
+      if (why !== undefined) expect(why.length, name).toBeGreaterThan(10);
+    }
+    // What his keyboard could do and her voice could not: the playground, his dictionary, the main session.
+    for (const name of ["tessaya_voice", "tessaya_vocabulary", "tessaya_main_session"])
+      expect(DESK_TOOL_SPECS.map((s) => s.name)).toContain(name);
+  });
+});
 
 describe("the room's tools for a replay", () => {
   it("never sends a replay's write, and leaves his own R1's calls alone (01:29, 13 Nov)", () => {

@@ -62,6 +62,24 @@ const setup = () => {
       value: true,
       voice: "free" as const,
     },
+    // A list and a button of the window's Settings (16 Nov parity: they had no voice path).
+    {
+      id: "v.language",
+      label: "Languages she listens for",
+      section: "Voice",
+      value: "English",
+      voice: "free" as const,
+      kind: "list" as const,
+      items: ["English"],
+    },
+    {
+      id: "v.testVoice",
+      label: "Hear her voice",
+      section: "Voice",
+      value: "Play",
+      voice: "free" as const,
+      kind: "action" as const,
+    },
   ];
   const desktopLayer = Layer.succeed(TessayaDesktopSettings)({
     get: Effect.sync(
@@ -177,6 +195,50 @@ it.effect(
         who: "Tessaya",
       });
       assert.strictEqual(wrong.status, "refused");
+
+      // A list: add and remove (its way back), as the window's line and Remove send them.
+      const add = yield* setSetting({
+        key: "desktop:v.language",
+        value: { add: "Urdu" },
+        why: "listen for Urdu too",
+        who: "Tessaya",
+      });
+      assert.strictEqual(add.status, "done");
+      assert.include(add.line, "To undo, remove it");
+      const remove = yield* setSetting({
+        key: "desktop:v.language",
+        value: { remove: "english" },
+        why: "x",
+        who: "Tessaya",
+      });
+      assert.strictEqual(remove.status, "done");
+      const missing = yield* setSetting({
+        key: "desktop:v.language",
+        value: { remove: "French" },
+        why: "x",
+        who: "Tessaya",
+      });
+      assert.strictEqual(missing.status, "refused");
+      // A button: true presses it; anything else is not a press.
+      const press = yield* setSetting({
+        key: "desktop:v.testVoice",
+        value: "true",
+        why: "let me hear you",
+        who: "Tessaya",
+      });
+      assert.strictEqual(press.line, 'Pressed "Play".');
+      const notPress = yield* setSetting({
+        key: "desktop:v.testVoice",
+        value: "loud",
+        why: "x",
+        who: "Tessaya",
+      });
+      assert.strictEqual(notPress.status, "refused");
+      assert.deepStrictEqual(controlled.slice(2), [
+        { id: "v.language:add", value: "Urdu" },
+        { id: "v.language:rm", value: "English" },
+        { id: "v.testVoice", value: true },
+      ]);
     }).pipe(Effect.provide(layer));
   },
 );

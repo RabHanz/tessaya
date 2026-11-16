@@ -138,20 +138,58 @@ const ROOM_TOOLS = [
   "schedule_delete",
   "project_add",
   "cloud_dispatch",
+  // What his keyboard could do and her voice could not (voice parity, 16 Nov).
+  "tessaya_memory_history",
+  "tessaya_state",
+  "tessaya_vocabulary",
+  "tessaya_voice",
+  "tessaya_main_session",
+  "tessaya_move_into_tessaya",
+  "tessaya_open_in_terminal",
+  "weave_send",
+  "weave_list",
+  "device_owner",
+  "device_tag",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
+
+type ToolName = keyof typeof TessayaToolkit.tools;
+
+/**
+ * Every Tessaya tool the room leaves out, and why: a new tool is voiced or says why not here, or this does not compile.
+ * @public The voice parity gate reads it.
+ */
+export const NOT_IN_ROOM: {
+  readonly [K in Exclude<ToolName, (typeof ROOM_TOOLS)[number]>]: string;
+} = {
+  tessaya_desktop_settings: "settings_find, settings_get and settings_set reach the same desktop fields",
+  tessaya_session_defaults:
+    "settings_get reads newSessionsRun and mainThreadId, and settings_set changes them",
+  tessaya_voice_arbiter: "only his other servers call it, never a person",
+  household_peer: "only another of this home's linked servers calls it",
+  household_voice_forget: "only another of this home's linked servers calls it",
+  device_act:
+    "the Tessel shows its own eyes, lights and voice as she speaks; the desktop drives them with device_act",
+};
+
+/** The desktop's own tools already do these (memory_history, weave_send, thread_*), and it answers the asks. */
+const DESK_HAS_ITS_OWN: ReadonlySet<string> = new Set<ToolName>([
+  "tessaya_ask",
+  "tessaya_ask_status",
+  "tessaya_memory_history",
+  "tessaya_state",
+  "tessaya_move_into_tessaya",
+  "tessaya_open_in_terminal",
+  "weave_send",
+  "weave_list",
+]);
 
 /** The work tools (jobs, schedules, projects, cloud), judged by the desktop's table (judgeToolCall). */
 const JOB_TOOLS: ReadonlySet<string> = new Set(JobTools.map((tool) => tool.name));
 
-/**
- * The shared tools his desktop's Tessaya gets: the room's, plus his devices (the desktop has no device of its own).
- * Not tessaya_ask: the desktop is where those asks are answered.
- */
+/** The shared tools his desktop's Tessaya gets: the room's, less its own, plus driving a device's eyes and lights. */
 const DESK_TOOLS = [
-  ...ROOM_TOOLS.filter((name) => name !== "tessaya_ask" && name !== "tessaya_ask_status"),
+  ...ROOM_TOOLS.filter((name) => !DESK_HAS_ITS_OWN.has(name)),
   "device_act",
-  "device_owner",
-  "device_tag",
 ] satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 type SharedName = (typeof ROOM_TOOLS)[number] | (typeof DESK_TOOLS)[number];
 

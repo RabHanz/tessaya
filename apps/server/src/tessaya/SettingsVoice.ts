@@ -205,7 +205,13 @@ export const allSettings = Effect.gen(function* () {
     ...published.map((c): SettingEntry => ({
       key: `${CONTROL_PREFIX}${c.id}`,
       store: "control",
-      say: `${c.section}: ${c.label}${c.hint === undefined ? "" : ` (${c.hint.slice(0, 160)})`}`,
+      say: `${c.section}: ${c.label}${c.hint === undefined ? "" : ` (${c.hint.slice(0, 160)})`}${
+        c.kind === "action"
+          ? `; a button, "${c.value}": value true presses it`
+          : c.kind === "list"
+            ? `; a list: value {"add": "…"} or {"remove": "…"}`
+            : ""
+      }`,
       class: c.voice,
       ...(c.voice === "never" ? { why: "his desktop keeps it out of voice" } : {}),
       control: c,
@@ -270,6 +276,16 @@ const controlValue =
   (key: string, control: DesktopSettingsControl) =>
   (patch: Record<string, unknown>): Option.Option<Record<string, unknown>> => {
     const value = patch[key];
+    if (control.kind === "action")
+      return value === true || value === "press" ? Option.some({ [key]: true }) : Option.none();
+    if (control.kind === "list") {
+      const op = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+      const add = typeof op["add"] === "string" ? op["add"].trim() : "";
+      const remove = typeof op["remove"] === "string" ? op["remove"].trim() : "";
+      const item = control.items?.find((i) => i.toLowerCase() === remove.toLowerCase());
+      if (add !== "" && add.length <= 200) return Option.some({ [key]: { add } });
+      return item === undefined ? Option.none() : Option.some({ [key]: { remove: item } });
+    }
     if (control.options === undefined)
       return typeof value === "boolean" ? Option.some({ [key]: value }) : Option.none();
     const picked = control.options.find(
@@ -322,8 +338,15 @@ const apply = Effect.fn("SettingsVoice.apply")(function* (entry: SettingEntry, p
   if (entry.control !== undefined) {
     const desktop = yield* Effect.serviceOption(TessayaDesktopSettings);
     if (Option.isNone(desktop)) return false;
+    const value = (patch as Record<string, unknown>)[entry.key];
+    const list = entry.control.kind === "list" ? (value as { add?: string; remove?: string }) : null;
+    // A list's line and Remove, as the window sends them (`<id>:add`, `<id>:rm`).
     yield* desktop.value.setControls([
-      { id: entry.control.id, value: (patch as Record<string, string | boolean>)[entry.key]! },
+      list === null
+        ? { id: entry.control.id, value: value as string | boolean }
+        : list.add !== undefined
+          ? { id: `${entry.control.id}:add`, value: list.add }
+          : { id: `${entry.control.id}:rm`, value: list.remove! },
     ]);
     return true;
   }
@@ -340,6 +363,33 @@ const apply = Effect.fn("SettingsVoice.apply")(function* (entry: SettingEntry, p
   yield* desktop.value.set(patch as never);
   return true;
 });
+
+/** What a change is, for his yes, and the line said when it is done, with its way back. */
+const linesOf = (entry: SettingEntry, was: unknown, now: unknown) => {
+  const control = entry.control;
+  if (control?.kind === "action")
+    return {
+      changed: `press "${String(control.value)}" (${entry.say})`,
+      done: `Pressed "${String(control.value)}".`,
+    };
+  if (control?.kind === "list") {
+    const op = now as { add?: string; remove?: string };
+    return op.add !== undefined
+      ? {
+          changed: `add "${op.add}" to ${control.label}`,
+          done: `Added "${op.add}" to ${control.label}. To undo, remove it.`,
+        }
+      : {
+          changed: `remove "${op.remove}" from ${control.label}`,
+          done: `Removed "${op.remove}" from ${control.label}. To undo, add it back.`,
+        };
+  }
+  const changed = `${entry.say}: ${shown(was)} to ${shown(now)}`;
+  return {
+    changed,
+    done: `Changed ${changed}. To change it back, set ${entry.key} to ${shown(was)}.`,
+  };
+};
 
 export interface SettingSet {
   readonly status: "done" | "asked" | "refused" | "failed";
@@ -391,7 +441,7 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
     } satisfies SettingSet;
   const now = (patch.value as Record<string, unknown>)[entry.key];
   const was = yield* settingValue(entry);
-  const changed = `${entry.say}: ${shown(was)} to ${shown(now)}`;
+  const { changed, done } = linesOf(entry, was, now);
   const desktop = yield* Effect.serviceOption(TessayaDesktopSettings);
   if (entry.store !== "server" && (Option.isNone(desktop) || !(yield* desktop.value.get).connected))
     return {
@@ -406,7 +456,7 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
       now,
       line:
         entry.class === "free"
-          ? `Changed ${changed}. To change it back, set ${entry.key} to ${shown(was)}.`
+          ? done
           : `Sent to the Director's phone for a yes: ${changed}. Nothing changes until he says yes.`,
     } satisfies SettingSet;
   if (entry.class === "free") {
@@ -420,7 +470,7 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
       key: entry.key,
       was,
       now,
-      line: `Changed ${changed}. To change it back, set ${entry.key} to ${shown(was)}.`,
+      line: done,
     } satisfies SettingSet;
   }
   const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
