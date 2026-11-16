@@ -24,6 +24,7 @@ import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
 import { PACK_DIR_NAME, readPack } from "./OperatingSystemPack.ts";
+import { changeGroup, HIS_GROUP } from "./GroupTalk.ts";
 import { TessayaVoiceLibrary } from "./TessayaVoiceLibrary.ts";
 
 /**
@@ -45,6 +46,10 @@ export const changePersona = Effect.fn("PersonaChanges.change")(function* (
     bin: bin(),
   });
   if (input.op === "bin") return done();
+  if (input.op === "group") {
+    const changed = yield* changeGroup(HIS_GROUP, input.change, who);
+    return { ...done(), line: changed.line, group: changed.group };
+  }
 
   const pack = readPack(userdata);
   const known = [...pack.personas, ...bin()];

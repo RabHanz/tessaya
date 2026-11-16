@@ -8,6 +8,7 @@ import type {
   TessayaPersonaChangeInput,
   TessayaPersonaChangeResult,
   TessayaPersonaDraft,
+  TessayaPersonaGroup,
 } from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useState } from "react";
@@ -198,7 +199,101 @@ export function PersonaRoster(props: {
           ))}
         </FoldedSettingsSection>
       )}
+      <PersonaGroupRows personas={personas} ask={ask} />
     </SettingsSection>
+  );
+}
+
+/** His group (M-021): who is in it, who only listens, and whether they talk among themselves. */
+function PersonaGroupRows(props: {
+  readonly personas: ReadonlyArray<TessayaPersona>;
+  readonly ask: (input: TessayaPersonaChangeInput) => Promise<TessayaPersonaChangeResult>;
+}) {
+  const [group, setGroup] = useState<TessayaPersonaGroup | null>(null);
+  // Picked before a group exists: it starts once two are in.
+  const [picked, setPicked] = useState<ReadonlyArray<string>>([]);
+  const [line, setLine] = useState("");
+  const change = async (input: Extract<TessayaPersonaChangeInput, { op: "group" }>["change"]) => {
+    const reply = await props.ask({ op: "group", change: input });
+    if (reply.group !== undefined) setGroup(reply.group);
+    if (input.op !== "status") setLine(reply.line ?? "");
+  };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads his group once when the roster opens
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- the read's answer lands after it returns
+    void change({ op: "status" });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- one read on mount
+  }, []);
+  const member = (id: string) => group?.members.find((m) => m.id === id);
+  const toggle = (id: string, on: boolean) => {
+    if (group !== null)
+      return void change(on ? { op: "add", personas: [id] } : { op: "leave", persona: id });
+    const next = on ? [...picked, id] : picked.filter((p) => p !== id);
+    setPicked(next);
+    if (next.length >= 2) {
+      setPicked([]);
+      void change({ op: "start", personas: next });
+    }
+  };
+  return (
+    <FoldedSettingsSection
+      id="voice-roster-group"
+      title="Group"
+      summary={group === null ? "Off" : `${group.members.length} talking`}
+    >
+      <SettingsRow
+        title="Talk to several at once"
+        description="Pick two or more; each answers in its own voice. Say a name to ask one. By voice: “let me talk to Freya and Alfred together”, “let them talk”, “end the group”."
+        status={line ? <span role="status">{line}</span> : undefined}
+        control={
+          group === null ? undefined : (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Let them talk</span>
+              <Switch
+                aria-label="Let them talk among themselves"
+                checked={group.mode === "watch"}
+                onCheckedChange={(on) => void change({ op: "mode", mode: on ? "watch" : "answer" })}
+              />
+              <Button size="sm" variant="outline" onClick={() => void change({ op: "end" })}>
+                End group
+              </Button>
+            </div>
+          )
+        }
+      />
+      {props.personas.map((p) => {
+        const m = member(p.id);
+        const inGroup = m !== undefined || picked.includes(p.id);
+        return (
+          <SettingsRow
+            key={p.id}
+            title={p.name}
+            description={m?.silent === true ? "Listening; speaks when you name them." : p.role}
+            control={
+              <div className="flex items-center gap-2">
+                {m === undefined ? null : (
+                  <>
+                    <span className="text-xs text-muted-foreground">Listen only</span>
+                    <Switch
+                      aria-label={`${p.name} listens only`}
+                      checked={m.silent === true}
+                      onCheckedChange={(on) =>
+                        void change({ op: on ? "silent" : "speak", persona: p.id })
+                      }
+                    />
+                  </>
+                )}
+                <Switch
+                  aria-label={`${p.name} in the group`}
+                  checked={inGroup}
+                  onCheckedChange={(on) => toggle(p.id, on)}
+                />
+              </div>
+            }
+          />
+        );
+      })}
+    </FoldedSettingsSection>
   );
 }
 

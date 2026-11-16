@@ -341,7 +341,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..b237d0a6290f2dea3cafe4ac800b2cfe
        runtimeMode={draftSettings.runtimeMode ?? selectedThread.runtimeMode}
        onUpdateRuntimeMode={(runtimeMode) => updateComposerDraftSettings(threadKey, { runtimeMode })}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70f6ff25e4 100644
+index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..f4ab77b1a350f83860114a63e2da31ffd4e00180 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
 @@ -138,6 +138,15 @@ import { useDictationShortcut } from "../../speech/useDictationShortcut";
@@ -531,7 +531,24 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
    const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
    // A compact footer gives the dictation capsule the whole row beside the send button.
    const dictationTakesFooter = isComposerFooterCompact && speechInput.state.phase !== "idle";
-@@ -2118,6 +2181,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -1910,6 +1973,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+         }
+         return;
+       }
++      if (item.command === "personas") {
++        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
++          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
++        });
++        if (applied) {
++          setComposerHighlightedItemId(null);
++          void navigate({ to: "/tessaya/$page", params: { page: "voices" }, hash: "voice-roster" });
++        }
++        return;
++      }
+       if (item.command === "clear") {
+         const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+@@ -2118,6 +2191,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        submitAfterDictation(() => submitComposerRef.current(dispatchMode, submissionIntent));
        return false;
      }
@@ -543,7 +560,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
      if (submissionBlocked || !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
        event?.preventDefault();
        return false;
-@@ -2150,6 +2218,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -2150,6 +2228,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        onResume();
        return true;
      }
@@ -551,7 +568,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
      const submission = submitComposerDraft({
        prompt: promptRef.current,
        submissionTarget,
-@@ -2173,6 +2242,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -2173,6 +2252,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      setComposerSubmissionError(submission.validationMessage);
      if (!submission.didDispatch) return false;
      onTypingGuardSend();
@@ -559,7 +576,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
      if (shouldBlurMobileComposerOnSubmit()) {
        blurMobileComposerAfterSend();
      }
-@@ -2466,6 +2536,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -2466,6 +2546,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        onModelPickerOpenChange={setIsComposerModelPickerOpen}
        modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
        getModelDisabledReason={getModelDisabledReason}
@@ -567,7 +584,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
      />
    );
    // An open question owns the space above the composer. Only a machine problem,
-@@ -3146,6 +3217,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3146,6 +3227,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
          environmentContexts: composerEnvironmentContexts,
          selectedPromptEffort,
          selectedModelSelection,
@@ -577,7 +594,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
          multipleModelSelections:
            routeKind === "draft" && multipleModelSelections !== null
              ? multipleModelSelections.map((selection) =>
-@@ -3215,6 +3289,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3215,6 +3299,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        selectedInstanceId,
        reportedModelSelection,
        selectedModelSelection,
@@ -586,7 +603,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
        multipleModelSelections,
        setMultipleModelSelections,
        routeKind,
-@@ -3402,10 +3478,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3402,10 +3488,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                        contextRecords={composerContextRecords}
                        theme={resolvedTheme}
                      />
@@ -599,7 +616,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
                    )}
                  </button>
                  {collapsedComposerImagePreviews}
-@@ -3533,7 +3608,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3533,7 +3618,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
  
                {composerAttachmentFileList}
  
@@ -608,7 +625,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
                  {previewFile ? (
                    <ComposerFilePreviewDialog
                      file={previewFile}
-@@ -3574,7 +3649,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3574,7 +3659,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                      onCitationSubmitAndSend={submitCitationAndSendStable}
                      onCitationDraftSave={saveCitationDraftToPromptStable}
                      onPaste={onComposerPasteStable}
@@ -618,7 +635,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
                        isComposerApprovalState
                          ? activePendingApproval?.supportsFeedback
                            ? "Send feedback to decline this request"
-@@ -3587,10 +3663,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3587,10 +3673,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                : "Type your own answer, or leave this blank to use the selected option"
                            : projectSelectionRequired
                              ? "Choose a project above to start a thread"
@@ -634,7 +651,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
                      placeholderSuffix={
                        offeredPromptSuggestion !== null ? (
                          <span className="ml-2 inline-flex align-[1px]">
-@@ -3606,6 +3683,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3606,6 +3693,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                      }
                    />
                  </ComposerContextActionsContext>
@@ -642,7 +659,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
                  {showMobilePendingAnswerActions ? (
                    <div
                      data-chat-composer-mobile-pending-actions="true"
-@@ -3635,21 +3713,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3635,21 +3723,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                message={providerInputSubmissionError ?? composerSubmissionError}
              />
  
@@ -666,7 +683,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
                    pendingUserInputs.length > 0 && "pt-2",
                    showMobilePendingAnswerActions &&
                      speechInput.state.phase === "idle" &&
-@@ -3659,6 +3728,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3659,6 +3738,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                  {composerAttachButton && !dictationTakesFooter ? (
                    <div className="me-2">{composerAttachButton}</div>
                  ) : null}
@@ -681,7 +698,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70
                  <div
                    data-chat-composer-actions="right"
                    data-chat-composer-transition-actions="true"
-@@ -3724,18 +3801,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3724,18 +3811,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                    >
                      {speechInput.available ? (
                        <>
@@ -833,6 +850,37 @@ index dc24671c301ba791c7f18c0437073196d0407f73..3264273feb1720684413bcd27f446231
          className="before:hidden"
          padding="none"
          touchBackdrop
+diff --git a/apps/web/src/components/chat/useComposerMenuItems.ts b/apps/web/src/components/chat/useComposerMenuItems.ts
+index 8090157604986777b497ea0c091807b88f827722..81901da711d74b3023d389754b4d7817d2cf4fc7 100644
+--- a/apps/web/src/components/chat/useComposerMenuItems.ts
++++ b/apps/web/src/components/chat/useComposerMenuItems.ts
+@@ -242,6 +242,13 @@ export function useComposerMenuItems({
+           label: "/model",
+           description: "Switch response model for this thread",
+         },
++        {
++          id: "slash:personas",
++          type: "slash-command",
++          command: "personas",
++          label: "/personas",
++          description: "Make a persona, or talk to several as a group",
++        },
+         ...(sideChatAvailable
+           ? ([
+               {
+diff --git a/apps/web/src/composer-logic.ts b/apps/web/src/composer-logic.ts
+index 37fef411897fcb339148421be0e3504166aae1da..bb835f4e187cf666a754e934b01992b012cc6c07 100644
+--- a/apps/web/src/composer-logic.ts
++++ b/apps/web/src/composer-logic.ts
+@@ -18,7 +18,7 @@ import {
+ import { resolveShortcutCommand, type ShortcutEventLike } from "./keybindings";
+ 
+ export type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
+-export type ComposerSlashCommand = "model" | "side" | "btw" | "clear";
++export type ComposerSlashCommand = "model" | "side" | "btw" | "clear" | "personas";
+ export type ComposerSubmissionIntent = "foreground" | "background" | "alternate";
+ 
+ export interface ComposerTrigger {
 diff --git a/vite.config.ts b/vite.config.ts
 index c7a92ccbc9ad10b7533989a1f32a5488ea40a2e1..5d98e93e4f6dd00642d791dc07554c20fede21c3 100644
 --- a/vite.config.ts
