@@ -13,6 +13,7 @@ import {
   customWordsOf,
   editEntry,
   mergeEntries,
+  ordinaryWord,
   parseVocabulary,
   removeEntry,
   removeHeard,
@@ -229,6 +230,9 @@ export const make = Effect.gen(function* () {
     const extra = words.filter(
       (w) =>
         !slug(w.term) &&
+        // T3's list is derived from the store: an ordinary word there is one the store just dropped (0.1.147 brought
+        // back "pass" and "new" as his own), never one he typed.
+        !ordinaryWord(w.term) &&
         !known.some((e) => sameWord(e.phrase, w.term) || sameWord(e.replacement ?? "", w.term)),
     );
     if (extra.length > 0)

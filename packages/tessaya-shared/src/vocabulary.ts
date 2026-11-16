@@ -34,7 +34,8 @@ export const PROMPT_TERMS = 200;
 const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** All in small letters as written: an ordinary word ("prints", "new"), never a name or a term of his. */
-const ordinaryWord = (word: string): boolean => /^\p{Ll}+(?:['’]\p{Ll}+)*$/u.test(word.trim());
+export const ordinaryWord = (word: string): boolean =>
+  /^\p{Ll}+(?:['’]\p{Ll}+)*$/u.test(word.trim());
 
 /** A word without the full stop or quote that ended its sentence: "Tessaya." is taught as Tessaya. */
 const bare = (word: string): string => word.replace(/[.'’-]+$/, "");
