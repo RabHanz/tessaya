@@ -146,17 +146,21 @@ it.effect(
         ["tessaya_voice_arbiter", { op: "claim", args: desk, origin: "another of his servers" }],
       ]);
       // No other server took it: this server's own arbiter answers, as before.
-      const fiber = yield* serveArbiter("claim", desk).pipe(
+      // The layer is built before the fork, so the round's window is open when the clock moves.
+      yield* Effect.gen(function* () {
+        const fiber = yield* serveArbiter("claim", desk).pipe(
+          Effect.forkChild({ startImmediately: true }),
+        );
+        yield* TestClock.adjust("250 millis");
+        assert.deepInclude((yield* Fiber.join(fiber))?.value as object, { answer: true });
+      }).pipe(
         Effect.provide(
           arbiterLayer.pipe(
             Layer.provideMerge(peers(false)),
             Layer.provideMerge(TessayaDatabaseMemory),
           ),
         ),
-        Effect.forkChild({ startImmediately: true }),
       );
-      yield* TestClock.adjust("250 millis");
-      assert.deepInclude((yield* Fiber.join(fiber))?.value as object, { answer: true });
       // The server with the desk device decides itself and never asks its peers first (13 Nov: it did, ~0.7 s a claim).
       sent.length = 0;
       yield* serveArbiter("arbiter", {}).pipe(
