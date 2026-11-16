@@ -14,10 +14,12 @@ import * as NodeStream from "node:stream";
 import * as NodeStreamPromises from "node:stream/promises";
 
 import {
+  AFFECT_VARIANTS,
   BATON_VOICE_ACT_OPS,
   BATON_VOICE_OWNER_OPS,
   BATON_VOICE_READ_OPS,
   type CloneResult,
+  isAffectVariant,
   type TessayaVoiceCallInput,
   VocabularyChange,
   type TessayaVoiceCallResult,
@@ -53,6 +55,7 @@ import { CAMPLUS_POLICY, cosine, unitOrNull } from "@t3tools/tessaya-voice/speak
 import type * as Ort from "onnxruntime-node";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
+import { emitAction } from "../provenance/ActionLog.ts";
 import { BrainUsage, type CallTokens } from "./BrainUsage.ts";
 import * as ServerConfig from "../config.ts";
 import { serveArbiter } from "../home/VoiceArbiter.ts";
@@ -406,6 +409,8 @@ const syntheticClip = (bytes: Buffer): VoiceClip => ({
   synthetic: true,
 });
 const decodeSaved = Schema.decodeUnknownOption(Schema.fromJsonString(SavedCloneView));
+/** This server's route for a clone's embedding (TessayaRoutes); its key and file follow. */
+export const EMBEDDING_ROUTE = "/tessaya/voice/embedding/";
 
 export type SayEngine = "pocket" | "gemini" | "clone";
 
@@ -463,6 +468,13 @@ export class TessayaVoiceLibrary extends Context.Service<
       readonly name: string;
     }) => Effect.Effect<SavedCloneView, VoiceRefusedError>;
     readonly deleteClone: (id: string) => Effect.Effect<void, VoiceRefusedError>;
+    readonly recordAffect: (input: {
+      readonly id: string;
+      readonly affect: string;
+      readonly wav: Uint8Array;
+    }) => Effect.Effect<{ readonly affect: string; readonly clip: VoiceClip }, VoiceRefusedError>;
+    /** A clone's embedding file for this machine's Pocket, by this start's key; null for anything else. */
+    readonly embedding: (key: string, file: string) => Effect.Effect<Uint8Array | null>;
     readonly setHfToken: (token: string | null) => Effect.Effect<void, VoiceRefusedError>;
     readonly setPersona: (input: {
       readonly persona: string;
@@ -491,6 +503,10 @@ export const make = Effect.gen(function* () {
   // His clones: this environment's own data, outside every sync.
   const clonesDir = NodePath.join(userdata, "voice", "clones");
   const embeddingOf = (id: string) => NodePath.join(clonesDir, `${id}.safetensors`);
+  const affectOf = (id: string, affect: string) =>
+    NodePath.join(clonesDir, `${id}.affect-${affect}.safetensors`);
+  // Pocket fetches an embedding by URL and cannot send a token: this start's key is the secret in its path.
+  const embedKey = NodeCrypto.randomBytes(16).toString("hex");
   // Tessaya's own database, captured here: a tool's caller may run beside upstream's SqlClient (consent.ts).
   const consent = yield* Effect.serviceOption(Consent);
   const grants = Option.isSome(consent) ? consent.value.read : readGrants;
@@ -521,8 +537,16 @@ export const make = Effect.gen(function* () {
         NodeFS.promises.readFile(NodePath.join(clonesDir, name), "utf8").catch(() => ""),
       );
       const saved = decodeSaved(text);
-      if (Option.isSome(saved) && stands(keys, cloneGrant(saved.value.id), { his: true }))
-        views.push(saved.value);
+      if (Option.isNone(saved) || !stands(keys, cloneGrant(saved.value.id), { his: true }))
+        continue;
+      const prefix = `${saved.value.id}.affect-`;
+      views.push({
+        id: saved.value.id,
+        name: saved.value.name,
+        createdAt: saved.value.createdAt,
+        affects: AFFECT_VARIANTS.filter((a) => names.includes(`${prefix}${a}.safetensors`)),
+        embedding: `${EMBEDDING_ROUTE}${embedKey}/${saved.value.id}.safetensors`,
+      });
     }
     return views.toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
   });
@@ -649,6 +673,91 @@ export const make = Effect.gen(function* () {
     return clip(yield* gemini(input.voice, text));
   });
 
+  /** His clip, cleaned, made into a Pocket embedding at `target`; only the embedding is kept, never his recording. */
+  const exportEmbedding = async (
+    files: PocketFiles,
+    token: string | null,
+    pcm: NonNullable<ReturnType<typeof readWav>>,
+    target: string,
+  ) => {
+    const config = await cloneConfig(files, await ensureCloneWeights(files.english, token));
+    const reference = await clean.reference(pcm);
+    if (reference.samples.length / reference.rate < CLONE_MIN_SECONDS)
+      throw new Error(
+        `Without its pauses the clip is under ${CLONE_MIN_SECONDS} seconds. Say a few more sentences.`,
+      );
+    const source = `${target}.wav`;
+    await NodeFS.promises.writeFile(
+      source,
+      writeWav({ rate: 24_000, samples: resample(reference, 24_000) }),
+    );
+    try {
+      await runPocket(files, ["export-voice", "-q", "--config", config, source, target]);
+    } catch {
+      throw new Error("Pocket could not make a voice from that clip.");
+    } finally {
+      await NodeFS.promises.rm(source, { force: true });
+    }
+  };
+
+  /** An affect variant of a saved clone (VOXTA G1): his clip in that tone, as its own embedding beside the clone. */
+  const recordAffect = Effect.fn("TessayaVoiceLibrary.recordAffect")(function* (input: {
+    readonly id: string;
+    readonly affect: string;
+    readonly wav: Uint8Array;
+  }) {
+    if (!CLONE_ID.test(input.id) || input.id.startsWith("test-"))
+      return yield* new VoiceRefusedError({ why: "Save the clone before recording a tone of it." });
+    if (!isAffectVariant(input.affect))
+      return yield* new VoiceRefusedError({
+        why: `A tone is one of ${AFFECT_VARIANTS.join(", ")}.`,
+      });
+    if (!(yield* savedClones).some((c) => c.id === input.id))
+      return yield* new VoiceRefusedError({ why: "There is no clone by that name." });
+    const pcm = readWav(input.wav);
+    if (pcm === null)
+      return yield* new VoiceRefusedError({ why: "Send the clip as a 16-bit PCM WAV." });
+    const problem = cloneClipProblem(pcm);
+    if (problem !== null) return yield* new VoiceRefusedError({ why: problem });
+    const files = pocketFiles(pocketRoot);
+    if (files === null)
+      return yield* new VoiceRefusedError({
+        why: "Tessaya's voice is not installed on this machine yet; it downloads the first time she speaks.",
+      });
+    const token = Option.getOrNull(yield* secretText(HF_TOKEN_SECRET));
+    const target = affectOf(input.id, input.affect);
+    const line = yield* oneAtATime.withPermits(1)(
+      Effect.tryPromise({
+        try: async () => {
+          await exportEmbedding(files, token, pcm, target);
+          return cloneLine(files, target, pronounce(PREVIEW_LINE));
+        },
+        catch: refuse,
+      }),
+    );
+    yield* emitAction({
+      kind: "voice.affect.recorded",
+      actor: { kind: "owner", id: "owner", certainty: 1 },
+      subject: input.id,
+      outcome: input.affect,
+    });
+    return { affect: input.affect, clip: syntheticClip(line) };
+  });
+
+  /** A clone's embedding for this machine's own Pocket, by the key this start handed out; null for anything else. */
+  const embedding = Effect.fn("TessayaVoiceLibrary.embedding")(function* (
+    key: string,
+    file: string,
+  ) {
+    const m = /^([0-9a-f-]{36})(?:\.affect-([a-z]+))?\.safetensors$/.exec(file);
+    if (key !== embedKey || m === null || (m[2] !== undefined && !isAffectVariant(m[2])))
+      return null;
+    if (!(yield* savedClones).some((c) => c.id === m[1])) return null;
+    return yield* Effect.promise(() =>
+      NodeFS.promises.readFile(NodePath.join(clonesDir, file)).catch(() => null),
+    );
+  });
+
   const cloneVoice = Effect.fn("TessayaVoiceLibrary.cloneVoice")(function* (input: {
     readonly wav: Uint8Array;
     readonly consent: boolean;
@@ -680,36 +789,11 @@ export const make = Effect.gen(function* () {
             throw new Error(
               "It sounds like more than one voice. Record just the one person, with no one else talking.",
             );
-          const config = await cloneConfig(files, await ensureCloneWeights(files.english, token));
           await NodeFS.promises.mkdir(clonesDir, { recursive: true });
           for (const old of await NodeFS.promises.readdir(clonesDir))
             if (old.startsWith("test-"))
               await NodeFS.promises.rm(NodePath.join(clonesDir, old), { force: true });
-          const reference = await clean.reference(pcm);
-          if (reference.samples.length / reference.rate < CLONE_MIN_SECONDS)
-            throw new Error(
-              `Without its pauses the clip is under ${CLONE_MIN_SECONDS} seconds. Say a few more sentences.`,
-            );
-          const source = NodePath.join(clonesDir, `${id}.wav`);
-          await NodeFS.promises.writeFile(
-            source,
-            writeWav({ rate: 24_000, samples: resample(reference, 24_000) }),
-          );
-          try {
-            await runPocket(files, [
-              "export-voice",
-              "-q",
-              "--config",
-              config,
-              source,
-              embeddingOf(id),
-            ]);
-          } catch {
-            throw new Error("Pocket could not make a voice from that clip.");
-          } finally {
-            // Only the voice is kept, never his recording.
-            await NodeFS.promises.rm(source, { force: true });
-          }
+          await exportEmbedding(files, token, pcm, embeddingOf(id));
           const line = await cloneLine(files, embeddingOf(id), pronounce(PREVIEW_LINE));
           return { single, line };
         },
@@ -766,9 +850,11 @@ export const make = Effect.gen(function* () {
       return yield* new VoiceRefusedError({ why: "There is no clone by that name." });
     yield* Effect.promise(() =>
       Promise.all(
-        [embeddingOf(id), NodePath.join(clonesDir, `${id}.json`)].map((file) =>
-          NodeFS.promises.rm(file, { force: true }),
-        ),
+        [
+          embeddingOf(id),
+          NodePath.join(clonesDir, `${id}.json`),
+          ...AFFECT_VARIANTS.map((a) => affectOf(id, a)),
+        ].map((file) => NodeFS.promises.rm(file, { force: true })),
       ),
     );
     yield* grant(cloneGrant(id), false);
@@ -826,6 +912,8 @@ export const make = Effect.gen(function* () {
     cloneVoice,
     saveClone,
     deleteClone,
+    recordAffect,
+    embedding,
     setPersona,
     setGoogleKey,
     setHfToken,
@@ -964,6 +1052,15 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
     case "saveClone": {
       const a = decode(Schema.Struct({ id: Text(60), name: Text(40) }));
       return Option.isNone(a) ? bad : yield* answer(voices.saveClone(a.value));
+    }
+    case "recordAffect": {
+      const a = decode(
+        Schema.Struct({ id: Text(60), affect: Text(20), wav: Text(CLIP_BASE64_MAX) }),
+      );
+      if (Option.isNone(a)) return bad;
+      return yield* answer(
+        voices.recordAffect({ ...a.value, wav: Buffer.from(a.value.wav, "base64") }),
+      );
     }
     case "deleteClone": {
       const a = decode(Schema.Struct({ id: Text(60) }));

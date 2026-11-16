@@ -635,6 +635,8 @@ export interface ScreenCompanion {
   readonly voice: () => PocketVoice | "system";
   /** The speaking persona's Gemini voice (`cloud voice:` in its pack file), or null. */
   readonly cloudVoice: () => string | null;
+  /** The speaking persona's saved clone (`clone voice:`, its id), or null. */
+  readonly cloneVoice: () => string | null;
   readonly volume: () => number;
   /** The one Stop: everything running for him comes down; `quiet` (Esc, a click, "never mind") says nothing. */
   readonly stop: (quiet?: boolean) => void;
@@ -4122,6 +4124,7 @@ export const startScreenCompanion = (input: {
     },
     voice: voiceNow,
     cloudVoice: () => (voiceNow() === "system" ? null : (face.cloudVoice ?? null)),
+    cloneVoice: () => (voiceNow() === "system" ? null : (face.cloneVoice ?? null)),
     volume: () => settings.volume,
     ask: windows.ask,
     askMirrored: (box, needs) =>

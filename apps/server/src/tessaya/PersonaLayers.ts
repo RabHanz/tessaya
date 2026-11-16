@@ -81,6 +81,12 @@ export interface LayerHost {
       readonly lead: boolean;
     }>;
     readonly tools: ReadonlyArray<{ readonly name: string; readonly description: string }>;
+    /** What each of his saved clones can say beyond its words (VOXTA G1): the tones recorded for it in Playground. */
+    readonly voices?: ReadonlyArray<{
+      readonly id: string;
+      readonly name: string;
+      readonly affects: ReadonlyArray<string>;
+    }>;
   }>;
   readonly home?: (call: {
     readonly tool: string;

@@ -429,6 +429,28 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
             );
             // No engine is the desktop speaker's cloud voice, as before.
             expect(yield* say("act", { voice: "en-gb-advisor-1" })).toMatch(/Save a Google key/);
+            // A recorded tone sits beside it: listed, and served only under this start's key (VOXTA G1).
+            NodeFS.writeFileSync(
+              NodePath.join(clones, `${id}.affect-tender.safetensors`),
+              "tender",
+            );
+            const saved = (yield* library())![0]!;
+            assert.deepStrictEqual(saved.affects, ["tender"]);
+            const key = saved.embedding!.split("/").at(-2)!;
+            const voices = yield* TessayaVoiceLibrary.TessayaVoiceLibrary;
+            const served = (file: string, k = key) =>
+              Effect.map(voices.embedding(k, file), (b) => (b === null ? null : String(b)));
+            assert.strictEqual(yield* served(`${id}.affect-tender.safetensors`), "tender");
+            assert.strictEqual(yield* served(`${id}.safetensors`, "guess"), null);
+            assert.strictEqual(yield* served(`../${id}.json`), null);
+            assert.strictEqual(
+              (yield* call("owner", "recordAffect", { id, affect: "angry", wav: "" })).error,
+              "A tone is one of tender, excited, soft, whisper, playful.",
+            );
+            assert.strictEqual(
+              (yield* call("act", "recordAffect", { id, affect: "tender", wav: "" })).error,
+              "That is not a voice request.",
+            );
             // Deleting the clone removes its files and its consent.
             assert.isTrue((yield* call("owner", "deleteClone", { id })).ok);
             assert.deepStrictEqual(grants, []);

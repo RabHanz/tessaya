@@ -36,12 +36,30 @@ export const voiceClips = (voice: string, name: string): VoiceClipSet | undefine
   return set;
 };
 
+/** A voice's references as its server lists them (a clone's affect variants, by URL); replaces what it had. */
+export const registerReferences = (
+  voice: string,
+  references: Readonly<Record<string, string>>,
+): void => {
+  for (const key of sets.keys())
+    if (key.startsWith(`${voice}/`) && sets.get(key)?.kind === "reference") sets.delete(key);
+  for (const [name, url] of Object.entries(references))
+    sets.set(`${voice}/${name}`, { kind: "reference", embeddings: [url] });
+};
+
 /**
  * The embedding a line in this tone is spoken with: the voice's `affect-<name>` reference, when it has one. Pocket's
  * /tts takes it only as an http(s) or hf:// URL (3.3.0 refuses a local path or file://), so a reference is kept as one.
  */
-export const affectReference = (voice: string, affect: string): string | undefined => {
-  const set = voiceClips(voice, `affect-${affect}`);
+export const affectReference = (voice: string, affect: string): string | undefined =>
+  referenceUrl(voice, `affect-${affect}`);
+
+/** A clone's own embedding (registered as "embedding"), for its lines without a tone: the clone itself speaks. */
+export const cloneReference = (voice: string): string | undefined =>
+  referenceUrl(voice, "embedding");
+
+const referenceUrl = (voice: string, name: string): string | undefined => {
+  const set = voiceClips(voice, name);
   return set?.kind === "reference"
     ? set.embeddings.find((e) => /^(https?|hf):\/\//.test(e))
     : undefined;

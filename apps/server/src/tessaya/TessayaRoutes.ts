@@ -53,6 +53,7 @@ import {
 import { MemoryViewer, SyncCredential } from "./TessayaMemoryService.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
+import { EMBEDDING_ROUTE, TessayaVoiceLibrary } from "./TessayaVoiceLibrary.ts";
 import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
 import { runAskWorker } from "./AskWorker.ts";
 import { peerTurnHands, PeerTurnBody, relayDeskTurn, servePeerTurn } from "./DeskRelay.ts";
@@ -667,6 +668,29 @@ export const routes = HttpRouter.use((router) =>
     yield* router.add("POST", "/tessaya/hands/*", handsApi);
     yield* router.add("GET", "/tessaya/api/*", api);
     yield* router.add("POST", "/tessaya/api/*", api);
+    // A clone's embedding for this machine's own Pocket (`voice_url`, which sends no token): only from loopback with
+    // no proxy or tunnel in between, under the key this start's library view hands out (VOXTA G1).
+    yield* router.add(
+      "GET",
+      `${EMBEDDING_ROUTE}*`,
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const remote = Option.getOrUndefined(request.remoteAddress) ?? "";
+        const proxied = ["cf-connecting-ip", "x-forwarded-for", "tailscale-user-login"].some(
+          (h) => request.headers[h] !== undefined,
+        );
+        const [key = "", file = ""] = new URL(request.url, "http://local").pathname
+          .slice(EMBEDDING_ROUTE.length)
+          .split("/");
+        const bytes =
+          proxied || !/^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(remote)
+            ? null
+            : yield* (yield* TessayaVoiceLibrary).embedding(key, file);
+        return bytes === null
+          ? HttpServerResponse.empty({ status: 404 })
+          : HttpServerResponse.uint8Array(bytes, { contentType: "application/octet-stream" });
+      }).pipe(Effect.provideContext(context)),
+    );
     yield* personaLayerRoutes(router, context, auth, deskTools, NodePath.dirname(config.dbPath));
   }),
 );
@@ -759,6 +783,10 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
         .personas.filter((p) => p.private !== true)
         .map((p) => ({ id: p.id, name: p.name, role: p.role, lead: p.lead })),
       tools: (deskTools?.specs ?? []).map((t) => ({ name: t.name, description: t.description })),
+      // A layer offers a line's tone only where his voice was recorded in it (VOXTA G1).
+      voices: ((await run(Effect.flatMap(TessayaVoiceLibrary, (v) => v.library))).clones ?? []).map(
+        (c) => ({ id: c.id, name: c.name, affects: c.affects ?? [] }),
+      ),
     }),
   };
   let deviceKey: Uint8Array | null = null;

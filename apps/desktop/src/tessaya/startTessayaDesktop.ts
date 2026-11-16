@@ -47,11 +47,16 @@ import {
   BATON_SESSIONS_WS_METHODS,
   type TessayaHouseholdCallResult,
   type CommsCallResult,
+  type SavedCloneView,
   tessayaPlaceOf,
 } from "@t3tools/tessaya-contracts";
 import { approvalRecord } from "@t3tools/tessaya-shared/approvals";
 import { DEFAULT_POCKET_VOICE } from "@t3tools/tessaya-shared/voiceLibrary";
-import { affectReference } from "@t3tools/tessaya-shared/voiceClips";
+import {
+  affectReference,
+  cloneReference,
+  registerReferences,
+} from "@t3tools/tessaya-shared/voiceClips";
 import { inFlightLine } from "@t3tools/tessaya-shared/turnsInFlight";
 import { releasesUrl } from "@t3tools/tessaya-shared/repo";
 import { adoptTessayaEnv } from "@t3tools/tessaya-shared/tessayaEnv";
@@ -390,14 +395,22 @@ export const startTessayaDesktop = Effect.gen(function* () {
     const chooseVoice = (
       name: PocketVoice | "system",
       cloud: string | null = null,
+      clone: string | null = null,
     ): VoiceChoice => {
       if (name === "system") return { kind: "system" };
+      // His saved clone speaks first where this machine's server serves it: in the line's tone when it was recorded.
+      const cloned =
+        clone === null
+          ? undefined
+          : ((lineAffect === null ? undefined : affectReference(clone, lineAffect)) ??
+            cloneReference(clone));
       // A clone reference conditions the whole line, never spliced; a voice without that clip says it plainly.
       const reference =
-        lineAffect === null || cloud !== null ? undefined : affectReference(name, lineAffect);
+        cloned ??
+        (lineAffect === null || cloud !== null ? undefined : affectReference(name, lineAffect));
       const synth = pocket.synthesise(name, reference);
       if (synth === null) return { kind: "wait", ready: pocket.ensure(name) };
-      return cloud === null || Date.now() < cloudQuietUntil
+      return cloud === null || cloned !== undefined || Date.now() < cloudQuietUntil
         ? { kind: "synth", synth, voice: name }
         : { kind: "synth", synth: cloudSynth(cloud, synth), voice: cloud, engine: "gemini" };
     };
@@ -458,7 +471,11 @@ export const startTessayaDesktop = Effect.gen(function* () {
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
       voice: () =>
-        chooseVoice(screen?.voice() ?? DEFAULT_POCKET_VOICE, screen?.cloudVoice() ?? null),
+        chooseVoice(
+          screen?.voice() ?? DEFAULT_POCKET_VOICE,
+          screen?.cloudVoice() ?? null,
+          screen?.cloneVoice() ?? null,
+        ),
       player: voicePlayer,
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => {
@@ -547,6 +564,27 @@ export const startTessayaDesktop = Effect.gen(function* () {
     };
     const direct = (method: string, body: unknown, timeoutMs?: number) =>
       own(`/tessaya/desk/${method}`, body, timeoutMs);
+    /** His clones and their recorded tones on this machine's server, as loopback URLs its Pocket fetches (VOXTA G1). */
+    const refreshClones = async () => {
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      const reply = (await direct("baton.voice.call", { kind: "read", op: "library" })) as {
+        value?: { clones?: ReadonlyArray<SavedCloneView> };
+      } | null;
+      if (config._tag === "None") return;
+      const base = new URL(config.value.httpBaseUrl);
+      base.hostname = "127.0.0.1";
+      for (const c of reply?.value?.clones ?? []) {
+        if (c.embedding === undefined) continue;
+        const at = (file: string) => new URL(c.embedding!.replace(/[^/]+$/, file), base).href;
+        registerReferences(c.id, {
+          embedding: at(`${c.id}.safetensors`),
+          ...Object.fromEntries(
+            (c.affects ?? []).map((a) => [`affect-${a}`, at(`${c.id}.affect-${a}.safetensors`)]),
+          ),
+        });
+      }
+    };
+    void refreshClones().catch(() => undefined);
     // Her desktop calls on his own `claude` (looks, rewrites, clean-up) go to the one usage ledger; a lost row is not retried.
     sendVisionUsageTo((row) => void direct("baton.brain.record", row).catch(() => undefined));
     // An owner-only persona layer on this machine's server, in internal builds only: the first 404 stops it.
@@ -654,6 +692,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
       cueBase = 0;
       lineAffect = null;
       deskTurns += 1;
+      // The embedding key changes when the server restarts: the turn's voice reads this start's.
+      void refreshClones().catch(() => undefined);
       try {
         await deskTurnOnce(body, onWords, signal);
       } finally {

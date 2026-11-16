@@ -22,6 +22,8 @@ export const BATON_VOICE_OWNER_OPS = [
   "clone",
   "saveClone",
   "deleteClone",
+  // An affect variant beside a saved clone (VOXTA G1): a clip in that tone, made into its own embedding.
+  "recordAffect",
   "say",
   "setHfToken",
   // Her mood with why (the reasons she logged); a read gets only the label and strength.
@@ -136,10 +138,23 @@ export const PersonaVoiceRow = Schema.Struct({
 });
 export type PersonaVoiceRow = typeof PersonaVoiceRow.Type;
 
+/** The tones a saved clone can be recorded in (Playground), as a persona layer names a line's affect. */
+export const AFFECT_VARIANTS = ["tender", "excited", "soft", "whisper", "playful"] as const;
+export type AffectVariant = (typeof AFFECT_VARIANTS)[number];
+export const isAffectVariant = (name: string): name is AffectVariant =>
+  (AFFECT_VARIANTS as ReadonlyArray<string>).includes(name);
+
 export const SavedCloneView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   createdAt: Schema.String,
+  /** Its affect variants recorded in Playground ("tender", "whisper" …): what a line in this voice can be said in. */
+  affects: Schema.optionalKey(Schema.Array(Schema.String)),
+  /**
+   * Where this machine's own Pocket fetches its embedding (`voice_url`): a path on this server, served to loopback only
+   * under a key that changes each start. The affect variants sit beside it as `<id>.affect-<name>.safetensors`.
+   */
+  embedding: Schema.optionalKey(Schema.String),
 });
 export type SavedCloneView = typeof SavedCloneView.Type;
 
