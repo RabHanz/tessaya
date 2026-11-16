@@ -60,6 +60,10 @@ export class TessayaVocabulary extends Context.Service<
 
 const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** A project title worth listening for: words with a capital ("NorthWind"), never a slug or folder ("baton-media-test", "work"). */
+export const spokenTitle = (title: string): boolean =>
+  /^[\p{L}'’ ]+$/u.test(title.trim()) && /\p{Lu}/u.test(title);
+
 /** A name's mis-writings from the one list (`NAME_SOUNDALIKES`), as heard forms its entry carries. */
 const soundAlikes = (name: string): { readonly heard?: ReadonlyArray<string> } => {
   const heard = NAME_SOUNDALIKES[name.toLowerCase()]?.heard ?? [];
@@ -152,6 +156,13 @@ export const make = Effect.gen(function* () {
       Effect.map((all) => all.flatMap((r) => (typeof r.name === "string" ? [r.name] : []))),
       Effect.orElseSucceed((): ReadonlyArray<string> => []),
     );
+  const projectTitles = Option.isNone(sql)
+    ? Effect.succeed<ReadonlyArray<string>>([])
+    : rows(
+        sql.value<{
+          name: unknown;
+        }>`SELECT title AS name FROM projection_projects WHERE deleted_at IS NULL AND archived_at IS NULL ORDER BY created_at`,
+      );
   // shortcut: a household kept on a linked home server is not read here; read it through TessayaHousehold when one is.
   const names = Effect.gen(function* () {
     const personas = readPack(config.stateDir).personas.map((p) => p.name);
@@ -162,13 +173,9 @@ export const make = Effect.gen(function* () {
           name: unknown;
         }>`SELECT name FROM tessaya_household_members WHERE removed_at IS NULL ORDER BY created_at`,
       ),
-      rows(
-        sql.value<{
-          name: unknown;
-        }>`SELECT title AS name FROM projection_projects WHERE deleted_at IS NULL AND archived_at IS NULL ORDER BY created_at`,
-      ),
+      projectTitles,
     ]);
-    return [...personas, ...members, ...projects];
+    return [...personas, ...members, ...projects.filter(spokenTitle)];
   });
 
   const read = Effect.gen(function* () {
@@ -212,9 +219,16 @@ export const make = Effect.gen(function* () {
   const adopt = Effect.gen(function* () {
     if (Option.isNone(settings)) return;
     const words = (yield* settings.value.getSettings).speechProjectCustomWords;
+    // A slug title that reached T3's list or the file before titles were filtered is no word of his.
+    const titles = yield* projectTitles;
+    const slug = (word: string) => titles.some((t) => sameWord(t, word) && !spokenTitle(t));
+    for (const e of readStored(file) ?? [])
+      if (e.replacement === null && slug(e.phrase))
+        yield* change({ verb: "remove", phrase: e.phrase });
     const known = yield* read;
     const extra = words.filter(
       (w) =>
+        !slug(w.term) &&
         !known.some((e) => sameWord(e.phrase, w.term) || sameWord(e.replacement ?? "", w.term)),
     );
     if (extra.length > 0)
