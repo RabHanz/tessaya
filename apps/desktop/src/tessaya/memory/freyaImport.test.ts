@@ -85,4 +85,34 @@ describe("importing Freya's memories", () => {
     expect(await runFreyaImport(dir, deps)).toBeNull();
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
+
+  it("never imports twice when the startup run and his new store's run overlap", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "freya-"));
+    NodeFS.mkdirSync(NodePath.join(dir, "import"));
+    NodeFS.writeFileSync(NodePath.join(dir, PLAN_FILE), JSON.stringify({ items: plan }));
+    const kept: Array<string> = [];
+    const deposited: Array<string> = [];
+    const deps = {
+      memory: async (op: string, args: Record<string, unknown>) => {
+        if (op === "list") return { items: kept.map((sourceRef) => ({ sourceRef })) };
+        kept.push(args["sourceRef"] as string);
+        return { item: { sourceRef: args["sourceRef"] } };
+      },
+      private: async (_op: string, args: Record<string, unknown> = {}) => {
+        const ids = (args["items"] as Array<{ id: string }>).map((i) => i.id);
+        const fresh = ids.filter((id) => !deposited.includes(id));
+        deposited.push(...fresh);
+        return { added: fresh.length, skipped: ids.length - fresh.length };
+      },
+    };
+    const [first, second] = await Promise.all([
+      runFreyaImport(dir, deps),
+      runFreyaImport(dir, deps),
+    ]);
+    expect(first?.general.added).toBe(3);
+    expect(second).toBeNull();
+    expect(kept).toHaveLength(3);
+    expect(deposited).toEqual(["p1", "p2", "h1"]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
 });

@@ -107,7 +107,20 @@ export const importFreyaPlan = async (
  * Imports a dropped plan, then deletes it and keeps the counts. Without his private store yet, everyday memories go in
  * and the plan waits for the next start; a re-run adds nothing twice.
  */
-export const runFreyaImport = async (
+export const runFreyaImport = (
+  stateDir: string,
+  deps: { readonly memory: MemoryCall; readonly private: PrivateCall },
+): Promise<FreyaImportCounts | null> => {
+  // One run at a time per folder: the startup run and the one his new store starts never interleave their reads and adds.
+  const next = (running.get(stateDir) ?? Promise.resolve(null))
+    .catch(() => null)
+    .then(() => importOnce(stateDir, deps));
+  running.set(stateDir, next);
+  return next;
+};
+const running = new Map<string, Promise<FreyaImportCounts | null>>();
+
+const importOnce = async (
   stateDir: string,
   deps: { readonly memory: MemoryCall; readonly private: PrivateCall },
 ): Promise<FreyaImportCounts | null> => {
