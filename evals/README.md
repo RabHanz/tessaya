@@ -16,6 +16,7 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [tessaya-room](tessaya-room/)           | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.                    |
 | [tessaya-lines](tessaya-lines/)         | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are.                  |
 | [tessaya-plan](tessaya-plan/)           | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                      |
+| [tessaya-read](tessaya-read/)           | Whether the per-turn read of his words gets the tone, topic, how he seems, shared moments and a fair opinion.         |
 | [tessaya-dictation](tessaya-dictation/) | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused. |
 | [tessaya-learning](tessaya-learning/)   | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                  |
 | [tessaya-pulse](tessaya-pulse/)         | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                   |

@@ -1371,6 +1371,11 @@ export const TessayaDeviceMoods = Schema.Record(
     show: Schema.optionalKey(Schema.Boolean),
   }),
 );
+/** Per persona id, each emotional dial moved from its default (tessaya-shared affect `TRAITS`), 0 to 1. */
+export const TessayaPersonaDials = Schema.Record(
+  Schema.String,
+  Schema.Record(Schema.String, Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
+);
 
 /** Who wears each body by its id (tessaya-shared cast.ts): home persona, follows, others beside it. */
 export const TessayaCast = Schema.Record(
@@ -1525,9 +1530,10 @@ export const ServerSettings = Schema.Struct({
     intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     bondCap: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
     devices: TessayaDeviceMoods.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    personas: TessayaPersonaDials.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(
     Schema.withDecodingDefault(
-      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {} }),
+      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {}, personas: {} }),
     ),
   ),
   // Tessaya: who wears each Tessel and phone (Settings → Cast); the desktop keeps its own in its companion settings.
@@ -2008,6 +2014,7 @@ export const ServerSettingsPatch = Schema.Struct({
         Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
       ),
       devices: Schema.optionalKey(TessayaDeviceMoods),
+      personas: Schema.optionalKey(TessayaPersonaDials),
     }),
   ),
   companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),

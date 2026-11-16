@@ -21,6 +21,7 @@
     "tessaya-brain:subscription": "node tessaya-brain/subscription.ts",
     "tessaya-lines": "node tessaya-lines/run.ts",
     "tessaya-plan": "node tessaya-plan/run.ts",
+    "tessaya-read": "node tessaya-read/run.ts",
     "tessaya-dictation": "node tessaya-dictation/run.ts",
     "tessaya-learning": "node tessaya-learning/run.ts",
     "tessaya-pulse": "node tessaya-pulse/run.ts"

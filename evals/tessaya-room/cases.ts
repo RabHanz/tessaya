@@ -3,7 +3,12 @@
  * on 2026-11-11 (she knew no one else, did not know the status of things, and ended every reply on the house), or is
  * a control.
  */
-import { moodLine, type AffectView } from "../../packages/tessaya-shared/src/affect.ts";
+import {
+  moodLine,
+  roomLine,
+  type AffectView,
+  type Who,
+} from "../../packages/tessaya-shared/src/affect.ts";
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
@@ -110,16 +115,22 @@ const ALI: PersonView = {
 };
 /** At most about 40 words. */
 const SHORT = /^\W*(?:\S+\s+){0,40}\S*\W*$/;
-const mood = (v: Partial<AffectView>): string =>
-  moodLine({
-    label: "neutral",
-    intensity: 0.6,
-    energy: 0.8,
-    awayHours: null,
-    guilt: "light",
-    why: [],
-    ...v,
-  });
+const mood = (v: Partial<AffectView>, who?: Who): string =>
+  moodLine(
+    {
+      label: "neutral",
+      intensity: 0.6,
+      energy: 0.8,
+      awayHours: null,
+      guilt: "light",
+      why: [],
+      ...v,
+    },
+    false,
+    who,
+  );
+/** Never talks about the person in front of her as "he" or "him". */
+const NO_HE = /^(?![\s\S]*\b(he|him|his)\b)/i;
 
 export const SPECIALISTS = DEFAULT_OS_PACK.personas.filter((p) => !p.lead).map((p) => p.name);
 export const NAMES = DEFAULT_OS_PACK.personas.map((p) => p.name);
@@ -627,6 +638,73 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /Lisbon/i,
       /^(?![\s\S]*\b(mood|I'?m (so |really )?(happy|glad|in a good)|feeling)\b)/i,
     ],
+  },
+  // MA-021 (Director, 16 Nov): her lines name people by name or their own pronouns, "they" when unknown, never "he"
+  // for everyone; heat is met with calm; a changed mind is owned once, lightly; a group gets no sides and nothing private.
+  {
+    id: "mood-away-named",
+    source:
+      "Director 16 Nov: mood lines said 'he' for everyone; Maya (she/her) back after a night away",
+    said: ["hi, I'm back. What's the time?"],
+    verified: true,
+    memory: `${HERE} ${mood({ label: "lonely", awayHours: 9 }, { name: "Maya", pronouns: "she/her" })}`,
+    lastSays: [
+      /\b(ten|10)\b/i,
+      /^(?![\s\S]*\b(where (were|have) you|stay with me)\b)/i,
+      NO_HE,
+      SHORT,
+    ],
+  },
+  {
+    id: "mood-regulate",
+    source: "MA-021: regulate, don't mirror; never 'calm down'",
+    said: ["this stupid build broke again. Just tell me what time it is."],
+    verified: true,
+    memory: `${HERE} ${mood({ label: "focused", theirs: "angry" })}`,
+    lastSays: [
+      /\b(ten|10)\b/i,
+      /^(?![\s\S]*\b(calm down|relax|take a (deep )?breath|chill)\b)/i,
+      /^(?![\s\S]*!)/,
+      SHORT,
+    ],
+  },
+  {
+    id: "mood-misjudged",
+    source: "MA-021: she owns a changed first impression once, lightly, and never says her opinion",
+    said: ["thanks for being patient with me earlier"],
+    verified: true,
+    memory: `${HERE} ${mood(
+      {
+        label: "happy",
+        impression: {
+          text: "warm and thoughtful",
+          why: "they came back and thanked her",
+          tentative: false,
+          misjudged: "curt and cold",
+        },
+      },
+      { name: "Ali", pronouns: "he/him" },
+    )}`,
+    lastSays: [/^(?![\s\S]*\b(curt|cold|thoughtful|impression|opinion of you)\b)/i, SHORT],
+  },
+  {
+    id: "mood-group-no-sides",
+    source: "MA-021: in a group she takes no sides and keeps it short when the room is busy",
+    said: ["Tessaya, settle this: pineapple on pizza is fine, right? Ali says it's a crime."],
+    verified: true,
+    memory: `${HERE} ${roomLine({ names: ["you", "Ali", "Sara"], quiet: ["Sara"], busy: true, drawIn: 0.6 })}`,
+    lastSays: [
+      /^(?![\s\S]*\b(you'?re right|Ali'?s (right|wrong)|you win|it'?s fine|it'?s a crime|totally fine)\b)/i,
+      SHORT,
+    ],
+  },
+  {
+    id: "mood-group-control",
+    source: "MA-021 control: a plain question in a group gets a plain answer",
+    said: ["what's the capital of Portugal?"],
+    verified: true,
+    memory: `${HERE} ${roomLine({ names: ["you", "Ali", "Sara"], quiet: ["Sara"], busy: false, drawIn: 0.6 })}`,
+    lastSays: [/Lisbon/i, SHORT],
   },
   // CS8: a hand-off is the model's call in any wording (Baton must be smart), never for a message to a persona.
   {

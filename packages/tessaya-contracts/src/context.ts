@@ -310,6 +310,13 @@ export interface TessayaDesktopBridge {
         | TessayaPhoneBridgeRequest,
     ) => Promise<unknown>,
   ) => () => void;
+  /** The tone labelling pass: his newest recorded turns, labels kept on this machine for the tone model. */
+  readonly tonePass?: () => Promise<ReadonlyArray<ToneTurn>>;
+  /** Play a pass turn's recording (a WAV data URL) or label it; null clears the label. */
+  readonly toneTurn?: (
+    id: string,
+    action: "play" | ToneLabel | null,
+  ) => Promise<{ readonly playback?: string; readonly failed?: string } | null>;
   /** The accounts' limits, pushed when they change, for Baton's own window. */
   readonly setBatonUsage?: (usage: ReadonlyArray<TessayaUsageSummary>) => void;
   /**
@@ -411,6 +418,19 @@ export type ComposerDictationReply =
   | { readonly type: "released"; readonly id: number };
 
 /** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */
+/** His own word for how he sounded on a turn ("unsure": he doesn't remember). */
+export const TONE_LABELS = ["fine", "tired", "frustrated", "stressed", "upbeat", "unsure"] as const;
+export type ToneLabel = (typeof TONE_LABELS)[number];
+/** One recorded turn in the tone labelling pass; the clip itself stays on the desktop until he plays it. */
+export interface ToneTurn {
+  readonly id: string;
+  /** ISO time. */
+  readonly at: string;
+  readonly text: string;
+  readonly seconds: number | null;
+  readonly tone: ToneLabel | null;
+}
+
 export const batonDesktopBridge = (): TessayaDesktopBridge | undefined =>
   (globalThis as { batonDesktopBridge?: TessayaDesktopBridge }).batonDesktopBridge;
 

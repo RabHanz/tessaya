@@ -22,9 +22,11 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Stream from "effect/Stream";
 
 import {
   mergeCentroid,
@@ -125,17 +127,26 @@ export class TessayaPeople extends Context.Service<
         readonly seen: number;
       }>
     >;
+    /** Someone forgotten, or merged `into` the one they are: what is kept about them elsewhere follows. */
+    readonly forgotten: Stream.Stream<{ readonly id: string; readonly into: string | undefined }>;
   }
 >()("t3/tessaya/TessayaPeople") {}
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const now = Clock.currentTimeMillis;
+  const forgotten = yield* PubSub.unbounded<{
+    readonly id: string;
+    readonly into: string | undefined;
+  }>();
+  // Where they were seen goes (or moves to the one they are) with them; TessayaMood follows `forgotten`.
   const forgetPresence = (id: string, into?: string) =>
     Effect.serviceOption(TessayaPresence).pipe(
       Effect.flatMap(
         Option.match({ onNone: () => Effect.void, onSome: (p) => p.forget(id, into) }),
       ),
+      Effect.andThen(PubSub.publish(forgotten, { id, into })),
+      Effect.asVoid,
     );
 
   const row = (id: string) =>
@@ -1027,6 +1038,7 @@ export const make = Effect.gen(function* () {
         UPDATE fabric_memory_entities SET impression = ${value === "" ? null : value} WHERE id = ${id}
       `.pipe(Effect.orDie);
     }),
+    forgotten: Stream.fromPubSub(forgotten),
   });
 });
 

@@ -7,6 +7,7 @@ import { commsCaps } from "@t3tools/tessaya-shared/comms";
 import { followOn } from "@t3tools/tessaya-shared/household";
 import {
   PRESENCE_FORGET_MS,
+  PRESENCE_SOURCES,
   fusePresence,
   peopleAt,
   routeProactive,
@@ -18,6 +19,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { DeviceSync } from "../home/DeviceSync.ts";
@@ -59,15 +62,20 @@ export class TessayaPresence extends Context.Service<
     readonly estimate: (
       extra?: ReadonlyArray<PresenceSignal>,
     ) => Effect.Effect<ReturnType<typeof fusePresence> & { readonly now: number }>;
+    /** Someone arrived, moved, stepped away or was forgotten: faces react now, not on the next sweep. */
+    readonly changes: Stream.Stream<void>;
   }
 >()("t3/tessaya/TessayaPresence") {}
 
 const keyOf = (s: Omit<PresenceSignal, "at">) =>
   `${s.member ?? ""}\u0000${s.source}\u0000${s.vessel ?? ""}`;
+/** A signal renewed sooner than this is the same visit, not a change (a voice heard every turn). */
+const SAME_VISIT_MS = 2 * 60_000;
 
 export const make = Effect.gen(function* () {
   const sync = yield* Effect.serviceOption(DeviceSync);
   const kept = new Map<string, PresenceSignal>();
+  const changed = yield* PubSub.sliding<void>(1);
   const keep = (key: string, signal: PresenceSignal, now: number) => {
     kept.delete(key);
     kept.set(key, signal);
@@ -90,6 +98,12 @@ export const make = Effect.gen(function* () {
     keep(key, next, now);
     if (Option.isSome(sync) && (before === undefined || next.at - before.at >= RESEND_MS))
       yield* sync.value.put(PRESENCE_RECORD, key, next, "changed", next.at);
+    if (
+      before === undefined ||
+      next.at - before.at >= SAME_VISIT_MS ||
+      PRESENCE_SOURCES[signal.source]?.weight === 0
+    )
+      yield* PubSub.publish(changed, undefined);
   });
   if (Option.isSome(sync))
     yield* sync.value.onRecord(PRESENCE_RECORD, (key, v) =>
@@ -120,8 +134,9 @@ export const make = Effect.gen(function* () {
             yield* sync.value.put(PRESENCE_RECORD, keyOf(moved), moved, "changed", moved.at);
         }
       }
+    yield* PubSub.publish(changed, undefined);
   });
-  return TessayaPresence.of({ note, estimate, forget });
+  return TessayaPresence.of({ note, estimate, forget, changes: Stream.fromPubSub(changed) });
 });
 
 export const layer = Layer.effect(TessayaPresence, make);

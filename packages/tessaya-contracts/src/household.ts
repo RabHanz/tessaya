@@ -20,6 +20,7 @@ export const TessayaPreferenceKey = Schema.Literals([
   "music",
   "wakeTraining",
   "follow",
+  "pronouns",
 ]);
 export type TessayaPreferenceKey = typeof TessayaPreferenceKey.Type;
 

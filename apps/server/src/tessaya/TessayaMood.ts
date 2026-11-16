@@ -1,23 +1,30 @@
 // @effect-diagnostics nodeBuiltinImport:off
 // @effect-diagnostics globalDate:off
 /**
- * Her mood, one row per persona: a general mood and a relationship per member (§7: nothing that decides acts reads it).
- * Each event made here also goes to his other servers (DeviceSync `@mood`, id-deduped, oldest first) and each appraises
- * it into its own row, so all of them end in one mood; presence anywhere (synced too) means he is not away (B-044).
+ * Her working mood, one row per persona: a general mood tied to no one and a relationship per person (a member, or a
+ * stranger by people-graph id) with her opinion and their story, shaped by the persona's dials. Nothing that decides
+ * what she may do reads this service (§7). Each event made here also goes to his other servers (DeviceSync `@mood`,
+ * id-deduped, oldest first) and each appraises it into its own row; presence anywhere means he is not away (B-044).
  */
 import {
   DEFAULT_AFFECT_SETTINGS,
   appraiseFor,
   deviceOwnerOf,
+  dialsOf,
   faceMemberAt,
   freshAffect,
-  guiltOf,
-  HIS_TONES,
+  guiltOfDial,
+  movePerson,
   personaAffectOf,
+  personaRoomView,
   personaView,
-  tonePrompt,
+  opinionContext,
+  readPrompt,
+  TurnRead,
+  type AffectContext,
   type AffectEvent,
   type AffectView,
+  type Dials,
   type PersonaAffect,
 } from "@t3tools/tessaya-shared/affect";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
@@ -29,8 +36,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 import * as PubSub from "effect/PubSub";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -42,6 +49,14 @@ import { TessayaPresence } from "./TessayaPresence.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
+import { TessayaPeople } from "./TessayaPeople.ts";
+
+/** One person's row in Settings' inner state: how she feels toward them, why, her opinion and their story. */
+interface InnerPerson {
+  readonly member: string;
+  readonly name: string;
+  readonly view: AffectView;
+}
 
 export class TessayaMood extends Context.Service<
   TessayaMood,
@@ -55,17 +70,32 @@ export class TessayaMood extends Context.Service<
       timeZone?: string,
       member?: string | null,
     ) => Effect.Effect<AffectView>;
+    /** A room's mood: the general mood plus the people here, weighted by how sure presence is of each (MA-021). */
+    readonly roomView: (
+      persona: string | undefined,
+      here: ReadonlyArray<{ readonly key: string; readonly weight: number }>,
+      timeZone?: string,
+    ) => Effect.Effect<AffectView>;
     /** One typed event: the world's (an outcome, a job) to the general mood, a person's to `member`'s relationship. */
     readonly note: (
       persona: string | undefined,
       event: Exclude<AffectEvent, { kind: "his_turn" }>,
       member?: string | null,
     ) => Effect.Effect<void>;
-    /** How a member's words treat her (an apology, praise, warmth, rudeness), judged by the cheap model. */
+    /**
+     * The one cheap read of a turn (MA-021): how their words treat her, the talk's topic and how they seem, a joke or
+     * milestone, and her opinion of them. With `member` null (a room), only the flow, into the general mood.
+     */
     readonly hisWords: (
       persona: string | undefined,
       said: string,
       member: string | null,
+      context?: {
+        /** SenseVoice's label for this turn: their words agreeing ("low") confirm a care mode (MA-022's second signal). */
+        readonly voice?: string | undefined;
+        /** What was said just before, so the flow is read in context. */
+        readonly before?: string | undefined;
+      },
     ) => Effect.Effect<void>;
     /** One of a member's turns reached this persona: their time away resolves and their bond counts the day. */
     readonly heard: (
@@ -73,7 +103,7 @@ export class TessayaMood extends Context.Service<
       timeZone: string | undefined,
       member: string,
     ) => Effect.Effect<void>;
-    /** A device's face at rest, from the one presence estimate: the one person there, else its owner's when allowed. */
+    /** A device's face at rest, from the one presence estimate: the one person there, the room, or its owner's. */
     readonly atDevice: (
       device: string,
       persona: string | undefined,
@@ -86,13 +116,14 @@ export class TessayaMood extends Context.Service<
       timeZone?: string,
     ) => Effect.Effect<{
       readonly general: AffectView;
-      readonly people: ReadonlyArray<{
-        readonly member: string;
-        readonly name: string;
-        readonly view: AffectView;
-      }>;
+      readonly people: ReadonlyArray<InnerPerson>;
+      readonly dials: Dials;
     }>;
-    /** Something moved a mood (a write, someone at a vessel), or a few minutes passed: faces read again. */
+    /** Someone forgotten (no `into`) or found to be someone else: their relationship goes or moves, every persona. */
+    readonly forget: (member: string, into?: string) => Effect.Effect<void>;
+    /** One person's relationship with a persona (her opinion, story and feeling) back to nothing. */
+    readonly reset: (persona: string | undefined, member: string) => Effect.Effect<void>;
+    /** Something moved a mood (a write, someone arrived or left a vessel), or a few minutes passed: faces read again. */
     readonly moves: Stream.Stream<void>;
     /**
      * A persona's general mood each time it shows differently (its label, or its strength by a tenth): after each
@@ -106,7 +137,6 @@ const LEAD = "executive";
 /** How often a listener's mood is read again for what time alone changes (lonely builds over hours). */
 const SWEEP = "5 minutes";
 
-const Tone = Schema.Struct({ tone: Schema.Literals([...HIS_TONES, "none"]) });
 /** A mood event as it travels between his servers (`@mood`, keyed by its id). */
 const MOOD_RECORD = "@mood";
 const SyncedEvent = Schema.Struct({
@@ -158,6 +188,7 @@ const make = Effect.gen(function* () {
   const oneShot = yield* Effect.serviceOption(TessayaOneShot);
   const sync = yield* Effect.serviceOption(DeviceSync);
   let sent = 0;
+  const people = yield* Effect.serviceOption(TessayaPeople);
 
   const pack = () =>
     Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath));
@@ -169,6 +200,11 @@ const make = Effect.gen(function* () {
     Effect.map((s) => s.tessayaMood),
     Effect.orElseSucceed(() => DEFAULT_AFFECT_SETTINGS),
   );
+  const dialsFor = (personaId: string | undefined, current: typeof DEFAULT_AFFECT_SETTINGS) => {
+    const face = personaOf(personaId);
+    const persona = face?.id ?? LEAD;
+    return { persona, dials: dialsOf(persona, face?.guilt, current.personas?.[persona]) };
+  };
 
   // Off is also the reset: turned back on, every persona starts from its temperament, bonds included.
   const clear = sql`DELETE FROM tessaya_affect_state`.pipe(Effect.ignore);
@@ -192,17 +228,24 @@ const make = Effect.gen(function* () {
 
   const apply = Effect.fn("TessayaMood.apply")(function* (
     personaId: string | undefined,
-    event: (day: string) => AffectEvent,
+    event: (day: string, dials: Dials) => AffectEvent,
     timeZone: string | undefined,
     member: string | null,
   ) {
     const current = yield* moodSettings;
     if (!current.enabled) return yield* clear;
-    const persona = personaOf(personaId)?.id ?? LEAD;
+    const { persona, dials } = dialsFor(personaId, current);
     const now = yield* Clock.currentTimeMillis;
     const { day } = clockIn(now, timeZone ?? "UTC");
-    const resolved = event(day);
-    const reason = yield* appraiseInto(persona, resolved, now, member, current.bondCap);
+    const resolved = event(day, dials);
+    const reason = yield* appraiseInto(
+      persona,
+      resolved,
+      now,
+      member,
+      current.bondCap,
+      dials.forgiveness,
+    );
     // Its provenance travels with it: the id (the field), when (the stamp), which server, who, and why.
     if (reason !== null && Option.isSome(sync))
       yield* sync.value.put(
@@ -221,12 +264,13 @@ const make = Effect.gen(function* () {
     at: number,
     member: string | null,
     bondCap: number,
+    forgiveness: number,
   ) =>
     lock.withPermits(1)(
       Effect.gen(function* () {
         const state = yield* read(persona, at);
         const when = Math.max(at, state.general.at);
-        const next = appraiseFor(state, event, when, bondCap, member);
+        const next = appraiseFor(state, event, when, bondCap, member, forgiveness);
         // A person's event with nobody identified moves nothing.
         if (next.reason === null) return null;
         yield* write(persona, next.state, next.reason, when);
@@ -243,7 +287,15 @@ const make = Effect.gen(function* () {
         if (Option.isNone(decoded) || !current.enabled) return;
         const { p, m, e } = decoded.value;
         if (typeof e["kind"] !== "string") return;
-        yield* appraiseInto(p, e as unknown as AffectEvent, at, m, current.bondCap);
+        const { persona, dials } = dialsFor(p, current);
+        yield* appraiseInto(
+          persona,
+          e as unknown as AffectEvent,
+          at,
+          m,
+          current.bondCap,
+          dials.forgiveness,
+        );
       }),
     );
 
@@ -263,7 +315,7 @@ const make = Effect.gen(function* () {
     for (const m of around) {
       const seenAt = state.people[m.member]?.seenAt ?? null;
       if (seenAt !== null && now - seenAt >= SEEN_EVERY_MS)
-        yield* appraiseInto(persona, { kind: "seen" }, now, m.member, bondCap);
+        yield* appraiseInto(persona, { kind: "seen" }, now, m.member, bondCap, 1);
     }
   });
 
@@ -271,22 +323,19 @@ const make = Effect.gen(function* () {
     personaId: string | undefined,
     timeZone: string | undefined,
   ) {
-    const face = personaOf(personaId);
-    const persona = face?.id ?? LEAD;
     const now = yield* Clock.currentTimeMillis;
     const current = yield* moodSettings;
     if (!current.enabled) yield* clear;
-    else yield* seenByPresence(persona, now, current.bondCap);
-    return {
-      persona,
-      state: yield* read(persona, now),
-      ctx: {
-        now,
-        hour: clockIn(now, timeZone ?? "UTC").hour,
-        guilt: guiltOf(face?.guilt),
-        settings: current,
-      },
+    const { persona, dials } = dialsFor(personaId, current);
+    if (current.enabled) yield* seenByPresence(persona, now, current.bondCap);
+    const ctx: AffectContext = {
+      now,
+      hour: clockIn(now, timeZone ?? "UTC").hour,
+      guilt: guiltOfDial(dials.guiltTrips),
+      settings: current,
+      dials,
     };
+    return { persona, state: yield* read(persona, now), ctx };
   });
 
   const view: TessayaMood["Service"]["view"] = Effect.fn("TessayaMood.view")(
@@ -295,34 +344,136 @@ const make = Effect.gen(function* () {
       return personaView(state, persona, ctx, member ?? null);
     },
   );
+  const roomView: TessayaMood["Service"]["roomView"] = Effect.fn("TessayaMood.roomView")(
+    function* (personaId, here, timeZone) {
+      const { persona, state, ctx } = yield* readNow(personaId, timeZone);
+      return personaRoomView(state, persona, ctx, here);
+    },
+  );
 
-  const moves = Stream.merge(Stream.fromPubSub(moved), Stream.tick(SWEEP));
+  /** Every persona's row, rewritten under the lock (a forget or a merge reaches them all). */
+  const rewriteAll = Effect.fn("TessayaMood.rewriteAll")(function* (
+    change: (p: PersonaAffect) => PersonaAffect,
+    reason: string,
+  ) {
+    const now = yield* Clock.currentTimeMillis;
+    yield* lock.withPermits(1)(
+      Effect.gen(function* () {
+        const rows = yield* sql<{ persona: string; state_json: string }>`
+          SELECT persona, state_json FROM tessaya_affect_state
+        `.pipe(Effect.orElseSucceed(() => []));
+        for (const r of rows) {
+          const before = decodeState(r.state_json, now);
+          const after = change(before);
+          if (after !== before) yield* write(r.persona, after, reason, now);
+        }
+        yield* PubSub.publish(moved, undefined);
+      }),
+    );
+  });
+
+  // A presence change (someone arrived at or left a vessel) reaches every face at once, not on the next sweep.
+  const moves = Stream.merge(
+    Stream.merge(Stream.fromPubSub(moved), Stream.tick(SWEEP)),
+    Stream.unwrap(
+      Effect.serviceOption(TessayaPresence).pipe(
+        Effect.map((p) => (Option.isNone(p) ? Stream.empty : p.value.changes)),
+      ),
+    ),
+  );
+
+  const forget = Effect.fn("TessayaMood.forget")(function* (member: string, into?: string) {
+    yield* rewriteAll((p) => movePerson(p, member, into ?? null), "someone was forgotten");
+  });
+  // Someone the people graph forgets (or finds to be someone else) leaves her feelings with them.
+  if (Option.isSome(people))
+    yield* people.value.forgotten.pipe(
+      Stream.runForEach(({ id, into }) => forget(id, into)),
+      Effect.forkScoped({ startImmediately: true }),
+    );
 
   return TessayaMood.of({
     view,
+    roomView,
     note: Effect.fn("TessayaMood.note")(function* (persona, event, member) {
       yield* apply(persona, () => event, undefined, member ?? null);
     }),
-    hisWords: Effect.fn("TessayaMood.hisWords")(function* (persona, said, member) {
-      if (
-        member === null ||
-        Option.isNone(oneShot) ||
-        said.trim() === "" ||
-        !(yield* moodSettings).enabled
-      )
-        return;
+    hisWords: Effect.fn("TessayaMood.hisWords")(function* (persona, said, member, context) {
+      const current = yield* moodSettings;
+      if (Option.isNone(oneShot) || said.trim() === "" || !current.enabled) return;
+      const { persona: id, dials } = dialsFor(persona, current);
+      const now = yield* Clock.currentTimeMillis;
+      const theirs = member === null ? undefined : (yield* read(id, now)).people[member];
+      // Her opinion is asked only of someone identified, and only while the judgement dial is above off.
+      const opinion =
+        member === null || dials.judgement <= 0.05
+          ? undefined
+          : theirs?.impression == null
+            ? null
+            : opinionContext(theirs.impression);
       const judged = yield* oneShot.value
-        .run({ prompt: tonePrompt(said), outputSchema: Tone, role: "intent", feature: "mood" })
+        .run({
+          prompt: readPrompt(said, {
+            ...(opinion === undefined ? {} : { opinion }),
+            ...(context?.before === undefined ? {} : { before: context.before }),
+          }),
+          outputSchema: TurnRead,
+          role: "intent",
+          feature: "mood",
+        })
         .pipe(
           Effect.catchCause((cause) =>
-            Effect.logDebug("mood: their tone not judged", { why: String(cause) }).pipe(
+            Effect.logDebug("mood: the turn not read", { why: String(cause) }).pipe(
               Effect.as(null),
             ),
           ),
         );
-      if (judged === null || judged.tone === "none") return;
+      if (judged === null) return;
+      if (judged.topic !== "none" || judged.theirs !== "none")
+        yield* apply(
+          persona,
+          (_, d) => ({
+            kind: "flow",
+            topic: judged.topic,
+            theirs: judged.theirs,
+            regulation: d.regulation,
+          }),
+          undefined,
+          member,
+        );
+      if (member === null) return;
       const tone = judged.tone;
-      yield* apply(persona, () => ({ kind: tone }), undefined, member);
+      if (tone !== "none") yield* apply(persona, () => ({ kind: tone }), undefined, member);
+      // Their words saying they are low agree with a "sad" or "fearful" voice: the second signal a care mode needs.
+      if (judged.theirs === "low" && (context?.voice === "sad" || context?.voice === "fearful"))
+        yield* apply(
+          persona,
+          () => ({ kind: "his_voice", emotion: context.voice!, confirmed: true }),
+          undefined,
+          member,
+        );
+      if (judged.shared !== null && judged.shared.text.trim() !== "") {
+        const shared = judged.shared;
+        yield* apply(
+          persona,
+          () => ({ kind: "shared", what: shared.what, text: shared.text.trim() }),
+          undefined,
+          member,
+        );
+      }
+      const op = judged.opinion;
+      if (opinion === undefined || op == null || op.text.trim() === "") return;
+      yield* apply(
+        persona,
+        () => ({ kind: "impression", lean: op.lean, text: op.text.trim(), why: op.why.trim() }),
+        undefined,
+        member,
+      );
+      // A stranger's opinion is also the people graph's: the owner sees it in People, and it rides their own turns.
+      if (Option.isSome(people) && !(yield* isMember(member)))
+        yield* people.value
+          .setImpression(member, `${op.text.trim()} (because ${op.why.trim()})`)
+          .pipe(Effect.ignoreCause({ log: true }));
     }),
     heard: Effect.fn("TessayaMood.heard")(function* (persona, timeZone, member) {
       yield* apply(persona, (day) => ({ kind: "his_turn", day }), timeZone, member);
@@ -338,28 +489,41 @@ const make = Effect.gen(function* () {
       const estimate = Option.isNone(presence)
         ? { members: [], occupied: new Map<string, number>() }
         : yield* presence.value.estimate();
-      const member = faceMemberAt({
-        ...owned,
-        // shortcut: desktop turns note their vessel as "desktop", not the device; split when a second desktop matters.
-        vessels: known?.kind === "desktop" ? [device, "desktop"] : [device],
-        estimate,
-      });
-      return personaView(state, persona, ctx, member);
+      // shortcut: desktop turns note their vessel as "desktop", not the device; split when a second desktop matters.
+      const vessels = known?.kind === "desktop" ? [device, "desktop"] : [device];
+      const member = faceMemberAt({ ...owned, vessels, estimate });
+      if (member !== null) return personaView(state, persona, ctx, member);
+      // Several people placed here: the room's mood, weighted by how sure presence is of each.
+      const at = new Set(vessels);
+      const here = estimate.members.flatMap((m) =>
+        m.nearest !== null &&
+        at.has(m.nearest.vessel) &&
+        m.nearest.confidence >= PRESENCE_BARS.around
+          ? [{ key: m.member, weight: m.nearest.confidence }]
+          : [],
+      );
+      return here.length > 1
+        ? personaRoomView(state, persona, ctx, here)
+        : personaView(state, persona, ctx, null);
     }),
     inner: Effect.fn("TessayaMood.inner")(function* (personaId, viewer, timeZone) {
       const { persona, state, ctx } = yield* readNow(personaId, timeZone);
       const names = new Map(
         (yield* sql<{ id: string; name: string }>`
           SELECT id, name FROM tessaya_household_members WHERE removed_at IS NULL
+          UNION ALL
+          SELECT id, coalesce(name, 'someone new') FROM fabric_memory_entities
+          WHERE kind = 'person' AND forgotten_json IS NULL
         `.pipe(Effect.orElseSucceed(() => []))).map((m) => [m.id, m.name]),
       );
       return {
         general: personaView(state, persona, ctx, null),
+        dials: ctx.dials!,
         people: Object.keys(state.people)
           .filter((member) => viewer === OWNER_MEMBER_ID || member === viewer)
           .map((member) => ({
             member,
-            name: names.get(member) ?? (member === OWNER_MEMBER_ID ? "You" : member),
+            name: names.get(member) ?? (member === OWNER_MEMBER_ID ? "You" : "someone new"),
             view: {
               ...personaView(state, persona, ctx, member),
               // Their row says only why about them: the general mood's reasons stay the owner's.
@@ -368,6 +532,24 @@ const make = Effect.gen(function* () {
             },
           })),
       };
+    }),
+    forget,
+    reset: Effect.fn("TessayaMood.reset")(function* (personaId, member) {
+      const persona = personaOf(personaId)?.id ?? LEAD;
+      const now = yield* Clock.currentTimeMillis;
+      yield* lock.withPermits(1)(
+        Effect.gen(function* () {
+          yield* write(
+            persona,
+            movePerson(yield* read(persona, now), member, null),
+            "her opinion was reset",
+            now,
+          );
+          yield* PubSub.publish(moved, undefined);
+        }),
+      );
+      if (Option.isSome(people) && !(yield* isMember(member)))
+        yield* people.value.setImpression(member, null).pipe(Effect.ignoreCause({ log: true }));
     }),
     moves,
     changes: (persona, timeZone) =>
@@ -379,6 +561,15 @@ const make = Effect.gen(function* () {
         ),
       ),
   });
+
+  function isMember(id: string) {
+    return sql<{ id: string }>`
+      SELECT id FROM tessaya_household_members WHERE id = ${id}
+    `.pipe(
+      Effect.map((rows) => rows.length > 0 || id === OWNER_MEMBER_ID),
+      Effect.orElseSucceed(() => true),
+    );
+  }
 });
 
 export const layer = Layer.effect(TessayaMood, make);

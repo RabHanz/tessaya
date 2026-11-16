@@ -173,6 +173,7 @@ export const PREFERENCE_KEYS: Readonly<Record<TessayaPreferenceKey, string>> = {
     "whether their enrolled voice may train her wake words (on or off; on for the owner until he says off)",
   follow:
     'whether her own lines follow them to the vessel they are nearest ("follow me": on, the default) or stay where they asked (off)',
+  pronouns: 'the pronouns she uses for them ("she/her", "he/him", "they/them"); unset is "they"',
 };
 /** "Follow me" is on until they say off. */
 export const followOn = (value: string | undefined): boolean =>

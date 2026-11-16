@@ -56,7 +56,7 @@ import { CurrentPersona } from "./CurrentPersona.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { make as makePresence, TessayaPresence } from "./TessayaPresence.ts";
-import { moodLine } from "@t3tools/tessaya-shared/affect";
+import { moodLine, roomLine, type AffectView, type Who } from "@t3tools/tessaya-shared/affect";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { ownerLineFor, personasList } from "./OperatingSystemPack.ts";
 import { TessayaJobService } from "./TessayaJobService.ts";
@@ -206,6 +206,10 @@ export const NOT_HIS_VOICE_TO_FORGET =
 
 /** How a guest reads in "who's here": the people graph names them only to the owner. */
 const GUEST_NAME = "a guest";
+/** Someone at the vessel whose voice was not heard for this long has been quiet in the group. */
+const QUIET_MINUTES = 10;
+/** Her mood as the room may hear it: what is one person's (why, opinion, shared story) stays out (MA-021). */
+const privateOut = (v: AffectView): AffectView => ({ ...v, why: [], impression: null, shared: [] });
 
 /** One member she has lately heard, or whose devices are connected, and which of the two backs the guess. */
 export interface WhoIsHome {
@@ -856,7 +860,12 @@ export const make = Effect.gen(function* () {
       persona: turn.persona ?? null,
       spend: turn.sharedRoom !== true,
     });
-    const here = [yield* hereFor(turn, member), yield* moodFor(turn, person?.id ?? null)]
+    // Her lines name them by name or their own pronouns, never "he" for everyone (MA-021).
+    const identified = moodMember(turn) !== null;
+    const who: Who = identified
+      ? { name: preferences.name ?? (yield* memberName(member)), pronouns: preferences.pronouns }
+      : { name: person?.name ?? null };
+    const here = [yield* hereFor(turn, member), yield* moodFor(turn, person?.id ?? null, who)]
       .filter((l) => l !== "")
       .join(" ");
     const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
@@ -926,29 +935,77 @@ export const make = Effect.gen(function* () {
   /**
    * Her mood for the turn (CS6): the identified person's relationship over the general mood (a member, else a guest the
    * people graph knows by voice), read before their turn counts, so a return after hours is still in it; then the turn
-   * is heard. Anyone else gets the general mood, no why.
+   * is heard. Anyone else gets the general mood, no why. With others here (MA-021), the room's mood and how to be in a
+   * group, and nothing private to the speaker: no why, no opinion, no shared story.
    */
   const moodFor = Effect.fn("TessayaTurn.moodFor")(function* (
     turn: TurnEnvelope,
     person: string | null,
+    who: Who,
   ) {
     const mood = yield* Effect.serviceOption(TessayaMood);
     if (Option.isNone(mood) || turn.rehearsal === true) return "";
     const member = moodMember(turn) ?? (turn.addressed === false ? null : person);
     const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
     const spoken = turn.vessel.kind === "device";
+    const room = yield* roomOf(turn);
+    const before = (yield* conversationOf(turn)).turns
+      .slice(-4)
+      .map((t) => `${t.role === "user" ? "them" : "her"}: ${t.content.slice(0, 150)}`)
+      .join("\n");
     if (member === null) {
       if (turn.addressed === false) return "";
-      return moodLine({ ...(yield* mood.value.view(turn.persona, zone)), why: [] }, spoken);
+      // A room's talk moves the general mood (its flow only: nobody's tone, opinion or story).
+      if (turn.sharedRoom === true)
+        yield* mood.value
+          .hisWords(turn.persona, turn.text, null, { before })
+          .pipe(Effect.forkDetach);
+      const view =
+        room.here.length > 1
+          ? yield* mood.value.roomView(turn.persona, room.here, zone)
+          : yield* mood.value.view(turn.persona, zone);
+      return [
+        moodLine(privateOut(view), spoken),
+        roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }),
+      ]
+        .filter((l) => l !== "")
+        .join(" ");
     }
     // How they sound moves her before this turn's line is read, so her answer already meets it.
     if (turn.emotion !== undefined)
       yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion }, member);
     // Judged beside her reply, not before it: the cheap model's second would be their wait. Her face and next turn see it.
-    yield* mood.value.hisWords(turn.persona, turn.text, member).pipe(Effect.forkDetach);
-    const line = moodLine(yield* mood.value.view(turn.persona, zone, member), spoken);
+    yield* mood.value
+      .hisWords(turn.persona, turn.text, member, { voice: turn.emotion, before })
+      .pipe(Effect.forkDetach);
+    const view = yield* mood.value.view(turn.persona, zone, member);
+    const others = room.here.some((h) => h.key !== member);
+    const line = moodLine(others ? privateOut(view) : view, spoken, who);
     yield* mood.value.heard(turn.persona, zone, member);
-    return line;
+    return [line, others ? roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }) : ""]
+      .filter((l) => l !== "")
+      .join(" ");
+  });
+
+  /** Who is at this turn's vessel (members and guests, by key), who of them has been quiet, and whether it is busy. */
+  const roomOf = Effect.fn("TessayaTurn.roomOf")(function* (turn: TurnEnvelope) {
+    const at = (yield* presence.estimate()).members.filter(
+      (m) => m.nearest?.vessel === turn.vessel.id && m.nearest.confidence >= PRESENCE_BARS.around,
+    );
+    const names: string[] = [];
+    const quiet: string[] = [];
+    for (const m of at) {
+      const name = m.guest ? GUEST_NAME : ((yield* memberName(m.member)) ?? GUEST_NAME);
+      names.push(name);
+      if (!m.evidence.some((e) => e.source === "voice" && e.minutesAgo < QUIET_MINUTES))
+        quiet.push(name);
+    }
+    return {
+      here: at.map((m) => ({ key: m.member, weight: m.nearest!.confidence })),
+      names,
+      quiet,
+      busy: at.length >= 4 || (turn.sharedRoom === true && at.length >= 3),
+    };
   });
 
   /** The presence board for this turn (CS2): her other live threads, filtered by who is asking. */
