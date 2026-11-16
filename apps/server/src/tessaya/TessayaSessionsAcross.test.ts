@@ -194,7 +194,7 @@ it("counts every machine's working, waiting and last-hour sessions and names the
     environmentId: EnvironmentId.make(label),
     label,
     fleet,
-    access: label === "hetzner" ? null : ("full-access" as const),
+    access: label === "studio" ? null : ("full-access" as const),
   });
   const blocked = {
     ...fleetOf(session("asks", "busy", "2026-11-07T00:50:00.000Z")),
@@ -203,13 +203,13 @@ it("counts every machine's working, waiting and last-hour sessions and names the
   const sessions = summariesAcross({
     environments: [
       env(
-        "hetzner",
+        "studio",
         fleetOf(
           session("manager", "busy", "2026-11-07T00:59:00.000Z"),
           session("old", "idle", "2026-11-06T20:00:00.000Z"),
         ),
       ),
-      env("onnyx", blocked),
+      env("home", blocked),
       env(
         "laptop",
         fleetOf(
@@ -225,7 +225,7 @@ it("counts every machine's working, waiting and last-hour sessions and names the
     providers: [],
   });
   const now = workNow(
-    { sessions, unreachable: [{ environmentId: "signzart", label: "signzart-prod" }] },
+    { sessions, unreachable: [{ environmentId: "office", label: "office-pc" }] },
     Date.parse("2026-11-07T01:00:00.000Z"),
   );
   assert.deepStrictEqual(
@@ -235,16 +235,16 @@ it("counts every machine's working, waiting and last-hour sessions and names the
       waiting: 1,
       working: 5,
       recent: 1,
-      machines: ["onnyx", "hetzner", "laptop"],
+      machines: ["home", "studio", "laptop"],
       top: [
-        ["asks", "onnyx", "waiting", 10],
-        ["manager", "hetzner", "working", 1],
+        ["asks", "home", "waiting", 10],
+        ["manager", "studio", "working", 1],
         ["site", "laptop", "working", 20],
         ["a", "laptop", "working", null],
         ["b", "laptop", "working", null],
       ],
       more: 2,
-      unreachable: ["signzart-prod"],
+      unreachable: ["office-pc"],
     },
   );
 });
