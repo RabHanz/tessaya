@@ -107,6 +107,7 @@ describe("waking her by name with no session open", () => {
     await segment(3, { pass: false, best: 0.2 });
     await segment(4, { pass: true, best: 0.6 });
     expect(t.woken).toHaveLength(2);
+    expect(t.lines.join("\n")).toMatch(/seg 4 kws 0\.600 under the loop's 0\.9; not a wake/);
     // Sure enough to need no confirm, whichever of the end and the kws event comes first: only the whole segment is
     // recognised, for a request after her name.
     const asked = t.confirmed.length;

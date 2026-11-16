@@ -76,6 +76,11 @@ describe("affect", () => {
     expect(
       affectView(back, "companion", { ...later, now: 9 * H + 2 * 60_000, guilt: "playful" }).label,
     ).toBe("neutral");
+    // His next turn inside that minute ends it: the hmph never outlasts the reply it was for.
+    const next = appraise(back, { kind: "his_turn", day: "d1" }, 9 * H + 20_000, 0.15).state;
+    expect(
+      affectView(next, "companion", { ...later, now: 9 * H + 20_000, guilt: "playful" }).label,
+    ).toBe("neutral");
   });
 
   it("grows the bond once a day up to its cap, and it never falls because he is away", () => {

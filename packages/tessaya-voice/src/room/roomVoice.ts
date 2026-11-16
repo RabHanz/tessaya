@@ -8,7 +8,6 @@ import {
   eyeClipOf,
   farewellEvent,
   greetEvent,
-  r1MoodOf,
   type LineEvent,
 } from "@t3tools/tessaya-shared/expression";
 import { mostlyForeign } from "@t3tools/tessaya-shared/language";
@@ -1238,7 +1237,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         plain,
         facts,
       );
-      const mood = said?.mood == null ? null : r1MoodOf(said.mood);
+      const mood = said?.mood == null ? null : eyeClipOf(said.mood);
       if (mood !== null) face(mood);
       return said?.text ?? plain;
     };
@@ -2852,7 +2851,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const text = json()["text"];
         if (typeof text === "string" && text.trim() !== "") {
           const open = sessions.get(id);
-          const mood = r1MoodOf(String(json()["mood"] ?? ""));
+          const mood = eyeClipOf(String(json()["mood"] ?? ""));
           // The R1 plays her voice only inside its own session (r1bt_voice_play drops it otherwise, 13 Nov).
           if (open !== undefined) open.say(text.trim().slice(0, 500), mood);
           else startOnR1(id, (s) => s.sayOnly(text.trim().slice(0, 500), mood));

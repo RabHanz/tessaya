@@ -496,12 +496,19 @@ const R1_MOOD: Readonly<Record<ExpressionMood, R1Mood>> = {
   frustrated: "angry",
   angry: "angry",
 };
-export const r1MoodOf = (mood: string): R1Mood | null =>
+const r1MoodOf = (mood: string): R1Mood | null =>
   Object.hasOwn(R1_MOOD, mood) ? R1_MOOD[mood as ExpressionMood] : null;
 
-/** The eye clip a mood shows: one of the nine clips as it is, a face-library mood through its clip, else nothing. */
-export const eyeClipOf = (mood: string): R1Mood | null =>
-  (R1_MOODS as ReadonlyArray<string>).includes(mood) ? (mood as R1Mood) : r1MoodOf(mood);
+/**
+ * What the Tessel's eyes show for a mood: one of the nine clips, or a face-library mood by its own name (the SMP face
+ * draws each since 3.30, so sulky is a pout, not angry's red scowl), "steady" through its clip; else nothing.
+ */
+export const eyeClipOf = (mood: string): R1Mood | ExpressionMood | null =>
+  (R1_MOODS as ReadonlyArray<string>).includes(mood)
+    ? (mood as R1Mood)
+    : mood !== "steady" && (EXPRESSION_MOODS as ReadonlyArray<string>).includes(mood)
+      ? (mood as ExpressionMood)
+      : r1MoodOf(mood);
 
 /** The template with each slot replaced by its exact value; null when a value is missing. */
 export const fillLine = (
