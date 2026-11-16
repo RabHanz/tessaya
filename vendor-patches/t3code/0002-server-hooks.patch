@@ -294,6 +294,16 @@ index 627c644f053af9722e2192cbc71bc669f18cdc7e..e7ecdf8355cb1d8f33576dd76a617c20
  import * as NodeChildProcess from "node:child_process";
  import * as NodeEvents from "node:events";
  import * as NodeFSP from "node:fs/promises";
+diff --git a/apps/server/src/cli/pair.test.ts b/apps/server/src/cli/pair.test.ts
+index 9619030be2fab47f08db5612cde10d1666ded762..a9b28e600131187dc4c7f34db3bdc24ff11b8c23 100644
+--- a/apps/server/src/cli/pair.test.ts
++++ b/apps/server/src/cli/pair.test.ts
+@@ -1,4 +1,5 @@
+ // @effect-diagnostics nodeBuiltinImport:off - CLI integration exercises Node HTTP and filesystem boundaries.
++// @effect-diagnostics anyUnknownInErrorContext:off -- tsrs infers any in cli's requirements here; tsc does not (checked 16 Nov).
+ import * as NodeHttp from "node:http";
+ import * as NodeFS from "node:fs";
+ import * as NodeOS from "node:os";
 diff --git a/apps/server/src/mcp/McpToolAccess.ts b/apps/server/src/mcp/McpToolAccess.ts
 index f96a38d6d7341eaf98c8c158eb21cc7080c1ce00..cfdd02d8171a064882182c5bfcf122f5d80046c5 100644
 --- a/apps/server/src/mcp/McpToolAccess.ts
