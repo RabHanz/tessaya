@@ -1735,10 +1735,14 @@ it.effect("answers being moved on the Tessel's eyes, once per handling, at his s
     });
     yield* devices.receive(`${root}/event/motion`, shake);
     yield* devices.receive(`${root}/event/motion`, shake);
-    // Her own words are off here, so the eyes answer; the second shake of one handling stays quiet.
+    // Her own words are off here, so the eyes answer, with a giggle buzz; the second shake of one handling stays quiet.
     assert.deepStrictEqual(
       sent.map((s) => [s.topic, (s.payload as { mood?: string }).mood]),
-      [["voice/intent/eye", "putout"]],
+      [
+        ["cmd/haptic", undefined],
+        ["voice/intent/eye", "putout"],
+      ],
     );
+    assert.deepStrictEqual(sent[0]?.payload, { p: "giggle", lvl: 2 });
   }).pipe(Effect.provide(layer));
 });

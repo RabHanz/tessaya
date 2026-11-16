@@ -56,6 +56,7 @@ import { TessayaTurn, TurnOrigin } from "./TessayaTurn.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
 import { expressOr } from "./TessayaExpression.ts";
+import { MOMENT_HAPTICS } from "@t3tools/tessaya-shared/expressionMap";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 
 type Result = CommsCallResult;
@@ -323,6 +324,15 @@ export const make = Effect.gen(function* () {
       yield* devices.value
         .command(target.vessel, { op: "eye", mood: quiet.mood, holdMs: 6_000 }, by)
         .pipe(Effect.ignore);
+      // A silent note stays still; one that sounds is felt too, in a hand or face down (hapticLevel).
+      if (!target.silent && !dryRun)
+        yield* devices.value
+          .command(
+            target.vessel,
+            { op: "haptic", pattern: MOMENT_HAPTICS.note, category: "reminders", quiet: false },
+            by,
+          )
+          .pipe(Effect.ignore);
       // shortcut: a voice note plays its transcript in her voice until the R1 has a clip path (voice/play).
       const words =
         quiet.voice === null ? null : "say" in quiet.voice ? quiet.voice.say : note.forms.spoken;

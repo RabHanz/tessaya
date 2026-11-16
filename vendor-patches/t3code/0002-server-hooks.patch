@@ -2101,7 +2101,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..853c3228278b283a1f0ae9ccbac9df08778f9e32 100644
+index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f9666307ccec22b 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2119,7 +2119,7 @@ index 49470541d90be695ad24df030ca6522682a82611..853c3228278b283a1f0ae9ccbac9df08
  import { ProjectScript, type ProjectMutation } from "./project.ts";
  import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
  import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
-@@ -1349,6 +1357,35 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -1349,6 +1357,54 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
@@ -2152,10 +2152,29 @@ index 49470541d90be695ad24df030ca6522682a82611..853c3228278b283a1f0ae9ccbac9df08
 +  shaken: true,
 +  dropped: true,
 +};
++
++/** How strongly a Tessel's motor buzzes, and for what; off silences it everywhere. */
++export const TessayaHapticIntensity = Schema.Literals(["off", "low", "normal", "high"]);
++export type TessayaHapticIntensity = typeof TessayaHapticIntensity.Type;
++export const TessayaHapticSettings = Schema.Struct({
++  intensity: TessayaHapticIntensity,
++  reactions: Schema.Boolean,
++  moods: Schema.Boolean,
++  wake: Schema.Boolean,
++  reminders: Schema.Boolean,
++});
++export type TessayaHapticSettings = typeof TessayaHapticSettings.Type;
++export const DEFAULT_TESSAYA_HAPTICS: TessayaHapticSettings = {
++  intensity: "normal",
++  reactions: true,
++  moods: true,
++  wake: true,
++  reminders: true,
++};
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1372,6 +1409,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1372,6 +1428,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -2167,7 +2186,7 @@ index 49470541d90be695ad24df030ca6522682a82611..853c3228278b283a1f0ae9ccbac9df08
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1424,39 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1443,42 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2204,10 +2223,13 @@ index 49470541d90be695ad24df030ca6522682a82611..853c3228278b283a1f0ae9ccbac9df08
 +  tessayaMotion: TessayaMotionSettings.pipe(
 +    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_MOTION)),
 +  ),
++  tessayaHaptics: TessayaHapticSettings.pipe(
++    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_HAPTICS)),
++  ),
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1466,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1488,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2221,7 +2243,7 @@ index 49470541d90be695ad24df030ca6522682a82611..853c3228278b283a1f0ae9ccbac9df08
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +1904,32 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +1926,41 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2251,10 +2273,19 @@ index 49470541d90be695ad24df030ca6522682a82611..853c3228278b283a1f0ae9ccbac9df08
 +      dropped: Schema.optionalKey(Schema.Boolean),
 +    }),
 +  ),
++  tessayaHaptics: Schema.optionalKey(
++    Schema.Struct({
++      intensity: Schema.optionalKey(TessayaHapticIntensity),
++      reactions: Schema.optionalKey(Schema.Boolean),
++      moods: Schema.optionalKey(Schema.Boolean),
++      wake: Schema.optionalKey(Schema.Boolean),
++      reminders: Schema.optionalKey(Schema.Boolean),
++    }),
++  ),
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +1938,23 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +1969,23 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2278,7 +2309,7 @@ index 49470541d90be695ad24df030ca6522682a82611..853c3228278b283a1f0ae9ccbac9df08
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2204,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2235,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

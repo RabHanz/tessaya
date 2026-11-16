@@ -55,6 +55,9 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaMotion: free(
     'how the Tessel reacts when picked up, put down, shaken or dropped: each on or off, and how hard a move must be (sensitivity low, normal or high). Its value is an object: {"sensitivity": "normal", "lifted": true, "setdown": true, "shaken": true, "dropped": true}',
   ),
+  tessayaHaptics: free(
+    'the Tessel\'s vibration (buzzing): how strong (intensity off, low, normal or high; "stop buzzing" is off, "vibrate softer" one step down) and what may buzz: reactions to being moved, moods, wake confirmation, reminders. Its value is an object: {"intensity": "normal", "reactions": true, "moods": true, "wake": true, "reminders": true}',
+  ),
   newSessionsRun: free("whether new sessions run in Tessaya or a terminal"),
   mainThreadId: owner("which thread is the main session"),
   continueThreadsAfterServerUpdate: confirm("continuing sessions after the server updates"),

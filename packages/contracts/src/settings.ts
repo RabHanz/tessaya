@@ -1387,6 +1387,25 @@ export const DEFAULT_TESSAYA_MOTION: TessayaMotionSettings = {
   dropped: true,
 };
 
+/** How strongly a Tessel's motor buzzes, and for what; off silences it everywhere. */
+export const TessayaHapticIntensity = Schema.Literals(["off", "low", "normal", "high"]);
+export type TessayaHapticIntensity = typeof TessayaHapticIntensity.Type;
+export const TessayaHapticSettings = Schema.Struct({
+  intensity: TessayaHapticIntensity,
+  reactions: Schema.Boolean,
+  moods: Schema.Boolean,
+  wake: Schema.Boolean,
+  reminders: Schema.Boolean,
+});
+export type TessayaHapticSettings = typeof TessayaHapticSettings.Type;
+export const DEFAULT_TESSAYA_HAPTICS: TessayaHapticSettings = {
+  intensity: "normal",
+  reactions: true,
+  moods: true,
+  wake: true,
+  reminders: true,
+};
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1456,6 +1475,9 @@ export const ServerSettings = Schema.Struct({
   // Tessaya: how a Tessel answers being moved (its motion sensor), and how hard a move must be to count.
   tessayaMotion: TessayaMotionSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_MOTION)),
+  ),
+  tessayaHaptics: TessayaHapticSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_HAPTICS)),
   ),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
@@ -1928,6 +1950,15 @@ export const ServerSettingsPatch = Schema.Struct({
       setdown: Schema.optionalKey(Schema.Boolean),
       shaken: Schema.optionalKey(Schema.Boolean),
       dropped: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
+  tessayaHaptics: Schema.optionalKey(
+    Schema.Struct({
+      intensity: Schema.optionalKey(TessayaHapticIntensity),
+      reactions: Schema.optionalKey(Schema.Boolean),
+      moods: Schema.optionalKey(Schema.Boolean),
+      wake: Schema.optionalKey(Schema.Boolean),
+      reminders: Schema.optionalKey(Schema.Boolean),
     }),
   ),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),

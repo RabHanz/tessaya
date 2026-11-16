@@ -77,7 +77,18 @@ import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { LINE_EVENTS, sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
 import { inQuietHours } from "@t3tools/tessaya-shared/comms";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
-import { DEFAULT_TESSAYA_MOTION, type TessayaMotionSensitivity } from "@t3tools/contracts";
+import {
+  DEFAULT_TESSAYA_HAPTICS,
+  DEFAULT_TESSAYA_MOTION,
+  type TessayaMotionSensitivity,
+} from "@t3tools/contracts";
+import {
+  MOMENT_HAPTICS,
+  VESSELS,
+  renderFor,
+  type HapticPattern,
+} from "@t3tools/tessaya-shared/expressionMap";
+import { houseZone } from "../tessaya/houseZone.ts";
 import * as Stream from "effect/Stream";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
@@ -90,6 +101,8 @@ import {
   motionMoment,
   type MotionMoment,
   type MotionSeen,
+  hapticLevel,
+  type HapticCategory,
 } from "./tesselMotion.ts";
 import { DeviceSync } from "./DeviceSync.ts";
 import { R1Hub } from "./R1Hub.ts";
@@ -112,6 +125,14 @@ export type DeviceCommand =
   | { readonly op: "eye"; readonly mood: (typeof R1_MOODS)[number]; readonly holdMs?: number }
   | { readonly op: "led"; readonly color: "green" | "red" | "standby" }
   | { readonly op: "vibrate"; readonly ms: number }
+  /** A named buzz (R-079), at the level his haptics setting, quiet hours, placement and battery allow. */
+  | {
+      readonly op: "haptic";
+      readonly pattern: HapticPattern;
+      readonly category: HapticCategory;
+      /** Quiet hours already judged by the caller (a note that may break them); else read here. */
+      readonly quiet?: boolean;
+    }
   | { readonly op: "say"; readonly text: string }
   | { readonly op: "mute"; readonly muted: boolean }
   | { readonly op: "earcons"; readonly on: boolean }
@@ -1403,19 +1424,79 @@ const make = Effect.gen(function* () {
       ),
       Effect.forkIn(scope),
     );
-  const moved = Effect.fn("HomeDevices.moved")(function* (id: string, m: MotionMoment) {
+  const hapticSettings =
+    serverSettings._tag === "Some"
+      ? serverSettings.value.getSettings.pipe(
+          Effect.map((s) => s.tessayaHaptics),
+          Effect.orElseSucceed(() => DEFAULT_TESSAYA_HAPTICS),
+        )
+      : Effect.succeed(DEFAULT_TESSAYA_HAPTICS);
+  const withSql = <A, E>(e: Effect.Effect<A, E, SqlClient.SqlClient>) =>
+    Effect.provideService(e, SqlClient.SqlClient, sql);
+  const quietNow = Effect.fn("HomeDevices.quietNow")(function* (now: number) {
+    return (
+      inQuietHours(now, yield* withSql(readQuietHours)) ||
+      (yield* withSql(readDndUntil(OWNER_MEMBER_ID))) !== null
+    );
+  });
+  /** One named buzz (R-079), at the level his setting, her placement and her battery allow; the level, or null. */
+  const buzz = Effect.fn("HomeDevices.buzz")(function* (
+    id: string,
+    pattern: HapticPattern,
+    category: HapticCategory,
+    quiet: boolean,
+  ) {
+    const pct = yield* registry.value(id, "power.battery_pct");
+    const charging = yield* registry.value(id, "power.charging");
+    const level = hapticLevel(yield* hapticSettings, {
+      pattern,
+      category,
+      placement: motionSeen.get(id)?.placement ?? null,
+      quiet,
+      batteryPct: typeof pct === "number" ? pct : null,
+      charging: typeof charging === "boolean" ? charging : null,
+    });
+    if (level !== null) yield* publish(id, "cmd/haptic", { p: pattern, lvl: level });
+    return level;
+  });
+  // Her mood's own buzz as it arrives (EMOTIONS' haptic), at most every 30 minutes so a mood never nags.
+  if (mood._tag === "Some")
+    yield* Effect.gen(function* () {
+      let lastAt = Number.NEGATIVE_INFINITY;
+      yield* mood.value.changes(undefined, yield* houseZone()).pipe(
+        Stream.map((felt) =>
+          felt.intensity >= 0.5
+            ? (renderFor(VESSELS.tessel, felt.label, felt.intensity).haptic ?? null)
+            : null,
+        ),
+        Stream.changes,
+        Stream.runForEach((pattern) =>
+          Effect.gen(function* () {
+            const now = yield* Clock.currentTimeMillis;
+            if (pattern === null || now - lastAt < 30 * 60_000) return;
+            lastAt = now;
+            const quiet = yield* quietNow(now);
+            for (const id of heard.keys()) yield* buzz(id, pattern, "moods", quiet);
+          }).pipe(Effect.ignore),
+        ),
+      );
+    }).pipe(Effect.ignore, Effect.forkIn(scope));
+  const moved = Effect.fn("HomeDevices.moved")(function* (
+    id: string,
+    m: MotionMoment,
+    /** The firmware's own reaction already buzzed (`reacted: "eyes+buzz"`). */
+    buzzed: boolean,
+  ) {
     if (!motionAllowed(yield* motionSettings, m.how)) return;
     const now = yield* Clock.currentTimeMillis;
     const last = lastMoved.get(id) ?? { at: -Infinity, said: -Infinity };
     // One answer per handling: the firmware sends a shake every 2.5 s while it lasts.
     if (!m.strong && now - last.at < 4_000) return;
-    const withSql = <A, E>(e: Effect.Effect<A, E, SqlClient.SqlClient>) =>
-      Effect.provideService(e, SqlClient.SqlClient, sql);
-    const quiet =
-      inQuietHours(now, yield* withSql(readQuietHours)) ||
-      (yield* withSql(readDndUntil(OWNER_MEMBER_ID))) !== null;
+    const quiet = yield* quietNow(now);
     if (quiet && m.how !== "dropped") return;
     if (mood._tag === "Some") yield* mood.value.note(undefined, { kind: "handled", how: m.how });
+    const feel = MOMENT_HAPTICS[m.how];
+    if (feel !== null && !buzzed) yield* buzz(id, feel, "reactions", quiet);
     const event = MOTION_LINE[m.how];
     // A line at most every 20 s, never over a conversation unless it is strong; the eyes answer every time.
     const said =
@@ -1491,8 +1572,12 @@ const make = Effect.gen(function* () {
       seen.live = false;
       yield* tune(result.id, (yield* motionSettings).sensitivity);
     }
-    const motion = motionMoment(tail, json(payload), seen, now);
-    if (motion !== null) yield* moved(result.id, motion);
+    const body = json(payload);
+    const motion = motionMoment(tail, body, seen, now);
+    if (motion !== null) yield* moved(result.id, motion, body?.["reacted"] === "eyes+buzz");
+    // Listening: a double tap says so to the hand holding her (hapticLevel keeps it to a hand).
+    if (tail === "event/session/start")
+      yield* buzz(result.id, MOMENT_HAPTICS.wake, "wake", yield* quietNow(now));
     if (tail === "event/key") yield* runKey(result.id, json(payload));
     // A long touch on the head is Tessaya's (the firmware stops her on a tap itself).
     else if (tail === "event/touch" && json(payload)?.["gesture"] === "long")
@@ -2214,6 +2299,12 @@ const make = Effect.gen(function* () {
       case "vibrate":
         yield* publish(id, "cmd/vibrate", { ms: Math.min(Math.max(Math.round(c.ms), 10), 1500) });
         return done("It buzzed.");
+      case "haptic":
+        return done(
+          (yield* buzz(id, c.pattern, c.category, c.quiet ?? (yield* quietNow(now)))) === null
+            ? "It stayed still: haptics are off for that, or not felt where it is now."
+            : "It buzzed.",
+        );
       case "say":
         yield* routeReply(id, "alerts", false);
         yield* publish(id, "voice/say", { text: recordText(c.text, 400) });
