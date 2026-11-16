@@ -14,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import { describe, expect } from "vite-plus/test";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
@@ -162,6 +163,7 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
             note: () => Effect.void,
             hisWords: () => Effect.void,
             heard: () => Effect.void,
+            changes: () => Stream.empty,
           });
           const felt = yield* call("read", "mood", { persona: "butler" }).pipe(
             Effect.provide(mood),
