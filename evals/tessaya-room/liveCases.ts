@@ -213,7 +213,8 @@ const briefAnswer =
     if (words > max) return `${words} words before any offer: ${last.slice(0, 160)}`;
     const read = new Set(
       calls
-        .filter((c) => c.name.startsWith("tessaya_") && !c.isError)
+        // A device's state answers "why is it slow" as well as his work does (.175 gate: "the Tessel has been offline").
+        .filter((c) => /^(tessaya|device|home)_/.test(c.name) && !c.isError)
         .flatMap((c) => contentWords(c.text)),
     );
     return contentWords(answer).some((w) => read.has(w)) ||
