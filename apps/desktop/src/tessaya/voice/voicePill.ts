@@ -14,6 +14,7 @@ import * as NodePath from "node:path";
 
 import {
   PLACES,
+  clearOf,
   cursorOverCapsule,
   defaultPosition,
   baseOf,
@@ -74,6 +75,7 @@ import {
   type WaveMode,
 } from "@t3tools/tessaya-shared/voiceTurn";
 import { cueFor, momentOf } from "@t3tools/tessaya-shared/companion";
+import { ownSpeech } from "@t3tools/tessaya-shared/pillVisibility";
 import type { PersonaBody } from "../companion/desktopMascot.ts";
 import { PILL_FACE_SCRIPT, studioScripts } from "../companion/pillFace.ts";
 
@@ -429,6 +431,8 @@ export interface VoicePill {
   readonly putBack: () => void;
   /** Where the pill's capsule is, or would appear: what the card sits beside. */
   readonly anchor: () => Electron.Rectangle;
+  /** The turn goes on but his setting keeps the pill off screen for it (her speech). */
+  readonly offScreen: () => boolean;
   readonly state: () => TurnState;
   readonly dispose: () => void;
 }
@@ -476,6 +480,10 @@ export const createVoicePill = (input: {
   readonly focusWindow?: (window: number) => void;
   /** Esc while it is up. */
   readonly onDismiss: () => void;
+  /** Whether this phase shows the pill at all (Settings: show the pill when she speaks); `own` is speech she started. */
+  readonly shows?: (phase: TurnPhase, own: boolean) => boolean;
+  /** Her body on screen (DIP), so the pill opens clear of it. */
+  readonly avoid?: () => Area | null;
   /** Spoken dictation's ✓ (true: insert) or ✕ (false: throw away), shown while `voiceDictating`. */
   readonly onDictation?: (insert: boolean) => void;
   readonly voiceDictating?: () => boolean;
@@ -498,6 +506,10 @@ export const createVoicePill = (input: {
   }) => void;
 }): VoicePill => {
   let state: TurnState = IDLE_TURN;
+  /** Her speech now started on her own, and when his last turn was, to tell the two apart. */
+  let own = false;
+  let lastTurn = 0;
+  let hidden = false;
   let window: Electron.BrowserWindow | null = null;
   let ready: Promise<void> = Promise.resolve();
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -912,7 +924,11 @@ export const createVoicePill = (input: {
     void ready.then(() => {
       if (target === null || target.isDestroyed()) return;
       if (target.isVisible()) return startHitTest();
-      const at = placeFor(display);
+      const at = clearOf(
+        { ...placeFor(display), width: WIDTH, height: HEIGHT },
+        input.avoid?.() ?? null,
+        display.workArea,
+      );
       target.setBounds(boundsAt(at));
       takingMouse = false;
       target.setIgnoreMouseEvents(true, { forward: true });
@@ -1009,6 +1025,11 @@ export const createVoicePill = (input: {
   const on = (event: TurnEvent, options?: { readonly silent?: boolean }) => {
     const previous = state;
     state = reduceTurn(state, event);
+    const now = Date.now();
+    const wasOwn = own;
+    own = ownSpeech({ was: own, from: previous.phase, to: state.phase, now, lastTurn });
+    if (!wasOwn && !own && (state.phase !== "idle" || previous.phase !== "idle")) lastTurn = now;
+    const wasHidden = hidden;
     const mute = options?.silent === true;
     const sound_ = mute ? () => undefined : sound;
     const waiting = (phase: string) => phase === "thinking" || phase === "working";
@@ -1023,13 +1044,15 @@ export const createVoicePill = (input: {
     silentTimer = null;
     const view = turnView(state);
     wave = view?.wave ?? "flat";
-    if (view === null) {
-      setEscape(false);
+    hidden = view !== null && input.shows?.(state.phase, own) === false;
+    if (view === null || hidden) {
+      setEscape(view !== null && turnHoldsEscape(state));
       hideFace();
-      if (previous.phase !== "idle") {
+      if (previous.phase !== "idle" && !wasHidden) {
         if (endCueOn(previous.phase, null)) sound_("end");
         lower();
       }
+      if (hidden) timer = setTimeout(() => on({ type: "dismissed" }), turnLimitMs(state.phase));
     } else {
       // Dictation's island while he records and until it is pasted; any other phase ends a cleanup still playing.
       // Tidying continues the island it follows (spoken dictation lowers the pill between ✓ and its flush).
@@ -1346,6 +1369,7 @@ export const createVoicePill = (input: {
       if (display.id === Electron.screen.getDisplayMatching(window.getBounds()).id) return;
       window.setBounds(boundsAt(placeFor(display)));
     },
+    offScreen: () => hidden,
     state: () => state,
     dispose: () => {
       stopLook();

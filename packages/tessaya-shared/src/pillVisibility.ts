@@ -37,3 +37,29 @@ export const restBarWanted = (input: {
   input.atRest && input.now >= input.hiddenUntil && !(input.hideInFullscreen && input.fullscreen);
 
 export const HIDE_FOR_MS = 60 * 60_000;
+
+/** Speech she starts with no turn of his this recently is her own: a character's moment or a remark. */
+export const OWN_SPEECH_GAP_MS = 8_000;
+
+/** Whether her speech now is her own: decided as it starts from idle, kept while she speaks, gone after. */
+export const ownSpeech = (input: {
+  readonly was: boolean;
+  readonly from: string;
+  readonly to: string;
+  readonly now: number;
+  readonly lastTurn: number;
+}): boolean =>
+  input.to !== "speaking"
+    ? false
+    : input.from === "idle"
+      ? input.now - input.lastTurn > OWN_SPEECH_GAP_MS
+      : input.was;
+
+/** Whether the pill shows this phase: her speech only when he wants it, her own speech only when he wants that too. */
+export const pillShowsPhase = (input: {
+  readonly phase: string;
+  readonly ownSpeech: boolean;
+  readonly whenSpeaking: boolean;
+  readonly onHerOwn: boolean;
+}): boolean =>
+  input.phase !== "speaking" || (input.whenSpeaking && (!input.ownSpeech || input.onHerOwn));
