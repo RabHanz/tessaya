@@ -69,6 +69,14 @@ describe("privatePersonOf", () => {
     ["typed at his desktop", { typed: true }, "owner"],
     ["an inherited verdict", { speaker: { ...him, inherited: true } }, null],
     ["a steer-level match only", { speaker: { ...him, verified: false } }, null],
+    ["verified only by his session (#1218)", { speaker: { ...him, session: true } }, null],
+    ["lifted on his session's evidence", { speaker: { ...him, lifted: true } }, null],
+    ["the test clone", { speaker: { ...him, test: true } }, null],
+    [
+      "a saved person verified only by session",
+      { route: "outside", speaker: { ...sara, session: true } },
+      null,
+    ],
     [
       "unverified",
       { speaker: { kind: "unverified", personId: null, verified: false, inherited: false } },

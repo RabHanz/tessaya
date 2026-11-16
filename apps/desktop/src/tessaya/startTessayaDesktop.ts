@@ -82,7 +82,7 @@ import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 import type { HouseholdCall } from "./memory/householdTab.ts";
 import type { CommsCall } from "./home/intercomTab.ts";
 import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
-import { runFreyaImport } from "./memory/freyaImport.ts";
+import { freyaPlanWaiting, importedLine, runFreyaImport } from "./memory/freyaImport.ts";
 import { isTessayaLink, placeInArgs, TESSAYA_SCHEME } from "./home/links.ts";
 import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 
@@ -650,12 +650,26 @@ export const startTessayaDesktop = Effect.gen(function* () {
     Electron.powerMonitor.on("lock-screen", lockPrivate);
     Electron.powerMonitor.on("suspend", lockPrivate);
     // A Freya import plan he dropped in comes in once this machine's server answers, then is deleted.
+    const freyaImport = () =>
+      runFreyaImport(environment.stateDir, {
+        memory: (op, args) => direct(`baton.memory.${op}`, args),
+        private: privateMemory.call,
+      });
+    const onOwnerStore = async () => {
+      const counts = await freyaImport();
+      return counts === null ? null : importedLine(counts);
+    };
     setTimeout(
       () =>
-        void runFreyaImport(environment.stateDir, {
-          memory: (op, args) => direct(`baton.memory.${op}`, args),
-          private: privateMemory.call,
-        }).catch(() => undefined),
+        void (async () => {
+          // A plan waits for a private store he has not made: the window opens where he sets his PIN.
+          if (
+            freyaPlanWaiting(environment.stateDir) &&
+            !(await privateMemory.people()).some((store) => store.kind === "owner")
+          )
+            voice?.openHome("memory");
+          await freyaImport();
+        })().catch(() => undefined),
       FREYA_IMPORT_DELAY_MS,
     ).unref();
     // While an update waits, what a restart would cut off here (SESS-SURVIVE): it restarts only when nothing is mid-turn.
@@ -905,6 +919,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       direct,
       onGrants: (keys) => screen?.adoptGrants(keys),
       privateMemory,
+      onOwnerStore,
       household,
       wakeServer,
       comms,

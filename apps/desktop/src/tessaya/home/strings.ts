@@ -377,6 +377,8 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "pv.setup.pin": "Choose your PIN",
     "pv.again": "The same PIN again",
     "pv.setup.button": "Make my private store",
+    "pv.imported":
+      "Freya's memories came in: {general} everyday, {private} private. {waiting} wait for your yes below (Keep or Forget), or ask her what is waiting.",
     "pv.add.title": "Add a person",
     "pv.add.name": "Their name (Voice ID's, if left empty)",
     "pv.add.profile": "Whose voice",

@@ -95,6 +95,8 @@ export interface ToolHost {
   readonly remember: (text: string) => Promise<string>;
   /** Keeps a private memory in the speaker's own encrypted store; absent where there is none (a device's turn). */
   readonly rememberPrivate?: (text: string, about: string | null) => Promise<string>;
+  /** His private memories waiting for his yes (an import's held items): read, keep or forget one. */
+  readonly privateWaiting?: (op: "list" | "keep" | "forget", id: string | null) => Promise<string>;
   readonly forget: (id: string) => Promise<string>;
   /** Memory the assistant may pin and the list of what the last answer used (D150). */
   readonly pin?: (id: string, pinned: boolean) => Promise<string>;
@@ -791,6 +793,28 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
                   : null,
               ),
             }),
+          },
+        ]),
+    ...(host.privateWaiting === undefined
+      ? []
+      : [
+          {
+            name: "private_waiting",
+            description:
+              'His private memories waiting for his yes (from an import, held until he says keep). op "list" reads them; then read each to him and, on his answer, op "keep" or "forget" with its id. For "what is waiting for my yes in my private memories", "keep that one", "forget the third one".',
+            inputSchema: object(
+              {
+                op: { enum: ["list", "keep", "forget"] },
+                id: { type: "string", maxLength: 80 },
+              },
+              ["op"],
+            ),
+            run: async (a: Readonly<Record<string, unknown>>) => {
+              const op = a["op"] === "keep" || a["op"] === "forget" ? a["op"] : "list";
+              const id =
+                typeof a["id"] === "string" && a["id"].trim() !== "" ? a["id"].trim() : null;
+              return { text: await host.privateWaiting!(op, id) };
+            },
           },
         ]),
     {

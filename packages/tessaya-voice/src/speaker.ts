@@ -192,6 +192,8 @@ export interface SpeakerIdentity {
   readonly own?: { readonly score: number; readonly ms: number };
   /** His by his session's evidence, not this turn's own score: his path, never an owner-only act (`verified` false). */
   readonly lifted?: true;
+  /** `verified` by his session (three turns averaged, or a hold), not this turn's own clips: never opens anything private. */
+  readonly session?: true;
   /**
    * A guest's own embedding (base64 float32) for her server's people graph, so she knows them next time
    * (HOUSEHOLD-DESIGN §11). Numbers, never audio; only on a clip long enough to file.
@@ -280,7 +282,11 @@ export const holdVoice = (
     const verified = identity.verified || averaged || held;
     return {
       hold: { verifiedAt: verified ? now : hold.verifiedAt, scores, evidence },
-      identity: { ...identity, verified },
+      identity: {
+        ...identity,
+        verified,
+        ...(verified && !identity.verified ? { session: true as const } : {}),
+      },
     };
   }
   if (own === null) {

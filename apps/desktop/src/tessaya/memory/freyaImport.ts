@@ -6,6 +6,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { text } from "../home/strings.ts";
 import type { MemoryCall } from "./memoryClient.ts";
 import type { PrivateCall } from "./privateMemoryClient.ts";
 
@@ -31,6 +32,17 @@ export interface FreyaImportCounts {
 
 export const PLAN_FILE = NodePath.join("import", "freya-plan.json");
 export const REPORT_FILE = NodePath.join("import", "freya-import-report.json");
+
+export const freyaPlanWaiting = (stateDir: string): boolean =>
+  NodeFS.existsSync(NodePath.join(stateDir, PLAN_FILE));
+
+/** What came in, for the Memory tab, in counts only. */
+export const importedLine = (c: FreyaImportCounts): string =>
+  text("pv.imported", {
+    general: String(c.general.added + c.general.merged),
+    private: String(c.private.added),
+    waiting: String(c.private.waiting),
+  });
 
 export const importFreyaPlan = async (
   items: ReadonlyArray<FreyaPlanItem>,
@@ -95,7 +107,20 @@ export const importFreyaPlan = async (
  * Imports a dropped plan, then deletes it and keeps the counts. Without his private store yet, everyday memories go in
  * and the plan waits for the next start; a re-run adds nothing twice.
  */
-export const runFreyaImport = async (
+export const runFreyaImport = (
+  stateDir: string,
+  deps: { readonly memory: MemoryCall; readonly private: PrivateCall },
+): Promise<FreyaImportCounts | null> => {
+  // One run at a time per folder: the startup run and the one his new store starts never interleave their reads and adds.
+  const next = (running.get(stateDir) ?? Promise.resolve(null))
+    .catch(() => null)
+    .then(() => importOnce(stateDir, deps));
+  running.set(stateDir, next);
+  return next;
+};
+const running = new Map<string, Promise<FreyaImportCounts | null>>();
+
+const importOnce = async (
   stateDir: string,
   deps: { readonly memory: MemoryCall; readonly private: PrivateCall },
 ): Promise<FreyaImportCounts | null> => {

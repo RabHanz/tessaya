@@ -1364,6 +1364,8 @@ export interface DesktopTessayaVoiceInput {
   readonly onGrants?: (keys: ReadonlyArray<string>) => void;
   /** His private memory stores on this machine's server, for the Memory tab. */
   readonly privateMemory?: PrivateMemory;
+  /** His private store was just made: what waited for it comes in now; a line saying what came, or null. */
+  readonly onOwnerStore?: () => Promise<string | null>;
   /** The household's members on this machine's server, for the Memory tab's Household area. */
   readonly household?: HouseholdCall;
   /** This machine's server for her wake models (it answers from her home server when there is one). */
@@ -6099,6 +6101,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       ? null
       : createPrivateTab({
           memory: input.privateMemory,
+          ...(input.onOwnerStore === undefined ? {} : { onOwnerStore: input.onOwnerStore }),
           onlooker,
           voices: () =>
             voiceId

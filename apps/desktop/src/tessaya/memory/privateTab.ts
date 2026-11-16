@@ -56,6 +56,8 @@ export const createPrivateTab = (input: {
   /** The people Voice ID has saved (Settings > Voice). */
   readonly voices?: () => ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly refresh: () => void;
+  /** His own store was just made: what waited for it comes in; a line to show, or null. */
+  readonly onOwnerStore?: () => Promise<string | null>;
   /** Face check: someone besides the person checked is in view, so what is in the store stays hidden. */
   readonly onlooker?: () => Promise<boolean>;
   readonly now?: () => number;
@@ -174,6 +176,10 @@ export const createPrivateTab = (input: {
       selected = out.store.id;
       if (asAdmin) admin.add(out.store.id);
       status = "";
+      if (out.store.kind === "owner" && input.onOwnerStore !== undefined) {
+        input.refresh();
+        status = (await input.onOwnerStore().catch(() => null)) ?? "";
+      }
     } catch (e) {
       status = reason(e);
     }
