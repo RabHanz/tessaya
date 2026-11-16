@@ -159,6 +159,7 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
                 };
               }),
             note: () => Effect.void,
+            hisWords: () => Effect.void,
             heard: () => Effect.void,
           });
           const felt = yield* call("read", "mood", { persona: "butler" }).pipe(

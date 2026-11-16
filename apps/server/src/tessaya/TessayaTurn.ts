@@ -768,7 +768,12 @@ export const make = Effect.gen(function* () {
     // How he sounds moves her before this turn's line is read, so her answer already meets it.
     if (turn.emotion !== undefined)
       yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion });
-    const line = moodLine(yield* mood.value.view(turn.persona, zone));
+    // Judged beside her reply, not before it: the cheap model's second would be his wait. Her face and next turn see it.
+    yield* mood.value.hisWords(turn.persona, turn.text).pipe(Effect.forkDetach);
+    const line = moodLine(
+      yield* mood.value.view(turn.persona, zone),
+      turn.vessel.kind === "device",
+    );
     yield* mood.value.heard(turn.persona, zone);
     return line;
   });

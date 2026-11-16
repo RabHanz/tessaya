@@ -11,6 +11,8 @@ import {
   appraise,
   freshAffect,
   guiltOf,
+  HIS_TONES,
+  tonePrompt,
   type AffectEvent,
   type AffectState,
   type AffectView,
@@ -22,12 +24,14 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { readPack } from "./OperatingSystemPack.ts";
+import { TessayaOneShot } from "./TessayaOneShot.ts";
 
 export class TessayaMood extends Context.Service<
   TessayaMood,
@@ -39,12 +43,16 @@ export class TessayaMood extends Context.Service<
       persona: string | undefined,
       event: Exclude<AffectEvent, { kind: "his_turn" }>,
     ) => Effect.Effect<void>;
+    /** How his words treat her (an apology, praise, warmth, rudeness), judged by the cheap model, moves her mood. */
+    readonly hisWords: (persona: string | undefined, said: string) => Effect.Effect<void>;
     /** One of his turns reached this persona: time away resolves and the bond counts the day. */
     readonly heard: (persona: string | undefined, timeZone?: string) => Effect.Effect<void>;
   }
 >()("t3/tessaya/TessayaMood") {}
 
 const LEAD = "executive";
+
+const Tone = Schema.Struct({ tone: Schema.Literals([...HIS_TONES, "none"]) });
 
 const clockIn = (at: number, timeZone: string) => {
   try {
@@ -81,6 +89,7 @@ const make = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
   const lock = yield* Semaphore.make(1);
+  const oneShot = yield* Effect.serviceOption(TessayaOneShot);
 
   const pack = () =>
     Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath));
@@ -151,6 +160,21 @@ const make = Effect.gen(function* () {
     view,
     note: Effect.fn("TessayaMood.note")(function* (persona, event) {
       yield* apply(persona, () => event, undefined);
+    }),
+    hisWords: Effect.fn("TessayaMood.hisWords")(function* (persona, said) {
+      if (Option.isNone(oneShot) || said.trim() === "" || !(yield* moodSettings).enabled) return;
+      const judged = yield* oneShot.value
+        .run({ prompt: tonePrompt(said), outputSchema: Tone, role: "intent" })
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logDebug("mood: his tone not judged", { why: String(cause) }).pipe(
+              Effect.as(null),
+            ),
+          ),
+        );
+      if (judged === null || judged.tone === "none") return;
+      const tone = judged.tone;
+      yield* apply(persona, () => ({ kind: tone }), undefined);
     }),
     heard: Effect.fn("TessayaMood.heard")(function* (persona, timeZone) {
       yield* apply(persona, (day) => ({ kind: "his_turn", day }), timeZone);
