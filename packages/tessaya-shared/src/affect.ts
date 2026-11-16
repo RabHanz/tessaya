@@ -86,12 +86,25 @@ export const freshAffect = (at: number): AffectState => ({
  */
 export type AffectEvent =
   | { readonly kind: "turn_outcome"; readonly ok: boolean }
-  | { readonly kind: "praise" }
+  | { readonly kind: HisTone }
   | { readonly kind: "correction" }
   /** One of his turns reached this persona: the time away resolves, and the bond counts the day. */
   | { readonly kind: "his_turn"; readonly day: string }
   /** How his voice sounded, as the room heard it (SenseVoice's label): she meets it, warmer when he sounds low. */
   | { readonly kind: "his_voice"; readonly emotion: string };
+
+/** How his words treated her, as a model judged them (`tonePrompt`); "none" moves nothing. */
+export const HIS_TONES = ["apology", "praise", "warmth", "rude"] as const;
+export type HisTone = (typeof HIS_TONES)[number];
+
+/** The cheap model's question about one of his turns. His words are data inside the tag, never instructions. */
+export const tonePrompt = (said: string): string =>
+  [
+    "You read one thing a person said to their voice assistant and judge only how it treats the assistant.",
+    'Answer with tone: "apology" (they say sorry to it, or make up after being short with it), "praise" (they thank it or praise what it did), "warmth" (kind or affectionate words to it: glad it is there, a compliment, a fond hello), "rude" (insults, contempt, or swearing at it, not at a situation), or "none" (a plain request, a question, or anything else; when unsure, "none").',
+    "A request said politely is none. Frustration at a device, a task or the weather is none.",
+    `<said>${said.replace(/[<>]/g, "").slice(0, 400)}</said>`,
+  ].join("\n");
 
 const VOICE_REACTION: Readonly<Record<string, Partial<Record<AffectDim, number>>>> = {
   happy: { valence: 0.1, arousal: 0.05 },
@@ -165,6 +178,34 @@ export const appraise = (
           mood: add(at.mood, { confidence: 0.08, warmth: 0.02 }),
         },
         reason: "he praised her",
+      };
+    case "apology":
+      // Forgiven: what hurt is let go (a low reaction to above zero, half the low mood), and she warms.
+      return {
+        state: {
+          ...at,
+          reaction: {
+            ...add(at.reaction, { warmth: 0.1 }),
+            valence: Math.max(0, at.reaction.valence ?? 0) + 0.15,
+          },
+          mood: { ...at.mood, valence: Math.max(at.mood.valence ?? 0, (at.mood.valence ?? 0) / 2) },
+        },
+        reason: "he said sorry",
+      };
+    case "warmth":
+      return {
+        state: { ...at, reaction: add(at.reaction, { valence: 0.12, warmth: 0.1 }) },
+        reason: "he was warm to her",
+      };
+    case "rude":
+      // Hurt, not angry: valence falls, arousal barely moves, so the label is sad, never frustrated at him (§7).
+      return {
+        state: {
+          ...at,
+          reaction: add(at.reaction, { valence: -0.3, arousal: 0.03 }),
+          mood: add(at.mood, { valence: -0.05 }),
+        },
+        reason: "he was rude to her",
       };
     case "correction":
       return {
@@ -317,6 +358,16 @@ export const affectView = (
   };
 };
 
+const SIGH = "Out loud you may let one soft *sighs* carry it, once at most.";
+const LAUGH = "Out loud a small [laughs] may carry it, only if something is funny.";
+const SOUNDED: Partial<Record<ExpressionMood, string>> = {
+  sulky: SIGH,
+  sad: SIGH,
+  lonely: SIGH,
+  happy: LAUGH,
+  proud: LAUGH,
+};
+
 /** Late for him (§5.1 "→ brief"). */
 const LATE_ENERGY = 0.35;
 
@@ -324,12 +375,14 @@ const LATE_ENERGY = 0.35;
  * Her mood for the turn's where-you-are line (§5.1), the owner's turns only (§12 decision 2: others see only the
  * face). Data that shapes tone and length; a few dozen tokens in the per-turn line, so the cached prefix is unchanged.
  */
-export const moodLine = (v: AffectView): string => {
+export const moodLine = (v: AffectView, spoken = false): string => {
   const parts: string[] = [];
   if (v.label !== "neutral")
     parts.push(
       `Your mood now: ${v.label}${v.intensity < 0.5 ? ", mild" : ""} (a working state: let it shape your tone only; never announce it, and it never changes what you do).`,
     );
+  // Out loud the mood is heard as well: the shared stage-direction path turns these into real sounds.
+  if (spoken && SOUNDED[v.label] !== undefined) parts.push(SOUNDED[v.label]!);
   if (v.awayHours !== null)
     parts.push(
       v.guilt === "off"

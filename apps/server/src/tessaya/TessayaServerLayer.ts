@@ -311,7 +311,7 @@ const servicesInner = IntentService.layer.pipe(
       expressionLayer,
       CurrentPersona.layer,
       // Her mood per persona (CS6): the turn writes it, every vessel's face and words read it.
-      TessayaMood.layer,
+      TessayaMood.layer.pipe(Layer.provide(TessayaOneShot.layer)),
       PersonaLayers.layer,
       // The prompt lab (B-030): its runs are one-shots on his subscription.
       PromptLab.layer.pipe(Layer.provide(TessayaOneShot.layer)),
