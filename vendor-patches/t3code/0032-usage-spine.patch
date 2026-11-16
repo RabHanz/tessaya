@@ -1,0 +1,504 @@
+Tessaya: one usage record. Text generation, cloud speech-to-text and their tests write a row to the usage ledger
+(BrainUsage) for each paid call; the transcript scan skips the folder her own CLI calls run from, so the Usage page
+never counts them twice.
+
+diff --git a/apps/server/src/speech/CloudSpeech.test.ts b/apps/server/src/speech/CloudSpeech.test.ts
+index 112c7a88d9b3b26edf4ec5ba97b7b91857346724..c021831b68dd95d8064b37fef4a7085cf8837e73 100644
+--- a/apps/server/src/speech/CloudSpeech.test.ts
++++ b/apps/server/src/speech/CloudSpeech.test.ts
+@@ -8,21 +8,33 @@ import * as Redacted from "effect/Redacted";
+ import * as FetchHttpClient from "effect/http/FetchHttpClient";
+ import { expect, vi } from "vite-plus/test";
+ import * as ServerSettings from "../serverSettings.ts";
++import * as BrainUsage from "../tessaya/BrainUsage.ts";
+ import * as CloudSpeech from "./CloudSpeech.ts";
+ 
++/** The service on a ledger that keeps each row it is handed. */
++const onLedger = (rows: Array<BrainUsage.UsageRow> = []) =>
++  Layer.effect(CloudSpeech.CloudSpeech, CloudSpeech.make).pipe(
++    Layer.provide(
++      Layer.mock(BrainUsage.BrainUsage)({
++        record: (row) => Effect.sync(() => void rows.push(row)),
++      }),
++    ),
++  );
++
+ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved key", (provider) =>
+   Effect.gen(function* () {
+     const reference = {
+       provider: SecretProviderId.make("work"),
+       reference: "op://Work/Voice/key",
+     };
++    const rows: Array<BrainUsage.UsageRow> = [];
+     let resolved: string | undefined;
+     let cached: string | undefined;
+     const read = vi.fn(() => Effect.sync(() => [(cached ??= resolved)]));
+     const upstream = vi.fn<typeof fetch>(async () => Response.json({ text: "hello" }));
+     const service = yield* CloudSpeech.CloudSpeech.pipe(
+       Effect.provide(
+-        CloudSpeech.layer.pipe(
++        onLedger(rows).pipe(
+           Layer.provide(FetchHttpClient.layer),
+           Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
+           Layer.provide(
+@@ -53,6 +65,16 @@ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved
+     yield* Effect.flip(transcribe(new Uint8Array(3)));
+     expect(upstream).not.toHaveBeenCalled();
+     expect(yield* transcribe()).toBe("hello");
++    // The key paid for two samples of audio; the refused and unsent tries recorded nothing.
++    expect(rows).toEqual([
++      expect.objectContaining({
++        role: "speech",
++        provider,
++        billing: "apiKey",
++        audioMs: 0,
++        attribution: { feature: "dictation-cloud", origin: "user" },
++      }),
++    ]);
+     const [url, init] = upstream.mock.calls[0]!;
+     expect(String(url)).toBe(
+       {
+@@ -105,7 +127,7 @@ it.effect("uploads to OpenRouter only for a listed exact model, as zero-retentio
+     );
+     const service = yield* CloudSpeech.CloudSpeech.pipe(
+       Effect.provide(
+-        CloudSpeech.layer.pipe(
++        onLedger().pipe(
+           Layer.provide(FetchHttpClient.layer),
+           Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
+           Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),
+@@ -163,7 +185,7 @@ it.effect("removing a key while a catalog read is pending prevents the upload",
+   Effect.gen(function* () {
+     const service = yield* CloudSpeech.CloudSpeech.pipe(
+       Effect.provide(
+-        CloudSpeech.layer.pipe(
++        onLedger().pipe(
+           Layer.provide(FetchHttpClient.layer),
+           Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
+           Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),
+diff --git a/apps/server/src/speech/CloudSpeech.ts b/apps/server/src/speech/CloudSpeech.ts
+index 3b7eab6b5242b107a78c5a69763ac6ecedb7a2df..c1c66fe317ed810449a373e12d1562d021ff1657 100644
+--- a/apps/server/src/speech/CloudSpeech.ts
++++ b/apps/server/src/speech/CloudSpeech.ts
+@@ -25,7 +25,8 @@ import * as ServerSettings from "../serverSettings.ts";
+ import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
+ import { applySpeechAliases } from "./customWords.ts";
+ import { removeSpeechFillerWords } from "./fillerWords.ts";
+-import { decodeSpeechPcm, SpeechInvalidAudioError } from "./SpeechService.ts";
++import { decodeSpeechPcm, SAMPLE_RATE, SpeechInvalidAudioError } from "./SpeechService.ts";
++import * as BrainUsage from "../tessaya/BrainUsage.ts";
+ 
+ const endpoints = {
+   openai: { url: "https://api.openai.com/v1/audio/transcriptions", model: "gpt-transcribe" },
+@@ -120,139 +121,152 @@ export class CloudSpeech extends Context.Service<
+   }
+ >()("t3/speech/CloudSpeech") {}
+ 
+-export const layer = Layer.effect(
+-  CloudSpeech,
+-  Effect.gen(function* () {
+-    const settings = yield* ServerSettings.ServerSettingsService;
+-    const resolver = yield* SecretResolver.SecretResolver;
+-    const http = yield* HttpClient.HttpClient;
+-    const credentials = settings.getSettings.pipe(
+-      Effect.map((value) => value.cloudSpeechCredentials),
++/** @public Tests build it on their own usage ledger. */
++export const make = Effect.gen(function* () {
++  const settings = yield* ServerSettings.ServerSettingsService;
++  const usage = yield* BrainUsage.BrainUsage;
++  const resolver = yield* SecretResolver.SecretResolver;
++  const http = yield* HttpClient.HttpClient;
++  const credentials = settings.getSettings.pipe(
++    Effect.map((value) => value.cloudSpeechCredentials),
++  );
++  const configured = credentials.pipe(
++    Effect.map(({ openai, xai, openrouter }) => ({
++      openai: Boolean(openai),
++      xai: Boolean(xai),
++      openrouter: Boolean(openrouter),
++    })),
++  );
++  const execute = (request: HttpClientRequest.HttpClientRequest) =>
++    http
++      .execute(request)
++      .pipe(
++        Effect.provideService(FetchHttpClient.RequestInit, { redirect: "error" }),
++        Effect.provideService(HttpClient.TracerPropagationEnabled, false),
++      );
++  const fetchCatalog = Effect.fn("CloudSpeech.catalog")(function* () {
++    const unavailable = () =>
++      new CloudSpeechError({ provider: "openrouter", reason: "unavailable" });
++    const response = yield* execute(HttpClientRequest.get(OPENROUTER_CATALOG_URL)).pipe(
++      Effect.mapError(unavailable),
+     );
+-    const configured = credentials.pipe(
+-      Effect.map(({ openai, xai, openrouter }) => ({
+-        openai: Boolean(openai),
+-        xai: Boolean(xai),
+-        openrouter: Boolean(openrouter),
+-      })),
++    if (response.status < 200 || response.status >= 300) return yield* unavailable();
++    const { data } = yield* HttpClientResponse.schemaBodyJson(OpenRouterCatalog)(response).pipe(
++      Effect.mapError(unavailable),
+     );
+-    const execute = (request: HttpClientRequest.HttpClientRequest) =>
+-      http
+-        .execute(request)
+-        .pipe(
+-          Effect.provideService(FetchHttpClient.RequestInit, { redirect: "error" }),
+-          Effect.provideService(HttpClient.TracerPropagationEnabled, false),
+-        );
+-    const fetchCatalog = Effect.fn("CloudSpeech.catalog")(function* () {
+-      const unavailable = () =>
+-        new CloudSpeechError({ provider: "openrouter", reason: "unavailable" });
+-      const response = yield* execute(HttpClientRequest.get(OPENROUTER_CATALOG_URL)).pipe(
+-        Effect.mapError(unavailable),
+-      );
+-      if (response.status < 200 || response.status >= 300) return yield* unavailable();
+-      const { data } = yield* HttpClientResponse.schemaBodyJson(OpenRouterCatalog)(response).pipe(
+-        Effect.mapError(unavailable),
+-      );
+-      return data.flatMap(({ id, name }) =>
+-        isModelId(id) ? [{ id, name: name?.trim() || id }] : [],
+-      );
+-    });
+-    // The catalog is public, so the cache holds no credential or consent state.
+-    const models = yield* Effect.cachedWithTTL(
+-      fetchCatalog().pipe(
+-        Effect.timeoutOrElse({
+-          duration: "10 seconds",
+-          orElse: () =>
+-            Effect.fail(new CloudSpeechError({ provider: "openrouter", reason: "unavailable" })),
+-        }),
+-      ),
+-      (exit) => (Exit.isSuccess(exit) ? "10 minutes" : 0),
++    return data.flatMap(({ id, name }) =>
++      isModelId(id) ? [{ id, name: name?.trim() || id }] : [],
+     );
+-    const setKey = Effect.fn("CloudSpeech.setKey")(function* (
++  });
++  // The catalog is public, so the cache holds no credential or consent state.
++  const models = yield* Effect.cachedWithTTL(
++    fetchCatalog().pipe(
++      Effect.timeoutOrElse({
++        duration: "10 seconds",
++        orElse: () =>
++          Effect.fail(new CloudSpeechError({ provider: "openrouter", reason: "unavailable" })),
++      }),
++    ),
++    (exit) => (Exit.isSuccess(exit) ? "10 minutes" : 0),
++  );
++  const setKey = Effect.fn("CloudSpeech.setKey")(function* (
++    provider: CloudSpeechProvider,
++    key: Redacted.Redacted<string> | SecretReference | null,
++  ) {
++    yield* settings.updateSettings({
++      cloudSpeechCredentials: {
++        [provider]: Redacted.isRedacted(key) ? Redacted.value(key) : (key ?? ""),
++      },
++    });
++  });
++  const transcribe = Effect.fn("CloudSpeech.transcribe")(
++    function* (
+       provider: CloudSpeechProvider,
+-      key: Redacted.Redacted<string> | SecretReference | null,
++      pcm: Uint8Array,
++      options: SpeechTranscriptionOptions,
++      model?: string,
+     ) {
+-      yield* settings.updateSettings({
+-        cloudSpeechCredentials: {
+-          [provider]: Redacted.isRedacted(key) ? Redacted.value(key) : (key ?? ""),
+-        },
++      const source = (yield* credentials)[provider];
++      if (!source) return yield* new CloudSpeechError({ provider, reason: "missing-key" });
++      if (provider === "openrouter" && (!model || !isModelId(model)))
++        return yield* new CloudSpeechError({ provider, reason: "model-unavailable" });
++      const samples = yield* Effect.try({
++        try: () => decodeSpeechPcm(pcm),
++        catch: () =>
++          new SpeechInvalidAudioError({
++            byteLength: pcm.byteLength,
++            message: "Invalid PCM audio.",
++          }),
+       });
+-    });
+-    const transcribe = Effect.fn("CloudSpeech.transcribe")(
+-      function* (
+-        provider: CloudSpeechProvider,
+-        pcm: Uint8Array,
+-        options: SpeechTranscriptionOptions,
+-        model?: string,
+-      ) {
+-        const source = (yield* credentials)[provider];
+-        if (!source) return yield* new CloudSpeechError({ provider, reason: "missing-key" });
+-        if (provider === "openrouter" && (!model || !isModelId(model)))
+-          return yield* new CloudSpeechError({ provider, reason: "model-unavailable" });
+-        const samples = yield* Effect.try({
+-          try: () => decodeSpeechPcm(pcm),
+-          catch: () =>
+-            new SpeechInvalidAudioError({
+-              byteLength: pcm.byteLength,
+-              message: "Invalid PCM audio.",
+-            }),
++      const language = effectiveSpeechLanguage(cloudSpeechLanguages, options.speechLanguage);
++      if (provider === "openrouter" && !(yield* models).some((entry) => entry.id === model))
++        return yield* new CloudSpeechError({ provider, reason: "model-unavailable" });
++      // A vault that locked since the last recording must not authorize a new upload.
++      if (isSecretReference(source)) yield* resolver.invalidate([source]);
++      const unreadable = () => new CloudSpeechError({ provider, reason: "unreadable-key" });
++      const key = yield* requireSettingsSecret(resolver, source).pipe(Effect.mapError(unreadable));
++      if (!isApiKey(key)) return yield* unreadable();
++      const audio = wave(samples);
++      const request = HttpClientRequest.post(endpoints[provider].url).pipe(
++        HttpClientRequest.bearerToken(Redacted.make(key)),
++        provider === "openrouter"
++          ? openRouterBody(model!, audio, language)
++          : audioBody(provider, audio, language, options),
++      );
++      const unavailable = () => new CloudSpeechError({ provider, reason: "unavailable" });
++      // A catalog fetch or vault lookup may have outlived the credential it started with.
++      const current = (yield* credentials)[provider];
++      if (!current || !sameCredential(source, current))
++        return yield* new CloudSpeechError({
++          provider,
++          reason: current ? "key-changed" : "missing-key",
+         });
+-        const language = effectiveSpeechLanguage(cloudSpeechLanguages, options.speechLanguage);
+-        if (provider === "openrouter" && !(yield* models).some((entry) => entry.id === model))
+-          return yield* new CloudSpeechError({ provider, reason: "model-unavailable" });
+-        // A vault that locked since the last recording must not authorize a new upload.
+-        if (isSecretReference(source)) yield* resolver.invalidate([source]);
+-        const unreadable = () => new CloudSpeechError({ provider, reason: "unreadable-key" });
+-        const key = yield* requireSettingsSecret(resolver, source).pipe(
+-          Effect.mapError(unreadable),
+-        );
+-        if (!isApiKey(key)) return yield* unreadable();
+-        const audio = wave(samples);
+-        const request = HttpClientRequest.post(endpoints[provider].url).pipe(
+-          HttpClientRequest.bearerToken(Redacted.make(key)),
+-          provider === "openrouter"
+-            ? openRouterBody(model!, audio, language)
+-            : audioBody(provider, audio, language, options),
+-        );
+-        const unavailable = () => new CloudSpeechError({ provider, reason: "unavailable" });
+-        // A catalog fetch or vault lookup may have outlived the credential it started with.
+-        const current = (yield* credentials)[provider];
+-        if (!current || !sameCredential(source, current))
+-          return yield* new CloudSpeechError({
+-            provider,
+-            reason: current ? "key-changed" : "missing-key",
+-          });
+-        const response = yield* execute(request).pipe(Effect.mapError(unavailable));
+-        if (response.status < 200 || response.status >= 300)
+-          return yield* new CloudSpeechError({
+-            provider,
+-            reason:
+-              response.status === 429
+-                ? "rate-limit"
+-                : [401, 402, 403].includes(response.status)
+-                  ? "rejected-key"
+-                  : response.status === 404 && provider === "openrouter"
+-                    ? "model-unavailable"
+-                    : "unavailable",
+-          });
+-        const { text } = yield* HttpClientResponse.schemaBodyJson(
+-          EnvironmentSpeechTranscriptionResult,
+-        )(response).pipe(Effect.mapError(unavailable));
+-        const corrected = applySpeechAliases(text, options.speechCustomWords);
+-        return (
+-          options.speechRemoveFillerWords
+-            ? removeSpeechFillerWords(corrected, language, options.speechCorrectionWord)
+-            : corrected
+-        ).trim();
+-      },
+-      (effect, provider) =>
+-        effect.pipe(
+-          Effect.timeoutOrElse({
+-            duration: "2 minutes",
+-            orElse: () => Effect.fail(new CloudSpeechError({ provider, reason: "unavailable" })),
+-          }),
+-        ),
+-    );
+-    return CloudSpeech.of({ configured, models, setKey, transcribe });
+-  }),
+-);
++      const response = yield* execute(request).pipe(Effect.mapError(unavailable));
++      if (response.status < 200 || response.status >= 300)
++        return yield* new CloudSpeechError({
++          provider,
++          reason:
++            response.status === 429
++              ? "rate-limit"
++              : [401, 402, 403].includes(response.status)
++                ? "rejected-key"
++                : response.status === 404 && provider === "openrouter"
++                  ? "model-unavailable"
++                  : "unavailable",
++        });
++      const { text } = yield* HttpClientResponse.schemaBodyJson(
++        EnvironmentSpeechTranscriptionResult,
++      )(response).pipe(Effect.mapError(unavailable));
++      // The key paid for the audio, by its length: the row carries it, with no token count to price.
++      yield* usage.record({
++        role: "speech",
++        provider,
++        model: provider === "openrouter" ? model! : endpoints[provider].model,
++        credential: `apiKey:${provider}`,
++        billing: "apiKey",
++        input: 0,
++        cacheRead: 0,
++        cacheWrite: 0,
++        output: 0,
++        audioMs: Math.round((samples.length / SAMPLE_RATE) * 1000),
++        attribution: { feature: "dictation-cloud", origin: "user" },
++      });
++      const corrected = applySpeechAliases(text, options.speechCustomWords);
++      return (
++        options.speechRemoveFillerWords
++          ? removeSpeechFillerWords(corrected, language, options.speechCorrectionWord)
++          : corrected
++      ).trim();
++    },
++    (effect, provider) =>
++      effect.pipe(
++        Effect.timeoutOrElse({
++          duration: "2 minutes",
++          orElse: () => Effect.fail(new CloudSpeechError({ provider, reason: "unavailable" })),
++        }),
++      ),
++  );
++  return CloudSpeech.of({ configured, models, setKey, transcribe });
++});
++
++export const layer = Layer.effect(CloudSpeech, make).pipe(Layer.provide(BrainUsage.layer));
+diff --git a/apps/server/src/speech/SpeechService.ts b/apps/server/src/speech/SpeechService.ts
+index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..d5c3e78f314c77902b5defa70d058c02eb792d31 100644
+--- a/apps/server/src/speech/SpeechService.ts
++++ b/apps/server/src/speech/SpeechService.ts
+@@ -37,7 +37,7 @@ import { SILERO_VAD } from "./silero.ts";
+ import { isSpeechPlatformSupported } from "./platform.ts";
+ import * as SpeechModelStore from "./SpeechModelStore.ts";
+ 
+-const SAMPLE_RATE = 16_000;
++export const SAMPLE_RATE = 16_000;
+ const MAX_SPEECH_DURATION_SECONDS = 5 * 60;
+ export const MAX_SPEECH_BYTES =
+   SAMPLE_RATE * Float32Array.BYTES_PER_ELEMENT * MAX_SPEECH_DURATION_SECONDS;
+diff --git a/apps/server/src/textGeneration/TextGeneration.ts b/apps/server/src/textGeneration/TextGeneration.ts
+index 818afb4fae553213aac44a85e098304e6567b3bf..87abc64b72ec904c4b6ab19be56551e7f55fd474 100644
+--- a/apps/server/src/textGeneration/TextGeneration.ts
++++ b/apps/server/src/textGeneration/TextGeneration.ts
+@@ -8,6 +8,8 @@ import {
+   resolveProjectProviderInstanceEnabled,
+ } from "@t3tools/contracts";
+ import * as DateTime from "effect/DateTime";
++import * as Exit from "effect/Exit";
++import * as Option from "effect/Option";
+ import { exhaustedUsageWindow } from "@t3tools/shared/usageLimits";
+ import { fallbackTextGenerationModelSelection } from "@t3tools/shared/serverSettings";
+ import * as ServerSettings from "../serverSettings.ts";
+@@ -21,6 +23,8 @@ import * as SourceControlProviderRegistry from "../sourceControl/SourceControlPr
+ import * as ThreadTitleLinks from "./ThreadTitleLinks.ts";
+ import * as TextGenerators from "./TextGenerators.ts";
+ import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
++import { billingOfAuth } from "@t3tools/tessaya-shared/brainRoutes";
++import { BrainUsage } from "../tessaya/BrainUsage.ts";
+ 
+ export type {
+   BranchNameGenerationInput,
+@@ -77,6 +81,37 @@ export const make = Effect.gen(function* () {
+   const serverSettings = yield* ServerSettings.ServerSettingsService;
+   const installationGate = yield* ProviderInstallationGate.ProviderInstallationGate;
+   const textGenerators = yield* TextGenerators.TextGenerators;
++  const usage = yield* Effect.serviceOption(BrainUsage);
++  /** Every generation is a paid call: one usage row each, failed ones too. Drivers report no tokens yet. */
++  const recorded = <A>(
++    operation: TextGenerationOp,
++    invoke: Effect.Effect<A, TextGenerationError>,
++    selection: ModelSelection,
++  ) =>
++    Option.isNone(usage)
++      ? invoke
++      : invoke.pipe(
++          Effect.onExit((exit) =>
++            Effect.gen(function* () {
++              const instance = yield* registry.getInstance(selection.instanceId);
++              const auth =
++                instance === undefined ? undefined : (yield* instance.snapshot.getSnapshot).auth;
++              yield* usage.value.record({
++                role: "agent",
++                billing: billingOfAuth(auth?.type),
++                provider: selection.instanceId,
++                credential: `instance:${selection.instanceId}`,
++                model: selection.model,
++                input: 0,
++                cacheRead: 0,
++                cacheWrite: 0,
++                output: 0,
++                outcome: Exit.isSuccess(exit) ? "unmeasured" : "failed",
++                attribution: { feature: operation, origin: "user" },
++              });
++            }).pipe(Effect.ignore),
++          ),
++        );
+   const generate = Effect.fn("TextGeneration.generate")(function* <A>(
+     operation: TextGenerationOp,
+     selection: ModelSelection,
+@@ -92,8 +127,9 @@ export const make = Effect.gen(function* () {
+     const textGeneratorCannotRun =
+       textGenerator !== undefined && operation === "generateReviewGuide";
+     if (textGenerator !== undefined && !textGeneratorCannotRun) {
+-      return yield* invoke(
+-        TextGenerationOperations.fromRunner("TextGenerator", textGenerator),
++      return yield* recorded(
++        operation,
++        invoke(TextGenerationOperations.fromRunner("TextGenerator", textGenerator), selection),
+         selection,
+       );
+     }
+@@ -155,7 +191,7 @@ export const make = Effect.gen(function* () {
+     return yield* installationGate.execute(
+       selection.instanceId,
+       resolveInstance(registry, operation, selection.instanceId).pipe(
+-        Effect.flatMap((service) => invoke(service, selection)),
++        Effect.flatMap((service) => recorded(operation, invoke(service, selection), selection)),
+       ),
+     );
+   });
+diff --git a/apps/server/src/usage/usageTranscriptReader.test.ts b/apps/server/src/usage/usageTranscriptReader.test.ts
+index f4cb72ec1e25caba563d0646233924e12994938f..d24ab2aa5c5f6e3ddfd1cd9a2acf6379ba4e4905 100644
+--- a/apps/server/src/usage/usageTranscriptReader.test.ts
++++ b/apps/server/src/usage/usageTranscriptReader.test.ts
+@@ -89,6 +89,10 @@ describe("compressed transcripts", () => {
+     await NodeFSP.writeFile(NodePath.join(nested, "unrelated.zst"), "ignored");
+     await NodeFSP.writeFile(NodePath.join(nested, "partial.jsonl.zst.tmp"), "ignored");
+     await NodeFSP.utimes(old, 1, 1);
++    // Tessaya's own CLI calls: her usage ledger records them, so the scan must not count them again.
++    const hers = NodePath.join(dir, "-tmp-tessaya-ledgered");
++    await NodeFSP.mkdir(hers);
++    await NodeFSP.writeFile(NodePath.join(hers, "one-shot.jsonl"), claudeLine(4, 13));
+ 
+     const listed = await listTranscriptFiles(dir, Date.parse("2026-01-01T00:00:00Z"));
+     assert.deepStrictEqual(
+diff --git a/apps/server/src/usage/usageTranscriptReader.ts b/apps/server/src/usage/usageTranscriptReader.ts
+index a4b10a4df2045b1ddac9bff431ae38e5b28f8929..f9e4c296be94031ba865214b7b444f2e382796d6 100644
+--- a/apps/server/src/usage/usageTranscriptReader.ts
++++ b/apps/server/src/usage/usageTranscriptReader.ts
+@@ -12,6 +12,7 @@ import type {
+   TranscriptUsageFormat,
+   UsageRecord,
+ } from "@t3tools/provider-core/server/usage";
++import { isLedgeredDir } from "@t3tools/tessaya-shared/brainRoutes";
+ import * as Option from "effect/Option";
+ import * as Schema from "effect/Schema";
+ 
+@@ -105,7 +106,7 @@ export async function listTranscriptFiles(
+     const found = await Promise.all(
+       entries.map((entry) => {
+         const child = NodePath.join(dir, entry.name);
+-        if (entry.isDirectory()) return walk(child);
++        if (entry.isDirectory()) return isLedgeredDir(entry.name) ? [] : walk(child);
+         return (
+           fileName !== undefined
+             ? entry.name === fileName
