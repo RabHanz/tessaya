@@ -50,11 +50,13 @@ import {
   cleanupFromSaved,
   cleanupLevelFor,
   DICTATION_MODES,
+  DICTATION_SPELLINGS,
   localClean,
   MODE_LABELS,
   type CleanupLevel,
   type DictationContext,
   type DictationMode,
+  type DictationSpelling,
   type Refused,
 } from "@t3tools/tessaya-shared/dictationCleanup";
 import {
@@ -888,6 +890,8 @@ interface VoiceSettings {
   readonly cleanupModelChosen?: boolean;
   /** His own Claude plan first and his key only while it is out or at its limit, or his key first. */
   readonly cleanupRoute: "subscription" | "key";
+  /** Settings → Dictation → Spelling of the cleaned text. */
+  readonly dictationSpelling: DictationSpelling;
   readonly claudeBinary: string;
   /** His writing mode for an app, by exe name; anything else is chosen from the app. */
   readonly appModes: Readonly<Record<string, DictationMode>>;
@@ -1013,6 +1017,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   dictationCleanup: "local",
   cleanupModel: "sonnet",
   cleanupRoute: "subscription",
+  dictationSpelling: "uk",
   claudeBinary: "claude",
   appModes: {},
   wakeWords: FRESH_WAKE_WORDS,
@@ -1102,6 +1107,7 @@ export const readSettings = (path: string): VoiceSettings => {
           ? saved["cleanupModel"]
           : "sonnet",
       cleanupRoute: saved["cleanupRoute"] === "key" ? "key" : "subscription",
+      dictationSpelling: DICTATION_SPELLINGS.find((s) => s === saved["dictationSpelling"]) ?? "uk",
       openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       devicesMayLook: saved["devicesMayLook"] === true,
@@ -2066,6 +2072,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     env: input.env,
     platform: input.platform,
     dictionary: () => dictionaryForCleanup(),
+    spelling: () => settings.dictationSpelling,
     keepWarm: () => cleanupStaysWarm(),
     ...(input.cleanupApi === undefined ? {} : { api: input.cleanupApi }),
     examples: (text, mode) => styleIndex?.nearest(text, mode, 4) ?? [],
@@ -7391,6 +7398,20 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         disabled: settings.dictationCleanup !== "claude",
       },
       {
+        id: "v.spelling",
+        section: "Dictation",
+        label: "Spelling",
+        hint: "How Claude spells the cleaned text: colour or color. As heard keeps the recogniser's spelling.",
+        kind: "choice",
+        value: settings.dictationSpelling,
+        options: [
+          { value: "uk", label: "British (colour)" },
+          { value: "us", label: "American (color)" },
+          { value: "asis", label: "As heard" },
+        ],
+        disabled: settings.dictationCleanup !== "claude",
+      },
+      {
         id: "v.cleanupRoute",
         section: "Dictation",
         label: "Clean up through",
@@ -8870,6 +8891,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     } else if (id === "v.cleanupModel" && (value === "sonnet" || value === "haiku")) {
       save({ cleanupModelChosen: true, cleanupModel: value });
       syncCleanupSession();
+    } else if (id === "v.spelling") {
+      const spelling = DICTATION_SPELLINGS.find((s) => s === value);
+      if (spelling !== undefined) save({ dictationSpelling: spelling });
     } else if (id === "v.cleanupRoute" && (value === "subscription" || value === "key")) {
       save({ cleanupRoute: value });
       syncCleanupSession();
