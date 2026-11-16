@@ -73,6 +73,11 @@ export const HouseholdCaller = Context.Reference<{
   readonly desktop?: boolean;
   /** The page's origin (its `Origin` header): a passkey is for that site. */
   readonly origin?: string;
+  /**
+   * A vessel's own turn whose device proved itself (a Tessel's key, the desktop app's own session): only it files a
+   * voiceprint, so no client or agent can plant a fake voice in the people graph.
+   */
+  readonly heard?: boolean;
 }>("t3/tessaya/TessayaHousehold/HouseholdCaller", {
   defaultValue: () => ({ member: null, assurance: 0, via: "unknown" }),
 });
@@ -233,6 +238,7 @@ export const make = Effect.gen(function* () {
           assurance: c.assurance,
           tainted: c.tainted === true,
           via: c.via,
+          heard: c.heard === true,
         },
         limits: { runtimeMode: "approval-required", interactionMode: "default" },
         success: Schema.Unknown,
@@ -807,6 +813,8 @@ export const make = Effect.gen(function* () {
   ) {
     const c = yield* HouseholdCaller;
     const role = yield* callerRole;
+    if (input.op === "peopleObserve" && c.heard !== true)
+      return refused("Only a vessel's own turn files a voice.");
     // People answers guests too ("I'm Ali", "forget me"): it decides by role itself (HOUSEHOLD-DESIGN §11).
     if (
       input.op === "peopleObserve" ||

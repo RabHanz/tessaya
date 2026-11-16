@@ -536,6 +536,7 @@ export const make = Effect.gen(function* () {
           member: null,
           assurance: 0,
           via: "Tessaya, hearing a voice",
+          heard: true,
         }),
       );
     return heard.person ?? null;

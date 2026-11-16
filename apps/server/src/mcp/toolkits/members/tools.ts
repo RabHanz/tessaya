@@ -157,6 +157,7 @@ const PeerTool = Tool.make("household_peer", {
     assurance: Schema.Int,
     tainted: Schema.Boolean,
     via: Schema.String.check(Schema.isMaxLength(120)),
+    heard: Schema.optional(Schema.Boolean),
   }),
 })
   .annotate(Tool.Readonly, false)

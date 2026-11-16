@@ -3455,6 +3455,7 @@ export const startScreenCompanion = (input: {
                   verified: heardFrom.verified,
                   inherited: heardFrom.inherited,
                   confidence: heardFrom.confidence,
+                  ...(heardFrom.print === undefined ? {} : { print: heardFrom.print }),
                 }
               : null,
           project: where.project ?? null,

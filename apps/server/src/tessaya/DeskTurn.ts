@@ -29,6 +29,7 @@ import { VesselHands, vesselTools } from "./VesselHands.ts";
 import { replyFor } from "./PersonaLayers.ts";
 import type { DeskSaid } from "@t3tools/tessaya-shared/deskTurnStream";
 import type { HandsBroker } from "@t3tools/tessaya-shared/remoteHands";
+import { TessayaVoicePrint } from "@t3tools/tessaya-contracts";
 
 const Speaker = Schema.Struct({
   kind: Schema.Literals(["owner", "saved", "guest", "unverified"]),
@@ -38,6 +39,8 @@ const Speaker = Schema.Struct({
   confidence: Schema.optional(Schema.NullOr(Schema.Number)),
   voiceIdOff: Schema.optional(Schema.Boolean),
   test: Schema.optional(Schema.Boolean),
+  /** A guest's voiceprint for the people graph; kept only from the desktop app's own session (`deskTurnStream`). */
+  print: Schema.optional(TessayaVoicePrint),
 });
 
 /** What the desktop sends with his sentence. */
@@ -147,6 +150,10 @@ export const deskTurnStream = (
                 ...(body.speaker.voiceIdOff === true ? { voiceIdOff: true } : {}),
                 ...(body.speaker.test === true ? { test: true } : {}),
               },
+        // Only the desktop's own Voice ID files a voice: an ask from a phone, the web bar or an agent never does.
+        ...(from.kind === "desktop" && body.speaker?.print !== undefined
+          ? { print: body.speaker.print }
+          : {}),
         project: body.project ?? null,
         ...(body.app === undefined ? {} : { app: body.app }),
         ...(body.timeZone === undefined ? {} : { timeZone: body.timeZone }),

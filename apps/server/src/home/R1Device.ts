@@ -698,12 +698,14 @@ export const splitActs = (
   return { acts, rest: lead.slice(nl + 1) };
 };
 
-interface R1Heard {
+export interface R1Heard {
   readonly heard: string;
   readonly history: ReadonlyArray<{ readonly role: string; readonly content: string }>;
   readonly voice?: unknown;
   /** The loop's device id; the replay harness's pretend R1s (`replay-…`) are not his room. */
   readonly device?: string;
+  /** The call came with the key of the very device it names: only then is its voiceprint believed. */
+  readonly signed?: boolean;
 }
 
 const isReplay = (input: R1Heard) => input.device?.startsWith("replay-") === true;
@@ -733,7 +735,11 @@ const r1Pack = Effect.map(Effect.serviceOption(ServerConfig.ServerConfig), (conf
   Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath)),
 );
 
-const r1Envelope = (input: R1Heard, pack: OsPack, timeZone: string | undefined): TurnEnvelope => {
+export const r1Envelope = (
+  input: R1Heard,
+  pack: OsPack,
+  timeZone: string | undefined,
+): TurnEnvelope => {
   const persona = calledPersona(pack, input.voice);
   return {
     vessel: { kind: "device", id: input.device ?? "room" },
@@ -741,7 +747,7 @@ const r1Envelope = (input: R1Heard, pack: OsPack, timeZone: string | undefined):
     text: input.heard,
     persona: persona?.id ?? pack.personas.find((p) => p.lead)?.id,
     speaker: speakerOf(input.voice),
-    ...printOf(input.voice),
+    ...(input.signed === true ? printOf(input.voice) : {}),
     addressed: addressedOf(input.voice),
     // The loop recognised this voice for the first time this session (its recognition cue): her name for them, once.
     ...nameOnceOf(input.voice),
@@ -1462,7 +1468,8 @@ export const routes = HttpRouter.use((router) =>
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
       if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       // Each R1's room loop calls with that R1's key.
-      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      const keyOf = r1ByKey(all, bearer);
+      if (keyOf === null) return error(401, "Wrong device key.");
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodeChat(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a chat request.");
@@ -1501,6 +1508,7 @@ export const routes = HttpRouter.use((router) =>
               history: turns.slice(0, -1),
               voice: body.value.tessaya,
               ...(body.value.device === undefined ? {} : { device: body.value.device }),
+              signed: keyOf.deviceId === body.value.device,
             },
             brain.value,
             tools,
@@ -1526,6 +1534,7 @@ export const routes = HttpRouter.use((router) =>
         history: turns.slice(0, -1),
         voice: body.value.tessaya,
         ...(body.value.device === undefined ? {} : { device: body.value.device }),
+        signed: keyOf.deviceId === body.value.device,
       };
       const turn = yield* r1Turn(heardBy).pipe(
         Effect.catchCause(() => sorry(heardBy, "Sorry, something went wrong on my side.")),

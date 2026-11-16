@@ -10,6 +10,7 @@ import {
   decideSpeaker,
   identityOf,
   INHERIT_MS,
+  PRINT_MIN_MS,
   SESSION_IDLE_MS,
   stepUpFor,
   UNVERIFIED,
@@ -18,6 +19,7 @@ import {
   type SpeakerGate,
   type SpeakerIdentity,
   type SpeakerPolicy,
+  vectorToBase64,
 } from "@t3tools/tessaya-voice";
 
 import type { VoiceId } from "./voiceId.ts";
@@ -76,9 +78,11 @@ export const createSpeakerIdentity = (input: {
       return decided({ ...UNVERIFIED(at), voiceIdOff: true }, use, ms);
     if (ms < input.policy.minSpeechMs) {
       // A short follow-up keeps the last verdict for listening only; it is never verified.
+      // An inherited verdict carries no print: the clip that made it was filed already.
+      const { print: _print, ...before } = last ?? UNVERIFIED(at);
       const kept =
         use === "turn" && last !== null && last.kind !== "unverified" && at - last.at < INHERIT_MS
-          ? { ...last, verified: false, inherited: true, at }
+          ? { ...before, verified: false, inherited: true, at }
           : UNVERIFIED(at);
       return decided(kept, use, ms);
     }
@@ -91,12 +95,17 @@ export const createSpeakerIdentity = (input: {
       profiles: input.voiceId.profiles(),
       policy: input.policy,
     };
-    const identity = identityOf(
+    const judged = identityOf(
       // A cut-in is one 2 s clip and stops nothing for good, so it is judged at "listen"; a turn at "steer".
       decideSpeaker({ ...base, use: use === "barge" ? "listen" : "steer" }),
       decideSpeaker({ ...base, use: "act" }),
       at,
     );
+    // A guest's turn carries their voiceprint to the people graph, as the room loop's does: numbers, never audio.
+    const identity =
+      use === "turn" && judged.kind === "guest" && ms >= PRINT_MIN_MS
+        ? { ...judged, print: { model: embedder.model, vector: vectorToBase64(vector), ms } }
+        : judged;
     // This device refines the speaker's copy from their own verified turn; the shared profile changes only by enrolling.
     if (identity.verified && identity.personId !== null && input.settings().adapt) {
       const mine = base.profiles.find(
