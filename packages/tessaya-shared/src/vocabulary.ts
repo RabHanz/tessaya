@@ -169,7 +169,8 @@ export const addEntry = (
   list: ReadonlyArray<VocabularyEntry>,
   entry: { readonly phrase: string; readonly replacement: string | null },
 ): ReadonlyArray<VocabularyEntry> => {
-  const phrase = entry.phrase.trim();
+  // A word added by voice comes with the sentence's stop ("Tessaya." on his laptop, 16 Nov); "Sol.md" keeps its dot.
+  const phrase = entry.phrase.trim().replace(/[.,!?;:]+$/, "");
   if (phrase.length === 0) return list;
   const replacement =
     entry.replacement === null || entry.replacement.trim().length === 0
@@ -431,6 +432,49 @@ export const correctionsBetween = (
     else return [];
   }
   return pairs.length > 0 && pairs.length <= Math.max(1, Math.floor(a.length / 3)) ? pairs : [];
+};
+
+/** Longer messages are left alone: the alignment below costs their word counts multiplied. */
+const SENT_ALIGN_LIMIT = 250_000;
+
+/**
+ * His fixes in a message he sent, against what dictation put in: the two are aligned word by word, and each changed
+ * run of 1 to 3 words either side reads as `correctionsBetween` reads a field. Words he only added or deleted teach nothing.
+ */
+export const correctionsInSent = (
+  written: string,
+  sent: string,
+): ReadonlyArray<{ readonly heard: string; readonly meant: string }> => {
+  const a = tokens(written).map(bare);
+  const b = tokens(sent).map(bare);
+  if (a.length * b.length > SENT_ALIGN_LIMIT) return [];
+  // Longest common run of words, from the end, so the walk below goes forward.
+  const same = Array.from({ length: a.length + 1 }, () => new Uint16Array(b.length + 1));
+  for (let i = a.length - 1; i >= 0; i -= 1)
+    for (let j = b.length - 1; j >= 0; j -= 1)
+      same[i]![j] =
+        a[i] === b[j] ? same[i + 1]![j + 1]! + 1 : Math.max(same[i + 1]![j]!, same[i]![j + 1]!);
+  const fixes: Array<{ readonly heard: string; readonly meant: string }> = [];
+  let i = 0;
+  let j = 0;
+  let from: readonly [number, number] = [0, 0];
+  const close = () => {
+    const heard = a.slice(from[0], i);
+    const meant = b.slice(from[1], j);
+    if (heard.length >= 1 && heard.length <= 3 && meant.length >= 1 && meant.length <= 3)
+      fixes.push(...correctionsBetween(heard.join(" "), meant.join(" ")));
+  };
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      close();
+      i += 1;
+      j += 1;
+      from = [i, j];
+    } else if (j >= b.length || (i < a.length && same[i + 1]![j]! >= same[i]![j + 1]!)) i += 1;
+    else j += 1;
+  }
+  close();
+  return fixes;
 };
 
 const COMMON = new Set(

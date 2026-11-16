@@ -39,6 +39,8 @@ interface Composer {
   readonly root: () => HTMLElement | null;
   /** Not disabled: it can take a dictation. */
   readonly ready: () => boolean;
+  /** What the desktop's clean-up should know as this box claims: the message so far and the reply he is answering. */
+  readonly said: () => { readonly prior?: string; readonly replyingTo?: string };
 }
 const composers = new Set<Composer>();
 /**
@@ -92,10 +94,11 @@ const listen = (composer: Composer) => {
     const off = bridge.onComposerDictation((message) => {
       // A start goes to the target alone; after that its id routes every message, wherever focus went since.
       const asked = message.type === "start" ? (target === null ? [] : [target]) : composers;
-      for (const { take } of asked) {
+      for (const { take, said } of asked) {
         const ok = take(message);
         if (ok === null) continue;
-        if (message.type === "start") return { type: "claimed", id: message.id, ok };
+        if (message.type === "start")
+          return { type: "claimed", id: message.id, ok, ...(ok ? said() : {}) };
         if (message.type === "commit") return { type: "took", id: message.id, ok };
         return null;
       }
@@ -135,7 +138,15 @@ export interface TessayaComposerDictation {
   readonly live: boolean;
   readonly confirm: () => void;
   readonly cancel: () => void;
+  /** He sent `text`: what Tessaya's dictation put in goes to the desktop beside it, so his fixes teach. */
+  readonly sent: (text: string) => void;
 }
+
+/** The message so far that his dictations made, if the text before the caret still ends with it. */
+const priorAt = (draft: DictationDraft, dictated: string): string | undefined => {
+  const prior = dictated.trim();
+  return prior !== "" && draftAround(draft).before.trimEnd().endsWith(prior) ? prior : undefined;
+};
 
 export function useTessayaComposerDictation(input: {
   readonly speech: {
@@ -150,7 +161,11 @@ export function useTessayaComposerDictation(input: {
   readonly commitDraft: (text: string, selection: DictationDraft["selection"]) => void;
   readonly rootRef: RefObject<HTMLElement | null>;
   readonly disabled: boolean;
+  /** The reply he is answering, read as a dictation starts. */
+  readonly replyingTo?: () => string | undefined;
 }): TessayaComposerDictation {
+  /** What Tessaya's dictations put in this draft since it was last sent, as one message. */
+  const dictated = useRef("");
   const [state, dispatch] = useReducer(stepDictation, IDLE_DICTATION);
   const latest = useRef(state);
   const level = useRef(SILENT_DB);
@@ -252,8 +267,20 @@ export function useTessayaComposerDictation(input: {
       const now = latest.current;
       if (now.phase !== "listening" && now.phase !== "working") return false;
       // At the caret as it is now, wherever he moved it or whatever changed in the draft while he spoke.
-      const committed = insertWords(input.readDraft(), message.text.trim());
-      step({ type: "final", text: message.text, committed });
+      const draft = input.readDraft();
+      const replace = message.replace?.trim() ?? "";
+      const replacing = replace !== "" && priorAt(draft, replace) !== undefined;
+      // The whole message cleaned again goes in place of his earlier dictations; if he changed them, these words only.
+      const words = (replace !== "" && !replacing ? (message.alone ?? "") : message.text).trim();
+      const { before, after } = draftAround(draft);
+      const cut = before.trimEnd().length - replace.length;
+      const base = replacing
+        ? { text: before.slice(0, cut) + after, selection: { start: cut, end: cut } }
+        : draft;
+      const prior = replacing ? undefined : priorAt(draft, dictated.current);
+      dictated.current = prior === undefined ? words : `${prior} ${words}`;
+      const committed = insertWords(base, words);
+      step({ type: "final", text: words, committed });
       input.commitDraft(committed.text, committed.selection);
       return true;
     }
@@ -288,8 +315,22 @@ export function useTessayaComposerDictation(input: {
   }, [listening, input.rootRef, readDraft, step]);
   const root = useStableCallback(() => input.rootRef.current);
   const ready = useStableCallback(() => !input.disabled);
+  const said = useStableCallback(() => {
+    const prior = priorAt(input.readDraft(), dictated.current);
+    const replyingTo = input.replyingTo?.()?.trim() ?? "";
+    return {
+      ...(prior === undefined ? {} : { prior }),
+      ...(replyingTo === "" ? {} : { replyingTo }),
+    };
+  });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes this composer to the desktop's dictation channel and focus reports
-  useEffect(() => listen({ take: onDesktop, root, ready }), [onDesktop, root, ready]);
+  useEffect(() => listen({ take: onDesktop, root, ready, said }), [onDesktop, root, ready, said]);
+  const sent = useStableCallback((text: string) => {
+    const written = dictated.current.trim();
+    dictated.current = "";
+    if (written !== "")
+      batonDesktopBridge()?.replyComposerDictation?.({ type: "sent", id: 0, written, kept: text });
+  });
 
   const confirm = useStableCallback(() => {
     const id = desktopId.current;
@@ -311,5 +352,6 @@ export function useTessayaComposerDictation(input: {
     live: listening,
     confirm,
     cancel,
+    sent,
   };
 }

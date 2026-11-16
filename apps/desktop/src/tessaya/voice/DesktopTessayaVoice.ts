@@ -50,6 +50,7 @@ import {
   cleanupFromSaved,
   cleanupLevelFor,
   DICTATION_MODES,
+  localClean,
   MODE_LABELS,
   type CleanupLevel,
   type DictationContext,
@@ -554,6 +555,7 @@ import {
 import {
   correctionsAtCaret,
   correctionsBetween,
+  correctionsInSent,
   learnCorrection,
   observeWording,
   addNever,
@@ -569,7 +571,11 @@ import {
   type SeenWords,
   type VocabularyEntry,
 } from "@t3tools/tessaya-shared/vocabulary";
-import { cleanupFailedLine, settleOneShot } from "@t3tools/tessaya-shared/dictationOneShot";
+import {
+  cleanupFailedLine,
+  partialCleanupLine,
+  settleOneShot,
+} from "@t3tools/tessaya-shared/dictationOneShot";
 import { createOneShot } from "./oneShotDictation.ts";
 import {
   clipPaths,
@@ -1947,6 +1953,17 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     )
       .then(saveSeen)
       .catch(() => undefined);
+  /**
+   * He sent a message he dictated into our chat box: what he changed teaches, whenever he changed it. The field watch
+   * never saw these: the next press cancelled it, or the send emptied the box first (16 Nov: 12 watches, 0 learned).
+   */
+  const learnFromSent = (written: string, kept: string) => {
+    if (!settings.learnWords || detectSecret(kept) !== null) return;
+    stopWatching();
+    const fixes = correctionsInSent(written, kept);
+    input.onNote?.("sent_edits", { fixes: fixes.length });
+    if (fixes.length > 0) void teachFixes(fixes);
+  };
   /** History's Edit and teach: his fixed words become the row's, and teach under the same rules as a fix in the field. */
   const teachFromHistory = (turn: HistoryTurn, text: string): ReadonlyArray<string> => {
     const meant = text.trim();
@@ -2086,13 +2103,34 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       .slice(-2)
       .map((d) => safe(d.text))
       .filter(Boolean);
-    const before = safe(around?.before ?? "");
+    // In our own chat box the message so far is cleaned with these words, so it is no longer context.
+    const { prior, replyingTo } = composer.said();
+    const field = safe(around?.before ?? "");
+    const before =
+      prior !== undefined && field.trimEnd().endsWith(prior)
+        ? field.trimEnd().slice(0, -prior.length)
+        : field;
+    const reply = safe(replyingTo ?? "");
     return {
       screen: screenNow,
       ...(before.trim() === "" ? {} : { before }),
-      ...(recent.length === 0 ? {} : { recent }),
+      ...(recent.length === 0 || prior !== undefined ? {} : { recent }),
+      ...(reply === "" ? {} : { replyingTo: reply }),
     };
   };
+  /** Our own chat box's message so far, kept to its last sentences so the message pass stays quick. */
+  const MESSAGE_CHARS = 1_200;
+  const messagePrior = (): string | undefined => {
+    const prior = composer.said().prior;
+    if (prior === undefined || detectSecret(prior) !== null) return undefined;
+    if (prior.length <= MESSAGE_CHARS) return prior;
+    // A sentence start within the last MESSAGE_CHARS: what is before it stays as it is.
+    const tail = prior.slice(-MESSAGE_CHARS);
+    const start = tail.search(/(?<=[.!?]\s+)\S/);
+    return start < 0 ? undefined : tail.slice(start);
+  };
+  /** Set when the clean-up wrote the whole message again: the chat box swaps it in for `prior`. */
+  let messageCommit: { readonly prior: string; readonly alone: string } | null = null;
   const rememberDictation = (
     app: { readonly exe: string; readonly title: string },
     text: string,
@@ -2113,13 +2151,27 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     // A model clean-up stepped down to this computer is never silent: the turn log says why.
     if (decided.why !== null && settings.dictationCleanup === "claude")
       input.onNote?.("dictation_cleanup_level", { level, why: decided.why });
+    const prior = level === "claude" && composer.active() ? messagePrior() : undefined;
     const out = await rewriter.clean({
       raw: raw,
       mode: chooseMode(app, settings.appModes),
       level,
       context: level === "claude" ? await cleanupContext(app) : { screen: screenNow },
+      ...(prior === undefined ? {} : { prior }),
     });
+    messageCommit =
+      out.message && prior !== undefined
+        ? {
+            prior,
+            alone: localClean(raw, chooseMode(app, settings.appModes), dictionaryForCleanup()),
+          }
+        : null;
     if (out.text.trim() !== "") rememberDictation(app, out.text);
+    // Cleaned, but not as a whole: never silent (the drafts went in, and he is told why).
+    if (out.stage !== "fallback" && out.why !== undefined) {
+      input.onNote?.("dictation_cleanup", { partial: out.why });
+      toast.show({ kind: "error", message: partialCleanupLine(out.why) });
+    }
     // Every fallback keeps its reason (a refused name, a timeout, the API's error), so a slow or failed clean-up can be
     // told apart from a right refusal (0.1.92 fell back after 2.95 s with no reason logged).
     if (out.stage === "fallback")
@@ -2737,9 +2789,18 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   /** Our own chat box took the dictation: it takes the words itself, no paste (composerDictation.ts). */
   const oneShot = createOneShot<FocusedApp>({
     ...oneShotOptions,
+    // The whole message cleaned again starts where his first dictation did: nothing before the caret to fit to.
+    fit: (text, app) =>
+      messageCommit !== null && composer.active()
+        ? Promise.resolve(text)
+        : oneShotOptions.fit(text, app),
     paste: async (text, app) => {
       const ours = composer.active();
-      const took = await composer.commit(text);
+      const whole = messageCommit;
+      messageCommit = null;
+      const took = await composer.commit(text, whole ?? undefined);
+      // The chat box did not take the whole message: only these words may be pasted anywhere else.
+      if (!took && whole !== null) return oneShotOptions.paste(whole.alone, app);
       // Which way the words went, for the turn log: the chat box took them, or they fell back to the paste.
       if (ours) input.onNote?.("composer_commit", { took, chars: text.length });
       return took ? (ghostPlayed = true) : oneShotOptions.paste(text, app);
@@ -4505,15 +4566,18 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       const app = focusedApp;
       // Each finished sentence is cleaned as he speaks, and at a pause the last one too.
       if (settings.dictationCleanup === "claude")
-        void levelNow(app).then(async ({ level }) =>
+        void levelNow(app).then(async ({ level }) => {
+          // The same message so far as release will clean, so the guess at a pause is the one it takes.
+          const prior = level === "claude" && composer.active() ? messagePrior() : undefined;
           rewriter.speculate({
             raw: event.text,
             mode: chooseMode(app, settings.appModes),
             level,
             context: level === "claude" ? await cleanupContext(app) : { screen: screenNow },
             pause: event.pause !== false,
-          }),
-        );
+            ...(prior === undefined ? {} : { prior }),
+          });
+        });
       return;
     }
     // A restarted helper forgets that voice dictation runs; told again, its key presses stay this dictation's ✓.
@@ -4850,6 +4914,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     },
     onAction: dictationAction,
     onRelease: () => pill.replay(),
+    onSent: (written, kept) => learnFromSent(written, kept),
   });
   const claimComposer = (mode: "held" | "free") =>
     void composer.start(mode).then((claimed) => {

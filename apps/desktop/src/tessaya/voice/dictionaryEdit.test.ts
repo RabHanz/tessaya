@@ -23,6 +23,9 @@ describe("the vocabulary", () => {
     const two = addEntry(one, { phrase: "Venture OS", replacement: "" });
     expect(two).toEqual([{ phrase: "Venture OS", replacement: null, source: "added" }]);
     expect(addEntry(two, { phrase: "  ", replacement: "x" })).toBe(two);
+    // Said as a sentence, the word comes with its stop; a dot inside it stays.
+    expect(addEntry([], { phrase: "Tessaya.", replacement: null })[0]?.phrase).toBe("Tessaya");
+    expect(addEntry([], { phrase: "Sol.md", replacement: null })[0]?.phrase).toBe("Sol.md");
   });
   it("removes a word whatever its capitals", () => {
     expect(removeEntry([{ phrase: "Airdeck", replacement: null }], "airdeck")).toEqual([]);

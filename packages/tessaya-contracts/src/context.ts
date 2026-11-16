@@ -375,7 +375,17 @@ export type ComposerDictationMessage =
   | { readonly type: "level"; readonly id: number; readonly db: number }
   | { readonly type: "words"; readonly id: number; readonly text: string }
   | { readonly type: "finish"; readonly id: number }
-  | { readonly type: "commit"; readonly id: number; readonly text: string }
+  /**
+   * `replace`: his earlier dictations in this message, right before the caret, which `text` (the whole message cleaned
+   * again) goes in place of. If the box no longer ends with them, `alone` (these words only) goes in instead.
+   */
+  | {
+      readonly type: "commit";
+      readonly id: number;
+      readonly text: string;
+      readonly replace?: string;
+      readonly alone?: string;
+    }
   | { readonly type: "cancel"; readonly id: number };
 
 /**
@@ -383,7 +393,17 @@ export type ComposerDictationMessage =
  * the keyboard to another field mid-dictation, so the words go there as a paste instead.
  */
 export type ComposerDictationReply =
-  | { readonly type: "claimed" | "took"; readonly id: number; readonly ok: boolean }
+  | { readonly type: "took"; readonly id: number; readonly ok: boolean }
+  /** `prior`: his earlier dictations in this message, right before the caret; `replyingTo`: the reply he is answering. */
+  | {
+      readonly type: "claimed";
+      readonly id: number;
+      readonly ok: boolean;
+      readonly prior?: string;
+      readonly replyingTo?: string;
+    }
+  /** He sent a message he dictated into: `written` is what dictation put in, `kept` what he sent, so his fixes teach. */
+  | { readonly type: "sent"; readonly id: number; readonly written: string; readonly kept: string }
   | { readonly type: "action"; readonly id: number; readonly insert: boolean }
   | { readonly type: "released"; readonly id: number };
 

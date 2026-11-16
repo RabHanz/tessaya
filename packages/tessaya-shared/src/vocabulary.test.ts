@@ -6,6 +6,7 @@ import {
   candidateWords,
   correctionsAtCaret,
   correctionsBetween,
+  correctionsInSent,
   addNever,
   isNever,
   joinSplitTerms,
@@ -343,6 +344,19 @@ describe("learning from his corrections", () => {
     expect(correctionsBetween("Open Tsaya.", "Open Tessaya.")).toEqual([
       { heard: "Tsaya", meant: "Tessaya" },
     ]);
+    // A sent message he also wrote more in and cut a sentence from: each fixed run still teaches, nothing else does.
+    expect(
+      correctionsInSent(
+        "Is the Cooper Netties cluster up? Ask the git hub team. Thanks a lot.",
+        "Quick one. Is the Kubernetes cluster up? Ask the GitHub team and tell me by noon.",
+      ),
+    ).toEqual([
+      { heard: "Cooper Netties", meant: "Kubernetes" },
+      { heard: "git hub", meant: "GitHub" },
+    ]);
+    expect(correctionsInSent("Send the deck to Sam", "Email it to the whole team instead")).toEqual(
+      [],
+    );
     expect(
       parseVocabulary([
         { phrase: "Tessaya.", replacement: null, source: "learned", count: 1, heard: ["Tsaya."] },

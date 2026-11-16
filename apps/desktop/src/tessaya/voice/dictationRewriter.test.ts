@@ -187,6 +187,58 @@ describe("makeRewriter", () => {
     pieces.dispose();
   });
 
+  it("cleans his message so far with each press as one, and says so when only the new words went in", async () => {
+    const said = {
+      prior: "Which settings are still off?",
+      raw: "Set to off. Set to off.",
+      mode: "default",
+      level: "claude",
+    } as const;
+    const asked: string[] = [];
+    const settle = (messageFails: boolean) =>
+      makeRewriter({
+        claudeBinary: "claude",
+        model: "haiku",
+        workDir: "/tmp",
+        env: {},
+        platform: "linux",
+        dictionary: () => [],
+        always: true,
+        api: async (_system, message) => {
+          const text = message.match(/<dictation>([\s\S]*)<\/dictation>/)?.[1] ?? "";
+          asked.push(text);
+          if (text.startsWith("Which")) {
+            if (messageFails) throw new Error("timeout");
+            return "Which settings are still set to off?";
+          }
+          return "Set to off.";
+        },
+      });
+    const whole = settle(false);
+    expect(await whole.clean(said)).toMatchObject({
+      text: "Which settings are still set to off?",
+      stage: "model",
+      message: true,
+    });
+    expect(asked).toContain("Which settings are still off? Set to off. Set to off.");
+    whole.dispose();
+    // A guess at his pause is the message too, and release takes it without asking again.
+    asked.length = 0;
+    const guessed = settle(false);
+    guessed.speculate(said);
+    await vi.waitFor(() => expect(asked).toHaveLength(1));
+    expect(await guessed.clean(said)).toMatchObject({ message: true, speculated: true });
+    expect(asked).toHaveLength(1);
+    guessed.dispose();
+    const alone = settle(true);
+    expect(await alone.clean(said)).toMatchObject({
+      text: "Set to off.",
+      message: false,
+      why: "message pass key timeout",
+    });
+    alone.dispose();
+  });
+
   it("with his key, warms at the start and takes the whole guessed at his last pause", async () => {
     const asked: Array<{ readonly text: string; readonly maxTokens: number }> = [];
     let answer: (() => void) | null = null;

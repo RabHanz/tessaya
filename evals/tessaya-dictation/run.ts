@@ -73,7 +73,9 @@ const rows = await Promise.all(
         level: "claude",
         dictionary,
         always: true,
-        ask: (text, mode, refused) => ask(system, rewriteMessage(text, mode, {}, [], refused)),
+        ...(c.context === undefined ? {} : { context: c.context }),
+        ask: (text, mode, refused) =>
+          ask(system, rewriteMessage(text, mode, c.context ?? {}, [], refused)),
       });
       const missing = c.must.filter((w) => !cleaned.text.includes(w));
       const kept = c.never.filter((w) => cleaned.text.toLowerCase().includes(w.toLowerCase()));
