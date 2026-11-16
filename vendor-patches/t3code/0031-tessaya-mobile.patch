@@ -178,6 +178,37 @@ index d20d199119b051799bf36797e0898787d2faf02f..95cb0e9f71064a98bca794e241c5cd56
        const catalogDir = path.join(cfg.modRequest.platformProjectRoot, TARGET_NAME, CATALOG_NAME);
        const imageSetDir = path.join(catalogDir, IMAGE_SET);
        fs.mkdirSync(imageSetDir, { recursive: true });
+diff --git a/apps/mobile/src/App.tsx b/apps/mobile/src/App.tsx
+index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..8303018ad7a9fd337be077ddc6bbad715a35d142 100644
+--- a/apps/mobile/src/App.tsx
++++ b/apps/mobile/src/App.tsx
+@@ -104,6 +104,10 @@ import {
+ import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
+ import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
+ import { installAppUpdateChecks } from "./features/updates/app-updates";
++import {
++  TessayaLaunchSting,
++  markTessayaLaunchReady,
++} from "./features/tessaya/launch/TessayaLaunchSting";
+ 
+ import "../global.css";
+ 
+@@ -248,6 +252,7 @@ function SplashScreenCoordinator() {
+     hidden.current = true;
+     settleLaunchSplashHomeRows();
+     void SplashScreen.hide();
++    markTessayaLaunchReady();
+   }, [isReady, shellCachesRead, homeRowsPending, waitEnded]);
+ 
+   return null;
+@@ -304,6 +309,7 @@ function AppContent() {
+           </SafeAreaProvider>
+         </KeyboardProvider>
+       </GestureHandlerRootView>
++      <TessayaLaunchSting />
+     </>
+   );
+ }
 diff --git a/apps/mobile/src/components/BrandMark.tsx b/apps/mobile/src/components/BrandMark.tsx
 index 28d71929bddb868ba098db211667b6181f972d10..b316358c334ea9ceb59bc31f5d5c775478163bf9 100644
 --- a/apps/mobile/src/components/BrandMark.tsx
