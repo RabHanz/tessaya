@@ -243,9 +243,15 @@ describe("the speaker identity", () => {
       return out.identity.kind === "owner" && out.identity.verified;
     });
     expect(verified).toEqual([false, false, false, false, true, true, false]);
+    // Verified by the session, never by this turn's own clips: marked so nothing private opens on it.
+    expect(hold.verifiedAt).not.toBeNull();
+    expect(
+      holdVoice(hold, { ...UNVERIFIED(9), kind: "owner", confidence: 0.4 }, 60_000).identity,
+    ).toMatchObject({ verified: true, session: true });
     // A clip that clears the act cut-off verifies him at once; anyone else ends the hold.
     const once = holdVoice(NO_HOLD, owned(at(0.6), 4_000), 0);
     expect(once.identity.verified).toBe(true);
+    expect(once.identity.session).toBeUndefined();
     // Not scored yet (the early guess): his path while held, never an owner-only act.
     expect(holdVoice(once.hold, UNVERIFIED(1), HOLD_MS).identity).toMatchObject({
       kind: "owner",

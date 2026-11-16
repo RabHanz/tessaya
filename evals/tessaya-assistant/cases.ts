@@ -457,6 +457,21 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["memory_remember"],
   },
   {
+    id: "private-waiting-review",
+    source:
+      "Director 2026-11-16: held Freya imports wait in a review list he can approve by voice or in Settings",
+    said: "which of my private memories are still waiting for my yes?",
+    first: ["private_waiting"],
+    not: ["approvals_list", "memory_search"],
+  },
+  {
+    id: "approvals-not-private-waiting",
+    source: "Control for private-waiting: a plan waiting for his OK is an approval, not a memory",
+    said: "what's waiting for my approval?",
+    first: ["approvals_list"],
+    not: ["private_waiting"],
+  },
+  {
     id: "remember-work-preference",
     source: "Control for private-remember: an ordinary preference stays in the shared Memory tab",
     said: "remember that I like the office fan at thirty percent when I work",
