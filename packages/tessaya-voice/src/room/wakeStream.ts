@@ -56,17 +56,40 @@ export const requestAfterName = (texts: ReadonlyArray<string>, word: string): st
   return null;
 };
 
+/** The Tessel's wake segment gate: max(min, x10 / 10 times the room's noise floor), in raw RMS (firmware 0.3.146+). */
+export interface WakeGate {
+  readonly min: number;
+  readonly x10: number;
+}
+
+/** `R1_WAKE_GATE=min=64,x=2.5` (the firmware's own range: min 32-450, x 1.5-6), or null to keep the firmware's. */
+export const parseWakeGate = (text: string | undefined): WakeGate | null => {
+  const m = /^\s*min=(\d+)\s*,\s*x=(\d+(?:\.\d+)?)\s*$/.exec(text ?? "");
+  if (m === null) return null;
+  const gate = { min: Number(m[1]), x10: Math.round(Number(m[2]) * 10) };
+  return gate.min >= 32 && gate.min <= 450 && gate.x10 >= 15 && gate.x10 <= 60 ? gate : null;
+};
+
 /**
- * The `cmd/voice/kws` that sets the Tessel's early kws threshold, for its retained `state/voice/kws` (early in
- * thousandths), or null when it already holds it. The Tessel does not save it, so each boot reports 0 and gets it again.
+ * The `cmd/voice/kws` that sets the Tessel's early kws threshold and wake gate, for its retained `state/voice/kws`
+ * (early in thousandths), or null when it already holds them. The Tessel saves neither, so each boot gets them again.
  */
-export const kwsEarlyCommand = (
-  state: { readonly early?: unknown },
+export const kwsSettingsCommand = (
+  state: { readonly early?: unknown; readonly gate_min?: unknown; readonly gate_x10?: unknown },
   kwsWake: ReadonlyArray<{ readonly threshold: number }>,
+  gate: WakeGate | null,
 ): string | null => {
-  if (kwsWake.length === 0) return null;
-  const early = Math.min(...kwsWake.map((w) => w.threshold));
-  return state.early === Math.round(early * 1000) ? null : JSON.stringify({ early });
+  const send: { early?: number; gate_min?: number; gate_x10?: number } = {};
+  if (kwsWake.length > 0) {
+    const early = Math.min(...kwsWake.map((w) => w.threshold));
+    if (state.early !== Math.round(early * 1000)) send.early = early;
+  }
+  // Only firmware that reports a gate takes one; an older Tessel's reply would never match, so it would be asked forever.
+  if (gate !== null && typeof state.gate_min === "number") {
+    if (state.gate_min !== gate.min) send.gate_min = gate.min;
+    if (state.gate_x10 !== gate.x10) send.gate_x10 = gate.x10;
+  }
+  return Object.keys(send).length === 0 ? null : JSON.stringify(send);
 };
 
 /** `event/wake/kws`: the R1's on-device wake model on one segment (firmware contract). */
