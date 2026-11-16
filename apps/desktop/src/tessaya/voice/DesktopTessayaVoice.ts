@@ -104,6 +104,13 @@ import {
   type Binding,
   type BindingInput,
 } from "../bindings/bindings.ts";
+import {
+  claimsFor,
+  deckDeviceId,
+  deckManifest,
+  startAirdeckLink,
+  type Remote,
+} from "../airdeck/airdeckLink.ts";
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/tessaya-shared/approvals";
@@ -3937,6 +3944,13 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       .find((row) => row.def.id === action)
       ?.inputs.flatMap((i) => (i.type === "key" ? [i.accelerator] : [])) ?? [];
   let bindingsNote: string | null = null;
+  /** The Airdeck remotes airdeck-core knows, from its hello, and the bindings row waiting for one of their buttons. */
+  let remotes: ReadonlyArray<Remote> = [];
+  let remoteListen: { readonly action: string; readonly until: number } | null = null;
+  const remoteTapOnly = () =>
+    new Set(
+      remotes.flatMap((r) => r.buttons.filter((b) => b.tapOnly).map((b) => `${r.id}/${b.id}`)),
+    );
   /** Keys Windows or another app would not give up: said on the page, never a binding that silently does nothing. */
   let takenNote: string | null = null;
   /** The provider's own HTTPS API on his key; plain fetch, as the adapters are pure and take any fetch. */
@@ -6682,6 +6696,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       bindingsNote: bindingsNote ?? takenNote,
       mouseReady: mouseHookReady,
       mouseButtons: input.platform === "win32",
+      remoteButtons: Object.fromEntries(
+        remotes.flatMap((r) => r.buttons.map((b) => [`${r.id}/${b.id}`, `${r.name} ${b.label}`])),
+      ),
       usage: input.sessions?.usage() ?? [],
       lifecycle,
       paths: [
@@ -8251,7 +8268,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           const parsed = parseBindings([{ action, inputs: [JSON.parse(value)] }])[0]?.inputs[0];
           if (parsed === undefined) bindingsNote = "That input could not be read.";
           else {
-            const change = addInput(settings.bindings, action, row.inputs, parsed);
+            const change = addInput(settings.bindings, action, row.inputs, parsed, remoteTapOnly());
             if ("error" in change) bindingsNote = change.error;
             else next = change.saved;
           }
@@ -8260,6 +8277,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         }
       } else if (verb === "remove" && typeof value === "number" && row !== undefined) {
         next = removeInput(settings.bindings, action, row.inputs, value);
+      } else if (verb === "listen") {
+        // The page waits for a remote button for this row; a stale wait (Escape, a key instead) ends on its own.
+        remoteListen = value === true ? { action, until: Date.now() + 30_000 } : null;
       } else if (verb === "clear") next = withBinding(settings.bindings, action, []);
       else if (verb === "reset") next = withBinding(settings.bindings, action, "reset");
       else if (verb === "resetAll") next = [];
@@ -9278,6 +9298,123 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       (ask?.click as (() => void) | undefined)?.();
     },
   });
+  /** One of the bindings page's actions, from a remote's button or a registry write (a rule, the brain, an agent). */
+  const runAction = (id: string): boolean => {
+    if (id === "toggle") {
+      sidecar?.toggle();
+      return sidecar !== null;
+    }
+    const handler = handlers[id];
+    handler?.();
+    return handler !== undefined;
+  };
+  // The Airdeck remote (L-142): bound buttons run their action here at once (a hold lasts while the button is down),
+  // and every press of a button Tessaya owns is an event on that remote's registry device, for rules and the brain.
+  const deckLog = (line: string) => {
+    try {
+      NodeFS.appendFileSync(
+        NodePath.join(input.logDir, "airdeck.log"),
+        `${new Date().toISOString()} ${line}\n`,
+      );
+    } catch {}
+  };
+  const deckManifestSent = new Set<string>();
+  const deckPublish = (
+    remote: Remote,
+    values: ReadonlyArray<{ itemId: string; value: unknown }>,
+  ) => {
+    const direct = input.direct;
+    if (direct === undefined) return;
+    const id = deckDeviceId(remote.id);
+    const withManifest = !deckManifestSent.has(id);
+    void direct(
+      BATON_DEVICES_WS_METHODS.call,
+      {
+        kind: "vessel",
+        op: "publish",
+        args: { deviceId: id, ...(withManifest ? { manifest: deckManifest(remote) } : {}), values },
+      },
+      10_000,
+    ).then(
+      (r) => {
+        if ((r as { ok?: unknown } | null)?.ok === true) deckManifestSent.add(id);
+        else deckManifestSent.delete(id);
+      },
+      () => deckManifestSent.delete(id),
+    );
+  };
+  const boundRemoteButtons = () =>
+    currentBindings().flatMap((row) =>
+      row.inputs.flatMap((i) => (i.type === "remote" ? [i.button] : [])),
+    );
+  const deck =
+    input.platform === "win32" && process.env["LOCALAPPDATA"] !== undefined
+      ? startAirdeckLink({
+          localAppData: process.env["LOCALAPPDATA"],
+          log: deckLog,
+          onHello: (list) => {
+            remotes = list;
+            deckLog(
+              `core: ${list.map((r) => `${r.id}${r.connected ? " connected" : ""}`).join(", ")}`,
+            );
+            deck?.claim(claimsFor(remotes, boundRemoteButtons()));
+            for (const r of list)
+              if (r.connected) deckPublish(r, [{ itemId: "connected", value: true }]);
+            home.refresh();
+          },
+          onDevice: (id, connected) => {
+            remotes = remotes.map((r) => (r.id === id ? { ...r, connected } : r));
+            const remote = remotes.find((r) => r.id === id);
+            deckLog(`${id} ${connected ? "connected" : "unplugged"}`);
+            if (remote !== undefined)
+              deckPublish(remote, [{ itemId: "connected", value: connected }]);
+          },
+          onButton: (id, button, down, mine) => {
+            const key = `${id}/${button}`;
+            const listen = remoteListen;
+            if (down && listen !== null && listen.until > Date.now()) {
+              remoteListen = null;
+              const row = currentBindings().find((r) => r.def.id === listen.action);
+              if (row === undefined) return;
+              const change = addInput(
+                settings.bindings,
+                listen.action,
+                row.inputs,
+                { type: "remote", button: key },
+                remoteTapOnly(),
+              );
+              bindingsNote = "error" in change ? change.error : null;
+              if ("saved" in change) {
+                save({ bindings: change.saved });
+                applyBindings();
+              }
+              deckLog(
+                `${key} bound to ${listen.action}${"error" in change ? ` refused: ${change.error}` : ""}`,
+              );
+              return home.refresh();
+            }
+            if (!mine) return;
+            const rows = currentBindings().filter((r) =>
+              r.inputs.some((i) => i.type === "remote" && i.button === key),
+            );
+            for (const row of rows) {
+              if (row.def.id === "hold") {
+                if (down) sidecar?.start();
+                else sidecar?.finish();
+              } else if (down) runAction(row.def.id);
+            }
+            if (down) {
+              const remote = remotes.find((r) => r.id === id);
+              if (remote !== undefined)
+                deckPublish(remote, [{ itemId: `press.${button}`, value: "press" }]);
+            }
+            deckLog(
+              `${key} ${down ? "down" : "up"}${rows.length === 0 ? "" : ` -> ${rows.map((r) => r.def.id).join(", ")}`}`,
+            );
+          },
+        })
+      : null;
+  if (deck !== null) Electron.app.on("will-quit", deck.stop);
   /** Puts every key he has set in place, and takes the old ones away. Mouse buttons go to the hook. */
   const applyBindings = () => {
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
@@ -9314,6 +9451,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     const toggleKey = first("toggle") ?? settings.toggleKey;
     if (holdKey !== settings.holdKey || toggleKey !== settings.toggleKey)
       save({ holdKey, toggleKey });
+    deck?.claim(claimsFor(remotes, boundRemoteButtons()));
     configureDictation();
     // Unbinding the last dictation key ends the Claude session it kept warm.
     syncCleanupSession();
@@ -9363,6 +9501,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       }),
       applySetting: (id, value) => applyHome(id, value),
       onMascot: (act) => mascot.act(act),
+      onAction: runAction,
       // A message from someone at home: a toast, its glance on the pill, and its sound (a placeholder cue for now).
       onNote: (value) => {
         const card = noteCardOf(value);

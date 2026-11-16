@@ -981,18 +981,22 @@ function tabPage(p) {
 }
 
 
-let capturing = null, capNote = '';
+let capturing = null, capNote = '', capLen = 0;
+function remoteName(b) { return ((S.extra || {}).remoteButtons || {})[b] || b.replace('/', ' '); }
 function keyName(e) { const k = e.key; if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Unidentified'].includes(k)) return null; const m = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Return', Escape: 'Escape' }; return m[k] || (k.length === 1 ? k.toUpperCase() : k); }
 function accel(e) { const k = keyName(e); if (!k) return null; const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta'].filter(Boolean); return mods.concat([k]).join('+'); }
-function chips(input) { const w = $('div', 'chips'); if (!input) { w.appendChild($('span', 'hint', 'Off')); return w; } if (input.type === 'key') input.accelerator.split('+').forEach(x => w.appendChild($('kbd', null, x))); else w.appendChild($('span', 'chip plain', ({ middle: 'Middle button', back: 'Back button', forward: 'Forward button', 'left+right': 'Left and right together' })[input.button] || input.button)); return w; }
+function chips(input) { const w = $('div', 'chips'); if (!input) { w.appendChild($('span', 'hint', 'Off')); return w; } if (input.type === 'key') input.accelerator.split('+').forEach(x => w.appendChild($('kbd', null, x))); else if (input.type === 'remote') w.appendChild($('span', 'chip plain', 'Remote ' + remoteName(input.button))); else w.appendChild($('span', 'chip plain', ({ middle: 'Middle button', back: 'Back button', forward: 'Forward button', 'left+right': 'Left and right together' })[input.button] || input.button)); return w; }
 const BTN = { middle: 'Middle button', back: 'Back button', forward: 'Forward button', 'left+right': 'Left and right together' };
-function inputLabel(i) { return i.type === 'key' ? i.accelerator.split('+').join(' + ') : (BTN[i.button] || i.button); }
+function inputLabel(i) { return i.type === 'key' ? i.accelerator.split('+').join(' + ') : i.type === 'remote' ? 'Remote ' + remoteName(i.button) : (BTN[i.button] || i.button); }
 function bindingsPage(b) {
   const x = S.extra || {}; const rows = x.bindings || [];
   b.appendChild($('h1', null, 'Keyboard and mouse'));
   b.appendChild($('p', 'lede', 'Give each action up to four ways to start it. Voice always works with no button at all.'));
   if (x.bindingsNote) { const n = $('p', 'fix', x.bindingsNote); n.style.color = 'var(--warn)'; b.appendChild(n); }
   const g = $('div', 'group');
+  const remote = Object.keys(x.remoteButtons || {}).length > 0;
+  // A remote button arrives through the main process: the row it went to has one more input.
+  const capRow = rows.find(r => r.action === capturing); if (capRow && capRow.inputs.length > capLen) { capturing = null; capNote = ''; }
   for (const r of rows) {
     const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); row.style.alignItems = 'flex-start';
     const t = $('div', 'text'); t.style.cssText = 'flex:1;min-width:0'; t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
@@ -1007,11 +1011,11 @@ function bindingsPage(b) {
       const c = $('span', 'chipx'); c.appendChild(chips(i));
       const rm = $('button', 'x'); rm.appendChild(icon('x', 12)); rm.setAttribute('aria-label', 'Remove ' + inputLabel(i)); rm.onclick = () => set('b.remove:' + r.action, n); c.appendChild(rm); side.appendChild(c);
     });
-    if (r.inputs.length < 4) { const ch = $('button', 'btn quiet', on ? 'Cancel' : (r.inputs.length ? 'Add another' : 'Add')); ch.onclick = () => { capturing = on ? null : r.action; capNote = ''; render(); }; side.appendChild(ch); }
+    if (r.inputs.length < 4) { const ch = $('button', 'btn quiet', on ? 'Cancel' : (r.inputs.length ? 'Add another' : 'Add')); ch.onclick = () => { capturing = on ? null : r.action; capNote = ''; capLen = r.inputs.length; if (remote) set('b.listen:' + r.action, !on); render(); }; side.appendChild(ch); }
     else side.appendChild($('span', 'hint', 'Four is the most'));
     if (!r.isDefault && !on) { const rs = $('button', 'btn quiet', 'Reset'); rs.onclick = () => set('b.reset:' + r.action, null); side.appendChild(rs); }
     row.append(t, side); wrap.appendChild(row);
-    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', x.mouseButtons ? 'Press a key or a chord of up to three keys, or click a mouse button. Escape cancels.' : 'Press a key or a chord of up to three keys. Escape cancels. Mouse buttons can be bound on Windows only.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
+    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', x.mouseButtons ? 'Press a key or a chord of up to three keys, or click a mouse button' + (remote ? ', or press a button on the remote' : '') + '. Escape cancels.' : 'Press a key or a chord of up to three keys. Escape cancels. Mouse buttons can be bound on Windows only.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
     g.appendChild(wrap);
   }
   const f = $('div', 'row'); const ft = $('div', 'text'); ft.append($('div', 'label', 'Cancel a recording, a card or a drive'), $('div', 'hint', 'Always Escape.')); f.append(ft, chips({ type: 'key', accelerator: 'Escape' })); g.appendChild(f);
