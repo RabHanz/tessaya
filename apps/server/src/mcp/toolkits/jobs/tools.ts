@@ -186,6 +186,15 @@ const ScheduleRunNowTool = Tool.make("schedule_run_now", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.OpenWorld, false);
+const SchedulePauseTool = Tool.make("schedule_pause", {
+  ...shared,
+  description: JOB_TOOL_TEXT.schedule_pause,
+  parameters: Schema.Struct({ id: TaskId, on: Schema.Boolean }),
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, false);
 const ScheduleDeleteTool = Tool.make("schedule_delete", {
   ...shared,
   description: JOB_TOOL_TEXT.schedule_delete,
@@ -201,6 +210,7 @@ export const JobTools = [
   ProjectAddTool,
   SchedulesListTool,
   ScheduleRunNowTool,
+  SchedulePauseTool,
   ScheduleDeleteTool,
   StartTool,
   RetryTool,

@@ -146,6 +146,22 @@ export const make = Effect.gen(function* () {
         } satisfies Reply;
       }),
     ),
+    schedule_pause: act((input: JobInput<"schedule_pause">) =>
+      Effect.gen(function* () {
+        if (!(yield* tasks).tasks.some((task) => task.id === input.id)) return noTask;
+        yield* run(
+          Effect.flatMap(ScheduledTaskService, (scheduler) =>
+            scheduler.setEnabled({ id: ScheduledTaskId.make(input.id), enabled: input.on }),
+          ),
+        );
+        return {
+          id: input.id,
+          line: input.on
+            ? "Resumed; it runs on its schedule again."
+            : "Paused; say resume it to start it again.",
+        } satisfies Reply;
+      }),
+    ),
     schedule_delete: act((input: JobInput<"schedule_delete">) =>
       Effect.gen(function* () {
         if (!(yield* tasks).tasks.some((task) => task.id === input.id)) return noTask;

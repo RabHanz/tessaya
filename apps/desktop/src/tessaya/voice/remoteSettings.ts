@@ -12,7 +12,7 @@ import {
 import * as Schema from "effect/Schema";
 
 import type { HomeControl } from "../home/tessayaHome.ts";
-import { SETTINGS, tabOf } from "../home/tabs.ts";
+import { tabOf, type TabId } from "../home/tabs.ts";
 
 const decodeSync = Schema.decodeUnknownOption(DesktopSettingsSyncResult);
 
@@ -56,10 +56,36 @@ const CONTROL: Record<keyof DesktopVoiceSettingsPatch, string> = {
 };
 
 /**
- * How each Settings category's controls may change by voice; a control may say otherwise (`voice`). Typed over the
- * categories, so a new one without a voice class does not compile.
+ * How each tab's controls may change by voice; a control may say otherwise (`voice`). Null: a page of his own items
+ * (sessions, memories, jobs), reached through their own tools rather than one control each. Typed over every tab, so
+ * a new one without a voice class does not compile.
  */
-const TAB_VOICE: Record<(typeof SETTINGS)[number]["id"], DesktopSettingsControl["voice"]> = {
+const TAB_VOICE: Record<TabId, DesktopSettingsControl["voice"] | null> = {
+  dictation: "free",
+  snippets: "free",
+  style: "free",
+  transforms: "free",
+  intercom: "free",
+  hardware: "confirm",
+  cloud: "owner",
+  homeassistant: "owner",
+  phone: "owner",
+  setup: null,
+  home: null,
+  now: null,
+  insights: null,
+  scratchpad: null,
+  sessions: null,
+  approvals: null,
+  jobs: null,
+  history: null,
+  memory: null,
+  vault: null,
+  tools: null,
+  usage: null,
+  trust: null,
+  learn: null,
+  help: null,
   accounts: "owner",
   apis: "owner",
   brain: "owner",
@@ -74,23 +100,29 @@ const TAB_VOICE: Record<(typeof SETTINGS)[number]["id"], DesktopSettingsControl[
   about: "free",
 };
 
+type VoiceClass = DesktopSettingsControl["voice"];
+const STRICTNESS: ReadonlyArray<VoiceClass> = ["free", "confirm", "owner", "never"];
+const atLeast = (a: VoiceClass, b: VoiceClass): VoiceClass =>
+  STRICTNESS.indexOf(a) >= STRICTNESS.indexOf(b) ? a : b;
+
 /**
- * Every toggle and choice in Settings, published to this machine's server so each is reachable by voice (settings_*
- * as `desktop:<id>`). The typed fields above are left out: they are settings already.
+ * Every toggle, choice, button and list in Settings, published to this machine's server so each is reachable by voice
+ * (settings_* as `desktop:<id>`). The typed fields above are left out: they are settings already.
  */
 export const voiceControls = (
   controls: ReadonlyArray<HomeControl>,
 ): ReadonlyArray<DesktopSettingsControl> => {
   const typed = new Set(Object.values(CONTROL));
-  return controls.flatMap((c): ReadonlyArray<DesktopSettingsControl> => {
+  const published = controls.flatMap((c): ReadonlyArray<DesktopSettingsControl> => {
     const tab = c.tab ?? tabOf(c.id);
-    if (!(tab in TAB_VOICE) || typed.has(c.id) || c.disabled === true) return [];
+    const tabVoice = TAB_VOICE[tab];
+    if (tabVoice === null || typed.has(c.id) || c.disabled === true) return [];
     const base = {
       id: c.id.slice(0, 120),
       label: c.label.slice(0, 200),
       section: c.section.slice(0, 80),
       ...(c.hint === undefined ? {} : { hint: c.hint.slice(0, 400) }),
-      voice: c.voice ?? TAB_VOICE[tab as keyof typeof TAB_VOICE],
+      voice: c.voice ?? tabVoice,
     };
     if (c.kind === "toggle") return [{ ...base, value: c.on }];
     if (c.kind === "choice")
@@ -101,8 +133,48 @@ export const voiceControls = (
           options: c.options.slice(0, 40).map((o) => o.value.slice(0, 200)),
         },
       ];
+    if (c.kind === "brain")
+      return [
+        {
+          ...base,
+          value: c.value.slice(0, 200),
+          options: c.options
+            .filter((o) => o.state === "ready")
+            .slice(0, 40)
+            .map((o) => o.value.slice(0, 200)),
+        },
+      ];
+    // A button may delete or send, so a press waits for his yes unless the button itself says it is free.
+    if (c.kind === "action")
+      return [
+        {
+          ...base,
+          voice: c.voice ?? atLeast(base.voice, c.id.startsWith("vid.") ? "owner" : "confirm"),
+          kind: "action",
+          value: c.button.slice(0, 200),
+        },
+      ];
+    if (c.kind === "list")
+      return [
+        {
+          ...base,
+          // A key typed into a list is a secret: never read aloud or set from a room. Voice ID's people are his.
+          voice:
+            c.secret === true
+              ? "never"
+              : c.id.startsWith("vid.")
+                ? atLeast(base.voice, "owner")
+                : base.voice,
+          kind: "list",
+          value: c.secret === true ? "" : c.items.join(", ").slice(0, 200),
+          items: c.secret === true ? [] : c.items.slice(0, 60).map((i) => i.slice(0, 200)),
+        },
+      ];
     return [];
   });
+  // The sync takes at most 400, and one too many would refuse the whole report: settings first, buttons last.
+  const rank = (c: DesktopSettingsControl) => (c.kind === "action" ? 2 : c.kind === "list" ? 1 : 0);
+  return published.toSorted((a, b) => rank(a) - rank(b)).slice(0, 400);
 };
 
 const REPUBLISH_MS = 10 * 60_000;
@@ -122,7 +194,7 @@ export const createRemoteSettings = (input: {
     readonly controls?: ReadonlyArray<DesktopSettingsControl>;
   }) => Promise<unknown>;
   readonly current: () => DesktopVoiceSettings;
-  readonly apply: (id: string, value: string | boolean) => void;
+  readonly apply: (id: string, value: string | boolean | null) => void;
   /** Its Settings controls, published for voice when they change. */
   readonly controls?: () => ReadonlyArray<HomeControl>;
   /** His standing yeses as this server holds them, from every sync. */
@@ -153,8 +225,13 @@ export const createRemoteSettings = (input: {
     const change = answer._tag === "Some" ? answer.value.change : null;
     if (change === null || change.version <= applied) return false;
     for (const [id, value] of controlsFor(change.patch)) input.apply(id, value);
-    // A voice change of one of its own controls: as his click.
-    for (const { id, value } of change.controls ?? []) input.apply(id, value);
+    // A voice change of one of its own controls: as his click. A button press sends what the button sends.
+    const now = change.controls === undefined ? [] : (input.controls?.() ?? []);
+    for (const { id, value } of change.controls ?? []) {
+      const button = now.find((c) => c.id === id && c.kind === "action");
+      if (button?.kind === "action") input.apply(id, button.value ?? null);
+      else input.apply(id, value);
+    }
     applied = change.version;
     await report();
     return true;
