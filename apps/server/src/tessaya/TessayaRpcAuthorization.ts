@@ -112,6 +112,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_BRAIN_WS_METHODS.usage]: AuthOrchestrationReadScope,
   [BATON_PERSONAS_WS_METHODS.list]: AuthOrchestrationReadScope,
+  // His roster: settings:write, which only the owner and admins hold.
+  [BATON_PERSONAS_WS_METHODS.change]: AuthSettingsWriteScope,
   // His prompts, and runs on his subscription: settings:write, which only the owner and admins hold.
   [BATON_PROMPT_LAB_WS_METHODS.call]: AuthSettingsWriteScope,
   // Rows name their actor, so only the desktop app's own session (hands-host, which no grant can give) writes them.

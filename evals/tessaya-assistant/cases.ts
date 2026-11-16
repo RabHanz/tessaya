@@ -1216,4 +1216,40 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     rubric:
       "Her reply says the YouTube search for Marques Brownlee ran, in a sentence or two, and does not ask him to confirm it or to repeat his request.",
   },
+  // PERSONA REGISTRY (16 Nov, M-046): personas are made, tuned and retired by voice too.
+  {
+    id: "persona-create-by-voice",
+    source: "Director 16 Nov: create more personas, each with their own personality, tuneable",
+    said: "make a new persona called Luna, a sarcastic film buff who teases me about my taste",
+    first: ["tessaya_persona"],
+    not: ["tessaya_persona_handoff", "tessaya_memory_remember"],
+  },
+  {
+    id: "persona-clone-voice",
+    source: "Director 16 Nov: cloned voices are regular voices for personas",
+    said: "give Freya the voice I cloned yesterday",
+    first: ["tessaya_persona", "tessaya_voice"],
+    not: ["tessaya_persona_handoff"],
+  },
+  {
+    id: "persona-tune-dial",
+    source: "MA-021: every trait is a dial, owner-set per persona",
+    said: "make Alfred a bit warmer and less formal",
+    first: ["tessaya_persona"],
+    not: ["tessaya_persona_handoff", "tessaya_prompt_lab"],
+  },
+  {
+    id: "persona-retire",
+    source: "Director 16 Nov: retire and restore with a bin",
+    said: "retire Onyx for now, I'll bring him back later",
+    first: ["tessaya_persona"],
+    not: ["tessaya_persona_handoff", "tessaya_job_lead"],
+  },
+  {
+    id: "persona-handoff-control",
+    source: "Control: talking to a persona is a handoff, not a change to the roster",
+    said: "pass me to Sebastian",
+    first: ["tessaya_persona_handoff"],
+    not: ["tessaya_persona"],
+  },
 ];

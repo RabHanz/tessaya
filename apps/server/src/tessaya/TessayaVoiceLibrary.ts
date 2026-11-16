@@ -422,6 +422,9 @@ export const voiceFor = (
   const clone = view.clones?.find(same);
   if (clone !== undefined) return { engine: "clone", voice: clone.id, name: clone.name };
   const persona = view.personas.find(same);
+  const personaClone = view.clones?.find((c) => c.id === persona?.cloneVoice);
+  if (persona !== undefined && personaClone !== undefined)
+    return { engine: "clone", voice: personaClone.id, name: persona.name };
   if (persona !== undefined)
     return persona.cloudVoice !== null && view.cloud !== null
       ? { engine: "gemini", voice: persona.cloudVoice, name: persona.name }
@@ -462,7 +465,7 @@ export class TessayaVoiceLibrary extends Context.Service<
     readonly setHfToken: (token: string | null) => Effect.Effect<void, VoiceRefusedError>;
     readonly setPersona: (input: {
       readonly persona: string;
-      readonly engine: "pocket" | "gemini";
+      readonly engine: "pocket" | "gemini" | "clone";
       readonly voice: string | null;
     }) => Effect.Effect<void, VoiceRefusedError>;
     readonly setGoogleKey: (key: string | null) => Effect.Effect<void, VoiceRefusedError>;
@@ -543,6 +546,7 @@ export const make = Effect.gen(function* () {
         lead: p.lead,
         voice: p.voice,
         cloudVoice: p.cloudVoice ?? null,
+        cloneVoice: p.cloneVoice ?? null,
         speaks: resolvePersonaVoice(p, { cloud, commercial }).pocket,
       })),
       previews: { pocket: pocket !== null, cloud },
@@ -771,16 +775,25 @@ export const make = Effect.gen(function* () {
 
   const setPersona = Effect.fn("BatonVoiceLibrary.setPersona")(function* (input: {
     readonly persona: string;
-    readonly engine: "pocket" | "gemini";
+    readonly engine: "pocket" | "gemini" | "clone";
     readonly voice: string | null;
   }) {
-    if (input.voice !== null && !isLibraryVoice(input.engine, input.voice, { commercial })) {
+    // A clone is a library voice too, while his consent for it stands; `voice:` stays its fallback.
+    if (input.engine === "clone") {
+      if (input.voice !== null && !(yield* savedClones).some((c) => c.id === input.voice))
+        return yield* new VoiceRefusedError({ why: "There is no saved clone by that name." });
+    } else if (input.voice !== null && !isLibraryVoice(input.engine, input.voice, { commercial })) {
       return yield* new VoiceRefusedError({ why: "That voice is not in the library." });
     }
     if (!readPack(userdata).personas.some((p) => p.id === input.persona)) {
       return yield* new VoiceRefusedError({ why: "There is no persona by that name." });
     }
-    const key = input.engine === "pocket" ? "voice" : "cloud voice";
+    const key =
+      input.engine === "pocket"
+        ? "voice"
+        : input.engine === "gemini"
+          ? "cloud voice"
+          : "clone voice";
     const done = yield* Effect.try({
       try: () => setPersonaField(packDir, input.persona, key, input.voice),
       catch: () => new VoiceRefusedError({ why: "The persona's file could not be written." }),
@@ -930,7 +943,11 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
     }
     case "setPersona": {
       const a = decode(
-        Schema.Struct({ persona: Text(60), engine: Engine, voice: Schema.NullOr(Text(80)) }),
+        Schema.Struct({
+          persona: Text(60),
+          engine: Schema.Literals(["pocket", "gemini", "clone"]),
+          voice: Schema.NullOr(Text(80)),
+        }),
       );
       return Option.isNone(a) ? bad : yield* answer(voices.setPersona(a.value));
     }

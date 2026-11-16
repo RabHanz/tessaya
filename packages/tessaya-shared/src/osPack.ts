@@ -67,6 +67,8 @@ export interface Persona {
   readonly voice: string;
   /** Its Gemini voice (`cloud voice:`), spoken while cloud voices are on; its Pocket voice stays the fallback. */
   readonly cloudVoice?: string;
+  /** One of his saved clones (`clone voice:`), spoken where clones can be; `voice` stays the fallback. */
+  readonly cloneVoice?: string;
   /** One line of who it is and how it sounds, for its turns. */
   readonly role: string;
   readonly lead: boolean;
@@ -193,7 +195,7 @@ const face = (
   lead: boolean,
 ): Persona | null => {
   const name = fields["name"] ?? "";
-  if (name === "" && !lead) return null;
+  if ((name === "" || isRetired(fields)) && !lead) return null;
   const wake = fields["wake"] ?? "";
   const tools = fields["tools"];
   return {
@@ -204,6 +206,7 @@ const face = (
     wake: wake === "" ? null : wake,
     voice: (fields["voice"] ?? "").toLowerCase(),
     ...(fields["cloud voice"] ? { cloudVoice: fields["cloud voice"].toLowerCase() } : {}),
+    ...(fields["clone voice"] ? { cloneVoice: fields["clone voice"].toLowerCase() } : {}),
     role: fields["role"] ?? "",
     lead,
     ...(!lead && /^(?:yes|true)$/i.test((fields["private"] ?? "").trim()) ? { private: true } : {}),
@@ -224,6 +227,10 @@ const face = (
 };
 
 const BODY_ID = /^[a-z][a-z0-9-]{0,40}$/i;
+
+/** `retired: yes` in a role file: in his bin, out of the roster, its file and records kept for a restore. */
+export const isRetired = (fields: Readonly<Record<string, string>>): boolean =>
+  /^(?:yes|true)$/i.test((fields["retired"] ?? "").trim());
 
 const nameOf = (text: string | undefined) =>
   (splitFront(text ?? "").fields["name"] ?? "").trim().toLowerCase();

@@ -127,6 +127,8 @@ export const PersonaVoiceRow = Schema.Struct({
   /** As his file says it; empty when it has no voice of its own. */
   voice: Schema.String,
   cloudVoice: Schema.NullOr(Schema.String),
+  /** One of his saved clones (its id), spoken first where clones can be; null when it has none. */
+  cloneVoice: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** What it speaks in now: the library's voice for `voice`, or the default. */
   speaks: Schema.String,
 });

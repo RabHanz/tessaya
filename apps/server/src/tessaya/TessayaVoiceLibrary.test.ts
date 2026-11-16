@@ -19,6 +19,7 @@ import { describe, expect, vi } from "vite-plus/test";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
+import { changePersona } from "./PersonaChanges.ts";
 import { BrainUsage, type UsageRow } from "./BrainUsage.ts";
 import { Consent } from "./consent.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
@@ -56,7 +57,9 @@ const memoryConsent = (keys: Array<string>) =>
   );
 
 const withLibrary = <A, E>(
-  body: (userdata: string) => Effect.Effect<A, E, TessayaVoiceLibrary.TessayaVoiceLibrary>,
+  body: (
+    userdata: string,
+  ) => Effect.Effect<A, E, TessayaVoiceLibrary.TessayaVoiceLibrary | ServerConfig.ServerConfig>,
   grants: Array<string> = [],
   rows: Array<UsageRow> = [],
 ) =>
@@ -69,7 +72,7 @@ const withLibrary = <A, E>(
     return yield* body(stateDir).pipe(
       Effect.provide(
         TessayaVoiceLibrary.layer.pipe(
-          Layer.provide(ServerConfig.layerTest(process.cwd(), base)),
+          Layer.provideMerge(ServerConfig.layerTest(process.cwd(), base)),
           Layer.provide(memorySecrets()),
           Layer.provide(memoryConsent(grants)),
           Layer.provide(
@@ -346,6 +349,49 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
               (yield* library())?.map((c) => c.name),
               ["Me"],
             );
+            // A clone is a persona's voice like any library voice, chosen by id or by its name.
+            assert.isTrue(
+              (yield* call("act", "setPersona", {
+                persona: "companion",
+                engine: "clone",
+                voice: id,
+              })).ok,
+            );
+            const view = (yield* call("read", "library")).value as VoiceLibraryView;
+            assert.deepStrictEqual(TessayaVoiceLibrary.voiceFor(view, "Freya"), {
+              engine: "clone",
+              voice: id,
+              name: "Freya",
+            });
+            const made = yield* changePersona(
+              { op: "create", draft: { name: "Luna", cloneVoice: "me" } },
+              { owner: true },
+            );
+            assert.isTrue(made.ok);
+            assert.include(
+              NodeFS.readFileSync(
+                NodePath.join(userdata, "operating-system", "roles", "luna.md"),
+                "utf8",
+              ),
+              `clone voice: ${id}`,
+            );
+            // The private layer is his alone; a name is never taken twice.
+            const refused = yield* changePersona(
+              { op: "create", draft: { name: "Nyx", private: true } },
+              { owner: false },
+            );
+            assert.strictEqual(
+              refused.error,
+              "Only he can do that, in his own voice or at his keyboard.",
+            );
+            const twice = yield* changePersona(
+              { op: "create", draft: { name: "luna" } },
+              { owner: true },
+            );
+            assert.strictEqual(twice.error, "There is already a persona called luna.");
+            assert.isTrue((yield* changePersona({ op: "retire", id: "Luna" }, { owner: true })).ok);
+            const bin = yield* changePersona({ op: "bin" }, { owner: true });
+            assert.deepStrictEqual(bin.bin, [{ id: "luna", name: "Luna" }]);
             // With consent it goes to Pocket, which this machine lacks.
             assert.strictEqual(
               yield* say("owner", { engine: "clone", voice: id }),

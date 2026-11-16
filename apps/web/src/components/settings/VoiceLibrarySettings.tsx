@@ -30,6 +30,7 @@ import {
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
+import { PersonaRoster } from "./PersonaRosterSettings";
 import { VoicePlayground } from "./VoicePlayground";
 
 /** The owner's `mood` op: the spine's label for a persona, how strongly, and the reasons it logged. */
@@ -134,7 +135,11 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
     await clip.play().catch(() => setPlaying(null));
   };
 
-  const setPersona = async (persona: string, engine: "pocket" | "gemini", voice: string | null) => {
+  const setPersona = async (
+    persona: string,
+    engine: "pocket" | "gemini" | "clone",
+    voice: string | null,
+  ) => {
     const reply = await call("act", "setPersona", { persona, engine, voice });
     setNote(reply.ok ? "" : (reply.error ?? "That was not saved."));
     if (reply.ok) await refresh();
@@ -177,6 +182,11 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
   return (
     <>
       <VoicePlayground library={library} call={call} onChanged={refresh} />
+      <PersonaRoster
+        environmentId={environmentId}
+        clones={library.clones ?? []}
+        onChanged={refresh}
+      />
       <SettingsSection id="voice-personas" title="Persona voices">
         <SettingsRow
           title="Who speaks in which voice"
@@ -283,12 +293,13 @@ function PersonaRow(props: {
   readonly library: VoiceLibraryView;
   readonly playing: string | null;
   readonly onPlay: (voice: LibraryVoiceView) => void;
-  readonly onPick: (engine: "pocket" | "gemini", voice: string | null) => void;
+  readonly onPick: (engine: "pocket" | "gemini" | "clone", voice: string | null) => void;
 }) {
   const { persona, library } = props;
   const pocket = byEar(library.pocket);
   const speaks = pocket.find((v) => v.id === persona.speaks) ?? pocket[0];
   const cloud = library.cloud === null ? null : byEar(library.cloud);
+  const clone = (library.clones ?? []).find((c) => c.id === persona.cloneVoice);
   const label = (v: LibraryVoiceView) => `${v.name}${v.personalUse ? " (personal use)" : ""}`;
   const groups = (voices: ReadonlyArray<LibraryVoiceView>) =>
     (["female", "male"] as const).map((gender) => (
@@ -307,9 +318,11 @@ function PersonaRow(props: {
     <SettingsRow
       title={persona.lead ? `${persona.name} (lead)` : persona.name}
       description={
-        persona.cloudVoice !== null && cloud !== null
-          ? `Speaks in ${cloud.find((v) => v.id === persona.cloudVoice)?.name ?? persona.cloudVoice}; ${speaks?.name ?? persona.speaks} when Google can’t be reached.`
-          : `Speaks in ${speaks?.name ?? persona.speaks}.`
+        clone !== undefined
+          ? `Speaks in your clone ${clone.name} where clones can be spoken; ${speaks?.name ?? persona.speaks} elsewhere.`
+          : persona.cloudVoice !== null && cloud !== null
+            ? `Speaks in ${cloud.find((v) => v.id === persona.cloudVoice)?.name ?? persona.cloudVoice}; ${speaks?.name ?? persona.speaks} when Google can’t be reached.`
+            : `Speaks in ${speaks?.name ?? persona.speaks}.`
       }
       control={
         <div className="flex min-w-0 items-center justify-end gap-1.5">
@@ -333,6 +346,35 @@ function PersonaRow(props: {
             </SelectTrigger>
             <SelectPopup>{groups(pocket)}</SelectPopup>
           </Select>
+          {(library.clones ?? []).length === 0 ? null : (
+            <Select
+              items={[
+                { value: NO_CLOUD, label: "No clone" },
+                ...(library.clones ?? []).map((c) => ({ value: c.id, label: c.name })),
+              ]}
+              value={persona.cloneVoice ?? NO_CLOUD}
+              onValueChange={(next) => {
+                if (typeof next === "string")
+                  props.onPick("clone", next === NO_CLOUD ? null : next);
+              }}
+            >
+              <SelectTrigger
+                size="sm"
+                className="w-44"
+                aria-label={`${persona.name}’s cloned voice`}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem value={NO_CLOUD}>No clone</SelectItem>
+                {(library.clones ?? []).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          )}
           {cloud === null ? null : (
             <Select
               items={[

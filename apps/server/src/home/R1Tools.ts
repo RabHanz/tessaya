@@ -151,6 +151,7 @@ const ROOM_TOOLS = [
   "tessaya_state",
   "tessaya_vocabulary",
   "tessaya_voice",
+  "tessaya_persona",
   "tessaya_main_session",
   "tessaya_move_into_tessaya",
   "tessaya_open_in_terminal",

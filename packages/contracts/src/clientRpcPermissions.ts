@@ -91,6 +91,8 @@ const DEVICES_CALL = "baton.devices.call";
 const VOICE_CALL = "baton.voice.call";
 /** Her prompt lab (`BATON_PROMPT_LAB_WS_METHODS.call`): his prompts, the owner's settings. */
 const PROMPT_LAB_CALL = "baton.promptLab.call";
+/** His roster (`BATON_PERSONAS_WS_METHODS.change`): hire, edit, retire, restore; the owner's settings. */
+const PERSONA_CHANGE = "baton.personas.change";
 
 export function clientRpcRequiredScopes(
   method: string,
@@ -127,7 +129,7 @@ export function clientRpcRequiredScopes(
         ? [AuthOrchestrationReadScope, AuthTessayaCloudApproveScope]
         : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   }
-  if (method === PROMPT_LAB_CALL) return [AuthSettingsWriteScope];
+  if (method === PROMPT_LAB_CALL || method === PERSONA_CHANGE) return [AuthSettingsWriteScope];
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]
     : [];
