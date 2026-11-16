@@ -286,7 +286,8 @@ it.effect(
         yield* a.exchange(yield* Context.get(desk, DeviceSync).exchange(yield* a.exchange({})));
       });
       const mood = (ctx: typeof tumble) => Context.get(ctx, TessayaMood);
-      const on = <X>(ctx: typeof tumble, e: Effect.Effect<X>) => Effect.provideContext(e, ctx);
+      const on = <X, R>(ctx: typeof tumble, e: Effect.Effect<X, never, R>) =>
+        Effect.provideContext(e, ctx);
       const his = (ctx: typeof tumble) =>
         on(ctx, mood(ctx).view("companion", "UTC", OWNER_MEMBER_ID));
       const row = (ctx: typeof tumble) =>
@@ -315,7 +316,7 @@ it.effect(
       yield* link;
       assert.strictEqual(yield* row(desk), before);
 
-      // Apart (onnyx off): each sees its own event; linked again, both hold both, in one mood.
+      // Apart (one server off): each sees its own event; linked again, both hold both, in one mood.
       yield* TestClock.adjust("10 minutes");
       yield* on(tumble, mood(tumble).note("companion", { kind: "job", ok: false }));
       yield* TestClock.adjust("1 minute");
