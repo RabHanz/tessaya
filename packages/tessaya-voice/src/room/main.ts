@@ -26,10 +26,12 @@ import {
   identityOf,
   ownerScoreOf,
   PRINT_MIN_MS,
+  profilesFor,
   TEST_SPEAKER_ID,
   trustTestSpeaker,
   UNVERIFIED,
   type SpeakerProfile,
+  type VoiceInput,
 } from "../speaker.ts";
 import { decodeWav } from "../providers/speech.ts";
 import { createSpeakerStore, vectorToBase64 } from "../speakerStore.ts";
@@ -79,6 +81,9 @@ const fail = (line: string): never => {
 
 /** CAM++ as the desktop ships it: a profile made with another model is never compared. */
 const SPEAKER_MODEL_ID = "campplus-voxceleb-357a834f";
+/** A headset profile is made from this many sure clips, and follows the latest this many. */
+const INPUT_ENROL_MIN = 5;
+const INPUT_ENROL_KEEP = 12;
 
 const models = env("R1_MODELS");
 const state = env("R1_STATE");
@@ -544,6 +549,8 @@ const main = async () => {
     : null;
   const embedder = await createSpeakerEmbedder(model("campplus.onnx"), SPEAKER_MODEL_ID, 1);
   const store = createSpeakerStore(state);
+  /** Profiles learnt on his headset's mic (another channel and codec than hers), apart from the mic's. */
+  const headsetStore = createSpeakerStore(state, "headset");
   const testMode = process.env["R1_TEST_MODE"] === "1";
   // Enrol once, recognised everywhere: the shared bases from her server, and this R1's own refinement of them.
   const sharedProfiles = createProfileSync({
@@ -849,14 +856,14 @@ const main = async () => {
     testSpeaker = readTest();
     return `test speaker enrolled from ${made.kept} clips (${made.dropped} dropped)`;
   };
-  const speakerOf = async (pcm: Int16Array) => {
+  const speakerOf = async (pcm: Int16Array, input: VoiceInput = "mic") => {
     const at = Date.now();
     const vector = await embedder.embed(pcm);
     if (vector === null) return UNVERIFIED(at);
     const clips = [{ vector, ms: (pcm.length / 16_000) * 1000 }];
     const until = room?.testUntil() ?? 0;
-    const profiles =
-      testSpeaker !== null && Date.now() < until ? [...store.list(), testSpeaker] : store.list();
+    const mine = input === "mic" ? store.list() : profilesFor(headsetStore.list(), store.list());
+    const profiles = testSpeaker !== null && Date.now() < until ? [...mine, testSpeaker] : mine;
     const decide = (use: "steer" | "act") =>
       decideSpeaker({ clips, model: SPEAKER_MODEL_ID, profiles, policy, use });
     const judged = identityOf(decide("steer"), decide("act"), at);
@@ -873,6 +880,7 @@ const main = async () => {
         : scored;
     // Only a turn it was sure of refines this R1's copy: verified, long enough to stand alone, well above the cut-off.
     if (
+      input === "mic" &&
       identity.verified &&
       identity.personId !== null &&
       (pcm.length / 16_000) * 1000 >= ACT_SINGLE_MS &&
@@ -880,6 +888,32 @@ const main = async () => {
     )
       sharedProfiles.refine(identity.personId, vector);
     return identity;
+  };
+  /** Clips per person kept for a headset profile, from turns of sessions verified on her mic; memory only. */
+  const learning = new Map<string, Array<Float32Array>>();
+  const learnInput = async (input: VoiceInput, personId: string, pcm: Int16Array) => {
+    if (input === "mic" || (pcm.length / 16_000) * 1000 < ACT_SINGLE_MS) return;
+    const base = store
+      .list()
+      .find((p) => (personId === "owner" ? p.kind === "owner" : p.id === personId));
+    if (base === undefined || base.model !== SPEAKER_MODEL_ID) return;
+    const vector = await embedder.embed(pcm);
+    if (vector === null) return;
+    const clips = [...(learning.get(base.id) ?? []), vector].slice(-INPUT_ENROL_KEEP);
+    learning.set(base.id, clips);
+    const made = enrol(clips, INPUT_ENROL_MIN);
+    if (made === null) return;
+    headsetStore.save({
+      id: base.id,
+      name: base.name,
+      kind: base.kind,
+      model: base.model,
+      centroid: made.centroid,
+      samples: made.kept,
+      sources: ["adapted"],
+      enrolledAt: new Date().toISOString(),
+    });
+    log(`voice profile ${base.id} on the headset: ${made.kept} clips`);
   };
   const wake =
     words.length === 0 || !NodeFS.existsSync(model("melspectrogram.onnx"))
@@ -935,6 +969,10 @@ const main = async () => {
         void turn.finish().catch(() => undefined);
       },
       speaker: speakerOf,
+      learnInput: (input, personId, pcm) =>
+        void learnInput(input, personId, pcm).catch((e: unknown) =>
+          log(`headset voice profile not learnt: ${String(e)}`),
+        ),
       ...(testMode ? { testMode: { ready: () => testSpeaker !== null } } : {}),
       voices: (pcm) =>
         voicesOf({ pcm, embed: embedder.embed, profiles: store.list(), policy, at: Date.now() }),
@@ -942,7 +980,10 @@ const main = async () => {
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
       link: link(env("R1_BRAIN_URL")),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
-      forget: (personId) => sharedProfiles.clear(personId),
+      forget: (personId) => {
+        sharedProfiles.clear(personId);
+        headsetStore.remove(personId);
+      },
       preview: (pcm) => {
         const turn = recognise();
         turn.feed(pcm);

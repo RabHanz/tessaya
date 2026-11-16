@@ -9,6 +9,7 @@ import * as NodeCrypto from "node:crypto";
 import {
   DEVICE_SPEAKER_OUTPUTS,
   DEVICE_TRANSPORTS,
+  OWN_MIC,
   OWN_SPEAKER,
   type OutputClass,
   EnrolCard,
@@ -155,7 +156,7 @@ export type DeviceCommand =
       readonly mac?: string;
       readonly name?: string;
       readonly output?: DeviceSpeakerOutput;
-      /** `order`: her own speaker (OWN_SPEAKER) and Bluetooth addresses, first choice first. */
+      /** `order`: her own speaker (OWN_SPEAKER) and Bluetooth addresses, first choice first; `inputs`: OWN_MIC and addresses. */
       readonly order?: ReadonlyArray<string>;
       /** `classes`: the output and what it may play; null privateCap is the usual level. */
       readonly target?: string;
@@ -245,7 +246,14 @@ const LOG_KEEP = 40;
 const SAMPLES_KEEP = 50;
 const SETTINGS_KEY = "devices.state";
 /** His per-device choices kept alike on all his servers (DeviceSync), so a standby hub serves her as he set her. */
-const SYNCED = ["outputs", "outputClasses", "earconsOff", "talkOverKeyword", "eyeStyle"] as const;
+const SYNCED = [
+  "outputs",
+  "inputs",
+  "outputClasses",
+  "earconsOff",
+  "talkOverKeyword",
+  "eyeStyle",
+] as const;
 
 /** The room loop's per-turn metrics, in pipeline order. */
 const STAGES = [
@@ -286,6 +294,10 @@ export interface Heard {
     bonds?: ReadonlyArray<{ readonly mac: string; readonly connected: boolean }>;
     /** Its firmware drops a held route's reply rather than playing it on her speaker (state/caps route_hold). */
     holdCap?: boolean;
+    /** smp 0.3.151 state/bt: the headset link (HFP) is up; absent on older firmware, which never gets cmd/bt/input. */
+    hfp?: boolean;
+    /** smp 0.3.151 state/bt: which mic a conversation on Bluetooth is heard through. */
+    input?: "headset" | "mic";
   } | null;
   /** Its saved Wi-Fi networks, first choice first (`state/net/saved`, retained); null until it reports them. */
   wifi: Array<DeviceWifiNetwork> | null;
@@ -489,11 +501,31 @@ const outputItem = (out: string | null) => (out === "onboard" ? "speaker" : out)
 export const outputOrderOf = (
   saved: ReadonlyArray<string> | undefined,
   bonds: ReadonlyArray<string>,
+  own: string = OWN_SPEAKER,
 ): Array<string> => {
-  const known = new Set<string>([OWN_SPEAKER, ...bonds]);
-  const kept = (saved ?? [OWN_SPEAKER]).filter((o, i, all) => known.has(o) && all.indexOf(o) === i);
-  if (!kept.includes(OWN_SPEAKER)) kept.unshift(OWN_SPEAKER);
+  const known = new Set<string>([own, ...bonds]);
+  const kept = (saved ?? [own]).filter((o, i, all) => known.has(o) && all.indexOf(o) === i);
+  if (!kept.includes(own)) kept.unshift(own);
   return [...kept, ...bonds.filter((b) => !kept.includes(b))];
+};
+
+/** His saved input order the same way: her own mic first by default. */
+export const inputOrderOf = (
+  saved: ReadonlyArray<string> | undefined,
+  bonds: ReadonlyArray<string>,
+) => outputOrderOf(saved, bonds, OWN_MIC);
+
+/** Which mic hears a conversation on Bluetooth (`cmd/bt/input`): the first in his order that can hear now. */
+export const inputOf = (
+  order: ReadonlyArray<string>,
+  linked: string | null | undefined,
+  hfp: boolean,
+): "headset" | "mic" => {
+  for (const o of order) {
+    if (o === OWN_MIC) return "mic";
+    if (hfp && o === linked) return "headset";
+  }
+  return "mic";
 };
 
 const firstIn = (order: ReadonlyArray<string>, id: string): Array<string> => [
@@ -773,6 +805,9 @@ export const applyMessage = (
         d.speaker.output = chosen as DeviceSpeakerOutput;
       if (wanted !== null && out !== null && DEVICE_SPEAKER_OUTPUTS.includes(out as never))
         d.speaker.playing = out as DeviceSpeakerOutput;
+      if (typeof body?.["hfp"] === "boolean") d.speaker.hfp = body["hfp"];
+      const input = str(body?.["input"]);
+      if (input === "headset" || input === "mic") d.speaker.input = input;
       const mac = str(body?.["mac"]);
       d.speaker.linked =
         (state === "connected" || state === "streaming") && mac !== null && MAC.test(mac)
@@ -888,6 +923,8 @@ interface Saved {
   volume: Record<string, number>;
   /** Per R1: his output order (outputOrderOf); absent is her own speaker first. */
   outputs: Record<string, Array<string>>;
+  /** Per R1: his input order (inputOrderOf); absent is her own mic first. */
+  inputs: Record<string, Array<string>>;
   /** Per R1 and output: what it may play (defaultClassesOf when absent) and its private level. */
   outputClasses: Record<
     string,
@@ -1107,6 +1144,7 @@ const make = Effect.gen(function* () {
         eyeStyle: (value["eyeStyle"] ?? {}) as Saved["eyeStyle"],
         volume: (value["volume"] ?? {}) as Saved["volume"],
         outputs: (value["outputs"] ?? {}) as Saved["outputs"],
+        inputs: (value["inputs"] ?? {}) as Saved["inputs"],
         outputClasses: (value["outputClasses"] ?? {}) as Saved["outputClasses"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
         keys: (value["keys"] ?? {}) as Saved["keys"],
@@ -1638,6 +1676,7 @@ const make = Effect.gen(function* () {
       }
       if (tail !== "event/bt/devices") {
         yield* applyRoute(result.id);
+        yield* applyInput(result.id);
         // Off the broker's queue: its confirmation comes in on that queue.
         if (held.has(result.id))
           yield* releaseHeld(result.id).pipe(Effect.forkIn(scope, { startImmediately: true }));
@@ -1778,6 +1817,8 @@ const make = Effect.gen(function* () {
   const skips = new Map<string, Map<string, number>>();
   /** The route last sent per R1, so a burst of Bluetooth reports sends it once. */
   const routed = new Map<string, { readonly key: string; readonly at: number }>();
+  /** The same for the mic (`cmd/bt/input`). */
+  const inputSent = new Map<string, { readonly key: string; readonly at: number }>();
   /** The class of the reply playing now per R1, which picks the outputs its route may use. */
   const classNow = new Map<string, OutputClass>();
   /** A private reply's output while it plays: nothing else moves the route until the next reply. */
@@ -1848,6 +1889,32 @@ const make = Effect.gen(function* () {
     if (last?.key === key && now - last.at < ROUTE_RESEND_MS) return;
     routed.set(id, { key, at: now });
     yield* publish(id, "cmd/audio/output", want);
+  });
+
+  /** The mic his input order gives, sent when the firmware is not on it; only firmware that reports `hfp` takes it. */
+  const applyInput = Effect.fn("HomeDevices.applyInput")(function* (id: string) {
+    const d = heard.get(id);
+    const sp = d?.speaker;
+    if (d === undefined || sp?.hfp === undefined || d.online === false) return;
+    const order = inputOrderOf((yield* readSaved).inputs[id], bondsOf(id));
+    const want = inputOf(order, sp.linked, sp.hfp);
+    if (sp.input === want) return void inputSent.delete(id);
+    const now = yield* Clock.currentTimeMillis;
+    const last = inputSent.get(id);
+    if (last?.key === want && now - last.at < ROUTE_RESEND_MS) return;
+    inputSent.set(id, { key: want, at: now });
+    yield* publish(id, "cmd/bt/input", { in: want });
+  });
+
+  const setInputs = Effect.fn("HomeDevices.setInputs")(function* (
+    id: string,
+    order: ReadonlyArray<string>,
+  ) {
+    yield* change((s) => {
+      s.inputs[id] = order.slice(0, 16);
+    });
+    inputSent.delete(id);
+    yield* applyInput(id);
   });
 
   /** His new order: kept as he gave it (a pairing not heard yet keeps its place), then routed at once. */
@@ -2502,6 +2569,7 @@ const make = Effect.gen(function* () {
           delete s.eyeStyle[id];
           delete s.keys[id];
           delete s.outputs[id];
+          delete s.inputs[id];
           delete s.outputClasses[id];
         });
         for (const kept of ["cmd/voice/earcons", "cmd/voice/talkover", "cmd/eye/style"])
@@ -2577,6 +2645,17 @@ const make = Effect.gen(function* () {
               });
             if (by.dryRun !== true) yield* setOrder(id, order, order[0] ?? null);
             return done("Saved. Replies play on the first output in this order that is connected.");
+          }
+          case "inputs": {
+            const order = (c.order ?? []).map((o) => (o === OWN_MIC ? o : o.toUpperCase()));
+            if (order.some((o) => o !== OWN_MIC && !MAC.test(o)))
+              return yield* new DeviceRefusedError({
+                why: "That order names something that is not a mic.",
+              });
+            if (by.dryRun !== true) yield* setInputs(id, order);
+            return done(
+              "Saved. She listens through the first mic in this order that can hear now.",
+            );
           }
           case "classes": {
             const target = c.target === OWN_SPEAKER ? OWN_SPEAKER : (c.target ?? "").toUpperCase();
@@ -2736,6 +2815,29 @@ const make = Effect.gen(function* () {
         { op: "speaker", action: "route", output: c.value === "speaker" ? "onboard" : c.value },
         by,
       );
+    // Which mic hears him (not a firmware item): his words put that one first, at once, like audio.output.
+    if (c.op === "item" && c.itemId === "audio.input") {
+      const sp = heard.get(id)?.speaker;
+      if (sp?.hfp === undefined)
+        return yield* new DeviceRefusedError({
+          why: `The ${DEVICE}'s firmware can't listen through headphones yet.`,
+        });
+      const order = inputOrderOf((yield* readSaved).inputs[id], bondsOf(id));
+      const first =
+        c.value === "mic" ? OWN_MIC : (sp.linked ?? order.find((o) => o !== OWN_MIC) ?? null);
+      if (first === null)
+        return yield* new DeviceRefusedError({
+          why: `Nothing is paired yet, so she listens through the ${DEVICE}'s own mic. Pair headphones first.`,
+        });
+      if (by.dryRun !== true) yield* setInputs(id, firstIn(order, first));
+      return {
+        status: "done",
+        line:
+          first === OWN_MIC
+            ? `She listens through the ${DEVICE}'s own mic first now.`
+            : `She listens through your headphones first now, and through the ${DEVICE}'s own mic whenever they aren't connected.`,
+      } satisfies DeviceOutcome;
+    }
     const tag = c.op === "item" && c.itemId === "audio.output" ? privateTagOf(c.value) : null;
     if (tag !== null && by.surface !== "agent" && heard.get(id)?.speaker != null)
       return yield* tagPrivate(id, tag, by);
@@ -2846,6 +2948,30 @@ const make = Effect.gen(function* () {
         ...tagged(o, k?.kind),
       };
     });
+    const hearing = sp.input ?? "mic";
+    const inputs =
+      sp.hfp === undefined
+        ? undefined
+        : inputOrderOf(saved.inputs[id], bondsOf(id)).map((o) => {
+            if (o === OWN_MIC)
+              return {
+                id: o,
+                name: `${DEVICE} mic`,
+                state: hearing === "mic" ? ("listening" as const) : ("ready" as const),
+              };
+            const k = outputs.find((x) => x.id === o);
+            return {
+              id: o,
+              name: k?.name ?? "",
+              ...(k?.kind === undefined ? {} : { kind: k.kind }),
+              state:
+                sp.hfp !== true || sp.linked !== o
+                  ? ("paired" as const)
+                  : hearing === "headset"
+                    ? ("listening" as const)
+                    : ("ready" as const),
+            };
+          });
     return {
       state: sp.state,
       saved: sp.saved,
@@ -2854,6 +2980,7 @@ const make = Effect.gen(function* () {
       found: sp.found,
       scannedAt: iso(sp.scannedAt),
       outputs,
+      ...(inputs === undefined ? {} : { inputs }),
     };
   };
 
@@ -3007,7 +3134,7 @@ const make = Effect.gen(function* () {
           // Another server's value is checked as Settings would check it; a malformed one is left out.
           const valid =
             v === null ||
-            (field === "outputs"
+            (field === "outputs" || field === "inputs"
               ? Array.isArray(v) && v.length <= 16 && v.every((o) => typeof o === "string")
               : field === "outputClasses"
                 ? typeof v === "object" && !Array.isArray(v)
@@ -3031,7 +3158,10 @@ const make = Effect.gen(function* () {
             );
           else if (field === "eyeStyle")
             yield* publish(id, "cmd/eye/style", { style: v ?? R1_EYE_STYLE_DEFAULT }, true);
-          else {
+          else if (field === "inputs") {
+            inputSent.delete(id);
+            yield* applyInput(id);
+          } else {
             routed.delete(id);
             yield* applyRoute(id);
           }

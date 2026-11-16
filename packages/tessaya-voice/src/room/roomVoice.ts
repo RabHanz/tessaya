@@ -56,6 +56,7 @@ import {
   type SpeakerGate,
   type SpeakerIdentity,
   type VoiceHold,
+  type VoiceInput,
 } from "../speaker.ts";
 import { DOWN_FRAME_BYTES, fromBytes, speechLevel, toBytes } from "./audio.ts";
 import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "../cueSounds.ts";
@@ -76,6 +77,8 @@ const RATE = 16_000;
 const DOWN_RING = RATE * 8;
 /** firmware 0.3.92 `cmd/voice/upformat {"v":1}`: each uplink frame leads with seq, rx, q (u32) and flags (u16), 16 bytes. */
 const UP_HEADER = 16;
+/** smp 0.3.151: the frame's flags (u16 at 12) carry this bit when it came from the headset's mic. */
+const UP_FLAG_HEADSET = 16;
 /** The R1's own latency on its onboard speaker (firmware lane, 14 Nov): her sample under it is rx - q - this. */
 const R1_LATENCY = 1972;
 /** Talking over her counts once she has sounded this long: the device's echo cancelling settles in that time. */
@@ -270,7 +273,9 @@ export interface RoomDeps {
   readonly warm?: () => void;
   /** Opens her server's connection ahead of a turn, as a session opens and as he starts to speak. */
   readonly link?: () => void;
-  readonly speaker?: (pcm: Int16Array) => Promise<SpeakerIdentity>;
+  readonly speaker?: (pcm: Int16Array, input?: VoiceInput) => Promise<SpeakerIdentity>;
+  /** A turn on another input in a session his voice was verified in on her mic: that input's profile learns from it. */
+  readonly learnInput?: (input: VoiceInput, personId: string, pcm: Int16Array) => void;
   /** Who spoke when in the turn (`segments.ts`); "one" at once when fewer than two voices are enrolled. */
   readonly voices?: (pcm: Int16Array) => Promise<TurnVoices>;
   readonly affect?: (pcm: Int16Array) => Promise<Affect>;
@@ -741,6 +746,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** Who answers: the one he last called, until the window lapses. */
     let persona = lead;
     let voiceHold = NO_HOLD;
+    /** The mic his frames come through now. */
+    let input: VoiceInput = "mic";
     const heldVoice = (heard: SpeakerIdentity) => {
       const out = holdVoice(voiceHold, heard, deps.now());
       voiceHold = out.hold;
@@ -1430,13 +1437,22 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       let scorings = 0;
       const scored = (audio: Int16Array, begun = audio === pcm ? voice : undefined) => {
         const n = (scorings += 1);
+        const via = input;
         const held = (heard: SpeakerIdentity) => {
           holdBefore ??= voiceHold;
           const out = holdVoice(holdBefore, heard, deps.now());
           if (n === scorings) voiceHold = out.hold;
-          return out.identity;
+          const who = out.identity;
+          if (via === "mic" && who.verified) micVerifiedAt.set(id, deps.now());
+          else if (
+            via !== "mic" &&
+            who.personId === "owner" &&
+            deps.now() - (micVerifiedAt.get(id) ?? -Infinity) <= HOLD_MS
+          )
+            deps.learnInput?.(via, who.personId, audio);
+          return who;
         };
-        return (begun ?? deps.speaker?.(audio))?.then(
+        return (begun ?? deps.speaker?.(audio, via))?.then(
           (heard) => held(heard ?? UNVERIFIED(deps.now())),
           () => held(UNVERIFIED(deps.now())),
         );
@@ -2419,6 +2435,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           bytes.length > UP_HEADER && (bytes.length - UP_HEADER) % DOWN_FRAME_BYTES === 0;
         const pcm = fromBytes(aligned ? bytes.subarray(UP_HEADER) : bytes);
         const head = aligned ? new DataView(bytes.buffer, bytes.byteOffset, UP_HEADER) : null;
+        if (head !== null)
+          input = (head.getUint16(12, true) & UP_FLAG_HEADSET) !== 0 ? "headset" : "mic";
         // Her own voice (the intro) is not his read.
         if (guide !== null && guide.phase() === "reading" && !speaking()) {
           const g = guide;
@@ -2662,6 +2680,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const conversationOf = new Map<string, string>();
   /** Until when another device of his answers (the arbiter's `until`, epoch ms): this R1 stays quiet. */
   const quietUntil = new Map<string, number>();
+  /** Per R1, when his voice was last verified on her own mic: a headset turn soon after is taken as his to learn from. */
+  const micVerifiedAt = new Map<string, number>();
   /** Until when her server's last eye mood holds on each R1 (`voice/intent/eye`): the loop's own moods wait. */
   const eyeHold = new Map<string, number>();
   /** Her mood at rest on each R1 (`voice/intent/rest`, retained): the eyes and the prop over them between turns. */

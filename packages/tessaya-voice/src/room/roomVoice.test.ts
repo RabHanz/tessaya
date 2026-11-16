@@ -189,6 +189,44 @@ describe("the room voice loop", () => {
     );
   });
 
+  it("judges a headset turn as the headset's (upformat flags bit4), and teaches it from a session verified on her mic", async () => {
+    const owner: SpeakerIdentity = {
+      ...UNVERIFIED(0),
+      kind: "owner",
+      personId: "owner",
+      confidence: 0.8,
+      verified: true,
+    };
+    const inputs: Array<string | undefined> = [];
+    const learnt: Array<string> = [];
+    const t = setup({
+      speaker: async (_pcm, input) => (inputs.push(input), owner),
+      learnInput: (input, personId) => learnt.push(`${input}:${personId}`),
+    });
+    const framed = (loud: boolean, flags: number) => {
+      const bytes = new Uint8Array(16 + 1_920);
+      new DataView(bytes.buffer).setUint16(12, flags, true);
+      bytes.set(frame(loud), 16);
+      return bytes;
+    };
+    const feed = async (loud: boolean, n: number, flags: number) => {
+      for (let i = 0; i < n; i += 1) {
+        t.room.message(`freya/r1/${DEV}/voice/up`, framed(loud, flags));
+        t.advance(60);
+        await t.room.session(DEV)!.drained();
+      }
+    };
+    t.s2();
+    await feed(true, 20, 0);
+    await feed(false, 30, 0);
+    expect(learnt).toEqual([]);
+    t.s2();
+    await feed(true, 20, 16);
+    await feed(false, 30, 16);
+    expect(inputs).toEqual(["mic", "headset"]);
+    expect(learnt).toEqual(["headset:owner"]);
+  });
+
   it("does not answer a voice the gate keeps out", async () => {
     const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.05 };
     const t = setup({ speaker: async () => guest });

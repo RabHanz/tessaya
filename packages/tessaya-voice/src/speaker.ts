@@ -23,6 +23,15 @@ export interface SpeakerProfile {
   readonly base?: Float32Array;
 }
 
+/** Which mic a turn came through (upformat v1 flags bit4 is the headset's): a voice sounds different on each. */
+export type VoiceInput = "mic" | "headset";
+
+/** The profiles to judge a turn on this input by: each person's own for it, else the one enrolled on her mic. */
+export const profilesFor = (
+  own: ReadonlyArray<SpeakerProfile>,
+  mic: ReadonlyArray<SpeakerProfile>,
+): ReadonlyArray<SpeakerProfile> => [...own, ...mic.filter((p) => !own.some((o) => o.id === p.id))];
+
 /** What the verdict is for: each use has its own cut-off, because a wrong "yes" costs more for some. */
 export type SpeakerUse = "listen" | "steer" | "act";
 
