@@ -35,16 +35,16 @@ describe("extractPairingUrlsFromQrPayload", () => {
 
   it("reads every machine from a Tessaya Add a phone code, in order", () => {
     const machines = [
-      "https://laptop.example.ts.net/pair#token=AAAA",
-      "https://app.t3.codes/pair?host=https%3A%2F%2Fhetzner.example.ts.net#token=BBBB",
-      "http://100.64.0.3:3773/pair#token=CCCC",
+      "https://laptop.example.com/pair#token=AAAA",
+      "https://app.t3.codes/pair?host=https%3A%2F%2Fstudio.example.com#token=BBBB",
+      "http://192.168.1.20:3773/pair#token=CCCC",
     ];
     const scanned = extractPairingUrlsFromQrPayload(phonePairingLink(machines));
     expect(scanned).toEqual(machines);
     expect(scanned.map((url) => parsePairingUrl(url))).toEqual([
-      { host: "https://laptop.example.ts.net", code: "AAAA" },
-      { host: "https://hetzner.example.ts.net", code: "BBBB" },
-      { host: "http://100.64.0.3:3773", code: "CCCC" },
+      { host: "https://laptop.example.com", code: "AAAA" },
+      { host: "https://studio.example.com", code: "BBBB" },
+      { host: "http://192.168.1.20:3773", code: "CCCC" },
     ]);
   });
 

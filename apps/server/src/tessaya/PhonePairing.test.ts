@@ -32,8 +32,8 @@ const link = (
   status,
 });
 const ADDRESSES: Record<string, string> = {
-  hetzner: "https://hetzner.example.ts.net",
-  onnyx: "https://onnyx.example.ts.net",
+  studio: "https://studio.example.com",
+  office: "https://office.example.com",
   local: "http://127.0.0.1:3773",
 };
 
@@ -78,8 +78,8 @@ it.effect(
       const links = {
         enabled: Effect.succeed(true),
         list: Effect.succeed([
-          link("hetzner", "full-access"),
-          link("onnyx", "full-access"),
+          link("studio", "full-access"),
+          link("office", "full-access"),
           link("laptop", "approval-required"),
           link("old", "full-access", "expired"),
           link("local", "full-access"),
@@ -89,7 +89,7 @@ it.effect(
       } as unknown as PeerLinks.PeerLinks["Service"];
       const mcp = {
         call: (input: { readonly environmentId: string }) =>
-          input.environmentId === "onnyx"
+          input.environmentId === "office"
             ? Effect.fail(
                 new OrchestratorMcpFailure({
                   code: "orchestration_error",
@@ -111,19 +111,19 @@ it.effect(
       expect(result.here.credential).toBe("HERECODE");
       expect(result.linked).toEqual([
         {
-          environmentId: "hetzner",
-          label: "hetzner",
-          pairingUrl: "https://hetzner.example.ts.net/pair#token=CODE-hetzner",
+          environmentId: "studio",
+          label: "studio",
+          pairingUrl: "https://studio.example.com/pair#token=CODE-studio",
           expiresAt: at,
         },
       ]);
       expect(result.missed.map((miss) => miss.label).toSorted()).toEqual([
         "laptop",
         "local",
+        "office",
         "old",
-        "onnyx",
       ]);
-      expect(result.missed.find((miss) => miss.label === "onnyx")?.reason).toBe(
+      expect(result.missed.find((miss) => miss.label === "office")?.reason).toBe(
         "The linked environment stopped answering.",
       );
     }),

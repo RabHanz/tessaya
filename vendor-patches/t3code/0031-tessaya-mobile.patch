@@ -296,7 +296,7 @@ index dbf7ab552aa8c72bf7d9c095d7de5849c7b23f0a..50d532a19e2f78e53d593a31d467590f
 +        ? require("../../../../assets/nightly/nightly-ios-1024.png")
 +        : require("../../../../assets/prod/black-ios-1024.png");
 diff --git a/apps/mobile/src/features/connection/pairing.test.ts b/apps/mobile/src/features/connection/pairing.test.ts
-index 466fbfa7a282ddf3d15f805425b23e1c42af3c28..aaa864717ba32cdc9454cda28e53d963770be2ef 100644
+index 466fbfa7a282ddf3d15f805425b23e1c42af3c28..8a6cfa9a7f4e3e7dd93640a986f351c1044f40fc 100644
 --- a/apps/mobile/src/features/connection/pairing.test.ts
 +++ b/apps/mobile/src/features/connection/pairing.test.ts
 @@ -1,6 +1,8 @@
@@ -327,16 +327,16 @@ index 466fbfa7a282ddf3d15f805425b23e1c42af3c28..aaa864717ba32cdc9454cda28e53d963
 +
 +  it("reads every machine from a Tessaya Add a phone code, in order", () => {
 +    const machines = [
-+      "https://laptop.example.ts.net/pair#token=AAAA",
-+      "https://app.t3.codes/pair?host=https%3A%2F%2Fhetzner.example.ts.net#token=BBBB",
-+      "http://100.64.0.3:3773/pair#token=CCCC",
++      "https://laptop.example.com/pair#token=AAAA",
++      "https://app.t3.codes/pair?host=https%3A%2F%2Fstudio.example.com#token=BBBB",
++      "http://192.168.1.20:3773/pair#token=CCCC",
 +    ];
 +    const scanned = extractPairingUrlsFromQrPayload(phonePairingLink(machines));
 +    expect(scanned).toEqual(machines);
 +    expect(scanned.map((url) => parsePairingUrl(url))).toEqual([
-+      { host: "https://laptop.example.ts.net", code: "AAAA" },
-+      { host: "https://hetzner.example.ts.net", code: "BBBB" },
-+      { host: "http://100.64.0.3:3773", code: "CCCC" },
++      { host: "https://laptop.example.com", code: "AAAA" },
++      { host: "https://studio.example.com", code: "BBBB" },
++      { host: "http://192.168.1.20:3773", code: "CCCC" },
 +    ]);
 +  });
 +
