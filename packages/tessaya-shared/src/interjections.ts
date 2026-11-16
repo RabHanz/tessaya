@@ -260,6 +260,13 @@ export const speechPieces = (
     .filter((p) => p.kind === "sound" || /[\p{L}\p{N}]/u.test(p.text));
 };
 
+/** The stage directions in a reply, in order: what a Gemini line's tags stand for (`soundAnchors`). */
+export const directionsOf = (text: string): ReadonlyArray<Nonverbal> =>
+  [...text.matchAll(DIRECTION)].flatMap((m) => {
+    const nonverbal = nonverbalOf(m.slice(1).find((g) => g !== undefined) ?? "");
+    return nonverbal === null ? [] : [nonverbal];
+  });
+
 export const hasDirection = (text: string): boolean =>
   [...text.matchAll(DIRECTION)].some(
     (m) => nonverbalOf(m.slice(1).find((g) => g !== undefined) ?? "") !== null,
