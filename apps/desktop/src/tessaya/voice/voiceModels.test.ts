@@ -15,6 +15,7 @@ import {
   verifyPersonalModel,
   wakeModelFor,
   weakMachine,
+  keepModelLoaded,
 } from "./voiceModels.ts";
 
 const bytes = Buffer.from("parakeet");
@@ -162,6 +163,17 @@ describe("a weak machine", () => {
       expect(weakMachine({ freshInstall, cpus, memoryBytes, slowStarts })).toBe(reason);
     },
   );
+
+  it.each([
+    // [total GB, available GB, kept now, keep after]
+    [7.8, 6, true, false],
+    [15.8, 2.8, true, true],
+    [15.8, 1.4, true, false],
+    [15.8, 2.8, false, false],
+    [15.8, 3.2, false, true],
+  ] as const)("%d GB total, %d GB free, kept %s: keep %s", (total, free, kept, keep) => {
+    expect(keepModelLoaded(total * GB, free * GB, kept)).toBe(keep);
+  });
 
   it.each([
     // [slow starts so far, this start's load ms, it downloaded the model first, slow starts after]
