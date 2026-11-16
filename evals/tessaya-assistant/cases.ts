@@ -216,6 +216,20 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["app_command"],
   },
   {
+    id: "app-command-project-pin",
+    model: "haiku",
+    source: "Director 16 Nov voice parity: pin project was palette-only",
+    said: "pin this project in the sidebar",
+    first: ["app_command"],
+  },
+  {
+    id: "app-command-restart-session",
+    model: "haiku",
+    source: "Director 16 Nov voice parity: restart agent session was palette-only",
+    said: "restart the agent session so it picks up the new MCP server",
+    first: ["app_command"],
+  },
+  {
     id: "needs-me",
     model: "haiku",
     source: "INT-4: the prompt sent 'what needs me' to fleet_status and needs_me at once",

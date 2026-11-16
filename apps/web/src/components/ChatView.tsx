@@ -269,7 +269,13 @@ import {
   useThreadHistory,
   useQuietThreadShell,
   useThreadCheckpointSummaries,
+  readProjects,
+  readThreadShell,
 } from "../state/entities";
+import { useProjectPin } from "../hooks/useProjectGroupUpdate";
+import { getSidebarProjectSettingsKey } from "../sidebarProjectGrouping";
+import { composerPromptLink, copyPromptLink } from "./promptLinks/copyPromptLink";
+import { readProjectGroupOf, restartAgentSession } from "./chat/sessionActions";
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
@@ -480,6 +486,13 @@ export default function ChatView(props: ChatViewProps) {
     label: "load earlier thread history",
     reportFailure: false,
   });
+  const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, {
+    reportFailure: false,
+  });
+  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
+    reportFailure: false,
+  });
+  const { canPinProjectGroup, toggleProjectGroupPin } = useProjectPin();
   const { environments } = useEnvironments();
   const providersByEnvironment = useEnvironmentProviders();
   const primaryEnvironment = usePrimaryEnvironment();
@@ -2772,6 +2785,53 @@ export default function ChatView(props: ChatViewProps) {
       ...threadLifecycleShortcuts,
       "thread.copyReference": ({ event }) => {
         if (!event.repeat) copyActiveThreadReference();
+      },
+      "thread.copyPromptLink": () => {
+        const link = composerPromptLink({
+          target: baseComposerDraftTarget,
+          project: activeProject ?? undefined,
+          providers: providersByEnvironment.get(environmentId) ?? [],
+          threadModelSelection: serverThread?.modelSelection ?? null,
+          withContext: false,
+        });
+        if (link === null) return false;
+        void copyPromptLink(link);
+      },
+      "thread.restartSession": () => {
+        const thread = activeThreadRef && isServerThread ? readThreadShell(activeThreadRef) : null;
+        if (thread === null || !canOperateThread) return false;
+        restartAgentSession({
+          thread,
+          project: activeProject ?? undefined,
+          stopThreadSession,
+          refreshProviders,
+        }).catch((error: unknown) => {
+          toastManager.add({
+            type: "error",
+            title: "Unable to restart the agent session",
+            description: error instanceof Error ? error.message : "An unexpected error occurred.",
+          });
+        });
+      },
+      "project.togglePin": () => {
+        const group = activeProjectRef ? readProjectGroupOf(activeProjectRef) : null;
+        if (group === null || !canPinProjectGroup(group)) return false;
+        toggleProjectGroupPin(group);
+      },
+      "project.settings": () => {
+        const group = activeProjectRef ? readProjectGroupOf(activeProjectRef) : null;
+        if (group === null || activeProjectRef === null) return false;
+        void navigate({
+          to: "/projects/$projectKey",
+          params: {
+            projectKey: getSidebarProjectSettingsKey(
+              group,
+              projectGroupingSettings,
+              readProjects(),
+              activeProjectRef,
+            ),
+          },
+        });
       },
       "chat.find": () => {
         if (!isServerThread || serverConfig?.threadFind !== true || activeThreadKey === null)

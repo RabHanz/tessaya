@@ -20,6 +20,58 @@ index e4f3d690113e5db8dd37354115f54f36ae987e1d..7baf41a47cacc9964160a1cdb4eb448f
      };
    }, [keybindings, showSidebar, toggleSidebar, usagePageOpen]);
  
+diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
+index fe21bd2e3a6356ba1bd0aed89c7f80c6e701b266..2a5a5c5770d989bf7da9b07c3a95023369f3011f 100644
+--- a/apps/web/src/components/CommandPalette.tsx
++++ b/apps/web/src/components/CommandPalette.tsx
+@@ -265,6 +265,7 @@ import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindin
+ import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/command";
+ import { Button } from "./ui/button";
+ import { stackedThreadToast, toastManager } from "./ui/toast";
++import { restartAgentSession } from "./chat/sessionActions";
+ import { suggestAppAccessForRemote } from "./sourceControlAppAccessToast";
+ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+ import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
+@@ -1492,32 +1493,13 @@ function OpenCommandPaletteDialog(props: {
+       searchTerms: ["restart", "reset", "reload", "agent", "session", "skills", "plugins", "mcp"],
+       title: "Restart agent session",
+       icon: <RotateCcwIcon className={ITEM_ICON_CLASS} />,
+-      run: async () => {
+-        const { environmentId } = thread;
+-        if (thread.runtime !== null) {
+-          const stopped = await stopThreadSession({
+-            environmentId,
+-            input: { threadId: thread.id },
+-          });
+-          if (stopped._tag === "Failure") throw squashAtomCommandFailure(stopped);
+-        }
+-        toastManager.add({
+-          type: "success",
+-          title: "Agent session will restart",
+-          description: "Your next message starts a fresh session.",
+-        });
+-        const project = projectByKey.get(`${environmentId}:${thread.projectId}`);
+-        if (!project) return;
+-        const refreshed = await refreshProviders({
+-          environmentId,
+-          input: {
+-            instanceId: thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId,
+-            cwd: thread.worktreePath ?? project.workspaceRoot,
+-            fresh: true,
+-          },
+-        });
+-        if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
+-      },
++      run: () =>
++        restartAgentSession({
++          thread,
++          project: projectByKey.get(`${thread.environmentId}:${thread.projectId}`),
++          stopThreadSession,
++          refreshProviders,
++        }),
+     });
+   }
+ 
 diff --git a/apps/web/src/components/ReopenClosedViewShortcut.tsx b/apps/web/src/components/ReopenClosedViewShortcut.tsx
 index dfb68fe27e80a0ed6029b4e7c1c3622a44be0169..dfefbcd9abdc0cf3574413942771d715b090ec96 100644
 --- a/apps/web/src/components/ReopenClosedViewShortcut.tsx
@@ -248,3 +300,18 @@ index 9e361e825db7fbff877cb3059e3fe0a48659b330..94e8feaa44b23e93df7c3060f7c3f91c
  /** Desktop menu actions; the newest handler for an action wins. */
  export function registerMenuAction(action: string, handler: MenuActionHandler): () => void {
    ensureMenuActionListener();
+diff --git a/packages/contracts/src/keybindings.ts b/packages/contracts/src/keybindings.ts
+index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..27e11143a72aee64daf5f757de24ec20b066fd5a 100644
+--- a/packages/contracts/src/keybindings.ts
++++ b/packages/contracts/src/keybindings.ts
+@@ -114,6 +114,10 @@ export const STATIC_KEYBINDING_COMMANDS = [
+   "usage.period.week",
+   "usage.period.month",
+   "usage.period.quarter",
++  "thread.copyPromptLink",
++  "thread.restartSession",
++  "project.togglePin",
++  "project.settings",
+   ...MODEL_PICKER_KEYBINDING_COMMANDS,
+   ...THREAD_KEYBINDING_COMMANDS,
+ ] as const;

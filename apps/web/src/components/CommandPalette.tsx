@@ -265,6 +265,7 @@ import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindin
 import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/command";
 import { Button } from "./ui/button";
 import { stackedThreadToast, toastManager } from "./ui/toast";
+import { restartAgentSession } from "./chat/sessionActions";
 import { suggestAppAccessForRemote } from "./sourceControlAppAccessToast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
@@ -1492,32 +1493,13 @@ function OpenCommandPaletteDialog(props: {
       searchTerms: ["restart", "reset", "reload", "agent", "session", "skills", "plugins", "mcp"],
       title: "Restart agent session",
       icon: <RotateCcwIcon className={ITEM_ICON_CLASS} />,
-      run: async () => {
-        const { environmentId } = thread;
-        if (thread.runtime !== null) {
-          const stopped = await stopThreadSession({
-            environmentId,
-            input: { threadId: thread.id },
-          });
-          if (stopped._tag === "Failure") throw squashAtomCommandFailure(stopped);
-        }
-        toastManager.add({
-          type: "success",
-          title: "Agent session will restart",
-          description: "Your next message starts a fresh session.",
-        });
-        const project = projectByKey.get(`${environmentId}:${thread.projectId}`);
-        if (!project) return;
-        const refreshed = await refreshProviders({
-          environmentId,
-          input: {
-            instanceId: thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId,
-            cwd: thread.worktreePath ?? project.workspaceRoot,
-            fresh: true,
-          },
-        });
-        if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
-      },
+      run: () =>
+        restartAgentSession({
+          thread,
+          project: projectByKey.get(`${thread.environmentId}:${thread.projectId}`),
+          stopThreadSession,
+          refreshProviders,
+        }),
     });
   }
 

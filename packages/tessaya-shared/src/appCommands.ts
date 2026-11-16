@@ -170,6 +170,14 @@ export const APP_COMMAND_VOICE: {
   "usage.period.week": view("show this week's usage", "Showing this week."),
   "usage.period.month": view("show this month's usage", "Showing this month."),
   "usage.period.quarter": view("show this quarter's usage", "Showing this quarter."),
+  "thread.copyPromptLink": view("copy a link to this draft's prompt", "Copied the prompt link."),
+  "thread.restartSession": asks(
+    "restart this session's agent",
+    "Done. The next message starts a fresh agent session.",
+    "It ends the agent's running session.",
+  ),
+  "project.togglePin": toggle("pin or unpin this project", "Done. Say it again to undo."),
+  "project.settings": view("open this project's settings", "Opened the project settings."),
 };
 
 export const isVoiced = (entry: AppCommandVoice | AppCommandNever): entry is AppCommandVoice =>
