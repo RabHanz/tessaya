@@ -140,6 +140,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
   ...Object.fromEntries(
     [
       "settings_set",
+      "settings_set_many",
+      "settings_answer_all",
       "tessaya_wake_word_change",
       "member_invite",
       "member_set_role",

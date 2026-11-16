@@ -48,6 +48,7 @@ nav button[aria-selected=true]{background:var(--accent);color:var(--on);border-c
 .badge{display:inline-block;min-width:20px;margin-left:6px;padding:0 6px;border-radius:10px;background:var(--bad);color:#fff;font-size:13px;text-align:center}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 10px}
 .card h2{font-size:16px;margin:0 0 2px}
+.card>p{white-space:pre-line}
 .soft{color:var(--soft);font-size:14px;margin:2px 0}
 .col{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
