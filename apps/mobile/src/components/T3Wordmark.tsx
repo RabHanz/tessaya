@@ -2,6 +2,9 @@ import type { ColorValue } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { withUniwind } from "uniwind";
 
+import { IS_TESSAYA_APP } from "../lib/tessayaBrand";
+import { TessayaMark } from "./TessayaMark";
+
 const ThemedPath = withUniwind(Path);
 
 export function T3Wordmark(props: {
@@ -9,6 +12,7 @@ export function T3Wordmark(props: {
   readonly color?: ColorValue;
   readonly colorClassName?: string;
 }) {
+  if (IS_TESSAYA_APP) return <TessayaMark {...props} />;
   const aspectRatio = 94.3941 / 56.96;
   return (
     <Svg
