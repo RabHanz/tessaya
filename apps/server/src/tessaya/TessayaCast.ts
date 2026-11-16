@@ -157,7 +157,7 @@ const make = Effect.gen(function* () {
       : sync.value.put(
           "@cast",
           `body:${body}`,
-          visit === null ? null : { persona: visit.persona, stay: visit.stay },
+          visit === null ? null : { persona: visit.persona, stay: visit.stay, at: visit.at },
           "changed",
           visit?.at,
         );
@@ -355,9 +355,18 @@ const make = Effect.gen(function* () {
         const body = field.slice("body:".length);
         const held = visits.get(body);
         if (held !== undefined && held.at > at) return;
-        const visit = v as { readonly persona?: unknown; readonly stay?: unknown } | null;
+        const visit = v as {
+          readonly persona?: unknown;
+          readonly stay?: unknown;
+          readonly at?: unknown;
+        } | null;
         if (visit === null || typeof visit.persona !== "string") visits.delete(body);
-        else visits.set(body, { persona: visit.persona, at, stay: visit.stay === true });
+        else
+          visits.set(body, {
+            persona: visit.persona,
+            at: typeof visit.at === "number" ? visit.at : at,
+            stay: visit.stay === true,
+          });
         yield* tell(body);
       }).pipe(Effect.ignore),
     );

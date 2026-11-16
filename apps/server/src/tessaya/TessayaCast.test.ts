@@ -168,7 +168,16 @@ it.effect(
     return Effect.gen(function* () {
       const cast = yield* TessayaCast;
       yield* cast.call({ op: "call", body: "Tumble", persona: "alfred", stay: true }, true);
-      expect(puts.at(-1)).toEqual(["@cast", "body:r1-tumble", { persona: "butler", stay: true }]);
+      const first = yield* Clock.currentTimeMillis;
+      expect(puts.at(-1)).toEqual([
+        "@cast",
+        "body:r1-tumble",
+        { persona: "butler", stay: true, at: first },
+      ]);
+      // Each turn re-stamps it, so his other servers keep it as long as this one does.
+      yield* TestClock.adjust("5 minutes");
+      yield* cast.touch("r1-tumble");
+      expect((puts.at(-1)![2] as { at: number }).at).toBeGreaterThan(first);
       yield* cast.call({ op: "sendHome" }, true);
       expect(puts.at(-1)).toEqual(["@cast", "body:r1-tumble", null]);
       const now = yield* Clock.currentTimeMillis;
