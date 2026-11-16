@@ -84,6 +84,13 @@ export const weakMachine = (machine: {
   return machine.slowStarts >= 2 ? `${machine.slowStarts} slow starts in a row` : null;
 };
 
+/**
+ * Whether the speech model stays loaded between dictations. Under 10 GB it never does. Above that it lets go when
+ * available memory drops below 1.5 GB (a thrashing laptop stalls every process) and holds again only above 3 GB, so it does not flap.
+ */
+export const keepModelLoaded = (totalBytes: number, freeBytes: number, keptNow: boolean) =>
+  totalBytes >= 10 * 2 ** 30 && freeBytes >= (keptNow ? 1.5 : 3) * 2 ** 30;
+
 export const machinePicksFast = (
   settings: {
     readonly speechModel: "v3" | "fast" | "personal";

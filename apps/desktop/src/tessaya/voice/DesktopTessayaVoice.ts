@@ -510,6 +510,7 @@ import {
   slowStartsAfter,
   wakeModelFor,
   weakMachine,
+  keepModelLoaded,
 } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createVoiceId } from "./voiceId.ts";
@@ -4335,8 +4336,14 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     micAwakeMs(settings.micAwake, inQuietHours(settings.quietHours, new Date().getHours()));
   // Quiet hours begin and end on the hour: the helper is told then, so the mic light goes off for the night.
   let micWarmSent = micWarmNow();
+  let keepLoaded = keepModelLoaded(NodeOS.totalmem(), NodeOS.freemem(), true);
+  // Checked with quiet hours: under memory pressure the model is let go after its idle minutes.
   setInterval(() => {
-    if (micWarmNow() !== micWarmSent) configureDictation();
+    const keep = keepModelLoaded(NodeOS.totalmem(), NodeOS.freemem(), keepLoaded);
+    if (micWarmNow() !== micWarmSent || keep !== keepLoaded) {
+      keepLoaded = keep;
+      configureDictation();
+    }
   }, 5 * 60_000).unref();
   const configureDictation = () => {
     if (sidecar === null) return;
@@ -4358,8 +4365,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       cleanup: true,
       latch: settings.doubleTap,
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
-      // The memory line weakMachine uses: under 10 GB the model is let go after ten idle minutes, as before.
-      keepLoaded: NodeOS.totalmem() >= 10 * 2 ** 30,
+      keepLoaded,
       liveWords: settings.showWords,
       meter: loop === null,
       recognizers: settings.recognizeOnServers ? recognizersWithTokens() : [],
