@@ -77,6 +77,13 @@ const SITES: Readonly<Record<string, Site>> = {
     routed: "dictation cleanup over RPC: the cleanup row",
   },
   "apps/server/src/speech/http.ts": { wiring: "the key's status and test only, no model call" },
+  "apps/server/src/tessaya/GroupTalk.ts": {
+    routed: "which persona a group line is for: the intent row's one-shot",
+  },
+  "apps/server/src/speech/postProcessing.ts": {
+    routed:
+      "web and phone clean-up: Sonnet through his cleanup provider on his plan (the desktop's route), then the key's cleanup role",
+  },
   "packages/tessaya-shared/src/pulse.ts": {
     wiring: "the pulse's pure rules; names the one-shot only",
   },
