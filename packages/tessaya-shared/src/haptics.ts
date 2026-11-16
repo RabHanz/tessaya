@@ -67,8 +67,11 @@ const INTENT: Readonly<
   nudge: { pulses: [p(90, 18, 45), p(90, 18, 0)], sharpness: 0.5, primitive: "CLICK" },
 };
 
-/** Level 1-3 as a share of any motor's range: the Tessel firmware's duty table (45, 70, 100 %). */
-const LEVEL_SHARE = { 1: 0.45, 2: 0.7, 3: 1 } as const;
+/**
+ * Level 1-3 as a share of each motor's usable range, matching r1bt_haptic.h's LVL (0.3.151+), where the range starts
+ * at the coin's stall floor, not at zero.
+ */
+const LEVEL_SHARE = { 1: 0.4, 2: 0.7, 3: 1 } as const;
 /** A pulse this short is a tap (a transient); longer is held (continuous). */
 const TRANSIENT_MS = 50;
 
