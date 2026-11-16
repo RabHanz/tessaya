@@ -61,7 +61,7 @@ describe("the guard on a wording", () => {
     expect(eyeClipOf("sulky")).toBe("sulky");
     expect(eyeClipOf("lonely")).toBe("lonely");
     expect(eyeClipOf("love")).toBe("love");
-    expect(eyeClipOf("steady")).toBe("neutral");
+    expect(eyeClipOf("steady")).toBe("calm");
     expect(eyeClipOf("giddy")).toBeNull();
   });
 

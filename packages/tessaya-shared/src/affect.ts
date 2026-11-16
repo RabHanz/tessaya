@@ -5,6 +5,8 @@
  */
 import type { ExpressionMood } from "@t3tools/tessaya-contracts";
 
+import { renderFor, VESSELS } from "./expressionMap.ts";
+
 export const AFFECT_DIMS = [
   "valence",
   "arousal",
@@ -68,6 +70,12 @@ export interface AffectState {
   /** His last turn with this persona, and the last return she resolved (one guilt line per return). */
   readonly seenAt: number | null;
   readonly returnedAt: number | null;
+  /** A label held for a while over the numbers (§3.2 flashes and care modes): surprised, concerned, steady, hurt. */
+  readonly hold?: { readonly label: ExpressionMood; readonly until: number } | null;
+  /** When her jobs last failed, within the hour: two make her frustrated at the world, three angry at it. */
+  readonly failures?: ReadonlyArray<number>;
+  /** The last reasons, newest last, so the panel and her own answer can say why (§8.2). */
+  readonly log?: ReadonlyArray<{ readonly at: number; readonly reason: string }>;
   readonly at: number;
 }
 export const freshAffect = (at: number): AffectState => ({
@@ -91,7 +99,9 @@ export type AffectEvent =
   /** One of his turns reached this persona: the time away resolves, and the bond counts the day. */
   | { readonly kind: "his_turn"; readonly day: string }
   /** How his voice sounded, as the room heard it (SenseVoice's label): she meets it, warmer when he sounds low. */
-  | { readonly kind: "his_voice"; readonly emotion: string };
+  | { readonly kind: "his_voice"; readonly emotion: string }
+  /** A job she or a persona leads finished or failed (the Record's job rows): the world, not him. */
+  | { readonly kind: "job"; readonly ok: boolean };
 
 /** How his words treated her, as a model judged them (`tonePrompt`); "none" moves nothing. */
 export const HIS_TONES = ["apology", "praise", "warmth", "rude"] as const;
@@ -142,8 +152,8 @@ const add = (dims: AffectState["mood"], change: Partial<Record<AffectDim, number
   return out;
 };
 
-/** One event in (§4's rows for phase 1), the new state out, with a reason for the log. */
-export const appraise = (
+/** The numbers' change for one event (§4's rows), with its reason. */
+const react = (
   s: AffectState,
   event: AffectEvent,
   now: number,
@@ -223,6 +233,16 @@ export const appraise = (
         reason: `he sounded ${event.emotion}`,
       };
     }
+    case "job":
+      return event.ok
+        ? {
+            state: { ...at, reaction: add(at.reaction, { valence: 0.08 }) },
+            reason: "a job finished",
+          }
+        : {
+            state: { ...at, reaction: add(at.reaction, { arousal: 0.12, valence: -0.05 }) },
+            reason: "a job failed",
+          };
     case "his_turn": {
       const away = at.seenAt !== null && now - at.seenAt >= AWAY_MS;
       const bond =
@@ -243,6 +263,76 @@ export const appraise = (
       };
     }
   }
+};
+
+const MIN = 60_000;
+/** Labels held over the numbers (§3.5 rules 2 and 3): care modes 20 min, flashes about a minute. */
+const VOICE_HOLD: Readonly<
+  Record<string, { readonly label: ExpressionMood; readonly ms: number }>
+> = {
+  sad: { label: "concerned", ms: 20 * MIN },
+  fearful: { label: "concerned", ms: 20 * MIN },
+  angry: { label: "steady", ms: 20 * MIN },
+  surprised: { label: "surprised", ms: MIN },
+};
+/** Her jobs failing within the hour, by count: on it, then frustrated, then cross at the world (never at him). */
+const FAILED_HOLD: ReadonlyArray<ExpressionMood> = ["determined", "frustrated", "angry"];
+const LOG_KEEP = 8;
+
+const holdOf = (
+  at: AffectState,
+  event: AffectEvent,
+  now: number,
+  failures: ReadonlyArray<number>,
+): NonNullable<AffectState["hold"]> | null => {
+  const held = at.hold != null && at.hold.until > now ? at.hold : null;
+  switch (event.kind) {
+    case "his_voice": {
+      const h = VOICE_HOLD[event.emotion];
+      return h === undefined ? held : { label: h.label, until: now + h.ms };
+    }
+    case "rude":
+      // He is cross at her: she stays steady in words; the face shows a short hurt (§3.5 rule 2).
+      return { label: "hurt", until: now + 90_000 };
+    case "apology":
+    case "praise":
+    case "warmth":
+      return held?.label === "hurt" || held?.label === "steady" ? null : held;
+    case "job":
+      return event.ok
+        ? held !== null && FAILED_HOLD.includes(held.label)
+          ? null
+          : held
+        : { label: FAILED_HOLD[Math.min(failures.length, 3) - 1]!, until: now + 10 * MIN };
+    default:
+      return held;
+  }
+};
+
+/** One event in (§4), the new state out, with a reason for the log: the numbers, the held label and the why. */
+export const appraise = (
+  s: AffectState,
+  event: AffectEvent,
+  now: number,
+  bondCap: number,
+): { readonly state: AffectState; readonly reason: string } => {
+  const next = react(s, event, now, bondCap);
+  const recent = (s.failures ?? []).filter((t) => now - t < 3_600_000);
+  const failures = event.kind === "job" ? (event.ok ? [] : [...recent, now].slice(-3)) : recent;
+  return {
+    state: {
+      ...next.state,
+      hold: holdOf(next.state, event, now, failures),
+      failures,
+      // A plain turn or a sound it doesn't know explains nothing, so it never pushes a reason out.
+      log:
+        next.reason === "he talked to her" ||
+        (event.kind === "his_voice" && !Object.hasOwn(VOICE_REACTION, event.emotion))
+          ? (s.log ?? [])
+          : [...(s.log ?? []), { at: now, reason: next.reason }].slice(-LOG_KEEP),
+    },
+    reason: next.reason,
+  };
 };
 
 /** His day's rhythm (§3.1), the same for every persona: 0.8 by day, 0.25 at night, eased between. */
@@ -298,9 +388,16 @@ export interface AffectView {
   /** Hours he was away, while the return is still to be answered; null otherwise. */
   readonly awayHours: number | null;
   readonly guilt: Guilt;
+  /** Why, newest first, in plain words from the reasons she logged (§8.2): what the panel shows and she answers from. */
+  readonly why: ReadonlyArray<string>;
 }
 
-/** §3.5's label, first match wins, for the subset phase 1 can appraise (no care modes or flashes yet). */
+/** Reasons older than this no longer explain the mood (a mood's half-life). */
+const WHY_MS = 3 * 3_600_000;
+/** A held label (a care mode or a flash) shows at least this strongly, so every vessel draws it. */
+const HELD_INTENSITY = 0.7;
+
+/** §3.5's label, first match wins: held labels (care modes, flashes, her jobs failing), then the numbers. */
 export const affectView = (
   s: AffectState,
   persona: string,
@@ -314,7 +411,14 @@ export const affectView = (
   const away = s.seenAt !== null && ctx.now - s.seenAt >= AWAY_MS;
   const awayHours = away ? Math.round((ctx.now - s.seenAt!) / 3_600_000) : null;
   if (!ctx.settings.enabled)
-    return { label: "neutral", intensity: 0, energy: 0.8, awayHours: null, guilt: ctx.guilt };
+    return {
+      label: "neutral",
+      intensity: 0,
+      energy: 0.8,
+      awayHours: null,
+      guilt: ctx.guilt,
+      why: [],
+    };
   const base = temperamentOf(persona);
   const d = shown(s, persona, ctx);
   const up = (dim: Exclude<AffectDim, "energy">) => d[dim] - base[dim];
@@ -324,49 +428,56 @@ export const affectView = (
   // The hmph is for the return reply only: his next turn, an apology or anything else, ends it (16 Nov: it outlasted "sorry").
   const returning =
     s.returnedAt !== null && s.seenAt === s.returnedAt && ctx.now - s.returnedAt < SULK_MS;
+  const held = s.hold != null && s.hold.until > ctx.now ? s.hold.label : null;
   const label: ExpressionMood =
-    d.energy < 0.3 && d.arousal < 0.45
-      ? "sleepy"
-      : ctx.guilt === "playful" && (missing || returning)
-        ? "sulky"
-        : missing
-          ? "lonely"
-          : up("valence") > 0.1 && up("confidence") > 0.04
-            ? "proud"
-            : up("valence") > 0.07
-              ? "happy"
-              : up("curiosity") > 0.1
-                ? "curious"
-                : up("arousal") > 0.12 && up("valence") < -0.05
-                  ? "frustrated"
-                  : up("valence") < -0.15
-                    ? "sad"
-                    : up("arousal") > 0.07 && up("valence") <= 0.02
-                      ? "focused"
-                      : "neutral";
+    held !== null
+      ? held
+      : d.energy < 0.3 && d.arousal < 0.45
+        ? "sleepy"
+        : ctx.guilt === "playful" && (missing || returning)
+          ? // A little put out at first, sulky once it has been a long while, and for the return reply.
+            returning || absence < -0.13
+            ? "sulky"
+            : "putout"
+          : missing
+            ? "lonely"
+            : up("valence") > 0.1 && up("confidence") > 0.04
+              ? "proud"
+              : up("valence") > 0.07
+                ? "happy"
+                : up("curiosity") > 0.1
+                  ? "curious"
+                  : up("arousal") > 0.12 && up("valence") < -0.05
+                    ? "frustrated"
+                    : up("valence") < -0.15
+                      ? "sad"
+                      : up("arousal") > 0.07 && up("valence") <= 0.02
+                        ? "focused"
+                        : "neutral";
   const far = Math.max(
     ...(["valence", "arousal", "curiosity", "confidence", "warmth"] as const).map((x) =>
       Math.abs(up(x)),
     ),
   );
+  const logged = (s.log ?? []).filter((r) => ctx.now - r.at < WHY_MS).map((r) => r.reason);
+  const strength = Math.min(1, far / 0.3);
   return {
     label,
-    intensity: Math.round(Math.min(1, far / 0.3) * 100) / 100,
+    intensity:
+      Math.round((held === null ? strength : Math.max(strength, HELD_INTENSITY)) * 100) / 100,
     energy: Math.round(d.energy * 100) / 100,
     awayHours,
     guilt: ctx.guilt,
+    why: [
+      ...(missing && awayHours !== null ? [`he has been away ${awayHours} h`] : []),
+      ...new Set(logged.reverse()),
+    ].slice(0, 3),
   };
 };
 
 const SIGH = "Out loud you may let one soft *sighs* carry it, once at most.";
 const LAUGH = "Out loud a small [laughs] may carry it, only if something is funny.";
-const SOUNDED: Partial<Record<ExpressionMood, string>> = {
-  sulky: SIGH,
-  sad: SIGH,
-  lonely: SIGH,
-  happy: LAUGH,
-  proud: LAUGH,
-};
+const SOUND_LINE = { sigh: SIGH, laugh: LAUGH } as const;
 
 /** Late for him (§5.1 "→ brief"). */
 const LATE_ENERGY = 0.35;
@@ -382,7 +493,11 @@ export const moodLine = (v: AffectView, spoken = false): string => {
       `Your mood now: ${v.label}${v.intensity < 0.5 ? ", mild" : ""} (a working state: let it shape your tone only; never announce it, and it never changes what you do).`,
     );
   // Out loud the mood is heard as well: the shared stage-direction path turns these into real sounds.
-  if (spoken && SOUNDED[v.label] !== undefined) parts.push(SOUNDED[v.label]!);
+  const voice = renderFor(VESSELS.speaker, v.label, v.intensity).voice;
+  if (spoken && voice?.sound != null) parts.push(SOUND_LINE[voice.sound]);
+  // What moved it, so "why are you sulking?" is answered from the real reasons, not invented ones (§7.1).
+  if (v.label !== "neutral" && v.why.length > 0)
+    parts.push(`If he asks why you feel so: ${v.why.join("; ")}.`);
   if (v.awayHours !== null)
     parts.push(
       v.guilt === "off"

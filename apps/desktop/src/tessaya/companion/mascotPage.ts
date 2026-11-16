@@ -23,7 +23,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
  };
  window.cancelAnimationFrame = () => { queued = []; };
  const svg = document.getElementById("c");
- let rig = null, persona = "", level = 0, sound = { zcr: 0, bright: 0 }, speaking = false;
+ let rig = null, persona = "", level = 0, sound = { zcr: 0, bright: 0 }, speaking = false, moodProp = null;
  const ipc = window.mascotIpc;
  ipc.onLevel((v, shape) => { level = v; sound = shape || { zcr: 0, bright: 0 }; });
  // Her mouth from the sound she is playing: the level opens the jaw (fast attack, slow release, gated and normalised to
@@ -79,6 +79,12 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    rig.setExpression(name, { noCut: name === "neutral", brief: !!c.brief, intensity: c.intensity ?? 0.85 });
    if (c.clip) rig.play(c.clip);
    if (c.fx) rig.spawn(c.fx);
+   // the prop her mood brings (tessaya-shared expressionMap): a new one replaces it, null puts it away
+   if (c.prop !== undefined && c.prop !== moodProp) {
+    if (moodProp) rig.prop(moodProp, false);
+    moodProp = c.prop && TCS.PROPS[c.prop] ? c.prop : null;
+    if (moodProp) rig.prop(moodProp, true);
+   }
   },
   speak(on) {
    if (!rig || on === speaking) return;

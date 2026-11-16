@@ -25,7 +25,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as PubSub from "effect/PubSub";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
@@ -47,10 +49,17 @@ export class TessayaMood extends Context.Service<
     readonly hisWords: (persona: string | undefined, said: string) => Effect.Effect<void>;
     /** One of his turns reached this persona: time away resolves and the bond counts the day. */
     readonly heard: (persona: string | undefined, timeZone?: string) => Effect.Effect<void>;
+    /**
+     * A persona's mood each time it shows differently (its label, or its strength by a tenth): after each event, and
+     * as time moves it (missing him, his evening), checked every few minutes only while someone listens.
+     */
+    readonly changes: (persona: string | undefined, timeZone?: string) => Stream.Stream<AffectView>;
   }
 >()("t3/tessaya/TessayaMood") {}
 
 const LEAD = "executive";
+/** How often a listener's mood is read again for what time alone changes (lonely builds over hours). */
+const SWEEP = "5 minutes";
 
 const Tone = Schema.Struct({ tone: Schema.Literals([...HIS_TONES, "none"]) });
 
@@ -89,6 +98,8 @@ const make = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
   const lock = yield* Semaphore.make(1);
+  /** A write happened: listeners read the view again. */
+  const moved = yield* PubSub.sliding<void>(1);
   const oneShot = yield* Effect.serviceOption(TessayaOneShot);
 
   const pack = () =>
@@ -136,6 +147,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const next = appraise(yield* read(persona, now), event(day), now, current.bondCap);
         yield* write(persona, next.state, next.reason);
+        yield* PubSub.publish(moved, undefined);
       }),
     );
   });
@@ -179,6 +191,14 @@ const make = Effect.gen(function* () {
     heard: Effect.fn("TessayaMood.heard")(function* (persona, timeZone) {
       yield* apply(persona, (day) => ({ kind: "his_turn", day }), timeZone);
     }),
+    changes: (persona, timeZone) =>
+      Stream.merge(Stream.fromPubSub(moved), Stream.tick(SWEEP)).pipe(
+        Stream.mapEffect(() => view(persona, timeZone)),
+        Stream.changesWith(
+          (a, b) =>
+            a.label === b.label && Math.round(a.intensity * 10) === Math.round(b.intensity * 10),
+        ),
+      ),
   });
 });
 

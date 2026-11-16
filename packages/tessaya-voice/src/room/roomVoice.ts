@@ -1234,7 +1234,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     // Sent away always shows at once; otherwise a mood of her server's that still holds is not overwritten.
     const face = (mood: string) => {
       if (mood !== "sleepy" && deps.now() < (eyeHold.get(id) ?? 0)) return;
-      eye("cmd/eye/set", { mood });
+      // At rest the eyes return to her mood (`voice/intent/rest`), not a blank neutral.
+      eye("cmd/eye/set", (mood === "neutral" ? restFace.get(id) : undefined) ?? { mood });
     };
     const gesture = (name: string) => eye("cmd/eye/gesture", { name });
     /** The persona's own eyes (the eye lane's looks; firmware without them ignores the topic). */
@@ -2663,6 +2664,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const quietUntil = new Map<string, number>();
   /** Until when her server's last eye mood holds on each R1 (`voice/intent/eye`): the loop's own moods wait. */
   const eyeHold = new Map<string, number>();
+  /** Her mood at rest on each R1 (`voice/intent/rest`, retained): the eyes and the prop over them between turns. */
+  const restFace = new Map<string, { readonly mood: string; readonly accessory: string }>();
   /** A persona look sent to an R1 and not yet acknowledged on `state/eye/persona`. */
   const eyeAsked = new Map<string, { readonly name: string; readonly at: number }>();
   /** R1s muted from Tessaya: their audio is dropped unheard until unmuted, across sessions. */
@@ -2803,6 +2806,25 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           );
           deps.publish(topic(id, "cmd/eye/set"), JSON.stringify({ mood }));
         }
+        return;
+      }
+      if (tail === "voice/intent/rest") {
+        const { mood: said, accessory } = json();
+        const mood = typeof said === "string" ? eyeClipOf(said) : null;
+        if (mood === null || mood === "neutral") restFace.delete(id);
+        else
+          restFace.set(id, {
+            mood,
+            accessory:
+              typeof accessory === "string" && /^[a-z]{2,12}$/.test(accessory) ? accessory : "auto",
+          });
+        deps.log(`[${id}] rest mood ${mood ?? "neutral"}`);
+        // Shown now unless a reply's mood still holds; then the next rest moment shows it.
+        if (deps.now() >= (eyeHold.get(id) ?? 0))
+          deps.publish(
+            topic(id, "cmd/eye/set"),
+            JSON.stringify(restFace.get(id) ?? { mood: "neutral", accessory: "auto" }),
+          );
         return;
       }
       if (tail === "voice/languages") {
