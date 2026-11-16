@@ -106,7 +106,7 @@ const atLeast = (a: VoiceClass, b: VoiceClass): VoiceClass =>
   STRICTNESS.indexOf(a) >= STRICTNESS.indexOf(b) ? a : b;
 
 /**
- * Every toggle, choice, button and list in Settings, published to this machine's server so each is reachable by voice
+ * Every toggle, choice, button, list and text editor in Settings, published to this machine's server so each is reachable by voice
  * (settings_* as `desktop:<id>`). The typed fields above are left out: they are settings already.
  */
 export const voiceControls = (
@@ -116,7 +116,22 @@ export const voiceControls = (
   const published = controls.flatMap((c): ReadonlyArray<DesktopSettingsControl> => {
     const tab = c.tab ?? tabOf(c.id);
     const tabVoice = TAB_VOICE[tab];
-    if (tabVoice === null || typed.has(c.id) || c.disabled === true) return [];
+    if (typed.has(c.id) || c.disabled === true) return [];
+    // A text he edits is one control even on a page of his own items (the pack, a standing job): never unasked.
+    if (c.kind === "editor")
+      return [
+        {
+          id: c.id.slice(0, 120),
+          label: c.label.slice(0, 200),
+          section: c.section.slice(0, 80),
+          ...(c.hint === undefined ? {} : { hint: c.hint.slice(0, 400) }),
+          voice: atLeast(c.voice ?? tabVoice ?? "confirm", "confirm"),
+          kind: "editor",
+          value: c.text.slice(0, 200),
+          ...(c.mine ? { resettable: true } : {}),
+        },
+      ];
+    if (tabVoice === null) return [];
     const base = {
       id: c.id.slice(0, 120),
       label: c.label.slice(0, 200),
@@ -173,7 +188,8 @@ export const voiceControls = (
     return [];
   });
   // The sync takes at most 400, and one too many would refuse the whole report: settings first, buttons last.
-  const rank = (c: DesktopSettingsControl) => (c.kind === "action" ? 2 : c.kind === "list" ? 1 : 0);
+  const rank = (c: DesktopSettingsControl) =>
+    c.kind === "action" ? 2 : c.kind === "list" || c.kind === "editor" ? 1 : 0;
   return published.toSorted((a, b) => rank(a) - rank(b)).slice(0, 400);
 };
 

@@ -80,6 +80,16 @@ const setup = () => {
       voice: "free" as const,
       kind: "action" as const,
     },
+    // A text he edits: its start is read back; Save and Use default as the window sends them.
+    {
+      id: "p.ed:executive",
+      label: "How Tessaya frames a job",
+      section: "Operating-system pack",
+      value: "Plan first.",
+      voice: "free" as const,
+      kind: "editor" as const,
+      resettable: true,
+    },
   ];
   const desktopLayer = Layer.succeed(TessayaDesktopSettings)({
     get: Effect.sync(
@@ -234,10 +244,34 @@ it.effect(
         who: "Tessaya",
       });
       assert.strictEqual(notPress.status, "refused");
+      const saved = yield* setSetting({
+        key: "desktop:p.ed:executive",
+        value: { save: "Ask me before any plan." },
+        why: "x",
+        who: "Tessaya",
+      });
+      assert.strictEqual(saved.status, "done");
+      assert.include(saved.line, 'It was "Plan first."');
+      const reset = yield* setSetting({
+        key: "desktop:p.ed:executive",
+        value: { reset: true },
+        why: "x",
+        who: "Tessaya",
+      });
+      assert.include(reset.line, "back to its default text");
+      const empty = yield* setSetting({
+        key: "desktop:p.ed:executive",
+        value: { save: " " },
+        why: "x",
+        who: "Tessaya",
+      });
+      assert.strictEqual(empty.status, "refused");
       assert.deepStrictEqual(controlled.slice(2), [
         { id: "v.language:add", value: "Urdu" },
         { id: "v.language:rm", value: "English" },
         { id: "v.testVoice", value: true },
+        { id: "p.ed:executive:save", value: "Ask me before any plan." },
+        { id: "p.ed:executive:reset", value: true },
       ]);
     }).pipe(Effect.provide(layer));
   },

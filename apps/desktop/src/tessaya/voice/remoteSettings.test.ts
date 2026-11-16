@@ -141,6 +141,23 @@ describe("createRemoteSettings", () => {
         placeholder: "Paste a key",
         secret: true,
       },
+      // A text he edits is voiced even on a page of his own items, and never unasked (16 Nov parity).
+      {
+        id: "p.ed:executive",
+        section: "Operating-system pack",
+        label: "How Tessaya frames a job",
+        kind: "editor",
+        text: "Plan first.",
+        mine: true,
+      },
+      {
+        id: "trust.userjobtext:user:1",
+        section: "Plays",
+        label: "What it does each time",
+        kind: "editor",
+        text: "Read my inbox.",
+        mine: false,
+      },
     ];
     expect(voiceControls(controls).map((c) => [c.id, c.voice, c.kind, c.items])).toEqual([
       ["v.conversation", "free", undefined, undefined],
@@ -148,7 +165,17 @@ describe("createRemoteSettings", () => {
       ["rs.share", "owner", undefined, undefined],
       ["v.language", "free", "list", ["English"]],
       ["v.keys", "never", "list", []],
+      ["p.ed:executive", "confirm", "editor", undefined],
+      ["trust.userjobtext:user:1", "confirm", "editor", undefined],
       ["v.redoIntro", "confirm", "action", undefined],
+    ]);
+    expect(
+      voiceControls(controls)
+        .filter((c) => c.kind === "editor")
+        .map((c) => [c.value, c.resettable]),
+    ).toEqual([
+      ["Plan first.", true],
+      ["Read my inbox.", undefined],
     ]);
     const sent: Array<{ controls?: unknown }> = [];
     const clicked: Array<readonly [string, string | boolean | null]> = [];
@@ -169,5 +196,8 @@ describe("createRemoteSettings", () => {
     change = { version: 4, patch: {}, controls: [{ id: "v.redoIntro", value: true }] };
     expect(await remote.tick()).toBe(true);
     expect(clicked.at(-1)).toEqual(["v.redoIntro", "intro"]);
+    change = { version: 5, patch: {}, controls: [{ id: "p.ed:executive:save", value: "Ask." }] };
+    expect(await remote.tick()).toBe(true);
+    expect(clicked.at(-1)).toEqual(["p.ed:executive:save", "Ask."]);
   });
 });

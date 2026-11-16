@@ -83,8 +83,13 @@ export const DesktopSettingsControl = Schema.Struct({
     Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(40)),
   ),
   voice: Schema.Literals(SETTING_CLASSES),
-  /** A button (`value` is its label) or a list he adds to and removes from; absent for a toggle or a choice. */
-  kind: Schema.optionalKey(Schema.Literals(["action", "list"])),
+  /**
+   * A button (`value` is its label), a list he adds to and removes from, or a text he edits (`value` is its start);
+   * absent for a toggle or a choice.
+   */
+  kind: Schema.optionalKey(Schema.Literals(["action", "list", "editor"])),
+  /** An editor whose text can go back to the default. */
+  resettable: Schema.optionalKey(Schema.Boolean),
   /** A list's items now. */
   items: Schema.optionalKey(
     Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(60)),
@@ -125,7 +130,8 @@ export const DesktopSettingsSyncResult = Schema.Struct({
         Schema.Array(
           Schema.Struct({
             id: Schema.String.check(Schema.isMaxLength(120)),
-            value: Schema.Union([Schema.String.check(Schema.isMaxLength(200)), Schema.Boolean]),
+            // An editor's whole new text, not only a choice's value.
+            value: Schema.Union([Schema.String.check(Schema.isMaxLength(4000)), Schema.Boolean]),
           }),
         ),
       ),
