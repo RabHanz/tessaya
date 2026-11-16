@@ -74,6 +74,7 @@ export const SETTINGS = [
   { id: "general", label: "General" },
   { id: "voice", label: "Voice and wake words" },
   { id: "personas", label: "Personas and voices" },
+  { id: "cast", label: "Cast" },
   { id: "assistant", label: "Working for you" },
   { id: "privacy", label: "Memory and privacy" },
   { id: "appearance", label: "Appearance" },

@@ -44,6 +44,7 @@ import { commsWaitingLine } from "@t3tools/tessaya-shared/comms";
 import { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
 import { TurnPools } from "./TurnPools.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
+import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { make as makePresence, TessayaPresence } from "./TessayaPresence.ts";
 import { moodLine } from "@t3tools/tessaya-shared/affect";
@@ -632,6 +633,7 @@ export const make = Effect.gen(function* () {
   // shortcut: in this server's memory like `conversations`; mirror to the Record when the board needs history (CS7).
   const live = new Map<string, LiveThread>();
   const current = yield* Effect.serviceOption(CurrentPersona);
+  const cast = yield* Effect.serviceOption(TessayaCast);
   const touchThread = Effect.fn("TessayaTurn.touchThread")(function* (turn: TurnEnvelope) {
     if (turn.rehearsal === true || turn.addressed === false) return;
     const conversation = conversationKey(turn);
@@ -646,6 +648,7 @@ export const make = Effect.gen(function* () {
           ? turn.member
           : null;
     if (persona !== null && Option.isSome(current)) yield* current.value.set(conversation, persona);
+    if (Option.isSome(cast)) yield* cast.value.touch(turn.vessel.id);
     live.set(id, {
       persona,
       conversation,

@@ -46,6 +46,7 @@ import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { workNow } from "../../../tessaya/TessayaSessionsAcross.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { castLine, castOp, TessayaCast } from "../../../tessaya/TessayaCast.ts";
 import { TessayaVocabulary } from "../../../tessaya/TessayaVocabulary.ts";
 import {
   TessayaVoiceLibrary,
@@ -575,6 +576,45 @@ export const layer = McpToolAccess.toLayer(
             }),
           ),
         ),
+      ),
+      // Moves need his own ask: a voice she knows, or a signed-in agent; never a guest's or tainted turn.
+      tessaya_cast: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          const origin = yield* TurnOrigin;
+          const cast = runtime === null ? Option.none() : Context.getOption(runtime, TessayaCast);
+          if (Option.isNone(cast)) return { line: "The cast is not on this server.", bodies: [] };
+          const verified =
+            origin === null ||
+            (origin.tainted !== true &&
+              origin.member !== null &&
+              origin.member !== undefined &&
+              (origin.kind !== "device" ||
+                origin.hisVoice === true ||
+                origin.speaker?.verified === true));
+          const body =
+            input.body === undefined || input.body.toLowerCase() === "here"
+              ? (origin?.id ?? input.body)
+              : input.body;
+          const op = castOp(input, body);
+          const view = yield* cast.value.call(op, verified).pipe(
+            Effect.map((v) => ({ v, line: castLine(op, v) })),
+            Effect.catch((reason: string) =>
+              Effect.map(cast.value.view, (v) => ({ v, line: reason })),
+            ),
+          );
+          const name = (id: string | null) => view.v.personas.find((p) => p.id === id)?.name ?? id;
+          return {
+            line: view.line,
+            bodies: view.v.bodies.map((b) => ({
+              name: b.name,
+              wearing: name(b.wearing),
+              why: b.why,
+              home: name(b.home),
+              follows: b.follows,
+              on: b.on.map((p) => name(p) ?? p),
+            })),
+          };
+        }),
       ),
       // Read as a client (MemoryViewer's default here): walls hold.
       tessaya_coming_up: McpToolAccess.reads(() =>

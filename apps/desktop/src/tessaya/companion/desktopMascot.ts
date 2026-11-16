@@ -128,9 +128,10 @@ export const bodyOf = (personas: ReadonlyArray<Persona>, chosen: string): Person
 export const mascotChoices = (personas: ReadonlyArray<Persona>) =>
   personas.map((p) => ({ value: p.name.toLowerCase(), label: p.name }));
 
-/** Who else is on his desktop: "none", "all", or one persona by its lower-case name. */
+/** Who else is on his desktop: "none", "all", or personas by lower-case name or id, comma-separated (Settings → Cast). */
 export const parseMascotCrew = (value: unknown): string =>
-  value === "all" || (typeof value === "string" && /^[a-z][a-z0-9 -]{0,40}$/.test(value))
+  value === "all" ||
+  (typeof value === "string" && /^[a-z][a-z0-9 -]{0,40}(,[a-z][a-z0-9 -]{0,40}){0,11}$/.test(value))
     ? value
     : "none";
 

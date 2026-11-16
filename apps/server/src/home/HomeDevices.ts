@@ -75,6 +75,7 @@ import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { expressOr } from "../tessaya/TessayaExpression.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
+import { TessayaCast } from "../tessaya/TessayaCast.ts";
 import { LINE_EVENTS, sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
 import { inQuietHours } from "@t3tools/tessaya-shared/comms";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
@@ -1310,6 +1311,18 @@ const make = Effect.gen(function* () {
         : Effect.void,
     );
 
+  // Who each Tessel wears (Settings → Cast): its loop opens each session on it and follows only when told to.
+  const cast = yield* Effect.serviceOption(TessayaCast);
+  const sendCast = (id: string, persona: string | null, follows: boolean | null) =>
+    publish(id, "voice/cast", { persona, follows }, true);
+  if (cast._tag === "Some") yield* cast.value.listen(sendCast);
+  const castOnline = (id: string) =>
+    cast._tag === "None"
+      ? Effect.void
+      : Effect.flatMap(cast.value.told(id), (t) =>
+          t === null ? Effect.void : sendCast(id, t.persona, t.follows),
+        );
+
   // An act her server holds until it knows who is speaking: that device's loop asks (StepUps).
   const stepUps = yield* Effect.serviceOption(StepUps);
   if (stepUps._tag === "Some")
@@ -1660,7 +1673,7 @@ const make = Effect.gen(function* () {
     if (result.ack !== null) yield* registry.acked(result.id, result.ack.itemId, result.ack);
     if (result.cameOnline) yield* rearm(result.id).pipe(Effect.forkIn(scope));
     if (result.cameOnline) yield* sendVoices([result.id], sharedVoices, []);
-    if (result.cameOnline) yield* prefsOnline(result.id);
+    if (result.cameOnline) yield* Effect.andThen(prefsOnline(result.id), castOnline(result.id));
     // A server restart empties the hub's retained copy; the Tessel saves its style, but a change made while it was away
     // must still reach it.
     if (result.cameOnline) {

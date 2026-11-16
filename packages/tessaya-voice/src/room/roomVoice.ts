@@ -752,7 +752,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
     let asleep = false;
     const personas = roster;
-    const lead = personas[0];
+    // The persona this R1 wears (Settings → Cast), else the roster's lead. A wake word changes only this session.
+    const lead = personas.find((p) => p.id === castOf.get(id)?.persona) ?? personas[0];
     /** Who answers: the one he last called, until the window lapses. */
     let persona = lead;
     let voiceHold = NO_HOLD;
@@ -832,7 +833,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       memberVoice = prefs?.voice ?? null;
       const now = currentOf.get(member);
       const chosen =
-        config.personaFollows && now !== undefined && deps.now() - now.at <= CURRENT_HELD_MS
+        (castOf.get(id)?.follows ?? config.personaFollows) &&
+        now !== undefined &&
+        deps.now() - now.at <= CURRENT_HELD_MS
           ? now.persona
           : prefs?.persona;
       const wanted = personas.find(
@@ -2704,6 +2707,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const prefsOf = new Map<string, { readonly persona?: string; readonly voice?: string }>();
   /** Who each member last talked to on any vessel, from her server (`voice/current/<member>`), and when it said so. */
   const currentOf = new Map<string, { readonly persona: string; readonly at: number }>();
+  /**
+   * Who each R1 wears, from her server's Cast (`voice/cast`, retained): its sessions open on that persona, and `follows`
+   * (null: no rule, so config.personaFollows) says whether a member's session moves to whom they last talked to.
+   */
+  const castOf = new Map<
+    string,
+    { readonly persona: string | null; readonly follows: boolean | null }
+  >();
   /** The household's languages per R1, from her server (`voice/languages`, retained). */
   const languagesOf = new Map<string, ReadonlyArray<string>>();
   /** The conversation the arbiter last named for each R1 (sent on its turns). */
@@ -2892,6 +2903,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           languagesOf.set(id, list as ReadonlyArray<string>);
         else languagesOf.delete(id);
         deps.log(`[${id}] languages: ${(languagesOf.get(id) ?? config.languages).join(", ")}`);
+        return;
+      }
+      if (tail === "voice/cast") {
+        const { persona: p, follows: f } = json();
+        castOf.set(id, {
+          persona: typeof p === "string" && /^[\w-]{1,40}$/.test(p) ? p : null,
+          follows: typeof f === "boolean" ? f : null,
+        });
         return;
       }
       if (tail.startsWith("voice/current/")) {

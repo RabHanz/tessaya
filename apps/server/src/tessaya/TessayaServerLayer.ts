@@ -79,6 +79,7 @@ import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as TessayaOneShot from "./TessayaOneShot.ts";
 import * as TessayaExpression from "./TessayaExpression.ts";
 import * as TessayaPhoneInbox from "./TessayaPhoneInbox.ts";
+import * as TessayaCast from "./TessayaCast.ts";
 import * as TessayaDesktopSettings from "./TessayaDesktopSettings.ts";
 import * as TessayaRoutes from "./TessayaRoutes.ts";
 import * as TessayaRpcHandlers from "./TessayaRpcHandlers.ts";
@@ -286,6 +287,13 @@ const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
       TessayaOneShot.layer,
       // The R1's warm brain; it starts a Claude process only once an R1 is set up and asks.
       R1Brain.layer(R1Device.R1_STREAM_SYSTEM),
+    ),
+  ),
+  // Who wears which body: under every vessel's owner, over the registry, the desktop's settings and CurrentPersona.
+  Layer.provideMerge(
+    TessayaCast.layer.pipe(
+      Layer.provide(DeviceRegistry.layer),
+      Layer.provide(TessayaDesktopSettings.layer),
     ),
   ),
   // Beside the mergeAll above, not in it: one more member there loses its types.

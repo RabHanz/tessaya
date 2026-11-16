@@ -510,6 +510,38 @@ const WhosHomeTool = Tool.make("tessaya_whos_home", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const CastTool = Tool.make("tessaya_cast", {
+  ...shared,
+  description:
+    'Which persona is on which body (a Tessel such as Tumble, the desktop, a phone) and moving them. One persona is one mind in many bodies. who: who\'s where now ("who\'s on Tumble?"). call: bring a persona to a body until this conversation ends ("bring Alfred here", "put Freya on the desktop"); stay: true when he says to keep it there ("stay", "keep Freya on Tumble"). home: the persona a body always goes back to ("make Tumble always Tessaya"; persona null for the default). follows: whether the body changes to whoever he last talked to. crew: who else stands beside it on the desktop ("have Alfred and Onyx on the desktop too"). sendHome: every visitor back to its home ("send everyone home"), or only the one on body. body is a body\'s name or "here" for the one he is talking through.',
+  parameters: Schema.Struct({
+    action: Schema.Literals(["who", "call", "home", "follows", "crew", "sendHome"]),
+    body: Schema.optionalKey(Schema.String),
+    persona: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    stay: Schema.optionalKey(Schema.Boolean),
+    on: Schema.optionalKey(Schema.Boolean),
+    personas: Schema.optionalKey(Schema.Array(Schema.String)),
+  }),
+  success: Schema.Struct({
+    line: Schema.String,
+    bodies: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        wearing: Schema.NullOr(Schema.String),
+        why: Schema.String,
+        home: Schema.NullOr(Schema.String),
+        follows: Schema.Boolean,
+        on: Schema.Array(Schema.String),
+      }),
+    ),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 const ComingUpTool = Tool.make("tessaya_coming_up", {
   ...shared,
   description:
@@ -809,6 +841,7 @@ export const TessayaToolkit = Toolkit.make(
   UsageReportTool,
   PromptLabTool,
   WhosHomeTool,
+  CastTool,
   PulseTool,
   PreferenceSetTool,
   PersonaHandoffTool,

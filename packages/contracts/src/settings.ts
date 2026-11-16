@@ -1372,6 +1372,18 @@ export const TessayaDeviceMoods = Schema.Record(
   }),
 );
 
+/** Who wears each body by its id (tessaya-shared cast.ts): home persona, follows, others beside it. */
+export const TessayaCast = Schema.Record(
+  Schema.String.check(Schema.isMaxLength(128)),
+  Schema.Struct({
+    home: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+    follows: Schema.optionalKey(Schema.Boolean),
+    crew: Schema.optionalKey(
+      Schema.Array(Schema.String.check(Schema.isMaxLength(60))).check(Schema.isMaxLength(12)),
+    ),
+  }),
+);
+
 export const VoicePronounce = Schema.Record(
   Schema.String.check(Schema.isMaxLength(60)),
   Schema.String.check(Schema.isMaxLength(80)),
@@ -1518,6 +1530,8 @@ export const ServerSettings = Schema.Struct({
       Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {} }),
     ),
   ),
+  // Tessaya: who wears each Tessel and phone (Settings → Cast); the desktop keeps its own in its companion settings.
+  tessayaCast: TessayaCast.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
   companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("calm" as const)),
@@ -2053,6 +2067,7 @@ export const ServerSettingsPatch = Schema.Struct({
   brainSpendAlert: Schema.optionalKey(BrainSpendAlert),
   brainDeferNearLimit: Schema.optionalKey(Schema.Boolean),
   voicePronounce: Schema.optionalKey(VoicePronounce),
+  tessayaCast: Schema.optionalKey(TessayaCast),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),
   speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),
