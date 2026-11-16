@@ -1,7 +1,7 @@
 import { expect, it } from "vite-plus/test";
 
 import type { R1Device } from "./HomeAssistantService.ts";
-import { loopPlan, parseEnvFile, voiceLine } from "./R1Loop.ts";
+import { elect, loopPlan, parseEnvFile, voiceLine } from "./R1Loop.ts";
 
 const r1 = (id: string, mqttUrl: string | null = null): R1Device => ({
   deviceKey: `${id}-key-0123456789abcdef`,
@@ -60,6 +60,7 @@ it("tells him where the R1's voice is: downloading, running, elsewhere, or not i
     onHub: true,
     available: true,
     elsewhere: false,
+    standby: false,
     install: { kind: "idle" } as const,
     planned: false,
     running: false,
@@ -79,6 +80,70 @@ it("tells him where the R1's voice is: downloading, running, elsewhere, or not i
     "The Tessel's voice runs on this server.",
   );
   expect(voiceLine({ ...at, elsewhere: true })).toBe("The Tessel's voice runs on another machine.");
+  expect(voiceLine({ ...at, elsewhere: true, standby: true })).toBe(
+    "The Tessel's voice runs on another machine; this server stands by to take over.",
+  );
   expect(voiceLine({ ...at, available: false })).toContain("only Linux (x64)");
   expect(voiceLine({ ...at, setting: "off" })).toContain("turned off");
+});
+
+/** Runs the election over a timeline of (seconds since start, other loops heard): whether this server answers at each. */
+const run = (timeline: ReadonlyArray<readonly [number, number]>) => {
+  let lastOtherAt = 0;
+  return timeline.map(([s, others]) => {
+    const vote = elect({ others, lastOtherAt, bornAt: 0, now: s * 1000 });
+    lastOtherAt = vote.lastOtherAt;
+    return vote.answers;
+  });
+};
+
+it("keeps the standby silent while another loop is heard, takes over when it goes quiet, hands back when it returns", () => {
+  // Primary heard: silent, however long.
+  expect(
+    run([
+      [31, 1],
+      [60, 1],
+      [600, 1],
+    ]),
+  ).toEqual([false, false, false]);
+  // The hub drops the primary when its heartbeat stops; the standby answers 3 s later, not before.
+  expect(
+    run([
+      [40, 1],
+      [42, 0],
+      [44, 0],
+    ]),
+  ).toEqual([false, false, true]);
+  // A blip shorter than that never takes the room; the primary back hands it back at once.
+  expect(
+    run([
+      [40, 1],
+      [41, 0],
+      [42, 1],
+      [44, 0],
+      [46, 0],
+      [47, 1],
+      [49, 1],
+    ]),
+  ).toEqual([false, false, false, false, true, false, false]);
+});
+
+it("answers alone after a start only once no other loop reconnected, so two starting together never both answer", () => {
+  // Both start at once: the other connects within the startup wait, and this one never answers.
+  expect(
+    run([
+      [0, 0],
+      [2, 0],
+      [10, 1],
+      [40, 1],
+    ]),
+  ).toEqual([false, false, false, false]);
+  // Alone after a restart: it answers once the wait is up, the same on every restart.
+  expect(
+    run([
+      [0, 0],
+      [29, 0],
+      [30, 0],
+    ]),
+  ).toEqual([false, false, true]);
 });

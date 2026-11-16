@@ -220,6 +220,8 @@ it("counts every machine's working, waiting and last-hour sessions and names the
           session("c", "busy", null),
         ),
       ),
+      // Up, with nothing done in the last hour: "which machines are up" still names it.
+      env("spare", fleetOf(session("quiet", "idle", "2026-11-06T09:00:00.000Z"))),
     ],
     projects: [],
     providers: [],
@@ -235,7 +237,7 @@ it("counts every machine's working, waiting and last-hour sessions and names the
       waiting: 1,
       working: 5,
       recent: 1,
-      machines: ["home", "studio", "laptop"],
+      machines: ["home", "studio", "laptop", "spare"],
       top: [
         ["asks", "home", "waiting", 10],
         ["manager", "studio", "working", 1],

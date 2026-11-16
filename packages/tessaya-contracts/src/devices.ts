@@ -263,8 +263,8 @@ export const DeviceOutputEntry = Schema.Struct({
 export type DeviceOutputEntry = typeof DeviceOutputEntry.Type;
 
 /**
- * Her own mic's id in the input order; a Bluetooth address is that headset's mic. `phone:<deviceId>` and
- * `laptop:<deviceId>` are reserved for his phone's and laptop's mics, which nothing routes to yet.
+ * Her own mic's id in the input order; a Bluetooth address is that headset's mic. `phone:<deviceId>` is his phone's
+ * app holding the phone route (in both orders, while it is on her network); `laptop:<deviceId>` is reserved.
  */
 export const OWN_MIC = "mic";
 /** listening: a conversation is heard there now; ready: it could be; paired: its headset link (HFP) is down. */

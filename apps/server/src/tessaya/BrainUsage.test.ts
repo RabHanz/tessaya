@@ -232,6 +232,21 @@ it("reads his day and month in his zone", () => {
   });
 });
 
+it("places each ledger row under T3's usage provider, leaving out what a transcript already counts", () => {
+  const of = (provider: string, credential: string, model: string) =>
+    BrainUsage.usageProviderOf({ provider, credential, model });
+  expect([
+    of("anthropic", "subscription", "claude-sonnet-5-5"),
+    of("claude", "subscription", "sonnet"),
+    of("codex", "subscription", "gpt-5.5"),
+    of("google", "apiKey:google", "gemini-2.5-flash-preview-tts"),
+    of("my-claude", "instance:my-claude", "claude-haiku-5-5"),
+    of("grok", "instance:grok", "grok-4"),
+    of("cursor", "instance:cursor", "auto"),
+    of("elevenlabs", "apiKey:elevenlabs", "eleven_v3"),
+  ]).toEqual(["claude", "claude", "codex", "antigravity", "claude", null, null, null]);
+});
+
 it("loads first in plain Node, as the evals import it", () => {
   // Vitest evaluates cycles in a different order, so only a real Node load shows a TDZ cycle.
   const run = NodeChildProcess.spawnSync(

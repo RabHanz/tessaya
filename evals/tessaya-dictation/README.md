@@ -12,7 +12,7 @@ pnpm tessaya-dictation --out runs/dictation --samples 3
 ```
 
 - It uses your `claude` login on the subscription and strips any metered key. Default model Haiku, as the product uses (`--model`). `--claude <path>` points at another binary.
-- Flags: `--case <id>` (repeatable), `--samples <n>`.
+- Flags: `--case <id>` (repeatable), `--samples <n>`, `--one-prompt` (the server's path for web and mobile: the rules and the dictation in one prompt with a JSON answer, under Claude Code's own system prompt).
 - A run writes `rows.ndjson` (each text and its grade) and `summary.json`.
 - Cost: one call per case per sample, two when the check refuses the first answer.
 - The retry goes inside one message here, as on the subscription path; the key path sends it as its own turns.

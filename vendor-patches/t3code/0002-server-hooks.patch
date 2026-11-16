@@ -1781,7 +1781,7 @@ index 0de2e84b1f6e3236d50a1384364456f6f0828417..06f639be112cba7bf429dd3c144686f8
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 9353fa2f508a8c7a0c85d6e28055ed24c120666b..44dde54d67402294e9727c7d73c14755b7d149fd 100644
+index 9353fa2f508a8c7a0c85d6e28055ed24c120666b..373db98af341068bfeab837a36c6e45ef9b26b0c 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -6,6 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
@@ -1810,7 +1810,15 @@ index 9353fa2f508a8c7a0c85d6e28055ed24c120666b..44dde54d67402294e9727c7d73c14755
  import * as PeerForwarding from "./peer/PeerForwarding.ts";
  import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
  import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
-@@ -695,7 +700,18 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -306,6 +311,7 @@ const layerUsage = UsageService.layer.pipe(
+       CursorUsageAccounts.layer.pipe(Layer.provide(CursorAccountReader.layer)),
+     ).pipe(Layer.provide(ProviderHostLive.layer.pipe(Layer.provide(ServerSecretStore.layer)))),
+   ),
++  Layer.provide(TessayaServerLayer.usageLedger),
+   Layer.provide(layerServerSettings),
+ );
+ 
+@@ -695,7 +701,18 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    ProviderInstallation.layer,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -1829,7 +1837,7 @@ index 9353fa2f508a8c7a0c85d6e28055ed24c120666b..44dde54d67402294e9727c7d73c14755
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-@@ -817,11 +833,19 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -817,11 +834,19 @@ const layerMakeRoutes = Layer.mergeAll(
      GuestHttp.layer,
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
@@ -1850,7 +1858,7 @@ index 9353fa2f508a8c7a0c85d6e28055ed24c120666b..44dde54d67402294e9727c7d73c14755
      Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
      Layer.provide(McpOAuth.layerMcpClientAuthenticator),
    ),
-@@ -860,6 +884,7 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -860,6 +885,7 @@ const layerMakeRoutes = Layer.mergeAll(
      ),
    ),
    Layer.provide(CloudSpeech.layer.pipe(Layer.provide(SecretResolver.layer))),
@@ -1934,7 +1942,7 @@ index 6fee790bc4bdaea8920685ef9894451f717f8046..31d144e287edd19cb9ff95428931cfbf
      }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
    );
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ababb0be1f 100644
+index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..df233f6babb4aaf83fb3c27cd1c85b570a19fb5a 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -140,6 +140,7 @@ import {
@@ -1945,18 +1953,21 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
    skipUnchangedThreadShells,
    toShellApplicationEvent,
    type ShellApplicationEvent,
-@@ -235,6 +236,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+@@ -235,7 +236,12 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
  import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
  import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
  import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
+-import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
 +// Baton (vendor-patches/t3code/0002-server-hooks.patch): its own RPC group, handlers and scopes.
 +import { TessayaRpcGroup } from "@t3tools/tessaya-contracts";
 +import * as TessayaRpcAuthorization from "./tessaya/TessayaRpcAuthorization.ts";
 +import * as TessayaRpcHandlers from "./tessaya/TessayaRpcHandlers.ts";
- import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
++import { RpcInstrumentation } from "./observability/RpcInstrumentation.ts";
++import { rpcActionLayer } from "./provenance/rpcActions.ts";
  import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
  import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
-@@ -707,13 +712,14 @@ function projectFileFailureContext(
+ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
+@@ -707,13 +713,14 @@ function projectFileFailureContext(
  const PROVIDER_STATUS_DEBOUNCE_MS = 200;
  
  // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
@@ -1973,7 +1984,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
  const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
  type SplitWsRpc = Extract<
    ServerWsRpc,
-@@ -723,7 +729,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
+@@ -723,7 +730,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
    SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
  const isOtherWsRpc = (rpc: ServerWsRpc): rpc is Exclude<ServerWsRpc, SplitWsRpc> =>
    !isSplitWsRpc(rpc);
@@ -1982,7 +1993,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
  const SplitWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isSplitWsRpc));
  const OtherWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isOtherWsRpc));
  function toAuthAccessStreamEvent(
-@@ -1130,6 +1136,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
+@@ -1130,6 +1137,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
      readonly requestCompletionMarker?: boolean;
      readonly omitIdleSubagents?: boolean;
      readonly omitOlderSettled?: boolean;
@@ -1990,7 +2001,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
    }) {
      const sql = yield* SqlClient.SqlClient;
      const threadManagement = yield* ThreadManagementService.ThreadManagementService;
-@@ -1400,8 +1407,10 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
+@@ -1400,8 +1408,10 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
        ),
      );
  
@@ -2003,7 +2014,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
        Stream.mapError(
          (cause) =>
            new OrchestrationV2GetShellSnapshotError({
-@@ -1945,7 +1954,7 @@ export const layerWsRpc = (
+@@ -1945,7 +1955,7 @@ export const layerWsRpc = (
          return yield* mutateProjectWithClone(projectService, projectCloneTracker, mutation);
        });
  
@@ -2012,7 +2023,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
          [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
            Effect.annotateCurrentSpan({
              "orchestration_v2.command_id": command.commandId,
-@@ -3508,8 +3517,11 @@ export const layerWsRpc = (
+@@ -3508,8 +3518,11 @@ export const layerWsRpc = (
        const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
          handlers;
        return Context.merge(
@@ -2026,12 +2037,12 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
        );
      }),
    );
-@@ -3584,7 +3596,7 @@ export const layer = Layer.unwrap(
+@@ -3584,7 +3597,7 @@ export const layer = Layer.unwrap(
                          })
                          .pipe(Effect.ignore);
                  }),
 -                rpcInstrumentationLayer,
-+                Layer.merge(rpcInstrumentationLayer, TessayaRpcAuthorization.layer(session)),
++                Layer.merge(rpcActionLayer(session), TessayaRpcAuthorization.layer(session)),
                ),
              ),
              Effect.forkScoped,
@@ -2111,7 +2122,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec96572dbb87dd 100644
+index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab98917956b24411b 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2129,7 +2140,7 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
  import { ProjectScript, type ProjectMutation } from "./project.ts";
  import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
  import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
-@@ -1349,6 +1357,100 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -1349,6 +1357,117 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
@@ -2145,6 +2156,23 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
 +  Schema.Struct({
 +    owner: Schema.optionalKey(Schema.NullOr(Schema.String)),
 +    show: Schema.optionalKey(Schema.Boolean),
++  }),
++);
++/** Per persona id, each emotional dial moved from its default (tessaya-shared affect `TRAITS`), 0 to 1. */
++export const TessayaPersonaDials = Schema.Record(
++  Schema.String,
++  Schema.Record(Schema.String, Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
++);
++
++/** Who wears each body by its id (tessaya-shared cast.ts): home persona, follows, others beside it. */
++export const TessayaCast = Schema.Record(
++  Schema.String.check(Schema.isMaxLength(128)),
++  Schema.Struct({
++    home: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
++    follows: Schema.optionalKey(Schema.Boolean),
++    crew: Schema.optionalKey(
++      Schema.Array(Schema.String.check(Schema.isMaxLength(60))).check(Schema.isMaxLength(12)),
++    ),
 +  }),
 +);
 +
@@ -2230,7 +2258,7 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1372,6 +1474,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1372,6 +1491,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -2242,7 +2270,7 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1489,49 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1506,52 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2270,11 +2298,14 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
 +    intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
 +    bondCap: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
 +    devices: TessayaDeviceMoods.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
++    personas: TessayaPersonaDials.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  }).pipe(
 +    Schema.withDecodingDefault(
-+      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {} }),
++      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {}, personas: {} }),
 +    ),
 +  ),
++  // Tessaya: who wears each Tessel and phone (Settings → Cast); the desktop keeps its own in its companion settings.
++  tessayaCast: TessayaCast.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
 +  companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
 +    Schema.withDecodingDefault(Effect.succeed("calm" as const)),
@@ -2292,7 +2323,7 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1541,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1561,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2306,7 +2337,7 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +1979,61 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +1999,62 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2325,6 +2356,7 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
 +        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
 +      ),
 +      devices: Schema.optionalKey(TessayaDeviceMoods),
++      personas: Schema.optionalKey(TessayaPersonaDials),
 +    }),
 +  ),
 +  companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
@@ -2368,7 +2400,7 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +2042,23 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +2063,24 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2383,6 +2415,7 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
 +  brainSpendAlert: Schema.optionalKey(BrainSpendAlert),
 +  brainDeferNearLimit: Schema.optionalKey(Schema.Boolean),
 +  voicePronounce: Schema.optionalKey(VoicePronounce),
++  tessayaCast: Schema.optionalKey(TessayaCast),
    speechModelId: Schema.optionalKey(Schema.String),
    speechAcceleration: Schema.optionalKey(SpeechAcceleration),
    speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),
@@ -2392,7 +2425,7 @@ index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec9657
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2308,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2330,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

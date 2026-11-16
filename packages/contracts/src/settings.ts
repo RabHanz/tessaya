@@ -1371,6 +1371,23 @@ export const TessayaDeviceMoods = Schema.Record(
     show: Schema.optionalKey(Schema.Boolean),
   }),
 );
+/** Per persona id, each emotional dial moved from its default (tessaya-shared affect `TRAITS`), 0 to 1. */
+export const TessayaPersonaDials = Schema.Record(
+  Schema.String,
+  Schema.Record(Schema.String, Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
+);
+
+/** Who wears each body by its id (tessaya-shared cast.ts): home persona, follows, others beside it. */
+export const TessayaCast = Schema.Record(
+  Schema.String.check(Schema.isMaxLength(128)),
+  Schema.Struct({
+    home: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+    follows: Schema.optionalKey(Schema.Boolean),
+    crew: Schema.optionalKey(
+      Schema.Array(Schema.String.check(Schema.isMaxLength(60))).check(Schema.isMaxLength(12)),
+    ),
+  }),
+);
 
 export const VoicePronounce = Schema.Record(
   Schema.String.check(Schema.isMaxLength(60)),
@@ -1513,11 +1530,14 @@ export const ServerSettings = Schema.Struct({
     intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     bondCap: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
     devices: TessayaDeviceMoods.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    personas: TessayaPersonaDials.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(
     Schema.withDecodingDefault(
-      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {} }),
+      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {}, personas: {} }),
     ),
   ),
+  // Tessaya: who wears each Tessel and phone (Settings → Cast); the desktop keeps its own in its companion settings.
+  tessayaCast: TessayaCast.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
   companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("calm" as const)),
@@ -1994,6 +2014,7 @@ export const ServerSettingsPatch = Schema.Struct({
         Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
       ),
       devices: Schema.optionalKey(TessayaDeviceMoods),
+      personas: Schema.optionalKey(TessayaPersonaDials),
     }),
   ),
   companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
@@ -2053,6 +2074,7 @@ export const ServerSettingsPatch = Schema.Struct({
   brainSpendAlert: Schema.optionalKey(BrainSpendAlert),
   brainDeferNearLimit: Schema.optionalKey(Schema.Boolean),
   voicePronounce: Schema.optionalKey(VoicePronounce),
+  tessayaCast: Schema.optionalKey(TessayaCast),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),
   speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),

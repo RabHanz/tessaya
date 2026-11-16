@@ -17,3 +17,5 @@ export const R1FLASH_RUN_CHANNEL = "desktop:r1flash-run";
 export const R1FLASH_EVENT_CHANNEL = "desktop:r1flash-event";
 export const R1FLASH_INPUT_CHANNEL = "desktop:r1flash-input";
 export const R1FLASH_STOP_CHANNEL = "desktop:r1flash-stop";
+export const BATON_HISTORY_TONE_PASS_CHANNEL = "baton-history:tone-pass";
+export const BATON_HISTORY_ACT_CHANNEL = "baton-history:act";

@@ -109,6 +109,20 @@
       "pending": "MEM-13",
       "query": "what colour scheme do I like",
       "present": ["dark"]
+    },
+    {
+      "recall": true,
+      "group": "window",
+      "history": ["the staging deploy failed again last night"],
+      "query": "why does it keep doing that",
+      "present": ["staging-disk"]
+    },
+    {
+      "recall": true,
+      "group": "window",
+      "history": ["my accountant emailed me this morning"],
+      "query": "what is her name again",
+      "present": ["accountant"]
     }
   ]
 }

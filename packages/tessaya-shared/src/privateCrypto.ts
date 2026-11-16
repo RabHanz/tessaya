@@ -143,6 +143,9 @@ export const adminAad = (storeId: string) => `${PRIVATE_FORMAT}|admin|${storeId}
 /** An item added to a locked store, sealed to that store's box key until it is next opened. */
 export const inboxAad = (storeId: string, itemId: string) =>
   `${PRIVATE_FORMAT}|inbox|${storeId}|${itemId}`;
+/** A private event's envelope (B-046), sealed to the owner store's box key: written while locked, read only when open. */
+export const eventAad = (storeId: string, eventId: string) =>
+  `${PRIVATE_FORMAT}|event|${storeId}|${eventId}`;
 
 /** The next link of an audit chain: a removed or edited row breaks every hash after it. */
 export const auditHash = (key: Buffer, previous: string, row: string): string =>

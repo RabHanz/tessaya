@@ -86,7 +86,11 @@ const ROOM_TOOLS = [
   "tessaya_coming_up",
   "tessaya_owner_doc",
   "tessaya_usage_report",
+  // Activity / Why (B-046): "what did you do in the last hour?", "why did that happen?".
+  "tessaya_activity",
   "tessaya_whos_home",
+  // Who's on which body: "who's on Tumble?", "bring Alfred here", "send everyone home" (Settings → Cast).
+  "tessaya_cast",
   // Her pulse (B-003): "what have you noticed?", "that was helpful", "stop telling me about X".
   "tessaya_pulse",
   "tessaya_preference_set",
@@ -407,26 +411,33 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
                           ? `${(input as { to: string }).to} has this conversation now: say so in a few words.`
                           : "Handed back: say so in a few words.",
                     })
-                  : name === "tessaya_wake_word_change" ||
-                      name === "tessaya_job_lead" ||
-                      name.startsWith("people_")
-                    ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
-                    : name === "tessaya_memory_forget"
-                      ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })
-                      : name === "device_watch" || name === "device_button"
-                        ? // A rule is saved at once, not asked: "it waits for his answer" made her say so (13 Nov suite).
-                          JSON.stringify({
-                            ok: true,
-                            value: {
-                              status: "done",
-                              line: name === "device_watch" ? "Saved the rule." : "Saved.",
-                            },
-                          })
-                        : JSON.stringify({
-                            id: null,
-                            status: "queued",
-                            line: "Sent; it waits for his answer.",
-                          }),
+                  : name === "people_forget_me" &&
+                      (input as { confirmed?: unknown }).confirmed !== true
+                    ? // TessayaPeople's ask: "Done (nothing changed)" to the ask made her invent why (.168 suite).
+                      JSON.stringify({
+                        status: "asked",
+                        line: "Before I do: forgetting you removes your voice and what I know of you. Ask them for a clear yes, then call again with confirmed.",
+                      })
+                    : name === "tessaya_wake_word_change" ||
+                        name === "tessaya_job_lead" ||
+                        name.startsWith("people_")
+                      ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
+                      : name === "tessaya_memory_forget"
+                        ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })
+                        : name === "device_watch" || name === "device_button"
+                          ? // A rule is saved at once, not asked: "it waits for his answer" made her say so (13 Nov suite).
+                            JSON.stringify({
+                              ok: true,
+                              value: {
+                                status: "done",
+                                line: name === "device_watch" ? "Saved the rule." : "Saved.",
+                              },
+                            })
+                          : JSON.stringify({
+                              id: null,
+                              status: "queued",
+                              line: "Sent; it waits for his answer.",
+                            }),
         isError: false,
         status: "done",
       }

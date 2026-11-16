@@ -33,6 +33,9 @@ export const PROMPT_TERMS = 200;
 
 const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** All in small letters as written: an ordinary word ("prints", "new"), never a name or a term of his. */
+const ordinaryWord = (word: string): boolean => /^\p{Ll}+(?:['’]\p{Ll}+)*$/u.test(word.trim());
+
 /** A word without the full stop or quote that ended its sentence: "Tessaya." is taught as Tessaya. */
 const bare = (word: string): string => word.replace(/[.'’-]+$/, "");
 
@@ -79,6 +82,14 @@ export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> 
           if (typeof entry !== "object" || entry === null || typeof entry.phrase !== "string")
             return [];
           if (entry.phrase.trim().length === 0) return [];
+          // One fix to an ordinary word ("new" heard as "Jewel", 16 Nov) was taught before it took two: dropped.
+          if (
+            entry.source === "learned" &&
+            typeof entry.replacement !== "string" &&
+            ordinaryWord(entry.phrase) &&
+            !(typeof entry.count === "number" && entry.count >= CORRECTION_THRESHOLD)
+          )
+            return [];
           // A word at a sentence's end was once learned or added with its stop ("Tessaya." heard as "Tsaya.").
           const learned = entry.source === "learned";
           const phrase =
@@ -648,6 +659,10 @@ export const learnCorrection = (
   }
   const key = `${fix.heard.toLowerCase()}>${fix.meant}`;
   const count = (seen[key] ?? 0) + 1;
+  // An ordinary word he meant is taught only from the same fix made twice: once is often a slip or a mis-aligned edit.
+  const plain = ordinaryWord(fix.meant);
+  if (plain && count < CORRECTION_THRESHOLD)
+    return { seen: { ...seen, [key]: count }, entries, added: [], taught: [] };
   let next = entries;
   const taught: Array<{ heard: string; meant: string }> = [];
   if (!sameWord(fix.heard, fix.meant)) {
@@ -659,7 +674,7 @@ export const learnCorrection = (
           phrase: fix.meant,
           replacement: null,
           source: "learned",
-          count: 1,
+          count,
           lastSeen: now,
           heard: [fix.heard],
         },
@@ -677,6 +692,8 @@ export const learnCorrection = (
   if (count < CORRECTION_THRESHOLD)
     return { seen: { ...seen, [key]: count }, entries: next, added: [], taught };
   const { [key]: _gone, ...rest } = seen;
+  // A rule replaces the heard word everywhere with no model: an ordinary word on either side never becomes one.
+  if (plain || ordinaryWord(fix.heard)) return { seen: rest, entries: next, added: [], taught };
   next = upsertEntry(
     next,
     { phrase: fix.heard, replacement: fix.meant, source: "learned" },
@@ -954,6 +971,8 @@ const applyTaughtForms = (text: string, entries: ReadonlyArray<VocabularyEntry>)
     for (const form of e.heard ?? []) {
       if (!/^\p{L}+$/u.test(form) || everydayForm(form) || his.has(form.toLowerCase())) continue;
       const term = e.replacement ?? e.phrase;
+      // A learned ordinary word is a hint for the model only: "Jewel" is never turned into "new" by code.
+      if (e.source === "learned" && ordinaryWord(term)) continue;
       out = out.replace(
         new RegExp(`${WORD_START}${escapeRegExp(form)}${WORD_END}`, "giu"),
         (found: string, at: number, whole: string) => {

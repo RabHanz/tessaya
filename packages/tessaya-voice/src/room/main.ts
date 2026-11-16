@@ -14,7 +14,7 @@ import { pocketSpeech } from "@t3tools/tessaya-shared/speechSplice";
 import { pocketVoiceUrl } from "@t3tools/tessaya-shared/voiceLibrary";
 import { fetchSignedWake, wakeKey } from "@t3tools/tessaya-shared/wakeModels";
 
-import { integratedLufs, loudnessGain, withGain } from "../loudness.ts";
+import { gainLimiter, integratedLufs, loudnessGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import {
@@ -255,7 +255,7 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
           const gain = loudnessGain(lufs, target);
           gains.set(voice, gain);
           log(
-            `voice ${voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB, now ${integratedLufs(withGain(pcm, gain), 16_000).toFixed(1)} LUFS (target ${target})`,
+            `voice ${voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB, now ${integratedLufs(gainLimiter(gain)(pcm), 16_000).toFixed(1)} LUFS (target ${target})`,
           );
         },
         (e: unknown) => {
@@ -275,9 +275,10 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
   const speak = async function* (text: string, signal: AbortSignal, voice?: string) {
     const read = createWavReader();
     const down = createResampler24to16();
+    const limit = gainLimiter(gains.get(voice ?? "") ?? 1);
     for await (const chunk of pocketSpeech(text, voice ?? "", (t) => say(t, signal, voice))) {
       const pcm = down(read(chunk));
-      if (pcm.length > 0) yield withGain(pcm, gains.get(voice ?? "") ?? 1);
+      if (pcm.length > 0) yield limit(pcm);
     }
   };
   return { speak, warm };
@@ -636,6 +637,8 @@ const main = async () => {
     url:
       process.env["R1_MQTT_URL"] || `mqtt://${env("R1_MQTT_HOST")}:${env("R1_MQTT_PORT", "1883")}`,
     clientId: `tessaya-room-${process.pid}`,
+    // A short heartbeat: the hub drops a silent loop after 9 s, so a standby on the hub's server takes the room.
+    keepAliveS: 6,
     user: env("R1_MQTT_USER"),
     pass: secret("R1_MQTT_PASS_FILE"),
     subscribe: [
@@ -669,6 +672,7 @@ const main = async () => {
       "freya/r1/+/voice/stepup",
       "freya/r1/+/voice/prefs/+",
       "freya/r1/+/voice/current/+",
+      "freya/r1/+/voice/cast",
       "freya/r1/+/voice/languages",
       "freya/r1/+/voice/profile",
       "freya/r1/+/voice/profile/+",
@@ -980,6 +984,13 @@ const main = async () => {
       brain: brain(env("R1_BRAIN_URL"), deviceKey),
       link: link(env("R1_BRAIN_URL")),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
+      effect: (deviceId, nonverbal, face) =>
+        void fetch(env("R1_BRAIN_URL").replace(/\/chat\/completions$/, "/turns/effect"), {
+          method: "POST",
+          headers: { authorization: `Bearer ${deviceKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ deviceId, nonverbal, face }),
+          signal: AbortSignal.timeout(3_000),
+        }).catch((error: unknown) => log(`effect ${nonverbal} not sent: ${String(error)}`)),
       forget: (personId) => {
         sharedProfiles.clear(personId);
         headsetStore.remove(personId);

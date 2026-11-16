@@ -4,6 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { dialsOf } from "@t3tools/tessaya-shared/affect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import type { VoiceClip, VoiceLibraryView } from "@t3tools/tessaya-contracts";
@@ -214,7 +215,11 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
                   why: [],
                 },
                 people: [],
+                dials: dialsOf("butler", 1, undefined),
               }),
+            roomView: () => Effect.die("not asked"),
+            forget: () => Effect.void,
+            reset: () => Effect.void,
             moves: Stream.empty,
             changes: () => Stream.empty,
           });

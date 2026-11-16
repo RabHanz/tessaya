@@ -39,7 +39,11 @@ const rig = (
     scorer: async (): Promise<WakeScorer> => ({
       chunkSamples: 1280,
       reset: () => undefined,
-      score: async (chunk) => [chunk.includes(7) ? 0.995 : 0, 0],
+      // 8: Alfred over his bar with Tessaya just under hers; 9: Alfred alone.
+      score: async (chunk) => [
+        chunk.includes(7) ? 0.995 : chunk.includes(8) ? 0.98 : 0,
+        chunk.includes(8) || chunk.includes(9) ? 0.99 : 0,
+      ],
     }),
     confirm: async (pcm) => {
       confirmed.push(pcm.length);
@@ -293,7 +297,9 @@ describe("waking her by name with no session open", () => {
     expect(kwsSettingsCommand({ early: 0, gate_min: 160, gate_x10: 30 }, kws, gate)).toBe(
       '{"early":0.9,"gate_min":64,"gate_x10":25}',
     );
-    expect(kwsSettingsCommand({ early: 900, gate_min: 64, gate_x10: 30 }, kws, gate)).toBe('{"gate_x10":25}');
+    expect(kwsSettingsCommand({ early: 900, gate_min: 64, gate_x10: 30 }, kws, gate)).toBe(
+      '{"gate_x10":25}',
+    );
     expect(kwsSettingsCommand({ early: 900, gate_min: 64, gate_x10: 25 }, kws, gate)).toBeNull();
     expect(parseWakeGate("min=64,x=2.5")).toEqual(gate);
     expect(parseWakeGate(" min=160 , x=3 ")).toEqual({ min: 160, x10: 30 });
@@ -351,6 +357,18 @@ describe("waking her by name with no session open", () => {
     for (let i = 0; i < 4; i += 1) tv.stream.frame("r1", frame(7));
     await tv.stream.drained("r1");
     expect(tv.woken).toEqual([]);
+  });
+
+  it("wakes no one when two names both fit one segment, even if the text backs one (12:35Z, 16 Nov: Tessaya opened Freya)", async () => {
+    const both = rig("Alfred.");
+    for (let i = 0; i < 4; i += 1) both.stream.frame("r1", frame(8));
+    await both.stream.drained("r1");
+    expect(both.woken).toEqual([]);
+    expect(both.confirmed).toEqual([]);
+    const alone = rig("Alfred.");
+    for (let i = 0; i < 4; i += 1) alone.stream.frame("r1", frame(9));
+    await alone.stream.drained("r1");
+    expect(alone.woken).toEqual(["r1 Alfred"]);
   });
 
   it("wakes when any recogniser hears the name: his personal one heard names the general one left empty (15 Nov)", async () => {

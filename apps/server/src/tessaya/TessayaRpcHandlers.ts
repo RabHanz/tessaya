@@ -9,6 +9,8 @@
  * routes needs nothing Baton-specific: upstream's own ws tests compile and run unchanged, and a
  * server without Baton's layer answers `fabric.*` with a defect naming why.
  */
+import { ActionLog } from "../provenance/ActionLog.ts";
+import { activityList, activityWhy } from "../provenance/activity.ts";
 import { teamBoard } from "./TessayaTeamBoard.ts";
 import { readGrants, setGrant } from "./consent.ts";
 import {
@@ -27,14 +29,18 @@ import {
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
   BATON_PHONE_PAIRING_WS_METHODS,
+  BATON_CAST_WS_METHODS,
+  CastError,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
+  TESSAYA_ACTIVITY_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
+  BATON_PULSE_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
   BATON_DICTATION_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
@@ -103,6 +109,7 @@ import { readPack } from "./OperatingSystemPack.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import * as PhonePairing from "./PhonePairing.ts";
+import { TessayaCast } from "./TessayaCast.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { TessayaSessionsAcross } from "./TessayaSessionsAcross.ts";
 import { TessayaIntentService } from "./IntentService.ts";
@@ -139,6 +146,7 @@ import { devicesActorOf, serveDevicesCall } from "../home/HomeDeviceCalls.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import { TessayaVoiceLibrary, serveVoiceCall } from "./TessayaVoiceLibrary.ts";
 import { serveLearnCall } from "./TessayaLearn.ts";
+import * as Pulse from "./TessayaPulse.ts";
 
 /** Only Claude keeps several accounts behind one config directory today. */
 const DEFAULT_ROTATION_DRIVER = ProviderDriverKind.make("claudeAgent");
@@ -194,7 +202,9 @@ export type TessayaServices =
   | ThreadAccountMoves
   | ProviderInstanceRegistry.ProviderInstanceRegistry
   | ProviderRegistry.ProviderRegistry
-  | PromptLab;
+  | PromptLab
+  | TessayaCast
+  | ActionLog;
 
 /** The vessel a memory call comes from: the desktop app's own session, or another client (a browser, the phone page). */
 const vesselOf = (viewer: "server" | "desktop" | "client"): TurnEnvelope["vessel"] =>
@@ -670,6 +680,14 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_VOICE_WS_METHODS.call]: (input) => run(serveVoiceCall(input)),
     [BATON_LEARN_WS_METHODS.call]: (input) => run(serveLearnCall(input)),
     [BATON_PHONE_PAIRING_WS_METHODS.issue]: () => run(PhonePairing.issue()),
+    [BATON_CAST_WS_METHODS.get]: () => run(Effect.flatMap(TessayaCast, (c) => c.view)),
+    // A signed-in client with operate scope is his own app: verified for the cast's guard.
+    [BATON_CAST_WS_METHODS.call]: (input) =>
+      run(
+        Effect.flatMap(TessayaCast, (c) =>
+          Effect.mapError(c.call(input, true), (reason) => new CastError({ reason })),
+        ),
+      ),
     [BATON_PHONE_WS_METHODS.call]: (input) => run(phoneCall(input)),
     [BATON_RECORD_WS_METHODS.list]: (input) =>
       run(
@@ -677,12 +695,16 @@ export const makeHandlers = Effect.gen(function* () {
           Effect.map(record.query(input), (entries) => ({ entries })),
         ),
       ),
-    [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input)),
+    [TESSAYA_ACTIVITY_WS_METHODS.list]: (input) => run(activityList(input)),
+    [TESSAYA_ACTIVITY_WS_METHODS.why]: (input) => run(activityWhy(input)),
+    [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input, JobFlow.usageUnits)),
     [BATON_BRAIN_WS_METHODS.record]: (input) => run(recordDesktopUsage(input)),
     [BATON_PERSONAS_WS_METHODS.list]: () => run(personasList),
     [BATON_PERSONAS_WS_METHODS.change]: (input) => run(changePersona(input, { owner: true })),
     [BATON_PROMPT_LAB_WS_METHODS.call]: (input) =>
       run(Effect.flatMap(PromptLab, (lab) => lab.call(input))),
+    [BATON_PULSE_WS_METHODS.react]: (input) =>
+      run(Effect.map(Pulse.react(input.reaction, input.row), (line) => ({ line }))),
     [BATON_RECORD_WS_METHODS.append]: (input) =>
       run(
         Effect.flatMap(TessayaRecordService, (record) =>

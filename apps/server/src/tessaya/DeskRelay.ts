@@ -4,7 +4,7 @@
  * peer link (direct, tailnet or relay: whatever `PeerLinks.resolve` finds now), and runs the home server's calls to
  * the desktop's hands here, by a long poll it makes itself, so the home server needs no link back.
  */
-import { readDeskTurn } from "@t3tools/tessaya-shared/deskTurnStream";
+import { type DeskSaid, readDeskTurn } from "@t3tools/tessaya-shared/deskTurnStream";
 import {
   createHandsBroker,
   publishedSpecs,
@@ -88,7 +88,7 @@ export const relayDeskTurn = Effect.fn("DeskRelay.relay")(function* (
       body: JSON.stringify(payload),
       signal,
     });
-  return Stream.callback((queue: Queue.Queue<string, unknown>) =>
+  return Stream.callback((queue: Queue.Queue<DeskSaid, unknown>) =>
     Effect.gen(function* () {
       const controller = new AbortController();
       yield* Effect.addFinalizer(() => Effect.sync(() => controller.abort()));
@@ -124,10 +124,14 @@ export const relayDeskTurn = Effect.fn("DeskRelay.relay")(function* (
           );
           if (!response.ok || response.body === null)
             throw new Error(`The home server did not take the turn (${response.status}).`);
-          await readDeskTurn(response.body, (words) => {
-            spoke = true;
-            Queue.offerUnsafe(queue, words);
-          });
+          await readDeskTurn(
+            response.body,
+            (words) => {
+              spoke = true;
+              Queue.offerUnsafe(queue, words);
+            },
+            (affect) => Queue.offerUnsafe(queue, { affect }),
+          );
         },
         catch: (error) => (error instanceof Error ? error : new Error(String(error))),
       }).pipe(Effect.exit);

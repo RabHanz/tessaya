@@ -70,10 +70,16 @@ const SITES: Readonly<Record<string, Site>> = {
   "apps/server/src/tessaya/TessayaMemoryReactor.ts": {
     wiring: "carries the one-shot service to the learning it starts",
   },
+  "apps/server/src/tessaya/TessayaPulse.ts": {
+    routed: "the pulse's review: the background row, haiku first",
+  },
   "apps/server/src/tessaya/TessayaRpcHandlers.ts": {
     routed: "dictation cleanup over RPC: the cleanup row",
   },
   "apps/server/src/speech/http.ts": { wiring: "the key's status and test only, no model call" },
+  "packages/tessaya-shared/src/pulse.ts": {
+    wiring: "the pulse's pure rules; names the one-shot only",
+  },
   "packages/tessaya-shared/src/costRouting.ts": {
     table: "routing.json's cheap model, read only to fill the background row's default",
   },

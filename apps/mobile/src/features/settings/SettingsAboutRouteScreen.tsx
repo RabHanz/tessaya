@@ -21,6 +21,7 @@ import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { UpstreamCreditSection } from "./upstreamCredit";
 import { IS_TESSAYA_APP } from "../../lib/tessayaBrand";
+import { MeetTessayaSection } from "../tessaya/welcome/TessayaWelcome";
 
 export function SettingsAboutRouteScreen() {
   const insets = useSafeAreaInsets();
@@ -34,6 +35,7 @@ export function SettingsAboutRouteScreen() {
         contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
+        <MeetTessayaSection />
         <AppSettingsSection />
         <UpstreamCreditSection />
       </ScrollView>

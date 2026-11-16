@@ -1,6 +1,5 @@
 import { ORCHESTRATION_V2_WS_METHODS, WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as References from "effect/References";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
@@ -250,8 +249,7 @@ export class RpcInstrumentation extends RpcMiddleware.Service<RpcInstrumentation
   "t3/server/RpcInstrumentation",
 ) {}
 
-export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect, { rpc }) => {
-  const method = rpc._tag;
+export const instrumentRpc = <A, E, R>(effect: Effect.Effect<A, E, R>, method: string) => {
   const measured = effect.pipe(
     withMetrics({ counter: rpcRequestsTotal, timer: rpcRequestDuration, attributes: { method } }),
   );
@@ -268,4 +266,4 @@ export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect
       },
     }),
   );
-});
+};

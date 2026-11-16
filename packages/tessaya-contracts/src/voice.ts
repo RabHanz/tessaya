@@ -26,6 +26,8 @@ export const BATON_VOICE_OWNER_OPS = [
   "setHfToken",
   // Her mood with why (the reasons she logged); a read gets only the label and strength.
   "mood",
+  // Her opinion of one person, their story and her feeling toward them, back to nothing (MA-021).
+  "moodReset",
 ] as const;
 export const BATON_VOICE_ACT_OPS = [
   "express",

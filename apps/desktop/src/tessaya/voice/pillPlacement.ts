@@ -273,3 +273,28 @@ export const createLowerHold = (io: {
     },
   };
 };
+
+const meets = (a: Area, b: Area): boolean =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+/**
+ * The pill moved clear of her body when they would meet: beside her on the side with more room when it fits, else
+ * above her, else below. Worked out once as it opens, never followed frame by frame.
+ */
+export const clearOf = (
+  pill: Area,
+  body: Area | null,
+  area: Area,
+  gap = 8,
+): { readonly x: number; readonly y: number } => {
+  if (body === null || !meets(pill, body)) return { x: pill.x, y: pill.y };
+  const left = body.x - gap - pill.width;
+  const right = body.x + body.width + gap;
+  const leftRoom = body.x - area.x;
+  const rightRoom = area.x + area.width - (body.x + body.width);
+  for (const x of leftRoom >= rightRoom ? [left, right] : [right, left])
+    if (x >= area.x && x + pill.width <= area.x + area.width) return { x, y: pill.y };
+  const above = body.y - gap - pill.height;
+  if (above >= area.y) return { x: pill.x, y: above };
+  return { x: pill.x, y: Math.min(body.y + body.height + gap, area.y + area.height - pill.height) };
+};

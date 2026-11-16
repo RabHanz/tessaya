@@ -9,6 +9,7 @@ import {
   noticePatterns,
   patternEvents,
   PULSE_CATEGORIES,
+  pulseLog,
   reviewDue,
   nextReviewMs,
   type GateInput,
@@ -192,5 +193,62 @@ describe("patterns (M-027)", () => {
     expect(patternEvents(found, {}, NOW)).toHaveLength(1);
     expect(patternEvents(found, { "pattern:quiet:p1": NOW - 2 * DAY }, NOW)).toEqual([]);
     expect(patternEvents(found, { "pattern:quiet:p1": NOW - 8 * DAY }, NOW)).toHaveLength(1);
+  });
+});
+
+describe("the decision log (Settings → Pulse)", () => {
+  it("lists decisions with their reason and his latest reaction, never the reactions themselves", () => {
+    const at = "2026-11-16T09:00:00.000Z";
+    const rows = pulseLog([
+      {
+        id: 5,
+        at,
+        subject: "x",
+        outcome: "told_off",
+        detail: "category: sessions · row: 2 · stopped",
+      },
+      { id: 4, at, subject: "x", outcome: "liked", detail: "category: sessions · row: 2" },
+      {
+        id: 3,
+        at,
+        subject: "pulse:1",
+        outcome: "ignored",
+        detail: "no reaction within 30 minutes",
+      },
+      {
+        id: 2,
+        at,
+        subject: "Build waits",
+        outcome: "speak",
+        detail: "it waits · category: sessions",
+      },
+      {
+        id: 1,
+        at,
+        subject: "nothing worth raising",
+        outcome: "nothing",
+        detail: "quiet · held: quiet hours · category: jobs",
+      },
+    ]);
+    expect(rows).toEqual([
+      {
+        id: 2,
+        at,
+        event: "Build waits",
+        decision: "Said it",
+        reason: "it waits",
+        category: "sessions",
+        reaction: "stopped",
+      },
+      {
+        id: 1,
+        at,
+        event: "nothing worth raising",
+        decision: "Stayed quiet",
+        reason: "quiet · held: quiet hours",
+        category: "jobs",
+        reaction: null,
+      },
+    ]);
   });
 });

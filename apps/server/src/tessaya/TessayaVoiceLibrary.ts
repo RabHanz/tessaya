@@ -904,22 +904,35 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
           : yield* mood.value.atDevice(a.value.device, a.value.persona);
       // Each person sees only their own relationship row; the owner sees every row.
       const inner = yield* mood.value.inner(a.value.persona, yield* SessionMember);
-      // The general mood's why is the owner's alone (EMOTION §8.1): anyone else gets enough for the face.
+      // The general mood's why is the owner's alone (EMOTION §8.1): anyone else gets enough for the face. Her opinions,
+      // their shared stories and the persona's dials are the owner's to see and set (MA-021).
+      const owner = input.kind === "owner" && a.value.device === undefined;
       return {
         ok: true,
         value: {
           label: felt.label,
           intensity: felt.intensity,
-          ...(input.kind === "owner" && a.value.device === undefined ? { why: felt.why } : {}),
+          ...(owner ? { why: felt.why, dials: inner.dials } : {}),
           people: inner.people.map((p) => ({
             member: p.member,
             name: p.name,
             label: p.view.label,
             intensity: p.view.intensity,
             why: p.view.why,
+            ...(owner
+              ? { impression: p.view.impression ?? null, shared: p.view.shared ?? [] }
+              : {}),
           })),
         },
       };
+    }
+    case "moodReset": {
+      // Her opinion of one person, their story and how she feels toward them, back to nothing (owner only).
+      const a = decode(Schema.Struct({ persona: Schema.optionalKey(Text(60)), member: Text(120) }));
+      if (Option.isNone(a)) return bad;
+      const mood = yield* Effect.serviceOption(TessayaMood);
+      if (Option.isSome(mood)) yield* mood.value.reset(a.value.persona, a.value.member);
+      return { ok: true, value: null };
     }
     case "library":
       return yield* answer(voices.library);

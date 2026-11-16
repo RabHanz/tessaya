@@ -24,6 +24,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { ProjectChipIconRasterizer } from "./native/ProjectChipIconImages";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
+import { PhoneRouteHost } from "./features/tessel/phoneRoute";
 import * as Dialog from "./components/ui/Dialog";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
@@ -108,6 +109,7 @@ import {
   TessayaLaunchSting,
   markTessayaLaunchReady,
 } from "./features/tessaya/launch/TessayaLaunchSting";
+import { TessayaWelcome } from "./features/tessaya/welcome/TessayaWelcome";
 
 import "../global.css";
 
@@ -302,10 +304,12 @@ function AppContent() {
                 />
                 <Dialog.Host />
                 <ThreadArrangementHost />
+                <PhoneRouteHost />
                 <ProjectChipIconRasterizer />
               </NativeLayoutMetricsProvider>
             </GlobalVoiceInputControl>
             <OverlayPortalHost />
+            <TessayaWelcome />
           </SafeAreaProvider>
         </KeyboardProvider>
       </GestureHandlerRootView>

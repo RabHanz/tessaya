@@ -10,6 +10,7 @@ import {
   HOLD_MS,
   holdVoice,
   identityOf,
+  memberByVoice,
   NO_HOLD,
   profilesFor,
   speakerPath,
@@ -18,6 +19,7 @@ import {
   UNVERIFIED,
   spokenYesStands,
   voiceApproval,
+  withName,
   type SpeakerGate,
   type SpeakerIdentity,
   type SpeakerProfile,
@@ -326,6 +328,14 @@ describe("the speaker identity", () => {
       return out.identity.lifted === true ? "lifted" : out.identity.kind;
     });
     expect(seen).toEqual(turns.map(([, , want]) => want));
+    // His live session on Tumble (16 Nov 12:35Z): every turn under 2 s and at 0.36-0.38; all were left unverified.
+    let live = NO_HOLD;
+    const his = [0.361, 0.381, 0.381].map((score, i) => {
+      const out = holdVoice(live, scored("unverified", score, 1_800), i * 10_000);
+      live = out.hold;
+      return out.identity.lifted === true ? "lifted" : out.identity.kind;
+    });
+    expect(his).toEqual(["unverified", "lifted", "lifted"]);
     // A held session's evidence never lifts a turn far under it, nor a voice under the floor.
     const strong = holdVoice(
       holdVoice(NO_HOLD, scored("owner", 0.8, 3_000), 0).hold,
@@ -335,13 +345,38 @@ describe("the speaker identity", () => {
     expect(holdVoice(strong, scored("unverified", 0.39, 1_500), 2).identity.kind).toBe(
       "unverified",
     );
-    expect(holdVoice(strong, scored("unverified", 0.36, 1_500), 2).identity.kind).toBe(
+    expect(holdVoice(strong, scored("unverified", 0.34, 1_500), 2).identity.kind).toBe(
       "unverified",
     );
-    expect(holdVoice(strong, scored("unverified", 0.36, 1_500), 2).hold).toEqual(NO_HOLD);
+    expect(holdVoice(strong, scored("unverified", 0.34, 1_500), 2).hold).toEqual(NO_HOLD);
     expect(holdVoice(strong, scored("unverified", 0.45, 1_500), HOLD_MS + 2).identity.kind).toBe(
       "unverified",
     );
+  });
+
+  it("takes his first turn on her name's clip scored with it, never a voice under the floor", () => {
+    const turn = (score: number): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      own: { score, ms: 1_800 },
+    });
+    const joined = { ...UNVERIFIED(0), kind: "owner" as const, personId: "owner", confidence: 0.5 };
+    // 16 Nov 12:35Z: "What's up? Why are you crying?" scored 0.361 alone and was left unverified.
+    expect(withName(turn(0.361), joined)).toMatchObject({
+      kind: "owner",
+      lifted: true,
+      verified: false,
+    });
+    expect(withName(turn(0.3), joined).kind).toBe("unverified");
+    expect(withName(turn(0.361), { ...joined, kind: "guest", personId: null }).kind).toBe(
+      "unverified",
+    );
+  });
+
+  it("hears his voice over hers at a lower cut-off while his session holds", () => {
+    // 16 Nov 12:36Z: his 3 words over her voice scored 0.33 and were dropped as "not a household voice".
+    expect(memberByVoice(0.33, 2)).toBe("other");
+    expect(memberByVoice(0.33, 2, true)).toBe("member");
+    expect(memberByVoice(0.25, 2, true)).toBe("other");
   });
 
   const who = (kind: SpeakerIdentity["kind"], more: Partial<SpeakerIdentity> = {}) => ({

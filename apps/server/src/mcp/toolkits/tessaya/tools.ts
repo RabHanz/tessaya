@@ -180,7 +180,7 @@ const RulesTool = Tool.make("tessaya_rules", {
 const FleetTool = Tool.make("tessaya_fleet", {
   ...shared,
   description:
-    'His machines and the agent work on them right now: which of his computers are up and busy, each piece of work with its state, every Herdr pane and every running Claude Code process. Use it for "which machines are up", "what\'s running" or "what is waiting"; `tessaya_sessions` lists past and present sessions to find one. Battery, Wi-Fi and other hardware readings are device_list\'s.',
+    "This computer's agent work in full: each piece of work with its state and branch, every Herdr pane and every running Claude Code process. Use it for \"what's running here\" or \"what's in my Herdr panes\"; for which sessions are open or which machines are up across all his machines, `tessaya_work_now`; `tessaya_sessions` finds a past or present session. Battery, Wi-Fi and other hardware readings are device_list's.",
   // No `parameters`: Tool.EmptyParams serializes as a plain object, which every client accepts.
   success: TessayaFleetResult,
 })
@@ -203,7 +203,7 @@ const InFlightTool = Tool.make("tessaya_in_flight", {
 const WorkNowTool = Tool.make("tessaya_work_now", {
   ...shared,
   description:
-    'What he and his agents are on now, on every one of his linked machines: how many sessions are working, waiting on him, or busy in the last hour, and the few most pressing. Use it for "what\'s the status" or "what am I working on"; give the count, name the top ones, and offer the rest (`more`). `tessaya_in_flight` is only this computer\'s mid-turn work, for before a restart.',
+    'What he and his agents are on now, on every one of his linked machines: how many sessions are working, waiting on him, or busy in the last hour, and the few most pressing. Use it for "what\'s the status", "what am I working on", "which sessions are open" or "which machines are up" (`machines` answered, `unreachable` did not); give the count, name the top ones, and offer the rest (`more`). `tessaya_in_flight` is only this computer\'s mid-turn work, for before a restart.',
   success: TessayaWorkNowResult,
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
@@ -214,7 +214,7 @@ const WorkNowTool = Tool.make("tessaya_work_now", {
 const SessionsTool = Tool.make("tessaya_sessions", {
   ...shared,
   description:
-    "List the Claude Code sessions on this computer, every project, newest first. `query` matches a session's title or folder (not what was said in it).",
+    "Find a Claude Code session on this computer, past or present, every project, newest first. `query` matches a session's title or folder (not what was said in it). Which sessions are open now, on all his machines, is `tessaya_work_now`'s.",
   parameters: Schema.Struct({
     query: TessayaCatalogListInput.fields.query,
     limit: Limit(100, 30),
@@ -352,7 +352,7 @@ const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
 const PreferenceSetTool = Tool.make("tessaya_preference_set", {
   ...shared,
   description:
-    'Keep how the person speaking likes something, for every later turn with them on any device: `key` is name (what to call them), persona, voice, units, timeFormat ("12-hour with AM/PM" or "24-hour"), news, music or wakeTraining (on or off: whether their enrolled voice may train her wake words; "stop using my voice for training" is off); `value` in their words, or empty to clear it. Only their own preference; a guest has none. Use it whenever they say what to call them (\"call me Rab from now on\") or how they want to be spoken to; a fact to keep is tessaya_memory_remember. When they spell a name, pass it with its letters as said (\"Zaid, Z-A-Y-D\"): the spelling is kept and taught to the voice, and the line spells it back; say that spelling to them once, letter by letter.',
+    'Keep how the person speaking likes something, for every later turn with them on any device: `key` is name (what to call them), persona, voice, units, timeFormat ("12-hour with AM/PM" or "24-hour"), news, music or wakeTraining (on or off: whether their enrolled voice may train her wake words; "stop using my voice for training" is off) or pronouns ("she/her", "he/him", "they/them"); `value` in their words, or empty to clear it. Only their own preference; a guest has none. Use it whenever they say what to call them (\"call me Rab from now on\") or how they want to be spoken to; a fact to keep is tessaya_memory_remember. When they spell a name, pass it with its letters as said (\"Zaid, Z-A-Y-D\"): the spelling is kept and taught to the voice, and the line spells it back; say that spelling to them once, letter by letter.',
   parameters: Schema.Struct({
     key: TessayaPreferenceKey,
     value: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
@@ -486,7 +486,7 @@ const PulseTool = Tool.make("tessaya_pulse", {
 const WhosHomeTool = Tool.make("tessaya_whos_home", {
   ...shared,
   description:
-    'Who\'s home or around now, and where each is ("who\'s home?", "where am I?": you is the one asking), most sure first. Fused from every signal: their verified voice, typing on their own device, their devices connected, headphones on a Tessel, a Tessel picked up, the desktop locking or idle. A voice she doesn\'t know shows as guest: true, "a guest": someone is there; say so without guessing who. confidence: how sure they\'re around (likelyHome at 0.25 and up); nearest: the vessel they\'re most likely by and how sure; reasons: the evidence, strongest first. It\'s a guess, never a tracker: say it as one and name the strongest reason ("I heard Sara on the kitchen Tessel 5 minutes ago", "Omid\'s phone is connected"). "Follow me" (her own lines go to the vessel they\'re nearest) is their `follow` preference, on unless they turn it off. Only for the household\'s own members to ask, never a guest.',
+    'Who\'s home or around now, and where each is in the home ("who\'s home?", "where am I?", "which room is Sara in?": you is the one asking), most sure first. A bare "where am I?" asks where the person is, so call it; only a question about folders, files or code is a path question. Answer "where am I?" from their own row (`you`) alone. Fused from every signal: their verified voice, typing on their own device, their devices connected, headphones on a Tessel, a Tessel picked up, the desktop locking or idle. A voice she doesn\'t know shows as guest: true, "a guest": someone is there; say so without guessing who. confidence: how sure they\'re around (likelyHome at 0.25 and up); nearest: the vessel they\'re most likely by and how sure; reasons: the evidence, strongest first. It\'s a guess, never a tracker: say it as one and name the strongest reason ("I heard Sara on the kitchen Tessel 5 minutes ago", "Omid\'s phone is connected"). "Follow me" (her own lines go to the vessel they\'re nearest) is their `follow` preference, on unless they turn it off. Only for the household\'s own members to ask, never a guest.',
   // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
   success: Schema.Struct({
     people: Schema.Array(
@@ -509,6 +509,38 @@ const WhosHomeTool = Tool.make("tessaya_whos_home", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const CastTool = Tool.make("tessaya_cast", {
+  ...shared,
+  description:
+    'Which persona is on which body (a Tessel such as Tumble, the desktop, a phone) and moving them. One persona is one mind in many bodies. who: who\'s where now ("who\'s on Tumble?"). call: bring a persona to a body until this conversation ends ("bring Alfred here", "put Freya on the desktop"); stay: true when he says to keep it there ("stay", "keep Freya on Tumble"). home: the persona a body always goes back to ("make Tumble always Tessaya"; persona null for the default). follows: whether the body changes to whoever he last talked to. crew: who else stands beside it on the desktop ("have Alfred and Onyx on the desktop too"). sendHome: every visitor back to its home ("send everyone home"), or only the one on body. body is a body\'s name or "here" for the one he is talking through.',
+  parameters: Schema.Struct({
+    action: Schema.Literals(["who", "call", "home", "follows", "crew", "sendHome"]),
+    body: Schema.optionalKey(Schema.String),
+    persona: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    stay: Schema.optionalKey(Schema.Boolean),
+    on: Schema.optionalKey(Schema.Boolean),
+    personas: Schema.optionalKey(Schema.Array(Schema.String)),
+  }),
+  success: Schema.Struct({
+    line: Schema.String,
+    bodies: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        wearing: Schema.NullOr(Schema.String),
+        why: Schema.String,
+        home: Schema.NullOr(Schema.String),
+        follows: Schema.Boolean,
+        on: Schema.Array(Schema.String),
+      }),
+    ),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
 const ComingUpTool = Tool.make("tessaya_coming_up", {
@@ -543,6 +575,45 @@ const OwnerDocTool = Tool.make("tessaya_owner_doc", {
   success: Schema.Struct({ text: Schema.String }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const ActivityTool = Tool.make("tessaya_activity", {
+  ...shared,
+  description:
+    'Her action log (B-046): every action on this server with who did it, how sure that was, and what caused it (tool and model calls, device commands, Tessel events and Voice ID verdicts, settings and app actions, jobs, the pulse). `recent` lists what happened, newest first; `why` walks one action back through its causes; `findings` lists likely bugs and gaps the log shows (something changed with no cause, the same failure again and again, retries, a setting overwritten, Voice ID missing him). For "what did you do in the last hour?", "why did that happen?", "why did the Tessel open a session?" or "anything odd in your logs today?".',
+  parameters: Schema.Struct({
+    mode: Schema.Literals(["recent", "why", "findings"]).annotate({
+      description:
+        "recent: what happened; why: the cause chain of one action; findings: likely bugs and gaps.",
+    }),
+    minutes: Schema.optional(
+      Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 43_200 })).annotate({
+        description: "How far back, in minutes. Default 60.",
+      }),
+    ),
+    kind: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(60)).annotate({
+        description:
+          'A kind or family to keep: "tool", "model", "device", "room", "rpc", "record", "outcome".',
+      }),
+    ),
+    about: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(100)).annotate({
+        description:
+          "Words to match (a tool, a device, a setting); for why, the newest action matching them.",
+      }),
+    ),
+    id: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(40)).annotate({
+        description: "For why: an action id from recent.",
+      }),
+    ),
+  }),
+  success: Schema.Struct({ text: Schema.String }),
+})
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
@@ -827,8 +898,10 @@ export const TessayaToolkit = Toolkit.make(
   ComingUpTool,
   OwnerDocTool,
   UsageReportTool,
+  ActivityTool,
   PromptLabTool,
   WhosHomeTool,
+  CastTool,
   PulseTool,
   PreferenceSetTool,
   PersonaHandoffTool,

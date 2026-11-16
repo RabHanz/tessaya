@@ -215,9 +215,12 @@ const makePrivate = (
         open.delete(args.storeId as string);
         return { locked: 1 };
       }
-      if (op === "setup") {
+      if (op === "setup") return { pending: "p1", recoveryCode: "ABCD-EFGH-IJKL-MNOP" };
+      if (op === "confirmSetup") {
+        if (args.recoveryCode !== "ABCD-EFGH-IJKL-MNOP")
+          throw new Error("That is not the recovery code shown.");
         open.add(OWNER);
-        return { store: store(OWNER), recoveryCode: "ABCD-EFGH-IJKL-MNOP" };
+        return { store: store(OWNER) };
       }
       if (op === "list")
         return {
@@ -313,7 +316,7 @@ describe("the People area", () => {
   it("shows the recovery code once: gone when he has saved it or the tab closes, and copied only for 30 s", async () => {
     vi.useFakeTimers();
     try {
-      const { tab, clip } = makePrivate({ noOwner: true });
+      const { tab, clip, calls } = makePrivate({ noOwner: true });
       await tab.load();
       tab.act("m.pv.setup", JSON.stringify({ pin: "24681357", again: "2468135" }));
       expect(JSON.stringify(tab.controls())).toContain("The two PINs are not the same.");
@@ -326,7 +329,13 @@ describe("the People area", () => {
       expect(clip.value).toBe("ABCD-EFGH-IJKL-MNOP");
       await vi.advanceTimersByTimeAsync(30_000);
       expect(clip.value).toBe("");
-      tab.act("m.pv.recoveryDone", null);
+      // Nothing is made until he types it back; a wrong code keeps the card up.
+      expect(calls.some(([op]) => op === "confirmSetup")).toBe(false);
+      tab.act("m.pv.recoveryDone", "ABCD-EFGH-IJKL-MNOX");
+      await settle();
+      expect(people().recovery).not.toBeNull();
+      tab.act("m.pv.recoveryDone", "ABCD-EFGH-IJKL-MNOP");
+      await settle();
       expect(people().recovery).toBeNull();
       expect(JSON.stringify(tab.controls())).not.toContain("ABCD-EFGH");
     } finally {
@@ -339,6 +348,9 @@ describe("the People area", () => {
     const { tab } = makePrivate({ noOwner: true, onOwnerStore });
     await tab.load();
     tab.act("m.pv.setup", JSON.stringify({ pin: "24681357", again: "24681357" }));
+    await settle();
+    expect(onOwnerStore).not.toHaveBeenCalled();
+    tab.act("m.pv.recoveryDone", "ABCD-EFGH-IJKL-MNOP");
     await settle();
     expect(onOwnerStore).toHaveBeenCalledOnce();
     expect(JSON.stringify(tab.controls())).toContain("63 everyday, 17 private");

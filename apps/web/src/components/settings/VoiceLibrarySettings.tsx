@@ -3,6 +3,12 @@
  * and the previews come from the environment (`baton.voice.call`), so web, desktop, mobile and the R1 see the same
  * library; a persona's choice is written to its own pack file there.
  */
+import {
+  batonDesktopBridge,
+  TONE_LABELS,
+  type ToneLabel,
+  type ToneTurn,
+} from "@t3tools/tessaya-contracts";
 import type {
   TessayaVoiceCallResult,
   LibraryVoiceView,
@@ -11,9 +17,16 @@ import type {
   VoiceLibraryView,
 } from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
+import {
+  TEMPERAMENT_DIALS,
+  TRAITS,
+  type AffectView,
+  type SharedMoment,
+} from "@t3tools/tessaya-shared/affect";
 import { LoaderIcon, PauseIcon, PlayIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 
+import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
@@ -38,12 +51,19 @@ interface PersonaMood {
   readonly label: string;
   readonly intensity: number;
   readonly why?: ReadonlyArray<string>;
+  /** The owner's: every emotional dial of this persona, as it stands (defaults included). */
+  readonly dials?: Readonly<Record<string, number>>;
   readonly people?: ReadonlyArray<{
     readonly member: string;
     readonly name: string;
     readonly label: string;
     readonly intensity: number;
     readonly why: ReadonlyArray<string>;
+    readonly impression?: Pick<
+      NonNullable<AffectView["impression"]>,
+      "text" | "why" | "tentative" | "misjudged"
+    > | null;
+    readonly shared?: ReadonlyArray<SharedMoment>;
   }>;
 }
 
@@ -51,6 +71,31 @@ const moodTitle = (name: string, mood: { readonly label: string; readonly intens
   `${name}: ${mood.label}${mood.intensity < 0.5 ? ", mildly" : ""}`;
 const becauseOf = (why: ReadonlyArray<string> | undefined) =>
   (why ?? []).length > 0 ? `Because ${(why ?? []).join("; ")}.` : "Nothing has moved this lately.";
+/** Her opinion of someone and their story, in a sentence for the owner. */
+const opinionOf = (p: NonNullable<PersonaMood["people"]>[number]) =>
+  [
+    p.impression == null
+      ? null
+      : `Her opinion${p.impression.tentative ? " (first impression)" : ""}: ${p.impression.text}, because ${p.impression.why}.${p.impression.misjudged === null ? "" : ` She first thought: ${p.impression.misjudged}.`}`,
+    (p.shared ?? []).length === 0
+      ? null
+      : `Between them: ${(p.shared ?? []).map((m) => m.text).join("; ")}.`,
+  ]
+    .filter((s) => s !== null)
+    .join(" ");
+/** Each dial in five steps, so it reads (and is said) as a word. */
+const STEPS = [
+  ["0", "Off"],
+  ["0.25", "Low"],
+  ["0.5", "Some"],
+  ["0.75", "High"],
+  ["1", "Full"],
+] as const;
+const stepOf = (v: number) => String(Math.round(v * 4) / 4);
+const DIALS: ReadonlyArray<readonly [string, string]> = Object.entries({
+  ...TRAITS,
+  ...TEMPERAMENT_DIALS,
+});
 
 const NO_CLOUD = "none";
 const voiceKey = (voice: Pick<LibraryVoiceView, "engine" | "id">) => `${voice.engine}:${voice.id}`;
@@ -91,6 +136,7 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
   const [library, setLibrary] = useState<VoiceLibraryView | null>(null);
   const [note, setNote] = useState("");
   const [moods, setMoods] = useState<Readonly<Record<string, PersonaMood | null>>>({});
+  const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const readMoods = async (personas: ReadonlyArray<PersonaVoiceRow>) => {
     const read = await Promise.all(
       personas.map(async (p) => {
@@ -246,12 +292,84 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
                 <SettingsRow
                   key={person.member}
                   title={moodTitle(`${persona.name}, toward ${person.name}`, person)}
-                  description={becauseOf(person.why)}
+                  description={[becauseOf(person.why), opinionOf(person)]
+                    .filter((s) => s !== "")
+                    .join(" ")}
+                  control={
+                    mood.dials === undefined ? undefined : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          void call("owner", "moodReset", {
+                            persona: persona.id,
+                            member: person.member,
+                          }).then(() => readMoods(library.personas))
+                        }
+                      >
+                        Reset
+                      </Button>
+                    )
+                  }
                 />
               ))}
+              {mood.dials === undefined ? null : (
+                <FoldedSettingsSection
+                  id={`dials-${persona.id}`}
+                  title={`${persona.name}'s dials`}
+                  summary="Every emotional trait, from warmth to jealousy. You can also say it: “make Freya a bit more playful”."
+                >
+                  {DIALS.map(([dial, says]) => (
+                    <SettingsRow
+                      key={dial}
+                      title={dial}
+                      description={says}
+                      control={
+                        <Select
+                          value={stepOf(mood.dials?.[dial] ?? 0)}
+                          onValueChange={(value) => {
+                            updateSettings({
+                              tessayaMood: {
+                                personas: { [persona.id]: { [dial]: Number(value) } },
+                              },
+                            });
+                            setMoods((now) => ({
+                              ...now,
+                              [persona.id]: {
+                                ...mood,
+                                dials: { ...mood.dials, [dial]: Number(value) },
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger size="sm" aria-label={`${persona.name}: ${dial}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectPopup>
+                            {STEPS.map(([value, label]) => (
+                              <SelectItem key={value} value={value}>
+                                {label}
+                              </SelectItem>
+                            ))}
+                          </SelectPopup>
+                        </Select>
+                      }
+                    />
+                  ))}
+                </FoldedSettingsSection>
+              )}
             </Fragment>
           );
         })}
+        {batonDesktopBridge()?.tonePass === undefined ? null : (
+          <FoldedSettingsSection
+            id="voice-tone"
+            title="Label my tone"
+            summary="Your 40 newest recorded turns on this computer. Play one and tap how you were; this teaches Tessaya your voice's tone. The labels stay on this computer. You can also say “let’s label my tone”."
+          >
+            <TonePass />
+          </FoldedSettingsSection>
+        )}
       </SettingsSection>
       <SettingsSection id="voice-library" title="Voices on this machine">
         <SettingsRow
@@ -421,5 +539,87 @@ function PersonaRow(props: {
         </div>
       }
     />
+  );
+}
+
+const TONE_WORDS: Readonly<Record<ToneLabel, string>> = {
+  fine: "Fine",
+  tired: "Tired",
+  frustrated: "Frustrated",
+  stressed: "Stressed",
+  upbeat: "Upbeat",
+  unsure: "Don’t remember",
+};
+
+/** One tap per turn; the clips and the labels stay in the desktop's own history. */
+function TonePass() {
+  const bridge = batonDesktopBridge();
+  const [turns, setTurns] = useState<ReadonlyArray<ToneTurn> | null>(null);
+  const [note, setNote] = useState("");
+  const clip = useRef<HTMLAudioElement | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the desktop's history when the fold opens, and stops a clip when it closes
+  useEffect(() => {
+    void bridge
+      ?.tonePass?.()
+      .then(setTurns)
+      .catch(() => setNote("Your recordings could not be read."));
+    return () => clip.current?.pause();
+  }, [bridge]);
+  const play = async (id: string) => {
+    clip.current?.pause();
+    const reply = await bridge?.toneTurn?.(id, "play");
+    if (reply?.playback === undefined) return setNote(reply?.failed ?? "That could not be played.");
+    setNote("");
+    clip.current = new Audio(reply.playback);
+    await clip.current.play().catch(() => setNote("That could not be played."));
+  };
+  const label = async (id: string, tone: ToneLabel) => {
+    const was = turns?.find((t) => t.id === id)?.tone ?? null;
+    const next = was === tone ? null : tone;
+    setTurns((now) => now?.map((t) => (t.id === id ? { ...t, tone: next } : t)) ?? now);
+    await bridge?.toneTurn?.(id, next);
+  };
+  if (turns === null) return <SettingsRow title={note || "Loading your recordings…"} />;
+  if (turns.length === 0)
+    return (
+      <SettingsRow title="No recorded turns yet" description="Speak or dictate, then come back." />
+    );
+  const done = turns.filter((t) => t.tone !== null).length;
+  return (
+    <>
+      <SettingsRow
+        title={`${done} of ${turns.length} labelled`}
+        status={note ? <span role="status">{note}</span> : undefined}
+      />
+      {turns.map((turn) => (
+        <SettingsRow
+          key={turn.id}
+          title={turn.text.length > 120 ? `${turn.text.slice(0, 117)}…` : turn.text || "(no words)"}
+          description={new Date(turn.at).toLocaleString()}
+        >
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              size="xs"
+              variant="outline"
+              aria-label="Play"
+              onClick={() => void play(turn.id)}
+            >
+              <PlayIcon />
+            </Button>
+            {TONE_LABELS.map((tone) => (
+              <Button
+                key={tone}
+                size="xs"
+                variant={turn.tone === tone ? "default" : "outline"}
+                aria-pressed={turn.tone === tone}
+                onClick={() => void label(turn.id, tone)}
+              >
+                {TONE_WORDS[tone]}
+              </Button>
+            ))}
+          </div>
+        </SettingsRow>
+      ))}
+    </>
   );
 }

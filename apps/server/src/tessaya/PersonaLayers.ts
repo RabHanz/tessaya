@@ -3,6 +3,7 @@
  * `__TESSAYA_INTERNAL__` to false so nothing is imported, and scripts/tessaya/check-no-private-layer.mjs fails a
  * release that carries one. An answering layer takes the whole turn: nothing is learned, recorded or shown elsewhere.
  */
+import type { ActionInput } from "@t3tools/tessaya-shared/provenance";
 import * as NodeURL from "node:url";
 
 import * as Context from "effect/Context";
@@ -43,6 +44,8 @@ export interface LayerReply {
   readonly gesture: string;
   readonly intensity: number;
   readonly look?: string;
+  /** The speaking voice's affect clip for this line ("tender"): the vessel says the whole line in that reference. */
+  readonly affect?: string;
 }
 
 export interface LayerHttpRequest {
@@ -83,6 +86,17 @@ export interface LayerHost {
     readonly tool: string;
     readonly args: Readonly<Record<string, unknown>>;
   }) => Promise<unknown>;
+  /**
+   * A private action whose whole envelope the layer sealed in its own store (B-046): the public log keeps only this
+   * pointer, so a cause chain crossing the boundary still links. Fire and forget.
+   */
+  readonly privatePointer?: (pointer: {
+    readonly id: string;
+    readonly at: number;
+    readonly cause: ReadonlyArray<string>;
+  }) => void;
+  /** A private action for the host to seal in his private store (M-002) and point to; returns its id. */
+  readonly privateEvent?: (event: Omit<ActionInput, "private">) => string;
 }
 
 export interface PersonaLayer {

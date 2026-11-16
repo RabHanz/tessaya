@@ -118,7 +118,7 @@ const PreferencesTool = Tool.make("member_preferences", {
 const PreferenceSetTool = Tool.make("member_preference_set", {
   ...shared,
   description:
-    "Set or clear another member's preference, which only the owner may do (the speaker's own go through tessaya_preference_set). `key` is name, persona, voice, units, timeFormat, news, music or wakeTraining (on or off: whether their enrolled voice may train her wake words); an empty `value` clears it. Say the line back.",
+    "Set or clear another member's preference, which only the owner may do (the speaker's own go through tessaya_preference_set). `key` is name, persona, voice, units, timeFormat, news, music, wakeTraining (on or off: whether their enrolled voice may train her wake words) or pronouns (she/her, he/him, they/them); an empty `value` clears it. Say the line back.",
   parameters: Schema.Struct({
     id: Id,
     key: TessayaPreferenceKey,

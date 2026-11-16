@@ -15,6 +15,13 @@ import {
   voiceAssurance,
 } from "@t3tools/tessaya-shared/household";
 import { memoryBlock } from "@t3tools/tessaya-shared/memory";
+import {
+  repairBoundsFor,
+  repairLine,
+  repairVerdict,
+  type HeardWord,
+  type RepairVerdict,
+} from "@t3tools/tessaya-shared/transcriptRepair";
 import { comingUp, whenSaid } from "@t3tools/tessaya-shared/memoryDates";
 import { foldSpelling, spellBack } from "@t3tools/tessaya-shared/spelling";
 import {
@@ -23,6 +30,8 @@ import {
   type SpeakerLike,
 } from "@t3tools/tessaya-shared/privateMemory";
 import { PRESENCE_BARS, presenceReason } from "@t3tools/tessaya-shared/presence";
+import { emitAction } from "./turnActions.ts";
+import { make as makeLive, TurnLiveContext } from "./TurnLiveContext.ts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -44,9 +53,16 @@ import { commsWaitingLine } from "@t3tools/tessaya-shared/comms";
 import { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
 import { TurnPools } from "./TurnPools.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
+import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { make as makePresence, TessayaPresence } from "./TessayaPresence.ts";
-import { moodLine } from "@t3tools/tessaya-shared/affect";
+import {
+  faceLine,
+  moodLine,
+  roomLine,
+  type AffectView,
+  type Who,
+} from "@t3tools/tessaya-shared/affect";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { ownerLineFor, personasList } from "./OperatingSystemPack.ts";
 import { TessayaJobService } from "./TessayaJobService.ts";
@@ -102,6 +118,10 @@ export interface TurnEnvelope {
    * next time (HOUSEHOLD-DESIGN §11). Sent only for a guest's voice.
    */
   readonly print?: TessayaVoicePrint | undefined;
+  /** Each word with the recogniser's confidence (transcript repair, V-018); absent where the vessel has none. */
+  readonly words?: ReadonlyArray<HeardWord> | undefined;
+  /** The recogniser that heard `words`, whose calibrated bounds judge them ("parakeet-tdt-v3"). */
+  readonly recogniser?: string | undefined;
 }
 
 /**
@@ -192,6 +212,10 @@ export const NOT_HIS_VOICE_TO_FORGET =
 
 /** How a guest reads in "who's here": the people graph names them only to the owner. */
 const GUEST_NAME = "a guest";
+/** Someone at the vessel whose voice was not heard for this long has been quiet in the group. */
+const QUIET_MINUTES = 10;
+/** Her mood as the room may hear it: what is one person's (why, opinion, shared story) stays out (MA-021). */
+const privateOut = (v: AffectView): AffectView => ({ ...v, why: [], impression: null, shared: [] });
 
 /** One member she has lately heard, or whose devices are connected, and which of the two backs the guess. */
 export interface WhoIsHome {
@@ -284,6 +308,8 @@ export interface TurnContext {
   };
   /** The persona's line about him (`ownerLine`): only on his own untainted turns, else "". */
   readonly owner?: string;
+  /** How the words were heard (V-018): absent when taken as heard; "drop" means the vessel answers nothing. */
+  readonly repair?: Exclude<RepairVerdict, { kind: "accept" }>;
 }
 
 /** The most one turn's "where you are" line may add (P8): a few dozen tokens, flat however many people are home. */
@@ -362,6 +388,8 @@ const CONVERSATION_IDLE_MS = SAME_CONVERSATION_MS;
 const STANDING_TOKENS = 600;
 /** What one sentence adds, as the desktop's per-sentence block. */
 const SENTENCE_TOKENS = 300;
+/** Recall also asks with the conversation's last messages, so "and her?" finds who "her" is (VOXTA-STUDY G5). */
+const RECALL_WINDOW = 10;
 
 /** Why a turn teaches memory nothing, or null when it may. */
 export const notLearnable = (turn: TurnEnvelope): string | null => {
@@ -632,6 +660,7 @@ export const make = Effect.gen(function* () {
   // shortcut: in this server's memory like `conversations`; mirror to the Record when the board needs history (CS7).
   const live = new Map<string, LiveThread>();
   const current = yield* Effect.serviceOption(CurrentPersona);
+  const cast = yield* Effect.serviceOption(TessayaCast);
   const touchThread = Effect.fn("TessayaTurn.touchThread")(function* (turn: TurnEnvelope) {
     if (turn.rehearsal === true || turn.addressed === false) return;
     const conversation = conversationKey(turn);
@@ -646,6 +675,7 @@ export const make = Effect.gen(function* () {
           ? turn.member
           : null;
     if (persona !== null && Option.isSome(current)) yield* current.value.set(conversation, persona);
+    if (Option.isSome(cast)) yield* cast.value.touch(turn.vessel.id);
     live.set(id, {
       persona,
       conversation,
@@ -732,8 +762,49 @@ export const make = Effect.gen(function* () {
     return { ...turn, member: yield* SessionMember };
   });
 
+  const liveStore =
+    Option.getOrUndefined(yield* Effect.serviceOption(TurnLiveContext)) ?? (yield* makeLive);
+  /** How the words were heard, judged on the recogniser's own bounds; null when the vessel sent no scores. */
+  const repairFor = Effect.fn("TessayaTurn.repairFor")(function* (turn: TurnEnvelope) {
+    if (turn.words === undefined) return null;
+    const { personas } = yield* personasList;
+    const verdict = repairVerdict(
+      turn.words,
+      repairBoundsFor(turn.recogniser),
+      new Set(personas.map((p) => p.name.toLowerCase())),
+    );
+    const scores = turn.words.flatMap((w) => (w.p === null ? [] : [w.p]));
+    yield* emitAction({
+      kind: "turn.repair.verdict",
+      actor: {
+        kind: "rule",
+        id: turn.recogniser ?? "recogniser",
+        certainty: scores.length === 0 ? 0 : Math.min(...scores),
+      },
+      ...(turn.turnRef === undefined ? {} : { evidence: [{ kind: "turn", ref: turn.turnRef }] }),
+      persona: turn.persona ?? null,
+      subject: turn.vessel.id,
+      outcome: verdict.kind,
+      data: verdict,
+    });
+    return verdict.kind === "accept" ? null : verdict;
+  });
+
   const begin = Effect.fn("TessayaTurn.begin")(function* (raw: TurnEnvelope) {
     const turn = yield* withMember(raw);
+    const repair = yield* repairFor(turn);
+    const conversation = yield* conversationOf(turn);
+    // Noise, or words never really heard: no thread, no memory, no mood, no reply.
+    if (repair?.kind === "drop")
+      return {
+        block: "",
+        ids: [],
+        privateBlock: "",
+        conversation,
+        preferences: {},
+        who: { member: turnIdentity(turn).member, name: null },
+        repair,
+      } satisfies TurnContext;
     yield* touchThread(turn);
     const view = {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
@@ -751,7 +822,30 @@ export const make = Effect.gen(function* () {
       turn.sessionless === true
         ? memoryBlock(yield* memory.related(view), STANDING_TOKENS)
         : { block: "", ids: [] };
-    const ranked = yield* memory.related({ ...view, text: turn.text });
+    // The sentence ranks first; the conversation's last messages add what it points back to ("and her?").
+    const window = conversation.turns
+      .slice(-RECALL_WINDOW)
+      .map((t) => t.content)
+      .join("\n");
+    const { asked, around } = yield* Effect.all(
+      {
+        asked: memory.related({ ...view, text: turn.text }),
+        around: window === "" ? Effect.succeed([]) : memory.related({ ...view, text: window }),
+      },
+      { concurrency: 2 },
+    );
+    const first = new Set(asked.map((i) => i.id));
+    const added = around.filter((i) => !first.has(i.id));
+    const ranked = [...asked, ...added];
+    if (window !== "")
+      yield* emitAction({
+        kind: "turn.recall.window",
+        actor: { kind: "rule", id: "recall", certainty: 1 },
+        evidence: added.map((i) => ({ kind: "memory", ref: i.id })),
+        persona: turn.persona ?? null,
+        subject: conversation.key,
+        data: { messages: Math.min(RECALL_WINDOW, conversation.turns.length), asked: asked.length },
+      });
     // The ids are the sentence's own ranking, the same for every vessel; the text leaves out what standing holds.
     const sentence = memoryBlock(ranked, SENTENCE_TOKENS);
     const held = new Set(standing.ids);
@@ -766,7 +860,18 @@ export const make = Effect.gen(function* () {
     yield* notePresence(turn);
     const preferences = yield* preferencesOf(member);
     const waiting = yield* waitingLine(turn, member, preferences.name ?? null);
-    const here = [yield* hereFor(turn, member), yield* moodFor(turn, person?.id ?? null)]
+    // One person's context among several heard at once (beginMany) does not spend the turn again.
+    const live = yield* liveStore.take({
+      vessel: turn.vessel.id,
+      persona: turn.persona ?? null,
+      spend: turn.sharedRoom !== true,
+    });
+    // Her lines name them by name or their own pronouns, never "he" for everyone (MA-021).
+    const identified = moodMember(turn) !== null;
+    const who: Who = identified
+      ? { name: preferences.name ?? (yield* memberName(member)), pronouns: preferences.pronouns }
+      : { name: person?.name ?? null };
+    const here = [yield* hereFor(turn, member), yield* moodFor(turn, person?.id ?? null, who)]
       .filter((l) => l !== "")
       .join(" ");
     const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
@@ -780,9 +885,13 @@ export const make = Effect.gen(function* () {
         : "";
     if (handed !== "") handedTo.delete(key);
     return {
-      notice: waiting,
+      // An instruction, not remembered data: the brain reads `notice` as hers to act on, the block as his data.
+      notice: [repair === null ? "" : repairLine(repair, turn.text), waiting]
+        .filter((l) => l !== "")
+        .join(" "),
       block: [
         here,
+        live,
         handed,
         board,
         standing.block,
@@ -794,7 +903,8 @@ export const make = Effect.gen(function* () {
         .join("\n\n"),
       ids: sentence.ids,
       privateBlock: turn.sharedRoom === true ? "" : yield* privateFor(turn),
-      conversation: yield* conversationOf(turn),
+      conversation,
+      ...(repair === null ? {} : { repair }),
       preferences,
       who: {
         member,
@@ -831,29 +941,94 @@ export const make = Effect.gen(function* () {
   /**
    * Her mood for the turn (CS6): the identified person's relationship over the general mood (a member, else a guest the
    * people graph knows by voice), read before their turn counts, so a return after hours is still in it; then the turn
-   * is heard. Anyone else gets the general mood, no why.
+   * is heard. Anyone else gets the general mood, no why. With others here (MA-021), the room's mood and how to be in a
+   * group, and nothing private to the speaker: no why, no opinion, no shared story.
    */
   const moodFor = Effect.fn("TessayaTurn.moodFor")(function* (
     turn: TurnEnvelope,
     person: string | null,
+    who: Who,
   ) {
     const mood = yield* Effect.serviceOption(TessayaMood);
     if (Option.isNone(mood) || turn.rehearsal === true) return "";
     const member = moodMember(turn) ?? (turn.addressed === false ? null : person);
     const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
     const spoken = turn.vessel.kind === "device";
+    const room = yield* roomOf(turn);
+    const before = (yield* conversationOf(turn)).turns
+      .slice(-4)
+      .map((t) => `${t.role === "user" ? "them" : "her"}: ${t.content.slice(0, 150)}`)
+      .join("\n");
+    // The face a device shows at rest (R1Device.publishRestMood) can be another person's or persona's mood: whoever
+    // asks about it hears it in general words, so she never disowns what is on her face.
+    const face = (label: string) =>
+      spoken
+        ? mood.value
+            .atDevice(turn.vessel.id, undefined, zone)
+            .pipe(Effect.map((f) => (f.intensity >= 0.2 && f.label !== label ? faceLine(f) : "")))
+        : Effect.succeed("");
     if (member === null) {
       if (turn.addressed === false) return "";
-      return moodLine({ ...(yield* mood.value.view(turn.persona, zone)), why: [] }, spoken);
+      // Likely them (their voice carried over, not yet verified): their time away ends, nothing of theirs is shown.
+      const likely = turnIdentity(turn);
+      if (likely.assurance === 1 && likely.member !== null && turn.sharedRoom !== true)
+        yield* mood.value.heard(turn.persona, zone, likely.member);
+      // A room's talk moves the general mood (its flow only: nobody's tone, opinion or story).
+      if (turn.sharedRoom === true)
+        yield* mood.value
+          .hisWords(turn.persona, turn.text, null, { before })
+          .pipe(Effect.forkDetach);
+      const view =
+        room.here.length > 1
+          ? yield* mood.value.roomView(turn.persona, room.here, zone)
+          : yield* mood.value.view(turn.persona, zone);
+      return [
+        moodLine(privateOut(view), spoken),
+        roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }),
+        yield* face(""),
+      ]
+        .filter((l) => l !== "")
+        .join(" ");
     }
     // How they sound moves her before this turn's line is read, so her answer already meets it.
     if (turn.emotion !== undefined)
       yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion }, member);
     // Judged beside her reply, not before it: the cheap model's second would be their wait. Her face and next turn see it.
-    yield* mood.value.hisWords(turn.persona, turn.text, member).pipe(Effect.forkDetach);
-    const line = moodLine(yield* mood.value.view(turn.persona, zone, member), spoken);
+    yield* mood.value
+      .hisWords(turn.persona, turn.text, member, { voice: turn.emotion, before })
+      .pipe(Effect.forkDetach);
+    const view = yield* mood.value.view(turn.persona, zone, member);
+    const others = room.here.some((h) => h.key !== member);
+    const line = moodLine(others ? privateOut(view) : view, spoken, who);
     yield* mood.value.heard(turn.persona, zone, member);
-    return line;
+    return [
+      line,
+      others ? roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }) : "",
+      yield* face(view.label),
+    ]
+      .filter((l) => l !== "")
+      .join(" ");
+  });
+
+  /** Who is at this turn's vessel (members and guests, by key), who of them has been quiet, and whether it is busy. */
+  const roomOf = Effect.fn("TessayaTurn.roomOf")(function* (turn: TurnEnvelope) {
+    const at = (yield* presence.estimate()).members.filter(
+      (m) => m.nearest?.vessel === turn.vessel.id && m.nearest.confidence >= PRESENCE_BARS.around,
+    );
+    const names: string[] = [];
+    const quiet: string[] = [];
+    for (const m of at) {
+      const name = m.guest ? GUEST_NAME : ((yield* memberName(m.member)) ?? GUEST_NAME);
+      names.push(name);
+      if (!m.evidence.some((e) => e.source === "voice" && e.minutesAgo < QUIET_MINUTES))
+        quiet.push(name);
+    }
+    return {
+      here: at.map((m) => ({ key: m.member, weight: m.nearest!.confidence })),
+      names,
+      quiet,
+      busy: at.length >= 4 || (turn.sharedRoom === true && at.length >= 3),
+    };
   });
 
   /** The presence board for this turn (CS2): her other live threads, filtered by who is asking. */

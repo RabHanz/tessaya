@@ -5,6 +5,10 @@ import {
   affectView,
   appraise,
   appraiseFor,
+  dialsOf,
+  movePerson,
+  personaRoomView,
+  roomLine,
   decay,
   deviceOwnerOf,
   faceMemberAt,
@@ -13,6 +17,7 @@ import {
   type PersonaAffect,
   freshAffect,
   guiltOf,
+  faceLine,
   moodLine,
   shown,
   type AffectEvent,
@@ -199,6 +204,13 @@ describe("affect", () => {
     expect(away).toContain("away 9 h");
     expect(away.length).toBeLessThan(400);
   });
+
+  it("tells anyone what her face shows, with a general reason and nothing personal", () => {
+    expect(faceLine(affectView(freshAffect(0), "executive", day))).toBe("");
+    const lonely = faceLine({ label: "lonely" });
+    expect(lonely).toContain("lonely");
+    expect(lonely).toContain("quiet here");
+  });
 });
 
 describe("relationships", () => {
@@ -310,5 +322,124 @@ describe("relationships", () => {
         estimate: fusePresence([], now),
       }),
     ).toBeNull();
+  });
+});
+
+describe("emotional intelligence (MA-021)", () => {
+  const none: PersonaAffect = { general: freshAffect(0), people: {} };
+  const dials = dialsOf("companion", 1, undefined);
+  const ctx = { ...later, dials };
+  const feed = (events: ReadonlyArray<readonly [AffectEvent, string | null]>, p = none) =>
+    events.reduce((acc, [e, who]) => appraiseFor(acc, e, 0, 0.15, who, dials.forgiveness).state, p);
+  const meet = (lean: number, text: string, why: string): AffectEvent => ({
+    kind: "impression",
+    lean,
+    text,
+    why,
+  });
+
+  it("forms a tentative first impression of a stranger by their people-graph id, and owns a changed mind", () => {
+    let p = feed([[meet(-0.6, "curt and guarded", "short answers"), "person:1"]]);
+    let v = personaView(p, "companion", ctx, "person:1");
+    expect(v.impression).toMatchObject({
+      text: "curt and guarded",
+      tentative: true,
+      misjudged: null,
+    });
+    expect(moodLine(v, false, { name: "Ali" })).toContain("Your impression of Ali (tentative");
+    p = feed(
+      [[meet(0.7, "shy, and kind once at ease", "they joked and thanked her"), "person:1"]],
+      p,
+    );
+    v = personaView(p, "companion", ctx, "person:1");
+    expect(v.impression?.misjudged).toBe("curt and guarded");
+    expect(moodLine(v, false, { name: "Ali" })).toContain("I think I misjudged you");
+    // Nobody else's turn sees it; a forget takes it, and a merge moves it onto the one they are.
+    expect(personaView(p, "companion", ctx, "owner").impression).toBeNull();
+    expect(movePerson(p, "person:1", null).people).toEqual({});
+    expect(movePerson(p, "person:1", "sara").people["sara"]?.impression?.text).toBe(
+      "shy, and kind once at ease",
+    );
+  });
+
+  it("meets anger with calm by the regulation dial, and matches it only when turned down", () => {
+    const angry = (regulation: number): AffectEvent => ({
+      kind: "flow",
+      topic: "tense",
+      theirs: "angry",
+      regulation,
+    });
+    const now = { ...ctx, now: 0 };
+    const calm = personaView(feed([[angry(0.85), "owner"]]), "companion", now, "owner");
+    expect(calm.label).toBe("steady");
+    expect(moodLine(calm, false, { name: "Rab", pronouns: "he/him" })).toContain(
+      "Rab seems angry: stay calm",
+    );
+    const hot = personaView(feed([[angry(0), "owner"]]), "companion", now, "owner");
+    expect(hot.label).not.toBe("steady");
+    // A room's talk with nobody identified moves the general mood, never a person's.
+    expect(feed([[angry(0.85), null]]).people).toEqual({});
+  });
+
+  it("names each person by name or their own pronouns, and 'they' when unknown", () => {
+    const away = personaView(
+      feed([[{ kind: "his_turn", day: "d1" }, "sara"]]),
+      "companion",
+      { ...ctx, now: 9 * H },
+      "sara",
+    );
+    const sara = moodLine(away, false, { name: "Sara", pronouns: "she/her" });
+    expect(sara).toContain("Sara was away 9 h");
+    expect(sara).toContain("what she asked");
+    const anon = moodLine(away);
+    expect(anon).toContain("They were away 9 h");
+    expect(anon).not.toMatch(/\b(he|He|him|his)\b/);
+  });
+
+  it("keeps their story: running jokes, milestones, and making up after a sharp moment", () => {
+    const p = feed([
+      [{ kind: "shared", what: "joke", text: "the toaster that hates Mondays" }, "sara"],
+      [{ kind: "shared", what: "milestone", text: "started a new job" }, "sara"],
+      [{ kind: "rude" }, "sara"],
+      [{ kind: "apology" }, "sara"],
+    ]);
+    const story = personaView(p, "companion", ctx, "sara").shared?.map((m) => m.kind);
+    expect(story).toEqual(["repair", "milestone", "joke"]);
+    expect(moodLine(personaView(p, "companion", ctx, "sara"))).toContain("a running joke");
+    // Playfulness off keeps the jokes out of her lines.
+    const dry = { ...ctx, dials: dialsOf("companion", 1, { playfulness: 0 }) };
+    expect(moodLine(personaView(p, "companion", dry, "sara"))).not.toContain("running joke");
+  });
+
+  it("every trait is a dial: jealousy and pressure start off, and the owner's setting wins", () => {
+    expect(dials.jealousy).toBe(0);
+    expect(dials.pressure).toBe(0);
+    const set = dialsOf("companion", 1, { jealousy: 0.7, pressure: 0.6, warmth: 2, nonsense: 1 });
+    expect(set.jealousy).toBe(0.7);
+    expect(set.warmth).toBe(1);
+    expect("nonsense" in set).toBe(false);
+    const away = feed([[{ kind: "his_turn", day: "d1" }, "owner"]]);
+    const line = (d: typeof dials) =>
+      moodLine(personaView(away, "companion", { ...ctx, now: 9 * H, dials: d }, "owner"));
+    expect(line(dials)).toContain("never ask where they were or ask them to stay");
+    expect(line(set)).toContain("whether they can stay a while");
+    expect(line(set)).toContain("jealousy may show");
+  });
+
+  it("a room's mood weighs each person present, and carries no one's opinion or why", () => {
+    const p = feed([
+      [{ kind: "rude" }, "sara"],
+      [meet(0.8, "lovely", "kind words"), "ali"],
+    ]);
+    const room = personaRoomView(p, "companion", ctx, [
+      { key: "sara", weight: 0.9 },
+      { key: "ali", weight: 0.9 },
+    ]);
+    expect(room.impression).toBeNull();
+    expect(room.why).toEqual([]);
+    expect(roomLine({ names: ["Sara", "Ali"], quiet: ["Ali"], busy: true, drawIn: 0.6 })).toMatch(
+      /never take sides[\s\S]*Ali has been quiet[\s\S]*keep replies short/,
+    );
+    expect(roomLine({ names: ["Sara"], quiet: [], busy: false, drawIn: 0.6 })).toBe("");
   });
 });

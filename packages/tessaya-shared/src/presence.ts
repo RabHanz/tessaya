@@ -40,6 +40,14 @@ export const PRESENCE_SOURCES: Readonly<Record<string, PresenceSource>> = {
     cancels: ["headphones"],
     says: "your headphones disconnected",
   },
+  // His phone's app holds the phone route on the Tessel's own network: home, near that Tessel.
+  phone: { weight: 0.5, halfLifeMinutes: 20, says: "your phone is on her network" },
+  phoneAway: {
+    weight: 0,
+    halfLifeMinutes: 1,
+    cancels: ["phone"],
+    says: "your phone left her network",
+  },
   deskAway: {
     weight: 0,
     halfLifeMinutes: 1,

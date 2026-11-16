@@ -110,7 +110,7 @@ export const privateCapLabel = (o: DeviceOutputEntry): string =>
   o.privateCap === undefined ? "Usual volume" : `${o.privateCap}% max`;
 
 export const outputLabel = (o: DeviceOutputEntry | DeviceInputEntry): string =>
-  o.id === OWN_SPEAKER || o.id === OWN_MIC ? o.name : btDeviceLabel(o);
+  o.id === OWN_SPEAKER || o.id === OWN_MIC || o.id.startsWith("phone:") ? o.name : btDeviceLabel(o);
 
 export const OUTPUT_STATE_LINE: Readonly<
   Record<DeviceOutputEntry["state"] | DeviceInputEntry["state"], string>

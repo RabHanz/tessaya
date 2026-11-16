@@ -113,7 +113,8 @@ export const workNow = (
     waiting: count("waiting"),
     working: count("working"),
     recent: count("idle"),
-    machines: [...new Set(active.map((s) => s.box))],
+    // Every machine that answered, busiest first: one quiet for an hour is still up.
+    machines: [...new Set([...active, ...across.sessions].map((s) => s.box))],
     top: active.slice(0, TOP).map((s) => ({
       session: s.session,
       project: s.project,

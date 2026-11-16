@@ -11,6 +11,8 @@
  *
  * Later entries provide to earlier ones, so the order below is the dependency order.
  */
+import * as ActionLog from "../provenance/ActionLog.ts";
+import * as FindingsReactor from "../provenance/FindingsReactor.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodePath from "node:path";
 
@@ -47,6 +49,7 @@ import * as VoiceForgets from "./VoiceForgets.ts";
 import * as MemberPreferences from "./MemberPreferences.ts";
 import * as TessayaPeople from "./TessayaPeople.ts";
 import * as TessayaPresence from "./TessayaPresence.ts";
+import * as TurnLiveContext from "./TurnLiveContext.ts";
 import * as TessayaPulse from "./TessayaPulse.ts";
 import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
@@ -79,6 +82,7 @@ import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as TessayaOneShot from "./TessayaOneShot.ts";
 import * as TessayaExpression from "./TessayaExpression.ts";
 import * as TessayaPhoneInbox from "./TessayaPhoneInbox.ts";
+import * as TessayaCast from "./TessayaCast.ts";
 import * as TessayaDesktopSettings from "./TessayaDesktopSettings.ts";
 import * as TessayaRoutes from "./TessayaRoutes.ts";
 import * as TessayaRpcHandlers from "./TessayaRpcHandlers.ts";
@@ -209,7 +213,11 @@ const homeDevicesLayer = HomeDevices.layer.pipe(
 );
 
 // Her pulse (B-003) beside the intent surface, so every service provided below reaches it.
-const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
+const servicesInner = Layer.mergeAll(
+  IntentService.layer,
+  TessayaPulse.layer,
+  FindingsReactor.layer,
+).pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
   // through the same door.
@@ -309,7 +317,8 @@ const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
       Layer.provideMerge(TessayaHousehold.layer.pipe(Layer.provide(TessayaPhoneInbox.layer))),
     ),
   ),
-  Layer.provideMerge(TessayaPrivateMemoryService.layer),
+  // The action log (B-046) over his private store, which seals its private events.
+  Layer.provideMerge(ActionLog.layer.pipe(Layer.provideMerge(TessayaPrivateMemoryService.layer))),
   // The voices, and his one dictionary, which the voice door, the device route and every vessel's turn read.
   Layer.provideMerge(Layer.mergeAll(TessayaVoiceLibrary.layer, TessayaVocabulary.layer)),
   // Voices to forget, between the household and every vessel's owner: under both, so each sees it.
@@ -322,12 +331,23 @@ const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
       MemberPreferences.layer,
       // Where each member is, from every vessel's signals (B-043): the turn, comms, job news and the Tessels share it.
       TessayaPresence.layer,
+      // Live state for the next few turns, then gone (G6): motion and other feeders write, every vessel's turn reads.
+      TurnLiveContext.layer,
       // Who a voice that is no member is, across vessels (HOUSEHOLD-DESIGN §11): the household's people ops answer here.
       TessayaPeople.layer,
       expressionLayer,
       CurrentPersona.layer,
+      // Who wears which body (Settings → Cast): its siblings here are invisible to it, so they are provided.
+      TessayaCast.layer.pipe(
+        Layer.provide(CurrentPersona.layer),
+        Layer.provide(DeviceRegistry.layer),
+        Layer.provide(TessayaDesktopSettings.layer),
+      ),
       // Her mood per persona (CS6): the turn writes it, every vessel's face and words read it.
-      TessayaMood.layer.pipe(Layer.provide(TessayaOneShot.layer)),
+      // Built over the people graph (the same memoised layer): it follows who is forgotten or merged.
+      TessayaMood.layer.pipe(
+        Layer.provide(Layer.mergeAll(TessayaOneShot.layer, TessayaPeople.layer)),
+      ),
       PersonaLayers.layer,
       // The prompt lab (B-030): its runs are one-shots on his subscription.
       PromptLab.layer.pipe(Layer.provide(TessayaOneShot.layer)),
@@ -364,6 +384,9 @@ export const services = TessayaRpcHandlers.runtimeLayer.pipe(
   Layer.provideMerge(servicesInner),
   Layer.provide(adoptEnv),
 );
+
+/** The usage ledger for T3's Usage page; the same layer as the services' (layers memoize by reference). */
+export const usageLedger = BrainUsage.layer;
 
 export const workers = Layer.effectDiscard(
   Effect.gen(function* () {

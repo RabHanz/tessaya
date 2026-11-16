@@ -13,7 +13,13 @@ import * as NodePath from "node:path";
 import { type CallTokens, credentialOf, LEDGERED_DIR } from "@t3tools/tessaya-shared/brainRoutes";
 
 export { apiTokens, cliTokens, type CallTokens } from "@t3tools/tessaya-shared/brainRoutes";
-import type { BrainRole, BrainSpendAlert } from "@t3tools/contracts";
+import type {
+  BrainRole,
+  BrainSpendAlert,
+  UsageProviderKind,
+  UsageSource,
+} from "@t3tools/contracts";
+import type { UsageRecord } from "@t3tools/provider-core/server/usage";
 import type {
   BrainUsageCall,
   BrainUsageInput,
@@ -31,10 +37,11 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { emitAction } from "../provenance/ActionLog.ts";
 import { priceUsage, type RateTable } from "../usage/usagePricing.ts";
 import * as TessayaDatabase from "./TessayaDatabase.ts";
 import * as TessayaRecordService from "./TessayaRecordService.ts";
-import { readPriceList, type PriceList } from "./TessayaJobSpend.ts";
+import { mergeUnits, readPriceList, type PriceList } from "./TessayaJobSpend.ts";
 
 /** The folder her own CLI calls run from: the tag that keeps T3's transcript scan from counting them twice. */
 export const ledgeredCwd = (): string => {
@@ -206,6 +213,67 @@ export const spendLine = (crossed: SpendLimitState) =>
     crossed.scope === "all" ? "all her work" : crossed.scope
   } reached your ${money(crossed.limit)} alert: ${money(crossed.spent)} so far.`;
 
+/** Where T3's Usage page says her ledgered calls came from. */
+export const LEDGER_SOURCE = "Tessaya usage ledger";
+
+export interface LedgerRow {
+  readonly id: number;
+  readonly at: number;
+  readonly provider: string;
+  readonly credential: string;
+  readonly model: string;
+  readonly input: number;
+  readonly cache_read: number;
+  readonly cache_write: number;
+  readonly output: number;
+  readonly thread_id: string | null;
+}
+
+/**
+ * Which of T3's usage providers a ledger row shows under on the Usage page, or null when it is not shown there.
+ * shortcut: Grok, Antigravity and Cursor text generation is left out because those CLIs keep the session T3's scan
+ * reads (Cursor reports no tokens anyway); a custom instance of them is placed by its model and would count twice.
+ */
+export const usageProviderOf = (
+  row: Pick<LedgerRow, "provider" | "credential" | "model">,
+): UsageProviderKind | null => {
+  const p = row.provider;
+  if (row.credential.startsWith("instance:") && ["grok", "antigravity", "cursor"].includes(p))
+    return null;
+  if (p === "anthropic" || p === "claude" || p === "claudeAgent") return "claude";
+  if (p === "openai" || p === "codex") return "codex";
+  if (p === "pi" || p === "opencode" || p === "grok" || p === "muse") return p;
+  const m = row.model.toLowerCase();
+  if (/claude|opus|sonnet|haiku/.test(m)) return "claude";
+  if (/^(gpt|o\d|codex|whisper)/.test(m)) return "codex";
+  if (m.includes("gemini")) return "antigravity";
+  if (m.includes("grok")) return "grok";
+  return null;
+};
+
+/** One ledger row as T3's usage record: priced by the page's own rates, counted once by its row id. */
+export const usageRecordOf = (row: LedgerRow): UsageRecord | null => {
+  const provider = usageProviderOf(row);
+  return provider === null
+    ? null
+    : {
+        provider,
+        timestampMs: row.at,
+        model: row.model,
+        sessionId: row.thread_id ?? "",
+        totals: {
+          uncachedInputTokens: row.input,
+          cachedInputTokens: row.cache_read,
+          cacheCreationTokens: row.cache_write,
+          outputTokens: row.output,
+          reasoningTokens: 0,
+        },
+        reportedCostUsd: null,
+        speed: "standard",
+        dedupeKey: `ledger:${row.id}`,
+      };
+};
+
 const RATES_TTL_MS = 60 * 60_000;
 
 export class BrainUsage extends Context.Service<
@@ -229,6 +297,16 @@ export class BrainUsage extends Context.Service<
     }) => Effect.Effect<ReadonlyArray<BrainUsageCall>>;
     /** His spend alerts, each with what the API keys spent against it this day or month in `timeZone`. */
     readonly limits: (timeZone: string) => Effect.Effect<ReadonlyArray<SpendLimitState>>;
+    /**
+     * T3's Usage page's share of the ledger: each counted row since `sinceMs` and before `untilMs` goes to `add`
+     * (the page's aggregator), and each provider that got one comes back as a source.
+     */
+    readonly intoUsage: (input: {
+      readonly sinceMs: number;
+      readonly untilMs: number;
+      readonly hostId: string;
+      readonly add: (record: UsageRecord, sourcePath: string) => boolean;
+    }) => Effect.Effect<ReadonlyArray<UsageSource>>;
   }
 >()("t3/tessaya/BrainUsage") {}
 
@@ -292,18 +370,37 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
       const dollars = billing === "apiKey" ? list : null;
       const at = yield* Clock.currentTimeMillis;
       const a = row.attribution;
+      // The model call is an action (B-046); the usage row points at its event, one scheme for both.
+      const eventId = yield* emitAction({
+        kind: "model.call",
+        actor: {
+          kind: a.persona == null ? "system" : "persona",
+          id: a.persona ?? a.feature,
+          certainty: 1,
+        },
+        persona: a.persona ?? null,
+        subject: `${a.feature}: ${row.model}`,
+        outcome: row.outcome ?? "ok",
+        evidence: [
+          ...(a.threadId == null ? [] : [{ kind: "thread", ref: a.threadId }]),
+          ...(a.jobId == null ? [] : [{ kind: "job", ref: a.jobId }]),
+          ...(a.scheduleId == null ? [] : [{ kind: "schedule", ref: a.scheduleId }]),
+          ...(a.device == null ? [] : [{ kind: "device", ref: a.device }]),
+        ],
+        data: { input: row.input, output: row.output, billing, surface: a.surface ?? null },
+      });
       const written = yield* sql<{ id: number }>`
       INSERT INTO tessaya_brain_usage
         (at, role, provider, credential, model, input, cache_read, cache_write, output, dollars,
          feature, origin, surface, persona, thread_id, turn_id, job_id, schedule_id, device, member,
-         billing, account, list_dollars, price_version, call_key, outcome, audio_ms)
+         billing, account, list_dollars, price_version, call_key, outcome, audio_ms, event_id)
       VALUES (${at}, ${row.role}, ${row.provider ?? "anthropic"}, ${row.credential}, ${row.model},
         ${row.input}, ${row.cacheRead}, ${row.cacheWrite}, ${row.output}, ${dollars},
         ${a.feature}, ${a.origin}, ${a.surface ?? null}, ${a.persona ?? null}, ${a.threadId ?? null},
         ${a.turnId ?? null}, ${a.jobId ?? null}, ${a.scheduleId ?? null}, ${a.device ?? null},
         ${a.member ?? null}, ${billing}, ${row.account ?? null}, ${list},
         ${list === null ? null : (prices?.version ?? null)}, ${row.key ?? null},
-        ${row.outcome ?? "ok"}, ${row.audioMs ?? null})
+        ${row.outcome ?? "ok"}, ${row.audioMs ?? null}, ${eventId})
       ON CONFLICT DO NOTHING
       RETURNING id
     `;
@@ -510,7 +607,47 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
     ),
   );
 
-  return BrainUsage.of({ record, totals, units, calls, limits });
+  const intoUsage = Effect.fn("BrainUsage.intoUsage")(function* (input: {
+    readonly sinceMs: number;
+    readonly untilMs: number;
+    readonly hostId: string;
+    readonly add: (record: UsageRecord, sourcePath: string) => boolean;
+  }) {
+    const rows = yield* sql<LedgerRow>`
+      SELECT id, at, provider, credential, model, input, cache_read, cache_write, output, thread_id
+      FROM tessaya_brain_usage
+      WHERE at >= ${input.sinceMs} AND at < ${input.untilMs} AND input + cache_read + cache_write + output > 0
+    `.pipe(
+      Effect.tapCause((cause) =>
+        Effect.logWarning("brain: usage rows could not be read for the Usage page", { cause }),
+      ),
+      Effect.orElseSucceed(() => []),
+    );
+    const sessions = new Map<UsageProviderKind, Set<string>>();
+    for (const row of rows) {
+      const record = usageRecordOf(row);
+      if (record === null || !input.add(record, LEDGER_SOURCE)) continue;
+      const seen = sessions.get(record.provider) ?? new Set<string>();
+      if (record.sessionId.length > 0) seen.add(record.sessionId);
+      sessions.set(record.provider, seen);
+    }
+    return [...sessions].map(([provider, threads]): UsageSource => ({
+      fingerprint: {
+        hostId: input.hostId,
+        provider,
+        resolvedHomePath: LEDGER_SOURCE,
+        volumeId: "",
+      },
+      status: "ok",
+      scannedFiles: 0,
+      skippedFiles: 0,
+      malformedRecords: 0,
+      distinctSessions: threads.size,
+      message: null,
+    }));
+  });
+
+  return BrainUsage.of({ record, totals, units, calls, limits, intoUsage });
 });
 
 const CALLS_LIMIT = 200;
@@ -519,7 +656,11 @@ const CALLS_LIMIT = 200;
  * The Usage page's and `tessaya_usage_report`'s read: the last `days` days in `timeZone`, its unit costs and his
  * spend alerts; with `detail`, the calls behind one line instead of the totals (the drill-down to the turn).
  */
-export const brainUsageReport = Effect.fn("BrainUsage.report")(function* (input: BrainUsageInput) {
+export const brainUsageReport = Effect.fn("BrainUsage.report")(function* <R>(
+  input: BrainUsageInput,
+  /** Each job's and schedule's provider turns since a time (ms), which the ledger does not hold. */
+  turnUnits: (since: number) => Effect.Effect<ReadonlyArray<BrainUsageUnit>, never, R>,
+) {
   const usage = yield* BrainUsage;
   const now = yield* Clock.currentTimeMillis;
   const timeZone = zoneOf(input.timeZone, yield* houseZone());
@@ -534,7 +675,7 @@ export const brainUsageReport = Effect.fn("BrainUsage.report")(function* (input:
   }
   return {
     totals: yield* usage.totals({ since, timeZone }),
-    units: yield* usage.units(since),
+    units: mergeUnits(yield* usage.units(since), yield* turnUnits(since)),
     limits: yield* usage.limits(timeZone),
   };
 });

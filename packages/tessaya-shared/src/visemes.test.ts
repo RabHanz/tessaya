@@ -131,10 +131,15 @@ describe("a sentence's shapes as its audio streams in", () => {
     const track = createVisemeTrack("ah bob", rate);
     track.push(pcm.subarray(0, rate * 0.25));
     expect(track.at(50)).toBe("rest");
-    // 250 ms arrived: the last 150 ms is not trusted yet
+    // 250 ms arrived: the last 150 ms is not trusted yet, nor which word it is (the private layer's cue, VOXTA I4)
     expect(track.at(150)).toBeUndefined();
+    expect(track.wordAt(150)).toBeUndefined();
+    // trusted, but before the first word: a pause, where a spliced sound would play
+    expect(track.wordAt(50)).toBeNull();
     track.push(pcm.subarray(rate * 0.25));
     track.end();
+    expect(track.wordAt(200)).toBe(0);
+    expect(track.wordAt(450)).toBe(1);
     // the lips close ahead of the closure, and the rounding shows before its vowel but never over the closure
     expect(track.at(270)).toBe("mbp");
     expect(track.at(310)).toBe("mbp");

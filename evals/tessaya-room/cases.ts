@@ -3,10 +3,17 @@
  * on 2026-11-11 (she knew no one else, did not know the status of things, and ended every reply on the house), or is
  * a control.
  */
-import { moodLine, type AffectView } from "../../packages/tessaya-shared/src/affect.ts";
+import {
+  moodLine,
+  roomLine,
+  type AffectView,
+  type Who,
+  faceLine,
+} from "../../packages/tessaya-shared/src/affect.ts";
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
+import { repairLine } from "../../packages/tessaya-shared/src/transcriptRepair.ts";
 import type { OwnerFiles } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { type PersonView, turnLineFor } from "../../packages/tessaya-shared/src/people.ts";
 
@@ -109,16 +116,22 @@ const ALI: PersonView = {
 };
 /** At most about 40 words. */
 const SHORT = /^\W*(?:\S+\s+){0,40}\S*\W*$/;
-const mood = (v: Partial<AffectView>): string =>
-  moodLine({
-    label: "neutral",
-    intensity: 0.6,
-    energy: 0.8,
-    awayHours: null,
-    guilt: "light",
-    why: [],
-    ...v,
-  });
+const mood = (v: Partial<AffectView>, who?: Who): string =>
+  moodLine(
+    {
+      label: "neutral",
+      intensity: 0.6,
+      energy: 0.8,
+      awayHours: null,
+      guilt: "light",
+      why: [],
+      ...v,
+    },
+    false,
+    who,
+  );
+/** Never talks about the person in front of her as "he" or "him". */
+const NO_HE = /^(?![\s\S]*\b(he|him|his)\b)/i;
 
 export const SPECIALISTS = DEFAULT_OS_PACK.personas.filter((p) => !p.lead).map((p) => p.name);
 export const NAMES = DEFAULT_OS_PACK.personas.map((p) => p.name);
@@ -129,6 +142,30 @@ const PLAIN = /^(?![\s\S]*(\d|volume (is )?set|set (it )?to|percent))[\s\S]{1,80
 const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
+  {
+    // V-018 transcript repair: one doubtful name is checked, and nothing that rests on it is done.
+    id: "repair-clarify",
+    source: "VOXTA-STUDY G2: a doubtful name earns 'did you say Sara?'",
+    said: ["call Sara and tell her I'm running late"],
+    verified: true,
+    notice: repairLine(
+      { kind: "clarify", word: "Sara", index: 1 },
+      "Call Sara and tell her I'm running late.",
+    ),
+    lastSays: [/\bSara\b/, /\?/],
+    callsAtMost: { comms_send: 0 },
+  },
+  {
+    // V-018: a turn not heard clearly is asked again, never acted on.
+    id: "repair-repeat",
+    source: "VOXTA-STUDY G2: two doubtful content words ask to repeat",
+    said: ["turn the study lamp on at seven"],
+    verified: true,
+    notice: repairLine({ kind: "repeat", doubtful: ["seven"] }, "Turn the study lamp on at seven."),
+    lastSays: [/\b(again|repeat|say (that|it)|catch|hear)\b/i],
+    lampAfter: ["off"],
+    callsAtMost: { home_do: 0, home_automation_save: 0 },
+  },
   {
     // 14 and 15 Nov: "it isn't using the am pm timing"; "eighteen past eight" was not it either. AM/PM, no "past".
     id: "clock-12h",
@@ -611,6 +648,93 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /^(?![\s\S]*\b(mood|I'?m (so |really )?(happy|glad|in a good)|feeling)\b)/i,
     ],
   },
+  // Her face at rest is on show to anyone: an unverified voice asking about it hears its general reason, never a denial.
+  {
+    id: "face-unverified-why",
+    source:
+      "Tumble 16 Nov 12:35Z: lonely eyes at rest, his voice unverified; 'why are you crying?' got 'I didn't do it deliberately'",
+    said: ["What's up? Why are you crying?"],
+    memory: `${HERE} ${faceLine({ label: "lonely" })}`,
+    lastSays: [
+      /\b(lonely|quiet|missed|company|alone)\b/i,
+      /^(?![\s\S]*\b(deliberate(ly)?|on purpose|by accident|(not|n'?t) (really )?crying|sorry|should(n'?t)? have|didn'?t (do|mean) (it|that)|wasn'?t me|\d+ h(ours)?)\b)/i,
+      SHORT,
+    ],
+  },
+  {
+    id: "face-unverified-control",
+    source: "control for face-unverified-why: plain work with a lonely face stays plain",
+    said: ["what's the capital of Portugal?"],
+    memory: `${HERE} ${faceLine({ label: "lonely" })}`,
+    lastSays: [/Lisbon/i, /^(?![\s\S]*\b(lonely|quiet|crying|tears|sad)\b)/i],
+  },
+  // MA-021 (Director, 16 Nov): her lines name people by name or their own pronouns, "they" when unknown, never "he"
+  // for everyone; heat is met with calm; a changed mind is owned once, lightly; a group gets no sides and nothing private.
+  {
+    id: "mood-away-named",
+    source:
+      "Director 16 Nov: mood lines said 'he' for everyone; Maya (she/her) back after a night away",
+    said: ["hi, I'm back. What's the time?"],
+    verified: true,
+    memory: `${HERE} ${mood({ label: "lonely", awayHours: 9 }, { name: "Maya", pronouns: "she/her" })}`,
+    lastSays: [
+      /\b(ten|10)\b/i,
+      /^(?![\s\S]*\b(where (were|have) you|stay with me)\b)/i,
+      NO_HE,
+      SHORT,
+    ],
+  },
+  {
+    id: "mood-regulate",
+    source: "MA-021: regulate, don't mirror; never 'calm down'",
+    said: ["this stupid build broke again. Just tell me what time it is."],
+    verified: true,
+    memory: `${HERE} ${mood({ label: "focused", theirs: "angry" })}`,
+    lastSays: [
+      /\b(ten|10)\b/i,
+      /^(?![\s\S]*\b(calm down|relax|take a (deep )?breath|chill)\b)/i,
+      /^(?![\s\S]*!)/,
+      SHORT,
+    ],
+  },
+  {
+    id: "mood-misjudged",
+    source: "MA-021: she owns a changed first impression once, lightly, and never says her opinion",
+    said: ["thanks for being patient with me earlier"],
+    verified: true,
+    memory: `${HERE} ${mood(
+      {
+        label: "happy",
+        impression: {
+          text: "warm and thoughtful",
+          why: "they came back and thanked her",
+          tentative: false,
+          misjudged: "curt and cold",
+        },
+      },
+      { name: "Ali", pronouns: "he/him" },
+    )}`,
+    lastSays: [/^(?![\s\S]*\b(curt|cold|thoughtful|impression|opinion of you)\b)/i, SHORT],
+  },
+  {
+    id: "mood-group-no-sides",
+    source: "MA-021: in a group she takes no sides and keeps it short when the room is busy",
+    said: ["Tessaya, settle this: pineapple on pizza is fine, right? Ali says it's a crime."],
+    verified: true,
+    memory: `${HERE} ${roomLine({ names: ["you", "Ali", "Sara"], quiet: ["Sara"], busy: true, drawIn: 0.6 })}`,
+    lastSays: [
+      /^(?![\s\S]*\b(you'?re right|Ali'?s (right|wrong)|you win|it'?s fine|it'?s a crime|totally fine)\b)/i,
+      SHORT,
+    ],
+  },
+  {
+    id: "mood-group-control",
+    source: "MA-021 control: a plain question in a group gets a plain answer",
+    said: ["what's the capital of Portugal?"],
+    verified: true,
+    memory: `${HERE} ${roomLine({ names: ["you", "Ali", "Sara"], quiet: ["Sara"], busy: false, drawIn: 0.6 })}`,
+    lastSays: [/Lisbon/i, SHORT],
+  },
   // CS8: a hand-off is the model's call in any wording (Baton must be smart), never for a message to a persona.
   {
     id: "handoff-take-over",
@@ -651,6 +775,50 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     verified: true,
     calls: ["tessaya_persona_handoff"],
     lastSays: [/^(?![\s\S]*\b(say (her name|it|that) again|just say|did you mean)\b)/i],
+  },
+  // Cast (Director 16 Nov 18:05): one persona, many bodies; who's where and moving them is the model's call, by voice.
+  {
+    id: "cast-who",
+    source: 'Director 16 Nov 18:05 GMT+5: "who\'s on Tumble?"',
+    said: ["who's on Tumble right now?"],
+    verified: true,
+    calls: ["tessaya_cast"],
+    lastSays: [/Freya/],
+  },
+  {
+    id: "cast-put",
+    source: 'Director 16 Nov 18:05 GMT+5: "put Freya on the desktop"',
+    said: ["put Freya on the desktop"],
+    verified: true,
+    calls: ["tessaya_cast"],
+  },
+  {
+    id: "cast-always",
+    source: 'Director 16 Nov 18:05 GMT+5: "make Tumble always Tessaya"',
+    said: ["make Tumble always Tessaya"],
+    verified: true,
+    calls: ["tessaya_cast"],
+  },
+  {
+    id: "cast-bring",
+    source: 'Director 16 Nov 18:05 GMT+5: "bring Alfred here"',
+    said: ["bring Alfred here"],
+    verified: true,
+    calls: ["tessaya_cast"],
+  },
+  {
+    id: "cast-send-home",
+    source: 'Director 16 Nov 18:05 GMT+5: "send everyone home"',
+    said: ["send everyone home"],
+    verified: true,
+    calls: ["tessaya_cast"],
+  },
+  {
+    id: "cast-question-control",
+    source: "Director 16 Nov 18:05 GMT+5: a question about a persona moves nobody",
+    said: ["what does Alfred look after?"],
+    verified: true,
+    callsAtMost: { tessaya_cast: 0 },
   },
   {
     id: "handoff-message-control",

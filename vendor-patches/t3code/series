@@ -33,3 +33,5 @@
 0032-usage-spine.patch
 0033-public-host.patch
 0034-server-label.patch
+0035-provenance-actions.patch
+0036-web-boot-stall.patch

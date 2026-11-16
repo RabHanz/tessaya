@@ -8,6 +8,8 @@
  */
 import type { PlanLease } from "@t3tools/tessaya-shared/planLease";
 import { shoulderSurf } from "@t3tools/tessaya-shared/biometrics";
+import { effectFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import type { Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/tessaya-shared/household";
 import { createFaceCheck, faceEnginePath } from "../face/faceCheck.ts";
 import {
@@ -43,7 +45,9 @@ import {
   BATON_DEVICES_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  TONE_LABELS,
   tessayaPlaceOf,
+  type ToneLabel,
 } from "@t3tools/tessaya-contracts";
 import {
   chooseMode,
@@ -206,6 +210,7 @@ import { createSilenceWatch, DEFAULT_SILENCE_SECONDS } from "@t3tools/tessaya-sh
 import {
   HIDE_FOR_MS,
   isFullscreenWindow,
+  pillShowsPhase,
   restBarWanted,
 } from "@t3tools/tessaya-shared/pillVisibility";
 import {
@@ -764,6 +769,10 @@ interface VoiceSettings {
   readonly mascotCrew: string;
   /** Her face in the pill while he talks to her, when the desktop companion is off. */
   readonly pillFace: boolean;
+  /** The pill while she speaks; off, her voice, acting and speech bubble carry it. */
+  readonly pillWhenSpeaking: boolean;
+  /** The pill for speech she starts on her own (a character's moment, a remark); off by default. */
+  readonly pillOnHerOwn: boolean;
   /** Her body is the persona answering him, not only his chosen one (SPINE-UNIFY §10, P5). */
   readonly mascotFollows: boolean;
   /** Windows 11's acrylic behind the pill's island and the cards beside it; off by default. */
@@ -960,6 +969,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   mascotHands: "arms",
   mascotCrew: "none",
   pillFace: false,
+  pillWhenSpeaking: true,
+  pillOnHerOwn: false,
   mascotFollows: false,
   frosted: false,
   waitMs: WAIT_DEFAULT_MS,
@@ -1125,6 +1136,8 @@ export const readSettings = (path: string): VoiceSettings => {
       mascotHands: parseMascotHands(saved["mascotHands"]),
       mascotCrew: parseMascotCrew(saved["mascotCrew"]),
       pillFace: saved["pillFace"] === true,
+      pillWhenSpeaking: saved["pillWhenSpeaking"] !== false,
+      pillOnHerOwn: saved["pillOnHerOwn"] === true,
       mascotFollows: saved["mascotFollows"] === true,
       frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
@@ -1463,6 +1476,8 @@ export interface DesktopTessayaVoice {
   readonly onActivity: (label: string | null, caption?: string) => void;
   /** The persona answering him now: with "Follows who is talking" on, her body becomes that persona's. */
   readonly face: (name: string) => void;
+  /** Her voice reached a stage direction (`*laughs*`): her body's face for it, the face shown or null (VOXTA-STUDY G7). */
+  readonly effect: (nonverbal: Nonverbal) => string | null;
   /** A lesson or drive sound, through the pill's own cue path. */
   readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** How loud Baton's voice is right now, for the pill. */
@@ -2574,6 +2589,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       ? []
       : listHistory(typeof query === "string" ? query : ""),
   );
+  // The tone labelling pass (Settings → Inner state): 40 newest recorded turns; the labels stay on this machine.
+  Electron.ipcMain.handle("baton-history:tone-pass", (event) =>
+    Electron.BrowserWindow.fromWebContents(event.sender) === null || history === null
+      ? []
+      : history.tonePass(40),
+  );
   Electron.ipcMain.handle("baton-history:delete-many", (event, ids: unknown) => {
     if (Electron.BrowserWindow.fromWebContents(event.sender) === null || history === null) return 0;
     if (!Array.isArray(ids)) return 0;
@@ -2608,6 +2629,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       return after === null ? null : { ...withMenu(after), taught };
     } else if (action === "extract") {
       return extractAudio(turn, Electron.BrowserWindow.fromWebContents(event.sender));
+    } else if (action.startsWith("tone:")) {
+      const tone = action.slice("tone:".length);
+      history.setTone(
+        id,
+        (TONE_LABELS as ReadonlyArray<string>).includes(tone) ? (tone as ToneLabel) : null,
+      );
     } else if (action === "flag" || action === "unflag") {
       flagTurn(turn, action === "flag");
     } else if (action.startsWith("copy_version:")) {
@@ -5052,9 +5079,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     const rest = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.filter(
       (p) => p.id !== main,
     );
+    const named = settings.mascotCrew.split(",");
     return settings.mascotCrew === "all"
       ? rest.slice(0, CREW_MAX)
-      : rest.filter((p) => p.name.toLowerCase() === settings.mascotCrew).slice(0, 1);
+      : rest
+          .filter((p) => named.includes(p.id) || named.includes(p.name.toLowerCase()))
+          .slice(0, CREW_MAX);
   };
   /** The body that speaks: the talking persona's own when it is on his desktop, else hers. */
   const voiceBody = (): DesktopMascot => {
@@ -5152,6 +5182,14 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         ? mascotBody()
         : null,
     who: () => pillWho(speakerIdentity.session(), (m) => memberNames.get(m) ?? null),
+    shows: (phase, own) =>
+      pillShowsPhase({
+        phase,
+        ownSpeech: own,
+        whenSpeaking: settings.pillWhenSpeaking,
+        onHerOwn: settings.pillOnHerOwn,
+      }),
+    avoid: () => (settings.mascot ? voiceBody().bounds() : null),
     companionDir: COMPANION_DIR,
     ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
     onMoving: () => render(),
@@ -6300,14 +6338,19 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     ],
     present: async (offer) => {
       if (settings.initiativeMode === "spoken") input.extras?.announce(offer.offer, true);
-      const index = await (input.extras?.ask({
+      const card = {
         title: "Tessaya",
         detail: offer.offer,
         buttons: ["Yes", "Later", "Never"],
         cancel: 1,
         armMs: 1_500,
-        expiresMs: 5 * 60_000,
-      }) ?? Promise.resolve(1));
+        // The inbox's default card life (approvalCardMinutes); no answer by then is Later.
+        expiresMs: 30 * 60_000,
+      };
+      // The one question inbox: this card also shows on the phone and every linked server, answered wherever he is.
+      const index = await (input.extras?.askMirrored?.(card) ??
+        input.extras?.ask(card) ??
+        Promise.resolve(1));
       return index === 0 ? "yes" : index === 2 ? "never" : "later";
     },
     act: async (offer) => {
@@ -7842,6 +7885,23 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         on: settings.pillFace,
       },
       {
+        id: "v.pillWhenSpeaking",
+        section: "Desktop companion",
+        label: "Show the pill when she speaks",
+        hint: 'Off, she still speaks and acts her lines and her speech bubble shows; the pill stays away. Say "hide the pill when you talk" or "show it again".',
+        kind: "toggle",
+        on: settings.pillWhenSpeaking,
+      },
+      {
+        id: "v.pillOnHerOwn",
+        section: "Desktop companion",
+        label: "Also when she speaks on her own",
+        hint: "The pill for what she says unprompted, like when you pick her up or she makes a remark. Her speech bubble shows either way.",
+        kind: "toggle",
+        on: settings.pillOnHerOwn,
+        disabled: !settings.pillWhenSpeaking,
+      },
+      {
         id: "v.motion",
         section: "Appearance",
         label: "Motion",
@@ -9070,6 +9130,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.mascotHands") save({ mascotHands: parseMascotHands(value) });
     else if (id === "v.mascotCrew") save({ mascotCrew: parseMascotCrew(value) });
     else if (id === "v.pillFace") save({ pillFace: on });
+    else if (id === "v.pillWhenSpeaking") save({ pillWhenSpeaking: on });
+    else if (id === "v.pillOnHerOwn") save({ pillOnHerOwn: on });
     else if (id === "v.mascotFollows") {
       talking = null;
       save({ mascotFollows: on });
@@ -9773,13 +9835,18 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     respellings: () => settings.pronounce,
     onPlaying: (text) => {
       core?.playing(text);
-      voiceBody().line(text);
+      // With the pill kept away, her bubble carries the line.
+      voiceBody().line(text, pill.offScreen());
     },
     onTurnEnd: () => pill.on({ type: "finished" }),
     face: (name) => {
       if (!settings.mascotFollows || name.toLowerCase() === talking) return;
       talking = name.toLowerCase();
       syncMascot?.();
+    },
+    effect: (nonverbal) => {
+      const face = effectFor(VESSELS.mascot, nonverbal).face;
+      return face !== null && voiceBody().expression(face) ? face : null;
     },
     cue: (name) => pill.cue(name),
     onActivity: (label, caption) =>

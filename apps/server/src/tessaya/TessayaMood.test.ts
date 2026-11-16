@@ -1,7 +1,11 @@
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { assert, it } from "@effect/vitest";
+import { EnvironmentId } from "@t3tools/contracts";
+import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -15,7 +19,13 @@ import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaTurn, layer as turnLayer, type TurnEnvelope } from "./TessayaTurn.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood, layer as moodLayer } from "./TessayaMood.ts";
+import { TessayaPeople } from "./TessayaPeople.ts";
 import { TessayaPresence, layer as presenceLayer } from "./TessayaPresence.ts";
+import { CurrentPersona, layer as currentPersonaLayer } from "./CurrentPersona.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import { DeviceSync, layer as deviceSyncLayer } from "../home/DeviceSync.ts";
+import { HomeAssistantService } from "../home/HomeAssistantService.ts";
+import { makeHub, R1Hub } from "../home/R1Hub.ts";
 
 const learning = Layer.mock(TessayaMemoryLearning)({
   learn: () => Effect.succeed({ stored: 1, held: 0, corrections: 1 }),
@@ -39,6 +49,9 @@ const setup = (enabled = true) =>
     Layer.provideMerge(SqlitePersistenceMemory),
   );
 
+/** The cheap read's answer with only its tone set. */
+const toneOnly = (tone: string) => ({ tone, topic: "none", theirs: "none", shared: null });
+
 const his: TurnEnvelope = {
   vessel: { kind: "desktop", id: "laptop" },
   text: "morning",
@@ -59,7 +72,9 @@ it.effect("his return after hours is in his next turn once; nobody else hears or
     // Sara's turn neither hears his mood nor resolves his absence.
     assert.notInclude(yield* blockOf({ ...his, member: "sara" }), "away");
     const back = yield* blockOf(his);
-    assert.include(back, "He was away 9 h");
+    // Named, and "they" with no pronouns of their own: never "he" for everyone (16 Nov).
+    assert.include(back, "Owner was away 9 h");
+    assert.include(back, "never ask where they were");
     assert.include(back, "Your mood now: sulky");
     assert.notInclude(yield* blockOf(his), "away");
     const mood = yield* TessayaMood;
@@ -164,9 +179,7 @@ it.effect(
           Layer.provideMerge(
             Layer.mock(TessayaOneShot)({
               run: ({ prompt }) =>
-                Effect.succeed({
-                  tone: prompt.includes("useless") ? "rude" : "praise",
-                }) as never,
+                Effect.succeed(toneOnly(prompt.includes("useless") ? "rude" : "praise")) as never,
             }),
           ),
           Layer.provideMerge(
@@ -214,23 +227,291 @@ it.effect(
             Layer.mock(TessayaOneShot)({
               run: ({ prompt }) => {
                 const said = /<said>(.*)<\/said>/s.exec(prompt)?.[1] ?? "";
-                return Effect.succeed({
-                  tone: said.includes("sorry")
-                    ? "apology"
-                    : said.includes("useless")
-                      ? "rude"
-                      : "none",
-                }) as never;
+                return Effect.succeed(
+                  toneOnly(
+                    said.includes("sorry") ? "apology" : said.includes("useless") ? "rude" : "none",
+                  ),
+                ) as never;
               },
             }),
           ),
           Layer.provideMerge(
             ServerSettingsService.layerTest({
-              tessayaMood: { enabled: true, intensity: 0.6, bondCap: 0.15 },
+              // Full forgiveness: a sorry lets all of the hurt go (the default, 0.8, leaves her neutral).
+              tessayaMood: {
+                enabled: true,
+                intensity: 0.6,
+                bondCap: 0.15,
+                personas: { companion: { forgiveness: 1 } },
+              },
             }),
           ),
           Layer.provideMerge(SqlitePersistenceMemory),
         ),
       ),
     ),
+);
+
+/** One of his servers: its own database, mood, presence and the one sync, with no peer link of its own. */
+const server = (id: string) =>
+  moodLayer.pipe(
+    Layer.provideMerge(Layer.mock(TessayaOneShot)({})),
+    Layer.provideMerge(Layer.mergeAll(presenceLayer, currentPersonaLayer)),
+    Layer.provideMerge(
+      deviceSyncLayer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(HomeAssistantService)({ devices: Effect.succeed([]) }),
+            Layer.succeed(R1Hub, {
+              ...makeHub(() => Effect.succeed(null)),
+              busLogin: Effect.succeed({ user: "", key: "" }),
+              noteKeyUse: () => Effect.void,
+              keyUsedOutside: () => null,
+            }),
+            Layer.mock(ServerEnvironment.ServerEnvironment)({
+              getEnvironmentId: Effect.succeed(EnvironmentId.make(id)),
+            }),
+          ),
+        ),
+      ),
+    ),
+    Layer.provideMerge(
+      ServerSettingsService.layerTest({
+        tessayaMood: { enabled: true, intensity: 0.6, bondCap: 0.15 },
+      }),
+    ),
+    Layer.provideMerge(SqlitePersistenceMemory),
+  );
+
+it.effect(
+  "one mood across two linked servers: each event once, caught up after being apart, and away means away from every vessel",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const tumble = yield* Layer.build(server("env-tumble"));
+      const desk = yield* Layer.build(server("env-desk"));
+      // The peer link: the `device_sync` call answers with the callee's records, so one swap syncs both ways.
+      const link = Effect.gen(function* () {
+        const a = Context.get(tumble, DeviceSync);
+        yield* a.exchange(yield* Context.get(desk, DeviceSync).exchange(yield* a.exchange({})));
+      });
+      const mood = (ctx: typeof tumble) => Context.get(ctx, TessayaMood);
+      const on = <X, R>(ctx: typeof tumble, e: Effect.Effect<X, never, R>) =>
+        Effect.provideContext(e, ctx);
+      const his = (ctx: typeof tumble) =>
+        on(ctx, mood(ctx).view("companion", "UTC", OWNER_MEMBER_ID));
+      const row = (ctx: typeof tumble) =>
+        on(
+          ctx,
+          Effect.map(
+            Effect.orDie(
+              Effect.flatMap(
+                SqlClient.SqlClient,
+                (sql) => sql<{ state_json: string }>`SELECT state_json FROM tessaya_affect_state`,
+              ),
+            ),
+            (rows) => rows[0]?.state_json ?? null,
+          ),
+        );
+
+      // He talks to her on Tumble's server and is rude there: his desk's server shows the same mood after one swap.
+      yield* on(tumble, mood(tumble).heard("companion", "UTC", OWNER_MEMBER_ID));
+      yield* on(tumble, mood(tumble).note("companion", { kind: "rude" }, OWNER_MEMBER_ID));
+      yield* link;
+      assert.strictEqual((yield* his(desk)).label, "hurt");
+      assert.deepStrictEqual(yield* his(desk), yield* his(tumble));
+      // Swapping again applies nothing twice.
+      const before = yield* row(desk);
+      yield* link;
+      yield* link;
+      assert.strictEqual(yield* row(desk), before);
+
+      // Apart (one server off): each sees its own event; linked again, both hold both, in one mood.
+      yield* TestClock.adjust("10 minutes");
+      yield* on(tumble, mood(tumble).note("companion", { kind: "job", ok: false }));
+      yield* TestClock.adjust("1 minute");
+      yield* on(desk, mood(desk).note("companion", { kind: "apology" }, OWNER_MEMBER_ID));
+      yield* link;
+      const [t, d] = [yield* his(tumble), yield* his(desk)];
+      assert.include(t.why, "a job failed");
+      assert.include(t.why, "they said sorry");
+      assert.deepStrictEqual(t, d);
+
+      // Hours on, he never speaks to Tumble but works at his desk: Tumble's server does not miss him.
+      yield* TestClock.adjust("9 hours");
+      assert.include(["lonely", "putout", "sulky"], (yield* his(tumble)).label);
+      yield* on(
+        desk,
+        Context.get(desk, TessayaPresence).note({
+          member: OWNER_MEMBER_ID,
+          source: "typed",
+          vessel: "desktop",
+        }),
+      );
+      yield* link;
+      const back = yield* his(tumble);
+      assert.notInclude(["lonely", "putout", "sulky"], back.label);
+      assert.isNull(back.awayHours);
+      // Every vessel showing this persona to him reads the same mood.
+      assert.deepStrictEqual(back, yield* his(desk));
+
+      // The persona he talks to at his desk is the one Tumble's server follows.
+      yield* Context.get(desk, CurrentPersona).set(`person:${OWNER_MEMBER_ID}`, "companion");
+      yield* link;
+      assert.strictEqual(
+        yield* Context.get(tumble, CurrentPersona).of(`person:${OWNER_MEMBER_ID}`),
+        "companion",
+      );
+    }).pipe(Effect.scoped),
+);
+
+const stateOf = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ state_json: string }>`
+    SELECT state_json FROM tessaya_affect_state WHERE persona = 'companion'
+  `;
+  return JSON.parse(rows[0]?.state_json ?? "{}") as {
+    general?: { flow?: { theirs: string } };
+    people?: Record<string, { flow?: { theirs: string } }>;
+  };
+});
+const moodSettings = ServerSettingsService.layerTest({
+  tessayaMood: { enabled: true, intensity: 0.6, bondCap: 0.15 },
+});
+
+it.effect("a room's flow moves the general mood; a person's moves theirs", () =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+    const mood = yield* TessayaMood;
+    yield* mood.hisWords("companion", "this build is broken again", null);
+    assert.strictEqual((yield* stateOf).general?.flow?.theirs, "angry");
+    yield* mood.hisWords("companion", "my exam went badly", "sara");
+    const after = yield* stateOf;
+    assert.strictEqual(after.people?.["sara"]?.flow?.theirs, "low");
+    assert.strictEqual(after.general?.flow?.theirs, "angry");
+  }).pipe(
+    Effect.provide(
+      moodLayer.pipe(
+        Layer.provideMerge(
+          Layer.mock(TessayaOneShot)({
+            run: ({ prompt }) =>
+              Effect.succeed({
+                tone: "none",
+                topic: "none",
+                theirs: /<said>[^<]*exam/.test(prompt) ? "low" : "angry",
+                shared: null,
+              }) as never,
+          }),
+        ),
+        Layer.provideMerge(moodSettings),
+        Layer.provideMerge(SqlitePersistenceMemory),
+      ),
+    ),
+  ),
+);
+
+it.effect(
+  "someone the people graph forgets takes her feelings with them, one merged moves them, and a reset clears an opinion",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const praised = (member: string) =>
+        Effect.flatMap(TessayaMood, (m) => m.note("companion", { kind: "praise" }, member));
+      yield* Effect.all([praised("ali"), praised("sam"), praised("person-new")]).pipe(
+        Effect.provide(moodLayer.pipe(Layer.provideMerge(moodSettings))),
+      );
+      const done = yield* Deferred.make<void>();
+      const impressions: Array<readonly [string, string | null]> = [];
+      const people = Layer.mock(TessayaPeople)({
+        // Ali forgotten, Sam found to be Sara; then the test goes on.
+        forgotten: Stream.make({ id: "ali", into: undefined }, { id: "sam", into: "sara" }).pipe(
+          Stream.concat(Stream.fromEffectDrain(Deferred.succeed(done, undefined))),
+        ),
+        setImpression: (id, text) => Effect.sync(() => void impressions.push([id, text])),
+      });
+      yield* Effect.gen(function* () {
+        yield* Deferred.await(done);
+        const mood = yield* TessayaMood;
+        const rows = (yield* mood.inner("companion", OWNER_MEMBER_ID)).people;
+        assert.deepStrictEqual(rows.map((p) => p.member).toSorted(), ["person-new", "sara"]);
+        yield* mood.reset("companion", "person-new");
+        assert.deepStrictEqual(
+          (yield* mood.inner("companion", OWNER_MEMBER_ID)).people.map((p) => p.member),
+          ["sara"],
+        );
+        // Not a member: the people graph's impression of them goes too.
+        assert.deepStrictEqual(impressions, [["person-new", null]]);
+      }).pipe(
+        Effect.provide(moodLayer.pipe(Layer.provide(people), Layer.provideMerge(moodSettings))),
+      );
+    }).pipe(Effect.provide(SqlitePersistenceMemory)),
+);
+
+it.effect(
+  "one act two servers heard (both hubs hear one lift) moves her once everywhere; a real second lift still counts",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const home = yield* Layer.build(server("env-home"));
+      const cloud = yield* Layer.build(server("env-cloud"));
+      const laptop = yield* Layer.build(server("env-laptop"));
+      const solo = yield* Layer.build(server("env-solo"));
+      const link = (a: typeof home, b: typeof home) =>
+        Effect.gen(function* () {
+          const x = Context.get(a, DeviceSync);
+          yield* x.exchange(yield* Context.get(b, DeviceSync).exchange(yield* x.exchange({})));
+        });
+      const lift = (ctx: typeof home) =>
+        Effect.provideContext(
+          Context.get(ctx, TessayaMood).note(
+            "companion",
+            { kind: "handled", how: "lifted" },
+            null,
+            "device:tessel-1",
+          ),
+          ctx,
+        );
+      const reaction = (ctx: typeof home) =>
+        Effect.provideContext(
+          Effect.map(
+            Effect.orDie(
+              Effect.flatMap(
+                SqlClient.SqlClient,
+                (sql) => sql<{ state_json: string }>`SELECT state_json FROM tessaya_affect_state`,
+              ),
+            ),
+            // To 3 places: copies moved her at their own moment, a few hundred ms of fading apart.
+            (rows) =>
+              JSON.stringify(
+                Object.entries(JSON.parse(rows[0]?.state_json ?? "{}").general?.reaction ?? {}).map(
+                  ([k, v]) => [k, Math.round((v as number) * 1000)],
+                ),
+              ),
+          ),
+          ctx,
+        );
+
+      // Both hubs hear the one lift, a moment apart; the laptop gets both copies from them.
+      yield* lift(home);
+      yield* TestClock.adjust("300 millis");
+      yield* lift(cloud);
+      yield* lift(solo);
+      yield* link(home, cloud);
+      yield* link(cloud, laptop);
+      yield* link(home, laptop);
+      const once = yield* reaction(solo);
+      assert.notStrictEqual(once, "[]");
+      for (const ctx of [home, cloud, laptop]) assert.strictEqual(yield* reaction(ctx), once);
+
+      // He lifts it again: a new act, so it counts again, once, on every server.
+      yield* TestClock.adjust("20 seconds");
+      yield* lift(home);
+      yield* lift(cloud);
+      yield* lift(solo);
+      yield* link(home, cloud);
+      yield* link(cloud, laptop);
+      const twice = yield* reaction(solo);
+      assert.notStrictEqual(twice, once);
+      for (const ctx of [home, cloud, laptop]) assert.strictEqual(yield* reaction(ctx), twice);
+    }).pipe(Effect.scoped),
 );

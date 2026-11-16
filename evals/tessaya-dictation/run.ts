@@ -23,6 +23,8 @@ const { values } = NodeUtil.parseArgs({
     case: { type: "string", multiple: true },
     samples: { type: "string", default: "3" },
     claude: { type: "string", default: "claude" },
+    // The server's path for web and mobile: one prompt with a JSON answer, under Claude Code's own system prompt.
+    "one-prompt": { type: "boolean", default: false },
   },
 });
 if (values.out === undefined) throw new Error("Use --out <directory>.");
@@ -32,17 +34,25 @@ const cases = CASES.filter((c) => values.case === undefined || values.case.inclu
 const METERED =
   /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX)$/;
 
+const ONE_PROMPT_SCHEMA = JSON.stringify({
+  type: "object",
+  properties: { transcription: { type: "string" } },
+  required: ["transcription"],
+});
+
 const ask = (system: string, message: string): Promise<string> =>
   new Promise((resolve) => {
     const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !METERED.test(k)));
+    const onePrompt = values["one-prompt"] === true;
     const child = NodeChildProcess.spawn(
       values.claude!,
       [
         "-p",
         "--model",
         values.model!,
-        "--system-prompt",
-        system,
+        ...(onePrompt
+          ? ["--output-format", "json", "--json-schema", ONE_PROMPT_SCHEMA]
+          : ["--system-prompt", system]),
         "--settings",
         JSON.stringify({ disableAllHooks: true, alwaysThinkingEnabled: false }),
         "--tools",
@@ -57,8 +67,19 @@ const ask = (system: string, message: string): Promise<string> =>
     );
     let stdout = "";
     child.stdout.on("data", (d) => (stdout += d));
-    child.on("close", () => resolve(stdout.trim()));
-    child.stdin.end(message);
+    child.on("close", () => {
+      if (!onePrompt) return resolve(stdout.trim());
+      try {
+        const parsed: unknown = JSON.parse(stdout);
+        const result = (
+          Array.isArray(parsed) ? parsed.findLast((m) => m?.type === "result") : parsed
+        ) as { structured_output?: { transcription?: string } } | undefined;
+        resolve(result?.structured_output?.transcription?.trim() ?? "");
+      } catch {
+        resolve("");
+      }
+    });
+    child.stdin.end(onePrompt ? `${system}\n\n${message}` : message);
   });
 
 NodeFS.mkdirSync(out, { recursive: true });

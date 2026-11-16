@@ -57,9 +57,17 @@ export const TessayaPrivateSetupInput = Schema.Struct({
   name: Schema.String,
   pin: Schema.String,
 });
-/** The recovery code is shown once, here, and never again. */
+/**
+ * Nothing is written yet: the store is sealed only when he types this recovery code back (`confirmSetup`). Asked again
+ * with the same PIN before `expiresAt`, setup offers the same code.
+ */
 export const TessayaPrivateSetupResult = Schema.Struct({
-  store: TessayaPrivateStore,
+  pending: Schema.String,
+  recoveryCode: Schema.String,
+  expiresAt: Schema.String,
+});
+export const TessayaPrivateConfirmSetupInput = Schema.Struct({
+  pending: TrimmedNonEmptyString,
   recoveryCode: Schema.String,
 });
 export const TessayaPrivateUnlockInput = Schema.Struct({
@@ -194,6 +202,9 @@ export const TessayaPrivateRestoreResult = Schema.Struct({
   items: Schema.Number,
 });
 
+/** Envelopes as stored (`tessaya-shared/provenance`); only ever sent to his own open session. */
+export const TessayaPrivateEventsResult = Schema.Struct({ events: Schema.Array(Schema.Unknown) });
+
 const op = <const O extends string, F extends Schema.Struct.Fields>(name: O, fields: F) =>
   Schema.Struct({ op: Schema.Literal(name), ...fields });
 
@@ -202,6 +213,7 @@ export const TessayaPrivateCallInput = Schema.Union([
   op("list", TessayaPrivateListInput.fields),
   op("audit", TessayaPrivateAuditInput.fields),
   op("setup", TessayaPrivateSetupInput.fields),
+  op("confirmSetup", TessayaPrivateConfirmSetupInput.fields),
   op("unlock", TessayaPrivateUnlockInput.fields),
   op("lock", TessayaPrivateLockInput.fields),
   op("add", TessayaPrivateAddInput.fields),
@@ -218,6 +230,11 @@ export const TessayaPrivateCallInput = Schema.Union([
   op("personDeleted", TessayaPrivatePersonDeletedInput.fields),
   op("backup", {}),
   op("restore", TessayaPrivateRestoreInput.fields),
+  // His private actions (B-046), opened only in his own open store's session.
+  op("events", {
+    since: Schema.Number,
+    limit: Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 500 })),
+  }),
 ]);
 export type TessayaPrivateCallInput = typeof TessayaPrivateCallInput.Type;
 /** Each op's result is one of these; the client knows which from the op it sent. */
@@ -237,6 +254,7 @@ export const TessayaPrivateCallResult = Schema.Union([
   TessayaPrivateDepositResult,
   TessayaPrivateBackupResult,
   TessayaPrivateRestoreResult,
+  TessayaPrivateEventsResult,
 ]);
 
 /** Said in plain words to whoever asked: never a memory's text, a PIN or a key. */

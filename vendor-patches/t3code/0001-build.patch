@@ -173,10 +173,10 @@ index fd3aca76ad247c3101889df922e29f104f8de909..5bc505b36132fc74070b3b7bede32017
      "@tanstack/react-router": "^1.160.2",
      "@tiptap/core": "^3.31.3",
 diff --git a/evals/README.md b/evals/README.md
-index 8cfb697373c318c91927adeb4f373d54a7e1922e..61a91ba6d805e0b63169a43b2d525278d454ca27 100644
+index 8cfb697373c318c91927adeb4f373d54a7e1922e..2361846057fc521eb701d34d5aad8b61e6c33bbd 100644
 --- a/evals/README.md
 +++ b/evals/README.md
-@@ -4,13 +4,21 @@ An eval runs a real model against T3 Code's real text or code and scores what th
+@@ -4,13 +4,22 @@ An eval runs a real model against T3 Code's real text or code and scores what th
  
  Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
  
@@ -199,6 +199,7 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..61a91ba6d805e0b63169a43b2d525278
 +| [tessaya-room](tessaya-room/)           | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.                    |
 +| [tessaya-lines](tessaya-lines/)         | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are.                  |
 +| [tessaya-plan](tessaya-plan/)           | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                      |
++| [tessaya-read](tessaya-read/)           | Whether the per-turn read of his words gets the tone, topic, how he seems, shared moments and a fair opinion.         |
 +| [tessaya-dictation](tessaya-dictation/) | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused. |
 +| [tessaya-learning](tessaya-learning/)   | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                  |
 +| [tessaya-pulse](tessaya-pulse/)         | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                   |
@@ -206,10 +207,10 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..61a91ba6d805e0b63169a43b2d525278
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..fc447aeac75e83b5cbaffce09205971dc4c7d158 100644
+index 0659f65475da775fd54525d9147c84a8b0ad4a3a..7bbb15abf7ccd4d2f1fe0e2577a018e827e57ced 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,8 +10,20 @@
+@@ -10,8 +10,21 @@
      "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
@@ -225,6 +226,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..fc447aeac75e83b5cbaffce09205971d
 +    "tessaya-brain:subscription": "node tessaya-brain/subscription.ts",
 +    "tessaya-lines": "node tessaya-lines/run.ts",
 +    "tessaya-plan": "node tessaya-plan/run.ts",
++    "tessaya-read": "node tessaya-read/run.ts",
 +    "tessaya-dictation": "node tessaya-dictation/run.ts",
 +    "tessaya-learning": "node tessaya-learning/run.ts",
 +    "tessaya-pulse": "node tessaya-pulse/run.ts"

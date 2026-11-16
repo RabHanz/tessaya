@@ -17,6 +17,7 @@ import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { TessayaFleetInput, TessayaFleetResult } from "./fleet.ts";
+import { BATON_CAST_WS_METHODS, CastCallInput, CastError, CastView } from "./cast.ts";
 import {
   BATON_PHONE_PAIRING_WS_METHODS,
   PhonePairingError,
@@ -112,13 +113,23 @@ import {
   TessayaHerdrSendResult,
 } from "./liveSessions.ts";
 import {
+  BATON_PULSE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   TessayaRecordAppendInput,
   TessayaRecordAppendResult,
   TessayaRecordListInput,
   TessayaRecordListResult,
+  TessayaPulseReactInput,
+  TessayaPulseReactResult,
 } from "./record.ts";
 import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
+import {
+  TESSAYA_ACTIVITY_WS_METHODS,
+  TessayaActivityListInput,
+  TessayaActivityListResult,
+  TessayaActivityWhyInput,
+  TessayaActivityWhyResult,
+} from "./activity.ts";
 import {
   BATON_DICTATION_WS_METHODS,
   TessayaDictationCleanupInput,
@@ -587,6 +598,18 @@ const WsTessayaLearnCallRpc = Rpc.make(BATON_LEARN_WS_METHODS.call, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsTessayaCastGetRpc = Rpc.make(BATON_CAST_WS_METHODS.get, {
+  payload: Schema.Struct({}),
+  success: CastView,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaCastCallRpc = Rpc.make(BATON_CAST_WS_METHODS.call, {
+  payload: CastCallInput,
+  success: CastView,
+  error: Schema.Union([CastError, EnvironmentAuthorizationError]),
+});
+
 const WsTessayaPhonePairingRpc = Rpc.make(BATON_PHONE_PAIRING_WS_METHODS.issue, {
   payload: Schema.Struct({}),
   success: PhonePairingResult,
@@ -839,6 +862,18 @@ const WsTessayaRecordListRpc = Rpc.make(BATON_RECORD_WS_METHODS.list, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsTessayaActivityListRpc = Rpc.make(TESSAYA_ACTIVITY_WS_METHODS.list, {
+  payload: TessayaActivityListInput,
+  success: TessayaActivityListResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaActivityWhyRpc = Rpc.make(TESSAYA_ACTIVITY_WS_METHODS.why, {
+  payload: TessayaActivityWhyInput,
+  success: TessayaActivityWhyResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsTessayaBrainUsageRpc = Rpc.make(BATON_BRAIN_WS_METHODS.usage, {
   payload: BrainUsageInput,
   success: BrainUsageResult,
@@ -865,6 +900,12 @@ const WsTessayaPersonasChangeRpc = Rpc.make(BATON_PERSONAS_WS_METHODS.change, {
 const WsTessayaPromptLabRpc = Rpc.make(BATON_PROMPT_LAB_WS_METHODS.call, {
   payload: TessayaPromptLabInput,
   success: TessayaPromptLabResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaPulseReactRpc = Rpc.make(BATON_PULSE_WS_METHODS.react, {
+  payload: TessayaPulseReactInput,
+  success: TessayaPulseReactResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1096,6 +1137,7 @@ const BATON_RPCS = [
   WsTessayaWatchGetRpc,
   WsTessayaRecordListRpc,
   WsTessayaRecordAppendRpc,
+  WsTessayaPulseReactRpc,
   WsTessayaBrainUsageRpc,
   WsTessayaBrainRecordRpc,
   WsTessayaPersonasListRpc,
@@ -1215,4 +1257,8 @@ export const TessayaRpcGroup = RpcGroup.make(
   WsTessayaVoiceCallRpc,
   WsTessayaLearnCallRpc,
   WsTessayaPhonePairingRpc,
+  WsTessayaCastGetRpc,
+  WsTessayaCastCallRpc,
+  WsTessayaActivityListRpc,
+  WsTessayaActivityWhyRpc,
 ).middleware(TessayaRpcScopeAuthorization);

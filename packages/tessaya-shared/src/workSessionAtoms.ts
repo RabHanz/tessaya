@@ -16,6 +16,7 @@ import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_RECORD_WS_METHODS,
+  BATON_PULSE_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
@@ -29,6 +30,7 @@ import {
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
   BATON_PHONE_PAIRING_WS_METHODS,
+  BATON_CAST_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -39,6 +41,7 @@ import {
   BATON_LIVE_WS_METHODS,
   BATON_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
+  TESSAYA_ACTIVITY_WS_METHODS,
   TessayaFleetResult,
   type WorkSession,
   type WorkSessionStreamItem,
@@ -218,9 +221,21 @@ export function createTessayaWorkSessionAtoms<R, E>(
       label: "environment-data:baton:brain-usage",
       tag: BATON_BRAIN_WS_METHODS.usage,
     }),
+    activityList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:tessaya:activity-list",
+      tag: TESSAYA_ACTIVITY_WS_METHODS.list,
+    }),
+    activityWhy: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:tessaya:activity-why",
+      tag: TESSAYA_ACTIVITY_WS_METHODS.why,
+    }),
     recordList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:record-list",
       tag: BATON_RECORD_WS_METHODS.list,
+    }),
+    pulseReact: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:pulse-react",
+      tag: BATON_PULSE_WS_METHODS.react,
     }),
     personasList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:personas",
@@ -250,6 +265,19 @@ export function createTessayaWorkSessionAtoms<R, E>(
     phonePairing: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:phone-pairing",
       tag: BATON_PHONE_PAIRING_WS_METHODS.issue,
+    }),
+    // Who wears which body (Settings → Cast): the live map, refreshed while it is open, and his moves.
+    castQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:cast-query",
+      tag: BATON_CAST_WS_METHODS.get,
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 15_000,
+    }),
+    castCall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:cast",
+      tag: BATON_CAST_WS_METHODS.call,
+      scheduler,
+      concurrency,
     }),
     learnCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:learn",

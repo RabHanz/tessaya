@@ -1,6 +1,39 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { EMOTIONS, PROP_AT, VESSELS, faceFor, renderFor } from "./expressionMap.ts";
+import {
+  EMOTIONS,
+  FACE_LIBRARY,
+  NONVERBAL_LOOKS,
+  PROP_AT,
+  VESSELS,
+  clipFor,
+  effectFor,
+  faceFor,
+  renderFor,
+} from "./expressionMap.ts";
+
+describe("clips by name", () => {
+  const body = {
+    id: "body",
+    clips: [
+      "Neutral_Idle",
+      "Happy_Idle",
+      "Happy_Idle_2",
+      "Sad_Talking_Fixed",
+      "Sad_Talking",
+      "Happy_Reaction",
+    ],
+  };
+  it("plays <Emotion>_<State>, its variants in turn, a fixed one for a whole reply, and falls down the kin", () => {
+    expect(clipFor(body, "happy", "Idle", { turn: 1 })).toBe("Happy_Idle_2");
+    expect(clipFor(body, "proud", "Reaction")).toBe("Happy_Reaction");
+    expect(clipFor(body, "sad", "Talking")).toBe("Sad_Talking");
+    expect(clipFor(body, "sad", "Talking", { wholeReply: true })).toBe("Sad_Talking_Fixed");
+    expect(clipFor(body, "angry", "Idle")).toBe("Neutral_Idle");
+    expect(clipFor(body, "happy", "Fidget")).toBeNull();
+    expect(clipFor(VESSELS.pill, "happy", "Idle")).toBeNull();
+  });
+});
 
 describe("the expression map", () => {
   it("every emotion's kin and props name something real, so a new row cannot point at nothing", () => {
@@ -15,6 +48,15 @@ describe("the expression map", () => {
       for (const k of look.kin) expect(names, `${label} kin ${k}`).toContain(k);
       for (const p of look.props ?? []) expect(props, `${label} prop ${p}`).toContain(p);
     }
+    // A stage direction's face is one every face library draws, so it is never dropped as unknown.
+    for (const [sound, look] of Object.entries(NONVERBAL_LOOKS))
+      if (look.face !== undefined) expect(FACE_LIBRARY, sound).toContain(look.face);
+  });
+
+  it("a stage direction buzzes only a vessel with a motor", () => {
+    expect(effectFor(VESSELS.tessel, "laugh")).toEqual({ face: "laughing", haptic: "giggle" });
+    expect(effectFor(VESSELS.mascot, "laugh")).toEqual({ face: "laughing", haptic: null });
+    expect(effectFor(VESSELS.speaker, "gasp")).toEqual({ face: null, haptic: null });
   });
 
   it("every emotion draws a face on every vessel with one, falling back through its kin", () => {

@@ -2,6 +2,8 @@ import {
   AuthAccessReadScope,
   AuthAccessWriteScope,
   BATON_PHONE_PAIRING_WS_METHODS,
+  BATON_CAST_WS_METHODS,
+  TESSAYA_ACTIVITY_WS_METHODS,
   AuthTessayaCloudApproveScope,
   AuthTessayaHandsHostScope,
   AuthTessayaMemorySyncScope,
@@ -24,6 +26,7 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
+  BATON_PULSE_WS_METHODS,
   AuthSettingsWriteScope,
   TessayaRecordAppendInput,
   DesktopSettingsSetInput,
@@ -56,11 +59,12 @@ import {
   missingTessayaScope,
 } from "./TessayaRpcAuthorization.ts";
 
-describe("who may use the prompt lab", () => {
+describe("who may use the prompt lab and react to her pulse", () => {
   it("needs settings:write on the server and in the client, which only the owner (or a machine grant) holds", () => {
-    const door = BATON_PROMPT_LAB_WS_METHODS.call;
-    expect(BATON_RPC_REQUIRED_SCOPES[door]).toBe(AuthSettingsWriteScope);
-    expect(clientRpcRequiredScopes(door, { op: "list" })).toEqual([AuthSettingsWriteScope]);
+    for (const door of [BATON_PROMPT_LAB_WS_METHODS.call, BATON_PULSE_WS_METHODS.react]) {
+      expect(BATON_RPC_REQUIRED_SCOPES[door]).toBe(AuthSettingsWriteScope);
+      expect(clientRpcRequiredScopes(door, { op: "list" })).toEqual([AuthSettingsWriteScope]);
+    }
     expect(roleCeiling("owner", false)).toContain(AuthSettingsWriteScope);
     for (const role of ["admin", "adult", "child", "guest"] as const)
       expect(roleCeiling(role, false)).not.toContain(AuthSettingsWriteScope);
@@ -75,6 +79,13 @@ describe("who may use cloud tasks on a hub", () => {
     );
     expect(BATON_RPC_REQUIRED_SCOPES[BATON_CLOUD_WS_METHODS.approve]).toBe(
       AuthTessayaCloudApproveScope,
+    );
+  });
+
+  it("lets a reader see who wears which body and only an operator move a persona", () => {
+    expect(missingTessayaScope(BATON_CAST_WS_METHODS.get, [AuthOrchestrationReadScope])).toBeNull();
+    expect(missingTessayaScope(BATON_CAST_WS_METHODS.call, [AuthOrchestrationReadScope])).toBe(
+      AuthOrchestrationOperateScope,
     );
   });
 
@@ -251,7 +262,11 @@ describe("rename R1: every method also answers as tessaya.*", () => {
         t !== BATON_DEVICES_WS_METHODS.call &&
         t !== BATON_VOICE_WS_METHODS.call &&
         t !== BATON_LEARN_WS_METHODS.call &&
-        t !== BATON_PHONE_PAIRING_WS_METHODS.issue,
+        t !== BATON_PHONE_PAIRING_WS_METHODS.issue &&
+        t !== BATON_CAST_WS_METHODS.get &&
+        t !== BATON_CAST_WS_METHODS.call &&
+        t !== TESSAYA_ACTIVITY_WS_METHODS.list &&
+        t !== TESSAYA_ACTIVITY_WS_METHODS.why,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(refusedAsDevice(renamed, device), renamed).toBe(refusedAsDevice(tag, device));
@@ -275,7 +290,11 @@ describe("rename R1: every method also answers as tessaya.*", () => {
         t !== BATON_DEVICES_WS_METHODS.call &&
         t !== BATON_VOICE_WS_METHODS.call &&
         t !== BATON_LEARN_WS_METHODS.call &&
-        t !== BATON_PHONE_PAIRING_WS_METHODS.issue,
+        t !== BATON_PHONE_PAIRING_WS_METHODS.issue &&
+        t !== BATON_CAST_WS_METHODS.get &&
+        t !== BATON_CAST_WS_METHODS.call &&
+        t !== TESSAYA_ACTIVITY_WS_METHODS.list &&
+        t !== TESSAYA_ACTIVITY_WS_METHODS.why,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(TessayaRpcGroup.requests.has(renamed), renamed).toBe(true);

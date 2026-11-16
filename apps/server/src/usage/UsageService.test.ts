@@ -51,6 +51,9 @@ import * as AntigravityUsage from "../provider/Drivers/AntigravityUsage.ts";
 import * as ProviderHostLive from "../provider/ProviderHostLive.ts";
 import { totalTokens, type UsageRecord } from "@t3tools/provider-core/server/usage";
 import * as UsageService from "./UsageService.ts";
+import * as BrainUsage from "../tessaya/BrainUsage.ts";
+import * as TessayaDatabase from "../tessaya/TessayaDatabase.ts";
+import * as TessayaRecordService from "../tessaya/TessayaRecordService.ts";
 import * as MuseSdk from "../../../../packages/provider-muse/src/server/sdk.ts";
 import { MuseUsageHome } from "@t3tools/provider-muse/server";
 import { makeScanCacheWriter, SCAN_CACHE_FILE_NAME } from "./usageScanCache.ts";
@@ -2030,6 +2033,72 @@ describe("UsageService", () => {
           1,
         );
       }),
+  );
+
+  it.effect("counts Tessaya's ledgered calls beside the transcripts, each once", () =>
+    Effect.gen(function* () {
+      const { settings, home, transcript } = yield* setup;
+      yield* Effect.promise(() => NodeFSP.writeFile(transcript, claudeLine(1, 7)));
+      yield* TestClock.setTime(Date.parse("2026-08-01T11:00:00Z"));
+      // The ledger's database lives as long as the provided layer, so the read happens inside it.
+      const summary = yield* Effect.gen(function* () {
+        const ledger = yield* BrainUsage.BrainUsage;
+        const call = { input: 3, cacheRead: 0, cacheWrite: 0, output: 5 };
+        const attribution = { feature: "voice", origin: "user", threadId: "thread-1" };
+        yield* ledger.record({
+          ...call,
+          model: "claude-fable-5",
+          role: "voice",
+          credential: "subscription",
+          attribution,
+        });
+        // Grok's text generation keeps a session its own transcript reader counts.
+        yield* ledger.record({
+          ...call,
+          model: "grok-4",
+          role: "agent",
+          provider: "grok",
+          credential: "instance:grok",
+          attribution,
+        });
+        // A failed call with no tokens adds nothing to count.
+        yield* ledger.record({
+          ...call,
+          output: 0,
+          input: 0,
+          model: "claude-fable-5",
+          role: "voice",
+          credential: "subscription",
+          outcome: "failed",
+          attribution,
+        });
+        return yield* (yield* UsageService.make).readSummary(WINDOW);
+      }).pipe(
+        Effect.provide(
+          Layer.effect(
+            BrainUsage.BrainUsage,
+            BrainUsage.make(() => null),
+          ).pipe(
+            Layer.provide(TessayaRecordService.layer),
+            Layer.provide(TessayaDatabase.layerMemory),
+            Layer.provideMerge(layerService({ prefix: "usage-service-ledger", home, settings })),
+          ),
+        ),
+      );
+      const ledgerSources = summary.sources.filter(
+        (source) => source.fingerprint.resolvedHomePath === BrainUsage.LEDGER_SOURCE,
+      );
+      assert.deepStrictEqual(
+        ledgerSources.map((source) => [source.fingerprint.provider, source.distinctSessions]),
+        [["claude", 1]],
+      );
+      assert.strictEqual(totalOutputTokens(summary), 12);
+      const merged = mergeUsage(
+        [{ environmentId: EnvironmentId.make("local"), label: "local", summary }],
+        summary.contractVersion,
+      );
+      assert.strictEqual(merged.models.find((m) => m.model === "claude-fable-5")?.totalTokens, 25);
+    }),
   );
 
   it.effect("counts unpriced tokens from the unpriced records of a mixed model", () =>

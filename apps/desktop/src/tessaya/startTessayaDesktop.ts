@@ -51,6 +51,7 @@ import {
 } from "@t3tools/tessaya-contracts";
 import { approvalRecord } from "@t3tools/tessaya-shared/approvals";
 import { DEFAULT_POCKET_VOICE } from "@t3tools/tessaya-shared/voiceLibrary";
+import { affectReference } from "@t3tools/tessaya-shared/voiceClips";
 import { inFlightLine } from "@t3tools/tessaya-shared/turnsInFlight";
 import { releasesUrl } from "@t3tools/tessaya-shared/repo";
 import { adoptTessayaEnv } from "@t3tools/tessaya-shared/tessayaEnv";
@@ -380,13 +381,21 @@ export const startTessayaDesktop = Effect.gen(function* () {
     let dictating = false;
     /** Undefined until a wake; null for a hotkey, which answers as the lead. */
     let lastWake: string | null | undefined;
+    /** Words of the current desk reply already handed to the player, so a layer's word cues count the whole reply. */
+    let cueBase = 0;
+    /** A persona layer's tone for the reply being said (VOXTA I5): each line goes in that voice's affect clip. */
+    let lineAffect: string | null = null;
+    let deskTurns = 0;
     /** Tessaya's own voice, waited for while it loads. The OS voice only when he chose it. */
     const chooseVoice = (
       name: PocketVoice | "system",
       cloud: string | null = null,
     ): VoiceChoice => {
       if (name === "system") return { kind: "system" };
-      const synth = pocket.synthesise(name);
+      // A clone reference conditions the whole line, never spliced; a voice without that clip says it plainly.
+      const reference =
+        lineAffect === null || cloud !== null ? undefined : affectReference(name, lineAffect);
+      const synth = pocket.synthesise(name, reference);
       if (synth === null) return { kind: "wait", ready: pocket.ensure(name) };
       return cloud === null || Date.now() < cloudQuietUntil
         ? { kind: "synth", synth, voice: name }
@@ -427,6 +436,24 @@ export const startTessayaDesktop = Effect.gen(function* () {
       (level, shape) => voice?.onSpeechLevel(level, shape),
       () => screen?.volume() ?? 1,
       (pcm, rate, soundsAtMs) => voice?.onReference(pcm, rate, soundsAtMs),
+      // While a layer session is open here, each word she reaches re-times its device acts (VOXTA I4); a stage
+      // direction's face lands as her voice reaches it (VOXTA-STUDY G7).
+      (text, sounds) => {
+        const layer = layerLink.isOpen();
+        if (!layer && sounds.length === 0) return null;
+        const base = cueBase;
+        if (layer) cueBase += text.split(/\s+/).filter((w) => w !== "").length;
+        let next = 0;
+        return (word, sounding) => {
+          if (layer && sounding)
+            void layerPost("cue", { vessel: "desktop", word: base + word }).catch(() => undefined);
+          for (; next < sounds.length && sounds[next]!.word <= word; next += 1) {
+            const { nonverbal } = sounds[next]!;
+            const face = voice?.effect(nonverbal) ?? null;
+            if (face !== null) void direct("effect", { nonverbal, face }).catch(() => undefined);
+          }
+        };
+      },
     );
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
@@ -434,7 +461,11 @@ export const startTessayaDesktop = Effect.gen(function* () {
         chooseVoice(screen?.voice() ?? DEFAULT_POCKET_VOICE, screen?.cloudVoice() ?? null),
       player: voicePlayer,
       silent: () => screen?.writtenOnly() ?? false,
-      onActive: (active) => voice?.onSpeaking(active),
+      onActive: (active) => {
+        // The reply's tone ends with its speech; whatever she says next is in her plain voice.
+        if (!active && deskTurns === 0) lineAffect = null;
+        voice?.onSpeaking(active);
+      },
       onText: (text) => voice?.onSpoken(text),
       respellings: () => voice?.respellings() ?? {},
       onPlaying: (text) => voice?.onPlaying(text),
@@ -520,17 +551,25 @@ export const startTessayaDesktop = Effect.gen(function* () {
     sendVisionUsageTo((row) => void direct("baton.brain.record", row).catch(() => undefined));
     // An owner-only persona layer on this machine's server, in internal builds only: the first 404 stops it.
     const layerKeyFile = NodePath.join(environment.stateDir, "tessaya-layer-device.key");
+    const layerFetch = async (path: string, body: unknown) => {
+      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      if (config._tag === "None") throw new Error("The local server is not ready.");
+      return fetch(new URL(path, config.value.httpBaseUrl), {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
+      });
+    };
+    /** A call to the layer's own routes, under the page its server named. */
+    const layerPost = async (path: string, body: unknown) => {
+      const page = layerLink.page();
+      if (page !== null) await layerFetch(`${page}/${path}`, body);
+    };
     const layerLink = startPersonaLayerLink({
       post: async (body) => {
-        const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
-        const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
-        if (config._tag === "None") throw new Error("The local server is not ready.");
-        const response = await fetch(new URL("/tessaya/layer/_desk", config.value.httpBaseUrl), {
-          method: "POST",
-          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(10_000),
-        });
+        const response = await layerFetch("/tessaya/layer/_desk", body);
         if (response.status === 404) return null;
         if (!response.ok) throw new Error(`layer link ${response.status}`);
         const answer = (await response.json()) as { open?: unknown; page?: unknown };
@@ -612,6 +651,20 @@ export const startTessayaDesktop = Effect.gen(function* () {
       onWords: (words: string) => void,
       signal: AbortSignal,
     ): Promise<void> => {
+      cueBase = 0;
+      lineAffect = null;
+      deskTurns += 1;
+      try {
+        await deskTurnOnce(body, onWords, signal);
+      } finally {
+        deskTurns -= 1;
+      }
+    };
+    const deskTurnOnce = async (
+      body: unknown,
+      onWords: (words: string) => void,
+      signal: AbortSignal,
+    ): Promise<void> => {
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
       if (config._tag === "None") throw new Error("The local server is not ready.");
@@ -623,7 +676,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       });
       if (!response.ok || response.body === null)
         throw new Error(`The server brain did not answer (${response.status}).`);
-      await readDeskTurn(response.body, onWords);
+      await readDeskTurn(response.body, onWords, (affect) => void (lineAffect = affect));
     };
     // His private stores live on this machine's own server: always asked here, never through T3's window.
     const privateMemory = createPrivateMemory((op, args = {}) =>

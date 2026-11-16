@@ -19,6 +19,7 @@ import type {
   RegisteredDevice,
 } from "@t3tools/tessaya-contracts";
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
+import { TurnLiveContext, layer as liveLayer } from "./TurnLiveContext.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
   boardLine,
@@ -74,6 +75,7 @@ const stores = Layer.mock(TessayaPrivateMemoryService)({
 const layer = it.layer(
   turnLayer.pipe(
     Layer.provideMerge(MemberPreferencesLayer),
+    Layer.provideMerge(liveLayer),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(memoryLayer),
     Layer.provideMerge(learning),
@@ -798,6 +800,79 @@ layer("TessayaTurn", (it) => {
         yield* TestClock.adjust("11 minutes");
         assert.deepStrictEqual(yield* heard(), []);
       }),
+  );
+
+  it.effect(
+    "recall also asks with the conversation's last messages, written in a stable order",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* TessayaMemoryService;
+        const turn = yield* TessayaTurn;
+        yield* memory.add({
+          kind: "fact",
+          text: "Amira's birthday is on the ninth of March",
+          source: "user",
+        });
+        const conversation = "window:1";
+        const asked = { vessel: device, text: "what should I get her?", conversation };
+        assert.notInclude((yield* turn.begin(asked)).block, "ninth of March");
+        yield* turn.end(
+          { vessel: device, text: "Amira's birthday is coming up", conversation },
+          { reply: "" },
+        );
+        const later = yield* turn.begin(asked);
+        assert.include(later.block, "ninth of March");
+        assert.strictEqual((yield* turn.begin(asked)).block, later.block);
+      }),
+  );
+
+  it.effect("a doubtful name is checked, and a turn of noise reaches nobody", () =>
+    Effect.gen(function* () {
+      const turn = yield* TessayaTurn;
+      const words = [
+        { text: "Call", p: 0.9 },
+        { text: "Sara", p: 0.4 },
+        { text: "now.", p: 0.9 },
+      ];
+      // Uncalibrated (an unknown recogniser): taken as heard.
+      const plain = yield* turn.begin({ vessel: device, text: "Call Sara now.", words });
+      assert.isUndefined(plain.repair);
+      const checked = yield* turn.begin({
+        vessel: device,
+        text: "Call Sara now.",
+        words,
+        recogniser: "tdt",
+      });
+      assert.deepStrictEqual(checked.repair, { kind: "clarify", word: "Sara", index: 1 });
+      assert.include(checked.notice, "did they say Sara?");
+      const noise = yield* turn.begin({
+        vessel: device,
+        text: "Uhh.",
+        words: [{ text: "Uhh.", p: null }],
+      });
+      assert.deepStrictEqual(noise.repair, { kind: "drop", reason: "noise" });
+      assert.strictEqual(noise.block, "");
+    }),
+  );
+
+  it.effect("live state reads for its turns on its vessel, then is gone", () =>
+    Effect.gen(function* () {
+      const live = yield* TurnLiveContext;
+      const turn = yield* TessayaTurn;
+      yield* live.inject({
+        key: "motion",
+        vessel: device.id,
+        source: "motion",
+        expiresAfterTurns: 2,
+        line: "A moment ago your body was dropped.",
+      });
+      const block = (vessel: TurnEnvelope["vessel"]) =>
+        Effect.map(turn.begin({ vessel, text: "hello" }), (c) => c.block);
+      assert.notInclude(yield* block(desktop), "dropped");
+      assert.include(yield* block(device), "dropped");
+      assert.include(yield* block(device), "dropped");
+      assert.notInclude(yield* block(device), "dropped");
+    }),
   );
 });
 

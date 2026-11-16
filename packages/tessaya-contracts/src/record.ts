@@ -21,6 +21,8 @@ export const TessayaRecordEntry = Schema.Struct({
   subject: Schema.String,
   outcome: Schema.String,
   detail: Schema.String,
+  /** Its action in the provenance log (B-046); absent from an older server. */
+  eventId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type TessayaRecordEntry = typeof TessayaRecordEntry.Type;
 
@@ -70,3 +72,11 @@ export const TessayaRecordAppendInput = Schema.Union([
   }),
 ]);
 export const TessayaRecordAppendResult = Schema.Struct({});
+
+/** His reaction to one pulse decision, from Settings → Brain → Pulse (B-003); voice uses `tessaya_pulse`. */
+export const BATON_PULSE_WS_METHODS = { react: "baton.pulse.react" } as const;
+export const TessayaPulseReactInput = Schema.Struct({
+  row: Schema.Number,
+  reaction: Schema.Literals(["liked", "told_off", "stop"]),
+});
+export const TessayaPulseReactResult = Schema.Struct({ line: Schema.String });

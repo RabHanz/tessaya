@@ -10,11 +10,24 @@ import {
   greetEvent,
   type LineEvent,
 } from "@t3tools/tessaya-shared/expression";
+import { effectFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import { speechPieces, type Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { mostlyForeign } from "@t3tools/tessaya-shared/language";
+import {
+  fireAtMs,
+  saidText,
+  soundAnchors,
+  type SentenceClock,
+} from "@t3tools/tessaya-shared/speechEffects";
 import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import { pronounce, pronounceFrom } from "@t3tools/tessaya-shared/pronounce";
 import { REST_MARK, stopIntent, stopMatch } from "@t3tools/tessaya-shared/stopPhrases";
+import {
+  repairBoundsFor,
+  repairVerdict,
+  type HeardWord,
+} from "@t3tools/tessaya-shared/transcriptRepair";
 
 import { createEchoGuard } from "../echoGuard.ts";
 import { createTalkOver, createVoiceLevel, voiceCheckDue, type TalkOver } from "../talkOver.ts";
@@ -47,6 +60,7 @@ import {
   admits,
   CAMPLUS_POLICY,
   memberByVoice,
+  withName,
   UNVERIFIED,
   HOLD_MS,
   holdVoice,
@@ -83,6 +97,8 @@ const UP_FLAG_HEADSET = 16;
 const R1_LATENCY = 1972;
 /** Talking over her counts once she has sounded this long: the device's echo cancelling settles in that time. */
 const ONSET_GRACE_MS = 400;
+/** How many times a persona look is sent before the loop logs it as failed. */
+const EYE_PERSONA_TRIES = 3;
 /** Until his own level is known, a voice over her must reach this (dBFS): he is near -41 at the R1, a TV far below. */
 const TALK_MIN_DBFS = -55;
 
@@ -95,6 +111,13 @@ const cueSamples = (name: PillSound): Int16Array =>
   Int16Array.from(renderSound(PILL_SOUNDS[name], RATE), (v) =>
     Math.max(-32768, Math.min(32767, Math.round(v * CUE_GAIN * 32767))),
   );
+
+const concatPcm = (a: Int16Array, b: Int16Array) => {
+  const out = new Int16Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
+};
 
 export interface RoomPersona {
   readonly id: string;
@@ -158,6 +181,11 @@ export interface RecogniserTurn {
   readonly feed: (pcm: Int16Array) => void;
   /** The final text once the audio has ended. */
   readonly finish: () => Promise<string>;
+  /** After `finish`: each word with its confidence, and the model that heard it; null where it gave none. */
+  readonly words?: () => {
+    readonly words: ReadonlyArray<HeardWord>;
+    readonly model: string;
+  } | null;
   readonly cancel: () => void;
   /** Each partial the recogniser sends while it still works (its words so far); the room guesses ahead with them. */
   readonly onPartial?: (listener: (text: string) => void) => void;
@@ -253,6 +281,10 @@ export interface Tessaya {
   readonly emotion?: { readonly label: string; readonly events: ReadonlyArray<string> };
   /** A guess on his partial words: the server records and learns from it only once `played` says it was heard. */
   readonly speculative?: true;
+  /** Each word with the recogniser's confidence (transcript repair, V-018), when it gave them for these words. */
+  readonly heardWords?: ReadonlyArray<HeardWord>;
+  /** The recogniser model that scored `heardWords`, whose calibrated bounds judge them. */
+  readonly recogniser?: string;
   readonly callId?: string;
   /** Several people this turn, in speaking order: each one's words with their own voice (absent for one voice). */
   readonly segments?: ReadonlyArray<{ readonly speaker: SpeakerIdentity; readonly words: string }>;
@@ -316,6 +348,8 @@ export interface RoomDeps {
   readonly lines?: RoomLines;
   /** A guess's reply was played to him in full: the server may now record it and learn from it. */
   readonly played?: (callId: string) => void;
+  /** Her voice reached a stage direction's word: the server buzzes it at his haptic settings and logs what showed. */
+  readonly effect?: (deviceId: string, nonverbal: Nonverbal, face: string | null) => void;
   readonly log: (line: string) => void;
   /** 0 to 1, for her varied lines (Math.random when absent). */
   readonly random?: () => number;
@@ -742,12 +776,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
     let asleep = false;
     const personas = roster;
-    const lead = personas[0];
+    // The persona this R1 wears (Settings → Cast), else the roster's lead. A wake word changes only this session.
+    const lead = personas.find((p) => p.id === castOf.get(id)?.persona) ?? personas[0];
     /** Who answers: the one he last called, until the window lapses. */
     let persona = lead;
     let voiceHold = NO_HOLD;
+    /** Her name's clip when he called her without a request in the same breath: scored with his first turn. */
+    let nameClip: Int16Array | null = null;
     /** The mic his frames come through now. */
     let input: VoiceInput = "mic";
+    const hisSession = () => voiceHold.evidence.some((e) => deps.now() - e.at <= HOLD_MS);
     const heldVoice = (heard: SpeakerIdentity) => {
       const out = holdVoice(voiceHold, heard, deps.now());
       voiceHold = out.hold;
@@ -819,7 +857,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       memberVoice = prefs?.voice ?? null;
       const now = currentOf.get(member);
       const chosen =
-        config.personaFollows && now !== undefined && deps.now() - now.at <= CURRENT_HELD_MS
+        (castOf.get(id)?.follows ?? config.personaFollows) &&
+        now !== undefined &&
+        deps.now() - now.at <= CURRENT_HELD_MS
           ? now.persona
           : prefs?.persona;
       const wanted = personas.find(
@@ -857,6 +897,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       speaker: SpeakerIdentity,
       affect: Affect | undefined,
       segments?: Tessaya["segments"],
+      scored?: { readonly words: ReadonlyArray<HeardWord>; readonly model: string } | null,
     ): Tessaya => ({
       vessel: { kind: "device", id },
       origin: given === undefined ? "voice" : "button",
@@ -875,6 +916,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         ? {}
         : { emotion: { label: affect.emotion, events: affect.events } }),
       ...(segments === undefined ? {} : { segments }),
+      ...(scored == null ? {} : { heardWords: scored.words, recogniser: scored.model }),
     });
 
     /**
@@ -1119,6 +1161,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       signal: AbortSignal,
       onFirstAudio?: () => void,
       prerollMs = 0,
+      /** When its first sample will sound under the R1's speaker, on this loop's clock. */
+      onStart?: (soundsAtMs: number) => void,
     ) => {
       let first = false;
       let held: Int16Array[] = [];
@@ -1128,6 +1172,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (!marked) {
           marked = true;
           phraseStarts = [...phraseStarts, downSamples].slice(-12);
+          onStart?.(Math.max(deps.now(), playUntil) + config.downDelayMs);
         }
         await send(pcm, signal, () => {
           if (!first) onFirstAudio?.();
@@ -1192,7 +1237,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
     /** Starts her voice on `text` at once (after the sentence before it), buffering what it says for `play`. */
     let synthesis: Promise<void> = Promise.resolve();
-    const ahead = (text: string, signal: AbortSignal): AsyncIterable<Int16Array> => {
+    const ahead = (
+      text: string,
+      signal: AbortSignal,
+      /** Its whole length in ms, once it is all made. */
+      onMade?: (ms: number) => void,
+    ): AsyncIterable<Int16Array> => {
       const voice = voiceNow();
       const chunks: Int16Array[] = [];
       let done = false;
@@ -1204,11 +1254,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       };
       synthesis = synthesis.then(async () => {
         try {
+          let samples = 0;
           for await (const pcm of speakLive(spoken(text), signal, voice)) {
             if (signal.aborted) break;
             chunks.push(pcm);
+            samples += pcm.length;
             nudge();
           }
+          if (!signal.aborted) onMade?.((samples / RATE) * 1000);
         } catch (error) {
           failed = error;
         } finally {
@@ -1240,11 +1293,43 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
     // Sent away always shows at once; otherwise a mood of her server's that still holds is not overwritten.
     const face = (mood: string) => {
-      if (mood !== "sleepy" && deps.now() < (eyeHold.get(id) ?? 0)) return;
+      if (mood !== "sleepy" && deps.now() < (eyeHold.get(id) ?? 0)) return false;
       // At rest the eyes return to her mood (`voice/intent/rest`), not a blank neutral.
       eye("cmd/eye/set", (mood === "neutral" ? restFace.get(id) : undefined) ?? { mood });
+      return true;
     };
     const gesture = (name: string) => eye("cmd/eye/gesture", { name });
+    /**
+     * A sentence's stage directions on the words they sit before (VOXTA-STUDY G7), timed on this loop's playback
+     * clock: by letters across the sentence's measured length, as the R1 has no aligner. Null when it has none.
+     */
+    const wordEffects = (text: string, signal: AbortSignal) => {
+      const pieces = speechPieces(spoken(text), voiceNow() ?? "");
+      const sounds = soundAnchors(pieces).filter((s) => {
+        const e = effectFor(VESSELS.tessel, s.nonverbal);
+        return e.face !== null || e.haptic !== null;
+      });
+      if (sounds.length === 0) return null;
+      let clock: SentenceClock = { startMs: null, durationMs: null, text: saidText(pieces) };
+      const schedule = (next: Partial<SentenceClock>) => {
+        clock = { ...clock, ...next };
+        const timeline = { nowMs: deps.now(), sentences: [clock], endMs: null };
+        const at = sounds.map((s) =>
+          fireAtMs({ at: "speech", sentence: 0, word: s.word }, timeline),
+        );
+        if (at.includes(null)) return;
+        for (const [i, s] of sounds.entries())
+          void deps.sleep(Math.max(0, at[i]! - deps.now())).then(() => {
+            if (signal.aborted) return;
+            const look = effectFor(VESSELS.tessel, s.nonverbal).face;
+            deps.effect?.(id, s.nonverbal, look !== null && face(look) ? look : null);
+          });
+      };
+      return {
+        onMade: (durationMs: number) => schedule({ durationMs }),
+        onStart: (startMs: number) => schedule({ startMs }),
+      };
+    };
     /** The persona's own eyes (the eye lane's looks; firmware without them ignores the topic). */
     const look = () => eye("cmd/eye/persona", { name: persona?.eyes ?? GENERIC_EYES });
     /** Her own words for one of the loop's moments, her eyes showing its mood; `plain` while they are off. */
@@ -1429,12 +1514,30 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         speaker: SpeakerIdentity,
         affect: Affect | undefined,
         segments?: Tessaya["segments"],
-      ) => envelopeOf(given, tainted, words, who, switched, via, speaker, affect, segments);
+      ) =>
+        envelopeOf(
+          given,
+          tainted,
+          words,
+          who,
+          switched,
+          via,
+          speaker,
+          affect,
+          segments,
+          // Scores only for the very words they scored (not a joined or corrected turn).
+          heardScores !== null && sameWords(heardScores.words.map((w) => w.text).join(" "), words)
+            ? heardScores
+            : null,
+        );
+      let heardScores: ReturnType<NonNullable<RecogniserTurn["words"]>> = null;
       const current = given === undefined && heard === undefined ? rec : null;
       if (current !== null) rec = null;
       // The whole sentence re-scored replaces its first piece's verdict in his session, never adds to it.
       let holdBefore: VoiceHold | null = null;
       let scorings = 0;
+      const nameFirst = given === undefined ? nameClip : null;
+      if (given === undefined) nameClip = null;
       const scored = (audio: Int16Array, begun = audio === pcm ? voice : undefined) => {
         const n = (scorings += 1);
         const via = input;
@@ -1452,8 +1555,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             deps.learnInput?.(via, who.personId, audio);
           return who;
         };
-        return (begun ?? deps.speaker?.(audio, via))?.then(
-          (heard) => held(heard ?? UNVERIFIED(deps.now())),
+        const own = begun ?? deps.speaker?.(audio, via);
+        const joined =
+          nameFirst === null || via !== "mic" || own === undefined
+            ? undefined
+            : deps.speaker?.(concatPcm(nameFirst, audio), via).catch(() => undefined);
+        return own?.then(
+          (heard) => {
+            const alone = heard ?? UNVERIFIED(deps.now());
+            return joined === undefined
+              ? held(alone)
+              : joined.then((both) => held(both === undefined ? alone : withName(alone, both)));
+          },
           () => held(UNVERIFIED(deps.now())),
         );
       };
@@ -1594,6 +1707,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           );
         return;
       }
+      heardScores = current?.words?.() ?? null;
+      // Pure noise, or words the recogniser never really heard (V-018): no turn, and nothing said about it.
+      if (
+        given === undefined &&
+        raw !== "" &&
+        heardScores !== null &&
+        sameWords(heardScores.words.map((w) => w.text).join(" "), raw) &&
+        repairVerdict(heardScores.words, repairBoundsFor(heardScores.model)).kind === "drop"
+      ) {
+        kept?.control.abort();
+        deps.log(`[${id}] turn ${turn}: noise, not words; not answered (${heldBack(raw)})`);
+        return;
+      }
       // Words he paused in, held for this turn: joined to it, or answered alone when this one is not his to her.
       const held =
         given === undefined && carry !== null && deps.now() - carry.at <= 15_000 ? carry : null;
@@ -1653,7 +1779,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           const best = await (
             deps.member?.(pcm) ?? Promise.resolve(Number.NEGATIVE_INFINITY)
           ).catch(() => Number.NEGATIVE_INFINITY);
-          const verdict = memberByVoice(best, pcm.length / RATE);
+          const verdict = memberByVoice(best, pcm.length / RATE, hisSession());
           if (verdict !== "member") {
             kept?.control.abort();
             dropped(turn, `over her voice and not a household voice (${best.toFixed(2)})`, raw);
@@ -1996,7 +2122,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           saying(sentence);
           const preroll = firstSentenceAt === null ? config.prerollMs : 0;
           firstSentenceAt ??= deps.now();
-          const audio = ahead(sentence, control.signal);
+          const effects = wordEffects(sentence, control.signal);
+          const audio = ahead(sentence, control.signal, effects?.onMade);
           speakingChain = speakingChain.then(async () =>
             // The arbiter is asked alongside, never before (13 Nov: a 1.3-1.7 s claim round in front of every wake);
             // only her voice waits for its answer, and a lost claim is never heard.
@@ -2013,6 +2140,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
                     }
                   },
                   preroll,
+                  effects?.onStart,
                 ),
           );
           // If the brain's stream fails first, the catch below skips `await speakingChain`: an abort must not crash us.
@@ -2373,6 +2501,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           const verdict = memberByVoice(
             best,
             quiet || seconds >= 2.5 ? Math.max(seconds, 2) : seconds,
+            hisSession(),
           );
           deps.log(
             `[${id}] the voice over hers: ${verdict} (${best.toFixed(2)} at ${seconds.toFixed(1)} s)`,
@@ -2568,6 +2697,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** S2 on this R1: someone is at it, which proves presence for an act waiting on who is speaking. */
       present: () => settleStepUp(true, "button"),
       /** Her name's own clip, heard by Voice ID: the first evidence of who woke her. */
+      /** Her name's own clip, for scoring with his first turn. */
+      named: (clip: Int16Array) => {
+        nameClip = clip;
+      },
       heardName: (identity: SpeakerIdentity, ms: number, evidence: boolean) => {
         // A request in the same breath is scored once, as his turn, on this same clip.
         if (evidence) heldVoice(identity);
@@ -2674,6 +2807,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const prefsOf = new Map<string, { readonly persona?: string; readonly voice?: string }>();
   /** Who each member last talked to on any vessel, from her server (`voice/current/<member>`), and when it said so. */
   const currentOf = new Map<string, { readonly persona: string; readonly at: number }>();
+  /**
+   * Who each R1 wears, from her server's Cast (`voice/cast`, retained): its sessions open on that persona, and `follows`
+   * (null: no rule, so config.personaFollows) says whether a member's session moves to whom they last talked to.
+   */
+  const castOf = new Map<
+    string,
+    { readonly persona: string | null; readonly follows: boolean | null }
+  >();
   /** The household's languages per R1, from her server (`voice/languages`, retained). */
   const languagesOf = new Map<string, ReadonlyArray<string>>();
   /** The conversation the arbiter last named for each R1 (sent on its turns). */
@@ -2687,7 +2828,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   /** Her mood at rest on each R1 (`voice/intent/rest`, retained): the eyes and the prop over them between turns. */
   const restFace = new Map<string, { readonly mood: string; readonly accessory: string }>();
   /** A persona look sent to an R1 and not yet acknowledged on `state/eye/persona`. */
-  const eyeAsked = new Map<string, { readonly name: string; readonly at: number }>();
+  const eyeAsked = new Map<
+    string,
+    { readonly name: string; readonly at: number; readonly tries?: number }
+  >();
   /** R1s muted from Tessaya: their audio is dropped unheard until unmuted, across sessions. */
   const muted = new Set<string>();
   /** R1s whose replies play on Bluetooth now (`state/voice` start or out); the session's stall check reads it. */
@@ -2728,6 +2872,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** Voice ID on her name's own clip, and how long it was. */
       readonly heard?: Promise<SpeakerIdentity | undefined>;
       readonly ms: number;
+      readonly clip?: Int16Array;
       /** What he said after her name in the same breath, still being recognised, with the segment it is in. */
       readonly request?: { readonly pcm: Int16Array; readonly words: Promise<WakeRequest | null> };
     }
@@ -2829,7 +2974,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       if (tail === "voice/intent/rest") {
-        const { mood: said, accessory } = json();
+        const { mood: said, accessory, persona: whose } = json();
         const mood = typeof said === "string" ? eyeClipOf(said) : null;
         if (mood === null || mood === "neutral") restFace.delete(id);
         else
@@ -2838,7 +2983,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             accessory:
               typeof accessory === "string" && /^[a-z]{2,12}$/.test(accessory) ? accessory : "auto",
           });
-        deps.log(`[${id}] rest mood ${mood ?? "neutral"}`);
+        deps.log(
+          `[${id}] rest mood ${mood ?? "neutral"}${typeof whose === "string" ? ` (${whose.slice(0, 40)})` : ""}`,
+        );
         // Shown now unless a reply's mood still holds; then the next rest moment shows it.
         if (deps.now() >= (eyeHold.get(id) ?? 0))
           deps.publish(
@@ -2856,6 +3003,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           languagesOf.set(id, list as ReadonlyArray<string>);
         else languagesOf.delete(id);
         deps.log(`[${id}] languages: ${(languagesOf.get(id) ?? config.languages).join(", ")}`);
+        return;
+      }
+      if (tail === "voice/cast") {
+        const { persona: p, follows: f } = json();
+        castOf.set(id, {
+          persona: typeof p === "string" && /^[\w-]{1,40}$/.test(p) ? p : null,
+          follows: typeof f === "boolean" ? f : null,
+        });
         return;
       }
       if (tail.startsWith("voice/current/")) {
@@ -2986,6 +3141,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         if (called !== undefined) {
           s.call(called.word, called.level);
+          if (called.clip !== undefined && request === undefined) s.named(called.clip);
           void called.heard?.then(
             (who) => who !== undefined && s.heardName(who, called.ms, request === undefined),
           );
@@ -3054,10 +3210,20 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     },
     /** Ends sessions nobody has spoken in; the R1 hears its own stop and plays the exit chime. */
     sweep: () => {
+      // A persona look is confirmed: asked again until the R1 acknowledges it, then a real failure in the log.
       for (const [id, asked] of eyeAsked)
         if (deps.now() - asked.at > 3_000) {
-          eyeAsked.delete(id);
-          deps.log(`[${id}] eye persona ${asked.name}: no acknowledgement in 3 s`);
+          const tries = (asked.tries ?? 1) + 1;
+          if (tries > EYE_PERSONA_TRIES) {
+            eyeAsked.delete(id);
+            deps.log(
+              `[${id}] eye persona ${asked.name}: FAILED, no acknowledgement after ${EYE_PERSONA_TRIES} tries`,
+            );
+            continue;
+          }
+          eyeAsked.set(id, { name: asked.name, at: deps.now(), tries });
+          deps.log(`[${id}] eye persona ${asked.name}: no acknowledgement in 3 s, try ${tries}`);
+          deps.publish(topic(id, "cmd/eye/persona"), JSON.stringify({ name: asked.name }));
         }
       for (const [id, s] of sessions)
         if (s.tick() === "stop") {
@@ -3102,6 +3268,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           word,
           level,
           ms: clip === undefined ? 0 : (clip.length / RATE) * 1000,
+          ...(clip === undefined ? {} : { clip }),
           ...(request === undefined || clip === undefined
             ? {}
             : { request: { pcm: clip, words: request } }),

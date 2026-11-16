@@ -7,6 +7,7 @@
  */
 import * as Electron from "electron";
 
+import type { SoundAnchor } from "@t3tools/tessaya-shared/speechEffects";
 import { createVisemeTrack } from "@t3tools/tessaya-shared/visemes";
 
 import {
@@ -59,6 +60,15 @@ export const createVoicePlayer = (
   volume: () => number = () => 1,
   /** What is about to sound (16-bit mono at `rate`) and when, for telling his voice from hers (echo guard). */
   onReference?: (pcm: Int16Array, rate: number, soundsAtMs: number) => void,
+  /**
+   * Asked once per sentence with its text and stage directions: where to report how far her voice has reached, or
+   * null. `sounding` is a word starting; otherwise the pause before word `word` (where a direction's sound plays), or
+   * the word count once the whole sentence has sounded.
+   */
+  wordSink?: (
+    text: string,
+    sounds: ReadonlyArray<SoundAnchor>,
+  ) => ((word: number, sounding: boolean) => void) | null,
 ): VoicePlayer => {
   let ducked = false;
   let win: Electron.BrowserWindow | null = null;
@@ -91,7 +101,7 @@ export const createVoicePlayer = (
   });
 
   return {
-    play: async (wav, text) => {
+    play: async (wav, text, sounds = []) => {
       const mine = ++stamp;
       const target = open();
       await ready;
@@ -103,6 +113,10 @@ export const createVoicePlayer = (
       let track: ReturnType<typeof createVisemeTrack> | null = null;
       let sent = 0;
       let bytes = 0;
+      const onWord =
+        text === undefined && sounds.length === 0 ? null : (wordSink?.(text ?? "", sounds) ?? null);
+      let lastWord = -1;
+      let paused = false;
       const pulses = new Set<ReturnType<typeof setTimeout>>();
       try {
         for await (const chunk of wav) {
@@ -149,6 +163,22 @@ export const createVoicePlayer = (
                   ...pcmShape(frame.pcm),
                   ...(viseme === undefined ? {} : { viseme }),
                 });
+                // A line that is only a sound has no words to align: it is all one pause.
+                const word =
+                  onWord === null
+                    ? undefined
+                    : track === null
+                      ? null
+                      : track.wordAt(frame.atMs + into);
+                if (typeof word === "number" && word > lastWord) {
+                  lastWord = word;
+                  onWord?.(word, true);
+                } else if (word === null && !paused) {
+                  // A pause after a word: a direction before the next one is sounding in it now.
+                  paused = true;
+                  onWord?.(lastWord + 1, false);
+                }
+                if (typeof word === "number") paused = false;
               },
               frame.atMs - MOUTH_LEAD_MS - Date.now(),
             );
@@ -158,6 +188,8 @@ export const createVoicePlayer = (
         track?.end();
         if (bytes === 0) return false;
         if (!target.isDestroyed()) await run("window.finish()");
+        if (mine === stamp)
+          onWord?.((text ?? "").split(/\s+/).filter((w) => w !== "").length, false);
         return true;
       } finally {
         for (const pulse of pulses) clearTimeout(pulse);

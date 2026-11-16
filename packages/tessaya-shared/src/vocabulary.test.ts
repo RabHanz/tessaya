@@ -431,6 +431,43 @@ describe("learning from his corrections", () => {
       { ...his[0], lastSeen: NOW },
     ]);
   });
+
+  it("teaches an ordinary word only from the same fix twice, and never as a rule", () => {
+    // His laptop, 16 Nov: one fix each taught "new" (heard "Jewel") and "prints" (heard "prince").
+    const jewel = { heard: "Jewel", meant: "new" };
+    const once = learnCorrection({}, [], jewel, NOW);
+    expect(once.entries).toEqual([]);
+    expect(once.taught).toEqual([]);
+    const twice = learnCorrection(once.seen, once.entries, jewel, NOW);
+    expect(twice.entries).toEqual([
+      {
+        phrase: "new",
+        replacement: null,
+        source: "learned",
+        count: 2,
+        lastSeen: NOW,
+        heard: ["Jewel"],
+      },
+    ]);
+    expect(twice.taught).toEqual([jewel]);
+    expect(twice.added).toEqual([]);
+    // A hint for the model only: code never turns his "Jewel" into "new".
+    expect(biasTranscript("Jewel is a name.", twice.entries)).toBe("Jewel is a name.");
+    // An ordinary heard word never becomes a rule for one of his names either ("button" for Baton).
+    const button = { heard: "button", meant: "Baton" };
+    const first = learnCorrection({}, [], button, NOW);
+    const second = learnCorrection(first.seen, first.entries, button, NOW);
+    expect(second.entries.filter((e) => e.replacement !== null)).toEqual([]);
+    expect(second.seen).toEqual({});
+    // What one fix taught before is dropped on read; a word he added stays.
+    expect(
+      parseVocabulary([
+        { phrase: "prints", replacement: null, source: "learned", count: 1, heard: ["prince"] },
+        { phrase: "new", replacement: null, source: "learned", count: 1, heard: ["Jewel"] },
+        { phrase: "stripe", replacement: null, source: "added", count: 1, heard: ["strike"] },
+      ]).map((e) => e.phrase),
+    ).toEqual(["stripe"]);
+  });
 });
 
 describe("learning from his wording", () => {

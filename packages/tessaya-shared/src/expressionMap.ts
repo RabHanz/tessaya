@@ -7,6 +7,7 @@
 import { R1_MOODS, type ExpressionMood } from "@t3tools/tessaya-contracts";
 import type { HandledHow } from "./affect.ts";
 import type { HapticHardware } from "./haptics.ts";
+import type { Nonverbal } from "./interjections.ts";
 
 export type Dye = "weld" | "madder" | "woad" | "indigo" | "damson" | "rose";
 
@@ -192,6 +193,8 @@ export interface VesselManifest {
   readonly voice?: boolean;
   /** Its vibration hardware; haptics.ts renders each pattern natively for it. */
   readonly haptic?: HapticHardware;
+  /** Animation clips by file name, `<Emotion>_<State>` (`clipFor`): a new emotion or state is a file, not code. */
+  readonly clips?: ReadonlyArray<string>;
 }
 
 /** Every vessel that shows her mood, by role. */
@@ -261,4 +264,81 @@ export const renderFor = (m: VesselManifest, label: string, intensity: number): 
       : {}),
     ...(m.haptic === undefined ? {} : { haptic: look.haptic ?? null }),
   };
+};
+
+/**
+ * What a stage direction she writes (`*laughs*`) shows as it sounds (VOXTA-STUDY G7), by face library names; none for
+ * a sound whose feeling depends on the line (a sigh can be relief or sorrow), or for a pause.
+ */
+export const NONVERBAL_LOOKS: Readonly<
+  Record<Nonverbal, { readonly face?: string; readonly haptic?: HapticPattern }>
+> = {
+  laugh: { face: "laughing", haptic: "giggle" },
+  chuckle: { face: "happy" },
+  giggle: { face: "giggle", haptic: "giggle" },
+  gasp: { face: "surprised", haptic: "startle" },
+  smile: { face: "happy" },
+  scoff: { face: "unimpressed" },
+  groan: { face: "annoyed" },
+  yawn: { face: "sleepy" },
+  sigh: {},
+  breath: {},
+  cough: {},
+  sniff: {},
+  gesture: {},
+};
+
+/** A direction's effect on one vessel: the face it draws and the buzz its motor plays, null for none. */
+export const effectFor = (
+  m: VesselManifest,
+  nonverbal: Nonverbal,
+): { readonly face: string | null; readonly haptic: HapticPattern | null } => {
+  const look = NONVERBAL_LOOKS[nonverbal];
+  return {
+    face: look.face !== undefined && m.face?.includes(look.face) === true ? look.face : null,
+    haptic: m.haptic === undefined ? null : (look.haptic ?? null),
+  };
+};
+
+/**
+ * What a body is doing, for its clips (VOXTA-STUDY G8): `Idle`, `Listening`, `Thinking` and `Talking` loop; `Reaction`
+ * plays once as the emotion arrives; `Fidget` breaks a long idle. `<Emotion>_<State>_Fixed` is held for a whole reply.
+ */
+export const CLIP_STATES = [
+  "Idle",
+  "Listening",
+  "Thinking",
+  "Talking",
+  "Reaction",
+  "Fidget",
+] as const;
+export type ClipState = (typeof CLIP_STATES)[number];
+
+const titled = (label: string) => label.charAt(0).toUpperCase() + label.slice(1);
+
+/**
+ * The clip a vessel plays for a label in a state, by the `<Emotion>_<State>` naming: numbered variants (`Happy_Idle_2`)
+ * take turns by `turn`, a `_Fixed` clip wins for a whole reply, and a label it lacks falls down its kin to `Neutral`.
+ * Null when the vessel has no clip for the state (its renderer's own idle, blink and glance keep it alive).
+ */
+export const clipFor = (
+  m: VesselManifest,
+  label: string,
+  state: ClipState,
+  options: { readonly turn?: number; readonly wholeReply?: boolean } = {},
+): string | null => {
+  const clips = m.clips;
+  if (clips === undefined) return null;
+  const kin = lookOf(label).kin;
+  for (const name of [label, ...kin, ...kin.flatMap((k) => lookOf(k).kin), "neutral"]) {
+    const base = `${titled(name)}_${state}`;
+    if (options.wholeReply === true && clips.includes(`${base}_Fixed`)) return `${base}_Fixed`;
+    const variants = clips
+      .filter(
+        (c) => c === base || (c.startsWith(`${base}_`) && /^\d+$/.test(c.slice(base.length + 1))),
+      )
+      .toSorted();
+    if (variants.length > 0) return variants[(options.turn ?? 0) % variants.length]!;
+  }
+  return null;
 };

@@ -3,6 +3,10 @@
  * The phone page at /tessaya (docs/baton/MOBILE.md): the page itself, then a small API behind the server's own session
  * (the pairing cookie, or a bearer token), with the rules in BatonTessayaApi. Mounted by TessayaServerLayer.routes.
  */
+import { PRIVATE_KIND } from "@t3tools/tessaya-shared/provenance";
+import { emitActionSync } from "../provenance/ActionLog.ts";
+import { effectFired } from "./turnActions.ts";
+import { NONVERBALS } from "@t3tools/tessaya-shared/interjections";
 import * as NodePath from "node:path";
 
 import {
@@ -13,6 +17,7 @@ import {
   TessayaPrivateCallResult,
   TessayaRpcGroup,
 } from "@t3tools/tessaya-contracts";
+import { deskEvent } from "@t3tools/tessaya-shared/deskTurnStream";
 import { buildPhoneState } from "@t3tools/tessaya-shared/phone";
 import { AuthTessayaHandsHostScope } from "@t3tools/contracts";
 import { watchFleet } from "@t3tools/tessaya-shared/watch";
@@ -324,6 +329,12 @@ export const routes = HttpRouter.use((router) =>
     const deskTools = yield* DeskTools;
     const decodeToolCall = Schema.decodeUnknownOption(DeskToolCall);
     const decodeDeskTurn = Schema.decodeUnknownOption(DeskTurnBody);
+    const decodeDeskEffect = Schema.decodeUnknownOption(
+      Schema.Struct({
+        nonverbal: Schema.Literals(NONVERBALS),
+        face: Schema.NullOr(Schema.String.check(Schema.isMaxLength(32))),
+      }),
+    );
     const decodePeerTurn = Schema.decodeUnknownOption(PeerTurnBody);
     const deskToolsAnswer = Effect.fn("BatonTessayaRoutes.deskTools")(function* (
       calledAs: string,
@@ -400,6 +411,16 @@ export const routes = HttpRouter.use((router) =>
         ).pipe(Effect.provideContext(context));
         return HttpServerResponse.jsonUnsafe({ value: { on: on === true } });
       }
+      // Her voice reached a stage direction's word on the desktop (VOXTA-STUDY G7): logged, the desktop has no motor.
+      if (calledAs === "effect") {
+        if (!session.value.scopes.includes(AuthTessayaHandsHostScope))
+          return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
+        const body = decodeDeskEffect(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
+        if (body._tag === "None")
+          return HttpServerResponse.jsonUnsafe({ message: "Not an effect." }, { status: 400 });
+        yield* effectFired({ vessel: "desktop", ...body.value, haptic: null });
+        return HttpServerResponse.jsonUnsafe({});
+      }
       // His sentence at the desk, through the one brain (SPINE-UNIFY S4): only the desktop app's own session sends it.
       if (calledAs === "turn") {
         if (!session.value.scopes.includes(AuthTessayaHandsHostScope) || deskTools === null)
@@ -428,7 +449,7 @@ export const routes = HttpRouter.use((router) =>
           turn.pipe(
             Stream.provideService(SessionMember, memberOfSubject(session.value.subject)),
             Stream.provideContext(context),
-            Stream.map((words) => `data: ${JSON.stringify({ words })}\n\n`),
+            Stream.map(deskEvent),
             Stream.concat(Stream.make("data: [DONE]\n\n")),
             Stream.encodeText,
           ),
@@ -627,7 +648,7 @@ export const routes = HttpRouter.use((router) =>
         return HttpServerResponse.stream(
           servePeerTurn(body.value, client.value.sessionId, deskTools).pipe(
             Stream.provideContext(context),
-            Stream.map((words) => `data: ${JSON.stringify({ words })}\n\n`),
+            Stream.map(deskEvent),
             Stream.concat(Stream.make("data: [DONE]\n\n")),
             Stream.encodeText,
           ),
@@ -740,6 +761,12 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
     },
     // The desktop's own key for the layer's store, kept by Windows (DPAPI) and sent by the desktop app.
     deviceKey: async () => deviceKey,
+    privatePointer: ({ id, at, cause }) =>
+      void emitActionSync(
+        { id, at, kind: PRIVATE_KIND, actor: { kind: "system", certainty: 1 }, cause },
+        { now: at },
+      ),
+    privateEvent: (event) => emitActionSync({ ...event, private: true }),
     presence: (vessel) => run(presenceOn(vessel)),
     capabilities: async () => ({
       personas: readPack(userdata)

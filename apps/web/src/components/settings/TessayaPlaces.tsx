@@ -16,6 +16,8 @@ import { ApisSettingsPanel } from "./ApisSettings";
 import { TessayaAccountsSettings } from "./TessayaAccountsSettings";
 import { BrainSettingsPanel } from "./BrainSettings";
 import { BrainUsagePanel } from "./BrainUsageSettings";
+import { CastSection } from "./CastSettings";
+import { ActivityPanel } from "./ActivitySettings";
 import { HardwareSettingsPanel } from "./HardwareSettings";
 import { HomeSettingsPanel } from "./HomeSettings";
 import { SettingsScopeProvider, useSettingsScope } from "./SettingsScopeContext";
@@ -48,6 +50,17 @@ function PhonePage() {
   );
 }
 
+function CastPage() {
+  const { environment } = useSettingsScope();
+  return (
+    <SettingsPageContainer>
+      {environment === null ? null : (
+        <CastSection key={environment.environmentId} environmentId={environment.environmentId} />
+      )}
+    </SettingsPageContainer>
+  );
+}
+
 function VoicesPage() {
   return (
     <SettingsPageContainer>
@@ -63,7 +76,9 @@ const TESSAYA_PAGES = {
   apis: ApisSettingsPanel,
   accounts: AccountsPage,
   voices: VoicesPage,
+  cast: CastPage,
   usage: BrainUsagePanel,
+  activity: ActivityPanel,
   brain: BrainSettingsPanel,
   team: TeamPanel,
   phone: PhonePage,
@@ -103,6 +118,7 @@ const PLACE_PAGE: Partial<Record<TessayaPlaceId, TessayaPage>> = {
   apis: "apis",
   accounts: "accounts",
   personas: "voices",
+  cast: "cast",
   phone: "phone",
 };
 

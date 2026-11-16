@@ -35,6 +35,7 @@ import {
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
   BATON_PHONE_PAIRING_WS_METHODS,
+  BATON_CAST_WS_METHODS,
   AuthStandardClientScopes,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
@@ -47,12 +48,14 @@ import {
   BATON_BRAIN_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
+  BATON_PULSE_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   TessayaRpcScopeAuthorization,
   type AuthEnvironmentScope,
   type TessayaRpcGroup,
   BATON_METHOD_OF,
+  TESSAYA_ACTIVITY_WS_METHODS,
 } from "@t3tools/tessaya-contracts";
 import {
   isMemberSubject,
@@ -120,6 +123,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_PERSONAS_WS_METHODS.change]: AuthSettingsWriteScope,
   // His prompts, and runs on his subscription: settings:write, which only the owner and admins hold.
   [BATON_PROMPT_LAB_WS_METHODS.call]: AuthSettingsWriteScope,
+  // It changes what she raises unprompted: the owner's settings.
+  [BATON_PULSE_WS_METHODS.react]: AuthSettingsWriteScope,
   // Rows name their actor, so only the desktop app's own session (hands-host, which no grant can give) writes them.
   [BATON_RECORD_WS_METHODS.append]: [AuthOrchestrationOperateScope, AuthTessayaHandsHostScope],
   // It spends his saved Anthropic key: the desktop app's own session only.
@@ -197,6 +202,11 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_LEARN_WS_METHODS.call]: AuthOrchestrationReadScope,
   // It mints a standard client's pairing code, so the caller must hold every scope that code delegates, as upstream's.
   [BATON_PHONE_PAIRING_WS_METHODS.issue]: AuthStandardClientScopes,
+  [BATON_CAST_WS_METHODS.get]: AuthOrchestrationReadScope,
+  [BATON_CAST_WS_METHODS.call]: AuthOrchestrationOperateScope,
+  // Activity / Why (B-046): reading the action log, like the Record.
+  [TESSAYA_ACTIVITY_WS_METHODS.list]: AuthOrchestrationReadScope,
+  [TESSAYA_ACTIVITY_WS_METHODS.why]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   [BATON_CONSENT_WS_METHODS.list]: AuthOrchestrationReadScope,

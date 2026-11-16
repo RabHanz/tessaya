@@ -90,6 +90,17 @@ interface Subscriber {
   readonly deliver: (topic: string, payload: Buffer, retained: boolean) => void;
   /** A bridge keeps the retain flag as published (mosquitto's own bridges do), or its broker's copy goes stale. */
   asPublished?: boolean;
+  /** The R1 logged in on this socket, whose replies a tap may take instead. */
+  device?: string;
+}
+
+/**
+ * The phone route's hold on one R1's voice: `down` takes her reply frames instead of the R1 (every other listener
+ * still hears them), `up` may swap the PCM of the R1's mic frames for another mic's.
+ */
+export interface HubTap {
+  readonly down?: (payload: Buffer) => void;
+  readonly up?: (payload: Buffer) => Buffer;
 }
 
 const str = (body: Buffer, at: number): [Buffer, number] => {
@@ -200,6 +211,7 @@ export const makeHub = (
   const guard = makeLoginGuard();
   const retained = new Map<string, Buffer>();
   const subscribers = new Set<Subscriber>();
+  const taps = new Map<string, HubTap>();
   const sessions = new Map<
     string,
     {
@@ -208,17 +220,31 @@ export const makeHub = (
       readonly close: () => void;
       /** A bus client, not a bridge, subscribed to this topic. */
       readonly hears?: (topic: string) => boolean;
+      readonly remote?: string | undefined;
     }
   >();
 
   /** `from`: the subscriber that published it, skipped when it is a bridge (no echo back to another broker). */
   const route = (topic: string, payload: Buffer, retain: boolean, from?: Subscriber) => {
+    const id = topic.startsWith(ROOT)
+      ? topic.slice(ROOT.length, topic.indexOf("/", ROOT.length))
+      : "";
+    const tap = taps.get(id);
+    const rest = tap === undefined ? "" : topic.slice(ROOT.length + id.length + 1);
+    if (tap?.up !== undefined && (rest === "voice/up" || rest === "voice/up/tainted"))
+      payload = tap.up(payload);
+    const taken = tap?.down !== undefined && rest === "voice/down";
+    if (taken) tap.down!(payload);
     if (retain) {
       if (payload.length === 0) retained.delete(topic);
       else if (retained.size < MAX_RETAINED || retained.has(topic)) retained.set(topic, payload);
     }
     for (const s of subscribers)
-      if (s !== from && s.filters.some((f) => topicMatches(f, topic)))
+      if (
+        s !== from &&
+        !(taken && s.device === id) &&
+        s.filters.some((f) => topicMatches(f, topic))
+      )
         s.deliver(topic, payload, retain && s.asPublished === true);
   };
   const sendRetained = (s: Subscriber, filters: ReadonlyArray<string>) => {
@@ -266,6 +292,7 @@ export const makeHub = (
       },
       hears: (topic: string) =>
         grant?.kind === "bus" && !bridge && sub.filters.some((f) => topicMatches(f, topic)),
+      remote: io.remote,
     };
     const sub: Subscriber = {
       filters: [],
@@ -332,6 +359,7 @@ export const makeHub = (
         keepAliveS = c.keepAliveS;
         self.will = c.will;
         self.grant = given;
+        if (given.kind === "device") sub.device = given.id;
         sessions.set(clientId, self);
         subscribers.add(sub);
         io.send(connack(0));
@@ -435,11 +463,20 @@ export const makeHub = (
   const connected = (id: string) =>
     [...sessions.values()].some((s) => s.grant?.kind === "device" && s.grant.id === id);
 
-  /** Bus clients hearing this topic: room loops, when the topic is an R1's voice. */
+  /** Client ids of the bus clients hearing this topic: room loops, when the topic is an R1's voice. */
   const busHears = (topic: string) =>
-    [...sessions.values()].filter((s) => s.hears?.(topic) === true).length;
+    [...sessions].filter(([, s]) => s.hears?.(topic) === true).map(([id]) => id);
 
-  return { attach, open, publish, dropDevice, connected, busHears };
+  /** The address an R1 is connected from now, for "is his phone on its network". */
+  const remoteOf = (id: string) =>
+    [...sessions.values()].find((s) => s.grant?.kind === "device" && s.grant.id === id)?.remote ??
+    null;
+
+  /** The phone route takes over this R1's voice, or gives it back with null. */
+  const tapVoice = (id: string, tap: HubTap | null) =>
+    void (tap === null ? taps.delete(id) : taps.set(id, tap));
+
+  return { attach, open, publish, dropDevice, connected, busHears, tapVoice, remoteOf };
 };
 
 export type Hub = ReturnType<typeof makeHub>;

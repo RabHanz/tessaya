@@ -44,6 +44,8 @@ interface Corpus {
     /** Which family the case measures (paraphrase, superseded, ...), for the per-family scores. */
     readonly group?: string;
     readonly query: string;
+    /** What was said before it in the same conversation (a vessel's turn only): recall asks with these too (G5). */
+    readonly history?: ReadonlyArray<string>;
     readonly scopeRef?: string;
     readonly top?: string;
     readonly present?: ReadonlyArray<string>;
@@ -157,19 +159,31 @@ const withTurn = <E, R>(model: Layer.Layer<TessayaMemoryEmbedder, E, R>) =>
   );
 
 /** A device vessel's turn, through the one pipeline every vessel uses (`TessayaTurn.begin`). */
-const deviceIds = (text: string, persona?: string, project?: string) =>
-  Effect.map(
-    Effect.flatMap(TessayaTurn, (turn) =>
-      turn.begin({
-        vessel: { kind: "device", id: "eval" },
-        text,
-        sessionless: true,
-        ...(persona === undefined ? {} : { persona }),
-        ...(project === undefined ? {} : { project }),
-      }),
-    ),
-    (c) => c.ids,
-  );
+let conversations = 0;
+const deviceIds = (
+  text: string,
+  persona?: string,
+  project?: string,
+  history: ReadonlyArray<string> = [],
+) =>
+  Effect.gen(function* () {
+    const turn = yield* TessayaTurn;
+    // Its own conversation; a guest's words, so the history teaches the store nothing.
+    const said = {
+      vessel: { kind: "device" as const, id: "eval" },
+      conversation: `eval:${(conversations += 1)}`,
+      member: "eval-guest",
+    };
+    for (const line of history) yield* turn.end({ ...said, text: line }, { reply: "" });
+    const c = yield* turn.begin({
+      ...said,
+      text,
+      sessionless: true,
+      ...(persona === undefined ? {} : { persona }),
+      ...(project === undefined ? {} : { project }),
+    });
+    return c.ids;
+  });
 
 // it.effect runs on the test clock, so the 300 ms query-embed budget never cuts a slow embed: the scores are a best case.
 const retrieval = (arm: Arm, model: Layer.Layer<TessayaMemoryEmbedder>, withModel: boolean) =>
@@ -196,13 +210,15 @@ const retrieval = (arm: Arm, model: Layer.Layer<TessayaMemoryEmbedder>, withMode
       for (const c of corpus.cases) {
         // A vessel's turn is a block, never a search: the device arm asks only the block's cases.
         if (arm === "device" && c.recall !== true) continue;
+        // A conversation exists only on a vessel's turn.
+        if (arm !== "device" && c.history !== undefined) continue;
         const scope = {
           ...(c.scopeRef === undefined ? {} : { scopeRef: c.scopeRef }),
           ...(c.agent === undefined ? {} : { agent: c.agent }),
         };
         const ids =
           arm === "device"
-            ? yield* deviceIds(c.query, c.agent, c.scopeRef)
+            ? yield* deviceIds(c.query, c.agent, c.scopeRef, c.history)
             : c.recall
               ? (yield* memory.recall({ text: c.query, budgetTokens: 300, ...scope })).ids
               : (yield* memory.search({ text: c.query, ...scope })).map((h) => h.item.id);

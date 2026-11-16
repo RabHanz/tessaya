@@ -74,14 +74,38 @@ export const integratedLufs = (pcm: Int16Array, rate: number): number => {
 export const loudnessGain = (measured: number, target: number, maxGain = 8): number =>
   Number.isFinite(measured) ? Math.min(maxGain, 10 ** ((target - measured) / 20)) : 1;
 
-/** `pcm` times `gain`, with peaks above 85% of full scale bent softly under it rather than clipped. */
-export const withGain = (pcm: Int16Array, gain: number): Int16Array => {
-  if (gain === 1) return pcm;
-  const knee = 0.85 * 32767;
-  const room = 32767 - knee;
-  return Int16Array.from(pcm, (v) => {
-    const y = v * gain;
-    const m = Math.abs(y);
-    return Math.round(m <= knee ? y : Math.sign(y) * (knee + room * Math.tanh((m - knee) / room)));
-  });
+const SIDE = 8;
+/** Windowed-sinc taps for the points a quarter, half and three quarters past a sample: 4x oversampling, as BS.1770 finds true peaks. */
+const BETWEEN = [0.25, 0.5, 0.75].map((f) =>
+  Array.from({ length: 2 * SIDE }, (_, k) => {
+    const x = k - (SIDE - 1) - f;
+    return (Math.sin(Math.PI * x) / (Math.PI * x)) * (0.5 + 0.5 * Math.cos((Math.PI * x) / SIDE));
+  }),
+);
+
+/**
+ * `gain`, then a true-peak limiter at `ceilingDb` (−1 dBTP): the loudness boost (15 dB for Alfred) pushed her loudest
+ * syllables to full scale (V-008). Instant attack on the peak between this sample and the next, 80 ms release. One per
+ * stream, as it keeps its state across chunks; the output runs 8 samples late and the last 8 are dropped.
+ */
+export const gainLimiter = (gain: number, rate = 16_000, ceilingDb = -1) => {
+  const ceiling = 32767 * 10 ** (ceilingDb / 20);
+  const release = 1 - Math.exp(-1 / (0.08 * rate));
+  const held = new Float64Array(2 * SIDE);
+  let level = 1;
+  return (pcm: Int16Array): Int16Array =>
+    Int16Array.from(pcm, (v) => {
+      held.copyWithin(0, 1);
+      held[2 * SIDE - 1] = v * gain;
+      const now = held[SIDE - 1]!;
+      let peak = Math.abs(now);
+      for (const taps of BETWEEN) {
+        let y = 0;
+        for (let k = 0; k < taps.length; k += 1) y += held[k]! * taps[k]!;
+        peak = Math.max(peak, Math.abs(y));
+      }
+      const need = peak > ceiling ? ceiling / peak : 1;
+      level = need < level ? need : level + (1 - level) * release;
+      return Math.trunc(now * level);
+    });
 };
