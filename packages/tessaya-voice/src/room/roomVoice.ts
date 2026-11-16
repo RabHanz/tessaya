@@ -47,6 +47,7 @@ import {
   admits,
   CAMPLUS_POLICY,
   memberByVoice,
+  withName,
   UNVERIFIED,
   HOLD_MS,
   holdVoice,
@@ -95,6 +96,13 @@ const cueSamples = (name: PillSound): Int16Array =>
   Int16Array.from(renderSound(PILL_SOUNDS[name], RATE), (v) =>
     Math.max(-32768, Math.min(32767, Math.round(v * CUE_GAIN * 32767))),
   );
+
+const concatPcm = (a: Int16Array, b: Int16Array) => {
+  const out = new Int16Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
+};
 
 export interface RoomPersona {
   readonly id: string;
@@ -746,8 +754,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** Who answers: the one he last called, until the window lapses. */
     let persona = lead;
     let voiceHold = NO_HOLD;
+    /** Her name's clip when he called her without a request in the same breath: scored with his first turn. */
+    let nameClip: Int16Array | null = null;
     /** The mic his frames come through now. */
     let input: VoiceInput = "mic";
+    const hisSession = () => voiceHold.evidence.some((e) => deps.now() - e.at <= HOLD_MS);
     const heldVoice = (heard: SpeakerIdentity) => {
       const out = holdVoice(voiceHold, heard, deps.now());
       voiceHold = out.hold;
@@ -1435,6 +1446,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // The whole sentence re-scored replaces its first piece's verdict in his session, never adds to it.
       let holdBefore: VoiceHold | null = null;
       let scorings = 0;
+      const nameFirst = given === undefined ? nameClip : null;
+      if (given === undefined) nameClip = null;
       const scored = (audio: Int16Array, begun = audio === pcm ? voice : undefined) => {
         const n = (scorings += 1);
         const via = input;
@@ -1452,8 +1465,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             deps.learnInput?.(via, who.personId, audio);
           return who;
         };
-        return (begun ?? deps.speaker?.(audio, via))?.then(
-          (heard) => held(heard ?? UNVERIFIED(deps.now())),
+        const own = begun ?? deps.speaker?.(audio, via);
+        const joined =
+          nameFirst === null || via !== "mic" || own === undefined
+            ? undefined
+            : deps.speaker?.(concatPcm(nameFirst, audio), via).catch(() => undefined);
+        return own?.then(
+          (heard) => {
+            const alone = heard ?? UNVERIFIED(deps.now());
+            return joined === undefined
+              ? held(alone)
+              : joined.then((both) => held(both === undefined ? alone : withName(alone, both)));
+          },
           () => held(UNVERIFIED(deps.now())),
         );
       };
@@ -1653,7 +1676,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           const best = await (
             deps.member?.(pcm) ?? Promise.resolve(Number.NEGATIVE_INFINITY)
           ).catch(() => Number.NEGATIVE_INFINITY);
-          const verdict = memberByVoice(best, pcm.length / RATE);
+          const verdict = memberByVoice(best, pcm.length / RATE, hisSession());
           if (verdict !== "member") {
             kept?.control.abort();
             dropped(turn, `over her voice and not a household voice (${best.toFixed(2)})`, raw);
@@ -2373,6 +2396,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           const verdict = memberByVoice(
             best,
             quiet || seconds >= 2.5 ? Math.max(seconds, 2) : seconds,
+            hisSession(),
           );
           deps.log(
             `[${id}] the voice over hers: ${verdict} (${best.toFixed(2)} at ${seconds.toFixed(1)} s)`,
@@ -2568,6 +2592,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** S2 on this R1: someone is at it, which proves presence for an act waiting on who is speaking. */
       present: () => settleStepUp(true, "button"),
       /** Her name's own clip, heard by Voice ID: the first evidence of who woke her. */
+      /** Her name's own clip, for scoring with his first turn. */
+      named: (clip: Int16Array) => {
+        nameClip = clip;
+      },
       heardName: (identity: SpeakerIdentity, ms: number, evidence: boolean) => {
         // A request in the same breath is scored once, as his turn, on this same clip.
         if (evidence) heldVoice(identity);
@@ -2728,6 +2756,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** Voice ID on her name's own clip, and how long it was. */
       readonly heard?: Promise<SpeakerIdentity | undefined>;
       readonly ms: number;
+      readonly clip?: Int16Array;
       /** What he said after her name in the same breath, still being recognised, with the segment it is in. */
       readonly request?: { readonly pcm: Int16Array; readonly words: Promise<WakeRequest | null> };
     }
@@ -2986,6 +3015,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         if (called !== undefined) {
           s.call(called.word, called.level);
+          if (called.clip !== undefined && request === undefined) s.named(called.clip);
           void called.heard?.then(
             (who) => who !== undefined && s.heardName(who, called.ms, request === undefined),
           );
@@ -3102,6 +3132,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           word,
           level,
           ms: clip === undefined ? 0 : (clip.length / RATE) * 1000,
+          ...(clip === undefined ? {} : { clip }),
           ...(request === undefined || clip === undefined
             ? {}
             : { request: { pcm: clip, words: request } }),
