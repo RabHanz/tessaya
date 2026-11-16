@@ -165,6 +165,7 @@ export const routes = HttpRouter.use((router) =>
           remote: request.headers["cf-connecting-ip"] ?? Option.getOrNull(request.remoteAddress),
           r1Remote: () => hub.remoteOf(r1),
           changed: (link, open) => devices.phoneLink(r1, link, open),
+          talk: (link) => devices.phoneTalk(r1, link),
         }).pipe(Effect.scoped);
         return HttpServerResponse.empty();
       }),

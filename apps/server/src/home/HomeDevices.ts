@@ -520,6 +520,8 @@ export interface PhoneLink {
   readonly play: (pcm: Buffer) => void;
   /** Drops what it still holds of her voice: she was interrupted. */
   readonly flush: () => void;
+  /** One named buzz on the phone's own motor, if it has one. */
+  readonly buzz: (pattern: HapticPattern, level: 1 | 2 | 3) => void;
   /** That many bytes of its mic, silence where it has none yet. */
   readonly mic: (bytes: number) => Buffer;
 }
@@ -1117,6 +1119,8 @@ export class HomeDevices extends Context.Service<
     ) => Effect.Effect<"play" | "hold">;
     /** A phone's link to an R1 opened, changed or closed (open false): the phone route follows it. */
     readonly phoneLink: (id: string, link: PhoneLink, open: boolean) => Effect.Effect<void>;
+    /** His headset's button on a linked phone: a talk on that R1, as its own talk button starts one. */
+    readonly phoneTalk: (id: string, link: PhoneLink) => Effect.Effect<void>;
     /** A private reply that could not play: kept in memory and said once a private output connects. */
     readonly holdPrivate: (id: string, text: string) => Effect.Effect<void>;
     /** A JPEG the device posted; taken only inside the window he opened. */
@@ -2618,12 +2622,26 @@ const make = Effect.gen(function* () {
       case "vibrate":
         yield* publish(id, "cmd/vibrate", { ms: Math.min(Math.max(Math.round(c.ms), 10), 1500) });
         return done("It buzzed.");
-      case "haptic":
+      case "haptic": {
+        const quiet = c.quiet ?? (yield* quietNow(now));
+        // Her voice is on his phone: the buzz is felt there too, on the word, at his level without the Tessel's placement.
+        const down = taps.get(id)?.down ?? null;
+        const phone = down === null ? undefined : phones.get(id)?.get(down);
+        const inHand = hapticLevel(yield* hapticSettings, {
+          pattern: c.pattern,
+          category: c.category,
+          placement: null,
+          quiet,
+          batteryPct: null,
+          charging: null,
+        });
+        if (phone !== undefined && inHand !== null) phone.buzz(c.pattern, inHand);
         return done(
-          (yield* buzz(id, c.pattern, c.category, c.quiet ?? (yield* quietNow(now)))) === null
+          (yield* buzz(id, c.pattern, c.category, quiet)) === null
             ? "It stayed still: haptics are off for that, or not felt where it is now."
             : "It buzzed.",
         );
+      }
       case "say":
         yield* routeReply(id, "alerts", false);
         yield* publish(id, "voice/say", { text: recordText(c.text, 400) });
@@ -3448,6 +3466,23 @@ const make = Effect.gen(function* () {
     ),
     routeReply,
     phoneLink,
+    phoneTalk: Effect.fn("HomeDevices.phoneTalk")((id: string, link: PhoneLink) =>
+      traced({
+        kind: "device.talk",
+        actor: { kind: "owner", id: link.id, certainty: 0.8 },
+        subject: `a talk on ${id} from ${link.name}'s headset button`,
+        evidence: [
+          { kind: "device", ref: id },
+          { kind: "device", ref: link.id },
+        ],
+      })(
+        Effect.gen(function* () {
+          // A phone away from home, or a muted Tessel, starts nothing: no one is there to hear her.
+          if (!link.near || (yield* readSaved).muted[id] === true) return;
+          yield* publish(id, "cmd/voice/start", {});
+        }),
+      ),
+    ),
     holdPrivate: Effect.fn("HomeDevices.holdPrivate")(function* (id: string, text: string) {
       const now = yield* Clock.currentTimeMillis;
       held.set(id, { text: recordText(text, 1_000), until: now + PRIVATE_HELD_MS });

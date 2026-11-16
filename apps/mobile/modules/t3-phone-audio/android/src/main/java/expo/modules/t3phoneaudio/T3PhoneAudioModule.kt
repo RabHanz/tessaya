@@ -12,10 +12,13 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.view.KeyEvent
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.typedarray.Uint8Array
@@ -36,6 +39,7 @@ class T3PhoneAudioModule : Module() {
   private var reader: Thread? = null
   private var context: Context? = null
   private var focus: AudioFocusRequest? = null
+  private var buttons: MediaSession? = null
   private var running = false
   private var micOn = false
 
@@ -57,7 +61,7 @@ class T3PhoneAudioModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("T3PhoneAudio")
 
-    Events("onMic", "onRoute", "onState")
+    Events("onMic", "onRoute", "onState", "onButton")
 
     AsyncFunction("start") {
       synchronized(lock) { begin() }
@@ -103,11 +107,48 @@ class T3PhoneAudioModule : Module() {
     audio.registerAudioDeviceCallback(devices, Handler(Looper.getMainLooper()))
     track = newTrack(AudioAttributes.USAGE_MEDIA)
     writer = thread(name = "t3-phone-audio-play") { writeLoop() }
+    buttons = buttonSession(ctx)
+  }
+
+  /** The headset's button: Android sends it to the media session that played last, which her replies make this one. */
+  private fun buttonSession(ctx: Context): MediaSession? = try {
+    MediaSession(ctx, "TessayaPhoneRoute").apply {
+      setCallback(
+        object : MediaSession.Callback() {
+          override fun onMediaButtonEvent(intent: Intent): Boolean {
+            val key = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+              intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+            } else {
+              @Suppress("DEPRECATION")
+              intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+            }
+            if (key == null || key.keyCode !in BUTTON_KEYS) return super.onMediaButtonEvent(intent)
+            if (key.action == KeyEvent.ACTION_UP && key.repeatCount == 0) {
+              sendEvent("onButton", mapOf("button" to "play-pause"))
+            }
+            return true
+          }
+        },
+        Handler(Looper.getMainLooper()),
+      )
+      setPlaybackState(
+        PlaybackState.Builder()
+          .setActions(PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or PlaybackState.ACTION_PLAY_PAUSE)
+          .setState(PlaybackState.STATE_PAUSED, 0, 1f)
+          .build(),
+      )
+      isActive = true
+    }
+  } catch (error: Exception) {
+    emitState("error", "The headset button is unavailable: ${error.message}")
+    null
   }
 
   private fun end() {
     if (!running) return
     running = false
+    buttons?.release()
+    buttons = null
     if (micOn) stopMic()
     audio.unregisterAudioDeviceCallback(devices)
     abandonFocus()
@@ -341,4 +382,11 @@ private val mediaOutputs = listOf(
   AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
   AudioDeviceInfo.TYPE_USB_HEADSET,
   AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+)
+
+private val BUTTON_KEYS = setOf(
+  KeyEvent.KEYCODE_HEADSETHOOK,
+  KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+  KeyEvent.KEYCODE_MEDIA_PLAY,
+  KeyEvent.KEYCODE_MEDIA_PAUSE,
 )
