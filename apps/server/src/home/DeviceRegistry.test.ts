@@ -7,6 +7,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
+import { HouseholdCaller, TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { SessionMember } from "../tessaya/TessayaTurn.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import { HomeDevices } from "./HomeDevices.ts";
@@ -169,4 +170,38 @@ it.effect(
       assert.isTrue((yield* fresh((r) => r.get(DESK)))?.stale);
     }).pipe(Effect.provide(TessayaDatabaseMemory));
   },
+);
+
+it.effect("reads and sets only the signed-in member's own preferences over the vessel door", () =>
+  Effect.gen(function* () {
+    const asked: Array<unknown> = [];
+    const household = Layer.mock(TessayaHousehold)({
+      call: (input) => {
+        asked.push(input);
+        return Effect.succeed({
+          status: "done" as const,
+          line: "Done.",
+          preferences: { location: "on" },
+        });
+      },
+    });
+    const call = (op: string, args: Record<string, unknown>, member: string | null) =>
+      serveDevicesCall({ kind: "vessel", op, args }, vessel).pipe(
+        Effect.provideService(HouseholdCaller, { member, assurance: 2, via: "a paired device" }),
+        Effect.provide(household),
+      );
+    // Another member's id in the args is ignored: the session's member is the one asked about.
+    const set = yield* call("setPreference", { id: "sara", key: "location", value: "on" }, "zayd");
+    assert.deepStrictEqual(set, {
+      ok: true,
+      value: { line: "Done.", preferences: { location: "on" } },
+    });
+    assert.deepStrictEqual(asked, [
+      { op: "setPreference", id: "zayd", key: "location", value: "on" },
+    ]);
+    // No member behind the session, or a key that is not a preference: refused before the household is asked.
+    assert.isFalse((yield* call("preferences", {}, null)).ok);
+    assert.isFalse((yield* call("setPreference", { key: "role", value: "owner" }, "zayd")).ok);
+    assert.strictEqual(asked.length, 1);
+  }).pipe(Effect.provide(layer)),
 );

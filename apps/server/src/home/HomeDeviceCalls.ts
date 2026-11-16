@@ -21,6 +21,7 @@ import {
   R1_EYE_STYLES,
   R1_LEDS,
   R1_MOODS,
+  TessayaPreferenceKey,
   type R1KeySlot,
   type TessayaDevicesCallInput,
   type TessayaDevicesCallResult,
@@ -35,6 +36,7 @@ import * as Schema from "effect/Schema";
 
 import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDevices.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
+import { HouseholdCaller, TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { SessionMember } from "../tessaya/TessayaTurn.ts";
 import { noteHere, type HereSignal } from "../tessaya/TessayaPresence.ts";
 import { DeviceTriggers } from "./DeviceTriggers.ts";
@@ -400,6 +402,40 @@ const servePublish = Effect.fn("DeviceCalls.publish")(function* (args: unknown) 
   return { ok: true, value: { writes } } satisfies TessayaDevicesCallResult;
 });
 
+const decodeOwnPreference = Schema.decodeUnknownOption(
+  Schema.Union([
+    Schema.Struct({ op: Schema.Literal("preferences"), id: Schema.String }),
+    Schema.Struct({
+      op: Schema.Literal("setPreference"),
+      id: Schema.String,
+      key: TessayaPreferenceKey,
+      value: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
+    }),
+  ]),
+);
+
+/** The signed-in member's own preferences from their vessel (the phone's presence opt-ins), as the household route. */
+const serveOwnPreference = Effect.fn("DeviceCalls.ownPreference")(function* (
+  op: string,
+  args: Record<string, unknown>,
+) {
+  const caller = yield* HouseholdCaller;
+  const household = yield* Effect.serviceOption(TessayaHousehold);
+  const decoded = decodeOwnPreference({ ...args, op, id: caller.member ?? "" });
+  if (caller.member === null || Option.isNone(household) || Option.isNone(decoded))
+    return {
+      ok: false,
+      error: "Preferences can't be read here.",
+    } satisfies TessayaDevicesCallResult;
+  const result = yield* household.value.call(decoded.value);
+  return result.status === "refused"
+    ? ({ ok: false, error: result.line } satisfies TessayaDevicesCallResult)
+    : ({
+        ok: true,
+        value: { line: result.line, preferences: result.preferences ?? {} },
+      } satisfies TessayaDevicesCallResult);
+});
+
 export const serveDevicesCall = Effect.fn("DeviceCalls.serve")(function* (
   input: TessayaDevicesCallInput,
   by: DeviceActor,
@@ -407,10 +443,12 @@ export const serveDevicesCall = Effect.fn("DeviceCalls.serve")(function* (
   if (input.kind === "vessel")
     return input.op === "publish"
       ? yield* servePublish(input.args ?? {})
-      : ({
-          ok: false,
-          error: "That request is not allowed here.",
-        } satisfies TessayaDevicesCallResult);
+      : input.op === "preferences" || input.op === "setPreference"
+        ? yield* serveOwnPreference(input.op, input.args ?? {})
+        : ({
+            ok: false,
+            error: "That request is not allowed here.",
+          } satisfies TessayaDevicesCallResult);
   const allowed: ReadonlyArray<string> =
     input.kind === "read"
       ? BATON_DEVICES_READ_OPS

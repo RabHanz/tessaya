@@ -1,7 +1,7 @@
 import type { BrainUsageCall, BrainUsageTotal } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { lineCalls, lineDetail, usageLines } from "./BrainUsage.logic";
+import { lineCalls, lineDetail, usageLines } from "./brainUsageLines.ts";
 
 const total = (over: Partial<BrainUsageTotal>): BrainUsageTotal => ({
   day: "2026-11-15",
