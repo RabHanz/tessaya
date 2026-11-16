@@ -2,9 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   addressedIn,
+  atSpeakerMark,
   CHOICE_FLOOR,
   groupLine,
   nextStep,
+  speakerMark,
   SPEAKERS_PER_TURN,
   stepFromChoice,
   type GroupPersona,
@@ -110,5 +112,32 @@ describe("groupLine", () => {
     expect(line).toContain('Freya: "Sleep first."');
     expect(line).toContain("Tease the others");
     expect(line).not.toMatch(/SECRET|4417/);
+  });
+
+  it("reads the room: the others' faces, and jealousy only when its dial is up and he turned to another first", () => {
+    const at = (jealousy: number, first: string) =>
+      groupLine({
+        group: group("answer"),
+        personas,
+        speaker: "freya",
+        spoken: [{ id: first, said: "Fine." }],
+        moods: { freya: "happy", luna: "sad", onyx: "neutral" },
+        jealousy,
+      });
+    expect(at(0, "luna")).toContain("Luna seems sad");
+    expect(at(0, "luna")).not.toMatch(/Freya seems|Onyx seems|jealousy/);
+    expect(at(0.6, "luna")).toContain("He asked Luna before you: let a playful touch of jealousy");
+    expect(at(0.6, "freya")).not.toContain("jealousy");
+  });
+});
+
+describe("atSpeakerMark", () => {
+  it("splits reply text where the next speaker's words begin", () => {
+    expect(atSpeakerMark(`Done. ${speakerMark("luna")}Ha.`)).toEqual({
+      before: "Done. ",
+      id: "luna",
+      after: "Ha.",
+    });
+    expect(atSpeakerMark("No [mark] here.")).toBeNull();
   });
 });

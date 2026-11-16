@@ -35,6 +35,7 @@ import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironment
 import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
 import { cleanupApiLimitMs } from "@t3tools/tessaya-shared/dictationCleanup";
 import { readDeskTurn } from "@t3tools/tessaya-shared/deskTurnStream";
+import { speakerMark } from "@t3tools/tessaya-shared/groupTalk";
 import { conversationsIn } from "./conversation/conversationLog.ts";
 import { moveRoster } from "./pack/rosterMove.ts";
 import {
@@ -676,7 +677,13 @@ export const startTessayaDesktop = Effect.gen(function* () {
       });
       if (!response.ok || response.body === null)
         throw new Error(`The server brain did not answer (${response.status}).`);
-      await readDeskTurn(response.body, onWords, (affect) => void (lineAffect = affect));
+      await readDeskTurn(
+        response.body,
+        onWords,
+        (affect) => void (lineAffect = affect),
+        // In line with the words, so the voice switches after the last speaker's sentence is queued, not before.
+        (persona) => onWords(speakerMark(persona)),
+      );
     };
     // His private stores live on this machine's own server: always asked here, never through T3's window.
     const privateMemory = createPrivateMemory((op, args = {}) =>

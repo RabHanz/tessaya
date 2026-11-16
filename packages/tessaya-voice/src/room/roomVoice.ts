@@ -11,6 +11,7 @@ import {
   type LineEvent,
 } from "@t3tools/tessaya-shared/expression";
 import { effectFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import { atSpeakerMark } from "@t3tools/tessaya-shared/groupTalk";
 import { speechPieces, type Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { mostlyForeign } from "@t3tools/tessaya-shared/language";
 import {
@@ -846,8 +847,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** The member's own voice for her (their preference), once they are recognised, while the lead answers. */
     let memberVoice: string | null = null;
     let prefsFor: string | null = null;
+    /** In a group turn, the member whose words are being queued now (its voice); null is the session's persona. */
+    let groupVoice: RoomPersona | null = null;
     const voiceNow = () =>
-      persona === lead && memberVoice !== null ? memberVoice : persona?.voice;
+      groupVoice !== null
+        ? groupVoice.voice
+        : persona === lead && memberVoice !== null
+          ? memberVoice
+          : persona?.voice;
     /** A recognised member's own defaults: their persona unless he named another, and their voice for her. */
     const applyPrefs = () => {
       const member = recog?.verified === true ? recog.member : null;
@@ -2097,6 +2104,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       let firstSound: number | null = null;
       /** What she actually says: her reasoning, when the brain writes it out, is never spoken or kept (13 Nov). */
       let said = "";
+      /** A group member's eyes were shown this turn: the session persona's come back after. */
+      let groupEyes = false;
       try {
         let buffer = "";
         let firstSentenceAt: number | null = null;
@@ -2193,6 +2202,21 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             buffer = buffer.replaceAll(REST_MARK, "");
             dismissed = true;
           }
+          // A group turn (M-021): the last speaker's words go out whole in its voice; the next voice starts after them,
+          // and its eyes show when its first words play.
+          for (let m = atSpeakerMark(buffer); m !== null; m = atSpeakerMark(buffer)) {
+            const before = splitSentences(m.before);
+            before.done.forEach(enqueue);
+            if (before.rest.trim() !== "") enqueue(before.rest.trim());
+            buffer = m.after;
+            const next = personas.find((p) => p.id === m!.id) ?? persona;
+            groupVoice = next === persona ? null : (next ?? null);
+            const eyes = next?.eyes ?? GENERIC_EYES;
+            speakingChain = speakingChain.then(() => {
+              if (!control.signal.aborted) eye("cmd/eye/persona", { name: eyes });
+            });
+            groupEyes = true;
+          }
           const { done, rest } = splitSentences(buffer);
           buffer = rest;
           done.forEach(enqueue);
@@ -2233,6 +2257,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           await say(own(greet ?? "err.brain", sorry), control.signal).catch(() => undefined);
         }
       } finally {
+        groupVoice = null;
+        if (groupEyes) void deps.sleep(Math.max(0, playUntil - deps.now())).then(look);
         if (reply === control || reply === null) {
           invited = !dismissed && invitesReply(said);
           openUntil = dismissed

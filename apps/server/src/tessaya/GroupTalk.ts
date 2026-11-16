@@ -23,6 +23,7 @@ import { emitAction, traced } from "../provenance/ActionLog.ts";
 import { hisOwnTurn } from "./consent.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
 import { personasList } from "./OperatingSystemPack.ts";
+import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { conversationKey, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 
@@ -185,6 +186,16 @@ export const groupTurn = Effect.fn("GroupTalk.turn")(
     if (Option.isSome(current))
       yield* current.value.setGroup(groupConversation(turn, hisOwnTurn(originOf(turn))), group);
     const oneShot = yield* Effect.serviceOption(TessayaOneShot);
+    // The room's mood (MA-021): each member's general mood, never a relationship, so nothing private crosses speakers.
+    const mood = yield* Effect.serviceOption(TessayaMood);
+    const views = Option.isNone(mood)
+      ? []
+      : yield* Effect.forEach(group.members, (m) =>
+          Effect.map(mood.value.view(m.id, turn.timeZone), (v) => ({ id: m.id, v })),
+        );
+    const moods = Object.fromEntries(
+      views.filter(({ v }) => v.intensity >= 0.2).map(({ id, v }) => [id, v.label]),
+    );
     const spoken: Array<Spoken> = [];
     let stopped: string = "done";
     for (;;) {
@@ -222,7 +233,14 @@ export const groupTurn = Effect.fn("GroupTalk.turn")(
       if (speaker === undefined) break;
       const said = yield* input.speak(
         speaker,
-        groupLine({ group, personas, speaker: id, spoken }),
+        groupLine({
+          group,
+          personas,
+          speaker: id,
+          spoken,
+          moods,
+          jealousy: views.find((x) => x.id === id)?.v.leanings?.jealousy ?? 0,
+        }),
         spoken.length === 0,
       );
       if (said === null || said.trim() === "") {

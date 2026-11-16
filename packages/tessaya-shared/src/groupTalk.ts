@@ -177,12 +177,40 @@ const stanceLine = (traits: GroupPersona["traits"]): string => {
     .join(" ");
 };
 
+/** The room's mood (MA-021): how each other member visibly seems, and the speaker's jealousy dial. Faces only. */
+const roomMoodLines = (input: {
+  readonly personas: ReadonlyArray<GroupPersona>;
+  readonly speaker: string;
+  readonly spoken: ReadonlyArray<Spoken>;
+  readonly moods?: Readonly<Record<string, string>> | undefined;
+  readonly jealousy?: number | undefined;
+}): ReadonlyArray<string> => {
+  const nameOf = (id: string) => input.personas.find((p) => p.id === id)?.name ?? id;
+  const seem = Object.entries(input.moods ?? {})
+    .filter(([id, label]) => id !== input.speaker && label !== "neutral")
+    .map(([id, label]) => `${nameOf(id)} seems ${label}`);
+  const first = input.spoken[0]?.id;
+  const jealousy = input.jealousy ?? 0;
+  return [
+    seem.length === 0
+      ? ""
+      : `How the others seem right now: ${seem.join("; ")}. Read the room: turn a gentle word or an invitation to anyone who seems low and match anyone bright, without ever saying how they seem or sound.`,
+    first !== undefined && first !== input.speaker && jealousy > 0.05
+      ? `He asked ${nameOf(first)} before you: let a ${jealousy >= 0.5 ? "playful touch" : "faint hint"} of jealousy about that show, once and lightly, never as a reproach.`
+      : "",
+  ];
+};
+
 /** What the speaking persona is told of the group: the others by name and role, and what was said aloud this turn. */
 export const groupLine = (input: {
   readonly group: PersonaGroup;
   readonly personas: ReadonlyArray<GroupPersona>;
   readonly speaker: string;
   readonly spoken: ReadonlyArray<Spoken>;
+  /** Each member's visible mood (its face's label), from the one mood service. */
+  readonly moods?: Readonly<Record<string, string>> | undefined;
+  /** The speaker's jealousy dial, 0 to 1 (off by default). */
+  readonly jealousy?: number | undefined;
 }): string => {
   const me = input.personas.find((p) => p.id === input.speaker);
   const others = input.group.members
@@ -197,10 +225,25 @@ export const groupLine = (input: {
   return [
     `This is a group conversation: him, you (${me?.name ?? input.speaker}) and ${others.join("; ")}. Speak only as yourself, in a line or two, never for the others, and never start with your own name.`,
     stanceLine(me?.traits),
+    ...roomMoodLines(input),
     ...(input.spoken.length === 0
       ? []
       : ["Said so far this turn:", ...heardLines(input.personas, input.spoken)]),
   ]
     .filter((l) => l !== "")
     .join("\n");
+};
+
+/** Where a group speaker's words begin in a vessel's reply text: its voice and eyes switch there. */
+export const speakerMark = (id: string): string => `[as:${id}]`;
+const SPEAKER_MARK = /\[as:([^\]\s]{1,80})\]/;
+
+/** Reply text split at its first speaker mark; null when it has none. */
+export const atSpeakerMark = (
+  text: string,
+): { readonly before: string; readonly id: string; readonly after: string } | null => {
+  const m = SPEAKER_MARK.exec(text);
+  return m === null
+    ? null
+    : { before: text.slice(0, m.index), id: m[1]!, after: text.slice(m.index + m[0].length) };
 };

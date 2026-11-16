@@ -51,6 +51,7 @@ import {
   type ManualBrain,
 } from "@t3tools/tessaya-shared/turnTier";
 import type { CutIn } from "@t3tools/tessaya-shared/endOfTurn";
+import { atSpeakerMark } from "@t3tools/tessaya-shared/groupTalk";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/tessaya-shared/awareness";
 import { DEFAULT_POCKET_VOICE } from "@t3tools/tessaya-shared/voiceLibrary";
@@ -1722,12 +1723,14 @@ export const startScreenCompanion = (input: {
     let aloud = false;
     /** The card these captions own, once the first is up; anything newer on screen ends them. */
     let card: number | null = null;
-    const caption = (page: string) => {
+    /** A group member who speaks next (M-021): shown as its first sentence starts to play, not before. */
+    let joining: Persona | null = null;
+    const caption = (page: string, name: string) => {
       if (voiceTurnAt !== hushes) return;
       if (card === null) {
-        void show(face.name, page);
+        void show(name, page);
         card = showing;
-      } else if (card === showing) void overlay.card({ kicker: face.name, text: page, hint: "" });
+      } else if (card === showing) void overlay.card({ kicker: name, text: page, hint: "" });
     };
     const sayHere = (text: string) => {
       if (voiceTurnAt !== hushes) return;
@@ -1735,12 +1738,34 @@ export const startScreenCompanion = (input: {
       spoken += 1;
       soFar = `${soFar} ${text}`.trim();
       const page = pageText(soFar).at(-1)!;
-      if (say(text, () => caption(page))) aloud = true;
-      else caption(page);
+      const name = face.name;
+      const shows = joining;
+      joining = null;
+      const start = () => {
+        if (shows !== null) input.onFace?.(shows.name);
+        caption(page, name);
+      };
+      if (say(text, start)) aloud = true;
+      else start();
     };
     return {
       feed: (delta: string) => {
-        for (const sentence of stream.feed(delta)) sayHere(sentence);
+        let rest = delta;
+        // The last speaker's words go out whole in its voice; the next one's voice applies from its first sentence.
+        for (let m = atSpeakerMark(rest); m !== null; m = atSpeakerMark(rest)) {
+          for (const sentence of stream.feed(m.before)) sayHere(sentence);
+          const left = stream.flush();
+          if (left.length > 0) sayHere(left);
+          rest = m.after;
+          const next = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find(
+            (p) => p.id === m!.id,
+          );
+          if (next === undefined || next.id === face.id) continue;
+          face = next;
+          joining = next;
+          soFar = "";
+        }
+        for (const sentence of stream.feed(rest)) sayHere(sentence);
       },
       /** The end of the turn. `whole` is spoken if nothing streamed. */
       finish: (whole: string): string => {
@@ -3469,7 +3494,8 @@ export const startScreenCompanion = (input: {
           placement: settings.serverBrainHome ? "home" : "here",
         },
         (words) => {
-          reply += words;
+          // A group's speaker mark (its own event) only steers the voice: never shown or kept.
+          if (atSpeakerMark(words) === null) reply += words;
           onDelta?.(words);
         },
         controller.signal,

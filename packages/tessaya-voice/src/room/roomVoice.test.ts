@@ -443,6 +443,32 @@ describe("answering only when he is talking to her", () => {
     ).toEqual(['{"name":"alfred"}', '{"name":"alfred"}', '{"name":"tessaya"}']);
   });
 
+  it("says each group member's words in its own voice, its eyes queued with them, then returns to its own (M-021)", async () => {
+    const spoken: Array<[string, string | undefined]> = [];
+    const t = setup({
+      recognise: said(["Tessaya, what do you two think?"]),
+      // The last speaker's sentence has no full stop: it must still go out whole in the first voice.
+      brain: async function* () {
+        yield "[as:butler]Rest first";
+        yield "[as:executive]Agreed. Sleep.";
+      },
+      speak: async function* (text, _signal, voice) {
+        spoken.push([text, voice]);
+        yield new Int16Array(3_200);
+      },
+    });
+    await turn(t);
+    expect(spoken).toEqual([
+      ["Rest first", "peter_yearsley"],
+      ["Agreed.", "eve"],
+      ["Sleep.", "eve"],
+    ]);
+    await t.deps.sleep(5_000);
+    expect(
+      t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload)),
+    ).toEqual(['{"name":"alfred"}', '{"name":"tessaya"}', '{"name":"tessaya"}']);
+  });
+
   it("does not chain into a conversation with the room (19:05, 12 Nov): audio alone opens nothing, a stray 'yeah' extends nothing", async () => {
     const cascade = ["Yes.", "Okay.", "Movie going here.", "Yeah.", "Yeah."];
     // Short lines a second or two apart, as they came.
