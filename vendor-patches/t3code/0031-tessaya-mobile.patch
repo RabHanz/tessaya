@@ -1,8 +1,14 @@
 diff --git a/apps/mobile/app.config.test.ts b/apps/mobile/app.config.test.ts
-index 9be2204d5132c981804fa616a26a9c14b0b63fd6..9e96ebe161e7c99f17dba6f527591fe403a273cb 100644
+index 9be2204d5132c981804fa616a26a9c14b0b63fd6..3a2346faf0908f22124cae05bbfed23f89563fe7 100644
 --- a/apps/mobile/app.config.test.ts
 +++ b/apps/mobile/app.config.test.ts
-@@ -21,7 +21,7 @@ async function loadConfig(variant: string | undefined) {
+@@ -1,4 +1,5 @@
+ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
++import * as NodeModule from "node:module";
+ import { afterEach, expect, it, vi } from "vite-plus/test";
+ 
+ import appleAppSiteAssociation from "../web/public/.well-known/apple-app-site-association.json";
+@@ -21,7 +22,7 @@ async function loadConfig(variant: string | undefined) {
  
  it.each(["prod", ""])("rejects APP_VARIANT=%j before selecting production IDs", async (value) => {
    await expect(loadConfig(value)).rejects.toThrow(
@@ -11,7 +17,7 @@ index 9be2204d5132c981804fa616a26a9c14b0b63fd6..9e96ebe161e7c99f17dba6f527591fe4
    );
  });
  
-@@ -45,3 +45,16 @@ it.each([
+@@ -45,3 +46,31 @@ it.each([
    ]);
    expect(assetLinks.map((link) => link.target.package_name)).toContain(identifier);
  });
@@ -27,6 +33,21 @@ index 9be2204d5132c981804fa616a26a9c14b0b63fd6..9e96ebe161e7c99f17dba6f527591fe4
 +  expect(tessaya.owner).toBe("rabhanz");
 +  expect(tessaya.updates?.url).toBe(`https://u.expo.dev/${tessaya.extra?.eas?.projectId}`);
 +  expect(tessaya.updates?.url).not.toBe(production.updates?.url);
++});
++
++it("asks iOS only for the TAG NFC format, never NDEF", async () => {
++  const config = await loadConfig("production");
++  const [name, props] = config.plugins!.find(
++    (p): p is [string, object] => Array.isArray(p) && p[0] === "react-native-nfc-manager",
++  )!;
++  const withNfc = NodeModule.createRequire(import.meta.url)(`${name}/app.plugin.js`);
++  const withMods = withNfc({ name: "x", slug: "x" }, props);
++  const { modResults } = await withMods.mods.ios.entitlements({
++    ...withMods,
++    modResults: {},
++    modRequest: { platform: "ios" },
++  });
++  expect(modResults["com.apple.developer.nfc.readersession.formats"]).toEqual(["TAG"]);
 +});
 diff --git a/apps/mobile/eas.json b/apps/mobile/eas.json
 index 3667f582e1edb140dd6ff6b1da529a14555d86e4..b4e663edc3126e689a77d080fb2237185140afe4 100644

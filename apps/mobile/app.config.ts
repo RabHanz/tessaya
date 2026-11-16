@@ -134,9 +134,13 @@ const easIdentity =
 // Copied thread links open the app. app.t3.codes/.well-known lists every variant's identifiers.
 const HOSTED_APP_HOST = "app.t3.codes";
 // Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
-const nfcPlugin: [string, { nfcPermission: string }] = [
+// TAG only: App Store Connect rejects the NDEF format (ITMS-90778); body tags are written as raw NTAG commands.
+const nfcPlugin: [string, { nfcPermission: string; includeNdefEntitlement: false }] = [
   "react-native-nfc-manager",
-  { nfcPermission: "Tessaya writes the NFC tag that tells your devices which body they are in." },
+  {
+    nfcPermission: "Tessaya writes the NFC tag that tells your devices which body they are in.",
+    includeNdefEntitlement: false,
+  },
 ];
 /** The domain body tags link to: configuration, never hard-coded (Director, 14 Nov). */
 const tagLinksHost = repoEnv.TESSAYA_TAG_LINKS_HOST?.trim() || undefined;
