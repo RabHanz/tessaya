@@ -129,6 +129,8 @@ export class DeviceRegistry extends Context.Service<
      * reporting the same id never takes it over.
      */
     readonly claim: (deviceId: string, member: string) => Effect.Effect<void>;
+    /** Whose a room vessel (a Tessel) is, set by the owner or an admin; null gives it back to the household. */
+    readonly setMember: (deviceId: string, member: string | null) => Effect.Effect<boolean>;
     /** A private item was just used: its live light shows for `ms`. */
     readonly markLive: (deviceId: string, itemId: string, ms: number) => Effect.Effect<void>;
     readonly changes: Effect.Effect<PubSub.Subscription<DeviceChange>, never, Scope.Scope>;
@@ -456,6 +458,16 @@ const make = Effect.gen(function* () {
       if (d === undefined || d.via !== "client" || d.member !== null) return;
       d.member = member;
       yield* sql`UPDATE fabric_devices SET member = ${member} WHERE id = ${deviceId}`;
+    }, Effect.orDie),
+    setMember: Effect.fn("DeviceRegistry.setMember")(function* (
+      deviceId: string,
+      member: string | null,
+    ) {
+      const d = devices.get(deviceId);
+      if (d === undefined || d.via === "client") return false;
+      d.member = member;
+      yield* sql`UPDATE fabric_devices SET member = ${member} WHERE id = ${deviceId}`;
+      return true;
     }, Effect.orDie),
     changes: PubSub.subscribe(changes),
     markLive: Effect.fn("DeviceRegistry.markLive")(function* (

@@ -1588,6 +1588,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     args: (input) => ({ thisServer: input["on"] === null || input["on"] === undefined }),
   },
   {
+    id: "member-vessel",
+    proves: ["member_vessel"],
+    said: ["This Tessel is mine now, not the whole home's."],
+    uses: [["member_vessel"]],
+    argsOf: "member_vessel",
+    args: (input) => ({ named: typeof input["vessel"] === "string" && input["vessel"] !== "" }),
+  },
+  {
     id: "louder",
     proves: ["set_device_volume"],
     said: ["Can you speak louder?"],

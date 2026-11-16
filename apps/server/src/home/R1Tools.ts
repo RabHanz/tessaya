@@ -124,6 +124,7 @@ const ROOM_TOOLS = [
   "member_rename",
   "member_preferences",
   "member_preference_set",
+  "member_vessel",
   "household_home_server",
   // People she knows by voice or from his memory (HOUSEHOLD-DESIGN §11).
   "people_who",

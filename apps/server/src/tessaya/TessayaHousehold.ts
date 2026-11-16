@@ -45,7 +45,7 @@ import { MemberPreferences } from "./MemberPreferences.ts";
 import { foldSpelling, spellBack } from "@t3tools/tessaya-shared/spelling";
 import { presenceReason } from "@t3tools/tessaya-shared/presence";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
-import { TessayaPresence } from "./TessayaPresence.ts";
+import { noteHere, TessayaPresence } from "./TessayaPresence.ts";
 import { TessayaPeople } from "./TessayaPeople.ts";
 import {
   keyFromJson,
@@ -781,9 +781,30 @@ export const make = Effect.gen(function* () {
     return done(`Added ${label}. It can confirm it's you on this device.`);
   });
 
+  /** Presence and vessels are this server's own (B-043), even when the members live on another. */
+  const local = Effect.fn("TessayaHousehold.local")(function* (
+    input: Extract<TessayaHouseholdCallInput, { op: "here" | "setVesselMember" }>,
+  ) {
+    const c = yield* HouseholdCaller;
+    const role = yield* callerRole;
+    if (c.member === null || role === null || role === "guest")
+      return refused("Only members of this home can do that.");
+    if (input.op === "setVesselMember") {
+      if (role !== "owner" && role !== "admin")
+        return refused("Only the owner or an admin can say whose a vessel is.");
+      const registry = yield* Effect.serviceOption(DeviceRegistry);
+      const owned =
+        Option.isSome(registry) && (yield* registry.value.setMember(input.vessel, input.member));
+      return owned ? done("Done.") : refused("That's not a room vessel on this server.");
+    }
+    const why = yield* noteHere(c.member, input.signal, input.vessel ?? null);
+    return why === null ? done("") : refused(why);
+  });
+
   const call = Effect.fn("TessayaHousehold.call")(function* (input: TessayaHouseholdCallInput) {
     // A step-up belongs to this server's session; everything else carries the session's lease.
     if (input.op === "stepUp") return yield* stepUp(input);
+    if (input.op === "here" || input.op === "setVesselMember") return yield* local(input);
     if (
       input.op === "passkeyOptions" ||
       input.op === "passkeyRegister" ||
@@ -832,6 +853,9 @@ export const make = Effect.gen(function* () {
         return done("", { members: yield* list, homeOn: yield* homeOn, peers: yield* peerLabels });
       case "home":
         return yield* home;
+      case "here":
+      case "setVesselMember":
+        return yield* local(input);
       case "invite": {
         // "Zayd, Z-A-Y-D": kept as spelled, said back once, and taught to her voice.
         const spelled = foldSpelling(input.name.trim());

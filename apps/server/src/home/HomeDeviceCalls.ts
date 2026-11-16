@@ -26,6 +26,7 @@ import {
   type TessayaDevicesCallResult,
 } from "@t3tools/tessaya-contracts";
 import { itemsView, readView } from "@t3tools/tessaya-shared/deviceItems";
+import { HERE_ITEM, HERE_SIGNALS } from "@t3tools/tessaya-shared/phoneDevice";
 import type { R1UpdatesView } from "@t3tools/tessaya-shared/r1Firmware";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -35,6 +36,7 @@ import * as Schema from "effect/Schema";
 import { HomeDevices, MAC, type DeviceActor, type DeviceCommand } from "./HomeDevices.ts";
 import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
 import { SessionMember } from "../tessaya/TessayaTurn.ts";
+import { noteHere, type HereSignal } from "../tessaya/TessayaPresence.ts";
 import { DeviceTriggers } from "./DeviceTriggers.ts";
 import { R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
 import { R1Pairing } from "./R1Pairing.ts";
@@ -382,10 +384,18 @@ const servePublish = Effect.fn("DeviceCalls.publish")(function* (args: unknown) 
     const refused = yield* registry.publish("client", p.manifest);
     if (refused !== null) return { ok: false, error: refused } satisfies TessayaDevicesCallResult;
   }
-  yield* registry.report("client", p.deviceId, p.values ?? []);
+  const here = p.values?.find((v) => v.itemId === HERE_ITEM)?.value;
+  yield* registry.report(
+    "client",
+    p.deviceId,
+    (p.values ?? []).filter((v) => v.itemId !== HERE_ITEM),
+  );
   // Whose it is: the member of the session that reported it (a member's own phone or desktop), for comms.
   const member = yield* SessionMember;
   if (member !== null) yield* registry.claim(p.deviceId, member);
+  // Their own vessel saying where they are (B-043): the app in front, or home and away with location on.
+  if (member !== null && (HERE_SIGNALS as ReadonlyArray<unknown>).includes(here))
+    yield* noteHere(member, here as HereSignal, p.deviceId);
   const writes = yield* registry.take(p.deviceId, p.acks ?? [], p.waitMs ?? 0);
   return { ok: true, value: { writes } } satisfies TessayaDevicesCallResult;
 });

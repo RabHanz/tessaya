@@ -5,6 +5,11 @@ import {
   peopleAt,
   PRESENCE_BARS,
   routeProactive,
+  arpMacs,
+  devicesOf,
+  homeAssistantSignals,
+  lanSignals,
+  ownerOfDevice,
   type PresenceSignal,
   type ProactiveKind,
 } from "./presence.ts";
@@ -82,6 +87,54 @@ describe("fusePresence", () => {
     expect(of([...away, sig("omid", "voice", "kitchen", 0)], "omid")?.nearest?.vessel).toBe(
       "kitchen",
     );
+  });
+
+  it("the phone places them at it until put away, and leaving home cancels every at-home sign before it", () => {
+    const phone = [sig("omid", "phoneApp", "phone-1", 5)];
+    expect(of(phone, "omid")!.nearest!.confidence).toBeCloseTo(0.85 * 0.5 ** 0.5);
+    expect(of([...phone, sig("omid", "phoneAppAway", null, 1)], "omid")?.nearest).toBeNull();
+    const home = [
+      sig("omid", "home", null, 60),
+      sig("omid", "lan", null, 2),
+      sig("omid", "haHome", null, 3),
+    ];
+    // Slow geofence, quick network: together past "around", each decaying at its own rate.
+    expect(of([sig("omid", "home", null, 120)], "omid")!.confidence).toBeCloseTo(0.275);
+    expect(of([sig("omid", "lan", null, 15)], "omid")!.confidence).toBeCloseTo(0.25);
+    expect(of(home, "omid")!.confidence).toBeGreaterThan(PRESENCE_BARS.present);
+    for (const away of ["away", "haAway"]) {
+      const gone = [...home, sig("omid", away, null, 1)];
+      expect(of(gone, "omid")!.confidence).toBe(0);
+      // Back on the Wi-Fi after leaving counts again.
+      expect(of([...gone, sig("omid", "lan", null, 0)], "omid")!.confidence).toBeCloseTo(0.5);
+    }
+  });
+
+  it("an occupancy sensor marks the room's vessel, and the camera places only who it saw", () => {
+    const e = fusePresence(
+      [sig(null, "occupied", "office", 0), sig("sara", "camera", "desk", 5)],
+      NOW,
+    );
+    expect(e.occupied.get("office")).toBeCloseTo(0.5);
+    expect(e.members.map((m) => m.member)).toEqual(["sara"]);
+    expect(e.members[0]!.nearest!.confidence).toBeCloseTo(0.45);
+  });
+
+  it("a meeting or a trip on the calendar lowers them, fades after it ends, and never places them", () => {
+    const here = [sig("omid", "typed", "desk", 0)];
+    expect(of([...here, sig("omid", "meeting", null, 0)], "omid")!.nearest!.confidence).toBeCloseTo(
+      0.45,
+    );
+    // Below the follow bar in a meeting, so her own lines stay quiet; ten minutes after its last sweep, half as low.
+    expect(of([...here, sig("omid", "meeting", null, 10)], "omid")!.confidence).toBeCloseTo(
+      0.9 * 0.75,
+    );
+    expect(of([...here, sig("omid", "outOfOffice", null, 0)], "omid")!.confidence).toBeCloseTo(
+      0.27,
+    );
+    const alone = of([sig("omid", "meeting", null, 0)], "omid")!;
+    expect([alone.confidence, alone.nearest, alone.lastSeen]).toEqual([0, null, null]);
+    expect(alone.evidence.map((x) => x.source)).toEqual(["meeting"]);
   });
 
   it("a new source is a row of data", () => {
@@ -168,5 +221,83 @@ describe("routeProactive", () => {
       expect(route(kind, here, "study", false)).toMatchObject({ action: "speak", vessel: "study" });
       expect(route(kind, [], null)).toMatchObject({ action: "quiet" });
     }
+  });
+});
+
+describe("the watching feeders", () => {
+  const members = [
+    {
+      id: "owner",
+      name: "Rab Hanz",
+      devices: devicesOf("Rab's iPhone, AA-BB-CC-DD-EE-01; WH-1000XM5"),
+    },
+    { id: "sara", name: "Sara", devices: devicesOf("aa:bb:cc:dd:ee:02") },
+  ];
+
+  it("ties a device to its owner by name or address, and nobody's to no one", () => {
+    expect(members[0]!.devices).toEqual(["rab's iphone", "aa:bb:cc:dd:ee:01", "wh:1000xm5"]);
+    expect(ownerOfDevice(members, "AA:BB:CC:DD:EE:02")).toBe("sara");
+    expect(ownerOfDevice(members, "00:11:22:33:44:55", "Sony WH-1000XM5")).toBe("owner");
+    expect(ownerOfDevice(members, "00:11:22:33:44:55", "Somebody's Buds")).toBeNull();
+  });
+
+  it("finds their devices in the neighbour table, complete entries only", () => {
+    const arp = [
+      "IP address       HW type     Flags       HW address            Mask     Device",
+      "192.168.1.20     0x1         0x2         aa:bb:cc:dd:ee:02     *        eth0",
+      "192.168.1.21     0x1         0x0         aa:bb:cc:dd:ee:01     *        eth0",
+    ].join("\n");
+    expect(arpMacs(arp)).toEqual(["aa:bb:cc:dd:ee:02"]);
+    expect(lanSignals(arpMacs(arp), members, NOW)).toEqual([
+      { member: "sara", source: "lan", vessel: null, at: NOW },
+    ]);
+  });
+
+  it("reads Home Assistant's people, routers, room sensors and calendars", () => {
+    const e = (entityId: string, name: string, state: string, more: object = {}) => ({
+      entityId,
+      name,
+      area: null,
+      state,
+      attributes: {},
+      ...more,
+    });
+    const signals = homeAssistantSignals({
+      entities: [
+        e("person.rab", "Rab", "home"),
+        e("person.sara", "Sara", "not_home"),
+        e("person.ghost", "Ghost", "home"),
+        e("device_tracker.rabs_iphone", "Rab's iPhone", "home"),
+        e("device_tracker.sara_phone", "Sara phone", "home"),
+        e("binary_sensor.office_occ", "Office", "on", {
+          area: "Office",
+          attributes: { device_class: "occupancy" },
+        }),
+        e("binary_sensor.door", "Door", "on", {
+          area: "Office",
+          attributes: { device_class: "door" },
+        }),
+        e("calendar.work", "Work", "on", { attributes: { message: "Standup" } }),
+        e("calendar.sara", "Sara's calendar", "on", {
+          attributes: { message: "Flight to Dubai" },
+        }),
+        e("calendar.family", "Family", "off"),
+      ],
+      members,
+      vessels: [
+        { id: "t-1", name: "Office Tessel" },
+        { id: "t-2", name: "Kitchen Tessel" },
+      ],
+      owner: "owner",
+      at: NOW,
+    });
+    expect(signals.map((s) => [s.member, s.source, s.vessel])).toEqual([
+      ["owner", "haHome", null],
+      ["sara", "haAway", null],
+      ["owner", "lan", null],
+      [null, "occupied", "t-1"],
+      ["owner", "meeting", null],
+      ["sara", "outOfOffice", null],
+    ]);
   });
 });

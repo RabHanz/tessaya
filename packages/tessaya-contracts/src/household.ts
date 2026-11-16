@@ -21,6 +21,9 @@ export const TessayaPreferenceKey = Schema.Literals([
   "wakeTraining",
   "follow",
   "pronouns",
+  "devices",
+  "location",
+  "camera",
 ]);
 export type TessayaPreferenceKey = typeof TessayaPreferenceKey.Type;
 
@@ -86,6 +89,16 @@ export const TessayaHouseholdCallInput = Schema.Union([
   op("list", {}),
   /** Who is around now: a member's device connected, or recently. */
   op("home", {}),
+  /**
+   * The signed-in member's own presence from a vessel (B-043): the app came to the front or went away, their phone
+   * crossed the home geofence (only with their `location` on), or a camera saw them (only with their `camera` on).
+   */
+  op("here", {
+    signal: Schema.Literals(["foreground", "background", "home", "away", "seen"]),
+    vessel: Schema.optionalKey(VesselId),
+  }),
+  /** Whose a room vessel is (a Tessel), so its headphones and handling count for them; null: the household's. */
+  op("setVesselMember", { vessel: VesselId, member: Schema.NullOr(Schema.String) }),
   op("invite", {
     name: TrimmedNonEmptyString.check(Schema.isMaxLength(120)),
     role: InviteRole,

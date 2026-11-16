@@ -61,7 +61,9 @@ import { emitAction, traced } from "../provenance/ActionLog.ts";
 import { roomActionOf } from "../provenance/roomActions.ts";
 import { VoiceForgets } from "../tessaya/VoiceForgets.ts";
 import { MemberPreferences, type VoiceDefaults } from "../tessaya/MemberPreferences.ts";
+import { presenceMembers } from "../tessaya/PresenceFeeds.ts";
 import { TessayaPresence } from "../tessaya/TessayaPresence.ts";
+import { ownerOfDevice } from "@t3tools/tessaya-shared/presence";
 import { StepUps } from "./StepUps.ts";
 import type { TessayaVoiceProfile } from "@t3tools/tessaya-contracts";
 import * as Queue from "effect/Queue";
@@ -1715,8 +1717,16 @@ const make = Effect.gen(function* () {
     if (Option.isSome(presence) && tail === "state/bt") {
       const linked = heard.get(result.id)?.speaker?.linked ?? null;
       const on = linked !== null && closedKind((yield* kindsOf(result.id)).get(linked));
-      // shortcut: a Tessel names no member, so its headphones are the owner's; per-member once B-002 ties Tessels.
-      const member = (yield* registry.get(result.id))?.member ?? OWNER_MEMBER_ID;
+      // Whose headphones (their `devices` preference names them), else whose Tessel, else the owner's.
+      const name =
+        knownFrom(yield* registry.value(result.id, "bt.known")).find((k) => k.mac === linked)
+          ?.name ?? null;
+      const member =
+        (linked === null
+          ? null
+          : ownerOfDevice(yield* presenceMembers().pipe(withSql), linked, name)) ??
+        (yield* registry.get(result.id))?.member ??
+        OWNER_MEMBER_ID;
       if (on) yield* presence.value.note({ member, source: "headphones", vessel: result.id });
       else if (phonesOn.has(result.id))
         yield* presence.value.note({ member, source: "headphonesOff", vessel: null });

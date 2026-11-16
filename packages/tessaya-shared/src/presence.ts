@@ -22,9 +22,14 @@ export interface PresenceSource {
   readonly halfLifeMinutes: number;
   /** A newer signal of this source cancels these sources' older signals for the same member (they stepped away). */
   readonly cancels?: ReadonlyArray<string>;
+  /** Evidence they are less available, not more: its strength scales their whole estimate down (a meeting). */
+  readonly lowers?: true;
   /** Said in Settings and by voice as the reason. */
   readonly says: string;
 }
+
+/** Signals that say "at home" without a vessel: leaving home cancels them all. */
+const AT_HOME = ["home", "lan", "haHome"];
 
 export const PRESENCE_SOURCES: Readonly<Record<string, PresenceSource>> = {
   // A voice verified on its own audio: about 10 minutes to the follow bar, about 30 to "around".
@@ -59,6 +64,37 @@ export const PRESENCE_SOURCES: Readonly<Record<string, PresenceSource>> = {
     halfLifeMinutes: 1,
     cancels: ["typed"],
     says: "your desktop has been idle a while",
+  },
+  // The app in front of them on their phone; put away, they are no longer at it.
+  phoneApp: { weight: 0.85, halfLifeMinutes: 10, says: "you were using the app on your phone" },
+  phoneAppAway: {
+    weight: 0,
+    halfLifeMinutes: 1,
+    cancels: ["phoneApp"],
+    says: "you put the app away",
+  },
+  // Their phone's geofence (opt-in): it changes only at the door, so it fades slowly.
+  home: { weight: 0.55, halfLifeMinutes: 120, says: "your phone says you're home" },
+  away: { weight: 0, halfLifeMinutes: 1, cancels: AT_HOME, says: "your phone says you left home" },
+  // One of their own devices on the home network (this machine's neighbour table, or the router via Home Assistant).
+  lan: { weight: 0.5, halfLifeMinutes: 15, says: "your device is on the home network" },
+  haHome: { weight: 0.6, halfLifeMinutes: 30, says: "Home Assistant has you home" },
+  haAway: { weight: 0, halfLifeMinutes: 1, cancels: AT_HOME, says: "Home Assistant has you away" },
+  // A room's occupancy sensor: someone is at the vessels in that room, not who.
+  occupied: { weight: 0.5, halfLifeMinutes: 5, says: "a room sensor sees someone" },
+  // Only for a member who turned it on; seen, never kept beyond this estimate.
+  camera: { weight: 0.9, halfLifeMinutes: 5, says: "the camera saw you (you turned this on)" },
+  meeting: {
+    weight: 0.5,
+    halfLifeMinutes: 10,
+    lowers: true,
+    says: "your calendar has you in a meeting",
+  },
+  outOfOffice: {
+    weight: 0.7,
+    halfLifeMinutes: 30,
+    lowers: true,
+    says: "your calendar has you away",
   },
 };
 
@@ -141,23 +177,26 @@ export const fusePresence = (
         strength: strengthOf(s, now, sources),
       }))
       .toSorted((a, b) => b.strength - a.strength);
+    const lowered = (e: PresenceEvidence) => sources[e.source]?.lowers === true;
+    // A meeting or a trip on their calendar scales the rest down; it never places them.
+    const damp = evidence.filter(lowered).reduce((left, e) => left * (1 - e.strength), 1);
     const perVessel = new Map<string, Array<number>>();
     for (const e of evidence)
-      if (e.vessel !== null && e.strength > 0)
+      if (e.vessel !== null && e.strength > 0 && !lowered(e))
         perVessel.set(e.vessel, [...(perVessel.get(e.vessel) ?? []), e.strength]);
     let nearest: MemberPresence["nearest"] = null;
     for (const [vessel, ps] of perVessel) {
-      const confidence = anyOf(ps);
+      const confidence = anyOf(ps) * damp;
       // On a tie the vessel noted last wins: they moved there.
       if (nearest === null || confidence >= nearest.confidence) nearest = { vessel, confidence };
     }
     const newest = mine
-      .filter((s) => (sources[s.source]?.weight ?? 0) > 0)
+      .filter((s) => (sources[s.source]?.weight ?? 0) > 0 && sources[s.source]?.lowers !== true)
       .toSorted((a, b) => b.at - a.at)[0];
     members.push({
       member,
       guest: mine.some((s) => s.guest === true),
-      confidence: anyOf(evidence.map((e) => e.strength)),
+      confidence: anyOf(evidence.filter((e) => !lowered(e)).map((e) => e.strength)) * damp,
       nearest,
       lastSeen:
         newest === undefined
@@ -236,4 +275,119 @@ export const routeProactive = (input: {
   if (origin !== null && speakers.has(origin))
     return { action: "speak", vessel: origin, why: "where it was set up" };
   return { action: "quiet", why: "no vessel to say it on" };
+};
+
+/** A member as the feeders see them: their name and their own devices' names or addresses (the `devices` preference). */
+export interface PresenceMember {
+  readonly id: string;
+  readonly name: string;
+  readonly devices: ReadonlyArray<string>;
+}
+
+/** "Rab's iPhone, aa:bb:cc:dd:ee:ff; AirPods" → lowercased names and addresses, MACs in one spelling. */
+export const devicesOf = (preference: string | undefined): ReadonlyArray<string> =>
+  (preference ?? "")
+    .split(/[,;\n]+/)
+    .map((d) => d.trim().toLowerCase().replaceAll("-", ":"))
+    .filter((d) => d.length >= 2);
+
+const ownsDevice = (m: PresenceMember, ...said: ReadonlyArray<string | null | undefined>) =>
+  said.some((s) => {
+    const t = s?.trim().toLowerCase().replaceAll("-", ":") ?? "";
+    return t !== "" && m.devices.some((d) => t === d || t.includes(d));
+  });
+
+/** Whose device this is (a headphone's address or name, a router's tracker): its owner, else null. */
+export const ownerOfDevice = (
+  members: ReadonlyArray<PresenceMember>,
+  ...said: ReadonlyArray<string | null | undefined>
+): string | null => members.find((m) => ownsDevice(m, ...said))?.id ?? null;
+
+/** Members whose own devices are in this machine's neighbour table (`/proc/net/arp`): one `lan` signal each. */
+export const lanSignals = (
+  macs: ReadonlyArray<string>,
+  members: ReadonlyArray<PresenceMember>,
+  at: number,
+): ReadonlyArray<PresenceSignal> =>
+  members
+    .filter((m) => ownsDevice(m, ...macs))
+    .map((m) => ({ member: m.id, source: "lan", vessel: null, at }));
+
+/** The MACs of reachable neighbours in `/proc/net/arp` (flags 0x2: complete). */
+export const arpMacs = (table: string): ReadonlyArray<string> =>
+  table
+    .split("\n")
+    .slice(1)
+    .map((line) => line.trim().split(/\s+/))
+    .filter((f) => f[2] === "0x2" && f[3] !== undefined && f[3] !== "00:00:00:00:00:00")
+    .map((f) => f[3]!.toLowerCase());
+
+export interface PresenceEntity {
+  readonly entityId: string;
+  readonly name: string;
+  readonly area: string | null;
+  readonly state: string;
+  readonly attributes: Readonly<Record<string, string>>;
+}
+
+const OCCUPANCY = new Set(["occupancy", "presence", "motion"]);
+const AWAY_EVENT = /\b(out of office|ooo|vacation|holiday|leave|travel|trip|flight|away|abroad)\b/i;
+const nameIn = (m: PresenceMember, text: string) =>
+  new RegExp(`\\b${m.name.split(/\s+/)[0]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(
+    text,
+  );
+
+/**
+ * Home Assistant's view of who is where: a `person` home or away, a router's `device_tracker` for a member's own
+ * device, an occupancy sensor at the vessels in its room, and a calendar event now (a meeting, or out of office).
+ * `owner` gets the calendars that name no member.
+ */
+export const homeAssistantSignals = (input: {
+  readonly entities: ReadonlyArray<PresenceEntity>;
+  readonly members: ReadonlyArray<PresenceMember>;
+  readonly vessels: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  readonly owner: string;
+  readonly at: number;
+}): ReadonlyArray<PresenceSignal> => {
+  const { members, at } = input;
+  const out: Array<PresenceSignal> = [];
+  for (const e of input.entities) {
+    const domain = e.entityId.split(".")[0];
+    if (domain === "person") {
+      const m = members.find(
+        (x) => x.name.toLowerCase() === e.name.toLowerCase() || nameIn(x, e.name),
+      );
+      if (m !== undefined && e.state !== "unavailable" && e.state !== "unknown")
+        out.push({
+          member: m.id,
+          source: e.state === "home" ? "haHome" : "haAway",
+          vessel: null,
+          at,
+        });
+    } else if (domain === "device_tracker" && e.state === "home") {
+      const member = ownerOfDevice(members, e.name, e.entityId.slice("device_tracker.".length));
+      if (member !== null) out.push({ member, source: "lan", vessel: null, at });
+    } else if (
+      domain === "binary_sensor" &&
+      e.state === "on" &&
+      OCCUPANCY.has(e.attributes["device_class"] ?? "") &&
+      e.area !== null
+    ) {
+      // shortcut: a vessel is in a room when its name says so ("Office Tessel"); a vessel area setting when one exists.
+      const area = e.area.toLowerCase();
+      for (const v of input.vessels)
+        if (v.name.toLowerCase().includes(area))
+          out.push({ member: null, source: "occupied", vessel: v.id, at });
+    } else if (domain === "calendar" && e.state === "on") {
+      const said = `${e.attributes["message"] ?? ""}`;
+      const member = members.find((x) => nameIn(x, e.name))?.id ?? input.owner;
+      out.push({
+        member,
+        source: AWAY_EVENT.test(said) ? "outOfOffice" : "meeting",
+        vessel: null,
+        at,
+      });
+    }
+  }
+  return out;
 };
