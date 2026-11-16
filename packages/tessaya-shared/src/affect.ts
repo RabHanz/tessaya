@@ -284,7 +284,7 @@ const holdOf = (
   event: AffectEvent,
   now: number,
   failures: ReadonlyArray<number>,
-): AffectState["hold"] => {
+): NonNullable<AffectState["hold"]> | null => {
   const held = at.hold != null && at.hold.until > now ? at.hold : null;
   switch (event.kind) {
     case "his_voice": {

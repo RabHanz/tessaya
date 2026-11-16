@@ -122,7 +122,10 @@ it.effect(
       yield* mood.hisWords("companion", "turn the lamp on");
       assert.deepStrictEqual(yield* sql`SELECT persona FROM tessaya_affect_state`, []);
       yield* mood.hisWords("companion", "you are useless");
-      assert.strictEqual((yield* mood.view("companion")).label, "sad");
+      // A short hurt on her face, and she knows why.
+      const hurt = yield* mood.view("companion");
+      assert.strictEqual(hurt.label, "hurt");
+      assert.deepStrictEqual(hurt.why, ["he was rude to her"]);
       yield* mood.hisWords("companion", "sorry, I did not mean that");
       assert.strictEqual((yield* mood.view("companion")).label, "happy");
       const rows = yield* sql<{ reason: string }>`SELECT reason FROM tessaya_affect_state`;
