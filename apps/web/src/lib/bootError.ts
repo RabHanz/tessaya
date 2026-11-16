@@ -1,5 +1,7 @@
 import type { DesktopBridge, DesktopUpdateState } from "@t3tools/contracts";
 
+import { APP_BASE_NAME } from "../branding";
+
 const FALLBACK_TRIAGE_COMMAND = "npx t3 triage";
 const DOWNLOAD_URL = "https://t3.codes/download";
 const ISSUE_URL = "https://github.com/pingdotgg/t3code/issues/new";
@@ -7,6 +9,7 @@ const LAST_FAILURE_KEY = "t3code:boot-failed-at";
 const REPEAT_FAILURE_MS = 5 * 60_000;
 const MAX_CAUSES = 3;
 const MAX_ERROR_CHARS = 6_000;
+const BOOT_STALL_MS = 20_000;
 const COPY_BLOCKED = "Copy was blocked. The text is selected so you can copy it manually.";
 const UPDATE_DOWNLOAD_FAILED = "The update download failed. Try Download update again.";
 const UPDATE_INSTALL_FAILED = "The update install failed. Try Restart to update again.";
@@ -48,6 +51,41 @@ export function updateActionFor(state: DesktopUpdateState | null | undefined) {
       return { kind: "install" } as const;
     default:
       return null;
+  }
+}
+
+/** Startup that neither renders nor fails, for example a stalled chunk download or session check. */
+// @effect-diagnostics-next-line extendsNativeError:off -- the boot chunk loads no Effect runtime.
+export class BootStallError extends Error {
+  readonly stage: "files" | "startup";
+  constructor(input: { readonly stage: "files" | "startup" }) {
+    super(
+      input.stage === "files"
+        ? "The app files did not finish downloading."
+        : "The app loaded but did not finish starting.",
+    );
+    this.name = "BootStallError";
+    this.stage = input.stage;
+  }
+}
+
+/** Shows a startup failure instead of the starting screen when the app neither renders nor fails. */
+export async function watchBoot(
+  load: () => Promise<{ readonly startup: Promise<unknown> }>,
+  onFailure: (error: unknown) => void,
+  stallMs = BOOT_STALL_MS,
+) {
+  let stage: BootStallError["stage"] = "files";
+  // A late render still replaces the message, so a slow start recovers on its own.
+  const stall = setTimeout(() => onFailure(new BootStallError({ stage })), stallMs);
+  try {
+    const { startup } = await load();
+    stage = "startup";
+    await startup;
+  } catch (error) {
+    onFailure(error);
+  } finally {
+    clearTimeout(stall);
   }
 }
 
@@ -255,7 +293,7 @@ function mountUpdateButton(
 }
 
 export function showBootError(error: unknown) {
-  console.error("T3 Code failed to start.", error);
+  console.error(`${APP_BASE_NAME} failed to start.`, error);
   const bootShell = document.getElementById("boot-shell");
   if (!bootShell) return;
 
@@ -273,12 +311,21 @@ export function showBootError(error: unknown) {
     announcement = setTimeout(() => (status.textContent = text), 100);
   };
 
+  const stalled = error instanceof BootStallError;
   const message = element("div", {}, [
-    element("h1", { textContent: "T3 Code failed to start" }),
+    element("h1", {
+      textContent: stalled
+        ? `${APP_BASE_NAME} is taking too long to start`
+        : `${APP_BASE_NAME} failed to start`,
+    }),
     element("p", {
       textContent: offline
         ? "This browser appears to be offline. Check the connection, then reload."
-        : "We are not sure why. Try a reload first.",
+        : !stalled
+          ? "We are not sure why. Try a reload first."
+          : error.stage === "files"
+            ? "The app's files have not finished downloading from this server. Check the connection, then reload."
+            : "It may be waiting on its server. Check that the server is running and reachable from this device, then reload.",
     }),
   ]);
   message.setAttribute("role", "alert");
@@ -344,7 +391,7 @@ export function showBootError(error: unknown) {
 
   const issue = new URL(ISSUE_URL);
   issue.searchParams.set("template", "bug_report.yml");
-  issue.searchParams.set("title", "T3 Code failed to start");
+  issue.searchParams.set("title", `${APP_BASE_NAME} failed to start`);
   issue.searchParams.set("area", "apps/web");
   issue.searchParams.set("version", `${environment.version} (${environment.channel})`);
   issue.searchParams.set("environment", `${environment.surface}, ${environment.platform}`);
@@ -360,14 +407,13 @@ export function showBootError(error: unknown) {
             nightly ? `${DOWNLOAD_URL}?channel=nightly` : DOWNLOAD_URL,
             nightly
               ? "Download and reinstall the latest nightly build"
-              : "Download and reinstall T3 Code",
+              : `Download and reinstall ${APP_BASE_NAME}`,
           ),
         ]
       : []),
     element("div", {}, [
       element("p", {
-        textContent:
-          "Run this on the computer that runs T3 Code. Your agent can check the local logs and help you file a bug report.",
+        textContent: `Run this on the computer that runs ${APP_BASE_NAME}. Your agent can check the local logs and help you file a bug report.`,
       }),
       element("div", { id: "boot-error-command" }, [command, copyCommand]),
     ]),

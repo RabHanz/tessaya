@@ -1,18 +1,20 @@
 Tessaya's window loads T3's guest page (tessayaGuest.tsx), not the whole app: bootstrap picks it by flag, and the connection layer and utils stop loading the drafts store.
 
 diff --git a/apps/web/src/bootstrap.ts b/apps/web/src/bootstrap.ts
-index b6f422c5d68f4dd5bbcd95b1cd66812745957462..21c32ea25adc4e4847a5c14256ffeaadb19f4c4b 100644
+index b6f422c5d68f4dd5bbcd95b1cd66812745957462..bbdf898654481faddbe0d394ab6b8e4f0734bf49 100644
 --- a/apps/web/src/bootstrap.ts
 +++ b/apps/web/src/bootstrap.ts
-@@ -1,4 +1,7 @@
- import { showBootError } from "./lib/bootError";
+@@ -1,4 +1,8 @@
+-import { showBootError } from "./lib/bootError";
++import { showBootError, watchBoot } from "./lib/bootError";
 +import { isTessayaGuest } from "./tessayaGuestFlag";
  
  // Shared dev chunks need the React refresh preamble first. Catch failures before React mounts.
 -void import("./main").then(({ startup }) => startup).catch(showBootError);
-+void (isTessayaGuest() ? import("./tessayaGuest") : import("./main"))
-+  .then(({ startup }) => startup)
-+  .catch(showBootError);
++void watchBoot(
++  () => (isTessayaGuest() ? import("./tessayaGuest") : import("./main")),
++  showBootError,
++);
 diff --git a/apps/web/src/bundledDev.test.ts b/apps/web/src/bundledDev.test.ts
 index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..a3616afc6879725d000a7231bfdbcd319b66c708 100644
 --- a/apps/web/src/bundledDev.test.ts

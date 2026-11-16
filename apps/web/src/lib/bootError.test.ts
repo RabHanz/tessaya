@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   type BootErrorEnvironment,
+  BootStallError,
   buildErrorReport,
   resolveTriageCommand,
   updateActionFor,
+  watchBoot,
 } from "./bootError";
 
 const desktopWith = (getState: () => Promise<DesktopCliCommandState>) =>
@@ -129,5 +131,46 @@ describe("updateActionFor", () => {
       expect(updateActionFor(state(status))).toBeNull();
     }
     expect(updateActionFor(undefined)).toBeNull();
+  });
+});
+
+describe("watchBoot", () => {
+  const never = new Promise<never>(() => {});
+
+  it("reports a stall while the app files or the startup never settle", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const [load, stage] of [
+        [() => never, "files"],
+        [async () => ({ startup: never }), "startup"],
+      ] as const) {
+        const onFailure = vi.fn();
+        void watchBoot(load, onFailure, 1_000);
+        await vi.advanceTimersByTimeAsync(999);
+        expect(onFailure).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(onFailure).toHaveBeenCalledWith(new BootStallError({ stage }));
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stays quiet once started and passes a startup error through", async () => {
+    vi.useFakeTimers();
+    try {
+      const started = vi.fn();
+      await watchBoot(async () => ({ startup: Promise.resolve() }), started, 1_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(started).not.toHaveBeenCalled();
+
+      const failed = vi.fn();
+      const error = new Error("chunk failed");
+      await watchBoot(async () => ({ startup: Promise.reject(error) }), failed, 1_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(failed.mock.calls).toEqual([[error]]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
