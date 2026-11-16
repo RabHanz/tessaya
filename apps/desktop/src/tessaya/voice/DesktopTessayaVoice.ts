@@ -91,6 +91,7 @@ import {
   saveDictionary,
   type VocabEntry,
   vocabularyChanges,
+  fromServer,
 } from "./dictionaryEdit.ts";
 import {
   addInput,
@@ -1818,6 +1819,29 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     saveDictionary(input.stateDir, next);
     syncServer(next);
   };
+  /**
+   * His one dictionary is his server's: words he taught on his phone, a Tessel or another computer come here too, and
+   * the file the recogniser reads follows. While a change of his has not reached it, his words are kept and sent.
+   */
+  const pullVocabulary = async () => {
+    const direct = input.direct;
+    if (direct === undefined) return;
+    const answer = (await direct(
+      BATON_VOICE_WS_METHODS.call,
+      { kind: "read", op: "vocabulary" },
+      8_000,
+    ).catch(() => null)) as { readonly ok?: unknown; readonly value?: unknown } | null;
+    if (answer?.ok !== true || !Array.isArray(answer.value)) return;
+    const local = readDictionary(input.stateDir, dictionary);
+    const { next, push } = fromServer(local, sentToServer, answer.value);
+    dictionary = next;
+    if (push) return saveVocabulary(next);
+    sentToServer = next;
+    if (JSON.stringify(next) !== JSON.stringify(local)) saveDictionary(input.stateDir, next);
+  };
+  const VOCABULARY_PULL_MS = 5 * 60_000;
+  setTimeout(() => void pullVocabulary(), 5_000).unref();
+  setInterval(() => void pullVocabulary(), VOCABULARY_PULL_MS).unref();
   const changeVocabulary = async (
     change: (
       entries: ReadonlyArray<VocabularyEntry>,
