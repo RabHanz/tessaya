@@ -185,6 +185,8 @@ export const TessayaTurnSpeaker = Schema.Struct({
   personId: Schema.NullOr(Schema.String),
   verified: Schema.Boolean,
   inherited: Schema.Boolean,
+  /** Unverified only because the vessel has no Voice ID to run: the one unverified voice that teaches his store. */
+  voiceIdOff: Schema.optionalKey(Schema.Boolean),
 });
 export const TessayaMemoryLearnInput = Schema.Struct({
   said: Schema.String,

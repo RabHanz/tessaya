@@ -35,6 +35,8 @@ const Speaker = Schema.Struct({
   verified: Schema.Boolean,
   inherited: Schema.Boolean,
   confidence: Schema.optional(Schema.NullOr(Schema.Number)),
+  voiceIdOff: Schema.optional(Schema.Boolean),
+  test: Schema.optional(Schema.Boolean),
 });
 
 /** What the desktop sends with his sentence. */
@@ -141,6 +143,8 @@ export const deskTurnStream = (
                 ...(body.speaker.confidence === undefined
                   ? {}
                   : { confidence: body.speaker.confidence }),
+                ...(body.speaker.voiceIdOff === true ? { voiceIdOff: true } : {}),
+                ...(body.speaker.test === true ? { test: true } : {}),
               },
         project: body.project ?? null,
         ...(body.app === undefined ? {} : { app: body.app }),

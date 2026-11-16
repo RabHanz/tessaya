@@ -136,11 +136,18 @@ export const manageRefusal = (
 };
 
 /**
- * The member a spoken turn is from. A guest's voice is nobody (null). A voice Voice ID could not judge is heard as before,
- * on the owner's path, at A0 (identity only narrows; `speakerPath`), so a home without Voice ID keeps working.
+ * The member a spoken turn is from. A guest's voice is nobody (null), and so is one Voice ID has not judged yet or could
+ * not judge: a late verdict never fails open to the owner (Director, 16 Nov). Only a vessel with no Voice ID to run
+ * (`voiceIdOff`) hears every voice as the owner's at A0, so a home without it keeps working.
  */
 export const memberOfSpeaker = (speaker: SpeakerLike | null): string | null =>
-  speaker?.kind === "guest" ? null : speaker?.kind === "saved" ? speaker.personId : OWNER_MEMBER_ID;
+  speaker === null || speaker.kind === "owner"
+    ? OWNER_MEMBER_ID
+    : speaker.kind === "saved"
+      ? speaker.personId
+      : speaker.kind === "unverified" && speaker.voiceIdOff === true
+        ? OWNER_MEMBER_ID
+        : null;
 
 /**
  * How sure a voice is (ACCOUNTS-IDENTITY-DESIGN §3.1): A2 only at the act cut-off on this turn's own audio, A1 for a

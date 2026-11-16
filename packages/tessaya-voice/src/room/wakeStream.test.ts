@@ -27,6 +27,9 @@ const rig = (
   const woken: string[] = [];
   const requests: Array<Promise<WakeRequest | null> | undefined> = [];
   const lines: string[] = [];
+  /** What each step was asked, in order: Voice ID ("voice") beside the confirms. */
+  const asked: string[] = [];
+  const voices: Array<Promise<unknown> | undefined> = [];
   const stream = createWakeStream({
     words: [
       { word: "Tessaya", threshold: 0.99 },
@@ -39,18 +42,24 @@ const rig = (
     }),
     confirm: async (pcm) => {
       confirmed.push(pcm.length);
+      asked.push(`confirm ${pcm.length}`);
       const said = typeof heard === "function" ? heard() : heard;
       return typeof said === "string" ? [said] : said;
     },
-    onWake: (id, word, _level, _score, _clip, request) => {
+    onWake: (id, word, _level, _score, _clip, request, voice) => {
       woken.push(`${id} ${word}`);
       requests.push(request);
+      voices.push(voice);
+    },
+    voice: async (pcm) => {
+      asked.push(`voice ${pcm.length}`);
+      return undefined;
     },
     log: (line) => lines.push(line),
     ...(now === undefined ? {} : { now }),
     ...(kwsWake === undefined ? {} : { kwsWake }),
   });
-  return { stream, confirmed, woken, requests, lines };
+  return { stream, confirmed, woken, requests, lines, asked, voices };
 };
 
 describe("waking her by name with no session open", () => {
@@ -193,6 +202,9 @@ describe("waking her by name with no session open", () => {
     expect(t.woken).toEqual(["r1 Tessaya"]);
     // One more read, of the whole segment; the clip's confirm is not asked again.
     expect(t.confirmed).toEqual([51 * 320, 50 * 960]);
+    // Voice ID on the whole segment begins as it ends, before its recognition, and goes with the wake.
+    expect(t.asked).toEqual([`confirm ${51 * 320}`, `voice ${50 * 960}`, `confirm ${50 * 960}`]);
+    expect(t.voices[0]).toBeInstanceOf(Promise);
     expect(await t.requests[0]).toEqual({
       text: "what time is it?",
       startedAt: 10_000,

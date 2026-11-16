@@ -86,6 +86,10 @@ export interface SpeakerLike {
   readonly inherited: boolean;
   /** Raw cosine to the matched voice (Voice ID's `confidence`), carried so a turn says how close it was. */
   readonly confidence?: number | null;
+  /** Unverified because the vessel has no Voice ID to run: the only unverified voice heard on his path. */
+  readonly voiceIdOff?: boolean;
+  /** The test clone during test mode, trusted as him and marked on every turn. */
+  readonly test?: boolean;
 }
 
 /**

@@ -47,8 +47,10 @@ describe("a spoken turn's member and assurance", () => {
     [voice("owner", true, true), OWNER_MEMBER_ID, 1],
     [voice("saved"), "sara", 2],
     [voice("guest"), null, 0],
-    // A voice Voice ID could not judge stays on the owner's path, at A0.
-    [voice("unverified", false), OWNER_MEMBER_ID, 0],
+    // Where Voice ID runs, a voice it has not judged (late) or could not judge is nobody: never fail open to him.
+    [voice("unverified", false), null, 0],
+    // Only a vessel with no Voice ID to run keeps the owner's path, at A0.
+    [{ ...voice("unverified", false), voiceIdOff: true }, OWNER_MEMBER_ID, 0],
     [null, OWNER_MEMBER_ID, 0],
   ] as const)("%o is %s at A%i", (speaker, member, level) => {
     expect(memberOfSpeaker(speaker)).toBe(member);

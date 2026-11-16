@@ -24,9 +24,12 @@ import {
   decideSpeaker,
   enrol,
   identityOf,
+  TEST_SPEAKER_ID,
+  trustTestSpeaker,
   UNVERIFIED,
   type SpeakerProfile,
 } from "../speaker.ts";
+import { decodeWav } from "../providers/speech.ts";
 import { createSpeakerStore, vectorToBase64 } from "../speakerStore.ts";
 import { createLines, type LinesGot } from "./lines.ts";
 import { servedVocabulary, VOCABULARY_EVERY_MS } from "./vocabulary.ts";
@@ -538,6 +541,7 @@ const main = async () => {
     : null;
   const embedder = await createSpeakerEmbedder(model("campplus.onnx"), SPEAKER_MODEL_ID, 1);
   const store = createSpeakerStore(state);
+  const testMode = process.env["R1_TEST_MODE"] === "1";
   // Enrol once, recognised everywhere: the shared bases from her server, and this R1's own refinement of them.
   const sharedProfiles = createProfileSync({
     store,
@@ -634,6 +638,7 @@ const main = async () => {
       "freya/r1/+/cmd/voice/talkover",
       "freya/r1/+/voice/persona",
       "freya/r1/+/voice/ask",
+      ...(testMode ? ["freya/r1/+/voice/testmode"] : []),
       "freya/r1/+/event/session/end",
       "freya/r1/+/cmd/eye/#",
       "freya/r1/+/state/eye/#",
@@ -687,6 +692,21 @@ const main = async () => {
           else sharedProfiles.shared(shared);
         }
         return;
+      }
+      if (testMode && /^freya\/r1\/[^/]+\/voice\/testmode$/.test(t)) {
+        const dir = (() => {
+          try {
+            return (JSON.parse(String(p)) as { enrol?: unknown }).enrol;
+          } catch {
+            return undefined;
+          }
+        })();
+        if (typeof dir === "string") {
+          void enrolTest(dir).then(log, (e: unknown) =>
+            log(`test speaker not enrolled: ${String(e)}`),
+          );
+          return;
+        }
       }
       if (/^freya\/r1\/[^/]+\/voice\/refine$/.test(t)) {
         const on = (() => {
@@ -752,6 +772,77 @@ const main = async () => {
       onPartial: (listener) => turn.onPartial?.((text) => listener(fix(text))),
     };
   };
+  // Test mode, on an internal host only (R1_TEST_MODE=1): the test clone's profile, kept here and never synced.
+  const testFile = NodePath.join(state, "voice", "test-speaker.json");
+  const readTest = (): SpeakerProfile | null => {
+    try {
+      const w = JSON.parse(NodeFS.readFileSync(testFile, "utf8")) as {
+        centroid: string;
+        samples: number;
+        at: string;
+      };
+      const bytes = Buffer.from(w.centroid, "base64");
+      return {
+        id: TEST_SPEAKER_ID,
+        name: "Test speaker",
+        kind: "saved",
+        model: SPEAKER_MODEL_ID,
+        centroid: new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4),
+        samples: w.samples,
+        sources: ["spoken"],
+        enrolledAt: w.at,
+      };
+    } catch {
+      return null;
+    }
+  };
+  let testSpeaker = testMode ? readTest() : null;
+  /** The clone's 16 kHz mono WAVs in `dir`, enrolled as the test speaker; what came of it, for the log. */
+  const enrolTest = async (dir: string) => {
+    const files = NodeFS.readdirSync(dir).filter((f) => f.endsWith(".wav"));
+    const vectors = (
+      await Promise.all(
+        files.map((f) => embedder.embed(decodeWav(NodeFS.readFileSync(NodePath.join(dir, f))))),
+      )
+    ).filter((v) => v !== null);
+    const made = enrol(vectors);
+    if (made === null)
+      return `test speaker not enrolled (${vectors.length} of ${files.length} clips embedded)`;
+    NodeFS.mkdirSync(NodePath.dirname(testFile), { recursive: true });
+    NodeFS.writeFileSync(
+      testFile,
+      JSON.stringify({
+        centroid: vectorToBase64(made.centroid),
+        samples: made.kept,
+        at: new Date().toISOString(),
+      }),
+    );
+    testSpeaker = readTest();
+    return `test speaker enrolled from ${made.kept} clips (${made.dropped} dropped)`;
+  };
+  const speakerOf = async (pcm: Int16Array) => {
+    const at = Date.now();
+    const vector = await embedder.embed(pcm);
+    if (vector === null) return UNVERIFIED(at);
+    const clips = [{ vector, ms: (pcm.length / 16_000) * 1000 }];
+    const until = room?.testUntil() ?? 0;
+    const profiles =
+      testSpeaker !== null && Date.now() < until ? [...store.list(), testSpeaker] : store.list();
+    const decide = (use: "steer" | "act") =>
+      decideSpeaker({ clips, model: SPEAKER_MODEL_ID, profiles, policy, use });
+    const judged = identityOf(decide("steer"), decide("act"), at);
+    if (judged.personId === TEST_SPEAKER_ID) return trustTestSpeaker(judged, Date.now(), until);
+    const identity = judged;
+    // Only a turn it was sure of refines this R1's copy: verified, long enough to stand alone, well above the cut-off.
+    if (
+      identity.verified &&
+      identity.personId !== null &&
+      (pcm.length / 16_000) * 1000 >= ACT_SINGLE_MS &&
+      (identity.confidence ?? 0) >= CAMPLUS_POLICY.single.act + 0.1
+    )
+      sharedProfiles.refine(identity.personId, vector);
+    return identity;
+  };
   const wake =
     words.length === 0 || !NodeFS.existsSync(model("melspectrogram.onnx"))
       ? undefined
@@ -768,7 +859,7 @@ const main = async () => {
                 return turn.finish();
               }),
             ),
-          onWake: (id, word, level, score, clip, request) =>
+          onWake: (id, word, level, score, clip, request, voice) =>
             room?.woken(
               id,
               words.find((w) => w.word === word)?.persona ?? word,
@@ -776,7 +867,9 @@ const main = async () => {
               score,
               clip,
               request,
+              voice,
             ),
+          voice: (pcm) => speakerOf(pcm),
           log,
           kwsWake,
           kwsReady: (id) => kwsReady.has(id),
@@ -803,25 +896,8 @@ const main = async () => {
         turn.feed(WARM_CLIP);
         void turn.finish().catch(() => undefined);
       },
-      speaker: async (pcm) => {
-        const at = Date.now();
-        const vector = await embedder.embed(pcm);
-        if (vector === null) return UNVERIFIED(at);
-        const clips = [{ vector, ms: (pcm.length / 16_000) * 1000 }];
-        const profiles = store.list();
-        const decide = (use: "steer" | "act") =>
-          decideSpeaker({ clips, model: SPEAKER_MODEL_ID, profiles, policy, use });
-        const identity = identityOf(decide("steer"), decide("act"), at);
-        // Only a turn it was sure of refines this R1's copy: verified, long enough to stand alone, well above the cut-off.
-        if (
-          identity.verified &&
-          identity.personId !== null &&
-          (pcm.length / 16_000) * 1000 >= ACT_SINGLE_MS &&
-          (identity.confidence ?? 0) >= CAMPLUS_POLICY.single.act + 0.1
-        )
-          sharedProfiles.refine(identity.personId, vector);
-        return identity;
-      },
+      speaker: speakerOf,
+      ...(testMode ? { testMode: { ready: () => testSpeaker !== null } } : {}),
       voices: (pcm) =>
         voicesOf({ pcm, embed: embedder.embed, profiles: store.list(), policy, at: Date.now() }),
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),

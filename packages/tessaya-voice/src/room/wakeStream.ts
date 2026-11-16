@@ -7,6 +7,7 @@
 import { wakeTrusted, wakeWordHeard, wakeWordLead } from "@t3tools/tessaya-shared/wakeVerify";
 
 import { stripWake } from "../modeMachine.ts";
+import type { SpeakerIdentity } from "../speaker.ts";
 import { heldBack } from "./addressing.ts";
 import { speechLevel } from "./audio.ts";
 import type { WakeCapture } from "./wakeCapture.ts";
@@ -107,7 +108,13 @@ export interface WakeStreamDeps {
     score: number,
     clip: Int16Array,
     request?: Promise<WakeRequest | null>,
+    voice?: Promise<SpeakerIdentity | undefined>,
   ) => void;
+  /**
+   * Voice ID on a kws-passed segment, begun the moment it ends, beside the confirm and the request's recognition: the
+   * verdict is then ready about when her brain starts, not a whole embedding after (16 Nov).
+   */
+  readonly voice?: (pcm: Int16Array) => Promise<SpeakerIdentity | undefined>;
   readonly log: (line: string) => void;
   /**
    * Words whose stage 1 is the Tessel's own wake model: its `event/wake/kws` pass with `best` at least `threshold`, then
@@ -300,6 +307,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     earlyConfirm.delete(`${id}#${event.seg}`);
     if (pass === undefined || woke || pcm.length === 0) return;
     const { w, best, trusted } = pass;
+    const voice = deps.voice?.(pcm).catch(() => undefined);
     const ratio = best / w.threshold;
     // The whole segment, for his request after her name; it also confirms a name the 2 s clip cut into.
     const whole = deps.confirm(pcm).catch((): ReadonlyArray<string> => []);
@@ -323,7 +331,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
               endedAt: endedAt - END_SILENCE_MS,
             };
       });
-      deps.onWake(id, w.word, speechLevel(pcm), Math.min(1, best), pcm, request);
+      deps.onWake(id, w.word, speechLevel(pcm), Math.min(1, best), pcm, request, voice);
     } else
       deps.log(
         `[${id}] ${w.word} kws pass (${at}), not confirmed (${texts.map(heldBack).join("; ") || heldBack("")})`,

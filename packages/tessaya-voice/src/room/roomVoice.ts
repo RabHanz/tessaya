@@ -52,6 +52,8 @@ import {
   HOLD_MS,
   holdVoice,
   NO_HOLD,
+  speakerPath,
+  TEST_MODE_MAX_MS,
   type SpeakerGate,
   type SpeakerIdentity,
 } from "../speaker.ts";
@@ -286,6 +288,11 @@ export interface RoomDeps {
   ) => AsyncIterable<string>;
   /** Her voice: 16 kHz PCM for one sentence, streamed. */
   readonly speak: (text: string, signal: AbortSignal, voice?: string) => AsyncIterable<Int16Array>;
+  /**
+   * Test mode exists on this host (an internal one with `R1_TEST_MODE=1`); `ready` says the test clone is enrolled.
+   * Absent everywhere else, so no public build can turn it on.
+   */
+  readonly testMode?: { readonly ready: () => boolean };
   /** Optional enrolment: the owner profile from these 4 s windows of his speech, and what she says about it. */
   readonly enrolOwner?: (
     windows: ReadonlyArray<Int16Array>,
@@ -479,7 +486,23 @@ export interface TurnMetrics {
   readonly bargedIn: boolean;
   /** Her brain started on the recogniser's partial words, and the final text matched them. */
   readonly speculative?: boolean;
+  /** From his last voiced window to Voice ID's verdict (negative: ready before he finished); null before metrics. */
+  readonly voiceIdMs?: number | null;
+  /** Her brain started before the verdict, closed to his path. */
+  readonly voiceIdLate?: boolean;
+  /** His verdict came before her first words, so her brain was asked again as his. */
+  readonly reasked?: boolean;
+  /** Answered as him because test mode trusted the test clone. */
+  readonly test?: boolean;
 }
+
+/** "Test mode on", "turn off test mode", "Tessaya, test mode off": which, or null. */
+export const testModeAsked = (text: string): "on" | "off" | null => {
+  const m =
+    /\btest mode\s+(on|off)\b/i.exec(text) ??
+    /\bturn\s+(on|off)\s+(?:the\s+)?test mode\b/i.exec(text);
+  return m === null ? null : (m[1]!.toLowerCase() as "on" | "off");
+};
 
 /** The silence put between a held sentence's pieces when they are recognised again as one. */
 const PIECE_GAP = new Int16Array(RATE / 5);
@@ -546,6 +569,65 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   /** Her server's roster; a session keeps the one it opened with. */
   let roster = config.personas;
   const topic = (id: string, tail: string) => `freya/r1/${id}/${tail}`;
+
+  /** Test mode: until when the test clone is trusted as him (0: off). In memory only, so a restart ends it. */
+  let testUntil = 0;
+  /** The Tessels showing it: amber light, and the app's `voice.test_mode` item. */
+  const testShown = new Set<string>();
+  const clockOf = (at: number) =>
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: config.tz,
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(at);
+  const showTest = (id: string) => {
+    const on = deps.now() < testUntil;
+    deps.publish(
+      topic(id, "cmd/led/set"),
+      JSON.stringify(
+        on ? { r: 255, g: 110, b: 0, mode: "solid" } : { r: 0, g: 0, b: 0, mode: "solid" },
+      ),
+    );
+    deps.publish(
+      topic(id, "state/item/voice.test_mode"),
+      JSON.stringify({ value: on ? `on until ${clockOf(testUntil)}` : "off" }),
+    );
+  };
+  /** On for `minutes` (at most 2 h) or off (null); what she says about it. */
+  const setTestMode = (id: string, minutes: number | null, why: string): string => {
+    if (deps.testMode === undefined) return "There's no test mode here.";
+    if (minutes === null || !(minutes > 0)) {
+      const was = deps.now() < testUntil;
+      testUntil = 0;
+      for (const d of testShown) showTest(d);
+      testShown.clear();
+      deps.log(`[${id}] TEST MODE OFF (${why})${was ? "" : ", it was not on"}`);
+      return "Test mode is off.";
+    }
+    if (!deps.testMode.ready()) {
+      deps.log(`[${id}] TEST MODE refused: no test speaker enrolled`);
+      return "There's no test voice enrolled, so test mode stays off.";
+    }
+    const ms = Math.min(minutes * 60_000, TEST_MODE_MAX_MS);
+    const until = deps.now() + ms;
+    testUntil = until;
+    testShown.add(id);
+    for (const d of testShown) showTest(d);
+    deps.log(
+      `[${id}] TEST MODE ON until ${clockOf(until)} (${why}): the test speaker is trusted as him`,
+    );
+    // A real timer: the light and the item go off with no turn to notice; the verdict itself reads the clock.
+    // @effect-diagnostics-next-line globalTimers:off
+    const timer = setTimeout(() => {
+      if (testUntil !== until) return;
+      deps.log(`[${id}] TEST MODE OFF (expired)`);
+      for (const d of testShown) showTest(d);
+      testShown.clear();
+      testUntil = 0;
+    }, ms + 1_000);
+    (timer as { unref?: () => void }).unref?.();
+    return `Test mode is on until ${clockOf(until)}.`;
+  };
 
   const openSession = (id: string) => {
     const vad = deps.vad();
@@ -734,7 +816,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
     };
     const hear = (identity: SpeakerIdentity, ms: number) => {
-      recog = accumulate(recog, identity, ms, deps.now());
+      if (identity.test !== true) recog = accumulate(recog, identity, ms, deps.now());
     };
     /** The act her server held runs (or is let go), on `voice/stepup/done`. */
     const settleStepUp = (ok: boolean, how: string) => {
@@ -787,6 +869,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       readonly words: string;
       readonly control: AbortController;
       readonly callId: string;
+      /** Started on his held voice before this turn was judged: nothing of it is heard or done until it is. */
+      readonly unjudged?: boolean;
       stream: AsyncIterable<string> | null;
     } | null = null;
     let partialNow = { words: "", changedAt: 0 };
@@ -836,6 +920,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             : invited
               ? "reply"
               : "window";
+      // His voice held from earlier in this session, or nobody yet: the guess starts before this turn is scored.
+      const heldNow = heldVoice(UNVERIFIED(deps.now()));
       const tessaya = envelopeOf(
         undefined,
         beganOverHer(turnStartedAt, playback()),
@@ -843,8 +929,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         who,
         who !== persona,
         via,
-        // His voice held from earlier in this session, or nobody yet: the guess starts before this turn is scored.
-        heldVoice(UNVERIFIED(deps.now())),
+        heldNow,
         undefined,
       );
       const control = new AbortController();
@@ -857,6 +942,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         words,
         control,
         callId,
+        unjudged: speakerPath(heldNow) === "his",
         stream: buffered(
           deps.brain(
             { deviceId: id, messages, tessaya: { ...tessaya, speculative: true, callId } },
@@ -1301,6 +1387,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       startedAt: number,
       given?: string,
       heard?: string,
+      /** Voice ID already begun on this very audio (her name's segment, from its end). */
+      voice?: Promise<SpeakerIdentity | undefined>,
     ) => {
       const turn = (turnNo += 1);
       const decidedAt = deps.now();
@@ -1326,9 +1414,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       ) => envelopeOf(given, tainted, words, who, switched, via, speaker, affect, segments);
       const current = given === undefined && heard === undefined ? rec : null;
       if (current !== null) rec = null;
-      const scored = (audio: Int16Array) =>
-        deps.speaker?.(audio).then(
-          (heard) => heldVoice(heard),
+      const scored = (audio: Int16Array, begun = audio === pcm ? voice : undefined) =>
+        (begun ?? deps.speaker?.(audio))?.then(
+          (heard) => heldVoice(heard ?? UNVERIFIED(deps.now())),
           () => heldVoice(UNVERIFIED(deps.now())),
         );
       let speakerP = given === undefined ? scored(pcm) : undefined;
@@ -1339,9 +1427,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // Who spoke never waits on how they sounded: tied to the mood reader, a ready Voice ID was dropped (15 Nov).
       let speakerNow: { readonly identity: Awaited<typeof speakerP> } | null =
         speakerP === undefined ? { identity: undefined } : null;
+      let verdictAt: number | null = null;
       const settle = (p: typeof speakerP) =>
         void p?.then((identity) => {
-          if (speakerP === p) speakerNow = { identity };
+          if (speakerP !== p) return;
+          speakerNow = { identity };
+          verdictAt = deps.now();
         });
       settle(speakerP);
       let sides = Promise.all([speakerP, affectP]);
@@ -1388,6 +1479,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         control: AbortController;
         stream: AsyncIterable<string> | null;
         callId: string;
+        unjudged?: boolean;
       };
       // His pause already started her brain on these words (an early start): it is this turn's first guess.
       let guess: Guess | null =
@@ -1703,9 +1795,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       sentAway = false;
       lastActivity = deps.now();
       let dismissed = isDismissal(text) || stopIntent(text, config.stopPhrases) === "dismiss";
-      // Her brain starts now, not after the speaker and mood readers: what they already know goes with it, and a voice
-      // the gate keeps out is still never heard (her first sound waits for it, at most `sideMs`).
-      await Promise.resolve();
+      // Her brain starts now, not after the speaker and mood readers: what they already know goes with it (a verdict
+      // already in, as one begun on her name's segment, is not missed by a tick), and a voice the gate keeps out is
+      // still never heard.
+      await Promise.race([speakerP, deps.sleep(0)]);
       const known = speakerNow === null ? null : ([speakerNow.identity, affectNow] as const);
       const [speaker, affect] = known ?? [undefined, affectNow];
       const identity = speaker ?? UNVERIFIED(deps.now());
@@ -1722,18 +1815,29 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // Several people: the turn is heard when any one of them would be on their own.
       const someoneAdmitted =
         voices.kind === "many" && voices.spans.some((s) => admits(s.identity, config.gate, "turn"));
-      const admitted: Promise<boolean> =
-        known !== null || someoneAdmitted
-          ? Promise.resolve(true)
-          : Promise.race([
-              sides.then(([late]) => {
-                if (late === undefined || admits(late, config.gate, "turn")) return true;
-                // Logged apart from a stop or a lost claim, which all read "cut off" (09:28:06, 15 Nov).
-                deps.log(`[${id}] turn ${turn}: Voice ID heard a ${late.kind} voice; not answered`);
-                return false;
-              }),
-              deps.sleep(config.sideMs).then(() => true),
-            ]);
+      // Speculate, don't trust (Director, 16 Nov): with no verdict yet her brain starts closed to his path (a guest's
+      // reach), and his verdict before its first words asks again as his. A guess begun on his held voice is heard
+      // only once this turn's verdict is his. A verdict that keeps the voice out stops her, whenever it lands.
+      const unjudged = known === null && kept?.unjudged === true;
+      let refused = false;
+      const judged = sides.then(([late]) => {
+        if (late === undefined || known !== null || someoneAdmitted) return true;
+        const ok = admits(late, config.gate, "turn") && (!unjudged || speakerPath(late) === "his");
+        if (ok) return true;
+        refused = true;
+        // Logged apart from a stop or a lost claim, which all read "cut off" (09:28:06, 15 Nov).
+        deps.log(`[${id}] turn ${turn}: Voice ID heard a ${late.kind} voice; not answered`);
+        return false;
+      });
+      let admittedP: Promise<boolean> | null = null;
+      // Asked when her first sentence is ready, so Voice ID has her brain's whole wait; a closed start waits `sideMs`.
+      const admitted = () =>
+        (admittedP ??=
+          known !== null || someoneAdmitted
+            ? Promise.resolve(true)
+            : unjudged
+              ? judged
+              : Promise.race([judged, deps.sleep(config.sideMs).then(() => !refused)]));
       if (!admits(identity, config.gate, "turn") && !someoneAdmitted) {
         kept?.control.abort();
         dropped(turn, `a ${identity.kind} voice`, text);
@@ -1762,6 +1866,26 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (known !== null) hear(identity, speechMs);
         else void sides.then(([late]) => late !== undefined && hear(late, speechMs));
       }
+      // "Test mode on/off": his verified voice only (the clone may only turn it off); this step waits for the verdict.
+      const testAsk =
+        given === undefined && deps.testMode !== undefined ? testModeAsked(text) : null;
+      if (testAsk !== null) {
+        kept?.control.abort();
+        const who = (await speakerP) ?? UNVERIFIED(deps.now());
+        const his = who.kind === "owner" && who.verified && !who.inherited && who.test !== true;
+        speakNow(
+          testAsk === "off" && (his || who.test === true)
+            ? setTestMode(id, null, `by voice, ${who.test === true ? "the test speaker" : "his"}`)
+            : testAsk === "on" && his
+              ? setTestMode(id, TEST_MODE_MAX_MS / 60_000, "by his voice")
+              : "Only he can turn test mode on, in his own voice.",
+        );
+        return;
+      }
+      if (identity.test === true)
+        deps.log(
+          `[${id}] turn ${turn}: TEST SPEAKER answered as him (test mode, until ${clockOf(testUntil)})`,
+        );
       // Her answer to a step-up ("say amber river", "is that you?"): scored, and the held act runs once verified.
       if (given === undefined && heldAct !== null && answersStepUp(heldAct.step, text)) {
         kept?.control.abort();
@@ -1804,6 +1928,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const control = kept?.control ?? new AbortController();
       reply = control;
       let brainFirst: number | null = null;
+      let reasked = false;
       let ttsFirst: number | null = null;
       let firstSound: number | null = null;
       /** What she actually says: her reasoning, when the brain writes it out, is never spoken or kept (13 Nov). */
@@ -1837,7 +1962,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           speakingChain = speakingChain.then(async () =>
             // The arbiter is asked alongside, never before (13 Nov: a 1.3-1.7 s claim round in front of every wake);
             // only her voice waits for its answer, and a lost claim is never heard.
-            !(await won()) || !(await admitted) || control.signal.aborted
+            !(await won()) || !(await admitted()) || refused || control.signal.aborted
               ? control.abort()
               : play(
                   audio,
@@ -1857,14 +1982,43 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         };
         const tessaya = envelope(text, persona, switched, via, identity, affect, segments);
         nameOnce = null;
-        // His final words matched the guess and it is the one answered: the changes it held may now be made.
-        if (kept !== null) deps.confirmed?.(kept.callId);
+        // His final words matched the guess and it is the one answered: the changes it held may now be made, once
+        // a guess begun on his held voice has his verdict too.
+        if (kept !== null) {
+          const callId = kept.callId;
+          void (unjudged ? judged : Promise.resolve(true)).then(
+            (ok) => ok && deps.confirmed?.(callId),
+          );
+        }
+        const brainOn = (t: Tessaya, signal: AbortSignal) =>
+          deps.brain(
+            { deviceId: id, messages: history.slice(-config.historyTurns * 2), tessaya: t },
+            signal,
+          );
+        const pending = known === null && speakerP !== undefined ? speakerP : undefined;
+        const reopened = async function* (verdict: NonNullable<typeof pending>) {
+          const closedStart = new AbortController();
+          const stop = () => closedStart.abort();
+          control.signal.addEventListener("abort", stop, { once: true });
+          const it = brainOn(tessaya, closedStart.signal)[Symbol.asyncIterator]();
+          const first = it.next();
+          first.catch(() => undefined);
+          const won = await Promise.race([first.then(() => null), verdict.then((v) => v ?? null)]);
+          if (won !== null && speakerPath(won) === "his" && admits(won, config.gate, "turn")) {
+            closedStart.abort();
+            control.signal.removeEventListener("abort", stop);
+            reasked = true;
+            deps.log(
+              `[${id}] turn ${turn}: Voice ID said ${won.kind} before her first words; asked again as his`,
+            );
+            yield* brainOn({ ...tessaya, speaker: won }, control.signal);
+            return;
+          }
+          for (let r = await first; r.done !== true; r = await it.next()) yield r.value;
+        };
         const source =
           kept?.stream ??
-          deps.brain(
-            { deviceId: id, messages: history.slice(-config.historyTurns * 2), tessaya },
-            control.signal,
-          );
+          (pending === undefined ? brainOn(tessaya, control.signal) : reopened(pending));
         for await (const delta of source) {
           brainFirst ??= deps.now() - textAt;
           buffer += delta;
@@ -1950,6 +2104,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         emotion: (affect ?? affectNow)?.emotion ?? "unknown",
         bargedIn,
         speculative: kept !== null,
+        voiceIdMs: verdictAt === null ? null : Math.round(verdictAt - lastVoice),
+        voiceIdLate: known === null && given === undefined,
+        ...(identity.test === true ? { test: true } : {}),
+        ...(reasked ? { reasked: true } : {}),
       };
       bargedIn = false;
       deps.publish(topic(id, "event/voice/metrics"), JSON.stringify(metrics));
@@ -2331,8 +2489,20 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** An R1 button's prompt: answered as if he had said it to her. */
       ask: (text: string) => void answer(new Int16Array(0), "button", deps.now(), deps.now(), text),
       /** What he asked in the same breath as her name, heard in her name's own segment: his first turn. */
-      asked: (pcm: Int16Array, request: WakeRequest) =>
-        void answer(pcm, "wake", request.endedAt, request.startedAt, undefined, request.text),
+      asked: (
+        pcm: Int16Array,
+        request: WakeRequest,
+        voice?: Promise<SpeakerIdentity | undefined>,
+      ) =>
+        void answer(
+          pcm,
+          "wake",
+          request.endedAt,
+          request.startedAt,
+          undefined,
+          request.text,
+          voice,
+        ),
       /** He called this persona by name to wake her. */
       /** Her server holds an act until it knows who is speaking: she asks once, the reply decides (or S2). */
       stepUp: (act: string, shared: boolean, random: () => number = Math.random) => {
@@ -2535,6 +2705,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           return {};
         }
       };
+      // `{"minutes": 120}` or `{"off": true}`: the test lane's switch, on this host's broker only.
+      if (tail === "voice/testmode") {
+        const body = json();
+        const minutes = body["off"] === true ? null : Number(body["minutes"] ?? 0);
+        setTestMode(id, minutes, "command");
+        return;
+      }
       if (tail.startsWith("cmd/eye/") || tail.startsWith("state/eye/")) {
         // Every eye command, the loop's or the server's, and every acknowledgement, so a look can be proved on his R1.
         const body = String(payload).slice(0, 120);
@@ -2706,7 +2883,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (request === undefined) s.wake();
         else {
           s.wake(false);
-          void request.words.then((r) => (r === null ? s.wake() : s.asked(request.pcm, r)));
+          void request.words.then((r) =>
+            r === null ? s.wake() : s.asked(request.pcm, r, called?.heard),
+          );
         }
         // S2 on this R1 (not her name): he chose this one, so the others yield to it.
         if (called === undefined) {
@@ -2802,6 +2981,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
     },
     session: (id: string) => sessions.get(id),
+    /** Until when test mode trusts the test clone (0: off), for the Voice ID scorer. */
+    testUntil: () => testUntil,
     /** The wake check heard `word`: the R1 starts its session (its echo opens ours) with that persona answering. */
     woken: (
       id: string,
@@ -2812,12 +2993,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       clip?: Int16Array,
       /** What he said after her name in the same segment (`clip`), still being recognised. */
       request?: Promise<WakeRequest | null>,
+      /** Voice ID on `clip`, begun when the segment ended (the wake stream's); else begun here. */
+      voice?: Promise<SpeakerIdentity | undefined>,
     ) => {
       if (sessions.has(id)) return;
       if (deps.now() < (quietUntil.get(id) ?? 0)) {
         deps.log(`[${id}] her name while another device answers: taken as her voice from there`);
         return;
       }
+      // One embedding of her name's segment serves the claim, her recognition cue and the request said with it.
+      const heard =
+        clip === undefined || deps.speaker === undefined
+          ? undefined
+          : (voice ?? deps.speaker(clip)).catch(() => undefined);
       const open = () => {
         calledBy.set(id, {
           word,
@@ -2826,20 +3014,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           ...(request === undefined || clip === undefined
             ? {}
             : { request: { pcm: clip, words: request } }),
-          ...(clip === undefined || deps.speaker === undefined
-            ? {}
-            : { heard: deps.speaker(clip).catch(() => undefined) }),
+          ...(heard === undefined ? {} : { heard }),
         });
         deps.publish(topic(id, "cmd/voice/start"), "{}");
       };
       if (deps.arbiter === undefined) return open();
       const arbiter = deps.arbiter;
       // Listening starts now; the arbiter answers alongside, and a lost claim closes this R1's session.
-      const gate = (
-        clip === undefined || deps.speaker === undefined
-          ? Promise.resolve(undefined)
-          : deps.speaker(clip).catch(() => undefined)
-      ).then((heardBy) =>
+      const gate = (heard ?? Promise.resolve(undefined)).then((heardBy) =>
         claimFor(
           arbiter,
           {

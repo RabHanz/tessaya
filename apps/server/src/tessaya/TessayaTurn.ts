@@ -340,9 +340,9 @@ const SENTENCE_TOKENS = 300;
 export const notLearnable = (turn: TurnEnvelope): string | null => {
   if (turn.addressed === false) return "not said to her";
   if (turn.rehearsal === true) return "a rehearsal";
-  // Until the household model (HOUSEHOLD-DESIGN.md), only the owner or an unidentified voice teaches his store.
-  const kind = turn.speaker?.kind;
-  if (kind === "guest" || kind === "saved") return "not the owner's voice";
+  // Until the household model (HOUSEHOLD-DESIGN.md), only his voice (or any, where Voice ID cannot run) teaches his store.
+  if (turn.speaker != null && memberOfSpeaker(turn.speaker) !== OWNER_MEMBER_ID)
+    return "not the owner's voice";
   // A member's own device typed it: their words never teach his store (HOUSEHOLD-DESIGN §6).
   if (turn.member !== undefined && turn.member !== OWNER_MEMBER_ID) return "not the owner's device";
   return null;
@@ -989,7 +989,7 @@ export const make = Effect.gen(function* () {
         id: null,
         line: `Kept.${spelledBack}`,
       };
-    if (origin?.speaker?.kind === "guest")
+    if (origin?.speaker != null && memberOfSpeaker(origin.speaker) === null)
       return yield* new BatonMemoryRefusedError({
         reason: "I can only keep things in his memory for him. Ask him to tell me.",
       });

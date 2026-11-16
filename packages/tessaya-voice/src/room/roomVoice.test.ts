@@ -4,7 +4,7 @@ import type { EnrolCard } from "@t3tools/tessaya-contracts";
 import { firstClause } from "@t3tools/tessaya-shared/narration";
 
 import type { SpeakerIdentity } from "../speaker.ts";
-import { UNVERIFIED } from "../speaker.ts";
+import { speakerPath, UNVERIFIED } from "../speaker.ts";
 import { PILL_SOUNDS, renderSound } from "../cueSounds.ts";
 import { speechLike } from "../echoSim.ts";
 import { speechLevel, toBytes } from "./audio.ts";
@@ -14,6 +14,7 @@ import {
   ROOM_CONFIG,
   servedRoster,
   splitSentences,
+  testModeAsked,
   type RoomDeps,
   type TurnMetrics,
 } from "./roomVoice.ts";
@@ -919,10 +920,20 @@ describe("waking by name with no session open", () => {
         Promise.resolve({ text: "what time is it?", startedAt: 0, endedAt: 900 }),
       );
       t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+      if (!spoken) {
+        // Judged before her brain starts: a guest's request is never asked.
+        await vi.waitFor(() => expect(logs.some((l) => l.includes("a guest voice"))).toBe(true));
+        expect(t.brainCalls).toEqual([]);
+        return;
+      }
       const m = await t.metrics;
-      expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual(["what time is it?"]);
+      // Her brain may start closed before the verdict; the call she answers from carries it.
+      expect(new Set(t.brainCalls.map((c) => c.messages.at(-1)!.content))).toEqual(
+        new Set(["what time is it?"]),
+      );
+      expect(speakerPath(t.brainCalls.at(-1)!.tessaya.speaker)).toBe(speakerPath(speaker));
       expect(m).toMatchObject({ reason: "wake", text: "what time is it?" });
-      expect(m.firstSoundMs !== null).toBe(spoken);
+      expect(m.firstSoundMs).not.toBeNull();
       expect(logs.some((l) => l.includes("her name alone"))).toBe(false);
     },
   );
@@ -2239,6 +2250,196 @@ describe("a member's data destroyed (identity lane)", () => {
     t.room.message(`freya/r1/${DEV}/voice/forget`, Buffer.from('{"personId":"member-7"}'));
     t.room.message(`freya/r1/${DEV}/voice/forget`, Buffer.from("{}"));
     expect(forgotten).toEqual(["member-7"]);
+  });
+});
+
+describe("Voice ID never fails open to him (Director, 16 Nov)", () => {
+  const him: SpeakerIdentity = {
+    ...UNVERIFIED(0),
+    kind: "owner",
+    personId: "owner",
+    confidence: 0.7,
+    verified: true,
+  };
+  const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.1 };
+  /** A turn whose verdict and her brain's first words land when the test says. */
+  const pendingTurn = async (over: Partial<RoomDeps> = {}) => {
+    let tell: (who: SpeakerIdentity) => void = () => undefined;
+    let firstWords: () => void = () => undefined;
+    const words = new Promise<void>((r) => (firstWords = r));
+    const t = setup({
+      speaker: () => new Promise<SpeakerIdentity>((r) => (tell = r)),
+      brain: async function* (input) {
+        t.brainCalls.push(input);
+        await words;
+        yield "Done. ";
+        yield "The light is on.";
+      },
+      ...over,
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    return { ...t, tell: (who: SpeakerIdentity) => tell(who), firstWords: () => firstWords() };
+  };
+  const spoken = (t: { published: Array<{ topic: string }> }) =>
+    t.published.filter((p) => p.topic.endsWith("/voice/down")).length;
+
+  it("starts her brain closed to his path, and asks again as his when his verdict beats her first words", async () => {
+    const t = await pendingTurn();
+    expect(t.brainCalls).toHaveLength(1);
+    expect(t.brainCalls[0]!.tessaya.speaker).toEqual(
+      expect.objectContaining({ kind: "unverified" }),
+    );
+    expect(t.brainCalls[0]!.tessaya.speaker.voiceIdOff).toBeUndefined();
+    t.tell(him);
+    await t.feed(false, 2);
+    t.firstWords();
+    const m = await t.metrics;
+    expect(t.brainCalls).toHaveLength(2);
+    expect(t.brainCalls[1]!.tessaya.speaker).toMatchObject({ kind: "owner", verified: true });
+    expect(m).toMatchObject({ voiceIdLate: true, reasked: true });
+    expect(m.firstSoundMs).not.toBeNull();
+  });
+
+  it("answers as a guest when the verdict is still out at her first words, and stops if it keeps the voice out", async () => {
+    const t = await pendingTurn();
+    t.firstWords();
+    await t.feed(false, 6);
+    // Still unjudged after `sideMs`: her answer from the closed start is heard (a guest's reach, nothing of his).
+    expect(spoken(t)).toBeGreaterThan(0);
+    expect(t.brainCalls).toHaveLength(1);
+    const heard = spoken(t);
+    t.tell(guest);
+    const m = await t.metrics;
+    expect(m.reasked).toBeUndefined();
+    expect(spoken(t)).toBeLessThanOrEqual(heard + 1);
+  });
+
+  it("gives his late verdict the closed answer once her words have begun, never his path", async () => {
+    const t = await pendingTurn();
+    t.firstWords();
+    await t.feed(false, 6);
+    t.tell(him);
+    const m = await t.metrics;
+    expect(t.brainCalls).toHaveLength(1);
+    expect(t.brainCalls[0]!.tessaya.speaker.kind).toBe("unverified");
+    expect(m).toMatchObject({ voiceIdLate: true, speaker: "unverified" });
+  });
+
+  it("uses the verdict begun on her name's segment for the request said with it, embedding it once", async () => {
+    let embeds = 0;
+    const t = setup({
+      speaker: async () => {
+        embeds += 1;
+        return him;
+      },
+    });
+    const segment = new Int16Array(3 * 16_000).fill(2_000);
+    t.room.woken(
+      DEV,
+      "Tessaya",
+      speechLevel(segment),
+      1,
+      segment,
+      Promise.resolve({ text: "what time is it?", startedAt: 0, endedAt: 900 }),
+      Promise.resolve(him),
+    );
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.metrics;
+    expect(embeds).toBe(0);
+    expect(t.brainCalls.at(-1)!.tessaya.speaker).toMatchObject({ kind: "owner" });
+  });
+});
+
+describe("test mode (Director, 16 Nov)", () => {
+  const owner: SpeakerIdentity = {
+    ...UNVERIFIED(0),
+    kind: "owner",
+    personId: "owner",
+    confidence: 0.7,
+    verified: true,
+  };
+  const clone: SpeakerIdentity = { ...owner, test: true };
+  const lines = (said: string) => () => ({
+    feed: () => undefined,
+    finish: async () => said,
+    cancel: () => undefined,
+  });
+  const turn = async (said: string, who: SpeakerIdentity, ready: boolean | "no host" = true) => {
+    const logs: string[] = [];
+    const t = setup({
+      log: (l) => logs.push(l),
+      recognise: lines(said),
+      speaker: async () => who,
+      ...(ready === "no host" ? {} : { testMode: { ready: () => ready } }),
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.feed(false, 4);
+    return { ...t, logs };
+  };
+  const led = (t: { published: Array<{ topic: string; payload: Uint8Array | string }> }) =>
+    t.published
+      .filter((p) => p.topic.endsWith("/cmd/led/set"))
+      .map((p) => JSON.parse(String(p.payload)));
+
+  it.each([
+    ["Test mode on", "on"],
+    ["Tessaya, turn on test mode.", "on"],
+    ["test mode off please", "off"],
+    ["what does a test mean", null],
+  ] as const)("hears %j as %s", (text, want) => expect(testModeAsked(text)).toBe(want));
+
+  it("turns on only for his verified voice, lights the Tessel and tells the app, and the clone cannot turn it on", async () => {
+    const his = await turn("Test mode on", owner);
+    expect(his.room.testUntil()).toBeGreaterThan(0);
+    expect(led(his).at(-1)).toMatchObject({ r: 255, g: 110, b: 0 });
+    expect(
+      his.published.some(
+        (p) =>
+          p.topic.endsWith("/state/item/voice.test_mode") && String(p.payload).includes("on until"),
+      ),
+    ).toBe(true);
+    expect(his.brainCalls).toHaveLength(0);
+    for (const who of [clone, { ...owner, verified: false }, { ...UNVERIFIED(0) }]) {
+      const t = await turn("Test mode on", who);
+      expect(t.room.testUntil()).toBe(0);
+    }
+    expect((await turn("Test mode on", owner, false)).room.testUntil()).toBe(0);
+  });
+
+  it("is off by default, exists only where the host has it, and the command turns it on and off", async () => {
+    const none = await turn("Test mode on", owner, "no host");
+    expect(none.room.testUntil()).toBe(0);
+    // Without test mode on this host the words are just words for her brain.
+    expect(none.brainCalls).toHaveLength(1);
+    const t = setup({ testMode: { ready: () => true } });
+    expect(t.room.testUntil()).toBe(0);
+    t.room.message(`freya/r1/${DEV}/voice/testmode`, Buffer.from('{"minutes":600}'));
+    // Never more than 2 hours.
+    expect(t.room.testUntil() - t.deps.now()).toBe(2 * 60 * 60_000);
+    t.room.message(`freya/r1/${DEV}/voice/testmode`, Buffer.from('{"off":true}'));
+    expect(t.room.testUntil()).toBe(0);
+    expect(led(t).at(-1)).toMatchObject({ r: 0, g: 0, b: 0 });
+  });
+
+  it("marks every turn it lets through, and the clone may turn it off", async () => {
+    const t = await turn("what time is it", clone);
+    const m = await t.metrics;
+    expect(m.test).toBe(true);
+    expect(t.logs.some((l) => l.includes("TEST SPEAKER answered as him"))).toBe(true);
+    const off = setup({
+      testMode: { ready: () => true },
+      recognise: lines("test mode off"),
+      speaker: async () => clone,
+    });
+    off.room.message(`freya/r1/${DEV}/voice/testmode`, Buffer.from('{"minutes":60}'));
+    off.s2();
+    await off.feed(true, 20);
+    await off.feed(false, 12);
+    expect(off.room.testUntil()).toBe(0);
   });
 });
 

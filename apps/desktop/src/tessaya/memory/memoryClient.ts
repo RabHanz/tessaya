@@ -195,6 +195,7 @@ export const createDesktopMemory = (input: {
                 personId: speaker.personId,
                 verified: speaker.verified,
                 inherited: speaker.inherited,
+                ...(speaker.voiceIdOff === true ? { voiceIdOff: true } : {}),
               },
         timeZone: timeZone(),
         ...agent(),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { CAMPLUS_POLICY, type SpeakerProfile } from "@t3tools/tessaya-voice";
+import { CAMPLUS_POLICY, speakerPath, type SpeakerProfile } from "@t3tools/tessaya-voice";
 
 import { createSpeakerIdentity, pillWho } from "./speakerIdentity.ts";
 import { VOICE_ID_DEFAULTS, type VoiceIdSettings } from "./voiceIdRows.ts";
@@ -60,7 +60,10 @@ describe("the speaker identity service", () => {
     });
     expect(t.service.current()).toMatchObject({ inherited: true });
     t.later(20_000);
-    expect((await t.service.hear(t.seconds(1), "turn")).kind).toBe("unverified");
+    const short = await t.service.hear(t.seconds(1), "turn");
+    // Too short to judge while Voice ID runs: a guest's reach, never his path by default.
+    expect(short.kind).toBe("unverified");
+    expect(speakerPath(short)).toBe("outside");
   });
 
   it("never inherits for a cut-in, and forgets the last voice on another microphone", async () => {
@@ -74,7 +77,8 @@ describe("the speaker identity service", () => {
   it("with Voice ID off, decides nothing: everyone is unverified and nobody is kept out", async () => {
     const t = setup({ on: false, strictWhenUnavailable: true });
     const who = await t.service.hear(t.seconds(4), "turn");
-    expect(who.kind).toBe("unverified");
+    expect(who).toMatchObject({ kind: "unverified", voiceIdOff: true });
+    expect(speakerPath(who)).toBe("his");
     expect(t.service.admits(who, "turn")).toBe(true);
     expect(t.service.bargeMs()).toBeNull();
     expect(t.service.running()).toBe(false);

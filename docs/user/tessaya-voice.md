@@ -28,6 +28,7 @@ Under **People**, type someone's name and press **Add** while they sit with you.
 - Only you can cut in by talking over her, unless **Saved people can talk over her** is on.
 - Your recognised voice can confirm everyday things. Anything risky still needs the card on screen or on your phone.
 - A very short reply ("yes", "stop") is too short to tell voices apart. It counts as unverified, and a risky yes then always needs the card.
+- Until Voice ID knows it is you, Tessaya answers as she would a guest: nothing private, no actions on your accounts. She starts thinking at once and switches to your answer when your voice is confirmed before she speaks, so this costs no time.
 - If the model or your profile is missing, Tessaya hears everyone as before, unless **Ignore everyone if Voice ID cannot run** is on.
 
 ## Household
