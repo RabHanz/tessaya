@@ -1,15 +1,15 @@
 {
-  "at": "2026-11-15T22:37:42.387Z",
-  "result": "disk",
+  "at": "2026-11-16T22:39:40.994Z",
+  "result": "gates",
   "ok": false,
   "pin": "41156481b1c2a9ea8f8b97680b76f17685387d38",
-  "target": "f5d86e31e82ff5db595426c06598493a6d587f2b",
-  "behindCommits": 832,
-  "oldestUnsyncedDays": 2,
+  "target": "f9db865403ebab2a9d252c8b1532aa76b52264c6",
+  "behindCommits": 950,
+  "oldestUnsyncedDays": 3,
   "conflictingPatches": [],
   "conflictingFiles": [],
   "touching": {},
   "pr": null,
-  "log": "/home/dev/.t3/baton-autosync/20261115T223718Z.log",
-  "hint": "Skipped: the volume is below its free-space floor."
+  "log": "/home/dev/.t3/baton-autosync/20261116T223928Z.log",
+  "hint": "The series applied but a gate failed. The branch is pushed; read the gates log."
 }
