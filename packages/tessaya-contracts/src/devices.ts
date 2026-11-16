@@ -214,7 +214,7 @@ export const DeviceTag = Schema.Struct({
 });
 export type DeviceTag = typeof DeviceTag.Type;
 
-/** What the speaker op asks the firmware to do. `route` picks where replies play. */
+/** What the speaker op asks the firmware to do. `route` puts one output first; `order` sets the whole order. */
 export const DEVICE_SPEAKER_ACTIONS = [
   "scan",
   "pair",
@@ -222,6 +222,7 @@ export const DEVICE_SPEAKER_ACTIONS = [
   "disconnect",
   "forget",
   "route",
+  "order",
 ] as const;
 export type DeviceSpeakerAction = (typeof DEVICE_SPEAKER_ACTIONS)[number];
 /** auto: the Bluetooth speaker while it streams, else the R1's own speaker. */
@@ -232,6 +233,18 @@ export type DeviceSpeakerOutput = (typeof DEVICE_SPEAKER_OUTPUTS)[number];
 /** What a Bluetooth audio device is: the firmware's word, else its Class of Device, else its name (btNames `kindOf`). */
 export const BT_KINDS = ["headphones", "headset", "speaker", "car", "receiver", "other"] as const;
 export type BtKind = (typeof BT_KINDS)[number];
+
+/** Her own speaker's id in the output order; every other entry is a Bluetooth address. */
+export const OWN_SPEAKER = "speaker";
+/** playing: replies go there now; ready: it could take the next reply; paired: not connected; stalled: skipped a while. */
+export const DEVICE_OUTPUT_STATES = ["playing", "ready", "paired", "stalled"] as const;
+export const DeviceOutputEntry = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  kind: Schema.optionalKey(Schema.Literals(BT_KINDS)),
+  state: Schema.Literals(DEVICE_OUTPUT_STATES),
+});
+export type DeviceOutputEntry = typeof DeviceOutputEntry.Type;
 
 export const DeviceSpeaker = Schema.Struct({
   state: Schema.Literals([
@@ -268,6 +281,8 @@ export const DeviceSpeaker = Schema.Struct({
     }),
   ),
   scannedAt: Schema.NullOr(Schema.String),
+  /** His output order, first choice first: her own speaker and every pairing; replies play on the first ready one. */
+  outputs: Schema.optionalKey(Schema.Array(DeviceOutputEntry)),
 });
 export type DeviceSpeaker = typeof DeviceSpeaker.Type;
 

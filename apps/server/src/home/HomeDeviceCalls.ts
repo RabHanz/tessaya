@@ -192,6 +192,10 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
       mac: Schema.optionalKey(Schema.String.check(Schema.isPattern(MAC))),
       name: Schema.optionalKey(Text(32)),
       output: Schema.optionalKey(Schema.Literals(DEVICE_SPEAKER_OUTPUTS)),
+      /** `order`: her own speaker ("speaker") and Bluetooth addresses, first choice first. */
+      order: Schema.optionalKey(
+        Schema.Array(Schema.String.check(Schema.isMaxLength(17))).check(Schema.isMaxLength(16)),
+      ),
     }),
     (a, devices, by) => devices.command(a.id, { op: "speaker", ...a }, by),
   ),

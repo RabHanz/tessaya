@@ -9,6 +9,7 @@ import * as NodeCrypto from "node:crypto";
 import {
   DEVICE_SPEAKER_OUTPUTS,
   DEVICE_TRANSPORTS,
+  OWN_SPEAKER,
   EnrolCard,
   R1_DEVICE_DEFAULTS,
   R1_DEVICE_DOS,
@@ -110,6 +111,8 @@ export type DeviceCommand =
       readonly mac?: string;
       readonly name?: string;
       readonly output?: DeviceSpeakerOutput;
+      /** `order`: her own speaker (OWN_SPEAKER) and Bluetooth addresses, first choice first. */
+      readonly order?: ReadonlyArray<string>;
     }
   | { readonly op: "reboot" }
   /** A signed firmware release over the air (R1Updates.install); null: the one this build recommends. */
@@ -158,6 +161,10 @@ const TAIL_LINES = 200;
 const LIVE_MS = 30_000;
 
 const TRIAL_MS = 60_000;
+/** A route not confirmed by then is sent again on the next Bluetooth report. */
+const ROUTE_RESEND_MS = 20_000;
+/** How long a device that stalled mid-reply is passed over before it is tried again. */
+const STALL_SKIP_MS = 15 * 60_000;
 const CAMERA_WINDOW_MS = 30_000;
 const SHOT_KEEP_MS = 10 * 60_000;
 const ASK_TTL_MS = 10 * 60_000;
@@ -201,6 +208,10 @@ export interface Heard {
     playing?: DeviceSpeakerOutput;
     found: DeviceSpeaker["found"];
     scannedAt: number | null;
+    /** The address linked now (state/bt connected or streaming), upper case. */
+    linked?: string | null;
+    /** Its saved devices (state/bt/bonds, 0.3.52), upper case, with which are connected. */
+    bonds?: ReadonlyArray<{ readonly mac: string; readonly connected: boolean }>;
   } | null;
   samples: Record<string, Array<number>>;
   log: Array<{ at: number; topic: string; text: string }>;
@@ -332,6 +343,42 @@ const btFailLine = (name: string, reason: string | null | undefined): string => 
 /** The R1 says `onboard` on its older topics where its manifest says `speaker`. */
 const outputItem = (out: string | null) => (out === "onboard" ? "speaker" : out);
 
+/** His saved output order over what it has paired now: her own speaker first by default, new pairings last. */
+export const outputOrderOf = (
+  saved: ReadonlyArray<string> | undefined,
+  bonds: ReadonlyArray<string>,
+): Array<string> => {
+  const known = new Set<string>([OWN_SPEAKER, ...bonds]);
+  const kept = (saved ?? [OWN_SPEAKER]).filter((o, i, all) => known.has(o) && all.indexOf(o) === i);
+  if (!kept.includes(OWN_SPEAKER)) kept.unshift(OWN_SPEAKER);
+  return [...kept, ...bonds.filter((b) => !kept.includes(b))];
+};
+
+const firstIn = (order: ReadonlyArray<string>, id: string): Array<string> => [
+  id,
+  ...order.filter((o) => o !== id),
+];
+
+/**
+ * Where replies go, as the firmware's one route (`cmd/audio/output`): the first output in his order that can play
+ * now, her own speaker or a connected device not skipped. A device above her speaker that is not connected is paged
+ * (`bt` with its address) while replies stay on her speaker, since the firmware plays on Bluetooth only once linked.
+ */
+export const routeOf = (
+  order: ReadonlyArray<string>,
+  connected: ReadonlySet<string>,
+  skipped: ReadonlySet<string>,
+): { readonly to: "speaker" } | { readonly to: "bt"; readonly mac: string } => {
+  let page: string | null = null;
+  for (const o of order) {
+    if (o === OWN_SPEAKER) return page === null ? { to: "speaker" } : { to: "bt", mac: page };
+    if (skipped.has(o)) continue;
+    if (connected.has(o)) return { to: "bt", mac: o };
+    page ??= o;
+  }
+  return page === null ? { to: "speaker" } : { to: "bt", mac: page };
+};
+
 /**
  * Folds one broker message into what we know of its device. Pure. Returns the device id, the item values it carries
  * (the firmware's older topics map onto its manifest's items until it reports `state/item/<id>` for all of them), and
@@ -430,6 +477,16 @@ export const applyMessage = (
       item("audio.output", outputItem(wanted ?? str(body?.["out"])));
       if (wanted !== null) item("audio.playing", outputItem(str(body?.["out"])));
       if (typeof body?.["device"] === "string") item("audio.device", body["device"]);
+      // The route the order sends is confirmed here as well as on state/bt.
+      const said = (v: string | null) => (v === "speaker" ? "onboard" : v);
+      if (d.speaker !== null && DEVICE_SPEAKER_OUTPUTS.includes(said(wanted) as never))
+        d.speaker.output = said(wanted) as DeviceSpeakerOutput;
+      if (
+        d.speaker !== null &&
+        wanted !== null &&
+        DEVICE_SPEAKER_OUTPUTS.includes(said(str(body?.["out"])) as never)
+      )
+        d.speaker.playing = said(str(body?.["out"])) as DeviceSpeakerOutput;
       break;
     }
     case "state/mic":
@@ -514,6 +571,12 @@ export const applyMessage = (
       if (wanted !== null && out !== null && DEVICE_SPEAKER_OUTPUTS.includes(out as never))
         d.speaker.playing = out as DeviceSpeakerOutput;
       const mac = str(body?.["mac"]);
+      d.speaker.linked =
+        (state === "connected" || state === "streaming") && mac !== null && MAC.test(mac)
+          ? mac.toUpperCase()
+          : state === null
+            ? (d.speaker.linked ?? null)
+            : null;
       d.speaker.saved =
         body?.["saved"] === true && mac !== null
           ? (() => {
@@ -524,6 +587,17 @@ export const applyMessage = (
               return { mac, name, ...withKind(name, codOf(body?.["cod"]), body?.["kind"]) };
             })()
           : null;
+      break;
+    }
+    case "state/bt/bonds": {
+      if (d.speaker === null || !Array.isArray(body?.["devices"])) break;
+      d.speaker.bonds = (body["devices"] as Array<unknown>).slice(0, 8).flatMap((x) => {
+        const v = typeof x === "object" && x !== null ? (x as Record<string, unknown>) : {};
+        const mac = str(v["mac"]);
+        return mac === null || !MAC.test(mac)
+          ? []
+          : [{ mac: mac.toUpperCase(), connected: v["connected"] === true }];
+      });
       break;
     }
     case "event/bt/devices": {
@@ -606,6 +680,8 @@ interface Saved {
   eyeStyle: Record<string, R1EyeStyle>;
   /** Per R1: the level she last set by voice, so a step has a base before the firmware reports one. */
   volume: Record<string, number>;
+  /** Per R1: his output order (outputOrderOf); absent is her own speaker first. */
+  outputs: Record<string, Array<string>>;
   tags: Record<string, { label: string; action: DeviceTagAction }>;
   /** Per R1: the device's bindings from its last ack, and Tessaya's (null: nothing, overriding the default). */
   keys: Record<
@@ -807,6 +883,7 @@ const make = Effect.gen(function* () {
         talkOverKeyword: (value["talkOverKeyword"] ?? {}) as Saved["talkOverKeyword"],
         eyeStyle: (value["eyeStyle"] ?? {}) as Saved["eyeStyle"],
         volume: (value["volume"] ?? {}) as Saved["volume"],
+        outputs: (value["outputs"] ?? {}) as Saved["outputs"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
         keys: (value["keys"] ?? {}) as Saved["keys"],
       };
@@ -1149,14 +1226,89 @@ const make = Effect.gen(function* () {
       tail === "state/bt/bonds" ||
       tail === "state/audio/output" ||
       tail === "event/bt/devices"
-    )
+    ) {
       yield* btHeard(result.id, tail, json(payload), now);
+      if (tail !== "event/bt/devices") yield* applyRoute(result.id);
+    } else if (tail === "event/audio/stall") yield* stalled(result.id, json(payload));
   });
 
   /** The R1's next Bluetooth link state after a connect or pair, for the true spoken result. */
   const btWait = new Map<string, Deferred.Deferred<BtResult>>();
   /** A pair he asked for: the scan's result is matched to his words, then paired. */
   const pairing = new Map<string, { name: string; by: DeviceActor; until: number }>();
+  /** Per R1, outputs passed over until a time: one that stalled mid-reply, or one he disconnected (no end). */
+  const skips = new Map<string, Map<string, number>>();
+  /** The route last sent per R1, so a burst of Bluetooth reports sends it once. */
+  const routed = new Map<string, { readonly key: string; readonly at: number }>();
+
+  const bondsOf = (id: string): Array<string> => {
+    const sp = heard.get(id)?.speaker;
+    return sp?.bonds?.map((b) => b.mac) ?? (sp?.saved == null ? [] : [sp.saved.mac.toUpperCase()]);
+  };
+  const liveOf = (id: string, now: number) => {
+    const sp = heard.get(id)?.speaker;
+    const connected = new Set([
+      ...(sp?.bonds ?? []).filter((b) => b.connected).map((b) => b.mac),
+      ...(sp?.linked == null ? [] : [sp.linked]),
+    ]);
+    const skipped = new Set(
+      [...(skips.get(id) ?? [])].filter(([, until]) => until > now).map(([mac]) => mac),
+    );
+    return { connected, skipped };
+  };
+  const orderOf = Effect.fn("HomeDevices.orderOf")(function* (id: string) {
+    return outputOrderOf((yield* readSaved).outputs[id], bondsOf(id));
+  });
+
+  /** Sends the route his order gives unless the firmware is on it already; never waits for a connect. */
+  const applyRoute = Effect.fn("HomeDevices.applyRoute")(function* (id: string) {
+    const d = heard.get(id);
+    const sp = d?.speaker;
+    if (d === undefined || sp == null || d.online === false) return;
+    const now = yield* Clock.currentTimeMillis;
+    const { connected, skipped } = liveOf(id, now);
+    const want = routeOf(yield* orderOf(id), connected, skipped);
+    const on =
+      want.to === "speaker"
+        ? sp.output === "onboard"
+        : sp.output !== "onboard" &&
+          (sp.linked === want.mac ||
+            (!connected.has(want.mac) && sp.saved?.mac.toUpperCase() === want.mac));
+    const key = want.to === "speaker" ? OWN_SPEAKER : want.mac;
+    if (on) return void routed.delete(id);
+    const last = routed.get(id);
+    if (last?.key === key && now - last.at < ROUTE_RESEND_MS) return;
+    routed.set(id, { key, at: now });
+    yield* publish(id, "cmd/audio/output", want);
+  });
+
+  /** His new order: kept as he gave it (a pairing not heard yet keeps its place), then routed at once. */
+  const setOrder = Effect.fn("HomeDevices.setOrder")(function* (
+    id: string,
+    order: ReadonlyArray<string>,
+    named: string | null,
+  ) {
+    yield* change((s) => {
+      s.outputs[id] = order.slice(0, 16);
+    });
+    if (named !== null) skips.get(id)?.delete(named);
+    routed.delete(id);
+    yield* applyRoute(id);
+  });
+
+  /** The firmware or the room loop says replies stopped reaching this device: the next in his order takes over. */
+  const stalled = Effect.fn("HomeDevices.stalled")(function* (
+    id: string,
+    body: Record<string, unknown> | null,
+  ) {
+    const mac = (str(body?.["mac"]) ?? heard.get(id)?.speaker?.linked ?? "").toUpperCase();
+    if (!MAC.test(mac)) return;
+    const now = yield* Clock.currentTimeMillis;
+    const mine = skips.get(id) ?? new Map<string, number>();
+    mine.set(mac, now + STALL_SKIP_MS);
+    skips.set(id, mine);
+    yield* applyRoute(id);
+  });
 
   /** Every device this vessel may reach by name: its own bonds and links, and the paired lists of his other vessels. */
   const knownOf = Effect.fn("HomeDevices.knownOf")(function* (id: string) {
@@ -1225,6 +1377,13 @@ const make = Effect.gen(function* () {
     if (by.dryRun === true) return { said: `Connecting to ${btLabel(target)}.`, moment: null };
     const waiter = yield* Deferred.make<BtResult>();
     btWait.set(id, waiter);
+    // He asked to play through it: it goes first in his order, and this connect is that route.
+    const mac = target.mac.toUpperCase();
+    yield* change((s) => {
+      s.outputs[id] = firstIn(outputOrderOf(s.outputs[id], bondsOf(id)), mac).slice(0, 16);
+    });
+    skips.get(id)?.delete(mac);
+    if (!pair) routed.set(id, { key: mac, at: yield* Clock.currentTimeMillis });
     yield* publish(
       id,
       pair ? "cmd/bt/pair" : "cmd/audio/output",
@@ -1595,6 +1754,7 @@ const make = Effect.gen(function* () {
           delete s.talkOverKeyword[id];
           delete s.eyeStyle[id];
           delete s.keys[id];
+          delete s.outputs[id];
         });
         for (const kept of ["cmd/voice/earcons", "cmd/voice/talkover", "cmd/eye/style"])
           yield* publish(id, kept, "", true);
@@ -1616,30 +1776,60 @@ const make = Effect.gen(function* () {
             yield* publish(id, "cmd/bt/scan", { secs: 10 });
             return done("Looking for Bluetooth speakers for about ten seconds.");
           case "pair":
-          case "connect":
+          case "connect": {
+            const named = (c.mac ?? heard.get(id)?.speaker?.saved?.mac ?? "").toUpperCase();
+            if (named !== "") skips.get(id)?.delete(named);
             yield* publish(id, `cmd/bt/${c.action}`, target);
             return done(
               c.action === "pair"
                 ? "Pairing. Put the speaker in pairing mode if it is not already."
                 : "Connecting to the speaker.",
             );
-          case "disconnect":
+          }
+          case "disconnect": {
+            // His disconnect holds: the order passes over it until he connects or picks it again.
+            const linked = heard.get(id)?.speaker?.linked;
+            if (linked != null) {
+              const mine = skips.get(id) ?? new Map<string, number>();
+              mine.set(linked, Number.POSITIVE_INFINITY);
+              skips.set(id, mine);
+            }
             yield* publish(id, "cmd/bt/disconnect", {});
+            yield* applyRoute(id);
             return done(`Disconnected. Replies play on the ${DEVICE} until you connect again.`);
+          }
           case "forget":
             yield* publish(id, "cmd/bt/forget", {});
             return done("Speaker forgotten. Pair it again to use it.");
-          case "route":
-            yield* publish(id, "cmd/bt/route", { out: c.output ?? "auto" });
-            // A connect forces `cmd/audio/output` to bt; only this undoes it, or replies go to a speaker that is gone.
-            if (c.output !== "bt") yield* publish(id, "cmd/audio/output", { to: "auto" });
+          case "route": {
+            // One output first in his order; the rest keep their places (the firmware's own route is never set apart).
+            const sp = heard.get(id)?.speaker;
+            const mac = sp?.linked ?? sp?.saved?.mac.toUpperCase() ?? null;
+            if (c.output !== "onboard" && mac === null)
+              return done(
+                `Nothing is paired yet, so replies stay on the ${DEVICE}'s own speaker. Pair one first.`,
+              );
+            const first = c.output === "onboard" ? OWN_SPEAKER : mac!;
+            if (by.dryRun !== true) yield* setOrder(id, firstIn(yield* orderOf(id), first), first);
+            const name =
+              sp?.saved == null || first === OWN_SPEAKER
+                ? "the Bluetooth device"
+                : btLabel({ ...sp.saved, lastAt: null });
             return done(
-              c.output === "bt"
-                ? "Replies play only on the Bluetooth speaker."
-                : c.output === "onboard"
-                  ? `Replies play on the ${DEVICE}'s own speaker.`
-                  : `Replies play on the Bluetooth speaker when it is connected, else on the ${DEVICE}.`,
+              first === OWN_SPEAKER
+                ? `Replies play on the ${DEVICE}'s own speaker first now.`
+                : `Replies play on ${name} first now, and on the ${DEVICE}'s own speaker whenever it isn't connected.`,
             );
+          }
+          case "order": {
+            const order = (c.order ?? []).map((o) => (o === OWN_SPEAKER ? o : o.toUpperCase()));
+            if (order.some((o) => o !== OWN_SPEAKER && !MAC.test(o)))
+              return yield* new DeviceRefusedError({
+                why: "That order names something that is not an output.",
+              });
+            if (by.dryRun !== true) yield* setOrder(id, order, order[0] ?? null);
+            return done("Saved. Replies play on the first output in this order that is connected.");
+          }
         }
         return done("Done.");
       }
@@ -1735,6 +1925,19 @@ const make = Effect.gen(function* () {
     c: DeviceCommand,
     by: DeviceActor,
   ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
+    // Where she speaks is his output order, and asking is his yes: no second question (16 Nov, she asked and waited).
+    if (
+      c.op === "item" &&
+      c.itemId === "audio.output" &&
+      by.surface !== "agent" &&
+      heard.get(id)?.speaker != null &&
+      (c.value === "speaker" || c.value === "bt" || c.value === "auto")
+    )
+      return yield* run(
+        id,
+        { op: "speaker", action: "route", output: c.value === "speaker" ? "onboard" : c.value },
+        by,
+      );
     // A registry item is checked by its own class; the registry says when its device is away.
     let needsYes = RISKY_OPS.has(c.op);
     if (c.op === "item") {
@@ -1800,6 +2003,50 @@ const make = Effect.gen(function* () {
   const tagList = (saved: Saved): ReadonlyArray<DeviceTag> =>
     Object.entries(saved.tags).map(([uid, t]) => ({ uid, label: t.label, action: t.action }));
 
+  const speakerView = (
+    id: string,
+    sp: NonNullable<Heard["speaker"]>,
+    saved: Saved,
+    now: number,
+    values: ReadonlyMap<string, unknown>,
+  ): DeviceSpeaker => {
+    const known = knownFrom(values.get("bt.known"));
+    const { connected, skipped } = liveOf(id, now);
+    const playingBt = (sp.playing ?? (sp.output === "onboard" ? "onboard" : "bt")) === "bt";
+    const outputs = outputOrderOf(saved.outputs[id], bondsOf(id)).map((o) => {
+      if (o === OWN_SPEAKER)
+        return {
+          id: o,
+          name: `${DEVICE} speaker`,
+          state: playingBt && sp.linked != null ? ("ready" as const) : ("playing" as const),
+        };
+      const k =
+        known.find((x) => x.mac.toUpperCase() === o) ??
+        (sp.saved?.mac.toUpperCase() === o ? sp.saved : null);
+      return {
+        id: o,
+        name: k?.name ?? "",
+        ...(k?.kind === undefined ? {} : { kind: k.kind }),
+        state: skipped.has(o)
+          ? ("stalled" as const)
+          : !connected.has(o)
+            ? ("paired" as const)
+            : playingBt && sp.linked === o
+              ? ("playing" as const)
+              : ("ready" as const),
+      };
+    });
+    return {
+      state: sp.state,
+      saved: sp.saved,
+      output: sp.output,
+      ...(sp.playing === undefined ? {} : { playing: sp.playing }),
+      found: sp.found,
+      scannedAt: iso(sp.scannedAt),
+      outputs,
+    };
+  };
+
   const viewOf = (
     id: string,
     d: Heard,
@@ -1859,7 +2106,7 @@ const make = Effect.gen(function* () {
         line: cam?.line ?? (d.camera === null ? null : `Camera: ${d.camera}`),
       },
       lastTag: d.lastTag === null ? null : { uid: d.lastTag.uid, at: iso(d.lastTag.at)! },
-      speaker: d.speaker === null ? null : { ...d.speaker, scannedAt: iso(d.speaker.scannedAt) },
+      speaker: d.speaker === null ? null : speakerView(id, d.speaker, saved, now, values),
       stages: stagesOf(d),
       log: d.log.map((l) => ({ at: iso(l.at)!, topic: l.topic, text: l.text })).toReversed(),
     };

@@ -137,6 +137,12 @@ acts at once unless that button has a double or triple set, when it waits a thir
 the Tessel cannot reach this server, a press set to one of Tessaya's actions does its default instead, so volume and
 talking still work.
 
+**Where she speaks.** Settings → Hardware → Bluetooth audio lists the Tessel's own speaker and every device it has
+paired, in your order; she plays on the first one that is connected right now, so a device that is off or still
+connecting never holds her up. Her own speaker is first until you change it: drag the list, or ask her ("use my
+headphones first", "always use your speaker"). If replies stop reaching a Bluetooth device mid-conversation, she moves to
+the next one in the list and skips that device for 15 minutes.
+
 **Screen** (firmware 3.32). Auto turns the screen with the Tessel; Normal or Upside down pins it. If Auto has it the
 wrong way up, stand the Tessel the way you use it and press **Set upright**.
 

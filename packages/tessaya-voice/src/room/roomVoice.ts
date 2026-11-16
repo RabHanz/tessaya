@@ -447,6 +447,11 @@ const onlyEnglish = (languages: ReadonlyArray<string>) =>
 const FAR_DB = 18;
 /** A session that has had no mic audio for this long while wake audio arrives is one the R1 has already left. */
 const STALE_SESSION_MS = 3_000;
+/**
+ * Her reply on Bluetooth and no mic frame for this long: the Tessel's shared radio is choked (16 Nov: 54 s late,
+ * replies bunched and dropped), so the server moves her to the next output in his order.
+ */
+export const UPLINK_STALL_MS = 2_500;
 
 /** What a bench turn heard and what she was playing around it, to replay the echo guard's decision in a test. */
 export interface BenchTurn {
@@ -719,6 +724,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let firstUntil = 0;
     /** When its mic last sent anything (or it opened): a session with nothing for a while is one the R1 has left. */
     let lastUpAt = deps.now();
+    /** A Bluetooth stall is said once per session. */
+    let stallSaid = false;
+    let pttDone = false;
     /** Her last few sentences, to tell her own voice coming back through the mic from his. */
     let herLines: string[] = [];
     const saying = (text: string) => {
@@ -2419,13 +2427,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
       },
       /** He let go of push-to-talk (firmware 3.32 `ptt_end`): answer what he said, then end the session once it has played. */
-      released: () =>
-        (chain = chain.then(async () => {
+      released: () => {
+        pttDone = true;
+        return (chain = chain.then(async () => {
           act(turns.release());
           await answering.catch(() => undefined);
           await deps.sleep(Math.max(0, playUntil + config.downDelayMs - deps.now()));
           deps.publish(topic(id, "cmd/voice/stop"), "{}");
-        })),
+        }));
+      },
       enrol: () => {
         guide = createEnrolGuide({
           // No name: the voice host's login is a machine account, and Tessaya keeps no display name for him.
@@ -2558,6 +2568,20 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** Once a second: past the window she rests (sleepy eyes, name only); long quiet ends the session. */
       tick: (): "stop" | null => {
         if (heldAct !== null && deps.now() - heldAct.at > 60_000) settleStepUp(false, "no answer");
+        if (
+          playsOnBt.has(id) &&
+          !stallSaid &&
+          !pttDone &&
+          speaking() &&
+          deps.now() - lastUpAt > UPLINK_STALL_MS
+        ) {
+          stallSaid = true;
+          const quietMs = Math.round(deps.now() - lastUpAt);
+          deps.publish(topic(id, "event/audio/stall"), JSON.stringify({ why: "uplink", quietMs }));
+          deps.log(
+            `[${id}] no mic frames for ${quietMs} ms while she plays on Bluetooth; next output`,
+          );
+        }
         const quiet = !turns.inTurn() && !speaking() && reply === null;
         // The persona he called holds for the whole session (13 Nov: Sebastian fell back within 14 s), or until he names another.
         if (quiet && !asleep && deps.now() > Math.max(openUntil, firstUntil)) {
@@ -2624,6 +2648,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const eyeAsked = new Map<string, { readonly name: string; readonly at: number }>();
   /** R1s muted from Tessaya: their audio is dropped unheard until unmuted, across sessions. */
   const muted = new Set<string>();
+  /** R1s whose replies play on Bluetooth now (`state/voice` start or out); the session's stall check reads it. */
+  const playsOnBt = new Set<string>();
   /** R1s with her listening and closing sounds off (`cmd/voice/earcons {"on":false}`, retained); on by default. */
   const noCues = new Set<string>();
   /** R1s switched between keyword and open talk-over (`cmd/voice/talkover {"mode"}`, retained); else the config's. */
@@ -2843,6 +2869,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         } else if (m === false && src !== "boot") muted.delete(id); // a reboot must not undo a mute set from the app
       } else if (tail === "state/voice" && json()["ev"] === "ptt_end") {
         void sessions.get(id)?.released();
+      } else if (tail === "state/voice" && ["start", "out"].includes(String(json()["ev"]))) {
+        if (json()["out"] === "bt") playsOnBt.add(id);
+        else playsOnBt.delete(id);
       } else if (tail === "event/key") {
         // Presses the device left to us (did "none"); none has a meaning yet, so they are only logged.
         const k = json();

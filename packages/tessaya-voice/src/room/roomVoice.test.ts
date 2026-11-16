@@ -15,6 +15,7 @@ import {
   servedRoster,
   splitSentences,
   testModeAsked,
+  UPLINK_STALL_MS,
   type RoomDeps,
   type TurnMetrics,
 } from "./roomVoice.ts";
@@ -992,6 +993,39 @@ describe("the R1's own buttons (firmware 3.32)", () => {
     const m = await t.metrics;
     expect(m.reason).toBe("released");
     expect(t.published.some((p) => p.topic === `freya/r1/${DEV}/cmd/voice/stop`)).toBe(true);
+  });
+
+  it("says a Bluetooth route stalled when the mic goes quiet while she plays there, never on her own speaker", async () => {
+    for (const out of ["bt", "onboard"]) {
+      let started: () => void = () => undefined;
+      const speaking = new Promise<void>((r) => (started = r));
+      let finish: () => void = () => undefined;
+      const t = setup({
+        // Her reply is still coming when the mic goes quiet.
+        speak: async function* () {
+          yield new Int16Array(3_200);
+          started();
+          await new Promise<void>((r) => (finish = r));
+        },
+      });
+      t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+      t.room.message(
+        `freya/r1/${DEV}/state/voice`,
+        Buffer.from(JSON.stringify({ ev: "start", out })),
+      );
+      await t.feed(true, 20);
+      void t.feed(false, 8);
+      await speaking;
+      const stalls = () => t.published.filter((p) => p.topic.endsWith("/event/audio/stall"));
+      t.room.sweep();
+      expect(stalls()).toEqual([]);
+      // 16 Nov: on Bluetooth nothing from the Tessel reached the hub for 54 s, and her replies came out bunched.
+      t.advance(UPLINK_STALL_MS + 100);
+      t.room.sweep();
+      t.room.sweep();
+      expect(stalls().length).toBe(out === "bt" ? 1 : 0);
+      finish();
+    }
   });
 
   it("hears nothing while his R1 is muted, and a reboot does not undo the mute", async () => {
