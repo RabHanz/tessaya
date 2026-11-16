@@ -21,6 +21,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
 import { TessayaPhoneInbox } from "../tessaya/TessayaPhoneInbox.ts";
 import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
+import { TurnLiveContext } from "../tessaya/TurnLiveContext.ts";
 import { DeviceRefusedError, DeviceRegistry, type DeviceChange } from "./DeviceRegistry.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
@@ -58,6 +59,7 @@ const make = Effect.gen(function* () {
   const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
   const record = yield* Effect.serviceOption(TessayaRecordService);
   const oneShot = yield* Effect.serviceOption(TessayaOneShot);
+  const live = yield* Effect.serviceOption(TurnLiveContext);
   const scope = yield* Effect.scope;
   const fired = yield* PubSub.unbounded<RuleFired>();
   const judgedAt = new Map<string, number>();
@@ -152,6 +154,16 @@ const make = Effect.gen(function* () {
   });
 
   const handle = Effect.fn("DeviceTriggers.handle")(function* (change: DeviceChange) {
+    if (live._tag === "Some") {
+      const line = yield* reportLine(change);
+      if (line !== null)
+        yield* live.value.inject({
+          key: `device:${change.deviceId}:${change.itemId}`,
+          source: "device",
+          expiresAfterTurns: 2,
+          line,
+        });
+    }
     const rows = yield* sql<{ id: string; config: string; once: number }>`
       SELECT id, config, once FROM fabric_home_automations
       WHERE id LIKE ${`${DEVICE_RULE_PREFIX}%`} AND status = 'active'
@@ -183,6 +195,21 @@ const make = Effect.gen(function* () {
       yield* audit(row.id, `rule fired: ${ruleLine(rule)}`, recordText(outcome, 200));
       yield* PubSub.publish(fired, { id: row.id, line });
     }
+  });
+
+  /**
+   * A device's report as a line for her next turns (G6): an event, or a state that flipped. A number that drifts (a
+   * temperature, a level) stays out; home_state reads it when he asks.
+   */
+  const reportLine = Effect.fn("DeviceTriggers.reportLine")(function* (change: DeviceChange) {
+    const device = yield* registry.get(change.deviceId);
+    const item = device?.items.find((i) => i.id === change.itemId);
+    if (device === null || item === undefined) return null;
+    const event = item.type === "event";
+    // A first value (a restart re-reports everything) is not news.
+    if (!event && (change.previous === undefined || typeof change.value === "number")) return null;
+    const said = event ? "" : ` is now ${valueText(item, change.value)}`;
+    return `A moment ago ${device.name} reported ${item.label}${said}: mention it only if it fits.`;
   });
 
   const changes = yield* registry.changes;

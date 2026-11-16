@@ -1812,6 +1812,9 @@ export const startScreenCompanion = (input: {
       reply: reply.spoken,
     });
     converse(turn.shots.length > 0 ? "look" : "answer", question, reply.spoken);
+    // What she saw, for her next turns through the one brain (the server keeps it two turns, in memory).
+    if (turn.shots.length > 0)
+      void input.direct?.("sighting", { line: reply.spoken }).catch(() => undefined);
     // A retry after [LOOK] streamed nothing, so the whole answer is spoken here.
     voice.finish(reply.spoken);
     activity(null);
