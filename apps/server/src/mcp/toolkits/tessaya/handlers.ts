@@ -498,7 +498,14 @@ export const layer = McpToolAccess.toLayer(
                   reason: "I only say who's home to the people who live here.",
                 });
               return {
-                people: (yield* turn.whoIsHome).map(({ member: _m, ...person }) => person),
+                people: (yield* turn.whoIsHome).map(({ member, nearest, ...person }) => ({
+                  ...person,
+                  you: member === (origin?.member ?? OWNER_MEMBER_ID),
+                  nearest:
+                    nearest === null
+                      ? null
+                      : { name: nearest.name, confidence: nearest.confidence },
+                })),
               };
             }),
           ),

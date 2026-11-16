@@ -51,8 +51,10 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { VoiceForgets } from "../tessaya/VoiceForgets.ts";
 import { MemberPreferences, type VoiceDefaults } from "../tessaya/MemberPreferences.ts";
+import { TessayaPresence } from "../tessaya/TessayaPresence.ts";
 import { StepUps } from "./StepUps.ts";
 import type { TessayaVoiceProfile } from "@t3tools/tessaya-contracts";
 import * as Queue from "effect/Queue";
@@ -660,6 +662,7 @@ export class HomeDeviceBroker extends Context.Service<
   }
 >()("t3/home/HomeDevices/HomeDeviceBroker") {}
 
+const HANDLED = new Set(["event/motion", "event/wake/lifted", "event/touch", "event/key"]);
 const SUBSCRIBE = ["freya/r1/+/state/#", "freya/r1/+/event/#", "freya/r1/+/voice/stepup/done"];
 
 export const brokerLayer = Layer.effect(
@@ -885,6 +888,7 @@ const make = Effect.gen(function* () {
   // Each member's own persona and voice (their preferences), retained per member so a loop that starts later has them;
   // an empty retained message clears a member who has none left.
   const prefs = yield* Effect.serviceOption(MemberPreferences);
+  const presence = yield* Effect.serviceOption(TessayaPresence);
   const sendPrefs = (ids: ReadonlyArray<string>, member: string, now: VoiceDefaults | null) =>
     Effect.forEach(ids, (id) => publish(id, `voice/prefs/${member}`, now ?? "", true), {
       discard: true,
@@ -1135,6 +1139,9 @@ const make = Effect.gen(function* () {
     }
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
+    // Picked up, moved, touched or pressed: someone is at this Tessel, not yet who (B-043).
+    if (Option.isSome(presence) && HANDLED.has(tail))
+      yield* presence.value.note({ member: null, source: "handled", vessel: result.id });
     if (tail === "event/key") yield* runKey(result.id, json(payload));
     // A long touch on the head is Tessaya's (the firmware stops her on a tap itself).
     else if (tail === "event/touch" && json(payload)?.["gesture"] === "long")

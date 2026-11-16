@@ -43,6 +43,9 @@ import { TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
 import { VoiceForgets } from "./VoiceForgets.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
 import { foldSpelling, spellBack } from "@t3tools/tessaya-shared/spelling";
+import { presenceReason } from "@t3tools/tessaya-shared/presence";
+import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import { TessayaPresence } from "./TessayaPresence.ts";
 import {
   keyFromJson,
   keyToJson,
@@ -479,11 +482,49 @@ export const make = Effect.gen(function* () {
       const minutesAgo = connected > 0 ? 0 : Math.floor((now - last) / 60_000);
       return [{ id: row.id, name: row.name, connected, minutesAgo }];
     });
+    // Where each member likely is and why, for Settings (B-043): their devices plus every vessel's signals.
+    const store = yield* Effect.serviceOption(TessayaPresence);
+    const registry = yield* Effect.serviceOption(DeviceRegistry);
+    const names = new Map(
+      (Option.isNone(registry) ? [] : yield* registry.value.list).map((d) => [d.deviceId, d.name]),
+    );
+    const named = new Map(
+      (yield* rows).filter((r) => r.removed_at === null).map((r) => [r.id, r.name]),
+    );
+    const presence = Option.isNone(store)
+      ? []
+      : (yield* store.value.estimate(
+          around.map((d) => ({
+            member: d.id,
+            source: "device",
+            vessel: null,
+            at: now - d.minutesAgo * 60_000,
+          })),
+        )).members.flatMap((p) => {
+          const name = named.get(p.member);
+          if (name === undefined) return [];
+          const where = (v: string | null) => (v === null ? null : (names.get(v) ?? v));
+          return [
+            {
+              id: p.member,
+              name,
+              confidence: Math.round(p.confidence * 100) / 100,
+              nearest:
+                p.nearest === null
+                  ? null
+                  : {
+                      name: where(p.nearest.vessel) ?? p.nearest.vessel,
+                      confidence: Math.round(p.nearest.confidence * 100) / 100,
+                    },
+              reasons: p.evidence.map((e) => presenceReason(e, where(e.vessel))),
+            },
+          ];
+        });
     return done(
       around.length === 0
         ? "Nobody's devices are connected right now."
         : `Around now, by their devices: ${around.map((r) => r.name).join(", ")}.`,
-      { around },
+      { around, presence },
     );
   });
 

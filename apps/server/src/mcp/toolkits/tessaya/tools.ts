@@ -440,7 +440,7 @@ const WakeWordChangeTool = Tool.make("tessaya_wake_word_change", {
 const WhosHomeTool = Tool.make("tessaya_whos_home", {
   ...shared,
   description:
-    "Who's home or around now, most recent first. Two signals per member: heard (their verified voice: where and minutes ago) and devices (their own devices: how many connected now, minutes since one was). likelyHome: heard in the last half hour or a device connected now. It's a guess, never a tracker: say it as one and say which signal backs it (\"I heard Sara in the kitchen 5 minutes ago\", \"Omid's phone is connected\"). Only for the household's own members, never a guest.",
+    'Who\'s home or around now, and where each is ("who\'s home?", "where am I?": you is the one asking), most sure first. Fused from every signal: their verified voice, typing on their own device, their devices connected, a Tessel picked up, the desktop locking. confidence: how sure they\'re around (likelyHome at 0.25 and up); nearest: the vessel they\'re most likely by and how sure; reasons: the evidence, strongest first. It\'s a guess, never a tracker: say it as one and name the strongest reason ("I heard Sara on the kitchen Tessel 5 minutes ago", "Omid\'s phone is connected"). "Follow me" (her own lines go to the vessel they\'re nearest) is their `follow` preference, on unless they turn it off. Only for the household\'s own members, never a guest.',
   // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
   success: Schema.Struct({
     people: Schema.Array(
@@ -451,6 +451,10 @@ const WhosHomeTool = Tool.make("tessaya_whos_home", {
           Schema.Struct({ connected: Schema.Number, minutesAgo: Schema.Number }),
         ),
         likelyHome: Schema.Boolean,
+        you: Schema.Boolean,
+        confidence: Schema.Number,
+        nearest: Schema.NullOr(Schema.Struct({ name: Schema.String, confidence: Schema.Number })),
+        reasons: Schema.Array(Schema.String),
       }),
     ),
   }),

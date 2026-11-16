@@ -19,6 +19,7 @@ export const TessayaPreferenceKey = Schema.Literals([
   "news",
   "music",
   "wakeTraining",
+  "follow",
 ]);
 export type TessayaPreferenceKey = typeof TessayaPreferenceKey.Type;
 
@@ -190,6 +191,18 @@ export const TessayaHouseholdCallResult = Schema.Struct({
         name: Schema.String,
         connected: Schema.Number,
         minutesAgo: Schema.Number,
+      }),
+    ),
+  ),
+  /** With `home`: where each member likely is, fused from every signal, and why (B-043). */
+  presence: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String,
+        confidence: Schema.Number,
+        nearest: Schema.NullOr(Schema.Struct({ name: Schema.String, confidence: Schema.Number })),
+        reasons: Schema.Array(Schema.String),
       }),
     ),
   ),

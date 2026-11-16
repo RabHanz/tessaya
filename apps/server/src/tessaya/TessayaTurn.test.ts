@@ -207,11 +207,15 @@ layer("TessayaTurn", (it) => {
             .map((p) => [p.member, p.heard?.via ?? null, p.devices, p.likelyHome])
             .toSorted(),
           [
-            ["hana", "R1", null, true],
-            ["rosa", "phone rosa-phone", { connected: 1, minutesAgo: 0 }, true],
+            ["hana", "desk-1", null, true],
+            ["rosa", "rosa-phone", { connected: 1, minutesAgo: 0 }, true],
             ["tom", null, { connected: 0, minutesAgo: 9 }, false],
           ],
         );
+        // Her voice places her at the vessel she spoke on; Rosa's typing places her at her phone.
+        const now = yield* who;
+        assert.strictEqual(now.find((p) => p.member === "hana")?.nearest?.vessel, "desk-1");
+        assert.strictEqual(now.find((p) => p.member === "rosa")?.nearest?.vessel, "rosa-phone");
         yield* TestClock.adjust("31 minutes");
         const later = yield* who;
         assert.isFalse(later.find((p) => p.member === "hana")!.likelyHome);
