@@ -2,8 +2,12 @@
 export interface DeskAffect {
   readonly affect: string;
 }
-/** What a desk turn streams: her words, and at most one affect before them. */
-export type DeskSaid = string | DeskAffect;
+/** A group turn (M-021): the words that follow are this persona's, in its own voice and face. */
+export interface DeskSpeaker {
+  readonly persona: string;
+}
+/** What a desk turn streams: her words, at most one affect before them, and in a group who speaks. */
+export type DeskSaid = string | DeskAffect | DeskSpeaker;
 
 /** One server-sent event of a desk turn. */
 export const deskEvent = (said: DeskSaid): string =>
@@ -11,12 +15,13 @@ export const deskEvent = (said: DeskSaid): string =>
 
 /**
  * Her words from the server's desk turn (`/tessaya/desk/turn`): `data: {"words"}` events, and a layer's
- * `data: {"affect"}`, until `data: [DONE]`.
+ * `data: {"affect"}` and a group's `data: {"persona"}`, until `data: [DONE]`.
  */
 export const readDeskTurn = async (
   body: ReadableStream<Uint8Array>,
   onWords: (words: string) => void,
   onAffect?: (affect: string) => void,
+  onSpeaker?: (persona: string) => void,
 ): Promise<void> => {
   const decoder = new TextDecoder();
   let held = "";
@@ -30,7 +35,8 @@ export const readDeskTurn = async (
       if (!event.startsWith("data: ")) continue;
       const data = event.slice(6);
       if (data === "[DONE]") return;
-      const said = JSON.parse(data) as { words?: unknown; affect?: unknown };
+      const said = JSON.parse(data) as { words?: unknown; affect?: unknown; persona?: unknown };
+      if (typeof said.persona === "string") onSpeaker?.(said.persona);
       if (typeof said.affect === "string") onAffect?.(said.affect);
       if (typeof said.words === "string") onWords(said.words);
     }

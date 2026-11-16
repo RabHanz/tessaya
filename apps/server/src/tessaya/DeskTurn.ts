@@ -27,6 +27,7 @@ import { brainTurn, type ActOutcome, type TurnNotes } from "./TessayaBrain.ts";
 import { TessayaTurn, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { VesselHands, vesselTools } from "./VesselHands.ts";
 import { replyFor } from "./PersonaLayers.ts";
+import { groupFor, groupTurn } from "./GroupTalk.ts";
 import type { DeskSaid } from "@t3tools/tessaya-shared/deskTurnStream";
 import type { HandsBroker } from "@t3tools/tessaya-shared/remoteHands";
 import { TessayaVoicePrint } from "@t3tools/tessaya-contracts";
@@ -160,82 +161,114 @@ export const deskTurnStream = (
         // Each turn is a fresh session, as on the room: standing memory comes with the turn.
         sessionless: true,
       };
-      // A persona layer answers the whole turn itself: nothing below runs, so nothing is learned or recorded.
-      const layered = yield* replyFor(turn);
-      if (layered !== null) {
-        if (layered.affect !== undefined) Queue.offerUnsafe(queue, { affect: layered.affect });
-        Queue.offerUnsafe(queue, layered.text);
+      // One persona's answer; in a group, `groupNote` tells it who else is here and what they said this turn.
+      const answer = Effect.fn("DeskTurn.answer")(function* (
+        turn: TurnEnvelope,
+        groupNote: string,
+      ) {
+        // A persona layer answers the whole turn itself: nothing below runs, so nothing is learned or recorded.
+        const layered = yield* replyFor(turn);
+        if (layered !== null) {
+          if (layered.affect !== undefined) Queue.offerUnsafe(queue, { affect: layered.affect });
+          Queue.offerUnsafe(queue, layered.text);
+          return layered.text;
+        }
+        return yield* brainAnswer(turn, groupNote);
+      });
+      const brainAnswer = (turn: TurnEnvelope, groupNote: string) =>
+        brainTurn(
+          {
+            system: `${AGENT_PROMPT}\n\n${assistantFrame(pack)}${templateFrame(readTemplates(userdata))}`,
+            tools,
+            device: body.vessel,
+            hold: () => (call) => call,
+            ...(ownMachine
+              ? {
+                  builtins: {
+                    tools: OWN_MACHINE_TOOLS,
+                    cwd: NodeOS.homedir(),
+                    ...(body.claudeBinary === undefined || body.claudeBinary.trim() === ""
+                      ? {}
+                      : { binary: body.claudeBinary }),
+                  },
+                }
+              : {}),
+            gather: Effect.gen(function* () {
+              const pipeline = yield* TessayaTurn;
+              const begun = yield* pipeline
+                .begin(turn)
+                .pipe(Effect.provideService(MemoryViewer, "desktop"));
+              return {
+                turn,
+                names: pack.personas.map((p) => p.name),
+                allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
+                user: (notes: TurnNotes) =>
+                  [
+                    groupNote,
+                    deskData({
+                      body,
+                      memory: begun.block,
+                      notice: begun.notice ?? "",
+                      privateBlock: begun.privateBlock,
+                      owner: begun.owner ?? "",
+                      preferences: begun.preferences,
+                      conversation: begun.conversation.turns,
+                      notes,
+                    }),
+                  ]
+                    .filter((l) => l !== "")
+                    .join("\n"),
+                readBefore: [],
+                own: hands === null ? [] : vesselTools(hands, originOf(turn)),
+                finish: Effect.fn("DeskTurn.finish")(function* (
+                  reply: string,
+                  outcomes: ReadonlyArray<ActOutcome>,
+                  done: TurnEnvelope,
+                ) {
+                  yield* pipeline.end(done, { reply }).pipe(Effect.ignore, Effect.forkDetach);
+                  const record = yield* Effect.serviceOption(TessayaRecordService);
+                  if (Option.isSome(record))
+                    yield* record.value
+                      .append({
+                        kind: from.kind,
+                        actor: from.origin,
+                        subject: `heard ${JSON.stringify(recordText(body.text, 160))}`,
+                        outcome: outcomes.length === 0 ? "answered" : `acted ${outcomes.length}`,
+                        detail: recordText(reply, 300),
+                      })
+                      .pipe(Effect.ignore);
+                }),
+              };
+            }),
+          },
+          brain,
+          (words) => Queue.offerUnsafe(queue, words),
+          "session",
+        ).pipe(
+          // His yes for an act is asked through the same hands (R1Tools' card path).
+          (turnEffect) =>
+            hands === null ? turnEffect : Effect.provideService(turnEffect, VesselHands, hands),
+          Effect.orElseSucceed(() => null),
+        );
+      const group = yield* groupFor(turn, pack.personas);
+      if (group !== null) {
+        const spoken = yield* groupTurn({
+          turn,
+          ...group,
+          personas: pack.personas,
+          speak: (speaker, line, first) => {
+            Queue.offerUnsafe(queue, { persona: speaker.id });
+            return answer(
+              { ...turn, persona: speaker.id, group: { name: speaker.name, first } },
+              line,
+            );
+          },
+        });
+        if (spoken.length === 0)
+          Queue.offerUnsafe(queue, "Sorry, something went wrong on my side.");
         return yield* Queue.end(queue);
       }
-      const said = yield* brainTurn(
-        {
-          system: `${AGENT_PROMPT}\n\n${assistantFrame(pack)}${templateFrame(readTemplates(userdata))}`,
-          tools,
-          device: body.vessel,
-          hold: () => (call) => call,
-          ...(ownMachine
-            ? {
-                builtins: {
-                  tools: OWN_MACHINE_TOOLS,
-                  cwd: NodeOS.homedir(),
-                  ...(body.claudeBinary === undefined || body.claudeBinary.trim() === ""
-                    ? {}
-                    : { binary: body.claudeBinary }),
-                },
-              }
-            : {}),
-          gather: Effect.gen(function* () {
-            const pipeline = yield* TessayaTurn;
-            const begun = yield* pipeline
-              .begin(turn)
-              .pipe(Effect.provideService(MemoryViewer, "desktop"));
-            return {
-              turn,
-              names: pack.personas.map((p) => p.name),
-              allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
-              user: (notes: TurnNotes) =>
-                deskData({
-                  body,
-                  memory: begun.block,
-                  notice: begun.notice ?? "",
-                  privateBlock: begun.privateBlock,
-                  owner: begun.owner ?? "",
-                  preferences: begun.preferences,
-                  conversation: begun.conversation.turns,
-                  notes,
-                }),
-              readBefore: [],
-              own: hands === null ? [] : vesselTools(hands, originOf(turn)),
-              finish: Effect.fn("DeskTurn.finish")(function* (
-                reply: string,
-                outcomes: ReadonlyArray<ActOutcome>,
-                done: TurnEnvelope,
-              ) {
-                yield* pipeline.end(done, { reply }).pipe(Effect.ignore, Effect.forkDetach);
-                const record = yield* Effect.serviceOption(TessayaRecordService);
-                if (Option.isSome(record))
-                  yield* record.value
-                    .append({
-                      kind: from.kind,
-                      actor: from.origin,
-                      subject: `heard ${JSON.stringify(recordText(body.text, 160))}`,
-                      outcome: outcomes.length === 0 ? "answered" : `acted ${outcomes.length}`,
-                      detail: recordText(reply, 300),
-                    })
-                    .pipe(Effect.ignore);
-              }),
-            };
-          }),
-        },
-        brain,
-        (words) => Queue.offerUnsafe(queue, words),
-        "session",
-      ).pipe(
-        // His yes for an act is asked through the same hands (R1Tools' card path).
-        (turnEffect) =>
-          hands === null ? turnEffect : Effect.provideService(turnEffect, VesselHands, hands),
-        Effect.orElseSucceed(() => null),
-      );
+      const said = yield* answer(turn, "");
       if (said === null) Queue.offerUnsafe(queue, "Sorry, something went wrong on my side.");
       yield* Queue.end(queue);
     }),

@@ -24,7 +24,8 @@
     "tessaya-read": "node tessaya-read/run.ts",
     "tessaya-dictation": "node tessaya-dictation/run.ts",
     "tessaya-learning": "node tessaya-learning/run.ts",
-    "tessaya-pulse": "node tessaya-pulse/run.ts"
+    "tessaya-pulse": "node tessaya-pulse/run.ts",
+    "tessaya-group": "node tessaya-group/run.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

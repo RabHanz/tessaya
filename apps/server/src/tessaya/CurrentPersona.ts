@@ -9,6 +9,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { MAX_MEMBERS, type PersonaGroup } from "@t3tools/tessaya-shared/groupTalk";
 
 import { DeviceSync } from "../home/DeviceSync.ts";
 
@@ -24,10 +26,29 @@ export class CurrentPersona extends Context.Service<
     readonly set: (conversation: string, persona: string) => Effect.Effect<void>;
     readonly of: (conversation: string) => Effect.Effect<string | null>;
     readonly listen: (listener: Listener) => Effect.Effect<void>;
+    /** The personas he talks to together in this conversation (M-021), null when it is one persona's. */
+    readonly group: (conversation: string) => Effect.Effect<PersonaGroup | null>;
+    /** Starts, changes or (null) ends the conversation's group; a group turn keeps it alive. */
+    readonly setGroup: (conversation: string, group: PersonaGroup | null) => Effect.Effect<void>;
   }
 >()("t3/tessaya/CurrentPersona") {}
 
 const PERSONA_RECORD = "@persona";
+const GROUP_RECORD = "@group";
+/** A group outlives a quiet spell: it ends when he ends it or after half a day without a word. */
+const GROUP_HELD_MS = 12 * 60 * 60_000;
+const GroupValue = Schema.NullOr(
+  Schema.Struct({
+    members: Schema.Array(
+      Schema.Struct({
+        id: Schema.String.check(Schema.isPattern(/^[\w-]{1,40}$/)),
+        silent: Schema.optional(Schema.Boolean),
+      }),
+    ).check(Schema.isMaxLength(MAX_MEMBERS)),
+    mode: Schema.Literals(["answer", "watch"]),
+  }),
+);
+const decodeGroup = Schema.decodeUnknownOption(GroupValue);
 
 const make = Effect.gen(function* () {
   const sync = yield* Effect.serviceOption(DeviceSync);
@@ -61,7 +82,29 @@ const make = Effect.gen(function* () {
         : Effect.void,
     );
   const listen = (listener: Listener) => Effect.sync(() => void listeners.add(listener));
-  return CurrentPersona.of({ set, of, listen });
+  const groups = new Map<string, { readonly group: PersonaGroup | null; readonly at: number }>();
+  const group = Effect.fn("CurrentPersona.group")(function* (conversation: string) {
+    const now = yield* Clock.currentTimeMillis;
+    const g = groups.get(conversation);
+    return g !== undefined && now - g.at <= GROUP_HELD_MS ? g.group : null;
+  });
+  const setGroup = Effect.fn("CurrentPersona.setGroup")(function* (
+    conversation: string,
+    next: PersonaGroup | null,
+  ) {
+    const at = yield* Clock.currentTimeMillis;
+    groups.set(conversation, { group: next, at });
+    if (Option.isSome(sync)) yield* sync.value.put(GROUP_RECORD, conversation, next, "changed", at);
+  });
+  if (Option.isSome(sync))
+    yield* sync.value.onRecord(GROUP_RECORD, (conversation, v, at) =>
+      Effect.sync(() => {
+        const decoded = decodeGroup(v);
+        if (Option.isSome(decoded) && at >= (groups.get(conversation)?.at ?? 0))
+          groups.set(conversation, { group: decoded.value, at });
+      }),
+    );
+  return CurrentPersona.of({ set, of, listen, group, setGroup });
 });
 
 export const layer = Layer.effect(CurrentPersona, make);

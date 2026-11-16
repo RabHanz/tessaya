@@ -792,6 +792,29 @@ const PersonaTool = Tool.make("tessaya_persona", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+/** Several personas in one conversation (M-021), by voice or chat. */
+const GroupTool = Tool.make("tessaya_group", {
+  ...shared,
+  description:
+    'Talk to several personas at once, only when he asks. `start` with `personas` ("let me talk to Freya and Luna together", "get Onyx and Alfred in here"); `add` brings more in ("bring Sebastian in"); `leave` sends `persona` out; `silent` lets `persona` listen without speaking until he names them ("Freya, just listen"); `speak` lets them talk again; `mode` "watch" lets them talk among themselves ("let them talk", "talk amongst yourselves"), "answer" has them answer only him ("only answer me"); `end` goes back to one persona ("end the group", "just you and me"); `status` says who is in it. Not for handing the conversation to one persona (tessaya_persona_handoff). Say the line back.',
+  parameters: Schema.Struct({
+    op: Schema.Literals(["start", "add", "leave", "silent", "speak", "mode", "end", "status"]),
+    personas: Schema.optional(
+      Schema.Array(Word.annotate({ description: "A persona by name, e.g. Freya." })).check(
+        Schema.isMaxLength(6),
+      ),
+    ),
+    persona: Schema.optional(Word.annotate({ description: "The persona by name, e.g. Freya." })),
+    mode: Schema.optional(Schema.Literals(["answer", "watch"])),
+  }),
+  success: Schema.Struct({ line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 // Session moves are for T3's thread agents too (the main session often runs in one), so no outside-only gate.
 const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
   ...shared,
@@ -938,6 +961,7 @@ export const TessayaToolkit = Toolkit.make(
   VocabularyTool,
   VoiceTool,
   PersonaTool,
+  GroupTool,
   MoveIntoTessayaTool,
   OpenInTerminalTool,
   MainSessionTool,
