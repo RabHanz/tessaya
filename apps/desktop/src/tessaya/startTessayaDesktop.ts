@@ -779,6 +779,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
           );
           return result === "ran" || result === "idle" ? result : "absent";
         },
+        openPlace: (place) => voice?.openHome(place),
         deskTurn,
         privateMemory,
         speak: (text) => {

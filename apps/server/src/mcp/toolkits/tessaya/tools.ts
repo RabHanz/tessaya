@@ -38,7 +38,11 @@ import {
   ThreadId,
   VoicePronounce,
 } from "@t3tools/contracts";
-import { DESKTOP_STATE_SECTIONS, VocabularyChange } from "@t3tools/tessaya-contracts";
+import {
+  DESKTOP_STATE_SECTIONS,
+  PHONE_PAIRING_TOOL,
+  VocabularyChange,
+} from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
 import * as Fiber from "effect/Fiber";
@@ -46,6 +50,7 @@ import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { PhonePairingCode } from "../../../tessaya/PhonePairing.ts";
 import { DeviceTools } from "../devices/tools.ts";
 import { HomeTools } from "../home/tools.ts";
 import { JobTools } from "../jobs/tools.ts";
@@ -742,6 +747,19 @@ const VoiceArbiterTool = Tool.make("tessaya_voice_arbiter", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const PhonePairingCodeTool = Tool.make(PHONE_PAIRING_TOOL, {
+  ...shared,
+  description:
+    "For another of his servers only, over a full-access link: a one-time pairing code here for his phone, so one QR pairs it with every machine.",
+  // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
+  success: PhonePairingCode,
+})
+  .annotate(McpSchema.EnabledWhen, linkedServersOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   ...HomeTools,
   ...DeviceTools,
@@ -789,4 +807,5 @@ export const TessayaToolkit = Toolkit.make(
   MainSessionTool,
   SessionDefaultsTool,
   VoiceArbiterTool,
+  PhonePairingCodeTool,
 );

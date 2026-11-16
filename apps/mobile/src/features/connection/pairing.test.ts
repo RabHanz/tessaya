@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildPairingUrl, extractPairingUrlFromQrPayload, parsePairingUrl } from "./pairing";
+import { phonePairingLink } from "@t3tools/tessaya-contracts";
+
+import { buildPairingUrl, extractPairingUrlsFromQrPayload, parsePairingUrl } from "./pairing";
 
 describe("buildPairingUrl", () => {
   it("uses HTTP for a schemeless IP address", () => {
@@ -22,13 +24,34 @@ describe("buildPairingUrl", () => {
   });
 });
 
-describe("extractPairingUrlFromQrPayload", () => {
+describe("extractPairingUrlsFromQrPayload", () => {
   it("unwraps mobile deep links that carry an encoded pairing url", () => {
     expect(
-      extractPairingUrlFromQrPayload(
+      extractPairingUrlsFromQrPayload(
         "t3code://pair?pairingUrl=https%3A%2F%2Fremote.example.com%2Fpair%23token%3Dpairing-token",
       ),
-    ).toBe("https://remote.example.com/pair#token=pairing-token");
+    ).toEqual(["https://remote.example.com/pair#token=pairing-token"]);
+  });
+
+  it("reads every machine from a Tessaya Add a phone code, in order", () => {
+    const machines = [
+      "https://laptop.example.ts.net/pair#token=AAAA",
+      "https://app.t3.codes/pair?host=https%3A%2F%2Fhetzner.example.ts.net#token=BBBB",
+      "http://100.64.0.3:3773/pair#token=CCCC",
+    ];
+    const scanned = extractPairingUrlsFromQrPayload(phonePairingLink(machines));
+    expect(scanned).toEqual(machines);
+    expect(scanned.map((url) => parsePairingUrl(url))).toEqual([
+      { host: "https://laptop.example.ts.net", code: "AAAA" },
+      { host: "https://hetzner.example.ts.net", code: "BBBB" },
+      { host: "http://100.64.0.3:3773", code: "CCCC" },
+    ]);
+  });
+
+  it("keeps a plain pairing URL as the one machine", () => {
+    expect(extractPairingUrlsFromQrPayload(" https://remote.example.com/#token=x ")).toEqual([
+      "https://remote.example.com/#token=x",
+    ]);
   });
 });
 

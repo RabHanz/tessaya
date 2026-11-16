@@ -295,6 +295,98 @@ index dbf7ab552aa8c72bf7d9c095d7de5849c7b23f0a..50d532a19e2f78e53d593a31d467590f
 +      : appVariant === "preview"
 +        ? require("../../../../assets/nightly/nightly-ios-1024.png")
 +        : require("../../../../assets/prod/black-ios-1024.png");
+diff --git a/apps/mobile/src/features/connection/pairing.test.ts b/apps/mobile/src/features/connection/pairing.test.ts
+index 466fbfa7a282ddf3d15f805425b23e1c42af3c28..aaa864717ba32cdc9454cda28e53d963770be2ef 100644
+--- a/apps/mobile/src/features/connection/pairing.test.ts
++++ b/apps/mobile/src/features/connection/pairing.test.ts
+@@ -1,6 +1,8 @@
+ import { describe, expect, it } from "vite-plus/test";
+ 
+-import { buildPairingUrl, extractPairingUrlFromQrPayload, parsePairingUrl } from "./pairing";
++import { phonePairingLink } from "@t3tools/tessaya-contracts";
++
++import { buildPairingUrl, extractPairingUrlsFromQrPayload, parsePairingUrl } from "./pairing";
+ 
+ describe("buildPairingUrl", () => {
+   it("uses HTTP for a schemeless IP address", () => {
+@@ -22,13 +24,34 @@ describe("buildPairingUrl", () => {
+   });
+ });
+ 
+-describe("extractPairingUrlFromQrPayload", () => {
++describe("extractPairingUrlsFromQrPayload", () => {
+   it("unwraps mobile deep links that carry an encoded pairing url", () => {
+     expect(
+-      extractPairingUrlFromQrPayload(
++      extractPairingUrlsFromQrPayload(
+         "t3code://pair?pairingUrl=https%3A%2F%2Fremote.example.com%2Fpair%23token%3Dpairing-token",
+       ),
+-    ).toBe("https://remote.example.com/pair#token=pairing-token");
++    ).toEqual(["https://remote.example.com/pair#token=pairing-token"]);
++  });
++
++  it("reads every machine from a Tessaya Add a phone code, in order", () => {
++    const machines = [
++      "https://laptop.example.ts.net/pair#token=AAAA",
++      "https://app.t3.codes/pair?host=https%3A%2F%2Fhetzner.example.ts.net#token=BBBB",
++      "http://100.64.0.3:3773/pair#token=CCCC",
++    ];
++    const scanned = extractPairingUrlsFromQrPayload(phonePairingLink(machines));
++    expect(scanned).toEqual(machines);
++    expect(scanned.map((url) => parsePairingUrl(url))).toEqual([
++      { host: "https://laptop.example.ts.net", code: "AAAA" },
++      { host: "https://hetzner.example.ts.net", code: "BBBB" },
++      { host: "http://100.64.0.3:3773", code: "CCCC" },
++    ]);
++  });
++
++  it("keeps a plain pairing URL as the one machine", () => {
++    expect(extractPairingUrlsFromQrPayload(" https://remote.example.com/#token=x ")).toEqual([
++      "https://remote.example.com/#token=x",
++    ]);
+   });
+ });
+ 
+diff --git a/apps/mobile/src/features/connection/pairing.ts b/apps/mobile/src/features/connection/pairing.ts
+index 0750705315fa2aead4296c31931854df5b8bcfe5..12bcef06ba2965b24a82522eaa6b37887ffd4831 100644
+--- a/apps/mobile/src/features/connection/pairing.ts
++++ b/apps/mobile/src/features/connection/pairing.ts
+@@ -70,7 +70,12 @@ export function parsePairingUrl(url: string): { host: string; code: string } {
+   }
+ }
+ 
+-export function extractPairingUrlFromQrPayload(payload: string): string {
++/** T3's app links, and Tessaya's Add a phone code, which carries one pairing URL per machine. */
++const APP_LINK_PROTOCOL = /^(?:t3code|tessaya):$/;
++
++export function extractPairingUrlsFromQrPayload(
++  payload: string,
++): readonly [string, ...ReadonlyArray<string>] {
+   const trimmed = payload.trim();
+   if (!trimmed) {
+     throw new PairingQrPayloadEmptyError({});
+@@ -78,13 +83,16 @@ export function extractPairingUrlFromQrPayload(payload: string): string {
+ 
+   try {
+     const url = new URL(trimmed);
+-    if (url.protocol === "t3code:") {
+-      const pairingUrl = url.searchParams.get(MOBILE_PAIRING_URL_PARAM)?.trim() ?? "";
+-      if (pairingUrl.length > 0) {
+-        return pairingUrl;
++    if (APP_LINK_PROTOCOL.test(url.protocol)) {
++      const [first, ...rest] = url.searchParams
++        .getAll(MOBILE_PAIRING_URL_PARAM)
++        .map((pairingUrl) => pairingUrl.trim())
++        .filter((pairingUrl) => pairingUrl.length > 0);
++      if (first !== undefined) {
++        return [first, ...rest];
+       }
+     }
+   } catch {}
+ 
+-  return trimmed;
++  return [trimmed];
+ }
 diff --git a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
 index 096513c0e0a3c191cfc5adf2cd109a67c8dcdb63..93ae250910a122500bf4a93e6f16eafe07d7595f 100644
 --- a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx

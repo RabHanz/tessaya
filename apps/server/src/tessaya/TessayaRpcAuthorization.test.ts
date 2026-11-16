@@ -1,5 +1,7 @@
 import {
   AuthAccessReadScope,
+  AuthAccessWriteScope,
+  BATON_PHONE_PAIRING_WS_METHODS,
   AuthTessayaCloudApproveScope,
   AuthTessayaHandsHostScope,
   AuthTessayaMemorySyncScope,
@@ -73,6 +75,20 @@ describe("who may use cloud tasks on a hub", () => {
     expect(BATON_RPC_REQUIRED_SCOPES[BATON_CLOUD_WS_METHODS.approve]).toBe(
       AuthTessayaCloudApproveScope,
     );
+  });
+
+  it("lets only a session holding every standard scope mint a phone's codes, as upstream's pairing link needs", () => {
+    const issue = BATON_PHONE_PAIRING_WS_METHODS.issue;
+    expect(missingTessayaScope(issue, AuthStandardClientScopes)).toBeNull();
+    expect(
+      missingTessayaScope(issue, [AuthOrchestrationReadScope, AuthOrchestrationOperateScope]),
+    ).not.toBeNull();
+    expect(
+      missingTessayaScope(
+        issue,
+        AuthStandardClientScopes.filter((scope) => scope !== AuthAccessWriteScope),
+      ),
+    ).toBe(AuthAccessWriteScope);
   });
 
   it("does not give the approval scope to the scopes a paired client gets by default", () => {
@@ -233,7 +249,8 @@ describe("rename R1: every method also answers as tessaya.*", () => {
         t !== BATON_HOME_WS_METHODS.call &&
         t !== BATON_DEVICES_WS_METHODS.call &&
         t !== BATON_VOICE_WS_METHODS.call &&
-        t !== BATON_LEARN_WS_METHODS.call,
+        t !== BATON_LEARN_WS_METHODS.call &&
+        t !== BATON_PHONE_PAIRING_WS_METHODS.issue,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(refusedAsDevice(renamed, device), renamed).toBe(refusedAsDevice(tag, device));
@@ -256,7 +273,8 @@ describe("rename R1: every method also answers as tessaya.*", () => {
         t !== BATON_HOME_WS_METHODS.call &&
         t !== BATON_DEVICES_WS_METHODS.call &&
         t !== BATON_VOICE_WS_METHODS.call &&
-        t !== BATON_LEARN_WS_METHODS.call,
+        t !== BATON_LEARN_WS_METHODS.call &&
+        t !== BATON_PHONE_PAIRING_WS_METHODS.issue,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(TessayaRpcGroup.requests.has(renamed), renamed).toBe(true);

@@ -755,6 +755,8 @@ export const startScreenCompanion = (input: {
   readonly direct?: (method: string, body: unknown) => Promise<unknown>;
   /** One of the app's commands in T3's window (app_command). */
   readonly appCommand?: (command: string) => Promise<"ran" | "idle" | "absent">;
+  /** Tessaya's window at one of her places (place_open). */
+  readonly openPlace?: (place: string) => void;
   /** His sentence through the one brain on this machine's server; her words stream to `onWords`. */
   readonly deskTurn?: (
     body: unknown,
@@ -2808,6 +2810,7 @@ export const startScreenCompanion = (input: {
     },
     ...(input.direct === undefined ? {} : { threadSession: threadSessionVia(input.direct) }),
     ...(input.appCommand === undefined ? {} : { appCommand: input.appCommand }),
+    ...(input.openPlace === undefined ? {} : { openPlace: input.openPlace }),
     ...(input.direct === undefined ? {} : { shared: sharedVia(input.direct) }),
     sessions: async () => actions?.sessionsList?.() ?? "No sessions are listed here yet.",
     ...(input.catalog === undefined ? {} : { catalog: lateCatalog(input.catalog) }),

@@ -17,6 +17,7 @@ import {
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
+  PHONE_PAIRING_TOOL,
   TessayaDesktopState,
   type TessayaRecordEntry,
 } from "@t3tools/tessaya-contracts";
@@ -57,6 +58,8 @@ import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
+import * as EnvironmentAuth from "../../../auth/EnvironmentAuth.ts";
+import * as PhonePairing from "../../../tessaya/PhonePairing.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
 import * as HomeHandlers from "../home/handlers.ts";
@@ -230,6 +233,7 @@ export const layer = McpToolAccess.toLayer(
       };
     });
     const runtime = yield* TessayaRuntime;
+    const auth = yield* Effect.serviceOption(EnvironmentAuth.EnvironmentAuth);
     /** The turn pipeline's memory tools, or "unavailable" on a server built without Tessaya's services. */
     const withTurn = <A, E>(
       f: (turn: TessayaTurn["Service"]) => Effect.Effect<A, E>,
@@ -287,6 +291,32 @@ export const layer = McpToolAccess.toLayer(
                 ok: false,
                 error: "That is not a voice request.",
               }
+            );
+          }),
+        { linkedCallers: "allowed" },
+      ),
+      [PHONE_PAIRING_TOOL]: McpToolAccess.writes(
+        () =>
+          Effect.gen(function* () {
+            const scope = yield* McpInvocationContext.McpInvocationContext;
+            if (!PhonePairing.mayAskHere(scope.client))
+              return yield* new OrchestratorMcpFailure({
+                code: "capability_denied",
+                message: "Only another of his machines, linked with full access, may ask for this.",
+              });
+            if (auth._tag === "None")
+              return yield* new OrchestratorMcpFailure({
+                code: "orchestration_error",
+                message: "Pairing is not available on this server.",
+              });
+            return yield* PhonePairing.codeHere(auth.value).pipe(
+              Effect.mapError(
+                (error) =>
+                  new OrchestratorMcpFailure({
+                    code: "orchestration_error",
+                    message: error.message,
+                  }),
+              ),
             );
           }),
         { linkedCallers: "allowed" },

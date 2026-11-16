@@ -70,7 +70,12 @@ export function parsePairingUrl(url: string): { host: string; code: string } {
   }
 }
 
-export function extractPairingUrlFromQrPayload(payload: string): string {
+/** T3's app links, and Tessaya's Add a phone code, which carries one pairing URL per machine. */
+const APP_LINK_PROTOCOL = /^(?:t3code|tessaya):$/;
+
+export function extractPairingUrlsFromQrPayload(
+  payload: string,
+): readonly [string, ...ReadonlyArray<string>] {
   const trimmed = payload.trim();
   if (!trimmed) {
     throw new PairingQrPayloadEmptyError({});
@@ -78,13 +83,16 @@ export function extractPairingUrlFromQrPayload(payload: string): string {
 
   try {
     const url = new URL(trimmed);
-    if (url.protocol === "t3code:") {
-      const pairingUrl = url.searchParams.get(MOBILE_PAIRING_URL_PARAM)?.trim() ?? "";
-      if (pairingUrl.length > 0) {
-        return pairingUrl;
+    if (APP_LINK_PROTOCOL.test(url.protocol)) {
+      const [first, ...rest] = url.searchParams
+        .getAll(MOBILE_PAIRING_URL_PARAM)
+        .map((pairingUrl) => pairingUrl.trim())
+        .filter((pairingUrl) => pairingUrl.length > 0);
+      if (first !== undefined) {
+        return [first, ...rest];
       }
     }
   } catch {}
 
-  return trimmed;
+  return [trimmed];
 }

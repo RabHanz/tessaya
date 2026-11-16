@@ -13,6 +13,7 @@ import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
 import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
 import type { VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/tessaya-shared/operator";
+import { TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
 
 import type { TessayaTool, ToolOutput } from "./tessayaMcp.ts";
 
@@ -126,6 +127,8 @@ export interface ToolHost {
   };
   /** A thread's session between a terminal and Tessaya (the server's own guards apply; he is asked first). */
   readonly threadSession?: (op: "move" | "open", threadId: string) => Promise<string>;
+  /** Brings up Tessaya's window at one of her places. */
+  readonly openPlace?: (place: string) => void;
   /** Runs one of the app's own commands in T3's window, by name, as its key would; what came of it. */
   readonly appCommand?: (command: string) => Promise<"ran" | "idle" | "absent">;
   readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
@@ -1371,6 +1374,21 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
         if (host.appCommand === undefined)
           return { text: "His sessions window is not on this computer." };
         return { text: appCommandLine(command, await host.appCommand(command)) };
+      },
+    },
+    {
+      name: "place_open",
+      description:
+        "Open Tessaya's own window at one of her pages. 'Add my phone', 'pair my phone' or 'set up my phone' is phone: it shows the QR the phone app scans to connect to this machine and every machine linked to it. Then tell him to scan it in the phone app (Environments, Add environment, Scan).",
+      inputSchema: object({ place: { enum: TESSAYA_PLACES.map((p) => p.id) } }, ["place"]),
+      run: async (a) => {
+        const place = str(a, "place", 40);
+        const found = TESSAYA_PLACES.find((p) => p.id === place);
+        if (found === undefined) return { text: `${place} is not one of Tessaya's pages.` };
+        if (host.openPlace === undefined)
+          return { text: "Tessaya's window is not on this computer." };
+        host.openPlace(found.id);
+        return { text: `Opened ${found.label}.` };
       },
     },
     {

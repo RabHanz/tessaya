@@ -34,6 +34,8 @@ import {
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  BATON_PHONE_PAIRING_WS_METHODS,
+  AuthStandardClientScopes,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -189,6 +191,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_VOICE_WS_METHODS.call]: AuthOrchestrationReadScope,
   // Which tips he has seen: reading and marking them changes nothing but the tips.
   [BATON_LEARN_WS_METHODS.call]: AuthOrchestrationReadScope,
+  // It mints a standard client's pairing code, so the caller must hold every scope that code delegates, as upstream's.
+  [BATON_PHONE_PAIRING_WS_METHODS.issue]: AuthStandardClientScopes,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   [BATON_CONSENT_WS_METHODS.list]: AuthOrchestrationReadScope,
