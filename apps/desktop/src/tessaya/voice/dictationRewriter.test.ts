@@ -72,9 +72,11 @@ describe("makeRewriter", () => {
     using _now = vi.spyOn(Date, "now").mockImplementation(() => now);
     const asked: string[] = [];
     const results: unknown[] = [];
+    const fellBack: string[] = [];
     const rewriter = makeRewriter({
       claudeBinary: "claude",
       model: () => "sonnet",
+      onKeyFallback: (why) => fellBack.push(why),
       workDir: "/tmp",
       env: {},
       platform: "linux",
@@ -99,16 +101,58 @@ describe("makeRewriter", () => {
     });
     const said = { raw: "we should go home now please", mode: "default", level: "claude" } as const;
     expect((await rewriter.clean(said)).text).toBe("from the plan");
+    expect(rewriter.answeredBy()).toBe("plan");
     expect(results).toHaveLength(1);
     limited = true;
     expect((await rewriter.clean(said)).text).toBe("from the key");
+    expect(rewriter.answeredBy()).toBe("key");
     // Resting: the next one goes straight to the key.
     expect((await rewriter.clean(said)).text).toBe("from the key");
     limited = false;
     now += 5 * 60_000;
     expect((await rewriter.clean(said)).text).toBe("from the plan");
     expect(asked).toEqual(["plan sonnet low", "plan sonnet low", "key", "key", "plan sonnet low"]);
+    // Every answer his key gave in the plan's place says why.
+    expect(fellBack).toEqual([
+      "plan failed: You've hit your limit",
+      "plan failed: You've hit your limit",
+    ]);
     rewriter.dispose();
+  });
+
+  it("waits for his plan's slower answers at release instead of pasting them uncleaned", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (text: string) => void = () => {};
+      const rewriter = makeRewriter({
+        claudeBinary: "claude",
+        model: () => "sonnet",
+        workDir: "/tmp",
+        env: {},
+        platform: "linux",
+        dictionary: () => [],
+        always: true,
+        route: () => "subscription",
+        // 16 Nov: Sonnet on his plan took 1.6 to 2.7 s at release and a 3 s cut lost 3 of 9.
+        start: (): VisionSession => ({
+          ask: () => new Promise((resolve) => void (answer = resolve)),
+          alive: () => true,
+          dispose: () => {},
+        }),
+        api: async () => "from the key",
+      });
+      const cleaned = rewriter.clean({
+        raw: "we should go home now please",
+        mode: "default",
+        level: "claude",
+      });
+      await vi.advanceTimersByTimeAsync(4_000);
+      answer("From the plan.");
+      expect(await cleaned).toMatchObject({ text: "From the plan.", stage: "model" });
+      rewriter.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("cleans the very first dictation through his key: no guess waits on a cold or limited subscription", async () => {

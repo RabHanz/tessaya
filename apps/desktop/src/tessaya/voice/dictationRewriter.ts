@@ -71,10 +71,11 @@ const RELEASE_BUDGET_MS = 1_800;
 /** Recording starts closer together than this share one warm call. */
 const KEY_WARM_GAP_MS = 2_000;
 /**
- * His plan's warm session, at release: Sonnet answered his presses in 0.96 s p50 and 1.28 s p95 (16 Nov, warm, effort
- * low), so past this the local text goes in and the session is let rest.
+ * His plan's session at release. On 16 Nov Sonnet answered the releases no guess covered in 1.6 to 2.7 s, and a 3 s
+ * limit cut 3 of 9 (pasted uncleaned), so a release waits at least this long, longer for a long one, never past the cap.
  */
-const SESSION_BUDGET_MS = 3_000;
+const SESSION_BUDGET_MS = 5_000;
+const SESSION_CAP_MS = 8_000;
 /** A plan that failed or hit its limit rests this long, his key answering meanwhile, then is tried again. */
 const SESSION_REST_MS = 5 * 60_000;
 
@@ -110,6 +111,8 @@ export interface Rewriter {
       readonly message: boolean;
     }
   >;
+  /** Which route answered the last question: his plan or his key. */
+  readonly answeredBy: () => "plan" | "key" | null;
   readonly dispose: () => void;
 }
 
@@ -155,6 +158,8 @@ export const makeRewriter = (input: {
   readonly route?: () => "subscription" | "key";
   /** Each answer from his plan's session, for the usage record. */
   readonly onSessionResult?: (event: Record<string, unknown>) => void;
+  /** His key answered although his plan comes first, and why (it failed, or rests after a failure). */
+  readonly onKeyFallback?: (why: string) => void;
 }): Rewriter => {
   // Text already set out on this machine (a list) is only polished: examples there cost lists (18 → 12 of his 52).
   const message = (
@@ -264,10 +269,14 @@ export const makeRewriter = (input: {
   const keyRoute = () => input.api !== undefined && !noKey;
   /** Until then his plan rests (it failed, timed out or hit its limit) and his key answers. */
   let restUntil = 0;
+  let restWhy = "";
   const planFirst = () => input.route?.() === "subscription" && Date.now() >= restUntil;
-  const rest = () => {
+  const rest = (why: string) => {
     restUntil = Date.now() + SESSION_REST_MS;
+    restWhy = why;
   };
+  /** Which route answered the last question, for the History row. */
+  let answeredBy: "plan" | "key" | null = null;
   /** Either route answers a whole dictation in about a second: release cleans it whole, and pauses guess the whole. */
   const quick = () => keyRoute() || planFirst();
   /** His key has answered or failed at least once, so a key is saved and the session is not needed. */
@@ -318,19 +327,30 @@ export const makeRewriter = (input: {
   ): Promise<string> => {
     if (planFirst()) {
       try {
-        return await viaSession(text, mode, context, refused);
+        const answer = await viaSession(text, mode, context, refused);
+        answeredBy = "plan";
+        return answer;
       } catch (error) {
         // Out, or at its limit: his key answers this one and the next few minutes.
-        rest();
+        rest(`plan failed: ${error instanceof Error ? error.message : "unknown"}`);
         drop();
         if (!keyRoute()) throw error;
       }
       const paid = await viaApi(text, mode, context, refused);
       if (paid === null) throw new Error("no plan and no key");
+      answeredBy = "key";
+      input.onKeyFallback?.(restWhy);
       return paid.trim();
     }
     const paid = final || keyRoute() ? await viaApi(text, mode, context, refused) : null;
-    return paid === null ? viaSession(text, mode, context, refused) : paid.trim();
+    if (paid === null) {
+      const answer = await viaSession(text, mode, context, refused);
+      answeredBy = "plan";
+      return answer;
+    }
+    answeredBy = "key";
+    if (input.route?.() === "subscription") input.onKeyFallback?.(restWhy || "plan out");
+    return paid.trim();
   };
   const timedOut = () => new Error(apiWhy === null ? "timed out" : `timed out after key ${apiWhy}`);
   /** The real clean's question, against a deadline counted from when `clean` was called. */
@@ -357,7 +377,8 @@ export const makeRewriter = (input: {
         // Still waiting behind a guess, nothing of ours was asked: the session stays.
         if (sent) {
           // His plan too slow at release: it rests, and his key takes the next ones.
-          if (planFirst() && keyRoute()) rest();
+          if (planFirst() && keyRoute())
+            rest(`plan ${error instanceof Error ? error.message : "failed"}`);
           drop();
           warmSession();
         }
@@ -447,7 +468,7 @@ export const makeRewriter = (input: {
         const deadline =
           started +
           (planFirst()
-            ? Math.min(limit, SESSION_BUDGET_MS)
+            ? Math.min(Math.max(limit, SESSION_BUDGET_MS), SESSION_CAP_MS)
             : apiAnswers
               ? Math.min(limit, input.releaseBudgetMs ?? RELEASE_BUDGET_MS)
               : limit);
@@ -567,6 +588,7 @@ export const makeRewriter = (input: {
         message: false,
       };
     },
+    answeredBy: () => answeredBy,
     dispose: drop,
   };
 };

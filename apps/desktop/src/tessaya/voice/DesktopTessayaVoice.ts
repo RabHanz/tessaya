@@ -578,6 +578,7 @@ import {
   correctionsBetween,
   correctionsInSent,
   learnCorrection,
+  unseenFixes,
   observeWording,
   addNever,
   biasTranscript,
@@ -2035,10 +2036,11 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         watching = false;
       });
   };
+  const taughtAt = new Map<string, number>();
   /** Each fix teaches the word he meant, announced as "Learned X" so he can undo it. */
   const teachFixes = (fixes: ReadonlyArray<{ readonly heard: string; readonly meant: string }>) =>
     changeVocabulary((entries, now) =>
-      fixes.reduce((all, fix) => {
+      unseenFixes(taughtAt, fixes, Date.now()).reduce((all, fix) => {
         const next = learnCorrection(seenWords, all, fix, now, never);
         seenWords = next.seen;
         announce(next.added);
@@ -2097,7 +2099,11 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     keepWarm: () => cleanupStaysWarm(),
     ...(input.cleanupApi === undefined ? {} : { api: input.cleanupApi }),
     examples: (text, mode) => styleIndex?.nearest(text, mode, 4) ?? [],
+    // His plan comes first: when his key answers instead, the turn log says why (16 Nov: 7 in a row unexplained).
+    onKeyFallback: (why) => input.onNote?.("dictation_cleanup_route", { route: "key", why }),
   });
+  /** What cleaned it, for History: his chosen model on his plan, or his key (whose model his server picks). */
+  const cleanedBy = () => (rewriter.answeredBy() === "key" ? "api key" : settings.cleanupModel);
   /** Held to where the words came from and where he is now. Unknown counts as secret. */
   const levelNow = (spokenIn: { readonly exe: string; readonly title: string }) =>
     cleanupLevelNow(
@@ -2699,7 +2705,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
             .catch(() => null);
           const settled = settleOneShot(heard, tidy);
           cleaned = settled.text;
-          model = settled.failed ? null : settings.cleanupModel;
+          model = settled.failed ? null : cleanedBy();
         }
         history.update(id, {
           versions: withRetry(turn, { at: new Date().toISOString(), raw: heard, cleaned, model }),
@@ -2722,7 +2728,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       history.update(id, {
         cleaned: text,
         status: failed ? "failed" : "ok",
-        model: failed ? null : settings.cleanupModel,
+        model: failed ? null : cleanedBy(),
         error: failed ? "Clean-up failed again" : null,
       });
     }
@@ -2971,7 +2977,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       cleaned: result.text,
       status: result.failed ? "raw" : "ok",
       // Named only when the model could have cleaned it: a local clean-up said "tidied by haiku" (0.1.106).
-      model: result.failed || result.level !== "claude" ? null : settings.cleanupModel,
+      model: result.failed || result.level !== "claude" ? null : cleanedBy(),
       error: result.failed
         ? cleanupFailedLine(result.why)
         : result.status === "kept"
@@ -4451,6 +4457,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   };
   /** Words that have no home yet: an error card with Copy beside the pill, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
+    // Kept, not inserted: a chat box that claimed this dictation lets it go.
+    composer.cancel();
     landed(text);
     showDictation(null);
     toast.show({ kind: "error", message: why, text });
@@ -4836,6 +4844,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         // The voice path drops a lone breath the same way (core.ts DICTATION_FILLER); here it never reaches the buffer.
         if (isLoneBreath(text)) {
           input.onNote?.("dictation_dropped", { reason: "breath", chars: text.length });
+          composer.cancel();
           return showDictation(null);
         }
         dictationTimer = startDictationTiming(event);
@@ -4854,6 +4863,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       if (text.length > 0) landed(text);
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
       else {
+        // A failed recognition ends here too: the chat box's pill goes with the floating one.
+        composer.cancel();
         showDictation(null);
         if (text.length > 0) {
           pill.on({ type: "done", label: "Pasted" });

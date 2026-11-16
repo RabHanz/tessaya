@@ -116,4 +116,58 @@ export const CASES: ReadonlyArray<DictationCase> = [
     must: ["Backblaze"],
     never: ["back please"],
   },
+  // 16 Nov, V-050: sound-alikes the clean-up left in his real dictations (dog for dock, blue connection for
+  // Bluetooth, type seat for Type-C, prince for prints, collect for correct, Pain for Ping). Each word is real, so
+  // "a word that makes sense as written stays" kept it; the sentence around it says what he meant.
+  {
+    id: "soundalike-dog-dock",
+    heard: "The dog is plugged into the laptop with one cable and both monitors run from the dog.",
+    must: ["dock"],
+    never: ["dog"],
+  },
+  {
+    id: "soundalike-bluetooth",
+    heard: "The headphones keep losing the blue connection whenever the phone is in my pocket.",
+    must: ["Bluetooth"],
+    never: ["blue connection"],
+  },
+  {
+    id: "soundalike-type-c",
+    heard: "The new charger only has a type seat plug so it will not fit the old phone.",
+    must: ["C plug"],
+    never: ["seat"],
+  },
+  {
+    id: "soundalike-prints",
+    heard:
+      "I picked up the new test prince from the printer and the second one came out much cleaner.",
+    must: ["print"],
+    never: ["prince"],
+  },
+  {
+    id: "soundalike-correct",
+    heard: "When I collect a misspelt word in the box and send it, the app should learn the fix.",
+    must: ["correct"],
+    never: ["collect"],
+  },
+  {
+    id: "soundalike-ping",
+    heard: "Pain the design team again if they still have not replied by lunch.",
+    dictionary: [{ phrase: "Acme", replacement: null }],
+    must: ["Ping"],
+    never: ["Pain"],
+  },
+  // Controls: the same words where they are meant, so the fix never rewrites a word that fits.
+  {
+    id: "control-dog-stays",
+    heard: "The dog is asleep under the desk while I work on the laptop.",
+    must: ["dog"],
+    never: ["dock"],
+  },
+  {
+    id: "control-collect-stays",
+    heard: "Can you collect the parcels from the front desk before five and send me a photo?",
+    must: ["collect"],
+    never: ["correct"],
+  },
 ];

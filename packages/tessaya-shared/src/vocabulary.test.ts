@@ -22,6 +22,8 @@ import {
   parseVocabulary,
   promptTerms,
   screenNames,
+  SAME_FIX_MS,
+  unseenFixes,
   upsertEntry,
 } from "./vocabulary.ts";
 
@@ -424,6 +426,11 @@ describe("learning from his corrections", () => {
     expect(unteach(learnCorrection({}, [], one[0]!, NOW).entries, one[0]!)).toEqual([]);
     // After two fixes, Discard takes the literal rule too.
     expect(unteach(state.entries, one[0]!)).toEqual([]);
+    // One edit, seen by the field watch and again by the diff at send, counts once; the same fix later counts again.
+    const taughtAt = new Map<string, number>();
+    expect(unseenFixes(taughtAt, one, 0)).toEqual(one);
+    expect(unseenFixes(taughtAt, one, 3_000)).toEqual([]);
+    expect(unseenFixes(taughtAt, one, SAME_FIX_MS)).toEqual(one);
     const his = [{ phrase: "Tessaya", replacement: null, source: "added" as const, count: 4 }];
     const taught = learnCorrection({}, his, { heard: "Tisia", meant: "Tessaya" }, NOW);
     expect(taught.entries[0]?.heard).toEqual(["Tisia"]);
