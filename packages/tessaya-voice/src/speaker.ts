@@ -1,9 +1,7 @@
 /**
- * Voice match (VOICE-ID): whose voice an utterance is, from speaker embeddings. Pure; the model runs elsewhere
- * (providers/speakerOnnx.ts). Identity only ever narrows what a turn may do: a weak or missing verdict is
- * "unverified", which behaves as today and never grants more.
- *
- * @module baton-voice/speaker
+ * Voice match (VOICE-ID): whose voice an utterance is, from speaker embeddings (the model runs in speakerOnnx.ts).
+ * Where Voice ID runs, a weak, late or missing verdict is "unverified" with a guest's reach, never his (16 Nov); only
+ * a vessel where it cannot run (`voiceIdOff`) keeps his path for every voice. @module baton-voice/speaker
  */
 
 export interface SpeakerProfile {
@@ -182,6 +180,10 @@ export interface SpeakerIdentity {
   /** A short follow-up carrying the last verdict (same microphone, under `INHERIT_MS`). */
   readonly inherited: boolean;
   readonly at: number;
+  /** Unverified because Voice ID cannot run here at all: the one unverified voice still on his path. */
+  readonly voiceIdOff?: true;
+  /** The test clone, trusted as him only while test mode is on (roomTestMode.ts); every such turn is marked. */
+  readonly test?: true;
 }
 
 /** A short follow-up ("yes", "stop") keeps the last verdict this long, and only for listening. */
@@ -203,7 +205,10 @@ export const identityOf = (
   act: SpeakerVerdict,
   at: number,
 ): SpeakerIdentity => {
-  if (listen.kind === "unverified") return UNVERIFIED(at);
+  if (listen.kind === "unverified")
+    return listen.why === "no-model" || listen.why === "no-profile"
+      ? { ...UNVERIFIED(at), voiceIdOff: true }
+      : UNVERIFIED(at);
   if (listen.kind === "guest") return { ...UNVERIFIED(at), kind: "guest", confidence: listen.best };
   const personId = listen.kind === "owner" ? "owner" : listen.id;
   const verified =
@@ -239,7 +244,9 @@ export const holdVoice = (
   policy: Omit<SpeakerPolicy, "model"> = CAMPLUS_POLICY,
 ): { readonly hold: VoiceHold; readonly identity: SpeakerIdentity } => {
   const held = hold.verifiedAt !== null && now - hold.verifiedAt <= HOLD_MS;
-  if (identity.kind === "saved" || identity.kind === "guest") return { hold: NO_HOLD, identity };
+  // The test clone is trusted turn by turn while test mode is on, and never leaves him held once it ends.
+  if (identity.kind === "saved" || identity.kind === "guest" || identity.test === true)
+    return { hold: NO_HOLD, identity };
   if (identity.kind === "unverified")
     return held
       ? { hold, identity: { ...identity, kind: "owner", personId: "owner", verified: true } }
@@ -251,6 +258,31 @@ export const holdVoice = (
   return {
     hold: { verifiedAt: verified ? now : hold.verifiedAt, scores },
     identity: { ...identity, verified },
+  };
+};
+
+/**
+ * Test mode (Director, 16 Nov): the test clone's own profile, enrolled apart from him, is him only until `until` and a
+ * guest after it. Every turn it lets through is marked `test`. Never a switch that skips Voice ID: any other voice is
+ * judged exactly as before.
+ */
+export const TEST_SPEAKER_ID = "test-speaker";
+export const TEST_MODE_MAX_MS = 2 * 60 * 60_000;
+export const trustTestSpeaker = (
+  identity: SpeakerIdentity,
+  now: number,
+  until: number,
+): SpeakerIdentity => {
+  if (identity.personId !== TEST_SPEAKER_ID) return identity;
+  if (now >= until)
+    return { ...UNVERIFIED(identity.at), kind: "guest", confidence: identity.confidence };
+  return {
+    ...identity,
+    kind: "owner",
+    personId: "owner",
+    name: null,
+    inherited: false,
+    test: true,
   };
 };
 
@@ -285,7 +317,9 @@ export const admits = (
 
 /** His own path, or the outside one (fresh session, read-only, a proposal for anything that acts). */
 export const speakerPath = (identity: SpeakerIdentity | null): "his" | "outside" =>
-  identity === null || identity.kind === "owner" || identity.kind === "unverified"
+  identity === null ||
+  identity.kind === "owner" ||
+  (identity.kind === "unverified" && identity.voiceIdOff === true)
     ? "his"
     : "outside";
 

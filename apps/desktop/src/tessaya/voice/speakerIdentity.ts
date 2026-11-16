@@ -71,7 +71,9 @@ export const createSpeakerIdentity = (input: {
     const at = input.now();
     const ms = Math.round((pcm.length * 1000) / RATE);
     const embedder = input.voiceId.embedder();
-    if (!input.settings().on || embedder === null) return decided(UNVERIFIED(at), use, ms);
+    // Voice ID cannot run here: every voice stays on his path, as before it existed.
+    if (!running() || embedder === null)
+      return decided({ ...UNVERIFIED(at), voiceIdOff: true }, use, ms);
     if (ms < input.policy.minSpeechMs) {
       // A short follow-up keeps the last verdict for listening only; it is never verified.
       const kept =

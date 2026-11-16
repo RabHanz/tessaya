@@ -12,6 +12,8 @@ import {
   identityOf,
   NO_HOLD,
   speakerPath,
+  TEST_SPEAKER_ID,
+  trustTestSpeaker,
   UNVERIFIED,
   spokenYesStands,
   voiceApproval,
@@ -168,6 +170,34 @@ describe("enrol", () => {
   });
 });
 
+describe("test mode's test speaker (Director, 16 Nov)", () => {
+  const clone = {
+    ...UNVERIFIED(5),
+    kind: "saved" as const,
+    personId: TEST_SPEAKER_ID,
+    name: "Test speaker",
+    confidence: 0.8,
+    verified: true,
+  };
+  it.each([
+    ["on", 0, 100, { kind: "owner", personId: "owner", verified: true, test: true }],
+    ["expired", 100, 100, { kind: "guest", personId: null, verified: false }],
+    ["off", 0, 0, { kind: "guest", personId: null, verified: false }],
+  ] as const)("is him only while test mode is %s", (_, now, until, want) => {
+    const out = trustTestSpeaker(clone, now, until);
+    expect(out).toMatchObject(want);
+    if (want.kind === "guest") expect(out.test).toBeUndefined();
+  });
+  it("leaves every other voice as it was judged, and never leaves him held", () => {
+    const guest = { ...UNVERIFIED(5), kind: "guest" as const, confidence: 0.2 };
+    expect(trustTestSpeaker(guest, 0, 100)).toBe(guest);
+    const trusted = trustTestSpeaker(clone, 0, 100);
+    const after = holdVoice(NO_HOLD, trusted, 0);
+    expect(after.hold).toEqual(NO_HOLD);
+    expect(holdVoice(after.hold, UNVERIFIED(10), 10).identity.kind).toBe("unverified");
+  });
+});
+
 describe("the speaker identity", () => {
   const owned = (vector: Float32Array, ms: number) =>
     identityOf(decide([vector], ms, "listen"), decide([vector], ms, "act"), 1);
@@ -185,6 +215,14 @@ describe("the speaker identity", () => {
       verified: false,
     });
     expect(owned(at(0.6), 1_000)).toEqual(UNVERIFIED(1));
+    // No owner profile: Voice ID cannot run, the one unverified voice kept on his path.
+    expect(
+      identityOf(
+        decideSpeaker({ clips: [], model: "m", profiles: [], policy: null, use: "listen" }),
+        decideSpeaker({ clips: [], model: "m", profiles: [], policy: null, use: "act" }),
+        1,
+      ),
+    ).toEqual({ ...UNVERIFIED(1), voiceIdOff: true });
   });
 
   it("keeps him verified through a session, from three owner turns or one verified, until another voice", () => {
@@ -245,10 +283,11 @@ describe("the speaker identity", () => {
     expect(admits(who(kind), { ...gate, ...change }, "barge")).toBe(barge);
   });
 
-  it("sends everyone but him down the outside path", () => {
+  it("sends everyone but him down the outside path, an unjudged voice too where Voice ID runs", () => {
     expect(
       ["owner", "unverified", "saved", "guest"].map((k) => speakerPath(who(k as never))),
-    ).toEqual(["his", "his", "outside", "outside"]);
+    ).toEqual(["his", "outside", "outside", "outside"]);
+    expect(speakerPath({ ...who("unverified"), voiceIdOff: true })).toBe("his");
   });
 
   it("never lets a voice alone approve a risky act, and counts only his verified voice as a factor", () => {
