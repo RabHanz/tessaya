@@ -5,7 +5,7 @@
  * `HouseholdCaller` the transport set. Who someone is and their role come from the household; comms keeps no people
  * list. Every act is one Record row; a note's content is never written there.
  */
-import { QUIET_KEY, readQuietHours } from "./quietHours.ts";
+import { DND_PREFIX, QUIET_KEY, readDndUntil, readQuietHours } from "./quietHours.ts";
 import {
   CommsEmergencyKind,
   type CommsAddress,
@@ -116,7 +116,6 @@ const consentOf = (r: ConsentRow): CommsConsent => ({
 
 /** The owner's switch: comms off (the default) sends nothing and plays nothing anywhere. */
 export const ENABLED_KEY = "comms.enabled";
-const DND_PREFIX = "comms.dnd.";
 /** The item a screen vessel (a desktop, a phone) declares to take notes: the server writes the plan to it. */
 export const NOTE_ITEM = "comms.note";
 export const OFF_LINE =
@@ -243,13 +242,8 @@ export const make = Effect.gen(function* () {
     ).pipe(Effect.orDie, Effect.asVoid);
   const enabled = Effect.map(setting(ENABLED_KEY), (v) => v === "on");
   const quietHours = readQuietHours.pipe(Effect.provideService(SqlClient.SqlClient, sql));
-  /** A member's do-not-disturb end (ms; Infinity until they turn it off), or null when off or over. */
-  const dndUntil = Effect.fn("TessayaComms.dndUntil")(function* (member: string) {
-    const v = yield* setting(`${DND_PREFIX}${member}`);
-    if (v === "on") return Number.POSITIVE_INFINITY;
-    const until = v === null ? Number.NaN : Date.parse(v);
-    return Number.isFinite(until) && until > (yield* Clock.currentTimeMillis) ? until : null;
-  });
+  const dndUntil = (member: string) =>
+    readDndUntil(member).pipe(Effect.provideService(SqlClient.SqlClient, sql));
 
   const receipt = Effect.fn("TessayaComms.receipt")(function* (
     noteId: string,

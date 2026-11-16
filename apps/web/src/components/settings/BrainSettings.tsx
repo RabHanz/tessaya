@@ -242,6 +242,7 @@ function BrainSections({ environmentId }: { readonly environmentId: EnvironmentI
 
       <Escalation environmentId={environmentId} />
       <Lines environmentId={environmentId} />
+      <BeingMoved environmentId={environmentId} />
       <PromptLab environmentId={environmentId} />
       <StandingYeses environmentId={environmentId} />
     </>
@@ -297,6 +298,59 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
           />
         }
       />
+    </SettingsSection>
+  );
+}
+
+const SENSITIVITY_LABELS: Readonly<Record<string, string>> = {
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+};
+const MOVED_ROWS = [
+  { key: "lifted", title: "Picked up", description: "Lifted off its spot or carried about." },
+  { key: "setdown", title: "Put down", description: "Set back on a desk, dock or table." },
+  {
+    key: "shaken",
+    title: "Shaken",
+    description: "A hard or long shake also speaks during a talk.",
+  },
+  { key: "dropped", title: "Dropped", description: "A fall that lands; also at night." },
+] as const;
+
+/** How a Tessel answers being moved: her eyes, her mood and a line of her own. */
+function BeingMoved({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const moved = useEnvironmentSettings(environmentId, (s) => s.tessayaMotion);
+  const update = useUpdateEnvironmentSettings(environmentId);
+  return (
+    <SettingsSection title="Being moved">
+      <SettingsRow
+        title="Sensitivity"
+        description="How hard a shake or pick-up must be to count. Low ignores desk bumps best; high feels a gentle lift."
+        control={
+          <Choice
+            label="Motion sensitivity"
+            value={moved.sensitivity}
+            options={["low", "normal", "high"] as const}
+            labels={SENSITIVITY_LABELS}
+            onChange={(next) => update({ tessayaMotion: { sensitivity: next } })}
+          />
+        }
+      />
+      {MOVED_ROWS.map((row) => (
+        <SettingsRow
+          key={row.key}
+          title={row.title}
+          description={row.description}
+          control={
+            <Switch
+              aria-label={row.title}
+              checked={moved[row.key]}
+              onCheckedChange={(on) => update({ tessayaMotion: { [row.key]: on } })}
+            />
+          }
+        />
+      ))}
     </SettingsSection>
   );
 }

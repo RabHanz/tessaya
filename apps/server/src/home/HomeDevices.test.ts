@@ -1567,3 +1567,31 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect("answers being moved on the Tessel's eyes, once per handling, at his sensitivity", () => {
+  const { sent, layer } = setup();
+  return Effect.gen(function* () {
+    const devices = yield* HomeDevices.HomeDevices;
+    yield* devices.tick;
+    yield* devices.receive(`${root}/state/online`, "1");
+    // Coming online it is given his thresholds (normal by default).
+    assert.deepInclude(sent, {
+      topic: "cmd/imu/set",
+      payload: { key: "shake_light_min", value: 9000 },
+    });
+    sent.length = 0;
+    const shake = JSON.stringify({
+      kind: "shake",
+      conf: 0.6,
+      intensity: 20,
+      in: { session: false },
+    });
+    yield* devices.receive(`${root}/event/motion`, shake);
+    yield* devices.receive(`${root}/event/motion`, shake);
+    // Her own words are off here, so the eyes answer; the second shake of one handling stays quiet.
+    assert.deepStrictEqual(
+      sent.map((s) => [s.topic, (s.payload as { mood?: string }).mood]),
+      [["voice/intent/eye", "putout"]],
+    );
+  }).pipe(Effect.provide(layer));
+});
