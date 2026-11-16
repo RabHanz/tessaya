@@ -1,10 +1,12 @@
 import { it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 import { expect } from "vite-plus/test";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import { DeviceSync } from "../home/DeviceSync.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as CurrentPersona from "./CurrentPersona.ts";
 import { TessayaCast, layer as castLayer } from "./TessayaCast.ts";
@@ -25,7 +27,7 @@ const device = (deviceId: string, kind: string, name: string, member?: string) =
     ...(member === undefined ? {} : { member }),
   }) as const;
 
-const setup = () => {
+const setup = (extra: Layer.Layer<DeviceSync> = Layer.empty) => {
   const controls: Array<{ id: string; value: string | boolean }> = [
     { id: "v.mascotPersona", value: "freya" },
     { id: "v.mascotFollows", value: false },
@@ -53,7 +55,13 @@ const setup = () => {
   );
   const layer = castLayer.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(registry, desktop, ServerSettingsService.layerTest(), CurrentPersona.layer),
+      Layer.mergeAll(
+        registry,
+        desktop,
+        ServerSettingsService.layerTest(),
+        CurrentPersona.layer,
+        extra,
+      ),
     ),
   );
   return { controls, layer };
@@ -137,6 +145,37 @@ it.effect(
       });
       yield* cast.call({ op: "sendHome", body: "desk-1" }, true);
       expect(controls.find((c) => c.id === "v.mascotCrew")?.value).toBe("none");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "shares a Tessel's visit with his other servers, and takes the newer one of theirs",
+  () => {
+    const puts: Array<[string, string, unknown]> = [];
+    let applier: ((field: string, v: unknown, at: number) => Effect.Effect<void>) | null = null;
+    const sync = Layer.succeed(DeviceSync)(
+      DeviceSync.of({
+        put: (record: string, field: string, v: unknown) =>
+          Effect.sync(() => void puts.push([record, field, v])),
+        onRecord: (
+          _record: string,
+          apply: (field: string, v: unknown, at: number) => Effect.Effect<void>,
+        ) => Effect.sync(() => void (applier = apply)),
+      } as never),
+    );
+    const { layer } = setup(sync);
+    return Effect.gen(function* () {
+      const cast = yield* TessayaCast;
+      yield* cast.call({ op: "call", body: "Tumble", persona: "alfred", stay: true }, true);
+      expect(puts.at(-1)).toEqual(["@cast", "body:r1-tumble", { persona: "butler", stay: true }]);
+      yield* cast.call({ op: "sendHome" }, true);
+      expect(puts.at(-1)).toEqual(["@cast", "body:r1-tumble", null]);
+      const now = yield* Clock.currentTimeMillis;
+      yield* applier!("body:r1-tumble", { persona: "alter-ego", stay: false }, now);
+      expect(yield* cast.wearing("r1-tumble")).toBe("alter-ego");
+      yield* applier!("body:r1-tumble", null, now + 1);
+      expect(body(yield* cast.view, "r1-tumble").why).toBe("lead");
     }).pipe(Effect.provide(layer));
   },
 );
