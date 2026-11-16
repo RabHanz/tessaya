@@ -4990,7 +4990,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     void input
       .direct(
         BATON_VOICE_WS_METHODS.call,
-        { kind: "read", op: "mood", args: mascotPersonaArg() },
+        // Its device: its owner's relationship when nobody else was just heard here (the device rule).
+        {
+          kind: "read",
+          op: "mood",
+          args: { ...mascotPersonaArg(), device: desktopDeviceId(NodeOS.hostname()) },
+        },
         8_000,
       )
       .then((answer) => {

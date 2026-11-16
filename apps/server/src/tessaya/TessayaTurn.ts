@@ -159,16 +159,19 @@ export const turnIdentity = (
             : 0,
       };
 
-/** Only his own turns move her mood (EMOTION-SYSTEM §4): his verified voice or his device, said to her, never a replay. */
-export const movesMood = (turn: TurnEnvelope): boolean => {
+/**
+ * The member a turn shows and moves her relationship with (EMOTION-SYSTEM §4, Director 16 Nov): their verified voice or
+ * their own device, said to her, alone, never a replay. Null (a guest, an unsure voice, a shared room) is the general
+ * mood only: nobody's relationship is shown to anyone else.
+ */
+export const moodMember = (turn: TurnEnvelope): string | null => {
   const { member, assurance } = turnIdentity(turn);
-  return (
-    member === OWNER_MEMBER_ID &&
-    assurance >= 2 &&
+  return assurance >= 2 &&
     turn.rehearsal !== true &&
     turn.addressed !== false &&
     turn.sharedRoom !== true
-  );
+    ? member
+    : null;
 };
 
 /** The origin a turn's tool calls run under. */
@@ -820,23 +823,27 @@ export const make = Effect.gen(function* () {
   });
 
   /**
-   * Her mood for the owner's turn (CS6), read before his turn counts, so a return after hours is still in it; then the
-   * turn is heard. Everyone else gets nothing in words: they see only the face.
+   * Her mood for the turn (CS6): an identified member's relationship over the general mood, read before their turn
+   * counts, so a return after hours is still in it; then the turn is heard. Anyone else gets the general mood, no why.
    */
   const moodFor = Effect.fn("TessayaTurn.moodFor")(function* (turn: TurnEnvelope) {
     const mood = yield* Effect.serviceOption(TessayaMood);
-    if (Option.isNone(mood) || !movesMood(turn)) return "";
+    if (Option.isNone(mood) || turn.rehearsal === true) return "";
+    const member = moodMember(turn);
+    yield* mood.value.here(turn.vessel.id, member);
     const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
-    // How he sounds moves her before this turn's line is read, so her answer already meets it.
+    const spoken = turn.vessel.kind === "device";
+    if (member === null) {
+      if (turn.addressed === false) return "";
+      return moodLine({ ...(yield* mood.value.view(turn.persona, zone)), why: [] }, spoken);
+    }
+    // How they sound moves her before this turn's line is read, so her answer already meets it.
     if (turn.emotion !== undefined)
-      yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion });
-    // Judged beside her reply, not before it: the cheap model's second would be his wait. Her face and next turn see it.
-    yield* mood.value.hisWords(turn.persona, turn.text).pipe(Effect.forkDetach);
-    const line = moodLine(
-      yield* mood.value.view(turn.persona, zone),
-      turn.vessel.kind === "device",
-    );
-    yield* mood.value.heard(turn.persona, zone);
+      yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion }, member);
+    // Judged beside her reply, not before it: the cheap model's second would be their wait. Her face and next turn see it.
+    yield* mood.value.hisWords(turn.persona, turn.text, member).pipe(Effect.forkDetach);
+    const line = moodLine(yield* mood.value.view(turn.persona, zone, member), spoken);
+    yield* mood.value.heard(turn.persona, zone, member);
     return line;
   });
 
@@ -1068,10 +1075,10 @@ export const make = Effect.gen(function* () {
     const learned = yield* Option.isNone(pools)
       ? learn
       : pools.value.run("learn", { vessel: turn.vessel.id, class: "background" }, learn);
-    // A correction the learning loop kept is his, model-judged, so it moves the persona that was corrected (CS6).
+    // A correction the learning loop kept is theirs, model-judged: it moves their relationship (CS6).
     const mood = yield* Effect.serviceOption(TessayaMood);
-    if ((learned.corrections ?? 0) > 0 && Option.isSome(mood) && movesMood(turn))
-      yield* mood.value.note(turn.persona, { kind: "correction" });
+    if ((learned.corrections ?? 0) > 0 && Option.isSome(mood) && moodMember(turn) !== null)
+      yield* mood.value.note(turn.persona, { kind: "correction" }, moodMember(turn));
     return learned;
   });
 

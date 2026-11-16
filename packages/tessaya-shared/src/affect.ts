@@ -52,6 +52,8 @@ export interface AffectSettings {
   readonly intensity: number;
   /** The slow bond's ceiling on warmth; 0 is warmth that starts afresh each day. */
   readonly bondCap: number;
+  /** Per device, by id: who it belongs to for her face, and whether it may show that person's relationship. */
+  readonly devices?: Readonly<Record<string, DeviceMood>>;
 }
 export const DEFAULT_AFFECT_SETTINGS: AffectSettings = {
   enabled: true,
@@ -201,7 +203,7 @@ const react = (
           reaction: add(at.reaction, { valence: 0.2 }),
           mood: add(at.mood, { confidence: 0.08, warmth: 0.02 }),
         },
-        reason: "he praised her",
+        reason: "they praised her",
       };
     case "apology":
       // Forgiven: what hurt is let go (a low reaction to above zero, half the low mood), and she warms.
@@ -214,12 +216,12 @@ const react = (
           },
           mood: { ...at.mood, valence: Math.max(at.mood.valence ?? 0, (at.mood.valence ?? 0) / 2) },
         },
-        reason: "he said sorry",
+        reason: "they said sorry",
       };
     case "warmth":
       return {
         state: { ...at, reaction: add(at.reaction, { valence: 0.12, warmth: 0.1 }) },
-        reason: "he was warm to her",
+        reason: "they were warm to her",
       };
     case "rude":
       // Hurt, not angry: valence falls, arousal barely moves, so the label is sad, never frustrated at him (§7).
@@ -229,7 +231,7 @@ const react = (
           reaction: add(at.reaction, { valence: -0.3, arousal: 0.03 }),
           mood: add(at.mood, { valence: -0.05 }),
         },
-        reason: "he was rude to her",
+        reason: "they were rude to her",
       };
     case "correction":
       return {
@@ -238,7 +240,7 @@ const react = (
           reaction: add(at.reaction, { arousal: 0.05, valence: -0.05 }),
           mood: add(at.mood, { confidence: -0.08 }),
         },
-        reason: "he corrected her",
+        reason: "they corrected her",
       };
     case "handled":
       return {
@@ -249,7 +251,7 @@ const react = (
       const change = VOICE_REACTION[event.emotion];
       return {
         state: change === undefined ? at : { ...at, reaction: add(at.reaction, change) },
-        reason: `he sounded ${event.emotion}`,
+        reason: `they sounded ${event.emotion}`,
       };
     }
     case "job":
@@ -277,8 +279,8 @@ const react = (
             : {}),
         },
         reason: away
-          ? `he came back after ${Math.round((now - at.seenAt!) / 3_600_000)} h`
-          : "he talked to her",
+          ? `they came back after ${Math.round((now - at.seenAt!) / 3_600_000)} h`
+          : "they talked to her",
       };
     }
   }
@@ -345,7 +347,7 @@ export const appraise = (
       failures,
       // A plain turn or a sound it doesn't know explains nothing, so it never pushes a reason out.
       log:
-        next.reason === "he talked to her" ||
+        next.reason === "they talked to her" ||
         (event.kind === "his_voice" && !Object.hasOwn(VOICE_REACTION, event.emotion))
           ? (s.log ?? [])
           : [...(s.log ?? []), { at: now, reason: next.reason }].slice(-LOG_KEEP),
@@ -488,7 +490,7 @@ export const affectView = (
     awayHours,
     guilt: ctx.guilt,
     why: [
-      ...(missing && awayHours !== null ? [`he has been away ${awayHours} h`] : []),
+      ...(missing && awayHours !== null ? [`they have been away ${awayHours} h`] : []),
       ...new Set(logged.reverse()),
     ].slice(0, 3),
   };
@@ -529,3 +531,123 @@ export const moodLine = (v: AffectView, spoken = false): string => {
     );
   return parts.join(" ");
 };
+
+/** Events about one person (their words, tone, voice, time away): their relationship. Tasks and jobs are the world's. */
+const PERSONAL: ReadonlySet<AffectEvent["kind"]> = new Set([
+  "his_turn",
+  "his_voice",
+  "correction",
+  ...HIS_TONES,
+]);
+
+/**
+ * A persona's whole affect, its one row (Director, 16 Nov): a general mood tied to no one (jobs, tasks, the clock), and
+ * a relationship per household member, by member id, each with its own bond, absence, hurt and why.
+ */
+export interface PersonaAffect {
+  readonly general: AffectState;
+  readonly people: Readonly<Record<string, AffectState>>;
+}
+
+/** A stored row: a row from before relationships held only the owner's turns, so it becomes his relationship. */
+export const personaAffectOf = (raw: unknown, at: number, owner: string): PersonaAffect => {
+  if (typeof raw !== "object" || raw === null) return { general: freshAffect(at), people: {} };
+  const row = raw as Partial<AffectState> & {
+    general?: Partial<AffectState>;
+    people?: Record<string, Partial<AffectState>>;
+  };
+  if (row.general === undefined)
+    return { general: freshAffect(at), people: { [owner]: { ...freshAffect(at), ...row } } };
+  return {
+    general: { ...freshAffect(at), ...row.general },
+    people: Object.fromEntries(
+      Object.entries(row.people ?? {}).map(([id, s]) => [id, { ...freshAffect(at), ...s }]),
+    ),
+  };
+};
+
+/** One event into the right layer: a personal one only for the member it is about; with nobody identified, none. */
+export const appraiseFor = (
+  p: PersonaAffect,
+  event: AffectEvent,
+  now: number,
+  bondCap: number,
+  member: string | null,
+): { readonly state: PersonaAffect; readonly reason: string | null } => {
+  if (!PERSONAL.has(event.kind)) {
+    const next = appraise(p.general, event, now, bondCap);
+    return { state: { ...p, general: next.state }, reason: next.reason };
+  }
+  if (member === null) return { state: p, reason: null };
+  const next = appraise(p.people[member] ?? freshAffect(now), event, now, bondCap);
+  return { state: { ...p, people: { ...p.people, [member]: next.state } }, reason: next.reason };
+};
+
+const heldAt = (s: AffectState, now: number) =>
+  s.hold != null && s.hold.until > now ? s.hold : null;
+
+/** The general mood with one person's relationship over it, as one state: theirs alone, never anyone else's. */
+const blend = (p: PersonaAffect, member: string | null, now: number): AffectState => {
+  const theirs = member === null ? undefined : p.people[member];
+  if (theirs === undefined) return p.general;
+  const g = decay(p.general, now);
+  const r = decay(theirs, now);
+  return {
+    ...r,
+    mood: add(g.mood, r.mood),
+    reaction: add(g.reaction, r.reaction),
+    hold: heldAt(r, now) ?? heldAt(g, now),
+    failures: g.failures ?? [],
+    log: [...(g.log ?? []), ...(r.log ?? [])].toSorted((a, b) => a.at - b.at),
+    at: now,
+  };
+};
+
+/** What she shows to `member` (identified now), or the general mood alone when nobody is (null). */
+export const personaView = (
+  p: PersonaAffect,
+  persona: string,
+  ctx: Parameters<typeof affectView>[2],
+  member: string | null,
+): AffectView => affectView(blend(p, member, ctx.now), persona, ctx);
+
+/** Per device: its person for her face (null: no one), and whether it may show their relationship. */
+export interface DeviceMood {
+  readonly owner?: string | null;
+  readonly show?: boolean;
+}
+
+/**
+ * A device's owner for her face: a member's own phone or desktop (a client vessel; unclaimed is the owner's) is theirs
+ * and shows it by default; a room vessel is no one's unless tied to someone, and then shows it only when turned on.
+ */
+export const deviceOwnerOf = (
+  device: { readonly via: "mqtt" | "client"; readonly member?: string | null | undefined } | null,
+  set: DeviceMood | undefined,
+  ownerId: string,
+): { readonly owner: string | null; readonly show: boolean } => {
+  const personal = device?.via === "client";
+  return {
+    owner: set?.owner !== undefined ? set.owner : personal ? (device?.member ?? ownerId) : null,
+    show: set?.show ?? personal,
+  };
+};
+
+/** How long a turn at a vessel decides whose relationship its face shows. */
+export const HERE_MS = 10 * 60_000;
+
+/**
+ * Whose relationship a device's face shows now: whoever was just identified there; nobody's after a guest or an unsure
+ * voice; else, quiet a while, its owner's when it may show it.
+ */
+export const faceMemberAt = (input: {
+  readonly owner: string | null;
+  readonly show: boolean;
+  readonly heard: { readonly member: string | null; readonly at: number } | null;
+  readonly now: number;
+}): string | null =>
+  input.heard !== null && input.now - input.heard.at < HERE_MS
+    ? input.heard.member
+    : input.show
+      ? input.owner
+      : null;

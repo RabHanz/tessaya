@@ -27,7 +27,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import {
   TurnOrigin,
   conversationKey,
-  movesMood,
+  moodMember,
   originOf,
   type TurnEnvelope,
 } from "./TessayaTurn.ts";
@@ -534,9 +534,13 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     said += sorry;
     say(sorry);
   }
-  // Her mood hears how his task went (CS6): an act's outcome or a broken turn, never what she read or said.
+  // Her mood hears how a task went (CS6): an act's outcome or a broken turn, never what she read or said.
   const mood = yield* Effect.serviceOption(TessayaMood);
-  if (Option.isSome(mood) && movesMood(turn) && (outcomes.length > 0 || Exit.isFailure(ran)))
+  if (
+    Option.isSome(mood) &&
+    moodMember(turn) !== null &&
+    (outcomes.length > 0 || Exit.isFailure(ran))
+  )
     yield* mood.value.note(turn.persona, {
       kind: "turn_outcome",
       ok: Exit.isSuccess(ran) && outcomes.every((o) => o.ok),

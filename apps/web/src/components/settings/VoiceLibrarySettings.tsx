@@ -12,7 +12,7 @@ import type {
 } from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { LoaderIcon, PauseIcon, PlayIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -32,12 +32,24 @@ import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
 import { VoicePlayground } from "./VoicePlayground";
 
-/** The owner's `mood` op: the spine's label for a persona, how strongly, and the reasons it logged. */
+/** The `mood` op: a persona's general mood, how strongly, why (the owner's), and the relationship rows you may see. */
 interface PersonaMood {
   readonly label: string;
   readonly intensity: number;
   readonly why?: ReadonlyArray<string>;
+  readonly people?: ReadonlyArray<{
+    readonly member: string;
+    readonly name: string;
+    readonly label: string;
+    readonly intensity: number;
+    readonly why: ReadonlyArray<string>;
+  }>;
 }
+
+const moodTitle = (name: string, mood: { readonly label: string; readonly intensity: number }) =>
+  `${name}: ${mood.label}${mood.intensity < 0.5 ? ", mildly" : ""}`;
+const becauseOf = (why: ReadonlyArray<string> | undefined) =>
+  (why ?? []).length > 0 ? `Because ${(why ?? []).join("; ")}.` : "Nothing has moved this lately.";
 
 const NO_CLOUD = "none";
 const voiceKey = (voice: Pick<LibraryVoiceView, "engine" | "id">) => `${voice.engine}:${voice.id}`;
@@ -81,7 +93,9 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
   const readMoods = async (personas: ReadonlyArray<PersonaVoiceRow>) => {
     const read = await Promise.all(
       personas.map(async (p) => {
-        const reply = await call("owner", "mood", { persona: p.id });
+        // A member's session can't make owner calls: it reads its own row without the general why.
+        const owner = await call("owner", "mood", { persona: p.id });
+        const reply = owner.ok ? owner : await call("read", "mood", { persona: p.id });
         return [p.id, reply.ok ? (reply.value as PersonaMood | null) : null] as const;
       }),
     );
@@ -197,7 +211,7 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
       <SettingsSection id="voice-moods" title="Inner state">
         <SettingsRow
           title="How each persona feels now, and why"
-          description="This is a working state that shapes how Tessaya talks. It is not a claim of feelings."
+          description="A general mood, and how she feels toward each person, shown only to them (the owner sees everyone). This is a working state that shapes how Tessaya talks. It is not a claim of feelings."
           control={
             <Button size="sm" variant="outline" onClick={() => void readMoods(library.personas)}>
               Check again
@@ -206,22 +220,26 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
         />
         {library.personas.map((persona) => {
           const mood = moods[persona.id];
-          return (
+          return mood == null ? (
             <SettingsRow
               key={persona.id}
-              title={
-                mood == null
-                  ? persona.name
-                  : `${persona.name}: ${mood.label}${mood.intensity < 0.5 ? ", mildly" : ""}`
-              }
-              description={
-                mood == null
-                  ? "The mood could not be read."
-                  : (mood.why ?? []).length > 0
-                    ? `Because ${(mood.why ?? []).join("; ")}.`
-                    : "Nothing has moved this mood lately."
-              }
+              title={persona.name}
+              description="The mood could not be read."
             />
+          ) : (
+            <Fragment key={persona.id}>
+              <SettingsRow
+                title={moodTitle(`${persona.name}, in general`, mood)}
+                description={becauseOf(mood.why)}
+              />
+              {(mood.people ?? []).map((person) => (
+                <SettingsRow
+                  key={person.member}
+                  title={moodTitle(`${persona.name}, toward ${person.name}`, person)}
+                  description={becauseOf(person.why)}
+                />
+              ))}
+            </Fragment>
           );
         })}
       </SettingsSection>

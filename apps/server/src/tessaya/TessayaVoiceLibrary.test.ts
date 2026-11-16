@@ -199,12 +199,30 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
             note: () => Effect.void,
             hisWords: () => Effect.void,
             heard: () => Effect.void,
+            here: () => Effect.void,
+            atDevice: () => Effect.die("not asked"),
+            inner: () =>
+              Effect.succeed({
+                general: {
+                  label: "neutral" as const,
+                  intensity: 0,
+                  energy: 0.8,
+                  awayHours: null,
+                  guilt: "off" as const,
+                  why: [],
+                },
+                people: [],
+              }),
+            moves: Stream.empty,
             changes: () => Stream.empty,
           });
           const felt = yield* call("read", "mood", { persona: "butler" }).pipe(
             Effect.provide(mood),
           );
-          assert.deepStrictEqual(felt, { ok: true, value: { label: "proud", intensity: 0.6 } });
+          assert.deepStrictEqual(felt, {
+            ok: true,
+            value: { label: "proud", intensity: 0.6, people: [] },
+          });
           assert.deepStrictEqual(asked, ["butler"]);
           assert.deepStrictEqual(yield* call("read", "mood"), { ok: true, value: null });
         }),
