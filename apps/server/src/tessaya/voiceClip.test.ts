@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   BASIC_CLEAN,
   cloneClipProblem,
+  deEss,
   highPass,
   isNearSilence,
   markSynthetic,
@@ -96,10 +97,33 @@ describe("a clip for a voice clone", () => {
       70,
     );
     expect(Math.max(...rumble.samples.subarray(RATE / 2).map(Math.abs))).toBeLessThan(1_200);
+    // A 2 s pause mid-clip comes back as about 0.35 s.
+    const pause = new Int16Array(speech.samples.length + 2 * RATE);
+    pause.set(speech.samples.subarray(0, 3 * RATE));
+    pause.set(speech.samples.subarray(3 * RATE), 5 * RATE);
+    const shortened = await BASIC_CLEAN.reference({ rate: RATE, samples: pause });
+    expect(shortened.samples.length / RATE).toBeGreaterThan(6.2);
+    expect(shortened.samples.length / RATE).toBeLessThan(6.6);
     const loud = normalise(speechy(6, { gain: 500 }));
     let peak = 0;
     for (const s of loud.samples) peak = Math.max(peak, Math.abs(s));
     expect(20 * Math.log10(peak / 32_768)).toBeLessThanOrEqual(-1);
     expect(20 * Math.log10(peak / 32_768)).toBeGreaterThan(-18);
+  });
+
+  it("finishes a line: sibilance down, voice kept, -16 dBFS", async () => {
+    const tone = (hz: number) =>
+      Int16Array.from({ length: RATE }, (_, i) =>
+        Math.round(6_000 * Math.sin((2 * Math.PI * hz * i) / RATE)),
+      );
+    const rms = (x: Int16Array) => Math.sqrt(x.reduce((n, v) => n + v * v, 0) / x.length);
+    const ess = deEss({ rate: RATE, samples: tone(8_000) }).samples;
+    const vowel = deEss({ rate: RATE, samples: tone(300) }).samples;
+    expect(rms(ess.subarray(RATE / 2)) / rms(tone(8_000))).toBeLessThan(0.7);
+    expect(rms(vowel) / rms(tone(300))).toBeGreaterThan(0.98);
+    const line = await BASIC_CLEAN.output(speechy(4, { gain: 1_000 }));
+    let peak = 0;
+    for (const s of line.samples) peak = Math.max(peak, Math.abs(s));
+    expect(20 * Math.log10(peak / 32_768)).toBeLessThanOrEqual(-1.5);
   });
 });

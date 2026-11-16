@@ -8,6 +8,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeModule from "node:module";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeStream from "node:stream";
 import * as NodeStreamPromises from "node:stream/promises";
@@ -60,7 +61,7 @@ import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import {
-  BASIC_CLEAN,
+  cloneClean,
   CLONE_MIN_SECONDS,
   type CloneClean,
   cloneClipProblem,
@@ -85,7 +86,7 @@ const CLONE_WEIGHTS = {
 const SPEAKER_MODEL_FILE = "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
 /** How a clone's reference and lines are cleaned; a better pipeline is provided here, not edited into cloneVoice. */
 export const CloneCleanStep = Context.Reference<CloneClean>("t3/tessaya/CloneCleanStep", {
-  defaultValue: () => BASIC_CLEAN,
+  defaultValue: () => cloneClean(deepFilter),
 });
 const CLONE_ID = /^(test-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
@@ -158,6 +159,34 @@ const ensureEmbedding = async (english: string, voice: string): Promise<string> 
 };
 
 type PocketFiles = NonNullable<ReturnType<typeof pocketFiles>>;
+
+/**
+ * DeepFilterNet 3, the `deep-filter` program (TESSAYA_DEEP_FILTER, else PATH), at 48 kHz with a 30 dB limit (no limit
+ * bends his timbre); null when it is not installed or fails, and the clean goes on without it.
+ */
+const deepFilter = async (pcm: Pcm): Promise<Pcm | null> => {
+  const dir = await NodeFS.promises.mkdtemp(NodePath.join(NodeOS.tmpdir(), "tessaya-df-"));
+  try {
+    const input = NodePath.join(dir, "in.wav");
+    await NodeFS.promises.writeFile(
+      input,
+      writeWav({ rate: 48_000, samples: resample(pcm, 48_000) }),
+    );
+    await new Promise<void>((resolve, reject) =>
+      NodeChildProcess.execFile(
+        process.env["TESSAYA_DEEP_FILTER"]?.trim() || "deep-filter",
+        ["-D", "-a", "30", "-o", NodePath.join(dir, "out"), input],
+        { timeout: 60_000, windowsHide: true },
+        (error) => (error === null ? resolve() : reject(error)),
+      ),
+    );
+    return readWav(await NodeFS.promises.readFile(NodePath.join(dir, "out", "in.wav")));
+  } catch {
+    return null;
+  } finally {
+    await NodeFS.promises.rm(dir, { recursive: true, force: true });
+  }
+};
 
 const runPocket = (files: PocketFiles, args: ReadonlyArray<string>) =>
   new Promise<void>((resolve, reject) =>

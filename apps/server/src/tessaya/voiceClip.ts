@@ -82,9 +82,11 @@ const percentile = (sorted: ReadonlyArray<number>, p: number) =>
 
 export const CLONE_MIN_SECONDS = 5;
 export const CLONE_MAX_SECONDS = 30;
-/** Speech over the room floor (loudest 5% of frames vs quietest 10%). His refs 16 Nov: A 32 dB sounded like him; B 25, C 20 drifted. */
-// shortcut: a cut from 3 clips; set it from the clone-quality lane once it has scored more.
-export const CLONE_MIN_SNR_DB = 28;
+/**
+ * Speech over the room floor (loudest 5% of frames vs quietest 10%), before cleaning. Clone-quality lane, 16 Nov: refs at
+ * 32 dB (cleaned or not) kept his voice, 25 and 20 drifted; his close wireless mic's clips sit at 36 to 49 (p10 to p90).
+ */
+export const CLONE_MIN_SNR_DB = 30;
 
 /**
  * Why a clip cannot make a clone, in a sentence for him, or null when it can: 5 to 30 s, not clipped, loud enough,
@@ -160,8 +162,8 @@ export const highPass = (pcm: Pcm, hz: number): Pcm => {
   return { rate: pcm.rate, samples: out };
 };
 
-/** Speech frames' RMS to -20 dBFS, never past a -1 dBFS peak. */
-export const normalise = (pcm: Pcm): Pcm => {
+/** Speech frames' RMS to `target` dBFS, never past a `ceiling` dBFS peak. */
+export const normalise = (pcm: Pcm, target = -20, ceiling = -1): Pcm => {
   const size = Math.round(pcm.rate / 50);
   const levels = frameLevels(pcm);
   const floor = percentile(
@@ -179,17 +181,107 @@ export const normalise = (pcm: Pcm): Pcm => {
   for (const s of pcm.samples) peak = Math.max(peak, Math.abs(s));
   if (count === 0) return pcm;
   const gain = Math.min(
-    (32_768 * 10 ** (-20 / 20)) / Math.sqrt(sum / count),
-    (32_768 * 10 ** (-1 / 20)) / peak,
+    (32_768 * 10 ** (target / 20)) / Math.sqrt(sum / count),
+    (32_768 * 10 ** (ceiling / 20)) / peak,
   );
   return { rate: pcm.rate, samples: Int16Array.from(pcm.samples, (s) => Math.round(s * gain)) };
 };
 
-// shortcut: the minimum clean (trim, 70 Hz high-pass, loudness); replace with voice-clone-quality-2026-11-16's winner.
-export const BASIC_CLEAN: CloneClean = {
-  reference: async (pcm) => normalise(trimSilence(highPass(pcm, 70))),
-  output: async (pcm) => normalise(highPass(pcm, 70)),
+/** A 2nd-order Butterworth low-pass. */
+export const lowPass = (pcm: Pcm, hz: number): Pcm => {
+  const w = Math.tan((Math.PI * hz) / pcm.rate);
+  const n = 1 / (1 + Math.SQRT2 * w + w * w);
+  const [b0, b1, b2] = [w * w * n, 2 * w * w * n, w * w * n];
+  const a1 = 2 * (w * w - 1) * n;
+  const a2 = (1 - Math.SQRT2 * w + w * w) * n;
+  const out = new Int16Array(pcm.samples.length);
+  let [x1, x2, y1, y2] = [0, 0, 0, 0];
+  for (let i = 0; i < out.length; i++) {
+    const x = pcm.samples[i]!;
+    const y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    [x2, x1, y2, y1] = [x1, x, y1, y];
+    out[i] = Math.max(-32_768, Math.min(32_767, Math.round(y)));
+  }
+  return { rate: pcm.rate, samples: out };
 };
+
+/** Pauses over 0.5 s cut to 0.35 s: a clone copies long gaps as hesitation. Quiet = under the floor + 12 dB. */
+export const shortenPauses = (pcm: Pcm): Pcm => {
+  const levels = frameLevels(pcm);
+  const floor = percentile(
+    levels.toSorted((a, b) => a - b),
+    0.1,
+  );
+  const frame = Math.round(pcm.rate / 50);
+  const keep: Array<[number, number]> = [];
+  let quietFrom = -1;
+  let start = 0;
+  for (let i = 0; i <= levels.length; i++) {
+    const quiet = i < levels.length && levels[i]! <= floor + 12;
+    if (quiet && quietFrom === -1) quietFrom = i;
+    if (!quiet && quietFrom !== -1) {
+      // 25 frames = 0.5 s; keep 17.5 frames of it, half on each side.
+      if (i - quietFrom > 25 && quietFrom > 0 && i < levels.length) {
+        keep.push([start, (quietFrom + 9) * frame]);
+        start = (i - 9) * frame;
+      }
+      quietFrom = -1;
+    }
+  }
+  keep.push([start, pcm.samples.length]);
+  const out = new Int16Array(keep.reduce((n, [a, b]) => n + b - a, 0));
+  let at = 0;
+  for (const [a, b] of keep) {
+    out.set(pcm.samples.subarray(a, b), at);
+    at += b - a;
+  }
+  return { rate: pcm.rate, samples: out };
+};
+
+/** Sibilance down: 10 ms frames where the band over 5 kHz holds over half the energy lose up to 6 dB of that band. */
+export const deEss = (pcm: Pcm): Pcm => {
+  if (pcm.rate < 12_000) return pcm;
+  // A Linkwitz-Riley split: the two bands sum back to the voice (phase only), so turning one down is a clean cut.
+  const high = highPass(highPass(pcm, 5_000), 5_000).samples;
+  const low = lowPass(lowPass(pcm, 5_000), 5_000).samples;
+  const out = new Int16Array(pcm.samples.length);
+  const size = Math.round(pcm.rate / 100);
+  let cut = 0;
+  for (let at = 0; at < out.length; at += size) {
+    let all = 0;
+    let hi = 0;
+    for (let i = at; i < Math.min(out.length, at + size); i++) {
+      all += pcm.samples[i]! ** 2;
+      hi += high[i]! ** 2;
+    }
+    const share = all > 0 ? hi / all : 0;
+    // Toward a cut of up to 0.5 (6 dB) in proportion to how far past half the band is, smoothed so it never clicks.
+    const want = share > 0.5 ? Math.min(0.5, share - 0.5) : 0;
+    for (let i = at; i < Math.min(out.length, at + size); i++) {
+      cut += (want - cut) * 0.01;
+      out[i] = Math.max(-32_768, Math.min(32_767, Math.round(low[i]! + (1 - cut) * high[i]!)));
+    }
+  }
+  return { rate: pcm.rate, samples: out };
+};
+
+/**
+ * The clone-quality lane's pipeline (tessaya-ops voice-clean prep-ref.sh / post-out.sh, 16 Nov). Reference: denoise
+ * (DeepFilterNet 3 at a 30 dB limit), 70 Hz high-pass, low-pass under the source's Nyquist (the denoiser invents hiss
+ * above it), long pauses shortened, ends trimmed, -20 dBFS. Lines: high-pass, de-ess, -16 dBFS with a -1.5 dBFS peak,
+ * never denoised (a clean reference already gives silence between words; a second pass only adds artifacts).
+ */
+export const cloneClean = (denoise: (pcm: Pcm) => Promise<Pcm | null>): CloneClean => ({
+  reference: async (pcm) => {
+    const clean = (await denoise(pcm)) ?? pcm;
+    const filtered = lowPass(highPass(clean, 70), Math.min(pcm.rate, clean.rate) * 0.47);
+    return normalise(trimSilence(shortenPauses(filtered)));
+  },
+  output: async (pcm) => normalise(deEss(highPass(pcm, 70)), -16, -1.5),
+});
+
+/** Without a denoiser. */
+export const BASIC_CLEAN: CloneClean = cloneClean(async () => null);
 
 /** Pocket's silent failure (no cloning weights: peak about -51 dBFS, no error): anything this quiet is not speech. */
 export const isNearSilence = (pcm: Pcm): boolean => {
