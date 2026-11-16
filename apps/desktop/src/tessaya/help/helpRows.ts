@@ -74,6 +74,7 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   job_grant: ["Let that job retry by itself", "A standing permission for one job."],
   job_revoke: ["Take that permission back", "Removes a standing permission."],
   job_handoff: ["Hand that job to Codex", "Moves it to another worker."],
+  app_command: ["Open the terminal", "Runs one of the app's own commands in your sessions window."],
   thread_move_into_tessaya: [
     "Move that terminal session into Tessaya",
     "Ends it in the terminal; the same conversation continues here. Asks first.",

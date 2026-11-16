@@ -74,6 +74,14 @@ export const CASES: ReadonlyArray<DictationCase> = [
     must: ["alerts", "mute"],
     never: ["mute. kept on mute", "mute kept on mute"],
   },
+  // 16 Nov: Haiku wrote "does it not hold?" for words it could not place; Sonnet once wrote "Batons" for "buttons".
+  {
+    id: "unclear-words-stay-as-said",
+    heard:
+      "I tested the buttons and they line up with the USB C port. And why is the top open? It doesn't want you.",
+    must: ["buttons", "USB-C"],
+    never: ["baton", "hold"],
+  },
   // His message so far (cleaned already) and the next press, cleaned as one: the correction crosses the presses.
   {
     id: "correction-across-presses",

@@ -83,6 +83,23 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
         dollars: expect.closeTo(0.00025, 8),
       },
     ]);
+    // A clean-up his plan answered on the desktop: tokens on the subscription, no dollars.
+    yield* api.subscriptionUsed({
+      model: "sonnet",
+      modelUsage: { "claude-sonnet-5-5": { inputTokens: 40, outputTokens: 12 } },
+    });
+    expect(
+      (yield* usage.totals({ since: 0, timeZone: "Asia/Karachi" })).find(
+        (row) => row.credential === "subscription",
+      ),
+    ).toMatchObject({
+      role: "cleanup",
+      billing: "subscription",
+      model: "claude-sonnet-5-5",
+      input: 40,
+      output: 12,
+      dollars: null,
+    });
 
     // The one cleanup setting's model, when it is Claude's; another provider's model keeps Haiku.
     const bodyModel = (call: number) =>

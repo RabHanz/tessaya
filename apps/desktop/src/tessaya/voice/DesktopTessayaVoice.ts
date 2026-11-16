@@ -91,6 +91,7 @@ import {
   saveDictionary,
   type VocabEntry,
   vocabularyChanges,
+  fromServer,
 } from "./dictionaryEdit.ts";
 import {
   addInput,
@@ -870,8 +871,12 @@ interface VoiceSettings {
   readonly dictationCleanupChosen?: boolean;
   /** The pill once said Claude can tidy dictation too; it never says it again. */
   readonly cleanupOffered?: boolean;
-  /** A family alias, on his subscription. */
+  /** A family alias: Sonnet unless he picked another (the Director, 16 Nov). */
   readonly cleanupModel: string;
+  /** He picked the model himself; a "haiku" an older build saved for him moves to Sonnet. */
+  readonly cleanupModelChosen?: boolean;
+  /** His own Claude plan first and his key only while it is out or at its limit, or his key first. */
+  readonly cleanupRoute: "subscription" | "key";
   readonly claudeBinary: string;
   /** His writing mode for an app, by exe name; anything else is chosen from the app. */
   readonly appModes: Readonly<Record<string, DictationMode>>;
@@ -995,7 +1000,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   gpuRecognition: "auto",
   // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
-  cleanupModel: "haiku",
+  cleanupModel: "sonnet",
+  cleanupRoute: "subscription",
   claudeBinary: "claude",
   appModes: {},
   wakeWords: FRESH_WAKE_WORDS,
@@ -1080,6 +1086,11 @@ export const readSettings = (path: string): VoiceSettings => {
       composerMic: saved["composerMic"] === "t3" ? "t3" : "tessaya",
       micAwake: micAwakeOf(saved["micAwake"]),
       showWords: saved["showWords"] !== false,
+      cleanupModel:
+        saved["cleanupModelChosen"] === true && typeof saved["cleanupModel"] === "string"
+          ? saved["cleanupModel"]
+          : "sonnet",
+      cleanupRoute: saved["cleanupRoute"] === "key" ? "key" : "subscription",
       openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       devicesMayLook: saved["devicesMayLook"] === true,
@@ -1374,6 +1385,12 @@ export interface DesktopTessayaVoiceInput {
     maxTokens: number,
     refused?: Refused,
   ) => Promise<string | null>;
+  /** A clean-up his own plan answered: its usage, for the one usage record on his server. */
+  readonly cleanupUsage?: (used: {
+    readonly model: string;
+    readonly usage?: unknown;
+    readonly modelUsage?: unknown;
+  }) => void;
   /** Every session on every environment, running or stopped, with Resume and New session. */
   readonly catalog?: ReturnType<typeof import("../sessions/catalogRows.ts").createCatalog>;
   /** Baton's self-update (D137): its rows, its action, and whether one is waiting. */
@@ -1804,6 +1821,29 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     saveDictionary(input.stateDir, next);
     syncServer(next);
   };
+  /**
+   * His one dictionary is his server's: words he taught on his phone, a Tessel or another computer come here too, and
+   * the file the recogniser reads follows. While a change of his has not reached it, his words are kept and sent.
+   */
+  const pullVocabulary = async () => {
+    const direct = input.direct;
+    if (direct === undefined) return;
+    const answer = (await direct(
+      BATON_VOICE_WS_METHODS.call,
+      { kind: "read", op: "vocabulary" },
+      8_000,
+    ).catch(() => null)) as { readonly ok?: unknown; readonly value?: unknown } | null;
+    if (answer?.ok !== true || !Array.isArray(answer.value)) return;
+    const local = readDictionary(input.stateDir, dictionary);
+    const { next, push } = fromServer(local, sentToServer, answer.value);
+    dictionary = next;
+    if (push) return saveVocabulary(next);
+    sentToServer = next;
+    if (JSON.stringify(next) !== JSON.stringify(local)) saveDictionary(input.stateDir, next);
+  };
+  const VOCABULARY_PULL_MS = 5 * 60_000;
+  setTimeout(() => void pullVocabulary(), 5_000).unref();
+  setInterval(() => void pullVocabulary(), VOCABULARY_PULL_MS).unref();
   const changeVocabulary = async (
     change: (
       entries: ReadonlyArray<VocabularyEntry>,
@@ -1988,7 +2028,14 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   let styleIndex: ReturnType<typeof makeStyleIndex> | null = null;
   const rewriter = makeRewriter({
     claudeBinary: settings.claudeBinary,
-    model: settings.cleanupModel,
+    model: () => settings.cleanupModel,
+    route: () => settings.cleanupRoute,
+    onSessionResult: (event) =>
+      input.cleanupUsage?.({
+        model: settings.cleanupModel,
+        usage: event["usage"],
+        modelUsage: event["modelUsage"],
+      }),
     workDir: NodePath.join(input.stateDir, "voice", "cleanup"),
     env: input.env,
     platform: input.platform,
@@ -7290,6 +7337,32 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         ],
       },
       {
+        id: "v.cleanupModel",
+        section: "Dictation",
+        label: "Clean-up model",
+        hint: "Sonnet fixes more misheard words from context; Haiku is a little quicker.",
+        kind: "choice",
+        value: settings.cleanupModel,
+        options: [
+          { value: "sonnet", label: "Sonnet" },
+          { value: "haiku", label: "Haiku" },
+        ],
+        disabled: settings.dictationCleanup !== "claude",
+      },
+      {
+        id: "v.cleanupRoute",
+        section: "Dictation",
+        label: "Clean up through",
+        hint: "Your Claude plan first, with your API key only while the plan is unavailable or at its limit; or your API key first.",
+        kind: "choice",
+        value: settings.cleanupRoute,
+        options: [
+          { value: "subscription", label: "Claude plan first" },
+          { value: "key", label: "API key first" },
+        ],
+        disabled: settings.dictationCleanup !== "claude",
+      },
+      {
         id: "v.dictation",
         section: "Dictation",
         label: "Dictate with",
@@ -8749,6 +8822,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.download") requestDictation();
     else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
       save({ dictationCleanupChosen: true, dictationCleanup: value });
+      syncCleanupSession();
+    } else if (id === "v.cleanupModel" && (value === "sonnet" || value === "haiku")) {
+      save({ cleanupModelChosen: true, cleanupModel: value });
+      syncCleanupSession();
+    } else if (id === "v.cleanupRoute" && (value === "subscription" || value === "key")) {
+      save({ cleanupRoute: value });
       syncCleanupSession();
     } else if ((id === "v.language:add" || id === "v.language:rm") && typeof value === "string") {
       // His personal model is a v3 fine-tune: the same languages.

@@ -122,6 +122,11 @@ export const BATON_RPC_REQUIRED_SCOPES = {
     AuthTessayaHandsHostScope,
   ],
   [BATON_DICTATION_WS_METHODS.cleanupApiStatus]: AuthOrchestrationReadScope,
+  // Usage rows for a clean-up his plan answered: the desktop app's own session only, as for the key.
+  [BATON_DICTATION_WS_METHODS.cleanupUsage]: [
+    AuthOrchestrationOperateScope,
+    AuthTessayaHandsHostScope,
+  ],
   // The desktop app's own session reads, changes and syncs its settings; an agent reaches them through /mcp's gate.
   [BATON_DESKTOP_SETTINGS_WS_METHODS.get]: [AuthOrchestrationReadScope, AuthTessayaHandsHostScope],
   [BATON_DESKTOP_SETTINGS_WS_METHODS.set]: [
@@ -295,6 +300,7 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_RECORD_WS_METHODS.append,
   BATON_DICTATION_WS_METHODS.cleanupApi,
   BATON_DICTATION_WS_METHODS.cleanupApiStatus,
+  BATON_DICTATION_WS_METHODS.cleanupUsage,
   BATON_DESKTOP_SETTINGS_WS_METHODS.sync,
   BATON_COMMITMENT_WS_METHODS.list,
   BATON_COMMITMENT_WS_METHODS.upsert,

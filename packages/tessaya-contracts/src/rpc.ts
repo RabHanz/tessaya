@@ -119,6 +119,7 @@ import {
   TessayaDictationCleanupInput,
   TessayaDictationCleanupResult,
   TessayaDictationCleanupStatus,
+  TessayaDictationCleanupUsageInput,
 } from "./dictation.ts";
 import {
   BATON_DESKTOP_SETTINGS_WS_METHODS,
@@ -859,6 +860,12 @@ const WsTessayaDictationCleanupApiStatusRpc = Rpc.make(
   },
 );
 
+const WsTessayaDictationCleanupUsageRpc = Rpc.make(BATON_DICTATION_WS_METHODS.cleanupUsage, {
+  payload: TessayaDictationCleanupUsageInput,
+  success: Schema.Struct({}),
+  error: EnvironmentAuthorizationError,
+});
+
 const WsTessayaDesktopSettingsGetRpc = Rpc.make(BATON_DESKTOP_SETTINGS_WS_METHODS.get, {
   payload: Schema.Struct({}),
   success: DesktopSettingsView,
@@ -1065,6 +1072,7 @@ const BATON_RPCS = [
   WsTessayaPromptLabRpc,
   WsTessayaDictationCleanupApiRpc,
   WsTessayaDictationCleanupApiStatusRpc,
+  WsTessayaDictationCleanupUsageRpc,
   WsTessayaDesktopSettingsGetRpc,
   WsTessayaDesktopSettingsSetRpc,
   WsTessayaDesktopSettingsSyncRpc,
