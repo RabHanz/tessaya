@@ -1,8 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalJsonInEffect:off globalDate:off
 /**
- * The R1's room voice loop as this server's child process (R1-CONNECT-UNIVERSAL §1, L1), run against its own hub and
- * brain from `<T3 home>/r1-voice` once an R1 is on the hub; a release build installs it there itself (R1VoiceInstall).
- * A loop on another machine already hearing the R1s, or `TESSAYA_TESSEL_LOOP=off` (or the old `TESSAYA_R1_LOOP`), keeps this server out of it.
+ * The R1's room voice loop as this server's child process, run against its own hub and brain from `<T3 home>/r1-voice`
+ * once an R1 is on the hub; a release build installs it there itself. A loop on another machine hearing the R1s keeps
+ * this one installed but silent: a standby that takes the room when that loop goes quiet and hands it back when it
+ * returns (A9). `TESSAYA_TESSEL_LOOP=off` (or the old `TESSAYA_R1_LOOP`) keeps this server out of it.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -29,11 +30,36 @@ import {
   type InstallProgress,
 } from "./R1VoiceInstall.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
+import { emitAction } from "../provenance/ActionLog.ts";
 
 /** What a room loop listens to: a bus client hearing it is a loop on another machine. */
 const VOICE_TOPIC = "freya/r1/any/voice/up";
 /** After the server starts, a loop elsewhere gets this long to reconnect before this server installs its own. */
 const SETTLE_MS = 60_000;
+/** A loop that just went quiet gets this long to reconnect (a network blip) before the standby here answers. */
+const TAKEOVER_MS = 3_000;
+/** After this server starts, a loop elsewhere gets this long to reconnect (its retries reach 30 s) before this one answers. */
+const STARTUP_MS = 30_000;
+
+/**
+ * One tick of the election: this server's loop answers the room only once no other loop has been heard on the hub for
+ * TAKEOVER_MS and the server has been up STARTUP_MS. Another loop always wins, so two never answer at once. Pure.
+ */
+export const elect = (input: {
+  readonly others: number;
+  readonly lastOtherAt: number;
+  readonly bornAt: number;
+  readonly now: number;
+}): { readonly answers: boolean; readonly lastOtherAt: number } => {
+  const lastOtherAt = input.others > 0 ? input.now : input.lastOtherAt;
+  return {
+    lastOtherAt,
+    answers:
+      input.others === 0 &&
+      input.now - lastOtherAt >= TAKEOVER_MS &&
+      input.now - input.bornAt >= STARTUP_MS,
+  };
+};
 
 export interface LoopPlan {
   readonly node: string;
@@ -114,6 +140,8 @@ export const voiceLine = (input: {
   readonly onHub: boolean;
   readonly available: boolean;
   readonly elsewhere: boolean;
+  /** Installed here, ready to take over. */
+  readonly standby: boolean;
   readonly install: InstallState;
   readonly planned: boolean;
   readonly running: boolean;
@@ -122,7 +150,6 @@ export const voiceLine = (input: {
   if (!input.onHub) return null;
   if (input.setting === "off")
     return `The ${DEVICE}'s voice is turned off on this server (TESSAYA_TESSEL_LOOP=off).`;
-  if (input.elsewhere) return `The ${DEVICE}'s voice runs on another machine.`;
   if (input.install.kind === "fetching") {
     const { done, total } = input.install.progress;
     const pct = total === 0 ? 0 : Math.floor((done / total) * 100);
@@ -130,6 +157,10 @@ export const voiceLine = (input: {
   }
   if (input.install.kind === "failed")
     return `The ${DEVICE}'s voice did not download: ${input.install.why}. Trying again in a minute.`;
+  if (input.elsewhere)
+    return input.standby
+      ? `The ${DEVICE}'s voice runs on another machine; this server stands by to take over.`
+      : `The ${DEVICE}'s voice runs on another machine.`;
   if (input.planned)
     return input.running
       ? `The ${DEVICE}'s voice runs on this server.`
@@ -170,8 +201,9 @@ export const layer = Layer.effect(
     const bornAt = yield* Clock.currentTimeMillis;
     let installState: InstallState = { kind: "idle" };
     let elsewhere = false;
-    /** A loop elsewhere was seen since the server started: this server does not fetch one of its own. */
-    let seenElsewhere = false;
+    let lastOtherAt = bornAt;
+    let answering = false;
+    let standby = false;
     let onHub = false;
     const bundle =
       R1_VOICE_BUNDLE !== null &&
@@ -215,10 +247,24 @@ export const layer = Layer.effect(
       const busKey = yield* hub.busLogin.pipe(Effect.map((l) => l.key));
       const devices = yield* home.devices;
       onHub = devices.some((d) => d.deviceId !== null && d.mqttUrl === null);
-      // Another machine's loop hears the R1s here (his own voice host): this server neither installs nor runs one.
-      // Ours counts as one while it runs: a second is a loop elsewhere, and two would both answer.
-      elsewhere = hub.busHears(VOICE_TOPIC) > (child === null ? 0 : 1);
-      seenElsewhere ||= elsewhere;
+      // Another loop hearing the R1s here (his own voice host) keeps ours silent; the hub drops one whose heartbeat stops.
+      const ours = child?.pid === undefined ? null : `tessaya-room-${child.pid}`;
+      const others = hub.busHears(VOICE_TOPIC).filter((id) => id !== ours);
+      elsewhere = others.length > 0;
+      const quietMs = now - lastOtherAt;
+      const vote = elect({ others: others.length, lastOtherAt, bornAt, now });
+      lastOtherAt = vote.lastOtherAt;
+      const answer = vote.answers;
+      if (answer !== answering) {
+        answering = answer;
+        yield* emitAction({
+          kind: answer ? "room.loop.takeover" : "room.loop.handback",
+          actor: { kind: "system", id: "room-loop", certainty: 1 },
+          subject: "room-loop",
+          outcome: answer ? "answering here" : "standing by",
+          data: { others, quietMs },
+        });
+      }
       const bundleMark = NodeFS.existsSync(NodePath.join(dir, BUNDLE_MARK))
         ? NodeFS.readFileSync(NodePath.join(dir, BUNDLE_MARK), "utf8")
         : null;
@@ -229,7 +275,6 @@ export const layer = Layer.effect(
         !byHand &&
         onHub &&
         setting !== "off" &&
-        !seenElsewhere &&
         installState.kind !== "fetching" &&
         now - bornAt >= SETTLE_MS &&
         (installState.kind !== "failed" || now - installState.at >= 60_000);
@@ -258,11 +303,11 @@ export const layer = Layer.effect(
         ).pipe(Effect.forkDetach);
         installState = { kind: "fetching", progress: { done: 0, total: 0 } };
       }
-      const installed =
+      standby =
         installState.kind !== "fetching" &&
-        !elsewhere &&
         NodeFS.existsSync(NodePath.join(dir, "app", "main.mjs")) &&
         NodeFS.existsSync(NodePath.join(dir, "node", "bin", "node"));
+      const installed = standby && answering;
       const folderEnv = installed
         ? parseEnvFile(
             yield* Effect.sync(() => {
@@ -297,7 +342,8 @@ export const layer = Layer.effect(
 
     yield* tick.pipe(
       Effect.ignoreCause({ log: true }),
-      Effect.repeat(Schedule.spaced("10 seconds")),
+      // Often enough that a handback stops ours within a couple of seconds of the other loop returning.
+      Effect.repeat(Schedule.spaced("2 seconds")),
       Effect.forkScoped,
     );
     yield* Effect.addFinalizer(() => Effect.sync(stop));
@@ -309,6 +355,7 @@ export const layer = Layer.effect(
           onHub,
           available: bundle !== null,
           elsewhere,
+          standby,
           install: installState,
           planned: planned !== null,
           running: child !== null,

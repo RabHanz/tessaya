@@ -177,8 +177,10 @@ export const connectMqtt = (input: {
   readonly subscribe: ReadonlyArray<string>;
   readonly onMessage: (topic: string, payload: Buffer) => void;
   readonly log: (line: string) => void;
+  /** Its heartbeat: pings every half of it; the broker drops it after 1.5× of silence. Default 30. */
+  readonly keepAliveS?: number;
 }): MqttClient => {
-  const KEEP_S = 30;
+  const KEEP_S = input.keepAliveS ?? 30;
   let wire: Wire | null = null;
   let up = false;
   let closed = false;
