@@ -9,6 +9,7 @@ import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaPeople } from "./TessayaPeople.ts";
+import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaRecordService, layer as recordLayer } from "./TessayaRecordService.ts";
 
 /** Which model each review asked ("haiku" first, undefined for the role's own), and what the fake answers. */
@@ -159,6 +160,54 @@ it.layer(base.pipe(Layer.provideMerge(oneShot), Layer.provideMerge(budgetSpent))
           assert.strictEqual(liked?.outcome, "liked");
           assert.include(liked?.detail ?? "", `row: ${decided!.id}`);
           assert.strictEqual(yield* react("stop", liked!.id), "I can't find that one.");
+        }),
+    );
+  },
+);
+
+const cards: Array<{ id: string; detail: string }> = [];
+const answers = new Map<string, number>();
+const inbox = Layer.succeed(TessayaPhoneInbox, {
+  mirror: (card: { id: string; detail: string }) => Effect.sync(() => void cards.push(card)),
+  promptAnswer: (id: string) => Effect.sync(() => answers.get(id) ?? null),
+} as unknown as TessayaPhoneInbox["Service"]);
+const askOneShot = Layer.succeed(TessayaOneShot, {
+  run: (() =>
+    Effect.succeed({
+      ...speak,
+      action: "ask",
+      text: "Want a reminder to stretch at three?",
+    } as never)) as TessayaOneShot["Service"]["run"],
+});
+
+it.layer(base.pipe(Layer.provideMerge(askOneShot), Layer.provideMerge(inbox)))(
+  "TessayaPulse asks",
+  (it) => {
+    it.effect(
+      "puts her question in the one inbox even with no vessel near, and learns from his answer there",
+      () =>
+        Effect.gen(function* () {
+          yield* TestClock.setTime(NOON);
+          const record = yield* TessayaRecordService;
+          yield* beat();
+          yield* TestClock.adjust("1 second");
+          yield* record.append(waiting);
+          yield* TestClock.adjust("1 minute");
+          assert.strictEqual((yield* beat()).decision?.action, "ask");
+          assert.deepStrictEqual(
+            cards.map((c) => c.detail),
+            ["Want a reminder to stretch at three?"],
+          );
+          answers.set(cards[0]!.id, 0);
+          yield* TestClock.adjust("1 minute");
+          // The yes is a liked on her ask's row; the sense after reads it back into the gate.
+          yield* beat();
+          const [liked] = yield* record.query({ kind: "pulse", limit: 1 });
+          assert.strictEqual(liked?.outcome, "liked");
+          yield* TestClock.adjust("1 minute");
+          const after = yield* beat();
+          assert.deepStrictEqual(after.state.awaiting, []);
+          assert.isAbove(after.state.learned.sessions ?? 0, 0);
         }),
     );
   },

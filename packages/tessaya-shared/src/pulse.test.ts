@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { pulseLog } from "./pulseLog.ts";
+
 import {
   addToDigest,
   eventFromRecord,
@@ -9,7 +11,6 @@ import {
   noticePatterns,
   patternEvents,
   PULSE_CATEGORIES,
-  pulseLog,
   reviewDue,
   nextReviewMs,
   type GateInput,

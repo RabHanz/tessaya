@@ -6,19 +6,9 @@
 import * as Schema from "effect/Schema";
 
 import { jobNotice } from "./jobs.ts";
+import { PULSE_CATEGORIES, PULSE_REACTIONS, type PulseCategory } from "./pulseLog.ts";
 
-export const PULSE_CATEGORIES = [
-  "jobs",
-  "sessions",
-  "messages",
-  "reminders",
-  "calendar",
-  "people",
-  "home",
-  "mood",
-  "patterns",
-] as const;
-export type PulseCategory = (typeof PULSE_CATEGORIES)[number];
+export { PULSE_CATEGORIES, PULSE_REACTIONS, type PulseCategory };
 
 export interface PulseEvent {
   /** Stable for the same happening, so it lands once. */
@@ -472,53 +462,3 @@ export const patternEvents = (
       urgent: false,
       told: false,
     }));
-
-/** Pulse rows that are his reactions (or his silence), not her decisions. */
-export const PULSE_REACTIONS: ReadonlySet<string> = new Set(["liked", "told_off", "ignored"]);
-
-const DID: Readonly<Record<string, string>> = {
-  speak: "Said it",
-  ask: "Asked",
-  act: "Set a reminder",
-  note: "Kept a note",
-  nothing: "Stayed quiet",
-};
-
-/**
- * The decision log as rows, newest first: each review with what she did and why, and his reaction to it (a reaction row
- * names its decision as `row: <id>`; the newest reaction wins).
- */
-export const pulseLog = (
-  entries: ReadonlyArray<{
-    readonly id: number;
-    readonly at: string;
-    readonly subject: string;
-    readonly outcome: string;
-    readonly detail: string;
-  }>,
-) => {
-  const reacted = new Map<number, "liked" | "told_off" | "stopped">();
-  // Entries come newest first, so the first reaction seen for a row is his latest.
-  for (const e of entries) {
-    const row = /row: (\d+)/.exec(e.detail)?.[1];
-    if (row === undefined || !PULSE_REACTIONS.has(e.outcome) || reacted.has(Number(row))) continue;
-    reacted.set(
-      Number(row),
-      e.detail.includes("stopped") ? "stopped" : e.outcome === "liked" ? "liked" : "told_off",
-    );
-  }
-  return entries
-    .filter((e) => !PULSE_REACTIONS.has(e.outcome))
-    .map((e) => {
-      const parts = e.detail.split(" · ");
-      return {
-        id: e.id,
-        at: e.at,
-        event: e.subject,
-        decision: DID[e.outcome] ?? e.outcome,
-        reason: parts.filter((p) => !p.startsWith("category: ")).join(" · "),
-        category: PULSE_CATEGORIES.find((c) => parts.includes(`category: ${c}`)) ?? null,
-        reaction: reacted.get(e.id) ?? null,
-      };
-    });
-};

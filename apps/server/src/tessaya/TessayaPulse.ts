@@ -58,9 +58,11 @@ import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaPeople } from "./TessayaPeople.ts";
+import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence, whereToSay } from "./TessayaPresence.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
 import { TessayaTurn } from "./TessayaTurn.ts";
+import { TurnLiveContext } from "./TurnLiveContext.ts";
 
 export const PULSE_STATE_KEY = "pulse.state";
 const DAY = 86_400_000;
@@ -223,6 +225,28 @@ export const sense = Effect.fn("TessayaPulse.sense")(function* (state: PulseStat
       if (key !== null) stats = observe(stats, key, Date.parse(row.at), clock);
     }
   }
+  // His answer to an ask's card (the one inbox: phone, desktop, voice): yes and stop are reactions, not now drops it.
+  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
+  if (Option.isSome(inbox))
+    for (const a of awaiting) {
+      const answer = yield* inbox.value.promptAnswer(a.id);
+      if (answer === null) continue;
+      awaiting = awaiting.filter((w) => w.id !== a.id);
+      if (answer === ASK_LATER || Option.isNone(record)) continue;
+      const row = (yield* record.value.query({ kind: "pulse", limit: 200 })).find(
+        (r) => r.ref === a.id && r.outcome === "ask",
+      );
+      if (row === undefined) continue;
+      yield* react(answer === ASK_YES ? "liked" : "stop", row.id);
+      const live = yield* Effect.serviceOption(TurnLiveContext);
+      if (answer === ASK_YES && Option.isSome(live))
+        yield* live.value.inject({
+          key: `pulse:${a.id}`,
+          source: "pulse",
+          expiresAfterTurns: 2,
+          line: `He just answered yes to your question "${row.subject}": follow it up if it fits.`,
+        });
+    }
   // Who is near which vessel: an arrival or a leaving is an event about that person.
   const presence = yield* Effect.serviceOption(TessayaPresence);
   const near: Record<string, string | null> = {};
@@ -469,6 +493,19 @@ export const review = Effect.fn("TessayaPulse.review")(function* (state: PulseSt
     spokenLastHour: spokenLastHour.length,
   });
   let { decision, held } = gated;
+  const logId = `pulse:${now}`;
+  // A question also goes to the one inbox, so he can answer it later, anywhere, even with no vessel near him.
+  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
+  const carded = decision.action === "ask" && Option.isSome(inbox);
+  if (carded)
+    yield* inbox.value.mirror({
+      id: logId,
+      title: "Tessaya asks",
+      detail: decision.text,
+      buttons: ASK_BUTTONS,
+      yes: ASK_YES,
+      cancel: ASK_LATER,
+    });
   const out = decision.action === "speak" || decision.action === "ask";
   if (out) {
     const member = decision.member ?? OWNER_MEMBER_ID;
@@ -479,8 +516,10 @@ export const review = Effect.fn("TessayaPulse.review")(function* (state: PulseSt
     );
     const devices = yield* Effect.serviceOption(HomeDevices);
     if (where === null || Option.isNone(devices)) {
-      decision = { ...decision, action: "note" };
-      held = "nobody to tell nearby";
+      if (!carded) {
+        decision = { ...decision, action: "note" };
+        held = "nobody to tell nearby";
+      }
     } else
       yield* devices.value
         .command(
@@ -508,7 +547,6 @@ export const review = Effect.fn("TessayaPulse.review")(function* (state: PulseSt
         .pipe(Effect.ignoreCause({ log: true }));
   }
   const said = decision.action === "speak" || decision.action === "ask";
-  const logId = `pulse:${now}`;
   yield* log(
     decision.text || "nothing worth raising",
     decision.action,
@@ -539,6 +577,11 @@ export const review = Effect.fn("TessayaPulse.review")(function* (state: PulseSt
     held,
   } satisfies ReviewResult;
 });
+
+/** An ask's card: "Yes" is a liked, "Stop asking" turns that kind off, "Not now" (and no answer) only drops it. */
+const ASK_BUTTONS = ["Yes", "Not now", "Stop asking these"];
+const ASK_YES = 0;
+const ASK_LATER = 1;
 
 /** One pulse: sense, then review if due. The loop and "check now" both run this. */
 export const beat = Effect.fn("TessayaPulse.beat")(function* () {
