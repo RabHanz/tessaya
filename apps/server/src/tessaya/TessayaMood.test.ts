@@ -452,16 +452,16 @@ it.effect(
   () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
-      const onnyx = yield* Layer.build(server("env-onnyx"));
+      const home = yield* Layer.build(server("env-home"));
       const cloud = yield* Layer.build(server("env-cloud"));
       const laptop = yield* Layer.build(server("env-laptop"));
       const solo = yield* Layer.build(server("env-solo"));
-      const link = (a: typeof onnyx, b: typeof onnyx) =>
+      const link = (a: typeof home, b: typeof home) =>
         Effect.gen(function* () {
           const x = Context.get(a, DeviceSync);
           yield* x.exchange(yield* Context.get(b, DeviceSync).exchange(yield* x.exchange({})));
         });
-      const lift = (ctx: typeof onnyx) =>
+      const lift = (ctx: typeof home) =>
         Effect.provideContext(
           Context.get(ctx, TessayaMood).note(
             "companion",
@@ -471,7 +471,7 @@ it.effect(
           ),
           ctx,
         );
-      const reaction = (ctx: typeof onnyx) =>
+      const reaction = (ctx: typeof home) =>
         Effect.provideContext(
           Effect.map(
             Effect.orDie(
@@ -492,26 +492,26 @@ it.effect(
         );
 
       // Both hubs hear the one lift, a moment apart; the laptop gets both copies from them.
-      yield* lift(onnyx);
+      yield* lift(home);
       yield* TestClock.adjust("300 millis");
       yield* lift(cloud);
       yield* lift(solo);
-      yield* link(onnyx, cloud);
+      yield* link(home, cloud);
       yield* link(cloud, laptop);
-      yield* link(onnyx, laptop);
+      yield* link(home, laptop);
       const once = yield* reaction(solo);
       assert.notStrictEqual(once, "[]");
-      for (const ctx of [onnyx, cloud, laptop]) assert.strictEqual(yield* reaction(ctx), once);
+      for (const ctx of [home, cloud, laptop]) assert.strictEqual(yield* reaction(ctx), once);
 
       // He lifts it again: a new act, so it counts again, once, on every server.
       yield* TestClock.adjust("20 seconds");
-      yield* lift(onnyx);
+      yield* lift(home);
       yield* lift(cloud);
       yield* lift(solo);
-      yield* link(onnyx, cloud);
+      yield* link(home, cloud);
       yield* link(cloud, laptop);
       const twice = yield* reaction(solo);
       assert.notStrictEqual(twice, once);
-      for (const ctx of [onnyx, cloud, laptop]) assert.strictEqual(yield* reaction(ctx), twice);
+      for (const ctx of [home, cloud, laptop]) assert.strictEqual(yield* reaction(ctx), twice);
     }).pipe(Effect.scoped),
 );
