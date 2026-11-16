@@ -159,6 +159,7 @@ import { buildThreadRouteParams } from "../threadRoutes";
 import { useTheme } from "../hooks/useTheme";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
+import { registerMenuAction } from "../shortcuts/dispatcher";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { FileMetadataThreadProvider } from "../hooks/FileMetadataThreadProvider";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
@@ -2809,12 +2810,16 @@ export default function ChatView(props: ChatViewProps) {
   // A focused desktop browser page forwards these chords as menu actions.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle the right panel
   useEffect(() => {
-    if (embedded) return;
-    return window.desktopBridge?.onMenuAction((action) => {
-      if (backgroundThread) return;
-      if (action === "rightPanel.toggle") toggleRightPanelStable();
-      else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
-    });
+    if (embedded || backgroundThread) return;
+    const disposeToggle = registerMenuAction("rightPanel.toggle", toggleRightPanelStable);
+    const disposeMaximize = registerMenuAction(
+      "rightPanel.toggleMaximized",
+      toggleRightPanelMaximizedStable,
+    );
+    return () => {
+      disposeToggle();
+      disposeMaximize();
+    };
   }, [embedded, backgroundThread, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
 
   usePasteToFocusComposer(embedded || backgroundThread ? null : activeThreadId, composerRef);

@@ -156,3 +156,16 @@ export const BRAIN_ROLE_LABELS: Readonly<Record<BrainRole, string>> = {
   intent: "Reading a sentence",
   synopsis: "Session summaries",
 };
+
+/** Provider logins that bill per token: Claude's key, Bedrock or a custom endpoint, Codex's key, Gemini's key. */
+const API_AUTH_TYPES: ReadonlySet<string> = new Set([
+  "apiKey",
+  "bedrock",
+  "customEndpoint",
+  "gemini-api-key",
+  "agent-platform",
+]);
+
+/** Who pays for a provider instance's turns, from its login (`ServerProviderAuth.type`); unknown is his plan. */
+export const billingOfAuth = (type: string | undefined): "subscription" | "apiKey" =>
+  type !== undefined && API_AUTH_TYPES.has(type) ? "apiKey" : "subscription";

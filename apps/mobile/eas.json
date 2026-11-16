@@ -79,6 +79,19 @@
       "ios": {
         "image": "macos-tahoe-26.6-xcode-27.1"
       }
+    },
+    "tessaya": {
+      "extends": "production",
+      "env": {
+        "APP_VARIANT": "tessaya",
+        "NODE_OPTIONS": "--max-old-space-size=4096",
+        "SOURCEMAP_FILE": "/tmp/t3code-ios-main.jsbundle.map"
+      },
+      "channel": "tessaya",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -x lintVitalAnalyzeRelease -x lintVitalRelease"
+      }
     }
   },
   "submit": {
@@ -91,6 +104,11 @@
       },
       "android": {
         "track": "internal"
+      }
+    },
+    "tessaya": {
+      "ios": {
+        "appleTeamId": "W6HK93B4Q5"
       }
     }
   }

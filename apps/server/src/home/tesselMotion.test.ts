@@ -1,0 +1,53 @@
+import { describe, expect, it } from "@effect/vitest";
+
+import { freshSeen, motionMoment } from "./tesselMotion.ts";
+
+const motion = (kind: string, more: Record<string, unknown> = {}) => ({
+  v: 1,
+  kind,
+  conf: 0.6,
+  intensity: 10,
+  in: { session: false, call: false, period: "day" },
+  ...more,
+});
+const place = (placement: string) => ({ v: 1, placement, pconf: 0.9 });
+
+describe("motionMoment", () => {
+  it("turns the firmware's moves into her moments, a strong one cutting into a talk", () => {
+    const seen = freshSeen();
+    const talking = { in: { session: true, call: false } };
+    expect(motionMoment("event/motion", motion("shake", talking), seen, 0)).toEqual({
+      how: "shaken",
+      strong: false,
+      busy: true,
+    });
+    expect(
+      motionMoment("event/motion", motion("shake", { ...talking, intensity: 80 }), seen, 0),
+    ).toEqual({ how: "shaken", strong: true, busy: false });
+    expect(motionMoment("event/motion", motion("drop", { conf: 1 }), seen, 0)?.how).toBe("dropped");
+    // Free fall with no landing, face down (her do-not-disturb): nothing to say.
+    expect(motionMoment("event/motion", motion("drop", { conf: 0.5 }), seen, 0)).toBeNull();
+    expect(motionMoment("event/motion", motion("face_down"), seen, 0)).toBeNull();
+  });
+
+  it("hears a gentle pick-up in the placement alone, once per handling", () => {
+    // 16 Nov 07:30: dock to carried with no lift event.
+    const seen = freshSeen();
+    expect(motionMoment("state/placement", place("dock"), seen, 0)).toBeNull();
+    expect(motionMoment("state/placement", place("handheld"), seen, 1)?.how).toBe("lifted");
+    expect(motionMoment("state/placement", place("carried"), seen, 2)?.how).toBe("carried");
+    expect(motionMoment("state/placement", place("desk"), seen, 3)?.how).toBe("setdown");
+
+    motionMoment("event/motion", motion("lift"), seen, 100_000);
+    expect(motionMoment("state/placement", place("handheld"), seen, 101_000)).toBeNull();
+  });
+
+  it("knows a placement move is during a talk from the session events", () => {
+    const seen = freshSeen();
+    motionMoment("state/placement", place("desk"), seen, 0);
+    motionMoment("event/session/start", null, seen, 0);
+    expect(motionMoment("state/placement", place("handheld"), seen, 1)?.busy).toBe(true);
+    motionMoment("event/session/end", null, seen, 2);
+    expect(motionMoment("state/placement", place("desk"), seen, 3)?.busy).toBe(false);
+  });
+});

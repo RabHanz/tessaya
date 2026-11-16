@@ -2,7 +2,13 @@ import { BrainCredential } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { brainRoute, credentialOf, keyRefusal, type BrainSettings } from "./brainRoutes.ts";
+import {
+  billingOfAuth,
+  brainRoute,
+  credentialOf,
+  keyRefusal,
+  type BrainSettings,
+} from "./brainRoutes.ts";
 
 const settings = (over: Partial<BrainSettings> = {}): BrainSettings => ({
   brainCredentials: {},
@@ -88,5 +94,12 @@ describe("brain routes", () => {
     expect(["apiKey:mistral", "instance:", "instance:-x", "subscription:"].some(valid)).toBe(false);
     expect(credentialOf("instance:codex")).toEqual({ kind: "instance", instanceId: "codex" });
     expect(credentialOf("apiKey:openai")).toEqual({ kind: "apiKey", key: "openai" });
+  });
+
+  it("bills a provider instance's turns to a key only when its login is one", () => {
+    for (const type of ["apiKey", "bedrock", "customEndpoint", "gemini-api-key", "agent-platform"])
+      expect(billingOfAuth(type)).toBe("apiKey");
+    for (const type of ["chatgpt", "oauth-personal", "subscription", "pi", undefined])
+      expect(billingOfAuth(type)).toBe("subscription");
   });
 });

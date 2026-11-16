@@ -5,7 +5,7 @@
  */
 import { TessayaJobTool, WorkSessionId } from "@t3tools/tessaya-contracts";
 import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { AuthMcpClientAccess, OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
@@ -205,6 +205,44 @@ const ScheduleDeleteTool = Tool.make("schedule_delete", {
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, false);
 
+const EnvironmentMaintainTool = Tool.make("environment_maintain", {
+  ...shared,
+  description: JOB_TOOL_TEXT.environment_maintain,
+  parameters: Schema.Struct({
+    op: Schema.Literals([
+      "providers",
+      "refresh_providers",
+      "sign_in_methods",
+      "sign_out",
+      "clean_storage",
+      "reclaim_space",
+    ]),
+    provider: Schema.optionalKey(Text(120)),
+    method: Schema.optionalKey(Text(200)),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, false);
+const AccessManageTool = Tool.make("access_manage", {
+  ...shared,
+  description: JOB_TOOL_TEXT.access_manage,
+  parameters: Schema.Struct({
+    op: Schema.Literals(["links", "link", "unlink", "share_thread", "answer_link_request"]),
+    url: Schema.optionalKey(Text(400)),
+    pairing_code: Schema.optionalKey(Text(200)),
+    access: Schema.optionalKey(AuthMcpClientAccess),
+    environment_id: Schema.optionalKey(Text(200)),
+    thread_id: Schema.optionalKey(Text(200)),
+    answer: Schema.optionalKey(Schema.Literals(["decline", "use_existing", "link"])),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const JobTools = [
   CloudDispatchTool,
   ProjectAddTool,
@@ -219,6 +257,8 @@ export const JobTools = [
   SplitTool,
   StopTool,
   ScheduleTool,
+  EnvironmentMaintainTool,
+  AccessManageTool,
 ] as const;
 
 /** What one job tool takes, by its name. */

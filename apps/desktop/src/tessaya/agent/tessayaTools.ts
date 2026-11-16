@@ -4,6 +4,11 @@
  * does through the host. The host is the companion and the voice side; this file holds no Electron
  * and no I/O of its own, so each tool's arguments are checked here, before anything is touched.
  */
+import {
+  appCommandLine,
+  scriptCommand,
+  VOICED_APP_COMMANDS,
+} from "@t3tools/tessaya-shared/appCommands";
 import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
 import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
 import type { VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
@@ -121,6 +126,8 @@ export interface ToolHost {
   };
   /** A thread's session between a terminal and Tessaya (the server's own guards apply; he is asked first). */
   readonly threadSession?: (op: "move" | "open", threadId: string) => Promise<string>;
+  /** Runs one of the app's own commands in T3's window, by name, as its key would; what came of it. */
+  readonly appCommand?: (command: string) => Promise<"ran" | "idle" | "absent">;
   readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
   /** How loud her voice plays on this computer, changed by his words; the next sentence plays at it. */
   readonly speakingVolume?: (to: VolumeTo) => string;
@@ -1347,6 +1354,24 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
           ...(typeof a["note"] === "string" ? { note: a["note"].slice(0, 1000) } : {}),
         }),
       }),
+    },
+    {
+      name: "app_command",
+      description:
+        "Run one of the app's own commands in his sessions window, as its keyboard shortcut would: open or close a view, panel, terminal, preview or picker, move between sessions, show usage. `command` is its name (usage.open, terminal.split, sidebar.toggle); `script` instead runs a project script by its id. A toggle run again undoes it; settle and pin are undone with thread.undo or again. Not for settings (settings_set) or dictation (dictation_start).",
+      inputSchema: object({
+        command: { enum: [...VOICED_APP_COMMANDS] },
+        script: { type: "string" },
+      }),
+      run: async (a) => {
+        const script = typeof a["script"] === "string" ? scriptCommand(str(a, "script", 80)) : null;
+        const command = script ?? str(a, "command", 80);
+        if (script === null && !(VOICED_APP_COMMANDS as ReadonlyArray<string>).includes(command))
+          return { text: `${command} is not one of the app's commands.` };
+        if (host.appCommand === undefined)
+          return { text: "His sessions window is not on this computer." };
+        return { text: appCommandLine(command, await host.appCommand(command)) };
+      },
     },
     {
       name: "thread_move_into_tessaya",

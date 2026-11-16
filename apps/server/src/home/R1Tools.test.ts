@@ -163,6 +163,16 @@ describe("the room's tools for a replay", () => {
     expect(jobVerdict("schedule_pause", { id: "t1", on: false }, false)).toBe("allow");
     expect(jobVerdict("schedule_pause", { id: "t1", on: true }, false)).toHaveProperty("card");
     expect(jobVerdict("cloud_dispatch", { repo: "acme/app" }, false)).toBe("allow");
+    // Upkeep and access (16 Nov parity): reads go ahead; deleting, signing out, a restart and any access change wait.
+    expect(jobVerdict("environment_maintain", { op: "refresh_providers" }, false)).toBe("allow");
+    for (const op of ["clean_storage", "reclaim_space", "sign_out"])
+      expect(jobVerdict("environment_maintain", { op }, false)).toHaveProperty("card");
+    expect(jobVerdict("access_manage", { op: "links" }, false)).toBe("allow");
+    for (const op of ["link", "unlink", "share_thread", "answer_link_request"])
+      expect(jobVerdict("access_manage", { op }, false)).toHaveProperty("card");
+    // Neither has a reach of its own, so only his verified voice may use them at all.
+    expect(stepUpNeeds("access_manage", 1)).toBe(2);
+    expect(stepUpNeeds("environment_maintain", 1)).toBe(2);
     // The prompt lab: trying variants is free to ask for; making one live, or rolling back, waits for his yes.
     expect(jobVerdict("tessaya_prompt_lab", { action: "run" }, false)).toBe("allow");
     expect(jobVerdict("tessaya_prompt_lab", { action: "promote" }, false)).toHaveProperty("card");

@@ -3,6 +3,7 @@
  * anything he could at this keyboard. Each tool call comes here before it runs, whichever harness
  * made it, and code decides. A model's reply can never widen this.
  */
+import { appCommandAsks } from "./appCommands.ts";
 import { highRiskSubject } from "./intentParser.ts";
 import { detectSecret } from "./memory.ts";
 import { dangerousCommand, sensitiveAction } from "./screenCompanion.ts";
@@ -178,6 +179,8 @@ export const ROOM_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "schedule_pause",
   "schedule_delete",
   "project_add",
+  "environment_maintain",
+  "access_manage",
 ]);
 /** Tools only a remote hands session has; the assistant's own table never holds them. */
 export const REMOTE_ONLY_TOOLS: ReadonlySet<string> = new Set([
@@ -194,6 +197,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   ...BATON_QUIET,
   ...BATON_POINTER,
   "act_batch",
+  "app_command",
   "drag",
   "type_text",
   "press_keys",
@@ -226,6 +230,8 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "schedule_pause",
   "schedule_delete",
   "project_add",
+  "environment_maintain",
+  "access_manage",
   "text_transform",
   "text_undo",
   "text_command",
@@ -347,6 +353,15 @@ const judgeTessayaTool = (name: string, call: ToolCall, context: JudgeContext): 
   }
   const outgoing = context.tainted && context.textIsHis !== true;
   switch (name) {
+    case "app_command": {
+      // A view of his own app is free; a send, a closed terminal or a script waits for his yes.
+      const why = appCommandAsks(
+        typeof call.input["script"] === "string"
+          ? `script.${call.input["script"]}.run`
+          : String(call.input["command"] ?? ""),
+      );
+      return why === null ? { verdict: "allow" } : { verdict: "ask", why };
+    }
     case "drag":
       return { verdict: "ask", why: "It wants to drag something." };
     case "type_text":
@@ -498,6 +513,25 @@ const judgeTessayaTool = (name: string, call: ToolCall, context: JudgeContext): 
         : { verdict: "allow" };
     case "schedule_delete":
       return { verdict: "ask", why: "It would delete a scheduled task." };
+    case "environment_maintain":
+      // Reading and re-checking the assistants changes nothing; the rest deletes, signs out or restarts.
+      return call.input["op"] === "providers" ||
+        call.input["op"] === "refresh_providers" ||
+        call.input["op"] === "sign_in_methods"
+        ? { verdict: "allow" }
+        : call.input["op"] === "clean_storage"
+          ? {
+              verdict: "ask",
+              why: "It would delete old worktrees and files by your clean-up rules.",
+            }
+          : call.input["op"] === "reclaim_space"
+            ? { verdict: "ask", why: "It would restart the server to reclaim space.", risky: true }
+            : { verdict: "ask", why: "It would sign an assistant out.", risky: true };
+    case "access_manage":
+      // Every change hands or takes access to his work: his yes, every time.
+      return call.input["op"] === "links"
+        ? { verdict: "allow" }
+        : { verdict: "ask", why: "It would change who can reach your work.", risky: true };
     case "project_add":
       // A new folder, a clone or a registered checkout on this computer: his yes, every time.
       return { verdict: "ask", why: "It would add a project to this computer." };

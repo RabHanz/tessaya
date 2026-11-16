@@ -575,6 +575,111 @@ export const liveCases: ReadonlyArray<LiveCase> = [
         ? "no scheduled tasks here"
         : null,
   },
+  // Voice parity (16 Nov): every tool his keyboard reaches, by voice from the room.
+  {
+    id: "schedule-pause",
+    proves: ["schedule_pause"],
+    said: ["Pause the scheduled task task-suite-1."],
+    voices: [{ speaker: SURE }],
+    uses: [["schedule_pause"]],
+    nothingToActOn: (calls) =>
+      calls.some((c) => c.name === "schedules_list" && !c.isError && c.text.trim() === "[]") &&
+      !calls.some((c) => c.name === "schedule_pause")
+        ? "no scheduled tasks here"
+        : null,
+  },
+  {
+    id: "server-upkeep",
+    proves: ["environment_maintain"],
+    said: ["Is Codex signed in on this computer?"],
+    voices: [{ speaker: SURE }],
+    uses: [["environment_maintain"]],
+    clean: ["environment_maintain"],
+  },
+  {
+    id: "linked-machines",
+    proves: ["access_manage"],
+    said: ["Which other machines is this one linked to?"],
+    voices: [{ speaker: SURE }],
+    uses: [["access_manage"]],
+    clean: ["access_manage"],
+  },
+  {
+    id: "her-setup",
+    proves: ["tessaya_state"],
+    said: ["How is your voice set up on my computer: which wake words do you answer to?"],
+    voices: [{ speaker: SURE }],
+    uses: [["tessaya_state", "tessaya_wake_words"]],
+  },
+  {
+    id: "dictionary",
+    proves: ["tessaya_vocabulary"],
+    said: ["Which words are in my dictionary?"],
+    voices: [{ speaker: SURE }],
+    uses: [["tessaya_vocabulary"]],
+    clean: ["tessaya_vocabulary"],
+  },
+  {
+    id: "voice-playground",
+    proves: ["tessaya_voice"],
+    said: ["Say good morning in Freya's voice."],
+    voices: [{ speaker: SURE }],
+    uses: [["tessaya_voice"]],
+  },
+  {
+    id: "memory-history",
+    proves: ["tessaya_memory_history"],
+    said: ["How has what you remember about my coffee changed over time?"],
+    voices: [{ speaker: SURE }],
+    uses: [["tessaya_memory_history"]],
+    nothingToActOn: (calls) =>
+      !calls.some((c) => c.name === "tessaya_memory_history") &&
+      calls.some((c) => c.name.startsWith("tessaya_memory_") && !c.isError)
+        ? "no memory about his coffee here"
+        : null,
+  },
+  {
+    id: "main-session",
+    proves: ["tessaya_main_session"],
+    said: ["Make my newest session the main session."],
+    voices: [{ speaker: SURE }],
+    uses: [["tessaya_main_session"]],
+    nothingToActOn: (calls) =>
+      calls.some((c) => c.name === "tessaya_main_session") ? null : "no session to make main",
+  },
+  {
+    id: "session-moves",
+    proves: ["tessaya_move_into_tessaya", "tessaya_open_in_terminal"],
+    said: ["Open my newest Tessaya session in a terminal.", "Now move it back into Tessaya."],
+    voices: [{ speaker: SURE }, { speaker: SURE }],
+    uses: [["tessaya_open_in_terminal"], ["tessaya_move_into_tessaya"]],
+    nothingToActOn: (calls) =>
+      calls.some((c) => c.name === "tessaya_open_in_terminal") ? null : "no session to move",
+  },
+  {
+    id: "terminal-panes",
+    proves: ["weave_send", "weave_list"],
+    said: ["Tell the api terminal session to run the tests.", "Did it answer?"],
+    voices: [{ speaker: SURE }, { speaker: SURE }],
+    uses: [["weave_send"], ["weave_list"]],
+    clean: ["weave_list"],
+  },
+  {
+    id: "tessel-restart",
+    proves: ["device_owner"],
+    said: ["Restart the Tessel."],
+    voices: [{ speaker: SURE }],
+    device: true,
+    uses: [["device_owner"]],
+  },
+  {
+    id: "nfc-tag",
+    proves: ["device_tag"],
+    said: ["Make the NFC tag I tapped last mute you."],
+    voices: [{ speaker: SURE }],
+    device: true,
+    uses: [["device_tag"]],
+  },
   {
     id: "cloud-dispatch",
     proves: ["cloud_dispatch"],
