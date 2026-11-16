@@ -14,7 +14,7 @@ import * as NodeReadline from "node:readline";
 
 import type { CaretContext } from "@t3tools/tessaya-shared/dictationFit";
 import { outsideLanguages } from "@t3tools/tessaya-shared/dictationLanguages";
-import { encodeWav, SET_ASIDE, type SttProvider } from "@t3tools/tessaya-voice";
+import { encodeWav, SET_ASIDE, type HeardScores, type SttProvider } from "@t3tools/tessaya-voice";
 
 import { makeFramer } from "./pcm.ts";
 import type { CaretGeometry } from "./pillGhost.ts";
@@ -412,6 +412,8 @@ export interface DictationSidecar {
     model?: string | null,
     background?: boolean,
   ) => Promise<string>;
+  /** Each word's confidence behind a text `transcribe` recently returned; null when the sidecar sent none. */
+  readonly scored: (text: string) => HeardScores | null;
   /** Loads the speech model now. Resolves with the load time in ms; waits as long as the load shows progress. */
   readonly preload: () => Promise<number>;
   readonly paste: (text: string) => Promise<void>;
@@ -560,6 +562,8 @@ export const startDictationSidecar = (input: {
     readonly sentAt: number;
   };
   const pending = new Map<number, Pending>();
+  /** The last few clips' scores by their text: the wake check and the room share the sidecar with turns. */
+  const scores = new Map<string, HeardScores>();
   let deviceWaiters: Array<(devices: ReadonlyArray<SidecarDevice>) => void> = [];
   let failures = 0;
 
@@ -702,6 +706,20 @@ export const startDictationSidecar = (input: {
             roundTripMs: Date.now() - sentAt,
             model: typeof event["model"] === "string" ? event["model"] : null,
           });
+        if (
+          error === undefined &&
+          Array.isArray(event["words"]) &&
+          typeof event["model"] === "string" &&
+          typeof event["text"] === "string"
+        ) {
+          scores.delete(event["text"]);
+          scores.set(event["text"], {
+            words: event["words"] as HeardScores["words"],
+            // The repair bounds are keyed by the model file's stem.
+            recogniser: event["model"].replace(/\.gguf$/i, ""),
+          });
+          if (scores.size > 8) scores.delete(scores.keys().next().value!);
+        }
         return settle(
           event["id"] as number,
           error === undefined ? { value: event["text"] } : { error },
@@ -773,6 +791,7 @@ export const startDictationSidecar = (input: {
         if (pid !== undefined) input.recognising?.(pid, false);
       }
     },
+    scored: (text) => scores.get(text) ?? null,
     preload: () => call<number>({ cmd: "load" }, true),
     paste: (text) => call<void>({ cmd: "paste", text }),
     pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),
@@ -833,6 +852,7 @@ export const makeSidecarStt = (
   onModelFailed?: (file: string, error: unknown) => void,
 ): SttProvider => ({
   name: "parakeet",
+  scores: (text) => sidecar.scored(text),
   transcribe: async (pcm) => {
     const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "baton-voice-"));
     const file = NodePath.join(dir, "utterance.wav");

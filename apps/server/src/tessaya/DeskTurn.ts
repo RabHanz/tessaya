@@ -51,6 +51,16 @@ export const DeskTurnBody = Schema.Struct({
   context: Schema.optional(Schema.String.check(Schema.isMaxLength(4000))),
   persona: Schema.optional(Schema.String.check(Schema.isMaxLength(80))),
   speaker: Schema.optional(Schema.NullOr(Speaker)),
+  /** His spoken words with the recogniser's confidence, and that recogniser, for transcript repair (V-018). */
+  words: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        text: Schema.String.check(Schema.isMaxLength(64)),
+        p: Schema.NullOr(Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
+      }),
+    ).check(Schema.isMaxLength(200)),
+  ),
+  recogniser: Schema.optional(Schema.String.check(Schema.isMaxLength(64))),
   project: Schema.optional(Schema.NullOr(Schema.String.check(Schema.isMaxLength(200)))),
   /** This desktop's id in the device registry. */
   vessel: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
@@ -155,6 +165,8 @@ export const deskTurnStream = (
         ...(from.kind === "desktop" && body.speaker?.print !== undefined
           ? { print: body.speaker.print }
           : {}),
+        ...(body.words === undefined ? {} : { words: body.words }),
+        ...(body.recogniser === undefined ? {} : { recogniser: body.recogniser }),
         project: body.project ?? null,
         ...(body.app === undefined ? {} : { app: body.app }),
         ...(body.timeZone === undefined ? {} : { timeZone: body.timeZone }),

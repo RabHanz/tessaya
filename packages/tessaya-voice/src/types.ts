@@ -1,4 +1,6 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
+import type { HeardWord } from "@t3tools/tessaya-shared/transcriptRepair";
+
 /**
  * §12.2's pluggable components, by the specification's own names.
  *
@@ -75,6 +77,14 @@ export interface SttProvider {
   readonly name: string;
   /** Whole-utterance transcription of 16 kHz mono PCM. */
   readonly transcribe: (pcm: Int16Array) => Promise<string>;
+  /** The per-word confidences behind a transcript it just returned; null when it has none for that text. */
+  readonly scores?: (text: string) => HeardScores | null;
+}
+
+/** A transcript's words with the recogniser's confidence, and that recogniser's model (transcript repair, V-018). */
+export interface HeardScores {
+  readonly words: ReadonlyArray<HeardWord>;
+  readonly recogniser: string;
 }
 
 /** A transcript the recogniser's host set aside on purpose (another language): no "Didn't catch that". */
