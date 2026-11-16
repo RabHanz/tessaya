@@ -6,7 +6,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { createOpenWakeWordScorer } from "../providers/onnx.ts";
 import {
   createWakeStream,
-  kwsEarlyCommand,
+  kwsSettingsCommand,
+  parseWakeGate,
   requestAfterName,
   type WakeRequest,
   type WakeScorer,
@@ -280,12 +281,25 @@ describe("waking her by name with no session open", () => {
     expect(t.lines.join("\n")).toMatch(/segment 2\.3 s/);
   });
 
-  it("sends the Tessel its early kws threshold until it reports it (it is lost on every boot)", () => {
+  it("sends the Tessel its early kws threshold and wake gate until it reports them (both are lost on every boot)", () => {
     const kws = [{ word: "Tessaya", threshold: 0.9 }];
-    expect(kwsEarlyCommand({ early: 0 }, kws)).toBe('{"early":0.9}');
-    expect(kwsEarlyCommand({}, kws)).toBe('{"early":0.9}');
-    expect(kwsEarlyCommand({ early: 900 }, kws)).toBeNull();
-    expect(kwsEarlyCommand({ early: 0 }, [])).toBeNull();
+    const gate = { min: 64, x10: 25 };
+    expect(kwsSettingsCommand({ early: 0 }, kws, null)).toBe('{"early":0.9}');
+    expect(kwsSettingsCommand({}, kws, null)).toBe('{"early":0.9}');
+    expect(kwsSettingsCommand({ early: 900 }, kws, null)).toBeNull();
+    expect(kwsSettingsCommand({ early: 0 }, [], null)).toBeNull();
+    // firmware before 0.3.146 reports no gate: it is never sent one, or every reply would ask again
+    expect(kwsSettingsCommand({ early: 900 }, kws, gate)).toBeNull();
+    expect(kwsSettingsCommand({ early: 0, gate_min: 160, gate_x10: 30 }, kws, gate)).toBe(
+      '{"early":0.9,"gate_min":64,"gate_x10":25}',
+    );
+    expect(kwsSettingsCommand({ early: 900, gate_min: 64, gate_x10: 30 }, kws, gate)).toBe('{"gate_x10":25}');
+    expect(kwsSettingsCommand({ early: 900, gate_min: 64, gate_x10: 25 }, kws, gate)).toBeNull();
+    expect(parseWakeGate("min=64,x=2.5")).toEqual(gate);
+    expect(parseWakeGate(" min=160 , x=3 ")).toEqual({ min: 160, x10: 30 });
+    for (const bad of [undefined, "", "64,2.5", "min=20,x=2.5", "min=64,x=9", "min=64,x=1"]) {
+      expect(parseWakeGate(bad)).toBeNull();
+    }
   });
 
   it("hears a newly trained word from the next segment, never by swapping mid-segment", async () => {

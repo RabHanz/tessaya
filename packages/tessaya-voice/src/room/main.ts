@@ -57,7 +57,7 @@ import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { bothCaptures, createWakeTrace } from "./wakeTrace.ts";
-import { createWakeStream, kwsEarlyCommand } from "./wakeStream.ts";
+import { createWakeStream, kwsSettingsCommand, parseWakeGate } from "./wakeStream.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 import { biasTranscript, type VocabularyEntry } from "@t3tools/tessaya-shared/vocabulary";
 import { adoptTesselNames } from "./envNames.ts";
@@ -611,6 +611,9 @@ const main = async () => {
       return { word: word.trim(), threshold: Number(threshold) };
     })
     .filter((w) => w.word !== "" && w.threshold > 0 && w.threshold <= 1);
+  // `R1_WAKE_GATE=min=64,x=2.5`: the Tessel's segment gate, sent with the kws settings; unset keeps the firmware's.
+  const wakeGate = parseWakeGate(process.env["R1_WAKE_GATE"]);
+  if (process.env["R1_WAKE_GATE"] && wakeGate === null) log(`R1_WAKE_GATE ignored: want min=32-450,x=1.5-6`);
   /** One clock for the wake stream and the room: a request's times in one are compared in the other. */
   const now = () => performance.timeOrigin + performance.now();
   /** The Tessels whose kws scorer says it is ready: its pass decides their wakes. */
@@ -672,12 +675,17 @@ const main = async () => {
       if (wakePath !== null) trace.report(wakePath[1]!, wakePath[2]!, String(p));
       const seen = /^freya\/r1\/([^/]+)\/state\/online$/.exec(t);
       if (seen !== null) String(p).trim() === "1" ? online.add(seen[1]!) : online.delete(seen[1]!);
-      // Her early kws threshold, which the Tessel loses on every boot: sent whenever it reports another.
+      // Her early kws threshold and wake gate, which the Tessel loses on every boot: sent whenever it reports others.
       const kws = /^(freya\/r1\/[^/]+)\/state\/voice\/kws$/.exec(t);
       if (kws !== null) {
         const state = (() => {
           try {
-            return JSON.parse(String(p)) as { early?: unknown; scorer?: unknown };
+            return JSON.parse(String(p)) as {
+              early?: unknown;
+              scorer?: unknown;
+              gate_min?: unknown;
+              gate_x10?: unknown;
+            };
           } catch {
             return {};
           }
@@ -685,7 +693,7 @@ const main = async () => {
         const id = kws[1]!.slice("freya/r1/".length);
         if (state.scorer === "ready") kwsReady.add(id);
         else kwsReady.delete(id);
-        const send = kwsEarlyCommand(state, kwsWake);
+        const send = kwsSettingsCommand(state, kwsWake, wakeGate);
         if (send !== null) mqtt.publish(`${kws[1]}/cmd/voice/kws`, send);
         return;
       }
