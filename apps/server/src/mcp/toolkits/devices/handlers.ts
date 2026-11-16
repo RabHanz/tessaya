@@ -10,6 +10,7 @@ import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { serveDevicesCall, type DevicesCallKind } from "../../../home/HomeDeviceCalls.ts";
 import type { DeviceActor } from "../../../home/HomeDevices.ts";
+import { DeviceSync } from "../../../home/DeviceSync.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { vesselOf } from "../home/handlers.ts";
@@ -117,6 +118,21 @@ export const make = Effect.gen(function* () {
           input,
           devices("act", "keyBind", split({ ...input, op: "keyBind" })[1]),
         ),
+      linked,
+    ),
+    // Only another of his servers, over its link: the records carry device keys.
+    device_sync: McpToolAccess.writes(
+      (input: Args) =>
+        Effect.gen(function* () {
+          if (context === null) return yield* unavailable;
+          const client = (yield* McpInvocationContext.McpInvocationContext).client;
+          if (client?.linked !== true)
+            return { ok: false, line: "Only another of his servers may sync devices." };
+          const records = yield* Effect.flatMap(DeviceSync, (s) =>
+            s.exchange(input["records"]),
+          ).pipe(Effect.provideContext(context));
+          return { ok: true, records };
+        }),
       linked,
     ),
     device_tag: McpToolAccess.writes((input: Args) => {

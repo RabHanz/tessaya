@@ -170,6 +170,7 @@ export const NOT_IN_ROOM: {
   tessaya_voice_arbiter: "only his other servers call it, never a person",
   household_peer: "only another of this home's linked servers calls it",
   household_voice_forget: "only another of this home's linked servers calls it",
+  device_sync: "only another of his linked servers calls it, to keep his devices' records alike",
   device_act:
     "the Tessel shows its own eyes, lights and voice as she speaks; the desktop drives them with device_act",
 };

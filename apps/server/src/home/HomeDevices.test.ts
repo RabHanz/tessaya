@@ -77,6 +77,7 @@ const setup = () => {
     line: away ? "Away on." : "Home only.",
   });
   const reach = Layer.mock(R1Reach)({
+    hubs: () => Effect.succeed([]),
     status: Effect.sync(reachStatus),
     setAway: (on) =>
       Effect.sync(() => {
@@ -1567,3 +1568,149 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect(
+  "keeps his Wi-Fi order as the Tessel reports it, and changes it from Settings and her voice through one door",
+  () => {
+    const { sent, layer } = setup();
+    const owner = (id: string) => ({
+      id,
+      label: id,
+      type: "action",
+      access: "write",
+      safety: "owner",
+    });
+    const nets = (list: ReadonlyArray<Record<string, unknown>>) => JSON.stringify({ nets: list });
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const verified = { who: "Tessaya via R1", surface: "assistant", approved: true } as const;
+      const unverified = { who: "Tessaya via R1", surface: "assistant" } as const;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(
+        `${root}/state/manifest`,
+        JSON.stringify({
+          deviceId: ID,
+          kind: "r1",
+          name: "R1",
+          schema: 1,
+          items: ["net.add", "net.priority", "net.forget"].map(owner),
+        }),
+      );
+      // Listed in priority order, whatever order the firmware sends them in.
+      yield* devices.receive(
+        `${root}/state/net/saved`,
+        nets([
+          { ssid: "Cafe", priority: 3, hotspot: false, bad_pass: false, current: false },
+          { ssid: "HomeNet", priority: 1, hotspot: false, bad_pass: false, current: true },
+          { ssid: "Pixel 9", priority: 2, hotspot: true, bad_pass: false, current: false },
+        ]),
+      );
+      const order = () =>
+        Effect.map(devices.overview, (o) => o.devices[0]!.wifi!.map((n) => n.ssid));
+      assert.deepStrictEqual(yield* order(), ["HomeNet", "Pixel 9", "Cafe"]);
+
+      // "Use my hotspot first", his voice verified: the whole order goes, and her words wait for the device's yes.
+      sent.length = 0;
+      const first = yield* Effect.forkChild(
+        devices.command(
+          ID,
+          { op: "item", itemId: "net.priority", value: { ssid: "my hotspot", priority: 1 } },
+          verified,
+        ),
+        { startImmediately: true },
+      );
+      assert.deepStrictEqual(sent, [
+        { topic: "cmd/net/priority", payload: { ssid: "Pixel 9", priority: 1 } },
+        { topic: "cmd/net/priority", payload: { ssid: "HomeNet", priority: 2 } },
+        { topic: "cmd/net/priority", payload: { ssid: "Cafe", priority: 3 } },
+      ]);
+      for (let i = 0; i < 3; i++)
+        yield* devices.receive(`${root}/state/net/ack`, '{"op":"priority","ok":true}');
+      assert.include(
+        (yield* Fiber.join(first)).line,
+        "Pixel 9 is the first Wi-Fi now, even at home",
+      );
+
+      // Not his verified voice: his phone is asked, and nothing reaches the device.
+      sent.length = 0;
+      const asked = yield* devices.command(
+        ID,
+        { op: "item", itemId: "net.forget", value: { ssid: "Cafe" } },
+        unverified,
+      );
+      assert.strictEqual(asked.status, "asked");
+      assert.deepStrictEqual(sent, []);
+
+      // A password is never spoken: adding by voice hands off, and nothing is sent.
+      const spoken = yield* Effect.flip(
+        devices.command(ID, { op: "item", itemId: "net.add", value: { ssid: "Office" } }, verified),
+      );
+      assert.include(spoken.why, "Settings → Hardware → Wi-Fi order");
+      assert.deepStrictEqual(sent, []);
+
+      // Settings adds one as a backup; the device refusing a change is said, never claimed done.
+      const add = yield* Effect.forkChild(
+        serveDevicesCall(
+          {
+            kind: "act",
+            op: "wifi",
+            args: { id: ID, action: "add", ssid: "Office", password: "secret123", backup: true },
+          },
+          me,
+        ),
+        { startImmediately: true },
+      );
+      assert.deepStrictEqual(sent, [
+        {
+          topic: "cmd/net/add",
+          payload: { ssid: "Office", pass: "secret123", hotspot: false, use: false },
+        },
+      ]);
+      yield* devices.receive(`${root}/state/net/ack`, '{"op":"add","ok":true}');
+      assert.isTrue((yield* Fiber.join(add)).ok);
+      const refused = yield* Effect.forkChild(
+        serveDevicesCall(
+          { kind: "act", op: "wifi", args: { id: ID, action: "forget", ssid: "cafe" } },
+          me,
+        ),
+        { startImmediately: true },
+      );
+      yield* devices.receive(`${root}/state/net/ack`, '{"op":"forget","ok":false,"error":"busy"}');
+      assert.include((yield* Fiber.join(refused)).error ?? "", "said no: busy");
+
+      // The last network it knows stays.
+      yield* devices.receive(
+        `${root}/state/net/saved`,
+        nets([{ ssid: "HomeNet", priority: 1, hotspot: false, bad_pass: false, current: true }]),
+      );
+      const last = yield* serveDevicesCall(
+        { kind: "act", op: "wifi", args: { id: ID, action: "forget", ssid: "HomeNet" } },
+        me,
+      );
+      assert.include(last.error ?? "", "only Wi-Fi");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it("matches his words to a saved network, and a move to a place keeps the rest in order", () => {
+  const n = (ssid: string, hotspot = false) => ({
+    ssid,
+    priority: 1,
+    hotspot,
+    badPass: false,
+    current: false,
+  });
+  const nets = [n("HomeNet"), n("Pixel 9", true), n("Cafe Guest")];
+  assert.strictEqual(
+    (HomeDevices.wifiNamed(nets, "my phone hotspot") as { ssid: string }).ssid,
+    "Pixel 9",
+  );
+  assert.strictEqual((HomeDevices.wifiNamed(nets, "cafe") as { ssid: string }).ssid, "Cafe Guest");
+  // Two networks are not the hotspot, so "home" alone does not pick one: she asks.
+  assert.include(HomeDevices.wifiNamed(nets, "home wifi") as string, "Which network?");
+  assert.deepStrictEqual(
+    HomeDevices.wifiItemOf("net.priority", { ssid: "Cafe Guest", priority: 2 }, nets),
+    { op: "wifi", action: "order", order: ["HomeNet", "Cafe Guest", "Pixel 9"] },
+  );
+});

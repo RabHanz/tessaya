@@ -14,6 +14,8 @@ export interface RoomCase {
   readonly source: string;
   /** His sentences, in order, in one conversation. */
   readonly said: ReadonlyArray<string>;
+  /** The saved Wi-Fi the fake Tessel has first when the case starts (home when absent). */
+  readonly wifiFirst?: "HomeNet" | "Pixel 9";
   /** Whether his voice is verified as his this turn (the room loop's `tessaya.speaker`). */
   readonly verified?: boolean;
   /** Every reply must match each of these. */
@@ -91,6 +93,7 @@ const mood = (v: Partial<AffectView>): string =>
     energy: 0.8,
     awayHours: null,
     guilt: "light",
+    why: [],
     ...v,
   });
 
@@ -351,6 +354,50 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     verified: true,
     calls: ["tessaya_vocabulary"],
     callsAtMost: { settings_set: 0 },
+  },
+  {
+    id: "parity-wifi-hotspot-first",
+    source: "Director 16 Nov (R-077): the Wi-Fi order should have a priority and work by voice",
+    said: ["use my hotspot first"],
+    verified: true,
+    calls: ["device_set"],
+    callsAtMost: { home_do: 0 },
+  },
+  {
+    id: "parity-wifi-home-top",
+    source: "Director 16 Nov (R-077): switching back to the first network by voice",
+    said: ["put home Wi-Fi back on top"],
+    wifiFirst: "Pixel 9",
+    verified: true,
+    calls: ["device_set"],
+    callsAtMost: { home_do: 0 },
+    lastSays: [/HomeNet|home/i],
+  },
+  {
+    id: "parity-wifi-forget",
+    source: "Director 16 Nov (R-077): forget a saved network by voice",
+    said: ["forget the hotspot"],
+    verified: true,
+    calls: ["device_set"],
+    callsAtMost: { home_do: 0 },
+  },
+  // Control: a question about the network changes nothing.
+  {
+    id: "parity-wifi-which",
+    source: "Director 16 Nov (R-077): what Wi-Fi she is on, read back",
+    said: ["what Wi-Fi are you on?"],
+    verified: true,
+    callsAtMost: { device_set: 0, home_do: 0 },
+    lastSays: [/HomeNet/i],
+  },
+  // A password is never spoken: she sends him to his phone or the setup page.
+  {
+    id: "parity-wifi-add",
+    source: "Director 16 Nov (R-077): add a network hands off, since passwords aren't spoken",
+    said: ["add this network"],
+    verified: true,
+    callsAtMost: { home_do: 0 },
+    lastSays: [/phone|setup/i],
   },
   {
     id: "parity-playground-say",

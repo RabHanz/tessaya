@@ -94,6 +94,19 @@ when it is elsewhere; turn it off to keep it home only. The server sends the Tes
 network changes. It needs this server linked to T3 Connect (Settings → Connections), and for the fastest replies at home,
 network access turned on.
 
+**Wi-Fi order.** Hardware → **Wi-Fi and hubs** lists the networks the Tessel knows, first choice first. It joins the first
+one in range and moves back up when a higher one returns, only while it is idle. Reorder or forget them there, or by
+voice: "use my hotspot first", "put home Wi-Fi back on top", "forget the hotspot", "what Wi-Fi are you on?". Changes by
+voice need your verified voice or a yes on your phone. Add a network with its password in Settings or on the Tessel's
+setup page, never by voice: tick **Phone hotspot** for a hotspot, and **Only save as a backup** to keep the network it is
+on.
+
+**More than one server.** When your servers are linked (Settings → Connections), each keeps the Tessel's key and your
+choices for it, so any of them can answer it. The Tessel tries their hubs in the order under **Servers it connects to**:
+if the first is down it moves to the next, and it moves back to the first when that one returns and it is idle. Only the
+server it is connected to answers it, so a reply is never said twice. A server with no local network address is reached
+through its T3 Connect link.
+
 - **Mute** stops it listening and speaking until you unmute it.
 - **Voice transport:** in-house is Tessaya's own room voice. Trying Agora's cloud goes back to in-house, muted, after
   60 seconds unless you press **Keep**; **Revert to in-house** works at any time. After every restart the server sets

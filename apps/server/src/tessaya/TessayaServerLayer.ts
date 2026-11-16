@@ -55,6 +55,7 @@ import * as R1Hub from "../home/R1Hub.ts";
 import * as R1Pairing from "../home/R1Pairing.ts";
 import * as R1Loop from "../home/R1Loop.ts";
 import * as R1Reach from "../home/R1Reach.ts";
+import * as DeviceSync from "../home/DeviceSync.ts";
 import * as R1Updates from "../home/R1Updates.ts";
 import * as DeviceRegistry from "../home/DeviceRegistry.ts";
 import * as VesselBodies from "../home/VesselBodies.ts";
@@ -150,8 +151,14 @@ const expressionLayer = TessayaExpression.layer.pipe(
 
 // The R1's own MQTT hub: one instance, so the route, the devices and every publish share its subscribers.
 const hubLayer = R1Hub.layer.pipe(Layer.provide(homeLayer));
-// Where the R1 should connect (LAN, then T3 Connect when away is on), kept current on it.
-const reachLayer = R1Reach.layer.pipe(Layer.provide(hubLayer), Layer.provide(homeLayer));
+// Each device's key, his choices for it and every server's hub, kept alike on his linked servers. One instance.
+const syncLayer = DeviceSync.layer.pipe(Layer.provide(hubLayer), Layer.provide(homeLayer));
+// Where the R1 should connect (every one of his hubs in its order), kept current on it.
+const reachLayer = R1Reach.layer.pipe(
+  Layer.provide(syncLayer),
+  Layer.provide(hubLayer),
+  Layer.provide(homeLayer),
+);
 // Firmware for the R1s on the hub, served by this server and installed when they are idle.
 const updatesLayer = R1Updates.layer.pipe(
   Layer.provide(expressionLayer),
@@ -175,6 +182,7 @@ const homeDevicesLayer = HomeDevices.layer.pipe(
   Layer.provide(vesselBodiesLayer),
   Layer.provide(HomeDevices.brokerLayer.pipe(Layer.provide(hubLayer))),
   Layer.provide(reachLayer),
+  Layer.provide(syncLayer),
   // Firmware installs he asks for go through the devices' approval and audit, then the one updater.
   Layer.provide(updatesLayer),
   Layer.provide(DeviceRegistry.layer),
@@ -336,7 +344,9 @@ const servicesInner = IntentService.layer.pipe(
   Layer.provideMerge(VesselHands.layer),
   // The Record under everything above, so any service can write to it.
   Layer.provideMerge(TessayaRecordService.layer),
-  Layer.provideMerge(Layer.mergeAll(loopLayer, updatesLayer, pairingLayer, reachLayer, hubLayer)),
+  Layer.provideMerge(
+    Layer.mergeAll(loopLayer, updatesLayer, pairingLayer, reachLayer, syncLayer, hubLayer),
+  ),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.
   Layer.provide(TessayaDatabase.layer),
 );

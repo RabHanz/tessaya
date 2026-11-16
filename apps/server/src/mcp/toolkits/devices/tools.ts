@@ -198,6 +198,19 @@ const WatchTool = Tool.make("device_watch", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+/** Never the model's: another of his servers swaps its devices' records (DeviceSync) with this one. */
+const SyncTool = Tool.make("device_sync", {
+  ...shared,
+  success: Schema.Unknown,
+  description:
+    "Used only by another of his linked servers to keep his devices' records alike. Never call it yourself.",
+  parameters: Schema.Struct({ records: Schema.Unknown }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 /** Spread into Tessaya's toolkit, beside the house's tools. */
 export const DeviceTools = [
   ListTool,
@@ -208,4 +221,5 @@ export const DeviceTools = [
   SetTool,
   WatchTool,
   ButtonTool,
+  SyncTool,
 ] as const;

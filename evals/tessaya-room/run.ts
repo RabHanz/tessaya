@@ -375,6 +375,17 @@ type House = ReturnType<typeof makeHouse>;
 
 /** Each case's R1 starts at the firmware's 0 dB. */
 const volumes = new WeakMap<House, number>();
+/** Which saved Wi-Fi is first on the fake Tessel; home until she moves it. */
+const wifiFirst = new WeakMap<House, "HomeNet" | "Pixel 9">();
+const wifiOf = (house: House) => {
+  const first = wifiFirst.get(house) ?? "HomeNet";
+  const home = { ssid: "HomeNet", hotspot: false, badPass: false, current: first === "HomeNet" };
+  const phone = { ssid: "Pixel 9", hotspot: true, badPass: false, current: first === "Pixel 9" };
+  return (first === "HomeNet" ? [home, phone] : [phone, home]).map((n, i) => ({
+    ...n,
+    priority: i + 1,
+  }));
+};
 
 const runTool = (house: House, name: string, args: Record<string, unknown>) => {
   switch (name) {
@@ -404,8 +415,39 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
     case "device_list":
       return {
         ok: true,
-        value: { devices: [{ id: "r1-3d57b3", online: true, firmware: "smp-0.3.108" }] },
+        value: {
+          devices: [
+            {
+              id: "r1-3d57b3",
+              online: true,
+              firmware: "smp-0.3.147",
+              wifi: wifiOf(house),
+            },
+          ],
+        },
       };
+    // His Wi-Fi as the server answers it (HomeDevices.wifi): the order and forget run, a password never by voice.
+    case "device_set": {
+      const item = String(args["itemId"] ?? "");
+      if (item === "net.add")
+        return {
+          ok: false,
+          error:
+            "Wi-Fi passwords are never said aloud. Add the network on his phone in Settings → Hardware → Wi-Fi order, or on the Tessel's setup page.",
+        };
+      if (item === "net.priority") {
+        const named = JSON.stringify(args["value"] ?? "").toLowerCase();
+        wifiFirst.set(house, /hotspot|phone|pixel/.test(named) ? "Pixel 9" : "HomeNet");
+        return {
+          ok: true,
+          value: { status: "done", line: `${wifiFirst.get(house)} is first now.` },
+        };
+      }
+      if (item === "net.forget") return { ok: true, value: { status: "done", line: "Forgot it." } };
+      return WORK[name] ?? { ok: true, value: [] };
+    }
+    case "device_read":
+      return { ok: true, value: { "net.ssid": "HomeNet", "net.state": "online" } };
     case "device_button":
       return { ok: true, value: { status: "done", line: "Saved." } };
     case "tessaya_owner_doc":
@@ -514,6 +556,7 @@ const resultOf = (lines: ReadonlyArray<string>): string =>
 const sample = async (c: RoomCase): Promise<RoomSample> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-room-"));
   const house = makeHouse();
+  if (c.wifiFirst !== undefined) wifiFirst.set(house, c.wifiFirst);
   const calls: Array<string> = [];
   const replies: Array<string> = [];
   const lamp: Array<"on" | "off"> = [];
