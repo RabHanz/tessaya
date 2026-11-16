@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   fusePresence,
+  peopleAt,
   PRESENCE_BARS,
   routeProactive,
   type PresenceSignal,
@@ -90,6 +91,27 @@ describe("fusePresence", () => {
     expect(e.members[0]?.confidence).toBeCloseTo(0.5);
     // An unknown source counts for nothing.
     expect(of([sig("omid", "nonsense", "k", 0)], "omid")?.confidence).toBe(0);
+  });
+});
+
+describe("peopleAt", () => {
+  it("is everyone placed at a vessel, guests included, and lets them go as they move or fade", () => {
+    const guest = { ...sig("p-1", "voice", "lounge", 2), guest: true };
+    const e = fusePresence(
+      [sig("omid", "voice", "lounge", 0), guest, sig("sara", "voice", "study", 0)],
+      NOW,
+    );
+    expect(peopleAt(e, "lounge").map((m) => [m.member, m.guest])).toEqual([
+      ["omid", false],
+      ["p-1", true],
+    ]);
+    // The guest heard since in the study is there now, not in the lounge.
+    const moved = fusePresence([guest, { ...sig("p-1", "voice", "study", 0), guest: true }], NOW);
+    expect(peopleAt(moved, "lounge")).toEqual([]);
+    // A guest heard 20 minutes ago still keeps private things careful, but is no longer "just heard".
+    const faded = fusePresence([{ ...sig("p-1", "voice", "lounge", 20), guest: true }], NOW);
+    expect(peopleAt(faded, "lounge").map((m) => m.member)).toEqual(["p-1"]);
+    expect(peopleAt(faded, "lounge", PRESENCE_BARS.present)).toEqual([]);
   });
 });
 

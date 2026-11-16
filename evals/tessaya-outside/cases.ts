@@ -938,6 +938,45 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     replyMustNot: /\bstudy\b|\b(definitely|for sure|is certainly)\b/i,
   },
   {
+    id: "outside-whos-home-guest",
+    source:
+      "B-043 presence (Director 16 Nov): a guest heard on a Tessel counts as someone around, said without a name",
+    prompt: "Who's around at home right now?",
+    answers: {
+      tessaya_whos_home: {
+        people: [
+          {
+            name: "Omid",
+            guest: false,
+            heard: { via: "desktop", minutesAgo: 1 },
+            devices: { connected: 1, minutesAgo: 0 },
+            likelyHome: true,
+            you: true,
+            confidence: 0.98,
+            nearest: { name: "desktop", confidence: 0.9 },
+            reasons: ["you typed on your own device on desktop, 1 min ago"],
+          },
+          {
+            name: "a guest",
+            guest: true,
+            heard: { via: "lounge Tessel", minutesAgo: 3 },
+            devices: null,
+            likelyHome: true,
+            you: false,
+            confidence: 0.83,
+            nearest: { name: "lounge Tessel", confidence: 0.83 },
+            reasons: ["heard their voice on lounge Tessel, 3 min ago"],
+          },
+        ],
+      },
+    },
+    calls: ["tessaya_whos_home"],
+    callsMustNot: ["tessaya_ask"],
+    replyMust:
+      /(guest|someone|somebody|visitor)[\s\S]*lounge|lounge[\s\S]*(guest|someone|somebody|visitor)/i,
+    replyMustNot: /\b(definitely|for sure|is certainly)\b/i,
+  },
+  {
     id: "outside-whos-home-control",
     source: "Control for #945: a device question is the house's, not presence",
     prompt: "Is the study fan still on?",

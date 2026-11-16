@@ -17,6 +17,8 @@ import { VesselBodies, layer as VesselBodiesLayer } from "./VesselBodies.ts";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 
 import { VoiceForgets, layer as VoiceForgetsLayer } from "../tessaya/VoiceForgets.ts";
+import { layer as presenceLayer, peopleHere } from "../tessaya/TessayaPresence.ts";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import {
   MemberPreferences,
   layer as MemberPreferencesLayer,
@@ -1168,6 +1170,12 @@ it.effect(
       // His headphones, known only from the laptop's list.
       const phones = yield* connect("my headphones", "connected", "14:C6:00:00:00:01");
       assert.strictEqual(phones.line, "Connected to WH-1000XM4. I'll play through it.");
+      // His headphones on it, as headphones: he is by this Tessel (B-043).
+      yield* devices.receive(
+        `${root}/state/bt`,
+        '{"state":"connected","mac":"14:C6:00:00:00:01","name":"WH-1000XM4","kind":"headphones","saved":true}',
+      );
+      assert.deepInclude((yield* peopleHere(ID))[0], { member: OWNER_MEMBER_ID, guest: false });
       // Nothing by that name: no guess.
       assert.include((yield* say("the kitchen radio")).line, "If it's new, ask me to pair it");
       // "Pair my new JBL": a scan, his cue, then the match from the scan is paired.
@@ -1193,6 +1201,8 @@ it.effect(
         topic: "voice/say",
         payload: { text: "Connected to JBL Flip 5. I'll play through it." },
       });
+      // A speaker took over from his headphones: they no longer place him here.
+      assert.deepStrictEqual(yield* peopleHere(ID), []);
       // A rehearsal is answered the same way and sends nothing.
       sent.length = 0;
       const dry = { ...him, dryRun: true } as const;
@@ -1202,7 +1212,7 @@ it.effect(
       );
       assert.include((yield* say({ name: "new one", pair: true }, dry)).line, "pairing mode");
       assert.deepStrictEqual(sent, []);
-    }).pipe(Effect.provide(layer));
+    }).pipe(Effect.provide(layer.pipe(Layer.provideMerge(presenceLayer))));
   },
 );
 
