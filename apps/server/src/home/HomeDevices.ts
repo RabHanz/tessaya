@@ -1624,7 +1624,8 @@ const make = Effect.gen(function* () {
     if (!m.strong && now - last.at < 4_000) return;
     const quiet = yield* quietNow(now);
     if (quiet && m.how !== "dropped") return;
-    if (mood._tag === "Some") yield* mood.value.note(undefined, { kind: "handled", how: m.how });
+    if (mood._tag === "Some")
+      yield* mood.value.note(undefined, { kind: "handled", how: m.how }, null, `device:${id}`);
     // Her next two turns on this body know it just happened; the third never reads it as now (G6).
     if (liveContext._tag === "Some")
       yield* liveContext.value.inject({

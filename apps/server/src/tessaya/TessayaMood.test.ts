@@ -446,3 +446,72 @@ it.effect(
       );
     }).pipe(Effect.provide(SqlitePersistenceMemory)),
 );
+
+it.effect(
+  "one act two servers heard (both hubs hear one lift) moves her once everywhere; a real second lift still counts",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const onnyx = yield* Layer.build(server("env-onnyx"));
+      const cloud = yield* Layer.build(server("env-cloud"));
+      const laptop = yield* Layer.build(server("env-laptop"));
+      const solo = yield* Layer.build(server("env-solo"));
+      const link = (a: typeof onnyx, b: typeof onnyx) =>
+        Effect.gen(function* () {
+          const x = Context.get(a, DeviceSync);
+          yield* x.exchange(yield* Context.get(b, DeviceSync).exchange(yield* x.exchange({})));
+        });
+      const lift = (ctx: typeof onnyx) =>
+        Effect.provideContext(
+          Context.get(ctx, TessayaMood).note(
+            "companion",
+            { kind: "handled", how: "lifted" },
+            null,
+            "device:tessel-1",
+          ),
+          ctx,
+        );
+      const reaction = (ctx: typeof onnyx) =>
+        Effect.provideContext(
+          Effect.map(
+            Effect.orDie(
+              Effect.flatMap(
+                SqlClient.SqlClient,
+                (sql) => sql<{ state_json: string }>`SELECT state_json FROM tessaya_affect_state`,
+              ),
+            ),
+            // To 3 places: copies moved her at their own moment, a few hundred ms of fading apart.
+            (rows) =>
+              JSON.stringify(
+                Object.entries(JSON.parse(rows[0]?.state_json ?? "{}").general?.reaction ?? {}).map(
+                  ([k, v]) => [k, Math.round((v as number) * 1000)],
+                ),
+              ),
+          ),
+          ctx,
+        );
+
+      // Both hubs hear the one lift, a moment apart; the laptop gets both copies from them.
+      yield* lift(onnyx);
+      yield* TestClock.adjust("300 millis");
+      yield* lift(cloud);
+      yield* lift(solo);
+      yield* link(onnyx, cloud);
+      yield* link(cloud, laptop);
+      yield* link(onnyx, laptop);
+      const once = yield* reaction(solo);
+      assert.notStrictEqual(once, "[]");
+      for (const ctx of [onnyx, cloud, laptop]) assert.strictEqual(yield* reaction(ctx), once);
+
+      // He lifts it again: a new act, so it counts again, once, on every server.
+      yield* TestClock.adjust("20 seconds");
+      yield* lift(onnyx);
+      yield* lift(cloud);
+      yield* lift(solo);
+      yield* link(onnyx, cloud);
+      yield* link(cloud, laptop);
+      const twice = yield* reaction(solo);
+      assert.notStrictEqual(twice, once);
+      for (const ctx of [onnyx, cloud, laptop]) assert.strictEqual(yield* reaction(ctx), twice);
+    }).pipe(Effect.scoped),
+);
