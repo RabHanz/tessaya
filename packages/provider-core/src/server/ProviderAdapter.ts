@@ -665,6 +665,8 @@ export type ProviderAdapterV2SubagentOutcome = {
 export interface ProviderAdapterV2AccountLogin {
   readonly instanceId: ProviderInstanceId;
   readonly secret: Redacted.Redacted<string>;
+  /** A machine login: a moved session links to this file and follows it, instead of a copy of `secret`. */
+  readonly file?: string;
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
 }
 
