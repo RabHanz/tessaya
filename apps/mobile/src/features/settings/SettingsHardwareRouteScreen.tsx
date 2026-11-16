@@ -49,6 +49,8 @@ import {
   OUTPUT_STATE_LINE,
   moveOutput,
   outputLabel,
+  nextPrivateCap,
+  privateCapLabel,
   privateClasses,
   scanLine,
 } from "@t3tools/tessaya-shared/deviceView";
@@ -1403,6 +1405,22 @@ function SpeakerSection({
                 })
               }
             />
+            {o.classes?.includes("private") === true ? (
+              <ControlPill
+                variant="pill"
+                label={privateCapLabel(o)}
+                disabled={off}
+                onPress={() =>
+                  void run("act", "speaker", {
+                    id,
+                    action: "classes",
+                    target: o.id,
+                    classes: privateClasses(o, true),
+                    privateCap: nextPrivateCap(o),
+                  })
+                }
+              />
+            ) : null}
           </Row>
         ))
       ) : (

@@ -532,15 +532,34 @@ const defaultClassesOf = (id: string, kind: BtKind | undefined): Array<OutputCla
 
 const OWN_WORDS = /^(?:(?:your|her|the)\s+)?(?:own\s+)?(?:speaker|tessel)$|^you(?:rself)?$/i;
 
-/** audio.output with `private`: his words for an output and whether private replies may play there. */
+/**
+ * audio.output with `private` and/or `privateCap`: his words for an output, whether private replies may play there,
+ * and the level they play at (0-100; null is the usual level).
+ */
 export const privateTagOf = (
   value: unknown,
-): { readonly name: string; readonly how: "only" | "also" | "not" } | null => {
+): {
+  readonly name: string;
+  readonly how: "only" | "also" | "not" | null;
+  readonly cap?: number | null;
+} | null => {
   const v = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-  const how = v?.["private"];
-  if (how !== "only" && how !== "also" && how !== "not") return null;
+  const raw = v?.["private"];
+  const how = raw === "only" || raw === "also" || raw === "not" ? raw : null;
+  const c = v?.["privateCap"];
+  const cap =
+    c === null
+      ? null
+      : typeof c === "number"
+        ? Math.min(100, Math.max(0, Math.round(c)))
+        : undefined;
+  if (how === null && cap === undefined) return null;
   const name = str(v?.["mac"]) ?? str(v?.["name"]) ?? OWN_SPEAKER;
-  return { name: OWN_WORDS.test(name.trim()) ? OWN_SPEAKER : name, how };
+  return {
+    name: OWN_WORDS.test(name.trim()) ? OWN_SPEAKER : name,
+    how,
+    ...(cap === undefined ? {} : { cap }),
+  };
 };
 
 /**
@@ -1911,11 +1930,20 @@ const make = Effect.gen(function* () {
     const h = held.get(id);
     if (h === undefined) return;
     const now = yield* Clock.currentTimeMillis;
-    if (h.until <= now) return void held.delete(id);
+    if (h.until <= now) {
+      held.delete(id);
+      return yield* closeHeldCard(id);
+    }
     if ((yield* routeReply(id, "private", false)) !== "play") return;
     held.delete(id);
     yield* publish(id, "voice/say", { text: h.text });
+    yield* closeHeldCard(id);
   });
+
+  /** One card per device on his phone while a private reply waits; it never carries the reply itself. */
+  const heldCardId = (id: string) => `held-private-${id}`;
+  const closeHeldCard = (id: string) =>
+    inbox._tag === "None" ? Effect.void : inbox.value.closePrompt(heldCardId(id));
 
   /** "Only use my headphones for private stuff": where private replies may play, by his verified voice. */
   const tagPrivate = Effect.fn("HomeDevices.tagPrivate")(function* (
@@ -1954,10 +1982,24 @@ const make = Effect.gen(function* () {
           const rest = now.classes.filter((x) => x !== "private");
           mine[o] = { ...now, classes: on ? ["private", ...rest] : rest };
         };
-        set(target, tag.how !== "not");
+        if (tag.how !== null) set(target, tag.how !== "not");
         if (tag.how === "only") for (const o of order) if (o !== target) set(o, false);
+        if (tag.cap !== undefined) {
+          const { privateCap: _old, ...rest } = mine[target] ?? {
+            classes: defaultClassesOf(target, kinds.get(target)),
+          };
+          mine[target] = tag.cap === null ? rest : { ...rest, privateCap: tag.cap };
+        }
       });
     }
+    if (tag.how === null)
+      return {
+        status: "done",
+        line:
+          tag.cap === null || tag.cap === undefined
+            ? `Private replies play at the usual level on ${label} now.`
+            : `Private replies play at ${tag.cap}% at most on ${label} now.`,
+      };
     return {
       status: "done",
       line:
@@ -3024,6 +3066,15 @@ const make = Effect.gen(function* () {
     holdPrivate: Effect.fn("HomeDevices.holdPrivate")(function* (id: string, text: string) {
       const now = yield* Clock.currentTimeMillis;
       held.set(id, { text: recordText(text, 1_000), until: now + PRIVATE_HELD_MS });
+      if (inbox._tag === "Some")
+        yield* inbox.value.mirror({
+          id: heldCardId(id),
+          title: "A private reply is waiting",
+          detail: `Put your headphones on and the ${DEVICE} says it. It waits 30 minutes.`,
+          buttons: ["OK"],
+          yes: 0,
+          cancel: 0,
+        });
     }),
     assignTag: Effect.fn("HomeDevices.assignTag")(function* (uid, label, action) {
       yield* change((s) => {

@@ -98,6 +98,15 @@ export const privateClasses = (o: DeviceOutputEntry, on: boolean): Array<OutputC
   return on ? ["private", ...rest] : rest;
 };
 
+/** The private-reply level steps a tap walks through, usual (null) first; voice sets any level. */
+const PRIVATE_CAP_STEPS = [null, 60, 40, 20] as const;
+export const nextPrivateCap = (o: DeviceOutputEntry): number | null => {
+  const at = PRIVATE_CAP_STEPS.findIndex((c) => c === (o.privateCap ?? null));
+  return PRIVATE_CAP_STEPS[(at + 1) % PRIVATE_CAP_STEPS.length] ?? null;
+};
+export const privateCapLabel = (o: DeviceOutputEntry): string =>
+  o.privateCap === undefined ? "Usual volume" : `${o.privateCap}% max`;
+
 export const outputLabel = (o: DeviceOutputEntry): string =>
   o.id === OWN_SPEAKER ? o.name : btDeviceLabel(o);
 

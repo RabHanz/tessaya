@@ -47,6 +47,7 @@ import {
   btKindNoun,
   displaySupported,
   outputLabels,
+  nextPrivateCap,
   privateClasses,
   scanLine,
   tesselHosts,
@@ -1143,6 +1144,15 @@ function SpeakerSection({
                   action: "classes",
                   target: o.id,
                   classes: privateClasses(o, on),
+                })
+              }
+              onPrivateCap={(o) =>
+                void run("act", "speaker", {
+                  id,
+                  action: "classes",
+                  target: o.id,
+                  classes: privateClasses(o, true),
+                  privateCap: nextPrivateCap(o),
                 })
               }
             />
