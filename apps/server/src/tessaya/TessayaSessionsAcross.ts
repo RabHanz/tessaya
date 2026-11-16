@@ -8,6 +8,7 @@ import {
   WorkSessionStorageError,
   type TessayaFleet,
   type TessayaSessionsAcrossResult,
+  type TessayaWorkNowResult,
   type WorkSessionError,
 } from "@t3tools/tessaya-contracts";
 import {
@@ -90,6 +91,39 @@ export const summariesAcross = (input: {
     // A row whose environment is not known is treated as the most restricted link, never as this server's.
     access: access.has(rows[i]!.environmentId) ? access.get(rows[i]!.environmentId)! : "read-only",
   }));
+};
+
+const RECENT_MS = 60 * 60_000;
+const TOP = 5;
+const RANK = { waiting: 0, working: 1, idle: 2 } as const;
+
+/** The spoken status: every machine's working, waiting and last-hour sessions counted, the few most pressing named. */
+export const workNow = (
+  across: Pick<TessayaSessionsAcrossResult, "sessions" | "unreachable">,
+  now: number,
+): TessayaWorkNowResult => {
+  const at = (s: TessayaSessionsAcrossResult["sessions"][number]) =>
+    s.updatedAt === null ? Number.NaN : Date.parse(s.updatedAt);
+  const active = across.sessions
+    .filter((s) => s.state !== "idle" || now - at(s) <= RECENT_MS)
+    .toSorted((a, b) => RANK[a.state] - RANK[b.state] || (at(b) || 0) - (at(a) || 0));
+  const count = (state: keyof typeof RANK) => active.filter((s) => s.state === state).length;
+  return {
+    total: active.length,
+    waiting: count("waiting"),
+    working: count("working"),
+    recent: count("idle"),
+    machines: [...new Set(active.map((s) => s.box))],
+    top: active.slice(0, TOP).map((s) => ({
+      session: s.session,
+      project: s.project,
+      on: s.box,
+      state: s.state === "idle" ? "recent" : s.state,
+      minutesAgo: Number.isNaN(at(s)) ? null : Math.max(0, Math.round((now - at(s)) / 60_000)),
+    })),
+    more: Math.max(0, active.length - TOP),
+    unreachable: across.unreachable.map((u) => u.label),
+  };
 };
 
 /** Each usable link's fleet; one that fails or is slow is reported, and the others are still listed. */

@@ -12,7 +12,7 @@ import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { peerFleets, sharedRun, summariesAcross } from "./TessayaSessionsAcross.ts";
+import { peerFleets, sharedRun, summariesAcross, workNow } from "./TessayaSessionsAcross.ts";
 
 const claude = (sessionId: string, pane: string | null): ClaudeLiveSession => ({
   pid: 1,
@@ -185,3 +185,66 @@ it.effect("shows a linked server's work under the project and account that serve
     assert.deepStrictEqual([row?.project, row?.account], ["Shop", "Work Max"]);
   }),
 );
+
+it("counts every machine's working, waiting and last-hour sessions and names the most pressing first", () => {
+  // 16 Nov: the Tessel said "one session" while his other machines had several running.
+  const session = (name: string, status: string, updatedAt: string | null): ClaudeLiveSession =>
+    ({ ...claude(name, name === "asks" ? "s~9" : null), status, updatedAt }) as ClaudeLiveSession;
+  const env = (label: string, fleet: TessayaFleet) => ({
+    environmentId: EnvironmentId.make(label),
+    label,
+    fleet,
+    access: label === "studio" ? null : ("full-access" as const),
+  });
+  const blocked = {
+    ...fleetOf(session("asks", "busy", "2026-11-07T00:50:00.000Z")),
+    herdr: [{ location: { pane: "s~9" }, state: "needs_input" }],
+  } as unknown as TessayaFleet;
+  const sessions = summariesAcross({
+    environments: [
+      env(
+        "studio",
+        fleetOf(
+          session("manager", "busy", "2026-11-07T00:59:00.000Z"),
+          session("old", "idle", "2026-11-06T20:00:00.000Z"),
+        ),
+      ),
+      env("home", blocked),
+      env(
+        "laptop",
+        fleetOf(
+          session("site", "busy", "2026-11-07T00:40:00.000Z"),
+          session("done", "idle", "2026-11-07T00:30:00.000Z"),
+          session("a", "busy", null),
+          session("b", "busy", null),
+          session("c", "busy", null),
+        ),
+      ),
+    ],
+    projects: [],
+    providers: [],
+  });
+  const now = workNow(
+    { sessions, unreachable: [{ environmentId: "office", label: "office-pc" }] },
+    Date.parse("2026-11-07T01:00:00.000Z"),
+  );
+  assert.deepStrictEqual(
+    { ...now, top: now.top.map((t) => [t.session, t.on, t.state, t.minutesAgo]) },
+    {
+      total: 7,
+      waiting: 1,
+      working: 5,
+      recent: 1,
+      machines: ["home", "studio", "laptop"],
+      top: [
+        ["asks", "home", "waiting", 10],
+        ["manager", "studio", "working", 1],
+        ["site", "laptop", "working", 20],
+        ["a", "laptop", "working", null],
+        ["b", "laptop", "working", null],
+      ],
+      more: 2,
+      unreachable: ["office-pc"],
+    },
+  );
+});

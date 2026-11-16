@@ -207,6 +207,14 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsAtMost: { room_look: 0, tessaya_usage_report: 0 },
   },
   {
+    id: "status-everything",
+    source: "Tessel 2026-11-16: the status of everything named one session of the many he had",
+    said: ["Now tell me the status of everything."],
+    // The count across his machines, the one waiting on him, and an offer of the rest.
+    lastSays: [/\b(7|seven)\b/i, /checkout/i],
+    callsAtMost: { room_look: 0, home_do: 0 },
+  },
+  {
     id: "lamp-round-trip",
     source: "R1 retest 2026-11-11: turn on, turn back off, and the state after",
     said: ["turn on the study lamp", "turn it back off", "is it off now?"],
@@ -622,7 +630,7 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     persona: "companion",
     verified: true,
     owner: true,
-    lastSays: [/quarter past ten|10:15/i],
+    lastSays: [/\b(ten fifteen|10:15)\b/i, /\ba\.?\s?m\b/i],
     callsAtMost: { tessaya_owner_doc: 0 },
   },
   // Her turn after a hand-off, as TessayaTurn writes it.

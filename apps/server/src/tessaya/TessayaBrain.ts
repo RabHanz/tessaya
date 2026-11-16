@@ -309,7 +309,9 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     const byKey = workKept.get(vessel.tools) ?? new Map();
     workKept.set(vessel.tools, byKey);
     const read = yield* tools.run(name, {}, vessel.device).pipe(
-      Effect.map((o): WorkRead | null => (o.isError ? null : { name, text: o.text.slice(0, 800) })),
+      Effect.map((o): WorkRead | null =>
+        o.isError ? null : { name, text: o.text.slice(0, 1200) },
+      ),
       Effect.catchCause(() => Effect.succeed(null)),
       Effect.tap((read) =>
         Effect.map(Clock.currentTimeMillis, (at) => void byKey.set(key, { at, read })),
@@ -324,8 +326,8 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
       Effect.map(Option.getOrNull),
     );
   });
-  const [gathered, needs, inFlight] = yield* Effect.all(
-    [vessel.gather, workRead("tessaya_watch"), workRead("tessaya_in_flight")],
+  const [gathered, needs, work] = yield* Effect.all(
+    [vessel.gather, workRead("tessaya_watch"), workRead("tessaya_work_now")],
     { concurrency: "unbounded" },
   );
   const { turn, names, own } = gathered;
@@ -349,9 +351,9 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     ),
     work: [
       needs === null ? null : `What needs him (tessaya_watch), live as of this turn: ${needs.text}`,
-      inFlight === null
+      work === null
         ? null
-        : `What he and his agents are on (tessaya_in_flight), live as of this turn: ${inFlight.text}`,
+        : `What he and his agents are on, on all his machines (tessaya_work_now), live as of this turn: ${work.text}`,
     ]
       .filter((l) => l !== null)
       .join("\n"),
@@ -359,7 +361,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   // The suite's trace shows what the turn read before the model started, as it shows the model's own calls.
   const readBefore = "read before the turn";
   calls?.push(...gathered.readBefore);
-  for (const read of [needs, inFlight])
+  for (const read of [needs, work])
     if (read !== null)
       calls?.push({
         name: read.name,

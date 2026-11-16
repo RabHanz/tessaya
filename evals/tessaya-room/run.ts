@@ -140,6 +140,29 @@ const WORK = {
   tessaya_in_flight: {
     turns: [{ session: "acme/app", title: "checkout refactor", agent: "Codex", minutes: 14 }],
   },
+  // Shaped as TessayaWorkNowResult: his work on three machines, more than the top few.
+  tessaya_work_now: {
+    total: 7,
+    waiting: 1,
+    working: 4,
+    recent: 2,
+    machines: ["studio", "laptop", "home"],
+    top: [
+      {
+        session: "checkout refactor",
+        project: "acme/app",
+        on: "studio",
+        state: "waiting",
+        minutesAgo: 3,
+      },
+      { session: "deploy check", project: "shop", on: "home", state: "working", minutesAgo: 1 },
+      { session: "landing page", project: "site", on: "laptop", state: "working", minutesAgo: 6 },
+      { session: "test fixes", project: "acme/app", on: "studio", state: "working", minutesAgo: 9 },
+      { session: "billing bug", project: "shop", on: "home", state: "working", minutesAgo: 12 },
+    ],
+    more: 2,
+    unreachable: [],
+  },
   // Shaped as TessayaTeamBoardResult, from the default pack's roles.
   tessaya_team_board: {
     members: DEFAULT_OS_PACK.personas.map((p) => ({

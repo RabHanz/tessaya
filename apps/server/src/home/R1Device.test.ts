@@ -399,7 +399,7 @@ effectIt.effect(
       expect(sent).toMatch(
         /What needs him \(tessaya_watch\), live as of this turn: \{"findings":\[\]\}/,
       );
-      expect(sent).toMatch(/tessaya_in_flight\), live as of this turn: \{"threads":\[\]\}/);
+      expect(sent).toMatch(/tessaya_work_now\), live as of this turn: \{"threads":\[\]\}/);
       // The R1's warm sessions start with this list: any other and his first turn finds none warm (14 Nov, 20:44).
       expect(offered).toEqual(sessionTools([], [LOOK]).map((t) => t.name));
 
@@ -419,7 +419,7 @@ effectIt.effect(
       yield* TestClock.adjust("300 millis");
       yield* Fiber.join(slow);
       expect(sent).not.toMatch(/tessaya_watch/);
-      expect(sent).toMatch(/tessaya_in_flight\), live as of this turn/);
+      expect(sent).toMatch(/tessaya_work_now\), live as of this turn/);
 
       // The next turn on the same tools uses the read the slow one finished, without waiting on its own (15 Nov).
       let watchReads = 0;

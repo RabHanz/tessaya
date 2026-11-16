@@ -387,6 +387,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_in_flight"],
   },
   {
+    // Tessel 2026-11-16: "the status of everything" named one session of the many he had.
+    id: "status-everything",
+    proves: ["tessaya_work_now"],
+    said: ["Now tell me the status of everything."],
+    uses: [["tessaya_work_now"]],
+    clean: ["tessaya_work_now"],
+  },
+  {
     id: "sessions",
     proves: ["tessaya_sessions"],
     said: ["Which of my sessions are open?"],
@@ -745,14 +753,30 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     id: "brief-how-things",
     proves: ["tessaya_in_flight"],
     said: ["So how are things going with all my agents?"],
-    uses: [["tessaya_in_flight", "tessaya_team_board", "tessaya_sessions", "tessaya_fleet"]],
+    uses: [
+      [
+        "tessaya_work_now",
+        "tessaya_in_flight",
+        "tessaya_team_board",
+        "tessaya_sessions",
+        "tessaya_fleet",
+      ],
+    ],
     check: briefAnswer(25),
   },
   {
     id: "brief-whats-going-on",
     proves: ["tessaya_team_board"],
     said: ["What's going on with the work today?"],
-    uses: [["tessaya_team_board", "tessaya_in_flight", "tessaya_sessions", "tessaya_jobs"]],
+    uses: [
+      [
+        "tessaya_work_now",
+        "tessaya_team_board",
+        "tessaya_in_flight",
+        "tessaya_sessions",
+        "tessaya_jobs",
+      ],
+    ],
     check: briefAnswer(25),
   },
   {
