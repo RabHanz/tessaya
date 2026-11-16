@@ -3,12 +3,15 @@
  * a clone made from a clip he records or uploads, on the environment's own machine. Every act is one `baton.voice.call`
  * op, so the Tessel, the phone and her tools reach the same service.
  */
-import type {
-  CloneResult,
-  LibraryVoiceView,
-  TessayaVoiceCallResult,
-  VoiceClip,
-  VoiceLibraryView,
+import {
+  AFFECT_VARIANTS,
+  isAffectVariant,
+  type AffectVariant,
+  type CloneResult,
+  type LibraryVoiceView,
+  type TessayaVoiceCallResult,
+  type VoiceClip,
+  type VoiceLibraryView,
 } from "@t3tools/tessaya-contracts";
 import { MicIcon, PlayIcon, SquareIcon, Trash2Icon, UploadIcon } from "lucide-react";
 import { useRef, useState } from "react";
@@ -190,6 +193,7 @@ export function VoicePlayground(props: {
   const [consent, setConsent] = useState(false);
   const [name, setName] = useState("");
   const [token, setToken] = useState("");
+  const [tone, setTone] = useState<AffectVariant>("tender");
   const upload = useRef<HTMLInputElement | null>(null);
 
   const play = (made: VoiceClip) => {
@@ -303,6 +307,16 @@ export function VoicePlayground(props: {
       setPicked(saved.id);
       await props.onChanged();
       setNote("Saved. It stays on this machine and is never synced.");
+    });
+  /** The clip above, said in one tone, becomes that tone of a saved clone (VOXTA G1): its lines in that tone use it. */
+  const recordTone = (id: string) =>
+    run(`tone:${id}`, async () => {
+      if (clip === null) return setNote("Record or upload a clip in that tone first.");
+      const reply = await call("owner", "recordAffect", { id, affect: tone, wav: clip.base64 });
+      if (!reply.ok) return setNote(reply.error ?? "The tone was not saved.");
+      setNote(`Saved its ${tone} tone.`);
+      play((reply.value as { readonly clip: CloneResult["clip"] }).clip);
+      await props.onChanged();
     });
   const remove = (id: string) =>
     run(`delete:${id}`, async () => {
@@ -518,17 +532,49 @@ export function VoicePlayground(props: {
         <SettingsRow
           key={saved.id}
           title={saved.name}
-          description="Your clone: on this machine only, marked synthetic. Withdrawing its consent in Brain → Always allowed silences it."
+          description={`Your clone: on this machine only, marked synthetic. Withdrawing its consent in Brain → Always allowed silences it. ${
+            (saved.affects ?? []).length === 0
+              ? "No tones yet: record a clip above in a tone, then save it here."
+              : `Tones: ${saved.affects!.join(", ")}.`
+          }`}
           control={
-            <Button
-              size="icon-sm-pill"
-              variant="ghost"
-              aria-label={`Delete ${saved.name}`}
-              disabled={busy !== null}
-              onClick={() => void remove(saved.id)}
-            >
-              <Trash2Icon />
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Select
+                items={AFFECT_VARIANTS.map((a) => ({ value: a, label: a }))}
+                value={tone}
+                onValueChange={(next) => {
+                  if (next !== null && isAffectVariant(next)) setTone(next);
+                }}
+              >
+                <SelectTrigger size="sm" className="w-28" aria-label="Tone">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectPopup>
+                  {AFFECT_VARIANTS.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {a}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={clip === null || busy !== null}
+                onClick={() => void recordTone(saved.id)}
+              >
+                {busy === `tone:${saved.id}` ? "Saving…" : "Save clip as tone"}
+              </Button>
+              <Button
+                size="icon-sm-pill"
+                variant="ghost"
+                aria-label={`Delete ${saved.name}`}
+                disabled={busy !== null}
+                onClick={() => void remove(saved.id)}
+              >
+                <Trash2Icon />
+              </Button>
+            </div>
           }
         />
       ))}
