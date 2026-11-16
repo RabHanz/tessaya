@@ -74,8 +74,14 @@ import * as ServerConfig from "../config.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
-import { TessayaEngine } from "./TessayaEngine.ts";
-import { readPriceList, spendOfTurns, type Spend } from "./TessayaJobSpend.ts";
+import { TessayaEngine, type TessayaTurnRun } from "./TessayaEngine.ts";
+import {
+  type JobTurns,
+  readPriceList,
+  spendOfTurns,
+  type Spend,
+  turnUnits,
+} from "./TessayaJobSpend.ts";
 import { planningFrame, readPack, readTemplates } from "./OperatingSystemPack.ts";
 import { expressOr } from "./TessayaExpression.ts";
 import { accountPause, routeFor } from "./BrainRoutes.ts";
@@ -630,6 +636,34 @@ export const spendCounts = Effect.fn("BatonJobFlow.spendCounts")(function* (
     if (turns.length > 0) out.set(entry.workSessionId, spendOfTurns(turns, rates));
   }
   return out;
+});
+
+/**
+ * Each job's and each schedule's provider turns since `since` (ms), for the Usage page's units.
+ * shortcut: only live (unarchived) threads are read; read archived ones too if the page must show archived jobs.
+ */
+export const usageUnits = Effect.fn("BatonJobFlow.usageUnits")(function* (since: number) {
+  const config = yield* ServerConfig.ServerConfig;
+  const stateDir = (config as { readonly stateDir?: string }).stateDir;
+  const rates = stateDir === undefined ? null : (readPriceList(stateDir)?.table ?? null);
+  const engine = yield* TessayaEngine;
+  const touched = new Set(
+    (yield* engine.threadShells).flatMap((s) =>
+      DateTime.toEpochMillis(s.updatedAt) >= since ? [s.id as string] : [],
+    ),
+  );
+  const sessions = yield* (yield* WorkSessionService)
+    .list({ includeArchived: true })
+    .pipe(Effect.orElseSucceed(() => []));
+  const jobs: Array<JobTurns> = [];
+  for (const session of sessions) {
+    const threads = new Set(session.providerSessions.map((p) => p.threadId));
+    const turns: Array<TessayaTurnRun> = [];
+    for (const threadId of threads)
+      if (touched.has(threadId)) turns.push(...(yield* engine.turnRuns(threadId)));
+    if (turns.length > 0) jobs.push({ id: session.id, label: session.title, turns });
+  }
+  return turnUnits(jobs, since, rates);
 });
 
 export const listJobs = Effect.fn("BatonJobFlow.list")(function* () {

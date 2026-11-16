@@ -673,7 +673,7 @@ export const makeHandlers = Effect.gen(function* () {
           Effect.map(record.query(input), (entries) => ({ entries })),
         ),
       ),
-    [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input)),
+    [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input, JobFlow.usageUnits)),
     [BATON_BRAIN_WS_METHODS.record]: (input) => run(recordDesktopUsage(input)),
     [BATON_PERSONAS_WS_METHODS.list]: () => run(personasList),
     [BATON_PROMPT_LAB_WS_METHODS.call]: (input) =>

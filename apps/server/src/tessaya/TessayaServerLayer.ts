@@ -363,6 +363,9 @@ export const services = TessayaRpcHandlers.runtimeLayer.pipe(
   Layer.provide(adoptEnv),
 );
 
+/** The usage ledger for T3's Usage page; the same layer as the services' (layers memoize by reference). */
+export const usageLedger = BrainUsage.layer;
+
 export const workers = Layer.effectDiscard(
   Effect.gen(function* () {
     // The synopsis first: a rule that fires should see a synopsis the same events already moved.

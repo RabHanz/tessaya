@@ -209,6 +209,7 @@ function BrainUsageSections({ environmentId }: { readonly environmentId: Environ
           ))
         )}
       </SettingsSection>
+      <UnitCosts units={report?.units ?? []} />
       <NearLimit environmentId={environmentId} />
       <SpendAlerts environmentId={environmentId} limits={report?.limits ?? []} />
     </>
@@ -281,6 +282,48 @@ function UsageCalls({
       ) : null}
     </>
   );
+}
+
+/** Each schedule's and each job's cost in the range: a schedule per run, a job in all, at list price. */
+function UnitCosts({ units }: { readonly units: BrainUsageResult["units"] }) {
+  if (units.length === 0) return null;
+  const sections = [
+    { kind: "schedule", title: "Per schedule" },
+    { kind: "job", title: "Per job" },
+  ] as const;
+  return sections.map(({ kind, title }) => {
+    const rows = units.filter((unit) => unit.kind === kind);
+    if (rows.length === 0) return null;
+    return (
+      <SettingsSection key={kind} title={title}>
+        {rows.map((unit) => {
+          const each = kind === "schedule" && unit.runs > 1 ? unit.runs : 1;
+          const cost = unit.listDollars ?? unit.dollars;
+          return (
+            <SettingsRow
+              key={unit.id}
+              title={unit.label ?? unit.id}
+              description={[
+                plural(unit.runs, "run"),
+                plural(unit.calls, "call"),
+                `${tokens.format(unit.tokens / each)} tokens${each > 1 ? " a run" : ""}`,
+                unit.dollars === null ? null : `API key ${money(unit.dollars)}`,
+              ]
+                .filter((part) => part !== null)
+                .join(" · ")}
+              control={
+                <span className="text-sm tabular-nums">
+                  {cost === null
+                    ? "Not priced"
+                    : `${money(cost / each)}${each > 1 ? " a run" : ""}`}
+                </span>
+              }
+            />
+          );
+        })}
+      </SettingsSection>
+    );
+  });
 }
 
 /** One subscription near its limit: background learning waits for the reset so talking keeps working (B-031). */
