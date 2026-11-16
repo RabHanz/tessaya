@@ -55,6 +55,7 @@ import { hisOwnTurn } from "../../../tessaya/consent.ts";
 import * as ServerConfig from "../../../config.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
+import * as Pulse from "../../../tessaya/TessayaPulse.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
@@ -488,6 +489,37 @@ export const layer = McpToolAccess.toLayer(
               (done) => wakeChangeLine(input, done),
             ),
           ),
+        ),
+      ),
+      // Her pulse's log and dials are the owner's: a guest's turn hears a line, never the log.
+      tessaya_pulse: McpToolAccess.writes((input) =>
+        call(
+          Effect.gen(function* () {
+            const origin = yield* TurnOrigin;
+            if (origin !== null && (origin.member !== OWNER_MEMBER_ID || origin.tainted))
+              return { line: "That's for the owner to ask.", items: [] };
+            if (runtime === null) return { line: "My pulse isn't on this server.", items: [] };
+            const run = <A>(effect: Effect.Effect<A, never, never>) =>
+              effect.pipe(Effect.provideContext(runtime));
+            if (input.action === "noticed") {
+              const rows = yield* run(Pulse.noticed(10));
+              return {
+                line: rows.length === 0 ? "I haven't noticed anything worth a note lately." : "",
+                items: rows.map((r) => ({
+                  at: r.at,
+                  did: r.outcome,
+                  what: r.subject,
+                  why: r.detail,
+                })),
+              };
+            }
+            if (input.action === "liked" || input.action === "told_off")
+              return { line: yield* run(Pulse.react(input.action)), items: [] };
+            return {
+              line: yield* run(Pulse.mute(input.about ?? "", input.action === "stop")),
+              items: [],
+            };
+          }),
         ),
       ),
       // A guest's voice learns nothing about who lives here.

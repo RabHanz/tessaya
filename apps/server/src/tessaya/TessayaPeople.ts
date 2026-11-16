@@ -116,6 +116,15 @@ export class TessayaPeople extends Context.Service<
     readonly sweep: Effect.Effect<number>;
     /** Her impression of a person (MA-021), shown to the owner in People and given only in that person's own turns. */
     readonly setImpression: (id: string, text: string | null) => Effect.Effect<void>;
+    /** Named guests heard on a vessel: when last, and how often in all (the pulse's "gone quiet" pattern, M-027). */
+    readonly lastHeard: Effect.Effect<
+      ReadonlyArray<{
+        readonly id: string;
+        readonly name: string;
+        readonly lastAt: number;
+        readonly seen: number;
+      }>
+    >;
   }
 >()("t3/tessaya/TessayaPeople") {}
 
@@ -998,6 +1007,17 @@ export const make = Effect.gen(function* () {
   return TessayaPeople.of({
     call,
     sweep,
+    lastHeard: sql<{ id: string; name: string; last_at: string; seen: number }>`
+      SELECT e.id, e.name, MAX(s.at) AS last_at, COUNT(*) AS seen
+      FROM fabric_memory_entities e JOIN fabric_memory_sightings s ON s.entity_id = e.id
+      WHERE e.status = 'guest' GROUP BY e.id
+    `.pipe(
+      Effect.map((rows) =>
+        rows.map((r) => ({ id: r.id, name: r.name, lastAt: Date.parse(r.last_at), seen: r.seen })),
+      ),
+      Effect.orDie,
+      Effect.withSpan("TessayaPeople.lastHeard"),
+    ),
     setImpression: Effect.fn("TessayaPeople.setImpression")(function* (
       id: string,
       text: string | null,

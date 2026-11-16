@@ -15,6 +15,7 @@
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
+  BATON_RECORD_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
@@ -215,6 +216,10 @@ export function createTessayaWorkSessionAtoms<R, E>(
     brainUsage: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:brain-usage",
       tag: BATON_BRAIN_WS_METHODS.usage,
+    }),
+    recordList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:record-list",
+      tag: BATON_RECORD_WS_METHODS.list,
     }),
     personasList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:personas",

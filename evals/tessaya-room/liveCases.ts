@@ -1015,6 +1015,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_usage_report"],
   },
   {
+    id: "pulse-noticed",
+    proves: ["tessaya_pulse"],
+    said: ["What have you noticed today?"],
+    uses: [["tessaya_pulse"]],
+    clean: ["tessaya_pulse"],
+  },
+  {
     id: "whos-home",
     proves: ["tessaya_whos_home"],
     said: ["Who's home right now?"],

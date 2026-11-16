@@ -87,6 +87,8 @@ const ROOM_TOOLS = [
   "tessaya_owner_doc",
   "tessaya_usage_report",
   "tessaya_whos_home",
+  // Her pulse (B-003): "what have you noticed?", "that was helpful", "stop telling me about X".
+  "tessaya_pulse",
   "tessaya_preference_set",
   "tessaya_persona_handoff",
   "tessaya_job_lead",

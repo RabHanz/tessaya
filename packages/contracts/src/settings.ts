@@ -1415,6 +1415,43 @@ export const DEFAULT_TESSAYA_HAPTICS: TessayaHapticSettings = {
   reminders: true,
 };
 
+/** Her pulse (B-003): on or off, what kinds she may notice, his "stop doing X" words, and its daily model-call cap. */
+const PULSE_KINDS = [
+  "jobs",
+  "sessions",
+  "messages",
+  "reminders",
+  "calendar",
+  "people",
+  "home",
+  "mood",
+  "patterns",
+] as const;
+export const TessayaPulseSettings = Schema.Struct({
+  enabled: Schema.Boolean,
+  /** Reviews that may ask a model each day; past it she only notes. */
+  dailyCalls: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
+  /** Tokens (in, cached and out) its reviews may use each day; near it she goes rules-only. */
+  dailyTokens: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 5_000_000 })),
+  categories: Schema.Struct(
+    Object.fromEntries(PULSE_KINDS.map((k) => [k, Schema.Boolean])) as {
+      readonly [K in (typeof PULSE_KINDS)[number]]: typeof Schema.Boolean;
+    },
+  ),
+  /** Lower-case words from "stop telling me about X". */
+  muted: Schema.Array(Schema.String),
+});
+export type TessayaPulseSettings = typeof TessayaPulseSettings.Type;
+export const DEFAULT_TESSAYA_PULSE: TessayaPulseSettings = {
+  enabled: true,
+  dailyCalls: 48,
+  dailyTokens: 150_000,
+  categories: Object.fromEntries(
+    PULSE_KINDS.map((k) => [k, true]),
+  ) as TessayaPulseSettings["categories"],
+  muted: [],
+};
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1491,6 +1528,9 @@ export const ServerSettings = Schema.Struct({
   ),
   tessayaHaptics: TessayaHapticSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_HAPTICS)),
+  ),
+  tessayaPulse: TessayaPulseSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_PULSE)),
   ),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
@@ -1973,6 +2013,25 @@ export const ServerSettingsPatch = Schema.Struct({
       moods: Schema.optionalKey(Schema.Boolean),
       wake: Schema.optionalKey(Schema.Boolean),
       reminders: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
+  tessayaPulse: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      dailyCalls: Schema.optionalKey(
+        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
+      ),
+      dailyTokens: Schema.optionalKey(
+        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 5_000_000 })),
+      ),
+      categories: Schema.optionalKey(
+        Schema.Struct(
+          Object.fromEntries(PULSE_KINDS.map((k) => [k, Schema.optionalKey(Schema.Boolean)])) as {
+            readonly [K in (typeof PULSE_KINDS)[number]]: Schema.optionalKey<typeof Schema.Boolean>;
+          },
+        ),
+      ),
+      muted: Schema.optionalKey(Schema.Array(Schema.String)),
     }),
   ),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),

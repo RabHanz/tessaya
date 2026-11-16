@@ -18,6 +18,7 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [tessaya-plan](tessaya-plan/)           | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                      |
 | [tessaya-dictation](tessaya-dictation/) | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused. |
 | [tessaya-learning](tessaya-learning/)   | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                  |
+| [tessaya-pulse](tessaya-pulse/)         | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                   |
 
 ## Run an eval
 
