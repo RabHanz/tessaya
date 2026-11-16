@@ -684,6 +684,10 @@ import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTy
 /** His zone on this computer: days ahead are counted in it. */
 const hisZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+/** How long "camera on now" has to be heard before the camera opens. */
+const CAMERA_NOTICE_MS = 1_200;
+/** The tray dot while the webcam is open. */
+const CAMERA_ON_COLOR = "#D8505C";
 /** How long the hold key is down before its pill shows: the helper's tap cutoff (SHORT_TAP_MS), so a tap never flashes. */
 const PRESS_SHOW_MS = 200;
 // Windows types into whatever has focus; there is no narrower target to name.
@@ -1485,6 +1489,17 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   let faceStatus: string | null = null;
   let palmStatus: string | null = null;
   let faceOnlooker = false;
+  /** The webcam is open for a face or palm check: the tray turns red and says so until it closes. */
+  let cameraOn = false;
+  // Announced on the pill and aloud before the engine opens the camera, and a beat to hear it first.
+  const announceCamera = () => {
+    input.extras?.announce("Camera on now.", true);
+    return new Promise<void>((resolve) => setTimeout(resolve, CAMERA_NOTICE_MS));
+  };
+  const showCamera = (open: boolean) => {
+    cameraOn = open;
+    render();
+  };
   let faceMembers: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
@@ -1495,6 +1510,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     platform: input.platform,
     exe: faceEnginePath(input.env),
     on: () => settings.faceCheck,
+    announce: announceCamera,
+    onCamera: showCamera,
     progress: (message) => {
       faceStatus = message;
       pushHome();
@@ -1507,6 +1524,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     exe: faceEnginePath(input.env),
     on: () => settings.palmCheck,
     modality: "palm",
+    announce: announceCamera,
+    onCamera: showCamera,
     progress: (message) => {
       palmStatus = message;
       pushHome();
@@ -3079,7 +3098,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     const on = (id: string) =>
       input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
     return {
-      color: hudView(state).color,
+      color: cameraOn ? CAMERA_ON_COLOR : hudView(state).color,
       caps: [settings.enabled, on("s.capture"), on("s.act")],
       muted: state === "muted",
       badge: input.updates?.ready() ?? false,
@@ -3099,7 +3118,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       NodePath.join(ART_DIR, taskbarIconFile(settings.palette, taskbarDark ? "dark" : "light")),
       input.platform,
     );
-    const tip = `Tessaya: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`;
+    const tip = `Tessaya: ${cameraOn ? "Camera on" : hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`;
     if (tip !== trayTip) tray.setToolTip((trayTip = tip));
     rebuildMenu();
   };
