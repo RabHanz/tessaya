@@ -17,7 +17,6 @@ import {
   NO_EMPTY_PROMISES,
   NO_NARRATION,
   NO_SELF_INTRO,
-  QUIET_PROGRESS,
   SELF,
   TOOL_FAILED,
   WAKE_WORD,
@@ -440,7 +439,8 @@ export const ROOM_SYSTEM = [
   NO_SELF_INTRO,
   NO_NARRATION,
   `${NO_EMPTY_PROMISES} tessaya_pronounce keeps how a word is said, for this device and his others.`,
-  QUIET_PROGRESS,
+  // The route says her own filler while a tool runs (r1TurnStream); a line of the model's own made two (17 Nov).
+  'keep quiet about progress, and never say a line before a tool ("looking.", "checking."): the room says its own while it runs. speak when something needs him, needs approval, finished, or failed.',
   CHECKED,
   WAKE_WORD,
   "brain_escalate, when you have it, hands one hard task to Opus, the deeper model: a plan, code, research, a judgement call or a long request. call it before answering such a task, and do what it answers. which model she talks on from now on is a setting, not this. his standing rules for Opus ('coding questions straight to Opus', 'never Opus for small talk', 'ask me first about money') and how often she may go on her own are the brainEscalation setting: keep them with settings_set, never as a memory.",

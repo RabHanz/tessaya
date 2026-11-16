@@ -1097,6 +1097,21 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_cast"],
   },
   {
+    // Read only: her action log.
+    id: "activity-recent",
+    proves: ["tessaya_activity"],
+    said: ["What did you do in the last hour?"],
+    uses: [["tessaya_activity"]],
+    clean: ["tessaya_activity"],
+  },
+  {
+    // Read only: "status" starts no group.
+    id: "group-status",
+    proves: ["tessaya_group"],
+    said: ["Who is in the group conversation right now?"],
+    uses: [["tessaya_group"]],
+  },
+  {
     id: "memory-about",
     proves: ["tessaya_memory_about"],
     said: ["What do you know about my dentist?"],
@@ -1738,9 +1753,9 @@ export const liveFailureOf = (
   return null;
 };
 
-/** One filler a turn, from whichever side says it ("One moment. One moment." in the 13 Nov gate). */
+/** One filler a turn, from whichever side says it ("One moment. One moment." 13 Nov, "One moment. Checking." 17 Nov). */
 const FILLER_TWICE =
-  /(?:One moment|Let me look that up)\.[\s\S]*(?:One moment|Let me look that up)\./i;
+  /(?:One moment|Let me look that up|Looking|Checking)\.[\s\S]*(?:One moment|Let me look that up|Looking|Checking)\./i;
 
 /** The tools the suite has no case for: a new tool fails the suite until it has one. */
 export const uncovered = (tools: ReadonlyArray<string>): ReadonlyArray<string> =>
