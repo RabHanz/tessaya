@@ -6323,6 +6323,16 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       return startLook(offer, false);
     },
     tell: (text) => input.extras?.announce(text, false),
+    sense: async (t) => {
+      await input.direct?.("baton.record.append", {
+        kind: "notice",
+        actor: "desktop",
+        ref: t.id,
+        subject: t.title.slice(0, 300),
+        outcome: t.kind,
+        detail: t.offer.slice(0, 1000),
+      });
+    },
   });
   setInterval(() => void initiative.tick().catch(() => undefined), INITIATIVE_MS).unref();
 

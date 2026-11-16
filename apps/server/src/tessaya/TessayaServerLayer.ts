@@ -47,6 +47,7 @@ import * as VoiceForgets from "./VoiceForgets.ts";
 import * as MemberPreferences from "./MemberPreferences.ts";
 import * as TessayaPeople from "./TessayaPeople.ts";
 import * as TessayaPresence from "./TessayaPresence.ts";
+import * as TessayaPulse from "./TessayaPulse.ts";
 import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
 import * as TurnPools from "./TurnPools.ts";
@@ -207,7 +208,8 @@ const homeDevicesLayer = HomeDevices.layer.pipe(
   Layer.provide(TessayaPhoneInbox.layer),
 );
 
-const servicesInner = IntentService.layer.pipe(
+// Her pulse (B-003) beside the intent surface, so every service provided below reaches it.
+const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
   // through the same door.
