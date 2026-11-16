@@ -24,6 +24,9 @@ import {
   R1Hub,
   runHubSocket,
 } from "./R1Hub.ts";
+import { PHONE_LINK_PATH, phoneIdOf, runPhoneSocket } from "./PhoneLink.ts";
+import { authenticateMediaRequest } from "../auth/http.ts";
+import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { OLD_FIRMWARE_PATH, R1_FIRMWARE_PATH, R1Updates } from "./R1Updates.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import * as Schema from "effect/Schema";
@@ -135,6 +138,37 @@ export const routes = HttpRouter.use((router) =>
           return HttpServerResponse.empty();
         }).pipe(Effect.catchCause(() => Effect.succeed(HttpServerResponse.empty({ status: 400 })))),
       );
+    // The phone route: his signed-in phone, never a device key.
+    yield* router.add(
+      "GET",
+      PHONE_LINK_PATH,
+      Effect.gen(function* () {
+        yield* authenticateMediaRequest(AuthOrchestrationOperateScope);
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const url = Option.getOrNull(requestUrl(request));
+        const r1 = url?.searchParams.get("device") ?? "";
+        const phoneId = phoneIdOf(url?.searchParams.get("phone") ?? null);
+        const known = r1ById(
+          yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+            Effect.provideContext(context),
+          ),
+          r1,
+        );
+        if (known === null || Option.isNone(phoneId))
+          return HttpServerResponse.text("No such Tessel.", { status: 404 });
+        const devices = Context.get(context, HomeDevices);
+        const socket = yield* request.upgrade;
+        yield* runPhoneSocket(socket, {
+          r1,
+          phoneId: phoneId.value,
+          name: (url?.searchParams.get("name") ?? "").slice(0, 60) || "Phone",
+          remote: request.headers["cf-connecting-ip"] ?? Option.getOrNull(request.remoteAddress),
+          r1Remote: () => hub.remoteOf(r1),
+          changed: (link, open) => devices.phoneLink(r1, link, open),
+        }).pipe(Effect.scoped);
+        return HttpServerResponse.empty();
+      }),
+    );
     const arbiter = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");

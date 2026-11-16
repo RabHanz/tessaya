@@ -110,6 +110,37 @@ it.effect(
     }),
 );
 
+it.effect("a voice tap takes her reply from the R1 alone and swaps its mic frames", () =>
+  Effect.gen(function* () {
+    const hub = hubForTest();
+    const a = socketOn(hub);
+    const bus = socketOn(hub);
+    yield* a.send(connectPacket({ clientId: "r1-a", user: "r1-a", pass: KEY, keepAliveS: 60 }));
+    yield* bus.send(
+      connectPacket({ clientId: "loop", user: "tessaya-bus", pass: "bus", keepAliveS: 30 }),
+    );
+    yield* a.send(subscribePacket(1, ["freya/r1/r1-a/voice/down"]));
+    yield* bus.send(subscribePacket(1, ["freya/r1/+/voice/#"]));
+    const phone: Array<string> = [];
+    hub.tapVoice("r1-a", {
+      down: (p) => phone.push(p.toString("utf8")),
+      up: (p) => Buffer.from(`phone-${p.toString("utf8")}`),
+    });
+    yield* bus.send(publishPacket("freya/r1/r1-a/voice/down", Buffer.from("hi")));
+    yield* a.send(publishPacket("freya/r1/r1-a/voice/up", Buffer.from("mic")));
+    expect(phone).toEqual(["hi"]);
+    expect(a.publishes()).toEqual([]);
+    // Every other listener still hears her reply.
+    expect(bus.publishes()).toEqual([
+      "freya/r1/r1-a/voice/down=hi",
+      "freya/r1/r1-a/voice/up=phone-mic",
+    ]);
+    hub.tapVoice("r1-a", null);
+    yield* bus.send(publishPacket("freya/r1/r1-a/voice/down", Buffer.from("back")));
+    expect(a.publishes()).toEqual(["freya/r1/r1-a/voice/down=back"]);
+  }),
+);
+
 it.effect("keeps a device to its own topics, and gives the bus and the server every R1's", () =>
   Effect.gen(function* () {
     const hub = hubForTest();
