@@ -11,6 +11,7 @@ import {
   BAR_ASK_TTL_MS,
   BAR_NOT_CONNECTED,
   CLIENT_ID,
+  PROMPT_EXPIRED,
   PROMPT_TTL_MS,
   askLine,
   isConnected,
@@ -22,8 +23,17 @@ import {
 import {
   TessayaDesktopState,
   BatonPhoneError,
+  TessayaInboxSync,
+  type TessayaInboxAnswer,
+  type TessayaInboxCard,
   type TessayaPhoneCallInput,
 } from "@t3tools/tessaya-contracts";
+import {
+  OWNER_MEMBER_ID,
+  type Assurance,
+  type PrincipalRole,
+} from "@t3tools/tessaya-shared/household";
+import { approvalRefusal } from "@t3tools/tessaya-shared/trust";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -31,10 +41,16 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
+import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
 
 interface AskRow {
@@ -53,6 +69,7 @@ interface AskRow {
 }
 interface PromptRow {
   readonly id: string;
+  readonly expires_at: number;
   readonly title: string;
   readonly detail: string;
   readonly buttons: string;
@@ -86,6 +103,17 @@ const decodeButtons = Schema.decodeSync(ButtonsJson);
 
 /** A batch card's answers: Approve all and Deny answer every item; Review each shows the items as their own cards. */
 export const BATCH_BUTTONS = ["Approve all", "Review each", "Deny"] as const;
+const isBatch = (p: Pick<PhonePrompt, "buttons">) =>
+  p.buttons.length === BATCH_BUTTONS.length && BATCH_BUTTONS.every((b, i) => p.buttons[i] === b);
+
+/** The linked-server tool the inbox swaps by. */
+export const INBOX_SYNC_TOOL = "tessaya_inbox_sync";
+/** How often each server swaps with the others when nothing changed: a server back from away catches up. */
+const SWAP_EVERY = "30 seconds";
+/** Another server's cards not heard of for this long are not shown: it is away. */
+const REMOTE_FRESH_MS = 3 * 60_000;
+/** A card of another server that expired is remembered this long, so a late answer hears it expired. */
+const LAPSED_KEEP_MS = 3_600_000;
 
 const fromPrompt = (r: PromptRow): PhonePrompt => ({
   id: r.id,
@@ -167,6 +195,18 @@ export class TessayaPhoneInbox extends Context.Service<
     /** The desktop asks whether the phone answered: the button index, or null. */
     readonly promptAnswer: (id: string) => Effect.Effect<number | null>;
     readonly closePrompt: (id: string) => Effect.Effect<void>;
+    /** Whether that card (this server's or another's) waited too long and was dropped unanswered. */
+    readonly expired: (id: string) => Effect.Effect<boolean>;
+    /** Whether a batch card expired in the last hour, for "approve them all" said after it did. */
+    readonly expiredBatch: Effect.Effect<boolean>;
+    /** How long a card waits for his answer: the server's `approvalCardMinutes`. */
+    readonly cardLife: Effect.Effect<number>;
+    /** What this server sends `to` another: its own waiting cards and his answers to that server's. */
+    readonly outgoing: (to: string) => Effect.Effect<TessayaInboxSync>;
+    /** Another server's cards and answers to this one's: the answers are applied and recorded here. */
+    readonly absorb: (theirs: TessayaInboxSync) => Effect.Effect<void>;
+    /** `absorb`, answered with `outgoing` for the caller: one call swaps both ways, so a one-way link is enough. */
+    readonly exchange: (theirs: TessayaInboxSync) => Effect.Effect<TessayaInboxSync>;
     /** Runs agents' check-and-post one at a time, so two at once cannot both pass the cap. */
     readonly agentsInTurn: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
     /** The desktop's latest account of itself (`tessaya_state`), kept in memory only. */
@@ -197,12 +237,73 @@ export interface PromptApprover {
 /** The Record's words for who answered a card. */
 export const approverLine = (by: PromptApprover) => `${by.name} (A${by.assurance}, ${by.via})`;
 
+/**
+ * Someone answers a card, from the phone page or his desktop: a yes counts only from a member whose role and assurance
+ * may give it (identity I-2), and a card that waited too long says so. True when taken, false when already answered,
+ * else the line to show.
+ */
+export const answerCard = Effect.fn("BatonPhoneInbox.answerCard")(function* (
+  id: string,
+  index: number,
+  approver: PromptApprover & { readonly role: PrincipalRole | null },
+) {
+  const inbox = yield* TessayaPhoneInbox;
+  const card = (yield* inbox.pending).find((p) => p.id === id);
+  if (card === undefined && (yield* inbox.expired(id))) return PROMPT_EXPIRED;
+  // Saying no narrows: anyone who may see the card may decline it.
+  const refusal =
+    card === undefined || index !== card.yes
+      ? null
+      : approvalRefusal({
+          risky: card.needs === "cloud-approve",
+          approver: {
+            member: approver.member,
+            role: approver.role,
+            assurance: approver.assurance as Assurance,
+          },
+        });
+  if (refusal !== null) return refusal;
+  const { role: _, ...by } = approver;
+  return yield* inbox.answerPrompt(id, index, by);
+});
+
 export const make = Effect.gen(function* () {
   const record = yield* Effect.serviceOption(TessayaRecordService);
   const agentPosts = yield* Semaphore.make(1);
   let latestState: { readonly at: number; readonly state: TessayaDesktopState } | null = null;
   const sql = yield* SqlClient.SqlClient;
   let lastSeen: number | null = null;
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  const cardLife = Option.isNone(settings)
+    ? Effect.succeed(PROMPT_TTL_MS)
+    : settings.value.getSettings.pipe(
+        Effect.map((s) => s.approvalCardMinutes * 60_000),
+        Effect.orElseSucceed(() => PROMPT_TTL_MS),
+      );
+  const environment = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
+  const self = Option.isNone(environment)
+    ? "this-server"
+    : String(yield* environment.value.getEnvironmentId);
+  let selfLabel: string | null = null;
+  const labelHere = Effect.gen(function* () {
+    if (selfLabel === null && Option.isSome(environment))
+      selfLabel = yield* environment.value.getDescriptor.pipe(
+        Effect.map((d) => d.label.slice(0, 80)),
+        Effect.orElseSucceed(() => null),
+      );
+    return selfLabel ?? "this machine";
+  });
+  /** His other servers' waiting cards, by environment, as each last sent them; shown beside this server's own. */
+  const remote = new Map<
+    string,
+    { readonly label: string; readonly at: number; readonly cards: ReadonlyArray<TessayaInboxCard> }
+  >();
+  /** His answers to another server's cards, sent with every swap until that server's cards no longer list them. */
+  const outbox = new Map<string, ReadonlyArray<TessayaInboxAnswer>>();
+  /** Other servers' cards that expired unanswered, by id. */
+  const lapsed = new Map<string, { readonly at: number; readonly batch: boolean }>();
+  const changes = yield* Queue.sliding<void>(1);
+  const changed = Effect.sync(() => Queue.offerUnsafe(changes, undefined));
 
   let arrived = yield* Deferred.make<void>();
   const sweep = Effect.gen(function* () {
@@ -217,10 +318,10 @@ export const make = Effect.gen(function* () {
       UPDATE fabric_phone_asks SET status = 'expired'
       WHERE status = 'taken' AND taken_at <= ${now - ASK_LEASE_MS}
     `;
-    yield* sql`UPDATE fabric_phone_prompts SET status = 'closed' WHERE status = 'pending' AND expires_at <= ${now}`;
+    yield* sql`UPDATE fabric_phone_prompts SET status = 'expired' WHERE status = 'pending' AND expires_at <= ${now}`;
     // Old answered rows are only history.
     yield* sql`DELETE FROM fabric_phone_asks WHERE status IN ('answered','failed','expired') AND created_at <= ${now - 3 * ASK_TTL_MS}`;
-    yield* sql`DELETE FROM fabric_phone_prompts WHERE status IN ('answered','closed') AND expires_at <= ${now - PROMPT_TTL_MS}`;
+    yield* sql`DELETE FROM fabric_phone_prompts WHERE status IN ('answered','closed','expired') AND expires_at <= ${now - LAPSED_KEEP_MS}`;
   }).pipe(Effect.orDie);
 
   const read = (id: string) =>
@@ -329,8 +430,9 @@ export const make = Effect.gen(function* () {
     yield* sql`
       INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, needs, status, answer, created_at, expires_at, batch)
       VALUES (${prompt.id}, ${prompt.title.slice(0, 200)}, ${prompt.detail.slice(0, 4000)}, ${encodeButtons(prompt.buttons.slice(0, MAX_BUTTONS))},
-              ${prompt.yes}, ${prompt.cancel}, ${prompt.needs ?? null}, 'pending', NULL, ${now}, ${now + PROMPT_TTL_MS}, ${batch})
+              ${prompt.yes}, ${prompt.cancel}, ${prompt.needs ?? null}, 'pending', NULL, ${now}, ${now + (yield* cardLife)}, ${batch})
     `.pipe(Effect.orDie);
+    yield* changed;
   });
   const mirror = (prompt: PhonePrompt) => insertPrompt(prompt, null);
 
@@ -359,24 +461,57 @@ export const make = Effect.gen(function* () {
     for (const item of batch.items) yield* insertPrompt(item, batch.id);
   });
 
-  const pending = Effect.gen(function* () {
+  const localRows = Effect.gen(function* () {
     yield* sweep;
     // A batch's items wait behind their batch card until it is answered ("Review each") or gone.
-    const rows = yield* sql<PromptRow>`
+    return yield* sql<PromptRow>`
       SELECT * FROM fabric_phone_prompts p WHERE status = 'pending'
         AND NOT EXISTS (SELECT 1 FROM fabric_phone_prompts b WHERE b.id = p.batch AND b.status = 'pending')
       ORDER BY created_at`.pipe(Effect.orDie);
-    return rows.map(fromPrompt);
   });
 
-  const pendingBatch = Effect.gen(function* () {
-    yield* sweep;
-    const rows = yield* sql<PromptRow>`
-      SELECT * FROM fabric_phone_prompts p WHERE status = 'pending'
-        AND EXISTS (SELECT 1 FROM fabric_phone_prompts i WHERE i.batch = p.id)
-      ORDER BY created_at DESC LIMIT 1`.pipe(Effect.orDie);
-    return rows[0] === undefined ? null : fromPrompt(rows[0]);
+  /** Other servers' cards still waiting and not answered here, each with the machine it is on. */
+  const remoteCards = Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    return [...remote].flatMap(([env, r]) => {
+      if (now - r.at > REMOTE_FRESH_MS) return [];
+      const answered = new Set((outbox.get(env) ?? []).map((a) => a.id));
+      return r.cards
+        .filter((c) => c.expiresAt > now && !answered.has(c.id))
+        .map((c) => ({ env, on: r.label, card: c }));
+    });
   });
+
+  /** This server's cards and the others', one card per id: a batch asked on several machines is one card. */
+  const pending = Effect.gen(function* () {
+    const here = (yield* localRows).map((r) => ({ on: null, card: fromPrompt(r) }));
+    const there = (yield* remoteCards).map(({ on, card: { expiresAt: _, ...card } }) => ({
+      on,
+      card: card as PhonePrompt,
+    }));
+    const byId = new Map<string, Array<{ on: string | null; card: PhonePrompt }>>();
+    for (const part of [...here, ...there])
+      byId.set(part.card.id, [...(byId.get(part.card.id) ?? []), part]);
+    const label = yield* labelHere;
+    return [...byId.values()].map((parts): PhonePrompt => {
+      const first = parts[0]!;
+      if (parts.length === 1)
+        return first.on === null ? first.card : { ...first.card, on: first.on };
+      const ons = parts.map((p) => p.on ?? label);
+      return {
+        ...first.card,
+        title: `${first.card.title}, on ${parts.length} machines`.slice(0, 200),
+        detail: parts.map((p, i) => `On ${ons[i]}:\n${p.card.detail}`).join("\n\n"),
+        on: ons.join(", "),
+        // The strictest machine's tier: a yes here is a yes on each.
+        ...(parts.some((p) => p.card.needs === "cloud-approve")
+          ? { needs: "cloud-approve" as const }
+          : {}),
+      };
+    });
+  });
+
+  const pendingBatch = Effect.map(pending, (cards) => cards.findLast(isBatch) ?? null);
 
   const answerOne = Effect.fn("BatonPhoneInbox.answerOne")(function* (
     id: string,
@@ -413,8 +548,33 @@ export const make = Effect.gen(function* () {
     index: number,
     by?: PromptApprover,
   ) {
+    // Another server's card (or its part of one across machines) is answered there: sent now, kept until it is.
+    const there = (yield* remoteCards).filter(
+      ({ card }) =>
+        card.id === id && Number.isInteger(index) && index >= 0 && index < card.buttons.length,
+    );
+    for (const { env } of there)
+      outbox.set(env, [
+        ...(outbox.get(env) ?? []),
+        {
+          id,
+          index,
+          by: by ?? { member: null, name: "someone", assurance: 0, via: "another of his servers" },
+        },
+      ]);
+    if (there.length > 0) yield* changed;
+    const here = yield* answerLocal(id, index, by);
+    return here || there.length > 0;
+  });
+
+  const answerLocal = Effect.fn("BatonPhoneInbox.answerLocal")(function* (
+    id: string,
+    index: number,
+    by?: PromptApprover,
+  ) {
     const row = yield* answerOne(id, index, by);
     if (row === false) return false;
+    yield* changed;
     // A batch's yes or no is each item's, through the same answer and Record row a single card gets.
     if (index === row.yes || index === row.cancel) {
       const items =
@@ -438,7 +598,113 @@ export const make = Effect.gen(function* () {
     yield* sql`UPDATE fabric_phone_prompts SET status = 'closed' WHERE id = ${id} AND status = 'pending'`.pipe(
       Effect.orDie,
     );
+    yield* changed;
   });
+
+  const expired = Effect.fn("BatonPhoneInbox.expired")(function* (id: string) {
+    yield* sweep;
+    const rows = yield* sql<{
+      status: string;
+    }>`SELECT status FROM fabric_phone_prompts WHERE id = ${id}`.pipe(Effect.orDie);
+    if (rows[0]?.status === "expired") return true;
+    const now = yield* Clock.currentTimeMillis;
+    return (
+      lapsed.has(id) ||
+      [...remote.values()].some((r) => r.cards.some((c) => c.id === id && c.expiresAt <= now))
+    );
+  });
+
+  const expiredBatch = Effect.gen(function* () {
+    yield* sweep;
+    const now = yield* Clock.currentTimeMillis;
+    const rows = yield* sql<{ n: number }>`
+      SELECT COUNT(*) AS n FROM fabric_phone_prompts
+      WHERE status = 'expired' AND buttons = ${encodeButtons(BATCH_BUTTONS)} AND expires_at > ${now - LAPSED_KEEP_MS}`.pipe(
+      Effect.orDie,
+    );
+    return (rows[0]?.n ?? 0) > 0 || [...lapsed.values()].some((l) => l.batch);
+  });
+
+  const outgoing = Effect.fn("BatonPhoneInbox.outgoing")(function* (to: string) {
+    const cards = (yield* localRows)
+      .slice(0, 50)
+      .map((r): TessayaInboxCard => ({ ...fromPrompt(r), expiresAt: r.expires_at }));
+    return {
+      from: self,
+      label: yield* labelHere,
+      cards,
+      answers: (outbox.get(to) ?? []).slice(0, 50),
+    } satisfies TessayaInboxSync;
+  });
+
+  const absorb = Effect.fn("BatonPhoneInbox.absorb")(function* (theirs: TessayaInboxSync) {
+    if (theirs.from === self) return;
+    const now = yield* Clock.currentTimeMillis;
+    // A card of theirs gone unanswered past its time expired there; a late answer here is told so.
+    for (const c of remote.get(theirs.from)?.cards ?? [])
+      if (c.expiresAt <= now && !theirs.cards.some((n) => n.id === c.id))
+        lapsed.set(c.id, { at: now, batch: isBatch(c) });
+    for (const [id, l] of lapsed) if (now - l.at > LAPSED_KEEP_MS) lapsed.delete(id);
+    remote.set(theirs.from, { label: theirs.label, at: now, cards: theirs.cards });
+    // An answer is done once their cards no longer list it (applied, or gone there).
+    const waiting = (outbox.get(theirs.from) ?? []).filter((a) =>
+      theirs.cards.some((c) => c.id === a.id),
+    );
+    if (waiting.length === 0) outbox.delete(theirs.from);
+    else outbox.set(theirs.from, waiting);
+    for (const a of theirs.answers)
+      yield* answerLocal(a.id, a.index, {
+        ...a.by,
+        via: `${a.by.via}, through ${theirs.label}`.slice(0, 120),
+      });
+  });
+
+  const exchange = Effect.fn("BatonPhoneInbox.exchange")(function* (theirs: TessayaInboxSync) {
+    yield* absorb(theirs);
+    return yield* outgoing(theirs.from);
+  });
+
+  // Every linked server, both ways in one call each: at once on a change here, and every half minute.
+  const links = yield* Effect.serviceOption(PeerLinks.PeerLinks);
+  const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
+  if (Option.isSome(links) && Option.isSome(peerMcp)) {
+    const swap = Effect.gen(function* () {
+      if (!(yield* links.value.enabled)) return;
+      const linked = (yield* links.value.list.pipe(Effect.orElseSucceed(() => []))).filter(
+        (l) => l.status !== "expired",
+      );
+      yield* Effect.forEach(
+        linked,
+        (link) =>
+          outgoing(String(link.environmentId)).pipe(
+            Effect.flatMap((mine) =>
+              peerMcp.value.call({
+                environmentId: link.environmentId,
+                tool: INBOX_SYNC_TOOL,
+                arguments: mine,
+                limits: { runtimeMode: "approval-required", interactionMode: "default" },
+                success: TessayaInboxSync,
+              }),
+            ),
+            Effect.timeout("10 seconds"),
+            Effect.flatMap(absorb),
+            Effect.ignore,
+          ),
+        { concurrency: "unbounded", discard: true },
+      );
+    }).pipe(Effect.withSpan("BatonPhoneInbox.swap"));
+    yield* Queue.take(changes).pipe(
+      Effect.andThen(swap),
+      Effect.ignoreCause({ log: true }),
+      Effect.forever,
+      Effect.forkScoped,
+    );
+    yield* swap.pipe(
+      Effect.ignoreCause({ log: true }),
+      Effect.repeat(Schedule.spaced(SWAP_EVERY)),
+      Effect.forkScoped,
+    );
+  }
 
   return TessayaPhoneInbox.of({
     post,
@@ -467,6 +733,12 @@ export const make = Effect.gen(function* () {
     answerPrompt,
     promptAnswer,
     closePrompt,
+    expired,
+    expiredBatch,
+    cardLife,
+    outgoing,
+    absorb,
+    exchange,
     agentsInTurn: Semaphore.withPermit(agentPosts),
     publishState: Effect.fn("BatonPhoneInbox.publishState")(function* (state: TessayaDesktopState) {
       latestState = { at: yield* Clock.currentTimeMillis, state };
@@ -649,5 +921,21 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (
       if (id === null) return yield* bad();
       yield* inbox.closePrompt(id);
       return { value: true };
+    // His desktop window shows the cards waiting on any of his servers, and answers them as him at his own desk.
+    case "cards":
+      return { value: yield* inbox.pending };
+    case "cardAnswer": {
+      const index = Number(a["index"]);
+      if (id === null || !Number.isInteger(index)) return yield* bad();
+      return {
+        value: yield* answerCard(id, index, {
+          member: OWNER_MEMBER_ID,
+          role: "owner",
+          name: "him",
+          assurance: 3,
+          via: "his desktop",
+        }),
+      };
+    }
   }
 });

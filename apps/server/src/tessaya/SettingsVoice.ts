@@ -16,7 +16,7 @@ import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
 import { TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TurnOrigin } from "./TurnOrigin.ts";
-import type { PhonePrompt } from "@t3tools/tessaya-shared/phoneRelay";
+import { PROMPT_EXPIRED, type PhonePrompt } from "@t3tools/tessaya-shared/phoneRelay";
 import { approvalRefusal } from "@t3tools/tessaya-shared/trust";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
@@ -89,6 +89,9 @@ export const SERVER_SETTINGS_VOICE: {
     "which login pays for each kind of her work: his subscription or an API key, and any fallback",
   ),
   brainKeyRoles: owner("which kinds of work each API key is allowed to pay for"),
+  approvalCardMinutes: owner(
+    "how many minutes a card waiting for his yes stays answerable before it expires (default 30)",
+  ),
   brainDeferNearLimit: free(
     "background learning waiting for the reset when the subscription is nearly spent, so talking keeps working",
   ),
@@ -330,8 +333,6 @@ const controlValue =
   };
 const decodeServer = Schema.decodeUnknownOption(ServerSettingsPatch);
 const decodeDesktop = Schema.decodeUnknownOption(DesktopVoiceSettingsPatch);
-/** How long his yes on a setting card is waited for. */
-const ANSWER_WAIT_MS = 10 * 60_000;
 
 export const entryOf = (
   key: string,
@@ -539,9 +540,15 @@ const askCard = (inbox: TessayaPhoneInbox["Service"], id: string, ask: Asking, a
     cancel: 1,
     needs: "cloud-approve",
   } satisfies PhonePrompt,
-  wait: inbox.promptAnswer(id).pipe(
-    Effect.repeat({ schedule: Schedule.spaced("2 seconds"), until: (a) => a !== null }),
-    Effect.timeoutOption(`${ANSWER_WAIT_MS} millis`),
+  // His yes is waited for as long as the card lives.
+  wait: Effect.flatMap(inbox.cardLife, (life) =>
+    inbox
+      .promptAnswer(id)
+      .pipe(
+        Effect.repeat({ schedule: Schedule.spaced("2 seconds"), until: (a) => a !== null }),
+        Effect.timeoutOption(`${life} millis`),
+      ),
+  ).pipe(
     Effect.flatMap((answer) =>
       Option.isSome(answer) && answer.value === 0 ? apply(ask.entry, ask.patch) : Effect.void,
     ),
@@ -593,6 +600,8 @@ export const setSettings = Effect.fn("SettingsVoice.setMany")(function* (input: 
   readonly why: string;
   readonly who: string;
   readonly dryRun?: boolean;
+  /** One card across his machines: each machine's part of one request shares this id, and his phone shows one card. */
+  readonly batch?: string;
 }) {
   const ready = yield* Effect.forEach(input.changes, (c) =>
     prepare({ ...c, ...(input.dryRun === true ? { dryRun: true } : {}) }),
@@ -605,10 +614,10 @@ export const setSettings = Effect.fn("SettingsVoice.setMany")(function* (input: 
     const cards = asks.map((ask, i) =>
       askCard(inbox.value, `setting-${at}-${i}-${ask.entry.key}`.slice(0, 64), ask, asked),
     );
-    if (cards.length === 1) yield* inbox.value.mirror(cards[0]!.card);
+    if (cards.length === 1 && input.batch === undefined) yield* inbox.value.mirror(cards[0]!.card);
     else
       yield* inbox.value.mirrorBatch({
-        id: `settings-${at}`,
+        id: input.batch ?? `settings-${at}`,
         title: `Tessaya wants to change ${asks.length} settings`,
         detail: [...asks.map((a, i) => `${i + 1}. ${a.changed}`), asked].join("\n"),
         items: cards.map((c) => c.card),
@@ -651,7 +660,13 @@ export const answerBatch = Effect.fn("SettingsVoice.answerBatch")(function* (
   const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
   const batch = Option.isNone(inbox) ? null : yield* inbox.value.pendingBatch;
   if (Option.isNone(inbox) || batch === null)
-    return { ok: false, line: "No batch of changes is waiting for him." };
+    return {
+      ok: false,
+      line:
+        Option.isSome(inbox) && (yield* inbox.value.expiredBatch)
+          ? PROMPT_EXPIRED
+          : "No batch of changes is waiting for him.",
+    };
   const member = origin.member ?? null;
   const assurance = origin.assurance ?? 0;
   // Saying no narrows: his voice may always deny.

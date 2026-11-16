@@ -62,9 +62,8 @@ import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import * as PersonaLayers from "./PersonaLayers.ts";
 import { readPack } from "./OperatingSystemPack.ts";
-import { approvalRefusal } from "@t3tools/tessaya-shared/trust";
 import * as FleetQuery from "./FleetQuery.ts";
-import { AskSource, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
+import { AskSource, TessayaPhoneInbox, answerCard } from "./TessayaPhoneInbox.ts";
 import { handleHands } from "./TessayaHandsApi.ts";
 import { VesselHands } from "./VesselHands.ts";
 import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./TessayaApi.ts";
@@ -145,6 +144,7 @@ export const routes = HttpRouter.use((router) =>
         ),
       answerPrompt: (id, index) =>
         run(Effect.flatMap(TessayaPhoneInbox, (inbox) => inbox.answerPrompt(id, index))),
+      expired: (id) => run(Effect.flatMap(TessayaPhoneInbox, (inbox) => inbox.expired(id))),
       transcribe: async (wav) => {
         if (hearing)
           return { ok: false, why: "Still working on the last recording. Try again in a moment." };
@@ -208,28 +208,14 @@ export const routes = HttpRouter.use((router) =>
             answerPrompt: (id, index) =>
               run(
                 Effect.gen(function* () {
-                  const inbox = yield* TessayaPhoneInbox;
                   const caller = householdCallerOf(session.value);
                   const grants =
                     caller.member === null
                       ? null
                       : yield* Effect.flatMap(TessayaHousehold, (h) => h.grantsOf(caller.member!));
-                  const card = (yield* inbox.pending).find((p) => p.id === id);
-                  // Saying no narrows: anyone who may see the card may decline it.
-                  const refusal =
-                    card === undefined || index !== card.yes
-                      ? null
-                      : approvalRefusal({
-                          risky: card?.needs === "cloud-approve",
-                          approver: {
-                            member: caller.member,
-                            role: caller.service ? "service" : (grants?.role ?? null),
-                            assurance: caller.assurance,
-                          },
-                        });
-                  if (refusal !== null) return refusal;
-                  return yield* inbox.answerPrompt(id, index, {
+                  return yield* answerCard(id, index, {
                     member: caller.member,
+                    role: caller.service ? "service" : (grants?.role ?? null),
                     name: grants?.name ?? caller.member ?? "someone",
                     assurance: caller.assurance,
                     via: caller.via,

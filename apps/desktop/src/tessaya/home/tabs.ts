@@ -215,7 +215,7 @@ export const tabOf = (id: string): TabId => {
   if (/^in[:.]/.test(id)) return "insights";
   if (/^sc[:.]/.test(id) || /^tf[:.]/.test(id)) return "scratchpad";
   if (/^j[a-z]?[:.]/.test(id)) return "jobs";
-  if (/^a[:.]/.test(id)) return "approvals";
+  if (/^ac?[:.]/.test(id)) return "approvals";
   if (/^k[:.]/.test(id)) return "tools";
   if (/^p[:.]/.test(id)) return "memory";
   if (id.startsWith("vt:") || id.startsWith("vt.")) return "vault";

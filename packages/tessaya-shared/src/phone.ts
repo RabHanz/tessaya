@@ -93,7 +93,7 @@ export const buildPhoneState = (input: {
     kind: "prompt",
     title: p.title,
     action: p.detail,
-    permission: "Asked on your computer; the first answer counts",
+    permission: `Asked on ${p.on ?? "your computer"}; the first answer counts`,
     ref: p.id,
     answerable: true,
     yes: p.yes,

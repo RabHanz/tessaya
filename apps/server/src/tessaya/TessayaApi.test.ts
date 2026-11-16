@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { PhoneAsk } from "@t3tools/tessaya-shared/phoneRelay";
+import { PROMPT_EXPIRED, type PhoneAsk } from "@t3tools/tessaya-shared/phoneRelay";
 
 import {
   CLOUD_APPROVE_SCOPE,
@@ -96,6 +96,7 @@ const make = (connected = true) => {
     },
     askGet: async (id) => ({ ask: asks.get(id) ?? null, connected }),
     answerPrompt: async (id, index) => (calls.push(`prompt ${id} ${index}`), id === "pr1"),
+    expired: async (id) => id === "pr-old",
     transcribe: async () => ({ ok: true, text: "what needs me" }),
   };
   return { deps, calls, asks };
@@ -252,6 +253,15 @@ describe("the phone API", () => {
       403,
       expect.stringContaining("A child can't say yes"),
     ]);
+    // A card tapped after it expired says so (16 Nov: nothing came through), and nothing is answered.
+    const late = await handlePhone(deps, {
+      method: "POST",
+      path: "approvals/d:pr-old",
+      scopes: approver,
+      json: { choice: 0, action: "x" },
+    });
+    expect([late.status, late.json["message"]]).toEqual([410, PROMPT_EXPIRED]);
+    expect(calls).toEqual(["prompt pr1 0", "prompt pr1 1"]);
   });
 
   it("answers a question with a button for each answer by its index, only within range", async () => {

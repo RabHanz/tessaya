@@ -4,19 +4,25 @@ import {
   BAR_ASK_TTL_MS,
   BAR_NOT_CONNECTED,
   CONNECTED_MS,
+  PROMPT_EXPIRED,
+  PROMPT_TTL_MS,
 } from "@t3tools/tessaya-shared/phoneRelay";
 import { assert, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaRecordService, layer as TessayaRecordLayer } from "./TessayaRecordService.ts";
 import {
   AskOwner,
   AskSource,
   TessayaPhoneInbox,
+  answerCard,
   layer as inboxLayer,
   phoneCall,
 } from "./TessayaPhoneInbox.ts";
@@ -173,7 +179,7 @@ layer("BatonPhoneInbox", (it) => {
       }),
   );
 
-  it.effect("a mirrored question nobody answers is dropped", () =>
+  it.effect("a card nobody answers for half an hour expires, and answering it then says so", () =>
     Effect.gen(function* () {
       const inbox = yield* TessayaPhoneInbox;
       yield* inbox.mirror({
@@ -184,9 +190,21 @@ layer("BatonPhoneInbox", (it) => {
         yes: 0,
         cancel: 1,
       });
-      yield* TestClock.adjust(121_000);
+      // 16 Nov: two minutes was too short; he tapped and nothing came through.
+      yield* TestClock.adjust(10 * 60_000);
+      assert.lengthOf(yield* inbox.pending, 1);
+      yield* TestClock.adjust(PROMPT_TTL_MS);
       assert.lengthOf(yield* inbox.pending, 0);
       assert.isFalse(yield* inbox.answerPrompt("prompt-2", 0));
+      const him = {
+        member: "owner",
+        role: "owner" as const,
+        name: "Him",
+        assurance: 3,
+        via: "his phone",
+      };
+      assert.strictEqual(yield* answerCard("prompt-2", 0, him), PROMPT_EXPIRED);
+      assert.strictEqual(yield* answerCard("prompt-2", 1, him), PROMPT_EXPIRED);
       // An answered question is kept for its reader, then deleted: the table does not grow forever.
       yield* inbox.mirror({
         id: "prompt-3",
@@ -198,7 +216,7 @@ layer("BatonPhoneInbox", (it) => {
       });
       assert.isTrue(yield* inbox.answerPrompt("prompt-3", 0));
       assert.strictEqual(yield* inbox.promptAnswer("prompt-3"), 0);
-      yield* TestClock.adjust(241_000);
+      yield* TestClock.adjust(PROMPT_TTL_MS + 3_600_001);
       yield* inbox.pending;
       assert.isNull(yield* inbox.promptAnswer("prompt-3"));
     }),
@@ -464,4 +482,105 @@ it.effect("asks past the old cap of twenty wait in the queue instead of being re
     for (let next = yield* inbox.take; next !== null; next = yield* inbox.take) taken.push(next.id);
     assert.deepStrictEqual(taken, ids);
   }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);
+
+/** One of his servers: its own database, Record and environment id. */
+const server = (environmentId: string, label: string) =>
+  Layer.build(
+    inboxLayer.pipe(
+      Layer.provideMerge(TessayaRecordLayer),
+      Layer.provideMerge(SqlitePersistenceMemory),
+      Layer.provide(
+        Layer.succeed(ServerEnvironment.ServerEnvironment, {
+          getEnvironmentId: Effect.succeed(descriptorOf(environmentId, label).environmentId),
+          getDescriptor: Effect.succeed(descriptorOf(environmentId, label)),
+        }),
+      ),
+    ),
+  ).pipe(
+    Effect.map((context) => ({
+      inbox: Context.get(context, TessayaPhoneInbox),
+      record: Context.get(context, TessayaRecordService),
+    })),
+  );
+
+it.effect(
+  "a card asked on the laptop shows on studio's phone page, and his answer there is applied and recorded on the laptop",
+  () =>
+    Effect.gen(function* () {
+      const laptop = yield* server("env-laptop", "Desk-Laptop");
+      const studio = yield* server("env-studio", "studio");
+      // The laptop's swap with studio, as its loop makes it over the link: one call, both ways.
+      const swap = Effect.gen(function* () {
+        const mine = yield* laptop.inbox.outgoing("env-studio");
+        yield* laptop.inbox.absorb(yield* studio.inbox.exchange(mine));
+      });
+      const card = (id: string) => ({
+        id,
+        title: "Tessaya wants to change a setting",
+        detail: id,
+        buttons: ["Yes, change it", "No"],
+        yes: 0,
+        cancel: 1,
+        needs: "cloud-approve" as const,
+      });
+      const him = { member: "owner", name: "Him", assurance: 3, via: "his phone" };
+
+      // 16 Nov: settings_set on Desk-Laptop landed only in the laptop's inbox.
+      yield* laptop.inbox.mirror(card("setting-on-laptop"));
+      yield* swap;
+      assert.deepStrictEqual(
+        (yield* studio.inbox.pending).map((c) => [c.id, c.on, c.needs]),
+        [["setting-on-laptop", "Desk-Laptop", "cloud-approve"]],
+      );
+      assert.isTrue(yield* studio.inbox.answerPrompt("setting-on-laptop", 0, him));
+      assert.lengthOf(yield* studio.inbox.pending, 0);
+      assert.isNull(yield* laptop.inbox.promptAnswer("setting-on-laptop"));
+      yield* swap;
+      assert.strictEqual(yield* laptop.inbox.promptAnswer("setting-on-laptop"), 0);
+      const record = JSON.stringify(yield* laptop.record.query({ limit: 5 }));
+      assert.include(record, "Approved by Him (A3, his phone, through studio)");
+      assert.notInclude(
+        JSON.stringify(yield* studio.record.query({ limit: 5 })),
+        "setting-on-laptop",
+      );
+      // Applied there, so once the laptop's cards no longer list it, it is not sent again.
+      yield* swap;
+      assert.deepStrictEqual((yield* studio.inbox.outgoing("env-laptop")).answers, []);
+
+      // One request across both machines is one card; Approve all answers each machine's own items.
+      const batch = (inbox: typeof laptop.inbox, on: string) =>
+        inbox.mirrorBatch({
+          id: "settings-42",
+          title: "Tessaya wants to change 1 settings",
+          detail: on,
+          items: [card(`setting-42-${on}`)],
+        });
+      yield* batch(laptop.inbox, "laptop");
+      yield* batch(studio.inbox, "studio");
+      yield* swap;
+      const [one, ...none] = yield* studio.inbox.pending;
+      assert.deepStrictEqual(none, []);
+      assert.strictEqual(one?.id, "settings-42");
+      assert.strictEqual(one?.on, "studio, Desk-Laptop");
+      assert.strictEqual(one?.needs, "cloud-approve");
+      assert.strictEqual((yield* studio.inbox.pendingBatch)?.id, "settings-42");
+      assert.isTrue(yield* studio.inbox.answerPrompt("settings-42", 0, him));
+      assert.strictEqual(yield* studio.inbox.promptAnswer("setting-42-studio"), 0);
+      yield* swap;
+      assert.strictEqual(yield* laptop.inbox.promptAnswer("setting-42-laptop"), 0);
+
+      // A laptop card left past its life is gone from studio, and tapping it there says it expired.
+      yield* laptop.inbox.mirror(card("setting-late"));
+      yield* swap;
+      yield* TestClock.adjust(PROMPT_TTL_MS + 1_000);
+      yield* swap;
+      assert.lengthOf(yield* studio.inbox.pending, 0);
+      assert.strictEqual(
+        yield* answerCard("setting-late", 0, { ...him, role: "owner" }).pipe(
+          Effect.provideService(TessayaPhoneInbox, studio.inbox),
+        ),
+        PROMPT_EXPIRED,
+      );
+    }),
 );

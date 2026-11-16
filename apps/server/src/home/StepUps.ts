@@ -5,7 +5,6 @@
  * device broker and the tool runner need not import each other.
  */
 import type { Assurance } from "@t3tools/tessaya-shared/household";
-import { PROMPT_TTL_MS } from "@t3tools/tessaya-shared/phoneRelay";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -59,8 +58,8 @@ const stepUpLevel = (done: StepUpDone, heldOn: string, from: string): Assurance 
   return done.how === "button" ? 1 : 0;
 };
 
-/** A held act is let go when its card on the phone expires unanswered. */
-const HELD_MS = PROMPT_TTL_MS;
+/** A held act with no card is let go after this; one with a card when the card expires unanswered. */
+const HELD_MS = 120_000;
 
 export class StepUps extends Context.Service<
   StepUps,
@@ -122,7 +121,7 @@ const make = Effect.gen(function* () {
       // A yes on their own phone is their device at A2 (§3.1), and the yes a card act waited for; a no lets it go.
       yield* phone.promptAnswer(id).pipe(
         Effect.repeat({ schedule: Schedule.spaced("2 seconds"), until: (a) => a !== null }),
-        Effect.timeoutOption(`${HELD_MS} millis`),
+        Effect.timeoutOption(`${yield* phone.cardLife} millis`),
         Effect.flatMap((answer) => {
           const always = Option.isSome(answer) && answer.value === 2 ? act.always : undefined;
           return always !== undefined || (Option.isSome(answer) && answer.value === 0)

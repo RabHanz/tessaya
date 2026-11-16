@@ -19,7 +19,7 @@ If the house's network is down, Settings shows "Home is unreachable" and nothing
 - **Asks you first:** locks, the alarm, sirens, garage and doors, cameras, pumps, heaters and ovens, heating set
   outside 16–28 °C or turned off, more than five devices at once, restarting Home Assistant, changing an
   automation she did not make, and any automation whose actions are in this list. The question arrives on your phone
-  (and under Settings → Home → Waiting for your yes) and lapses after two minutes. A yes is never taken from the desk
+  (and under Settings → Home → Waiting for your yes) and lapses after 30 minutes (`approvalCardMinutes`). A yes is never taken from the desk
   device's microphone, since anyone in the room can talk to it.
 - **Never:** stopping Home Assistant or shutting down or rebooting its host. Do those in Home Assistant.
 

@@ -10,8 +10,10 @@ export const BAR_NOT_CONNECTED =
 export const ASK_LEASE_MS = 5 * 60_000;
 /** The desktop counts as connected if it asked for work this recently. */
 export const CONNECTED_MS = 45_000;
-/** A mirrored question that nobody answers is dropped after this (the desktop's own box gives up at 60 s). */
-export const PROMPT_TTL_MS = 120_000;
+/** A card nobody answers expires after this, unless the server's `approvalCardMinutes` says otherwise. */
+export const PROMPT_TTL_MS = 30 * 60_000;
+/** What answering a card that waited too long says, on the phone, the desktop or by voice. */
+export const PROMPT_EXPIRED = "That ask expired. Ask again if it still matters.";
 export const ASK_TEXT_MAX = 2_000;
 export const CLIENT_ID = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -48,6 +50,8 @@ export interface PhonePrompt {
   readonly cancel: number;
   /** Answering from a phone needs this permission (a cloud approval); absent means any paired phone may. */
   readonly needs?: "cloud-approve";
+  /** The machine that asked, when it is another of his servers (or several, for one card across them). */
+  readonly on?: string;
 }
 
 export const isConnected = (lastSeen: number | null, now: number): boolean =>

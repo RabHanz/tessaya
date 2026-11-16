@@ -13,6 +13,7 @@ const phone = (answer: number | null, shown: Array<PhonePrompt>) =>
     mirror: (prompt: PhonePrompt) => Effect.sync(() => void shown.push(prompt)),
     promptAnswer: () => Effect.succeed(answer),
     closePrompt: () => Effect.void,
+    cardLife: Effect.succeed(120_000),
   } as unknown as TessayaPhoneInbox["Service"]);
 
 const holdCard = (
