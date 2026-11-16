@@ -62,7 +62,7 @@ it.effect(
         Parameters<EnvironmentAuth.EnvironmentAuth["Service"]["createPairingLink"]>[0]
       > = [];
       const auth = {
-        createPairingLink: (input) => {
+        createPairingLink: (input: (typeof asked)[number]) => {
           asked.push(input);
           return Effect.succeed({
             id: "here-1",
@@ -74,7 +74,7 @@ it.effect(
             expiresAt: at,
           });
         },
-      } as EnvironmentAuth.EnvironmentAuth["Service"];
+      } as unknown as EnvironmentAuth.EnvironmentAuth["Service"];
       const links = {
         enabled: Effect.succeed(true),
         list: Effect.succeed([
@@ -84,11 +84,11 @@ it.effect(
           link("old", "full-access", "expired"),
           link("local", "full-access"),
         ]),
-        resolve: (id) =>
+        resolve: (id: string) =>
           Effect.succeed({ link: link(id, "full-access"), url: ADDRESSES[id]!, token: "t" }),
-      } as PeerLinks.PeerLinks["Service"];
+      } as unknown as PeerLinks.PeerLinks["Service"];
       const mcp = {
-        call: (input) =>
+        call: (input: { readonly environmentId: string }) =>
           input.environmentId === "onnyx"
             ? Effect.fail(
                 new OrchestratorMcpFailure({
@@ -97,7 +97,7 @@ it.effect(
                 }),
               )
             : Effect.succeed({ credential: `CODE-${input.environmentId}`, expiresAt: at }),
-      } as PeerMcpClient.PeerMcpClient["Service"];
+      } as unknown as PeerMcpClient.PeerMcpClient["Service"];
 
       const result = yield* issue().pipe(
         Effect.provideService(EnvironmentAuth.EnvironmentAuth, auth),
