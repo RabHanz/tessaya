@@ -17,6 +17,7 @@ import {
   TessayaRecordEntry,
   TessayaTeamBoardResult,
   TessayaTurnsInFlightResult,
+  TessayaWorkNowResult,
   TessayaWeaveListResult,
   TessayaWeaveSendInput,
   TessayaWeaveSendResult,
@@ -185,6 +186,17 @@ const InFlightTool = Tool.make("tessaya_in_flight", {
   description:
     "Is anything mid-turn on this computer: T3 threads whose turn is running, and Claude Code processes that say they are busy. Ask it before an update, an install or a restart, which would cut those turns off; wait while it lists any.",
   success: TessayaTurnsInFlightResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const WorkNowTool = Tool.make("tessaya_work_now", {
+  ...shared,
+  description:
+    'What he and his agents are on now, on every one of his linked machines: how many sessions are working, waiting on him, or busy in the last hour, and the few most pressing. Use it for "what\'s the status" or "what am I working on"; give the count, name the top ones, and offer the rest (`more`). `tessaya_in_flight` is only this computer\'s mid-turn work, for before a restart.',
+  success: TessayaWorkNowResult,
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, true)
@@ -748,6 +760,7 @@ export const TessayaToolkit = Toolkit.make(
   RulesTool,
   SessionsTool,
   InFlightTool,
+  WorkNowTool,
   FleetTool,
   AskTool,
   AskStatusTool,

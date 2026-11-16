@@ -43,6 +43,7 @@ import * as TessayaRpcHandlers from "../../../tessaya/TessayaRpcHandlers.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
+import { workNow } from "../../../tessaya/TessayaSessionsAcross.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { TessayaVocabulary } from "../../../tessaya/TessayaVocabulary.ts";
 import {
@@ -562,6 +563,15 @@ export const layer = McpToolAccess.toLayer(
       ),
       tessaya_in_flight: McpToolAccess.reads(() =>
         call(handlers[BATON_SESSIONS_WS_METHODS.inFlight]()),
+      ),
+      // The same listing as his Tessaya window, every linked machine's: titles and projects only, never accounts.
+      tessaya_work_now: McpToolAccess.reads(() =>
+        call(
+          Effect.gen(function* () {
+            const across = yield* handlers[BATON_SESSIONS_WS_METHODS.across]({});
+            return workNow(across, yield* Clock.currentTimeMillis);
+          }),
+        ),
       ),
       // Titles and folders only: the history index would let an agent test any word against every transcript.
       tessaya_sessions: McpToolAccess.reads((input) =>

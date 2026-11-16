@@ -72,6 +72,7 @@ const ROOM_TOOLS = [
   "home_automation_set",
   "tessaya_team_board",
   "tessaya_in_flight",
+  "tessaya_work_now",
   "tessaya_sessions",
   "tessaya_fleet",
   "tessaya_jobs",

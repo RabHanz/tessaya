@@ -192,6 +192,31 @@ export const TessayaTurnsInFlightResult = Schema.Struct({
   ),
 });
 
+/** What he and his agents are on, on this server and each linked one: counts, then the few most pressing. */
+export const TessayaWorkNowResult = Schema.Struct({
+  /** Sessions working, waiting on him, or busy within the last hour. */
+  total: Schema.Number,
+  waiting: Schema.Number,
+  working: Schema.Number,
+  recent: Schema.Number,
+  machines: Schema.Array(Schema.String),
+  /** Waiting first, then working, then the most recent. */
+  top: Schema.Array(
+    Schema.Struct({
+      session: Schema.String,
+      project: Schema.String,
+      on: Schema.String,
+      state: Schema.Literals(["waiting", "working", "recent"]),
+      minutesAgo: Schema.NullOr(Schema.Number),
+    }),
+  ),
+  /** How many of `total` are not in `top`. */
+  more: Schema.Number,
+  /** Linked machines that did not answer, so their work is missing rather than idle. */
+  unreachable: Schema.Array(Schema.String),
+});
+export type TessayaWorkNowResult = typeof TessayaWorkNowResult.Type;
+
 /** Archives (reversibly) the threads that only mirror Tessaya's own helper sessions; without `apply` it only lists them. */
 export const TessayaCatalogCleanupInput = Schema.Struct({ apply: Schema.Boolean });
 export const TessayaCatalogCleanupResult = Schema.Struct({
