@@ -394,3 +394,74 @@ it.effect(
       ),
     ),
 );
+
+it.effect(
+  "a batch card answers each change through its own card and Record row; deny answers none yes; review shows each",
+  () =>
+    Effect.gen(function* () {
+      const inbox = yield* TessayaPhoneInbox;
+      const item = (id: string, needs?: "cloud-approve") => ({
+        id,
+        title: "Change a setting",
+        detail: id,
+        buttons: ["Yes, change it", "No"],
+        yes: 0,
+        cancel: 1,
+        ...(needs === undefined ? {} : { needs }),
+      });
+      const batch = (id: string) =>
+        inbox.mirrorBatch({
+          id,
+          title: "Change 2 settings",
+          detail: "1. a\n2. b",
+          items: [item(`${id}-a`, "cloud-approve"), item(`${id}-b`)],
+        });
+      const by = { member: "owner", name: "Him", assurance: 3 as const, via: "his phone" };
+
+      yield* batch("batch-yes");
+      // One card while it waits, at its strictest item's tier.
+      assert.deepStrictEqual(
+        (yield* inbox.pending).map((p) => [p.id, p.needs]),
+        [["batch-yes", "cloud-approve"]],
+      );
+      assert.strictEqual((yield* inbox.pendingBatch)?.id, "batch-yes");
+      assert.isTrue(yield* inbox.answerPrompt("batch-yes", 0, by));
+      assert.strictEqual(yield* inbox.promptAnswer("batch-yes-a"), 0);
+      assert.strictEqual(yield* inbox.promptAnswer("batch-yes-b"), 0);
+      const record = JSON.stringify(yield* (yield* TessayaRecordService).query({ limit: 10 }));
+      for (const ref of ["batch-yes-a", "batch-yes-b"]) assert.include(record, `"ref":"${ref}"`);
+
+      yield* batch("batch-no");
+      assert.isTrue(yield* inbox.answerPrompt("batch-no", 2, by));
+      assert.strictEqual(yield* inbox.promptAnswer("batch-no-a"), 1);
+      assert.strictEqual(yield* inbox.promptAnswer("batch-no-b"), 1);
+
+      yield* batch("batch-each");
+      assert.isTrue(yield* inbox.answerPrompt("batch-each", 1, by));
+      assert.deepStrictEqual(
+        (yield* inbox.pending).map((p) => p.id),
+        ["batch-each-a", "batch-each-b"],
+      );
+      assert.isNull(yield* inbox.pendingBatch);
+      assert.isTrue(yield* inbox.answerPrompt("batch-each-b", 0, by));
+      assert.isNull(yield* inbox.promptAnswer("batch-each-a"));
+    }).pipe(
+      Effect.provide(
+        inboxLayer.pipe(
+          Layer.provideMerge(TessayaRecordLayer),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      ),
+    ),
+);
+
+it.effect("asks past the old cap of twenty wait in the queue instead of being refused", () =>
+  Effect.gen(function* () {
+    const inbox = yield* TessayaPhoneInbox;
+    const ids = Array.from({ length: 25 }, (_, i) => `queue-${String(i).padStart(4, "0")}`);
+    for (const id of ids) assert.isTrue((yield* inbox.post({ id, text: "next" })).ok);
+    const taken: Array<string> = [];
+    for (let next = yield* inbox.take; next !== null; next = yield* inbox.take) taken.push(next.id);
+    assert.deepStrictEqual(taken, ids);
+  }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
+);

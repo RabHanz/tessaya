@@ -10,7 +10,9 @@ import {
   entryOf,
   SETTINGS,
   findSettings,
+  answerBatch,
   setSetting,
+  setSettings,
   settingHere,
   settingValue,
 } from "../../../tessaya/SettingsVoice.ts";
@@ -66,6 +68,25 @@ export const make = Effect.gen(function* () {
         return yield* here;
       }),
     );
+  /** Who is asking, for the card, and whether it is the suite's pretend R1 (checked as for real, changes nothing). */
+  const askerOf = Effect.gen(function* () {
+    const scope = yield* McpInvocationContext.McpInvocationContext;
+    const vessel = vesselOf(scope.client);
+    const via = (yield* TurnOrigin)?.label;
+    return {
+      dryRun: vessel?.dryRun === true,
+      who:
+        via !== undefined
+          ? `Tessaya via ${via}`
+          : vessel !== null
+            ? vessel.surface === "r1"
+              ? "Tessaya in the room"
+              : "Tessaya on his desktop"
+            : scope.client === undefined
+              ? "an agent in T3"
+              : "an outside agent",
+    };
+  });
   const described = Effect.fn("SettingsMcp.described")(function* (key: string) {
     const entry = entryOf(key, yield* everything);
     if (entry === null) return yield* unknown(key);
@@ -132,32 +153,41 @@ export const make = Effect.gen(function* () {
           "settings_set",
           input,
           Effect.gen(function* () {
-            const scope = yield* McpInvocationContext.McpInvocationContext;
-            const vessel = vesselOf(scope.client);
-            const via = (yield* TurnOrigin)?.label;
+            const asker = yield* askerOf;
             return yield* inRuntime(
               setSetting({
                 key: String(input["key"] ?? ""),
                 value: input["value"],
                 why: String(input["why"] ?? ""),
-                // The suite's pretend R1 is checked as for real and changes nothing.
-                dryRun: vessel?.dryRun === true,
-                who:
-                  via !== undefined
-                    ? `Tessaya via ${via}`
-                    : vessel !== null
-                      ? vessel.surface === "r1"
-                        ? "Tessaya in the room"
-                        : "Tessaya on his desktop"
-                      : scope.client === undefined
-                        ? "an agent in T3"
-                        : "an outside agent",
+                ...asker,
               }).pipe(Effect.provideContext(context!)),
             );
           }),
         ),
       // His other servers may change a setting here for a turn they heard; its class and his yes still apply.
       { linkedCallers: "allowed" },
+    ),
+    settings_set_many: McpToolAccess.writes((input: Args) =>
+      Effect.gen(function* () {
+        const asker = yield* askerOf;
+        const changes = Array.isArray(input["changes"])
+          ? (input["changes"] as ReadonlyArray<{ key?: unknown; value?: unknown }>)
+          : [];
+        return yield* inRuntime(
+          setSettings({
+            changes: changes.map((c) => ({ key: String(c.key ?? ""), value: c.value })),
+            why: String(input["why"] ?? ""),
+            ...asker,
+          }).pipe(Effect.provideContext(context!)),
+        );
+      }),
+    ),
+    settings_answer_all: McpToolAccess.writes((input: Args) =>
+      inRuntime(
+        answerBatch(input["answer"] === "approve" ? "approve" : "deny").pipe(
+          Effect.provideContext(context!),
+        ),
+      ),
     ),
   };
 });

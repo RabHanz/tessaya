@@ -13,7 +13,6 @@ export const CONNECTED_MS = 45_000;
 /** A mirrored question that nobody answers is dropped after this (the desktop's own box gives up at 60 s). */
 export const PROMPT_TTL_MS = 120_000;
 export const ASK_TEXT_MAX = 2_000;
-export const QUEUE_MAX = 20;
 export const CLIENT_ID = /^[A-Za-z0-9_-]{8,64}$/;
 
 export const NOT_CONNECTED = "Your computer is not connected; it will answer when it is back.";

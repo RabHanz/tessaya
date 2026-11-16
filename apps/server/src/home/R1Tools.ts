@@ -101,6 +101,8 @@ const ROOM_TOOLS = [
   "settings_get",
   "settings_explain",
   "settings_set",
+  "settings_set_many",
+  "settings_answer_all",
   "tessaya_account_use",
   // Every vessel's self-described items, from any vessel (R1-P13).
   "device_list",
@@ -310,6 +312,7 @@ const decoders = new Map(
 /** Writes that run their own dry run for a replay, through their real checks: the house's and the settings'. */
 const SELF_DRY: ReadonlySet<string> = new Set([
   "settings_set",
+  "settings_set_many",
   "tessaya_account_use",
   "comms_send",
   "comms_play",
