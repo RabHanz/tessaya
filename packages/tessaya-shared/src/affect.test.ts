@@ -131,7 +131,11 @@ describe("affect", () => {
     expect(
       affectView(run([fail], run([fail, fail]), 2 * H), "executive", { ...day, now: 2 * H }).label,
     ).toBe("determined");
-    expect(label([{ kind: "his_voice", emotion: "sad" }])).toBe("concerned");
+    // "sad" alone is weak (8% of his ordinary turns on the MA-022 bench): concern needs a second signal.
+    expect(label([{ kind: "his_voice", emotion: "sad" }])).not.toBe("concerned");
+    expect(label([{ kind: "his_voice", emotion: "fearful" }])).not.toBe("concerned");
+    expect(label([{ kind: "his_voice", emotion: "sad", confirmed: true }])).toBe("concerned");
+    expect(label([{ kind: "his_voice", emotion: "angry" }])).toBe("steady");
     expect(label([{ kind: "rude" }, { kind: "apology" }])).not.toBe("hurt");
     const why = affectView(run([fail, fail]), "executive", day);
     expect(why.intensity).toBeGreaterThanOrEqual(0.7);
