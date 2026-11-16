@@ -242,6 +242,33 @@ const AccessManageTool = Tool.make("access_manage", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, false);
+const OnOrRead = Schema.Struct({
+  on: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description: "true turns it on, false off; left out, it is only read.",
+    }),
+  ),
+});
+const IntercomSwitchTool = Tool.make("intercom_switch", {
+  ...shared,
+  description: JOB_TOOL_TEXT.intercom_switch,
+  parameters: OnOrRead,
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const MemorySyncSwitchTool = Tool.make("memory_sync_switch", {
+  ...shared,
+  description: JOB_TOOL_TEXT.memory_sync_switch,
+  parameters: OnOrRead,
+})
+  .annotate(McpSchema.EnabledWhen, roomOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
 
 export const JobTools = [
   CloudDispatchTool,
@@ -259,6 +286,8 @@ export const JobTools = [
   ScheduleTool,
   EnvironmentMaintainTool,
   AccessManageTool,
+  IntercomSwitchTool,
+  MemorySyncSwitchTool,
 ] as const;
 
 /** What one job tool takes, by its name. */

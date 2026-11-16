@@ -26,6 +26,8 @@ describe("app commands by voice", () => {
     expect(judge({ command: "usage.open" })).toBe("allow");
     expect(judge({ command: "composer.sendBackground" })).toBe("ask");
     expect(judge({ command: "terminal.close" })).toBe("ask");
+    expect(judge({ command: "thread.restartSession" })).toBe("ask");
+    expect(judge({ command: "project.togglePin" })).toBe("allow");
     expect(judge({ script: "dev" })).toBe("ask");
     expect(appCommandAsks("sidebar.toggle")).toBeNull();
   });

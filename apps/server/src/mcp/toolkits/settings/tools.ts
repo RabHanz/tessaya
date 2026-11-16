@@ -79,5 +79,50 @@ const SetTool = Tool.make("settings_set", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const SetManyTool = Tool.make("settings_set_many", {
+  ...shared,
+  description:
+    "Change several settings he asked for in one breath, each as settings_set would. Free ones change at once; the ones that need his yes go to his phone together as one card he can approve all, review one by one, or deny; never ones are refused with the reason. One result per change.",
+  parameters: Schema.Struct({
+    changes: Schema.Array(
+      Schema.Struct({
+        key: Key,
+        value: Schema.Unknown.annotate({ description: "The new value, as for settings_set." }),
+      }),
+    )
+      .check(Schema.isMinLength(1), Schema.isMaxLength(30))
+      .annotate({ description: "Each setting to change and its new value." }),
+    why: Schema.String.check(Schema.isMaxLength(300)).annotate({
+      description: "His request, in his words.",
+    }),
+    ...PeerOrigin,
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
+const AnswerAllTool = Tool.make("settings_answer_all", {
+  ...shared,
+  description:
+    "He answers the card of several changes waiting on his phone by voice: 'approve them all' or 'deny them all'. Counts only in his own verified voice; a card that needs a yes on his own device is still left there for him, so say so.",
+  parameters: Schema.Struct({
+    answer: Schema.Literals(["approve", "deny"]).annotate({ description: "What he said." }),
+    ...PeerOrigin,
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 /** Spread into Tessaya's toolkit, so every vessel gets them through its one registration. */
-export const SettingsTools = [FindTool, GetTool, ExplainTool, SetTool] as const;
+export const SettingsTools = [
+  FindTool,
+  GetTool,
+  ExplainTool,
+  SetTool,
+  SetManyTool,
+  AnswerAllTool,
+] as const;

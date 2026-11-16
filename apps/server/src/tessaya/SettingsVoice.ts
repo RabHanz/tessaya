@@ -12,7 +12,11 @@ import * as Schema from "effect/Schema";
 
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
+import { TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
+import { TurnOrigin } from "./TurnOrigin.ts";
+import type { PhonePrompt } from "@t3tools/tessaya-shared/phoneRelay";
+import { approvalRefusal } from "@t3tools/tessaya-shared/trust";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 export type SettingClass = "free" | "confirm" | "owner" | "never";
@@ -47,7 +51,7 @@ export const SERVER_SETTINGS_VOICE: {
     "lines written fresh each time, varied and in character, instead of fixed ones",
   ),
   tessayaMood: free(
-    'mood: on or off, its strength (intensity 0 to 1, default 0.6), and the warmth that builds from talking most days (bondCap 0 to 0.15; 0 starts afresh each day). Its value is an object: {"enabled": true, "intensity": 0.6, "bondCap": 0.15}',
+    'mood: on or off, its strength (intensity 0 to 1, default 0.6), the warmth that builds from talking most days (bondCap 0 to 0.15; 0 starts afresh each day), and per device its owner and whether it shows feelings toward that person (devices: {"<device id>": {"owner": "<member id>" or null, "show": true or false}}; owned phones and desktops show it by default, Tessels do not). Its value is an object: {"enabled": true, "intensity": 0.6, "bondCap": 0.15, "devices": {}}',
   ),
   companionMotion: free(
     "how much is said and done unprompted: lively, calm, or important only (less chatter)",
@@ -441,16 +445,22 @@ export interface SettingSet {
   readonly now?: unknown;
 }
 
-/**
- * One setting changed by his words: a free one at once, said back with the way to change it back; a confirm or owner
- * one through his yes on a phone card; a never one not at all.
- */
-export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
+/** A confirm or owner change, checked and waiting to be put to him on a card. */
+interface Asking {
+  readonly entry: SettingEntry;
+  readonly patch: Record<string, unknown>;
+  readonly was: unknown;
+  readonly now: unknown;
+  readonly changed: string;
+}
+
+const askedLine = (changed: string) =>
+  `Sent to the Director's phone for a yes: ${changed}. Nothing changes until he says yes.`;
+
+/** One change checked: done, refused or failed as a SettingSet, or an Asking that needs his yes. */
+const prepare = Effect.fn("SettingsVoice.prepare")(function* (input: {
   readonly key: string;
   readonly value: unknown;
-  readonly why: string;
-  readonly who: string;
-  /** The tool suite's pretend R1: checked as for real, then nothing changes or is sent. */
   readonly dryRun?: boolean;
 }) {
   const entry = entryOf(input.key, yield* allSettings);
@@ -496,10 +506,7 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
       key: entry.key,
       was,
       now,
-      line:
-        entry.class === "free"
-          ? done
-          : `Sent to the Director's phone for a yes: ${changed}. Nothing changes until he says yes.`,
+      line: entry.class === "free" ? done : askedLine(changed),
     } satisfies SettingSet;
   if (entry.class === "free") {
     if (!(yield* apply(entry, patch.value)))
@@ -507,47 +514,166 @@ export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
         status: "failed",
         line: `${entry.say} could not be changed here.`,
       } satisfies SettingSet;
-    return {
-      status: "done",
-      key: entry.key,
-      was,
-      now,
-      line: done,
-    } satisfies SettingSet;
+    return { status: "done", key: entry.key, was, now, line: done } satisfies SettingSet;
   }
-  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
-  if (Option.isNone(inbox))
-    return {
-      status: "refused",
-      line: `${entry.say} needs his yes, and nothing here can ask him.`,
-    } satisfies SettingSet;
-  const id = `setting-${entry.key}-${yield* Clock.currentTimeMillis}`.slice(0, 64);
-  yield* inbox.value.mirror({
+  return { entry, patch: patch.value, was, now, changed } satisfies Asking;
+});
+
+const isAsking = (p: SettingSet | Asking): p is Asking => "entry" in p;
+
+/** The card for one change, and its wait: applied once his yes on it comes, off the turn. */
+const askCard = (inbox: TessayaPhoneInbox["Service"], id: string, ask: Asking, asked: string) => ({
+  card: {
     id,
     title: "Tessaya wants to change a setting",
-    detail: `${changed}. Asked by ${input.who}: "${input.why.slice(0, 200)}".`,
+    detail: `${ask.changed}. ${asked}`,
     buttons: ["Yes, change it", "No"],
     yes: 0,
     cancel: 1,
     needs: "cloud-approve",
-  });
-  // His answer is waited for off the turn: she says it is with him now, and it changes when he says yes.
-  yield* inbox.value.promptAnswer(id).pipe(
+  } satisfies PhonePrompt,
+  wait: inbox.promptAnswer(id).pipe(
     Effect.repeat({ schedule: Schedule.spaced("2 seconds"), until: (a) => a !== null }),
     Effect.timeoutOption(`${ANSWER_WAIT_MS} millis`),
     Effect.flatMap((answer) =>
-      Option.isSome(answer) && answer.value === 0 ? apply(entry, patch.value) : Effect.void,
+      Option.isSome(answer) && answer.value === 0 ? apply(ask.entry, ask.patch) : Effect.void,
     ),
     Effect.ignore,
     Effect.forkDetach,
-  );
+  ),
+});
+
+const askedBy = (who: string, why: string) => `Asked by ${who}: "${why.slice(0, 200)}".`;
+const noInbox = (say: string) => `${say} needs his yes, and nothing here can ask him.`;
+
+/**
+ * One setting changed by his words: a free one at once, said back with the way to change it back; a confirm or owner
+ * one through his yes on a phone card; a never one not at all.
+ */
+export const setSetting = Effect.fn("SettingsVoice.set")(function* (input: {
+  readonly key: string;
+  readonly value: unknown;
+  readonly why: string;
+  readonly who: string;
+  /** The tool suite's pretend R1: checked as for real, then nothing changes or is sent. */
+  readonly dryRun?: boolean;
+}) {
+  const ready = yield* prepare(input);
+  if (!isAsking(ready)) return ready;
+  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
+  if (Option.isNone(inbox))
+    return { status: "refused", line: noInbox(ready.entry.say) } satisfies SettingSet;
+  const id = `setting-${ready.entry.key}-${yield* Clock.currentTimeMillis}`.slice(0, 64);
+  const { card, wait } = askCard(inbox.value, id, ready, askedBy(input.who, input.why));
+  yield* inbox.value.mirror(card);
+  // His answer is waited for off the turn: she says it is with him now, and it changes when he says yes.
+  yield* wait;
   return {
     status: "asked",
-    key: entry.key,
-    was,
-    now,
-    line: `Sent to the Director's phone for a yes: ${changed}. Nothing changes until he says yes.`,
+    key: ready.entry.key,
+    was: ready.was,
+    now: ready.now,
+    line: askedLine(ready.changed),
   } satisfies SettingSet;
+});
+
+/**
+ * Several settings in one breath: free ones change at once, never ones are refused with why, and the ones that need
+ * his yes go to his phone as one batch card (each still its own card, tier and Record row underneath).
+ */
+export const setSettings = Effect.fn("SettingsVoice.setMany")(function* (input: {
+  readonly changes: ReadonlyArray<{ readonly key: string; readonly value: unknown }>;
+  readonly why: string;
+  readonly who: string;
+  readonly dryRun?: boolean;
+}) {
+  const ready = yield* Effect.forEach(input.changes, (c) =>
+    prepare({ ...c, ...(input.dryRun === true ? { dryRun: true } : {}) }),
+  );
+  const asks = ready.filter(isAsking);
+  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
+  if (asks.length > 0 && Option.isSome(inbox)) {
+    const at = yield* Clock.currentTimeMillis;
+    const asked = askedBy(input.who, input.why);
+    const cards = asks.map((ask, i) =>
+      askCard(inbox.value, `setting-${at}-${i}-${ask.entry.key}`.slice(0, 64), ask, asked),
+    );
+    if (cards.length === 1) yield* inbox.value.mirror(cards[0]!.card);
+    else
+      yield* inbox.value.mirrorBatch({
+        id: `settings-${at}`,
+        title: `Tessaya wants to change ${asks.length} settings`,
+        detail: [...asks.map((a, i) => `${i + 1}. ${a.changed}`), asked].join("\n"),
+        items: cards.map((c) => c.card),
+      });
+    for (const c of cards) yield* c.wait;
+  }
+  return {
+    results: ready.map((r): SettingSet =>
+      !isAsking(r)
+        ? r
+        : Option.isNone(inbox)
+          ? { status: "refused", line: noInbox(r.entry.say) }
+          : {
+              status: "asked",
+              key: r.entry.key,
+              was: r.was,
+              now: r.now,
+              line:
+                asks.length > 1
+                  ? `On one card to the Director's phone with the others: ${r.changed}. Nothing changes until he says yes.`
+                  : askedLine(r.changed),
+            },
+    ),
+  };
+});
+
+/**
+ * "Approve them all" or "deny them all", said aloud: answers the newest batch card as his phone would, only in his own
+ * verified voice and under the same rule as any yes (a card that needs his device's yes still needs it).
+ */
+export const answerBatch = Effect.fn("SettingsVoice.answerBatch")(function* (
+  answer: "approve" | "deny",
+) {
+  const origin = yield* TurnOrigin;
+  if (origin === null || origin.hisVoice !== true || origin.tainted === true)
+    return {
+      ok: false,
+      line: "Only his own verified voice answers his cards. Nothing was answered.",
+    };
+  const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
+  const batch = Option.isNone(inbox) ? null : yield* inbox.value.pendingBatch;
+  if (Option.isNone(inbox) || batch === null)
+    return { ok: false, line: "No batch of changes is waiting for him." };
+  const member = origin.member ?? null;
+  const assurance = origin.assurance ?? 0;
+  // Saying no narrows: his voice may always deny.
+  const refusal =
+    answer === "deny"
+      ? null
+      : approvalRefusal({
+          risky: batch.needs === "cloud-approve",
+          approver: { member, role: "owner", assurance },
+        });
+  if (refusal !== null) return { ok: false, line: `${refusal} It is still on his phone.` };
+  const household = yield* Effect.serviceOption(TessayaHousehold);
+  const grants =
+    member === null || Option.isNone(household) ? null : yield* household.value.grantsOf(member);
+  const took = yield* inbox.value.answerPrompt(
+    batch.id,
+    answer === "approve" ? batch.yes : batch.cancel,
+    {
+      member,
+      name: grants?.name ?? member ?? "him",
+      assurance,
+      via: `his voice on ${origin.label}`,
+    },
+  );
+  if (!took) return { ok: false, line: "It was already answered." };
+  return {
+    ok: true,
+    line: `${answer === "approve" ? "Approved" : "Denied"} all: ${batch.title}.`,
+  };
 });
 
 /** Whether this server reads and changes it itself: its own setting, or its desktop's while that desktop is connected. */

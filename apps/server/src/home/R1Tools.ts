@@ -101,6 +101,8 @@ const ROOM_TOOLS = [
   "settings_get",
   "settings_explain",
   "settings_set",
+  "settings_set_many",
+  "settings_answer_all",
   "tessaya_account_use",
   // Every vessel's self-described items, from any vessel (R1-P13).
   "device_list",
@@ -161,6 +163,9 @@ const ROOM_TOOLS = [
   // The server's upkeep and who may reach his work (guarded RPCs, 16 Nov parity): owner only, changes on his yes.
   "environment_maintain",
   "access_manage",
+  // The home's intercom and his memory across servers (16 Nov parity): owner only, turning on waits for his yes.
+  "intercom_switch",
+  "memory_sync_switch",
 ] as const satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 
 type ToolName = keyof typeof TessayaToolkit.tools;
@@ -310,6 +315,7 @@ const decoders = new Map(
 /** Writes that run their own dry run for a replay, through their real checks: the house's and the settings'. */
 const SELF_DRY: ReadonlySet<string> = new Set([
   "settings_set",
+  "settings_set_many",
   "tessaya_account_use",
   "comms_send",
   "comms_play",
@@ -323,6 +329,8 @@ const SELF_DRY: ReadonlySet<string> = new Set([
   "home_automation_save",
   "home_automation_set",
 ]);
+
+const SWITCHES: ReadonlySet<string> = new Set(["intercom_switch", "memory_sync_switch"]);
 
 /** What the real memory and preference tools say for this input: "Kept." and a spelled name said back. */
 const replayKept = (input: unknown, field: "text" | "value"): string => {
@@ -373,6 +381,8 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
   if (device?.startsWith("replay-") !== true || SELF_DRY.has(name) || !decoders.has(name))
     return null;
   if (Context.get(TessayaToolkit.tools[name as SharedName].annotations, Tool.Readonly)) return null;
+  // A switch without `on` only reads, so a replay hears the real state.
+  if (SWITCHES.has(name) && (input as { on?: unknown } | null)?.on === undefined) return null;
   return Option.isSome(decoders.get(name)!(input))
     ? {
         // What the real call answers, so her reply is the one he would hear.

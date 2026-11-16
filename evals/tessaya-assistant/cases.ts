@@ -216,6 +216,20 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["app_command"],
   },
   {
+    id: "app-command-project-pin",
+    model: "haiku",
+    source: "Director 16 Nov voice parity: pin project was palette-only",
+    said: "pin this project in the sidebar",
+    first: ["app_command"],
+  },
+  {
+    id: "app-command-restart-session",
+    model: "haiku",
+    source: "Director 16 Nov voice parity: restart agent session was palette-only",
+    said: "restart the agent session so it picks up the new MCP server",
+    first: ["app_command"],
+  },
+  {
     id: "needs-me",
     model: "haiku",
     source: "INT-4: the prompt sent 'what needs me' to fleet_status and needs_me at once",
@@ -526,6 +540,20 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     said: "add the acme/app repository as a new project",
     first: ["project_add"],
     not: ["job_start"],
+  },
+  {
+    id: "intercom-on",
+    source: "Director 16 Nov voice parity: the intercom switch was a window click only",
+    said: "turn on the intercom",
+    first: ["intercom_switch"],
+    not: ["comms_dnd", "comms_send", "settings_set"],
+  },
+  {
+    id: "memory-sync-off",
+    source: "Director 16 Nov voice parity: memory sync between servers was a window click only",
+    said: "stop syncing my memory",
+    first: ["memory_sync_switch"],
+    not: ["memory_forget", "memory_remember"],
   },
   {
     id: "schedules-list",

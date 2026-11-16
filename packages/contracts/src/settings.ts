@@ -1363,6 +1363,15 @@ export const RoomBrain = Schema.Literals(["api", "subscription", "auto"]);
 export type RoomBrain = typeof RoomBrain.Type;
 
 /** Word → how the voice says it, in plain letters (`pronounce` in tessaya-shared). */
+/** Per device id: the member it belongs to for her face (null: no one), and whether it may show their relationship. */
+export const TessayaDeviceMoods = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    owner: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    show: Schema.optionalKey(Schema.Boolean),
+  }),
+);
+
 export const VoicePronounce = Schema.Record(
   Schema.String.check(Schema.isMaxLength(60)),
   Schema.String.check(Schema.isMaxLength(80)),
@@ -1460,13 +1469,17 @@ export const ServerSettings = Schema.Struct({
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
   tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  // Tessaya: her working mood per persona (tessaya-shared affect.ts), moved only by the owner's turns; others see the face.
+  // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
+  // moved only by their identified turns; `devices` ties a device to a member and says whether it shows theirs.
   tessayaMood: Schema.Struct({
     enabled: Schema.Boolean,
     intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     bondCap: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
+    devices: TessayaDeviceMoods.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(
-    Schema.withDecodingDefault(Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15 })),
+    Schema.withDecodingDefault(
+      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {} }),
+    ),
   ),
   // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
   companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
@@ -1940,6 +1953,7 @@ export const ServerSettingsPatch = Schema.Struct({
       bondCap: Schema.optionalKey(
         Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
       ),
+      devices: Schema.optionalKey(TessayaDeviceMoods),
     }),
   ),
   companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),

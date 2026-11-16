@@ -12,7 +12,6 @@ import {
   BAR_NOT_CONNECTED,
   CLIENT_ID,
   PROMPT_TTL_MS,
-  QUEUE_MAX,
   askLine,
   isConnected,
   type AskSource as AskSourceType,
@@ -62,6 +61,7 @@ interface PromptRow {
   readonly needs: string | null;
   readonly status: string;
   readonly answer: number | null;
+  readonly batch: string | null;
 }
 
 const fromAsk = (r: AskRow): PhoneAsk => ({
@@ -83,6 +83,19 @@ export const MAX_BUTTONS = 8;
 const ButtonsJson = Schema.fromJsonString(Schema.Array(Schema.String));
 const encodeButtons = Schema.encodeSync(ButtonsJson);
 const decodeButtons = Schema.decodeSync(ButtonsJson);
+
+/** A batch card's answers: Approve all and Deny answer every item; Review each shows the items as their own cards. */
+export const BATCH_BUTTONS = ["Approve all", "Review each", "Deny"] as const;
+
+const fromPrompt = (r: PromptRow): PhonePrompt => ({
+  id: r.id,
+  title: r.title,
+  detail: r.detail,
+  buttons: decodeButtons(r.buttons),
+  yes: r.yes,
+  cancel: r.cancel,
+  ...(r.needs === "cloud-approve" ? { needs: "cloud-approve" as const } : {}),
+});
 
 /** Who left the words: set by the transport from the caller's session, and "device" (not his) when nobody set it. */
 export const AskSource = Context.Reference<AskSourceType>(
@@ -128,6 +141,18 @@ export class TessayaPhoneInbox extends Context.Service<
     readonly setBrainAnswers: (on: boolean) => Effect.Effect<void>;
     /** The desktop mirrors a question it is asking him. */
     readonly mirror: (prompt: PhonePrompt) => Effect.Effect<void>;
+    /**
+     * Several changes on one card (BATCH_BUTTONS). Each item stays its own card with its own tier and answer, hidden
+     * while the batch card waits; answering the batch answers each item as a single answer would.
+     */
+    readonly mirrorBatch: (batch: {
+      readonly id: string;
+      readonly title: string;
+      readonly detail: string;
+      readonly items: ReadonlyArray<PhonePrompt>;
+    }) => Effect.Effect<void>;
+    /** The newest batch card still waiting, for "approve them all" said aloud; null when none. */
+    readonly pendingBatch: Effect.Effect<PhonePrompt | null>;
     readonly pending: Effect.Effect<ReadonlyArray<PhonePrompt>>;
     /** The phone answers a mirrored question; false if it was already answered or gone. */
     /**
@@ -222,14 +247,6 @@ export const make = Effect.gen(function* () {
     if (again !== null) return { ok: true as const, ask: again };
     const now = yield* Clock.currentTimeMillis;
     const source = yield* AskSource;
-    const waiting = yield* sql<{
-      n: number;
-    }>`SELECT COUNT(*) AS n FROM fabric_phone_asks WHERE status IN ('queued','taken')`.pipe(
-      Effect.orDie,
-    );
-    if ((waiting[0]?.n ?? 0) >= QUEUE_MAX) {
-      return { ok: false as const, why: "Too many asks are waiting. Let your computer catch up." };
-    }
     yield* sql`
       INSERT INTO fabric_phone_asks (id, text, source, origin, his_voice, status, created_at, expires_at)
       VALUES (${input.id}, ${trimmed}, ${source}, ${input.origin?.slice(0, 40) ?? null}, ${input.hisVoice === true ? 1 : 0}, 'queued', ${now}, ${now + (input.ttlMs ?? ASK_TTL_MS)})
@@ -304,33 +321,64 @@ export const make = Effect.gen(function* () {
   const fail = (id: string, message: string) =>
     settle(id, "failed", null, null, message.slice(0, 500));
 
-  const mirror = Effect.fn("BatonPhoneInbox.mirror")(function* (prompt: PhonePrompt) {
+  const insertPrompt = Effect.fn("BatonPhoneInbox.insertPrompt")(function* (
+    prompt: PhonePrompt,
+    batch: string | null,
+  ) {
     const now = yield* Clock.currentTimeMillis;
     yield* sql`
-      INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, needs, status, answer, created_at, expires_at)
+      INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, needs, status, answer, created_at, expires_at, batch)
       VALUES (${prompt.id}, ${prompt.title.slice(0, 200)}, ${prompt.detail.slice(0, 4000)}, ${encodeButtons(prompt.buttons.slice(0, MAX_BUTTONS))},
-              ${prompt.yes}, ${prompt.cancel}, ${prompt.needs ?? null}, 'pending', NULL, ${now}, ${now + PROMPT_TTL_MS})
+              ${prompt.yes}, ${prompt.cancel}, ${prompt.needs ?? null}, 'pending', NULL, ${now}, ${now + PROMPT_TTL_MS}, ${batch})
     `.pipe(Effect.orDie);
+  });
+  const mirror = (prompt: PhonePrompt) => insertPrompt(prompt, null);
+
+  const mirrorBatch = Effect.fn("BatonPhoneInbox.mirrorBatch")(function* (batch: {
+    readonly id: string;
+    readonly title: string;
+    readonly detail: string;
+    readonly items: ReadonlyArray<PhonePrompt>;
+  }) {
+    // The batch card first, so its items are never shown on their own while it waits.
+    yield* insertPrompt(
+      {
+        id: batch.id,
+        title: batch.title,
+        detail: batch.detail,
+        buttons: BATCH_BUTTONS,
+        yes: 0,
+        cancel: 2,
+        // The strictest item's tier: a yes to all is a yes to each.
+        ...(batch.items.some((i) => i.needs === "cloud-approve")
+          ? { needs: "cloud-approve" as const }
+          : {}),
+      },
+      null,
+    );
+    for (const item of batch.items) yield* insertPrompt(item, batch.id);
   });
 
   const pending = Effect.gen(function* () {
     yield* sweep;
-    const rows =
-      yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE status = 'pending' ORDER BY created_at`.pipe(
-        Effect.orDie,
-      );
-    return rows.map((r): PhonePrompt => ({
-      id: r.id,
-      title: r.title,
-      detail: r.detail,
-      buttons: decodeButtons(r.buttons),
-      yes: r.yes,
-      cancel: r.cancel,
-      ...(r.needs === "cloud-approve" ? { needs: "cloud-approve" as const } : {}),
-    }));
+    // A batch's items wait behind their batch card until it is answered ("Review each") or gone.
+    const rows = yield* sql<PromptRow>`
+      SELECT * FROM fabric_phone_prompts p WHERE status = 'pending'
+        AND NOT EXISTS (SELECT 1 FROM fabric_phone_prompts b WHERE b.id = p.batch AND b.status = 'pending')
+      ORDER BY created_at`.pipe(Effect.orDie);
+    return rows.map(fromPrompt);
   });
 
-  const answerPrompt = Effect.fn("BatonPhoneInbox.answerPrompt")(function* (
+  const pendingBatch = Effect.gen(function* () {
+    yield* sweep;
+    const rows = yield* sql<PromptRow>`
+      SELECT * FROM fabric_phone_prompts p WHERE status = 'pending'
+        AND EXISTS (SELECT 1 FROM fabric_phone_prompts i WHERE i.batch = p.id)
+      ORDER BY created_at DESC LIMIT 1`.pipe(Effect.orDie);
+    return rows[0] === undefined ? null : fromPrompt(rows[0]);
+  });
+
+  const answerOne = Effect.fn("BatonPhoneInbox.answerOne")(function* (
     id: string,
     index: number,
     by?: PromptApprover,
@@ -343,7 +391,7 @@ export const make = Effect.gen(function* () {
     const row = rows[0];
     const buttons = row === undefined ? 0 : decodeButtons(row.buttons).length;
     if (row === undefined || !Number.isInteger(index) || index < 0 || index >= buttons)
-      return false;
+      return false as const;
     yield* sql`UPDATE fabric_phone_prompts SET status = 'answered', answer = ${index}, answered_by = ${by === undefined ? null : approverLine(by)}, answered_level = ${by?.assurance ?? null} WHERE id = ${id}`.pipe(
       Effect.orDie,
     );
@@ -357,6 +405,25 @@ export const make = Effect.gen(function* () {
           index === row.yes ? "approved" : index === row.cancel ? "declined" : `chose ${index + 1}`,
         detail: `${index === row.yes ? "Approved" : "Answered"} by ${approverLine(by)}`,
       });
+    return row;
+  });
+
+  const answerPrompt = Effect.fn("BatonPhoneInbox.answerPrompt")(function* (
+    id: string,
+    index: number,
+    by?: PromptApprover,
+  ) {
+    const row = yield* answerOne(id, index, by);
+    if (row === false) return false;
+    // A batch's yes or no is each item's, through the same answer and Record row a single card gets.
+    if (index === row.yes || index === row.cancel) {
+      const items =
+        yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE batch = ${id} AND status = 'pending'`.pipe(
+          Effect.orDie,
+        );
+      for (const item of items)
+        yield* answerOne(item.id, index === row.yes ? item.yes : item.cancel, by);
+    }
     return true;
   });
 
@@ -394,7 +461,9 @@ export const make = Effect.gen(function* () {
         ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(Effect.orDie);
     }),
     mirror,
+    mirrorBatch,
     pending,
+    pendingBatch,
     answerPrompt,
     promptAnswer,
     closePrompt,

@@ -8,7 +8,9 @@ export type MouseButton = "middle" | "back" | "forward" | "left+right";
 
 export type BindingInput =
   | { readonly type: "key"; readonly accelerator: string }
-  | { readonly type: "mouse"; readonly button: MouseButton };
+  | { readonly type: "mouse"; readonly button: MouseButton }
+  /** A button on an Airdeck remote, as airdeck-core names it: "g20s/home". */
+  | { readonly type: "remote"; readonly button: string };
 
 export interface Binding {
   readonly action: string;
@@ -75,7 +77,7 @@ export const sameInput = (a: BindingInput | null, b: BindingInput | null): boole
     ? false
     : a.type === "key" && b.type === "key"
       ? normaliseAccelerator(a.accelerator) === normaliseAccelerator(b.accelerator)
-      : a.type === "mouse" && b.type === "mouse" && a.button === b.button;
+      : a.type !== "key" && a.type === b.type && a.button === b.button;
 
 export const ACTIONS: ReadonlyArray<ActionDef> = [
   {
@@ -135,6 +137,8 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
   },
 ];
 
+const REMOTE_BUTTON = /^[a-z0-9]{1,20}\/[a-z0-9_]{1,30}$/;
+
 const isButton = (v: unknown): v is MouseButton =>
   v === "middle" || v === "back" || v === "forward" || v === "left+right";
 
@@ -149,6 +153,8 @@ const parseInput = (value: unknown): BindingInput | null => {
     return { type: "key", accelerator: normaliseAccelerator(i.accelerator) };
   }
   if (i.type === "mouse" && isButton(i.button)) return { type: "mouse", button: i.button };
+  if (i.type === "remote" && typeof i.button === "string" && REMOTE_BUTTON.test(i.button))
+    return { type: "remote", button: i.button };
   return null;
 };
 
@@ -252,9 +258,20 @@ const SAFE_ALONE = /^(?:F(?:[1-9]|1\d|2[0-4])|Pause|ScrollLock)$/;
 
 export type InputCheck = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
-/** Whether a captured input may be bound, and the plain reason when not. Mouse buttons are always fine. */
-export const checkInput = (input: BindingInput): InputCheck => {
+/**
+ * Whether a captured input may be bound, and the plain reason when not. Mouse buttons are always fine; a remote button
+ * that sends one pulse however long it is held (`tapOnly`) cannot hold to dictate.
+ */
+export const checkInput = (
+  input: BindingInput,
+  action?: string,
+  tapOnly: ReadonlySet<string> = new Set(),
+): InputCheck => {
   if (input.type === "mouse") return { ok: true };
+  if (input.type === "remote")
+    return action === "hold" && tapOnly.has(input.button)
+      ? { ok: false, reason: "That remote button only taps, so it cannot be held. Pick another." }
+      : { ok: true };
   const accelerator = normaliseAccelerator(input.accelerator);
   const parts = accelerator.split("+");
   const main = parts.at(-1) ?? "";
@@ -288,8 +305,9 @@ export const addInput = (
   action: string,
   current: ReadonlyArray<BindingInput>,
   input: BindingInput,
+  tapOnly?: ReadonlySet<string>,
 ): Change => {
-  const check = checkInput(input);
+  const check = checkInput(input, action, tapOnly);
   if (!check.ok) return { error: check.reason };
   if (current.some((x) => sameInput(x, input))) return { error: "That one is already set here." };
   if (current.length >= MAX_PER_ACTION) {

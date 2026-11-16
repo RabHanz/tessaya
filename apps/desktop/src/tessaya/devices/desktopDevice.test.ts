@@ -95,8 +95,9 @@ describe("the desktop's manifest", () => {
 });
 
 describe("the desktop as a vessel", () => {
-  it("hands a write to its companion to the mascot and acks whether she could", async () => {
+  it("hands a write to its companion or an action to its handler and acks whether it could", async () => {
     const asked: Array<string> = [];
+    const ran: Array<string> = [];
     const sent: Array<Record<string, unknown>> = [];
     let answered: (() => void) | null = null;
     const acked = new Promise<void>((resolve) => (answered = resolve));
@@ -109,6 +110,8 @@ describe("the desktop as a vessel", () => {
               { id: "w1", itemId: "mascot.do", value: "wave" },
               { id: "w2", itemId: "mascot.do", value: "otherScreen" },
               { id: "w3", itemId: "mascot.do", value: "explode" },
+              { id: "w4", itemId: "action.mute", value: null },
+              { id: "w5", itemId: "action.hold", value: null },
             ],
           });
         answered?.();
@@ -122,6 +125,7 @@ describe("the desktop as a vessel", () => {
       applySetting: () => undefined,
       onNote: () => undefined,
       onMascot: (act) => (asked.push(act), act === "wave"),
+      onAction: (id) => (ran.push(id), true),
       onChange: () => () => undefined,
     });
     await acked;
@@ -131,7 +135,10 @@ describe("the desktop as a vessel", () => {
       { id: "w1", ok: true },
       { id: "w2", ok: false, error: "She is not on the desktop right now." },
       { id: "w3", ok: false, error: "She is not on the desktop right now." },
+      { id: "w4", ok: true },
+      { id: "w5", ok: false, error: "This computer cannot do that now." },
     ]);
+    expect(ran).toEqual(["mute"]);
     const manifest = sent[0]?.["manifest"] as { items: Array<{ id: string; values?: unknown }> };
     expect(manifest.items.find((i) => i.id === "mascot.do")?.values).toContain("signature");
   });

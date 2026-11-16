@@ -66,6 +66,51 @@ describe("makeRewriter", () => {
     rewriter.dispose();
   });
 
+  it("with his plan first, the plan answers; at its limit his key does until the plan has rested", async () => {
+    let limited = false;
+    let now = 1_000_000;
+    using _now = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const asked: string[] = [];
+    const results: unknown[] = [];
+    const rewriter = makeRewriter({
+      claudeBinary: "claude",
+      model: () => "sonnet",
+      workDir: "/tmp",
+      env: {},
+      platform: "linux",
+      dictionary: () => [],
+      always: true,
+      route: () => "subscription",
+      onSessionResult: (event) => results.push(event),
+      start: (options): VisionSession => ({
+        ask: async () => {
+          asked.push(`plan ${options.model} ${options.effort}`);
+          if (limited) throw new Error("You've hit your limit");
+          options.onResult?.({ type: "result", usage: { output_tokens: 9 } });
+          return "from the plan";
+        },
+        alive: () => true,
+        dispose: () => {},
+      }),
+      api: async () => {
+        asked.push("key");
+        return "from the key";
+      },
+    });
+    const said = { raw: "we should go home now please", mode: "default", level: "claude" } as const;
+    expect((await rewriter.clean(said)).text).toBe("from the plan");
+    expect(results).toHaveLength(1);
+    limited = true;
+    expect((await rewriter.clean(said)).text).toBe("from the key");
+    // Resting: the next one goes straight to the key.
+    expect((await rewriter.clean(said)).text).toBe("from the key");
+    limited = false;
+    now += 5 * 60_000;
+    expect((await rewriter.clean(said)).text).toBe("from the plan");
+    expect(asked).toEqual(["plan sonnet low", "plan sonnet low", "key", "key", "plan sonnet low"]);
+    rewriter.dispose();
+  });
+
   it("cleans the very first dictation through his key: no guess waits on a cold or limited subscription", async () => {
     vi.useFakeTimers();
     const sessionAsked: string[] = [];

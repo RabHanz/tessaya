@@ -60,6 +60,7 @@ import { Consent, readGrants, setGrant } from "./consent.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { SessionMember } from "./TessayaTurn.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import {
   cloneClean,
@@ -874,18 +875,36 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
       return { ok: true, value: said };
     }
     case "mood": {
-      const a = decode(Schema.Struct({ persona: Schema.optionalKey(Text(60)) }));
+      const a = decode(
+        Schema.Struct({
+          persona: Schema.optionalKey(Text(60)),
+          // The vessel asking for its own face: its owner's relationship when it may show it.
+          device: Schema.optionalKey(Text(120)),
+        }),
+      );
       if (Option.isNone(a)) return bad;
       const mood = yield* Effect.serviceOption(TessayaMood);
       if (Option.isNone(mood)) return { ok: true, value: null };
-      const felt = yield* mood.value.view(a.value.persona);
-      // Why is the owner's alone (EMOTION §8.1): anyone else gets enough for the face.
+      const felt =
+        a.value.device === undefined
+          ? yield* mood.value.view(a.value.persona)
+          : yield* mood.value.atDevice(a.value.device, a.value.persona);
+      // Each person sees only their own relationship row; the owner sees every row.
+      const inner = yield* mood.value.inner(a.value.persona, yield* SessionMember);
+      // The general mood's why is the owner's alone (EMOTION §8.1): anyone else gets enough for the face.
       return {
         ok: true,
         value: {
           label: felt.label,
           intensity: felt.intensity,
-          ...(input.kind === "owner" ? { why: felt.why } : {}),
+          ...(input.kind === "owner" && a.value.device === undefined ? { why: felt.why } : {}),
+          people: inner.people.map((p) => ({
+            member: p.member,
+            name: p.name,
+            label: p.view.label,
+            intensity: p.view.intensity,
+            why: p.view.why,
+          })),
         },
       };
     }

@@ -223,6 +223,19 @@ describe("the speaker identity", () => {
         1,
       ),
     ).toEqual({ ...UNVERIFIED(1), voiceIdOff: true });
+    // His profile only from another model (a model switch before he re-enrols): closed, never "Voice ID off".
+    const stale = [{ ...owner, model: "old" }];
+    expect(decide([at(0.9)], 4_000, "listen", stale)).toEqual({
+      kind: "unverified",
+      why: "stale-profile",
+    });
+    expect(
+      identityOf(
+        decide([at(0.9)], 4_000, "listen", stale),
+        decide([at(0.9)], 4_000, "act", stale),
+        1,
+      ),
+    ).toEqual(UNVERIFIED(1));
   });
 
   it("keeps him verified through a session, from three owner turns or one verified, until another voice", () => {
