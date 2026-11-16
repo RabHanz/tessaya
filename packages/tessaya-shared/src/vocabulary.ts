@@ -82,12 +82,11 @@ export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> 
           if (typeof entry !== "object" || entry === null || typeof entry.phrase !== "string")
             return [];
           if (entry.phrase.trim().length === 0) return [];
-          // One fix to an ordinary word ("new" heard as "Jewel", 16 Nov) was taught before it took two: dropped.
+          // An ordinary word learned from his fixes ("new" heard as "Jewel", "past" to "pass", 16 Nov) is dropped.
           if (
             entry.source === "learned" &&
-            typeof entry.replacement !== "string" &&
-            ordinaryWord(entry.phrase) &&
-            !(typeof entry.count === "number" && entry.count >= CORRECTION_THRESHOLD)
+            (ordinaryWord(entry.phrase) ||
+              (typeof entry.replacement === "string" && ordinaryWord(entry.replacement)))
           )
             return [];
           // A word at a sentence's end was once learned or added with its stop ("Tessaya." heard as "Tsaya.").
@@ -653,16 +652,14 @@ export const learnCorrection = (
     isNever(never, fix.heard) ||
     skipsCorrection(fix.meant) ||
     everyday(fix.heard) ||
-    everyday(fix.meant)
+    everyday(fix.meant) ||
+    // The dictionary is for his names and terms: one edit was counted twice and taught "past" to "pass" (16 Nov).
+    ordinaryWord(fix.meant)
   ) {
     return { seen, entries, added: [], taught: [] };
   }
   const key = `${fix.heard.toLowerCase()}>${fix.meant}`;
   const count = (seen[key] ?? 0) + 1;
-  // An ordinary word he meant is taught only from the same fix made twice: once is often a slip or a mis-aligned edit.
-  const plain = ordinaryWord(fix.meant);
-  if (plain && count < CORRECTION_THRESHOLD)
-    return { seen: { ...seen, [key]: count }, entries, added: [], taught: [] };
   let next = entries;
   const taught: Array<{ heard: string; meant: string }> = [];
   if (!sameWord(fix.heard, fix.meant)) {
@@ -693,7 +690,7 @@ export const learnCorrection = (
     return { seen: { ...seen, [key]: count }, entries: next, added: [], taught };
   const { [key]: _gone, ...rest } = seen;
   // A rule replaces the heard word everywhere with no model: an ordinary word on either side never becomes one.
-  if (plain || ordinaryWord(fix.heard)) return { seen: rest, entries: next, added: [], taught };
+  if (ordinaryWord(fix.heard)) return { seen: rest, entries: next, added: [], taught };
   next = upsertEntry(
     next,
     { phrase: fix.heard, replacement: fix.meant, source: "learned" },
