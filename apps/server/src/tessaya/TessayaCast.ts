@@ -387,14 +387,13 @@ const make = Effect.gen(function* () {
       Effect.map(bodies, (v) => v.bodies.find((b) => b.id === body)?.wearing ?? null),
     call,
     told,
-    touch: (body) =>
-      Effect.gen(function* () {
-        const v = visits.get(body);
-        if (v === undefined) return;
-        const next = { ...v, at: yield* Clock.currentTimeMillis };
-        visits.set(body, next);
-        if (v.crewBefore === undefined) yield* share(body, next);
-      }),
+    touch: Effect.fn("TessayaCast.touch")(function* (body: string) {
+      const v = visits.get(body);
+      if (v === undefined) return;
+      const next = { ...v, at: yield* Clock.currentTimeMillis };
+      visits.set(body, next);
+      if (v.crewBefore === undefined) yield* share(body, next);
+    }),
     listen: (listener) => Effect.sync(() => void listeners.add(listener)),
   });
 });
