@@ -188,6 +188,9 @@ describe("memoryBlock", () => {
     expect(ids).toContain("3");
     expect(ids).not.toContain("1");
     expect(block.startsWith("what you remember")).toBe(true);
+    // Chosen by rank, written in a stable order: the same items in another ranking read the same.
+    const two = [item({ id: "b", text: "bee" }), item({ id: "a", text: "ay" })];
+    expect(memoryBlock(two.toReversed()).block).toBe(memoryBlock(two).block);
   });
   it("is empty when nothing fits", () => {
     expect(memoryBlock([], 600)).toEqual({ block: "", ids: [] });

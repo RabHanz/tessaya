@@ -28,6 +28,12 @@ import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
 import { memberOfSpeaker } from "@t3tools/tessaya-shared/household";
 import { REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import {
+  repairBoundsFor,
+  repairVerdict,
+  type HeardWord,
+} from "@t3tools/tessaya-shared/transcriptRepair";
+import { emitAction } from "../tessaya/turnActions.ts";
+import {
   DEFAULT_OS_PACK,
   rosterLine,
   type OsPack,
@@ -486,6 +492,34 @@ export const roomData = (input: R1Context) =>
     `He just said: ${quoted(input.heard)}`,
   ].join("\n");
 
+/**
+ * The loop's per-word confidences (`heardWords`) and the recogniser that gave them, read at the trust boundary: all
+ * well formed, at most 200 words, or none at all.
+ */
+const heardWordsOf = (
+  voice: unknown,
+): { readonly words?: ReadonlyArray<HeardWord>; readonly recogniser?: string } => {
+  if (typeof voice !== "object" || voice === null || !("heardWords" in voice)) return {};
+  const given: unknown = voice.heardWords;
+  if (!Array.isArray(given) || given.length > 200) return {};
+  const words = given.flatMap((w: unknown) =>
+    typeof w === "object" &&
+    w !== null &&
+    "text" in w &&
+    typeof w.text === "string" &&
+    "p" in w &&
+    (w.p === null || (typeof w.p === "number" && w.p >= 0 && w.p <= 1))
+      ? [{ text: w.text.slice(0, 64), p: w.p }]
+      : [],
+  );
+  if (words.length !== given.length) return {};
+  const recogniser =
+    "recogniser" in voice && typeof voice.recogniser === "string"
+      ? voice.recogniser.slice(0, 64)
+      : undefined;
+  return { words, ...(recogniser === undefined ? {} : { recogniser }) };
+};
+
 /** The loop's word on whether this was said to her (§2.0's envelope); absent until the loop sends it. */
 const addressedOf = (voice: unknown): boolean | undefined =>
   typeof voice === "object" &&
@@ -713,6 +747,7 @@ const r1Envelope = (input: R1Heard, pack: OsPack, timeZone: string | undefined):
     // Begun while her own voice could still be heard: what it teaches waits for his yes, and nothing private is read.
     tainted: taintedOf(input.voice),
     timeZone,
+    ...heardWordsOf(input.voice),
     ...(emotionOf(input.voice) === undefined ? {} : { emotion: emotionOf(input.voice) }),
     // Each turn is a fresh call, with no session holding standing memory.
     sessionless: true,
@@ -1426,6 +1461,20 @@ export const routes = HttpRouter.use((router) =>
         .map((m) => ({ role: m.role, content: recordText(textOf(m.content), 400) }));
       const heard = turns.findLast((m) => m.role === "user")?.content ?? "";
       if (heard.trim() === "") return error(400, "Nothing was heard.");
+      // Noise, or words the recogniser never really heard (V-018): no turn at all, whatever a loop sent.
+      const scored = heardWordsOf(body.value.tessaya);
+      if (
+        scored.words !== undefined &&
+        repairVerdict(scored.words, repairBoundsFor(scored.recogniser)).kind === "drop"
+      ) {
+        yield* emitAction({
+          kind: "turn.repair.verdict",
+          actor: { kind: "rule", id: scored.recogniser ?? "recogniser", certainty: 1 },
+          subject: body.value.device ?? DEVICE,
+          outcome: "drop",
+        });
+        return error(400, "Nothing was heard.");
+      }
       const id = `chatcmpl-${NodeCrypto.randomBytes(8).toString("hex")}`;
       const model = body.value.model ?? "tessaya-r1";
       const created = Math.floor((yield* Clock.currentTimeMillis) / 1000);

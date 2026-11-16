@@ -95,6 +95,8 @@ import { houseZone } from "../tessaya/houseZone.ts";
 import * as Stream from "effect/Stream";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
+import { TurnLiveContext } from "../tessaya/TurnLiveContext.ts";
+import type { HandledHow } from "@t3tools/tessaya-shared/affect";
 import { readDndUntil, readQuietHours } from "../tessaya/quietHours.ts";
 import {
   MOTION_LINE,
@@ -1026,6 +1028,14 @@ export class HomeDeviceBroker extends Context.Service<
   }
 >()("t3/home/HomeDevices/HomeDeviceBroker") {}
 
+const HANDLED_WORDS = {
+  lifted: "picked up",
+  carried: "carried",
+  setdown: "set down",
+  shaken: "shaken",
+  dropped: "dropped",
+} as const satisfies Readonly<Record<HandledHow, string>>;
+
 const HANDLED = new Set(["event/motion", "event/wake/lifted", "event/touch", "event/key"]);
 const SUBSCRIBE = ["freya/r1/+/state/#", "freya/r1/+/event/#", "freya/r1/+/voice/stepup/done"];
 
@@ -1513,6 +1523,7 @@ const make = Effect.gen(function* () {
   // Being moved (§9.7M S3): her mood, her eyes and a line of her own, through the same paths as every other moment.
   const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
   const mood = yield* Effect.serviceOption(TessayaMood);
+  const liveContext = yield* Effect.serviceOption(TurnLiveContext);
   const motionSeen = new Map<string, MotionSeen>();
   const lastMoved = new Map<string, { at: number; said: number }>();
   const motionSettings =
@@ -1614,6 +1625,15 @@ const make = Effect.gen(function* () {
     const quiet = yield* quietNow(now);
     if (quiet && m.how !== "dropped") return;
     if (mood._tag === "Some") yield* mood.value.note(undefined, { kind: "handled", how: m.how });
+    // Her next two turns on this body know it just happened; the third never reads it as now (G6).
+    if (liveContext._tag === "Some")
+      yield* liveContext.value.inject({
+        key: "motion",
+        vessel: id,
+        source: "motion",
+        expiresAfterTurns: 2,
+        line: `A moment ago your body was ${HANDLED_WORDS[m.how]} (its motion sensor): mention it only if it fits.`,
+      });
     const feel = MOMENT_HAPTICS[m.how];
     if (feel !== null && !buzzed) yield* buzz(id, feel, "reactions", quiet);
     const event = MOTION_LINE[m.how];

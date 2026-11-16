@@ -25,7 +25,7 @@ pub enum Feed {
 
 pub enum Reply {
     Partial { text: String, pause: bool },
-    Text { text: String, infer_ms: u64, pieces: u64, reused: bool, release_ms: u64 },
+    Text { text: String, infer_ms: u64, pieces: u64, reused: bool, release_ms: u64, words: Scored },
     Error(String),
 }
 
@@ -57,32 +57,49 @@ pub fn start(model: &Path, threads: i32) -> (Sender<Job>, Arc<AtomicUsize>) {
     (jobs, queue)
 }
 
-fn decode(session: &mut Session, piece: Piece, language: Option<String>) -> Result<String, String> {
-    decode_words(session, piece, language).map(|(text, _)| text)
+fn decode(session: &mut Session, piece: Piece, language: Option<String>) -> Result<(String, Scored), String> {
+    decode_words(session, piece, language).map(|(text, _, scored)| (text, scored))
 }
 
 /// A preview's words with where each ends, in samples of the uncut audio.
 type EndedWords = Vec<(usize, String)>;
 
+/// Each kept word with its weakest token's confidence (NaN where the model gives none): transcript repair (V-018).
+pub type Scored = Vec<(String, f32)>;
+
 /// `decode`, and each kept word with where it ends in the piece's new audio (the sidecar's `decode_words`, #726).
-fn decode_words(session: &mut Session, piece: Piece, language: Option<String>) -> Result<(String, EndedWords), String> {
+fn decode_words(
+    session: &mut Session,
+    piece: Piece,
+    language: Option<String>,
+) -> Result<(String, EndedWords, Scored), String> {
     let Piece { mut pcm, context, .. } = piece;
     lift_gain(&mut pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
-    let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
+    // Token timestamps: the same words, plus each token's confidence (Word alone leaves `tokens` empty).
+    let options = RunOptions { language, timestamps: TimestampKind::Token, ..Default::default() };
     let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
     let context_ms = context as i64 / 16;
-    let ended = result
+    let kept: Vec<(usize, _)> = result
         .words
         .iter()
-        .filter(|w| context == 0 || w.t0_ms >= context_ms - 80)
-        .filter(|w| !w.text.trim().is_empty())
-        .map(|w| (((w.t1_ms - context_ms).max(0) * 16) as usize, w.text.trim().to_string()))
+        .enumerate()
+        .filter(|(_, w)| context == 0 || w.t0_ms >= context_ms - 80)
+        .filter(|(_, w)| !w.text.trim().is_empty())
+        .collect();
+    let ended =
+        kept.iter().map(|(_, w)| (((w.t1_ms - context_ms).max(0) * 16) as usize, w.text.trim().to_string())).collect();
+    let scored = kept
+        .iter()
+        .map(|(i, w)| {
+            let tokens = result.tokens.iter().filter(|t| t.word_index as usize == *i);
+            (w.text.trim().to_string(), tokens.map(|t| t.p).fold(f32::NAN, f32::min))
+        })
         .collect();
     if context == 0 || result.words.is_empty() {
-        return Ok((result.text.trim().to_string(), ended));
+        return Ok((result.text.trim().to_string(), ended, scored));
     }
-    Ok((words_after(result.words.iter().map(|w| (w.t0_ms, w.text.as_str())), context_ms), ended))
+    Ok((words_after(result.words.iter().map(|w| (w.t0_ms, w.text.as_str())), context_ms), ended, scored))
 }
 
 /// A word ending this close to where a preview stopped may be cut off there: release decodes from before it.
@@ -102,9 +119,11 @@ fn recognise(session: &mut Session, job: Job) {
     let mut chunker = Chunker::new(ChunkParams::from_env());
     let mut heard: Vec<f32> = Vec::new();
     let mut text: Vec<String> = Vec::new();
+    let mut scored: Scored = Vec::new();
     let (mut previewed, mut preview_ms, mut pause_checked) = (0usize, 0u64, 0usize);
     let mut preview: Option<String> = None;
     let mut preview_words: EndedWords = Vec::new();
+    let mut preview_scored: Scored = Vec::new();
     let (mut infer_ms, mut pieces) = (0u64, 0u64);
     loop {
         let Ok(first) = audio.recv() else { return };
@@ -145,8 +164,9 @@ fn recognise(session: &mut Session, job: Job) {
             let at_pause = piece.at_pause;
             let t = Instant::now();
             match decode(session, piece, language.clone()) {
-                Ok(words) if !words.is_empty() => {
+                Ok((words, piece_scored)) if !words.is_empty() => {
                     text.push(words);
+                    scored.extend(piece_scored);
                     let _ = replies.send(Reply::Partial { text: join_pieces(&text), pause: at_pause });
                 }
                 Ok(_) => {}
@@ -160,6 +180,7 @@ fn recognise(session: &mut Session, job: Job) {
             previewed = 0;
             preview = None;
             preview_words.clear();
+            preview_scored.clear();
             pause_checked = 0;
         } else if released.is_none() && !behind {
             let pending = chunker.pending_len();
@@ -175,8 +196,9 @@ fn recognise(session: &mut Session, job: Job) {
                     if let Some(piece) = chunker.preview() {
                         let t = Instant::now();
                         let decoded = decode_words(session, piece, language.clone()).ok();
-                        preview_words = decoded.as_ref().map(|(_, words)| words.clone()).unwrap_or_default();
-                        preview = decoded.map(|(text, _)| text);
+                        preview_words = decoded.as_ref().map(|(_, words, _)| words.clone()).unwrap_or_default();
+                        preview_scored = decoded.as_ref().map(|(_, _, s)| s.clone()).unwrap_or_default();
+                        preview = decoded.map(|(text, _, _)| text);
                         if let Some(words) = &preview {
                             let all: Vec<&str> = text.iter().map(String::as_str).chain([words.as_str()]).collect();
                             let _ = replies.send(Reply::Partial { text: join_pieces(&all), pause: paused });
@@ -194,19 +216,24 @@ fn recognise(session: &mut Session, job: Job) {
                 chunker.finish();
                 if let Some(words) = preview.take().filter(|w| !w.is_empty()) {
                     text.push(words);
+                    scored.append(&mut preview_scored);
                 }
                 reused = true;
                 pieces += 1;
             } else if let Some(piece) = {
                 if let Some((end, words)) = safe_words(&preview_words, previewed) {
                     chunker.skip(end);
+                    scored.extend(preview_scored.iter().take(words.split_whitespace().count()).cloned());
                     text.push(words);
                 }
                 chunker.finish()
             } {
                 let t = Instant::now();
                 match decode(session, piece, language.clone()) {
-                    Ok(words) if !words.is_empty() => text.push(words),
+                    Ok((words, piece_scored)) if !words.is_empty() => {
+                        text.push(words);
+                        scored.extend(piece_scored);
+                    }
                     Ok(_) => {}
                     Err(e) => {
                         let _ = replies.send(Reply::Error(e));
@@ -217,8 +244,12 @@ fn recognise(session: &mut Session, job: Job) {
                 pieces += 1;
             }
         }
+        let text = join_pieces(&text);
+        // Scores only when they are the text's own words, one for one; otherwise none (repair stays off this turn).
+        let words = if scored.len() == text.split_whitespace().count() { scored } else { Vec::new() };
         let _ = replies.send(Reply::Text {
-            text: join_pieces(&text),
+            text,
+            words,
             infer_ms,
             pieces,
             reused,

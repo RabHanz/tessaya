@@ -7,6 +7,7 @@ import { moodLine, type AffectView } from "../../packages/tessaya-shared/src/aff
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
+import { repairLine } from "../../packages/tessaya-shared/src/transcriptRepair.ts";
 import type { OwnerFiles } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { type PersonView, turnLineFor } from "../../packages/tessaya-shared/src/people.ts";
 
@@ -129,6 +130,30 @@ const PLAIN = /^(?![\s\S]*(\d|volume (is )?set|set (it )?to|percent))[\s\S]{1,80
 const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
+  {
+    // V-018 transcript repair: one doubtful name is checked, and nothing that rests on it is done.
+    id: "repair-clarify",
+    source: "VOXTA-STUDY G2: a doubtful name earns 'did you say Sara?'",
+    said: ["call Sara and tell her I'm running late"],
+    verified: true,
+    notice: repairLine(
+      { kind: "clarify", word: "Sara", index: 1 },
+      "Call Sara and tell her I'm running late.",
+    ),
+    lastSays: [/\bSara\b/, /\?/],
+    callsAtMost: { comms_send: 0 },
+  },
+  {
+    // V-018: a turn not heard clearly is asked again, never acted on.
+    id: "repair-repeat",
+    source: "VOXTA-STUDY G2: two doubtful content words ask to repeat",
+    said: ["turn the study lamp on at seven"],
+    verified: true,
+    notice: repairLine({ kind: "repeat", doubtful: ["seven"] }, "Turn the study lamp on at seven."),
+    lastSays: [/\b(again|repeat|say (that|it)|catch|hear)\b/i],
+    lampAfter: ["off"],
+    callsAtMost: { home_do: 0, home_automation_save: 0 },
+  },
   {
     // 14 and 15 Nov: "it isn't using the am pm timing"; "eighteen past eight" was not it either. AM/PM, no "past".
     id: "clock-12h",
