@@ -97,6 +97,10 @@ import { SettingsHardwareRouteScreen } from "./features/settings/SettingsHardwar
 import { SettingsTeamRouteScreen } from "./features/settings/SettingsTeamRouteScreen";
 import { SettingsCastRouteScreen } from "./features/settings/SettingsCastRouteScreen";
 import { SettingsPulseRouteScreen } from "./features/settings/SettingsPulseRouteScreen";
+import { SettingsBrainUsageRouteScreen } from "./features/settings/SettingsBrainUsageRouteScreen";
+import { SettingsActivityRouteScreen } from "./features/settings/SettingsActivityRouteScreen";
+import { SettingsMoodRouteScreen } from "./features/settings/SettingsMoodRouteScreen";
+import { SettingsPresenceRouteScreen } from "./features/settings/SettingsPresenceRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
@@ -237,6 +241,26 @@ const SETTINGS_SCREENS = {
     screen: SettingsPulseRouteScreen,
     linking: "settings/pulse",
     options: settingsPage("Pulse"),
+  }),
+  SettingsBrainUsage: createNativeStackScreen({
+    screen: SettingsBrainUsageRouteScreen,
+    linking: "settings/brain-usage",
+    options: settingsPage("Brain usage"),
+  }),
+  SettingsActivity: createNativeStackScreen({
+    screen: SettingsActivityRouteScreen,
+    linking: "settings/activity",
+    options: settingsPage("Activity"),
+  }),
+  SettingsMood: createNativeStackScreen({
+    screen: SettingsMoodRouteScreen,
+    linking: "settings/mood",
+    options: settingsPage("Her mood"),
+  }),
+  SettingsPresence: createNativeStackScreen({
+    screen: SettingsPresenceRouteScreen,
+    linking: "settings/presence",
+    options: settingsPage("Presence"),
   }),
   SettingsEnvironmentMaintenance: createNativeStackScreen({
     screen: SettingsEnvironmentMaintenanceRouteScreen,

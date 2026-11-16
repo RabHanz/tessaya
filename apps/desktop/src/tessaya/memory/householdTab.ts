@@ -62,6 +62,11 @@ const noteOf = (m: TessayaHouseholdMember): string =>
     .join(" · ");
 
 /** Choices with a fixed set of answers; the rest are said in their own words. */
+/** Presence opt-ins: off until they say on ("Not set" is off). */
+const ON_OFF = [
+  ["on", "hh.prefs.on"],
+  ["off", "hh.prefs.off"],
+] as const;
 const PREF_CHOICES: Readonly<Record<string, ReadonlyArray<readonly [string, string]>>> = {
   units: [
     ["metric", "hh.prefs.units.metric"],
@@ -71,8 +76,21 @@ const PREF_CHOICES: Readonly<Record<string, ReadonlyArray<readonly [string, stri
     ["12-hour with AM/PM", "hh.prefs.timeFormat.12"],
     ["24-hour", "hh.prefs.timeFormat.24"],
   ],
+  location: ON_OFF,
+  camera: ON_OFF,
 };
-const PREF_KEYS = ["name", "persona", "voice", "units", "timeFormat", "news", "music"] as const;
+const PREF_KEYS = [
+  "name",
+  "persona",
+  "voice",
+  "units",
+  "timeFormat",
+  "news",
+  "music",
+  "location",
+  "camera",
+  "devices",
+] as const;
 
 /**
  * One person's preferences (HOUSEHOLD-DESIGN §4): yours, and, for the owner, anyone's picked above them. A worded one

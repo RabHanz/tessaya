@@ -74,6 +74,7 @@ import {
 } from "../auth/EnvironmentAuth.ts";
 import { rpcAuthorizationError } from "../auth/RpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./TessayaMemoryService.ts";
+import { HouseholdCaller } from "./TessayaHousehold.ts";
 import { SessionMember } from "./TessayaTurn.ts";
 import { AskSource } from "./TessayaPhoneInbox.ts";
 
@@ -539,6 +540,8 @@ export const layer = (
           // A member's own device: its typed turns are that member's (identity I-2), not the owner's.
           Effect.provideService(SessionMember, memberOfSubject(session.subject)),
           Effect.provideService(SyncCredential, syncCredentialOf(session)),
+          // Their own preferences from a vessel (devices.call): as the household route sees this session.
+          Effect.provideService(HouseholdCaller, householdCallerOf(session)),
         )
       : Effect.fail(rpcAuthorizationError(missing));
   });

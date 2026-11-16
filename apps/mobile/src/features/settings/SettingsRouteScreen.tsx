@@ -278,6 +278,9 @@ function useSettingsIndexSections(): SettingsListSection[] {
         serverPage("SettingsTeam", "person.2", "Team"),
         serverPage("SettingsCast", "person.crop.circle", "Cast"),
         serverPage("SettingsPulse", "bolt.circle", "Pulse"),
+        serverPage("SettingsMood", "face.smiling", "Her mood"),
+        serverPage("SettingsActivity", "clock", "Activity"),
+        serverPage("SettingsBrainUsage", "chart.bar.xaxis", "Brain usage"),
       ],
     },
     {
@@ -285,6 +288,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
       rows: [
         serverPage("SettingsHome", "house", "Home Assistant"),
         serverPage("SettingsHardware", "face.smiling", "Hardware"),
+        serverPage("SettingsPresence", "person.fill.checkmark", "Presence"),
       ],
     },
     {
