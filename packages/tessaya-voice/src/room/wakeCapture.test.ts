@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createWakeCapture } from "./wakeCapture.ts";
+import { createWakeTrace } from "./wakeTrace.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 
 const frame = (v: number) => new Uint8Array(new Int16Array(960).fill(v).buffer);
@@ -96,5 +97,39 @@ describe("keeping wake segments for training", () => {
     clock += 20_000;
     capture.session("r1");
     expect(records(dir).map((r) => r.session)).toEqual([false, false]);
+  });
+
+  it("traces every segment, kws verdict and Tessel report without audio, in two files under the cap", async () => {
+    const file = NodePath.join(tmp(), "wake-trace.ndjson");
+    const trace = createWakeTrace({ file, capBytes: 4_000, log: () => undefined });
+    const stream = createWakeStream({
+      words: [{ word: "Tessaya", threshold: 0.99 }],
+      scorer: async (): Promise<WakeScorer> => ({
+        chunkSamples: 1280,
+        reset: () => undefined,
+        score: async () => [0.1],
+      }),
+      confirm: async () => [],
+      onWake: () => undefined,
+      log: () => undefined,
+      capture: trace,
+    });
+    stream.frame("r1", frame(300));
+    stream.end("r1", 9);
+    await stream.drained("r1");
+    stream.kws("r1", { seg: 9, score: 0.02, pass: false, best: 0.02 });
+    trace.report("r1", "event/wake/stats", '{"opens":1,"shut":2,"rms_max":180}');
+    const lines = NodeFS.readFileSync(file, "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(lines[0]).toMatchObject({ k: "seg", dev: "r1", seg: 9, s: 0.06, rms: 300, peak: 300 });
+    expect(lines[0].sha).toMatch(/^[0-9a-f]{16}$/);
+    expect(lines[1]).toMatchObject({ k: "kws", seg: 9, best: 0.02 });
+    expect(lines[2]).toMatchObject({ k: "event/wake/stats", opens: 1, shut: 2, rms_max: 180 });
+    for (let i = 0; i < 40; i += 1) trace.report("r1", "voice/wake/end", `{"seg":${i},"gate":160}`);
+    const both = NodeFS.statSync(file).size + NodeFS.statSync(`${file}.1`).size;
+    expect(both).toBeLessThanOrEqual(4_000);
+    expect(NodeFS.readFileSync(file, "utf8")).toContain('"seg":39');
   });
 });

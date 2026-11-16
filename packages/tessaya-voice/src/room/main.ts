@@ -56,6 +56,7 @@ import { recogniserTurn } from "./recogniserTurn.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
+import { bothCaptures, createWakeTrace } from "./wakeTrace.ts";
 import { createWakeStream, kwsEarlyCommand } from "./wakeStream.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 import { biasTranscript, type VocabularyEntry } from "@t3tools/tessaya-shared/vocabulary";
@@ -593,6 +594,13 @@ const main = async () => {
           capBytes: Number(process.env["R1_WAKE_CAPTURE_MB"] ?? "1024") * 1_048_576,
           log,
         });
+  // Always on, no audio: every segment and kws verdict, capped at R1_WAKE_TRACE_MB (default 50) in two files.
+  const trace = createWakeTrace({
+    file: NodePath.join(state, "wake-trace.ndjson"),
+    capBytes: Number(process.env["R1_WAKE_TRACE_MB"] ?? "50") * 1_048_576,
+    log,
+  });
+  const wakeLog = bothCaptures(trace, capture);
   // `R1_KWS_WAKE=Tessaya=0.9,...` ("" for none). W2 real cascade (15 Nov): the kws at 0.9 beats openWakeWord on
   // every row, 32 of his 41 held-out names against 16 at 0.63 against 0.84 false wakes/h; OR-ing both doubles them.
   const kwsWake = (process.env["R1_KWS_WAKE"] ?? "Tessaya=0.9")
@@ -630,6 +638,7 @@ const main = async () => {
       "freya/r1/+/voice/wake",
       "freya/r1/+/voice/wake/end",
       "freya/r1/+/event/wake/kws",
+      "freya/r1/+/event/wake/stats",
       "freya/r1/+/state/voice/kws",
       "freya/r1/+/state/mic",
       "freya/r1/+/state/voice",
@@ -659,6 +668,8 @@ const main = async () => {
       "freya/r1/+/event/voice/flush",
     ],
     onMessage: (t, p) => {
+      const wakePath = /^freya\/r1\/([^/]+)\/(voice\/wake\/end|event\/wake\/stats)$/.exec(t);
+      if (wakePath !== null) trace.report(wakePath[1]!, wakePath[2]!, String(p));
       const seen = /^freya\/r1\/([^/]+)\/state\/online$/.exec(t);
       if (seen !== null) String(p).trim() === "1" ? online.add(seen[1]!) : online.delete(seen[1]!);
       // Her early kws threshold, which the Tessel loses on every boot: sent whenever it reports another.
@@ -679,7 +690,7 @@ const main = async () => {
         return;
       }
       const started = /^freya\/r1\/([^/]+)\/event\/session\/start$/.exec(t);
-      if (started !== null) capture?.session(started[1]!);
+      if (started !== null) wakeLog.session(started[1]!);
       // voice/profile[/<member>]: a shared profile (retained); empty on a member's topic clears that member.
       const m = /^freya\/r1\/[^/]+\/voice\/profile(?:\/([^/]+))?$/.exec(t);
       if (m !== null) {
@@ -874,7 +885,7 @@ const main = async () => {
           kwsWake,
           kwsReady: (id) => kwsReady.has(id),
           now,
-          ...(capture === undefined ? {} : { capture }),
+          capture: wakeLog,
         });
   startCameraRelay();
   room = createRoomVoice(
