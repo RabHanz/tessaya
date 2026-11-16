@@ -1,8 +1,10 @@
 /**
  * Pocket TTS takes no tags, so interjections are respelled per voice and a stage direction ("*sighs*") becomes a sound
- * spliced in by `speechSplice.ts`, never words. Gemini gets its own tag (`<sigh>`) instead. His picks by ear go into
+ * spliced in by `speechSplice.ts`, never words: the voice's own clip where it has one (`voiceClips.ts`), else a
+ * respelling or a made breath. Gemini gets its own tag (`<sigh>`) instead. His picks by ear go into
  * INTERJECTION_PICKS; his own pronounce list still wins.
  */
+import { voiceClips } from "./voiceClips.ts";
 
 export const NONVERBALS = [
   "sigh",
@@ -16,6 +18,7 @@ export const NONVERBALS = [
   "cough",
   "yawn",
   "sniff",
+  "smile",
   "gesture",
 ] as const;
 export type Nonverbal = (typeof NONVERBALS)[number];
@@ -23,8 +26,15 @@ export type Nonverbal = (typeof NONVERBALS)[number];
 export type Sound =
   /** Said in the same voice, quieter by `gain` (0..1). */
   | { readonly kind: "say"; readonly text: string; readonly gain: number }
-  /** A soft breath of this length, at a level matched to the speech around it. */
-  | { readonly kind: "breath"; readonly ms: number }
+  /** A soft breath of this length, at a level matched to the speech around it; an inhale is sharp and bright. */
+  | { readonly kind: "breath"; readonly ms: number; readonly inhale?: boolean }
+  /** One of this voice's own clips (`voiceClips.ts`), its variants in turn, at `gain` of the speech level. */
+  | {
+      readonly kind: "clip";
+      readonly voice: string;
+      readonly name: Nonverbal;
+      readonly gain: number;
+    }
   /** Silence: a gesture, or a sound this voice cannot make. */
   | { readonly kind: "pause"; readonly ms: number };
 
@@ -47,26 +57,42 @@ const DIRECTION_WORDS: ReadonlyArray<readonly [RegExp, Nonverbal]> = [
   [/^(coughs?|coughing|clears?|ahem)$/, "cough"],
   [/^(yawns?|yawning)$/, "yawn"],
   [/^(sniffs?|sniffles?|sniffing)$/, "sniff"],
-  [
-    /^(smiles?|smiling|grins?|grinning|nods?|nodding|winks?|shrugs?|waves?|pauses?|beat)$/,
-    "gesture",
-  ],
+  [/^(smiles?|smiling|grins?|grinning|beams?|beaming|smirks?|smirking)$/, "smile"],
+  [/^(nods?|nodding|winks?|shrugs?|waves?|pauses?|beat)$/, "gesture"],
 ];
 
-/** Until he picks by ear: what each sound is in a Pocket voice. */
+/** Until he picks by ear, and for a voice without its own clip: what each sound is in a Pocket voice. */
 const NONVERBAL_DEFAULTS: Readonly<Record<Nonverbal, Sound>> = {
   sigh: { kind: "breath", ms: 520 },
   laugh: { kind: "say", text: "Ha ha.", gain: 0.75 },
   chuckle: { kind: "say", text: "Heh heh.", gain: 0.65 },
   giggle: { kind: "say", text: "Hee hee.", gain: 0.65 },
-  scoff: { kind: "say", text: "Pfft.", gain: 0.7 },
-  gasp: { kind: "breath", ms: 240 },
+  // "Pfft." is read "Puff Tea" or "50"; "Pfff." is heard as "Pff" in all five persona voices (V-008 search).
+  scoff: { kind: "say", text: "Pfff.", gain: 0.7 },
+  gasp: { kind: "breath", ms: 260, inhale: true },
   groan: { kind: "say", text: "Uhhh.", gain: 0.6 },
   breath: { kind: "breath", ms: 420 },
   cough: { kind: "pause", ms: 200 },
   yawn: { kind: "pause", ms: 250 },
   sniff: { kind: "pause", ms: 200 },
+  smile: { kind: "say", text: "Hmh.", gain: 0.45 },
   gesture: { kind: "pause", ms: 220 },
+};
+
+/** A clip's level against her speech: a cough near it, a sniff well under. */
+const CLIP_GAIN: Partial<Record<Nonverbal, number>> = {
+  sigh: 0.35,
+  gasp: 0.45,
+  cough: 0.8,
+  yawn: 0.6,
+  sniff: 0.35,
+};
+
+const soundFor = (voice: string, nonverbal: Nonverbal): Sound => {
+  const gain = CLIP_GAIN[nonverbal];
+  return gain !== undefined && voiceClips(voice, nonverbal)?.kind === "sound"
+    ? { kind: "clip", voice, name: nonverbal, gain }
+    : NONVERBAL_DEFAULTS[nonverbal];
 };
 
 /** Gemini's own tags (its speech-generation docs); a gesture is a short pause. */
@@ -82,6 +108,7 @@ const GEMINI_TAGS: Readonly<Record<Nonverbal, string>> = {
   cough: "<cough>",
   yawn: "<yawn>",
   sniff: "<short pause>",
+  smile: "<short pause>",
   gesture: "<short pause>",
 };
 
@@ -213,7 +240,7 @@ export const speechPieces = (
     raw.push({
       kind: "sound",
       nonverbal,
-      sound: isSound(pick) ? pick : NONVERBAL_DEFAULTS[nonverbal],
+      sound: isSound(pick) ? pick : soundFor(voice, nonverbal),
     });
   }
   raw.push({ kind: "text", text: text.slice(at) });

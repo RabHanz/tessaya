@@ -14,7 +14,7 @@ import { pocketSpeech } from "@t3tools/tessaya-shared/speechSplice";
 import { pocketVoiceUrl } from "@t3tools/tessaya-shared/voiceLibrary";
 import { fetchSignedWake, wakeKey } from "@t3tools/tessaya-shared/wakeModels";
 
-import { integratedLufs, loudnessGain, withGain } from "../loudness.ts";
+import { gainLimiter, integratedLufs, loudnessGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import {
@@ -255,7 +255,7 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
           const gain = loudnessGain(lufs, target);
           gains.set(voice, gain);
           log(
-            `voice ${voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB, now ${integratedLufs(withGain(pcm, gain), 16_000).toFixed(1)} LUFS (target ${target})`,
+            `voice ${voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB, now ${integratedLufs(gainLimiter(gain)(pcm), 16_000).toFixed(1)} LUFS (target ${target})`,
           );
         },
         (e: unknown) => {
@@ -275,9 +275,10 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
   const speak = async function* (text: string, signal: AbortSignal, voice?: string) {
     const read = createWavReader();
     const down = createResampler24to16();
+    const limit = gainLimiter(gains.get(voice ?? "") ?? 1);
     for await (const chunk of pocketSpeech(text, voice ?? "", (t) => say(t, signal, voice))) {
       const pcm = down(read(chunk));
-      if (pcm.length > 0) yield withGain(pcm, gains.get(voice ?? "") ?? 1);
+      if (pcm.length > 0) yield limit(pcm);
     }
   };
   return { speak, warm };
