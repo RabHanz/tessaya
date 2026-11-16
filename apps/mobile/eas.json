@@ -87,7 +87,11 @@
         "NODE_OPTIONS": "--max-old-space-size=4096",
         "SOURCEMAP_FILE": "/tmp/t3code-ios-main.jsbundle.map"
       },
-      "channel": "tessaya"
+      "channel": "tessaya",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -x lintVitalAnalyzeRelease -x lintVitalRelease"
+      }
     }
   },
   "submit": {

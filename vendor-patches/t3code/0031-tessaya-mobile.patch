@@ -29,10 +29,10 @@ index 9be2204d5132c981804fa616a26a9c14b0b63fd6..9e96ebe161e7c99f17dba6f527591fe4
 +  expect(tessaya.updates?.url).not.toBe(production.updates?.url);
 +});
 diff --git a/apps/mobile/eas.json b/apps/mobile/eas.json
-index 3667f582e1edb140dd6ff6b1da529a14555d86e4..1bde9c9c9297794a4d74a2cb987e883d52e744f0 100644
+index 3667f582e1edb140dd6ff6b1da529a14555d86e4..b4e663edc3126e689a77d080fb2237185140afe4 100644
 --- a/apps/mobile/eas.json
 +++ b/apps/mobile/eas.json
-@@ -79,6 +79,15 @@
+@@ -79,6 +79,19 @@
        "ios": {
          "image": "macos-tahoe-26.6-xcode-27.1"
        }
@@ -44,11 +44,15 @@ index 3667f582e1edb140dd6ff6b1da529a14555d86e4..1bde9c9c9297794a4d74a2cb987e883d
 +        "NODE_OPTIONS": "--max-old-space-size=4096",
 +        "SOURCEMAP_FILE": "/tmp/t3code-ios-main.jsbundle.map"
 +      },
-+      "channel": "tessaya"
++      "channel": "tessaya",
++      "android": {
++        "buildType": "apk",
++        "gradleCommand": ":app:assembleRelease -x lintVitalAnalyzeRelease -x lintVitalRelease"
++      }
      }
    },
    "submit": {
-@@ -92,6 +101,11 @@
+@@ -92,6 +105,11 @@
        "android": {
          "track": "internal"
        }
