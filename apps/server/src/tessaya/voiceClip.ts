@@ -82,6 +82,9 @@ const percentile = (sorted: ReadonlyArray<number>, p: number) =>
 
 export const CLONE_MIN_SECONDS = 5;
 export const CLONE_MAX_SECONDS = 30;
+/** Speech over the room floor (loudest 5% of frames vs quietest 10%). His refs 16 Nov: A 32 dB sounded like him; B 25, C 20 drifted. */
+// shortcut: a cut from 3 clips; set it from the clone-quality lane once it has scored more.
+export const CLONE_MIN_SNR_DB = 28;
 
 /**
  * Why a clip cannot make a clone, in a sentence for him, or null when it can: 5 to 30 s, not clipped, loud enough,
@@ -101,11 +104,91 @@ export const cloneClipProblem = (pcm: Pcm): string | null => {
   const speech = percentile(levels, 0.95);
   const floor = percentile(levels, 0.1);
   if (speech < -42) return "The clip is too quiet. Speak closer to the mic.";
-  if (speech - floor < 15)
-    return "There is too much background noise. Record somewhere quieter, with only one person speaking.";
+  // A clone copies the room too: a noisy reference comes back as static in every line.
+  if (speech - floor < CLONE_MIN_SNR_DB)
+    return "Too noisy: record somewhere quieter, with only one person speaking.";
   const spoken = levels.filter((level) => level > floor + 12).length * 0.02;
   if (spoken < 3) return "There are under 3 seconds of speech in it. Say a few full sentences.";
   return null;
+};
+
+/**
+ * A clone's two clean steps: the reference before Pocket hears it, and every line it says. Swappable as a whole, so
+ * the clone-quality lane's pipeline (denoise, de-ess, another engine) drops in for `BASIC_CLEAN`.
+ */
+export interface CloneClean {
+  readonly reference: (pcm: Pcm) => Promise<Pcm>;
+  readonly output: (pcm: Pcm) => Promise<Pcm>;
+}
+
+/** Leading and trailing silence off, keeping 150 ms: frames under the floor + 12 dB, as the speech count reads it. */
+export const trimSilence = (pcm: Pcm): Pcm => {
+  const levels = frameLevels(pcm);
+  const floor = percentile(
+    levels.toSorted((a, b) => a - b),
+    0.1,
+  );
+  const first = levels.findIndex((level) => level > floor + 12);
+  if (first === -1) return pcm;
+  const last = levels.findLastIndex((level) => level > floor + 12);
+  const frame = Math.round(pcm.rate / 50);
+  const margin = Math.round(pcm.rate * 0.15);
+  return {
+    rate: pcm.rate,
+    samples: pcm.samples.slice(
+      Math.max(0, first * frame - margin),
+      Math.min(pcm.samples.length, (last + 1) * frame + margin),
+    ),
+  };
+};
+
+/** A 2nd-order Butterworth high-pass: rumble and hum under the voice out. */
+export const highPass = (pcm: Pcm, hz: number): Pcm => {
+  const w = Math.tan((Math.PI * hz) / pcm.rate);
+  const n = 1 / (1 + Math.SQRT2 * w + w * w);
+  const [b0, b1, b2] = [n, -2 * n, n];
+  const a1 = 2 * (w * w - 1) * n;
+  const a2 = (1 - Math.SQRT2 * w + w * w) * n;
+  const out = new Int16Array(pcm.samples.length);
+  let [x1, x2, y1, y2] = [0, 0, 0, 0];
+  for (let i = 0; i < out.length; i++) {
+    const x = pcm.samples[i]!;
+    const y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    [x2, x1, y2, y1] = [x1, x, y1, y];
+    out[i] = Math.max(-32_768, Math.min(32_767, Math.round(y)));
+  }
+  return { rate: pcm.rate, samples: out };
+};
+
+/** Speech frames' RMS to -20 dBFS, never past a -1 dBFS peak. */
+export const normalise = (pcm: Pcm): Pcm => {
+  const size = Math.round(pcm.rate / 50);
+  const levels = frameLevels(pcm);
+  const floor = percentile(
+    levels.toSorted((a, b) => a - b),
+    0.1,
+  );
+  let sum = 0;
+  let count = 0;
+  let peak = 1;
+  for (const [index, level] of levels.entries()) {
+    if (level <= floor + 12) continue;
+    for (let i = index * size; i < (index + 1) * size; i++) sum += pcm.samples[i]! ** 2;
+    count += size;
+  }
+  for (const s of pcm.samples) peak = Math.max(peak, Math.abs(s));
+  if (count === 0) return pcm;
+  const gain = Math.min(
+    (32_768 * 10 ** (-20 / 20)) / Math.sqrt(sum / count),
+    (32_768 * 10 ** (-1 / 20)) / peak,
+  );
+  return { rate: pcm.rate, samples: Int16Array.from(pcm.samples, (s) => Math.round(s * gain)) };
+};
+
+// shortcut: the minimum clean (trim, 70 Hz high-pass, loudness); replace with voice-clone-quality-2026-11-16's winner.
+export const BASIC_CLEAN: CloneClean = {
+  reference: async (pcm) => normalise(trimSilence(highPass(pcm, 70))),
+  output: async (pcm) => normalise(highPass(pcm, 70)),
 };
 
 /** Pocket's silent failure (no cloning weights: peak about -51 dBFS, no error): anything this quiet is not speech. */

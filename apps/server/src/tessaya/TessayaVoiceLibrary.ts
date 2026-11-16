@@ -57,6 +57,9 @@ import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import {
+  BASIC_CLEAN,
+  CLONE_MIN_SECONDS,
+  type CloneClean,
   cloneClipProblem,
   isNearSilence,
   markSynthetic,
@@ -77,6 +80,10 @@ const CLONE_WEIGHTS = {
 };
 // shortcut: the desktop's SPEAKER_MODEL file name (voiceModels.ts); move it to tessaya-shared if a third reader appears.
 const SPEAKER_MODEL_FILE = "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx";
+/** How a clone's reference and lines are cleaned; a better pipeline is provided here, not edited into cloneVoice. */
+export const CloneCleanStep = Context.Reference<CloneClean>("t3/tessaya/CloneCleanStep", {
+  defaultValue: () => BASIC_CLEAN,
+});
 const CLONE_ID = /^(test-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 const GEMINI_MODEL = "gemini-3.8-flash-tts";
@@ -408,6 +415,10 @@ export const make = Effect.gen(function* () {
   const commercial = commercialBuild(process.env);
   // One Pocket run at a time: each loads the 220 MB model.
   const oneAtATime = yield* Semaphore.make(1);
+  const clean = yield* CloneCleanStep;
+  /** A clone's line, through the output clean step. */
+  const cloneLine = async (files: PocketFiles, embedding: string, text: string) =>
+    Buffer.from(writeWav(await clean.output(readWav(await pocketRun(files, embedding, text))!)));
   // His clones: this environment's own data, outside every sync.
   const clonesDir = NodePath.join(userdata, "voice", "clones");
   const embeddingOf = (id: string) => NodePath.join(clonesDir, `${id}.safetensors`);
@@ -538,7 +549,7 @@ export const make = Effect.gen(function* () {
       return syntheticClip(
         yield* oneAtATime.withPermits(1)(
           Effect.tryPromise({
-            try: () => pocketRun(files, embeddingOf(input.voice), pronounce(text)),
+            try: () => cloneLine(files, embeddingOf(input.voice), pronounce(text)),
             catch: refuse,
           }),
         ),
@@ -594,8 +605,16 @@ export const make = Effect.gen(function* () {
           for (const old of await NodeFS.promises.readdir(clonesDir))
             if (old.startsWith("test-"))
               await NodeFS.promises.rm(NodePath.join(clonesDir, old), { force: true });
+          const reference = await clean.reference(pcm);
+          if (reference.samples.length / reference.rate < CLONE_MIN_SECONDS)
+            throw new Error(
+              `Without its pauses the clip is under ${CLONE_MIN_SECONDS} seconds. Say a few more sentences.`,
+            );
           const source = NodePath.join(clonesDir, `${id}.wav`);
-          await NodeFS.promises.writeFile(source, writeWav(pcm));
+          await NodeFS.promises.writeFile(
+            source,
+            writeWav({ rate: 24_000, samples: resample(reference, 24_000) }),
+          );
           try {
             await runPocket(files, [
               "export-voice",
@@ -611,7 +630,7 @@ export const make = Effect.gen(function* () {
             // Only the voice is kept, never his recording.
             await NodeFS.promises.rm(source, { force: true });
           }
-          const line = await pocketRun(files, embeddingOf(id), pronounce(PREVIEW_LINE));
+          const line = await cloneLine(files, embeddingOf(id), pronounce(PREVIEW_LINE));
           return { single, line };
         },
         catch: refuse,

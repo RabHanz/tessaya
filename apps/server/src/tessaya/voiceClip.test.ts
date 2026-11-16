@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { cloneClipProblem, isNearSilence, markSynthetic, readWav, writeWav } from "./voiceClip.ts";
+import {
+  BASIC_CLEAN,
+  cloneClipProblem,
+  highPass,
+  isNearSilence,
+  markSynthetic,
+  normalise,
+  readWav,
+  writeWav,
+} from "./voiceClip.ts";
 
 const RATE = 24_000;
 /** Speech-like: 300 ms syllables of a loud vowel-ish tone, 200 ms gaps of a quiet room. */
@@ -45,7 +54,9 @@ describe("a clip for a voice clone", () => {
     expect(cloneClipProblem(speechy(31))).toMatch(/under 30 seconds/);
     expect(cloneClipProblem(speechy(8, { gain: 40_000 }))).toMatch(/distorted/);
     expect(cloneClipProblem(speechy(8, { gain: 150, floor: 5 }))).toMatch(/too quiet/);
-    expect(cloneClipProblem(speechy(8, { floor: 4_000 }))).toMatch(/background noise/);
+    expect(cloneClipProblem(speechy(8, { floor: 4_000 }))).toMatch(
+      /Too noisy: record somewhere quieter/,
+    );
     // One short word in 8 s of room tone.
     const word = speechy(8, { gaps: false, gain: 0 });
     word.samples.set(speechy(1, { gaps: false }).samples, RATE);
@@ -61,5 +72,34 @@ describe("a clip for a voice clone", () => {
     expect(tail).toContain("Synthetic speech: a cloned voice");
     expect(new DataView(marked.buffer).getUint32(4, true)).toBe(marked.length - 8);
     expect(readWav(marked)?.samples.length).toBe(RATE);
+  });
+
+  it("cleans a reference: pauses trimmed, rumble cut, speech to -20 dBFS", async () => {
+    const speech = speechy(6, { gain: 2_000 });
+    const padded = new Int16Array(speech.samples.length + 2 * RATE);
+    padded.set(speech.samples, RATE);
+    // 20 Hz rumble under the whole clip.
+    for (let i = 0; i < padded.length; i++)
+      padded[i] = padded[i]! + Math.round(1_500 * Math.sin((2 * Math.PI * 20 * i) / RATE));
+    const clean = await BASIC_CLEAN.reference({ rate: RATE, samples: padded });
+    // About 0.85 s of each silent second trimmed away (150 ms margins kept).
+    expect(clean.samples.length / RATE).toBeGreaterThan(6);
+    expect(clean.samples.length / RATE).toBeLessThan(6.8);
+    const rumble = highPass(
+      {
+        rate: RATE,
+        samples: Int16Array.from(
+          { length: RATE },
+          (_, i) => 10_000 * Math.sin((2 * Math.PI * 20 * i) / RATE),
+        ),
+      },
+      70,
+    );
+    expect(Math.max(...rumble.samples.subarray(RATE / 2).map(Math.abs))).toBeLessThan(1_200);
+    const loud = normalise(speechy(6, { gain: 500 }));
+    let peak = 0;
+    for (const s of loud.samples) peak = Math.max(peak, Math.abs(s));
+    expect(20 * Math.log10(peak / 32_768)).toBeLessThanOrEqual(-1);
+    expect(20 * Math.log10(peak / 32_768)).toBeGreaterThan(-18);
   });
 });

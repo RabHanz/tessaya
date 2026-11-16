@@ -41,14 +41,15 @@ interface Choice {
   readonly group: string;
 }
 
-const RATE = 24_000;
+/** Studio rate: a good mic keeps its detail for the clean step; the server hands Pocket 24 kHz. */
+const RATE = 48_000;
 const MAX_SECONDS = 30;
 
-/** Any clip the browser can decode, as a 24 kHz mono 16-bit WAV in base64: what the server's clone check reads. */
+/** Any clip the browser can decode (his own recordings too), as a 48 kHz mono 16-bit WAV in base64. */
 const toWav = async (
   blob: Blob,
 ): Promise<{ readonly base64: string; readonly seconds: number }> => {
-  const context = new AudioContext();
+  const context = new AudioContext({ sampleRate: RATE });
   try {
     const decoded = await context.decodeAudioData(await blob.arrayBuffer());
     const offline = new OfflineAudioContext(
@@ -87,6 +88,56 @@ const toWav = async (
   } finally {
     void context.close();
   }
+};
+
+// shortcut: a public-domain passage (the Rainbow Passage) until voice-clone-quality-2026-11-16 names his script.
+const CLONE_SCRIPT =
+  "When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow. The rainbow is a division of white light into many beautiful colours. These take the shape of a long round arch, with its path high above, and its two ends apparently beyond the horizon.";
+
+/**
+ * The input level while recording: the bar is set straight on its element once a frame, with no React render, and
+ * the loop stops with the recording. The warning text changes only when the verdict does.
+ */
+const watchLevel = (
+  stream: MediaStream,
+  bar: { readonly current: HTMLDivElement | null },
+  warn: (text: string) => void,
+): (() => void) => {
+  const context = new AudioContext();
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 2048;
+  context.createMediaStreamSource(stream).connect(analyser);
+  const frame = new Float32Array(analyser.fftSize);
+  let loud = 0;
+  let quietSince = performance.now();
+  let said = "";
+  let handle = requestAnimationFrame(function tick(now) {
+    analyser.getFloatTimeDomainData(frame);
+    let peak = 0;
+    let sum = 0;
+    for (const s of frame) {
+      peak = Math.max(peak, Math.abs(s));
+      sum += s * s;
+    }
+    const db = 10 * Math.log10(sum / frame.length + 1e-12);
+    if (db > -45) quietSince = now;
+    if (peak >= 0.99) loud = now;
+    const verdict =
+      now - loud < 1_500
+        ? "Clipping: turn the mic's gain down."
+        : now - quietSince > 2_000
+          ? "Too quiet: move closer or turn the gain up."
+          : "";
+    if (verdict !== said) warn((said = verdict));
+    if (bar.current !== null)
+      bar.current.style.transform = `scaleX(${Math.max(0, Math.min(1, (db + 60) / 60))})`;
+    handle = requestAnimationFrame(tick);
+  });
+  return () => {
+    cancelAnimationFrame(handle);
+    void context.close();
+    warn("");
+  };
 };
 
 const voices = (library: VoiceLibraryView, engine: Engine, test: CloneResult | null): Choice[] => {
@@ -131,6 +182,11 @@ export function VoicePlayground(props: {
     null,
   );
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
+  const [mics, setMics] = useState<ReadonlyArray<{ value: string; label: string }>>([]);
+  const [mic, setMic] = useState<string | null>(null);
+  const meter = useRef<HTMLDivElement | null>(null);
+  const [levelNote, setLevelNote] = useState("");
+  const [script, setScript] = useState(false);
   const [consent, setConsent] = useState(false);
   const [name, setName] = useState("");
   const [token, setToken] = useState("");
@@ -167,23 +223,44 @@ export function VoicePlayground(props: {
       setTest(null);
     }
   };
+  const loadMics = async () => {
+    const all = await navigator.mediaDevices?.enumerateDevices().catch(() => []);
+    setMics(
+      (all ?? [])
+        .filter((d) => d.kind === "audioinput" && d.deviceId !== "")
+        .map((d, i) => ({ value: d.deviceId, label: d.label || `Microphone ${i + 1}` })),
+    );
+  };
   const record = async () => {
     if (recorder !== null) {
       recorder.stop();
       return;
     }
+    // Raw, as the mic hears it: the browser's own cleanup smears a voice a clone then copies.
     const stream = await navigator.mediaDevices
-      ?.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } })
+      ?.getUserMedia({
+        audio: {
+          ...(mic === null ? {} : { deviceId: { exact: mic } }),
+          sampleRate: { ideal: RATE },
+          channelCount: { ideal: 1 },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      })
       .catch(() => null);
     if (stream == null) {
       setNote("The microphone is not available here.");
       return;
     }
+    void loadMics();
     const parts: Blob[] = [];
     const next = new MediaRecorder(stream);
+    const stopMeter = watchLevel(stream, meter, setLevelNote);
     next.addEventListener("dataavailable", (event) => parts.push(event.data));
     next.addEventListener("stop", () => {
       clearTimeout(limit);
+      stopMeter();
       for (const track of stream.getTracks()) track.stop();
       setRecorder(null);
       void takeClip(new Blob(parts, { type: next.mimeType }));
@@ -321,7 +398,29 @@ export function VoicePlayground(props: {
             : "Record or upload 5 to 30 seconds of one person speaking, somewhere quiet. It runs on this machine; the recording itself is not kept."
         }
         control={
-          <div className="flex items-center justify-end gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+            <Select
+              items={[{ value: "default", label: "Default microphone" }, ...mics]}
+              value={mic ?? "default"}
+              onOpenChange={(open) => {
+                if (open) void loadMics();
+              }}
+              onValueChange={(next) => {
+                if (typeof next === "string") setMic(next === "default" ? null : next);
+              }}
+            >
+              <SelectTrigger size="sm" className="w-48" aria-label="Microphone">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem value="default">Default microphone</SelectItem>
+                {mics.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
             <Button size="sm" variant="outline" onClick={() => void record()}>
               {recorder === null ? <MicIcon /> : <SquareIcon />}
               {recorder === null ? "Record" : "Stop"}
@@ -344,6 +443,27 @@ export function VoicePlayground(props: {
           </div>
         }
       />
+      <div className="flex flex-col gap-2 px-3 pb-3 sm:px-4">
+        <label className="flex items-center gap-1.5 text-sm">
+          <Checkbox checked={script} onCheckedChange={(on) => setScript(on === true)} />
+          Show a script to read
+        </label>
+        {script ? <p className="text-sm text-muted-foreground">{CLONE_SCRIPT}</p> : null}
+        {recorder === null ? null : (
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+              <div
+                ref={meter}
+                className="h-full origin-left bg-primary"
+                style={{ transform: "scaleX(0)" }}
+              />
+            </div>
+            <span role="status" className="text-xs text-muted-foreground">
+              {levelNote || "Recording…"}
+            </span>
+          </div>
+        )}
+      </div>
       {clip === null ? null : (
         <div className="flex flex-col gap-2 px-3 pb-3 sm:px-4">
           <label className="flex items-center gap-1.5 text-sm">
