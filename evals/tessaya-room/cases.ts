@@ -362,6 +362,38 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsAtMost: { tessaya_persona_handoff: 0 },
   },
   {
+    id: "parity-env-providers",
+    source: "Director 16 Nov voice parity (#1222): the server's upkeep had no voice path",
+    said: ["is Codex signed in on this computer?"],
+    verified: true,
+    calls: ["environment_maintain"],
+    callsAtMost: { settings_set: 0, access_manage: 0 },
+  },
+  // Near miss: his plan's limit is usage, not the server's upkeep.
+  {
+    id: "parity-env-near-miss",
+    source: "Director 16 Nov voice parity (#1222): control for environment_maintain",
+    said: ["how much of my Claude limit is left this week?"],
+    verified: true,
+    callsAtMost: { environment_maintain: 0 },
+  },
+  {
+    id: "parity-access-links",
+    source: "Director 16 Nov voice parity (#1222): links and guest shares had no voice path",
+    said: ["which other machines is this one linked to?"],
+    verified: true,
+    calls: ["access_manage"],
+    callsAtMost: { environment_maintain: 0 },
+  },
+  // Near miss: a message to someone at home is not sharing access to his work.
+  {
+    id: "parity-access-near-miss",
+    source: "Director 16 Nov voice parity (#1222): control for access_manage",
+    said: ["share the news with Maya that the build is done"],
+    verified: true,
+    callsAtMost: { access_manage: 0 },
+  },
+  {
     id: "wake-word-status",
     source:
       "Director 14 Nov: custom and renamed personas get working wake words; he asks whether Maya's name works yet",
