@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { speechPieces } from "./interjections.ts";
+import { directionsOf, speechPieces } from "./interjections.ts";
 import {
   charShare,
   fireAtMs,
@@ -26,6 +26,17 @@ describe("sound anchors", () => {
     ["No directions here.", []],
   ])("%s", (line, anchors) => {
     expect(soundAnchors(speechPieces(line, ""))).toEqual(anchors);
+  });
+
+  it("anchors a Gemini line on its tags, each standing for its direction", () => {
+    const line = "That's brilliant *smiles* you did it *laughs* well done.";
+    const pieces = speechPieces(line, "", { engine: "gemini" });
+    // Smile and laugh are one tag each in the text: "<short pause>" is two words of it.
+    expect(soundAnchors(pieces, directionsOf(line))).toEqual([
+      { word: 2, nonverbal: "smile" },
+      { word: 7, nonverbal: "laugh" },
+    ]);
+    expect(soundAnchors(pieces)).toEqual([]);
   });
 
   it("counts a sound said as words, as the aligner and the word cues do", () => {

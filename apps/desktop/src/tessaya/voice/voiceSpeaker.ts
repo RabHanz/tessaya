@@ -11,6 +11,7 @@
 import type { TtsProvider } from "@t3tools/tessaya-voice";
 
 import {
+  directionsOf,
   hasDirection,
   speechPieces,
   withoutDirections,
@@ -276,7 +277,8 @@ export const createSpeaker = (input: {
     // What the audio says: its words and any sound said as words ("Ha ha."). A spliced breath or pause (one starts most
     // sentences after the first) is a gap the alignment allows for.
     const said = pieces.some((p) => p.kind === "text") ? saidText(pieces) : undefined;
-    return { ...source, text: said, sounds: soundAnchors(pieces) };
+    const gemini = choice.engine === "gemini" ? directionsOf(raw) : [];
+    return { ...source, text: said, sounds: soundAnchors(pieces, gemini) };
   };
 
   const run = (raw: string, pick: () => VoiceChoice, force: boolean): Promise<void> => {

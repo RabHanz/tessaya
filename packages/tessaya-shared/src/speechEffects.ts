@@ -27,13 +27,30 @@ export const saidText = (pieces: ReadonlyArray<SpeechPiece>): string =>
     .filter((t) => t !== "")
     .join(" ");
 
-/** Each sound in a line, on the word it sits before. */
-export const soundAnchors = (pieces: ReadonlyArray<SpeechPiece>): SoundAnchor[] => {
+/** A Gemini tag in a line's text (`<laugh>`, `<short pause>`): where a stage direction was. */
+const GEMINI_TAG = /<[a-z -]{1,30}>/g;
+
+/**
+ * Each sound in a line, on the word it sits before. A Gemini line has no sound pieces: its directions are tags inside
+ * the text, and `gemini` (`directionsOf` the reply) says, in order, what each tag stands for.
+ */
+export const soundAnchors = (
+  pieces: ReadonlyArray<SpeechPiece>,
+  gemini: ReadonlyArray<Nonverbal> = [],
+): SoundAnchor[] => {
   const out: SoundAnchor[] = [];
   let word = 0;
+  let tag = 0;
   for (const p of pieces) {
     if (p.kind === "sound") out.push({ word, nonverbal: p.nonverbal });
-    word += wordsOf(p.kind === "text" ? p.text : p.sound.kind === "say" ? p.sound.text : "").length;
+    const text = p.kind === "text" ? p.text : p.sound.kind === "say" ? p.sound.text : "";
+    if (p.kind === "text" && gemini.length > 0)
+      for (const m of text.matchAll(GEMINI_TAG)) {
+        const nonverbal = gemini[tag++];
+        if (nonverbal !== undefined)
+          out.push({ word: word + wordsOf(text.slice(0, m.index)).length, nonverbal });
+      }
+    word += wordsOf(text).length;
   }
   return out;
 };
