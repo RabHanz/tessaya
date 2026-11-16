@@ -181,7 +181,7 @@ it("derives T3's list as its contract allows: added, then learned by use, then W
 });
 
 it("listens for a project title only when it is spoken words", () => {
-  // His projects on the box, 16 Nov: only VentureOS is a word he says.
-  const titles = ["VentureOS", "t3code", "baton-media-test", "native-copy-1", "work", "The Margin"];
-  expect(titles.filter(Vocabulary.spokenTitle)).toEqual(["VentureOS", "The Margin"]);
+  // His projects on the box, 16 Nov: only one title is a word he says.
+  const titles = ["NorthWind", "t3code", "baton-media-test", "native-copy-1", "work", "The Margin"];
+  expect(titles.filter(Vocabulary.spokenTitle)).toEqual(["NorthWind", "The Margin"]);
 });

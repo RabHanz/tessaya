@@ -60,7 +60,7 @@ export class TessayaVocabulary extends Context.Service<
 
 const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-/** A project title worth listening for: words with a capital ("VentureOS"), never a slug or folder ("baton-media-test", "work"). */
+/** A project title worth listening for: words with a capital ("NorthWind"), never a slug or folder ("baton-media-test", "work"). */
 export const spokenTitle = (title: string): boolean =>
   /^[\p{L}'’ ]+$/u.test(title.trim()) && /\p{Lu}/u.test(title);
 
