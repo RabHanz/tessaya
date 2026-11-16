@@ -55,6 +55,7 @@ import {
   TEST_MODE_MAX_MS,
   type SpeakerGate,
   type SpeakerIdentity,
+  type VoiceHold,
 } from "../speaker.ts";
 import { DOWN_FRAME_BYTES, fromBytes, speechLevel, toBytes } from "./audio.ts";
 import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "../cueSounds.ts";
@@ -498,6 +499,8 @@ export interface TurnMetrics {
   readonly reasked?: boolean;
   /** Answered as him because test mode trusted the test clone. */
   readonly test?: boolean;
+  /** His by his session's evidence, not this turn's own score. */
+  readonly lifted?: boolean;
 }
 
 /** "Test mode on", "turn off test mode", "Tessaya, test mode off": which, or null. */
@@ -1421,11 +1424,22 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       ) => envelopeOf(given, tainted, words, who, switched, via, speaker, affect, segments);
       const current = given === undefined && heard === undefined ? rec : null;
       if (current !== null) rec = null;
-      const scored = (audio: Int16Array, begun = audio === pcm ? voice : undefined) =>
-        (begun ?? deps.speaker?.(audio))?.then(
-          (heard) => heldVoice(heard ?? UNVERIFIED(deps.now())),
-          () => heldVoice(UNVERIFIED(deps.now())),
+      // The whole sentence re-scored replaces its first piece's verdict in his session, never adds to it.
+      let holdBefore: VoiceHold | null = null;
+      let scorings = 0;
+      const scored = (audio: Int16Array, begun = audio === pcm ? voice : undefined) => {
+        const n = (scorings += 1);
+        const held = (heard: SpeakerIdentity) => {
+          holdBefore ??= voiceHold;
+          const out = holdVoice(holdBefore, heard, deps.now());
+          if (n === scorings) voiceHold = out.hold;
+          return out.identity;
+        };
+        return (begun ?? deps.speaker?.(audio))?.then(
+          (heard) => held(heard ?? UNVERIFIED(deps.now())),
+          () => held(UNVERIFIED(deps.now())),
         );
+      };
       let speakerP = given === undefined ? scored(pcm) : undefined;
       const affectP = given === undefined ? deps.affect?.(pcm).catch(() => undefined) : undefined;
       const voicesP = given === undefined ? deps.voices?.(pcm).catch(() => undefined) : undefined;
@@ -2095,6 +2109,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (said !== "") lastExchangeAt = deps.now();
         lastActivity = deps.now();
       }
+      const score = identity.own?.score ?? identity.confidence;
       const metrics: TurnMetrics = {
         device: id,
         turn,
@@ -2106,8 +2121,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         firstSoundMs: firstSound === null ? null : Math.round(firstSound),
         text,
         speaker: identity.kind,
-        speakerScore:
-          identity.confidence === null ? null : Math.round(identity.confidence * 1000) / 1000,
+        speakerScore: score === null ? null : Math.round(score * 1000) / 1000,
+        ...(identity.lifted === true ? { lifted: true } : {}),
         emotion: (affect ?? affectNow)?.emotion ?? "unknown",
         bargedIn,
         speculative: kept !== null,
@@ -2534,7 +2549,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** S2 on this R1: someone is at it, which proves presence for an act waiting on who is speaking. */
       present: () => settleStepUp(true, "button"),
       /** Her name's own clip, heard by Voice ID: the first evidence of who woke her. */
-      heardName: (identity: SpeakerIdentity, ms: number) => hear(identity, ms),
+      heardName: (identity: SpeakerIdentity, ms: number, evidence: boolean) => {
+        // A request in the same breath is scored once, as his turn, on this same clip.
+        if (evidence) heldVoice(identity);
+        hear(identity, ms);
+      },
       call: (name: string, level = Number.NEGATIVE_INFINITY) => {
         if (Number.isFinite(level)) hisLevel = level;
         // Her name as heard, or the persona id a trained wake word belongs to.
@@ -2925,7 +2944,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         if (called !== undefined) {
           s.call(called.word, called.level);
-          void called.heard?.then((who) => who !== undefined && s.heardName(who, called.ms));
+          void called.heard?.then(
+            (who) => who !== undefined && s.heardName(who, called.ms, request === undefined),
+          );
         } else s.present();
         cue(id, "wake");
         const then = onStart.get(id);

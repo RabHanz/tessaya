@@ -24,6 +24,7 @@ import {
   decideSpeaker,
   enrol,
   identityOf,
+  ownerScoreOf,
   TEST_SPEAKER_ID,
   trustTestSpeaker,
   UNVERIFIED,
@@ -613,7 +614,8 @@ const main = async () => {
     .filter((w) => w.word !== "" && w.threshold > 0 && w.threshold <= 1);
   // `R1_WAKE_GATE=min=64,x=2.5`: the Tessel's segment gate, sent with the kws settings; unset keeps the firmware's.
   const wakeGate = parseWakeGate(process.env["R1_WAKE_GATE"]);
-  if (process.env["R1_WAKE_GATE"] && wakeGate === null) log(`R1_WAKE_GATE ignored: want min=32-450,x=1.5-6`);
+  if (process.env["R1_WAKE_GATE"] && wakeGate === null)
+    log(`R1_WAKE_GATE ignored: want min=32-450,x=1.5-6`);
   /** One clock for the wake stream and the room: a request's times in one are compared in the other. */
   const now = () => performance.timeOrigin + performance.now();
   /** The Tessels whose kws scorer says it is ready: its pass decides their wakes. */
@@ -857,7 +859,8 @@ const main = async () => {
       decideSpeaker({ clips, model: SPEAKER_MODEL_ID, profiles, policy, use });
     const judged = identityOf(decide("steer"), decide("act"), at);
     if (judged.personId === TEST_SPEAKER_ID) return trustTestSpeaker(judged, Date.now(), until);
-    const identity = judged;
+    const own = ownerScoreOf(vector, profiles, SPEAKER_MODEL_ID);
+    const identity = own === null ? judged : { ...judged, own: { score: own, ms: clips[0]!.ms } };
     // Only a turn it was sure of refines this R1's copy: verified, long enough to stand alone, well above the cut-off.
     if (
       identity.verified &&

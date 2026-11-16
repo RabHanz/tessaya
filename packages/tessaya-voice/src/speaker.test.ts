@@ -242,18 +242,69 @@ describe("the speaker identity", () => {
       hold = out.hold;
       return out.identity.kind === "owner" && out.identity.verified;
     });
-    expect(verified).toEqual([false, false, false, false, true, true, true]);
+    expect(verified).toEqual([false, false, false, false, true, true, false]);
     // A clip that clears the act cut-off verifies him at once; anyone else ends the hold.
     const once = holdVoice(NO_HOLD, owned(at(0.6), 4_000), 0);
     expect(once.identity.verified).toBe(true);
+    // Not scored yet (the early guess): his path while held, never an owner-only act.
     expect(holdVoice(once.hold, UNVERIFIED(1), HOLD_MS).identity).toMatchObject({
       kind: "owner",
-      verified: true,
+      verified: false,
+      lifted: true,
     });
     expect(holdVoice(once.hold, UNVERIFIED(1), HOLD_MS + 1).identity.verified).toBe(false);
     const other = holdVoice(once.hold, owned(at(0.05), 4_000), 1);
     expect(other.identity.kind).toBe("guest");
     expect(holdVoice(other.hold, UNVERIFIED(2), 2).identity.kind).toBe("unverified");
+  });
+
+  it("lifts his short and weak turns on his session's evidence, and lends it to no other voice", () => {
+    // Scores from his held-out Tessel turns, 16 Nov (GMT+5 07:05 on); the intruders score as the clone and LibriSpeech do.
+    const scored = (kind: SpeakerIdentity["kind"], score: number, ms: number): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      kind,
+      personId: kind === "owner" ? "owner" : null,
+      confidence: kind === "unverified" ? null : score,
+      own: { score, ms },
+    });
+    const turns: Array<[string, SpeakerIdentity, string]> = [
+      ["her name's clip, too short alone", scored("unverified", 0.5, 1_200), "unverified"],
+      ["his short first turn, on her name's clip", scored("unverified", 0.48, 1_300), "lifted"],
+      ["his 2 s turn", scored("owner", 0.69, 2_400), "owner"],
+      ["his short turn", scored("unverified", 0.56, 1_700), "lifted"],
+      ["his weak turn", scored("guest", 0.38, 2_200), "lifted"],
+      [
+        "a short low blip, too short to call a change",
+        scored("unverified", 0.2, 600),
+        "unverified",
+      ],
+      ["the clone inside his session", scored("guest", 0.3, 2_300), "guest"],
+      ["a short turn after it: no evidence left", scored("unverified", 0.5, 1_500), "unverified"],
+    ];
+    let hold = NO_HOLD;
+    const seen = turns.map(([, identity], i) => {
+      const out = holdVoice(hold, identity, i * 10_000);
+      hold = out.hold;
+      if (out.identity.lifted === true) expect(out.identity.verified).toBe(false);
+      return out.identity.lifted === true ? "lifted" : out.identity.kind;
+    });
+    expect(seen).toEqual(turns.map(([, , want]) => want));
+    // A held session's evidence never lifts a turn far under it, nor a voice under the floor.
+    const strong = holdVoice(
+      holdVoice(NO_HOLD, scored("owner", 0.8, 3_000), 0).hold,
+      scored("owner", 0.8, 3_000),
+      1,
+    ).hold;
+    expect(holdVoice(strong, scored("unverified", 0.39, 1_500), 2).identity.kind).toBe(
+      "unverified",
+    );
+    expect(holdVoice(strong, scored("unverified", 0.36, 1_500), 2).identity.kind).toBe(
+      "unverified",
+    );
+    expect(holdVoice(strong, scored("unverified", 0.36, 1_500), 2).hold).toEqual(NO_HOLD);
+    expect(holdVoice(strong, scored("unverified", 0.45, 1_500), HOLD_MS + 2).identity.kind).toBe(
+      "unverified",
+    );
   });
 
   const who = (kind: SpeakerIdentity["kind"], more: Partial<SpeakerIdentity> = {}) => ({

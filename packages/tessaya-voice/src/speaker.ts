@@ -184,6 +184,10 @@ export interface SpeakerIdentity {
   readonly voiceIdOff?: true;
   /** The test clone, trusted as him only while test mode is on (roomTestMode.ts); every such turn is marked. */
   readonly test?: true;
+  /** This turn's own cosine to his profile and its length, whatever the verdict (even too short): session evidence. */
+  readonly own?: { readonly score: number; readonly ms: number };
+  /** His by his session's evidence, not this turn's own score: his path, never an owner-only act (`verified` false). */
+  readonly lifted?: true;
 }
 
 /** A short follow-up ("yes", "stop") keeps the last verdict this long, and only for listening. */
@@ -225,17 +229,24 @@ export const identityOf = (
 };
 
 /**
- * His voice across one session: most of his turns are under the 2 s a verdict needs, or short of the 4 s "act" clip,
- * so turn by turn he read "unverified" twice in three (15 Nov). Three owner turns in a row that average the "act"
- * cut-off verify him as three averaged clips do, and once verified he stays so for `HOLD_MS` after his last owner
- * turn. A turn judged as anyone else ends it at once.
+ * His voice across one session. Three owner turns averaging the "act" cut-off, or one verified, hold him for `HOLD_MS`.
+ * A short or weak turn is lifted when its own score clears `SESSION_FLOOR`, sits near his last two pieces, and averaged
+ * with them clears steer; under the floor is another voice and ends the session. A lifted turn is never `verified`.
  */
 export interface VoiceHold {
   readonly verifiedAt: number | null;
   readonly scores: ReadonlyArray<number>;
+  /** His recent pieces that cleared the floor: what can lift a short or weak turn. */
+  readonly evidence: ReadonlyArray<{ readonly at: number; readonly score: number }>;
 }
-export const NO_HOLD: VoiceHold = { verifiedAt: null, scores: [] };
+export const NO_HOLD: VoiceHold = { verifiedAt: null, scores: [], evidence: [] };
 export const HOLD_MS = 5 * 60_000;
+/** CAM++: under this a turn is not his (his held-out p2; LibriSpeech 1-2 s p99.5), so it is a speaker change. */
+export const SESSION_FLOOR = 0.37;
+/** A turn this far under his recent pieces' mean is a change of voice, however high the mean. */
+const SESSION_NEAR = 0.4;
+/** Under this much speech a low score is too noisy to call a change: the turn is only not lifted. */
+const CHANGE_MIN_MS = 1_000;
 
 export const holdVoice = (
   hold: VoiceHold,
@@ -245,20 +256,67 @@ export const holdVoice = (
 ): { readonly hold: VoiceHold; readonly identity: SpeakerIdentity } => {
   const held = hold.verifiedAt !== null && now - hold.verifiedAt <= HOLD_MS;
   // The test clone is trusted turn by turn while test mode is on, and never leaves him held once it ends.
-  if (identity.kind === "saved" || identity.kind === "guest" || identity.test === true)
-    return { hold: NO_HOLD, identity };
-  if (identity.kind === "unverified")
+  if (identity.kind === "saved" || identity.test === true) return { hold: NO_HOLD, identity };
+  const own = identity.own?.score ?? (identity.kind === "owner" ? identity.confidence : null);
+  const recent = hold.evidence.filter((e) => now - e.at <= HOLD_MS);
+  const evidence =
+    own !== null && own >= SESSION_FLOOR ? [...recent, { at: now, score: own }].slice(-3) : recent;
+  if (identity.kind === "owner") {
+    const scores = [...hold.scores, own ?? 0].slice(-3);
+    const averaged =
+      scores.length === 3 && scores.reduce((a, b) => a + b, 0) / 3 >= policy.averaged.act;
+    const verified = identity.verified || averaged || held;
+    return {
+      hold: { verifiedAt: verified ? now : hold.verifiedAt, scores, evidence },
+      identity: { ...identity, verified },
+    };
+  }
+  if (own === null) {
+    // Not scored (a guess before the verdict, an embedding that failed): a held session keeps his path, nothing more.
+    if (identity.kind === "guest") return { hold: NO_HOLD, identity };
     return held
-      ? { hold, identity: { ...identity, kind: "owner", personId: "owner", verified: true } }
+      ? { hold, identity: { ...identity, kind: "owner", personId: "owner", lifted: true } }
       : { hold, identity };
-  const scores = [...hold.scores, identity.confidence ?? 0].slice(-3);
-  const averaged =
-    scores.length === 3 && scores.reduce((a, b) => a + b, 0) / 3 >= policy.averaged.act;
-  const verified = identity.verified || averaged || held;
-  return {
-    hold: { verifiedAt: verified ? now : hold.verifiedAt, scores },
-    identity: { ...identity, verified },
-  };
+  }
+  const last = recent.slice(-2).map((e) => e.score);
+  const mean = (xs: ReadonlyArray<number>) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  // shortcut: a guest by margin (him against a saved person) can lift too; split them once two saved people are measured.
+  if (
+    last.length > 0 &&
+    own >= SESSION_FLOOR &&
+    own >= mean(last) - SESSION_NEAR &&
+    mean([own, ...last]) >= policy.single.steer
+  )
+    return {
+      hold: { ...hold, verifiedAt: held ? now : hold.verifiedAt, evidence },
+      identity: {
+        ...identity,
+        kind: "owner",
+        personId: "owner",
+        name: null,
+        confidence: own,
+        verified: false,
+        lifted: true,
+      },
+    };
+  if (own < SESSION_FLOOR && (identity.own?.ms ?? CHANGE_MIN_MS) >= CHANGE_MIN_MS)
+    return { hold: NO_HOLD, identity };
+  return identity.kind === "guest"
+    ? { hold: { ...NO_HOLD, evidence }, identity }
+    : { hold: { ...hold, evidence }, identity };
+};
+
+/** His profile's cosine to one clip, the best of his owner profiles for this model; null with none. */
+export const ownerScoreOf = (
+  vector: Float32Array,
+  profiles: ReadonlyArray<SpeakerProfile>,
+  model: string,
+): number | null => {
+  const scores = profiles
+    .filter((p) => p.kind === "owner" && p.model === model)
+    .map((p) => cosine(vector, p.centroid))
+    .filter(Number.isFinite);
+  return scores.length === 0 ? null : Math.max(...scores);
 };
 
 /**
