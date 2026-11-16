@@ -84,6 +84,8 @@ const UP_FLAG_HEADSET = 16;
 const R1_LATENCY = 1972;
 /** Talking over her counts once she has sounded this long: the device's echo cancelling settles in that time. */
 const ONSET_GRACE_MS = 400;
+/** How many times a persona look is sent before the loop logs it as failed. */
+const EYE_PERSONA_TRIES = 3;
 /** Until his own level is known, a voice over her must reach this (dBFS): he is near -41 at the R1, a TV far below. */
 const TALK_MIN_DBFS = -55;
 
@@ -2715,7 +2717,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   /** Her mood at rest on each R1 (`voice/intent/rest`, retained): the eyes and the prop over them between turns. */
   const restFace = new Map<string, { readonly mood: string; readonly accessory: string }>();
   /** A persona look sent to an R1 and not yet acknowledged on `state/eye/persona`. */
-  const eyeAsked = new Map<string, { readonly name: string; readonly at: number }>();
+  const eyeAsked = new Map<
+    string,
+    { readonly name: string; readonly at: number; readonly tries?: number }
+  >();
   /** R1s muted from Tessaya: their audio is dropped unheard until unmuted, across sessions. */
   const muted = new Set<string>();
   /** R1s whose replies play on Bluetooth now (`state/voice` start or out); the session's stall check reads it. */
@@ -2858,7 +2863,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       if (tail === "voice/intent/rest") {
-        const { mood: said, accessory } = json();
+        const { mood: said, accessory, persona: whose } = json();
         const mood = typeof said === "string" ? eyeClipOf(said) : null;
         if (mood === null || mood === "neutral") restFace.delete(id);
         else
@@ -2867,7 +2872,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             accessory:
               typeof accessory === "string" && /^[a-z]{2,12}$/.test(accessory) ? accessory : "auto",
           });
-        deps.log(`[${id}] rest mood ${mood ?? "neutral"}`);
+        deps.log(
+          `[${id}] rest mood ${mood ?? "neutral"}${typeof whose === "string" ? ` (${whose.slice(0, 40)})` : ""}`,
+        );
         // Shown now unless a reply's mood still holds; then the next rest moment shows it.
         if (deps.now() >= (eyeHold.get(id) ?? 0))
           deps.publish(
@@ -3084,10 +3091,20 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     },
     /** Ends sessions nobody has spoken in; the R1 hears its own stop and plays the exit chime. */
     sweep: () => {
+      // A persona look is confirmed: asked again until the R1 acknowledges it, then a real failure in the log.
       for (const [id, asked] of eyeAsked)
         if (deps.now() - asked.at > 3_000) {
-          eyeAsked.delete(id);
-          deps.log(`[${id}] eye persona ${asked.name}: no acknowledgement in 3 s`);
+          const tries = (asked.tries ?? 1) + 1;
+          if (tries > EYE_PERSONA_TRIES) {
+            eyeAsked.delete(id);
+            deps.log(
+              `[${id}] eye persona ${asked.name}: FAILED, no acknowledgement after ${EYE_PERSONA_TRIES} tries`,
+            );
+            continue;
+          }
+          eyeAsked.set(id, { name: asked.name, at: deps.now(), tries });
+          deps.log(`[${id}] eye persona ${asked.name}: no acknowledgement in 3 s, try ${tries}`);
+          deps.publish(topic(id, "cmd/eye/persona"), JSON.stringify({ name: asked.name }));
         }
       for (const [id, s] of sessions)
         if (s.tick() === "stop") {

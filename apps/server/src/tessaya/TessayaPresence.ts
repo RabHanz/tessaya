@@ -1,7 +1,7 @@
 /**
- * The one place presence signals land (B-043): every vessel's turn, the Tessels and the desktop note what they saw, and
- * the turn, comms and job news read one fused estimate per member (`@t3tools/tessaya-shared/presence`). In this
- * server's memory only, newest per member, source and vessel: a state, never a history, so a restart forgets it.
+ * The one place presence signals land (B-043), fused per member (`@t3tools/tessaya-shared/presence`). In memory, newest
+ * per member, source and vessel: a state, never a history. Each signal also goes to his other servers (DeviceSync
+ * `@presence`), so every server's estimate is the same and "away" means away from every vessel (B-044).
  */
 import { commsCaps } from "@t3tools/tessaya-shared/comms";
 import { followOn } from "@t3tools/tessaya-shared/household";
@@ -20,10 +20,31 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import { DeviceSync } from "../home/DeviceSync.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
 
 /** Plenty for a household's members and vessels; the oldest go first past it. */
 const KEEP = 500;
+const PRESENCE_RECORD = "@presence";
+/** The same signal again within this long stays here: a refresh that soon changes no estimate elsewhere. */
+const RESEND_MS = 60_000;
+
+const decodeSignal = (v: unknown): PresenceSignal | null => {
+  if (typeof v !== "object" || v === null) return null;
+  const s = v as Record<string, unknown>;
+  return (s["member"] === null || typeof s["member"] === "string") &&
+    typeof s["source"] === "string" &&
+    (s["vessel"] === null || typeof s["vessel"] === "string") &&
+    typeof s["at"] === "number"
+    ? {
+        member: s["member"] as string | null,
+        source: s["source"],
+        vessel: s["vessel"] as string | null,
+        ...(s["guest"] === true ? { guest: true } : {}),
+        at: s["at"],
+      }
+    : null;
+};
 
 export class TessayaPresence extends Context.Service<
   TessayaPresence,
@@ -44,38 +65,62 @@ export class TessayaPresence extends Context.Service<
 const keyOf = (s: Omit<PresenceSignal, "at">) =>
   `${s.member ?? ""}\u0000${s.source}\u0000${s.vessel ?? ""}`;
 
-export const make = Effect.sync(() => {
+export const make = Effect.gen(function* () {
+  const sync = yield* Effect.serviceOption(DeviceSync);
   const kept = new Map<string, PresenceSignal>();
+  const keep = (key: string, signal: PresenceSignal, now: number) => {
+    kept.delete(key);
+    kept.set(key, signal);
+    for (const [k, s] of kept)
+      if (kept.size > KEEP || now - s.at > PRESENCE_FORGET_MS) kept.delete(k);
+  };
   const note = Effect.fn("TessayaPresence.note")(function* (
     signal: Omit<PresenceSignal, "at"> & { readonly at?: number },
   ) {
     const now = yield* Clock.currentTimeMillis;
     const key = keyOf(signal);
-    kept.delete(key);
-    kept.set(key, {
+    const before = kept.get(key);
+    const next: PresenceSignal = {
       member: signal.member,
       source: signal.source,
       vessel: signal.vessel,
       ...(signal.guest === true ? { guest: true } : {}),
       at: signal.at ?? now,
-    });
-    for (const [k, s] of kept)
-      if (kept.size > KEEP || now - s.at > PRESENCE_FORGET_MS) kept.delete(k);
+    };
+    keep(key, next, now);
+    if (Option.isSome(sync) && (before === undefined || next.at - before.at >= RESEND_MS))
+      yield* sync.value.put(PRESENCE_RECORD, key, next, "changed", next.at);
   });
+  if (Option.isSome(sync))
+    yield* sync.value.onRecord(PRESENCE_RECORD, (key, v) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const signal = decodeSignal(v);
+        // null: forgotten on another server.
+        if (signal === null) return void kept.delete(key);
+        if ((kept.get(key)?.at ?? 0) < signal.at) keep(key, signal, now);
+      }),
+    );
   const estimate = Effect.fn("TessayaPresence.estimate")(function* (
     extra: ReadonlyArray<PresenceSignal> = [],
   ) {
     const now = yield* Clock.currentTimeMillis;
     return { ...fusePresence([...kept.values(), ...extra], now), now };
   });
-  const forget = (member: string, into?: string) =>
-    Effect.sync(() => {
-      for (const [k, s] of kept)
-        if (s.member === member) {
-          kept.delete(k);
-          if (into !== undefined) kept.set(keyOf({ ...s, member: into }), { ...s, member: into });
+  // Forgetting reaches his other servers: each forgotten key goes as null, a moved one as its new key.
+  const forget = Effect.fn("TessayaPresence.forget")(function* (member: string, into?: string) {
+    for (const [k, s] of kept)
+      if (s.member === member) {
+        kept.delete(k);
+        if (Option.isSome(sync)) yield* sync.value.put(PRESENCE_RECORD, k, null, "changed");
+        if (into !== undefined) {
+          const moved = { ...s, member: into };
+          kept.set(keyOf(moved), moved);
+          if (Option.isSome(sync))
+            yield* sync.value.put(PRESENCE_RECORD, keyOf(moved), moved, "changed", moved.at);
         }
-    });
+      }
+  });
   return TessayaPresence.of({ note, estimate, forget });
 });
 

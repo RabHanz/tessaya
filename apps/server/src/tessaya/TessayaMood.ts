@@ -1,10 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off
 // @effect-diagnostics globalDate:off
 /**
- * Her working mood, one row per persona (EMOTION-SYSTEM phase 1; SPINE-UNIFY §10 CS6): a general mood tied to no one,
- * and a relationship per household member, moved only by that member's identified turns (Director, 16 Nov). Every
- * vessel reads the same label for whoever is identified there, so her face and tone agree. Nothing that decides what
- * she may do reads this service (§7).
+ * Her mood, one row per persona: a general mood and a relationship per member (§7: nothing that decides acts reads it).
+ * Each event made here also goes to his other servers (DeviceSync `@mood`, id-deduped, oldest first) and each appraises
+ * it into its own row, so all of them end in one mood; presence anywhere (synced too) means he is not away (B-044).
  */
 import {
   DEFAULT_AFFECT_SETTINGS,
@@ -22,6 +21,7 @@ import {
   type PersonaAffect,
 } from "@t3tools/tessaya-shared/affect";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
@@ -37,6 +37,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import { DeviceSync } from "../home/DeviceSync.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { readPack } from "./OperatingSystemPack.ts";
@@ -106,6 +107,17 @@ const LEAD = "executive";
 const SWEEP = "5 minutes";
 
 const Tone = Schema.Struct({ tone: Schema.Literals([...HIS_TONES, "none"]) });
+/** A mood event as it travels between his servers (`@mood`, keyed by its id). */
+const MOOD_RECORD = "@mood";
+const SyncedEvent = Schema.Struct({
+  p: Schema.String.check(Schema.isMaxLength(60)),
+  m: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
+  // The event whole (its kind plus fields such as `ok`, `day`, `emotion`): a Struct would strip those.
+  e: Schema.Record(Schema.String, Schema.Unknown),
+});
+const decodeSynced = Schema.decodeUnknownOption(SyncedEvent);
+/** How often presence may refresh someone's time seen (one write a minute at most). */
+const SEEN_EVERY_MS = 60_000;
 
 const clockIn = (at: number, timeZone: string) => {
   try {
@@ -144,6 +156,8 @@ const make = Effect.gen(function* () {
   /** A write happened: listeners read the view again. */
   const moved = yield* PubSub.sliding<void>(1);
   const oneShot = yield* Effect.serviceOption(TessayaOneShot);
+  const sync = yield* Effect.serviceOption(DeviceSync);
+  let sent = 0;
 
   const pack = () =>
     Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath));
@@ -187,21 +201,70 @@ const make = Effect.gen(function* () {
     const persona = personaOf(personaId)?.id ?? LEAD;
     const now = yield* Clock.currentTimeMillis;
     const { day } = clockIn(now, timeZone ?? "UTC");
-    yield* lock.withPermits(1)(
+    const resolved = event(day);
+    const reason = yield* appraiseInto(persona, resolved, now, member, current.bondCap);
+    // Its provenance travels with it: the id (the field), when (the stamp), which server, who, and why.
+    if (reason !== null && Option.isSome(sync))
+      yield* sync.value.put(
+        MOOD_RECORD,
+        `${sync.value.self}:${now}:${sent++}`,
+        { p: persona, m: member, e: resolved, origin: sync.value.self, reason },
+        "changed",
+        now,
+      );
+  });
+
+  /** One event into a persona's row at its time (never before the row's own), whichever server saw it. */
+  const appraiseInto = (
+    persona: string,
+    event: AffectEvent,
+    at: number,
+    member: string | null,
+    bondCap: number,
+  ) =>
+    lock.withPermits(1)(
       Effect.gen(function* () {
-        const next = appraiseFor(
-          yield* read(persona, now),
-          event(day),
-          now,
-          current.bondCap,
-          member,
-        );
+        const state = yield* read(persona, at);
+        const when = Math.max(at, state.general.at);
+        const next = appraiseFor(state, event, when, bondCap, member);
         // A person's event with nobody identified moves nothing.
-        if (next.reason === null) return;
-        yield* write(persona, next.state, next.reason, now);
+        if (next.reason === null) return null;
+        yield* write(persona, next.state, next.reason, when);
         yield* PubSub.publish(moved, undefined);
+        return next.reason;
       }),
     );
+
+  if (Option.isSome(sync))
+    yield* sync.value.onRecord(MOOD_RECORD, (_id, v, at) =>
+      Effect.gen(function* () {
+        const decoded = decodeSynced(v);
+        const current = yield* moodSettings;
+        if (Option.isNone(decoded) || !current.enabled) return;
+        const { p, m, e } = decoded.value;
+        if (typeof e["kind"] !== "string") return;
+        yield* appraiseInto(p, e as unknown as AffectEvent, at, m, current.bondCap);
+      }),
+    );
+
+  /** Someone presence places around her on any vessel, of his servers, is not away from her (B-044). */
+  const seenByPresence = Effect.fn("TessayaMood.seenByPresence")(function* (
+    persona: string,
+    now: number,
+    bondCap: number,
+  ) {
+    // Read per call: the presence store is a sibling of this layer, not under it.
+    const presence = yield* Effect.serviceOption(TessayaPresence);
+    if (Option.isNone(presence)) return;
+    const state = yield* read(persona, now);
+    const around = (yield* presence.value.estimate()).members.filter(
+      (m) => !m.guest && m.confidence >= PRESENCE_BARS.around,
+    );
+    for (const m of around) {
+      const seenAt = state.people[m.member]?.seenAt ?? null;
+      if (seenAt !== null && now - seenAt >= SEEN_EVERY_MS)
+        yield* appraiseInto(persona, { kind: "seen" }, now, m.member, bondCap);
+    }
   });
 
   const readNow = Effect.fn("TessayaMood.readNow")(function* (
@@ -213,6 +276,7 @@ const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const current = yield* moodSettings;
     if (!current.enabled) yield* clear;
+    else yield* seenByPresence(persona, now, current.bondCap);
     return {
       persona,
       state: yield* read(persona, now),

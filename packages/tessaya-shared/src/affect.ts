@@ -101,6 +101,8 @@ export type AffectEvent =
   | { readonly kind: "correction" }
   /** One of his turns reached this persona: the time away resolves, and the bond counts the day. */
   | { readonly kind: "his_turn"; readonly day: string }
+  /** Presence places them around her on any vessel (B-044): away from her means away from every vessel. No bond. */
+  | { readonly kind: "seen" }
   /** How his voice sounded, as the room heard it (SenseVoice's label): she meets it, warmer when he sounds low. */
   | {
       readonly kind: "his_voice";
@@ -270,6 +272,16 @@ const react = (
             state: { ...at, reaction: add(at.reaction, { arousal: 0.12, valence: -0.05 }) },
             reason: "a job failed",
           };
+    case "seen":
+      // Around her somewhere, so not missed; no return of its own (that is his turn's), and a return still to be
+      // answered keeps its marker.
+      return {
+        state:
+          at.seenAt !== null && at.seenAt === at.returnedAt && now - at.returnedAt < SULK_MS
+            ? at
+            : { ...at, seenAt: Math.max(now, at.seenAt ?? 0) },
+        reason: "they are around",
+      };
     case "his_turn": {
       const away = at.seenAt !== null && now - at.seenAt >= AWAY_MS;
       const bond =
@@ -279,7 +291,8 @@ const react = (
           ...at,
           bond,
           bondDay: event.day,
-          seenAt: now,
+          // An event from another server can arrive late: time away only ever moves forward.
+          seenAt: Math.max(now, at.seenAt ?? 0),
           ...(away
             ? { returnedAt: now, reaction: add(at.reaction, { warmth: 0.15, valence: 0.08 }) }
             : {}),
@@ -358,6 +371,7 @@ export const appraise = (
       // A plain turn or a sound it doesn't know explains nothing, so it never pushes a reason out.
       log:
         next.reason === "they talked to her" ||
+        next.reason === "they are around" ||
         (event.kind === "his_voice" && !Object.hasOwn(VOICE_REACTION, event.emotion))
           ? (s.log ?? [])
           : [...(s.log ?? []), { at: now, reason: next.reason }].slice(-LOG_KEEP),
@@ -545,6 +559,7 @@ export const moodLine = (v: AffectView, spoken = false): string => {
 /** Events about one person (their words, tone, voice, time away): their relationship. Tasks and jobs are the world's. */
 const PERSONAL: ReadonlySet<AffectEvent["kind"]> = new Set([
   "his_turn",
+  "seen",
   "his_voice",
   "correction",
   ...HIS_TONES,

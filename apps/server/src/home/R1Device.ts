@@ -57,6 +57,7 @@ import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaVocabulary } from "../tessaya/TessayaVocabulary.ts";
 import { TessayaTurn, moodMember, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
+import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { peopleHere } from "../tessaya/TessayaPresence.ts";
 import { replyFor } from "../tessaya/PersonaLayers.ts";
 import {
@@ -147,24 +148,37 @@ const restTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/intent/rest`
 /**
  * Her lead's mood as each Tessel draws it at rest (expressionMap's tessel manifest: the eyes and the prop over them):
  * whoever was just identified there, else its owner's when it may show it, else the general mood. Sent per Tessel
- * only when it shows differently, so the eyes follow the one state between turns too.
+ * only when it shows differently, so the eyes follow the one state between turns too. It names whose mood it is.
  */
 const publishRestMood = Effect.fn("R1Device.publishRestMood")(function* () {
   const mood = yield* Effect.serviceOption(TessayaMood);
   if (Option.isNone(mood)) return;
   const zone = yield* houseZone();
   const sent = new Map<string, string>();
-  yield* Stream.runForEach(mood.value.moves, () =>
+  // A persona change (here or on another of his servers) can change whose mood a body shows.
+  const switched = yield* Queue.sliding<void>(1);
+  const current = yield* Effect.serviceOption(CurrentPersona);
+  if (Option.isSome(current))
+    yield* current.value.listen(() => Queue.offer(switched, undefined).pipe(Effect.asVoid));
+  yield* Stream.runForEach(Stream.merge(mood.value.moves, Stream.fromQueue(switched)), () =>
     Effect.gen(function* () {
+      const pack = yield* r1Pack;
+      const lead = (pack.personas.find((p) => p.lead) ?? pack.personas[0])?.id;
       for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices)) {
         if (device.deviceId === null) continue;
-        const felt = yield* mood.value.atDevice(device.deviceId, undefined, zone);
+        // shortcut: the lead on every Tessel until the Cast lane's wearing(body) names the persona each body is on.
+        const persona = lead;
+        const felt = yield* mood.value.atDevice(device.deviceId, persona, zone);
         const shown = renderFor(
           VESSELS.tessel,
           felt.intensity >= 0.2 ? felt.label : "neutral",
           felt.intensity,
         );
-        const json = JSON.stringify({ mood: shown.face, accessory: shown.prop ?? "auto" });
+        const json = JSON.stringify({
+          mood: shown.face,
+          accessory: shown.prop ?? "auto",
+          ...(persona === undefined ? {} : { persona }),
+        });
         if (sent.get(device.deviceId) === json) continue;
         sent.set(device.deviceId, json);
         yield* publishToDevice(device, restTopic(device.deviceId), json, true);
