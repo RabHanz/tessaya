@@ -11,6 +11,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
+import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import { describe, expect, it } from "vite-plus/test";
 
 import * as PeerLinks from "../peer/PeerLinks.ts";
@@ -29,6 +30,7 @@ import {
   dictionaryEntries,
   limitResets,
   r1Data,
+  r1Envelope,
   r1Gather,
   peopleLines,
   namedIn,
@@ -50,6 +52,25 @@ import {
 } from "./R1Device.ts";
 
 describe("R1Device", () => {
+  it("believes a guest's voiceprint only from the device whose key the call came with", () => {
+    const print = { model: "m", vector: "AAAAAA==", ms: 3_000 };
+    const heard = {
+      heard: "hi",
+      history: [],
+      device: "r1-a",
+      voice: {
+        speaker: { kind: "guest", personId: null, verified: false, inherited: false, print },
+      },
+    };
+    expect(r1Envelope({ ...heard, signed: true }, DEFAULT_OS_PACK, undefined).print).toEqual(print);
+    expect(
+      r1Envelope({ ...heard, signed: false }, DEFAULT_OS_PACK, undefined).print,
+    ).toBeUndefined();
+    expect(
+      r1Envelope({ ...heard, signed: true }, DEFAULT_OS_PACK, undefined).speaker,
+    ).not.toHaveProperty("print");
+  });
+
   it("says what really happened when an act waited or failed, never the model's 'done'", () => {
     expect(
       spokenReply("Done, the light is off.", [{ ok: true, status: "done", line: "Done" }]),

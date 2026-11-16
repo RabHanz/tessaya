@@ -88,6 +88,11 @@ describe("the speaker identity service", () => {
     const t = setup({}, at(0.05));
     const guest = await t.service.hear(t.seconds(4), "turn");
     expect(guest.kind).toBe("guest");
+    // Their print goes with the turn for the people graph; a short clip, a cut-in or his own voice sends none.
+    expect(guest.print).toMatchObject({ model: "m", ms: 4_000 });
+    expect((await t.service.hear(t.seconds(1.5), "turn")).print).toBeUndefined();
+    expect((await t.service.hear(t.seconds(4), "barge")).print).toBeUndefined();
+    expect((await setup().service.hear(t.seconds(4), "turn")).print).toBeUndefined();
     expect(t.service.admits(guest, "turn")).toBe(false);
     expect(t.service.bargeMs()).toBe(CAMPLUS_POLICY.minSpeechMs);
     t.set({ respondToOthers: true });

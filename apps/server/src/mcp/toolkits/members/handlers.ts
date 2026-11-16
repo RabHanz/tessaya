@@ -121,6 +121,7 @@ export const make = Effect.gen(function* () {
                 : 0) as 0 | 1 | 2 | 3,
               tainted: input["tainted"] === true,
               via: `${String(input["via"] ?? "someone").slice(0, 80)} on ${client.label ?? "a linked server"}`,
+              heard: input["heard"] === true,
             }),
             Effect.provideContext(context),
           );

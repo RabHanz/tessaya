@@ -91,6 +91,24 @@ const run = <A, E>(
 ) => Effect.provide(effect, stackWith(answer));
 
 describe("TessayaHousehold", () => {
+  test("only a vessel's own proven turn may file a voiceprint", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const observe = call({
+          op: "peopleObserve",
+          vessel: "r1-1",
+          said: "hi",
+          print: { model: "m", vector: "AAAAAA==", ms: 3_000 },
+        });
+        assert.deepStrictEqual(yield* as(owner)(observe), {
+          status: "refused",
+          line: "Only a vessel's own turn files a voice.",
+        });
+        assert.notInclude((yield* as({ ...owner, heard: true })(observe)).line, "own turn");
+      }),
+    ));
+
   test("starts with the owner, under the id his voice and store use", () =>
     run(
       null,
