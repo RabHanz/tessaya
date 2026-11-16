@@ -1,0 +1,72 @@
+Provenance (B-046): every MCP tool call and every client RPC that changes something is recorded in the
+action log. McpHttpServer wraps each tool in `traced`; RpcInstrumentation exposes `instrumentRpc` so the
+per-socket `rpcActionLayer` can add the record around the same metrics and span.
+
+diff --git a/apps/server/src/mcp/McpHttpServer.ts b/apps/server/src/mcp/McpHttpServer.ts
+index eaf54214ba07bf862ba6336c921562c2742dee88..7b35179ec49d4c3f01360b68f3c1e2aa17273cdf 100644
+--- a/apps/server/src/mcp/McpHttpServer.ts
++++ b/apps/server/src/mcp/McpHttpServer.ts
+@@ -49,6 +49,7 @@ import * as McpToolAccess from "./McpToolAccess.ts";
+ import * as McpToolExposure from "./McpToolExposure.ts";
+ import { MCP_TOOL_EXPOSURE_HEADER } from "@t3tools/provider-core/server/mcpSession";
+ import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
++import { traced } from "../provenance/ActionLog.ts";
+ import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
+ import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
+ import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
+@@ -1130,7 +1131,27 @@ const withToolSpans = Effect.fn("McpHttpServer.withToolSpans")(function* <A, E,
+                 "mcp.tool.name": name,
+               },
+             },
+-            () => options.handle(payload),
++            () =>
++              Effect.flatMap(
++                Effect.serviceOption(McpInvocationContext.McpInvocationContext),
++                (invocation) => {
++                  const thread = Option.getOrUndefined(invocation)?.thread;
++                  // Every tool call is an action (B-046); arguments stay out, as they carry prompts.
++                  return traced({
++                    kind: "tool.call",
++                    actor: {
++                      kind: "agent",
++                      id: thread?.providerInstanceId ?? "client",
++                      certainty: 1,
++                    },
++                    subject: name,
++                    evidence:
++                      thread === undefined
++                        ? []
++                        : [{ kind: "thread", ref: String(thread.threadId) }],
++                  })(options.handle(payload));
++                },
++              ),
+           ),
+       });
+     }),
+diff --git a/apps/server/src/observability/RpcInstrumentation.ts b/apps/server/src/observability/RpcInstrumentation.ts
+index 3f120a39f1870431678b22fc146e9a0be60c1bbf..cd97bd27a15e9cc7c1e076d03dd0f448d0a71b3a 100644
+--- a/apps/server/src/observability/RpcInstrumentation.ts
++++ b/apps/server/src/observability/RpcInstrumentation.ts
+@@ -1,6 +1,5 @@
+ import { ORCHESTRATION_V2_WS_METHODS, WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
+ import * as Effect from "effect/Effect";
+-import * as Layer from "effect/Layer";
+ import * as References from "effect/References";
+ import type * as RpcGroup from "effect/rpc/RpcGroup";
+ import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
+@@ -250,8 +249,7 @@ export class RpcInstrumentation extends RpcMiddleware.Service<RpcInstrumentation
+   "t3/server/RpcInstrumentation",
+ ) {}
+ 
+-export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect, { rpc }) => {
+-  const method = rpc._tag;
++export const instrumentRpc = <A, E, R>(effect: Effect.Effect<A, E, R>, method: string) => {
+   const measured = effect.pipe(
+     withMetrics({ counter: rpcRequestsTotal, timer: rpcRequestDuration, attributes: { method } }),
+   );
+@@ -268,4 +266,4 @@ export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect
+       },
+     }),
+   );
+-});
++};

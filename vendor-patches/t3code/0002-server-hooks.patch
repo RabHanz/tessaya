@@ -1942,7 +1942,7 @@ index 6fee790bc4bdaea8920685ef9894451f717f8046..31d144e287edd19cb9ff95428931cfbf
      }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
    );
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ababb0be1f 100644
+index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..df233f6babb4aaf83fb3c27cd1c85b570a19fb5a 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -140,6 +140,7 @@ import {
@@ -1953,18 +1953,21 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
    skipUnchangedThreadShells,
    toShellApplicationEvent,
    type ShellApplicationEvent,
-@@ -235,6 +236,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+@@ -235,7 +236,12 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
  import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
  import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
  import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
+-import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
 +// Baton (vendor-patches/t3code/0002-server-hooks.patch): its own RPC group, handlers and scopes.
 +import { TessayaRpcGroup } from "@t3tools/tessaya-contracts";
 +import * as TessayaRpcAuthorization from "./tessaya/TessayaRpcAuthorization.ts";
 +import * as TessayaRpcHandlers from "./tessaya/TessayaRpcHandlers.ts";
- import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
++import { RpcInstrumentation } from "./observability/RpcInstrumentation.ts";
++import { rpcActionLayer } from "./provenance/rpcActions.ts";
  import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
  import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
-@@ -707,13 +712,14 @@ function projectFileFailureContext(
+ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
+@@ -707,13 +713,14 @@ function projectFileFailureContext(
  const PROVIDER_STATUS_DEBOUNCE_MS = 200;
  
  // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
@@ -1981,7 +1984,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
  const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
  type SplitWsRpc = Extract<
    ServerWsRpc,
-@@ -723,7 +729,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
+@@ -723,7 +730,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
    SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
  const isOtherWsRpc = (rpc: ServerWsRpc): rpc is Exclude<ServerWsRpc, SplitWsRpc> =>
    !isSplitWsRpc(rpc);
@@ -1990,7 +1993,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
  const SplitWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isSplitWsRpc));
  const OtherWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isOtherWsRpc));
  function toAuthAccessStreamEvent(
-@@ -1130,6 +1136,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
+@@ -1130,6 +1137,7 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
      readonly requestCompletionMarker?: boolean;
      readonly omitIdleSubagents?: boolean;
      readonly omitOlderSettled?: boolean;
@@ -1998,7 +2001,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
    }) {
      const sql = yield* SqlClient.SqlClient;
      const threadManagement = yield* ThreadManagementService.ThreadManagementService;
-@@ -1400,8 +1407,10 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
+@@ -1400,8 +1408,10 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
        ),
      );
  
@@ -2011,7 +2014,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
        Stream.mapError(
          (cause) =>
            new OrchestrationV2GetShellSnapshotError({
-@@ -1945,7 +1954,7 @@ export const layerWsRpc = (
+@@ -1945,7 +1955,7 @@ export const layerWsRpc = (
          return yield* mutateProjectWithClone(projectService, projectCloneTracker, mutation);
        });
  
@@ -2020,7 +2023,7 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
          [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
            Effect.annotateCurrentSpan({
              "orchestration_v2.command_id": command.commandId,
-@@ -3508,8 +3517,11 @@ export const layerWsRpc = (
+@@ -3508,8 +3518,11 @@ export const layerWsRpc = (
        const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
          handlers;
        return Context.merge(
@@ -2034,12 +2037,12 @@ index 4d9a0f9bd410eddfdad6869eac9a440e38beb9ec..5c32b83af2760f9a9d51580e5757c8ab
        );
      }),
    );
-@@ -3584,7 +3596,7 @@ export const layer = Layer.unwrap(
+@@ -3584,7 +3597,7 @@ export const layer = Layer.unwrap(
                          })
                          .pipe(Effect.ignore);
                  }),
 -                rpcInstrumentationLayer,
-+                Layer.merge(rpcInstrumentationLayer, TessayaRpcAuthorization.layer(session)),
++                Layer.merge(rpcActionLayer(session), TessayaRpcAuthorization.layer(session)),
                ),
              ),
              Effect.forkScoped,

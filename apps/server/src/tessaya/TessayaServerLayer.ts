@@ -11,6 +11,8 @@
  *
  * Later entries provide to earlier ones, so the order below is the dependency order.
  */
+import * as ActionLog from "../provenance/ActionLog.ts";
+import * as FindingsReactor from "../provenance/FindingsReactor.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NodePath from "node:path";
 
@@ -211,7 +213,11 @@ const homeDevicesLayer = HomeDevices.layer.pipe(
 );
 
 // Her pulse (B-003) beside the intent surface, so every service provided below reaches it.
-const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
+const servicesInner = Layer.mergeAll(
+  IntentService.layer,
+  TessayaPulse.layer,
+  FindingsReactor.layer,
+).pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
   // through the same door.
@@ -311,7 +317,8 @@ const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
       Layer.provideMerge(TessayaHousehold.layer.pipe(Layer.provide(TessayaPhoneInbox.layer))),
     ),
   ),
-  Layer.provideMerge(TessayaPrivateMemoryService.layer),
+  // The action log (B-046) over his private store, which seals its private events.
+  Layer.provideMerge(ActionLog.layer.pipe(Layer.provideMerge(TessayaPrivateMemoryService.layer))),
   // The voices, and his one dictionary, which the voice door, the device route and every vessel's turn read.
   Layer.provideMerge(Layer.mergeAll(TessayaVoiceLibrary.layer, TessayaVocabulary.layer)),
   // Voices to forget, between the household and every vessel's owner: under both, so each sees it.

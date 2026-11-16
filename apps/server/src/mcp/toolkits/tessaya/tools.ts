@@ -579,6 +579,45 @@ const OwnerDocTool = Tool.make("tessaya_owner_doc", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const ActivityTool = Tool.make("tessaya_activity", {
+  ...shared,
+  description:
+    'Her action log (B-046): every action on this server with who did it, how sure that was, and what caused it (tool and model calls, device commands, Tessel events and Voice ID verdicts, settings and app actions, jobs, the pulse). `recent` lists what happened, newest first; `why` walks one action back through its causes; `findings` lists likely bugs and gaps the log shows (something changed with no cause, the same failure again and again, retries, a setting overwritten, Voice ID missing him). For "what did you do in the last hour?", "why did that happen?", "why did the Tessel open a session?" or "anything odd in your logs today?".',
+  parameters: Schema.Struct({
+    mode: Schema.Literals(["recent", "why", "findings"]).annotate({
+      description:
+        "recent: what happened; why: the cause chain of one action; findings: likely bugs and gaps.",
+    }),
+    minutes: Schema.optional(
+      Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 43_200 })).annotate({
+        description: "How far back, in minutes. Default 60.",
+      }),
+    ),
+    kind: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(60)).annotate({
+        description:
+          'A kind or family to keep: "tool", "model", "device", "room", "rpc", "record", "outcome".',
+      }),
+    ),
+    about: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(100)).annotate({
+        description:
+          "Words to match (a tool, a device, a setting); for why, the newest action matching them.",
+      }),
+    ),
+    id: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(40)).annotate({
+        description: "For why: an action id from recent.",
+      }),
+    ),
+  }),
+  success: Schema.Struct({ text: Schema.String }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const UsageReportTool = Tool.make("tessaya_usage_report", {
   ...shared,
   description:
@@ -839,6 +878,7 @@ export const TessayaToolkit = Toolkit.make(
   ComingUpTool,
   OwnerDocTool,
   UsageReportTool,
+  ActivityTool,
   PromptLabTool,
   WhosHomeTool,
   CastTool,

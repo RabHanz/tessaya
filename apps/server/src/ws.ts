@@ -240,7 +240,8 @@ import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
 import { TessayaRpcGroup } from "@t3tools/tessaya-contracts";
 import * as TessayaRpcAuthorization from "./tessaya/TessayaRpcAuthorization.ts";
 import * as TessayaRpcHandlers from "./tessaya/TessayaRpcHandlers.ts";
-import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
+import { RpcInstrumentation } from "./observability/RpcInstrumentation.ts";
+import { rpcActionLayer } from "./provenance/rpcActions.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
@@ -3596,7 +3597,7 @@ export const layer = Layer.unwrap(
                         })
                         .pipe(Effect.ignore);
                 }),
-                Layer.merge(rpcInstrumentationLayer, TessayaRpcAuthorization.layer(session)),
+                Layer.merge(rpcActionLayer(session), TessayaRpcAuthorization.layer(session)),
               ),
             ),
             Effect.forkScoped,

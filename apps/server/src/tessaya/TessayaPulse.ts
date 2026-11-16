@@ -578,6 +578,8 @@ export const react = Effect.fn("TessayaPulse.react")(function* (
     subject: last.subject,
     outcome: reaction === "liked" ? "liked" : "told_off",
     detail: `category: ${category} · row: ${last.id}${reaction === "stop" ? " · stopped" : ""}`,
+    // His reaction is the outcome of what she raised (B-046): the learning loop reads it as cause and effect.
+    ...(last.eventId == null ? {} : { cause: [last.eventId] }),
   });
   if (reaction === "stop") {
     const settings = yield* Effect.serviceOption(ServerSettingsService);

@@ -86,6 +86,8 @@ const ROOM_TOOLS = [
   "tessaya_coming_up",
   "tessaya_owner_doc",
   "tessaya_usage_report",
+  // Activity / Why (B-046): "what did you do in the last hour?", "why did that happen?".
+  "tessaya_activity",
   "tessaya_whos_home",
   // Who's on which body: "who's on Tumble?", "bring Alfred here", "send everyone home" (Settings → Cast).
   "tessaya_cast",

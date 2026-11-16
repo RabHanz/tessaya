@@ -9,6 +9,7 @@ import {
   type TessayaJobLeadInput,
   BATON_MEMORY_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
+  TESSAYA_ACTIVITY_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_PHONE_WS_METHODS,
@@ -21,6 +22,7 @@ import {
   TessayaDesktopState,
   type TessayaRecordEntry,
 } from "@t3tools/tessaya-contracts";
+import { activityText } from "../../../provenance/activityText.ts";
 import { houseZone } from "../../../tessaya/houseZone.ts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -627,6 +629,29 @@ export const layer = McpToolAccess.toLayer(
           if (origin !== null && (origin.member !== OWNER_MEMBER_ID || origin.tainted))
             return { text: "Those documents are his, so I only open them for him." };
           return { text: ownerDoc(yield* ownerDocs, input) };
+        }),
+      ),
+      tessaya_activity: McpToolAccess.reads((input) =>
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis;
+          if (input.mode === "why") {
+            const why = yield* call(
+              handlers[TESSAYA_ACTIVITY_WS_METHODS.why]({
+                ...(input.id === undefined ? {} : { id: input.id }),
+                ...(input.about === undefined ? {} : { text: input.about }),
+              }),
+            );
+            return { text: why.lines.join("\n") };
+          }
+          const list = yield* call(
+            handlers[TESSAYA_ACTIVITY_WS_METHODS.list]({
+              sinceMinutes: Math.round(input.minutes ?? 60),
+              ...(input.kind === undefined ? {} : { kind: input.kind }),
+              ...(input.about === undefined ? {} : { text: input.about }),
+              limit: 60,
+            }),
+          );
+          return { text: activityText(input.mode, list, now) };
         }),
       ),
       tessaya_usage_report: McpToolAccess.reads((input) =>

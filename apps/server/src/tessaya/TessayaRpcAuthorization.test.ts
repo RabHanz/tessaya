@@ -3,6 +3,7 @@ import {
   AuthAccessWriteScope,
   BATON_PHONE_PAIRING_WS_METHODS,
   BATON_CAST_WS_METHODS,
+  TESSAYA_ACTIVITY_WS_METHODS,
   AuthTessayaCloudApproveScope,
   AuthTessayaHandsHostScope,
   AuthTessayaMemorySyncScope,
@@ -263,7 +264,9 @@ describe("rename R1: every method also answers as tessaya.*", () => {
         t !== BATON_LEARN_WS_METHODS.call &&
         t !== BATON_PHONE_PAIRING_WS_METHODS.issue &&
         t !== BATON_CAST_WS_METHODS.get &&
-        t !== BATON_CAST_WS_METHODS.call,
+        t !== BATON_CAST_WS_METHODS.call &&
+        t !== TESSAYA_ACTIVITY_WS_METHODS.list &&
+        t !== TESSAYA_ACTIVITY_WS_METHODS.why,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(refusedAsDevice(renamed, device), renamed).toBe(refusedAsDevice(tag, device));
@@ -289,7 +292,9 @@ describe("rename R1: every method also answers as tessaya.*", () => {
         t !== BATON_LEARN_WS_METHODS.call &&
         t !== BATON_PHONE_PAIRING_WS_METHODS.issue &&
         t !== BATON_CAST_WS_METHODS.get &&
-        t !== BATON_CAST_WS_METHODS.call,
+        t !== BATON_CAST_WS_METHODS.call &&
+        t !== TESSAYA_ACTIVITY_WS_METHODS.list &&
+        t !== TESSAYA_ACTIVITY_WS_METHODS.why,
     )) {
       const renamed = tessayaSpelling(tag);
       expect(TessayaRpcGroup.requests.has(renamed), renamed).toBe(true);

@@ -41,6 +41,7 @@ import {
   BATON_LIVE_WS_METHODS,
   BATON_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
+  TESSAYA_ACTIVITY_WS_METHODS,
   TessayaFleetResult,
   type WorkSession,
   type WorkSessionStreamItem,
@@ -219,6 +220,14 @@ export function createTessayaWorkSessionAtoms<R, E>(
     brainUsage: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:brain-usage",
       tag: BATON_BRAIN_WS_METHODS.usage,
+    }),
+    activityList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:tessaya:activity-list",
+      tag: TESSAYA_ACTIVITY_WS_METHODS.list,
+    }),
+    activityWhy: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:tessaya:activity-why",
+      tag: TESSAYA_ACTIVITY_WS_METHODS.why,
     }),
     recordList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:record-list",

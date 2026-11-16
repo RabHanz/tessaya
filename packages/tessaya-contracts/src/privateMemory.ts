@@ -202,6 +202,9 @@ export const TessayaPrivateRestoreResult = Schema.Struct({
   items: Schema.Number,
 });
 
+/** Envelopes as stored (`tessaya-shared/provenance`); only ever sent to his own open session. */
+export const TessayaPrivateEventsResult = Schema.Struct({ events: Schema.Array(Schema.Unknown) });
+
 const op = <const O extends string, F extends Schema.Struct.Fields>(name: O, fields: F) =>
   Schema.Struct({ op: Schema.Literal(name), ...fields });
 
@@ -227,6 +230,11 @@ export const TessayaPrivateCallInput = Schema.Union([
   op("personDeleted", TessayaPrivatePersonDeletedInput.fields),
   op("backup", {}),
   op("restore", TessayaPrivateRestoreInput.fields),
+  // His private actions (B-046), opened only in his own open store's session.
+  op("events", {
+    since: Schema.Number,
+    limit: Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 500 })),
+  }),
 ]);
 export type TessayaPrivateCallInput = typeof TessayaPrivateCallInput.Type;
 /** Each op's result is one of these; the client knows which from the op it sent. */
@@ -246,6 +254,7 @@ export const TessayaPrivateCallResult = Schema.Union([
   TessayaPrivateDepositResult,
   TessayaPrivateBackupResult,
   TessayaPrivateRestoreResult,
+  TessayaPrivateEventsResult,
 ]);
 
 /** Said in plain words to whoever asked: never a memory's text, a PIN or a key. */

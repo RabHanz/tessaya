@@ -58,6 +58,8 @@ const NOTICE_WEIGHT: Readonly<Record<string, readonly [PulseCategory, number]>> 
   step_repeating: ["jobs", 55],
   pressure: ["jobs", 50],
   commitment_due: ["reminders", 75],
+  // The action log's gap detector (B-046): a likely bug, kept low so it waits for a quiet moment.
+  finding: ["jobs", 40],
 };
 
 const WATCH_KIND: Readonly<

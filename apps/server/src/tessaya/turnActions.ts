@@ -1,9 +1,10 @@
 /**
  * Provenance for what a turn decides (memory note provenance-in-the-bones): each action as one event with its kind,
- * actor and certainty, evidence by reference and the persona. Shaped as the action log's `ActionInput`
- * (feat/provenance-spine, apps/server/src/provenance/ActionLog.ts) so the switch to it is this one function.
+ * actor and certainty, evidence by reference and the persona, in the action log (B-046).
  */
 import * as Effect from "effect/Effect";
+
+import { emitAction as logAction } from "../provenance/ActionLog.ts";
 
 export interface TurnAction {
   /** Dotted: "turn.repair.verdict", "turn.recall.window", "turn.context.expired". */
@@ -20,6 +21,5 @@ export interface TurnAction {
   readonly data?: unknown;
 }
 
-// shortcut: a structured log line until ActionLog merges; then `ActionLog.emit(action)` (it never fails or blocks).
-export const emitAction = (action: TurnAction) =>
-  Effect.logInfo(`action ${action.kind}`, action).pipe(Effect.withSpan("TessayaTurn.action"));
+/** Into the action log: queued, never fails or blocks the turn. */
+export const emitAction = (action: TurnAction) => Effect.asVoid(logAction(action));

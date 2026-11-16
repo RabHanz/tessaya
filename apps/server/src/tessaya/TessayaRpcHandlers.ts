@@ -9,6 +9,8 @@
  * routes needs nothing Baton-specific: upstream's own ws tests compile and run unchanged, and a
  * server without Baton's layer answers `fabric.*` with a defect naming why.
  */
+import { ActionLog } from "../provenance/ActionLog.ts";
+import { activityList, activityWhy } from "../provenance/activity.ts";
 import { teamBoard } from "./TessayaTeamBoard.ts";
 import { readGrants, setGrant } from "./consent.ts";
 import {
@@ -35,6 +37,7 @@ import {
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
+  TESSAYA_ACTIVITY_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
   BATON_PULSE_WS_METHODS,
@@ -199,7 +202,8 @@ export type TessayaServices =
   | ProviderInstanceRegistry.ProviderInstanceRegistry
   | ProviderRegistry.ProviderRegistry
   | PromptLab
-  | TessayaCast;
+  | TessayaCast
+  | ActionLog;
 
 /** The vessel a memory call comes from: the desktop app's own session, or another client (a browser, the phone page). */
 const vesselOf = (viewer: "server" | "desktop" | "client"): TurnEnvelope["vessel"] =>
@@ -690,6 +694,8 @@ export const makeHandlers = Effect.gen(function* () {
           Effect.map(record.query(input), (entries) => ({ entries })),
         ),
       ),
+    [TESSAYA_ACTIVITY_WS_METHODS.list]: (input) => run(activityList(input)),
+    [TESSAYA_ACTIVITY_WS_METHODS.why]: (input) => run(activityWhy(input)),
     [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input, JobFlow.usageUnits)),
     [BATON_BRAIN_WS_METHODS.record]: (input) => run(recordDesktopUsage(input)),
     [BATON_PERSONAS_WS_METHODS.list]: () => run(personasList),

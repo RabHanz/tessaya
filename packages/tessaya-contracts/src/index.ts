@@ -21,6 +21,7 @@ export * from "./cast.ts";
 export * from "./desktopState.ts";
 export * from "./desktopSettings.ts";
 export * from "./record.ts";
+export * from "./activity.ts";
 export * from "./dictation.ts";
 export * from "./memory.ts";
 export * from "./privateMemory.ts";
