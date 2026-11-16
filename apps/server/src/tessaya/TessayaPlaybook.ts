@@ -3,6 +3,7 @@
  * (the same kind of job anywhere), else its project. It reads that playbook when it starts, and each report is graded
  * by the checked outcomes of §3.2: his verdict, the template's `check:` command, a retry, or the same job asked again.
  */
+import { emitAction } from "../provenance/ActionLog.ts";
 import {
   citedIn,
   instructionLike,
@@ -130,6 +131,20 @@ export const learnFromOutcome = Effect.fn("BatonPlaybook.learn")(function* (inpu
   const item = yield* playbookItem(domain);
   const playbook = parsePlaybook(item?.text ?? null, domain);
   const cited = citedIn(input.report).filter((id) => playbook.lessons.some((l) => l.id === id));
+  // The outcome is an action too (B-046), joined to the job's own actions by its id and to the lessons it relied on.
+  yield* emitAction({
+    kind: "outcome.job",
+    actor: input.his
+      ? { kind: "owner", certainty: 1 }
+      : { kind: "rule", id: "check", certainty: 1 },
+    subject: `${domain}: ${input.goal}`,
+    outcome: input.passed ? "passed" : "failed",
+    evidence: [
+      { kind: "job", ref: input.job },
+      ...cited.map((id) => ({ kind: "lesson", ref: `${domain}#${id}` })),
+    ],
+    data: { tainted: input.tainted },
+  });
   // Optional, so the job flows that grade a report (retry, a repeat ask) take on no new service.
   const oneShot = yield* Effect.serviceOption(TessayaOneShot);
   if (Option.isNone(oneShot)) return null;

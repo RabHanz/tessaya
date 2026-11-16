@@ -3,6 +3,8 @@
  * The phone page at /tessaya (docs/baton/MOBILE.md): the page itself, then a small API behind the server's own session
  * (the pairing cookie, or a bearer token), with the rules in BatonTessayaApi. Mounted by TessayaServerLayer.routes.
  */
+import { PRIVATE_KIND } from "@t3tools/tessaya-shared/provenance";
+import { emitActionSync } from "../provenance/ActionLog.ts";
 import * as NodePath from "node:path";
 
 import {
@@ -741,6 +743,12 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
     },
     // The desktop's own key for the layer's store, kept by Windows (DPAPI) and sent by the desktop app.
     deviceKey: async () => deviceKey,
+    privatePointer: ({ id, at, cause }) =>
+      void emitActionSync(
+        { id, at, kind: PRIVATE_KIND, actor: { kind: "system", certainty: 1 }, cause },
+        { now: at },
+      ),
+    privateEvent: (event) => emitActionSync({ ...event, private: true }),
     presence: (vessel) => run(presenceOn(vessel)),
     capabilities: async () => ({
       personas: readPack(userdata)

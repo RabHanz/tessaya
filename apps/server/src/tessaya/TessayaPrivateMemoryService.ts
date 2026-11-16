@@ -35,6 +35,7 @@ import {
   auditHash,
   auditKey,
   DEFAULT_KDF,
+  eventAad,
   inboxAad,
   newBoxKeys,
   openBoxKey,
@@ -66,6 +67,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
+import { traced } from "../provenance/ActionLog.ts";
 
 /**
  * Who is calling, set by the transport from the authenticated session: its id (so an unlock belongs to one device),
@@ -316,6 +318,16 @@ export class TessayaPrivateMemoryService extends Context.Service<
       { readonly stores: number; readonly items: number },
       TessayaPrivateRefusedError
     >;
+    /** Where private events are sealed (B-046): his store's id and box public key, or null before he has a store. */
+    readonly ownerEventKey: Effect.Effect<{
+      readonly storeId: string;
+      readonly publicKey: string;
+    } | null>;
+    /** His private events, opened in this session's open store only; never leaves his trust boundary. */
+    readonly openEvents: (input: {
+      readonly since: number;
+      readonly limit: number;
+    }) => Effect.Effect<ReadonlyArray<unknown>, TessayaPrivateRefusedError>;
   }
 >()("t3/tessaya/TessayaPrivateMemoryService") {}
 
@@ -882,7 +894,41 @@ export const make = Effect.gen(function* () {
       return yield* refuse("Only Tessaya on his desktop can do that.");
   });
 
-  return TessayaPrivateMemoryService.of({
+  const service = TessayaPrivateMemoryService.of({
+    ownerEventKey: Effect.map(storeOfPerson(OWNER_PERSON_ID), (owner) =>
+      Option.isNone(owner)
+        ? null
+        : { storeId: owner.value.id, publicKey: keysOf(owner.value).box.publicKey },
+    ),
+
+    openEvents: Effect.fn("BatonPrivateMemoryService.openEvents")(function* (input) {
+      const owner = yield* storeOfPerson(OWNER_PERSON_ID);
+      if (Option.isNone(owner)) return [];
+      const { open } = yield* openFor(owner.value.id);
+      const rows = yield* sql<{ id: string; sealed_json: string }>`
+        SELECT id, sealed_json FROM tessaya_private_events
+        WHERE store_id = ${owner.value.id} AND at >= ${input.since}
+        ORDER BY at DESC LIMIT ${input.limit}`.pipe(Effect.orDie);
+      const out: unknown[] = [];
+      for (const r of rows) {
+        try {
+          out.push(
+            JSON.parse(
+              openFrom(
+                open.box,
+                keysOf(owner.value).box.publicKey,
+                JSON.parse(r.sealed_json) as Boxed,
+                eventAad(owner.value.id, r.id),
+              ).toString("utf8"),
+            ),
+          );
+        } catch {
+          // A row sealed to an older key (a restored store) is skipped, never shown half-open.
+        }
+      }
+      return out;
+    }),
+
     people: Effect.gen(function* () {
       yield* sweep;
       const c = yield* PrivateCaller;
@@ -1291,6 +1337,34 @@ export const make = Effect.gen(function* () {
       return { stores, items };
     }, serial),
   });
+
+  // Each act on a private store is a private action (B-046): sealed whole to his store, only its id in the public log.
+  const act =
+    <Args extends ReadonlyArray<unknown>, A, E, R>(
+      what: string,
+      run: (...args: Args) => Effect.Effect<A, E, R>,
+    ) =>
+    (...args: Args) =>
+      traced({
+        kind: `private.${what}`,
+        actor: { kind: "owner", certainty: 0.8 },
+        subject: what,
+        private: true,
+      })(run(...args));
+  return TessayaPrivateMemoryService.of({
+    ...service,
+    unlock: act("unlock", service.unlock),
+    lock: act("lock", service.lock),
+    add: act("add", service.add),
+    edit: act("edit", service.edit),
+    forget: act("forget", service.forget),
+    recall: act("recall", service.recall),
+    remember: act("remember", service.remember),
+    shred: act("shred", service.shred),
+    setup: act("setup", service.setup),
+    confirmSetup: act("confirmSetup", service.confirmSetup),
+    changePin: act("changePin", service.changePin),
+  });
 });
 
 /** One request to the private stores, by its op; the transport has already checked who may ask it. */
@@ -1305,6 +1379,8 @@ export const callPrivate = Effect.fn("BatonPrivateMemoryService.call")(function*
       return { items: yield* p.list(input) };
     case "audit":
       return yield* p.audit(input.storeId);
+    case "events":
+      return { events: yield* p.openEvents(input) };
     case "setup":
       return yield* p.setup(input);
     case "confirmSetup":

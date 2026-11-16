@@ -37,6 +37,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { emitAction } from "../provenance/ActionLog.ts";
 import { priceUsage, type RateTable } from "../usage/usagePricing.ts";
 import * as TessayaDatabase from "./TessayaDatabase.ts";
 import * as TessayaRecordService from "./TessayaRecordService.ts";
@@ -369,18 +370,37 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
       const dollars = billing === "apiKey" ? list : null;
       const at = yield* Clock.currentTimeMillis;
       const a = row.attribution;
+      // The model call is an action (B-046); the usage row points at its event, one scheme for both.
+      const eventId = yield* emitAction({
+        kind: "model.call",
+        actor: {
+          kind: a.persona == null ? "system" : "persona",
+          id: a.persona ?? a.feature,
+          certainty: 1,
+        },
+        persona: a.persona ?? null,
+        subject: `${a.feature}: ${row.model}`,
+        outcome: row.outcome ?? "ok",
+        evidence: [
+          ...(a.threadId == null ? [] : [{ kind: "thread", ref: a.threadId }]),
+          ...(a.jobId == null ? [] : [{ kind: "job", ref: a.jobId }]),
+          ...(a.scheduleId == null ? [] : [{ kind: "schedule", ref: a.scheduleId }]),
+          ...(a.device == null ? [] : [{ kind: "device", ref: a.device }]),
+        ],
+        data: { input: row.input, output: row.output, billing, surface: a.surface ?? null },
+      });
       const written = yield* sql<{ id: number }>`
       INSERT INTO tessaya_brain_usage
         (at, role, provider, credential, model, input, cache_read, cache_write, output, dollars,
          feature, origin, surface, persona, thread_id, turn_id, job_id, schedule_id, device, member,
-         billing, account, list_dollars, price_version, call_key, outcome, audio_ms)
+         billing, account, list_dollars, price_version, call_key, outcome, audio_ms, event_id)
       VALUES (${at}, ${row.role}, ${row.provider ?? "anthropic"}, ${row.credential}, ${row.model},
         ${row.input}, ${row.cacheRead}, ${row.cacheWrite}, ${row.output}, ${dollars},
         ${a.feature}, ${a.origin}, ${a.surface ?? null}, ${a.persona ?? null}, ${a.threadId ?? null},
         ${a.turnId ?? null}, ${a.jobId ?? null}, ${a.scheduleId ?? null}, ${a.device ?? null},
         ${a.member ?? null}, ${billing}, ${row.account ?? null}, ${list},
         ${list === null ? null : (prices?.version ?? null)}, ${row.key ?? null},
-        ${row.outcome ?? "ok"}, ${row.audioMs ?? null})
+        ${row.outcome ?? "ok"}, ${row.audioMs ?? null}, ${eventId})
       ON CONFLICT DO NOTHING
       RETURNING id
     `;

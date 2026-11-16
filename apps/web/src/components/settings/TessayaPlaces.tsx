@@ -17,6 +17,7 @@ import { TessayaAccountsSettings } from "./TessayaAccountsSettings";
 import { BrainSettingsPanel } from "./BrainSettings";
 import { BrainUsagePanel } from "./BrainUsageSettings";
 import { CastSection } from "./CastSettings";
+import { ActivityPanel } from "./ActivitySettings";
 import { HardwareSettingsPanel } from "./HardwareSettings";
 import { HomeSettingsPanel } from "./HomeSettings";
 import { SettingsScopeProvider, useSettingsScope } from "./SettingsScopeContext";
@@ -77,6 +78,7 @@ const TESSAYA_PAGES = {
   voices: VoicesPage,
   cast: CastPage,
   usage: BrainUsagePanel,
+  activity: ActivityPanel,
   brain: BrainSettingsPanel,
   team: TeamPanel,
   phone: PhonePage,

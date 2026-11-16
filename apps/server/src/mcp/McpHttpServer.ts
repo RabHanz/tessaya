@@ -49,6 +49,7 @@ import * as McpToolAccess from "./McpToolAccess.ts";
 import * as McpToolExposure from "./McpToolExposure.ts";
 import { MCP_TOOL_EXPOSURE_HEADER } from "@t3tools/provider-core/server/mcpSession";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
+import { traced } from "../provenance/ActionLog.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
 import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
 import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
@@ -1130,7 +1131,27 @@ const withToolSpans = Effect.fn("McpHttpServer.withToolSpans")(function* <A, E, 
                 "mcp.tool.name": name,
               },
             },
-            () => options.handle(payload),
+            () =>
+              Effect.flatMap(
+                Effect.serviceOption(McpInvocationContext.McpInvocationContext),
+                (invocation) => {
+                  const thread = Option.getOrUndefined(invocation)?.thread;
+                  // Every tool call is an action (B-046); arguments stay out, as they carry prompts.
+                  return traced({
+                    kind: "tool.call",
+                    actor: {
+                      kind: "agent",
+                      id: thread?.providerInstanceId ?? "client",
+                      certainty: 1,
+                    },
+                    subject: name,
+                    evidence:
+                      thread === undefined
+                        ? []
+                        : [{ kind: "thread", ref: String(thread.threadId) }],
+                  })(options.handle(payload));
+                },
+              ),
           ),
       });
     }),

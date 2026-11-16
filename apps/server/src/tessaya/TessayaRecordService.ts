@@ -12,6 +12,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { emitAction } from "../provenance/ActionLog.ts";
+
 /** Kept this long, and never more than this many rows, whichever is less. */
 const KEEP_DAYS = 30;
 const KEEP_ROWS = 10_000;
@@ -24,6 +26,8 @@ export interface RecordAppend {
   readonly subject: string;
   readonly outcome: string;
   readonly detail?: string;
+  /** The actions this row follows from (B-046): a reaction names what it reacts to. */
+  readonly cause?: ReadonlyArray<string>;
 }
 
 export class TessayaRecordService extends Context.Service<
@@ -51,13 +55,22 @@ const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const at = DateTime.formatIso(DateTime.makeUnsafe(now));
     const horizon = DateTime.formatIso(DateTime.makeUnsafe(now - KEEP_DAYS * 86_400_000));
+    // Every Record row is also an action (B-046); the row keeps its event id so the two join.
+    const eventId = yield* emitAction({
+      kind: `record.${entry.kind}`,
+      actor: { kind: "system", id: entry.actor, certainty: 1 },
+      subject: entry.subject,
+      outcome: entry.outcome,
+      evidence: entry.ref == null ? [] : [{ kind: "ref", ref: entry.ref }],
+      cause: entry.cause,
+    });
     yield* sql`
-      INSERT INTO fabric_record (at, kind, actor, project, ref, subject, outcome, detail)
+      INSERT INTO fabric_record (at, kind, actor, project, ref, subject, outcome, detail, event_id)
       VALUES (${at}, ${recordText(entry.kind, 40)}, ${recordText(entry.actor, 60)},
               ${entry.project == null ? null : recordText(entry.project, 200)},
               ${entry.ref == null ? null : recordText(entry.ref, 200)},
               ${recordText(entry.subject, 300)}, ${recordText(entry.outcome, 60)},
-              ${recordText(entry.detail ?? "", 1000)})
+              ${recordText(entry.detail ?? "", 1000)}, ${eventId})
     `;
     yield* sql`DELETE FROM fabric_record WHERE at < ${horizon}`;
     yield* sql`DELETE FROM fabric_record WHERE id <= (SELECT MAX(id) FROM fabric_record) - ${KEEP_ROWS}`;
@@ -76,7 +89,7 @@ const make = Effect.gen(function* () {
     const sinceMs = input.since === undefined ? NaN : Date.parse(input.since);
     const since = Number.isNaN(sinceMs) ? null : DateTime.formatIso(DateTime.makeUnsafe(sinceMs));
     return yield* sql<TessayaRecordEntry>`
-      SELECT id, at, kind, actor, project, ref, subject, outcome, detail FROM fabric_record
+      SELECT id, at, kind, actor, project, ref, subject, outcome, detail, event_id AS eventId FROM fabric_record
       WHERE ${since === null ? sql`1 = 1` : sql`at > ${since}`}
         AND ${input.project === undefined ? sql`1 = 1` : sql`project = ${input.project} COLLATE NOCASE`}
         AND ${input.kind === undefined ? sql`1 = 1` : sql`kind = ${input.kind}`}

@@ -671,7 +671,7 @@ function resetsIn(iso) { const ms = Date.parse(iso) - Date.now(); if (!(ms > 0))
 function usage(p) {
   const rows = (S.extra && S.extra.usage) || [];
   // What her brain used, per kind of work and login, and the API spend alerts: T3's web page, inside this window.
-  const brain = () => { p.appendChild($('h2', null, 'Her brain')); embed(p, 'usage'); };
+  const brain = () => { p.appendChild($('h2', null, 'Her brain')); embed(p, 'usage'); p.appendChild($('h2', null, 'What she did, and why')); embed(p, 'activity'); };
   if (!rows.length) { p.appendChild($('div', 'empty', 'No accounts reported yet. They appear here once T3 has loaded your sessions.')); brain(); return; }
   const g = $('div', 'group');
   for (const u of rows) {

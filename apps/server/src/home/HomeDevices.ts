@@ -57,6 +57,8 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import { emitAction, traced } from "../provenance/ActionLog.ts";
+import { roomActionOf } from "../provenance/roomActions.ts";
 import { VoiceForgets } from "../tessaya/VoiceForgets.ts";
 import { MemberPreferences, type VoiceDefaults } from "../tessaya/MemberPreferences.ts";
 import { TessayaPresence } from "../tessaya/TessayaPresence.ts";
@@ -1702,6 +1704,11 @@ const make = Effect.gen(function* () {
     }
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
+    // What the Tessel and its loop did, as actions (B-046); a retained "online" repeats, so only its changes count.
+    if (tail !== "state/online" || result.cameOnline || payload.trim() !== "1") {
+      const action = roomActionOf(result.id, tail, payload);
+      if (action !== null) yield* emitAction(action);
+    }
     // Picked up, moved, touched or pressed: someone is at this Tessel, not yet who (B-043).
     if (Option.isSome(presence) && HANDLED.has(tail))
       yield* presence.value.note({ member: null, source: "handled", vessel: result.id });
@@ -3385,7 +3392,22 @@ const make = Effect.gen(function* () {
         registry: registered,
       } satisfies DevicesOverview;
     }),
-    command,
+    // Every device command is an action (B-046), with who asked and through which surface.
+    command: Effect.fn("HomeDevices.recordedCommand")(
+      (id: string, c: DeviceCommand, by: DeviceActor) =>
+        traced({
+          kind: "device.cmd",
+          actor: {
+            kind:
+              by.surface === "agent" ? "agent" : by.surface === "settings" ? "owner" : "persona",
+            id: by.who,
+            certainty: by.approved === true ? 0.95 : 0.8,
+          },
+          subject: `${c.op}${"itemId" in c ? `:${String(c.itemId)}` : ""} on ${id}`,
+          evidence: [{ kind: "device", ref: id }],
+          data: { surface: by.surface, dryRun: by.dryRun === true },
+        })(command(id, c, by)),
+    ),
     routeReply,
     phoneLink,
     holdPrivate: Effect.fn("HomeDevices.holdPrivate")(function* (id: string, text: string) {

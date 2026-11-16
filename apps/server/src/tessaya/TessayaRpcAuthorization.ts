@@ -55,6 +55,7 @@ import {
   type AuthEnvironmentScope,
   type TessayaRpcGroup,
   BATON_METHOD_OF,
+  TESSAYA_ACTIVITY_WS_METHODS,
 } from "@t3tools/tessaya-contracts";
 import {
   isMemberSubject,
@@ -201,6 +202,9 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_PHONE_PAIRING_WS_METHODS.issue]: AuthStandardClientScopes,
   [BATON_CAST_WS_METHODS.get]: AuthOrchestrationReadScope,
   [BATON_CAST_WS_METHODS.call]: AuthOrchestrationOperateScope,
+  // Activity / Why (B-046): reading the action log, like the Record.
+  [TESSAYA_ACTIVITY_WS_METHODS.list]: AuthOrchestrationReadScope,
+  [TESSAYA_ACTIVITY_WS_METHODS.why]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   [BATON_CONSENT_WS_METHODS.list]: AuthOrchestrationReadScope,
