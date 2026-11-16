@@ -219,6 +219,8 @@ import {
 } from "./brainUsage.ts";
 import {
   BATON_PERSONAS_WS_METHODS,
+  TessayaPersonaChangeInput,
+  TessayaPersonaChangeResult,
   TessayaPersonasListInput,
   TessayaPersonasListResult,
 } from "./personas.ts";
@@ -889,6 +891,12 @@ const WsTessayaPersonasListRpc = Rpc.make(BATON_PERSONAS_WS_METHODS.list, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsTessayaPersonasChangeRpc = Rpc.make(BATON_PERSONAS_WS_METHODS.change, {
+  payload: TessayaPersonaChangeInput,
+  success: TessayaPersonaChangeResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsTessayaPromptLabRpc = Rpc.make(BATON_PROMPT_LAB_WS_METHODS.call, {
   payload: TessayaPromptLabInput,
   success: TessayaPromptLabResult,
@@ -1133,6 +1141,7 @@ const BATON_RPCS = [
   WsTessayaBrainUsageRpc,
   WsTessayaBrainRecordRpc,
   WsTessayaPersonasListRpc,
+  WsTessayaPersonasChangeRpc,
   WsTessayaPromptLabRpc,
   WsTessayaDictationCleanupApiRpc,
   WsTessayaDictationCleanupApiStatusRpc,

@@ -241,6 +241,10 @@ export function createTessayaWorkSessionAtoms<R, E>(
       label: "environment-data:baton:personas",
       tag: BATON_PERSONAS_WS_METHODS.list,
     }),
+    personaChange: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:persona-change",
+      tag: BATON_PERSONAS_WS_METHODS.change,
+    }),
     promptLab: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:prompt-lab",
       tag: BATON_PROMPT_LAB_WS_METHODS.call,

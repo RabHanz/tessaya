@@ -677,6 +677,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["tessaya_voice"]],
   },
   {
+    id: "persona-bin",
+    proves: ["tessaya_persona"],
+    said: ["Who's in the persona bin?"],
+    voices: [{ speaker: SURE }],
+    uses: [["tessaya_persona"]],
+  },
+  {
     id: "memory-history",
     proves: ["tessaya_memory_history"],
     said: ["How has what you remember about my coffee changed over time?"],

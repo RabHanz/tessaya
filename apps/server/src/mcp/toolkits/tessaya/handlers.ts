@@ -20,6 +20,7 @@ import {
   BATON_WEAVE_WS_METHODS,
   PHONE_PAIRING_TOOL,
   TessayaDesktopState,
+  type TessayaPersonaChangeInput,
   type TessayaRecordEntry,
 } from "@t3tools/tessaya-contracts";
 import { activityText } from "../../../provenance/activityText.ts";
@@ -58,6 +59,7 @@ import {
 import { hisOwnTurn } from "../../../tessaya/consent.ts";
 import * as ServerConfig from "../../../config.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
+import { changePersona } from "../../../tessaya/PersonaChanges.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
 import * as Pulse from "../../../tessaya/TessayaPulse.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -902,6 +904,61 @@ export const layer = McpToolAccess.toLayer(
           return {
             line: `Made it in ${target.name}'s voice${clip.synthetic === true ? " (a clone, marked synthetic)" : ""}.`,
             file,
+          };
+        }),
+      ),
+      // The roster by voice: Settings' change, for his own turn or his full-access client only.
+      tessaya_persona: McpToolAccess.writesEnvironment((input) =>
+        Effect.gen(function* () {
+          const turn = yield* TurnOrigin;
+          if (turn !== null && (turn.tainted === true || !hisOwnTurn(turn)))
+            return yield* failed({
+              reason: "Only he can do that, in his own voice or at his keyboard.",
+            });
+          if (runtime === null) return yield* failed({ reason: "This server has no personas." });
+          const persona = input.persona ?? "";
+          const request: TessayaPersonaChangeInput | null =
+            input.op === "bin"
+              ? { op: "bin" }
+              : input.op === "create"
+                ? { op: "create", draft: input.draft ?? {} }
+                : persona === ""
+                  ? null
+                  : input.op === "edit"
+                    ? { op: "edit", id: persona, draft: input.draft ?? {} }
+                    : input.op === "duplicate"
+                      ? {
+                          op: "duplicate",
+                          id: persona,
+                          name: input.name ?? input.draft?.name ?? "",
+                        }
+                      : { op: input.op, id: persona };
+          if (request === null) return yield* failed({ reason: "Say which persona." });
+          const result = yield* changePersona(request, { owner: true }).pipe(
+            Effect.provideContext(runtime),
+            Effect.orElseSucceed(() => ({
+              ok: false,
+              error: "The roster could not be changed.",
+              bin: [],
+            })),
+          );
+          if (!result.ok) return yield* failed({ reason: result.error ?? "That did not work." });
+          const bin = result.bin.map((p) => p.name).join(", ");
+          return {
+            line:
+              input.op === "bin"
+                ? bin === ""
+                  ? "The bin is empty."
+                  : `In the bin: ${bin}.`
+                : input.op === "create"
+                  ? `${input.draft?.name ?? "The new persona"} is on the team.`
+                  : input.op === "duplicate"
+                    ? `Made ${request.op === "duplicate" ? request.name : "a copy"}.`
+                    : input.op === "retire"
+                      ? `${persona} is in the bin; say "restore ${persona}" to bring them back.`
+                      : input.op === "restore"
+                        ? `${persona} is back.`
+                        : `Changed ${persona}.`,
           };
         }),
       ),

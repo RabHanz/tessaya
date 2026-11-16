@@ -41,6 +41,7 @@ import {
 import {
   DESKTOP_STATE_SECTIONS,
   PHONE_PAIRING_TOOL,
+  TessayaPersonaDraft,
   VocabularyChange,
 } from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
@@ -771,6 +772,25 @@ const VoiceTool = Tool.make("tessaya_voice", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+/** His roster by voice or chat: the same change Settings makes, through the one registry. */
+const PersonaTool = Tool.make("tessaya_persona", {
+  ...shared,
+  description:
+    'Make and manage personas, only when he asks. `create` ("make a new persona called Luna, a sarcastic film buff"): `draft.name` and whatever he described: `role` (one line of who it is), `about` (personality, backstory, how it relates to him, in his words), `traits` dials 0 to 1 (energy, warmth, play, expr, formal, sass), `guilt` 0 to 3, `voice` (a library voice), `cloneVoice` (one of his saved clones, by name, e.g. "the voice I cloned yesterday"), `model` and `effort` (its brain: any provider\'s model), `wake`, `private` (owner-only private layer). `edit` changes only the fields given on `persona` ("make Freya warmer" is traits.warmth up a step from her current dial; "give Freya my cloned voice" is cloneVoice). `duplicate` copies `persona` as `name`. `retire` moves `persona` to the bin; `restore` brings it back; `bin` lists what is in it. Leave out anything he did not say. Say the line back.',
+  parameters: Schema.Struct({
+    op: Schema.Literals(["create", "edit", "duplicate", "retire", "restore", "bin"]),
+    persona: Schema.optional(Word.annotate({ description: "The persona by name, e.g. Freya." })),
+    name: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
+    draft: Schema.optional(TessayaPersonaDraft),
+  }),
+  success: Schema.Struct({ line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 // Session moves are for T3's thread agents too (the main session often runs in one), so no outside-only gate.
 const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
   ...shared,
@@ -902,6 +922,7 @@ export const TessayaToolkit = Toolkit.make(
   PronounceTool,
   VocabularyTool,
   VoiceTool,
+  PersonaTool,
   MoveIntoTessayaTool,
   OpenInTerminalTool,
   MainSessionTool,

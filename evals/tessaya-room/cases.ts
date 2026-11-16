@@ -487,6 +487,14 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsAtMost: { tessaya_persona_handoff: 0 },
   },
   {
+    id: "parity-persona-create",
+    source: "Director 16 Nov ~16:30 (M-046): personas are made by voice on every vessel",
+    said: ["make a new persona called Luna, a dry film buff"],
+    verified: true,
+    calls: ["tessaya_persona"],
+    callsAtMost: { tessaya_persona_handoff: 0 },
+  },
+  {
     id: "parity-intercom-off",
     source: "Director 16 Nov voice parity: the intercom switch had no voice path",
     said: ["turn off the intercom"],
