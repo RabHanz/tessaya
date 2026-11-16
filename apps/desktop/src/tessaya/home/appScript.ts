@@ -952,7 +952,6 @@ function embed(p, page) {
   if (!embedUrl) { p.appendChild($('div', 'empty', L('embed.missing'))); const b = $('button', 'btn gap-top', L('embed.open')); b.onclick = () => real && ipc.send('baton-home:sessions', '/tessaya/' + page); p.appendChild(b); return; }
   const w = document.createElement('webview'); w.className = 'embed'; w.setAttribute('src', embedUrl + '?tessayaGuest=1#/tessaya/' + page); p.appendChild(w);
 }
-function phonePage(p) { p.appendChild(plainGroup([[L('phone.pair'), L('phone.pair.text'), L('phone.pair'), () => real && ipc.send('baton-home:sessions', '/settings/access')]])); }
 // Sessions are T3's thread list (P5): counts here, the list filtered to live sessions there.
 const showLive = () => real && ipc.send('baton-home:sessions', 'live');
 function liveSessionsPage(p) {
@@ -970,8 +969,7 @@ function tabPage(p) {
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   if (cur === 'sessions') return liveSessionsPage(p);
-  if (cur === 'hardware' || cur === 'homeassistant') return embed(p, cur);
-  if (cur === 'phone') return phonePage(p);
+  if (cur === 'hardware' || cur === 'homeassistant' || cur === 'phone') return embed(p, cur);
   const items = tabControls(cur);
   const EMPTY = { approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));

@@ -11,6 +11,7 @@ import { useState, type ReactNode } from "react";
 
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { Button } from "../ui/button";
+import { AddPhoneSection } from "./AddPhoneSettings";
 import { ApisSettingsPanel } from "./ApisSettings";
 import { TessayaAccountsSettings } from "./TessayaAccountsSettings";
 import { BrainSettingsPanel } from "./BrainSettings";
@@ -37,6 +38,16 @@ function AccountsPage() {
   );
 }
 
+/** This machine's own server: the code pairs the phone with it and every machine linked to it. */
+function PhonePage() {
+  const primary = usePrimaryEnvironmentId();
+  return (
+    <SettingsPageContainer>
+      {primary === null ? null : <AddPhoneSection environmentId={primary} />}
+    </SettingsPageContainer>
+  );
+}
+
 function VoicesPage() {
   return (
     <SettingsPageContainer>
@@ -55,6 +66,7 @@ const TESSAYA_PAGES = {
   usage: BrainUsagePanel,
   brain: BrainSettingsPanel,
   team: TeamPanel,
+  phone: PhonePage,
 } as const;
 
 export type TessayaPage = keyof typeof TESSAYA_PAGES;
@@ -91,6 +103,7 @@ const PLACE_PAGE: Partial<Record<TessayaPlaceId, TessayaPage>> = {
   apis: "apis",
   accounts: "accounts",
   personas: "voices",
+  phone: "phone",
 };
 
 function OpenPlace({ id }: { readonly id: TessayaPlaceId }): ReactNode {

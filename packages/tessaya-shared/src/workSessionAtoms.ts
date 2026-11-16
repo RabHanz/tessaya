@@ -28,6 +28,7 @@ import {
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  BATON_PHONE_PAIRING_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -240,6 +241,11 @@ export function createTessayaWorkSessionAtoms<R, E>(
     voiceCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:voice",
       tag: BATON_VOICE_WS_METHODS.call,
+    }),
+    // Add a phone: one-time codes here and from each linked machine, for one QR.
+    phonePairing: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:phone-pairing",
+      tag: BATON_PHONE_PAIRING_WS_METHODS.issue,
     }),
     learnCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:learn",

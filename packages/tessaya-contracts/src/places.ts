@@ -57,7 +57,7 @@ export const TESSAYA_PLACES = [
     id: "phone",
     label: "Phone",
     group: "Home and devices",
-    terms: ["mobile", "iphone", "android", "pair", "app"],
+    terms: ["mobile", "iphone", "android", "pair", "app", "add a phone", "qr", "scan"],
   },
   {
     id: "assistant",

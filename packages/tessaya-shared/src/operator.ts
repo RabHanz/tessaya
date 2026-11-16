@@ -154,6 +154,8 @@ const BATON_QUIET = new Set([
   "commit_list",
   "notices_resume",
   "trust_show",
+  // Only shows one of her own pages.
+  "place_open",
   "cloud_status",
   "cloud_list",
   "cloud_usage",

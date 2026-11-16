@@ -156,10 +156,77 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..00fc550759be339bf0c64d8eda6f36a7
 -export default config;
 +export default APP_VARIANT === "tessaya" ? tessayaRebrand(config) : config;
 diff --git a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
-index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..c8407114b0d7538ab4e0463f0548fd4d845594c1 100644
+index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..5fb6255ca964c784478b31cf5bc8b950746c89b6 100644
 --- a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
 +++ b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
-@@ -263,8 +263,10 @@ const SCAN_RETICLE_SIZE = 150;
+@@ -22,7 +22,7 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
+ import { SettingsScreen } from "../settings/components/SettingsScreen";
+ import { AppText as Text, AppTextInput, type AppTextInputProps } from "../../components/ui/AppText";
+ import { FrostedCutout } from "../../components/ui/FrostedCutout";
+-import { buildPairingUrl, extractPairingUrlFromQrPayload, parsePairingUrl } from "./pairing";
++import { buildPairingUrl, extractPairingUrlsFromQrPayload, parsePairingUrl } from "./pairing";
+ import { useRemoteConnections } from "../../state/use-remote-environment-registry";
+ import { SymbolView } from "../../components/ui/AppSymbol";
+ import { hasCloudPublicConfig } from "../cloud/publicConfig";
+@@ -69,6 +69,8 @@ function PairingForm({
+   const [initialPairing] = useState(() => parsePairingUrl(routePairingUrl || connectionPairingUrl));
+   const [hostInput, setHostInput] = useState(initialPairing.host);
+   const [codeInput, setCodeInput] = useState(initialPairing.code);
++  // Tessaya's Add a phone code names more machines; each pairs after the one in the form.
++  const [morePairingUrls, setMorePairingUrls] = useState<ReadonlyArray<string>>([]);
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [submitError, setSubmitError] = useState<string | null>(null);
+   // The user's own edit or submit dismisses the dev auto-connect report.
+@@ -97,6 +99,7 @@ function PairingForm({
+ 
+   const handleHostChange = (value: string) => {
+     setHostInput(value);
++    setMorePairingUrls([]);
+     clearError();
+   };
+ 
+@@ -130,10 +133,11 @@ function PairingForm({
+     setScannerLocked(true);
+ 
+     try {
+-      const pairingUrl = extractPairingUrlFromQrPayload(data);
++      const [pairingUrl, ...more] = extractPairingUrlsFromQrPayload(data);
+       const { host, code } = parsePairingUrl(pairingUrl);
+       setHostInput(host);
+       setCodeInput(code);
++      setMorePairingUrls(more);
+       onChangeConnectionPairingUrl(pairingUrl);
+       setScanComplete(true);
+       setScannerLocked(false);
+@@ -156,8 +160,16 @@ function PairingForm({
+     setIsSubmitting(true);
+     onChangeConnectionPairingUrl(pairingUrl);
+     const outcome = await onConnectPress(pairingUrl, routeFor);
++    const notAdded: Array<string> = [];
++    if (outcome.ok)
++      for (const more of morePairingUrls) {
++        const added = await onConnectPress(more);
++        if (!added.ok)
++          notAdded.push(`${parsePairingUrl(more).host}: ${added.error ?? "not added"}`);
++      }
+     setIsSubmitting(false);
+     setSubmitError(outcome.error);
++    if (notAdded.length > 0) Dialog.alert("Some machines were not added", notAdded.join("\n"));
+     void Haptics.notificationAsync(
+       outcome.ok
+         ? Haptics.NotificationFeedbackType.Success
+@@ -247,7 +259,9 @@ function PairingForm({
+               )}
+             >
+               {pairingConnectionError ??
+-                "For machines on your local network or tailnet. The machine keeps its own provider credentials."}
++                (morePairingUrls.length > 0
++                  ? `This code also adds ${morePairingUrls.map((url) => parsePairingUrl(url).host.replace(/^https?:\/\//, "")).join(", ")}.`
++                  : "For machines on your local network or tailnet. The machine keeps its own provider credentials.")}
+             </Text>
+           </View>
+ 
+@@ -263,8 +277,10 @@ const SCAN_RETICLE_SIZE = 150;
  const SCAN_RETICLE_TOP = 36;
  const SCAN_RETICLE_RADIUS = 28;
  
@@ -171,7 +238,7 @@ index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..c8407114b0d7538ab4e0463f0548fd4d
    readonly onScan: (result: { readonly data: string }) => void;
    readonly onScanPress: () => void;
  }) {
-@@ -343,7 +345,7 @@ function PairingScanCard(props: {
+@@ -343,7 +359,7 @@ function PairingScanCard(props: {
            )}
          </View>
          <Text className={cn("text-center text-sm", light ? "text-black/70" : "text-white/80")}>

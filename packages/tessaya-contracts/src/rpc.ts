@@ -17,6 +17,11 @@ import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { TessayaFleetInput, TessayaFleetResult } from "./fleet.ts";
+import {
+  BATON_PHONE_PAIRING_WS_METHODS,
+  PhonePairingError,
+  PhonePairingResult,
+} from "./phonePairing.ts";
 import { tessayaSpelling, type TessayaSpelling } from "./renamed.ts";
 import {
   BATON_ADOPTED_WS_METHODS,
@@ -578,6 +583,12 @@ const WsTessayaLearnCallRpc = Rpc.make(BATON_LEARN_WS_METHODS.call, {
   payload: TessayaLearnCallInput,
   success: TessayaLearnCallResult,
   error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaPhonePairingRpc = Rpc.make(BATON_PHONE_PAIRING_WS_METHODS.issue, {
+  payload: Schema.Struct({}),
+  success: PhonePairingResult,
+  error: Schema.Union([PhonePairingError, EnvironmentAuthorizationError]),
 });
 
 const CatalogErrors = EnvironmentAuthorizationError;
@@ -1194,4 +1205,5 @@ export const TessayaRpcGroup = RpcGroup.make(
   WsTessayaDevicesCallRpc,
   WsTessayaVoiceCallRpc,
   WsTessayaLearnCallRpc,
+  WsTessayaPhonePairingRpc,
 ).middleware(TessayaRpcScopeAuthorization);

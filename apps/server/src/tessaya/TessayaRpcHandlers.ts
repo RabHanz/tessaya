@@ -26,6 +26,7 @@ import {
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  BATON_PHONE_PAIRING_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -100,6 +101,7 @@ import * as JobFlow from "./TessayaJobFlow.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
+import * as PhonePairing from "./PhonePairing.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { TessayaSessionsAcross } from "./TessayaSessionsAcross.ts";
 import { TessayaIntentService } from "./IntentService.ts";
@@ -666,6 +668,7 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_DEVICES_WS_METHODS.call]: (input) => run(serveDevicesCall(input, devicesActorOf(input))),
     [BATON_VOICE_WS_METHODS.call]: (input) => run(serveVoiceCall(input)),
     [BATON_LEARN_WS_METHODS.call]: (input) => run(serveLearnCall(input)),
+    [BATON_PHONE_PAIRING_WS_METHODS.issue]: () => run(PhonePairing.issue()),
     [BATON_PHONE_WS_METHODS.call]: (input) => run(phoneCall(input)),
     [BATON_RECORD_WS_METHODS.list]: (input) =>
       run(
