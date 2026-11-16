@@ -65,6 +65,7 @@ import { readPack } from "./OperatingSystemPack.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, TessayaPhoneInbox, answerCard } from "./TessayaPhoneInbox.ts";
 import { handleHands } from "./TessayaHandsApi.ts";
+import { TurnLiveContext } from "./TurnLiveContext.ts";
 import { VesselHands } from "./VesselHands.ts";
 import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./TessayaApi.ts";
 import { transcribeWav } from "./TessayaPhoneVoice.ts";
@@ -405,6 +406,31 @@ export const routes = HttpRouter.use((router) =>
         if (body._tag === "None")
           return HttpServerResponse.jsonUnsafe({ message: "Not an effect." }, { status: 400 });
         yield* effectFired({ vessel: "desktop", ...body.value, haptic: null });
+        return HttpServerResponse.jsonUnsafe({});
+      }
+      // What her look at his screen saw (G6): her next two turns at the desk know it, then it is gone.
+      if (calledAs === "sighting") {
+        if (!session.value.scopes.includes(AuthTessayaHandsHostScope))
+          return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
+        const { line } = (yield* request.json.pipe(Effect.orElseSucceed(() => ({})))) as {
+          line?: unknown;
+        };
+        if (typeof line !== "string" || line.trim() === "")
+          return HttpServerResponse.jsonUnsafe({ message: "Not a sighting." }, { status: 400 });
+        yield* Effect.serviceOption(TurnLiveContext).pipe(
+          Effect.flatMap((live) =>
+            live._tag === "None"
+              ? Effect.void
+              : live.value.inject({
+                  key: "screen",
+                  vessel: "desktop",
+                  source: "screen",
+                  expiresAfterTurns: 2,
+                  line: `A moment ago you looked at his screen and said: "${line.slice(0, 400)}".`,
+                }),
+          ),
+          Effect.provideContext(context),
+        );
         return HttpServerResponse.jsonUnsafe({});
       }
       // His sentence at the desk, through the one brain (SPINE-UNIFY S4): only the desktop app's own session sends it.

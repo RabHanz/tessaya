@@ -8,6 +8,7 @@ import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase
 import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
 import { TessayaPhoneInbox, layer as inboxLayer } from "../tessaya/TessayaPhoneInbox.ts";
 import { layer as recordLayer } from "../tessaya/TessayaRecordService.ts";
+import { TurnLiveContext, layer as liveLayer } from "../tessaya/TurnLiveContext.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { DeviceTriggers, layer as triggersLayer } from "./DeviceTriggers.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
@@ -38,6 +39,7 @@ const setup = (judge: (prompt: string) => unknown = () => ({ fire: false, action
         oneShot,
         inboxLayer,
         recordLayer,
+        liveLayer,
         Layer.mock(HomeAssistantService)({}),
       ),
     ),
@@ -155,6 +157,47 @@ it.effect(
       ]);
       // His words reach the model quoted, as data.
       assert.include(prompts[0], '"if the R1 is turned face down, mute it"');
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "puts a state that flipped in front of her next two turns, never a first value or a drifting number",
+  () => {
+    const { layer } = setup();
+    return Effect.gen(function* () {
+      const registry = yield* manifests;
+      const triggers = yield* DeviceTriggers;
+      const live = yield* TurnLiveContext;
+      const fired = yield* triggers.fired;
+      yield* triggers.watch(
+        {
+          rule: {
+            name: "Posture",
+            deviceId: R1,
+            itemId: "imu.posture",
+            when: { op: "changes" },
+            intent: null,
+            then: { kind: "notify", text: "moved" },
+          },
+          request: "tell me when it moves",
+        },
+        me,
+      );
+      yield* registry.report("mqtt", R1, [
+        { itemId: "imu.posture", value: "upright" },
+        { itemId: "audio.volume", value: 40 },
+      ]);
+      yield* registry.report("mqtt", R1, [{ itemId: "audio.volume", value: 60 }]);
+      yield* registry.report("mqtt", R1, [{ itemId: "imu.posture", value: "face_down" }]);
+      yield* PubSub.take(fired);
+      yield* PubSub.take(fired);
+      const turn = { vessel: "desk", persona: null, spend: true } as const;
+      const first = yield* live.take(turn);
+      assert.include(first, "R1 reported Posture is now");
+      assert.notInclude(first, "Volume");
+      assert.include(yield* live.take(turn), "Posture");
+      assert.strictEqual(yield* live.take(turn), "");
     }).pipe(Effect.provide(layer));
   },
 );
