@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import type { Persona } from "@t3tools/tessaya-shared/osPack";
 
 import * as CurrentPersona from "./CurrentPersona.ts";
-import { groupFor, groupTurn, HIS_GROUP } from "./GroupTalk.ts";
+import { changeGroup, groupFor, groupTurn, HIS_GROUP, type GroupChange } from "./GroupTalk.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import type { TurnEnvelope } from "./TessayaTurn.ts";
 
@@ -77,6 +77,36 @@ it.layer(Layer.mergeAll(CurrentPersona.layer, alwaysOn))("GroupTalk", (it) => {
       assert.isTrue((yield* groupFor(hisKeyboard, personas))?.private === true);
       assert.isNull(yield* groupFor(guestVoice, personas));
       assert.isNull(yield* groupFor({ ...hisKeyboard, tainted: true }, personas));
+    }),
+  );
+});
+
+it.layer(CurrentPersona.layer)("changeGroup", (it) => {
+  it.effect("starts, steers and ends his group, the way back included", () =>
+    Effect.gen(function* () {
+      const lines: Array<string> = [];
+      const run = (change: GroupChange) =>
+        Effect.map(changeGroup(HIS_GROUP, change, { owner: true }), (r) => {
+          lines.push(r.line);
+          return r.group;
+        });
+      assert.isNull(yield* run({ op: "start", personas: ["Freya"] }));
+      yield* run({ op: "start", personas: ["Freya", "Alfred"] });
+      yield* run({ op: "silent", persona: "freya" });
+      const watching = yield* run({ op: "mode", mode: "watch" });
+      assert.strictEqual(watching?.mode, "watch");
+      assert.deepStrictEqual(
+        watching?.members.map((m) => m.silent === true),
+        [true, false],
+      );
+      assert.isNull(yield* run({ op: "leave", persona: "Alfred" }));
+      assert.deepStrictEqual(lines, [
+        "A group needs at least two personas.",
+        "Group started: Freya and Alfred.",
+        "Freya will listen, and speak when you ask.",
+        "They'll talk among themselves.",
+        "Alfred left, so the group is over.",
+      ]);
     }),
   );
 });
