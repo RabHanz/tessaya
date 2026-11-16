@@ -1005,6 +1005,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
         voicePlayer.duck?.(false);
         speaker.cancel();
         screen?.cutIn();
+        // A layer's acts timed to her words stop with them (VOXTA I4).
+        if (layerLink.isOpen()) void layerLink.signal("bargeIn");
       },
       onDuck: (on) => voicePlayer.duck?.(on),
       onStop: (quiet) => {

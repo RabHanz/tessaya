@@ -62,6 +62,7 @@ import { roomActionOf } from "../provenance/roomActions.ts";
 import { VoiceForgets } from "../tessaya/VoiceForgets.ts";
 import { MemberPreferences, type VoiceDefaults } from "../tessaya/MemberPreferences.ts";
 import { presenceMembers } from "../tessaya/PresenceFeeds.ts";
+import { PersonaLayers } from "../tessaya/PersonaLayers.ts";
 import { TessayaPresence } from "../tessaya/TessayaPresence.ts";
 import { ownerOfDevice } from "@t3tools/tessaya-shared/presence";
 import { StepUps } from "./StepUps.ts";
@@ -1296,6 +1297,7 @@ const make = Effect.gen(function* () {
   // an empty retained message clears a member who has none left.
   const prefs = yield* Effect.serviceOption(MemberPreferences);
   const presence = yield* Effect.serviceOption(TessayaPresence);
+  const layers = yield* Effect.serviceOption(PersonaLayers);
   /** Tessels with headphones linked now, so only a real disconnect cancels them. */
   const phonesOn = new Set<string>();
   const sendPrefs = (ids: ReadonlyArray<string>, member: string, now: VoiceDefaults | null) =>
@@ -1710,6 +1712,9 @@ const make = Effect.gen(function* () {
       const action = roomActionOf(result.id, tail, payload);
       if (action !== null) yield* emitAction(action);
     }
+    // He talked over her on this Tessel: a layer's acts timed to her words stop there and then (VOXTA I4).
+    if (tail === "event/voice/barge" && Option.isSome(layers))
+      for (const l of layers.value.all) l.signal({ kind: "bargeIn", vessel: result.id });
     // Picked up, moved, touched or pressed: someone is at this Tessel, not yet who (B-043).
     if (Option.isSome(presence) && HANDLED.has(tail))
       yield* presence.value.note({ member: null, source: "handled", vessel: result.id });
