@@ -25,6 +25,7 @@ import {
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { clockLine, clockStyleOf } from "@t3tools/tessaya-shared/brain";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
+import { memberOfSpeaker } from "@t3tools/tessaya-shared/household";
 import { REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import {
   DEFAULT_OS_PACK,
@@ -54,8 +55,9 @@ import { MemoryViewer } from "../tessaya/TessayaMemoryService.ts";
 import { houseZone } from "../tessaya/houseZone.ts";
 import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaVocabulary } from "../tessaya/TessayaVocabulary.ts";
-import { TessayaTurn, movesMood, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
+import { TessayaTurn, moodMember, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
+import { peopleHere } from "../tessaya/TessayaPresence.ts";
 import { replyFor } from "../tessaya/PersonaLayers.ts";
 import {
   type ActOutcome,
@@ -143,24 +145,30 @@ const publishPronunciations = Effect.fn("R1Device.publishPronunciations")(functi
 const restTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/intent/rest`;
 
 /**
- * Her lead's mood as each Tessel draws it at rest (expressionMap's tessel manifest: the eyes and the prop over them),
- * sent only when it shows differently, so the eyes follow the one state between turns too.
+ * Her lead's mood as each Tessel draws it at rest (expressionMap's tessel manifest: the eyes and the prop over them):
+ * whoever was just identified there, else its owner's when it may show it, else the general mood. Sent per Tessel
+ * only when it shows differently, so the eyes follow the one state between turns too.
  */
 const publishRestMood = Effect.fn("R1Device.publishRestMood")(function* () {
   const mood = yield* Effect.serviceOption(TessayaMood);
   if (Option.isNone(mood)) return;
   const zone = yield* houseZone();
-  yield* Stream.runForEach(mood.value.changes(undefined, zone), (felt) =>
+  const sent = new Map<string, string>();
+  yield* Stream.runForEach(mood.value.moves, () =>
     Effect.gen(function* () {
-      const shown = renderFor(
-        VESSELS.tessel,
-        felt.intensity >= 0.2 ? felt.label : "neutral",
-        felt.intensity,
-      );
-      const json = JSON.stringify({ mood: shown.face, accessory: shown.prop ?? "auto" });
-      for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices))
-        if (device.deviceId !== null)
-          yield* publishToDevice(device, restTopic(device.deviceId), json, true);
+      for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices)) {
+        if (device.deviceId === null) continue;
+        const felt = yield* mood.value.atDevice(device.deviceId, undefined, zone);
+        const shown = renderFor(
+          VESSELS.tessel,
+          felt.intensity >= 0.2 ? felt.label : "neutral",
+          felt.intensity,
+        );
+        const json = JSON.stringify({ mood: shown.face, accessory: shown.prop ?? "auto" });
+        if (sent.get(device.deviceId) === json) continue;
+        sent.set(device.deviceId, json);
+        yield* publishToDevice(device, restTopic(device.deviceId), json, true);
+      }
     }).pipe(Effect.ignore),
   );
 });
@@ -718,9 +726,15 @@ const r1Route = Effect.fn("R1Device.route")(function* (input: R1Heard, text: str
   // No hub here (the Agora bridge, a replay): there are no outputs to choose between.
   if (Option.isNone(devices) || isReplay(input)) return text;
   const s = speakerOf(input.voice);
-  const alone =
-    s?.kind === "owner" && s.verified && !s.inherited && (segmentsOf(input.voice)?.length ?? 1) < 2;
   if (input.device === undefined) return text === null ? null : PRIVATE_HELD_LINE;
+  // Alone: his verified voice the only one in this turn, and nobody else, member or guest, placed here (B-043).
+  const me = memberOfSpeaker(s ?? null);
+  const alone =
+    s?.kind === "owner" &&
+    s.verified &&
+    !s.inherited &&
+    (segmentsOf(input.voice)?.length ?? 1) < 2 &&
+    (yield* peopleHere(input.device)).every((p) => p.member === me);
   if (text === null) {
     yield* devices.value.routeReply(input.device, alone ? "personal" : "normal", alone);
     return null;
@@ -951,15 +965,14 @@ const r1Finish = Effect.fn("R1Device.finish")(function* (
 });
 
 /**
- * The eyes after a turn: the outcome, else her mood (CS6), the same label her other bodies show. Her mood only on the
- * turns her words were told it (`movesMood`): on another voice's turn she said "pretty calm" behind sulky eyes (16 Nov).
+ * The eyes after a turn: the outcome, else her mood (CS6) as the turn's words were told it (`moodMember`): the
+ * identified person's relationship over the general mood, or the general mood alone (16 Nov: "pretty calm" behind
+ * sulky eyes).
  */
 export const turnFace = (
-  turn: TurnEnvelope,
   outcomes: ReadonlyArray<ActOutcome>,
-  felt: { readonly label: ExpressionMood } | null,
+  mine: { readonly label: ExpressionMood } | null,
 ): { readonly mood: ExpressionMood; readonly reason: string } => {
-  const mine = felt !== null && movesMood(turn) ? felt : null;
   if (outcomes.some((o) => o.status === "asked"))
     return { mood: "curious", reason: "the turn's outcome" };
   if (outcomes.some((o) => !o.ok || o.status === "failed"))
@@ -989,8 +1002,10 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
       { discard: true },
     );
   const affect = yield* Effect.serviceOption(TessayaMood);
-  const felt = Option.isNone(affect) ? null : yield* affect.value.view(turn.persona, turn.timeZone);
-  const face = turnFace(turn, outcomes, felt);
+  const felt = Option.isNone(affect)
+    ? null
+    : yield* affect.value.view(turn.persona, turn.timeZone, moodMember(turn));
+  const face = turnFace(outcomes, felt);
   yield* eyes(device, face.mood, 4000, face.reason);
   const record = yield* Effect.serviceOption(TessayaRecordService);
   if (record._tag === "Some")

@@ -10,11 +10,14 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { credentialOf, LEDGERED_DIR } from "@t3tools/tessaya-shared/brainRoutes";
+import { type CallTokens, credentialOf, LEDGERED_DIR } from "@t3tools/tessaya-shared/brainRoutes";
+
+export { apiTokens, cliTokens, type CallTokens } from "@t3tools/tessaya-shared/brainRoutes";
 import type { BrainRole, BrainSpendAlert } from "@t3tools/contracts";
 import type {
   BrainUsageCall,
   BrainUsageInput,
+  BrainUsageRecordInput,
   BrainUsageUnit,
   UsageAttribution,
   UsageBilling,
@@ -32,15 +35,6 @@ import { priceUsage, type RateTable } from "../usage/usagePricing.ts";
 import * as TessayaDatabase from "./TessayaDatabase.ts";
 import * as TessayaRecordService from "./TessayaRecordService.ts";
 import { readPriceList, type PriceList } from "./TessayaJobSpend.ts";
-
-/** One call's tokens on one model. `input` is the uncached part, as the API counts it. */
-export interface CallTokens {
-  readonly model: string;
-  readonly input: number;
-  readonly cacheRead: number;
-  readonly cacheWrite: number;
-  readonly output: number;
-}
 
 /** The folder her own CLI calls run from: the tag that keeps T3's transcript scan from counting them twice. */
 export const ledgeredCwd = (): string => {
@@ -92,46 +86,6 @@ export interface UsageTotal {
   /** Every row at list price, the plan's as its equivalent; null when none were priced. */
   readonly listDollars: number | null;
 }
-
-const count = (value: unknown) =>
-  typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
-
-/** The Messages API's `usage` (a whole response, or a stream's `message_start` and last `message_delta` merged). */
-export const apiTokens = (model: string, usage: unknown): CallTokens | null => {
-  if (typeof usage !== "object" || usage === null) return null;
-  const u = usage as Record<string, unknown>;
-  return {
-    model,
-    input: count(u["input_tokens"]),
-    cacheRead: count(u["cache_read_input_tokens"]),
-    cacheWrite: count(u["cache_creation_input_tokens"]),
-    output: count(u["output_tokens"]),
-  };
-};
-
-/**
- * Claude Code's `result` event: `modelUsage` per resolved model id (a turn can use more than one), else its `usage`
- * under the model it was asked for.
- */
-export const cliTokens = (result: unknown, asked: string): ReadonlyArray<CallTokens> => {
-  if (typeof result !== "object" || result === null) return [];
-  const r = result as Record<string, unknown>;
-  const perModel = r["modelUsage"];
-  if (typeof perModel === "object" && perModel !== null) {
-    const rows = Object.entries(perModel as Record<string, Record<string, unknown>>).map(
-      ([model, u]) => ({
-        model,
-        input: count(u["inputTokens"]),
-        cacheRead: count(u["cacheReadInputTokens"]),
-        cacheWrite: count(u["cacheCreationInputTokens"]),
-        output: count(u["outputTokens"]),
-      }),
-    );
-    if (rows.length > 0) return rows;
-  }
-  const one = apiTokens(asked, r["usage"]);
-  return one === null ? [] : [one];
-};
 
 export const billingOfRow = (row: Pick<UsageRow, "billing" | "credential">): UsageBilling =>
   row.billing ??
@@ -583,6 +537,26 @@ export const brainUsageReport = Effect.fn("BrainUsage.report")(function* (input:
     units: yield* usage.units(since),
     limits: yield* usage.limits(timeZone),
   };
+});
+
+/** A call the desktop made on his own CLI login, which bills his plan. */
+export const recordDesktopUsage = Effect.fn("BrainUsage.recordDesktop")(function* (
+  input: BrainUsageRecordInput,
+) {
+  const usage = yield* BrainUsage;
+  const { feature, persona, provider, ...row } = input;
+  yield* usage.record({
+    ...row,
+    provider,
+    credential: "subscription",
+    billing: "subscription",
+    attribution: {
+      feature,
+      origin: "user",
+      surface: "desktop",
+      ...(persona === undefined ? {} : { persona }),
+    },
+  });
 });
 
 /** On Baton's database, the same one the services use (a layer is built once per server). */

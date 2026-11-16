@@ -11,6 +11,7 @@ import {
   holdVoice,
   identityOf,
   NO_HOLD,
+  profilesFor,
   speakerPath,
   TEST_SPEAKER_ID,
   trustTestSpeaker,
@@ -154,6 +155,23 @@ describe("decideSpeaker fails closed", () => {
   });
 });
 
+describe("profilesFor", () => {
+  it("takes each person's profile for the input, else the one from her mic", () => {
+    const p = (id: string, x: number) => ({
+      id,
+      name: id,
+      kind: "saved" as const,
+      model: "m",
+      centroid: Float32Array.from([x]),
+      samples: 3,
+      sources: ["spoken" as const],
+      enrolledAt: "2026-11-16T00:00:00.000Z",
+    });
+    const got = profilesFor([p("him", 2)], [p("him", 1), p("sara", 1)]);
+    expect(got.map((g) => `${g.id}:${g.centroid[0]}`)).toEqual(["him:2", "sara:1"]);
+  });
+});
+
 describe("enrol", () => {
   it("averages his clips and drops one that is someone else", () => {
     const his = [v(1, 0.1, 0), v(1, -0.1, 0), v(1, 0, 0.1), v(1, 0, -0.1), v(1, 0.05, 0.05)];
@@ -223,6 +241,19 @@ describe("the speaker identity", () => {
         1,
       ),
     ).toEqual({ ...UNVERIFIED(1), voiceIdOff: true });
+    // His profile only from another model (a model switch before he re-enrols): closed, never "Voice ID off".
+    const stale = [{ ...owner, model: "old" }];
+    expect(decide([at(0.9)], 4_000, "listen", stale)).toEqual({
+      kind: "unverified",
+      why: "stale-profile",
+    });
+    expect(
+      identityOf(
+        decide([at(0.9)], 4_000, "listen", stale),
+        decide([at(0.9)], 4_000, "act", stale),
+        1,
+      ),
+    ).toEqual(UNVERIFIED(1));
   });
 
   it("keeps him verified through a session, from three owner turns or one verified, until another voice", () => {
@@ -243,9 +274,15 @@ describe("the speaker identity", () => {
       return out.identity.kind === "owner" && out.identity.verified;
     });
     expect(verified).toEqual([false, false, false, false, true, true, false]);
+    // Verified by the session, never by this turn's own clips: marked so nothing private opens on it.
+    expect(hold.verifiedAt).not.toBeNull();
+    expect(
+      holdVoice(hold, { ...UNVERIFIED(9), kind: "owner", confidence: 0.4 }, 60_000).identity,
+    ).toMatchObject({ verified: true, session: true });
     // A clip that clears the act cut-off verifies him at once; anyone else ends the hold.
     const once = holdVoice(NO_HOLD, owned(at(0.6), 4_000), 0);
     expect(once.identity.verified).toBe(true);
+    expect(once.identity.session).toBeUndefined();
     // Not scored yet (the early guess): his path while held, never an owner-only act.
     expect(holdVoice(once.hold, UNVERIFIED(1), HOLD_MS).identity).toMatchObject({
       kind: "owner",

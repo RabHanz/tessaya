@@ -15,6 +15,7 @@
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
+  BATON_RECORD_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
@@ -27,6 +28,7 @@ import {
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  BATON_PHONE_PAIRING_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -216,6 +218,10 @@ export function createTessayaWorkSessionAtoms<R, E>(
       label: "environment-data:baton:brain-usage",
       tag: BATON_BRAIN_WS_METHODS.usage,
     }),
+    recordList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:record-list",
+      tag: BATON_RECORD_WS_METHODS.list,
+    }),
     personasList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:personas",
       tag: BATON_PERSONAS_WS_METHODS.list,
@@ -239,6 +245,11 @@ export function createTessayaWorkSessionAtoms<R, E>(
     voiceCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:voice",
       tag: BATON_VOICE_WS_METHODS.call,
+    }),
+    // Add a phone: one-time codes here and from each linked machine, for one QR.
+    phonePairing: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:phone-pairing",
+      tag: BATON_PHONE_PAIRING_WS_METHODS.issue,
     }),
     learnCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:learn",

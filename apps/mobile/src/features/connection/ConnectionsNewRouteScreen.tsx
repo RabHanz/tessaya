@@ -22,7 +22,7 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { AppText as Text, AppTextInput, type AppTextInputProps } from "../../components/ui/AppText";
 import { FrostedCutout } from "../../components/ui/FrostedCutout";
-import { buildPairingUrl, extractPairingUrlFromQrPayload, parsePairingUrl } from "./pairing";
+import { buildPairingUrl, extractPairingUrlsFromQrPayload, parsePairingUrl } from "./pairing";
 import { useRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
@@ -69,6 +69,8 @@ function PairingForm({
   const [initialPairing] = useState(() => parsePairingUrl(routePairingUrl || connectionPairingUrl));
   const [hostInput, setHostInput] = useState(initialPairing.host);
   const [codeInput, setCodeInput] = useState(initialPairing.code);
+  // Tessaya's Add a phone code names more machines; each pairs after the one in the form.
+  const [morePairingUrls, setMorePairingUrls] = useState<ReadonlyArray<string>>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // The user's own edit or submit dismisses the dev auto-connect report.
@@ -97,6 +99,7 @@ function PairingForm({
 
   const handleHostChange = (value: string) => {
     setHostInput(value);
+    setMorePairingUrls([]);
     clearError();
   };
 
@@ -130,10 +133,11 @@ function PairingForm({
     setScannerLocked(true);
 
     try {
-      const pairingUrl = extractPairingUrlFromQrPayload(data);
+      const [pairingUrl, ...more] = extractPairingUrlsFromQrPayload(data);
       const { host, code } = parsePairingUrl(pairingUrl);
       setHostInput(host);
       setCodeInput(code);
+      setMorePairingUrls(more);
       onChangeConnectionPairingUrl(pairingUrl);
       setScanComplete(true);
       setScannerLocked(false);
@@ -156,8 +160,16 @@ function PairingForm({
     setIsSubmitting(true);
     onChangeConnectionPairingUrl(pairingUrl);
     const outcome = await onConnectPress(pairingUrl, routeFor);
+    const notAdded: Array<string> = [];
+    if (outcome.ok)
+      for (const more of morePairingUrls) {
+        const added = await onConnectPress(more);
+        if (!added.ok)
+          notAdded.push(`${parsePairingUrl(more).host}: ${added.error ?? "not added"}`);
+      }
     setIsSubmitting(false);
     setSubmitError(outcome.error);
+    if (notAdded.length > 0) Dialog.alert("Some machines were not added", notAdded.join("\n"));
     void Haptics.notificationAsync(
       outcome.ok
         ? Haptics.NotificationFeedbackType.Success
@@ -247,7 +259,9 @@ function PairingForm({
               )}
             >
               {pairingConnectionError ??
-                "For machines on your local network or tailnet. The machine keeps its own provider credentials."}
+                (morePairingUrls.length > 0
+                  ? `This code also adds ${morePairingUrls.map((url) => parsePairingUrl(url).host.replace(/^https?:\/\//, "")).join(", ")}.`
+                  : "For machines on your local network or tailnet. The machine keeps its own provider credentials.")}
             </Text>
           </View>
 

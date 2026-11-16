@@ -187,7 +187,13 @@ const store = (id: string, over: Partial<TessayaPrivateStore> = {}): TessayaPriv
 });
 
 /** A stand-in for the server's private stores: opens on PIN 24681357, keeps what was listed for an open store. */
-const makePrivate = (over: { hello?: HelloResult; noOwner?: boolean } = {}) => {
+const makePrivate = (
+  over: {
+    hello?: HelloResult;
+    noOwner?: boolean;
+    onOwnerStore?: () => Promise<string | null>;
+  } = {},
+) => {
   const open = new Set<string>();
   const calls: Array<[string, Record<string, unknown>]> = [];
   const locked = new Set<() => void>();
@@ -240,6 +246,7 @@ const makePrivate = (over: { hello?: HelloResult; noOwner?: boolean } = {}) => {
       { id: "kim", name: "Kim" },
     ],
     refresh: () => undefined,
+    ...(over.onOwnerStore === undefined ? {} : { onOwnerStore: over.onOwnerStore }),
     now: () => Date.parse("2026-01-01T00:01:30.000Z"),
   });
   return { tab, calls, hello, clip, lockAll: () => locked.forEach((f) => f()) };
@@ -325,6 +332,16 @@ describe("the People area", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("brings in what waited for his store the moment he makes it, and says what came", async () => {
+    const onOwnerStore = vi.fn(async () => "Freya's memories came in: 63 everyday, 17 private.");
+    const { tab } = makePrivate({ noOwner: true, onOwnerStore });
+    await tab.load();
+    tab.act("m.pv.setup", JSON.stringify({ pin: "24681357", again: "24681357" }));
+    await settle();
+    expect(onOwnerStore).toHaveBeenCalledOnce();
+    expect(JSON.stringify(tab.controls())).toContain("63 everyday, 17 private");
   });
 
   it("makes a person's store only for a voice Voice ID saved, named as Voice ID named them", async () => {

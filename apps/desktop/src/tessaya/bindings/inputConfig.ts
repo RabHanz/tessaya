@@ -23,6 +23,7 @@ const ACTION: Readonly<Record<string, BindableAction>> = {
 
 const trigger = (input: BindingInput): Trigger | null => {
   if (input.type === "key") return { kind: "key", accelerator: input.accelerator };
+  if (input.type === "remote") return null;
   switch (input.button) {
     case "middle":
       return { kind: "button", button: "middle" };

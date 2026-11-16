@@ -9,22 +9,31 @@ import {
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { DeviceOutputEntry } from "@t3tools/tessaya-contracts";
-import { OUTPUT_STATE_LINE, moveOutput, outputLabel } from "@t3tools/tessaya-shared/deviceView";
+import type { DeviceInputEntry, DeviceOutputEntry } from "@t3tools/tessaya-contracts";
+import {
+  OUTPUT_STATE_LINE,
+  moveOutput,
+  outputLabel,
+  privateCapLabel,
+} from "@t3tools/tessaya-shared/deviceView";
 import { ArrowDownIcon, ArrowUpIcon, GripVerticalIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 
-/** A Tessel's outputs, first choice first. Keyboard users reorder with the step buttons. */
-export function OutputOrderList(props: {
-  readonly outputs: ReadonlyArray<DeviceOutputEntry>;
+type Entry = DeviceOutputEntry | DeviceInputEntry;
+
+/** A Tessel's outputs or inputs, first choice first. Keyboard users reorder with the step buttons. */
+export function OutputOrderList<T extends Entry>(props: {
+  readonly outputs: ReadonlyArray<T>;
+  readonly label: string;
   readonly disabled: boolean;
   readonly onOrder: (order: ReadonlyArray<string>) => void;
-  /** Private replies may play on this output, or never. */
-  readonly onPrivate: (output: DeviceOutputEntry, on: boolean) => void;
+  /** Controls of its own beside the step buttons (an output's private-reply buttons). */
+  readonly renderExtra?: (entry: T) => ReactNode;
 }) {
-  const { outputs, disabled, onOrder, onPrivate } = props;
+  const { outputs, disabled, onOrder, renderExtra } = props;
   const ids = outputs.map((o) => o.id);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const move = (id: string, steps: number) => onOrder(moveOutput(outputs, id, steps));
@@ -44,7 +53,7 @@ export function OutputOrderList(props: {
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ol
-          aria-label="Outputs, first choice first"
+          aria-label={props.label}
           className="divide-y divide-border/60 rounded-lg border border-border/60"
         >
           {outputs.map((o, index) => (
@@ -55,7 +64,7 @@ export function OutputOrderList(props: {
               count={outputs.length}
               disabled={disabled}
               onMove={(steps) => move(o.id, steps)}
-              onPrivate={(on) => onPrivate(o, on)}
+              extra={renderExtra?.(o)}
             />
           ))}
         </ol>
@@ -64,17 +73,54 @@ export function OutputOrderList(props: {
   );
 }
 
-function OutputRow(props: {
+/** An output's private-reply switch and, when on, the level they play at there. */
+export function PrivateButtons(props: {
   readonly output: DeviceOutputEntry;
+  readonly disabled: boolean;
+  readonly onPrivate: (on: boolean) => void;
+  readonly onPrivateCap: () => void;
+}) {
+  const name = outputLabel(props.output);
+  const isPrivate = props.output.classes?.includes("private") === true;
+  return (
+    <>
+      <Button
+        type="button"
+        size="xs"
+        variant={isPrivate ? "secondary" : "ghost-muted"}
+        disabled={props.disabled}
+        aria-pressed={isPrivate}
+        aria-label={`Private replies on ${name}`}
+        onClick={() => props.onPrivate(!isPrivate)}
+      >
+        Private
+      </Button>
+      {isPrivate ? (
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost-muted"
+          disabled={props.disabled}
+          aria-label={`Private reply volume on ${name}: ${privateCapLabel(props.output)}`}
+          onClick={props.onPrivateCap}
+        >
+          {privateCapLabel(props.output)}
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
+function OutputRow(props: {
+  readonly output: Entry;
   readonly position: number;
   readonly count: number;
   readonly disabled: boolean;
   readonly onMove: (steps: number) => void;
-  readonly onPrivate: (on: boolean) => void;
+  readonly extra: ReactNode;
 }) {
   const name = outputLabel(props.output);
   const { state } = props.output;
-  const isPrivate = props.output.classes?.includes("private") === true;
   const { listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.output.id, disabled: props.disabled });
   return (
@@ -91,9 +137,9 @@ function OutputRow(props: {
         {name}
       </span>
       <span className="col-start-2 flex @min-[32rem]/settings-row:col-start-auto">
-        {state === "playing" ? (
+        {state === "playing" || state === "listening" ? (
           <span className="rounded-sm bg-success/12 px-1 text-2xs text-success-foreground">
-            {OUTPUT_STATE_LINE.playing}
+            {OUTPUT_STATE_LINE[state]}
           </span>
         ) : (
           <span className="text-2xs text-muted-foreground">{OUTPUT_STATE_LINE[state]}</span>
@@ -108,17 +154,7 @@ function OutputRow(props: {
         <GripVerticalIcon className="size-3.5" />
       </span>
       <span className="flex items-center gap-0.5">
-        <Button
-          type="button"
-          size="xs"
-          variant={isPrivate ? "secondary" : "ghost-muted"}
-          disabled={props.disabled}
-          aria-pressed={isPrivate}
-          aria-label={`Private replies on ${name}`}
-          onClick={() => props.onPrivate(!isPrivate)}
-        >
-          Private
-        </Button>
+        {props.extra}
         <Button
           type="button"
           size="icon-xs"

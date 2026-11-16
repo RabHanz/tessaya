@@ -39,6 +39,8 @@ export function resolvePendingHandoff(
       (run.startedAt !== null || (run.status === "starting" && run.contextHandoffId !== null)),
   )?.modelSelection;
   if (from === undefined || selection == null) return null;
+  // A live terminal session (Tessaya's `baton-live`) keeps its own context; sends stay on it (pinnedLiveSelection).
+  if (from.instanceId === "baton-live") return null;
   const source = providers.find((provider) => provider.instanceId === from.instanceId);
   const target = providers.find((provider) => provider.instanceId === selection.instanceId);
   const needsHandoff =

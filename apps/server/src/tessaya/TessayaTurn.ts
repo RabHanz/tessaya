@@ -159,16 +159,19 @@ export const turnIdentity = (
             : 0,
       };
 
-/** Only his own turns move her mood (EMOTION-SYSTEM §4): his verified voice or his device, said to her, never a replay. */
-export const movesMood = (turn: TurnEnvelope): boolean => {
+/**
+ * The member a turn shows and moves her relationship with (EMOTION-SYSTEM §4, Director 16 Nov): their verified voice or
+ * their own device, said to her, alone, never a replay. Null (a guest, an unsure voice, a shared room) is the general
+ * mood only: nobody's relationship is shown to anyone else.
+ */
+export const moodMember = (turn: TurnEnvelope): string | null => {
   const { member, assurance } = turnIdentity(turn);
-  return (
-    member === OWNER_MEMBER_ID &&
-    assurance >= 2 &&
+  return assurance >= 2 &&
     turn.rehearsal !== true &&
     turn.addressed !== false &&
     turn.sharedRoom !== true
-  );
+    ? member
+    : null;
 };
 
 /** The origin a turn's tool calls run under. */
@@ -187,9 +190,15 @@ export const originOf = (turn: TurnEnvelope) => ({
 export const NOT_HIS_VOICE_TO_FORGET =
   "I can forget that only when I know it's your voice. You can forget it in Memory on your desktop or phone.";
 
+/** How a guest reads in "who's here": the people graph names them only to the owner. */
+const GUEST_NAME = "a guest";
+
 /** One member she has lately heard, or whose devices are connected, and which of the two backs the guess. */
 export interface WhoIsHome {
+  /** A member id, or a guest's people-graph id. */
   readonly member: string;
+  /** Someone she heard who is no member: present, never named or followed here. */
+  readonly guest: boolean;
   readonly name: string;
   /** Last verified voice or own-device turn: where (the vessel, "Tessel", "desktop"), its id, and how long ago. */
   readonly heard: {
@@ -757,7 +766,7 @@ export const make = Effect.gen(function* () {
     yield* notePresence(turn);
     const preferences = yield* preferencesOf(member);
     const waiting = yield* waitingLine(turn, member, preferences.name ?? null);
-    const here = [yield* hereFor(turn, member), yield* moodFor(turn)]
+    const here = [yield* hereFor(turn, member), yield* moodFor(turn, person?.id ?? null)]
       .filter((l) => l !== "")
       .join(" ");
     const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
@@ -815,28 +824,35 @@ export const make = Effect.gen(function* () {
     const names: string[] = [];
     for (const p of (yield* presence.estimate()).members)
       if (p.confidence >= PRESENCE_BARS.around)
-        names.push((yield* memberName(p.member)) ?? p.member);
+        names.push(p.guest ? GUEST_NAME : ((yield* memberName(p.member)) ?? p.member));
     return hereLine(device, names);
   });
 
   /**
-   * Her mood for the owner's turn (CS6), read before his turn counts, so a return after hours is still in it; then the
-   * turn is heard. Everyone else gets nothing in words: they see only the face.
+   * Her mood for the turn (CS6): the identified person's relationship over the general mood (a member, else a guest the
+   * people graph knows by voice), read before their turn counts, so a return after hours is still in it; then the turn
+   * is heard. Anyone else gets the general mood, no why.
    */
-  const moodFor = Effect.fn("TessayaTurn.moodFor")(function* (turn: TurnEnvelope) {
+  const moodFor = Effect.fn("TessayaTurn.moodFor")(function* (
+    turn: TurnEnvelope,
+    person: string | null,
+  ) {
     const mood = yield* Effect.serviceOption(TessayaMood);
-    if (Option.isNone(mood) || !movesMood(turn)) return "";
+    if (Option.isNone(mood) || turn.rehearsal === true) return "";
+    const member = moodMember(turn) ?? (turn.addressed === false ? null : person);
     const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
-    // How he sounds moves her before this turn's line is read, so her answer already meets it.
+    const spoken = turn.vessel.kind === "device";
+    if (member === null) {
+      if (turn.addressed === false) return "";
+      return moodLine({ ...(yield* mood.value.view(turn.persona, zone)), why: [] }, spoken);
+    }
+    // How they sound moves her before this turn's line is read, so her answer already meets it.
     if (turn.emotion !== undefined)
-      yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion });
-    // Judged beside her reply, not before it: the cheap model's second would be his wait. Her face and next turn see it.
-    yield* mood.value.hisWords(turn.persona, turn.text).pipe(Effect.forkDetach);
-    const line = moodLine(
-      yield* mood.value.view(turn.persona, zone),
-      turn.vessel.kind === "device",
-    );
-    yield* mood.value.heard(turn.persona, zone);
+      yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion }, member);
+    // Judged beside her reply, not before it: the cheap model's second would be their wait. Her face and next turn see it.
+    yield* mood.value.hisWords(turn.persona, turn.text, member).pipe(Effect.forkDetach);
+    const line = moodLine(yield* mood.value.view(turn.persona, zone, member), spoken);
+    yield* mood.value.heard(turn.persona, zone, member);
     return line;
   });
 
@@ -988,15 +1004,19 @@ export const make = Effect.gen(function* () {
       const d = devices.get(p.member);
       const heard = p.evidence.find((e) => e.source === "voice" || e.source === "typed");
       const reasons: Array<string> = [];
-      for (const e of p.evidence)
-        reasons.push(presenceReason(e, e.vessel === null ? null : yield* vesselName(e.vessel)));
+      for (const e of p.evidence) {
+        const reason = presenceReason(e, e.vessel === null ? null : yield* vesselName(e.vessel));
+        reasons.push(p.guest ? reason.replace(/\byour\b/, "their") : reason);
+      }
       out.push({
         member: p.member,
-        name:
-          (yield* preferencesOf(p.member)).name ??
-          d?.name ??
-          (yield* memberName(p.member)) ??
-          p.member,
+        guest: p.guest,
+        name: p.guest
+          ? GUEST_NAME
+          : ((yield* preferencesOf(p.member)).name ??
+            d?.name ??
+            (yield* memberName(p.member)) ??
+            p.member),
         heard:
           heard === undefined || heard.vessel === null
             ? null
@@ -1068,10 +1088,10 @@ export const make = Effect.gen(function* () {
     const learned = yield* Option.isNone(pools)
       ? learn
       : pools.value.run("learn", { vessel: turn.vessel.id, class: "background" }, learn);
-    // A correction the learning loop kept is his, model-judged, so it moves the persona that was corrected (CS6).
+    // A correction the learning loop kept is theirs, model-judged: it moves their relationship (CS6).
     const mood = yield* Effect.serviceOption(TessayaMood);
-    if ((learned.corrections ?? 0) > 0 && Option.isSome(mood) && movesMood(turn))
-      yield* mood.value.note(turn.persona, { kind: "correction" });
+    if ((learned.corrections ?? 0) > 0 && Option.isSome(mood) && moodMember(turn) !== null)
+      yield* mood.value.note(turn.persona, { kind: "correction" }, moodMember(turn));
     return learned;
   });
 

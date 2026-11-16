@@ -14,6 +14,7 @@ import type {
 import type { Assurance, PrincipalRole } from "@t3tools/tessaya-shared/household";
 import { mentions, OWNER_END } from "@t3tools/tessaya-shared/memoryEntities";
 import { type PersonStatus, type PersonView, turnLineFor } from "@t3tools/tessaya-shared/people";
+import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import { cosine, unitOrNull } from "@t3tools/tessaya-voice/speaker";
 import { vectorFromBase64, vectorToBase64 } from "@t3tools/tessaya-voice/speakerStore";
 import * as Clock from "effect/Clock";
@@ -34,6 +35,7 @@ import {
   suggestionsFor,
   VOICE_RULES,
 } from "./peopleGraph.ts";
+import { peopleHere, TessayaPresence } from "./TessayaPresence.ts";
 
 type Result = TessayaHouseholdCallResult;
 type PeopleOp = Extract<TessayaHouseholdCallInput, { op: `people${string}` }>;
@@ -45,8 +47,6 @@ export interface PeopleCaller {
 }
 
 const DAY_MS = 86_400_000;
-/** A voice heard this recently on a vessel is "the voice just heard" there ("I'm Ali", "forget me", "who was that?"). */
-const LAST_VOICE_MS = 3 * 60_000;
 /** She is told to ask a new voice's name in its first ten minutes, then not again for half a day. */
 const ASK_WINDOW_MS = 10 * 60_000;
 const ASK_AGAIN_MS = 12 * 60 * 60_000;
@@ -114,17 +114,29 @@ export class TessayaPeople extends Context.Service<
     readonly call: (input: PeopleOp, caller: PeopleCaller) => Effect.Effect<Result>;
     /** Deletes voices and what they said whose keep date passed; how many people it forgot. */
     readonly sweep: Effect.Effect<number>;
-    /** The person whose voice was just heard on this vessel (MA-021's key for someone with no member id), or null. */
-    readonly voiceOn: (vessel: string) => Effect.Effect<string | null>;
     /** Her impression of a person (MA-021), shown to the owner in People and given only in that person's own turns. */
     readonly setImpression: (id: string, text: string | null) => Effect.Effect<void>;
+    /** Named guests heard on a vessel: when last, and how often in all (the pulse's "gone quiet" pattern, M-027). */
+    readonly lastHeard: Effect.Effect<
+      ReadonlyArray<{
+        readonly id: string;
+        readonly name: string;
+        readonly lastAt: number;
+        readonly seen: number;
+      }>
+    >;
   }
 >()("t3/tessaya/TessayaPeople") {}
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const lastVoice = new Map<string, { readonly id: string; readonly at: number }>();
   const now = Clock.currentTimeMillis;
+  const forgetPresence = (id: string, into?: string) =>
+    Effect.serviceOption(TessayaPresence).pipe(
+      Effect.flatMap(
+        Option.match({ onNone: () => Effect.void, onSome: (p) => p.forget(id, into) }),
+      ),
+    );
 
   const row = (id: string) =>
     sql<Row>`SELECT * FROM fabric_memory_entities WHERE id = ${id} AND forgotten_json IS NULL`.pipe(
@@ -247,7 +259,7 @@ export const make = Effect.gen(function* () {
     yield* sql`
       DELETE FROM fabric_memory_edges WHERE item_id = '' AND (from_id = ${r.id} OR to_id = ${r.id})
     `;
-    for (const [vessel, v] of lastVoice) if (v.id === r.id) lastVoice.delete(vessel);
+    yield* forgetPresence(r.id);
     const kept = yield* sql<{ n: number }>`
       SELECT (SELECT count(*) FROM fabric_memory_links WHERE entity_id = ${r.id})
            + (SELECT count(*) FROM fabric_memory_edges WHERE from_id = ${r.id} OR to_id = ${r.id}) AS n
@@ -308,7 +320,7 @@ export const make = Effect.gen(function* () {
         name = ${`~${r.id}`}
       WHERE id = ${r.id}
     `.pipe(Effect.orDie);
-    for (const [vessel, v] of lastVoice) if (v.id === r.id) lastVoice.delete(vessel);
+    yield* forgetPresence(r.id);
     return `${yield* binDays} days`;
   });
 
@@ -385,15 +397,14 @@ export const make = Effect.gen(function* () {
     `;
     yield* sql`DELETE FROM fabric_memory_links WHERE entity_id = ${from.id}`;
     yield* sql`DELETE FROM fabric_memory_entities WHERE id = ${from.id}`;
-    for (const [vessel, v] of lastVoice)
-      if (v.id === from.id) lastVoice.set(vessel, { ...v, id: to.id });
+    yield* forgetPresence(from.id, to.id);
   }, Effect.orDie);
 
-  /** The voice just heard on a vessel, when it was heard lately and is still known. */
+  /** The guest just heard on a vessel, from presence, while they are still known. */
   const justHeard = Effect.fn("TessayaPeople.justHeard")(function* (vessel: string | undefined) {
-    const v = vessel === undefined ? undefined : lastVoice.get(vessel);
-    if (v === undefined || (yield* now) - v.at > LAST_VOICE_MS) return null;
-    return yield* row(v.id);
+    if (vessel === undefined) return null;
+    const guest = (yield* peopleHere(vessel, PRESENCE_BARS.present)).find((p) => p.guest);
+    return guest === undefined ? null : yield* row(guest.member);
   });
 
   const target = Effect.fn("TessayaPeople.target")(function* (
@@ -461,8 +472,18 @@ export const make = Effect.gen(function* () {
           ${vectorToBase64(vector)}, 1, ${iso(at)}, ${iso(at)}, ${yield* unnamedUntil(at)})
       `.pipe(Effect.orDie);
     }
-    lastVoice.set(input.vessel, { id, at });
     const r = (yield* row(id))!;
+    // A guest is present like anyone (B-043): the gate, her face and "the one I just heard" read it there.
+    if (r.status !== "not_person")
+      yield* Effect.serviceOption(TessayaPresence).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.void,
+            onSome: (p) =>
+              p.note({ member: id, guest: true, source: "voice", vessel: input.vessel, at }),
+          }),
+        ),
+      );
     // Read before this turn is kept: "last time" is the time before.
     const view = yield* viewOf(r);
     if (r.status !== "not_person")
@@ -986,9 +1007,17 @@ export const make = Effect.gen(function* () {
   return TessayaPeople.of({
     call,
     sweep,
-    voiceOn: Effect.fn("TessayaPeople.voiceOn")(function* (vessel: string) {
-      return (yield* justHeard(vessel))?.id ?? null;
-    }),
+    lastHeard: sql<{ id: string; name: string; last_at: string; seen: number }>`
+      SELECT e.id, e.name, MAX(s.at) AS last_at, COUNT(*) AS seen
+      FROM fabric_memory_entities e JOIN fabric_memory_sightings s ON s.entity_id = e.id
+      WHERE e.status = 'guest' GROUP BY e.id
+    `.pipe(
+      Effect.map((rows) =>
+        rows.map((r) => ({ id: r.id, name: r.name, lastAt: Date.parse(r.last_at), seen: r.seen })),
+      ),
+      Effect.orDie,
+      Effect.withSpan("TessayaPeople.lastHeard"),
+    ),
     setImpression: Effect.fn("TessayaPeople.setImpression")(function* (
       id: string,
       text: string | null,

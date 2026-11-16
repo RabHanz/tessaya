@@ -104,6 +104,10 @@ import {
 import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
 import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
 import { installAppUpdateChecks } from "./features/updates/app-updates";
+import {
+  TessayaLaunchSting,
+  markTessayaLaunchReady,
+} from "./features/tessaya/launch/TessayaLaunchSting";
 
 import "../global.css";
 
@@ -248,6 +252,7 @@ function SplashScreenCoordinator() {
     hidden.current = true;
     settleLaunchSplashHomeRows();
     void SplashScreen.hide();
+    markTessayaLaunchReady();
   }, [isReady, shellCachesRead, homeRowsPending, waitEnded]);
 
   return null;
@@ -304,6 +309,7 @@ function AppContent() {
           </SafeAreaProvider>
         </KeyboardProvider>
       </GestureHandlerRootView>
+      <TessayaLaunchSting />
     </>
   );
 }

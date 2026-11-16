@@ -47,6 +47,7 @@ import {
   btKindNoun,
   displaySupported,
   outputLabels,
+  nextPrivateCap,
   privateClasses,
   scanLine,
   tesselHosts,
@@ -85,7 +86,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { BodiesSection } from "./BodiesSection";
 import { DeviceUtilitySection } from "./DeviceUtilitySection";
-import { OutputOrderList } from "./OutputOrderList";
+import { OutputOrderList, PrivateButtons } from "./OutputOrderList";
 import { R1SetupSection } from "./R1SetupSection";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -1135,16 +1136,32 @@ function SpeakerSection({
           <div className="pt-2">
             <OutputOrderList
               outputs={s.outputs}
+              label="Outputs, first choice first"
               disabled={off}
               onOrder={(order) => void run("act", "speaker", { id, action: "order", order })}
-              onPrivate={(o, on) =>
-                void run("act", "speaker", {
-                  id,
-                  action: "classes",
-                  target: o.id,
-                  classes: privateClasses(o, on),
-                })
-              }
+              renderExtra={(o) => (
+                <PrivateButtons
+                  output={o}
+                  disabled={off}
+                  onPrivate={(on) =>
+                    void run("act", "speaker", {
+                      id,
+                      action: "classes",
+                      target: o.id,
+                      classes: privateClasses(o, on),
+                    })
+                  }
+                  onPrivateCap={() =>
+                    void run("act", "speaker", {
+                      id,
+                      action: "classes",
+                      target: o.id,
+                      classes: privateClasses(o, true),
+                      privateCap: nextPrivateCap(o),
+                    })
+                  }
+                />
+              )}
             />
           </div>
         </SettingsRow>
@@ -1170,6 +1187,21 @@ function SpeakerSection({
             </Select>
           }
         />
+      )}
+      {s.inputs === undefined ? null : (
+        <SettingsRow
+          title="Listens through"
+          description="The first one that can hear now, in this order. Drag to change it."
+        >
+          <div className="pt-2">
+            <OutputOrderList
+              outputs={s.inputs}
+              label="Mics, first choice first"
+              disabled={off}
+              onOrder={(order) => void run("act", "speaker", { id, action: "inputs", order })}
+            />
+          </div>
+        </SettingsRow>
       )}
       <SettingsRow
         title="Pair a device"

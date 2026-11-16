@@ -26,6 +26,7 @@ import {
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  BATON_PHONE_PAIRING_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -73,7 +74,7 @@ import { liveSwitchRefusal } from "@t3tools/tessaya-shared/accounts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { TessayaEngine } from "./TessayaEngine.ts";
-import { BrainUsage, brainUsageReport } from "./BrainUsage.ts";
+import { BrainUsage, brainUsageReport, recordDesktopUsage } from "./BrainUsage.ts";
 import { personasList } from "./OperatingSystemPack.ts";
 import { changePersona } from "./PersonaChanges.ts";
 import { PromptLab } from "./PromptLab.ts";
@@ -101,6 +102,7 @@ import * as JobFlow from "./TessayaJobFlow.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
+import * as PhonePairing from "./PhonePairing.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { TessayaSessionsAcross } from "./TessayaSessionsAcross.ts";
 import { TessayaIntentService } from "./IntentService.ts";
@@ -667,6 +669,7 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_DEVICES_WS_METHODS.call]: (input) => run(serveDevicesCall(input, devicesActorOf(input))),
     [BATON_VOICE_WS_METHODS.call]: (input) => run(serveVoiceCall(input)),
     [BATON_LEARN_WS_METHODS.call]: (input) => run(serveLearnCall(input)),
+    [BATON_PHONE_PAIRING_WS_METHODS.issue]: () => run(PhonePairing.issue()),
     [BATON_PHONE_WS_METHODS.call]: (input) => run(phoneCall(input)),
     [BATON_RECORD_WS_METHODS.list]: (input) =>
       run(
@@ -675,6 +678,7 @@ export const makeHandlers = Effect.gen(function* () {
         ),
       ),
     [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input)),
+    [BATON_BRAIN_WS_METHODS.record]: (input) => run(recordDesktopUsage(input)),
     [BATON_PERSONAS_WS_METHODS.list]: () => run(personasList),
     [BATON_PERSONAS_WS_METHODS.change]: (input) => run(changePersona(input, { owner: true })),
     [BATON_PROMPT_LAB_WS_METHODS.call]: (input) =>
@@ -694,6 +698,12 @@ export const makeHandlers = Effect.gen(function* () {
             // shortcut: the wire has no "refused" reason yet; the server log names the role and why.
             BrainRefused: () => Effect.fail(new DictationCleanupError({ reason: "unreachable" })),
           }),
+        ),
+      ),
+    [BATON_DICTATION_WS_METHODS.cleanupUsage]: (input) =>
+      run(
+        Effect.flatMap(DictationCleanupApi, (api) => api.subscriptionUsed(input)).pipe(
+          Effect.as({}),
         ),
       ),
     [BATON_DICTATION_WS_METHODS.cleanupApiStatus]: () =>

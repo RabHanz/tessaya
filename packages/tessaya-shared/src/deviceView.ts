@@ -4,10 +4,12 @@
  * still sketch of each of the R1's nine moods (SVG paths, so both clients draw the same eyes). Pure.
  */
 import {
+  OWN_MIC,
   OWN_SPEAKER,
   R1_DEVICE_DOS,
   R1_KEY_SLOTS,
   type BtKind,
+  type DeviceInputEntry,
   type DeviceOutputEntry,
   type OutputClass,
   type DeviceSpeaker,
@@ -77,9 +79,9 @@ export const outputLabels = (s: DeviceSpeaker) => {
   } as const;
 };
 
-/** One output's place in his order moved by `steps` (negative is up), as the ids the server takes. */
+/** One output's (or input's) place in his order moved by `steps` (negative is up), as the ids the server takes. */
 export const moveOutput = (
-  outputs: ReadonlyArray<DeviceOutputEntry>,
+  outputs: ReadonlyArray<{ readonly id: string }>,
   id: string,
   steps: number,
 ): Array<string> => {
@@ -98,11 +100,23 @@ export const privateClasses = (o: DeviceOutputEntry, on: boolean): Array<OutputC
   return on ? ["private", ...rest] : rest;
 };
 
-export const outputLabel = (o: DeviceOutputEntry): string =>
-  o.id === OWN_SPEAKER ? o.name : btDeviceLabel(o);
+/** The private-reply level steps a tap walks through, usual (null) first; voice sets any level. */
+const PRIVATE_CAP_STEPS = [null, 60, 40, 20] as const;
+export const nextPrivateCap = (o: DeviceOutputEntry): number | null => {
+  const at = PRIVATE_CAP_STEPS.findIndex((c) => c === (o.privateCap ?? null));
+  return PRIVATE_CAP_STEPS[(at + 1) % PRIVATE_CAP_STEPS.length] ?? null;
+};
+export const privateCapLabel = (o: DeviceOutputEntry): string =>
+  o.privateCap === undefined ? "Usual volume" : `${o.privateCap}% max`;
 
-export const OUTPUT_STATE_LINE: Readonly<Record<DeviceOutputEntry["state"], string>> = {
+export const outputLabel = (o: DeviceOutputEntry | DeviceInputEntry): string =>
+  o.id === OWN_SPEAKER || o.id === OWN_MIC ? o.name : btDeviceLabel(o);
+
+export const OUTPUT_STATE_LINE: Readonly<
+  Record<DeviceOutputEntry["state"] | DeviceInputEntry["state"], string>
+> = {
   playing: "Playing",
+  listening: "Listening",
   ready: "Connected",
   paired: "Not connected",
   stalled: "Skipped: it stalled",

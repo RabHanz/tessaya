@@ -7,7 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { SpeakerProfile } from "./speaker.ts";
+import type { SpeakerProfile, VoiceInput } from "./speaker.ts";
 
 interface Stored extends Omit<SpeakerProfile, "centroid" | "base"> {
   readonly centroid: string;
@@ -96,10 +96,12 @@ const isStored = (value: unknown): value is Stored => {
   );
 };
 
-export const speakersPath = (stateDir: string) => NodePath.join(stateDir, "voice", "speakers.json");
+/** Profiles are kept per input: speakers.json for her own mic, speakers-<input>.json for another. */
+export const speakersPath = (stateDir: string, input: VoiceInput = "mic") =>
+  NodePath.join(stateDir, "voice", input === "mic" ? "speakers.json" : `speakers-${input}.json`);
 
-export const createSpeakerStore = (stateDir: string) => {
-  const file = speakersPath(stateDir);
+export const createSpeakerStore = (stateDir: string, input: VoiceInput = "mic") => {
+  const file = speakersPath(stateDir, input);
   const read = (): ReadonlyArray<SpeakerProfile> => {
     let text: string;
     try {

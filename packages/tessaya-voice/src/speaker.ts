@@ -23,6 +23,15 @@ export interface SpeakerProfile {
   readonly base?: Float32Array;
 }
 
+/** Which mic a turn came through (upformat v1 flags bit4 is the headset's): a voice sounds different on each. */
+export type VoiceInput = "mic" | "headset";
+
+/** The profiles to judge a turn on this input by: each person's own for it, else the one enrolled on her mic. */
+export const profilesFor = (
+  own: ReadonlyArray<SpeakerProfile>,
+  mic: ReadonlyArray<SpeakerProfile>,
+): ReadonlyArray<SpeakerProfile> => [...own, ...mic.filter((p) => !own.some((o) => o.id === p.id))];
+
 /** What the verdict is for: each use has its own cut-off, because a wrong "yes" costs more for some. */
 export type SpeakerUse = "listen" | "steer" | "act";
 
@@ -60,7 +69,7 @@ export type SpeakerVerdict =
   | { readonly kind: "guest"; readonly best: number }
   | {
       readonly kind: "unverified";
-      readonly why: "no-model" | "no-profile" | "too-short" | "failed";
+      readonly why: "no-model" | "no-profile" | "stale-profile" | "too-short" | "failed";
     };
 
 /** NaN when the lengths differ or either is empty or zero: a score that cannot be trusted is never a number. */
@@ -108,7 +117,11 @@ export const decideSpeaker = (input: {
   if (policy === null || input.model !== policy.model)
     return { kind: "unverified", why: "no-model" };
   const mine = input.profiles.filter((p) => p.model === policy.model);
-  if (!mine.some((p) => p.kind === "owner")) return { kind: "unverified", why: "no-profile" };
+  // His profile from another model only means this one is not enrolled yet: closed, never "no Voice ID here".
+  if (!mine.some((p) => p.kind === "owner"))
+    return input.profiles.some((p) => p.kind === "owner")
+      ? { kind: "unverified", why: "stale-profile" }
+      : { kind: "unverified", why: "no-profile" };
   if (input.clips.length === 0) return { kind: "unverified", why: "failed" };
   const long = input.clips.filter((c) => c.ms >= policy.minSpeechMs);
   if (long.length === 0) return { kind: "unverified", why: "too-short" };
@@ -188,6 +201,8 @@ export interface SpeakerIdentity {
   readonly own?: { readonly score: number; readonly ms: number };
   /** His by his session's evidence, not this turn's own score: his path, never an owner-only act (`verified` false). */
   readonly lifted?: true;
+  /** `verified` by his session (three turns averaged, or a hold), not this turn's own clips: never opens anything private. */
+  readonly session?: true;
   /**
    * A guest's own embedding (base64 float32) for her server's people graph, so she knows them next time
    * (HOUSEHOLD-DESIGN §11). Numbers, never audio; only on a clip long enough to file.
@@ -276,7 +291,11 @@ export const holdVoice = (
     const verified = identity.verified || averaged || held;
     return {
       hold: { verifiedAt: verified ? now : hold.verifiedAt, scores, evidence },
-      identity: { ...identity, verified },
+      identity: {
+        ...identity,
+        verified,
+        ...(verified && !identity.verified ? { session: true as const } : {}),
+      },
     };
   }
   if (own === null) {

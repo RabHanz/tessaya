@@ -143,8 +143,6 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "intro.phone.title": "Phone",
     "intro.phone.text":
       "The Tessaya app on your phone reaches this computer: dictation, live sessions and your devices, away from the desk.",
-    "phone.pair": "Pair a phone",
-    "phone.pair.text": "Show a code to scan with the phone app. It opens Sharing & access in T3.",
     "embed.missing": "This page needs T3's local server, which is not running yet.",
     "embed.open": "Open in T3 sessions",
     "search.t3": "In T3 sessions",
@@ -377,6 +375,8 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "pv.setup.pin": "Choose your PIN",
     "pv.again": "The same PIN again",
     "pv.setup.button": "Make my private store",
+    "pv.imported":
+      "Freya's memories came in: {general} everyday, {private} private. {waiting} wait for your yes below (Keep or Forget), or ask her what is waiting.",
     "pv.add.title": "Add a person",
     "pv.add.name": "Their name (Voice ID's, if left empty)",
     "pv.add.profile": "Whose voice",

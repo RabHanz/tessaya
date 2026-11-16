@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -48,5 +49,24 @@ it.effect("falls back to the hostname when hostnamectl never answers", () =>
     );
     yield* TestClock.adjust("5 seconds");
     assert.equal(yield* Fiber.join(label), "devbox");
+  }),
+);
+
+it.effect("uses TESSAYA_SERVER_LABEL before the machine's names", () =>
+  Effect.gen(function* () {
+    const label = yield* resolveServerEnvironmentLabel({ cwdBaseName: "project" }).pipe(
+      Effect.provideService(HostProcess.Platform, "linux"),
+      Effect.provideService(HostProcess.Hostname, "devbox"),
+      Effect.provide(
+        Layer.mergeAll(
+          FileSystem.layerNoop({ exists: () => Effect.succeed(false) }),
+          ProcessRunner.layer.pipe(
+            Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, neverExits)),
+          ),
+          ConfigProvider.layer(ConfigProvider.fromUnknown({ TESSAYA_SERVER_LABEL: " Tessaya " })),
+        ),
+      ),
+    );
+    assert.equal(label, "Tessaya");
   }),
 );

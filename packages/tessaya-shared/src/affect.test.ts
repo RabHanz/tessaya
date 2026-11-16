@@ -4,7 +4,13 @@ import {
   DEFAULT_AFFECT_SETTINGS,
   affectView,
   appraise,
+  appraiseFor,
   decay,
+  deviceOwnerOf,
+  faceMemberAt,
+  personaAffectOf,
+  personaView,
+  type PersonaAffect,
   freshAffect,
   guiltOf,
   moodLine,
@@ -12,6 +18,7 @@ import {
   type AffectEvent,
   type AffectState,
 } from "./affect.ts";
+import { fusePresence, type PresenceSignal } from "./presence.ts";
 
 const H = 3_600_000;
 const day = { now: 0, hour: 12, guilt: "light" as const, settings: DEFAULT_AFFECT_SETTINGS };
@@ -97,7 +104,7 @@ describe("affect", () => {
     // The face shows a short hurt, then the low mood under it; she can say why.
     expect(affectView(hurt, "companion", day).label).toBe("hurt");
     expect(affectView(hurt, "companion", later).label).toBe("sad");
-    expect(affectView(hurt, "companion", later).why).toEqual(["he was rude to her"]);
+    expect(affectView(hurt, "companion", later).why).toEqual(["they were rude to her"]);
     expect(affectView(run([{ kind: "rude" }, { kind: "apology" }]), "companion", day).label).toBe(
       "happy",
     );
@@ -124,7 +131,11 @@ describe("affect", () => {
     expect(
       affectView(run([fail], run([fail, fail]), 2 * H), "executive", { ...day, now: 2 * H }).label,
     ).toBe("determined");
-    expect(label([{ kind: "his_voice", emotion: "sad" }])).toBe("concerned");
+    // "sad" alone is weak (8% of his ordinary turns on the MA-022 bench): concern needs a second signal.
+    expect(label([{ kind: "his_voice", emotion: "sad" }])).not.toBe("concerned");
+    expect(label([{ kind: "his_voice", emotion: "fearful" }])).not.toBe("concerned");
+    expect(label([{ kind: "his_voice", emotion: "sad", confirmed: true }])).toBe("concerned");
+    expect(label([{ kind: "his_voice", emotion: "angry" }])).toBe("steady");
     expect(label([{ kind: "rude" }, { kind: "apology" }])).not.toBe("hurt");
     const why = affectView(run([fail, fail]), "executive", day);
     expect(why.intensity).toBeGreaterThanOrEqual(0.7);
@@ -187,5 +198,117 @@ describe("affect", () => {
     );
     expect(away).toContain("away 9 h");
     expect(away.length).toBeLessThan(400);
+  });
+});
+
+describe("relationships", () => {
+  const none: PersonaAffect = { general: freshAffect(0), people: {} };
+  const feed = (
+    events: ReadonlyArray<readonly [AffectEvent, string | null]>,
+    p: PersonaAffect = none,
+  ) => events.reduce((acc, [e, who]) => appraiseFor(acc, e, 0, 0.15, who).state, p);
+
+  it("blends the identified person's relationship over the general mood, and shows no one's to anyone else", () => {
+    const p = feed([
+      [{ kind: "rude" }, "sara"],
+      [{ kind: "job", ok: false }, null],
+    ]);
+    // Sara sees her hurt over the world's; the owner and an unknown voice see only the world's.
+    expect(personaView(p, "companion", later, "sara").why).toEqual([
+      "they were rude to her",
+      "a job failed",
+    ]);
+    for (const other of ["owner", null]) {
+      const v = personaView(p, "companion", later, other);
+      expect(v.label).toBe("determined");
+      expect(v.why).toEqual(["a job failed"]);
+    }
+    expect(personaView(feed([[{ kind: "rude" }, "sara"]]), "companion", later, "sara").label).toBe(
+      "sad",
+    );
+  });
+
+  it("a personal event with nobody identified moves nothing; the world moves the general mood", () => {
+    expect(feed([[{ kind: "praise" }, null]])).toEqual(none);
+    expect(feed([[{ kind: "job", ok: true }, "sara"]]).people).toEqual({});
+  });
+
+  it("misses each person on their own clock, and decays each relationship on its own", () => {
+    const p = feed([
+      [{ kind: "his_turn", day: "d1" }, "owner"],
+      [{ kind: "his_turn", day: "d1" }, "sara"],
+    ]);
+    const back = appraiseFor(p, { kind: "his_turn", day: "d1" }, 9 * H, 0.15, "owner").state;
+    const at9 = { ...day, now: 9 * H };
+    expect(personaView(back, "executive", at9, "owner").awayHours).toBeNull();
+    expect(personaView(back, "executive", at9, "sara")).toMatchObject({
+      label: "lonely",
+      awayHours: 9,
+    });
+    // The general mood misses no one.
+    expect(personaView(back, "executive", at9, null).label).toBe("neutral");
+    // Sara's hurt fades on its own clock; the owner's praise is untouched by it.
+    const mixed = feed([
+      [{ kind: "rude" }, "sara"],
+      [{ kind: "praise" }, "owner"],
+    ]);
+    expect(personaView(mixed, "companion", later, "sara").label).toBe("sad");
+    expect(personaView(mixed, "companion", { ...later, now: 6 * H }, "sara").label).toBe("neutral");
+    expect(personaView(mixed, "companion", later, "owner").label).toBe("happy");
+  });
+
+  it("reads a row from before relationships as the owner's", () => {
+    const legacy = run([{ kind: "rude" }]);
+    const p = personaAffectOf(JSON.parse(JSON.stringify(legacy)), 0, "owner");
+    expect(p.general).toEqual(freshAffect(0));
+    expect(personaView(p, "companion", later, "owner").label).toBe("sad");
+    expect(personaAffectOf(p, 0, "owner")).toEqual(p);
+  });
+
+  it("an owned device shows its owner's only when nobody else is identified there", () => {
+    const desk = deviceOwnerOf({ via: "client", member: "sara" }, undefined, "owner");
+    expect(desk).toEqual({ owner: "sara", show: true });
+    expect(deviceOwnerOf({ via: "client" }, undefined, "owner").owner).toBe("owner");
+    // A room vessel is no one's until tied, and shows it only when turned on.
+    expect(deviceOwnerOf({ via: "mqtt" }, undefined, "owner")).toEqual({
+      owner: null,
+      show: false,
+    });
+    expect(deviceOwnerOf({ via: "mqtt" }, { owner: "sara" }, "owner")).toEqual({
+      owner: "sara",
+      show: false,
+    });
+    expect(deviceOwnerOf({ via: "client" }, { show: false }, "owner").show).toBe(false);
+    const now = 2 * H;
+    const at = (signals: ReadonlyArray<Omit<PresenceSignal, "at"> & { minutesAgo: number }>) =>
+      faceMemberAt({
+        ...desk,
+        vessels: ["desk"],
+        estimate: fusePresence(
+          signals.map((s) => ({ ...s, at: now - s.minutesAgo * 60_000 })),
+          now,
+        ),
+      });
+    const voice = (member: string | null, minutesAgo = 1) => ({
+      member,
+      source: "voice",
+      vessel: "desk",
+      minutesAgo,
+    });
+    expect(at([])).toBe("sara");
+    expect(at([voice("owner")])).toBe("owner");
+    // A guest (or anyone she can't name) there, or two people: nobody's.
+    expect(at([voice(null)])).toBeNull();
+    expect(at([voice("owner"), voice("sara")])).toBeNull();
+    // Once they have gone quiet a while, its owner's again.
+    expect(at([voice(null, 90)])).toBe("sara");
+    expect(
+      faceMemberAt({
+        owner: "sara",
+        show: false,
+        vessels: ["desk"],
+        estimate: fusePresence([], now),
+      }),
+    ).toBeNull();
   });
 });

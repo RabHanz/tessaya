@@ -34,6 +34,8 @@ import {
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  BATON_PHONE_PAIRING_WS_METHODS,
+  AuthStandardClientScopes,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -111,6 +113,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_WATCH_WS_METHODS.watchGet]: AuthOrchestrationReadScope,
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_BRAIN_WS_METHODS.usage]: AuthOrchestrationReadScope,
+  // A row says what his plan spent: the desktop app's own session only.
+  [BATON_BRAIN_WS_METHODS.record]: [AuthOrchestrationOperateScope, AuthTessayaHandsHostScope],
   [BATON_PERSONAS_WS_METHODS.list]: AuthOrchestrationReadScope,
   // His roster: settings:write, which only the owner and admins hold.
   [BATON_PERSONAS_WS_METHODS.change]: AuthSettingsWriteScope,
@@ -124,6 +128,11 @@ export const BATON_RPC_REQUIRED_SCOPES = {
     AuthTessayaHandsHostScope,
   ],
   [BATON_DICTATION_WS_METHODS.cleanupApiStatus]: AuthOrchestrationReadScope,
+  // Usage rows for a clean-up his plan answered: the desktop app's own session only, as for the key.
+  [BATON_DICTATION_WS_METHODS.cleanupUsage]: [
+    AuthOrchestrationOperateScope,
+    AuthTessayaHandsHostScope,
+  ],
   // The desktop app's own session reads, changes and syncs its settings; an agent reaches them through /mcp's gate.
   [BATON_DESKTOP_SETTINGS_WS_METHODS.get]: [AuthOrchestrationReadScope, AuthTessayaHandsHostScope],
   [BATON_DESKTOP_SETTINGS_WS_METHODS.set]: [
@@ -186,6 +195,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_VOICE_WS_METHODS.call]: AuthOrchestrationReadScope,
   // Which tips he has seen: reading and marking them changes nothing but the tips.
   [BATON_LEARN_WS_METHODS.call]: AuthOrchestrationReadScope,
+  // It mints a standard client's pairing code, so the caller must hold every scope that code delegates, as upstream's.
+  [BATON_PHONE_PAIRING_WS_METHODS.issue]: AuthStandardClientScopes,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   [BATON_CONSENT_WS_METHODS.list]: AuthOrchestrationReadScope,
@@ -297,6 +308,7 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_RECORD_WS_METHODS.append,
   BATON_DICTATION_WS_METHODS.cleanupApi,
   BATON_DICTATION_WS_METHODS.cleanupApiStatus,
+  BATON_DICTATION_WS_METHODS.cleanupUsage,
   BATON_DESKTOP_SETTINGS_WS_METHODS.sync,
   BATON_COMMITMENT_WS_METHODS.list,
   BATON_COMMITMENT_WS_METHODS.upsert,

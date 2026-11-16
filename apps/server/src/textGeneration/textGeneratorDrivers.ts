@@ -1,6 +1,9 @@
 import type { TextGeneratorKind, TextGeneratorModel } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
+
+import { apiTokens } from "../tessaya/BrainUsage.ts";
 import {
   FetchHttpClient,
   HttpClient,
@@ -130,10 +133,26 @@ const ChatCompletion = Schema.Struct({
       message: Schema.Struct({ content: Schema.NullOr(Schema.String) }),
     }),
   ),
+  usage: Schema.optional(Schema.NullOr(Schema.Unknown)),
 });
 const OpenAIModelList = Schema.Struct({
   data: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.optional(Schema.String) })),
 });
+
+/** An OpenAI-style `usage`, whose prompt tokens count the cached part. */
+const chatTokens = (usage: unknown): ReadonlyArray<TextGenerationOperations.Tokens> => {
+  if (typeof usage !== "object" || usage === null) return [];
+  const u = usage as {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
+  };
+  return TextGenerationOperations.acpTokens({
+    inputTokens: u.prompt_tokens ?? 0,
+    cachedReadTokens: u.prompt_tokens_details?.cached_tokens,
+    outputTokens: u.completion_tokens ?? 0,
+  });
+};
 
 const openAICompatible: TextGeneratorDriver = {
   kind: "openaiCompatible",
@@ -144,6 +163,9 @@ const openAICompatible: TextGeneratorDriver = {
     );
     if (connection.apiKey) request = HttpClientRequest.bearerToken(request, connection.apiKey);
     return sendJson(label, request, ChatCompletion).pipe(
+      Effect.tap((completion) =>
+        TextGenerationOperations.reportUsage(chatTokens(completion.usage)),
+      ),
       Effect.flatMap((completion) => {
         const choice = completion.choices[0];
         const text = choice?.message.content?.trim();
@@ -176,6 +198,7 @@ const AnthropicMessage = Schema.Struct({
   content: Schema.Array(
     Schema.Struct({ type: Schema.String, text: Schema.optional(Schema.String) }),
   ),
+  usage: Schema.optional(Schema.Unknown),
 });
 const AnthropicModelPage = Schema.Struct({
   data: Schema.Array(
@@ -206,6 +229,11 @@ const anthropic: TextGeneratorDriver = {
       connection.apiKey,
     );
     return sendJson(label, request, AnthropicMessage).pipe(
+      Effect.tap((message) =>
+        TextGenerationOperations.reportUsage(
+          [apiTokens(model, message.usage)].flatMap((tokens) => tokens ?? []),
+        ),
+      ),
       Effect.flatMap((message) => {
         if (message.stop_reason === "max_tokens") {
           return Effect.fail(

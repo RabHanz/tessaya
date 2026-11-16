@@ -162,20 +162,21 @@ index 8f1463ce1bd85fdb107e6ebf7cef69fc1276711d..717e866bc56bbedfa4651994ac631117
              )
            }
 diff --git a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
-index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409cd36b526 100644
+index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..b237d0a6290f2dea3cafe4ac800b2cfe0ea02f2a 100644
 --- a/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
 +++ b/apps/mobile/src/features/threads/ThreadSettingsSheet.tsx
-@@ -106,6 +106,9 @@ import {
+@@ -106,6 +106,10 @@ import {
  import { useSearchToolbarInset } from "../../components/ui/useBarInset";
  import type { AppBarSearch } from "../../components/ui/AppBar";
  import { ModelRow, ChoiceRow } from "./ThreadSettingsRows";
 +import { TessayaAccountRow, useLiveSheetChange, useSessionEffort } from "./TessayaAccountRow";
 +import { tessayaProviderGroups, liveTraits } from "./tessayaCatalog";
++import { pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
 +import { takeAccountsFilter } from "./TessayaThreadHeader";
  import {
    compatibleRuntimeModeForChoices,
    runtimeModeChoicesForSupportedModes,
-@@ -262,6 +265,8 @@ type ThreadSettingsSubmenuPage =
+@@ -262,6 +266,8 @@ type ThreadSettingsSubmenuPage =
  
  type ThreadSettingsSessionProps = {
    readonly environmentId: EnvironmentId | null;
@@ -184,7 +185,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409
    readonly projectId: ProjectId | null;
    readonly cwd: string | null;
    readonly providerInstanceId?: ProviderInstanceId;
-@@ -288,6 +293,7 @@ export type ExistingThreadSettingsRouteParams = {
+@@ -288,6 +294,7 @@ export type ExistingThreadSettingsRouteParams = {
  
  type ThreadSettingsSessionValue = {
    readonly environmentId: EnvironmentId | null;
@@ -192,7 +193,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409
    readonly providerInstanceId?: ProviderInstanceId;
    readonly providerGroups: ReadonlyArray<ProviderGroup>;
    readonly favoriteKeys: ReadonlySet<string>;
-@@ -479,7 +485,9 @@ function ThreadSettingsSessionProvider(
+@@ -479,7 +486,9 @@ function ThreadSettingsSessionProvider(
      });
    };
    const [showLegacyToggle, setShowLegacyToggle] = useState(false);
@@ -203,7 +204,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409
    const [searchQuery, setSearchQuery] = useState("");
    const [providerExpansionOverrides, setProviderExpansionOverrides] = useState<ReadonlySet<string>>(
      () => new Set(),
-@@ -609,6 +617,7 @@ function ThreadSettingsSessionProvider(
+@@ -609,6 +618,7 @@ function ThreadSettingsSessionProvider(
  
    const value = {
      environmentId,
@@ -211,7 +212,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409
      providerInstanceId: props.providerInstanceId,
      providerGroups,
      manageHidden,
-@@ -749,22 +758,37 @@ function ThreadSettingsProviderListHeader(props: {
+@@ -749,22 +759,37 @@ function ThreadSettingsProviderListHeader(props: {
    const onToggle = () => session.toggleProvider(props.provider.key);
  
    return (
@@ -259,7 +260,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409
      if (
        session.providerFilter !== null &&
        session.providerFilter !== FAVORITES_PROVIDER_FILTER &&
-@@ -1221,7 +1245,10 @@ function ThreadSettingsModelsScreen() {
+@@ -1221,7 +1246,10 @@ function ThreadSettingsModelsScreen() {
    const providerFilters = [
      { id: "all-providers", title: "All providers", value: null },
      { id: "favorites", title: "Favorites", value: FAVORITES_PROVIDER_FILTER },
@@ -271,7 +272,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409
        id: `provider:${group.providerKey}`,
        title: group.providerLabel,
        value: group.providerKey,
-@@ -1366,6 +1393,12 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1366,6 +1394,12 @@ export function ExistingThreadSettingsRouteScreen({
    // A queued edit can end while the sheet is open; the prompt then belongs to the thread's draft.
    const draftKey = activeComposerDraftKey(threadKey, route.params.draftKey, queuedRunEdit);
    const prompt = useComposerDraft(draftKey).text;
@@ -284,7 +285,21 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409
  
    if (!selectedThread) {
      return <View className="flex-1 bg-sheet" />;
-@@ -1400,6 +1433,7 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1375,7 +1409,12 @@ export function ExistingThreadSettingsRouteScreen({
+     selectedEnvironmentRuntime?.serverConfig ?? null,
+     selectedThreadCwd,
+   );
+-  const modelSelection = draftSettings.modelSelection ?? selectedThread.modelSelection;
++  // A live thread on its session picks against that session, so an account pick moves it (--switch), not the draft.
++  const modelSelection = pinnedLiveSelection(
++    selectedThread.id,
++    draftSettings.modelSelection ?? selectedThread.modelSelection,
++    selectedThread.modelSelection,
++  );
+   const lockedProviderInstanceId = threadAllowsProviderSwitch({
+     thread: selectedThread,
+     projection: structure?.projection,
+@@ -1400,6 +1439,7 @@ export function ExistingThreadSettingsRouteScreen({
    return (
      <ThreadSettingsPickerScreen
        environmentId={selectedThread.environmentId}
@@ -292,7 +307,7 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409
        projectId={selectedThread.projectId}
        cwd={selectedThreadCwd}
        providerInstanceId={modelSelection.instanceId}
-@@ -1409,15 +1443,25 @@ export function ExistingThreadSettingsRouteScreen({
+@@ -1409,15 +1449,25 @@ export function ExistingThreadSettingsRouteScreen({
        prompt={prompt}
        onPromptChange={(text) => setComposerDraftText(draftKey, text)}
        reportedModelSelection={reportedModelSelection}
@@ -326,10 +341,10 @@ index 8014f1125719a2ebf9ece11f0a5e981bc99cd8bc..9dba45767c4bc4781ed748c45e5f9409
        runtimeMode={draftSettings.runtimeMode ?? selectedThread.runtimeMode}
        onUpdateRuntimeMode={(runtimeMode) => updateComposerDraftSettings(threadKey, { runtimeMode })}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc2c678a90 100644
+index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..243311caf757995144e4d12269e17d70f6ff25e4 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
-@@ -138,6 +138,14 @@ import { useDictationShortcut } from "../../speech/useDictationShortcut";
+@@ -138,6 +138,15 @@ import { useDictationShortcut } from "../../speech/useDictationShortcut";
  import { useDictationSubmissionShortcut } from "../../speech/useDictationSubmissionShortcut";
  import { useEnvironmentSpeechInput } from "../../speech/useEnvironmentSpeechInput";
  import { ComposerSpeechButton, ComposerSpeechRecordingPill } from "./ComposerSpeechButton";
@@ -341,10 +356,11 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
 +  dictatingAttribute,
 +} from "./TessayaComposerDictation";
 +import { placeholderWhile } from "@t3tools/tessaya-shared/composerDictation";
++import { pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
  import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
  import { shortcutLabelForCommand } from "../../keybindings";
  import {
-@@ -334,6 +342,8 @@ export interface ChatComposerHandle {
+@@ -334,6 +343,8 @@ export interface ChatComposerHandle {
      environmentContexts: EnvironmentContextRecord[];
      selectedPromptEffort: string | null;
      selectedModelSelection: ModelSelection;
@@ -353,7 +369,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
      multipleModelSelections: ReadonlyArray<ModelSelection> | null;
      providerAvailable: boolean;
      selectedProvider: ProviderDriverKind;
-@@ -417,7 +427,10 @@ export interface ChatComposerProps {
+@@ -417,7 +428,10 @@ export interface ChatComposerProps {
    runtimeMode: RuntimeMode;
    defaultRuntimeMode?: RuntimeMode;
  
@@ -364,7 +380,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
    providerStatuses: ServerProvider[];
    providerCatalogKnown: boolean;
    activeProjectDefaultModelSelection: ModelSelection | null | undefined;
-@@ -537,6 +550,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -537,6 +551,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      respondingRequestIds,
      runtimeMode,
      lockedProvider,
@@ -372,7 +388,29 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
      providerStatuses,
      providerCatalogKnown,
      activeProjectDefaultModelSelection,
-@@ -885,14 +899,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -860,6 +875,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+     supportsAttachmentUploads,
+   ]);
+ 
++  // A live thread on its session shows that session, not an account a stale draft remembers.
++  const draftProvider =
++    activeThread && activeThreadModelSelection && composerDraft.activeProvider
++      ? pinnedLiveSelection(
++          activeThread.id,
++          { instanceId: composerDraft.activeProvider },
++          { instanceId: activeThreadModelSelection.instanceId },
++        ).instanceId
++      : (composerDraft.activeProvider ?? null);
+   const {
+     providerInstanceEntries,
+     selectedProviderEntry,
+@@ -880,19 +904,41 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+     projectModelSelection: activeProjectDefaultModelSelection,
+     promptInjectionState: getComposerPromptInjectionState(prompt),
+     candidateInstanceIds: [
+-      composerDraft.activeProvider ?? null,
++      draftProvider,
+       activeThread?.runtime?.providerInstanceId,
        activeThreadModelSelection?.instanceId,
        activeProjectDefaultModelSelection?.instanceId,
      ],
@@ -382,7 +420,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
        activeThread?.runtime?.providerInstanceId ?? activeThreadModelSelection?.instanceId,
 +    handoffInstanceId:
 +      lockedProvider === null && composerDraft.modelSelectionExplicit === true
-+        ? composerDraft.activeProvider
++        ? draftProvider
 +        : null,
    });
    const noProviderAvailable =
@@ -411,7 +449,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
    const providerSetupInstanceId = noProviderAvailable
      ? (unavailableProviderInstanceId ??
        (lockedProvider === null
-@@ -928,7 +964,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -928,7 +974,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        ? attachmentBlockReason
        : (attachmentBlockReason ??
          runtimeModeCeilingDenial ??
@@ -422,7 +460,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
    const isSendDisabled = sendDisabledReason !== null;
    const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
    const selectedProviderSkills = selectedProviderStatus
-@@ -1805,34 +1843,49 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -1805,34 +1853,49 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      isComposerApprovalState ||
      activePendingIsResponding ||
      activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
@@ -493,7 +531,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
    const { blocksSubmission: voiceInputActive, submitAfterDictation } = speechInput;
    // A compact footer gives the dictation capsule the whole row beside the send button.
    const dictationTakesFooter = isComposerFooterCompact && speechInput.state.phase !== "idle";
-@@ -2118,6 +2171,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -2118,6 +2181,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        submitAfterDictation(() => submitComposerRef.current(dispatchMode, submissionIntent));
        return false;
      }
@@ -505,7 +543,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
      if (submissionBlocked || !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
        event?.preventDefault();
        return false;
-@@ -2150,6 +2208,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -2150,6 +2218,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        onResume();
        return true;
      }
@@ -513,7 +551,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
      const submission = submitComposerDraft({
        prompt: promptRef.current,
        submissionTarget,
-@@ -2173,6 +2232,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -2173,6 +2242,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      setComposerSubmissionError(submission.validationMessage);
      if (!submission.didDispatch) return false;
      onTypingGuardSend();
@@ -521,7 +559,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
      if (shouldBlurMobileComposerOnSubmit()) {
        blurMobileComposerAfterSend();
      }
-@@ -2466,6 +2526,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -2466,6 +2536,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        onModelPickerOpenChange={setIsComposerModelPickerOpen}
        modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
        getModelDisabledReason={getModelDisabledReason}
@@ -529,7 +567,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
      />
    );
    // An open question owns the space above the composer. Only a machine problem,
-@@ -3146,6 +3207,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3146,6 +3217,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
          environmentContexts: composerEnvironmentContexts,
          selectedPromptEffort,
          selectedModelSelection,
@@ -539,7 +577,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
          multipleModelSelections:
            routeKind === "draft" && multipleModelSelections !== null
              ? multipleModelSelections.map((selection) =>
-@@ -3215,6 +3279,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3215,6 +3289,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
        selectedInstanceId,
        reportedModelSelection,
        selectedModelSelection,
@@ -548,7 +586,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
        multipleModelSelections,
        setMultipleModelSelections,
        routeKind,
-@@ -3402,10 +3468,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3402,10 +3478,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                        contextRecords={composerContextRecords}
                        theme={resolvedTheme}
                      />
@@ -561,7 +599,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
                    )}
                  </button>
                  {collapsedComposerImagePreviews}
-@@ -3533,7 +3598,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3533,7 +3608,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
  
                {composerAttachmentFileList}
  
@@ -570,7 +608,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
                  {previewFile ? (
                    <ComposerFilePreviewDialog
                      file={previewFile}
-@@ -3574,7 +3639,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3574,7 +3649,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                      onCitationSubmitAndSend={submitCitationAndSendStable}
                      onCitationDraftSave={saveCitationDraftToPromptStable}
                      onPaste={onComposerPasteStable}
@@ -580,7 +618,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
                        isComposerApprovalState
                          ? activePendingApproval?.supportsFeedback
                            ? "Send feedback to decline this request"
-@@ -3587,10 +3653,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3587,10 +3663,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                : "Type your own answer, or leave this blank to use the selected option"
                            : projectSelectionRequired
                              ? "Choose a project above to start a thread"
@@ -596,7 +634,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
                      placeholderSuffix={
                        offeredPromptSuggestion !== null ? (
                          <span className="ml-2 inline-flex align-[1px]">
-@@ -3606,6 +3673,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3606,6 +3683,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                      }
                    />
                  </ComposerContextActionsContext>
@@ -604,7 +642,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
                  {showMobilePendingAnswerActions ? (
                    <div
                      data-chat-composer-mobile-pending-actions="true"
-@@ -3635,21 +3703,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3635,21 +3713,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                message={providerInputSubmissionError ?? composerSubmissionError}
              />
  
@@ -628,7 +666,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
                    pendingUserInputs.length > 0 && "pt-2",
                    showMobilePendingAnswerActions &&
                      speechInput.state.phase === "idle" &&
-@@ -3659,6 +3718,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3659,6 +3728,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                  {composerAttachButton && !dictationTakesFooter ? (
                    <div className="me-2">{composerAttachButton}</div>
                  ) : null}
@@ -643,7 +681,7 @@ index eb01b8242e2dfaaead2e42b57e6e7508758e90fd..0823c22054c35937ba9105f671fddfbc
                  <div
                    data-chat-composer-actions="right"
                    data-chat-composer-transition-actions="true"
-@@ -3724,18 +3791,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -3724,18 +3801,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                    >
                      {speechInput.available ? (
                        <>

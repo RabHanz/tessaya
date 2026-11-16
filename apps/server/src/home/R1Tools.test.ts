@@ -52,6 +52,9 @@ describe("the room's tools for a replay", () => {
     expect(replayDryRun("tessaya_pronounce", word, "replay-1")?.text).toContain("nothing was kept");
     expect(replayDryRun("tessaya_pronounce", word, "r1-3d57b3")).toBeNull();
     expect(replayDryRun("settings_set", { key: "holdKeyCues" }, "replay-1")).toBeNull();
+    // A switch's read-back runs for real in a replay; flipping it does not.
+    expect(replayDryRun("intercom_switch", {}, "replay-1")).toBeNull();
+    expect(replayDryRun("memory_sync_switch", { on: false }, "replay-1")?.isError).toBe(false);
     // A hand-off answers as the real one does, so she never says "nothing changed" aloud (15 Nov suite).
     expect(replayDryRun("tessaya_persona_handoff", { to: "Onyx" }, "replay-1")?.text).toContain(
       "Onyx has this conversation now",
@@ -124,6 +127,9 @@ describe("the room's tools for a replay", () => {
     expect(roomRefusal(sara, child, "home_do")).toBeNull();
     expect(roomRefusal(sara, child, "room_look")).not.toBeNull();
     expect(roomRefusal(sara, child, "tessaya_sessions")).not.toBeNull();
+    // Only the owner (or a machine grant) flips the home's intercom or his memory sync.
+    expect(roomRefusal(sara, adult, "intercom_switch")).not.toBeNull();
+    expect(roomRefusal(sara, adult, "memory_sync_switch")).not.toBeNull();
     expect(
       roomRefusal({ member: null, assurance: 0 }, null, "tessaya_memory_search"),
     ).not.toBeNull();
@@ -173,6 +179,13 @@ describe("the room's tools for a replay", () => {
     // Neither has a reach of its own, so only his verified voice may use them at all.
     expect(stepUpNeeds("access_manage", 1)).toBe(2);
     expect(stepUpNeeds("environment_maintain", 1)).toBe(2);
+    // The intercom and memory sync share across devices and servers: on waits for his yes, off and a read do not.
+    for (const name of ["intercom_switch", "memory_sync_switch"]) {
+      expect(jobVerdict(name, { on: true }, false)).toHaveProperty("card");
+      expect(jobVerdict(name, { on: false }, false)).toBe("allow");
+      expect(jobVerdict(name, {}, false)).toBe("allow");
+      expect(stepUpNeeds(name, 1)).toBe(2);
+    }
     // The prompt lab: trying variants is free to ask for; making one live, or rolling back, waits for his yes.
     expect(jobVerdict("tessaya_prompt_lab", { action: "run" }, false)).toBe("allow");
     expect(jobVerdict("tessaya_prompt_lab", { action: "promote" }, false)).toHaveProperty("card");

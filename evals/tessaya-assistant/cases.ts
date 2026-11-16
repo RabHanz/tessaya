@@ -216,6 +216,20 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["app_command"],
   },
   {
+    id: "app-command-project-pin",
+    model: "haiku",
+    source: "Director 16 Nov voice parity: pin project was palette-only",
+    said: "pin this project in the sidebar",
+    first: ["app_command"],
+  },
+  {
+    id: "app-command-restart-session",
+    model: "haiku",
+    source: "Director 16 Nov voice parity: restart agent session was palette-only",
+    said: "restart the agent session so it picks up the new MCP server",
+    first: ["app_command"],
+  },
+  {
     id: "needs-me",
     model: "haiku",
     source: "INT-4: the prompt sent 'what needs me' to fleet_status and needs_me at once",
@@ -457,6 +471,21 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["memory_remember"],
   },
   {
+    id: "private-waiting-review",
+    source:
+      "Director 2026-11-16: held Freya imports wait in a review list he can approve by voice or in Settings",
+    said: "which of my private memories are still waiting for my yes?",
+    first: ["private_waiting"],
+    not: ["approvals_list", "memory_search"],
+  },
+  {
+    id: "approvals-not-private-waiting",
+    source: "Control for private-waiting: a plan waiting for his OK is an approval, not a memory",
+    said: "what's waiting for my approval?",
+    first: ["approvals_list"],
+    not: ["private_waiting"],
+  },
+  {
     id: "remember-work-preference",
     source: "Control for private-remember: an ordinary preference stays in the shared Memory tab",
     said: "remember that I like the office fan at thirty percent when I work",
@@ -526,6 +555,20 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     said: "add the acme/app repository as a new project",
     first: ["project_add"],
     not: ["job_start"],
+  },
+  {
+    id: "intercom-on",
+    source: "Director 16 Nov voice parity: the intercom switch was a window click only",
+    said: "turn on the intercom",
+    first: ["intercom_switch"],
+    not: ["comms_dnd", "comms_send", "settings_set"],
+  },
+  {
+    id: "memory-sync-off",
+    source: "Director 16 Nov voice parity: memory sync between servers was a window click only",
+    said: "stop syncing my memory",
+    first: ["memory_sync_switch"],
+    not: ["memory_forget", "memory_remember"],
   },
   {
     id: "schedules-list",

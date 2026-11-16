@@ -31,6 +31,8 @@ export interface InitiativeDeps {
   /** Carries out a Yes; returns a sentence to show, and throws when it cannot. */
   readonly act: (offer: Trigger) => Promise<string>;
   readonly tell: (text: string) => void;
+  /** Hands each new trigger to the server's pulse (B-003), which owns noticing; sensed even when local offers are off. */
+  readonly sense?: (trigger: Trigger) => Promise<void>;
 }
 
 export const createInitiative = (deps: InitiativeDeps) => {
@@ -48,15 +50,23 @@ export const createInitiative = (deps: InitiativeDeps) => {
     NodeFS.renameSync(`${file}.tmp`, file);
   };
   let busy = false;
+  const sensed = new Set<string>();
   return {
     state: load,
     /** One pass. Re-entrant calls while a card is open do nothing. */
     tick: async (): Promise<number> => {
-      const policy = deps.policy();
-      if (policy === null || busy) return 0;
+      if (busy) return 0;
       busy = true;
       try {
+        const policy = deps.policy();
+        if (policy === null && deps.sense === undefined) return 0;
         const triggers = await deps.gather();
+        for (const t of triggers) {
+          if (deps.sense === undefined || sensed.has(t.id)) continue;
+          sensed.add(t.id);
+          await deps.sense(t).catch(() => sensed.delete(t.id));
+        }
+        if (policy === null) return 0;
         const result = decide(triggers, load(), policy, deps.now(), deps.hour());
         save(result.state);
         for (const offer of result.offers) {

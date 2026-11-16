@@ -367,7 +367,7 @@ export interface HomeExtra {
     /** Up to four ways to do it; empty is off on purpose. */
     readonly inputs: ReadonlyArray<
       | { readonly type: "key"; readonly accelerator: string }
-      | { readonly type: "mouse"; readonly button: string }
+      | { readonly type: "mouse" | "remote"; readonly button: string }
     >;
     readonly isDefault: boolean;
     readonly conflictsWith: ReadonlyArray<string>;
@@ -383,6 +383,8 @@ export interface HomeExtra {
   readonly mouseReady: boolean;
   /** Mouse buttons can be bound here: the hook is the Windows helper's, so on Windows only. */
   readonly mouseButtons: boolean;
+  /** The Airdeck remotes' button names ("g20s/ok" to "G20S OK"), while airdeck-core is reachable; empty otherwise. */
+  readonly remoteButtons?: Readonly<Record<string, string>>;
   readonly lifecycle: ReadonlyArray<{ readonly at: string; readonly text: string }>;
   readonly paths: ReadonlyArray<{
     readonly id: string;

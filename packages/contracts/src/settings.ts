@@ -1363,6 +1363,15 @@ export const RoomBrain = Schema.Literals(["api", "subscription", "auto"]);
 export type RoomBrain = typeof RoomBrain.Type;
 
 /** Word → how the voice says it, in plain letters (`pronounce` in tessaya-shared). */
+/** Per device id: the member it belongs to for her face (null: no one), and whether it may show their relationship. */
+export const TessayaDeviceMoods = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    owner: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    show: Schema.optionalKey(Schema.Boolean),
+  }),
+);
+
 export const VoicePronounce = Schema.Record(
   Schema.String.check(Schema.isMaxLength(60)),
   Schema.String.check(Schema.isMaxLength(80)),
@@ -1404,6 +1413,43 @@ export const DEFAULT_TESSAYA_HAPTICS: TessayaHapticSettings = {
   moods: true,
   wake: true,
   reminders: true,
+};
+
+/** Her pulse (B-003): on or off, what kinds she may notice, his "stop doing X" words, and its daily model-call cap. */
+const PULSE_KINDS = [
+  "jobs",
+  "sessions",
+  "messages",
+  "reminders",
+  "calendar",
+  "people",
+  "home",
+  "mood",
+  "patterns",
+] as const;
+export const TessayaPulseSettings = Schema.Struct({
+  enabled: Schema.Boolean,
+  /** Reviews that may ask a model each day; past it she only notes. */
+  dailyCalls: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
+  /** Tokens (in, cached and out) its reviews may use each day; near it she goes rules-only. */
+  dailyTokens: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 5_000_000 })),
+  categories: Schema.Struct(
+    Object.fromEntries(PULSE_KINDS.map((k) => [k, Schema.Boolean])) as {
+      readonly [K in (typeof PULSE_KINDS)[number]]: typeof Schema.Boolean;
+    },
+  ),
+  /** Lower-case words from "stop telling me about X". */
+  muted: Schema.Array(Schema.String),
+});
+export type TessayaPulseSettings = typeof TessayaPulseSettings.Type;
+export const DEFAULT_TESSAYA_PULSE: TessayaPulseSettings = {
+  enabled: true,
+  dailyCalls: 48,
+  dailyTokens: 150_000,
+  categories: Object.fromEntries(
+    PULSE_KINDS.map((k) => [k, true]),
+  ) as TessayaPulseSettings["categories"],
+  muted: [],
 };
 
 export const ServerSettings = Schema.Struct({
@@ -1460,13 +1506,17 @@ export const ServerSettings = Schema.Struct({
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
   tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  // Tessaya: her working mood per persona (tessaya-shared affect.ts), moved only by the owner's turns; others see the face.
+  // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
+  // moved only by their identified turns; `devices` ties a device to a member and says whether it shows theirs.
   tessayaMood: Schema.Struct({
     enabled: Schema.Boolean,
     intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     bondCap: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
+    devices: TessayaDeviceMoods.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(
-    Schema.withDecodingDefault(Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15 })),
+    Schema.withDecodingDefault(
+      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {} }),
+    ),
   ),
   // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
   companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
@@ -1478,6 +1528,9 @@ export const ServerSettings = Schema.Struct({
   ),
   tessayaHaptics: TessayaHapticSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_HAPTICS)),
+  ),
+  tessayaPulse: TessayaPulseSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_PULSE)),
   ),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
@@ -1940,6 +1993,7 @@ export const ServerSettingsPatch = Schema.Struct({
       bondCap: Schema.optionalKey(
         Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
       ),
+      devices: Schema.optionalKey(TessayaDeviceMoods),
     }),
   ),
   companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
@@ -1959,6 +2013,25 @@ export const ServerSettingsPatch = Schema.Struct({
       moods: Schema.optionalKey(Schema.Boolean),
       wake: Schema.optionalKey(Schema.Boolean),
       reminders: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
+  tessayaPulse: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      dailyCalls: Schema.optionalKey(
+        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
+      ),
+      dailyTokens: Schema.optionalKey(
+        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 5_000_000 })),
+      ),
+      categories: Schema.optionalKey(
+        Schema.Struct(
+          Object.fromEntries(PULSE_KINDS.map((k) => [k, Schema.optionalKey(Schema.Boolean)])) as {
+            readonly [K in (typeof PULSE_KINDS)[number]]: Schema.optionalKey<typeof Schema.Boolean>;
+          },
+        ),
+      ),
+      muted: Schema.optionalKey(Schema.Array(Schema.String)),
     }),
   ),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),

@@ -32,6 +32,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } fr
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
+import { PublicBaseUrl } from "../environment/DirectEndpoints.ts";
 import * as ManagedLimits from "../policy/managedLimits.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { resolveBaseDir } from "../os-jank.ts";
@@ -545,6 +546,7 @@ export const pairCommand = Command.make("pair", {
       }
 
       const notes: Array<string> = [];
+      const publicUrl = yield* PublicBaseUrl;
       let pairingBaseUrl: string;
       if (flags.tailscale) {
         // Serve stays on after this command exits, so refuse before turning it on.
@@ -561,6 +563,8 @@ export const pairCommand = Command.make("pair", {
         });
         pairingBaseUrl = resolved.baseUrl;
         notes.push(...resolved.notes);
+      } else if (publicUrl !== null) {
+        pairingBaseUrl = publicUrl;
       } else {
         pairingBaseUrl = resolveDirectPairingBaseUrl(target.state);
         if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {

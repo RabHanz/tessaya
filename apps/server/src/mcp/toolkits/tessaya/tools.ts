@@ -40,6 +40,7 @@ import {
 } from "@t3tools/contracts";
 import {
   DESKTOP_STATE_SECTIONS,
+  PHONE_PAIRING_TOOL,
   TessayaPersonaDraft,
   VocabularyChange,
 } from "@t3tools/tessaya-contracts";
@@ -50,6 +51,7 @@ import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { PhonePairingCode } from "../../../tessaya/PhonePairing.ts";
 import { DeviceTools } from "../devices/tools.ts";
 import { HomeTools } from "../home/tools.ts";
 import { JobTools } from "../jobs/tools.ts";
@@ -455,10 +457,36 @@ const WakeWordChangeTool = Tool.make("tessaya_wake_word_change", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const PulseTool = Tool.make("tessaya_pulse", {
+  ...shared,
+  description:
+    'Her pulse: what she noticed on her own and why she acted or stayed quiet. `noticed` for "what have you noticed?" or "why did you say that?" (newest first; times are UTC, say them in his zone); `liked` when he welcomes what she last raised ("that was helpful"); `told_off` when he did not want it ("don\'t tell me that", "that was annoying"); `stop` with `about` for "stop telling me about X"; `resume` with `about` to take that back. "Be more or less proactive" is the companionMotion setting, not this.',
+  parameters: Schema.Struct({
+    action: Schema.Literals(["noticed", "liked", "told_off", "stop", "resume"]),
+    about: Schema.optional(Schema.String.check(Schema.isMaxLength(80))),
+  }),
+  success: Schema.Struct({
+    line: Schema.String,
+    items: Schema.Array(
+      Schema.Struct({
+        at: Schema.String,
+        did: Schema.String,
+        what: Schema.String,
+        why: Schema.String,
+      }),
+    ),
+  }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 const WhosHomeTool = Tool.make("tessaya_whos_home", {
   ...shared,
   description:
-    'Who\'s home or around now, and where each is ("who\'s home?", "where am I?": you is the one asking), most sure first. Fused from every signal: their verified voice, typing on their own device, their devices connected, a Tessel picked up, the desktop locking. confidence: how sure they\'re around (likelyHome at 0.25 and up); nearest: the vessel they\'re most likely by and how sure; reasons: the evidence, strongest first. It\'s a guess, never a tracker: say it as one and name the strongest reason ("I heard Sara on the kitchen Tessel 5 minutes ago", "Omid\'s phone is connected"). "Follow me" (her own lines go to the vessel they\'re nearest) is their `follow` preference, on unless they turn it off. Only for the household\'s own members, never a guest.',
+    'Who\'s home or around now, and where each is ("who\'s home?", "where am I?": you is the one asking), most sure first. Fused from every signal: their verified voice, typing on their own device, their devices connected, headphones on a Tessel, a Tessel picked up, the desktop locking or idle. A voice she doesn\'t know shows as guest: true, "a guest": someone is there; say so without guessing who. confidence: how sure they\'re around (likelyHome at 0.25 and up); nearest: the vessel they\'re most likely by and how sure; reasons: the evidence, strongest first. It\'s a guess, never a tracker: say it as one and name the strongest reason ("I heard Sara on the kitchen Tessel 5 minutes ago", "Omid\'s phone is connected"). "Follow me" (her own lines go to the vessel they\'re nearest) is their `follow` preference, on unless they turn it off. Only for the household\'s own members to ask, never a guest.',
   // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
   success: Schema.Struct({
     people: Schema.Array(
@@ -765,6 +793,19 @@ const VoiceArbiterTool = Tool.make("tessaya_voice_arbiter", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const PhonePairingCodeTool = Tool.make(PHONE_PAIRING_TOOL, {
+  ...shared,
+  description:
+    "For another of his servers only, over a full-access link: a one-time pairing code here for his phone, so one QR pairs it with every machine.",
+  // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
+  success: PhonePairingCode,
+})
+  .annotate(McpSchema.EnabledWhen, linkedServersOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   ...HomeTools,
   ...DeviceTools,
@@ -788,6 +829,7 @@ export const TessayaToolkit = Toolkit.make(
   UsageReportTool,
   PromptLabTool,
   WhosHomeTool,
+  PulseTool,
   PreferenceSetTool,
   PersonaHandoffTool,
   JobLeadTool,
@@ -813,4 +855,5 @@ export const TessayaToolkit = Toolkit.make(
   MainSessionTool,
   SessionDefaultsTool,
   VoiceArbiterTool,
+  PhonePairingCodeTool,
 );

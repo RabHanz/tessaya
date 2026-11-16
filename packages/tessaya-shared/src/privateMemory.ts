@@ -90,7 +90,20 @@ export interface SpeakerLike {
   readonly voiceIdOff?: boolean;
   /** The test clone during test mode, trusted as him and marked on every turn. */
   readonly test?: boolean;
+  /** Verified by his session's evidence (Voice ID's `session`), not this turn's own clips. */
+  readonly session?: boolean;
+  /** His path by his session's evidence, never verified. */
+  readonly lifted?: boolean;
 }
+
+/** Verified on this turn's own clips: an inherited verdict, his session's evidence or the test clone opens nothing private. */
+export const ownVoiceVerified = (s: SpeakerLike | null | undefined): boolean =>
+  s != null &&
+  s.verified &&
+  !s.inherited &&
+  s.session !== true &&
+  s.lifted !== true &&
+  s.test !== true;
 
 /**
  * Where a turn came from: his own assistant session, a saved person's outside session, a standing job, the phone
@@ -125,12 +138,12 @@ export const privatePersonOf = (
           ? { refused: "this device acts for nobody in the household" }
           : { personId: turn.member };
     const s = turn.speaker;
-    if (s?.kind === "owner" && s.verified && !s.inherited) return { personId: OWNER_PERSON_ID };
+    if (s?.kind === "owner" && ownVoiceVerified(s)) return { personId: OWNER_PERSON_ID };
     return { refused: "the voice was not verified as his" };
   }
   if (turn.route === "outside") {
     const s = turn.speaker;
-    if (s?.kind === "saved" && s.personId !== null && s.verified && !s.inherited)
+    if (s?.kind === "saved" && s.personId !== null && ownVoiceVerified(s))
       return { personId: s.personId };
     return { refused: "the voice was not verified as a saved person" };
   }

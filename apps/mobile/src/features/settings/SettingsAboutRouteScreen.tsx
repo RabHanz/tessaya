@@ -19,6 +19,8 @@ import {
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
+import { UpstreamCreditSection } from "./upstreamCredit";
+import { IS_TESSAYA_APP } from "../../lib/tessayaBrand";
 
 export function SettingsAboutRouteScreen() {
   const insets = useSafeAreaInsets();
@@ -33,6 +35,7 @@ export function SettingsAboutRouteScreen() {
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
         <AppSettingsSection />
+        <UpstreamCreditSection />
       </ScrollView>
     </SettingsScreen>
   );
@@ -128,7 +131,10 @@ function AppSettingsSection() {
         label="Open source licenses"
         target="SettingsOpenSourceLicenses"
       />
-      <SettingsRow icon="doc.text" label="Legal" fullScreenTarget="SettingsLegal" />
+      {/* Legal pages are T3's own site; the Tessaya build credits T3 below instead. */}
+      {IS_TESSAYA_APP ? null : (
+        <SettingsRow icon="doc.text" label="Legal" fullScreenTarget="SettingsLegal" />
+      )}
       {updateCheckAvailable ? (
         <Pressable
           accessibilityLabel={`Version ${versionLabel}`}

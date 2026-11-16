@@ -294,6 +294,16 @@ index 627c644f053af9722e2192cbc71bc669f18cdc7e..e7ecdf8355cb1d8f33576dd76a617c20
  import * as NodeChildProcess from "node:child_process";
  import * as NodeEvents from "node:events";
  import * as NodeFSP from "node:fs/promises";
+diff --git a/apps/server/src/cli/pair.test.ts b/apps/server/src/cli/pair.test.ts
+index 9619030be2fab47f08db5612cde10d1666ded762..a9b28e600131187dc4c7f34db3bdc24ff11b8c23 100644
+--- a/apps/server/src/cli/pair.test.ts
++++ b/apps/server/src/cli/pair.test.ts
+@@ -1,4 +1,5 @@
+ // @effect-diagnostics nodeBuiltinImport:off - CLI integration exercises Node HTTP and filesystem boundaries.
++// @effect-diagnostics anyUnknownInErrorContext:off -- tsrs infers any in cli's requirements here; tsc does not (checked 16 Nov).
+ import * as NodeHttp from "node:http";
+ import * as NodeFS from "node:fs";
+ import * as NodeOS from "node:os";
 diff --git a/apps/server/src/mcp/McpToolAccess.ts b/apps/server/src/mcp/McpToolAccess.ts
 index f96a38d6d7341eaf98c8c158eb21cc7080c1ce00..cfdd02d8171a064882182c5bfcf122f5d80046c5 100644
 --- a/apps/server/src/mcp/McpToolAccess.ts
@@ -2101,7 +2111,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f9666307ccec22b 100644
+index 49470541d90be695ad24df030ca6522682a82611..276a7aef7da231335e5bcf8f2dec96572dbb87dd 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2119,7 +2129,7 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
  import { ProjectScript, type ProjectMutation } from "./project.ts";
  import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
  import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
-@@ -1349,6 +1357,54 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -1349,6 +1357,100 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
@@ -2129,6 +2139,15 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
 +export type RoomBrain = typeof RoomBrain.Type;
 +
 +/** Word → how the voice says it, in plain letters (`pronounce` in tessaya-shared). */
++/** Per device id: the member it belongs to for her face (null: no one), and whether it may show their relationship. */
++export const TessayaDeviceMoods = Schema.Record(
++  Schema.String,
++  Schema.Struct({
++    owner: Schema.optionalKey(Schema.NullOr(Schema.String)),
++    show: Schema.optionalKey(Schema.Boolean),
++  }),
++);
++
 +export const VoicePronounce = Schema.Record(
 +  Schema.String.check(Schema.isMaxLength(60)),
 +  Schema.String.check(Schema.isMaxLength(80)),
@@ -2171,10 +2190,47 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
 +  wake: true,
 +  reminders: true,
 +};
++
++/** Her pulse (B-003): on or off, what kinds she may notice, his "stop doing X" words, and its daily model-call cap. */
++const PULSE_KINDS = [
++  "jobs",
++  "sessions",
++  "messages",
++  "reminders",
++  "calendar",
++  "people",
++  "home",
++  "mood",
++  "patterns",
++] as const;
++export const TessayaPulseSettings = Schema.Struct({
++  enabled: Schema.Boolean,
++  /** Reviews that may ask a model each day; past it she only notes. */
++  dailyCalls: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
++  /** Tokens (in, cached and out) its reviews may use each day; near it she goes rules-only. */
++  dailyTokens: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 5_000_000 })),
++  categories: Schema.Struct(
++    Object.fromEntries(PULSE_KINDS.map((k) => [k, Schema.Boolean])) as {
++      readonly [K in (typeof PULSE_KINDS)[number]]: typeof Schema.Boolean;
++    },
++  ),
++  /** Lower-case words from "stop telling me about X". */
++  muted: Schema.Array(Schema.String),
++});
++export type TessayaPulseSettings = typeof TessayaPulseSettings.Type;
++export const DEFAULT_TESSAYA_PULSE: TessayaPulseSettings = {
++  enabled: true,
++  dailyCalls: 48,
++  dailyTokens: 150_000,
++  categories: Object.fromEntries(
++    PULSE_KINDS.map((k) => [k, true]),
++  ) as TessayaPulseSettings["categories"],
++  muted: [],
++};
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1372,6 +1428,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1372,6 +1474,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -2186,7 +2242,7 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1443,42 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1489,49 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2207,13 +2263,17 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
 +  voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
 +  tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-+  // Tessaya: her working mood per persona (tessaya-shared affect.ts), moved only by the owner's turns; others see the face.
++  // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
++  // moved only by their identified turns; `devices` ties a device to a member and says whether it shows theirs.
 +  tessayaMood: Schema.Struct({
 +    enabled: Schema.Boolean,
 +    intensity: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
 +    bondCap: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
++    devices: TessayaDeviceMoods.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  }).pipe(
-+    Schema.withDecodingDefault(Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15 })),
++    Schema.withDecodingDefault(
++      Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {} }),
++    ),
 +  ),
 +  // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
 +  companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
@@ -2226,10 +2286,13 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
 +  tessayaHaptics: TessayaHapticSettings.pipe(
 +    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_HAPTICS)),
 +  ),
++  tessayaPulse: TessayaPulseSettings.pipe(
++    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_PULSE)),
++  ),
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1488,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1541,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2243,7 +2306,7 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +1926,41 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +1979,61 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2261,6 +2324,7 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
 +      bondCap: Schema.optionalKey(
 +        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 0.15 })),
 +      ),
++      devices: Schema.optionalKey(TessayaDeviceMoods),
 +    }),
 +  ),
 +  companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
@@ -2282,10 +2346,29 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
 +      reminders: Schema.optionalKey(Schema.Boolean),
 +    }),
 +  ),
++  tessayaPulse: Schema.optionalKey(
++    Schema.Struct({
++      enabled: Schema.optionalKey(Schema.Boolean),
++      dailyCalls: Schema.optionalKey(
++        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
++      ),
++      dailyTokens: Schema.optionalKey(
++        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 5_000_000 })),
++      ),
++      categories: Schema.optionalKey(
++        Schema.Struct(
++          Object.fromEntries(PULSE_KINDS.map((k) => [k, Schema.optionalKey(Schema.Boolean)])) as {
++            readonly [K in (typeof PULSE_KINDS)[number]]: Schema.optionalKey<typeof Schema.Boolean>;
++          },
++        ),
++      ),
++      muted: Schema.optionalKey(Schema.Array(Schema.String)),
++    }),
++  ),
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +1969,23 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +2042,23 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2309,7 +2392,7 @@ index 49470541d90be695ad24df030ca6522682a82611..b609651d58f43053afcb3fed9f966630
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2235,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2308,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

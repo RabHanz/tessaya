@@ -17,6 +17,8 @@ import { VesselBodies, layer as VesselBodiesLayer } from "./VesselBodies.ts";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 
 import { VoiceForgets, layer as VoiceForgetsLayer } from "../tessaya/VoiceForgets.ts";
+import { layer as presenceLayer, peopleHere } from "../tessaya/TessayaPresence.ts";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import {
   MemberPreferences,
   layer as MemberPreferencesLayer,
@@ -1168,6 +1170,12 @@ it.effect(
       // His headphones, known only from the laptop's list.
       const phones = yield* connect("my headphones", "connected", "14:C6:00:00:00:01");
       assert.strictEqual(phones.line, "Connected to WH-1000XM4. I'll play through it.");
+      // His headphones on it, as headphones: he is by this Tessel (B-043).
+      yield* devices.receive(
+        `${root}/state/bt`,
+        '{"state":"connected","mac":"14:C6:00:00:00:01","name":"WH-1000XM4","kind":"headphones","saved":true}',
+      );
+      assert.deepInclude((yield* peopleHere(ID))[0], { member: OWNER_MEMBER_ID, guest: false });
       // Nothing by that name: no guess.
       assert.include((yield* say("the kitchen radio")).line, "If it's new, ask me to pair it");
       // "Pair my new JBL": a scan, his cue, then the match from the scan is paired.
@@ -1193,6 +1201,8 @@ it.effect(
         topic: "voice/say",
         payload: { text: "Connected to JBL Flip 5. I'll play through it." },
       });
+      // A speaker took over from his headphones: they no longer place him here.
+      assert.deepStrictEqual(yield* peopleHere(ID), []);
       // A rehearsal is answered the same way and sends nothing.
       sent.length = 0;
       const dry = { ...him, dryRun: true } as const;
@@ -1202,7 +1212,7 @@ it.effect(
       );
       assert.include((yield* say({ name: "new one", pair: true }, dry)).line, "pairing mode");
       assert.deepStrictEqual(sent, []);
-    }).pipe(Effect.provide(layer));
+    }).pipe(Effect.provide(layer.pipe(Layer.provideMerge(presenceLayer))));
   },
 );
 
@@ -1376,7 +1386,92 @@ it("routes to the first output in his order that can play now, paging one above 
     OFFICE,
   ]);
   assert.deepStrictEqual(HomeDevices.outputOrderOf([OFFICE, "speaker", HP], [HP]), ["speaker", HP]);
+  // Inputs: her own mic first by default; a headset hears only while it is the linked device with HFP up.
+  assert.deepStrictEqual(HomeDevices.inputOrderOf(undefined, [HP]), ["mic", HP]);
+  assert.deepStrictEqual(HomeDevices.inputOrderOf([HP, "mic"], [HP, OFFICE]), [HP, "mic", OFFICE]);
+  const inputs: Array<[Array<string>, string | null, boolean, "headset" | "mic"]> = [
+    // order, linked, hfp, input
+    [["mic", HP], HP, true, "mic"],
+    [[HP, "mic"], HP, true, "headset"],
+    [[HP, "mic"], HP, false, "mic"],
+    [[HP, "mic"], null, true, "mic"],
+    [[OFFICE, HP, "mic"], HP, true, "headset"],
+  ];
+  for (const [order, linked, hfp, want] of inputs)
+    assert.strictEqual(HomeDevices.inputOf(order, linked, hfp), want, JSON.stringify(order));
 });
+
+it.effect(
+  "sends the mic his input order gives, only to firmware that reports the headset link",
+  () => {
+    const { sent, layer } = setup();
+    const HP = "AA:00:00:00:00:46";
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const her = { who: "Tessaya via R1", surface: "assistant" } as const;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(`${root}/state/caps`, '{"bt_speaker":true}');
+      yield* devices.receive(
+        `${root}/state/bt/bonds`,
+        JSON.stringify({ devices: [{ mac: HP, connected: true }] }),
+      );
+      const inputSends = () => sent.filter((s) => s.topic === "cmd/bt/input");
+      // Older firmware: no hfp field, so no cmd/bt/input and no input list.
+      yield* devices.receive(
+        `${root}/state/bt`,
+        JSON.stringify({
+          state: "connected",
+          mac: HP,
+          wanted: "speaker",
+          out: "onboard",
+          saved: true,
+        }),
+      );
+      assert.deepStrictEqual(inputSends(), []);
+      const inputs = () =>
+        Effect.map(devices.overview, (o) =>
+          o.devices[0]!.speaker!.inputs?.map((x) => `${x.id}:${x.state}`),
+        );
+      assert.isUndefined(yield* inputs());
+      // smp 0.3.151 on her own mic: the default order agrees, nothing to send.
+      const bt = (hfp: boolean, input: string) =>
+        devices.receive(
+          `${root}/state/bt`,
+          JSON.stringify({ state: "connected", mac: HP, saved: true, hfp, sco: "off", input }),
+        );
+      yield* bt(true, "mic");
+      assert.deepStrictEqual(inputSends(), []);
+      assert.deepStrictEqual(yield* inputs(), ["mic:listening", `${HP}:ready`]);
+      // "Listen through my headphones": first at once, and sent.
+      const moved = yield* devices.command(
+        ID,
+        { op: "item", itemId: "audio.input", value: "headset" },
+        her,
+      );
+      assert.strictEqual(moved.status, "done");
+      assert.deepStrictEqual(
+        inputSends().map((s) => s.payload),
+        [{ in: "headset" }],
+      );
+      yield* bt(true, "headset");
+      assert.deepStrictEqual(yield* inputs(), [`${HP}:listening`, "mic:ready"]);
+      // The headset link drops: back to her own mic on that report.
+      yield* bt(false, "headset");
+      assert.deepStrictEqual(inputSends().at(-1)?.payload, { in: "mic" });
+      yield* bt(false, "mic");
+      // His order from Settings, mic first, is kept for the next link.
+      sent.length = 0;
+      const order = yield* serveDevicesCall(
+        { kind: "act", op: "speaker", args: { id: ID, action: "inputs", order: ["mic", HP] } },
+        me,
+      );
+      assert.isTrue(order.ok);
+      yield* bt(true, "mic");
+      assert.deepStrictEqual(inputSends(), []);
+    }).pipe(Effect.provide(layer));
+  },
+);
 
 it.effect(
   "keeps her on her own speaker over linked headphones, obeys his order at once, and moves on when a route stalls",
@@ -1501,6 +1596,11 @@ it("plays a private reply only on an output tagged private, open ones only when 
     how: "also",
   });
   assert.isNull(HomeDevices.privateTagOf({ name: "my headphones" }));
+  assert.deepStrictEqual(HomeDevices.privateTagOf({ name: "my headphones", privateCap: 140 }), {
+    name: "my headphones",
+    how: null,
+    cap: 100,
+  });
 });
 
 it.effect(
@@ -1528,6 +1628,13 @@ it.effect(
       assert.strictEqual(yield* devices.routeReply(ID, "private", true), "hold");
       yield* devices.holdPrivate(ID, "the held words");
       assert.deepStrictEqual(sent, []);
+      // His phone says one is waiting, never what it says.
+      const inbox = yield* TessayaPhoneInbox;
+      const card = () =>
+        inbox.pending.pipe(Effect.map((p) => p.filter((c) => c.id.startsWith("held-"))));
+      const [waiting] = yield* card();
+      assert.strictEqual(waiting?.title, "A private reply is waiting");
+      assert.notInclude(waiting?.detail ?? "", "held words");
 
       // They connect: routed there with a hold, and said only once the firmware is on them.
       yield* devices.receive(
@@ -1549,6 +1656,7 @@ it.effect(
       yield* devices.receive(`${root}/state/audio/output`, '{"out":"bt","wanted":"bt"}');
       yield* Effect.yieldNow;
       assert.deepStrictEqual(said(), [{ topic: "voice/say", payload: { text: "the held words" } }]);
+      assert.deepStrictEqual(yield* card(), []);
 
       // "You can use your speaker for private too": only while he is alone with her.
       const tagged = yield* devices.command(
@@ -1557,6 +1665,18 @@ it.effect(
         him,
       );
       assert.include(tagged.line, "only when you're alone with me");
+      // "Keep private replies quiet on your speaker": a cap, the classes kept.
+      const capped = yield* devices.command(
+        ID,
+        { op: "item", itemId: "audio.output", value: { name: "your speaker", privateCap: 30 } },
+        him,
+      );
+      assert.include(capped.line, "30%");
+      const speaker = (yield* devices.overview).devices
+        .find((d) => d.id === ID)
+        ?.speaker?.outputs?.find((o) => o.id === "speaker");
+      assert.strictEqual(speaker?.privateCap, 30);
+      assert.include(speaker?.classes ?? [], "private");
       yield* devices.receive(
         `${root}/state/bt`,
         JSON.stringify({ state: "idle", mac: HP, out: "onboard", wanted: "speaker", saved: true }),

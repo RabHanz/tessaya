@@ -93,6 +93,8 @@ import { providerThreadResumeInput } from "./provider_thread_resume/input.ts";
 import { assertPiProviderThreadResumeOutput } from "./provider_thread_resume/pi_output.ts";
 import { assertMultiTurnClaudeOutput } from "./multi_turn/claude_output.ts";
 import { assertMultiTurnOutput } from "./multi_turn/codex_output.ts";
+import { assertFxMultiTurnOutput } from "./multi_turn/fx_output.ts";
+import { assertGrokMultiTurnOutput } from "./multi_turn/grok_output.ts";
 import { assertPiMultiTurnOutput } from "./multi_turn/pi_output.ts";
 import { multiTurnInput } from "./multi_turn/input.ts";
 import { openCodeChildApprovalInput } from "./opencode_child_approval/input.ts";
@@ -1475,13 +1477,13 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         driver: ProviderDriverKind.make("grok"),
         transcriptFile: new URL("./multi_turn/grok_transcript.ndjson", import.meta.url),
         modelSelection: GROK_MODEL_SELECTION,
-        assertOutput: assertMultiTurnOutput,
+        assertOutput: assertGrokMultiTurnOutput,
       },
       {
         driver: ProviderDriverKind.make("fx"),
         transcriptFile: new URL("./multi_turn/fx_transcript.ndjson", import.meta.url),
         modelSelection: FX_MODEL_SELECTION,
-        assertOutput: assertMultiTurnOutput,
+        assertOutput: assertFxMultiTurnOutput,
       },
       {
         driver: ProviderDriverKind.make("kiro"),

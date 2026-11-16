@@ -2,7 +2,7 @@ import type { ExpoConfig } from "expo/config";
 
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
-import { TESSAYA_VARIANT, tessayaEas } from "./tessaya.config.ts";
+import { TESSAYA_VARIANT, tessayaEas, tessayaRebrand } from "./tessaya.config.ts";
 
 type AppVariant = "development" | "preview" | "production" | "tessaya";
 
@@ -134,15 +134,24 @@ const easIdentity =
 // Copied thread links open the app. app.t3.codes/.well-known lists every variant's identifiers.
 const HOSTED_APP_HOST = "app.t3.codes";
 // Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
-const nfcPlugin: [string, { nfcPermission: string }] = [
+// TAG only: App Store Connect rejects the NDEF format (ITMS-90778); body tags are written as raw NTAG commands.
+const nfcPlugin: [string, { nfcPermission: string; includeNdefEntitlement: false }] = [
   "react-native-nfc-manager",
-  { nfcPermission: "Tessaya writes the NFC tag that tells your devices which body they are in." },
+  {
+    nfcPermission: "Tessaya writes the NFC tag that tells your devices which body they are in.",
+    includeNdefEntitlement: false,
+  },
 ];
 /** The domain body tags link to: configuration, never hard-coded (Director, 14 Nov). */
 const tagLinksHost = repoEnv.TESSAYA_TAG_LINKS_HOST?.trim() || undefined;
 const iosBundleIdentifier = isIosPersonalTeamBuild
   ? personalTeamBundleIdentifier!
   : variant.iosBundleIdentifier;
+
+const splashBackground =
+  "splashBackgroundColor" in variant.assets
+    ? { light: variant.assets.splashBackgroundColor, dark: variant.assets.splashBackgroundColor }
+    : { light: "#ffffff", dark: "#0a0a0a" };
 
 const dmSansFonts = {
   regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
@@ -444,11 +453,11 @@ const config: ExpoConfig = {
       {
         image: variant.assets.splashIcon,
         resizeMode: "contain",
-        backgroundColor: "#ffffff",
+        backgroundColor: splashBackground.light,
         imageWidth: 220,
         dark: {
           image: variant.assets.splashIcon,
-          backgroundColor: "#0a0a0a",
+          backgroundColor: splashBackground.dark,
         },
         android: {
           // Android 12+ masks the central two thirds of the 288dp canvas; adaptive layers avoid clipped corners.
@@ -530,4 +539,4 @@ const config: ExpoConfig = {
   },
 };
 
-export default config;
+export default APP_VARIANT === "tessaya" ? tessayaRebrand(config) : config;
