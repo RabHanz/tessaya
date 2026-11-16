@@ -27,7 +27,7 @@ const rates = parseRateTable({
 });
 const usageLayer = Layer.effect(
   BrainUsage.BrainUsage,
-  BrainUsage.make(() => rates),
+  BrainUsage.make(() => ({ table: rates, version: "2026-11-14" })),
 ).pipe(Layer.provide(TessayaRecordService.layer), Layer.provide(TessayaDatabase.layerMemory));
 
 it.effect("cleans up with the saved Anthropic key only, and says when none is saved", () =>

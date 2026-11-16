@@ -6,7 +6,6 @@
  * used when the key fails before a word was said (R1Device decides that).
  */
 import * as NodeChildProcess from "node:child_process";
-import * as NodeOS from "node:os";
 
 import { brainRoute, credentialOf } from "@t3tools/tessaya-shared/brainRoutes";
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
@@ -20,7 +19,12 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import { onSubscription } from "../tessaya/BrainRoutes.ts";
-import { BrainUsage, cliTokens, layer as brainUsageLayer } from "../tessaya/BrainUsage.ts";
+import {
+  BrainUsage,
+  cliTokens,
+  ledgeredCwd,
+  layer as brainUsageLayer,
+} from "../tessaya/BrainUsage.ts";
 import type { BrainRole } from "@t3tools/contracts";
 import { createVoiceSessions, type SessionSpec } from "./VoiceSessions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -256,7 +260,15 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   /** A subscription turn's `result` event, as usage rows: the plan pays, so tokens and no dollars. */
   const used = (role: BrainRole, model: string, result: unknown) => {
     for (const tokens of cliTokens(result, model))
-      Effect.runForkWith(context)(usage.record({ ...tokens, role, credential: "subscription" }));
+      Effect.runForkWith(context)(
+        usage.record({
+          ...tokens,
+          role,
+          credential: "subscription",
+          // Warm-ups included: a spoken turn's session is paid for before he speaks.
+          attribution: { feature: role === "deep" ? "voice-deep" : "voice", origin: "user" },
+        }),
+      );
   };
   let ready: Warm | null = null;
   /** The routing table's row for spoken turns; voice never reads the cheap model. */
@@ -293,7 +305,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
         "--setting-sources",
         "",
       ],
-      { stdio: ["pipe", "pipe", "ignore"], windowsHide: true, cwd: NodeOS.tmpdir() },
+      { stdio: ["pipe", "pipe", "ignore"], windowsHide: true, cwd: ledgeredCwd() },
     );
     const warm: Warm = {
       proc,

@@ -169,3 +169,9 @@ const API_AUTH_TYPES: ReadonlySet<string> = new Set([
 /** Who pays for a provider instance's turns, from its login (`ServerProviderAuth.type`); unknown is his plan. */
 export const billingOfAuth = (type: string | undefined): "subscription" | "apiKey" =>
   type !== undefined && API_AUTH_TYPES.has(type) ? "apiKey" : "subscription";
+
+/** Her own CLI calls run from a folder of this name: her usage ledger records them, so T3's transcript scan skips it. */
+export const LEDGERED_DIR = "tessaya-ledgered";
+
+/** Claude Code keeps a session under its cwd with every other character a dash, so the tag survives as the suffix. */
+export const isLedgeredDir = (name: string) => name.endsWith(`-${LEDGERED_DIR}`);

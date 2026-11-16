@@ -176,6 +176,7 @@ export const make = Effect.gen(function* () {
         ),
         outputSchema: Episode,
         role: "background",
+        feature: "memory-episode",
       })
       .pipe(Effect.orElseSucceed(() => null));
     if (out === null) return result("retry");
@@ -267,6 +268,7 @@ export const make = Effect.gen(function* () {
         prompt: extractionPrompt(input, known),
         outputSchema: Proposals,
         role: "background",
+        feature: "memory-learning",
       })
       .pipe(Effect.orElseSucceed(() => ({ items: [] })));
     // A private persona's turn keeps all it learns to itself (pack `private: true`, Memory v2 §2.3).
@@ -327,7 +329,12 @@ export const make = Effect.gen(function* () {
       const batch = pairs.slice(at, at + SWEEP_PAIRS_PER_CALL);
       yield* countCheap;
       const answer = yield* oneShot
-        .run({ prompt: sweepPrompt(batch), outputSchema: Verdicts, role: "background" })
+        .run({
+          prompt: sweepPrompt(batch),
+          outputSchema: Verdicts,
+          role: "background",
+          feature: "memory-sweep",
+        })
         .pipe(Effect.orElseSucceed(() => ({ verdicts: [] })));
       for (const v of answer.verdicts) verdicts.push({ pair: v.pair + at, verdict: v.verdict });
     }

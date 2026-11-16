@@ -186,6 +186,7 @@ export const make = Effect.gen(function* () {
           turns,
         }),
         role: "synopsis",
+        feature: "synopsis",
         outputSchema: Schema.Struct({
           // The descriptions are the instruction the model follows: unannotated, the first real
           // run narrated the request ("Wrote a two-sentence status update for ...").

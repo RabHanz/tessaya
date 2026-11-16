@@ -146,6 +146,7 @@ export const learnFromOutcome = Effect.fn("BatonPlaybook.learn")(function* (inpu
       })}`,
       outputSchema: Delta,
       role: "background",
+      feature: "playbook",
     })
     .pipe(Effect.orElseSucceed(() => null));
   if (answer === null) return null;

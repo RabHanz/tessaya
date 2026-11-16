@@ -140,6 +140,7 @@ export const make = Effect.gen(function* () {
         .run({
           prompt,
           role: "intent",
+          feature: "intent",
           // Every field required, so a partial answer is a decode failure rather than a silent
           // default; every id is checked against the environment afterwards.
           outputSchema: Schema.Struct({

@@ -1011,7 +1011,7 @@ const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   const { device, context, turn, names, justSpoke } = yield* r1Gather(input);
   const oneShot = yield* TessayaOneShot;
   const plan = yield* oneShot
-    .run({ prompt: r1Prompt(context), outputSchema: R1Plan, role: "voice" })
+    .run({ prompt: r1Prompt(context), outputSchema: R1Plan, role: "voice", feature: "tessel-plan" })
     .pipe(
       Effect.tapCause((cause) =>
         Effect.logWarning("R1 brain failed", { route: "one-shot", detail: brainFailure(cause) }),

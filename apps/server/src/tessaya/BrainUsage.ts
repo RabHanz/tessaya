@@ -1,15 +1,25 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**
- * Every model call the brain makes writes one row (BRAIN-DESIGN §13.3, B1d): role, provider, login, model, tokens,
- * and dollars at list price when an API key paid (a subscription row says null: the plan paid). The first slice of
- * ACCOUNTS-IDENTITY C-2's usage ledger, not a second ledger. A failed write is logged and never fails the call.
+ * The one usage ledger (BRAIN-DESIGN §13.3): every paid call of hers writes a row with tokens, who paid, the list
+ * price and its price-list date, and what it was for (`UsageAttribution`). Provider turns stay in T3's turn record.
+ * `dollars` is what an API key spent; a plan's row says null. A failed write is logged and never fails the call.
  */
 import { zoneOf } from "@t3tools/tessaya-shared/brain";
 import { houseZone } from "./houseZone.ts";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { credentialOf } from "@t3tools/tessaya-shared/brainRoutes";
-import type { BrainCredential, BrainRole, BrainSpendAlert } from "@t3tools/contracts";
+import { credentialOf, LEDGERED_DIR } from "@t3tools/tessaya-shared/brainRoutes";
+import type { BrainRole, BrainSpendAlert } from "@t3tools/contracts";
+import type {
+  BrainUsageCall,
+  BrainUsageInput,
+  BrainUsageUnit,
+  UsageAttribution,
+  UsageBilling,
+  UsageOutcome,
+} from "@t3tools/tessaya-contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -21,7 +31,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { priceUsage, type RateTable } from "../usage/usagePricing.ts";
 import * as TessayaDatabase from "./TessayaDatabase.ts";
 import * as TessayaRecordService from "./TessayaRecordService.ts";
-import { readRates } from "./TessayaJobSpend.ts";
+import { readPriceList, type PriceList } from "./TessayaJobSpend.ts";
 
 /** One call's tokens on one model. `input` is the uncached part, as the API counts it. */
 export interface CallTokens {
@@ -32,9 +42,34 @@ export interface CallTokens {
   readonly output: number;
 }
 
+/** The folder her own CLI calls run from: the tag that keeps T3's transcript scan from counting them twice. */
+export const ledgeredCwd = (): string => {
+  const dir = NodePath.join(NodeOS.tmpdir(), LEDGERED_DIR);
+  NodeFS.mkdirSync(dir, { recursive: true });
+  return dir;
+};
+
+/** Her routing table's roles, `agent` for a provider turn, `speech` for cloud speech in and out. */
+export type UsageRole = BrainRole | "agent" | "speech";
+
 export interface UsageRow extends CallTokens {
-  readonly role: BrainRole;
-  readonly credential: BrainCredential;
+  readonly role: UsageRole;
+  /** A `BrainCredential`, or `instance:<id>` for a provider instance's own login. */
+  readonly credential: string;
+  /** "anthropic" when absent. */
+  readonly provider?: string;
+  /** From the credential when absent: an `apiKey:` login bills per token, everything else is his plan. */
+  readonly billing?: UsageBilling;
+  /** The login's account (an email or plan label), when the call knows it. */
+  readonly account?: string;
+  /** A report that can arrive twice (a provider turn) names itself once; the second write is dropped. */
+  readonly key?: string;
+  /** What it was for and what started it: required, so no call site can leave it out. */
+  readonly attribution: UsageAttribution;
+  /** `failed`: it ran and spent, and its tokens were lost; `unmeasured`: it worked and reported none. */
+  readonly outcome?: UsageOutcome;
+  /** Audio a speech call heard or said, which its provider bills by. */
+  readonly audioMs?: number;
 }
 
 /** One day's use of one model by one role on one login, the day in the asker's time zone. */
@@ -43,6 +78,10 @@ export interface UsageTotal {
   readonly role: string;
   readonly credential: string;
   readonly model: string;
+  readonly feature: string;
+  readonly persona: string | null;
+  readonly surface: string | null;
+  readonly billing: UsageBilling;
   readonly calls: number;
   readonly input: number;
   readonly cacheRead: number;
@@ -50,6 +89,8 @@ export interface UsageTotal {
   readonly output: number;
   /** API key rows only; null when none were priced. */
   readonly dollars: number | null;
+  /** Every row at list price, the plan's as its equivalent; null when none were priced. */
+  readonly listDollars: number | null;
 }
 
 const count = (value: unknown) =>
@@ -92,9 +133,14 @@ export const cliTokens = (result: unknown, asked: string): ReadonlyArray<CallTok
   return one === null ? [] : [one];
 };
 
-/** List price of an API key's call; null on a subscription, or when the rate list doesn't know the model. */
-export const dollarsOf = (rates: RateTable | null, row: UsageRow): number | null => {
-  if (rates === null || credentialOf(row.credential).kind !== "apiKey") return null;
+export const billingOfRow = (row: Pick<UsageRow, "billing" | "credential">): UsageBilling =>
+  row.billing ??
+  (credentialOf(row.credential as never).kind === "apiKey" ? "apiKey" : "subscription");
+
+/** List price of a call on any login (a plan's call as its equivalent); null when the rate list doesn't know it. */
+export const listDollarsOf = (rates: RateTable | null, row: CallTokens): number | null => {
+  // No tokens is no claim: a speech call bills by audio, and a lost count is not $0.
+  if (rates === null || row.input + row.cacheRead + row.cacheWrite + row.output === 0) return null;
   const priced = priceUsage(rates, {
     model: row.model,
     totals: {
@@ -109,6 +155,10 @@ export const dollarsOf = (rates: RateTable | null, row: UsageRow): number | null
   });
   return priced.costSource === "unpriced" ? null : priced.costUsd;
 };
+
+/** What an API key spent on the call; null on a subscription, or when the rate list doesn't know the model. */
+export const dollarsOf = (rates: RateTable | null, row: UsageRow): number | null =>
+  billingOfRow(row) === "apiKey" ? listDollarsOf(rates, row) : null;
 
 /** The zone's offset from UTC at `at`, in ms ("Asia/Karachi" is +5 h). */
 export const zoneOffsetMs = (timeZone: string, at: number): number => {
@@ -150,7 +200,7 @@ export const periodStarts = (timeZone: string, at: number) => {
   };
 };
 
-export type SpendScope = "all" | BrainRole;
+export type SpendScope = "all" | UsageRole;
 /** What the API keys spent this day and month, in dollars: every role together (`all`) and each one. */
 export interface SpendNow {
   readonly day: Partial<Record<SpendScope, number>>;
@@ -183,7 +233,7 @@ export const spendLimits = (
 export const crossedBy = (
   limits: BrainSpendAlert,
   after: SpendNow,
-  row: { readonly role: BrainRole; readonly dollars: number },
+  row: { readonly role: UsageRole; readonly dollars: number },
 ): ReadonlyArray<SpendLimitState> => {
   const less = (sums: SpendNow["day"]) => ({
     ...sums,
@@ -209,36 +259,46 @@ export class BrainUsage extends Context.Service<
   {
     /** Writes one call's row (one per model it used); never fails the call it records. */
     readonly record: (row: UsageRow) => Effect.Effect<void>;
-    /** Totals per day, role, login and model since `since` (ms), days in `timeZone`. */
+    /** Totals per day, role, login, model, feature, persona and surface since `since` (ms), days in `timeZone`. */
     readonly totals: (input: {
       readonly since: number;
       readonly timeZone: string;
     }) => Effect.Effect<ReadonlyArray<UsageTotal>>;
+    /** Unit cost since `since`: each schedule per run, each job in all. */
+    readonly units: (since: number) => Effect.Effect<ReadonlyArray<BrainUsageUnit>>;
+    /** The calls behind one line, newest first, at most `limit`. */
+    readonly calls: (input: {
+      readonly since: number;
+      readonly timeZone: string;
+      readonly filter: NonNullable<BrainUsageInput["detail"]>;
+      readonly limit: number;
+    }) => Effect.Effect<ReadonlyArray<BrainUsageCall>>;
     /** His spend alerts, each with what the API keys spent against it this day or month in `timeZone`. */
     readonly limits: (timeZone: string) => Effect.Effect<ReadonlyArray<SpendLimitState>>;
   }
 >()("t3/tessaya/BrainUsage") {}
 
 /** `readRateList` gives the price list, or null before T3's usage page has ever fetched one. */
-export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => RateTable | null) {
+export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => PriceList | null) {
   const sql = yield* SqlClient.SqlClient;
   const settings = yield* ServerSettingsService;
   const notes = yield* TessayaRecordService.TessayaRecordService;
   // Parsed once an hour, not on every call: T3's list is ~3 MB.
-  let rates: { readonly table: RateTable | null; readonly at: number } | null = null;
+  let rates: { readonly list: PriceList | null; readonly at: number } | null = null;
   const ratesNow = Effect.fn("BrainUsage.rates")(function* () {
     const now = yield* Clock.currentTimeMillis;
-    if (rates === null || now - rates.at > RATES_TTL_MS) rates = { table: readRateList(), at: now };
-    return rates.table;
+    if (rates === null || now - rates.at > RATES_TTL_MS) rates = { list: readRateList(), at: now };
+    return rates.list;
   });
 
   const spendNow = Effect.fn("BrainUsage.spendNow")(function* (timeZone: string, at: number) {
     const starts = periodStarts(timeZone, at);
-    const rows = yield* sql<{ role: BrainRole; day: number | null; month: number | null }>`
+    const rows = yield* sql<{ role: UsageRole; day: number | null; month: number | null }>`
       SELECT role, SUM(CASE WHEN at >= ${starts.day} THEN dollars END) AS day, SUM(dollars) AS month
       FROM tessaya_brain_usage WHERE at >= ${starts.month} AND dollars IS NOT NULL GROUP BY role
     `;
     const day: Partial<Record<SpendScope, number>> = { all: 0 };
+    // Provider turns on an API key count toward "all" and their own `agent` scope.
     const month: Partial<Record<SpendScope, number>> = { all: 0 };
     for (const r of rows) {
       day[r.role] = r.day ?? 0;
@@ -251,7 +311,7 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
 
   /** A call that takes the keys' spend over one of his limits writes it to the Record once; the desktop says it. */
   const alertIfCrossed = Effect.fn("BrainUsage.alertIfCrossed")(function* (
-    role: BrainRole,
+    role: UsageRole,
     dollars: number,
     at: number,
   ) {
@@ -272,15 +332,29 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
 
   const record = Effect.fn("BrainUsage.record")(
     function* (row: UsageRow) {
-      const dollars = dollarsOf(yield* ratesNow(), row);
+      const prices = yield* ratesNow();
+      const list = listDollarsOf(prices?.table ?? null, row);
+      const billing = billingOfRow(row);
+      const dollars = billing === "apiKey" ? list : null;
       const at = yield* Clock.currentTimeMillis;
-      yield* sql`
+      const a = row.attribution;
+      const written = yield* sql<{ id: number }>`
       INSERT INTO tessaya_brain_usage
-        (at, role, provider, credential, model, input, cache_read, cache_write, output, dollars)
-      VALUES (${at}, ${row.role}, ${"anthropic"}, ${row.credential}, ${row.model}, ${row.input},
-        ${row.cacheRead}, ${row.cacheWrite}, ${row.output}, ${dollars})
+        (at, role, provider, credential, model, input, cache_read, cache_write, output, dollars,
+         feature, origin, surface, persona, thread_id, turn_id, job_id, schedule_id, device, member,
+         billing, account, list_dollars, price_version, call_key, outcome, audio_ms)
+      VALUES (${at}, ${row.role}, ${row.provider ?? "anthropic"}, ${row.credential}, ${row.model},
+        ${row.input}, ${row.cacheRead}, ${row.cacheWrite}, ${row.output}, ${dollars},
+        ${a.feature}, ${a.origin}, ${a.surface ?? null}, ${a.persona ?? null}, ${a.threadId ?? null},
+        ${a.turnId ?? null}, ${a.jobId ?? null}, ${a.scheduleId ?? null}, ${a.device ?? null},
+        ${a.member ?? null}, ${billing}, ${row.account ?? null}, ${list},
+        ${list === null ? null : (prices?.version ?? null)}, ${row.key ?? null},
+        ${row.outcome ?? "ok"}, ${row.audioMs ?? null})
+      ON CONFLICT DO NOTHING
+      RETURNING id
     `;
-      if (dollars !== null && dollars > 0) yield* alertIfCrossed(row.role, dollars, at);
+      if (written.length > 0 && dollars !== null && dollars > 0)
+        yield* alertIfCrossed(row.role, dollars, at);
     },
     Effect.catchCause((cause) =>
       Effect.logWarning("brain: a usage row was not written", { cause }),
@@ -299,18 +373,26 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
       role: string;
       credential: string;
       model: string;
+      feature: string;
+      persona: string | null;
+      surface: string | null;
+      billing: UsageBilling;
       calls: number;
       input: number;
       cache_read: number;
       cache_write: number;
       output: number;
       dollars: number | null;
+      list_dollars: number | null;
     }>`
       SELECT date((at + ${offset}) / 1000, 'unixepoch') AS day, role, credential, model,
+        feature, persona, surface, billing,
         COUNT(*) AS calls, SUM(input) AS input, SUM(cache_read) AS cache_read,
-        SUM(cache_write) AS cache_write, SUM(output) AS output, SUM(dollars) AS dollars
+        SUM(cache_write) AS cache_write, SUM(output) AS output, SUM(dollars) AS dollars,
+        SUM(list_dollars) AS list_dollars
       FROM tessaya_brain_usage WHERE at >= ${input.since}
-      GROUP BY day, role, credential, model ORDER BY day, role, credential, model
+      GROUP BY day, role, credential, model, feature, persona, surface, billing
+      ORDER BY day, role, credential, model, feature, persona, surface
     `.pipe(
       Effect.tapCause((cause) => Effect.logWarning("brain: usage could not be read", { cause })),
       Effect.orElseSucceed(() => []),
@@ -320,12 +402,144 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
       role: r.role,
       credential: r.credential,
       model: r.model,
+      feature: r.feature,
+      persona: r.persona,
+      surface: r.surface,
+      billing: r.billing,
       calls: r.calls,
       input: r.input,
       cacheRead: r.cache_read,
       cacheWrite: r.cache_write,
       output: r.output,
       dollars: r.dollars,
+      listDollars: r.list_dollars,
+    }));
+  });
+
+  // A provider turn's row names its thread; the job it belongs to is that thread's work session.
+  const units = Effect.fn("BrainUsage.units")(function* (since: number) {
+    const rows = yield* sql<{
+      kind: "schedule" | "job";
+      id: string;
+      runs: number;
+      calls: number;
+      tokens: number;
+      dollars: number | null;
+      list_dollars: number | null;
+    }>`
+      WITH u AS (
+        SELECT b.*, COALESCE(b.job_id, t.work_session_id) AS job
+        FROM tessaya_brain_usage b
+        LEFT JOIN fabric_work_session_threads t ON t.thread_id = b.thread_id
+        WHERE b.at >= ${since}
+      )
+      SELECT 'schedule' AS kind, schedule_id AS id,
+        COUNT(DISTINCT COALESCE(thread_id, turn_id, id)) AS runs, COUNT(*) AS calls,
+        SUM(input + cache_read + cache_write + output) AS tokens, SUM(dollars) AS dollars,
+        SUM(list_dollars) AS list_dollars
+      FROM u WHERE schedule_id IS NOT NULL GROUP BY schedule_id
+      UNION ALL
+      SELECT 'job' AS kind, job AS id, COUNT(DISTINCT COALESCE(thread_id, id)) AS runs, COUNT(*) AS calls,
+        SUM(input + cache_read + cache_write + output) AS tokens, SUM(dollars) AS dollars,
+        SUM(list_dollars) AS list_dollars
+      FROM u WHERE job IS NOT NULL GROUP BY job
+    `.pipe(
+      Effect.tapCause((cause) =>
+        Effect.logWarning("brain: unit costs could not be read", { cause }),
+      ),
+      Effect.orElseSucceed(() => []),
+    );
+    return rows.map((r): BrainUsageUnit => ({
+      kind: r.kind,
+      id: r.id,
+      runs: r.runs,
+      calls: r.calls,
+      tokens: r.tokens,
+      dollars: r.dollars,
+      listDollars: r.list_dollars,
+    }));
+  });
+
+  const calls = Effect.fn("BrainUsage.calls")(function* (input: {
+    readonly since: number;
+    readonly timeZone: string;
+    readonly filter: NonNullable<BrainUsageInput["detail"]>;
+    readonly limit: number;
+  }) {
+    const offset = zoneOffsetMs(input.timeZone, yield* Clock.currentTimeMillis);
+    const f = input.filter;
+    const rows = yield* sql<{
+      at: number;
+      role: string;
+      feature: string;
+      origin: string;
+      outcome: UsageOutcome;
+      surface: string | null;
+      persona: string | null;
+      provider: string;
+      model: string;
+      billing: UsageBilling;
+      account: string | null;
+      credential: string;
+      input: number;
+      cache_read: number;
+      cache_write: number;
+      output: number;
+      dollars: number | null;
+      list_dollars: number | null;
+      price_version: string | null;
+      thread_id: string | null;
+      turn_id: string | null;
+      job_id: string | null;
+      schedule_id: string | null;
+      device: string | null;
+      member: string | null;
+    }>`
+      SELECT at, role, feature, origin, outcome, surface, persona, provider, model, billing, account, credential,
+        input, cache_read, cache_write, output, dollars, list_dollars, price_version, thread_id, turn_id,
+        job_id, schedule_id, device, member
+      FROM tessaya_brain_usage
+      WHERE at >= ${input.since}
+        AND (${f.day ?? null} IS NULL OR date((at + ${offset}) / 1000, 'unixepoch') = ${f.day ?? null})
+        AND (${f.feature ?? null} IS NULL OR feature = ${f.feature ?? null})
+        AND (${f.persona ?? null} IS NULL OR persona = ${f.persona ?? null})
+        AND (${f.model ?? null} IS NULL OR model = ${f.model ?? null})
+        AND (${f.surface ?? null} IS NULL OR surface = ${f.surface ?? null})
+        AND (${f.threadId ?? null} IS NULL OR thread_id = ${f.threadId ?? null})
+        AND (${f.scheduleId ?? null} IS NULL OR schedule_id = ${f.scheduleId ?? null})
+      ORDER BY at DESC LIMIT ${input.limit}
+    `.pipe(
+      Effect.tapCause((cause) =>
+        Effect.logWarning("brain: usage calls could not be read", { cause }),
+      ),
+      Effect.orElseSucceed(() => []),
+    );
+    return rows.map((r): BrainUsageCall => ({
+      at: r.at,
+      role: r.role,
+      feature: r.feature,
+      origin: r.origin,
+      outcome: r.outcome,
+      surface: r.surface,
+      persona: r.persona,
+      provider: r.provider,
+      model: r.model,
+      billing: r.billing,
+      account: r.account,
+      credential: r.credential,
+      input: r.input,
+      cacheRead: r.cache_read,
+      cacheWrite: r.cache_write,
+      output: r.output,
+      dollars: r.dollars,
+      listDollars: r.list_dollars,
+      priceVersion: r.price_version,
+      threadId: r.thread_id,
+      turnId: r.turn_id,
+      jobId: r.job_id,
+      scheduleId: r.schedule_id,
+      device: r.device,
+      member: r.member,
     }));
   });
 
@@ -342,20 +556,31 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
     ),
   );
 
-  return BrainUsage.of({ record, totals, limits });
+  return BrainUsage.of({ record, totals, units, calls, limits });
 });
 
-/** The Usage page's and `tessaya_usage_report`'s read: the last `days` days in `timeZone`, and his spend alerts. */
-export const brainUsageReport = Effect.fn("BrainUsage.report")(function* (input: {
-  readonly days: number;
-  readonly timeZone: string;
-}) {
+const CALLS_LIMIT = 200;
+
+/**
+ * The Usage page's and `tessaya_usage_report`'s read: the last `days` days in `timeZone`, its unit costs and his
+ * spend alerts; with `detail`, the calls behind one line instead of the totals (the drill-down to the turn).
+ */
+export const brainUsageReport = Effect.fn("BrainUsage.report")(function* (input: BrainUsageInput) {
   const usage = yield* BrainUsage;
   const now = yield* Clock.currentTimeMillis;
   const timeZone = zoneOf(input.timeZone, yield* houseZone());
   const since = periodStarts(timeZone, now - (input.days - 1) * 86_400_000).day;
+  if (input.detail !== undefined) {
+    return {
+      totals: [],
+      units: [],
+      limits: [],
+      calls: yield* usage.calls({ since, timeZone, filter: input.detail, limit: CALLS_LIMIT }),
+    };
+  }
   return {
     totals: yield* usage.totals({ since, timeZone }),
+    units: yield* usage.units(since),
     limits: yield* usage.limits(timeZone),
   };
 });
@@ -365,6 +590,6 @@ export const layer = Layer.effect(
   BrainUsage,
   Effect.gen(function* () {
     const { dbPath } = yield* ServerConfig.ServerConfig;
-    return yield* make(() => readRates(NodePath.dirname(dbPath)));
+    return yield* make(() => readPriceList(NodePath.dirname(dbPath)));
   }),
 ).pipe(Layer.provide(TessayaRecordService.layer), Layer.provide(TessayaDatabase.layer));

@@ -15,10 +15,11 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import { describe, expect } from "vite-plus/test";
+import { describe, expect, vi } from "vite-plus/test";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
+import { BrainUsage, type UsageRow } from "./BrainUsage.ts";
 import { Consent } from "./consent.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
@@ -57,6 +58,7 @@ const memoryConsent = (keys: Array<string>) =>
 const withLibrary = <A, E>(
   body: (userdata: string) => Effect.Effect<A, E, TessayaVoiceLibrary.TessayaVoiceLibrary>,
   grants: Array<string> = [],
+  rows: Array<UsageRow> = [],
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -70,6 +72,9 @@ const withLibrary = <A, E>(
           Layer.provide(ServerConfig.layerTest(process.cwd(), base)),
           Layer.provide(memorySecrets()),
           Layer.provide(memoryConsent(grants)),
+          Layer.provide(
+            Layer.mock(BrainUsage)({ record: (row) => Effect.sync(() => void rows.push(row)) }),
+          ),
         ),
       ),
     );
@@ -79,6 +84,37 @@ const call = (kind: "read" | "act" | "owner", op: string, args: Record<string, u
   TessayaVoiceLibrary.serveVoiceCall({ kind, op, args });
 
 it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
+  it.effect("records each cloud line the Google key paid for, with its tokens", () => {
+    const rows: Array<UsageRow> = [];
+    return withLibrary(
+      () =>
+        Effect.gen(function* () {
+          assert.isTrue((yield* call("act", "setGoogleKey", { key: "test-key" })).ok);
+          const reply = {
+            steps: [{ content: [{ type: "audio", data: Buffer.alloc(100).toString("base64") }] }],
+            usage: { total_input_tokens: 12, total_output_tokens: 300 },
+          };
+          using _fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(reply));
+          assert.isTrue(
+            (yield* call("act", "say", { engine: "gemini", voice: "en-gb-advisor-1", text: "Hi." }))
+              .ok,
+          );
+          expect(rows).toEqual([
+            expect.objectContaining({
+              role: "speech",
+              provider: "google",
+              billing: "apiKey",
+              input: 12,
+              output: 300,
+              attribution: { feature: "voice-cloud", origin: "user" },
+            }),
+          ]);
+        }),
+      [],
+      rows,
+    );
+  });
+
   it.effect("lists every voice, cloud voices only once a Google key is saved", () =>
     withLibrary(() =>
       Effect.gen(function* () {

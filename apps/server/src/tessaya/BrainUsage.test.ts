@@ -17,12 +17,14 @@ import * as BrainUsage from "./BrainUsage.ts";
 const usageLayer = (rates: RateTable | null) =>
   Layer.effect(
     BrainUsage.BrainUsage,
-    BrainUsage.make(() => rates),
+    BrainUsage.make(() => (rates === null ? null : { table: rates, version: "2026-11-14" })),
   ).pipe(
     Layer.provideMerge(TessayaRecordService.layer),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provide(TessayaDatabase.layerMemory),
   );
+
+const A = { feature: "test", origin: "system" };
 
 /** Claude Code 2.1's `result` event, trimmed (a real `claude -p --model haiku` run, 13 Nov). */
 const RESULT = {
@@ -62,12 +64,17 @@ it.effect("totals by day in his zone; the plan's rows carry no dollars", () =>
     const tokens = { model: "claude-sonnet-5-5", input: 1, cacheRead: 2, cacheWrite: 3, output: 4 };
     // 18:30 UTC on 12 Nov is 23:30 in Karachi; 19:30 UTC is 00:30 on the 13th there.
     yield* TestClock.setTime(Date.UTC(2026, 10, 12, 18, 30));
-    yield* usage.record({ ...tokens, role: "voice", credential: "subscription" });
+    yield* usage.record({ ...tokens, role: "voice", credential: "subscription", attribution: A });
     yield* TestClock.setTime(Date.UTC(2026, 10, 12, 19, 30));
-    yield* usage.record({ ...tokens, role: "voice", credential: "subscription" });
-    yield* usage.record({ ...tokens, role: "voice", credential: "subscription" });
+    yield* usage.record({ ...tokens, role: "voice", credential: "subscription", attribution: A });
+    yield* usage.record({ ...tokens, role: "voice", credential: "subscription", attribution: A });
     // No price list yet: an API row is kept, its dollars unknown.
-    yield* usage.record({ ...tokens, role: "cleanup", credential: "apiKey:anthropic" });
+    yield* usage.record({
+      ...tokens,
+      role: "cleanup",
+      credential: "apiKey:anthropic",
+      attribution: A,
+    });
 
     const karachi = yield* usage.totals({ since: 0, timeZone: "Asia/Karachi" });
     expect(karachi.map((t) => [t.day, t.role, t.calls, t.output, t.dollars])).toEqual([
@@ -105,11 +112,26 @@ it.effect(
         output: 0,
       };
       yield* TestClock.setTime(Date.UTC(2026, 10, 13, 6));
-      yield* usage.record({ ...call, role: "cleanup", credential: "apiKey:anthropic" });
-      yield* usage.record({ ...call, role: "voice", credential: "subscription" });
+      yield* usage.record({
+        ...call,
+        role: "cleanup",
+        credential: "apiKey:anthropic",
+        attribution: A,
+      });
+      yield* usage.record({ ...call, role: "voice", credential: "subscription", attribution: A });
       expect(yield* record.query({ kind: "brain_spend" })).toEqual([]);
-      yield* usage.record({ ...call, role: "cleanup", credential: "apiKey:anthropic" });
-      yield* usage.record({ ...call, role: "cleanup", credential: "apiKey:anthropic" });
+      yield* usage.record({
+        ...call,
+        role: "cleanup",
+        credential: "apiKey:anthropic",
+        attribution: A,
+      });
+      yield* usage.record({
+        ...call,
+        role: "cleanup",
+        credential: "apiKey:anthropic",
+        attribution: A,
+      });
       const alerts = yield* record.query({ kind: "brain_spend" });
       expect(alerts.map((a) => a.detail)).toEqual([
         "Today's API spend on all her work reached your $0.15 alert: $0.20 so far.",
@@ -133,6 +155,61 @@ it.effect(
         ),
       ),
     ),
+);
+
+it.effect("keeps what each call was for, counts a report once, and drills down to the turn", () =>
+  Effect.gen(function* () {
+    const usage = yield* BrainUsage.BrainUsage;
+    const tokens = {
+      model: "claude-haiku-5-5",
+      input: 1_000,
+      cacheRead: 0,
+      cacheWrite: 0,
+      output: 0,
+    };
+    const draft = { feature: "job", origin: "schedule", persona: "alter-ego", threadId: "t1" };
+    const turn = { ...tokens, role: "agent", credential: "subscription", key: "turn-1" } as const;
+    yield* usage.record({ ...turn, attribution: draft });
+    yield* usage.record({ ...turn, attribution: draft });
+    // A failed call is still a call: no tokens, and no price claimed for them.
+    yield* usage.record({
+      ...tokens,
+      input: 0,
+      role: "intent",
+      credential: "subscription",
+      outcome: "failed",
+      attribution: { feature: "intent", origin: "user" },
+    });
+    const totals = yield* usage.totals({ since: 0, timeZone: "Asia/Karachi" });
+    expect(totals.map((t) => [t.feature, t.persona, t.calls, t.listDollars])).toEqual([
+      ["job", "alter-ego", 1, expect.closeTo(0.001, 9)],
+      ["intent", null, 1, null],
+    ]);
+    const calls = yield* usage.calls({
+      since: 0,
+      timeZone: "Asia/Karachi",
+      filter: { persona: "alter-ego" },
+      limit: 10,
+    });
+    expect(calls).toEqual([
+      expect.objectContaining({
+        feature: "job",
+        origin: "schedule",
+        threadId: "t1",
+        outcome: "ok",
+        dollars: null,
+        priceVersion: "2026-11-14",
+      }),
+    ]);
+  }).pipe(
+    Effect.provide(
+      usageLayer(
+        parseRateTable({
+          "claude-haiku-5-5": { input_cost_per_token: 1e-6, output_cost_per_token: 5e-6 },
+        }),
+      ),
+    ),
+  ),
 );
 
 it("reads his day and month in his zone", () => {

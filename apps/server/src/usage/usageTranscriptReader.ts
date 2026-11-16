@@ -12,6 +12,7 @@ import type {
   TranscriptUsageFormat,
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
+import { isLedgeredDir } from "@t3tools/tessaya-shared/brainRoutes";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -105,7 +106,7 @@ export async function listTranscriptFiles(
     const found = await Promise.all(
       entries.map((entry) => {
         const child = NodePath.join(dir, entry.name);
-        if (entry.isDirectory()) return walk(child);
+        if (entry.isDirectory()) return isLedgeredDir(entry.name) ? [] : walk(child);
         return (
           fileName !== undefined
             ? entry.name === fileName

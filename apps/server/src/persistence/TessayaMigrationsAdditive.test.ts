@@ -37,7 +37,7 @@ const REVIEWED_TRIGGERS = new Set(["fabric_memory_vectors_gone"]);
  * Migrations whose UPDATE only fills a column the same migration added, which an older build never reads; and the
  * persona roster's re-keying, which deletes nothing (an older build only stops seeing those personas' own items).
  */
-const REVIEWED_BACKFILLS = new Set(["31_MemoryPersona", "41_PersonaRoster"]);
+const REVIEWED_BACKFILLS = new Set(["31_MemoryPersona", "41_PersonaRoster", "46_UsageAttribution"]);
 
 /** Comments out first (a commented-out END must not end a trigger early), then the reviewed triggers' bodies. */
 const withoutTriggerBodies = (source: string): string =>

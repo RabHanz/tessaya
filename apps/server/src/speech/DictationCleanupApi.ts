@@ -337,7 +337,12 @@ export const make = Effect.gen(function* () {
       );
       const tokens = BrainUsage.apiTokens(body.model ?? route.model, body.usage);
       if (tokens !== null)
-        yield* usage.record({ ...tokens, role: "cleanup", credential: KEY_CREDENTIAL });
+        yield* usage.record({
+          ...tokens,
+          role: "cleanup",
+          credential: KEY_CREDENTIAL,
+          attribution: { feature: "dictation", origin: "user" },
+        });
       const { content } = body;
       const text = content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : []));
       const ms = (yield* Clock.currentTimeMillis) - started;
@@ -387,7 +392,15 @@ export const make = Effect.gen(function* () {
           const tokens = BrainUsage.apiTokens(seen.model ?? route.model, seen.usage);
           return tokens === null
             ? Effect.void
-            : usage.record({ ...tokens, role: route.role, credential: KEY_CREDENTIAL });
+            : usage.record({
+                ...tokens,
+                role: route.role,
+                credential: KEY_CREDENTIAL,
+                attribution: {
+                  feature: route.role === "deep" ? "voice-deep" : "voice",
+                  origin: "user",
+                },
+              });
         });
         return response.stream.pipe(
           Stream.mapError(() => new DictationCleanupError({ reason: "unreachable" })),

@@ -22,6 +22,7 @@ import {
   TessayaWeaveSendInput,
   TessayaWeaveSendResult,
   WorkSessionId,
+  BrainUsageDetail,
   BrainUsageResult,
   TessayaPromptLabResult,
   DesktopSettingsView,
@@ -518,11 +519,17 @@ const OwnerDocTool = Tool.make("tessaya_owner_doc", {
 const UsageReportTool = Tool.make("tessaya_usage_report", {
   ...shared,
   description:
-    'What her brain used and what it cost, per day in his time zone: each kind of work (talking, cleanup, hard tasks on Opus, background), which login paid (his Claude subscription, whose plan covers it, or the API key, priced at list in dollars), the model and tokens; and his API spend alerts with what was spent against each. For "how much did the API cost this week?", "what have you used today?" or "am I near my spend limit?".',
+    'What her brain used and what it cost, per day in his time zone: each kind of work (talking, cleanup, hard tasks on Opus, background), which login paid (his Claude subscription, whose plan covers it, or the API key, priced at list in dollars), the model and tokens; and his API spend alerts with what was spent against each. Each line also names the feature that spent it (synopsis, intent, voice, a commit message…), the persona and the surface; `units` gives each schedule\'s cost per run and each job\'s in all. With `detail`, the calls behind one line instead (newest first, at most 200), each with what started it and its thread and turn. For "how much did the API cost this week?", "what have you used today?", "what did Sebastian cost yesterday?" or "am I near my spend limit?".',
   parameters: Schema.Struct({
     days: Schema.optional(
       Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 31 })).annotate({
         description: "How many days back, today included. Default 7.",
+      }),
+    ),
+    detail: Schema.optional(
+      BrainUsageDetail.annotate({
+        description:
+          "Drill down: the calls behind one line. Any field left out matches all (day as 2026-11-16, feature, persona, model, surface, threadId, scheduleId).",
       }),
     ),
   }),

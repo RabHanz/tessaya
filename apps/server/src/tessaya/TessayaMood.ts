@@ -176,7 +176,7 @@ const make = Effect.gen(function* () {
     hisWords: Effect.fn("TessayaMood.hisWords")(function* (persona, said) {
       if (Option.isNone(oneShot) || said.trim() === "" || !(yield* moodSettings).enabled) return;
       const judged = yield* oneShot.value
-        .run({ prompt: tonePrompt(said), outputSchema: Tone, role: "intent" })
+        .run({ prompt: tonePrompt(said), outputSchema: Tone, role: "intent", feature: "mood" })
         .pipe(
           Effect.catchCause((cause) =>
             Effect.logDebug("mood: his tone not judged", { why: String(cause) }).pipe(
