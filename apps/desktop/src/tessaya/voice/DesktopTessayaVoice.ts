@@ -249,6 +249,7 @@ import {
   styleControls,
 } from "../writing/styleRows.ts";
 import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
+import { settingsSaved } from "../deskAction.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { transformAction, transformControls } from "../writing/transformRows.ts";
 import { createSnippetStore } from "../writing/snippetStore.ts";
@@ -1612,6 +1613,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       (settings.mascotFollows ? talking : null) ?? settings.mascotPersona,
     ));
   const save = (next: Partial<VoiceSettings>) => {
+    settingsSaved(input.direct, "desktop.voice", settings, next);
     settings = { ...settings, ...next };
     writeJsonFile(settingsPath, settings);
     syncPillLook();

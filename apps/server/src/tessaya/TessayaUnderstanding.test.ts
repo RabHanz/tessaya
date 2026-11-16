@@ -114,3 +114,29 @@ it.effect("an understanding never reaches a sentence's recall or the default lis
     assert.isFalse((yield* memory.list()).some((i) => i.kind === "understanding"));
   }).pipe(Effect.scoped),
 );
+
+it.effect(
+  "forgetting an understanding takes its earlier wordings too, so no rewrite brings it back",
+  () =>
+    Effect.gen(function* () {
+      const prompts: string[] = [];
+      const wrong = "- Has two kids\n- Hates football";
+      const { understanding, memory } = yield* fresh(
+        [write(wrong), write(`${wrong}\n- Learning the guitar`), write("- Plays the guitar")],
+        prompts,
+      );
+      yield* understanding.evidence(sam, "two kids, football", "t1");
+      for (const t of ["t2", "t3", "t4"]) yield* understanding.evidence(sam, "guitar", t);
+      const [current] = yield* memory.list({ kinds: ["understanding"], scope: "person" });
+      assert.isTrue(yield* memory.forget(current!.id));
+
+      assert.strictEqual(yield* understanding.current(sam), null);
+      assert.deepStrictEqual(
+        yield* memory.list({ kinds: ["understanding"], scope: "person", includeSuperseded: true }),
+        [],
+      );
+      yield* understanding.evidence(sam, "I play the guitar", "t5");
+      assert.notInclude(prompts.at(-1)!, "Hates football");
+      assert.strictEqual(yield* understanding.current(sam), "- Plays the guitar");
+    }).pipe(Effect.scoped),
+);
