@@ -46,6 +46,9 @@ import {
   btKindNoun,
   displaySupported,
   outputLabels,
+  OUTPUT_STATE_LINE,
+  moveOutput,
+  outputLabel,
   scanLine,
 } from "@t3tools/tessaya-shared/deviceView";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -1351,17 +1354,53 @@ function SpeakerSection({
           />
         )}
       </Row>
-      <Row divider title="Replies play on" description="">
-        {DEVICE_SPEAKER_OUTPUTS.map((output) => (
-          <ControlPill
-            key={output}
-            variant={s.output === output ? "primary" : "pill"}
-            label={outputLabels(s)[output]}
-            disabled={off}
-            onPress={() => void run("act", "speaker", { id, action: "route", output })}
-          />
-        ))}
-      </Row>
+      {s.outputs !== undefined ? (
+        s.outputs.map((o, i, all) => (
+          <Row
+            key={o.id}
+            divider
+            title={`${i + 1}. ${outputLabel(o)}`}
+            description={
+              i === 0
+                ? `${OUTPUT_STATE_LINE[o.state]}. Replies play on the first connected one in this order.`
+                : OUTPUT_STATE_LINE[o.state]
+            }
+          >
+            <ControlPill
+              variant="pill"
+              label="Move up"
+              disabled={off || i === 0}
+              onPress={() =>
+                void run("act", "speaker", {
+                  id,
+                  action: "order",
+                  order: moveOutput(all, o.id, -1),
+                })
+              }
+            />
+            <ControlPill
+              variant="pill"
+              label="Move down"
+              disabled={off || i === all.length - 1}
+              onPress={() =>
+                void run("act", "speaker", { id, action: "order", order: moveOutput(all, o.id, 1) })
+              }
+            />
+          </Row>
+        ))
+      ) : (
+        <Row divider title="Replies play on" description="">
+          {DEVICE_SPEAKER_OUTPUTS.map((output) => (
+            <ControlPill
+              key={output}
+              variant={s.output === output ? "primary" : "pill"}
+              label={outputLabels(s)[output]}
+              disabled={off}
+              onPress={() => void run("act", "speaker", { id, action: "route", output })}
+            />
+          ))}
+        </Row>
+      )}
       <Row divider title="Pair a device" description={scanLine(s)}>
         <ControlPill
           variant="pill"

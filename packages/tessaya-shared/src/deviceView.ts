@@ -4,9 +4,11 @@
  * still sketch of each of the R1's nine moods (SVG paths, so both clients draw the same eyes). Pure.
  */
 import {
+  OWN_SPEAKER,
   R1_DEVICE_DOS,
   R1_KEY_SLOTS,
   type BtKind,
+  type DeviceOutputEntry,
   type DeviceSpeaker,
   type DeviceTagAction,
   type DeviceView,
@@ -72,6 +74,31 @@ export const outputLabels = (s: DeviceSpeaker) => {
     bt: `${name} only`,
     onboard: `${DEVICE} only`,
   } as const;
+};
+
+/** One output's place in his order moved by `steps` (negative is up), as the ids the server takes. */
+export const moveOutput = (
+  outputs: ReadonlyArray<DeviceOutputEntry>,
+  id: string,
+  steps: number,
+): Array<string> => {
+  const ids = outputs.map((o) => o.id);
+  const from = ids.indexOf(id);
+  if (from === -1) return ids;
+  const to = Math.min(Math.max(from + steps, 0), ids.length - 1);
+  ids.splice(from, 1);
+  ids.splice(to, 0, id);
+  return ids;
+};
+
+export const outputLabel = (o: DeviceOutputEntry): string =>
+  o.id === OWN_SPEAKER ? o.name : btDeviceLabel(o);
+
+export const OUTPUT_STATE_LINE: Readonly<Record<DeviceOutputEntry["state"], string>> = {
+  playing: "Playing",
+  ready: "Connected",
+  paired: "Not connected",
+  stalled: "Skipped: it stalled",
 };
 
 /** The pair row's line; an empty scan says why a device may not show. */

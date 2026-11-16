@@ -491,20 +491,14 @@ it.effect(
       const after = (yield* devices.overview).devices[0]!.speaker!;
       assert.deepStrictEqual([after.state, after.saved, after.output], ["idle", null, "onboard"]);
 
-      // Off Bluetooth also clears the output a connect forced to bt (13 Nov: replies went to a speaker that was gone).
+      // Nothing paired: a Bluetooth route has nothing to put first, so nothing is sent.
       sent.length = 0;
-      const route = (output: "bt" | "auto") =>
-        serveDevicesCall(
-          { kind: "act", op: "speaker", args: { id: ID, action: "route", output } },
-          me,
-        );
-      yield* route("auto");
-      yield* route("bt");
-      assert.deepStrictEqual(sent, [
-        { topic: "cmd/bt/route", payload: { out: "auto" } },
-        { topic: "cmd/audio/output", payload: { to: "auto" } },
-        { topic: "cmd/bt/route", payload: { out: "bt" } },
-      ]);
+      const route = yield* serveDevicesCall(
+        { kind: "act", op: "speaker", args: { id: ID, action: "route", output: "bt" } },
+        me,
+      );
+      assert.include(JSON.stringify(route), "Nothing is paired yet");
+      assert.deepStrictEqual(sent, []);
     }).pipe(Effect.provide(layer));
   },
 );
@@ -1347,5 +1341,121 @@ it.effect("knows his saved devices from the R1's bonds and says when one has for
       (yield* Fiber.join(fiber)).line,
       "Galaxy X has forgotten me. Put it in pairing mode",
     );
+    // He asked to play through it, so it is first in his order now.
+    assert.deepStrictEqual(
+      (yield* devices.overview).devices[0]!.speaker!.outputs!.map((o) => o.id),
+      ["14:C6:00:00:00:01", "speaker", "E8:07:BF:35:26:5C"],
+    );
   }).pipe(Effect.provide(layer));
 });
+
+it("routes to the first output in his order that can play now, paging one above her speaker", () => {
+  const HP = "AA:00:00:00:00:46";
+  const OFFICE = "BB:00:00:00:00:77";
+  const cases: Array<[Array<string>, Array<string>, Array<string>, unknown]> = [
+    // order, connected, skipped, route
+    [["speaker", HP], [HP], [], { to: "speaker" }],
+    [[HP, "speaker"], [HP], [], { to: "bt", mac: HP }],
+    [[HP, OFFICE, "speaker"], [OFFICE], [], { to: "bt", mac: OFFICE }],
+    [[HP, "speaker", OFFICE], [], [], { to: "bt", mac: HP }],
+    [[HP, "speaker"], [HP], [HP], { to: "speaker" }],
+    [[HP, OFFICE, "speaker"], [HP, OFFICE], [HP], { to: "bt", mac: OFFICE }],
+  ];
+  for (const [order, connected, skipped, want] of cases)
+    assert.deepStrictEqual(
+      HomeDevices.routeOf(order, new Set(connected), new Set(skipped)),
+      want,
+      JSON.stringify({ order, connected, skipped }),
+    );
+  // Her own speaker first by default; a new pairing goes last; one he forgot drops out but keeps its saved place.
+  assert.deepStrictEqual(HomeDevices.outputOrderOf(undefined, [HP]), ["speaker", HP]);
+  assert.deepStrictEqual(HomeDevices.outputOrderOf([HP, "speaker"], [HP, OFFICE]), [
+    HP,
+    "speaker",
+    OFFICE,
+  ]);
+  assert.deepStrictEqual(HomeDevices.outputOrderOf([OFFICE, "speaker", HP], [HP]), ["speaker", HP]);
+});
+
+it.effect(
+  "keeps her on her own speaker over linked headphones, obeys his order at once, and moves on when a route stalls",
+  () => {
+    const { sent, layer } = setup();
+    const HP = "AA:00:00:00:00:46";
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const her = { who: "Tessaya via R1", surface: "assistant" } as const;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(`${root}/state/caps`, '{"bt_speaker":true}');
+      yield* devices.receive(
+        `${root}/state/manifest`,
+        JSON.stringify({
+          deviceId: ID,
+          kind: "r1",
+          name: "R1",
+          schema: 1,
+          items: [
+            {
+              id: "audio.output",
+              label: "Output",
+              type: "enum",
+              values: ["speaker", "bt", "auto"],
+              access: "read,write",
+              safety: "confirm",
+            },
+          ],
+        }),
+      );
+      sent.length = 0;
+      yield* devices.receive(
+        `${root}/state/bt/bonds`,
+        JSON.stringify({
+          devices: [{ mac: HP, name: "SoundSurge 46", kind: "headphones", connected: true }],
+        }),
+      );
+      // 16 Nov: "auto" with his headphones linked sent her reply to them, unheard. Sent once for both reports.
+      yield* devices.receive(
+        `${root}/state/bt`,
+        JSON.stringify({ state: "streaming", mac: HP, out: "bt", wanted: "auto", saved: true }),
+      );
+      assert.deepStrictEqual(sent, [{ topic: "cmd/audio/output", payload: { to: "speaker" } }]);
+      yield* devices.receive(`${root}/state/audio/output`, '{"out":"onboard","wanted":"speaker"}');
+      const outputs = () =>
+        Effect.map(devices.overview, (o) =>
+          o.devices[0]!.speaker!.outputs!.map((x) => `${x.id}:${x.state}`),
+        );
+      assert.deepStrictEqual(yield* outputs(), ["speaker:playing", `${HP}:ready`]);
+
+      // His order from Settings, headphones first: routed at once.
+      sent.length = 0;
+      const order = yield* serveDevicesCall(
+        { kind: "act", op: "speaker", args: { id: ID, action: "order", order: [HP, "speaker"] } },
+        me,
+      );
+      assert.isTrue(order.ok);
+      assert.deepStrictEqual(sent, [{ topic: "cmd/audio/output", payload: { to: "bt", mac: HP } }]);
+      yield* devices.receive(
+        `${root}/state/bt`,
+        JSON.stringify({ state: "streaming", mac: HP, out: "bt", wanted: "bt", saved: true }),
+      );
+      assert.deepStrictEqual(yield* outputs(), [`${HP}:playing`, "speaker:ready"]);
+
+      // The room loop hears no mic frames while she plays on Bluetooth: the next output takes over.
+      sent.length = 0;
+      yield* devices.receive(`${root}/event/audio/stall`, '{"why":"uplink","quietMs":2600}');
+      assert.deepStrictEqual(sent, [{ topic: "cmd/audio/output", payload: { to: "speaker" } }]);
+      assert.deepStrictEqual(yield* outputs(), [`${HP}:stalled`, "speaker:ready"]);
+
+      // "Move to your own speaker": done at once, never a second question (it waited 1 min 43 s).
+      sent.length = 0;
+      const moved = yield* devices.command(
+        ID,
+        { op: "item", itemId: "audio.output", value: "speaker" },
+        her,
+      );
+      assert.strictEqual(moved.status, "done");
+      assert.deepStrictEqual(yield* outputs(), ["speaker:ready", `${HP}:stalled`]);
+    }).pipe(Effect.provide(layer));
+  },
+);

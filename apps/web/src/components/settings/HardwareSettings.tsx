@@ -84,6 +84,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { BodiesSection } from "./BodiesSection";
 import { DeviceUtilitySection } from "./DeviceUtilitySection";
+import { OutputOrderList } from "./OutputOrderList";
 import { R1SetupSection } from "./R1SetupSection";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -1122,25 +1123,42 @@ function SpeakerSection({
           </span>
         }
       />
-      <SettingsRow
-        title="Replies play on"
-        control={
-          <Select
-            value={s.output}
-            disabled={off}
-            onValueChange={(output) => void run("act", "speaker", { id, action: "route", output })}
-          >
-            <SelectTrigger size="sm">
-              <SelectValue>{labels[s.output]}</SelectValue>
-            </SelectTrigger>
-            <SelectPopup>
-              <SelectItem value="auto">{labels.auto}</SelectItem>
-              <SelectItem value="bt">{labels.bt}</SelectItem>
-              <SelectItem value="onboard">{labels.onboard}</SelectItem>
-            </SelectPopup>
-          </Select>
-        }
-      />
+      {s.outputs !== undefined ? (
+        <SettingsRow
+          title="Replies play on"
+          description="The first one that is connected, in this order. Drag to change it."
+        >
+          <div className="pt-2">
+            <OutputOrderList
+              outputs={s.outputs}
+              disabled={off}
+              onOrder={(order) => void run("act", "speaker", { id, action: "order", order })}
+            />
+          </div>
+        </SettingsRow>
+      ) : (
+        <SettingsRow
+          title="Replies play on"
+          control={
+            <Select
+              value={s.output}
+              disabled={off}
+              onValueChange={(output) =>
+                void run("act", "speaker", { id, action: "route", output })
+              }
+            >
+              <SelectTrigger size="sm">
+                <SelectValue>{labels[s.output]}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem value="auto">{labels.auto}</SelectItem>
+                <SelectItem value="bt">{labels.bt}</SelectItem>
+                <SelectItem value="onboard">{labels.onboard}</SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+      )}
       <SettingsRow
         title="Pair a device"
         description={scanLine(s)}
