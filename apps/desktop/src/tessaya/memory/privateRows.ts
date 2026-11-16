@@ -113,7 +113,7 @@ export const privateControls = (s: PrivateTabState): ReadonlyArray<HomeControl> 
     canSetup: !s.stores.some((x) => x.kind === "owner"),
     ownerOpen,
     voices: s.voices.filter((v) => !s.stores.some((x) => x.personId === v.id)),
-    recovery: s.recovery,
+    recovery: s.recovery === null ? null : { name: s.recovery.name, code: s.recovery.code },
     status: s.status,
   };
   const store = s.stores.find((x) => x.id === s.selected);

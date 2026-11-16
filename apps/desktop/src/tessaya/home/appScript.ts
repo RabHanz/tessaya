@@ -352,8 +352,9 @@ function pvPeople(c) {
   const w = $('div', 'rowwrap stack membar');
   if (c.recovery) {
     const k = $('div', 'row'), t = $('div', 'text'); t.append($('div', 'label', L('pv.recovery.title', { name: c.recovery.name })), $('div', 'hint', L('pv.recovery.hint')), $('div', 'hpre vaultkey', c.recovery.code));
-    const bx = $('div', 'memacts'); for (const [k2, to, cls] of [['pv.recovery.save', 'm.pv.recoverySave', 'btn'], ['pv.recovery.copy', 'm.pv.recoveryCopy', 'btn'], ['pv.recovery.done', 'm.pv.recoveryDone', 'btn primary']]) { const b = $('button', cls, L(k2)); b.onclick = () => set(to, null); bx.appendChild(b); }
+    const bx = $('div', 'memacts'); for (const [k2, to] of [['pv.recovery.save', 'm.pv.recoverySave'], ['pv.recovery.copy', 'm.pv.recoveryCopy']]) { const b = $('button', 'btn', L(k2)); b.onclick = () => set(to, null); bx.appendChild(b); }
     k.append(t, bx); w.appendChild(k);
+    w.appendChild(vtForm([vtInput('pv-typed', L('pv.recovery.typeBack'))], { label: L('pv.recovery.done'), primary: true }, () => { const v = drafts.get('pv-typed') || ''; drafts.delete('pv-typed'); if (v.trim()) set('m.pv.recoveryDone', v.trim()); else render(); }));
   }
   const pinForm = (key, ph, button, primary, to) => vtForm([vtInput(key, ph, 'password')], { label: button, primary }, () => { const v = drafts.get(key) || ''; drafts.delete(key); if (v) set(to, v); else render(); });
   for (const p of c.people) {

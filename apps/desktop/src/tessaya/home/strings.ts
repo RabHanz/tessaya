@@ -388,10 +388,11 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "pv.pins.differ": "The two PINs are not the same.",
     "pv.recovery.title": "Recovery code for {name}",
     "pv.recovery.hint":
-      "Save it somewhere off this computer. It is shown once, and it is the only way in if the PIN is forgotten, or on another computer after a restore.",
+      "Save it somewhere off this computer. It is the only way in if the PIN is forgotten, or on another computer after a restore. Nothing is kept until you type it back below.",
     "pv.recovery.save": "Save as a file",
     "pv.recovery.copy": "Copy",
-    "pv.recovery.done": "I have saved it",
+    "pv.recovery.done": "I have saved it: make the store",
+    "pv.recovery.typeBack": "Type the code back",
     "pv.recovery.file": "Tessaya private memories: recovery code for {name}",
     "pv.recovery.saved": "Saved to {path}. Keep it off this computer.",
     "pv.recovery.copied": "Copied. It clears from the clipboard in 30 seconds.",

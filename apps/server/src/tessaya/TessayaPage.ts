@@ -395,9 +395,13 @@ export const SCRIPT = `"use strict";
     onEnter(pin, go); col.appendChild(pin); col.appendChild(go); c.appendChild(col);
   }
   function codeCard() {
-    var c = card("Save this recovery code now", "It is shown this once and never again. If " + mem.code.whose + " PIN is lost, this code is the only way back in. Write it down and keep it away from this phone.");
+    var c = card("Save this recovery code now", "If " + mem.code.whose + " PIN is lost, this code is the only way back in. Write it down and keep it away from this phone. Nothing is kept until it is typed back here.");
     c.appendChild(el("p", "code", mem.code.code));
-    var r = el("div", "row"); r.appendChild(plain("I saved it", function () { mem.code = null; drawMem(); })); r.firstChild.classList.add("primary"); c.appendChild(r);
+    var typed = field("Type the code back"), col = el("div", "col");
+    var seal = mbtn("I saved it: make the store", "primary", function () {
+      return priv({ op: "confirmSetup", pending: mem.code.pending, recoveryCode: typed.value.trim() }).then(function () { mem.code = null; });
+    });
+    onEnter(typed, seal); col.appendChild(typed); col.appendChild(seal); c.appendChild(col);
   }
   function peopleView() {
     if (member) return memberView();
@@ -405,7 +409,7 @@ export const SCRIPT = `"use strict";
     if (!me) {
       var c = card("Your private memories", "Make your own store first. Its PIN is 8 or more digits, or a passphrase. Each person you add gets their own store under their own PIN.");
       var pin = field("Your new PIN or passphrase", "password"), col = el("div", "col"), b = mbtn("Make my store", "primary", function () {
-        return priv({ op: "setup", name: "You", pin: pin.value }).then(function (v) { mem.code = { whose: "your", code: v.recoveryCode }; });
+        return priv({ op: "setup", name: "You", pin: pin.value }).then(function (v) { mem.code = { whose: "your", code: v.recoveryCode, pending: v.pending }; });
       });
       onEnter(pin, b); col.appendChild(pin); col.appendChild(b); c.appendChild(col);
       return;
@@ -422,7 +426,7 @@ export const SCRIPT = `"use strict";
     [id, nm, pp].forEach(function (i) { col.appendChild(i); });
     col.appendChild(mbtn("Make their store", "primary", function () {
       if (!id.value.trim()) throw new Error("Give them a short id.");
-      return priv({ op: "setup", personId: id.value.trim(), name: nm.value.trim(), pin: pp.value }).then(function (v) { mem.code = { whose: v.store.name + "'s", code: v.recoveryCode }; });
+      return priv({ op: "setup", personId: id.value.trim(), name: nm.value.trim(), pin: pp.value }).then(function (v) { mem.code = { whose: nm.value.trim() + "'s", code: v.recoveryCode, pending: v.pending }; });
     }));
     a.appendChild(col);
     logPart(null, "Every store's log", { op: "audit" });
@@ -433,7 +437,7 @@ export const SCRIPT = `"use strict";
     var pin = field("Your new 6-digit PIN", "password", true), again = field("The same PIN again", "password", true), col = el("div", "col");
     var b = mbtn("Make my memory", "primary", function () {
       if (pin.value !== again.value) throw new Error("The two PINs are not the same.");
-      return priv({ op: "setup", personId: member.id, name: member.name, pin: pin.value }).then(function (v) { mem.code = { whose: "your", code: v.recoveryCode }; });
+      return priv({ op: "setup", personId: member.id, name: member.name, pin: pin.value }).then(function (v) { mem.code = { whose: "your", code: v.recoveryCode, pending: v.pending }; });
     });
     onEnter(again, b); col.appendChild(pin); col.appendChild(again); col.appendChild(b); c.appendChild(col);
   }
