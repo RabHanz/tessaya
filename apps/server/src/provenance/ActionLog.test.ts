@@ -78,7 +78,7 @@ describe("the action log", () => {
     Effect.gen(function* () {
       const log = yield* ActionLog;
       const p = yield* TessayaPrivateMemoryService;
-      const offer = yield* as(desk)(p.setup({ name: "Rab", pin: PIN }));
+      const offer = yield* as(desk)(p.setup({ name: "Owner", pin: PIN }));
       const store = yield* as(desk)(p.confirmSetup(offer));
       const secret = yield* emitAction({
         kind: "private.recall",
@@ -123,7 +123,7 @@ describe("the action log", () => {
     Effect.gen(function* () {
       const log = yield* ActionLog;
       const p = yield* TessayaPrivateMemoryService;
-      const offer = yield* as(desk)(p.setup({ name: "Rab", pin: PIN }));
+      const offer = yield* as(desk)(p.setup({ name: "Owner", pin: PIN }));
       const store = yield* as(desk)(p.confirmSetup(offer));
       yield* as(desk)(p.unlock({ storeId: store.id, pin: PIN }));
       yield* log.flush;

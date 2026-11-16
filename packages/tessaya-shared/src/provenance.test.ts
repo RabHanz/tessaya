@@ -13,7 +13,7 @@ import {
 const bytes = (n: number) => new Uint8Array(n).fill(7);
 let seq = 0;
 const ev = (input: ActionInput & { at: number }): ActionEnvelope =>
-  toEnvelope(input, { id: `e${++seq}`, at: input.at, origin: "onnyx", cause: [] });
+  toEnvelope(input, { id: `e${++seq}`, at: input.at, origin: "server-a", cause: [] });
 
 describe("event ids", () => {
   it("sort by time and are 26 characters", () => {
@@ -34,7 +34,7 @@ describe("the envelope", () => {
         subject: "x".repeat(500),
         data: { blob: "y".repeat(5_000) },
       },
-      { id: "id1", at: 1, origin: "onnyx", cause: ["a"] },
+      { id: "id1", at: 1, origin: "server-a", cause: ["a"] },
     );
     expect(e.cause).toEqual(["a", "b"]);
     expect(e.subject.length).toBeLessThanOrEqual(200);
@@ -52,7 +52,7 @@ describe("the envelope", () => {
         data: { words: "the secret thing" },
         cause: ["c1"],
       },
-      { id: "p1", at: 5, origin: "onnyx", cause: [] },
+      { id: "p1", at: 5, origin: "server-a", cause: [] },
     );
     const pointer = publicPointer(e);
     expect(pointer).toMatchObject({
