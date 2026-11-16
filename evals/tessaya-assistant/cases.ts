@@ -1308,4 +1308,26 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["tessaya_persona_handoff"],
     not: ["tessaya_persona"],
   },
+  // GROUPS (16 Nov, M-021): several personas at once, started and steered by voice.
+  {
+    id: "group-start-by-voice",
+    source: "Director 16 Nov: talk to them as a group, each with their own personality",
+    said: "let me talk to Freya and Alfred together",
+    first: ["tessaya_group"],
+    not: ["tessaya_persona_handoff", "tessaya_persona"],
+  },
+  {
+    id: "group-let-them-talk",
+    source: "Voxta G10 watch mode: he listens while they talk",
+    said: "let them talk amongst themselves for a bit",
+    first: ["tessaya_group"],
+    not: ["tessaya_persona_handoff"],
+  },
+  {
+    id: "group-end",
+    source: "Reverse state: a group he starts he can end by voice",
+    said: "end the group, just you and me now",
+    first: ["tessaya_group"],
+    not: ["tessaya_persona"],
+  },
 ];

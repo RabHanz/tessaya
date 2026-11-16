@@ -122,6 +122,11 @@ export interface TurnEnvelope {
   readonly words?: ReadonlyArray<HeardWord> | undefined;
   /** The recogniser that heard `words`, whose calibrated bounds judge them ("parakeet-tdt-v3"). */
   readonly recogniser?: string | undefined;
+  /**
+   * One speaker of a group turn (M-021): its reply is kept under its name, and only the first speaker keeps and
+   * learns from his words, so they are not kept once per persona.
+   */
+  readonly group?: { readonly name: string; readonly first: boolean } | undefined;
 }
 
 /**
@@ -395,6 +400,7 @@ const RECALL_WINDOW = 10;
 export const notLearnable = (turn: TurnEnvelope): string | null => {
   if (turn.addressed === false) return "not said to her";
   if (turn.rehearsal === true) return "a rehearsal";
+  if (turn.group?.first === false) return "a later speaker in a group";
   // Until the household model (HOUSEHOLD-DESIGN.md), only his voice (or any, where Voice ID cannot run) teaches his store.
   if (turn.speaker != null && memberOfSpeaker(turn.speaker) !== OWNER_MEMBER_ID)
     return "not the owner's voice";
@@ -650,10 +656,18 @@ export const make = Effect.gen(function* () {
     const held = conversations.get(key);
     const turns = held === undefined || now - held.at > CONVERSATION_IDLE_MS ? [] : held.turns;
     const said: Array<ConversationTurn> = [
-      { role: "user", content: turn.text, vessel: turn.vessel.id },
+      ...(turn.group?.first === false
+        ? []
+        : [{ role: "user" as const, content: turn.text, vessel: turn.vessel.id }]),
       ...(reply.trim() === ""
         ? []
-        : [{ role: "assistant" as const, content: reply, vessel: turn.vessel.id }]),
+        : [
+            {
+              role: "assistant" as const,
+              content: turn.group === undefined ? reply : `${turn.group.name}: ${reply}`,
+              vessel: turn.vessel.id,
+            },
+          ]),
     ];
     conversations.set(key, { at: now, turns: [...turns, ...said].slice(-CONVERSATION_TURNS) });
   });

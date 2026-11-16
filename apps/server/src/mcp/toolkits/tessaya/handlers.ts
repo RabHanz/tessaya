@@ -60,6 +60,12 @@ import { hisOwnTurn } from "../../../tessaya/consent.ts";
 import * as ServerConfig from "../../../config.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { changePersona } from "../../../tessaya/PersonaChanges.ts";
+import {
+  changeGroup,
+  groupConversation,
+  HIS_GROUP,
+  type GroupChange,
+} from "../../../tessaya/GroupTalk.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
 import * as Pulse from "../../../tessaya/TessayaPulse.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -960,6 +966,47 @@ export const layer = McpToolAccess.toLayer(
                         ? `${persona} is back.`
                         : `Changed ${persona}.`,
           };
+        }),
+      ),
+      // His group or the speaker's own; a private persona only on his own untainted turn or his full-access client.
+      tessaya_group: McpToolAccess.writesEnvironment((input) =>
+        Effect.gen(function* () {
+          const turn = yield* TurnOrigin;
+          if (runtime === null) return yield* failed({ reason: "This server has no personas." });
+          const owner = turn === null || (turn.tainted !== true && hisOwnTurn(turn));
+          const conversation =
+            turn === null
+              ? HIS_GROUP
+              : groupConversation(
+                  {
+                    vessel: { kind: turn.kind, id: turn.id },
+                    speaker: turn.speaker,
+                    member: turn.member,
+                  },
+                  owner,
+                );
+          const persona = input.persona ?? "";
+          const change: GroupChange | null =
+            input.op === "start" || input.op === "add"
+              ? {
+                  op: input.op,
+                  personas: input.personas ?? [],
+                  ...(input.op === "start" && input.mode !== undefined ? { mode: input.mode } : {}),
+                }
+              : input.op === "mode"
+                ? input.mode === undefined
+                  ? null
+                  : { op: "mode", mode: input.mode }
+                : input.op === "end" || input.op === "status"
+                  ? { op: input.op }
+                  : persona === ""
+                    ? null
+                    : { op: input.op, persona };
+          if (change === null) return yield* failed({ reason: "Say which persona or mode." });
+          const changed = yield* changeGroup(conversation, change, { owner }).pipe(
+            Effect.provideContext(runtime),
+          );
+          return { line: changed.line };
         }),
       ),
       // Only this agent's own requests: another agent's, the phone's and the web bar's are not its to read.
