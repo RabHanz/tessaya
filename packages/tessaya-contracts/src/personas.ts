@@ -71,8 +71,32 @@ export const TessayaPersonaDraft = Schema.Struct({
 });
 export type TessayaPersonaDraft = typeof TessayaPersonaDraft.Type;
 
-/** Hire, edit, copy, retire to the bin and restore; `bin` only reads. */
+const GroupMode = Schema.Literals(["answer", "watch"]);
+
+/** His group (M-021): who is in it, who only listens, and whether they answer only him or talk among themselves. */
+export const TessayaPersonaGroup = Schema.Struct({
+  members: Schema.Array(
+    Schema.Struct({ id: Schema.String, silent: Schema.optional(Schema.Boolean) }),
+  ),
+  mode: GroupMode,
+});
+export type TessayaPersonaGroup = typeof TessayaPersonaGroup.Type;
+
+/** The same changes `tessaya_group` makes by voice. */
+export const TessayaPersonaGroupChange = Schema.Union([
+  Schema.Struct({
+    op: Schema.Literals(["start", "add"]),
+    personas: Schema.Array(Line(60)).check(Schema.isMaxLength(6)),
+    mode: Schema.optional(GroupMode),
+  }),
+  Schema.Struct({ op: Schema.Literals(["leave", "silent", "speak"]), persona: Line(60) }),
+  Schema.Struct({ op: Schema.Literal("mode"), mode: GroupMode }),
+  Schema.Struct({ op: Schema.Literals(["end", "status"]) }),
+]);
+
+/** Hire, edit, copy, retire to the bin and restore; `bin` only reads; `group` changes or reads his group. */
 export const TessayaPersonaChangeInput = Schema.Union([
+  Schema.Struct({ op: Schema.Literal("group"), change: TessayaPersonaGroupChange }),
   Schema.Struct({ op: Schema.Literal("create"), draft: TessayaPersonaDraft }),
   Schema.Struct({ op: Schema.Literal("edit"), id: Line(60), draft: TessayaPersonaDraft }),
   Schema.Struct({ op: Schema.Literal("duplicate"), id: Line(60), name: Line(40) }),
@@ -88,5 +112,8 @@ export const TessayaPersonaChangeResult = Schema.Struct({
   /** The persona made or changed. */
   id: Schema.optionalKey(Schema.String),
   bin: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  /** A group change: what she would say back, and his group as it now is (null: none). */
+  line: Schema.optionalKey(Schema.String),
+  group: Schema.optionalKey(Schema.NullOr(TessayaPersonaGroup)),
 });
 export type TessayaPersonaChangeResult = typeof TessayaPersonaChangeResult.Type;

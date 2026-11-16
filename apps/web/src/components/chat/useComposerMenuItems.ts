@@ -242,6 +242,13 @@ export function useComposerMenuItems({
           label: "/model",
           description: "Switch response model for this thread",
         },
+        {
+          id: "slash:personas",
+          type: "slash-command",
+          command: "personas",
+          label: "/personas",
+          description: "Make a persona, or talk to several as a group",
+        },
         ...(sideChatAvailable
           ? ([
               {
