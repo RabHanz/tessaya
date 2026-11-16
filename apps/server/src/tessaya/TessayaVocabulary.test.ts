@@ -179,3 +179,9 @@ it("derives T3's list as its contract allows: added, then learned by use, then W
   ]);
   expect(words[5]!.aliases).toHaveLength(8);
 });
+
+it("listens for a project title only when it is spoken words", () => {
+  // His projects on the box, 16 Nov: only VentureOS is a word he says.
+  const titles = ["VentureOS", "t3code", "baton-media-test", "native-copy-1", "work", "The Margin"];
+  expect(titles.filter(Vocabulary.spokenTitle)).toEqual(["VentureOS", "The Margin"]);
+});

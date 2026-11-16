@@ -625,7 +625,8 @@ function vocabulary(p) {
   a.oninput = () => drafts.set('d-a', a.value); b.oninput = () => drafts.set('d-b', b.value);
   f.onsubmit = e => { e.preventDefault(); const ph = a.value.trim(); if (!ph) return; drafts.delete('d-a'); drafts.delete('d-b'); set('d.add', JSON.stringify({ phrase: ph, replacement: b.value.trim() || null })); };
   f.append(a, b, $('button', 'btn primary', 'Add')); g.appendChild(f);
-  const v = all.filter(w => vfilter === 'all' || w.source === vfilter);
+  // Learned: the newest first, so a word taught today is at the top to undo.
+  const v = all.filter(w => vfilter === 'all' || w.source === vfilter).sort((x, y) => vfilter === 'learned' ? String(y.lastSeen || '').localeCompare(String(x.lastSeen || '')) : 0);
   if (!v.length) { const e = $('div', 'row'); e.appendChild($('div', 'hint', all.length ? 'Nothing in this list.' : 'Words you correct or use a lot show up here. You can add your own too.')); g.appendChild(e); }
   for (const w of v) {
     const r = $('div', 'entry');
