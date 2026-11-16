@@ -50,23 +50,29 @@ export const createInitiative = (deps: InitiativeDeps) => {
     NodeFS.renameSync(`${file}.tmp`, file);
   };
   let busy = false;
+  let sensing = false;
   const sensed = new Set<string>();
   return {
     state: load,
-    /** One pass. Re-entrant calls while a card is open do nothing. */
+    /** One pass. The pulse is sensed every pass; a card still open (they live 30 minutes) only holds new offers. */
     tick: async (): Promise<number> => {
-      if (busy) return 0;
-      busy = true;
+      const policy = deps.policy();
+      if (sensing || (policy === null && deps.sense === undefined)) return 0;
+      sensing = true;
+      let triggers: ReadonlyArray<Trigger>;
       try {
-        const policy = deps.policy();
-        if (policy === null && deps.sense === undefined) return 0;
-        const triggers = await deps.gather();
+        triggers = await deps.gather();
         for (const t of triggers) {
           if (deps.sense === undefined || sensed.has(t.id)) continue;
           sensed.add(t.id);
           await deps.sense(t).catch(() => sensed.delete(t.id));
         }
-        if (policy === null) return 0;
+      } finally {
+        sensing = false;
+      }
+      if (policy === null || busy) return 0;
+      busy = true;
+      try {
         const result = decide(triggers, load(), policy, deps.now(), deps.hour());
         save(result.state);
         for (const offer of result.offers) {

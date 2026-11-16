@@ -70,3 +70,11 @@ export const TessayaRecordAppendInput = Schema.Union([
   }),
 ]);
 export const TessayaRecordAppendResult = Schema.Struct({});
+
+/** His reaction to one pulse decision, from Settings → Brain → Pulse (B-003); voice uses `tessaya_pulse`. */
+export const BATON_PULSE_WS_METHODS = { react: "baton.pulse.react" } as const;
+export const TessayaPulseReactInput = Schema.Struct({
+  row: Schema.Number,
+  reaction: Schema.Literals(["liked", "told_off", "stop"]),
+});
+export const TessayaPulseReactResult = Schema.Struct({ line: Schema.String });

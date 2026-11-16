@@ -113,11 +113,14 @@ import {
   TessayaHerdrSendResult,
 } from "./liveSessions.ts";
 import {
+  BATON_PULSE_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   TessayaRecordAppendInput,
   TessayaRecordAppendResult,
   TessayaRecordListInput,
   TessayaRecordListResult,
+  TessayaPulseReactInput,
+  TessayaPulseReactResult,
 } from "./record.ts";
 import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
 import {
@@ -873,6 +876,12 @@ const WsTessayaPromptLabRpc = Rpc.make(BATON_PROMPT_LAB_WS_METHODS.call, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsTessayaPulseReactRpc = Rpc.make(BATON_PULSE_WS_METHODS.react, {
+  payload: TessayaPulseReactInput,
+  success: TessayaPulseReactResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsTessayaRecordAppendRpc = Rpc.make(BATON_RECORD_WS_METHODS.append, {
   payload: TessayaRecordAppendInput,
   success: TessayaRecordAppendResult,
@@ -1101,6 +1110,7 @@ const BATON_RPCS = [
   WsTessayaWatchGetRpc,
   WsTessayaRecordListRpc,
   WsTessayaRecordAppendRpc,
+  WsTessayaPulseReactRpc,
   WsTessayaBrainUsageRpc,
   WsTessayaBrainRecordRpc,
   WsTessayaPersonasListRpc,

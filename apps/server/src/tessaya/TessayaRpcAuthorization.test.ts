@@ -25,6 +25,7 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
+  BATON_PULSE_WS_METHODS,
   AuthSettingsWriteScope,
   TessayaRecordAppendInput,
   DesktopSettingsSetInput,
@@ -57,11 +58,12 @@ import {
   missingTessayaScope,
 } from "./TessayaRpcAuthorization.ts";
 
-describe("who may use the prompt lab", () => {
+describe("who may use the prompt lab and react to her pulse", () => {
   it("needs settings:write on the server and in the client, which only the owner (or a machine grant) holds", () => {
-    const door = BATON_PROMPT_LAB_WS_METHODS.call;
-    expect(BATON_RPC_REQUIRED_SCOPES[door]).toBe(AuthSettingsWriteScope);
-    expect(clientRpcRequiredScopes(door, { op: "list" })).toEqual([AuthSettingsWriteScope]);
+    for (const door of [BATON_PROMPT_LAB_WS_METHODS.call, BATON_PULSE_WS_METHODS.react]) {
+      expect(BATON_RPC_REQUIRED_SCOPES[door]).toBe(AuthSettingsWriteScope);
+      expect(clientRpcRequiredScopes(door, { op: "list" })).toEqual([AuthSettingsWriteScope]);
+    }
     expect(roleCeiling("owner", false)).toContain(AuthSettingsWriteScope);
     for (const role of ["admin", "adult", "child", "guest"] as const)
       expect(roleCeiling(role, false)).not.toContain(AuthSettingsWriteScope);

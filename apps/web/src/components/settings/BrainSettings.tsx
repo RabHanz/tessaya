@@ -14,6 +14,9 @@ import {
   type BrainCredential,
   type BrainEscalationRule,
 } from "@t3tools/contracts";
+import { pulseLog } from "@t3tools/tessaya-shared/pulse";
+import { useAtomValue } from "@effect/atom-react";
+import { ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
@@ -452,14 +455,22 @@ function Pulse({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const pulse = useEnvironmentSettings(environmentId, (s) => s.tessayaPulse);
   const update = useUpdateEnvironmentSettings(environmentId);
   const read = useAtomCommand(tessayaWorkSessions.recordList, { reportFailure: false });
+  const react = useAtomCommand(tessayaWorkSessions.pulseReact);
+  const mayReact = useAtomValue(tessayaWorkSessions.pulseReact.permissionAtom(environmentId));
   const [log, setLog] = useState<ReadonlyArray<TessayaRecordEntry>>([]);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- loads the server's decision log once per environment
-  useEffect(() => {
-    void read({ environmentId, input: { kind: "pulse", limit: 20 } }).then((r) => {
+  const load = () =>
+    read({ environmentId, input: { kind: "pulse", limit: 60 } }).then((r) => {
       if (r._tag === "Success") setLog(r.value.entries);
     });
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- one read per environment; read closes over nothing else
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- loads the server's decision log once per environment
+  useEffect(() => {
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- one read per environment; load is remade each render
+    void load();
   }, [environmentId]);
+  const rows = pulseLog(log).slice(0, 12);
+  // His reaction is a Record row the pulse learns from; reading the log back shows it on its row.
+  const reactTo = (row: number, reaction: "liked" | "told_off" | "stop") =>
+    void react({ environmentId, input: { row, reaction } }).then(load);
   return (
     <SettingsSection title="Pulse">
       <SettingsRow
@@ -506,20 +517,54 @@ function Pulse({ environmentId }: { readonly environmentId: EnvironmentId }) {
           }
         />
       ))}
-      <SettingsRow
-        title="What she noticed"
-        description={
-          log.length === 0
-            ? "Nothing yet. Each review she makes, and why she spoke or stayed quiet, shows here."
-            : log
-                .slice(0, 8)
-                .map(
-                  (r) =>
-                    `${new Date(r.at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })} · ${r.outcome}: ${r.subject} (${r.detail})`,
-                )
-                .join("\n")
-        }
-      />
+      {rows.length === 0 ? (
+        <SettingsRow
+          title="What she noticed"
+          description="Nothing yet. Each review she makes, and why she spoke or stayed quiet, shows here."
+        />
+      ) : (
+        rows.map((r) => (
+          <SettingsRow
+            key={r.id}
+            title={r.event}
+            description={`${new Date(r.at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })} · ${r.decision}${r.reason === "" ? "" : ` · ${r.reason}`}`}
+            control={
+              mayReact ? (
+                <div className="flex gap-1">
+                  <Button
+                    size="icon-sm"
+                    variant={r.reaction === "liked" ? "secondary" : "ghost"}
+                    aria-label="Helpful"
+                    aria-pressed={r.reaction === "liked"}
+                    onClick={() => reactTo(r.id, "liked")}
+                  >
+                    <ThumbsUpIcon />
+                  </Button>
+                  <Button
+                    size="icon-sm"
+                    variant={r.reaction === "told_off" ? "secondary" : "ghost"}
+                    aria-label="Not helpful"
+                    aria-pressed={r.reaction === "told_off"}
+                    onClick={() => reactTo(r.id, "told_off")}
+                  >
+                    <ThumbsDownIcon />
+                  </Button>
+                  {r.category === null ? null : (
+                    <Button
+                      size="sm"
+                      variant={r.reaction === "stopped" ? "secondary" : "ghost"}
+                      disabled={!pulse.categories[r.category]}
+                      onClick={() => reactTo(r.id, "stop")}
+                    >
+                      {pulse.categories[r.category] ? "Stop this" : "Stopped"}
+                    </Button>
+                  )}
+                </div>
+              ) : null
+            }
+          />
+        ))
+      )}
     </SettingsSection>
   );
 }

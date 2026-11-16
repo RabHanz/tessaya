@@ -37,6 +37,7 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
+  BATON_PULSE_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
   BATON_DICTATION_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
@@ -141,6 +142,7 @@ import { devicesActorOf, serveDevicesCall } from "../home/HomeDeviceCalls.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import { TessayaVoiceLibrary, serveVoiceCall } from "./TessayaVoiceLibrary.ts";
 import { serveLearnCall } from "./TessayaLearn.ts";
+import * as Pulse from "./TessayaPulse.ts";
 
 /** Only Claude keeps several accounts behind one config directory today. */
 const DEFAULT_ROTATION_DRIVER = ProviderDriverKind.make("claudeAgent");
@@ -693,6 +695,8 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_PERSONAS_WS_METHODS.list]: () => run(personasList),
     [BATON_PROMPT_LAB_WS_METHODS.call]: (input) =>
       run(Effect.flatMap(PromptLab, (lab) => lab.call(input))),
+    [BATON_PULSE_WS_METHODS.react]: (input) =>
+      run(Effect.map(Pulse.react(input.reaction, input.row), (line) => ({ line }))),
     [BATON_RECORD_WS_METHODS.append]: (input) =>
       run(
         Effect.flatMap(TessayaRecordService, (record) =>

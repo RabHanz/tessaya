@@ -6320,14 +6320,19 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     ],
     present: async (offer) => {
       if (settings.initiativeMode === "spoken") input.extras?.announce(offer.offer, true);
-      const index = await (input.extras?.ask({
+      const card = {
         title: "Tessaya",
         detail: offer.offer,
         buttons: ["Yes", "Later", "Never"],
         cancel: 1,
         armMs: 1_500,
-        expiresMs: 5 * 60_000,
-      }) ?? Promise.resolve(1));
+        // The inbox's default card life (approvalCardMinutes); no answer by then is Later.
+        expiresMs: 30 * 60_000,
+      };
+      // The one question inbox: this card also shows on the phone and every linked server, answered wherever he is.
+      const index = await (input.extras?.askMirrored?.(card) ??
+        input.extras?.ask(card) ??
+        Promise.resolve(1));
       return index === 0 ? "yes" : index === 2 ? "never" : "later";
     },
     act: async (offer) => {

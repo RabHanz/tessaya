@@ -18,6 +18,7 @@ import {
   patternEvents,
   PULSE_CATEGORIES,
   PULSE_CHEAP_MODEL,
+  PULSE_REACTIONS,
   PULSE_SYSTEM,
   pulsePrompt,
   rulesDecision,
@@ -28,6 +29,7 @@ import {
   type PulseEvent,
   type PulseLearned,
   type PulseLevel,
+  type PulsePattern,
 } from "@t3tools/tessaya-shared/pulse";
 import {
   EMPTY_STATS,
@@ -52,6 +54,7 @@ import { BrainUsage, periodStarts } from "./BrainUsage.ts";
 import { houseZone } from "./houseZone.ts";
 import { readDndUntil, readQuietHours } from "./quietHours.ts";
 import { TessayaCommitmentService } from "./TessayaCommitmentService.ts";
+import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaPeople } from "./TessayaPeople.ts";
@@ -179,6 +182,16 @@ const settingsNow = Effect.gen(function* () {
 
 const isoOf = (at: number) => DateTime.formatIso(DateTime.makeUnsafe(at));
 
+/** A pattern lasts a month in memory unless seen again; its id is the provenance, its words the evidence. */
+export const patternFact = (p: PulsePattern, now: number) => ({
+  kind: "fact" as const,
+  text: `A pattern noticed (confidence ${p.confidence.toFixed(2)}): ${p.text}`,
+  source: "job" as const,
+  sourceRef: `pulse:${p.id}`,
+  confidence: p.confidence,
+  expiresAt: isoOf(now + 30 * DAY),
+});
+
 /** One sense pass: new events into the digest. Code only; never a model call. */
 export const sense = Effect.fn("TessayaPulse.sense")(function* (state: PulseState) {
   const now = yield* Clock.currentTimeMillis;
@@ -292,21 +305,24 @@ export const sense = Effect.fn("TessayaPulse.sense")(function* (state: PulseStat
       .map((r) => Date.parse(r.at));
     const people = yield* Effect.serviceOption(TessayaPeople);
     const statistical = findings(stats, now, clock).map((f) => ({ ...f, member: null }));
-    events.push(
-      ...patternEvents(
-        [
-          ...noticePatterns({
-            now,
-            hourOf: (at) => clock(at).hour,
-            stalls,
-            people: Option.isSome(people) ? yield* people.value.lastHeard : [],
-          }),
-          ...statistical,
-        ],
-        state.surfaced,
+    const patterns = [
+      ...noticePatterns({
         now,
-      ),
-    );
+        hourOf: (at) => clock(at).hour,
+        stalls,
+        people: Option.isSome(people) ? yield* people.value.lastHeard : [],
+      }),
+      ...statistical,
+    ];
+    const confirmed = patternEvents(patterns, state.surfaced, now);
+    events.push(...confirmed);
+    // Each confirmed hypothesis, once until it is surfaced again, joins the one memory as a fact she can recall.
+    const memory = yield* Effect.serviceOption(TessayaMemoryService);
+    const pending = new Set(state.digest.map((e) => e.id));
+    if (Option.isSome(memory))
+      for (const p of patterns)
+        if (confirmed.some((e) => e.id === p.id) && !pending.has(p.id))
+          yield* memory.value.add(patternFact(p, now)).pipe(Effect.ignoreCause({ log: true }));
   }
   if (stats !== statsBefore) yield* writeStats(stats);
   const fresh = events.filter((e) => state.reviewed[e.id] === undefined);
@@ -532,24 +548,45 @@ export const beat = Effect.fn("TessayaPulse.beat")(function* () {
   return result;
 });
 
-/** His reaction to what she last raised ("that was helpful", "don't tell me that"): the outcome signal it learns from. */
-export const react = Effect.fn("TessayaPulse.react")(function* (reaction: "liked" | "told_off") {
+/**
+ * His reaction ("that was helpful", "don't tell me that"): the outcome signal the gate learns from. With a row id it
+ * is that decision (Settings → Pulse), else the last thing she raised. "stop" is a told-off plus that kind turned off.
+ */
+export const react = Effect.fn("TessayaPulse.react")(function* (
+  reaction: "liked" | "told_off" | "stop",
+  row?: number,
+) {
   const record = yield* Effect.serviceOption(TessayaRecordService);
   if (Option.isNone(record)) return "I haven't raised anything lately.";
-  const last = (yield* record.value.query({ kind: "pulse", limit: 20 })).find(
-    (r) => r.outcome === "speak" || r.outcome === "ask" || r.outcome === "act",
+  // shortcut: a row id is looked up among the last 200 pulse rows; Settings only lists the newest.
+  const last = (yield* record.value.query({
+    kind: "pulse",
+    limit: row === undefined ? 20 : 200,
+  })).find((r) =>
+    row === undefined
+      ? r.outcome === "speak" || r.outcome === "ask" || r.outcome === "act"
+      : r.id === row && !PULSE_REACTIONS.has(r.outcome),
   );
-  if (last === undefined) return "I haven't raised anything lately.";
+  if (last === undefined)
+    return row === undefined ? "I haven't raised anything lately." : "I can't find that one.";
   const category = PULSE_CATEGORIES.find((c) => last.detail.includes(`category: ${c}`)) ?? "jobs";
-  // The pulse's next sense pass reads this row and learns from it.
+  // The pulse's next sense pass reads this row and learns from it; `row:` ties it to its decision in Settings.
   yield* record.value.append({
     kind: "pulse",
     actor: "Tessaya",
     ref: last.ref,
     subject: last.subject,
-    outcome: reaction,
-    detail: `category: ${category}`,
+    outcome: reaction === "liked" ? "liked" : "told_off",
+    detail: `category: ${category} · row: ${last.id}${reaction === "stop" ? " · stopped" : ""}`,
   });
+  if (reaction === "stop") {
+    const settings = yield* Effect.serviceOption(ServerSettingsService);
+    if (Option.isSome(settings))
+      yield* settings.value
+        .updateSettings({ tessayaPulse: { categories: { [category]: false } } })
+        .pipe(Effect.orDie);
+    return `I'll stop raising ${category} things. They can go back on in Settings, Brain, Pulse.`;
+  }
   return reaction === "liked"
     ? "Noted, I'll keep raising things like that."
     : `Sorry. I'll hold back on ${category} things.`;
