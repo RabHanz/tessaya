@@ -102,7 +102,12 @@ export type AffectEvent =
   /** One of his turns reached this persona: the time away resolves, and the bond counts the day. */
   | { readonly kind: "his_turn"; readonly day: string }
   /** How his voice sounded, as the room heard it (SenseVoice's label): she meets it, warmer when he sounds low. */
-  | { readonly kind: "his_voice"; readonly emotion: string }
+  | {
+      readonly kind: "his_voice";
+      readonly emotion: string;
+      /** A second signal agrees (his words, the reply model's tag, his own baseline): only then a care mode. */
+      readonly confirmed?: boolean;
+    }
   /** A job she or a persona leads finished or failed (the Record's job rows): the world, not him. */
   | { readonly kind: "job"; readonly ok: boolean }
   /** Her body was moved (the Tessel's motion sensor): a quick reaction only, never her mood. */
@@ -297,6 +302,8 @@ const VOICE_HOLD: Readonly<
   angry: { label: "steady", ms: 20 * MIN },
   surprised: { label: "surprised", ms: MIN },
 };
+/** Weak alone: SenseVoice said "sad" on about 8% of his ordinary turns (MA-022 bench, 16 Nov), so these need a second signal. */
+const NEEDS_SECOND_SIGNAL: ReadonlySet<string> = new Set(["sad", "fearful"]);
 /** Her jobs failing within the hour, by count: on it, then frustrated, then cross at the world (never at him). */
 const FAILED_HOLD: ReadonlyArray<ExpressionMood> = ["determined", "frustrated", "angry"];
 const LOG_KEEP = 8;
@@ -311,7 +318,9 @@ const holdOf = (
   switch (event.kind) {
     case "his_voice": {
       const h = VOICE_HOLD[event.emotion];
-      return h === undefined ? held : { label: h.label, until: now + h.ms };
+      return h === undefined || (NEEDS_SECOND_SIGNAL.has(event.emotion) && event.confirmed !== true)
+        ? held
+        : { label: h.label, until: now + h.ms };
     }
     case "rude":
       // He is cross at her: she stays steady in words; the face shows a short hurt (§3.5 rule 2).
