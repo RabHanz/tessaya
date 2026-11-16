@@ -60,7 +60,7 @@ export type SpeakerVerdict =
   | { readonly kind: "guest"; readonly best: number }
   | {
       readonly kind: "unverified";
-      readonly why: "no-model" | "no-profile" | "too-short" | "failed";
+      readonly why: "no-model" | "no-profile" | "stale-profile" | "too-short" | "failed";
     };
 
 /** NaN when the lengths differ or either is empty or zero: a score that cannot be trusted is never a number. */
@@ -108,7 +108,11 @@ export const decideSpeaker = (input: {
   if (policy === null || input.model !== policy.model)
     return { kind: "unverified", why: "no-model" };
   const mine = input.profiles.filter((p) => p.model === policy.model);
-  if (!mine.some((p) => p.kind === "owner")) return { kind: "unverified", why: "no-profile" };
+  // His profile from another model only means this one is not enrolled yet: closed, never "no Voice ID here".
+  if (!mine.some((p) => p.kind === "owner"))
+    return input.profiles.some((p) => p.kind === "owner")
+      ? { kind: "unverified", why: "stale-profile" }
+      : { kind: "unverified", why: "no-profile" };
   if (input.clips.length === 0) return { kind: "unverified", why: "failed" };
   const long = input.clips.filter((c) => c.ms >= policy.minSpeechMs);
   if (long.length === 0) return { kind: "unverified", why: "too-short" };
