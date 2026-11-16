@@ -624,6 +624,27 @@ const VocabularyTool = Tool.make("tessaya_vocabulary", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+/** The Voice Playground's two acts by voice or chat, through the one voice library; his alone. */
+const VoiceTool = Tool.make("tessaya_voice", {
+  ...shared,
+  description:
+    'Her voices, only for what he asked. `say` ("say X in Freya\'s voice"): `text` and `voice`, a persona\'s name, a library voice\'s name or one of his saved clones; it makes the line and saves it as a WAV on this machine, and returns its path. `clone` ("clone my voice from this recording"): `file` is a WAV on this machine (5 to 30 s, one clean voice) and `name` what to call it. Set `consent` true only when he said it is his own voice or he has their permission. Only his own turn or his full-access client may use it.',
+  parameters: Schema.Struct({
+    op: Schema.Literals(["say", "clone"]),
+    text: Schema.optional(Schema.String.check(Schema.isMaxLength(600))),
+    voice: Schema.optional(Schema.String.check(Schema.isMaxLength(80))),
+    file: Schema.optional(Schema.String.check(Schema.isMaxLength(1_000))),
+    name: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
+    consent: Schema.optional(Schema.Boolean),
+  }),
+  success: Schema.Struct({ line: Schema.String, file: Schema.NullOr(Schema.String) }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 // Session moves are for T3's thread agents too (the main session often runs in one), so no outside-only gate.
 const MoveIntoTessayaTool = Tool.make("tessaya_move_into_tessaya", {
   ...shared,
@@ -736,6 +757,7 @@ export const TessayaToolkit = Toolkit.make(
   DesktopSettingsTool,
   PronounceTool,
   VocabularyTool,
+  VoiceTool,
   MoveIntoTessayaTool,
   OpenInTerminalTool,
   MainSessionTool,

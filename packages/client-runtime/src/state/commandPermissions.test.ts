@@ -152,6 +152,7 @@ describe("command permissions", () => {
           yield* devices.authorize(registry, env, list);
           expect(registry.get(voice.permissionAtom(env, words))).toBe(true);
           expect(registry.get(voice.permissionAtom(env, addWord))).toBe(false);
+          const clone = { kind: "owner", op: "clone", args: {} };
           expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(false);
           expect((yield* devices.authorize(registry, env, keyBind).pipe(Effect.flip))._tag).toBe(
             "EnvironmentAuthorizationError",
@@ -167,6 +168,8 @@ describe("command permissions", () => {
           expect(registry.get(devices.permissionAtom(env, keyBind))).toBe(true);
           yield* devices.authorize(registry, env, keyBind);
           expect(registry.get(voice.permissionAtom(env, addWord))).toBe(true);
+          // Operate is not enough to clone a voice: that is the owner's approval scope.
+          expect(registry.get(voice.permissionAtom(env, clone))).toBe(false);
           expect(registry.get(devices.permissionAtom(other, keyBind))).toBe(false);
         }),
       ),

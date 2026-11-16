@@ -64,6 +64,7 @@
     "@t3tools/source-control-gitlab": "workspace:*",
     "@t3tools/tessaya-contracts": "workspace:*",
     "@t3tools/tessaya-shared": "workspace:*",
+    "@t3tools/tessaya-voice": "workspace:*",
     "character-entities": "2.0.2",
     "diff": "8.0.3",
     "effect": "catalog:",

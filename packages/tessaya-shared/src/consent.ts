@@ -6,6 +6,9 @@
 /** Seeing his screen: the one key every look path (the desktop's own, a device's, the phone's) checks. */
 export const LOOK_GRANT = "screen_look";
 
+/** His "this is my voice, or I have their permission" for one clone; revoking it silences that clone. */
+export const cloneGrant = (id: string): string => `voice_clone|${id}`;
+
 export const GRANTS_MAX = 50;
 
 /** One act he answered "Always allow" to: the tool, the reason it asks, and the app (none for a job act). */
@@ -45,6 +48,7 @@ export const lookAsks = (input: {
 /** A key in his words, for Settings and for her to read back: "Tessaya job schedule (asks before scheduling)". */
 export const grantLabel = (key: string): string => {
   if (key === LOOK_GRANT) return "Seeing your screen";
+  if (key.startsWith(cloneGrant(""))) return "A cloned voice (yours, or theirs with permission)";
   const [tool = key, why = "", app = ""] = key.split("|");
   const what = tool.replace(/^tessaya_/, "").replace(/_/g, " ");
   return `${what[0]?.toUpperCase() ?? ""}${what.slice(1)}${app === "" ? "" : ` in ${app}`}${why === "" ? "" : ` (${why.replace(/\.$/, "")})`}`;

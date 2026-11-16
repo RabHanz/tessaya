@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
@@ -41,6 +45,13 @@ import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { TessayaVocabulary } from "../../../tessaya/TessayaVocabulary.ts";
+import {
+  TessayaVoiceLibrary,
+  type VoiceRefusedError,
+  voiceFor,
+} from "../../../tessaya/TessayaVoiceLibrary.ts";
+import { hisOwnTurn } from "../../../tessaya/consent.ts";
+import * as ServerConfig from "../../../config.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -689,6 +700,63 @@ export const layer = McpToolAccess.toLayer(
             };
           }),
         { linkedCallers: "allowed" },
+      ),
+      // The Playground's say and clone by voice: the same service methods, for his own turn or full-access client only.
+      tessaya_voice: McpToolAccess.writesEnvironment((input) =>
+        Effect.gen(function* () {
+          const turn = yield* TurnOrigin;
+          if (turn !== null && (turn.tainted === true || !hisOwnTurn(turn)))
+            return yield* failed({
+              reason: "Only he can do that, in his own voice or at his keyboard.",
+            });
+          const voices =
+            runtime === null ? Option.none() : Context.getOption(runtime, TessayaVoiceLibrary);
+          const config =
+            runtime === null
+              ? Option.none()
+              : Context.getOption(runtime, ServerConfig.ServerConfig);
+          if (Option.isNone(voices) || Option.isNone(config))
+            return yield* failed({ reason: "This server has no voices." });
+          const refused = (e: VoiceRefusedError) => failed({ reason: e.why });
+          if (input.op === "clone") {
+            if (input.file === undefined || input.name === undefined)
+              return yield* failed({ reason: "Name the WAV file and what to call the voice." });
+            const path = input.file;
+            const wav = yield* Effect.tryPromise({
+              try: () => NodeFS.promises.readFile(path),
+              catch: () => failed({ reason: "That recording could not be read on this machine." }),
+            });
+            const test = yield* voices.value
+              .cloneVoice({ wav, consent: input.consent === true })
+              .pipe(Effect.mapError(refused));
+            const saved = yield* voices.value
+              .saveClone({ id: test.id, name: input.name })
+              .pipe(Effect.mapError(refused));
+            return {
+              line: `Saved your cloned voice as ${saved.name}; say "in ${saved.name}'s voice" to use it.`,
+              file: null,
+            };
+          }
+          const view = yield* voices.value.library;
+          const target = voiceFor(view, input.voice ?? "");
+          if (target === null || input.text === undefined)
+            return yield* failed({ reason: "Say which voice, and what it should say." });
+          const clip = yield* voices.value
+            .say({ engine: target.engine, voice: target.voice, text: input.text })
+            .pipe(Effect.mapError(refused));
+          const file = NodePath.join(config.value.stateDir, "voice", "said", "last.wav");
+          yield* Effect.tryPromise({
+            try: async () => {
+              await NodeFS.promises.mkdir(NodePath.dirname(file), { recursive: true });
+              await NodeFS.promises.writeFile(file, Buffer.from(clip.base64, "base64"));
+            },
+            catch: () => failed({ reason: "The line was made but could not be saved." }),
+          });
+          return {
+            line: `Made it in ${target.name}'s voice${clip.synthetic === true ? " (a clone, marked synthetic)" : ""}.`,
+            file,
+          };
+        }),
       ),
       // Only this agent's own requests: another agent's, the phone's and the web bar's are not its to read.
       tessaya_ask_status: McpToolAccess.reads((input) =>

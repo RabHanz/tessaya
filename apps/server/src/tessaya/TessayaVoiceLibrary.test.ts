@@ -7,6 +7,7 @@ import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import type { VoiceClip, VoiceLibraryView } from "@t3tools/tessaya-contracts";
+import { cloneGrant, withGrant } from "@t3tools/tessaya-shared/consent";
 import { pronounce } from "@t3tools/tessaya-shared/pronounce";
 import { PREVIEW_LINE } from "@t3tools/tessaya-shared/voiceLibrary";
 import * as Effect from "effect/Effect";
@@ -17,9 +18,11 @@ import { describe, expect } from "vite-plus/test";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
+import { Consent } from "./consent.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import * as TessayaVoiceLibrary from "./TessayaVoiceLibrary.ts";
+import { writeWav } from "./voiceClip.ts";
 
 const memorySecrets = () => {
   const kept = new Map<string, Uint8Array>();
@@ -35,8 +38,24 @@ const memorySecrets = () => {
   );
 };
 
+/** The one consent store, in memory: what cloning records and what speaking in a clone checks. */
+const memoryConsent = (keys: Array<string>) =>
+  Layer.succeed(
+    Consent,
+    Consent.of({
+      read: Effect.sync(() => [...keys]),
+      set: (key, allow) =>
+        Effect.sync(() => {
+          const next = withGrant(keys, key, allow);
+          keys.splice(0, keys.length, ...next);
+          return next;
+        }),
+    }),
+  );
+
 const withLibrary = <A, E>(
   body: (userdata: string) => Effect.Effect<A, E, TessayaVoiceLibrary.TessayaVoiceLibrary>,
+  grants: Array<string> = [],
 ) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -49,12 +68,13 @@ const withLibrary = <A, E>(
         TessayaVoiceLibrary.layer.pipe(
           Layer.provide(ServerConfig.layerTest(process.cwd(), base)),
           Layer.provide(memorySecrets()),
+          Layer.provide(memoryConsent(grants)),
         ),
       ),
     );
   }).pipe(Effect.scoped);
 
-const call = (kind: "read" | "act", op: string, args: Record<string, unknown> = {}) =>
+const call = (kind: "read" | "act" | "owner", op: string, args: Record<string, unknown> = {}) =>
   TessayaVoiceLibrary.serveVoiceCall({ kind, op, args });
 
 it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
@@ -217,6 +237,98 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
         assert.isFalse((yield* call("read", "preview", { engine: "pocket", voice: "nobody" })).ok);
       }),
     ),
+  );
+
+  it.effect("clones only with his consent, from a clean clip, and only by the owner's door", () =>
+    withLibrary(() =>
+      Effect.gen(function* () {
+        const clip = (seconds: number) => {
+          const samples = new Int16Array(seconds * 24_000);
+          for (let i = 0; i < samples.length; i++)
+            samples[i] =
+              (i / 24_000) % 0.5 < 0.3 ? Math.round(8_000 * Math.sin(i / 21)) : (i % 7) - 3;
+          return Buffer.from(writeWav({ rate: 24_000, samples })).toString("base64");
+        };
+        const error = (reply: { readonly error?: string }) => reply.error;
+        // An act call cannot reach cloning at all.
+        assert.isFalse((yield* call("act", "clone", { wav: clip(8), consent: true })).ok);
+        expect(error(yield* call("owner", "clone", { wav: clip(8), consent: false }))).toMatch(
+          /your voice, or that you have their permission/,
+        );
+        expect(
+          error(yield* call("owner", "clone", { wav: "bm90IGEgd2F2", consent: true })),
+        ).toMatch(/16-bit PCM WAV/);
+        expect(error(yield* call("owner", "clone", { wav: clip(3), consent: true }))).toMatch(
+          /at least 5 seconds/,
+        );
+        // A good clip on a machine without Pocket says so, and records no consent.
+        expect(error(yield* call("owner", "clone", { wav: clip(8), consent: true }))).toMatch(
+          /not installed on this machine yet/,
+        );
+      }),
+    ),
+  );
+
+  it.effect(
+    "speaks in a clone only for the owner and only while his consent stands; routes each engine",
+    () => {
+      const id = "0b6c1a52-3a0e-4f7e-9d43-5c1a4e1f2b3c";
+      const grants: Array<string> = [];
+      return withLibrary(
+        (userdata) =>
+          Effect.gen(function* () {
+            const say = (kind: "act" | "owner", args: Record<string, unknown>) =>
+              Effect.map(call(kind, "say", { text: "Hello there.", ...args }), (r) => r.error);
+            assert.strictEqual(
+              yield* say("act", { engine: "clone", voice: id }),
+              "Only the owner can speak in a cloned voice.",
+            );
+            assert.strictEqual(
+              yield* say("owner", { engine: "clone", voice: "../../secrets" }),
+              "There is no clone by that name.",
+            );
+            const clones = NodePath.join(userdata, "voice", "clones");
+            NodeFS.mkdirSync(clones, { recursive: true });
+            NodeFS.writeFileSync(NodePath.join(clones, `${id}.safetensors`), "embedding");
+            NodeFS.writeFileSync(
+              NodePath.join(clones, `${id}.json`),
+              JSON.stringify({ id, name: "Me", createdAt: "2026-11-16T01:00:00.000Z" }),
+            );
+            assert.strictEqual(
+              yield* say("owner", { engine: "clone", voice: id }),
+              "The consent for that clone was withdrawn.",
+            );
+            const library = () =>
+              Effect.map(call("read", "library"), (r) => (r.value as VoiceLibraryView).clones);
+            assert.deepStrictEqual(yield* library(), []);
+            grants.push(cloneGrant(id));
+            assert.deepStrictEqual(
+              (yield* library())?.map((c) => c.name),
+              ["Me"],
+            );
+            // With consent it goes to Pocket, which this machine lacks.
+            assert.strictEqual(
+              yield* say("owner", { engine: "clone", voice: id }),
+              "Tessaya's voice is not installed here.",
+            );
+            assert.strictEqual(
+              yield* say("act", { engine: "pocket", voice: "anna" }),
+              "Tessaya's voice is not installed on this machine.",
+            );
+            assert.strictEqual(
+              yield* say("act", { engine: "pocket", voice: "nobody" }),
+              "That voice is not in the library.",
+            );
+            // No engine is the desktop speaker's cloud voice, as before.
+            expect(yield* say("act", { voice: "en-gb-advisor-1" })).toMatch(/Save a Google key/);
+            // Deleting the clone removes its files and its consent.
+            assert.isTrue((yield* call("owner", "deleteClone", { id })).ok);
+            assert.deepStrictEqual(grants, []);
+            assert.deepStrictEqual(NodeFS.readdirSync(clones), []);
+          }),
+        grants,
+      );
+    },
   );
 });
 

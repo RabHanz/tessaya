@@ -127,15 +127,16 @@ index 1892b649061f8cc8413805bceea774e7eaf04298..cedd6229cb9a76953db0f88dfb2e5997
      "react-native-pdf-jsi": "6.1.0",
      "react-native-reanimated": "4.7.1",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..3def98f2726707b310db3e23fb21639d6ee2e91c 100644
+index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..d9c787d7b0667261d55c189a35b6c05a43e94470 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
-@@ -62,11 +62,14 @@
+@@ -62,11 +62,15 @@
      "@t3tools/source-control-gitcafe": "workspace:*",
      "@t3tools/source-control-github": "workspace:*",
      "@t3tools/source-control-gitlab": "workspace:*",
 +    "@t3tools/tessaya-contracts": "workspace:*",
 +    "@t3tools/tessaya-shared": "workspace:*",
++    "@t3tools/tessaya-voice": "workspace:*",
      "character-entities": "2.0.2",
      "diff": "8.0.3",
      "effect": "catalog:",

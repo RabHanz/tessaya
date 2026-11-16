@@ -1,3 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
@@ -26,6 +31,8 @@ import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistantService.ts";
 import { DeviceRegistry } from "../../../home/DeviceRegistry.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { TessayaVoiceLibrary } from "../../../tessaya/TessayaVoiceLibrary.ts";
+import * as ServerConfig from "../../../config.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
 import { DESK_REPLAY_CLIENT, ROOM_CLIENT, withCounts } from "../home/handlers.ts";
 import * as TessayaHandlers from "./handlers.ts";
@@ -134,6 +141,49 @@ it.effect("the room keeps how a word is said in the server's one list, and can g
     yield* callTool("room", Context.empty() as never, "tessaya_pronounce", { word: "Tessaya" });
     expect((yield* settings.getSettings).voicePronounce).toEqual({});
   }).pipe(Effect.provide(ServerSettingsService.layerTest())),
+);
+
+it.effect("says a line in the voice he names, only on his own turn, through the one library", () =>
+  Effect.gen(function* () {
+    const asked: Array<unknown> = [];
+    const view = {
+      pocket: [],
+      cloud: null,
+      personas: [
+        { id: "freya", name: "Freya", lead: false, voice: "", cloudVoice: null, speaks: "anna" },
+      ],
+      previews: { pocket: true, cloud: false },
+      previewLine: "",
+      clones: [{ id: "c1", name: "Me", createdAt: "2026-11-16T01:00:00.000Z" }],
+    };
+    const voices = {
+      library: Effect.succeed(view),
+      say: (input: unknown) =>
+        Effect.sync(() => {
+          asked.push(input);
+          return { mime: "audio/wav" as const, base64: "UklGRg==", synthetic: true };
+        }),
+    };
+    const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-voice-tool-"));
+    const runtime = Context.mergeAll(
+      Context.make(TessayaVoiceLibrary, voices as never),
+      Context.make(ServerConfig.ServerConfig, { stateDir } as never),
+    ) as never;
+    const sayAs = (voice: string, hisVoice: boolean) =>
+      callTool("full-access", runtime, "tessaya_voice", { op: "say", voice, text: "Hi" }).pipe(
+        Effect.provideService(TurnOrigin, { kind: "device", id: "r1", label: "R1", hisVoice }),
+      );
+    expect((yield* sayAs("Freya", false)).isFailure).toBe(true);
+    expect(asked).toEqual([]);
+    expect((yield* sayAs("freya", true)).isFailure).toBe(false);
+    expect((yield* sayAs("Me", true)).isFailure).toBe(false);
+    expect(asked).toEqual([
+      { engine: "pocket", voice: "anna", text: "Hi" },
+      { engine: "clone", voice: "c1", text: "Hi" },
+    ]);
+    expect(NodeFS.existsSync(NodePath.join(stateDir, "voice", "said", "last.wav"))).toBe(true);
+    NodeFS.rmSync(stateDir, { recursive: true, force: true });
+  }),
 );
 
 it("gives an outside agent no tool that reaches a private memory store", () => {
