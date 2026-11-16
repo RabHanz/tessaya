@@ -54,6 +54,9 @@ const SITES: Readonly<Record<string, Site>> = {
   "apps/server/src/tessaya/TessayaMemoryLearning.ts": {
     routed: "learning and episodes: the background row",
   },
+  "apps/server/src/tessaya/TessayaUnderstanding.ts": {
+    routed: "rewriting her standing understanding of a person or herself: the consolidation row",
+  },
   "apps/server/src/tessaya/IntentInterpreter.ts": { routed: "reading a sentence: the intent row" },
   "apps/server/src/tessaya/SynopsisReactor.ts": {
     routed: "a work session's synopsis: the synopsis row",
