@@ -91,6 +91,7 @@ import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
+import { WifiSection } from "./WifiSection";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 
 const REFRESH_MS = 5000;
@@ -835,6 +836,8 @@ function DeviceControls({
       </SettingsSection>
 
       {d.speaker === null ? null : <SpeakerSection device={d} busy={busy} run={run} />}
+
+      <WifiSection device={d} busy={busy} run={run} />
 
       <TagsSection device={d} tags={tags} busy={busy} run={run} />
 

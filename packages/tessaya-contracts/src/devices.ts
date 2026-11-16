@@ -42,6 +42,8 @@ export const BATON_DEVICES_ACT_OPS = [
   "nfcRemove",
   "forget",
   "speaker",
+  // Its saved Wi-Fi networks in his order (DEVICE_WIFI_ACTIONS); each change is an owner one, as its manifest says.
+  "wifi",
   "set",
   "watch",
   "bodyEdit",
@@ -68,6 +70,8 @@ export const BATON_DEVICES_OWNER_OPS = [
   // Developer's raw `cmd/<path>` and its log (Settings only).
   "update",
   "updateHold",
+  // Which of his servers' hubs a device tries, first choice first (DeviceHub); Settings only.
+  "hubs",
   "raw",
   "tail",
 ] as const;
@@ -297,6 +301,40 @@ export const DeviceSpeaker = Schema.Struct({
 });
 export type DeviceSpeaker = typeof DeviceSpeaker.Type;
 
+/** A saved Wi-Fi network as the device reports it (`state/net/saved`): never its password. */
+export const DeviceWifiNetwork = Schema.Struct({
+  ssid: Schema.String,
+  /** 1 is the first choice, and only one network has it; a hotspot not at 1 is the last resort. */
+  priority: Schema.Number,
+  hotspot: Schema.Boolean,
+  /** Its last join failed on the password: it waits for a new one. */
+  badPass: Schema.Boolean,
+  /** The network it is on now. */
+  current: Schema.Boolean,
+});
+export type DeviceWifiNetwork = typeof DeviceWifiNetwork.Type;
+/**
+ * The `wifi` op: `first` (`ssid`, his words matched to a saved name), `order` (first choice first), `forget` (never
+ * the last), `add` (`ssid`, `password`, `hotspot`, `backup`: save without switching; Settings only, a password is
+ * never spoken), `line` (its setup network's name, 2 to 8 letters). The device keeps the list.
+ */
+export const DEVICE_WIFI_ACTIONS = ["first", "order", "forget", "add", "line"] as const;
+export type DeviceWifiAction = (typeof DEVICE_WIFI_ACTIONS)[number];
+
+/**
+ * One of his servers' hubs, in a device's order: it connects to the first that answers and moves back to the first
+ * when that one returns. The hub it is connected to is the one that answers it (`current`).
+ */
+export const DeviceHub = Schema.Struct({
+  /** The server's environment id. */
+  id: Schema.String,
+  label: Schema.String,
+  /** Its hub addresses, as the device is given them. */
+  urls: Schema.Array(Schema.String),
+  current: Schema.Boolean,
+});
+export type DeviceHub = typeof DeviceHub.Type;
+
 export const DeviceStage = Schema.Struct({
   name: Schema.String,
   lastMs: Schema.NullOr(Schema.Number),
@@ -362,6 +400,10 @@ export const DeviceView = Schema.Struct({
   lastTag: Schema.NullOr(Schema.Struct({ uid: Schema.String, at: Schema.String })),
   /** null until the firmware announces it can drive a Bluetooth speaker (state/caps); clients hide the controls. */
   speaker: Schema.NullOr(DeviceSpeaker),
+  /** Its saved Wi-Fi networks, first choice first; absent until the firmware reports them (0.3.147). */
+  wifi: Schema.optionalKey(Schema.Array(DeviceWifiNetwork)),
+  /** His servers' hubs it tries, first choice first; absent when this server has no others. */
+  hubs: Schema.optionalKey(Schema.Array(DeviceHub)),
   stages: Schema.Array(DeviceStage),
   log: Schema.Array(DeviceLogLine),
 });

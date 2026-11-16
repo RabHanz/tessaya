@@ -11,27 +11,37 @@ import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts"
 import { DirectEndpoints } from "../environment/DirectEndpoints.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { makeHub, R1Hub } from "./R1Hub.ts";
-import { composeEndpoints, R1Reach, reportMatches } from "./R1Reach.ts";
+import { DeviceSync, HUBS_RECORD } from "./DeviceSync.ts";
+import {
+  composeEndpoints,
+  hubOrder,
+  ownHubUrls,
+  ownProxy,
+  R1Reach,
+  reportMatches,
+} from "./R1Reach.ts";
 import * as R1ReachModule from "./R1Reach.ts";
 
 const HUB = "/api/r1/mqtt";
 
 it("puts the LAN first, the tunnel only when away is on, and keeps a fallback broker in the last slots", () => {
   const lan = ["http://192.168.1.20:3773/", "http://10.0.0.5:3773/"];
-  expect(
-    composeEndpoints({ lan, tunnelHost: "t-1.example.net", away: false, fallback: [] }),
-  ).toEqual({
+  const one = (
+    away: boolean,
+    fallback: ReadonlyArray<string> = [],
+    l = lan,
+    host = "t-1.example.net",
+  ) =>
+    composeEndpoints({
+      hubs: [ownHubUrls({ lan: l, tunnelHost: host, away })],
+      fallback,
+      proxy: ownProxy({ lan: l, tunnelHost: host, away }),
+    });
+  expect(one(false)).toEqual({
     broker: [`ws://192.168.1.20:3773${HUB}`, `ws://10.0.0.5:3773${HUB}`],
     proxy: "http://192.168.1.20:3773",
   });
-  expect(
-    composeEndpoints({
-      lan,
-      tunnelHost: "t-1.example.net",
-      away: true,
-      fallback: ["ws://old:9002/mqtt"],
-    }).broker,
-  ).toEqual([
+  expect(one(true, ["ws://old:9002/mqtt"]).broker).toEqual([
     `ws://192.168.1.20:3773${HUB}`,
     `ws://10.0.0.5:3773${HUB}`,
     `wss://t-1.example.net${HUB}`,
@@ -39,17 +49,118 @@ it("puts the LAN first, the tunnel only when away is on, and keeps a fallback br
   ]);
   // Four LAN addresses and the tunnel: the tunnel keeps its slot.
   const many = ["a", "b", "c", "d"].map((h) => `http://${h}:1/`);
-  expect(
-    composeEndpoints({ lan: many, tunnelHost: "t", away: true, fallback: [] }).broker.at(-1),
-  ).toBe(`wss://t${HUB}`);
-  // No LAN listener (a desktop without network access): the tunnel alone, and uploads through it.
-  expect(composeEndpoints({ lan: [], tunnelHost: "t", away: true, fallback: [] })).toEqual({
-    broker: [`wss://t${HUB}`],
-    proxy: "https://t",
-  });
+  expect(one(true, [], many, "t").broker.at(-1)).toBe(`wss://t${HUB}`);
+  // No LAN listener (a cloud box, a desktop without network access): the tunnel alone, and uploads through it.
+  expect(one(false, [], [], "t")).toEqual({ broker: [`wss://t${HUB}`], proxy: "https://t" });
   expect(reportMatches('{"broker":["x"],"proxy":""}', { broker: ["x"], proxy: "" })).toBe(true);
   expect(reportMatches("garbage", { broker: ["x"], proxy: "" })).toBe(false);
 });
+
+it("gives every hub a slot in his order, and every server the same list, so she moves back to the first", () => {
+  const home = ["ws://192.168.1.20:3773/api/r1/mqtt", "wss://home.example.net/api/r1/mqtt"];
+  const cloud = ["wss://cloud.example.net/api/r1/mqtt"];
+  const laptop = ["ws://192.168.1.30:3773/api/r1/mqtt"];
+  // Home with its LAN and tunnel, the cloud box, the laptop: four slots, each hub first in his order.
+  expect(composeEndpoints({ hubs: [home, cloud, laptop], fallback: [], proxy: "" }).broker).toEqual(
+    [...home, ...cloud, ...laptop],
+  );
+  // A fifth address: each hub keeps one slot before any keeps a second; cut to one, home keeps its tunnel, which
+  // answers from anywhere.
+  const big = ["ws://10.0.0.1/api/r1/mqtt", ...home];
+  expect(
+    composeEndpoints({ hubs: [big, cloud, laptop], fallback: ["ws://old/mqtt"], proxy: "" }).broker,
+  ).toEqual([big.at(-1), cloud[0], laptop[0], "ws://old/mqtt"]);
+  const known = [
+    { id: "env-home", label: "home" },
+    { id: "env-cloud", label: "cloud" },
+    { id: "env-laptop", label: "laptop" },
+  ];
+  // No saved order: the hub the device was given first stays first on every server, the rest by name.
+  for (const _server of ["env-home", "env-cloud"])
+    expect(hubOrder({ saved: null, known, first: "env-home" })).toEqual([
+      "env-home",
+      "env-cloud",
+      "env-laptop",
+    ]);
+  // His order wins; a hub he has not placed yet goes after it, and one that is gone drops out.
+  expect(hubOrder({ saved: ["env-cloud", "env-gone"], known, first: "env-home" })).toEqual([
+    "env-cloud",
+    "env-home",
+    "env-laptop",
+  ]);
+});
+
+it.effect("on the standby hub, keeps the first hub first and says which one the device is on", () =>
+  Effect.gen(function* () {
+    const hub = makeHub(() => Effect.succeed(null));
+    const record: R1Device = {
+      deviceKey: "k".repeat(32),
+      mqttUrl: null,
+      mqttUser: null,
+      mqttPass: null,
+      deviceId: "r1-a",
+    };
+    const HOME = "wss://home.example.net/api/r1/mqtt";
+    const stamps: Record<string, Record<string, { v: unknown; at: number; by: string }>> = {
+      [HUBS_RECORD]: { "env-home": { v: { label: "home", urls: [HOME] }, at: 5, by: "env-home" } },
+      "r1-a": { key: { v: {}, at: 5, by: "env-home" } },
+    };
+    const layer = R1ReachModule.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(R1Hub, {
+            ...hub,
+            busLogin: Effect.succeed({ user: "", key: "" }),
+            noteKeyUse: () => Effect.void,
+            keyUsedOutside: () => null,
+          }),
+          Layer.mock(HomeAssistantService)({ devices: Effect.succeed([record]) }),
+          Layer.mock(ServerSecretStore)({
+            get: (name) =>
+              Effect.succeed(
+                name === CLOUD_ENDPOINT_RUNTIME_CONFIG
+                  ? Option.some(new Uint8Array([1]))
+                  : name === "r1-tunnel-host"
+                    ? Option.some(new TextEncoder().encode("cloud.example.net"))
+                    : Option.none(),
+              ),
+            set: () => Effect.void,
+          }),
+          Layer.mock(DeviceSync)({
+            self: "env-cloud",
+            put: (record, field, v) =>
+              Effect.sync(() => {
+                stamps[record] = { ...stamps[record], [field]: { v, at: 9, by: "env-cloud" } };
+              }),
+            get: (record) => Effect.sync(() => stamps[record] ?? {}),
+          }),
+        ),
+      ),
+    );
+    const pushed = yield* Queue.unbounded<string>();
+    hub.attach(["freya/r1/+/cmd/net/endpoints"], (_t, p) =>
+      Queue.offerUnsafe(pushed, p.toString("utf8")),
+    );
+    yield* Effect.gen(function* () {
+      const reach = yield* R1Reach;
+      // The cloud box has no LAN: it is reached through its tunnel, and lists home first as the device was given.
+      hub.publish(
+        "freya/r1/r1-a/state/net/endpoints",
+        JSON.stringify({ broker: [HOME], current: `wss://cloud.example.net${HUB}` }),
+        true,
+      );
+      hub.publish("freya/r1/r1-a/state/online", "1", true);
+      expect(JSON.parse(yield* Queue.take(pushed)).broker).toEqual([
+        HOME,
+        `wss://cloud.example.net${HUB}`,
+      ]);
+      expect((yield* reach.hubs("r1-a")).map((h) => `${h.label}:${h.current}`)).toEqual([
+        "home:false",
+        "this server:true",
+      ]);
+    }).pipe(Effect.provide(layer));
+  }),
+);
 
 it.effect("sends the R1 its list when it comes online, again only when the list changes", () =>
   Effect.gen(function* () {

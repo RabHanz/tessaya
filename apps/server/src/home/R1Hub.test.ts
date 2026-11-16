@@ -421,3 +421,44 @@ it.live("serves the same logins over plain TCP, for a mosquitto bridge or a loca
     });
   }).pipe(Effect.scoped),
 );
+
+it.effect(
+  "with a loop on two hubs, one wake gets one reply: only the hub the device is on hears it, and a stale reply never reaches it",
+  () =>
+    Effect.gen(function* () {
+      const home = hubForTest();
+      const standby = hubForTest();
+      const loop = (hub: ReturnType<typeof hubForTest>) =>
+        Effect.gen(function* () {
+          const bus = socketOn(hub);
+          yield* bus.send(
+            connectPacket({ clientId: "loop", user: "tessaya-bus", pass: "bus", keepAliveS: 30 }),
+          );
+          yield* bus.send(subscribePacket(1, ["freya/r1/+/voice/up"]));
+          return bus;
+        });
+      const onHome = yield* loop(home);
+      const onStandby = yield* loop(standby);
+      const device = socketOn(home);
+      yield* device.send(
+        connectPacket({ clientId: "r1-a", user: "r1-a", pass: KEY, keepAliveS: 60 }),
+      );
+      yield* device.send(subscribePacket(1, ["freya/r1/r1-a/voice/down"]));
+      yield* device.send(publishPacket("freya/r1/r1-a/voice/up", Buffer.from("wake")));
+      expect(onHome.publishes()).toEqual(["freya/r1/r1-a/voice/up=wake"]);
+      expect(onStandby.publishes()).toEqual([]);
+      // Home goes down mid-reply; the device joins the standby hub, and home's last frame dies with its socket.
+      device.session.gone();
+      const moved = socketOn(standby);
+      yield* moved.send(
+        connectPacket({ clientId: "r1-a", user: "r1-a", pass: KEY, keepAliveS: 60 }),
+      );
+      yield* moved.send(subscribePacket(1, ["freya/r1/r1-a/voice/down"]));
+      yield* onHome.send(publishPacket("freya/r1/r1-a/voice/down", Buffer.from("stale")));
+      yield* moved.send(publishPacket("freya/r1/r1-a/voice/up", Buffer.from("again")));
+      yield* onStandby.send(publishPacket("freya/r1/r1-a/voice/down", Buffer.from("reply")));
+      expect(onHome.publishes()).toEqual(["freya/r1/r1-a/voice/up=wake"]);
+      expect(onStandby.publishes()).toEqual(["freya/r1/r1-a/voice/up=again"]);
+      expect(moved.publishes()).toEqual(["freya/r1/r1-a/voice/down=reply"]);
+    }),
+);

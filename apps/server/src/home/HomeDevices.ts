@@ -26,6 +26,8 @@ import {
   type DeviceDisplaySet,
   type DeviceSpeaker,
   type DeviceSpeakerAction,
+  type DeviceWifiAction,
+  type DeviceWifiNetwork,
   type DeviceSpeakerOutput,
   type DeviceStage,
   type DeviceTag,
@@ -89,6 +91,7 @@ import {
   type MotionMoment,
   type MotionSeen,
 } from "./tesselMotion.ts";
+import { DeviceSync } from "./DeviceSync.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
 import { R1Updates } from "./R1Updates.ts";
@@ -137,6 +140,19 @@ export type DeviceCommand =
       readonly classes?: ReadonlyArray<OutputClass>;
       readonly privateCap?: number | null;
     }
+  /** Its saved Wi-Fi networks (DEVICE_WIFI_ACTIONS); the password only ever from Settings, never logged. */
+  | {
+      readonly op: "wifi";
+      readonly action: DeviceWifiAction;
+      readonly ssid?: string;
+      readonly order?: ReadonlyArray<string>;
+      readonly password?: string;
+      readonly hotspot?: boolean;
+      readonly backup?: boolean;
+      readonly line?: string;
+    }
+  /** Which of his servers' hubs it tries, first choice first (environment ids; R1Reach). */
+  | { readonly op: "hubs"; readonly order: ReadonlyArray<string> }
   | { readonly op: "reboot" }
   /** A signed firmware release over the air (R1Updates.install); null: the one this build recommends. */
   | { readonly op: "update"; readonly version: string | null }
@@ -171,6 +187,9 @@ export interface DeviceOutcome {
 const R1_DEFAULT_VOLUME = 71;
 
 const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set([
+  // Owner items in its manifest (net.add, net.priority, net.forget): his verified voice or his yes.
+  "wifi",
+  "hubs",
   "reboot",
   "update",
   "camera",
@@ -203,6 +222,8 @@ export const MAX_SHOT_BYTES = 512 * 1024;
 const LOG_KEEP = 40;
 const SAMPLES_KEEP = 50;
 const SETTINGS_KEY = "devices.state";
+/** His per-device choices kept alike on all his servers (DeviceSync), so a standby hub serves her as he set her. */
+const SYNCED = ["outputs", "outputClasses", "earconsOff", "talkOverKeyword", "eyeStyle"] as const;
 
 /** The room loop's per-turn metrics, in pipeline order. */
 const STAGES = [
@@ -244,6 +265,8 @@ export interface Heard {
     /** Its firmware drops a held route's reply rather than playing it on her speaker (state/caps route_hold). */
     holdCap?: boolean;
   } | null;
+  /** Its saved Wi-Fi networks, first choice first (`state/net/saved`, retained); null until it reports them. */
+  wifi: Array<DeviceWifiNetwork> | null;
   samples: Record<string, Array<number>>;
   log: Array<{ at: number; topic: string; text: string }>;
   /** The room loop's enrolment card while he enrols, and its summary until he closes it. */
@@ -260,10 +283,76 @@ const blank = (): Heard => ({
   keyV2: false,
   display: { rotate: null, mode: null, note: null },
   speaker: null,
+  wifi: null,
   samples: {},
   log: [],
   enrol: null,
 });
+
+/** `state/net/saved` as his order: priority first, then as the device listed them. Pure. */
+const wifiOf = (body: Record<string, unknown> | null): Array<DeviceWifiNetwork> | null => {
+  if (!Array.isArray(body?.["nets"])) return null;
+  return (body["nets"] as Array<unknown>)
+    .slice(0, 8)
+    .flatMap((x) => {
+      const v = typeof x === "object" && x !== null ? (x as Record<string, unknown>) : {};
+      return typeof v["ssid"] !== "string" || v["ssid"] === ""
+        ? []
+        : [
+            {
+              ssid: v["ssid"].slice(0, 32),
+              priority: typeof v["priority"] === "number" ? v["priority"] : 9,
+              hotspot: v["hotspot"] === true,
+              badPass: v["bad_pass"] === true,
+              current: v["current"] === true,
+            },
+          ];
+    })
+    .map((n, i) => ({ n, i }))
+    .toSorted((a, b) => a.n.priority - b.n.priority || a.i - b.i)
+    .map(({ n }) => n);
+};
+
+/** `net.priority` and `net.forget` as the `wifi` op (`{ssid, priority}`, or the name alone). Pure. */
+export const wifiItemOf = (
+  itemId: string,
+  value: unknown,
+  nets: ReadonlyArray<DeviceWifiNetwork>,
+): Extract<DeviceCommand, { op: "wifi" }> | null => {
+  if (itemId !== "net.priority" && itemId !== "net.forget") return null;
+  const v = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  const ssid = typeof value === "string" ? value : typeof v["ssid"] === "string" ? v["ssid"] : "";
+  if (itemId === "net.forget") return { op: "wifi", action: "forget", ssid };
+  const at = typeof v["priority"] === "number" ? Math.max(1, Math.round(v["priority"])) : 1;
+  if (at === 1) return { op: "wifi", action: "first", ssid };
+  const named = wifiNamed(nets, ssid);
+  const name = typeof named === "string" ? ssid : named.ssid;
+  const order = nets.map((n) => n.ssid).filter((s) => s !== name);
+  order.splice(Math.min(at - 1, order.length), 0, name);
+  return { op: "wifi", action: "order", order };
+};
+
+/**
+ * The saved network his words name: its exact name, else "hotspot" or "phone" for the one hotspot, "home" for the one
+ * network that is not, else the one name that contains them. A string is the question back when it is not one.
+ */
+export const wifiNamed = (
+  nets: ReadonlyArray<DeviceWifiNetwork>,
+  words: string,
+): DeviceWifiNetwork | string => {
+  const w = words.trim().toLowerCase();
+  const exact = nets.find((n) => n.ssid.toLowerCase() === w);
+  if (exact !== undefined) return exact;
+  const pick = (list: ReadonlyArray<DeviceWifiNetwork>) => (list.length === 1 ? list[0]! : null);
+  const byWord =
+    (/\b(hotspot|phone)\b/.test(w) ? pick(nets.filter((n) => n.hotspot)) : null) ??
+    (/\bhome\b/.test(w) ? pick(nets.filter((n) => !n.hotspot)) : null) ??
+    pick(nets.filter((n) => w !== "" && n.ssid.toLowerCase().includes(w)));
+  if (byWord !== null) return byWord;
+  return nets.length === 0
+    ? `The ${DEVICE} has not reported its saved Wi-Fi networks yet.`
+    : `Which network? It knows ${nets.map((n) => n.ssid).join(", ")}.`;
+};
 
 const decodeEnrolCard = Schema.decodeUnknownOption(EnrolCard);
 
@@ -662,6 +751,9 @@ export const applyMessage = (
           : null;
       break;
     }
+    case "state/net/saved":
+      d.wifi = wifiOf(body) ?? d.wifi;
+      break;
     case "state/bt/bonds": {
       if (d.speaker === null || !Array.isArray(body?.["devices"])) break;
       d.speaker.bonds = (body["devices"] as Array<unknown>).slice(0, 8).flatMap((x) => {
@@ -986,10 +1078,23 @@ const make = Effect.gen(function* () {
       Effect.asVoid,
       Effect.orDie,
     );
+  const devSync = yield* Effect.serviceOption(DeviceSync);
+  /** What changed in his synced choices goes to his other servers, per device and field. */
+  const toSync = Effect.fn("HomeDevices.toSync")(function* (before: string, saved: Saved) {
+    if (devSync._tag === "None") return;
+    const was = JSON.parse(before) as Pick<Saved, (typeof SYNCED)[number]>;
+    for (const field of SYNCED)
+      for (const id of new Set([...Object.keys(was[field]), ...Object.keys(saved[field])])) {
+        const now = saved[field][id] ?? null;
+        if (JSON.stringify(was[field][id] ?? null) !== JSON.stringify(now))
+          yield* devSync.value.put(id, field, now, "changed");
+      }
+  });
   const change = (f: (saved: Saved) => void) =>
     Effect.flatMap(readSaved, (saved) => {
+      const before = JSON.stringify(Object.fromEntries(SYNCED.map((k) => [k, saved[k]])));
       f(saved);
-      return writeSaved(saved);
+      return writeSaved(saved).pipe(Effect.andThen(toSync(before, saved)));
     });
 
   const audit = (by: DeviceActor, id: string, subject: string, outcome: string) =>
@@ -1416,6 +1521,127 @@ const make = Effect.gen(function* () {
           yield* releaseHeld(result.id).pipe(Effect.forkIn(scope, { startImmediately: true }));
       }
     } else if (tail === "event/audio/stall") yield* stalled(result.id, json(payload));
+    else if (tail === "state/net/ack") yield* netAcked(result.id, json(payload));
+  });
+
+  /** Wi-Fi changes sent and not answered yet, per device: the firmware answers each on `state/net/ack`, in order. */
+  const netWaits = new Map<
+    string,
+    { op: string; left: number; why: string | null; done: Deferred.Deferred<string | null> }
+  >();
+  const netAcked = Effect.fn("HomeDevices.netAcked")(function* (
+    id: string,
+    body: Record<string, unknown> | null,
+  ) {
+    const wait = netWaits.get(id);
+    if (wait === undefined || body?.["op"] !== wait.op) return;
+    if (body["ok"] !== true) wait.why ??= str(body["error"]) ?? "it refused";
+    wait.left -= 1;
+    if (wait.left > 0) return;
+    netWaits.delete(id);
+    yield* Deferred.succeed(wait.done, wait.why);
+  });
+  /** Sends Wi-Fi commands of one op and waits for all their answers: null when each was taken, else why not. */
+  const netSend = Effect.fn("HomeDevices.netSend")(function* (
+    id: string,
+    op: string,
+    bodies: ReadonlyArray<Record<string, unknown>>,
+  ) {
+    const done = yield* Deferred.make<string | null>();
+    netWaits.set(id, { op, left: bodies.length, why: null, done });
+    for (const body of bodies) yield* publish(id, `cmd/net/${op}`, body);
+    return yield* Deferred.await(done).pipe(Effect.timeoutOption("10 seconds"));
+  });
+
+  /** One Wi-Fi change, answered with what the device said; every one goes through `command`'s owner check first. */
+  const wifi = Effect.fn("HomeDevices.wifi")(function* (
+    id: string,
+    c: Extract<DeviceCommand, { op: "wifi" }>,
+    by: DeviceActor,
+  ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
+    const outcome = (line: string): DeviceOutcome => ({ status: "done", line });
+    const nets = heard.get(id)?.wifi ?? [];
+    const named = (words: string) => {
+      const n = wifiNamed(nets, words);
+      return typeof n === "string"
+        ? Effect.fail(new DeviceRefusedError({ why: n }))
+        : Effect.succeed(n);
+    };
+    const answered = (why: Option.Option<string | null>, line: string) =>
+      Option.isNone(why)
+        ? Effect.succeed(outcome(`Sent, but the ${DEVICE} has not confirmed it yet.`))
+        : why.value === null
+          ? Effect.succeed(outcome(line))
+          : Effect.fail(new DeviceRefusedError({ why: `The ${DEVICE} said no: ${why.value}.` }));
+    switch (c.action) {
+      case "first":
+      case "order": {
+        const picked: Array<string> = [];
+        for (const words of c.action === "first" ? [c.ssid ?? ""] : (c.order ?? []))
+          picked.push((yield* named(words)).ssid);
+        const order = [...new Set([...picked, ...nets.map((n) => n.ssid)])];
+        const first = nets.find((n) => n.ssid === order[0]);
+        const line =
+          c.action === "order"
+            ? "Saved. It joins the first network in this order that is in range."
+            : `${order[0]} is the first Wi-Fi now${first?.hotspot === true ? ", even at home" : ""}. It moves there once it is idle and the network is in range.`;
+        if (by.dryRun === true) return outcome(line);
+        // The whole order, so no two networks share a place: 1 first (the firmware moves the old first down), then each.
+        const why = yield* netSend(
+          id,
+          "priority",
+          order.map((ssid, i) => ({ ssid, priority: Math.min(i + 1, 9) })),
+        );
+        yield* audit(
+          by,
+          id,
+          `Wi-Fi order ${order.join(", ")}`,
+          Option.isSome(why) ? "done" : "sent",
+        );
+        return yield* answered(why, line);
+      }
+      case "forget": {
+        const n = yield* named(c.ssid ?? "");
+        if (nets.length <= 1)
+          return yield* new DeviceRefusedError({
+            why: `${n.ssid} is the only Wi-Fi the ${DEVICE} knows, so it stays.`,
+          });
+        if (by.dryRun === true) return outcome(`${n.ssid} would be forgotten.`);
+        const why = yield* netSend(id, "forget", [{ ssid: n.ssid }]);
+        yield* audit(by, id, `Wi-Fi ${n.ssid} forgotten`, Option.isSome(why) ? "done" : "sent");
+        return yield* answered(why, `Forgot ${n.ssid}.`);
+      }
+      case "add": {
+        const ssid = (c.ssid ?? "").trim();
+        const pass = c.password ?? "";
+        if (ssid === "" || ssid.length > 32)
+          return yield* new DeviceRefusedError({ why: "A Wi-Fi name is 1 to 32 characters." });
+        if (pass !== "" && (pass.length < 8 || pass.length > 63))
+          return yield* new DeviceRefusedError({
+            why: "A Wi-Fi password is 8 to 63 characters, or none for an open network.",
+          });
+        const line =
+          c.backup === true
+            ? `Saved ${ssid} as a backup; it stays on the network it is on.`
+            : `Joining ${ssid}. If it cannot get online there within 2 minutes it goes back.`;
+        if (by.dryRun === true) return outcome(line);
+        // The password goes to the device alone: never logged, never in the audit line.
+        const why = yield* netSend(id, "add", [
+          { ssid, pass, hotspot: c.hotspot === true, use: c.backup !== true },
+        ]);
+        yield* audit(by, id, `Wi-Fi ${ssid} added`, Option.isSome(why) ? "done" : "sent");
+        return yield* answered(why, line);
+      }
+      case "line": {
+        const name = (c.line ?? "").trim();
+        if (!/^[A-Za-z]{2,8}$/.test(name))
+          return yield* new DeviceRefusedError({ why: "A line name is 2 to 8 letters." });
+        if (by.dryRun === true) return outcome(`Its setup network would be ${name}-xxxx.`);
+        const why = yield* netSend(id, "line", [{ line: name }]);
+        yield* audit(by, id, `${DEVICE} line ${name}`, Option.isSome(why) ? "done" : "sent");
+        return yield* answered(why, `Its setup network is ${name}-xxxx now.`);
+      }
+    }
   });
 
   /** The R1's next Bluetooth link state after a connect or pair, for the true spoken result. */
@@ -1905,7 +2131,15 @@ const make = Effect.gen(function* () {
                 ? `unload the ${DEVICE}'s own wake model`
                 : c.op === "item"
                   ? `use ${c.itemId}${c.value === null || c.value === undefined ? "" : ` (${recordText(JSON.stringify(c.value), 60)})`}`
-                  : c.op;
+                  : c.op === "wifi"
+                    ? c.action === "forget"
+                      ? `forget the Wi-Fi ${c.ssid ?? ""}`
+                      : c.action === "first"
+                        ? `put the Wi-Fi ${c.ssid ?? ""} first`
+                        : `change the ${DEVICE}'s Wi-Fi (${c.action})`
+                    : c.op === "hubs"
+                      ? `change which servers the ${DEVICE} tries first`
+                      : c.op;
 
   /** A registry item and its device, or why there is none. */
   const itemOf = Effect.fn("HomeDevices.itemOf")(function* (id: string, itemId: string) {
@@ -2242,6 +2476,20 @@ const make = Effect.gen(function* () {
         if (!out.ok) return yield* new DeviceRefusedError({ why: out.line });
         return done(out.line);
       }
+      case "wifi":
+        return yield* wifi(id, c, by);
+      case "hubs": {
+        if (reach._tag === "None")
+          return yield* new DeviceRefusedError({ why: "This server keeps no hub list." });
+        if (by.dryRun !== true) yield* reach.value.setHubs(id, c.order);
+        const hubs = yield* reach.value.hubs(id);
+        yield* audit(by, id, `${DEVICE} hub order`, "saved");
+        return done(
+          hubs.length === 0
+            ? "Saved. This server knows no other hub yet."
+            : `Saved. It tries ${hubs.map((h) => h.label).join(", then ")}, and moves back up when one returns.`,
+        );
+      }
       case "raw":
         yield* publish(id, `cmd/${c.path}`, c.payload);
         yield* audit(by, id, `raw cmd/${c.path}`, "sent");
@@ -2276,6 +2524,10 @@ const make = Effect.gen(function* () {
           return yield* run(id, { op: "eyeStyle", style }, by);
         const bt = btTargetOf(c.itemId, c.value, item.values);
         if (reg.via === "mqtt" && bt !== null) return yield* btGo(id, bt, by);
+        // His words for a network ("my hotspot", "home Wi-Fi") are matched to a saved name, and the order kept whole.
+        const net =
+          reg.via === "mqtt" ? wifiItemOf(c.itemId, c.value, heard.get(id)?.wifi ?? []) : null;
+        if (net !== null) return yield* wifi(id, net, by);
         if (by.dryRun === true)
           return done(
             item.type === "action"
@@ -2308,6 +2560,14 @@ const make = Effect.gen(function* () {
     c: DeviceCommand,
     by: DeviceActor,
   ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
+    // A Wi-Fi password is never spoken or passed through a model: adding a network is his phone's or the setup page's.
+    if (
+      by.surface !== "settings" &&
+      ((c.op === "item" && c.itemId === "net.add") || (c.op === "wifi" && c.action === "add"))
+    )
+      return yield* new DeviceRefusedError({
+        why: `Wi-Fi passwords are never said aloud. Add the network on his phone in Settings → Hardware → Wi-Fi order, or on the ${DEVICE}'s setup page: hold S1 and S3 for 5 seconds and join the network its eye shows.`,
+      });
     // Where she speaks is his output order, and asking is his yes: no second question (16 Nov, she asked and waited).
     if (
       c.op === "item" &&
@@ -2350,7 +2610,7 @@ const make = Effect.gen(function* () {
         why: "Raw device commands are sent only from Settings → Hardware.",
       });
     }
-    if (c.op !== "away" && c.op !== "item" && c.op !== "forget") yield* live(id);
+    if (c.op !== "away" && c.op !== "item" && c.op !== "forget" && c.op !== "hubs") yield* live(id);
     if (needsYes && by.surface !== "settings" && by.approved !== true) {
       if (by.dryRun === true)
         return {
@@ -2502,6 +2762,7 @@ const make = Effect.gen(function* () {
       },
       lastTag: d.lastTag === null ? null : { uid: d.lastTag.uid, at: iso(d.lastTag.at)! },
       speaker: d.speaker === null ? null : speakerView(id, d.speaker, saved, now, values),
+      ...(d.wifi === null ? {} : { wifi: d.wifi }),
       stages: stagesOf(d),
       log: d.log.map((l) => ({ at: iso(l.at)!, topic: l.topic, text: l.text })).toReversed(),
     };
@@ -2580,6 +2841,50 @@ const make = Effect.gen(function* () {
     }),
   );
 
+  // His choices made on another of his servers land here as if made here, and reach the device if it is on this hub.
+  if (devSync._tag === "Some") {
+    const kept = yield* readSaved;
+    for (const field of SYNCED) {
+      for (const [id, v] of Object.entries(kept[field]))
+        yield* devSync.value.put(id, field, v, "seen");
+      yield* devSync.value.onMerged(field, (id, v) =>
+        Effect.gen(function* () {
+          // Another server's value is checked as Settings would check it; a malformed one is left out.
+          const valid =
+            v === null ||
+            (field === "outputs"
+              ? Array.isArray(v) && v.length <= 16 && v.every((o) => typeof o === "string")
+              : field === "outputClasses"
+                ? typeof v === "object" && !Array.isArray(v)
+                : field === "eyeStyle"
+                  ? R1_EYE_STYLES.includes(v as R1EyeStyle)
+                  : v === true);
+          if (isTestVessel(id) || !valid) return;
+          const saved = yield* readSaved;
+          const map = saved[field] as Record<string, unknown>;
+          if (v === null) delete map[id];
+          else map[id] = v;
+          yield* writeSaved(saved);
+          if (field === "earconsOff")
+            yield* publish(id, "cmd/voice/earcons", { on: v !== true }, true);
+          else if (field === "talkOverKeyword")
+            yield* publish(
+              id,
+              "cmd/voice/talkover",
+              { mode: v === true ? "keyword" : "open" },
+              true,
+            );
+          else if (field === "eyeStyle")
+            yield* publish(id, "cmd/eye/style", { style: v ?? R1_EYE_STYLE_DEFAULT }, true);
+          else {
+            routed.delete(id);
+            yield* applyRoute(id);
+          }
+        }),
+      );
+    }
+  }
+
   return HomeDevices.of({
     overview: Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
@@ -2601,8 +2906,14 @@ const make = Effect.gen(function* () {
                 : "connecting",
           host: links.size === 0 ? null : [...links.values()].map((l) => l.host).join(", "),
         },
-        devices: [...ids].map((id) =>
-          viewOf(id, heard.get(id) ?? blank(), saved, now, valuesOf(id)),
+        devices: yield* Effect.forEach([...ids], (id) =>
+          Effect.map(
+            reach._tag === "None" ? Effect.succeed([]) : reach.value.hubs(id),
+            (hubs): DeviceView => ({
+              ...viewOf(id, heard.get(id) ?? blank(), saved, now, valuesOf(id)),
+              ...(hubs.length === 0 ? {} : { hubs }),
+            }),
+          ),
         ),
         tags: tagList(saved),
         pending: [...asks.entries()].map(([id, a]) => ({ id, line: a.line })),

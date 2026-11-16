@@ -7,6 +7,7 @@ import {
   DEVICE_DISPLAY_SETS,
   DEVICE_SPEAKER_ACTIONS,
   DEVICE_SPEAKER_OUTPUTS,
+  DEVICE_WIFI_ACTIONS,
   OUTPUT_CLASSES,
   BATON_DEVICES_OWNER_OPS,
   BATON_DEVICES_READ_OPS,
@@ -205,6 +206,24 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
       ),
     }),
     (a, devices, by) => devices.command(a.id, { op: "speaker", ...a }, by),
+  ),
+  wifi: op(
+    Schema.Struct({
+      id: Id,
+      action: Schema.Literals(DEVICE_WIFI_ACTIONS),
+      ssid: Schema.optionalKey(Text(64)),
+      order: Schema.optionalKey(Schema.Array(Text(64)).check(Schema.isMaxLength(8))),
+      /** `add` only, from Settings: sent to the device alone, never logged. */
+      password: Schema.optionalKey(Text(63)),
+      hotspot: Schema.optionalKey(Schema.Boolean),
+      backup: Schema.optionalKey(Schema.Boolean),
+      line: Schema.optionalKey(Text(8)),
+    }),
+    (a, devices, by) => devices.command(a.id, { op: "wifi", ...a }, by),
+  ),
+  hubs: op(
+    Schema.Struct({ id: Id, order: Schema.Array(Text(80)).check(Schema.isMaxLength(8)) }),
+    (a, devices, by) => devices.command(a.id, { op: "hubs", order: a.order }, by),
   ),
   reboot: plain({ op: "reboot" }),
   update: op(
