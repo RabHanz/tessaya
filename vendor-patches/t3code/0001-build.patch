@@ -173,10 +173,10 @@ index fd3aca76ad247c3101889df922e29f104f8de909..5bc505b36132fc74070b3b7bede32017
      "@tanstack/react-router": "^1.160.2",
      "@tiptap/core": "^3.31.3",
 diff --git a/evals/README.md b/evals/README.md
-index 8cfb697373c318c91927adeb4f373d54a7e1922e..90e1017eb2273a39878de9cebc6f19dc7048878a 100644
+index 8cfb697373c318c91927adeb4f373d54a7e1922e..45b4a26510784d869a31fc5686d6c8380b6d0f81 100644
 --- a/evals/README.md
 +++ b/evals/README.md
-@@ -4,13 +4,23 @@ An eval runs a real model against T3 Code's real text or code and scores what th
+@@ -4,13 +4,24 @@ An eval runs a real model against T3 Code's real text or code and scores what th
  
  Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
  
@@ -187,31 +187,32 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..90e1017eb2273a39878de9cebc6f19dc
 -| [pr-content](pr-content/)       | Whether PR generation describes the diff when project instructions try to redirect it.               |
 -| [voice-cleanup](voice-cleanup/) | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.             |
 -| [test-signal](test-signal/)     | Whether a cheap model running the test-signal check flags low-signal tests.                          |
-+| Eval                                    | Measures                                                                                                              |
-+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-+| [mcp-tool-use](mcp-tool-use/)           | Whether agents use T3's MCP tools correctly, including device routing and recovery, in fake threads.                  |
-+| [thread-titles](thread-titles/)         | Whether generated thread titles name the right subject.                                                               |
-+| [pr-content](pr-content/)               | Whether PR generation describes the diff when project instructions try to redirect it.                                |
-+| [voice-cleanup](voice-cleanup/)         | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.                              |
-+| [test-signal](test-signal/)             | Whether a cheap model running the test-signal check flags low-signal tests.                                           |
-+| [tessaya-assistant](tessaya-assistant/) | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                                         |
-+| [tessaya-outside](tessaya-outside/)     | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.                    |
-+| [tessaya-room](tessaya-room/)           | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.                    |
-+| [tessaya-lines](tessaya-lines/)         | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are.                  |
-+| [tessaya-plan](tessaya-plan/)           | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                      |
-+| [tessaya-read](tessaya-read/)           | Whether the per-turn read of his words gets the tone, topic, how he seems, shared moments and a fair opinion.         |
-+| [tessaya-dictation](tessaya-dictation/) | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused. |
-+| [tessaya-learning](tessaya-learning/)   | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                  |
-+| [tessaya-pulse](tessaya-pulse/)         | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                   |
-+| [tessaya-group](tessaya-group/)         | Who speaks next in a group of personas: turn-taking, addressing by name, and the stop at the speaker budget.          |
++| Eval                                            | Measures                                                                                                                |
++| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
++| [mcp-tool-use](mcp-tool-use/)                   | Whether agents use T3's MCP tools correctly, including device routing and recovery, in fake threads.                    |
++| [thread-titles](thread-titles/)                 | Whether generated thread titles name the right subject.                                                                 |
++| [pr-content](pr-content/)                       | Whether PR generation describes the diff when project instructions try to redirect it.                                  |
++| [voice-cleanup](voice-cleanup/)                 | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.                                |
++| [test-signal](test-signal/)                     | Whether a cheap model running the test-signal check flags low-signal tests.                                             |
++| [tessaya-assistant](tessaya-assistant/)         | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                                           |
++| [tessaya-outside](tessaya-outside/)             | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.                      |
++| [tessaya-room](tessaya-room/)                   | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.                      |
++| [tessaya-lines](tessaya-lines/)                 | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are.                    |
++| [tessaya-plan](tessaya-plan/)                   | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                        |
++| [tessaya-read](tessaya-read/)                   | Whether the per-turn read of his words gets the tone, topic, how he seems, shared moments and a fair opinion.           |
++| [tessaya-understanding](tessaya-understanding/) | Whether her standing understanding of a person, or of herself, changes only on clear, fair evidence and keeps the rest. |
++| [tessaya-dictation](tessaya-dictation/)         | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused.   |
++| [tessaya-learning](tessaya-learning/)           | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                    |
++| [tessaya-pulse](tessaya-pulse/)                 | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                     |
++| [tessaya-group](tessaya-group/)                 | Who speaks next in a group of personas: turn-taking, addressing by name, and the stop at the speaker budget.            |
  
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..a8a28fde78a3dcb4214b3850c9dc27dc43b9b62c 100644
+index 0659f65475da775fd54525d9147c84a8b0ad4a3a..fbf71474a7485599d558be46143ea7978706ef3f 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,8 +10,22 @@
+@@ -10,8 +10,23 @@
      "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
@@ -228,6 +229,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..a8a28fde78a3dcb4214b3850c9dc27dc
 +    "tessaya-lines": "node tessaya-lines/run.ts",
 +    "tessaya-plan": "node tessaya-plan/run.ts",
 +    "tessaya-read": "node tessaya-read/run.ts",
++    "tessaya-understanding": "node tessaya-understanding/run.ts",
 +    "tessaya-dictation": "node tessaya-dictation/run.ts",
 +    "tessaya-learning": "node tessaya-learning/run.ts",
 +    "tessaya-pulse": "node tessaya-pulse/run.ts",

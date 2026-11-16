@@ -81,6 +81,7 @@ import * as TessayaVocabulary from "./TessayaVocabulary.ts";
 import * as TessayaVoiceLibrary from "./TessayaVoiceLibrary.ts";
 import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as TessayaOneShot from "./TessayaOneShot.ts";
+import * as TessayaUnderstanding from "./TessayaUnderstanding.ts";
 import * as TessayaExpression from "./TessayaExpression.ts";
 import * as TessayaPhoneInbox from "./TessayaPhoneInbox.ts";
 import * as TessayaCast from "./TessayaCast.ts";
@@ -281,6 +282,11 @@ const servicesInner = Layer.mergeAll(
       ),
       // Memory sync with his other servers on this server's own clock, not T3's window (GEN-6).
       TessayaMemorySync.layer.pipe(Layer.provide(memoryLayer)),
+      // Her standing understanding of each person and of herself (G4), versioned in the one memory.
+      TessayaUnderstanding.layer.pipe(
+        Layer.provide(memoryLayer),
+        Layer.provide(TessayaOneShot.layer),
+      ),
       readClaudeAccountInstances,
       AccountPoolService.layer,
       TessayaAccounts.layer.pipe(Layer.provide(AccountPoolService.layer)),

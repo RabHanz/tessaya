@@ -44,6 +44,7 @@ export const TessayaMemoryKind = Schema.Literals([
   "episode",
   "learning",
   "skill",
+  "understanding",
 ]);
 export const TessayaMemorySource = Schema.Literals(["user", "thread", "job", "import", "sync"]);
 export const TessayaMemoryScope = Schema.Literals(["global", "project", "person"]);

@@ -7,6 +7,7 @@
  */
 import { BatonMemoryRefusedError } from "@t3tools/tessaya-contracts";
 import {
+  ASKED_FOR_ONLY,
   EPISODE_TTL_DAYS,
   SAME_ITEM_OVERLAP,
   applyDecision,
@@ -166,9 +167,10 @@ export const SyncCredential = Context.Reference<string | null>(
   { defaultValue: () => null },
 );
 
-/** A skill (and a playbook) keeps its lines: its front matter and lesson lines are parsed back. Others are one line. */
+/** A skill (and a playbook) keeps its lines: its front matter and lesson lines are parsed back; an understanding keeps
+ * one fact a line. Others are one line. */
 const wordingFor = (kind: MemoryKind, text: string) =>
-  kind === "skill" ? text.trim() : text.trim().replace(/\s+/g, " ");
+  ASKED_FOR_ONLY.includes(kind) ? text.trim() : text.trim().replace(/\s+/g, " ");
 
 export class TessayaMemoryService extends Context.Service<
   TessayaMemoryService,
@@ -332,9 +334,9 @@ export const make = Effect.gen(function* () {
   const matches = (item: MemoryItem, query: MemoryQuery): boolean =>
     (query.includeSuperseded === true || item.supersededBy === null) &&
     (query.includeProposed === true || !item.proposed) &&
-    // A skill is read only by asking for skills: it never takes a place in what a sentence recalls.
+    // A skill or an understanding is read only by asking for its kind: it never takes a place in what a sentence recalls.
     (query.kinds === undefined || query.kinds.length === 0
-      ? item.kind !== "skill"
+      ? !ASKED_FOR_ONLY.includes(item.kind)
       : query.kinds.includes(item.kind)) &&
     (query.scope === undefined || item.scope === query.scope);
 
@@ -404,7 +406,7 @@ export const make = Effect.gen(function* () {
     const rows = yield* sql<ItemRow>`
       SELECT i.* FROM fabric_memory_fts
       JOIN fabric_memory_items i ON i.rowid = fabric_memory_fts.rowid
-      WHERE fabric_memory_fts MATCH ${expression} AND i.kind != 'skill'
+      WHERE fabric_memory_fts MATCH ${expression} AND i.kind NOT IN ${sql.in(ASKED_FOR_ONLY)}
       ORDER BY bm25(fabric_memory_fts)
       LIMIT ${CANDIDATES}
     `.pipe(Effect.orDie);
@@ -447,9 +449,15 @@ export const make = Effect.gen(function* () {
     `.pipe(Effect.orDie);
     // A reader that cannot see a walled item neither merges into it nor replaces it: it gets its own.
     const visible = yield* viewFor(undefined, true);
+    // An understanding's next version is close to its last by design: it is always a new version, never a merge.
     const same = peers
       .map(fromRow)
-      .find((p) => visible(p) && similarity(p.text, text) >= SAME_ITEM_OVERLAP);
+      .find(
+        (p) =>
+          draft.kind !== "understanding" &&
+          visible(p) &&
+          similarity(p.text, text) >= SAME_ITEM_OVERLAP,
+      );
     if (same !== undefined) {
       const hers = draft.source === "user";
       yield* sql`
@@ -637,8 +645,8 @@ export const make = Effect.gen(function* () {
 
   /** Links the item to every entity it names, after learning any new entity or alias its own words state. */
   const noteEntities = Effect.fn("BatonMemoryService.noteEntities")(function* (item: MemoryItem) {
-    // A skill's steps name windows and tools, not people or projects of his.
-    if (item.kind === "skill") return;
+    // A skill's steps name windows and tools; an understanding stays out of what a name recalls.
+    if (ASKED_FOR_ONLY.includes(item.kind)) return;
     const at = yield* nowIso;
     // Its words may have changed (an edit, a rewrite): its links are made afresh.
     yield* sql`DELETE FROM fabric_memory_links WHERE item_id = ${item.id}`.pipe(Effect.orDie);
@@ -946,7 +954,7 @@ export const make = Effect.gen(function* () {
           item.scope !== "project" ||
           item.scopeRef === context.scopeRef,
       )
-      .filter(({ item }) => seen(item) && item.kind !== "skill")
+      .filter(({ item }) => seen(item) && !ASKED_FOR_ONLY.includes(item.kind))
       .filter((hit) => effectiveConfidence(hit.item, now) >= 0.1 || hit.item.pinned)
       .toSorted((a, b) => b.score - a.score)
       .map((hit) => hit.item);
@@ -1075,9 +1083,11 @@ export const make = Effect.gen(function* () {
     const from = fresh ? "" : (since ?? "");
     // Paged by when this server got the change, not when its writer made it: a change relayed
     // from a third server can carry an older stamp than a cursor that has already passed.
+    // shortcut: an understanding stays on the server that wrote it, as a peer a release behind cannot decode its kind;
+    // sync it once every peer has this kind.
     const rows = yield* sql<ItemRow & { readonly arrived: string }>`
       SELECT *, COALESCE(received_at, updated_at) AS arrived FROM fabric_memory_items
-      WHERE COALESCE(received_at, updated_at) >= ${from} AND proposed = 0
+      WHERE COALESCE(received_at, updated_at) >= ${from} AND proposed = 0 AND kind != 'understanding'
       ORDER BY arrived LIMIT ${BATCH}
     `.pipe(Effect.orDie);
     const stones = yield* sql<{
@@ -1202,7 +1212,7 @@ export const make = Effect.gen(function* () {
     }>`
       SELECT i.id, i.text, v.model AS model, v.text_hash AS text_hash
       FROM fabric_memory_items i LEFT JOIN fabric_memory_vectors v ON v.item_id = i.id
-      WHERE i.superseded_by IS NULL AND i.proposed = 0 AND i.kind != 'skill'
+      WHERE i.superseded_by IS NULL AND i.proposed = 0 AND i.kind NOT IN ${sql.in(ASKED_FOR_ONLY)}
     `.pipe(Effect.orDie);
     for (const row of rows) {
       const hash = textHash(row.text);

@@ -3,13 +3,13 @@
  * tessaya-read: the server's per-turn appraisal as it ships (`readPrompt` and its `TurnRead` schema, the same
  * `claude -p --json-schema` call `TessayaOneShot` makes), graded field by field.
  */
-import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
 import { toJsonSchemaObject } from "../../packages/provider-core/src/server/textGenerationUtils.ts";
 import { readPrompt, TurnRead } from "../../packages/tessaya-shared/src/affect.ts";
+import { askClaudeJson } from "../shared/claudeJson.ts";
 import { CASES } from "./cases.ts";
 import { gradeRead, type ReadAnswer } from "./grade.ts";
 
@@ -26,48 +26,9 @@ if (values.out === undefined) throw new Error("Use --out <directory>.");
 const out = values.out;
 const samples = Number(values.samples);
 const cases = CASES.filter((c) => values.case === undefined || values.case.includes(c.id));
-const METERED =
-  /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX)$/;
 const schema = JSON.stringify(toJsonSchemaObject(TurnRead));
-
-const ask = (prompt: string): Promise<ReadAnswer | null> =>
-  new Promise((resolve) => {
-    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !METERED.test(k)));
-    const child = NodeChildProcess.spawn(
-      values.claude!,
-      [
-        "-p",
-        "--output-format",
-        "json",
-        "--json-schema",
-        schema,
-        "--model",
-        values.model!,
-        "--settings",
-        JSON.stringify({ disableAllHooks: true, alwaysThinkingEnabled: false }),
-        "--tools",
-        "",
-        "--disable-slash-commands",
-        "--strict-mcp-config",
-        "--setting-sources",
-        "",
-        "--no-session-persistence",
-      ],
-      { env: { ...env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" }, stdio: ["pipe", "pipe", "inherit"] },
-    );
-    let stdout = "";
-    child.stdout.on("data", (d) => (stdout += d));
-    child.on("close", () => {
-      try {
-        resolve(
-          (JSON.parse(stdout) as { structured_output?: ReadAnswer }).structured_output ?? null,
-        );
-      } catch {
-        resolve(null);
-      }
-    });
-    child.stdin.end(prompt);
-  });
+const ask = (prompt: string) =>
+  askClaudeJson<ReadAnswer>(prompt, schema, { model: values.model!, claude: values.claude! });
 
 NodeFS.mkdirSync(out, { recursive: true });
 const rows = await Promise.all(

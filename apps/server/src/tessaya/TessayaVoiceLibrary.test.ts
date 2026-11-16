@@ -201,7 +201,7 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
                 };
               }),
             note: () => Effect.void,
-            hisWords: () => Effect.void,
+            hisWords: () => Effect.succeed(false),
             heard: () => Effect.void,
             atDevice: () => Effect.die("not asked"),
             inner: () =>

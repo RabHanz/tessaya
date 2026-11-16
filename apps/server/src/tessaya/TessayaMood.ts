@@ -88,7 +88,8 @@ export class TessayaMood extends Context.Service<
     ) => Effect.Effect<void>;
     /**
      * The one cheap read of a turn (MA-021): how their words treat her, the talk's topic and how they seem, a joke or
-     * milestone, and her opinion of them. With `member` null (a room), only the flow, into the general mood.
+     * milestone, and her opinion of them. With `member` null (a room), only the flow, into the general mood. True when
+     * it showed something new about them (her opinion moved, or a shared moment): evidence for her understanding.
      */
     readonly hisWords: (
       persona: string | undefined,
@@ -100,7 +101,7 @@ export class TessayaMood extends Context.Service<
         /** What was said just before, so the flow is read in context. */
         readonly before?: string | undefined;
       },
-    ) => Effect.Effect<void>;
+    ) => Effect.Effect<boolean>;
     /** One of a member's turns reached this persona: their time away resolves and their bond counts the day. */
     readonly heard: (
       persona: string | undefined,
@@ -456,7 +457,7 @@ const make = Effect.gen(function* () {
     }),
     hisWords: Effect.fn("TessayaMood.hisWords")(function* (persona, said, member, context) {
       const current = yield* moodSettings;
-      if (Option.isNone(oneShot) || said.trim() === "" || !current.enabled) return;
+      if (Option.isNone(oneShot) || said.trim() === "" || !current.enabled) return false;
       const { persona: id, dials } = dialsFor(persona, current);
       const now = yield* Clock.currentTimeMillis;
       const theirs = member === null ? undefined : (yield* read(id, now)).people[member];
@@ -484,7 +485,7 @@ const make = Effect.gen(function* () {
             ),
           ),
         );
-      if (judged === null) return;
+      if (judged === null) return false;
       if (judged.topic !== "none" || judged.theirs !== "none")
         yield* apply(
           persona,
@@ -497,7 +498,7 @@ const make = Effect.gen(function* () {
           undefined,
           member,
         );
-      if (member === null) return;
+      if (member === null) return false;
       const tone = judged.tone;
       if (tone !== "none") yield* apply(persona, () => ({ kind: tone }), undefined, member);
       // Their words saying they are low agree with a "sad" or "fearful" voice: the second signal a care mode needs.
@@ -518,7 +519,8 @@ const make = Effect.gen(function* () {
         );
       }
       const op = judged.opinion;
-      if (opinion === undefined || op == null || op.text.trim() === "") return;
+      if (opinion === undefined || op == null || op.text.trim() === "")
+        return judged.shared !== null && judged.shared.text.trim() !== "";
       yield* apply(
         persona,
         () => ({ kind: "impression", lean: op.lean, text: op.text.trim(), why: op.why.trim() }),
@@ -530,6 +532,7 @@ const make = Effect.gen(function* () {
         yield* people.value
           .setImpression(member, `${op.text.trim()} (because ${op.why.trim()})`)
           .pipe(Effect.ignoreCause({ log: true }));
+      return true;
     }),
     heard: Effect.fn("TessayaMood.heard")(function* (persona, timeZone, member) {
       yield* apply(persona, (day) => ({ kind: "his_turn", day }), timeZone, member);
