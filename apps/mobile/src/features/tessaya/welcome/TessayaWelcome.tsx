@@ -211,7 +211,8 @@ const HOP = new Keyframe({
 })
   .duration(620)
   .delay(1250);
-const SMILE = FadeIn.duration(260).delay(1350);
+// The smile swaps in at the bottom of the hop's squash, where the change of face reads as part of the bounce.
+const SMILE = FadeIn.duration(120).delay(1430);
 
 const styles = StyleSheet.create({
   root: { backgroundColor: WOAD, zIndex: 999, elevation: 999 },
