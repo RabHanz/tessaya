@@ -14,6 +14,7 @@ import {
   isAppUpdateCheckAvailable,
   registerHiddenUpdateTap,
   runAppUpdateCheck,
+  runningUpdateLabel,
 } from "../updates/app-updates";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
@@ -53,7 +54,7 @@ function AppSettingsSection() {
   // Match app.config.ts's production fallback to avoid mislabeling builds as development.
   const variant = (Constants.expoConfig?.extra?.appVariant as string | undefined) ?? "production";
   const variantLabel = variant === "production" ? "" : capitalize(variant);
-  const versionLabel = variantLabel ? `${version} · ${variantLabel}` : version;
+  const versionLabel = [version, variantLabel, runningUpdateLabel()].filter(Boolean).join(" · ");
   const updateCheckAvailable = isAppUpdateCheckAvailable();
   const busy =
     updateState === "checking" || updateState === "downloading" || updateState === "restarting";
