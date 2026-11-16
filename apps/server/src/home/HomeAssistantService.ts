@@ -902,6 +902,7 @@ const make = Effect.gen(function* () {
         );
       }
       const promptId = `home-${id}`;
+      const life = inbox._tag === "Some" ? yield* inbox.value.cardLife : PROMPT_TTL_MS;
       if (inbox._tag === "Some")
         yield* inbox.value.mirror({
           id: promptId,
@@ -916,13 +917,13 @@ const make = Effect.gen(function* () {
         ...base,
         status: "asked",
         prompt_id: promptId,
-        expires_at: now + PROMPT_TTL_MS,
+        expires_at: now + life,
       });
       yield* audit({ id, by: input.by, line: input.line, status: "asked", why: input.why });
       return outcome(
         "asked",
         id,
-        `Sent to the Director's phone for a yes (${reasons}). Nothing happens unless he says yes within ${Math.round(PROMPT_TTL_MS / 60_000)} minutes.`,
+        `Sent to the Director's phone for a yes (${reasons}). Nothing happens unless he says yes within ${Math.round(life / 60_000)} minutes.`,
       );
     }
     yield* saveAction({ ...base, status: "running" });

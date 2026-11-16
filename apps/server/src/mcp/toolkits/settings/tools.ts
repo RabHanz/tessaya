@@ -82,12 +82,13 @@ const SetTool = Tool.make("settings_set", {
 const SetManyTool = Tool.make("settings_set_many", {
   ...shared,
   description:
-    "Change several settings he asked for in one breath, each as settings_set would. Free ones change at once; the ones that need his yes go to his phone together as one card he can approve all, review one by one, or deny; never ones are refused with the reason. One result per change.",
+    "Change several settings he asked for in one breath, each as settings_set would, on this machine or the ones they name (`on`). Free ones change at once; the ones that need his yes go to his phone together as one card he can approve all, review one by one, or deny, even across machines; never ones are refused with the reason. One result per change.",
   parameters: Schema.Struct({
     changes: Schema.Array(
       Schema.Struct({
         key: Key,
         value: Schema.Unknown.annotate({ description: "The new value, as for settings_set." }),
+        on: Schema.optional(On),
       }),
     )
       .check(Schema.isMinLength(1), Schema.isMaxLength(30))
@@ -95,6 +96,11 @@ const SetManyTool = Tool.make("settings_set_many", {
     why: Schema.String.check(Schema.isMaxLength(300)).annotate({
       description: "His request, in his words.",
     }),
+    batch: Schema.optional(
+      Schema.String.check(Schema.isPattern(/^settings-\d{1,16}$/)).annotate({
+        description: "Set only by another of his servers.",
+      }),
+    ),
     ...PeerOrigin,
   }),
 })

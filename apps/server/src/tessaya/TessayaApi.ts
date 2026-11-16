@@ -12,7 +12,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
-import { askLine, type PhoneAsk } from "@t3tools/tessaya-shared/phoneRelay";
+import { PROMPT_EXPIRED, askLine, type PhoneAsk } from "@t3tools/tessaya-shared/phoneRelay";
 
 import type { PostResult } from "./TessayaPhoneInbox.ts";
 import type { Transcription } from "./TessayaPhoneVoice.ts";
@@ -38,6 +38,8 @@ export interface PhoneDeps {
    * device's person may not give that answer.
    */
   readonly answerPrompt: (id: string, index: number) => Promise<boolean | string>;
+  /** Whether a card waited too long and was dropped unanswered. */
+  readonly expired: (id: string) => Promise<boolean>;
   readonly transcribe: (wav: Uint8Array) => Promise<Transcription>;
 }
 
@@ -134,6 +136,13 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
   if (parts[0] === "approvals" && parts.length === 2) {
     const now = await deps.state();
     const approval = now.approvals.find((a) => a.id === parts[1]);
+    // A card tapped after it expired says so, rather than nothing happening.
+    if (
+      approval === undefined &&
+      parts[1]!.startsWith("d:") &&
+      (await deps.expired(parts[1]!.slice(2)))
+    )
+      return say(410, PROMPT_EXPIRED);
     // A question the desktop mirrored is its own consent gate (hands, vault, screen, cloud), so operate alone is not enough.
     if (approval?.kind === "prompt" && !req.scopes.has(CLOUD_APPROVE_SCOPE)) {
       return say(
@@ -154,7 +163,7 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
       if (body["action"] !== approval.action)
         return say(409, "It changed since you looked. Look again.");
       const took = await deps.answerPrompt(approval.ref, choice);
-      if (typeof took === "string") return say(403, took);
+      if (typeof took === "string") return say(took === PROMPT_EXPIRED ? 410 : 403, took);
       return took
         ? say(200, "Sent. Your computer carries on.")
         : say(409, "It was already answered on your computer.");
@@ -169,7 +178,7 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
         approval.ref,
         decision === "approve" ? approval.yes : approval.cancel,
       );
-      if (typeof took === "string") return say(403, took);
+      if (typeof took === "string") return say(took === PROMPT_EXPIRED ? 410 : 403, took);
       return took
         ? say(200, decision === "approve" ? "Approved. Your computer carries on." : "Denied.")
         : say(409, "It was already answered on your computer.");

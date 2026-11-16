@@ -19,6 +19,8 @@ export const BATON_PHONE_OPS = [
   "promptClose",
   "ask",
   "askGet",
+  "cards",
+  "cardAnswer",
 ] as const;
 
 export const TessayaPhoneCallInput = Schema.Struct({
@@ -26,6 +28,41 @@ export const TessayaPhoneCallInput = Schema.Struct({
   args: Schema.Record(Schema.String, Schema.Unknown),
 });
 export type TessayaPhoneCallInput = typeof TessayaPhoneCallInput.Type;
+
+/** A card waiting for his yes, as one of his servers forwards it to the others (`tessaya_inbox_sync`). */
+export const TessayaInboxCard = Schema.Struct({
+  id: Schema.String.check(Schema.isMaxLength(80)),
+  title: Schema.String.check(Schema.isMaxLength(200)),
+  detail: Schema.String.check(Schema.isMaxLength(4000)),
+  buttons: Schema.Array(Schema.String.check(Schema.isMaxLength(60))).check(Schema.isMaxLength(8)),
+  yes: Schema.Int,
+  cancel: Schema.Int,
+  needs: Schema.optionalKey(Schema.Literal("cloud-approve")),
+  expiresAt: Schema.Number,
+});
+export type TessayaInboxCard = typeof TessayaInboxCard.Type;
+
+/** His answer to another server's card, carried back to the server that asked. */
+export const TessayaInboxAnswer = Schema.Struct({
+  id: Schema.String.check(Schema.isMaxLength(80)),
+  index: Schema.Int,
+  by: Schema.Struct({
+    member: Schema.NullOr(Schema.String.check(Schema.isMaxLength(80))),
+    name: Schema.String.check(Schema.isMaxLength(80)),
+    assurance: Schema.Int,
+    via: Schema.String.check(Schema.isMaxLength(120)),
+  }),
+});
+export type TessayaInboxAnswer = typeof TessayaInboxAnswer.Type;
+
+/** One exchange between two of his servers: each side's waiting cards, and answers to the other side's. */
+export const TessayaInboxSync = Schema.Struct({
+  from: Schema.String.check(Schema.isMaxLength(80)),
+  label: Schema.String.check(Schema.isMaxLength(80)),
+  cards: Schema.Array(TessayaInboxCard).check(Schema.isMaxLength(50)),
+  answers: Schema.Array(TessayaInboxAnswer).check(Schema.isMaxLength(50)),
+});
+export type TessayaInboxSync = typeof TessayaInboxSync.Type;
 
 export const TessayaPhoneCallResult = Schema.Struct({ value: Schema.Unknown });
 

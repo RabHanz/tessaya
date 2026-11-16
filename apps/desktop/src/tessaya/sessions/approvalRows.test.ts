@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { approvalAction, approvalControls } from "./approvalRows.ts";
+import { approvalAction, approvalControls, cardAction, cardControls } from "./approvalRows.ts";
 
 describe("the Approvals area", () => {
   it("offers Approve and Deny for a plan, Open for a session, and maps the buttons back", () => {
@@ -45,5 +45,25 @@ describe("the Approvals area", () => {
       id: "a.load",
       hint: "no window",
     });
+  });
+
+  it("answers a waiting card from his desk: yes and no on one row, other answers on their own", () => {
+    const rows = cardControls([
+      {
+        id: "settings-1",
+        title: "Change 2 settings, on 2 machines",
+        detail: "d",
+        buttons: ["Approve all", "Review each", "Deny"],
+        yes: 0,
+        cancel: 2,
+        on: "laptop, studio",
+      },
+    ]);
+    expect(rows.map((r) => r.id)).toEqual(["ac:0:2:settings-1", "ac:1:1:settings-1"]);
+    expect(rows[0]).toMatchObject({ button: "Approve all", secondary: "Deny" });
+    expect(cardAction("ac:0:2:settings-1")).toEqual({ id: "settings-1", index: 0 });
+    expect(cardAction("ac:0:2:settings-1:later")).toEqual({ id: "settings-1", index: 2 });
+    expect(cardAction("ac:1:1:settings-1")).toEqual({ id: "settings-1", index: 1 });
+    expect(cardAction("a:p:j1")).toBeNull();
   });
 });

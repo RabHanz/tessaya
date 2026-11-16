@@ -1,5 +1,6 @@
 /** The settings tools' handlers: thin; SettingsVoice decides, with the runtime's settings and his phone. */
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
@@ -167,20 +168,73 @@ export const make = Effect.gen(function* () {
       // His other servers may change a setting here for a turn they heard; its class and his yes still apply.
       { linkedCallers: "allowed" },
     ),
-    settings_set_many: McpToolAccess.writes((input: Args) =>
-      Effect.gen(function* () {
-        const asker = yield* askerOf;
-        const changes = Array.isArray(input["changes"])
-          ? (input["changes"] as ReadonlyArray<{ key?: unknown; value?: unknown }>)
-          : [];
-        return yield* inRuntime(
-          setSettings({
-            changes: changes.map((c) => ({ key: String(c.key ?? ""), value: c.value })),
-            why: String(input["why"] ?? ""),
-            ...asker,
-          }).pipe(Effect.provideContext(context!)),
-        );
-      }),
+    settings_set_many: McpToolAccess.writes(
+      (input: Args) =>
+        asForwarded(
+          input,
+          Effect.gen(function* () {
+            const asker = yield* askerOf;
+            const why = String(input["why"] ?? "");
+            const changes = (
+              Array.isArray(input["changes"])
+                ? (input["changes"] as ReadonlyArray<{
+                    key?: unknown;
+                    value?: unknown;
+                    on?: unknown;
+                  }>)
+                : []
+            ).map((c, i) => ({
+              i,
+              key: String(c.key ?? ""),
+              value: c.value,
+              on: typeof c.on === "string" ? c.on : undefined,
+            }));
+            const machines = [...new Set(changes.map((c) => c.on))];
+            // Each machine's part shares one id, so his phone shows one card for all of them.
+            const batch =
+              typeof input["batch"] === "string"
+                ? input["batch"]
+                : machines.length > 1
+                  ? `settings-${yield* Clock.currentTimeMillis}`
+                  : undefined;
+            const results = new Map<number, unknown>();
+            for (const on of machines) {
+              if (on === undefined) continue;
+              const part = changes.filter((c) => c.on === on);
+              const there = yield* onPeer(
+                "settings_set_many",
+                {
+                  changes: part.map(({ key, value }) => ({ key, value })),
+                  why,
+                  ...(batch === undefined ? {} : { batch }),
+                },
+                {
+                  on,
+                  takes: (v) => Array.isArray((v as { results?: unknown } | null)?.results),
+                },
+              );
+              // `on` named this machine, or no peer answered: those changes are tried here.
+              if (there === null) continue;
+              const said = (there.value as { results: ReadonlyArray<object> }).results;
+              part.forEach((c, j) => results.set(c.i, { ...said[j], on: there.on }));
+            }
+            const here = changes.filter((c) => !results.has(c.i));
+            if (here.length > 0) {
+              const done = yield* inRuntime(
+                setSettings({
+                  changes: here.map(({ key, value }) => ({ key, value })),
+                  why,
+                  ...asker,
+                  ...(batch === undefined ? {} : { batch }),
+                }).pipe(Effect.provideContext(context!)),
+              );
+              here.forEach((c, j) => results.set(c.i, done.results[j]));
+            }
+            return { results: changes.map((c) => results.get(c.i)) };
+          }),
+        ),
+      // His other servers send each their part of one request; its classes and his yes still apply.
+      { linkedCallers: "allowed" },
     ),
     settings_answer_all: McpToolAccess.writes((input: Args) =>
       inRuntime(

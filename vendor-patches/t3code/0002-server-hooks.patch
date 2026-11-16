@@ -2122,7 +2122,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab98917956b24411b 100644
+index 49470541d90be695ad24df030ca6522682a82611..60b65aebe752eac019bffd2b7608baeaf1a9faa1 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2140,7 +2140,18 @@ index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab9891795
  import { ProjectScript, type ProjectMutation } from "./project.ts";
  import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
  import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
-@@ -1349,6 +1357,117 @@ export const CloudSpeechCredentials = Schema.Struct({
+@@ -147,6 +155,10 @@ const DEFAULT_GLASS_OPACITY: GlassOpacity = 80;
+ 
+ export const MIN_APPEARANCE_CONTRAST = 50;
+ export const MAX_APPEARANCE_CONTRAST = 200;
++export const ApprovalCardMinutes = Schema.Int.check(
++  Schema.isBetween({ minimum: 1, maximum: 24 * 60 }),
++);
++
+ export const AppearanceContrast = Schema.Int.check(
+   Schema.isBetween({ minimum: MIN_APPEARANCE_CONTRAST, maximum: MAX_APPEARANCE_CONTRAST }),
+ );
+@@ -1349,6 +1361,117 @@ export const CloudSpeechCredentials = Schema.Struct({
    xai: CloudSpeechCredential,
    openrouter: CloudSpeechCredential,
  });
@@ -2258,7 +2269,7 @@ index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab9891795
  
  export const ServerSettings = Schema.Struct({
    // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
-@@ -1372,6 +1491,11 @@ export const ServerSettings = Schema.Struct({
+@@ -1372,6 +1495,11 @@ export const ServerSettings = Schema.Struct({
      Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
    ),
    enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -2270,7 +2281,7 @@ index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab9891795
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1506,52 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1510,54 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2287,6 +2298,8 @@ index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab9891795
 +  brainSpendAlert: BrainSpendAlert.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  // Tessaya (B-031): near the limit with no other login that has room, background learning waits for the reset.
 +  brainDeferNearLimit: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
++  // Tessaya: how long a card waiting for his yes (a setting, a home or owner act) stays answerable.
++  approvalCardMinutes: ApprovalCardMinutes.pipe(Schema.withDecodingDefault(Effect.succeed(30))),
 +  // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
 +  voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 +  // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
@@ -2323,7 +2336,7 @@ index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab9891795
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1561,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1567,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2337,7 +2350,7 @@ index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab9891795
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +1999,62 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +2005,62 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2400,7 +2413,7 @@ index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab9891795
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +2063,24 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +2069,25 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2414,6 +2427,7 @@ index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab9891795
 +  brainEscalation: Schema.optionalKey(BrainEscalation),
 +  brainSpendAlert: Schema.optionalKey(BrainSpendAlert),
 +  brainDeferNearLimit: Schema.optionalKey(Schema.Boolean),
++  approvalCardMinutes: Schema.optionalKey(ApprovalCardMinutes),
 +  voicePronounce: Schema.optionalKey(VoicePronounce),
 +  tessayaCast: Schema.optionalKey(TessayaCast),
    speechModelId: Schema.optionalKey(Schema.String),
@@ -2425,7 +2439,7 @@ index 49470541d90be695ad24df030ca6522682a82611..cec98cde8a3e16cffcc0784ab9891795
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2330,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2337,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

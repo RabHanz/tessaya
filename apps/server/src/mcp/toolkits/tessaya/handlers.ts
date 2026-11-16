@@ -40,7 +40,7 @@ import { ownerDoc } from "@t3tools/tessaya-shared/ownerProfile";
 
 import { clientMessageFrom, withAgentMessageFrom } from "../../../tessaya/AgentMessageFrom.ts";
 import { gateMessage } from "../../../tessaya/AgentMessageGate.ts";
-import { AskOwner } from "../../../tessaya/TessayaPhoneInbox.ts";
+import { AskOwner, TessayaPhoneInbox } from "../../../tessaya/TessayaPhoneInbox.ts";
 import { DesktopSettingsCaller } from "../../../tessaya/TessayaDesktopSettings.ts";
 import packageJson from "../../../../package.json" with { type: "json" };
 import * as TessayaRpcHandlers from "../../../tessaya/TessayaRpcHandlers.ts";
@@ -323,6 +323,18 @@ export const layer = McpToolAccess.toLayer(
                     message: error.message,
                   }),
               ),
+            );
+          }),
+        { linkedCallers: "allowed" },
+      ),
+      tessaya_inbox_sync: McpToolAccess.writes(
+        (input) =>
+          Effect.gen(function* () {
+            const scope = yield* McpInvocationContext.McpInvocationContext;
+            if (scope.client?.linked !== true || runtime === null)
+              return { ...input, cards: [], answers: [] };
+            return yield* Effect.flatMap(TessayaPhoneInbox, (inbox) => inbox.exchange(input)).pipe(
+              Effect.provideContext(runtime),
             );
           }),
         { linkedCallers: "allowed" },

@@ -155,6 +155,10 @@ const DEFAULT_GLASS_OPACITY: GlassOpacity = 80;
 
 export const MIN_APPEARANCE_CONTRAST = 50;
 export const MAX_APPEARANCE_CONTRAST = 200;
+export const ApprovalCardMinutes = Schema.Int.check(
+  Schema.isBetween({ minimum: 1, maximum: 24 * 60 }),
+);
+
 export const AppearanceContrast = Schema.Int.check(
   Schema.isBetween({ minimum: MIN_APPEARANCE_CONTRAST, maximum: MAX_APPEARANCE_CONTRAST }),
 );
@@ -1519,6 +1523,8 @@ export const ServerSettings = Schema.Struct({
   brainSpendAlert: BrainSpendAlert.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya (B-031): near the limit with no other login that has room, background learning waits for the reset.
   brainDeferNearLimit: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Tessaya: how long a card waiting for his yes (a setting, a home or owner act) stays answerable.
+  approvalCardMinutes: ApprovalCardMinutes.pipe(Schema.withDecodingDefault(Effect.succeed(30))),
   // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
@@ -2073,6 +2079,7 @@ export const ServerSettingsPatch = Schema.Struct({
   brainEscalation: Schema.optionalKey(BrainEscalation),
   brainSpendAlert: Schema.optionalKey(BrainSpendAlert),
   brainDeferNearLimit: Schema.optionalKey(Schema.Boolean),
+  approvalCardMinutes: Schema.optionalKey(ApprovalCardMinutes),
   voicePronounce: Schema.optionalKey(VoicePronounce),
   tessayaCast: Schema.optionalKey(TessayaCast),
   speechModelId: Schema.optionalKey(Schema.String),

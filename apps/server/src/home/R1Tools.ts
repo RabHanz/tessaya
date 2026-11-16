@@ -191,6 +191,7 @@ export const NOT_IN_ROOM: {
     "settings_get reads newSessionsRun and mainThreadId, and settings_set changes them",
   tessaya_voice_arbiter: "only his other servers call it, never a person",
   phone_pairing_code: "only his other servers call it, for the desktop's Add a phone QR",
+  tessaya_inbox_sync: "only his other servers call it, to show his waiting cards on each",
   household_peer: "only another of this home's linked servers calls it",
   household_voice_forget: "only another of this home's linked servers calls it",
   device_sync: "only another of his linked servers calls it, to keep his devices' records alike",

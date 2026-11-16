@@ -119,7 +119,12 @@ import {
   type Remote,
 } from "../airdeck/airdeckLink.ts";
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
-import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
+import {
+  approvalAction,
+  approvalControls,
+  cardAction,
+  cardControls,
+} from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/tessaya-shared/approvals";
 import {
   COMMS_SOUND_PLACEHOLDER,
@@ -362,6 +367,7 @@ import {
 import { windowsHello } from "../vault/hello.ts";
 import { desktopState, type DesktopStateInput } from "../phone/desktopState.ts";
 import { createPhoneRelay, guardedPhoneCall, nextPollMs } from "../phone/phoneRelay.ts";
+import type { PhonePrompt } from "@t3tools/tessaya-shared/phoneRelay";
 import { createNightlyCache, runGh } from "../presence/nightlyRead.ts";
 import { createSyncExtraCache } from "../presence/syncRead.ts";
 import { cloudLoginsFile, readCloudLogins } from "../presence/cloudLoginsRead.ts";
@@ -6181,6 +6187,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   };
   /** The job cards as the window last read them; null until the Jobs or Approvals tab has been opened once. */
   let jobsCache: ReadonlyArray<TessayaJob> | null = null;
+  let cardsCache: ReadonlyArray<PhonePrompt> = [];
   let jobsError: string | null = null;
   let jobsLoading = false;
   /** Opening the Jobs or Approvals tab asks for them, and they are kept fresh from then on. */
@@ -6215,6 +6222,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       jobsSeen = snapshots;
       jobsError = null;
       if (JSON.stringify(next) !== JSON.stringify(jobsCache)) jobsCache = next;
+      // The cards waiting for his yes on any of his servers, beside the plans.
+      cardsCache =
+        ((await phoneCall("cards", {}).catch(() => null)) as ReadonlyArray<PhonePrompt> | null) ??
+        [];
     } catch (error) {
       jobsError = error instanceof Error ? error.message : String(error);
     } finally {
@@ -7206,7 +7217,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       ...approvalControls(
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
-      ),
+      ).filter((c) => cardsCache.length === 0 || c.id !== "a.empty"),
+      ...cardControls(cardsCache),
       ...nowControls(nowData, Date.now()),
       ...at("trust"),
       ...trustControls(trustData(), Date.now()),
@@ -8552,7 +8564,20 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         if (file !== undefined) void Electron.shell.openPath(file);
       }
     } else if (id === "a.load") wantJobs();
-    else if (id.startsWith("a:")) {
+    else if (cardAction(id) !== null) {
+      const card = cardAction(id)!;
+      // An expired card or a yes that may not count says why; a card already answered elsewhere says so.
+      void phoneCall("cardAnswer", card)
+        .then((took) => {
+          if (took !== true)
+            input.extras?.announce(
+              typeof took === "string" ? took : "It was already answered.",
+              false,
+            );
+          return refreshJobs();
+        })
+        .catch(() => undefined);
+    } else if (id.startsWith("a:")) {
       const act = approvalAction(id);
       if (act === null) return;
       if (act.kind === "plan") {
