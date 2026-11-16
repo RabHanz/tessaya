@@ -10,7 +10,12 @@ import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifi
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { DeviceOutputEntry } from "@t3tools/tessaya-contracts";
-import { OUTPUT_STATE_LINE, moveOutput, outputLabel } from "@t3tools/tessaya-shared/deviceView";
+import {
+  OUTPUT_STATE_LINE,
+  moveOutput,
+  outputLabel,
+  privateCapLabel,
+} from "@t3tools/tessaya-shared/deviceView";
 import { ArrowDownIcon, ArrowUpIcon, GripVerticalIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
@@ -23,8 +28,10 @@ export function OutputOrderList(props: {
   readonly onOrder: (order: ReadonlyArray<string>) => void;
   /** Private replies may play on this output, or never. */
   readonly onPrivate: (output: DeviceOutputEntry, on: boolean) => void;
+  /** The next level private replies play at there. */
+  readonly onPrivateCap: (output: DeviceOutputEntry) => void;
 }) {
-  const { outputs, disabled, onOrder, onPrivate } = props;
+  const { outputs, disabled, onOrder, onPrivate, onPrivateCap } = props;
   const ids = outputs.map((o) => o.id);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const move = (id: string, steps: number) => onOrder(moveOutput(outputs, id, steps));
@@ -56,6 +63,7 @@ export function OutputOrderList(props: {
               disabled={disabled}
               onMove={(steps) => move(o.id, steps)}
               onPrivate={(on) => onPrivate(o, on)}
+              onPrivateCap={() => onPrivateCap(o)}
             />
           ))}
         </ol>
@@ -71,6 +79,7 @@ function OutputRow(props: {
   readonly disabled: boolean;
   readonly onMove: (steps: number) => void;
   readonly onPrivate: (on: boolean) => void;
+  readonly onPrivateCap: () => void;
 }) {
   const name = outputLabel(props.output);
   const { state } = props.output;
@@ -119,6 +128,18 @@ function OutputRow(props: {
         >
           Private
         </Button>
+        {isPrivate ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost-muted"
+            disabled={props.disabled}
+            aria-label={`Private reply volume on ${name}: ${privateCapLabel(props.output)}`}
+            onClick={props.onPrivateCap}
+          >
+            {privateCapLabel(props.output)}
+          </Button>
+        ) : null}
         <Button
           type="button"
           size="icon-xs"

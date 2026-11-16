@@ -436,11 +436,39 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
             "Wi-Fi passwords are never said aloud. Add the network on his phone in Settings → Hardware → Wi-Fi order, or on the Tessel's setup page.",
         };
       if (item === "net.priority") {
-        const named = JSON.stringify(args["value"] ?? "").toLowerCase();
-        wifiFirst.set(house, /hotspot|phone|pixel/.test(named) ? "Pixel 9" : "HomeNet");
+        const v = args["value"];
+        const named = JSON.stringify(v ?? "").toLowerCase();
+        const at =
+          typeof v === "object" &&
+          v !== null &&
+          typeof (v as { priority?: unknown }).priority === "number"
+            ? (v as { priority: number }).priority
+            : 1;
+        const hotspot = /hotspot|phone|pixel/.test(named);
+        wifiFirst.set(house, hotspot === (at === 1) ? "Pixel 9" : "HomeNet");
+        const [first, second] = wifiOf(house);
         return {
           ok: true,
-          value: { status: "done", line: `${wifiFirst.get(house)} is first now.` },
+          value: { status: "done", line: `${first?.ssid} is first now, ${second?.ssid} second.` },
+        };
+      }
+      const out = args["value"];
+      if (
+        item === "audio.output" &&
+        typeof out === "object" &&
+        out !== null &&
+        "privateCap" in out
+      ) {
+        const cap = (out as { privateCap: unknown }).privateCap;
+        return {
+          ok: true,
+          value: {
+            status: "done",
+            line:
+              typeof cap === "number"
+                ? `Private replies play at ${cap}% at most on SoundSurge 46 now.`
+                : "Private replies play at the usual level on SoundSurge 46 now.",
+          },
         };
       }
       if (item === "net.forget") return { ok: true, value: { status: "done", line: "Forgot it." } };
