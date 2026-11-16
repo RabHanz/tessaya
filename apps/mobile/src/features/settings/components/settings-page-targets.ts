@@ -19,6 +19,7 @@ export const SETTINGS_PAGE_TARGETS = [
   "SettingsHardware",
   "SettingsTeam",
   "SettingsCast",
+  "SettingsPulse",
   "SettingsKeyboard",
   "SettingsVoice",
   "SettingsFollowUp",

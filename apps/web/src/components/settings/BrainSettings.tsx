@@ -14,7 +14,7 @@ import {
   type BrainCredential,
   type BrainEscalationRule,
 } from "@t3tools/contracts";
-import { pulseLog } from "@t3tools/tessaya-shared/pulse";
+import { PULSE_ROWS, pulseLog } from "@t3tools/tessaya-shared/pulseLog";
 import { useAtomValue } from "@effect/atom-react";
 import { ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -420,35 +420,6 @@ function Haptics({ environmentId }: { readonly environmentId: EnvironmentId }) {
     </SettingsSection>
   );
 }
-
-const PULSE_ROWS = [
-  { key: "jobs", title: "Jobs", description: "A job that failed, stopped or waits on you." },
-  {
-    key: "sessions",
-    title: "Sessions",
-    description: "A session stuck, waiting or finished unseen.",
-  },
-  { key: "messages", title: "Messages", description: "Notes and calls waiting for you." },
-  {
-    key: "reminders",
-    title: "Reminders",
-    description: "What you asked her to keep track of, when due.",
-  },
-  {
-    key: "calendar",
-    title: "Coming up",
-    description: "Birthdays, plans and dates from your memories.",
-  },
-  { key: "people", title: "People", description: "Who arrived or left, and who has gone quiet." },
-  { key: "home", title: "Home", description: "Device and house events." },
-  { key: "mood", title: "Her mood", description: "When her own mood shifts." },
-  {
-    key: "patterns",
-    title: "Patterns",
-    description:
-      "Routines, unusual hours and what usually follows what, raised rarely, as a question.",
-  },
-] as const;
 
 /** Her pulse: what she may raise unprompted, what she was told to stop raising, and what she noticed and why. */
 function Pulse({ environmentId }: { readonly environmentId: EnvironmentId }) {
