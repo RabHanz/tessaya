@@ -63,6 +63,7 @@ import { houseZone } from "../tessaya/houseZone.ts";
 import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaVocabulary } from "../tessaya/TessayaVocabulary.ts";
 import { TessayaTurn, moodMember, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
+import { TessayaVoiceLibrary } from "../tessaya/TessayaVoiceLibrary.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { TessayaCast } from "../tessaya/TessayaCast.ts";
@@ -1711,9 +1712,16 @@ export const routes = HttpRouter.use((router) =>
       const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
       if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
-      return HttpServerResponse.jsonUnsafe(
-        yield* personasList.pipe(Effect.provideContext(context)),
-      );
+      const { personas } = yield* personasList.pipe(Effect.provideContext(context));
+      // A persona's saved clone, for a room loop on this machine to speak it (its Pocket fetches it on loopback).
+      const voices = Context.getOption(context, TessayaVoiceLibrary);
+      const clones = Option.isNone(voices) ? [] : ((yield* voices.value.library).clones ?? []);
+      return HttpServerResponse.jsonUnsafe({
+        personas: personas.map((p) => {
+          const clone = clones.find((c) => c.id === p.cloneVoice)?.embedding;
+          return clone === undefined ? p : { ...p, cloneUrl: clone };
+        }),
+      });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     for (const root of DEVICE_API_ROOTS) yield* router.add("GET", `${root}/personas`, personas);
     // Answers once the house has connected or failed and his work has been read once, so the first turn after a start

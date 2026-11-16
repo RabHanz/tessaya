@@ -152,7 +152,7 @@ export const SavedCloneView = Schema.Struct({
   affects: Schema.optionalKey(Schema.Array(Schema.String)),
   /**
    * Where this machine's own Pocket fetches its embedding (`voice_url`): a path on this server, served to loopback only
-   * under a key that changes each start. The affect variants sit beside it as `<id>.affect-<name>.safetensors`.
+   * under a key this server keeps. The affect variants sit beside it as `<id>.affect-<name>.safetensors`.
    */
   embedding: Schema.optionalKey(Schema.String),
 });

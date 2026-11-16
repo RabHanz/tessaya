@@ -695,7 +695,7 @@ export const routes = HttpRouter.use((router) =>
     yield* router.add("GET", "/tessaya/api/*", api);
     yield* router.add("POST", "/tessaya/api/*", api);
     // A clone's embedding for this machine's own Pocket (`voice_url`, which sends no token): only from loopback with
-    // no proxy or tunnel in between, under the key this start's library view hands out (VOXTA G1).
+    // no proxy or tunnel in between, under the key its library view hands out (VOXTA G1).
     yield* router.add(
       "GET",
       `${EMBEDDING_ROUTE}*`,
