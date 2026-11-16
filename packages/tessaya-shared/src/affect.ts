@@ -256,7 +256,7 @@ const tag = (name: string, text: string, max: number) =>
   `<${name}>${text.replace(/[<>]/g, "").slice(0, max)}</${name}>`;
 
 /** What an opinion may never rest on, however it is meant. */
-const FAIR =
+export const FAIR =
   "Never mention or rest it on looks, accent, their language or how well they speak it (nor any apology for it), age, gender, religion or origin, not even kindly.";
 /** Her opinion as `readPrompt` is given it, lean included so a plain turn can keep it. */
 export const opinionContext = (imp: {

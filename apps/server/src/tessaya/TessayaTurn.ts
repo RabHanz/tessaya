@@ -55,6 +55,7 @@ import { TurnPools } from "./TurnPools.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { TessayaUnderstanding, type UnderstandingSubject } from "./TessayaUnderstanding.ts";
 import { make as makePresence, TessayaPresence } from "./TessayaPresence.ts";
 import {
   faceLine,
@@ -63,6 +64,7 @@ import {
   type AffectView,
   type Who,
 } from "@t3tools/tessaya-shared/affect";
+import { understandingLine } from "@t3tools/tessaya-shared/understanding";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { ownerLineFor, personasList } from "./OperatingSystemPack.ts";
 import { TessayaJobService } from "./TessayaJobService.ts";
@@ -221,6 +223,9 @@ const GUEST_NAME = "a guest";
 const QUIET_MINUTES = 10;
 /** Her mood as the room may hear it: what is one person's (why, opinion, shared story) stays out (MA-021). */
 const privateOut = (v: AffectView): AffectView => ({ ...v, why: [], impression: null, shared: [] });
+/** Where a turn came from, for what it teaches: its vessel and, when it has one, its ref. */
+const turnSource = (turn: TurnEnvelope) =>
+  `vessel:${turn.vessel.kind}:${turn.vessel.id}${turn.turnRef === undefined ? "" : `:${turn.turnRef}`}`;
 
 /** One member she has lately heard, or whose devices are connected, and which of the two backs the guess. */
 export interface WhoIsHome {
@@ -982,6 +987,8 @@ export const make = Effect.gen(function* () {
             .atDevice(turn.vessel.id, undefined, zone)
             .pipe(Effect.map((f) => (f.intensity >= 0.2 && f.label !== label ? faceLine(f) : "")))
         : Effect.succeed("");
+    const understanding = yield* Effect.serviceOption(TessayaUnderstanding);
+    const self = yield* understood({ about: "self", persona: turn.persona });
     if (member === null) {
       if (turn.addressed === false) return "";
       // Likely them (their voice carried over, not yet verified): their time away ends, nothing of theirs is shown.
@@ -999,6 +1006,7 @@ export const make = Effect.gen(function* () {
           : yield* mood.value.view(turn.persona, zone);
       return [
         moodLine(privateOut(view), spoken),
+        self,
         roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }),
         yield* face(""),
       ]
@@ -1009,20 +1017,46 @@ export const make = Effect.gen(function* () {
     if (turn.emotion !== undefined)
       yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion }, member);
     // Judged beside her reply, not before it: the cheap model's second would be their wait. Her face and next turn see it.
+    // A turn that showed something new about them is evidence for her understanding of them (G4).
     yield* mood.value
       .hisWords(turn.persona, turn.text, member, { voice: turn.emotion, before })
-      .pipe(Effect.forkDetach);
+      .pipe(
+        Effect.flatMap((news) =>
+          news && Option.isSome(understanding)
+            ? understanding.value.evidence(
+                { about: "person", id: member },
+                turn.text,
+                turnSource(turn),
+              )
+            : Effect.void,
+        ),
+        Effect.forkDetach,
+      );
     const view = yield* mood.value.view(turn.persona, zone, member);
     const others = room.here.some((h) => h.key !== member);
     const line = moodLine(others ? privateOut(view) : view, spoken, who);
     yield* mood.value.heard(turn.persona, zone, member);
+    // Her understanding of them is theirs alone: on their own turn, never with anyone else here.
+    const theirs = others ? "" : yield* understood({ about: "person", id: member }, who.name);
     return [
       line,
+      theirs,
+      self,
       others ? roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }) : "",
       yield* face(view.label),
     ]
       .filter((l) => l !== "")
       .join(" ");
+  });
+
+  /** Her standing understanding of a person or of herself as the turn's line, "" when there is none. */
+  const understood = Effect.fn("TessayaTurn.understood")(function* (
+    subject: UnderstandingSubject,
+    name?: string | null,
+  ) {
+    const understanding = yield* Effect.serviceOption(TessayaUnderstanding);
+    const text = Option.isNone(understanding) ? null : yield* understanding.value.current(subject);
+    return text === null ? "" : understandingLine(subject.about, text, name);
   });
 
   /** Who is at this turn's vessel (members and guests, by key), who of them has been quiet, and whether it is busy. */
@@ -1267,7 +1301,7 @@ export const make = Effect.gen(function* () {
       origin: "turn",
       said: turn.text,
       reply: done.reply,
-      sourceRef: `vessel:${turn.vessel.kind}:${turn.vessel.id}${turn.turnRef === undefined ? "" : `:${turn.turnRef}`}`,
+      sourceRef: turnSource(turn),
       tainted: turn.tainted === true,
       project: turn.project ?? null,
       previous: done.previous ?? null,
@@ -1282,6 +1316,12 @@ export const make = Effect.gen(function* () {
     const mood = yield* Effect.serviceOption(TessayaMood);
     if ((learned.corrections ?? 0) > 0 && Option.isSome(mood) && moodMember(turn) !== null)
       yield* mood.value.note(turn.persona, { kind: "correction" }, moodMember(turn));
+    // A correction of her is evidence for how she sees herself (G4).
+    const understanding = yield* Effect.serviceOption(TessayaUnderstanding);
+    if ((learned.corrections ?? 0) > 0 && Option.isSome(understanding))
+      yield* understanding.value
+        .evidence({ about: "self", persona: turn.persona }, turn.text, turnSource(turn))
+        .pipe(Effect.forkDetach);
     return learned;
   });
 

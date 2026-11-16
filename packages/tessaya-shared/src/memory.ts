@@ -15,8 +15,12 @@ export const MEMORY_KINDS = [
   "learning",
   /** A learned skill he accepted after its replay test (SPINE-UNIFY §9): matched per turn, never recalled as a fact. */
   "skill",
+  /** Her standing understanding of one person or of herself (G4): read into that person's own turn, never recalled. */
+  "understanding",
 ] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
+/** Kinds read only by asking for them: never a sentence's recall, a default list, or the meaning index. */
+export const ASKED_FOR_ONLY: ReadonlyArray<MemoryKind> = ["skill", "understanding"];
 
 export const MEMORY_SOURCES = ["user", "thread", "job", "import", "sync"] as const;
 export type MemorySource = (typeof MEMORY_SOURCES)[number];
@@ -333,6 +337,7 @@ const HALF_LIFE_DAYS: Record<MemoryKind, number | null> = {
   learning: 180,
   fact: 365,
   skill: null,
+  understanding: null,
 };
 export const DECAY_FLOOR = 0.1;
 export const EPISODE_TTL_DAYS = 90;
@@ -506,8 +511,8 @@ export interface ParsedLearning {
   readonly draft: Pick<MemoryDraft, "kind" | "text" | "scope" | "scopeRef" | "confidence">;
 }
 
-// The learnings folder holds his notes, never a skill: those come only from his accepted skills.
-const KIND_SET = new Set<string>(MEMORY_KINDS.filter((kind) => kind !== "skill"));
+// The learnings folder holds his notes, never a skill (only from his accepted skills) or an understanding.
+const KIND_SET = new Set<string>(MEMORY_KINDS.filter((kind) => !ASKED_FOR_ONLY.includes(kind)));
 const SCOPE_SET = new Set<string>(MEMORY_SCOPES);
 
 /**
