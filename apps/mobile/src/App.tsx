@@ -109,6 +109,7 @@ import {
   TessayaLaunchSting,
   markTessayaLaunchReady,
 } from "./features/tessaya/launch/TessayaLaunchSting";
+import { TessayaWelcome } from "./features/tessaya/welcome/TessayaWelcome";
 
 import "../global.css";
 
@@ -308,6 +309,7 @@ function AppContent() {
               </NativeLayoutMetricsProvider>
             </GlobalVoiceInputControl>
             <OverlayPortalHost />
+            <TessayaWelcome />
           </SafeAreaProvider>
         </KeyboardProvider>
       </GestureHandlerRootView>
