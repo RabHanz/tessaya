@@ -6,7 +6,10 @@
  */
 import * as Schema from "effect/Schema";
 
-export const BATON_BRAIN_WS_METHODS = { usage: "baton.brain.usage" } as const;
+export const BATON_BRAIN_WS_METHODS = {
+  usage: "baton.brain.usage",
+  record: "baton.brain.record",
+} as const;
 
 /** Who paid: his plan (tokens, and their list-price equivalent) or an API key (dollars at list price). */
 export const UsageBilling = Schema.Literals(["subscription", "apiKey"]);
@@ -54,6 +57,24 @@ export const BrainUsageInput = Schema.Struct({
   detail: Schema.optional(BrainUsageDetail),
 });
 export type BrainUsageInput = typeof BrainUsageInput.Type;
+
+const Count = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100_000_000 }));
+
+/** One call the desktop made on his own CLI login (a look at the screen, a rewrite, an operator turn). */
+export const BrainUsageRecordInput = Schema.Struct({
+  role: Schema.Literals(["vision", "cleanup", "deep", "agent"]),
+  /** `claude` or `codex`. */
+  provider: Schema.Literals(["claude", "codex"]),
+  model: Id,
+  input: Count,
+  cacheRead: Count,
+  cacheWrite: Count,
+  output: Count,
+  outcome: UsageOutcome,
+  feature: Id,
+  persona: Schema.optional(Id),
+});
+export type BrainUsageRecordInput = typeof BrainUsageRecordInput.Type;
 
 export const BrainUsageTotal = Schema.Struct({
   day: Schema.String,

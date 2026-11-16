@@ -76,6 +76,19 @@ const runOnServer = Effect.fn("Opencode2TextGeneration.runOnServer")(function* (
         case "session.text.ended":
           texts.set(`${event.data.assistantMessageID}:${event.data.ordinal}`, event.data.text);
           return Effect.void;
+        case "session.step.ended": {
+          const tokens = event.data.tokens;
+          return tokens === undefined
+            ? Effect.void
+            : TextGenerationOperations.reportUsage([
+                {
+                  input: tokens.input,
+                  cacheRead: tokens.cache.read,
+                  cacheWrite: tokens.cache.write,
+                  output: tokens.output + tokens.reasoning,
+                },
+              ]);
+        }
         case "permission.asked":
           return client.permission
             .reply({

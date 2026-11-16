@@ -79,9 +79,13 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
               cause,
             }),
         });
-        return yield* runtime.prompt({
+        const result = yield* runtime.prompt({
           prompt: [{ type: "text", text: prompt }],
         });
+        yield* TextGenerationOperations.reportUsage(
+          TextGenerationOperations.acpTokens(result.usage),
+        );
+        return result;
       }).pipe(
         Effect.timeoutOption(GROK_TIMEOUT_MS),
         Effect.flatMap(

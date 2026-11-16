@@ -185,6 +185,7 @@ export const makeRewriter = (input: {
       systemPrompt: current,
       workDir: input.workDir,
       env: input.env,
+      feature: "dictation",
       platform: input.platform,
       timeoutMs: 60_000,
     });

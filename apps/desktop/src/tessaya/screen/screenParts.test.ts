@@ -10,6 +10,7 @@ import { withBrainRoutes } from "../voice/desktopVoiceCore.ts";
 import {
   resolveBinary,
   resultOf,
+  sendVisionUsageTo,
   spawnable,
   startVisionSession,
   subscriptionEnv,
@@ -82,6 +83,54 @@ describe("claudeVision", () => {
       error: "Not logged in",
     });
   });
+
+  it.runIf(NodePath.sep === "/")(
+    "files every answer in the usage ledger from a ledgered folder",
+    async () => {
+      const dir = NodeFS.mkdtempSync(NodePath.join(process.env["TMPDIR"] ?? "/tmp", "vision-"));
+      const fake = NodePath.join(dir, "claude");
+      NodeFS.writeFileSync(
+        fake,
+        [
+          "#!/bin/sh",
+          "read line",
+          `echo "{\\"type\\":\\"result\\",\\"result\\":\\"$(pwd)\\",\\"usage\\":{\\"input_tokens\\":4,\\"output_tokens\\":2}}"`,
+          "read line",
+          'echo \'{"type":"result","result":"no counts"}\'',
+          "read line",
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+      const rows: Array<unknown> = [];
+      sendVisionUsageTo((row) => rows.push(row));
+      const session = startVisionSession({
+        claudeBinary: fake,
+        model: "sonnet",
+        systemPrompt: "x",
+        workDir: dir,
+        env: {},
+        platform: "linux",
+        feature: "rewrite",
+      });
+      try {
+        expect(await session.ask([{ type: "text", text: "hi" }])).toMatch(/-?tessaya-ledgered$/);
+        await session.ask([{ type: "text", text: "again" }]);
+        expect(rows).toEqual([
+          expect.objectContaining({ model: "sonnet", input: 4, output: 2, outcome: "ok" }),
+          expect.objectContaining({
+            input: 0,
+            output: 0,
+            outcome: "unmeasured",
+            feature: "rewrite",
+          }),
+        ]);
+      } finally {
+        session.dispose();
+        sendVisionUsageTo(undefined);
+        NodeFS.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("finds claude.exe or npm's claude.cmd on a Windows PATH", () => {
     const env = { Path: "C:\\a;C:\\b" };

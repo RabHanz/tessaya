@@ -20,6 +20,7 @@ import {
 } from "../provider/ClaudeModelCatalog.testFixtures.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 import { sanitizeThreadTitle } from "@t3tools/provider-core/server/textGenerationUtils";
+import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 import { makeClaudeTextGeneration } from "./ClaudeTextGeneration.ts";
 import { writeFakeCli } from "@t3tools/provider-testing/fakeCli";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
@@ -184,24 +185,42 @@ it.layer(layerClaudeTextGenerationTest)("ClaudeTextGeneration", (it) => {
       ),
   );
 
-  it.effect("sends thread title instructions to the provider prompt", () =>
-    withFakeClaudeEnv(
+  it.effect("sends thread title instructions to the provider prompt", () => {
+    const used: Array<TextGenerationOperations.Tokens> = [];
+    return withFakeClaudeEnv(
       {
-        output: JSON.stringify({ structured_output: { title: "Reconnect failures" } }),
+        output: JSON.stringify({
+          structured_output: { title: "Reconnect failures" },
+          usage: { input_tokens: 9, cache_read_input_tokens: 40, output_tokens: 6 },
+        }),
         stdinMustContain: "Additional instructions:\nUse two to four words.",
       },
       (textGeneration) =>
-        textGeneration.generateThreadTitle({
-          cwd: process.cwd(),
-          message: "Investigate reconnect failures",
-          instructions: "Use two to four words.",
-          modelSelection: {
-            instanceId: ProviderInstanceId.make("claudeAgent"),
-            model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
-          },
-        }),
-    ),
-  );
+        textGeneration
+          .generateThreadTitle({
+            cwd: process.cwd(),
+            message: "Investigate reconnect failures",
+            instructions: "Use two to four words.",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
+            },
+          })
+          .pipe(
+            Effect.provideService(TextGenerationOperations.UsageSink, (tokens) =>
+              used.push(...tokens),
+            ),
+          ),
+    ).pipe(
+      Effect.tap(() =>
+        Effect.sync(() =>
+          expect(
+            used.map(({ input, cacheRead, output }) => ({ input, cacheRead, output })),
+          ).toEqual([{ input: 9, cacheRead: 40, output: 6 }]),
+        ),
+      ),
+    );
+  });
 
   it.effect("runs Claude text generation with the configured CLAUDE_CONFIG_DIR", () =>
     Effect.gen(function* () {

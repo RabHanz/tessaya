@@ -1,11 +1,17 @@
 /**
- * Settings → Usage's brain section (BRAIN-DESIGN §13.3): what each kind of her work used on which login, by day in
- * the reader's own zone, and his API spend alerts against what the key spent.
+ * Settings → Usage (BRAIN-DESIGN §13.3): what was used by feature, persona, surface, model, day or login, in the
+ * reader's own zone; each line opens to its calls. Then his API spend alerts against what the key spent.
  */
-import type { BrainUsageResult, EnvironmentId } from "@t3tools/tessaya-contracts";
+import type { BrainUsageCall, BrainUsageResult, EnvironmentId } from "@t3tools/tessaya-contracts";
 import { BRAIN_ROLE_LABELS, credentialLabel } from "@t3tools/tessaya-shared/brainRoutes";
-import type { BrainCredential, BrainRole, BrainSpendLimit } from "@t3tools/contracts";
-import { useEffect, useState } from "react";
+import {
+  ThreadId,
+  type BrainCredential,
+  type BrainRole,
+  type BrainSpendLimit,
+} from "@t3tools/contracts";
+import { Link } from "@tanstack/react-router";
+import { Fragment, useEffect, useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
@@ -13,6 +19,14 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
+import {
+  lineCalls,
+  lineDetail,
+  USAGE_VIEWS,
+  usageLines,
+  type UsageLine,
+  type UsageView,
+} from "./BrainUsage.logic";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 
@@ -26,38 +40,24 @@ const money = (dollars: number) => `$${dollars < 1 ? dollars.toFixed(3) : dollar
 const roleLabel = (role: string) => BRAIN_ROLE_LABELS[role as BrainRole] ?? role;
 const loginLabel = (credential: string) => credentialLabel(credential as BrainCredential);
 
-interface Line {
-  readonly key: string;
-  readonly role: string;
-  readonly credential: string;
-  readonly model: string;
-  calls: number;
-  tokens: number;
-  dollars: number | null;
-}
+const VIEW_LABELS: Record<UsageView, string> = {
+  feature: "Feature",
+  persona: "Persona",
+  surface: "Surface",
+  model: "Model",
+  day: "Day",
+  login: "Login",
+};
+const callTime = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" });
+const readerZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
+const OUTCOME_LABELS = { ok: null, failed: "failed", unmeasured: "no token count" } as const;
 
-/** One line per role, login and model over the whole range, the costliest first, then the busiest. */
-const usageLines = (totals: BrainUsageResult["totals"]): ReadonlyArray<Line> => {
-  const lines = new Map<string, Line>();
-  for (const t of totals) {
-    const key = `${t.role}|${t.credential}|${t.model}`;
-    const line = lines.get(key) ?? {
-      key,
-      role: t.role,
-      credential: t.credential,
-      model: t.model,
-      calls: 0,
-      tokens: 0,
-      dollars: null,
-    };
-    line.calls += t.calls;
-    line.tokens += t.input + t.cacheRead + t.cacheWrite + t.output;
-    if (t.dollars !== null) line.dollars = (line.dollars ?? 0) + t.dollars;
-    lines.set(key, line);
-  }
-  return [...lines.values()].toSorted(
-    (a, b) => (b.dollars ?? 0) - (a.dollars ?? 0) || b.calls - a.calls,
-  );
+const lineTitle = (view: UsageView, line: UsageLine) => {
+  const t = line.total;
+  if (view === "login") return roleLabel(t.role);
+  if (view === "day") return t.day;
+  return t[view] ?? "None";
 };
 
 export function BrainUsagePanel() {
@@ -81,15 +81,29 @@ export function BrainUsagePanel() {
 function BrainUsageSections({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const read = useAtomCommand(tessayaWorkSessions.brainUsage, { reportFailure: false });
   const [days, setDays] = useState<number>(7);
+  const [view, setView] = useState<UsageView>("feature");
   const [report, setReport] = useState<BrainUsageResult | null>(null);
   const [failed, setFailed] = useState(false);
+  const [open, setOpen] = useState<{
+    readonly key: string;
+    readonly calls: ReadonlyArray<BrainUsageCall> | "reading" | "failed";
+  } | null>(null);
+  const timeZone = readerZone();
   const refresh = async (range: number) => {
-    const result = await read({
-      environmentId,
-      input: { days: range, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-    });
+    const result = await read({ environmentId, input: { days: range, timeZone } });
     setFailed(result._tag !== "Success");
     if (result._tag === "Success") setReport(result.value);
+  };
+  const toggle = async (line: UsageLine) => {
+    if (open?.key === line.key) return setOpen(null);
+    setOpen({ key: line.key, calls: "reading" });
+    const result = await read({
+      environmentId,
+      input: { days, timeZone, detail: lineDetail(view, line) },
+    });
+    const calls =
+      result._tag === "Success" ? lineCalls(result.value.calls ?? [], view, line) : "failed";
+    setOpen((current) => (current?.key === line.key ? { key: line.key, calls } : current));
   };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the server's usage once per environment and range
   useEffect(() => {
@@ -97,11 +111,11 @@ function BrainUsageSections({ environmentId }: { readonly environmentId: Environ
     void refresh(days);
   }, [environmentId, days]);
 
-  const lines = report === null ? [] : usageLines(report.totals);
+  const lines = report === null ? [] : usageLines(report.totals, view);
   const apiSpent = lines.reduce((sum, line) => sum + (line.dollars ?? 0), 0);
-  const planTokens = lines
-    .filter((line) => line.dollars === null && line.credential.startsWith("subscription"))
-    .reduce((sum, line) => sum + line.tokens, 0);
+  const planTokens = (report?.totals ?? [])
+    .filter((t) => t.billing === "subscription")
+    .reduce((sum, t) => sum + t.input + t.cacheRead + t.cacheWrite + t.output, 0);
   return (
     <>
       <SettingsSection
@@ -114,7 +128,10 @@ function BrainUsageSections({ environmentId }: { readonly environmentId: Environ
                 size="xs"
                 variant={range.days === days ? "secondary" : "ghost-muted"}
                 aria-pressed={range.days === days}
-                onClick={() => setDays(range.days)}
+                onClick={() => {
+                  setOpen(null);
+                  setDays(range.days);
+                }}
               >
                 {range.label}
               </Button>
@@ -132,6 +149,27 @@ function BrainUsageSections({ environmentId }: { readonly environmentId: Environ
           description="Covered by your plan: tokens, not dollars."
           control={<span className="text-sm tabular-nums">{tokens.format(planTokens)} tokens</span>}
         />
+        <SettingsRow
+          title="By"
+          control={
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Group by">
+              {USAGE_VIEWS.map((v) => (
+                <Button
+                  key={v}
+                  size="xs"
+                  variant={v === view ? "secondary" : "ghost-muted"}
+                  aria-pressed={v === view}
+                  onClick={() => {
+                    setOpen(null);
+                    setView(v);
+                  }}
+                >
+                  {VIEW_LABELS[v]}
+                </Button>
+              ))}
+            </div>
+          }
+        />
         {failed ? (
           <p className="px-4 py-3 text-sm text-muted-foreground">
             This server could not read its usage.
@@ -142,23 +180,105 @@ function BrainUsageSections({ environmentId }: { readonly environmentId: Environ
           </p>
         ) : (
           lines.map((line) => (
-            <SettingsRow
-              key={line.key}
-              title={roleLabel(line.role)}
-              description={`${loginLabel(line.credential)} · ${line.model} · ${line.calls} ${
-                line.calls === 1 ? "call" : "calls"
-              } · ${tokens.format(line.tokens)} tokens`}
-              control={
-                <span className="text-sm tabular-nums">
-                  {line.dollars === null ? "Plan" : money(line.dollars)}
-                </span>
-              }
-            />
+            <Fragment key={line.key}>
+              <SettingsRow
+                title={lineTitle(view, line)}
+                description={`${
+                  view === "login"
+                    ? `${loginLabel(line.total.credential)} · ${line.total.model} · `
+                    : ""
+                }${plural(line.calls, "call")} · ${tokens.format(line.tokens)} tokens`}
+                control={
+                  <Button
+                    size="xs"
+                    variant={open?.key === line.key ? "secondary" : "ghost-muted"}
+                    aria-expanded={open?.key === line.key}
+                    aria-label={`Calls for ${lineTitle(view, line)}`}
+                    onClick={() => void toggle(line)}
+                  >
+                    <span className="tabular-nums">
+                      {line.dollars === null ? "Plan" : money(line.dollars)}
+                    </span>
+                  </Button>
+                }
+              />
+              {open?.key === line.key ? (
+                <UsageCalls environmentId={environmentId} calls={open.calls} />
+              ) : null}
+            </Fragment>
           ))
         )}
       </SettingsSection>
       <NearLimit environmentId={environmentId} />
       <SpendAlerts environmentId={environmentId} limits={report?.limits ?? []} />
+    </>
+  );
+}
+
+/** The calls behind one line, each with everything it is attributed to. */
+function UsageCalls({
+  environmentId,
+  calls,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly calls: ReadonlyArray<BrainUsageCall> | "reading" | "failed";
+}) {
+  if (calls === "reading" || calls === "failed" || calls.length === 0) {
+    return (
+      <p className="px-4 py-3 text-sm text-muted-foreground">
+        {calls === "reading"
+          ? "Reading…"
+          : calls === "failed"
+            ? "This server could not read these calls."
+            : "No calls found."}
+      </p>
+    );
+  }
+  return (
+    <>
+      {calls.map((call) => {
+        const facts = [
+          call.origin,
+          call.surface,
+          call.persona,
+          call.model,
+          loginLabel(call.credential),
+          `${tokens.format(call.input + call.cacheRead + call.cacheWrite + call.output)} tokens`,
+          OUTCOME_LABELS[call.outcome],
+        ].filter((fact) => fact !== null);
+        return (
+          <SettingsRow
+            key={`${call.at}-${call.role}-${call.credential}-${call.turnId}-${call.jobId}`}
+            title={`${callTime.format(call.at)} · ${call.feature}`}
+            description={
+              <>
+                {facts.join(" · ")}
+                {call.threadId === null ? null : (
+                  <>
+                    {" · "}
+                    <Link
+                      to="/$environmentId/$threadId"
+                      params={{ environmentId, threadId: ThreadId.make(call.threadId) }}
+                      className="underline"
+                    >
+                      Thread
+                    </Link>
+                  </>
+                )}
+                {call.turnId === null ? null : ` · turn ${call.turnId}`}
+              </>
+            }
+            control={
+              <span className="text-sm tabular-nums">
+                {call.dollars === null ? "Plan" : money(call.dollars)}
+              </span>
+            }
+          />
+        );
+      })}
+      {calls.length >= 200 ? (
+        <p className="px-4 py-3 text-sm text-muted-foreground">Showing the newest 200 calls.</p>
+      ) : null}
     </>
   );
 }

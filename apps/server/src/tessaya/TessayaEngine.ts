@@ -20,6 +20,7 @@ import {
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2ContextHandoff,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2ProviderTurn,
   type OrchestrationV2Run,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2TurnItem,
@@ -128,6 +129,10 @@ export interface TessayaEngineShape {
   ) => Effect.Effect<ReadonlyArray<OrchestrationV2ConversationMessage>>;
   /** The thread's runs, for live-session turns (D83). Empty on an engine error. */
   readonly threadRuns: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<OrchestrationV2Run>>;
+  /** The thread's provider turns with their token counts, for a job's spend. Empty on an engine error. */
+  readonly providerTurns: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<OrchestrationV2ProviderTurn>>;
   /** A runtime request's status, for live-session terminal prompts (D88). Null when unknown. */
   readonly runtimeRequestStatus: (
     threadId: ThreadId,
@@ -606,6 +611,12 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed([])),
     );
 
+  const providerTurns: TessayaEngineShape["providerTurns"] = (threadId) =>
+    orchestrator.getThreadRecords(threadId, ["providerTurns"]).pipe(
+      Effect.map((records) => records.providerTurns),
+      Effect.catchCause(() => Effect.succeed([])),
+    );
+
   const renameThread: TessayaEngineShape["renameThread"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -780,6 +791,7 @@ export const make = Effect.gen(function* () {
     turnItem,
     appThread,
     activeProviderThread,
+    providerTurns,
     renameThread,
     resumeQueue,
     keepActive,
@@ -814,6 +826,7 @@ export const layerStatic = (input: {
   readonly messages?: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly text: string }>;
   /** Runs per thread, for the job caps. */
   readonly runs?: ReadonlyMap<string, ReadonlyArray<{ readonly status: string }>>;
+  readonly providerTurns?: ReadonlyMap<string, ReadonlyArray<unknown>>;
   readonly contextHandoffs?: ReadonlyMap<string, ReadonlyArray<unknown>>;
   /** Pending runtime requests (approvals) per thread. */
   readonly pending?: ReadonlyMap<string, ReadonlyArray<unknown>>;
@@ -857,6 +870,8 @@ export const layerStatic = (input: {
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
     threadRuns: (threadId) => Effect.succeed((input.runs?.get(threadId) ?? []) as never),
+    providerTurns: (threadId) =>
+      Effect.succeed((input.providerTurns?.get(threadId) ?? []) as never),
     contextHandoffs: (threadId) =>
       Effect.succeed((input.contextHandoffs?.get(threadId) ?? []) as never),
     runtimeRequestStatus: () => Effect.succeed(null),

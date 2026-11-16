@@ -5,6 +5,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
+import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 import * as ProviderInstallationGate from "../provider/ProviderInstallationGate.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -23,9 +24,10 @@ import * as Scope from "effect/Scope";
 import { createModelSelection } from "@t3tools/shared/model";
 import { expect } from "vite-plus/test";
 
-import { CodexSettings, ProviderInstanceId } from "@t3tools/contracts";
+import { CodexSettings, ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
+import * as BrainUsage from "../tessaya/BrainUsage.ts";
 import { makeProcessProbe, processProbeSource } from "../testUtils/processProbe.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 import * as TextGenerators from "./TextGenerators.ts";
@@ -190,6 +192,7 @@ function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
         "}",
         'if (check.stderr !== null) process.stderr.write(check.stderr + "\\n");',
         'if (outputPath !== null) NodeFS.writeFileSync(outputPath, check.output + "\\n");',
+        'if (args.includes("--json")) process.stdout.write(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 120, cached_input_tokens: 100, output_tokens: 7 } }) + "\\n");',
         "process.exitCode = check.exitCode;",
         "",
       ].join("\n"),
@@ -317,8 +320,9 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
       ),
   );
 
-  it.effect("drops the requested model's options when falling back to another model", () =>
-    withFakeCodexEnv(
+  it.effect("drops the requested model's options when falling back to another model", () => {
+    const used: Array<TextGenerationOperations.Tokens> = [];
+    return withFakeCodexEnv(
       {
         output: JSON.stringify({ title: "Live title" }),
         models: ["gpt-6-astra"],
@@ -326,16 +330,29 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
         forbidArg: 'service_tier="priority"',
       },
       (textGeneration) =>
-        textGeneration.generateThreadTitle({
-          cwd: process.cwd(),
-          message: "Describe this change",
-          modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-6-luna", [
-            { id: "reasoningEffort", value: "none" },
-            { id: "serviceTier", value: "priority" },
-          ]),
-        }),
-    ),
-  );
+        textGeneration
+          .generateThreadTitle({
+            cwd: process.cwd(),
+            message: "Describe this change",
+            modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-6-luna", [
+              { id: "reasoningEffort", value: "none" },
+              { id: "serviceTier", value: "priority" },
+            ]),
+          })
+          .pipe(
+            Effect.provideService(TextGenerationOperations.UsageSink, (tokens) =>
+              used.push(...tokens),
+            ),
+          ),
+    ).pipe(
+      // The usage ledger's tokens: `codex exec --json` counts the cache inside its input.
+      Effect.tap(() =>
+        Effect.sync(() =>
+          expect(used).toEqual([{ input: 20, cacheRead: 100, cacheWrite: 0, output: 7 }]),
+        ),
+      ),
+    );
+  });
 
   it.effect("sends a configured custom model the managed snapshot leaves out", () =>
     withFakeCodexEnv(
@@ -852,4 +869,87 @@ it.effect(
         /^Review guides need a coding agent that can read the checkout/,
       );
     }),
+);
+
+it.effect("every generation leaves one usage row per model it used, failed ones too", () =>
+  Effect.gen(function* () {
+    const id = ProviderInstanceId.make("codex");
+    const driver = ProviderDriverKind.make("codex");
+    const rows: Array<BrainUsage.UsageRow> = [];
+    const replies = [
+      TextGenerationOperations.reportUsage([
+        { input: 10, cacheRead: 5, cacheWrite: 0, output: 3 },
+        { model: "gpt-mini", input: 1, cacheRead: 0, cacheWrite: 0, output: 1 },
+      ]),
+      Effect.void,
+      Effect.fail(new TextGenerationError({ operation: "generateThreadTitle", detail: "boom" })),
+    ];
+    let call = 0;
+    const instance = {
+      instanceId: id,
+      driverKind: driver,
+      continuationIdentity: { driverKind: driver, continuationKey: id },
+      displayName: undefined,
+      enabled: true,
+      snapshot: {
+        getSnapshot: Effect.succeed<ServerProvider>({
+          instanceId: id,
+          driver,
+          enabled: true,
+          installed: true,
+          status: "ready",
+          auth: { status: "authenticated" },
+          version: null,
+          checkedAt: "1970-01-01T00:00:00Z",
+          models: [],
+          slashCommands: [],
+          skills: [],
+        }),
+      } as ProviderInstance["snapshot"],
+      orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
+      textGeneration: TextGeneration.TextGeneration.of({
+        generateCommitMessage: () => Effect.die("unused"),
+        generatePrContent: () => Effect.die("unused"),
+        generateBranchName: () => Effect.die("unused"),
+        generateReviewGuide: () => Effect.die("unused"),
+        generateTranscriptionPostProcessing: () => Effect.die("unused"),
+        generateThreadTitle: () => Effect.as(replies[call++]!, { title: "Title" }),
+      }),
+    } satisfies ProviderInstance;
+    const service = yield* TextGeneration.make.pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
+            listInstances: Effect.succeed([instance]),
+            getInstance: () => Effect.succeed(instance),
+          }),
+          ServerSettings.layerTest({}),
+          Layer.mock(TextGenerators.TextGenerators)({ runner: () => Effect.undefined }),
+          Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+            resolveLink: () => Effect.die("unused"),
+          }),
+          Layer.mock(BrainUsage.BrainUsage)({
+            record: (row) => Effect.sync(() => void rows.push(row)),
+          }),
+          ProviderInstallationGate.layer,
+        ),
+      ),
+    );
+    const input = {
+      cwd: "/tmp",
+      message: "hello",
+      linkedContext: "",
+      modelSelection: { instanceId: id, model: "gpt-5" },
+    };
+    for (let i = 0; i < 3; i++) yield* Effect.exit(service.generateThreadTitle(input));
+    expect(
+      rows.map(({ model, input, output, outcome }) => ({ model, input, output, outcome })),
+    ).toEqual([
+      { model: "gpt-5", input: 10, output: 3, outcome: "ok" },
+      { model: "gpt-mini", input: 1, output: 1, outcome: "ok" },
+      { model: "gpt-5", input: 0, output: 0, outcome: "unmeasured" },
+      { model: "gpt-5", input: 0, output: 0, outcome: "failed" },
+    ]);
+    expect(rows.every((row) => row.attribution.feature === "generateThreadTitle")).toBe(true);
+  }),
 );

@@ -73,7 +73,7 @@ import { liveSwitchRefusal } from "@t3tools/tessaya-shared/accounts";
 import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { TessayaEngine } from "./TessayaEngine.ts";
-import { BrainUsage, brainUsageReport } from "./BrainUsage.ts";
+import { BrainUsage, brainUsageReport, recordDesktopUsage } from "./BrainUsage.ts";
 import { personasList } from "./OperatingSystemPack.ts";
 import { PromptLab } from "./PromptLab.ts";
 import { VesselHands } from "./VesselHands.ts";
@@ -674,6 +674,7 @@ export const makeHandlers = Effect.gen(function* () {
         ),
       ),
     [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input)),
+    [BATON_BRAIN_WS_METHODS.record]: (input) => run(recordDesktopUsage(input)),
     [BATON_PERSONAS_WS_METHODS.list]: () => run(personasList),
     [BATON_PROMPT_LAB_WS_METHODS.call]: (input) =>
       run(Effect.flatMap(PromptLab, (lab) => lab.call(input))),

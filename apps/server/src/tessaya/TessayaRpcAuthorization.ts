@@ -111,6 +111,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_WATCH_WS_METHODS.watchGet]: AuthOrchestrationReadScope,
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_BRAIN_WS_METHODS.usage]: AuthOrchestrationReadScope,
+  // A row says what his plan spent: the desktop app's own session only.
+  [BATON_BRAIN_WS_METHODS.record]: [AuthOrchestrationOperateScope, AuthTessayaHandsHostScope],
   [BATON_PERSONAS_WS_METHODS.list]: AuthOrchestrationReadScope,
   // His prompts, and runs on his subscription: settings:write, which only the owner and admins hold.
   [BATON_PROMPT_LAB_WS_METHODS.call]: AuthSettingsWriteScope,

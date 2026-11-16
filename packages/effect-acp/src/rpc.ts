@@ -247,6 +247,14 @@ const CompatPromptRpc = Rpc.make(AGENT_METHODS.session_prompt, {
   payload: Schema.Union([AcpSchema.PromptRequest, AcpSchemaV1.PromptRequest]),
   success: Schema.Union([
     AcpSchemaV1.PromptResponse,
+    // fx's per-turn usage omits totalTokens, which TurnTokenUsage never reads.
+    Schema.Struct({
+      stopReason: AcpSchemaV1.StopReason,
+      usage: Schema.Struct({
+        ...AcpSchemaV1.Usage.fields,
+        totalTokens: Schema.optionalKey(AcpSchemaV1.Usage.fields.totalTokens),
+      }),
+    }),
     // fx sends empty usage on cancellation; retain its stop reason when usage is invalid.
     Schema.Struct({ stopReason: AcpSchemaV1.StopReason }),
     AcpSchema.PromptResponse,

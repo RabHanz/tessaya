@@ -18,6 +18,7 @@ import {
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
   BATON_VOICE_WS_METHODS,
+  BATON_BRAIN_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
@@ -314,6 +315,10 @@ describe("who may write the Record", () => {
     expect(
       missingTessayaScope(append, [...AuthStandardClientScopes, AuthTessayaHandsHostScope]),
     ).toBe(null);
+    // A usage row says what his plan spent, so only the desktop app's own session files one.
+    expect(missingTessayaScope(BATON_BRAIN_WS_METHODS.record, AuthStandardClientScopes)).toBe(
+      AuthTessayaHandsHostScope,
+    );
     const decodes = (row: Record<string, unknown>) =>
       decodeAppend({
         actor: "Tessaya",
