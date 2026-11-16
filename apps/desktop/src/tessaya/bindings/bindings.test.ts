@@ -53,6 +53,13 @@ describe("bindings", () => {
       { action: "mute", input: key("control+m") },
       { action: "bogus", input: null },
       { action: "ask", input: { type: "mouse", button: "wheel" } },
+      {
+        action: "clear",
+        inputs: [
+          { type: "remote", button: "g20s/num_3" },
+          { type: "remote", button: "../x" },
+        ],
+      },
       { action: "stop", input: null },
       {
         action: "wake",
@@ -69,10 +76,15 @@ describe("bindings", () => {
     ]);
     expect(parsed).toEqual([
       { action: "mute", inputs: [key("Ctrl+M")] },
+      { action: "clear", inputs: [{ type: "remote", button: "g20s/num_3" }] },
       { action: "stop", inputs: [] },
       { action: "wake", inputs: [key("F9"), mouse("middle"), key("A"), key("B")] },
     ]);
-    expect(withBinding(parsed, "mute", "reset").map((b) => b.action)).toEqual(["stop", "wake"]);
+    expect(withBinding(parsed, "mute", "reset").map((b) => b.action)).toEqual([
+      "clear",
+      "stop",
+      "wake",
+    ]);
   });
 
   it("lets the dictation keys come from their own settings", () => {
@@ -118,6 +130,10 @@ describe("more than one way to do an action", () => {
     expect(checkInput(key("Ctrl+Win"))).toEqual({ ok: true });
     expect(checkInput(key("Win"))).toMatchObject({ ok: false });
     expect(checkInput(key("Ctrl+Shift"))).toMatchObject({ ok: false });
+    // A remote button binds alone, but one that only ever taps cannot hold to dictate.
+    const voice: BindingInput = { type: "remote", button: "g20s/mic" };
+    expect(checkInput(voice, "toggle", new Set(["g20s/mic"]))).toEqual({ ok: true });
+    expect(checkInput(voice, "hold", new Set(["g20s/mic"]))).toMatchObject({ ok: false });
     expect(checkInput(key("Ctrl+Alt+Shift+Z"))).toEqual({
       ok: false,
       reason: "Use at most 3 keys together.",
