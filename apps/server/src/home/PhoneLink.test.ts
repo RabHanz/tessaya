@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 
-import { makeMicBuffer, nearBy, parseRoute } from "./PhoneLink.ts";
+import { makeMicBuffer, nearBy, parsePhoneText } from "./PhoneLink.ts";
 
 it("is near only on the R1's own network", () => {
   const cases: Array<[string | null, string | null, string | null, boolean]> = [
@@ -27,15 +27,38 @@ it("feeds the R1's frames from the phone's mic, silence when dry, never more tha
   assert.deepStrictEqual([got[0], got[315], got[316], got[319], got[320]], [5, 5, 6, 6, 0]);
 });
 
-it("reads the phone's route, as data", () => {
+it("reads the phone's route, its motor and its button, as data", () => {
   assert.deepStrictEqual(
-    parseRoute('{"t":"route","kind":"headphones","name":"AirPods","ip":"1.2.3.4"}'),
-    { kind: "headphones", name: "AirPods", ip: "1.2.3.4" },
+    parsePhoneText(
+      '{"t":"route","kind":"headphones","name":"AirPods","ip":"1.2.3.4","haptic":{"kind":"core-haptics"},"gain":1.2}',
+    ),
+    {
+      kind: "headphones",
+      name: "AirPods",
+      ip: "1.2.3.4",
+      haptic: { kind: "core-haptics" },
+      gain: 1.2,
+    },
   );
-  assert.deepStrictEqual(parseRoute('{"t":"route","kind":"rocket"}'), {
+  assert.deepStrictEqual(
+    parsePhoneText(
+      '{"t":"route","kind":"rocket","haptic":{"kind":"android","primitives":["CLICK","BOOM"],"amplitude":true},"gain":9}',
+    ),
+    {
+      kind: "speaker",
+      name: null,
+      ip: null,
+      haptic: { kind: "android", primitives: ["CLICK"], amplitude: true },
+      gain: 2,
+    },
+  );
+  assert.deepStrictEqual(parsePhoneText('{"t":"route","haptic":{"kind":"erm"}}'), {
     kind: "speaker",
     name: null,
     ip: null,
+    haptic: null,
+    gain: 1,
   });
-  assert.isNull(parseRoute("nope"));
+  assert.strictEqual(parsePhoneText('{"t":"talk"}'), "talk");
+  assert.isNull(parsePhoneText("nope"));
 });
