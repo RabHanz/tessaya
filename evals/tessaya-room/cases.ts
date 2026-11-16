@@ -91,6 +91,7 @@ const mood = (v: Partial<AffectView>): string =>
     energy: 0.8,
     awayHours: null,
     guilt: "light",
+    why: [],
     ...v,
   });
 
