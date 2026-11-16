@@ -353,10 +353,6 @@ const WORK = {
   tessaya_job_lead: {
     line: "Noted: the lead stays, and it is not suggested again for this job.",
   },
-  tessaya_persona_handoff: {
-    line: "Freya has this conversation now: say so in a few words.",
-    persona: "companion",
-  },
   // The Cast's own words (TessayaCast castLine) for a house with Tumble and the desktop.
   tessaya_cast: {
     line: "Tumble: Freya; Desk: Tessaya, Alfred",
@@ -524,6 +520,16 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
               line: "Before I do: forgetting them removes their voice and 3 things they said. Ask for a clear yes, then call again with confirmed.",
             },
           };
+    // As TessayaTurn.handOff answers: whoever he asked for, never a fixed one (16 Nov sweep, no-intro).
+    case "tessaya_persona_handoff": {
+      const to = (args as { to?: unknown }).to;
+      return {
+        line:
+          typeof to === "string"
+            ? `${to} has this conversation now: say so in a few words.`
+            : "Handed back: say so in a few words.",
+      };
+    }
     case "tessaya_owner_doc":
       return { text: ownerDoc(OWNER.docs, args as { name?: string; section?: string }) };
     case "laptop_ask":

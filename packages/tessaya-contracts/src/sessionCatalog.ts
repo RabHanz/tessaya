@@ -199,6 +199,7 @@ export const TessayaWorkNowResult = Schema.Struct({
   waiting: Schema.Number,
   working: Schema.Number,
   recent: Schema.Number,
+  /** Every machine that answered (up), busiest first. */
   machines: Schema.Array(Schema.String),
   /** Waiting first, then working, then the most recent. */
   top: Schema.Array(

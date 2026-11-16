@@ -179,7 +179,7 @@ const RulesTool = Tool.make("tessaya_rules", {
 const FleetTool = Tool.make("tessaya_fleet", {
   ...shared,
   description:
-    'His machines and the agent work on them right now: which of his computers are up and busy, each piece of work with its state, every Herdr pane and every running Claude Code process. Use it for "which machines are up", "what\'s running" or "what is waiting"; `tessaya_sessions` lists past and present sessions to find one. Battery, Wi-Fi and other hardware readings are device_list\'s.',
+    "This computer's agent work in full: each piece of work with its state and branch, every Herdr pane and every running Claude Code process. Use it for \"what's running here\" or \"what's in my Herdr panes\"; for which sessions are open or which machines are up across all his machines, `tessaya_work_now`; `tessaya_sessions` finds a past or present session. Battery, Wi-Fi and other hardware readings are device_list's.",
   // No `parameters`: Tool.EmptyParams serializes as a plain object, which every client accepts.
   success: TessayaFleetResult,
 })
@@ -202,7 +202,7 @@ const InFlightTool = Tool.make("tessaya_in_flight", {
 const WorkNowTool = Tool.make("tessaya_work_now", {
   ...shared,
   description:
-    'What he and his agents are on now, on every one of his linked machines: how many sessions are working, waiting on him, or busy in the last hour, and the few most pressing. Use it for "what\'s the status" or "what am I working on"; give the count, name the top ones, and offer the rest (`more`). `tessaya_in_flight` is only this computer\'s mid-turn work, for before a restart.',
+    'What he and his agents are on now, on every one of his linked machines: how many sessions are working, waiting on him, or busy in the last hour, and the few most pressing. Use it for "what\'s the status", "what am I working on", "which sessions are open" or "which machines are up" (`machines` answered, `unreachable` did not); give the count, name the top ones, and offer the rest (`more`). `tessaya_in_flight` is only this computer\'s mid-turn work, for before a restart.',
   success: TessayaWorkNowResult,
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
@@ -213,7 +213,7 @@ const WorkNowTool = Tool.make("tessaya_work_now", {
 const SessionsTool = Tool.make("tessaya_sessions", {
   ...shared,
   description:
-    "List the Claude Code sessions on this computer, every project, newest first. `query` matches a session's title or folder (not what was said in it).",
+    "Find a Claude Code session on this computer, past or present, every project, newest first. `query` matches a session's title or folder (not what was said in it). Which sessions are open now, on all his machines, is `tessaya_work_now`'s.",
   parameters: Schema.Struct({
     query: TessayaCatalogListInput.fields.query,
     limit: Limit(100, 30),
@@ -485,7 +485,7 @@ const PulseTool = Tool.make("tessaya_pulse", {
 const WhosHomeTool = Tool.make("tessaya_whos_home", {
   ...shared,
   description:
-    'Who\'s home or around now, and where each is ("who\'s home?", "where am I?": you is the one asking), most sure first. Fused from every signal: their verified voice, typing on their own device, their devices connected, headphones on a Tessel, a Tessel picked up, the desktop locking or idle. A voice she doesn\'t know shows as guest: true, "a guest": someone is there; say so without guessing who. confidence: how sure they\'re around (likelyHome at 0.25 and up); nearest: the vessel they\'re most likely by and how sure; reasons: the evidence, strongest first. It\'s a guess, never a tracker: say it as one and name the strongest reason ("I heard Sara on the kitchen Tessel 5 minutes ago", "Omid\'s phone is connected"). "Follow me" (her own lines go to the vessel they\'re nearest) is their `follow` preference, on unless they turn it off. Only for the household\'s own members to ask, never a guest.',
+    'Who\'s home or around now, and where each is in the home ("who\'s home?", "where am I?", "which room is Sara in?": you is the one asking), most sure first. A bare "where am I?" asks where the person is, so call it; only a question about folders, files or code is a path question. Answer "where am I?" from their own row (`you`) alone. Fused from every signal: their verified voice, typing on their own device, their devices connected, headphones on a Tessel, a Tessel picked up, the desktop locking or idle. A voice she doesn\'t know shows as guest: true, "a guest": someone is there; say so without guessing who. confidence: how sure they\'re around (likelyHome at 0.25 and up); nearest: the vessel they\'re most likely by and how sure; reasons: the evidence, strongest first. It\'s a guess, never a tracker: say it as one and name the strongest reason ("I heard Sara on the kitchen Tessel 5 minutes ago", "Omid\'s phone is connected"). "Follow me" (her own lines go to the vessel they\'re nearest) is their `follow` preference, on unless they turn it off. Only for the household\'s own members to ask, never a guest.',
   // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
   success: Schema.Struct({
     people: Schema.Array(

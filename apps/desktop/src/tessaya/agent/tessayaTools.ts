@@ -1385,7 +1385,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
     {
       name: "app_command",
       description:
-        "Run one of the app's own commands in his sessions window, as its keyboard shortcut would: open or close a view, panel, terminal, preview or picker, move between sessions, show usage. `command` is its name (usage.open, terminal.split, sidebar.toggle); `script` instead runs a project script by its id. A toggle run again undoes it; settle and pin are undone with thread.undo or again. Not for settings (settings_set) or dictation (dictation_start).",
+        "Run one of the app's own commands in his sessions window, as its keyboard shortcut would: open or close a view, panel, terminal, preview or picker, move between sessions, restart a session's agent (so it picks up a new MCP server or login), show usage. `command` is its name (usage.open, terminal.split, sidebar.toggle, thread.restartSession); `script` instead runs a project script by its id. A toggle run again undoes it; settle and pin are undone with thread.undo or again. Not for settings (settings_set) or dictation (dictation_start).",
       inputSchema: object({
         command: { enum: [...VOICED_APP_COMMANDS] },
         script: { type: "string" },
