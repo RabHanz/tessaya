@@ -5,6 +5,7 @@ import {
   LINE_EVENT_IDS,
   LINE_POOL,
   RECENT_KEEP,
+  eyeClipOf,
   farewellEvent,
   fillLine,
   greetEvent,
@@ -53,6 +54,15 @@ describe("the guard on a wording", () => {
     expect(lineProblem("ack.name", l("Yes?", { gesture: "moonwalk" as never }))).toBe(
       "an unknown gesture",
     );
+  });
+
+  it("shows the Tessel a face-library mood by its own name, not the nearest of nine clips", () => {
+    // 16 Nov: her playful sulk reached the eyes as angry's red scowl.
+    expect(eyeClipOf("sulky")).toBe("sulky");
+    expect(eyeClipOf("lonely")).toBe("lonely");
+    expect(eyeClipOf("love")).toBe("love");
+    expect(eyeClipOf("steady")).toBe("neutral");
+    expect(eyeClipOf("giddy")).toBeNull();
   });
 
   it("passes every event's own plain line, so the fallback is always sayable", () => {

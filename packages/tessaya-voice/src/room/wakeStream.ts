@@ -305,6 +305,11 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     const pass = kwsPass(event);
     const early = earlyConfirm.get(`${id}#${event.seg}`);
     earlyConfirm.delete(`${id}#${event.seg}`);
+    if (pass === undefined && event.pass === true && !woke && kwsWord(event.name) !== undefined)
+      // The Tessel passes at its own lower threshold; say so, or an audit reads it as a missed wake (16 Nov seg 244).
+      deps.log(
+        `[${id}] seg ${event.seg} kws ${Number(event.best ?? 0).toFixed(3)} under the loop's ${kwsWord(event.name)!.threshold}; not a wake`,
+      );
     if (pass === undefined || woke || pcm.length === 0) return;
     const { w, best, trusted } = pass;
     const voice = deps.voice?.(pcm).catch(() => undefined);

@@ -1266,7 +1266,7 @@ describe("what Tessaya's Devices page can ask of the room", () => {
       `freya/r1/${DEV}/voice/say`,
       Buffer.from(JSON.stringify({ text: "Back, and up to date.", mood: "proud", gesture: "hop" })),
     );
-    expect(eyes().slice(before)).toEqual(["happy"]);
+    expect(eyes().slice(before)).toEqual(["proud"]);
   });
 });
 
@@ -1965,7 +1965,7 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
       .map((p) => JSON.parse(String(p.payload)).mood as string);
     expect(moods).toEqual(["thinking"]);
     expect(logs).toContain(`[${DEV}] eye intent thinking for 15000 ms (brain)`);
-    // A face-library mood shows as its clip; a word outside the one vocabulary never reaches the nine clips.
+    // A face-library mood shows by its own name; a word outside the one vocabulary never reaches the eyes.
     for (const mood of ["concerned", "worried", "attentive"])
       t.room.message(
         `freya/r1/${DEV}/voice/intent/eye`,
@@ -1976,7 +1976,7 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
       t.published
         .filter((p) => p.topic.endsWith("/cmd/eye/set"))
         .map((p) => JSON.parse(String(p.payload)).mood as string),
-    ).toEqual(["thinking", "sad"]);
+    ).toEqual(["thinking", "concerned"]);
   });
 });
 

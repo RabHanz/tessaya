@@ -36,7 +36,7 @@ const BOND_HALF_LIFE_MS = 30 * 86_400_000;
 const BOND_PER_DAY = 0.01;
 /** Time away before she notices it (§3.4). */
 export const AWAY_MS = 3 * 3_600_000;
-/** The return reply's sulk at Playful lasts this long, then she is glad he is back. */
+/** The return reply's sulk at Playful lasts at most this long, then she is glad he is back. */
 const SULK_MS = 60_000;
 
 /** The pack's `guilt:` (0 to 3) as the teasing dial (§3.4): 0 off, 1 light, 2 and up playful. */
@@ -280,7 +280,9 @@ export const affectView = (
   const k = clamp(ctx.settings.intensity, 0, 1);
   const absence = k * absenceOf(s, ctx.now, ctx.guilt);
   const missing = absence < -0.1;
-  const returning = s.returnedAt !== null && ctx.now - s.returnedAt < SULK_MS;
+  // The hmph is for the return reply only: his next turn, an apology or anything else, ends it (16 Nov: it outlasted "sorry").
+  const returning =
+    s.returnedAt !== null && s.seenAt === s.returnedAt && ctx.now - s.returnedAt < SULK_MS;
   const label: ExpressionMood =
     d.energy < 0.3 && d.arousal < 0.45
       ? "sleepy"

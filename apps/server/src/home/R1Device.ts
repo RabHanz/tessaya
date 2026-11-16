@@ -54,7 +54,7 @@ import { MemoryViewer } from "../tessaya/TessayaMemoryService.ts";
 import { houseZone } from "../tessaya/houseZone.ts";
 import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaVocabulary } from "../tessaya/TessayaVocabulary.ts";
-import { TessayaTurn, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
+import { TessayaTurn, movesMood, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
 import { replyFor } from "../tessaya/PersonaLayers.ts";
 import {
@@ -70,7 +70,7 @@ import {
   sessionTools,
 } from "../tessaya/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
-import { greetEvent, isLineEvent, r1MoodOf } from "@t3tools/tessaya-shared/expression";
+import { eyeClipOf, greetEvent, isLineEvent } from "@t3tools/tessaya-shared/expression";
 import type { ExpressionMood } from "@t3tools/tessaya-contracts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
@@ -111,7 +111,7 @@ const eyes = (device: R1Device | null, mood: ExpressionMood, holdMs: number, rea
     : publishToDevice(
         device,
         eyeIntentTopic(device.deviceId),
-        JSON.stringify({ vessel: device.deviceId, mood: r1MoodOf(mood), holdMs, reason }),
+        JSON.stringify({ vessel: device.deviceId, mood: eyeClipOf(mood), holdMs, reason }),
       ).pipe(Effect.ignore);
 
 /** His pronunciations (`voicePronounce`) for the room loop's voice: the whole map as JSON, retained for a late loop. */
@@ -887,6 +887,25 @@ const r1Finish = Effect.fn("R1Device.finish")(function* (
   unplayed.set(callId, { at: now, commit: Effect.ignore(commit) });
 });
 
+/**
+ * The eyes after a turn: the outcome, else her mood (CS6), the same label her other bodies show. Her mood only on the
+ * turns her words were told it (`movesMood`): on another voice's turn she said "pretty calm" behind sulky eyes (16 Nov).
+ */
+export const turnFace = (
+  turn: TurnEnvelope,
+  outcomes: ReadonlyArray<ActOutcome>,
+  felt: { readonly label: ExpressionMood } | null,
+): { readonly mood: ExpressionMood; readonly reason: string } => {
+  const mine = felt !== null && movesMood(turn) ? felt : null;
+  if (outcomes.some((o) => o.status === "asked"))
+    return { mood: "curious", reason: "the turn's outcome" };
+  if (outcomes.some((o) => !o.ok || o.status === "failed"))
+    return { mood: "sad", reason: "the turn's outcome" };
+  return mine === null || mine.label === "neutral"
+    ? { mood: "happy", reason: mine === null ? "the turn's outcome" : "her mood: neutral" }
+    : { mood: mine.label, reason: `her mood: ${mine.label}` };
+};
+
 const r1Commit = Effect.fn("R1Device.commit")(function* (
   device: R1Device | null,
   input: R1Heard,
@@ -906,17 +925,10 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
           .pipe(Effect.ignore, Effect.forkDetach),
       { discard: true },
     );
-  // A turn that went fine shows her mood when she has one (CS6), the same label her other bodies show.
   const affect = yield* Effect.serviceOption(TessayaMood);
   const felt = Option.isNone(affect) ? null : yield* affect.value.view(turn.persona, turn.timeZone);
-  const mood: ExpressionMood = outcomes.some((o) => o.status === "asked")
-    ? "curious"
-    : outcomes.some((o) => !o.ok || o.status === "failed")
-      ? "sad"
-      : felt === null || felt.label === "neutral"
-        ? "happy"
-        : felt.label;
-  yield* eyes(device, mood, 4000, felt === null ? "the turn's outcome" : `her mood: ${felt.label}`);
+  const face = turnFace(turn, outcomes, felt);
+  yield* eyes(device, face.mood, 4000, face.reason);
   const record = yield* Effect.serviceOption(TessayaRecordService);
   if (record._tag === "Some")
     yield* record.value.append({
