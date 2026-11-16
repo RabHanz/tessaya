@@ -173,10 +173,10 @@ index fd3aca76ad247c3101889df922e29f104f8de909..5bc505b36132fc74070b3b7bede32017
      "@tanstack/react-router": "^1.160.2",
      "@tiptap/core": "^3.31.3",
 diff --git a/evals/README.md b/evals/README.md
-index 8cfb697373c318c91927adeb4f373d54a7e1922e..162c0edeac73270441571bae7de0591de33a1b2a 100644
+index 8cfb697373c318c91927adeb4f373d54a7e1922e..61a91ba6d805e0b63169a43b2d525278d454ca27 100644
 --- a/evals/README.md
 +++ b/evals/README.md
-@@ -4,13 +4,20 @@ An eval runs a real model against T3 Code's real text or code and scores what th
+@@ -4,13 +4,21 @@ An eval runs a real model against T3 Code's real text or code and scores what th
  
  Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
  
@@ -201,14 +201,15 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..162c0edeac73270441571bae7de0591d
 +| [tessaya-plan](tessaya-plan/)           | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                      |
 +| [tessaya-dictation](tessaya-dictation/) | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused. |
 +| [tessaya-learning](tessaya-learning/)   | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                  |
++| [tessaya-pulse](tessaya-pulse/)         | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                   |
  
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..c3afbe05294b7873b0e80d746dd5d9e7b853c386 100644
+index 0659f65475da775fd54525d9147c84a8b0ad4a3a..fc447aeac75e83b5cbaffce09205971dc4c7d158 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,8 +10,19 @@
+@@ -10,8 +10,20 @@
      "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
@@ -225,7 +226,8 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..c3afbe05294b7873b0e80d746dd5d9e7
 +    "tessaya-lines": "node tessaya-lines/run.ts",
 +    "tessaya-plan": "node tessaya-plan/run.ts",
 +    "tessaya-dictation": "node tessaya-dictation/run.ts",
-+    "tessaya-learning": "node tessaya-learning/run.ts"
++    "tessaya-learning": "node tessaya-learning/run.ts",
++    "tessaya-pulse": "node tessaya-pulse/run.ts"
    },
    "dependencies": {
      "@effect/platform-node": "catalog:",
