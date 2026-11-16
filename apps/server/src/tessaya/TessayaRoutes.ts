@@ -4,7 +4,7 @@
  * (the pairing cookie, or a bearer token), with the rules in BatonTessayaApi. Mounted by TessayaServerLayer.routes.
  */
 import { PRIVATE_KIND } from "@t3tools/tessaya-shared/provenance";
-import { emitActionSync } from "../provenance/ActionLog.ts";
+import { emitAction, emitActionSync } from "../provenance/ActionLog.ts";
 import { effectFired } from "./turnActions.ts";
 import { NONVERBALS } from "@t3tools/tessaya-shared/interjections";
 import * as NodePath from "node:path";
@@ -719,6 +719,8 @@ const DESK_SIGNALS = new Set([
   "call",
   "screenShared",
   "recording",
+  // He talked over her on the desktop: only that vessel's acts stop; his session goes on.
+  "bargeIn",
 ]);
 
 /**
@@ -813,7 +815,16 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       if (!caller.desktop) return notHere;
       const desk = deskReport(body);
       if (desk.key !== null) deviceKey = desk.key;
-      for (const kind of desk.signals) for (const l of registry.value.all) l.signal({ kind });
+      for (const kind of desk.signals)
+        for (const l of registry.value.all)
+          l.signal(kind === "bargeIn" ? { kind, vessel: "desktop" } : { kind });
+      if (desk.signals.includes("bargeIn"))
+        yield* emitAction({
+          kind: "desk.voice.barge",
+          actor: { kind: "device", id: "desktop", certainty: 1 },
+          subject: "desktop",
+          evidence: [{ kind: "device", ref: "desktop" }],
+        });
       // A locked, sleeping or long-idle desktop: they stepped away from it (B-043).
       const away = desk.signals.some((k) => k === "screenLocked" || k === "sleep")
         ? "deskAway"

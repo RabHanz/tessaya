@@ -307,6 +307,8 @@ describe("the room voice loop", () => {
         (p) => p.topic === `freya/r1/${DEV}/voice/ctl` && String(p.payload).includes("flush"),
       ),
     ).toBe(true);
+    // Her server hears it at once, so a layer's device act stops on the interruption (VOXTA I4).
+    expect(t.published.some((p) => p.topic === `freya/r1/${DEV}/event/voice/barge`)).toBe(true);
     const m = await t.metrics;
     expect(m.text).toBe("turn on the study light");
   });

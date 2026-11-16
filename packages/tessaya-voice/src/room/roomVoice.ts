@@ -1306,6 +1306,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       return true;
     };
     const gesture = (name: string) => eye("cmd/eye/gesture", { name });
+    /** He talked over her: her server tells the persona layers, so anything timed to her words stops (VOXTA I4). */
+    const bargeIn = () => deps.publish(topic(id, "event/voice/barge"), "{}");
     /**
      * A sentence's stage directions on the words they sit before (VOXTA-STUDY G7), timed on this loop's playback
      * clock: by letters across the sentence's measured length, as the R1 has no aligner. Null when it has none.
@@ -2095,6 +2097,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       current_ = me;
       // One reply at a time: two playing at once interleave their frames on the downlink, which sounds chopped.
       // Still audible counts too: her last reply may already be on the R1.
+      if (speaking()) bargeIn();
       if (reply !== null || speaking()) interrupt();
       const control = kept?.control ?? new AbortController();
       reply = control;
@@ -2328,6 +2331,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       bargedIn = true;
       deps.log(`[${id}] he cut in; her reply stopped`);
       interrupt();
+      bargeIn();
     };
 
     const act = (actions: ReadonlyArray<TurnAction>) => {

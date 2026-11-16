@@ -18,6 +18,7 @@ import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 
 import { VoiceForgets, layer as VoiceForgetsLayer } from "../tessaya/VoiceForgets.ts";
 import { layer as presenceLayer, peopleHere } from "../tessaya/TessayaPresence.ts";
+import { PersonaLayers, type LayerSignal } from "../tessaya/PersonaLayers.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import {
   MemberPreferences,
@@ -645,6 +646,31 @@ it.effect(
       yield* devices.receive(`${root}/event/touch`, '{"pad":"top","gesture":"long"}');
       assert.deepStrictEqual(sent, [{ topic: "voice/ask", payload: { text: "What time is it?" } }]);
     }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "tells the persona layers when he talks over her on a Tessel, for that Tessel only",
+  () => {
+    const { layer } = setup();
+    const signals: Array<LayerSignal> = [];
+    const layers = Layer.succeed(PersonaLayers, {
+      all: [
+        {
+          id: "test",
+          onTurn: async () => null,
+          signal: (s) => void signals.push(s),
+          http: async () => ({ status: 404 }),
+        },
+      ],
+    });
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/event/voice/metrics`, '{"bargedIn":true}');
+      yield* devices.receive(`${root}/event/voice/barge`, "{}");
+      assert.deepStrictEqual(signals, [{ kind: "bargeIn", vessel: ID }]);
+    }).pipe(Effect.provide(layer.pipe(Layer.provide(layers))));
   },
 );
 
