@@ -201,6 +201,12 @@ export class DictationCleanupApi extends Context.Service<
       route: ConverseRoute,
       input: ConverseRequest,
     ) => Stream.Stream<ConversePart, DictationCleanupError | BrainRefused | ServerSettingsError>;
+    /** Records the usage of a clean-up his own plan answered on the desktop. */
+    readonly subscriptionUsed: (input: {
+      readonly model: string;
+      readonly usage?: unknown;
+      readonly modelUsage?: unknown;
+    }) => Effect.Effect<void>;
   }
 >()("t3/speech/DictationCleanupApi") {}
 
@@ -412,7 +418,22 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  return DictationCleanupApi.of({ configured, setKey, test, cleanup, converse });
+  /** A clean-up his plan answered on the desktop: its usage, billed to the subscription (tokens, no dollars). */
+  const subscriptionUsed = Effect.fn("DictationCleanupApi.subscriptionUsed")(function* (input: {
+    readonly model: string;
+    readonly usage?: unknown;
+    readonly modelUsage?: unknown;
+  }) {
+    for (const tokens of BrainUsage.cliTokens(input, input.model))
+      yield* usage.record({
+        ...tokens,
+        role: "cleanup",
+        credential: "subscription",
+        attribution: { feature: "dictation", origin: "user" },
+      });
+  });
+
+  return DictationCleanupApi.of({ configured, setKey, test, cleanup, converse, subscriptionUsed });
 });
 
 export const layer = Layer.effect(DictationCleanupApi, make).pipe(Layer.provide(BrainUsage.layer));

@@ -694,6 +694,12 @@ export const makeHandlers = Effect.gen(function* () {
           }),
         ),
       ),
+    [BATON_DICTATION_WS_METHODS.cleanupUsage]: (input) =>
+      run(
+        Effect.flatMap(DictationCleanupApi, (api) => api.subscriptionUsed(input)).pipe(
+          Effect.as({}),
+        ),
+      ),
     [BATON_DICTATION_WS_METHODS.cleanupApiStatus]: () =>
       run(
         Effect.flatMap(DictationCleanupApi, (api) => api.configured).pipe(

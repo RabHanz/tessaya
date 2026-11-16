@@ -50,6 +50,8 @@ export interface VisionSessionOptions {
   readonly cwd?: string;
   /** Every tool call the model makes, for the log. */
   readonly onTool?: (call: ToolCall) => void;
+  /** Each turn's `result` event, whose usage the caller records. */
+  readonly onResult?: (event: Record<string, unknown>) => void;
   /** Baton's own tool server for this session: its address and the token it needs (D143). */
   readonly mcp?: { readonly url: string; readonly token: string };
   /** Pass `--chrome` so the session can use his Claude in Chrome extension (D3). */
@@ -393,6 +395,8 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
     if (delta !== null) return waiting[0]?.onDelta?.(delta);
     const result = resultOf(line);
     if (result === null) return;
+    if (options.onResult !== undefined)
+      options.onResult(JSON.parse(line) as Record<string, unknown>);
     const next = waiting.shift();
     if (next === undefined) return;
     if (result.ok) next.resolve(result.text);
