@@ -141,7 +141,11 @@ talking still work.
 paired, in your order; she plays on the first one that is connected right now, so a device that is off or still
 connecting never holds her up. Her own speaker is first until you change it: drag the list, or ask her ("use my
 headphones first", "always use your speaker"). If replies stop reaching a Bluetooth device mid-conversation, she moves to
-the next one in the list and skips that device for 15 minutes.
+the next one in the list and skips that device for 15 minutes. **Private** on an output lets private replies play
+there; by default only headphones and headsets have it. A private reply never plays anywhere else: with no private
+output connected she says "I'll tell you when your headphones are on" and says it once they are. Her own speaker or a
+room speaker tagged private plays one only when your recognised voice is alone with her. Ask her too ("only use my
+headphones for private stuff", "you can use your speaker for private too").
 
 **Screen** (firmware 3.32). Auto turns the screen with the Tessel; Normal or Upside down pins it. If Auto has it the
 wrong way up, stand the Tessel the way you use it and press **Set upright**.

@@ -1459,3 +1459,111 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it("plays a private reply only on an output tagged private, open ones only when he is alone, Bluetooth only with a hold", () => {
+  const HP = "AA:00:00:00:00:46";
+  const ROOM = "BB:00:00:00:00:77";
+  const tags: Record<string, { private: boolean; closed: boolean }> = {
+    speaker: { private: false, closed: false },
+    [HP]: { private: true, closed: true },
+    [ROOM]: { private: true, closed: false },
+  };
+  const target = (
+    order: Array<string>,
+    connected: Array<string>,
+    skipped: Array<string>,
+    alone: boolean,
+    hold = true,
+    over: Record<string, { private: boolean; closed: boolean }> = {},
+  ) =>
+    HomeDevices.privateTargetOf(
+      order,
+      (o) => over[o] ?? tags[o]!,
+      new Set(connected),
+      new Set(skipped),
+      alone,
+      hold,
+    );
+  // Her untagged speaker is never a fallback: nothing connected, the headphones stalled, or no hold in the firmware.
+  assert.isNull(target(["speaker", HP], [], [], true));
+  assert.isNull(target([HP, "speaker"], [HP], [HP], true));
+  assert.isNull(target([HP, "speaker"], [HP], [], true, false));
+  assert.strictEqual(target(["speaker", HP], [HP], [], true), HP);
+  // A guest in the room, or a voice not verified: never an open output, even tagged.
+  assert.isNull(target([ROOM, "speaker"], [ROOM], [], false));
+  assert.strictEqual(target([ROOM, HP], [ROOM, HP], [], false), HP);
+  const speakerToo = { speaker: { private: true, closed: false } };
+  assert.isNull(target(["speaker", HP], [], [], false, true, speakerToo));
+  assert.strictEqual(target(["speaker", HP], [], [], true, true, speakerToo), "speaker");
+  assert.deepStrictEqual(HomeDevices.privateTagOf({ name: "your own speaker", private: "also" }), {
+    name: "speaker",
+    how: "also",
+  });
+  assert.isNull(HomeDevices.privateTagOf({ name: "my headphones" }));
+});
+
+it.effect(
+  "holds a private reply no tagged output can play, says it once his headphones connect, and keeps a guest from her speaker",
+  () => {
+    const { sent, layer } = setup();
+    const HP = "AA:00:00:00:00:46";
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const him = { who: "Tessaya via R1", surface: "assistant", approved: true } as const;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(`${root}/state/caps`, '{"bt_speaker":true,"route_hold":true}');
+      yield* devices.receive(
+        `${root}/state/bt/bonds`,
+        JSON.stringify({
+          devices: [{ mac: HP, name: "SoundSurge 46", kind: "headphones", connected: false }],
+        }),
+      );
+      yield* devices.receive(`${root}/state/audio/output`, '{"out":"onboard","wanted":"speaker"}');
+      sent.length = 0;
+      const said = () => sent.filter((s) => s.topic === "voice/say");
+
+      // His headphones are off: held, and nothing is routed anywhere for it.
+      assert.strictEqual(yield* devices.routeReply(ID, "private", true), "hold");
+      yield* devices.holdPrivate(ID, "the held words");
+      assert.deepStrictEqual(sent, []);
+
+      // They connect: routed there with a hold, and said only once the firmware is on them.
+      yield* devices.receive(
+        `${root}/state/bt`,
+        JSON.stringify({
+          state: "connected",
+          mac: HP,
+          out: "onboard",
+          wanted: "speaker",
+          saved: true,
+        }),
+      );
+      assert.deepStrictEqual(sent.filter((s) => s.topic === "cmd/audio/output").at(-1)?.payload, {
+        to: "bt",
+        mac: HP,
+        hold: true,
+      });
+      assert.deepStrictEqual(said(), []);
+      yield* devices.receive(`${root}/state/audio/output`, '{"out":"bt","wanted":"bt"}');
+      yield* Effect.yieldNow;
+      assert.deepStrictEqual(said(), [{ topic: "voice/say", payload: { text: "the held words" } }]);
+
+      // "You can use your speaker for private too": only while he is alone with her.
+      const tagged = yield* devices.command(
+        ID,
+        { op: "item", itemId: "audio.output", value: { name: "your speaker", private: "also" } },
+        him,
+      );
+      assert.include(tagged.line, "only when you're alone with me");
+      yield* devices.receive(
+        `${root}/state/bt`,
+        JSON.stringify({ state: "idle", mac: HP, out: "onboard", wanted: "speaker", saved: true }),
+      );
+      yield* devices.receive(`${root}/state/audio/output`, '{"out":"onboard","wanted":"speaker"}');
+      // A guest heard: her speaker fills the room, so it is held.
+      assert.strictEqual(yield* devices.routeReply(ID, "private", false), "hold");
+      assert.strictEqual(yield* devices.routeReply(ID, "private", true), "play");
+    }).pipe(Effect.provide(layer));
+  },
+);

@@ -10,6 +10,7 @@ import {
   DEVICE_SPEAKER_OUTPUTS,
   DEVICE_TRANSPORTS,
   OWN_SPEAKER,
+  type OutputClass,
   EnrolCard,
   R1_DEVICE_DEFAULTS,
   R1_DEVICE_DOS,
@@ -113,6 +114,10 @@ export type DeviceCommand =
       readonly output?: DeviceSpeakerOutput;
       /** `order`: her own speaker (OWN_SPEAKER) and Bluetooth addresses, first choice first. */
       readonly order?: ReadonlyArray<string>;
+      /** `classes`: the output and what it may play; null privateCap is the usual level. */
+      readonly target?: string;
+      readonly classes?: ReadonlyArray<OutputClass>;
+      readonly privateCap?: number | null;
     }
   | { readonly op: "reboot" }
   /** A signed firmware release over the air (R1Updates.install); null: the one this build recommends. */
@@ -165,6 +170,12 @@ const TRIAL_MS = 60_000;
 const ROUTE_RESEND_MS = 20_000;
 /** How long a device that stalled mid-reply is passed over before it is tried again. */
 const STALL_SKIP_MS = 15 * 60_000;
+/** How long a private reply waits for the firmware to confirm its route before it is held instead. */
+const PRIVATE_CONFIRM_MS = 2_000;
+/** A private reply's route is left alone this long unless another reply comes first. */
+const PRIVATE_ON_MS = 2 * 60_000;
+/** A held private reply is said when a private output connects within this, else dropped. */
+const PRIVATE_HELD_MS = 30 * 60_000;
 const CAMERA_WINDOW_MS = 30_000;
 const SHOT_KEEP_MS = 10 * 60_000;
 const ASK_TTL_MS = 10 * 60_000;
@@ -212,6 +223,8 @@ export interface Heard {
     linked?: string | null;
     /** Its saved devices (state/bt/bonds, 0.3.52), upper case, with which are connected. */
     bonds?: ReadonlyArray<{ readonly mac: string; readonly connected: boolean }>;
+    /** Its firmware drops a held route's reply rather than playing it on her speaker (state/caps route_hold). */
+    holdCap?: boolean;
   } | null;
   samples: Record<string, Array<number>>;
   log: Array<{ at: number; topic: string; text: string }>;
@@ -378,6 +391,47 @@ export const routeOf = (
   }
   return page === null ? { to: "speaker" } : { to: "bt", mac: page };
 };
+
+/** Headphones and headsets are heard by him alone; her speaker and other Bluetooth speakers fill the room. */
+const closedKind = (kind: BtKind | undefined) => kind === "headphones" || kind === "headset";
+
+/** Until he tags them: private replies only on headphones or a headset, everything else anywhere. */
+const defaultClassesOf = (id: string, kind: BtKind | undefined): Array<OutputClass> =>
+  id !== OWN_SPEAKER && closedKind(kind)
+    ? ["private", "personal", "normal", "alerts"]
+    : ["personal", "normal", "alerts"];
+
+const OWN_WORDS = /^(?:(?:your|her|the)\s+)?(?:own\s+)?(?:speaker|tessel)$|^you(?:rself)?$/i;
+
+/** audio.output with `private`: his words for an output and whether private replies may play there. */
+export const privateTagOf = (
+  value: unknown,
+): { readonly name: string; readonly how: "only" | "also" | "not" } | null => {
+  const v = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+  const how = v?.["private"];
+  if (how !== "only" && how !== "also" && how !== "not") return null;
+  const name = str(v?.["mac"]) ?? str(v?.["name"]) ?? OWN_SPEAKER;
+  return { name: OWN_WORDS.test(name.trim()) ? OWN_SPEAKER : name, how };
+};
+
+/**
+ * The one output a private reply may play on now, or null: the first in his order tagged private that can play, and
+ * open to the room (her speaker, a speaker) only when he is alone with her. Bluetooth needs firmware that drops a
+ * stalled reply instead of moving it to her speaker. Never any other output, whatever is connected.
+ */
+export const privateTargetOf = (
+  order: ReadonlyArray<string>,
+  tagged: (o: string) => { readonly private: boolean; readonly closed: boolean },
+  connected: ReadonlySet<string>,
+  skipped: ReadonlySet<string>,
+  alone: boolean,
+  holdCap: boolean,
+): string | null =>
+  order.find((o) => {
+    const t = tagged(o);
+    if (!t.private || (!alone && !t.closed)) return false;
+    return o === OWN_SPEAKER || (holdCap && connected.has(o) && !skipped.has(o));
+  }) ?? null;
 
 /**
  * Folds one broker message into what we know of its device. Pure. Returns the device id, the item values it carries
@@ -549,9 +603,10 @@ export const applyMessage = (
       break;
     case "state/caps":
       item("system.firmware", str(body?.["fw"]));
-      if (body?.["bt_speaker"] === true)
+      if (body?.["bt_speaker"] === true) {
         d.speaker ??= { state: "off", saved: null, output: "auto", found: [], scannedAt: null };
-      else d.speaker = null;
+        d.speaker.holdCap = body["route_hold"] === true;
+      } else d.speaker = null;
       break;
     case "state/bt": {
       item("bt.state", str(body?.["state"]));
@@ -682,6 +737,11 @@ interface Saved {
   volume: Record<string, number>;
   /** Per R1: his output order (outputOrderOf); absent is her own speaker first. */
   outputs: Record<string, Array<string>>;
+  /** Per R1 and output: what it may play (defaultClassesOf when absent) and its private level. */
+  outputClasses: Record<
+    string,
+    Record<string, { classes: Array<OutputClass>; privateCap?: number }>
+  >;
   tags: Record<string, { label: string; action: DeviceTagAction }>;
   /** Per R1: the device's bindings from its last ack, and Tessaya's (null: nothing, overriding the default). */
   keys: Record<
@@ -789,6 +849,17 @@ export class HomeDevices extends Context.Service<
       id: string,
     ) => Effect.Effect<{ readonly at: string; readonly dataUrl: string } | null>;
     readonly cameraClear: (id: string) => Effect.Effect<void>;
+    /**
+     * Routes the reply about to play to an output tagged for its class. A private one plays only once the firmware
+     * is on such an output (her speaker only when he is alone with her); "hold" means it must not play now.
+     */
+    readonly routeReply: (
+      id: string,
+      cls: OutputClass,
+      alone: boolean,
+    ) => Effect.Effect<"play" | "hold">;
+    /** A private reply that could not play: kept in memory and said once a private output connects. */
+    readonly holdPrivate: (id: string, text: string) => Effect.Effect<void>;
     /** A JPEG the device posted; taken only inside the window he opened. */
     readonly acceptShot: (id: string, bytes: Uint8Array) => Effect.Effect<boolean>;
     /** One broker message; the subscriber feeds every one through here, in order. */
@@ -884,6 +955,7 @@ const make = Effect.gen(function* () {
         eyeStyle: (value["eyeStyle"] ?? {}) as Saved["eyeStyle"],
         volume: (value["volume"] ?? {}) as Saved["volume"],
         outputs: (value["outputs"] ?? {}) as Saved["outputs"],
+        outputClasses: (value["outputClasses"] ?? {}) as Saved["outputClasses"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
         keys: (value["keys"] ?? {}) as Saved["keys"],
       };
@@ -1228,7 +1300,17 @@ const make = Effect.gen(function* () {
       tail === "event/bt/devices"
     ) {
       yield* btHeard(result.id, tail, json(payload), now);
-      if (tail !== "event/bt/devices") yield* applyRoute(result.id);
+      const wait = routeWaits.get(result.id);
+      if (wait !== undefined) {
+        routeWaits.delete(result.id);
+        yield* Deferred.succeed(wait, undefined);
+      }
+      if (tail !== "event/bt/devices") {
+        yield* applyRoute(result.id);
+        // Off the broker's queue: its confirmation comes in on that queue.
+        if (held.has(result.id))
+          yield* releaseHeld(result.id).pipe(Effect.forkIn(scope, { startImmediately: true }));
+      }
     } else if (tail === "event/audio/stall") yield* stalled(result.id, json(payload));
   });
 
@@ -1240,6 +1322,28 @@ const make = Effect.gen(function* () {
   const skips = new Map<string, Map<string, number>>();
   /** The route last sent per R1, so a burst of Bluetooth reports sends it once. */
   const routed = new Map<string, { readonly key: string; readonly at: number }>();
+  /** The class of the reply playing now per R1, which picks the outputs its route may use. */
+  const classNow = new Map<string, OutputClass>();
+  /** A private reply's output while it plays: nothing else moves the route until the next reply. */
+  const privateOn = new Map<string, { readonly key: string; readonly until: number }>();
+  /** Private replies that could not play; memory only, never written down. */
+  const held = new Map<string, { readonly text: string; readonly until: number }>();
+  /** Her level before a private reply lowered it (a whisper), to put back on the next reply. */
+  const levelBefore = new Map<string, number>();
+  /** A private route waiting for the firmware to confirm it. */
+  const routeWaits = new Map<string, Deferred.Deferred<void>>();
+
+  const kindsOf = Effect.fn("HomeDevices.kindsOf")(function* (id: string) {
+    const kinds = new Map<string, BtKind | undefined>();
+    for (const k of knownFrom(yield* registry.value(id, "bt.known")))
+      kinds.set(k.mac.toUpperCase(), k.kind);
+    const saved = heard.get(id)?.speaker?.saved;
+    if (saved != null && !kinds.has(saved.mac.toUpperCase()))
+      kinds.set(saved.mac.toUpperCase(), saved.kind);
+    return kinds;
+  });
+  const tagsOf = (saved: Saved, id: string, o: string, kind: BtKind | undefined) =>
+    saved.outputClasses[id]?.[o] ?? { classes: defaultClassesOf(o, kind) };
 
   const bondsOf = (id: string): Array<string> => {
     const sp = heard.get(id)?.speaker;
@@ -1266,8 +1370,16 @@ const make = Effect.gen(function* () {
     const sp = d?.speaker;
     if (d === undefined || sp == null || d.online === false) return;
     const now = yield* Clock.currentTimeMillis;
+    // A private reply's route holds until the next reply; the firmware drops it if that output goes.
+    if ((privateOn.get(id)?.until ?? 0) > now) return;
     const { connected, skipped } = liveOf(id, now);
-    const want = routeOf(yield* orderOf(id), connected, skipped);
+    const cls = classNow.get(id) ?? "normal";
+    const saved = yield* readSaved;
+    const kinds = yield* kindsOf(id);
+    const order = yield* orderOf(id);
+    const allowed = order.filter((o) => tagsOf(saved, id, o, kinds.get(o)).classes.includes(cls));
+    // shortcut: an order with nothing tagged for this class plays on the whole order, so she is never silent.
+    const want = routeOf(allowed.length > 0 ? allowed : order, connected, skipped);
     const on =
       want.to === "speaker"
         ? sp.output === "onboard"
@@ -1294,6 +1406,144 @@ const make = Effect.gen(function* () {
     if (named !== null) skips.get(id)?.delete(named);
     routed.delete(id);
     yield* applyRoute(id);
+  });
+
+  /** The firmware is on this private output now: her speaker without a Bluetooth route, or the device linked. */
+  const onTarget = (id: string, target: string) => {
+    const sp = heard.get(id)?.speaker;
+    if (sp == null) return target === OWN_SPEAKER;
+    return target === OWN_SPEAKER
+      ? sp.output === "onboard" && sp.playing !== "bt"
+      : sp.output === "bt" && sp.linked === target && sp.playing === "bt";
+  };
+
+  const routeReply = Effect.fn("HomeDevices.routeReply")(function* (
+    id: string,
+    cls: OutputClass,
+    alone: boolean,
+  ) {
+    const now = yield* Clock.currentTimeMillis;
+    // An alert while a private reply plays goes where it goes: moving the route would move the rest of it too.
+    if (cls === "alerts" && (privateOn.get(id)?.until ?? 0) > now) return "play" as const;
+    if (cls !== "private") {
+      classNow.set(id, cls);
+      privateOn.delete(id);
+      const before = levelBefore.get(id);
+      if (before !== undefined) {
+        levelBefore.delete(id);
+        yield* publish(id, "cmd/volume", { pct: before });
+      }
+      yield* applyRoute(id);
+      return "play" as const;
+    }
+    const saved = yield* readSaved;
+    const kinds = yield* kindsOf(id);
+    const sp = heard.get(id)?.speaker;
+    const { connected, skipped } = liveOf(id, now);
+    const target = privateTargetOf(
+      outputOrderOf(saved.outputs[id], bondsOf(id)),
+      (o) => ({
+        private: tagsOf(saved, id, o, kinds.get(o)).classes.includes("private"),
+        closed: o !== OWN_SPEAKER && closedKind(kinds.get(o)),
+      }),
+      connected,
+      skipped,
+      alone,
+      sp?.holdCap === true,
+    );
+    if (target === null) return "hold" as const;
+    classNow.set(id, cls);
+    privateOn.set(id, { key: target, until: now + PRIVATE_ON_MS });
+    const cap = tagsOf(saved, id, target, kinds.get(target)).privateCap;
+    const level = yield* registry.value(id, "audio.volume");
+    if (cap !== undefined && typeof level === "number" && level > cap) {
+      if (!levelBefore.has(id)) levelBefore.set(id, level);
+      yield* publish(id, "cmd/volume", { pct: cap });
+    }
+    if (!onTarget(id, target)) {
+      routed.set(id, { key: target, at: now });
+      yield* publish(
+        id,
+        "cmd/audio/output",
+        target === OWN_SPEAKER ? { to: "speaker" } : { to: "bt", mac: target, hold: true },
+      );
+    }
+    // Played only once the firmware says it is there; a late or lost answer holds it instead.
+    const deadline = now + PRIVATE_CONFIRM_MS;
+    while (!onTarget(id, target)) {
+      const left = deadline - (yield* Clock.currentTimeMillis);
+      if (left <= 0) {
+        privateOn.delete(id);
+        return "hold" as const;
+      }
+      const wait = yield* Deferred.make<void>();
+      routeWaits.set(id, wait);
+      yield* Deferred.await(wait).pipe(Effect.timeoutOption(left));
+    }
+    return "play" as const;
+  });
+
+  /** A held private reply, said once a private output (one he alone hears) is connected. */
+  const releaseHeld = Effect.fn("HomeDevices.releaseHeld")(function* (id: string) {
+    const h = held.get(id);
+    if (h === undefined) return;
+    const now = yield* Clock.currentTimeMillis;
+    if (h.until <= now) return void held.delete(id);
+    if ((yield* routeReply(id, "private", false)) !== "play") return;
+    held.delete(id);
+    yield* publish(id, "voice/say", { text: h.text });
+  });
+
+  /** "Only use my headphones for private stuff": where private replies may play, by his verified voice. */
+  const tagPrivate = Effect.fn("HomeDevices.tagPrivate")(function* (
+    id: string,
+    tag: NonNullable<ReturnType<typeof privateTagOf>>,
+    by: DeviceActor,
+  ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
+    if (by.surface === "assistant" && by.approved !== true)
+      return yield* new DeviceRefusedError({
+        why: "Where private replies play changes only for his recognised voice, or in Settings.",
+      });
+    let target: string = OWN_SPEAKER;
+    let label = `the ${DEVICE}'s own speaker`;
+    if (tag.name !== OWN_SPEAKER) {
+      const found = resolveBluetooth(tag.name, yield* knownOf(id));
+      if (found.kind === "several")
+        return {
+          status: "confirm",
+          line: `Which one: ${found.devices.map(btLabel).join(" or ")}? Ask again with its name.`,
+        };
+      if (found.kind === "none")
+        return {
+          status: "done",
+          line: `I don't know an output called "${recordText(tag.name, 40)}" here.`,
+        };
+      target = found.device.mac.toUpperCase();
+      label = btLabel(found.device);
+    }
+    if (by.dryRun !== true) {
+      const kinds = yield* kindsOf(id);
+      const order = yield* orderOf(id);
+      yield* change((s) => {
+        const mine = (s.outputClasses[id] ??= {});
+        const set = (o: string, on: boolean) => {
+          const now = mine[o] ?? { classes: defaultClassesOf(o, kinds.get(o)) };
+          const rest = now.classes.filter((x) => x !== "private");
+          mine[o] = { ...now, classes: on ? ["private", ...rest] : rest };
+        };
+        set(target, tag.how !== "not");
+        if (tag.how === "only") for (const o of order) if (o !== target) set(o, false);
+      });
+    }
+    return {
+      status: "done",
+      line:
+        tag.how === "only"
+          ? `Private replies play only on ${label} now.`
+          : tag.how === "also"
+            ? `Private replies may play on ${label} too now${target === OWN_SPEAKER ? ", only when you're alone with me" : ""}.`
+            : `Private replies never play on ${label} now.`,
+    };
   });
 
   /** The firmware or the room loop says replies stopped reaching this device: the next in his order takes over. */
@@ -1361,11 +1611,14 @@ const make = Effect.gen(function* () {
     plain: string,
     facts: Record<string, string> = {},
   ) =>
-    event === null
-      ? publish(id, "voice/say", { text: plain })
-      : Effect.flatMap(expressOr(event, { plain, facts }), (said) =>
-          said === null ? Effect.void : publish(id, "voice/say", sayPayload(said)),
-        );
+    Effect.andThen(
+      routeReply(id, "alerts", false),
+      event === null
+        ? publish(id, "voice/say", { text: plain })
+        : Effect.flatMap(expressOr(event, { plain, facts }), (said) =>
+            said === null ? Effect.void : publish(id, "voice/say", sayPayload(said)),
+          ),
+    );
 
   /** Route to one known device and connect; the firmware switches between bonded sinks in 3-5 s. */
   const btConnect = Effect.fn("HomeDevices.btConnect")(function* (
@@ -1624,6 +1877,7 @@ const make = Effect.gen(function* () {
         yield* publish(id, "cmd/vibrate", { ms: Math.min(Math.max(Math.round(c.ms), 10), 1500) });
         return done("It buzzed.");
       case "say":
+        yield* routeReply(id, "alerts", false);
         yield* publish(id, "voice/say", { text: recordText(c.text, 400) });
         return done("Sent to the device to say.");
       case "mute":
@@ -1755,6 +2009,7 @@ const make = Effect.gen(function* () {
           delete s.eyeStyle[id];
           delete s.keys[id];
           delete s.outputs[id];
+          delete s.outputClasses[id];
         });
         for (const kept of ["cmd/voice/earcons", "cmd/voice/talkover", "cmd/eye/style"])
           yield* publish(id, kept, "", true);
@@ -1829,6 +2084,30 @@ const make = Effect.gen(function* () {
               });
             if (by.dryRun !== true) yield* setOrder(id, order, order[0] ?? null);
             return done("Saved. Replies play on the first output in this order that is connected.");
+          }
+          case "classes": {
+            const target = c.target === OWN_SPEAKER ? OWN_SPEAKER : (c.target ?? "").toUpperCase();
+            if (target !== OWN_SPEAKER && !MAC.test(target))
+              return yield* new DeviceRefusedError({ why: "That is not one of its outputs." });
+            const classes = [...new Set(c.classes ?? [])];
+            if (by.dryRun !== true)
+              yield* change((s) => {
+                const mine = (s.outputClasses[id] ??= {});
+                // No privateCap keeps the one it has; null clears it.
+                const cap =
+                  c.privateCap === undefined
+                    ? mine[target]?.privateCap
+                    : (c.privateCap ?? undefined);
+                mine[target] = {
+                  classes,
+                  ...(cap === undefined ? {} : { privateCap: Math.round(cap) }),
+                };
+              });
+            return done(
+              classes.includes("private")
+                ? "Saved. Private replies may play there."
+                : "Saved. Private replies never play there.",
+            );
           }
         }
         return done("Done.");
@@ -1938,6 +2217,9 @@ const make = Effect.gen(function* () {
         { op: "speaker", action: "route", output: c.value === "speaker" ? "onboard" : c.value },
         by,
       );
+    const tag = c.op === "item" && c.itemId === "audio.output" ? privateTagOf(c.value) : null;
+    if (tag !== null && by.surface !== "agent" && heard.get(id)?.speaker != null)
+      return yield* tagPrivate(id, tag, by);
     // A registry item is checked by its own class; the registry says when its device is away.
     let needsYes = RISKY_OPS.has(c.op);
     if (c.op === "item") {
@@ -2013,12 +2295,20 @@ const make = Effect.gen(function* () {
     const known = knownFrom(values.get("bt.known"));
     const { connected, skipped } = liveOf(id, now);
     const playingBt = (sp.playing ?? (sp.output === "onboard" ? "onboard" : "bt")) === "bt";
+    const tagged = (o: string, kind: BtKind | undefined) => {
+      const t = tagsOf(saved, id, o, kind);
+      return {
+        classes: t.classes,
+        ...(t.privateCap === undefined ? {} : { privateCap: t.privateCap }),
+      };
+    };
     const outputs = outputOrderOf(saved.outputs[id], bondsOf(id)).map((o) => {
       if (o === OWN_SPEAKER)
         return {
           id: o,
           name: `${DEVICE} speaker`,
           state: playingBt && sp.linked != null ? ("ready" as const) : ("playing" as const),
+          ...tagged(o, undefined),
         };
       const k =
         known.find((x) => x.mac.toUpperCase() === o) ??
@@ -2034,6 +2324,7 @@ const make = Effect.gen(function* () {
             : playingBt && sp.linked === o
               ? ("playing" as const)
               : ("ready" as const),
+        ...tagged(o, k?.kind),
       };
     });
     return {
@@ -2215,6 +2506,11 @@ const make = Effect.gen(function* () {
       } satisfies DevicesOverview;
     }),
     command,
+    routeReply,
+    holdPrivate: Effect.fn("HomeDevices.holdPrivate")(function* (id: string, text: string) {
+      const now = yield* Clock.currentTimeMillis;
+      held.set(id, { text: recordText(text, 1_000), until: now + PRIVATE_HELD_MS });
+    }),
     assignTag: Effect.fn("HomeDevices.assignTag")(function* (uid, label, action) {
       yield* change((s) => {
         s.tags[uid.toLowerCase()] = { label, action };

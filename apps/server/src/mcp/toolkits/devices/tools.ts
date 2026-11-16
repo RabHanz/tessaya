@@ -152,6 +152,7 @@ const SetTool = Tool.make("device_set", {
           name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80))),
           mac: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(17))),
           pair: Schema.optionalKey(Schema.Boolean),
+          private: Schema.optionalKey(Schema.Literals(["only", "also", "not"])),
         }),
       ]),
     ),

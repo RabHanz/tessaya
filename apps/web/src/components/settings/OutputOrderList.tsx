@@ -21,8 +21,10 @@ export function OutputOrderList(props: {
   readonly outputs: ReadonlyArray<DeviceOutputEntry>;
   readonly disabled: boolean;
   readonly onOrder: (order: ReadonlyArray<string>) => void;
+  /** Private replies may play on this output, or never. */
+  readonly onPrivate: (output: DeviceOutputEntry, on: boolean) => void;
 }) {
-  const { outputs, disabled, onOrder } = props;
+  const { outputs, disabled, onOrder, onPrivate } = props;
   const ids = outputs.map((o) => o.id);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const move = (id: string, steps: number) => onOrder(moveOutput(outputs, id, steps));
@@ -53,6 +55,7 @@ export function OutputOrderList(props: {
               count={outputs.length}
               disabled={disabled}
               onMove={(steps) => move(o.id, steps)}
+              onPrivate={(on) => onPrivate(o, on)}
             />
           ))}
         </ol>
@@ -67,9 +70,11 @@ function OutputRow(props: {
   readonly count: number;
   readonly disabled: boolean;
   readonly onMove: (steps: number) => void;
+  readonly onPrivate: (on: boolean) => void;
 }) {
   const name = outputLabel(props.output);
   const { state } = props.output;
+  const isPrivate = props.output.classes?.includes("private") === true;
   const { listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: props.output.id, disabled: props.disabled });
   return (
@@ -103,6 +108,17 @@ function OutputRow(props: {
         <GripVerticalIcon className="size-3.5" />
       </span>
       <span className="flex items-center gap-0.5">
+        <Button
+          type="button"
+          size="xs"
+          variant={isPrivate ? "secondary" : "ghost-muted"}
+          disabled={props.disabled}
+          aria-pressed={isPrivate}
+          aria-label={`Private replies on ${name}`}
+          onClick={() => props.onPrivate(!isPrivate)}
+        >
+          Private
+        </Button>
         <Button
           type="button"
           size="icon-xs"
