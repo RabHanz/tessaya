@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-11-15T11:38:54.735Z",
-  "runUrl": "https://github.com/RabHanz/tessaya/actions/runs/43706774277",
+  "generatedAt": "2026-11-16T12:50:38.713Z",
+  "runUrl": "https://github.com/RabHanz/tessaya/actions/runs/43858316589",
   "versions": {
-    "main": "11d84ae658",
-    "release": "baton-v0.1.132"
+    "main": "ec6c64c6b6",
+    "release": "baton-v0.1.138"
   },
   "checks": [
     {
