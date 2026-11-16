@@ -414,6 +414,8 @@ export function applyServerSettingsPatch(
     projectSettingsOverrides: projectSettingsOverridesPatch,
     // Tessaya: replaced whole, so a word taken off the list stays off.
     voicePronounce: voicePronouncePatch,
+    // Tessaya: replaced whole, so a home taken off stays off.
+    tessayaCast: tessayaCastPatch,
     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
     projectAutoPullOverrides: _legacyAutoPull,
     projectScriptOverrides: _legacyScripts,
@@ -510,6 +512,7 @@ export function applyServerSettingsPatch(
   const nextWithReplacementsBase = {
     ...next,
     ...(voicePronouncePatch === undefined ? {} : { voicePronounce: voicePronouncePatch }),
+    ...(tessayaCastPatch === undefined ? {} : { tessayaCast: tessayaCastPatch }),
     favorites,
     providerModelPreferences: nextModelPreferences,
     ...(worktreeCleanupPatch === undefined

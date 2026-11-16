@@ -65,6 +65,9 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaPulse: free(
     'the pulse: noticing things unprompted, on or off; which kinds (jobs, sessions, messages, reminders, calendar, people, home, mood, patterns); topics muted by "stop telling me about X"; daily caps on calls and tokens. Its value is an object: {"enabled": true, "dailyCalls": 48, "dailyTokens": 150000, "categories": {"jobs": true}, "muted": []}',
   ),
+  tessayaCast: free(
+    'the cast: which persona lives on each Tessel and whether it follows; tessaya_cast does this. Its value is an object by device id: {"<device id>": {"home": "<persona>", "follows": false, "crew": []}}',
+  ),
   newSessionsRun: free("whether new sessions run in Tessaya or a terminal"),
   mainThreadId: owner("which thread is the main session"),
   continueThreadsAfterServerUpdate: confirm("continuing sessions after the server updates"),

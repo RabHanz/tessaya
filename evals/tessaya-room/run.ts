@@ -357,6 +357,28 @@ const WORK = {
     line: "Freya has this conversation now: say so in a few words.",
     persona: "companion",
   },
+  // The Cast's own words (TessayaCast castLine) for a house with Tumble and the desktop.
+  tessaya_cast: {
+    line: "Tumble: Freya; Desk: Tessaya, Alfred",
+    bodies: [
+      {
+        name: "Tumble",
+        wearing: "Freya",
+        why: "home",
+        home: "Freya",
+        follows: false,
+        on: ["Freya"],
+      },
+      {
+        name: "Desk",
+        wearing: "Tessaya",
+        why: "lead",
+        home: null,
+        follows: false,
+        on: ["Tessaya", "Alfred"],
+      },
+    ],
+  },
   // The job tools' own words (apps/server/src/mcp/toolkits/jobs/handlers.ts, R1Tools' card line).
   job_start: {
     id: "job-acme-2",

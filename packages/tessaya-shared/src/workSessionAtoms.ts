@@ -29,6 +29,7 @@ import {
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
   BATON_PHONE_PAIRING_WS_METHODS,
+  BATON_CAST_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
@@ -246,6 +247,19 @@ export function createTessayaWorkSessionAtoms<R, E>(
     phonePairing: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:phone-pairing",
       tag: BATON_PHONE_PAIRING_WS_METHODS.issue,
+    }),
+    // Who wears which body (Settings → Cast): the live map, refreshed while it is open, and his moves.
+    castQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:cast-query",
+      tag: BATON_CAST_WS_METHODS.get,
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 15_000,
+    }),
+    castCall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:cast",
+      tag: BATON_CAST_WS_METHODS.call,
+      scheduler,
+      concurrency,
     }),
     learnCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:learn",

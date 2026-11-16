@@ -5061,9 +5061,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     const rest = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.filter(
       (p) => p.id !== main,
     );
+    const named = settings.mascotCrew.split(",");
     return settings.mascotCrew === "all"
       ? rest.slice(0, CREW_MAX)
-      : rest.filter((p) => p.name.toLowerCase() === settings.mascotCrew).slice(0, 1);
+      : rest
+          .filter((p) => named.includes(p.id) || named.includes(p.name.toLowerCase()))
+          .slice(0, CREW_MAX);
   };
   /** The body that speaks: the talking persona's own when it is on his desktop, else hers. */
   const voiceBody = (): DesktopMascot => {

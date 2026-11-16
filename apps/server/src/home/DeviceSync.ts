@@ -38,6 +38,8 @@ const SHARED_RECORDS: Readonly<
   "@mood": { fields: 400, ttlMs: 12 * 3_600_000 },
   "@presence": { fields: 500, ttlMs: 24 * 3_600_000 },
   "@persona": { fields: 200, ttlMs: 3_600_000 },
+  // Cast visits per body; one he said "stay" to can last days.
+  "@cast": { fields: 100, ttlMs: 30 * 24 * 3_600_000 },
 };
 const limitOf = (record: string) => SHARED_RECORDS[record];
 /** Expired shared fields gone; past the cap, the oldest first. */

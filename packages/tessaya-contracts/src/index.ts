@@ -17,6 +17,7 @@ export * from "./commitments.ts";
 export * from "./consent.ts";
 export * from "./phone.ts";
 export * from "./phonePairing.ts";
+export * from "./cast.ts";
 export * from "./desktopState.ts";
 export * from "./desktopSettings.ts";
 export * from "./record.ts";

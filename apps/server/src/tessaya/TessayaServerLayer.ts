@@ -79,6 +79,7 @@ import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as TessayaOneShot from "./TessayaOneShot.ts";
 import * as TessayaExpression from "./TessayaExpression.ts";
 import * as TessayaPhoneInbox from "./TessayaPhoneInbox.ts";
+import * as TessayaCast from "./TessayaCast.ts";
 import * as TessayaDesktopSettings from "./TessayaDesktopSettings.ts";
 import * as TessayaRoutes from "./TessayaRoutes.ts";
 import * as TessayaRpcHandlers from "./TessayaRpcHandlers.ts";
@@ -326,6 +327,12 @@ const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
       TessayaPeople.layer,
       expressionLayer,
       CurrentPersona.layer,
+      // Who wears which body (Settings → Cast): its siblings here are invisible to it, so they are provided.
+      TessayaCast.layer.pipe(
+        Layer.provide(CurrentPersona.layer),
+        Layer.provide(DeviceRegistry.layer),
+        Layer.provide(TessayaDesktopSettings.layer),
+      ),
       // Her mood per persona (CS6): the turn writes it, every vessel's face and words read it.
       TessayaMood.layer.pipe(Layer.provide(TessayaOneShot.layer)),
       PersonaLayers.layer,

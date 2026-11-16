@@ -931,6 +931,36 @@ describe("waking by name with no session open", () => {
     expect(t.room.session(DEV)).toBeUndefined();
   });
 
+  it("opens on the persona the Cast puts on this Tessel, and a wake word for another never re-homes it", async () => {
+    const t = setup({
+      wake: { frame: () => undefined, end: () => undefined },
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => "what broke?",
+        cancel: () => undefined,
+      }),
+    });
+    t.room.message(
+      `freya/r1/${DEV}/voice/cast`,
+      Buffer.from('{"persona":"companion","follows":null}'),
+    );
+    // A (perhaps false) wake for Alfred: that session is his.
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    t.room.woken(DEV, "Alfred");
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls.at(-1)?.tessaya.persona).toBe("butler");
+    // Once that session is over, the next one by the button is Freya's again: the body's home held.
+    await t.deps.sleep(3_000);
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    expect(t.room.session(DEV)).toBeUndefined();
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls.at(-1)?.tessaya.persona).toBe("companion");
+  });
+
   it.each([
     { who: "unverified", speaker: UNVERIFIED(0), spoken: true },
     // His own verified voice is spoken on this path; the TTS bench clips are a guest and are not (16 Nov, 01:37).
@@ -2721,6 +2751,27 @@ describe("recognising who she is talking to across a session (recognition.ts)", 
     await follows.feed(true, 20);
     await follows.feed(false, 40);
     expect(follows.brainCalls.at(-1)!.tessaya.persona).toBe("butler");
+    // The Cast's rule for this Tessel wins over the loop's default: follows off keeps his own default persona.
+    const pinned = setup(
+      { recognise: lines(["What's on today?"]), speaker: async () => owner(0.7, true) },
+      { ...QUIET, personaFollows: true },
+    );
+    pinned.room.message(
+      `freya/r1/${DEV}/voice/cast`,
+      Buffer.from('{"persona":null,"follows":false}'),
+    );
+    pinned.room.message(
+      `freya/r1/${DEV}/voice/prefs/member-1`,
+      Buffer.from('{"persona":"alter-ego"}'),
+    );
+    pinned.room.message(
+      `freya/r1/${DEV}/voice/current/member-1`,
+      Buffer.from('{"persona":"butler"}'),
+    );
+    pinned.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await pinned.feed(true, 20);
+    await pinned.feed(false, 40);
+    expect(pinned.brainCalls.at(-1)!.tessaya.persona).toBe("alter-ego");
   });
 });
 

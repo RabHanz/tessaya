@@ -1029,6 +1029,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_whos_home"],
   },
   {
+    // Read only: "who" moves nobody, so the live suite never changes his cast.
+    id: "cast-who",
+    proves: ["tessaya_cast"],
+    said: ["Which persona is on which of my devices right now?"],
+    uses: [["tessaya_cast"]],
+    clean: ["tessaya_cast"],
+  },
+  {
     id: "memory-about",
     proves: ["tessaya_memory_about"],
     said: ["What do you know about my dentist?"],

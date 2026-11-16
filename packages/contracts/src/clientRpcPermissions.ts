@@ -91,6 +91,8 @@ const DEVICES_CALL = "baton.devices.call";
 const VOICE_CALL = "baton.voice.call";
 /** Her prompt lab (`BATON_PROMPT_LAB_WS_METHODS.call`): his prompts, the owner's settings. */
 const PROMPT_LAB_CALL = "baton.promptLab.call";
+/** Who wears which body (`BATON_CAST_WS_METHODS.call`): moving a persona is operate; its view is `.get`. */
+const CAST_CALL = "baton.cast.call";
 
 export function clientRpcRequiredScopes(
   method: string,
@@ -128,6 +130,7 @@ export function clientRpcRequiredScopes(
         : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   }
   if (method === PROMPT_LAB_CALL) return [AuthSettingsWriteScope];
+  if (method === CAST_CALL) return [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]
     : [];

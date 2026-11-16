@@ -73,6 +73,9 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cat.personas": "Personas and voices",
     "cat.personas.text":
       "Who answers to which wake word, and the voice each one speaks in. Press Play to hear it.",
+    "cat.cast": "Cast",
+    "cat.cast.text":
+      "Which persona is on which body right now, where each one lives, and who follows you around.",
     "cat.assistant": "Working for you",
     "cat.assistant.text":
       "What Tessaya works through, what she may do on your computer without asking, and what she watches for you.",
