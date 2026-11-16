@@ -57,9 +57,17 @@ export const TessayaPrivateSetupInput = Schema.Struct({
   name: Schema.String,
   pin: Schema.String,
 });
-/** The recovery code is shown once, here, and never again. */
+/**
+ * Nothing is written yet: the store is sealed only when he types this recovery code back (`confirmSetup`). Asked again
+ * with the same PIN before `expiresAt`, setup offers the same code.
+ */
 export const TessayaPrivateSetupResult = Schema.Struct({
-  store: TessayaPrivateStore,
+  pending: Schema.String,
+  recoveryCode: Schema.String,
+  expiresAt: Schema.String,
+});
+export const TessayaPrivateConfirmSetupInput = Schema.Struct({
+  pending: TrimmedNonEmptyString,
   recoveryCode: Schema.String,
 });
 export const TessayaPrivateUnlockInput = Schema.Struct({
@@ -202,6 +210,7 @@ export const TessayaPrivateCallInput = Schema.Union([
   op("list", TessayaPrivateListInput.fields),
   op("audit", TessayaPrivateAuditInput.fields),
   op("setup", TessayaPrivateSetupInput.fields),
+  op("confirmSetup", TessayaPrivateConfirmSetupInput.fields),
   op("unlock", TessayaPrivateUnlockInput.fields),
   op("lock", TessayaPrivateLockInput.fields),
   op("add", TessayaPrivateAddInput.fields),

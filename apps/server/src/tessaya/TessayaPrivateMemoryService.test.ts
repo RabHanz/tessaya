@@ -74,16 +74,62 @@ const everything = Effect.gen(function* () {
   return parts.join("\n");
 });
 
+/** A store offered and then sealed with its code typed back, as every client does. */
+const made = (input: { readonly personId?: string; readonly name: string; readonly pin: string }) =>
+  Effect.gen(function* () {
+    const p = yield* TessayaPrivateMemoryService;
+    const offer = yield* p.setup(input);
+    const store = yield* p.confirmSetup({
+      pending: offer.pending,
+      recoveryCode: offer.recoveryCode,
+    });
+    return { store, recoveryCode: offer.recoveryCode };
+  });
+
 /** His store and Sara's, both made at the desk, then everything locked. */
 const setup = Effect.gen(function* () {
   const p = yield* TessayaPrivateMemoryService;
-  const owner = yield* as(desk)(p.setup({ name: "Rab", pin: OWNER_PIN }));
-  const saraStore = yield* as(desk)(p.setup({ personId: "sara", name: "Sara", pin: SARA_PIN }));
+  const owner = yield* as(desk)(made({ name: "Rab", pin: OWNER_PIN }));
+  const saraStore = yield* as(desk)(made({ personId: "sara", name: "Sara", pin: SARA_PIN }));
   yield* as(desk)(p.lock());
   return { p, owner: owner.store.id, sara: saraStore.store.id, recovery: owner.recoveryCode };
 });
 
 describe("BatonPrivateMemoryService", () => {
+  test("writes nothing until the recovery code is typed back, offers the same code again, then seals and opens", () =>
+    Effect.gen(function* () {
+      const p = yield* TessayaPrivateMemoryService;
+      const offer = yield* as(desk)(p.setup({ name: "Rab", pin: OWNER_PIN }));
+      assert.lengthOf(yield* as(desk)(p.people), 0);
+      // He closed the card before typing it: asked again with the same PIN, the code he wrote down still counts.
+      const again = yield* as(desk)(p.setup({ name: "Rab", pin: OWNER_PIN }));
+      assert.strictEqual(again.recoveryCode, offer.recoveryCode);
+      assert.strictEqual(again.pending, offer.pending);
+      // Another device can't finish it, and a mistyped code makes nothing.
+      const elsewhere = yield* Effect.flip(
+        as(saraPhone)(p.confirmSetup({ pending: offer.pending, recoveryCode: offer.recoveryCode })),
+      );
+      assert.include(elsewhere.reason, "where you started");
+      const typo = yield* Effect.flip(
+        as(desk)(p.confirmSetup({ pending: offer.pending, recoveryCode: "AAAA-BBBB-CCCC-DDDD" })),
+      );
+      assert.include(typo.reason, "not the recovery code");
+      assert.lengthOf(yield* as(desk)(p.people), 0);
+      const store = yield* as(desk)(
+        p.confirmSetup({ pending: offer.pending, recoveryCode: offer.recoveryCode.toLowerCase() }),
+      );
+      assert.isTrue(store.open);
+      // Sealed once: the offer is spent, and the store opens with what was written.
+      yield* Effect.flip(
+        as(desk)(p.confirmSetup({ pending: offer.pending, recoveryCode: offer.recoveryCode })),
+      );
+      yield* as(desk)(p.lock());
+      yield* as(phone)(p.unlock({ storeId: store.id, recoveryCode: offer.recoveryCode }));
+      yield* as(desk)(p.changePin({ storeId: store.id, pin: OWNER_PIN, newPin: "11223344" }));
+      yield* as(desk)(p.lock());
+      assert.isTrue((yield* as(desk)(p.unlock({ storeId: store.id, pin: "11223344" }))).open);
+    }));
+
   test("keeps no word of a private memory in clear anywhere in the database", () =>
     Effect.gen(function* () {
       const { p, owner } = yield* setup;
@@ -352,10 +398,10 @@ describe("a member's own store, made when they accept (identity I-1)", () => {
   test("is made by the member alone, wrapped to his key, and reaches no one else's", () =>
     Effect.gen(function* () {
       const p = yield* TessayaPrivateMemoryService;
-      const owner = yield* as(desk)(p.setup({ name: "Rab", pin: OWNER_PIN }));
+      const owner = yield* as(desk)(made({ name: "Rab", pin: OWNER_PIN }));
       yield* as(desk)(p.lock());
       // Maya makes hers on her phone with his store locked; a stranger can't make one.
-      const made = yield* as(maya)(p.setup({ personId: "maya", name: "Maya", pin: SARA_PIN }));
+      const mayas = yield* as(maya)(made({ personId: "maya", name: "Maya", pin: SARA_PIN }));
       const stranger = yield* Effect.flip(
         as({ session: "x", desktop: false, member: "ali" })(
           p.setup({ personId: "ali", name: "Ali", pin: SARA_PIN }),
@@ -376,6 +422,6 @@ describe("a member's own store, made when they accept (identity I-1)", () => {
       yield* Effect.flip(as(maya)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN })));
       // His key opens hers (decision 1's default for his home).
       yield* as(phone)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN }));
-      assert.isTrue((yield* as(phone)(p.unlock({ storeId: made.store.id }))).open);
+      assert.isTrue((yield* as(phone)(p.unlock({ storeId: mayas.store.id }))).open);
     }).pipe(Effect.provide(members(["maya"]))));
 });

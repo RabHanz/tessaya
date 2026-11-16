@@ -122,6 +122,49 @@ interface StoreRow {
   readonly last_opened_at: string | null;
 }
 
+/** A store offered but not yet written: kept in memory until he confirms he kept the recovery code. */
+interface PendingStore {
+  readonly id: string;
+  readonly personId: string;
+  readonly name: string;
+  readonly kind: PrivateStoreKind;
+  readonly member: string | null;
+  readonly dek: Buffer;
+  readonly kek: Buffer;
+  readonly recovery: Buffer;
+  readonly recoveryText: string;
+  readonly keys: StoredKeys;
+  readonly until: number;
+}
+
+/** Long enough to write the code down; a restart drops it and setup offers a new one. */
+const PENDING_MS = 30 * 60_000;
+
+const sameKey = (a: Buffer, b: Buffer) => a.length === b.length && NodeCrypto.timingSafeEqual(a, b);
+
+/** Whether a stored row opens with these keys: each wrap unwraps to the same key, and the box key opens. */
+const readsBack = (
+  keys: StoredKeys,
+  id: string,
+  dek: Buffer,
+  kek: Buffer,
+  recovery: Buffer | null,
+): boolean => {
+  try {
+    if (!sameKey(unwrapKey(kek, keys.pin, id, "pin"), dek)) return false;
+    if (recovery !== null) {
+      const rkey = recoveryKey(recovery, id);
+      const ok = sameKey(unwrapKey(rkey, keys.recovery, id, "recovery"), dek);
+      rkey.fill(0);
+      if (!ok) return false;
+    }
+    openBoxKey(dek, keys.box, id).fill(0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 interface Opened {
   readonly dek: Buffer;
   readonly box: Buffer;
@@ -150,9 +193,14 @@ export class TessayaPrivateMemoryService extends Context.Service<
       readonly name: string;
       readonly pin: string;
     }) => Effect.Effect<
-      { readonly store: TessayaPrivateStore; readonly recoveryCode: string },
+      { readonly pending: string; readonly recoveryCode: string; readonly expiresAt: string },
       TessayaPrivateRefusedError
     >;
+    /** Seals the store `setup` offered once he types its recovery code back, then reads it back before keeping it. */
+    readonly confirmSetup: (input: {
+      readonly pending: string;
+      readonly recoveryCode: string;
+    }) => Effect.Effect<TessayaPrivateStore, TessayaPrivateRefusedError>;
     readonly unlock: (input: {
       readonly storeId: string;
       readonly pin?: string | undefined;
@@ -277,6 +325,13 @@ export const make = Effect.gen(function* () {
   const pepper = Buffer.from(yield* secrets.getOrCreateRandom(PEPPER, 32).pipe(Effect.orDie));
   const chainKey = auditKey(pepper);
   const opened = new Map<string, Opened>();
+  const pendings = new Map<string, PendingStore>();
+  const dropPending = (token: string) => {
+    const p = pendings.get(token);
+    if (p === undefined) return;
+    pendings.delete(token);
+    for (const b of [p.dek, p.kek, p.recovery]) b.fill(0);
+  };
   // One writer at a time: unlocks, the audit chain and the inbox move must not interleave.
   const lock = yield* Semaphore.make(1);
   const serial = <A, E, R>(effect: Effect.Effect<A, E, R>) => lock.withPermits(1)(effect);
@@ -623,7 +678,8 @@ export const make = Effect.gen(function* () {
     }
   });
 
-  const newStore = Effect.fn("BatonPrivateMemory.newStore")(function* (
+  /** Who may make this store, and the key it is sealed to for him; refuses before anything is made. */
+  const storeChecks = Effect.fn("BatonPrivateMemory.storeChecks")(function* (
     personId: string,
     name: string,
     pin: string,
@@ -658,6 +714,37 @@ export const make = Effect.gen(function* () {
       if (Option.isSome(household) && !(yield* household.value.isMember(personId)))
         return yield* refuse("Only a member of this home has a private store here.");
     }
+    return adminPublic;
+  });
+
+  /**
+   * Builds the store's keys in memory and writes nothing (VOXTA I6, confirm-before-seal). Asked again for the same
+   * person with the same PIN while it waits, it offers the same code, so a code he already wrote down still counts.
+   */
+  const offerStore = Effect.fn("BatonPrivateMemory.offerStore")(function* (
+    personId: string,
+    name: string,
+    pin: string,
+    kind: PrivateStoreKind,
+  ) {
+    const adminPublic = yield* storeChecks(personId, name, pin, kind);
+    const member = (yield* PrivateCaller).member ?? null;
+    const now = yield* nowMs;
+    for (const [token, p] of pendings) {
+      if (p.until <= now) {
+        dropPending(token);
+        continue;
+      }
+      if (p.personId !== personId || p.member !== member) continue;
+      const again = yield* Effect.promise(() =>
+        pinKeyAsync(pin, Buffer.from(p.keys.salt, "base64"), pepper, p.id, p.keys.kdf),
+      );
+      const same = sameKey(again, p.kek);
+      again.fill(0);
+      if (same && p.name === name.trim())
+        return { pending: token, recoveryCode: p.recoveryText, expiresAt: iso(p.until) };
+      dropPending(token);
+    }
     const id = NodeCrypto.randomUUID();
     const kdf = yield* PrivateKdf;
     const salt = NodeCrypto.randomBytes(16);
@@ -673,26 +760,75 @@ export const make = Effect.gen(function* () {
       admin: adminPublic === null ? null : sealTo(adminPublic, dek, adminAad(id)),
       box: newBoxKeys(dek, id),
     };
-    kek.fill(0);
     rkey.fill(0);
-    recovery.bytes.fill(0);
-    const now = yield* nowMs;
-    yield* sql`INSERT INTO tessaya_private_stores ${sql.insert({
+    const token = NodeCrypto.randomUUID();
+    const until = now + PENDING_MS;
+    pendings.set(token, {
       id,
-      person_id: personId,
+      personId,
       name: name.trim(),
       kind,
-      keys_json: JSON.stringify(keys),
+      member,
+      dek,
+      kek,
+      recovery: recovery.bytes,
+      recoveryText: recovery.text,
+      keys,
+      until,
+    });
+    return { pending: token, recoveryCode: recovery.text, expiresAt: iso(until) };
+  });
+
+  /** Writes the offered store once he typed its code back, then opens it from the written row before keeping it. */
+  const sealStore = Effect.fn("BatonPrivateMemory.sealStore")(function* (
+    token: string,
+    typed: string,
+  ) {
+    const p = pendings.get(token);
+    const now = yield* nowMs;
+    if (p === undefined || p.until <= now) {
+      dropPending(token);
+      return yield* refuse("That setup ran out. Start again: you will get a new recovery code.");
+    }
+    if (p.member !== ((yield* PrivateCaller).member ?? null))
+      return yield* refuse("Finish setting it up where you started it.");
+    const code = parseRecoveryKey(typed);
+    if (code === null || !sameKey(code, p.recovery))
+      return yield* refuse(
+        "That is not the recovery code shown. Check what you wrote down and type it again.",
+      );
+    if (Option.isSome(yield* storeOfPerson(p.personId))) {
+      dropPending(token);
+      return yield* refuse("That person already has a store.");
+    }
+    yield* sql`INSERT INTO tessaya_private_stores ${sql.insert({
+      id: p.id,
+      person_id: p.personId,
+      name: p.name,
+      kind: p.kind,
+      keys_json: JSON.stringify(p.keys),
       recall_off: 0,
       failures: 0,
       wait_until: 0,
       created_at: iso(now),
       last_opened_at: null,
     })}`.pipe(Effect.orDie);
-    const row = yield* needStore(id);
-    yield* audit(row, "created", "ok", 0, kind === "person");
-    yield* lease(row, dek, kind === "person");
-    return { store: yield* describe(row), recoveryCode: recovery.text };
+    const row = yield* needStore(p.id);
+    // Verify by reading: the row as written must open with his PIN, his code and the box key, or it is not kept.
+    const ok = readsBack(keysOf(row), row.id, p.dek, p.kek, code);
+    code.fill(0);
+    if (!ok) {
+      yield* sql`DELETE FROM tessaya_private_stores WHERE id = ${row.id}`.pipe(Effect.orDie);
+      dropPending(token);
+      return yield* refuse(
+        "The store did not read back as written, so it was not kept. Nothing was saved: set it up again.",
+      );
+    }
+    const dek = Buffer.from(p.dek);
+    dropPending(token);
+    yield* audit(row, "created", "ok", 0, p.kind === "person");
+    yield* lease(row, dek, p.kind === "person");
+    return yield* describe(row);
   });
 
   const removeStore = Effect.fn("BatonPrivateMemory.removeStore")(function* (
@@ -760,12 +896,16 @@ export const make = Effect.gen(function* () {
       const c = yield* PrivateCaller;
       if (c.member !== undefined && c.member !== OWNER_PERSON_ID && personId !== c.member)
         return yield* refuse("You can set up only your own memory.");
-      return yield* newStore(
+      return yield* offerStore(
         personId,
         input.name,
         input.pin,
         personId === OWNER_PERSON_ID ? "owner" : "person",
       );
+    }, serial),
+
+    confirmSetup: Effect.fn("BatonPrivateMemoryService.confirmSetup")(function* (input) {
+      return yield* sealStore(input.pending, input.recoveryCode);
     }, serial),
 
     checkPin: Effect.fn("BatonPrivateMemoryService.checkPin")(function* (personId, pin) {
@@ -902,11 +1042,20 @@ export const make = Effect.gen(function* () {
         salt: salt.toString("base64"),
         pin: wrapKey(kek, dek, row.id, "pin"),
       };
-      kek.fill(0);
-      dek.fill(0);
       yield* sql`UPDATE tessaya_private_stores SET keys_json = ${JSON.stringify(next)}, failures = 0, wait_until = 0 WHERE id = ${row.id}`.pipe(
         Effect.orDie,
       );
+      // Verify by reading: the re-wrapped row must open with the new PIN, or the old keys go back.
+      const ok = readsBack(keysOf(yield* needStore(row.id)), row.id, dek, kek, null);
+      kek.fill(0);
+      dek.fill(0);
+      if (!ok) {
+        yield* sql`UPDATE tessaya_private_stores SET keys_json = ${row.keys_json} WHERE id = ${row.id}`.pipe(
+          Effect.orDie,
+        );
+        yield* audit(row, "changed PIN", "did not read back; old PIN kept");
+        return yield* refuse("The new PIN did not read back, so the old PIN still opens it.");
+      }
       yield* audit(row, "changed PIN", "ok");
       return yield* describe(yield* needStore(row.id));
     }, serial),
@@ -1158,6 +1307,8 @@ export const callPrivate = Effect.fn("BatonPrivateMemoryService.call")(function*
       return yield* p.audit(input.storeId);
     case "setup":
       return yield* p.setup(input);
+    case "confirmSetup":
+      return { store: yield* p.confirmSetup(input) };
     case "unlock":
       return { store: yield* p.unlock(input) };
     case "lock":
