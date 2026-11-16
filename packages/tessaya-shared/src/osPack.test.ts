@@ -135,7 +135,13 @@ describe("the roster", () => {
     const sonnet = { model: "sonnet", effort: "medium" };
     expect(modelOf(DEFAULT_OS_PACK, "executive")).toEqual(opus);
     // Writing as him: Opus sounded more like him than Sonnet in the owner-voice bench.
-    expect(modelOf(DEFAULT_OS_PACK, "alter-ego")).toEqual(opus);
+    expect(modelOf(DEFAULT_OS_PACK, "alter-ego")).toMatchObject(opus);
+    // On an API key he drafts on Sonnet; the lead names no `api model:`, so stays on Opus there.
+    expect(modelOf(DEFAULT_OS_PACK, "alter-ego", "apiKey")).toEqual(sonnet);
+    expect(modelOf(DEFAULT_OS_PACK, "executive", "apiKey")).toEqual(opus);
+    // His file wins: Opus on the key too, any time he says so.
+    const his = mergePack({ roles: { "alter-ego": "---\napi model: opus\n---\n" } });
+    expect(modelOf(his, "alter-ego", "apiKey")).toEqual(opus);
     expect(modelOf(DEFAULT_OS_PACK, "companion")).toEqual(sonnet);
     // A role with no face of its own is still a specialist.
     expect(modelOf(DEFAULT_OS_PACK, "marketing")).toEqual(sonnet);
