@@ -56,6 +56,8 @@ export const createPrivateTab = (input: {
   /** The people Voice ID has saved (Settings > Voice). */
   readonly voices?: () => ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly refresh: () => void;
+  /** His own store was just made: what waited for it comes in; a line to show, or null. */
+  readonly onOwnerStore?: () => Promise<string | null>;
   /** Face check: someone besides the person checked is in view, so what is in the store stays hidden. */
   readonly onlooker?: () => Promise<boolean>;
   readonly now?: () => number;
@@ -71,7 +73,13 @@ export const createPrivateTab = (input: {
   } | null = null;
   let query = "";
   let status = "";
-  let recovery: { readonly name: string; readonly code: string } | null = null;
+  /** A store offered but not made: nothing is written until he types the code back (confirm-before-seal). */
+  let recovery: {
+    readonly name: string;
+    readonly code: string;
+    readonly pending: string;
+    readonly asAdmin: boolean;
+  } | null = null;
   let confirmDelete = false;
   const admin = new Set<string>();
   // Bumped whenever what was read is dropped, so a read still on its way is not kept.
@@ -166,14 +174,35 @@ export const createPrivateTab = (input: {
   const made = async (args: Record<string, string>, name: string, asAdmin: boolean) => {
     try {
       const out = (await input.memory.call("setup", args)) as {
-        store: TessayaPrivateStore;
+        pending: string;
         recoveryCode: string;
       };
-      recovery = { name, code: out.recoveryCode };
+      recovery = { name, code: out.recoveryCode, pending: out.pending, asAdmin };
+      status = "";
+    } catch (e) {
+      status = reason(e);
+    }
+    input.refresh();
+  };
+
+  /** He typed the code back: the server seals the store, reads it back, and only then keeps it. */
+  const sealed = async (typed: string) => {
+    const r = recovery;
+    if (r === null) return;
+    try {
+      const out = (await input.memory.call("confirmSetup", {
+        pending: r.pending,
+        recoveryCode: typed,
+      })) as { store: TessayaPrivateStore };
+      recovery = null;
       drop();
       selected = out.store.id;
-      if (asAdmin) admin.add(out.store.id);
+      if (r.asAdmin) admin.add(out.store.id);
       status = "";
+      if (out.store.kind === "owner" && input.onOwnerStore !== undefined) {
+        input.refresh();
+        status = (await input.onOwnerStore().catch(() => null)) ?? "";
+      }
     } catch (e) {
       status = reason(e);
     }
@@ -254,9 +283,7 @@ export const createPrivateTab = (input: {
       status = text("pv.recovery.copied");
       input.refresh();
     } else if (id === "m.pv.recoveryDone") {
-      recovery = null;
-      status = "";
-      input.refresh();
+      if (textValue.trim() !== "") void sealed(textValue.trim());
     } else if ((target = after("lock")) !== null) {
       admin.delete(target);
       drop();

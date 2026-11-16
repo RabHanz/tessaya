@@ -58,6 +58,9 @@ it("gives the tessaya variant its own identity, Expo project and Apple team", as
   expect(tessaya.owner).toBe("rabhanz");
   expect(tessaya.updates?.url).toBe(`https://u.expo.dev/${tessaya.extra?.eas?.projectId}`);
   expect(tessaya.updates?.url).not.toBe(production.updates?.url);
+  // Permission prompts, widget names and the home-screen label never name T3.
+  expect(JSON.stringify(tessaya)).not.toMatch(/T3 Code/);
+  expect(JSON.stringify(production)).toMatch(/T3 Code/);
 });
 
 it("asks iOS only for the TAG NFC format, never NDEF", async () => {

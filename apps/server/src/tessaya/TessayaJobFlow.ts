@@ -65,7 +65,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Random from "effect/Random";
 
-import type { ScheduledTaskId } from "@t3tools/contracts";
+import type { OrchestrationV2ProviderTurn, ScheduledTaskId } from "@t3tools/contracts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as NodePath from "node:path";
 import * as Option from "effect/Option";
@@ -74,8 +74,14 @@ import * as ServerConfig from "../config.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
-import { TessayaEngine } from "./TessayaEngine.ts";
-import { spendOf, type Spend } from "./TessayaJobSpend.ts";
+import { TessayaEngine, type TessayaTurnRun } from "./TessayaEngine.ts";
+import {
+  type JobTurns,
+  readPriceList,
+  spendOfTurns,
+  type Spend,
+  turnUnits,
+} from "./TessayaJobSpend.ts";
 import { planningFrame, readPack, readTemplates } from "./OperatingSystemPack.ts";
 import { expressOr } from "./TessayaExpression.ts";
 import { accountPause, routeFor } from "./BrainRoutes.ts";
@@ -614,25 +620,50 @@ export const turnCounts = Effect.fn("BatonJobFlow.turnCounts")(function* (
   return counts;
 });
 
-/** What each worker has spent, read from its own transcript; empty when this server keeps no state folder. */
+/** What each worker has spent: its threads' provider turns, priced now; unpriced when this server keeps no state folder. */
 export const spendCounts = Effect.fn("BatonJobFlow.spendCounts")(function* (
   entries: ReadonlyArray<TessayaFleetEntry>,
 ) {
   const config = yield* ServerConfig.ServerConfig;
   const stateDir = (config as { readonly stateDir?: string }).stateDir;
-  const out = new Map<string, Spend>();
-  if (stateDir === undefined) return out;
+  const rates = stateDir === undefined ? null : (readPriceList(stateDir)?.table ?? null);
   const engine = yield* TessayaEngine;
+  const out = new Map<string, Spend>();
   for (const entry of entries) {
-    const nativeIds: string[] = [];
-    for (const thread of entry.threads) {
-      const provider = yield* engine.activeProviderThread(thread.threadId);
-      const id = provider?.nativeThreadRef?.nativeId;
-      if (id != null) nativeIds.push(id);
-    }
-    if (nativeIds.length > 0) out.set(entry.workSessionId, spendOf({ nativeIds, stateDir }));
+    const turns: Array<OrchestrationV2ProviderTurn> = [];
+    for (const thread of entry.threads)
+      turns.push(...(yield* engine.providerTurns(thread.threadId)));
+    if (turns.length > 0) out.set(entry.workSessionId, spendOfTurns(turns, rates));
   }
   return out;
+});
+
+/**
+ * Each job's and each schedule's provider turns since `since` (ms), for the Usage page's units.
+ * shortcut: only live (unarchived) threads are read; read archived ones too if the page must show archived jobs.
+ */
+export const usageUnits = Effect.fn("BatonJobFlow.usageUnits")(function* (since: number) {
+  const config = yield* ServerConfig.ServerConfig;
+  const stateDir = (config as { readonly stateDir?: string }).stateDir;
+  const rates = stateDir === undefined ? null : (readPriceList(stateDir)?.table ?? null);
+  const engine = yield* TessayaEngine;
+  const touched = new Set(
+    (yield* engine.threadShells).flatMap((s) =>
+      DateTime.toEpochMillis(s.updatedAt) >= since ? [s.id as string] : [],
+    ),
+  );
+  const sessions = yield* (yield* WorkSessionService)
+    .list({ includeArchived: true })
+    .pipe(Effect.orElseSucceed(() => []));
+  const jobs: Array<JobTurns> = [];
+  for (const session of sessions) {
+    const threads = new Set(session.providerSessions.map((p) => p.threadId));
+    const turns: Array<TessayaTurnRun> = [];
+    for (const threadId of threads)
+      if (touched.has(threadId)) turns.push(...(yield* engine.turnRuns(threadId)));
+    if (turns.length > 0) jobs.push({ id: session.id, label: session.title, turns });
+  }
+  return turnUnits(jobs, since, rates);
 });
 
 export const listJobs = Effect.fn("BatonJobFlow.list")(function* () {
@@ -648,7 +679,7 @@ export const listJobs = Effect.fn("BatonJobFlow.list")(function* () {
 /**
  * The caps are enforced, not only shown: an agreed job whose worker is still going after its time or
  * turns are used up is stopped (its thread and plan stay) and a line says why. Raising the cap with a
- * refinement lets it go on. Spend is read from the worker's own transcript; a dollar cap trips on what could be priced.
+ * refinement lets it go on. Spend is its provider turns at list price; a dollar cap trips on what could be priced.
  */
 export const enforceCaps = Effect.fn("BatonJobFlow.enforceCaps")(function* (
   entries: ReadonlyArray<TessayaFleetEntry>,

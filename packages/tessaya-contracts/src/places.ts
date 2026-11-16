@@ -24,6 +24,21 @@ export const TESSAYA_PLACES = [
     terms: ["persona", "voice", "voice library", "speaks", "tts", "speech"],
   },
   {
+    id: "cast",
+    label: "Cast",
+    group: "You",
+    terms: [
+      "cast",
+      "who's where",
+      "body",
+      "bodies",
+      "tumble",
+      "desktop companion",
+      "home persona",
+      "follows",
+    ],
+  },
+  {
     id: "privacy",
     label: "Memory and privacy",
     group: "You",
@@ -57,7 +72,7 @@ export const TESSAYA_PLACES = [
     id: "phone",
     label: "Phone",
     group: "Home and devices",
-    terms: ["mobile", "iphone", "android", "pair", "app"],
+    terms: ["mobile", "iphone", "android", "pair", "app", "add a phone", "qr", "scan"],
   },
   {
     id: "assistant",

@@ -5,8 +5,10 @@
  */
 
 export interface PresenceSignal {
-  /** Whose it is; null when someone is there but not who (a Tessel picked up). */
+  /** Whose it is (a member, or a guest's people-graph id); null when someone is there but not who (a Tessel picked up). */
   readonly member: string | null;
+  /** `member` is a guest's people-graph id: present like anyone, never followed or named as a member. */
+  readonly guest?: boolean;
   /** A key of PRESENCE_SOURCES. */
   readonly source: string;
   /** The vessel it places them at; null when it says "around" but not where (their phone connected). */
@@ -30,11 +32,33 @@ export const PRESENCE_SOURCES: Readonly<Record<string, PresenceSource>> = {
   typed: { weight: 0.9, halfLifeMinutes: 10, says: "you typed on your own device" },
   device: { weight: 0.6, halfLifeMinutes: 2, says: "your own device is connected" },
   handled: { weight: 0.6, halfLifeMinutes: 3, says: "someone picked it up or moved it" },
+  // Connected stays true until it changes, so it fades slowly; taking them off cancels it.
+  headphones: { weight: 0.7, halfLifeMinutes: 30, says: "your headphones are connected" },
+  headphonesOff: {
+    weight: 0,
+    halfLifeMinutes: 1,
+    cancels: ["headphones"],
+    says: "your headphones disconnected",
+  },
+  // His phone's app holds the phone route on the Tessel's own network: home, near that Tessel.
+  phone: { weight: 0.5, halfLifeMinutes: 20, says: "your phone is on her network" },
+  phoneAway: {
+    weight: 0,
+    halfLifeMinutes: 1,
+    cancels: ["phone"],
+    says: "your phone left her network",
+  },
   deskAway: {
     weight: 0,
     halfLifeMinutes: 1,
     cancels: ["typed"],
     says: "your desktop locked or slept",
+  },
+  deskIdle: {
+    weight: 0,
+    halfLifeMinutes: 1,
+    cancels: ["typed"],
+    says: "your desktop has been idle a while",
   },
 };
 
@@ -53,6 +77,7 @@ export interface PresenceEvidence {
 
 export interface MemberPresence {
   readonly member: string;
+  readonly guest: boolean;
   /** Around at all, 0..1. */
   readonly confidence: number;
   /** The vessel they are most likely nearest, and how sure. */
@@ -94,7 +119,8 @@ export const fusePresence = (
     if (s.member === null) return true;
     // Gone from there: a newer cancelling signal of theirs drops this one.
     return !signals.some(
-      (c) => c.member === s.member && c.at > s.at && sources[c.source]?.cancels?.includes(s.source),
+      (c) =>
+        c.member === s.member && c.at >= s.at && sources[c.source]?.cancels?.includes(s.source),
     );
   });
   const byMember = new Map<string, Array<PresenceSignal>>();
@@ -122,13 +148,15 @@ export const fusePresence = (
     let nearest: MemberPresence["nearest"] = null;
     for (const [vessel, ps] of perVessel) {
       const confidence = anyOf(ps);
-      if (nearest === null || confidence > nearest.confidence) nearest = { vessel, confidence };
+      // On a tie the vessel noted last wins: they moved there.
+      if (nearest === null || confidence >= nearest.confidence) nearest = { vessel, confidence };
     }
     const newest = mine
       .filter((s) => (sources[s.source]?.weight ?? 0) > 0)
       .toSorted((a, b) => b.at - a.at)[0];
     members.push({
       member,
+      guest: mine.some((s) => s.guest === true),
       confidence: anyOf(evidence.map((e) => e.strength)),
       nearest,
       lastSeen:
@@ -143,6 +171,25 @@ export const fusePresence = (
     occupied: new Map([...atVessel].map(([v, ps]) => [v, anyOf(ps)])),
   };
 };
+
+/**
+ * Everyone placed at this vessel past `bar` (members and guests), surest first: the one answer to "who is at this
+ * vessel" for the private-output gate, the mood's face at rest and "the person I just heard".
+ */
+export const peopleAt = (
+  estimate: PresenceEstimate,
+  vessel: string,
+  bar: number = PRESENCE_BARS.around,
+): ReadonlyArray<MemberPresence> =>
+  estimate.members
+    .filter((m) => m.nearest?.vessel === vessel && m.nearest.confidence >= bar)
+    // Reversed first so a full tie (two voices in the same millisecond) goes to the one noted last.
+    .toReversed()
+    .toSorted(
+      (a, b) =>
+        b.nearest!.confidence - a.nearest!.confidence ||
+        (b.lastSeen?.at ?? 0) - (a.lastSeen?.at ?? 0),
+    );
 
 /**
  * What she may say unprompted: `personal` is her own initiative (a job's news, a nudge); `reminder`, `broadcast` and

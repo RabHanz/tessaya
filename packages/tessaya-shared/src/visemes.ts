@@ -32,6 +32,8 @@ export interface SpeechUnit {
   readonly kind: Kind;
   /** A pause the audio may not have, and what leaving it out costs: nothing between words, a lot at a full stop. */
   readonly skip?: number;
+  /** Which word of the text (its whitespace-split index) this unit is part of; none for a pause. */
+  readonly word?: number;
 }
 
 const RULES: ReadonlyArray<readonly [string, ReadonlyArray<readonly [Viseme, Kind]>]> = [
@@ -216,11 +218,11 @@ export const wordUnits = (word: string): SpeechUnit[] => {
 /** A sentence's visemes in order, with a pause the audio may have between words and a likely one at punctuation. */
 export const speechUnits = (text: string): SpeechUnit[] => {
   const out: SpeechUnit[] = [{ viseme: "rest", kind: "P", skip: 0 }];
-  for (const token of text.match(/[^\s]+/g) ?? []) {
+  for (const [word, token] of (text.match(/[^\s]+/g) ?? []).entries()) {
     const units = wordUnits(token);
     if (units.length === 0) continue;
     const skip = /[.!?…;:]["')\]]*$/.test(token) ? 8 : /[,—–-]["')\]]*$/.test(token) ? 3 : 0;
-    out.push(...units, { viseme: "rest", kind: "P", skip });
+    out.push(...units.map((u) => ({ ...u, word })), { viseme: "rest", kind: "P", skip });
   }
   return out;
 };
@@ -371,6 +373,27 @@ export const createAligner = (units: ReadonlyArray<SpeechUnit>) => {
     [cost, next] = [next, cost];
   };
   let ended = false;
+  /** The likeliest path's unit per frame: once the sound has ended it must finish the text, before then anywhere. */
+  const trace = (): Int32Array => {
+    const T = back.length;
+    if (T === 0 || U === 0) return new Int32Array(0);
+    const canEnd = (s: number) => {
+      const u = unitOf[s]!;
+      if (!ended) return true;
+      if (s - first[u]! + 1 < DURATION[units[u]!.kind].min) return false;
+      return u === U - 1 || (u === U - 2 && skipCost(U - 1) < Infinity);
+    };
+    let end = -1;
+    for (let s = 0; s < S; s++)
+      if (cost[s]! < Infinity && canEnd(s) && (end < 0 || cost[s]! < cost[end]!)) end = s;
+    if (end < 0) return new Int32Array(0);
+    const along = new Int32Array(T);
+    for (let t = T - 1, s = end; t >= 0; t--) {
+      along[t] = unitOf[s]!;
+      s = back[t]![s]!;
+    }
+    return along;
+  };
   const catchUp = () => {
     while (back.length < frames.length && (ended || back.length + NEAR_AHEAD < frames.length))
       step(back.length);
@@ -388,21 +411,10 @@ export const createAligner = (units: ReadonlyArray<SpeechUnit>) => {
     stepped: () => back.length,
     /** The likeliest path so far: once the sound has ended it must finish the text, before then it may end anywhere. */
     path: (): VisemeSegment[] => {
-      const T = back.length;
-      if (T === 0 || U === 0) return [];
-      const canEnd = (s: number) => {
-        const u = unitOf[s]!;
-        if (!ended) return true;
-        if (s - first[u]! + 1 < DURATION[units[u]!.kind].min) return false;
-        return u === U - 1 || (u === U - 2 && skipCost(U - 1) < Infinity);
-      };
-      let end = -1;
-      for (let s = 0; s < S; s++)
-        if (cost[s]! < Infinity && canEnd(s) && (end < 0 || cost[s]! < cost[end]!)) end = s;
-      if (end < 0) return [];
       const out: VisemeSegment[] = [];
-      for (let t = T - 1, s = end; t >= 0; t--) {
-        const unit = units[unitOf[s]!]!;
+      const along = trace();
+      for (let t = along.length - 1; t >= 0; t--) {
+        const unit = units[along[t]!]!;
         const hum = unit.kind === "H" ? { hum: true } : {};
         const head = out[0];
         if (head !== undefined && head.viseme === unit.viseme)
@@ -414,10 +426,11 @@ export const createAligner = (units: ReadonlyArray<SpeechUnit>) => {
             viseme: unit.viseme,
             ...hum,
           });
-        s = back[t]![s]!;
       }
       return out;
     },
+    /** The unit each stepped frame is in, on the same likeliest path; empty when there is none yet. */
+    units: trace,
   };
 };
 
@@ -520,6 +533,8 @@ export const createVisemeTrack = (text: string, rate: number) => {
   let track: VisemeSegment[] = [];
   let trusted = 0;
   let pathAt = -1;
+  let along: Int32Array = new Int32Array(0);
+  let alongAt = -2;
   let ended = false;
   const live = units.length > 1;
   // a line that opens with a hum ("Mmm, …") has its lips shut from its first sound, before the path has reached it
@@ -557,6 +572,18 @@ export const createVisemeTrack = (text: string, rate: number) => {
       if (seg?.hum === true) return "mbp";
       if (opensWithHum && track.every((s) => s.viseme === "rest" || s.hum === true)) return "mbp";
       return ms < trusted ? visemeAt(track, ms) : undefined;
+    },
+    /** The word of the text (whitespace-split index) sounding at the sound's ms, once the alignment trusts it there. */
+    wordAt: (ms: number): number | undefined => {
+      if (!live) return undefined;
+      refresh();
+      if (ms >= trusted || ms < 0) return undefined;
+      if (alongAt !== pathAt) {
+        along = aligner.units();
+        alongAt = pathAt;
+      }
+      const unit = along[Math.floor(ms / ALIGN_HOP_MS)];
+      return unit === undefined ? undefined : units[unit]?.word;
     },
   };
 };

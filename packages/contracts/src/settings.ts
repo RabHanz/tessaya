@@ -1372,6 +1372,18 @@ export const TessayaDeviceMoods = Schema.Record(
   }),
 );
 
+/** Who wears each body by its id (tessaya-shared cast.ts): home persona, follows, others beside it. */
+export const TessayaCast = Schema.Record(
+  Schema.String.check(Schema.isMaxLength(128)),
+  Schema.Struct({
+    home: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+    follows: Schema.optionalKey(Schema.Boolean),
+    crew: Schema.optionalKey(
+      Schema.Array(Schema.String.check(Schema.isMaxLength(60))).check(Schema.isMaxLength(12)),
+    ),
+  }),
+);
+
 export const VoicePronounce = Schema.Record(
   Schema.String.check(Schema.isMaxLength(60)),
   Schema.String.check(Schema.isMaxLength(80)),
@@ -1413,6 +1425,43 @@ export const DEFAULT_TESSAYA_HAPTICS: TessayaHapticSettings = {
   moods: true,
   wake: true,
   reminders: true,
+};
+
+/** Her pulse (B-003): on or off, what kinds she may notice, his "stop doing X" words, and its daily model-call cap. */
+const PULSE_KINDS = [
+  "jobs",
+  "sessions",
+  "messages",
+  "reminders",
+  "calendar",
+  "people",
+  "home",
+  "mood",
+  "patterns",
+] as const;
+export const TessayaPulseSettings = Schema.Struct({
+  enabled: Schema.Boolean,
+  /** Reviews that may ask a model each day; past it she only notes. */
+  dailyCalls: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
+  /** Tokens (in, cached and out) its reviews may use each day; near it she goes rules-only. */
+  dailyTokens: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 5_000_000 })),
+  categories: Schema.Struct(
+    Object.fromEntries(PULSE_KINDS.map((k) => [k, Schema.Boolean])) as {
+      readonly [K in (typeof PULSE_KINDS)[number]]: typeof Schema.Boolean;
+    },
+  ),
+  /** Lower-case words from "stop telling me about X". */
+  muted: Schema.Array(Schema.String),
+});
+export type TessayaPulseSettings = typeof TessayaPulseSettings.Type;
+export const DEFAULT_TESSAYA_PULSE: TessayaPulseSettings = {
+  enabled: true,
+  dailyCalls: 48,
+  dailyTokens: 150_000,
+  categories: Object.fromEntries(
+    PULSE_KINDS.map((k) => [k, true]),
+  ) as TessayaPulseSettings["categories"],
+  muted: [],
 };
 
 export const ServerSettings = Schema.Struct({
@@ -1481,6 +1530,8 @@ export const ServerSettings = Schema.Struct({
       Effect.succeed({ enabled: true, intensity: 0.6, bondCap: 0.15, devices: {} }),
     ),
   ),
+  // Tessaya: who wears each Tessel and phone (Settings → Cast); the desktop keeps its own in its companion settings.
+  tessayaCast: TessayaCast.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
   companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("calm" as const)),
@@ -1491,6 +1542,9 @@ export const ServerSettings = Schema.Struct({
   ),
   tessayaHaptics: TessayaHapticSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_HAPTICS)),
+  ),
+  tessayaPulse: TessayaPulseSettings.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_PULSE)),
   ),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
@@ -1975,6 +2029,25 @@ export const ServerSettingsPatch = Schema.Struct({
       reminders: Schema.optionalKey(Schema.Boolean),
     }),
   ),
+  tessayaPulse: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      dailyCalls: Schema.optionalKey(
+        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 500 })),
+      ),
+      dailyTokens: Schema.optionalKey(
+        Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 5_000_000 })),
+      ),
+      categories: Schema.optionalKey(
+        Schema.Struct(
+          Object.fromEntries(PULSE_KINDS.map((k) => [k, Schema.optionalKey(Schema.Boolean)])) as {
+            readonly [K in (typeof PULSE_KINDS)[number]]: Schema.optionalKey<typeof Schema.Boolean>;
+          },
+        ),
+      ),
+      muted: Schema.optionalKey(Schema.Array(Schema.String)),
+    }),
+  ),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
   cloudSpeechCredentials: Schema.optionalKey(
     Schema.Struct({
@@ -1994,6 +2067,7 @@ export const ServerSettingsPatch = Schema.Struct({
   brainSpendAlert: Schema.optionalKey(BrainSpendAlert),
   brainDeferNearLimit: Schema.optionalKey(Schema.Boolean),
   voicePronounce: Schema.optionalKey(VoicePronounce),
+  tessayaCast: Schema.optionalKey(TessayaCast),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),
   speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),

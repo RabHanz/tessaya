@@ -189,6 +189,44 @@ describe("the room voice loop", () => {
     );
   });
 
+  it("judges a headset turn as the headset's (upformat flags bit4), and teaches it from a session verified on her mic", async () => {
+    const owner: SpeakerIdentity = {
+      ...UNVERIFIED(0),
+      kind: "owner",
+      personId: "owner",
+      confidence: 0.8,
+      verified: true,
+    };
+    const inputs: Array<string | undefined> = [];
+    const learnt: Array<string> = [];
+    const t = setup({
+      speaker: async (_pcm, input) => (inputs.push(input), owner),
+      learnInput: (input, personId) => learnt.push(`${input}:${personId}`),
+    });
+    const framed = (loud: boolean, flags: number) => {
+      const bytes = new Uint8Array(16 + 1_920);
+      new DataView(bytes.buffer).setUint16(12, flags, true);
+      bytes.set(frame(loud), 16);
+      return bytes;
+    };
+    const feed = async (loud: boolean, n: number, flags: number) => {
+      for (let i = 0; i < n; i += 1) {
+        t.room.message(`freya/r1/${DEV}/voice/up`, framed(loud, flags));
+        t.advance(60);
+        await t.room.session(DEV)!.drained();
+      }
+    };
+    t.s2();
+    await feed(true, 20, 0);
+    await feed(false, 30, 0);
+    expect(learnt).toEqual([]);
+    t.s2();
+    await feed(true, 20, 16);
+    await feed(false, 30, 16);
+    expect(inputs).toEqual(["mic", "headset"]);
+    expect(learnt).toEqual(["headset:owner"]);
+  });
+
   it("does not answer a voice the gate keeps out", async () => {
     const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.05 };
     const t = setup({ speaker: async () => guest });
@@ -372,7 +410,8 @@ describe("answering only when he is talking to her", () => {
     expect(voices.at(-1)).toBe("eve");
     expect(
       t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload)),
-    ).toEqual(['{"name":"alfred"}', '{"name":"tessaya"}']);
+      // No acknowledgement here, so the sweep asks for Alfred's look again.
+    ).toEqual(['{"name":"alfred"}', '{"name":"alfred"}', '{"name":"tessaya"}']);
   });
 
   it("does not chain into a conversation with the room (19:05, 12 Nov): audio alone opens nothing, a stray 'yeah' extends nothing", async () => {
@@ -890,6 +929,36 @@ describe("waking by name with no session open", () => {
     t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
     expect(frames).toEqual([DEV, DEV]);
     expect(t.room.session(DEV)).toBeUndefined();
+  });
+
+  it("opens on the persona the Cast puts on this Tessel, and a wake word for another never re-homes it", async () => {
+    const t = setup({
+      wake: { frame: () => undefined, end: () => undefined },
+      recognise: () => ({
+        feed: () => undefined,
+        finish: async () => "what broke?",
+        cancel: () => undefined,
+      }),
+    });
+    t.room.message(
+      `freya/r1/${DEV}/voice/cast`,
+      Buffer.from('{"persona":"companion","follows":null}'),
+    );
+    // A (perhaps false) wake for Alfred: that session is his.
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    t.room.woken(DEV, "Alfred");
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls.at(-1)?.tessaya.persona).toBe("butler");
+    // Once that session is over, the next one by the button is Freya's again: the body's home held.
+    await t.deps.sleep(3_000);
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    expect(t.room.session(DEV)).toBeUndefined();
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls.at(-1)?.tessaya.persona).toBe("companion");
   });
 
   it.each([
@@ -1833,7 +1902,7 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     expect(spoken).toEqual(["I'm Tessayya, and this is Kah-zee."]);
   });
 
-  it("logs every eye command and its acknowledgement, and says when one never came", async () => {
+  it("logs every eye command and its acknowledgement, asks again, and says when one never came", async () => {
     const logs: string[] = [];
     const t = setup({ log: (l) => logs.push(l) });
     t.room.message(`freya/r1/${DEV}/cmd/eye/persona`, Buffer.from('{"name":"alfred"}'));
@@ -1841,14 +1910,18 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     t.advance(120);
     t.room.message(`freya/r1/${DEV}/state/eye/persona`, Buffer.from('{"name":"alfred"}'));
     t.room.message(`freya/r1/${DEV}/cmd/eye/persona`, Buffer.from('{"name":"freya"}'));
-    t.advance(4_000);
-    t.room.sweep();
+    for (let i = 0; i < 4; i++) {
+      t.advance(4_000);
+      t.room.sweep();
+    }
     expect(logs).toEqual([
       `[${DEV}] eye seen cmd/eye/persona {"name":"alfred"}`,
       `[${DEV}] eye seen cmd/eye/set {"mood":"thinking"}`,
       `[${DEV}] eye ack persona {"name":"alfred"} after 120 ms`,
       `[${DEV}] eye seen cmd/eye/persona {"name":"freya"}`,
-      `[${DEV}] eye persona freya: no acknowledgement in 3 s`,
+      `[${DEV}] eye persona freya: no acknowledgement in 3 s, try 2`,
+      `[${DEV}] eye persona freya: no acknowledgement in 3 s, try 3`,
+      `[${DEV}] eye persona freya: FAILED, no acknowledgement after 3 tries`,
     ]);
     // The loop's own: an R1 button switches to Alfred.
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"alfred"}'));
@@ -2678,6 +2751,27 @@ describe("recognising who she is talking to across a session (recognition.ts)", 
     await follows.feed(true, 20);
     await follows.feed(false, 40);
     expect(follows.brainCalls.at(-1)!.tessaya.persona).toBe("butler");
+    // The Cast's rule for this Tessel wins over the loop's default: follows off keeps his own default persona.
+    const pinned = setup(
+      { recognise: lines(["What's on today?"]), speaker: async () => owner(0.7, true) },
+      { ...QUIET, personaFollows: true },
+    );
+    pinned.room.message(
+      `freya/r1/${DEV}/voice/cast`,
+      Buffer.from('{"persona":null,"follows":false}'),
+    );
+    pinned.room.message(
+      `freya/r1/${DEV}/voice/prefs/member-1`,
+      Buffer.from('{"persona":"alter-ego"}'),
+    );
+    pinned.room.message(
+      `freya/r1/${DEV}/voice/current/member-1`,
+      Buffer.from('{"persona":"butler"}'),
+    );
+    pinned.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await pinned.feed(true, 20);
+    await pinned.feed(false, 40);
+    expect(pinned.brainCalls.at(-1)!.tessaya.persona).toBe("alter-ego");
   });
 });
 

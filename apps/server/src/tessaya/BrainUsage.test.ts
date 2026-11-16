@@ -180,10 +180,21 @@ it.effect("keeps what each call was for, counts a report once, and drills down t
       outcome: "failed",
       attribution: { feature: "intent", origin: "user" },
     });
+    // A look on the desktop, on his own `claude`: his plan, filed under the desktop.
+    yield* BrainUsage.recordDesktopUsage({
+      ...tokens,
+      role: "vision",
+      provider: "claude",
+      outcome: "ok",
+      feature: "screen",
+    });
     const totals = yield* usage.totals({ since: 0, timeZone: "Asia/Karachi" });
-    expect(totals.map((t) => [t.feature, t.persona, t.calls, t.listDollars])).toEqual([
-      ["job", "alter-ego", 1, expect.closeTo(0.001, 9)],
-      ["intent", null, 1, null],
+    expect(
+      totals.map((t) => [t.feature, t.persona, t.surface, t.billing, t.calls, t.listDollars]),
+    ).toEqual([
+      ["job", "alter-ego", null, "subscription", 1, expect.closeTo(0.001, 9)],
+      ["intent", null, null, "subscription", 1, null],
+      ["screen", null, "desktop", "subscription", 1, expect.closeTo(0.001, 9)],
     ]);
     const calls = yield* usage.calls({
       since: 0,
@@ -219,6 +230,21 @@ it("reads his day and month in his zone", () => {
     day: Date.UTC(2026, 9, 31, 19),
     month: Date.UTC(2026, 9, 31, 19),
   });
+});
+
+it("places each ledger row under T3's usage provider, leaving out what a transcript already counts", () => {
+  const of = (provider: string, credential: string, model: string) =>
+    BrainUsage.usageProviderOf({ provider, credential, model });
+  expect([
+    of("anthropic", "subscription", "claude-sonnet-5-5"),
+    of("claude", "subscription", "sonnet"),
+    of("codex", "subscription", "gpt-5.5"),
+    of("google", "apiKey:google", "gemini-2.5-flash-preview-tts"),
+    of("my-claude", "instance:my-claude", "claude-haiku-5-5"),
+    of("grok", "instance:grok", "grok-4"),
+    of("cursor", "instance:cursor", "auto"),
+    of("elevenlabs", "apiKey:elevenlabs", "eleven_v3"),
+  ]).toEqual(["claude", "claude", "codex", "antigravity", "claude", null, null, null]);
 });
 
 it("loads first in plain Node, as the evals import it", () => {

@@ -54,13 +54,19 @@ export const SERVER_SETTINGS_VOICE: {
     'mood: on or off, its strength (intensity 0 to 1, default 0.6), the warmth that builds from talking most days (bondCap 0 to 0.15; 0 starts afresh each day), and per device its owner and whether it shows feelings toward that person (devices: {"<device id>": {"owner": "<member id>" or null, "show": true or false}}; owned phones and desktops show it by default, Tessels do not). Its value is an object: {"enabled": true, "intensity": 0.6, "bondCap": 0.15, "devices": {}}',
   ),
   companionMotion: free(
-    "how much is said and done unprompted: lively, calm, or important only (less chatter)",
+    'how proactive she is, how much is said and done unprompted: lively ("be more proactive"), calm, or important only ("be less proactive", less chatter)',
   ),
   tessayaMotion: free(
     'how the Tessel reacts when picked up, put down, shaken or dropped: each on or off, and how hard a move must be (sensitivity low, normal or high). Its value is an object: {"sensitivity": "normal", "lifted": true, "setdown": true, "shaken": true, "dropped": true}',
   ),
   tessayaHaptics: free(
     'the Tessel\'s vibration (buzzing): how strong (intensity off, low, normal or high; "stop buzzing" is off, "vibrate softer" one step down) and what may buzz: reactions to being moved, moods, wake confirmation, reminders. Its value is an object: {"intensity": "normal", "reactions": true, "moods": true, "wake": true, "reminders": true}',
+  ),
+  tessayaPulse: free(
+    'the pulse: noticing things unprompted, on or off; which kinds (jobs, sessions, messages, reminders, calendar, people, home, mood, patterns); topics muted by "stop telling me about X"; daily caps on calls and tokens. Its value is an object: {"enabled": true, "dailyCalls": 48, "dailyTokens": 150000, "categories": {"jobs": true}, "muted": []}',
+  ),
+  tessayaCast: free(
+    'the cast: which persona lives on each Tessel and whether it follows; tessaya_cast does this. Its value is an object by device id: {"<device id>": {"home": "<persona>", "follows": false, "crew": []}}',
   ),
   newSessionsRun: free("whether new sessions run in Tessaya or a terminal"),
   mainThreadId: owner("which thread is the main session"),

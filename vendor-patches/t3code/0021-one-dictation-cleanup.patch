@@ -359,7 +359,7 @@ index 9836fe10fc77f382cfdc37562403d44c75cc61a0..8d3251e73cda415b2c32b824c64ba9be
 +  });
  });
 diff --git a/packages/shared/src/serverSettings.ts b/packages/shared/src/serverSettings.ts
-index 023c6eb74333e5d5b73cf4900b490f81c377615a..b3a74d1994c7fd84c4c75c2bdb0117e2e07f6291 100644
+index 023c6eb74333e5d5b73cf4900b490f81c377615a..5692288ffca502a173455d16eb122f11eaa89681 100644
 --- a/packages/shared/src/serverSettings.ts
 +++ b/packages/shared/src/serverSettings.ts
 @@ -12,6 +12,7 @@ import {
@@ -388,24 +388,27 @@ index 023c6eb74333e5d5b73cf4900b490f81c377615a..b3a74d1994c7fd84c4c75c2bdb0117e2
      // Merged per entry below; its `null` removals must not reach deepMerge.
      usageLimitSources: usageLimitSourcesPatch,
      textGenerators: textGeneratorsPatch,
-@@ -409,6 +412,8 @@ export function applyServerSettingsPatch(
+@@ -409,6 +412,10 @@ export function applyServerSettingsPatch(
      usageModelAliases: usageModelAliasesPatch,
      // Entry replacement: deepMerge would keep keys the client meant to clear.
      projectSettingsOverrides: projectSettingsOverridesPatch,
 +    // Tessaya: replaced whole, so a word taken off the list stays off.
 +    voicePronounce: voicePronouncePatch,
++    // Tessaya: replaced whole, so a home taken off stays off.
++    tessayaCast: tessayaCastPatch,
      projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
      projectAutoPullOverrides: _legacyAutoPull,
      projectScriptOverrides: _legacyScripts,
-@@ -504,6 +509,7 @@ export function applyServerSettingsPatch(
+@@ -504,6 +511,8 @@ export function applyServerSettingsPatch(
    const next = deepMerge(current, patchForMerge);
    const nextWithReplacementsBase = {
      ...next,
 +    ...(voicePronouncePatch === undefined ? {} : { voicePronounce: voicePronouncePatch }),
++    ...(tessayaCastPatch === undefined ? {} : { tessayaCast: tessayaCastPatch }),
      favorites,
      providerModelPreferences: nextModelPreferences,
      ...(worktreeCleanupPatch === undefined
-@@ -544,6 +550,10 @@ export function applyServerSettingsPatch(
+@@ -544,6 +553,10 @@ export function applyServerSettingsPatch(
      ...(patch.providerInstances !== undefined
        ? { providerInstances: patch.providerInstances }
        : {}),

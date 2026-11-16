@@ -8,6 +8,7 @@ import * as NodeURL from "node:url";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
 
 import {
   conversationKey,
@@ -42,6 +43,8 @@ export interface LayerReply {
   readonly gesture: string;
   readonly intensity: number;
   readonly look?: string;
+  /** The speaking voice's affect clip for this line ("tender"): the vessel says the whole line in that reference. */
+  readonly affect?: string;
 }
 
 export interface LayerHttpRequest {
@@ -122,7 +125,11 @@ const layerTurnOf = (turn: TurnEnvelope): LayerTurn => {
   return {
     persona: turn.persona ?? null,
     member: identity.member,
-    assurance: identity.assurance,
+    // A layer opens only on his voice verified on this turn's own clips, never on his session's evidence.
+    assurance:
+      turn.speaker != null && !ownVoiceVerified(turn.speaker)
+        ? Math.min(identity.assurance, 1)
+        : identity.assurance,
     vessel: turn.vessel,
     conversation: conversationKey(turn),
     text: turn.text,

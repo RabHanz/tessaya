@@ -2,6 +2,79 @@ Tessaya: one usage record. Text generation, cloud speech-to-text and their tests
 (BrainUsage) for each paid call; the transcript scan skips the folder her own CLI calls run from, so the Usage page
 never counts them twice.
 
+diff --git a/apps/server/src/orchestration-v2/testkit/fixtures/index.ts b/apps/server/src/orchestration-v2/testkit/fixtures/index.ts
+index ce6d739b1cdd3cfab45cc602dabda21f9878f67d..8e64410fc5d919e8081581d83726bc77f1e778eb 100644
+--- a/apps/server/src/orchestration-v2/testkit/fixtures/index.ts
++++ b/apps/server/src/orchestration-v2/testkit/fixtures/index.ts
+@@ -93,6 +93,8 @@ import { providerThreadResumeInput } from "./provider_thread_resume/input.ts";
+ import { assertPiProviderThreadResumeOutput } from "./provider_thread_resume/pi_output.ts";
+ import { assertMultiTurnClaudeOutput } from "./multi_turn/claude_output.ts";
+ import { assertMultiTurnOutput } from "./multi_turn/codex_output.ts";
++import { assertFxMultiTurnOutput } from "./multi_turn/fx_output.ts";
++import { assertGrokMultiTurnOutput } from "./multi_turn/grok_output.ts";
+ import { assertPiMultiTurnOutput } from "./multi_turn/pi_output.ts";
+ import { multiTurnInput } from "./multi_turn/input.ts";
+ import { openCodeChildApprovalInput } from "./opencode_child_approval/input.ts";
+@@ -1475,13 +1477,13 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
+         driver: ProviderDriverKind.make("grok"),
+         transcriptFile: new URL("./multi_turn/grok_transcript.ndjson", import.meta.url),
+         modelSelection: GROK_MODEL_SELECTION,
+-        assertOutput: assertMultiTurnOutput,
++        assertOutput: assertGrokMultiTurnOutput,
+       },
+       {
+         driver: ProviderDriverKind.make("fx"),
+         transcriptFile: new URL("./multi_turn/fx_transcript.ndjson", import.meta.url),
+         modelSelection: FX_MODEL_SELECTION,
+-        assertOutput: assertMultiTurnOutput,
++        assertOutput: assertFxMultiTurnOutput,
+       },
+       {
+         driver: ProviderDriverKind.make("kiro"),
+diff --git a/apps/server/src/orchestration-v2/testkit/fixtures/multi_turn/pi_output.ts b/apps/server/src/orchestration-v2/testkit/fixtures/multi_turn/pi_output.ts
+index 35727d4a468bda13bea73e349f5b692dc45121c0..1936e70ad29e536771d0334b40cd0d31237ddc41 100644
+--- a/apps/server/src/orchestration-v2/testkit/fixtures/multi_turn/pi_output.ts
++++ b/apps/server/src/orchestration-v2/testkit/fixtures/multi_turn/pi_output.ts
+@@ -1,13 +1,39 @@
++import { assert } from "@effect/vitest";
+ import type { ProviderReplayTranscript } from "@t3tools/contracts";
+ 
+ import type { OrchestratorV2ScenarioResult } from "../../OrchestratorScenario.ts";
++import { projectionFor } from "../shared.ts";
+ import { assertPiSettledTokenUsage } from "../simple/pi_output.ts";
+ import { assertMultiTurnOutput } from "./codex_output.ts";
+ 
++const usage = { usageScope: "main_agent", usageStatus: "complete", hasSubagents: false } as const;
++
+ export function assertPiMultiTurnOutput(
+   result: OrchestratorV2ScenarioResult,
+   transcript: ProviderReplayTranscript,
+ ) {
+   assertMultiTurnOutput(result, transcript);
+   assertPiSettledTokenUsage(result, transcript);
++  // Per-turn usage sums the turn's assistant message_end usage; input includes cache reads.
++  assert.deepEqual(
++    projectionFor(result, transcript.scenario).providerTurns.map((turn) => turn.turnTokenUsage),
++    [
++      {
++        ...usage,
++        inputTokens: 1787,
++        outputTokens: 21,
++        cachedInputTokens: 0,
++        cacheCreationTokens: 0,
++        reasoningTokens: 18,
++      },
++      {
++        ...usage,
++        inputTokens: 1819,
++        outputTokens: 21,
++        cachedInputTokens: 1792,
++        cacheCreationTokens: 0,
++        reasoningTokens: 19,
++      },
++    ],
++  );
+ }
 diff --git a/apps/server/src/speech/CloudSpeech.test.ts b/apps/server/src/speech/CloudSpeech.test.ts
 index 112c7a88d9b3b26edf4ec5ba97b7b91857346724..c021831b68dd95d8064b37fef4a7085cf8837e73 100644
 --- a/apps/server/src/speech/CloudSpeech.test.ts
@@ -385,8 +458,332 @@ index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..d5c3e78f314c77902b5defa70d058c02
  const MAX_SPEECH_DURATION_SECONDS = 5 * 60;
  export const MAX_SPEECH_BYTES =
    SAMPLE_RATE * Float32Array.BYTES_PER_ELEMENT * MAX_SPEECH_DURATION_SECONDS;
+diff --git a/apps/server/src/textGeneration/AntigravityTextGeneration.ts b/apps/server/src/textGeneration/AntigravityTextGeneration.ts
+index b7e7cfaeb40e8efc3aaa302ea66645740af51bae..a9a6b8eb42eb1535ba627bc0de00d0e2c32eac54 100644
+--- a/apps/server/src/textGeneration/AntigravityTextGeneration.ts
++++ b/apps/server/src/textGeneration/AntigravityTextGeneration.ts
+@@ -268,6 +268,9 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
+                 },
+               ],
+             });
++            yield* TextGenerationOperations.reportUsage(
++              TextGenerationOperations.acpTokens(result.usage, true),
++            );
+             if (yield* Deferred.isDone(rejected)) {
+               return yield* Deferred.await(rejected);
+             }
+diff --git a/apps/server/src/textGeneration/ClaudeTextGeneration.test.ts b/apps/server/src/textGeneration/ClaudeTextGeneration.test.ts
+index a7041d5d249e5ee10b81cc242882a67ca6465cd6..d44bd36dad701676f7156dea8c5a87088be57ac7 100644
+--- a/apps/server/src/textGeneration/ClaudeTextGeneration.test.ts
++++ b/apps/server/src/textGeneration/ClaudeTextGeneration.test.ts
+@@ -20,6 +20,7 @@ import {
+ } from "../provider/ClaudeModelCatalog.testFixtures.ts";
+ import * as TextGeneration from "./TextGeneration.ts";
+ import { sanitizeThreadTitle } from "@t3tools/provider-core/server/textGenerationUtils";
++import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
+ import { makeClaudeTextGeneration } from "./ClaudeTextGeneration.ts";
+ import { writeFakeCli } from "@t3tools/provider-testing/fakeCli";
+ const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
+@@ -184,24 +185,42 @@ it.layer(layerClaudeTextGenerationTest)("ClaudeTextGeneration", (it) => {
+       ),
+   );
+ 
+-  it.effect("sends thread title instructions to the provider prompt", () =>
+-    withFakeClaudeEnv(
++  it.effect("sends thread title instructions to the provider prompt", () => {
++    const used: Array<TextGenerationOperations.Tokens> = [];
++    return withFakeClaudeEnv(
+       {
+-        output: JSON.stringify({ structured_output: { title: "Reconnect failures" } }),
++        output: JSON.stringify({
++          structured_output: { title: "Reconnect failures" },
++          usage: { input_tokens: 9, cache_read_input_tokens: 40, output_tokens: 6 },
++        }),
+         stdinMustContain: "Additional instructions:\nUse two to four words.",
+       },
+       (textGeneration) =>
+-        textGeneration.generateThreadTitle({
+-          cwd: process.cwd(),
+-          message: "Investigate reconnect failures",
+-          instructions: "Use two to four words.",
+-          modelSelection: {
+-            instanceId: ProviderInstanceId.make("claudeAgent"),
+-            model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
+-          },
+-        }),
+-    ),
+-  );
++        textGeneration
++          .generateThreadTitle({
++            cwd: process.cwd(),
++            message: "Investigate reconnect failures",
++            instructions: "Use two to four words.",
++            modelSelection: {
++              instanceId: ProviderInstanceId.make("claudeAgent"),
++              model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
++            },
++          })
++          .pipe(
++            Effect.provideService(TextGenerationOperations.UsageSink, (tokens) =>
++              used.push(...tokens),
++            ),
++          ),
++    ).pipe(
++      Effect.tap(() =>
++        Effect.sync(() =>
++          expect(
++            used.map(({ input, cacheRead, output }) => ({ input, cacheRead, output })),
++          ).toEqual([{ input: 9, cacheRead: 40, output: 6 }]),
++        ),
++      ),
++    );
++  });
+ 
+   it.effect("runs Claude text generation with the configured CLAUDE_CONFIG_DIR", () =>
+     Effect.gen(function* () {
+diff --git a/apps/server/src/textGeneration/ClaudeTextGeneration.ts b/apps/server/src/textGeneration/ClaudeTextGeneration.ts
+index 34e7415b3c9f4edd11c3cf029f2a841deb2bca0e..10901b1ceba6a2e8a176ae036da6b4626af78b9a 100644
+--- a/apps/server/src/textGeneration/ClaudeTextGeneration.ts
++++ b/apps/server/src/textGeneration/ClaudeTextGeneration.ts
+@@ -32,6 +32,7 @@ import {
+   hasClaudeManagedMcpConfig,
+   makeClaudeEnvironment,
+ } from "../provider/Drivers/ClaudeHome.ts";
++import { cliTokens } from "../tessaya/BrainUsage.ts";
+ 
+ const CLAUDE_TIMEOUT_MS = 180_000;
+ /** `--tools` takes bare names; patterns go in the allow list. */
+@@ -328,6 +329,13 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
+     const envelope = isClaudeOutputEnvelope(output)
+       ? output
+       : output.findLast((message) => message.type === "result");
++    const raw = Option.getOrUndefined(decodeJsonOption(rawStdout));
++    yield* TextGenerationOperations.reportUsage(
++      cliTokens(
++        Array.isArray(raw) ? raw.findLast((message) => message?.type === "result") : raw,
++        resolvedModelSelection.model,
++      ),
++    );
+ 
+     const decodeOutput = Schema.decodeEffect(outputSchemaJson);
+     return yield* decodeOutput(envelope?.structured_output).pipe(
+diff --git a/apps/server/src/textGeneration/CodexTextGeneration.test.ts b/apps/server/src/textGeneration/CodexTextGeneration.test.ts
+index e6e43d606e27fac25ee89d0faedf923b8b0bc81c..99deeee37f3f8e44fbd9aba5f06806f3895a1255 100644
+--- a/apps/server/src/textGeneration/CodexTextGeneration.test.ts
++++ b/apps/server/src/textGeneration/CodexTextGeneration.test.ts
+@@ -5,6 +5,7 @@ import {
+   type ServerProvider,
+ } from "@t3tools/contracts";
+ import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
++import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
+ import * as ProviderInstallationGate from "../provider/ProviderInstallationGate.ts";
+ import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+ import * as ServerSettings from "../serverSettings.ts";
+@@ -23,9 +24,10 @@ import * as Scope from "effect/Scope";
+ import { createModelSelection } from "@t3tools/shared/model";
+ import { expect } from "vite-plus/test";
+ 
+-import { CodexSettings, ProviderInstanceId } from "@t3tools/contracts";
++import { CodexSettings, ProviderInstanceId, TextGenerationError } from "@t3tools/contracts";
+ 
+ import * as ServerConfig from "../config.ts";
++import * as BrainUsage from "../tessaya/BrainUsage.ts";
+ import { makeProcessProbe, processProbeSource } from "../testUtils/processProbe.ts";
+ import * as TextGeneration from "./TextGeneration.ts";
+ import * as TextGenerators from "./TextGenerators.ts";
+@@ -190,6 +192,7 @@ function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
+         "}",
+         'if (check.stderr !== null) process.stderr.write(check.stderr + "\\n");',
+         'if (outputPath !== null) NodeFS.writeFileSync(outputPath, check.output + "\\n");',
++        'if (args.includes("--json")) process.stdout.write(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 120, cached_input_tokens: 100, output_tokens: 7 } }) + "\\n");',
+         "process.exitCode = check.exitCode;",
+         "",
+       ].join("\n"),
+@@ -317,8 +320,9 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
+       ),
+   );
+ 
+-  it.effect("drops the requested model's options when falling back to another model", () =>
+-    withFakeCodexEnv(
++  it.effect("drops the requested model's options when falling back to another model", () => {
++    const used: Array<TextGenerationOperations.Tokens> = [];
++    return withFakeCodexEnv(
+       {
+         output: JSON.stringify({ title: "Live title" }),
+         models: ["gpt-6-astra"],
+@@ -326,16 +330,29 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
+         forbidArg: 'service_tier="priority"',
+       },
+       (textGeneration) =>
+-        textGeneration.generateThreadTitle({
+-          cwd: process.cwd(),
+-          message: "Describe this change",
+-          modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-6-luna", [
+-            { id: "reasoningEffort", value: "none" },
+-            { id: "serviceTier", value: "priority" },
+-          ]),
+-        }),
+-    ),
+-  );
++        textGeneration
++          .generateThreadTitle({
++            cwd: process.cwd(),
++            message: "Describe this change",
++            modelSelection: createModelSelection(ProviderInstanceId.make("codex"), "gpt-6-luna", [
++              { id: "reasoningEffort", value: "none" },
++              { id: "serviceTier", value: "priority" },
++            ]),
++          })
++          .pipe(
++            Effect.provideService(TextGenerationOperations.UsageSink, (tokens) =>
++              used.push(...tokens),
++            ),
++          ),
++    ).pipe(
++      // The usage ledger's tokens: `codex exec --json` counts the cache inside its input.
++      Effect.tap(() =>
++        Effect.sync(() =>
++          expect(used).toEqual([{ input: 20, cacheRead: 100, cacheWrite: 0, output: 7 }]),
++        ),
++      ),
++    );
++  });
+ 
+   it.effect("sends a configured custom model the managed snapshot leaves out", () =>
+     withFakeCodexEnv(
+@@ -853,3 +870,86 @@ it.effect(
+       );
+     }),
+ );
++
++it.effect("every generation leaves one usage row per model it used, failed ones too", () =>
++  Effect.gen(function* () {
++    const id = ProviderInstanceId.make("codex");
++    const driver = ProviderDriverKind.make("codex");
++    const rows: Array<BrainUsage.UsageRow> = [];
++    const replies = [
++      TextGenerationOperations.reportUsage([
++        { input: 10, cacheRead: 5, cacheWrite: 0, output: 3 },
++        { model: "gpt-mini", input: 1, cacheRead: 0, cacheWrite: 0, output: 1 },
++      ]),
++      Effect.void,
++      Effect.fail(new TextGenerationError({ operation: "generateThreadTitle", detail: "boom" })),
++    ];
++    let call = 0;
++    const instance = {
++      instanceId: id,
++      driverKind: driver,
++      continuationIdentity: { driverKind: driver, continuationKey: id },
++      displayName: undefined,
++      enabled: true,
++      snapshot: {
++        getSnapshot: Effect.succeed<ServerProvider>({
++          instanceId: id,
++          driver,
++          enabled: true,
++          installed: true,
++          status: "ready",
++          auth: { status: "authenticated" },
++          version: null,
++          checkedAt: "1970-01-01T00:00:00Z",
++          models: [],
++          slashCommands: [],
++          skills: [],
++        }),
++      } as ProviderInstance["snapshot"],
++      orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
++      textGeneration: TextGeneration.TextGeneration.of({
++        generateCommitMessage: () => Effect.die("unused"),
++        generatePrContent: () => Effect.die("unused"),
++        generateBranchName: () => Effect.die("unused"),
++        generateReviewGuide: () => Effect.die("unused"),
++        generateTranscriptionPostProcessing: () => Effect.die("unused"),
++        generateThreadTitle: () => Effect.as(replies[call++]!, { title: "Title" }),
++      }),
++    } satisfies ProviderInstance;
++    const service = yield* TextGeneration.make.pipe(
++      Effect.provide(
++        Layer.mergeAll(
++          Layer.mock(ProviderInstanceRegistry.ProviderInstanceRegistry)({
++            listInstances: Effect.succeed([instance]),
++            getInstance: () => Effect.succeed(instance),
++          }),
++          ServerSettings.layerTest({}),
++          Layer.mock(TextGenerators.TextGenerators)({ runner: () => Effect.undefined }),
++          Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
++            resolveLink: () => Effect.die("unused"),
++          }),
++          Layer.mock(BrainUsage.BrainUsage)({
++            record: (row) => Effect.sync(() => void rows.push(row)),
++          }),
++          ProviderInstallationGate.layer,
++        ),
++      ),
++    );
++    const input = {
++      cwd: "/tmp",
++      message: "hello",
++      linkedContext: "",
++      modelSelection: { instanceId: id, model: "gpt-5" },
++    };
++    for (let i = 0; i < 3; i++) yield* Effect.exit(service.generateThreadTitle(input));
++    expect(
++      rows.map(({ model, input, output, outcome }) => ({ model, input, output, outcome })),
++    ).toEqual([
++      { model: "gpt-5", input: 10, output: 3, outcome: "ok" },
++      { model: "gpt-mini", input: 1, output: 1, outcome: "ok" },
++      { model: "gpt-5", input: 0, output: 0, outcome: "unmeasured" },
++      { model: "gpt-5", input: 0, output: 0, outcome: "failed" },
++    ]);
++    expect(rows.every((row) => row.attribution.feature === "generateThreadTitle")).toBe(true);
++  }),
++);
+diff --git a/apps/server/src/textGeneration/CodexTextGeneration.ts b/apps/server/src/textGeneration/CodexTextGeneration.ts
+index 49c60166111baff98b5160f9f963ea41a8d3d963..2357ad1dc3c4b41d151f411c9883de20196de718 100644
+--- a/apps/server/src/textGeneration/CodexTextGeneration.ts
++++ b/apps/server/src/textGeneration/CodexTextGeneration.ts
+@@ -61,6 +61,23 @@ const codexMcpServerOffFlags = (names: ReadonlyArray<string>) =>
+     .filter((name) => !name.includes(".") && !name.includes("="))
+     .flatMap((name) => ["--config", `mcp_servers.${name}.enabled=false`]);
+ const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
++
++/** `codex exec --json`'s `turn.completed` usage, whose input counts the cached part. */
++const codexExecTokens = (stdout: string): ReadonlyArray<TextGenerationOperations.Tokens> =>
++  stdout.split("\n").flatMap((line) => {
++    if (!line.includes('"turn.completed"')) return [];
++    try {
++      const usage = JSON.parse(line)?.usage;
++      return TextGenerationOperations.acpTokens({
++        inputTokens: usage?.input_tokens ?? 0,
++        cachedReadTokens: usage?.cached_input_tokens,
++        outputTokens: usage?.output_tokens ?? 0,
++      });
++    } catch {
++      return [];
++    }
++  });
++
+ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(function* (
+   codexConfig: CodexSettings,
+   environment?: NodeJS.ProcessEnv,
+@@ -319,6 +336,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
+           // After launch args, so a launch arg's enabled=true cannot turn a server back on.
+           ...codexMcpServerOffFlags(enabledMcpServers),
+           "--ephemeral",
++          "--json",
+           "--skip-git-repo-check",
+           "-s",
+           "read-only",
+@@ -379,6 +397,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
+               : `Codex CLI command failed with code ${exitCode}.`,
+         });
+       }
++      yield* TextGenerationOperations.reportUsage(codexExecTokens(stdout));
+     });
+ 
+     const cleanup = Effect.all([removeTempFileDir(schemaPath), removeTempFileDir(outputPath)], {
 diff --git a/apps/server/src/textGeneration/TextGeneration.ts b/apps/server/src/textGeneration/TextGeneration.ts
-index 818afb4fae553213aac44a85e098304e6567b3bf..87abc64b72ec904c4b6ab19be56551e7f55fd474 100644
+index 818afb4fae553213aac44a85e098304e6567b3bf..05b06fd3cecd0b749553020fa48197f06efc131b 100644
 --- a/apps/server/src/textGeneration/TextGeneration.ts
 +++ b/apps/server/src/textGeneration/TextGeneration.ts
 @@ -8,6 +8,8 @@ import {
@@ -407,45 +804,50 @@ index 818afb4fae553213aac44a85e098304e6567b3bf..87abc64b72ec904c4b6ab19be56551e7
  
  export type {
    BranchNameGenerationInput,
-@@ -77,6 +81,37 @@ export const make = Effect.gen(function* () {
+@@ -77,6 +81,42 @@ export const make = Effect.gen(function* () {
    const serverSettings = yield* ServerSettings.ServerSettingsService;
    const installationGate = yield* ProviderInstallationGate.ProviderInstallationGate;
    const textGenerators = yield* TextGenerators.TextGenerators;
 +  const usage = yield* Effect.serviceOption(BrainUsage);
-+  /** Every generation is a paid call: one usage row each, failed ones too. Drivers report no tokens yet. */
++  /** Every generation is a paid call: one usage row per model it used, failed ones too. */
 +  const recorded = <A>(
 +    operation: TextGenerationOp,
 +    invoke: Effect.Effect<A, TextGenerationError>,
 +    selection: ModelSelection,
-+  ) =>
-+    Option.isNone(usage)
-+      ? invoke
-+      : invoke.pipe(
-+          Effect.onExit((exit) =>
-+            Effect.gen(function* () {
-+              const instance = yield* registry.getInstance(selection.instanceId);
-+              const auth =
-+                instance === undefined ? undefined : (yield* instance.snapshot.getSnapshot).auth;
-+              yield* usage.value.record({
-+                role: "agent",
-+                billing: billingOfAuth(auth?.type),
-+                provider: selection.instanceId,
-+                credential: `instance:${selection.instanceId}`,
-+                model: selection.model,
-+                input: 0,
-+                cacheRead: 0,
-+                cacheWrite: 0,
-+                output: 0,
-+                outcome: Exit.isSuccess(exit) ? "unmeasured" : "failed",
-+                attribution: { feature: operation, origin: "user" },
-+              });
-+            }).pipe(Effect.ignore),
-+          ),
-+        );
++  ) => {
++    if (Option.isNone(usage)) return invoke;
++    const used: Array<TextGenerationOperations.Tokens> = [];
++    return invoke.pipe(
++      Effect.provideService(TextGenerationOperations.UsageSink, (tokens) => used.push(...tokens)),
++      Effect.onExit((exit) =>
++        Effect.gen(function* () {
++          const instance = yield* registry.getInstance(selection.instanceId);
++          const auth =
++            instance === undefined ? undefined : (yield* instance.snapshot.getSnapshot).auth;
++          const rows =
++            used.length > 0
++              ? used
++              : [{ input: 0, cacheRead: 0, cacheWrite: 0, output: 0 } as const];
++          for (const tokens of rows) {
++            yield* usage.value.record({
++              role: "agent",
++              billing: billingOfAuth(auth?.type),
++              provider: selection.instanceId,
++              credential: `instance:${selection.instanceId}`,
++              ...tokens,
++              model: tokens.model ?? selection.model,
++              outcome: Exit.isFailure(exit) ? "failed" : used.length > 0 ? "ok" : "unmeasured",
++              attribution: { feature: operation, origin: "user" },
++            });
++          }
++        }).pipe(Effect.ignore),
++      ),
++    );
++  };
    const generate = Effect.fn("TextGeneration.generate")(function* <A>(
      operation: TextGenerationOp,
      selection: ModelSelection,
-@@ -92,8 +127,9 @@ export const make = Effect.gen(function* () {
+@@ -92,8 +132,9 @@ export const make = Effect.gen(function* () {
      const textGeneratorCannotRun =
        textGenerator !== undefined && operation === "generateReviewGuide";
      if (textGenerator !== undefined && !textGeneratorCannotRun) {
@@ -457,7 +859,7 @@ index 818afb4fae553213aac44a85e098304e6567b3bf..87abc64b72ec904c4b6ab19be56551e7
          selection,
        );
      }
-@@ -155,7 +191,7 @@ export const make = Effect.gen(function* () {
+@@ -155,7 +196,7 @@ export const make = Effect.gen(function* () {
      return yield* installationGate.execute(
        selection.instanceId,
        resolveInstance(registry, operation, selection.instanceId).pipe(
@@ -466,6 +868,205 @@ index 818afb4fae553213aac44a85e098304e6567b3bf..87abc64b72ec904c4b6ab19be56551e7
        ),
      );
    });
+diff --git a/apps/server/src/textGeneration/textGeneratorDrivers.ts b/apps/server/src/textGeneration/textGeneratorDrivers.ts
+index ef7860c84dbc9a01757b58ae918962c0c7f3c258..b55fa7b45b9d277558d2b86eca0f160325f331b8 100644
+--- a/apps/server/src/textGeneration/textGeneratorDrivers.ts
++++ b/apps/server/src/textGeneration/textGeneratorDrivers.ts
+@@ -1,6 +1,9 @@
+ import type { TextGeneratorKind, TextGeneratorModel } from "@t3tools/contracts";
+ import * as Effect from "effect/Effect";
+ import * as Schema from "effect/Schema";
++import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
++
++import { apiTokens } from "../tessaya/BrainUsage.ts";
+ import {
+   FetchHttpClient,
+   HttpClient,
+@@ -130,11 +133,27 @@ const ChatCompletion = Schema.Struct({
+       message: Schema.Struct({ content: Schema.NullOr(Schema.String) }),
+     }),
+   ),
++  usage: Schema.optional(Schema.NullOr(Schema.Unknown)),
+ });
+ const OpenAIModelList = Schema.Struct({
+   data: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.optional(Schema.String) })),
+ });
+ 
++/** An OpenAI-style `usage`, whose prompt tokens count the cached part. */
++const chatTokens = (usage: unknown): ReadonlyArray<TextGenerationOperations.Tokens> => {
++  if (typeof usage !== "object" || usage === null) return [];
++  const u = usage as {
++    prompt_tokens?: number;
++    completion_tokens?: number;
++    prompt_tokens_details?: { cached_tokens?: number };
++  };
++  return TextGenerationOperations.acpTokens({
++    inputTokens: u.prompt_tokens ?? 0,
++    cachedReadTokens: u.prompt_tokens_details?.cached_tokens,
++    outputTokens: u.completion_tokens ?? 0,
++  });
++};
++
+ const openAICompatible: TextGeneratorDriver = {
+   kind: "openaiCompatible",
+   generate: (connection, model, prompt) => {
+@@ -144,6 +163,9 @@ const openAICompatible: TextGeneratorDriver = {
+     );
+     if (connection.apiKey) request = HttpClientRequest.bearerToken(request, connection.apiKey);
+     return sendJson(label, request, ChatCompletion).pipe(
++      Effect.tap((completion) =>
++        TextGenerationOperations.reportUsage(chatTokens(completion.usage)),
++      ),
+       Effect.flatMap((completion) => {
+         const choice = completion.choices[0];
+         const text = choice?.message.content?.trim();
+@@ -176,6 +198,7 @@ const AnthropicMessage = Schema.Struct({
+   content: Schema.Array(
+     Schema.Struct({ type: Schema.String, text: Schema.optional(Schema.String) }),
+   ),
++  usage: Schema.optional(Schema.Unknown),
+ });
+ const AnthropicModelPage = Schema.Struct({
+   data: Schema.Array(
+@@ -206,6 +229,11 @@ const anthropic: TextGeneratorDriver = {
+       connection.apiKey,
+     );
+     return sendJson(label, request, AnthropicMessage).pipe(
++      Effect.tap((message) =>
++        TextGenerationOperations.reportUsage(
++          [apiTokens(model, message.usage)].flatMap((tokens) => tokens ?? []),
++        ),
++      ),
+       Effect.flatMap((message) => {
+         if (message.stop_reason === "max_tokens") {
+           return Effect.fail(
+diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
+index 81f3d1ec289aa156e0aed3bc079936a9148b3347..e6856d796614e3146128dbeb83761727e8f86434 100644
+--- a/apps/server/src/usage/UsageService.test.ts
++++ b/apps/server/src/usage/UsageService.test.ts
+@@ -51,6 +51,9 @@ import * as AntigravityUsage from "../provider/Drivers/AntigravityUsage.ts";
+ import * as ProviderHostLive from "../provider/ProviderHostLive.ts";
+ import { totalTokens, type UsageRecord } from "@t3tools/provider-core/server/usage";
+ import * as UsageService from "./UsageService.ts";
++import * as BrainUsage from "../tessaya/BrainUsage.ts";
++import * as TessayaDatabase from "../tessaya/TessayaDatabase.ts";
++import * as TessayaRecordService from "../tessaya/TessayaRecordService.ts";
+ import * as MuseSdk from "../../../../packages/provider-muse/src/server/sdk.ts";
+ import { MuseUsageHome } from "@t3tools/provider-muse/server";
+ import { makeScanCacheWriter, SCAN_CACHE_FILE_NAME } from "./usageScanCache.ts";
+@@ -2032,6 +2035,72 @@ describe("UsageService", () => {
+       }),
+   );
+ 
++  it.effect("counts Tessaya's ledgered calls beside the transcripts, each once", () =>
++    Effect.gen(function* () {
++      const { settings, home, transcript } = yield* setup;
++      yield* Effect.promise(() => NodeFSP.writeFile(transcript, claudeLine(1, 7)));
++      yield* TestClock.setTime(Date.parse("2026-08-01T11:00:00Z"));
++      // The ledger's database lives as long as the provided layer, so the read happens inside it.
++      const summary = yield* Effect.gen(function* () {
++        const ledger = yield* BrainUsage.BrainUsage;
++        const call = { input: 3, cacheRead: 0, cacheWrite: 0, output: 5 };
++        const attribution = { feature: "voice", origin: "user", threadId: "thread-1" };
++        yield* ledger.record({
++          ...call,
++          model: "claude-fable-5",
++          role: "voice",
++          credential: "subscription",
++          attribution,
++        });
++        // Grok's text generation keeps a session its own transcript reader counts.
++        yield* ledger.record({
++          ...call,
++          model: "grok-4",
++          role: "agent",
++          provider: "grok",
++          credential: "instance:grok",
++          attribution,
++        });
++        // A failed call with no tokens adds nothing to count.
++        yield* ledger.record({
++          ...call,
++          output: 0,
++          input: 0,
++          model: "claude-fable-5",
++          role: "voice",
++          credential: "subscription",
++          outcome: "failed",
++          attribution,
++        });
++        return yield* (yield* UsageService.make).readSummary(WINDOW);
++      }).pipe(
++        Effect.provide(
++          Layer.effect(
++            BrainUsage.BrainUsage,
++            BrainUsage.make(() => null),
++          ).pipe(
++            Layer.provide(TessayaRecordService.layer),
++            Layer.provide(TessayaDatabase.layerMemory),
++            Layer.provideMerge(layerService({ prefix: "usage-service-ledger", home, settings })),
++          ),
++        ),
++      );
++      const ledgerSources = summary.sources.filter(
++        (source) => source.fingerprint.resolvedHomePath === BrainUsage.LEDGER_SOURCE,
++      );
++      assert.deepStrictEqual(
++        ledgerSources.map((source) => [source.fingerprint.provider, source.distinctSessions]),
++        [["claude", 1]],
++      );
++      assert.strictEqual(totalOutputTokens(summary), 12);
++      const merged = mergeUsage(
++        [{ environmentId: EnvironmentId.make("local"), label: "local", summary }],
++        summary.contractVersion,
++      );
++      assert.strictEqual(merged.models.find((m) => m.model === "claude-fable-5")?.totalTokens, 25);
++    }),
++  );
++
+   it.effect("counts unpriced tokens from the unpriced records of a mixed model", () =>
+     Effect.gen(function* () {
+       const { settings, home } = yield* setup;
+diff --git a/apps/server/src/usage/UsageService.ts b/apps/server/src/usage/UsageService.ts
+index a55532913c3c614039105937b56e05d68c6ca90b..ffccbafd11e5b0fe85e25f46079209396e1b7814 100644
+--- a/apps/server/src/usage/UsageService.ts
++++ b/apps/server/src/usage/UsageService.ts
+@@ -39,6 +39,7 @@ import type {
+   TranscriptUsageFormat,
+   UsageRecord,
+ } from "@t3tools/provider-core/server/usage";
++import { BrainUsage } from "../tessaya/BrainUsage.ts";
+ import { canonicalModelFilter, resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
+ import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
+ import {
+@@ -160,6 +161,7 @@ export const make = Effect.gen(function* () {
+   const hostEnvironment = yield* HostProcess.Environment;
+   const hostname = yield* HostProcess.Hostname;
+   const readerContext = yield* Effect.context<BuiltInUsageReadersEnv>();
++  const ledger = yield* Effect.serviceOption(BrainUsage);
+ 
+   const fileCache: ScanCache = new Map();
+   // Reads from concurrent windows can still hold the original record after it is corrected.
+@@ -1046,6 +1048,19 @@ export const make = Effect.gen(function* () {
+       });
+     }
+ 
++    // Tessaya's own calls, which the scan skips (isLedgeredDir) or never sees, count from her usage ledger.
++    if (Option.isSome(ledger)) {
++      const add = (record: UsageRecord, sourcePath: string) => aggregator.add(record, sourcePath);
++      sources.push(
++        ...(yield* ledger.value.intoUsage({
++          sinceMs: windowStartMs,
++          untilMs: windowEndMs,
++          hostId,
++          add,
++        })),
++      );
++    }
++
+     const pruned = pruneScanCache(fileCache, retentionCutoffMs);
+     if (pruned > 0) {
+       cacheDirty = true;
 diff --git a/apps/server/src/usage/usageTranscriptReader.test.ts b/apps/server/src/usage/usageTranscriptReader.test.ts
 index f4cb72ec1e25caba563d0646233924e12994938f..d24ab2aa5c5f6e3ddfd1cd9a2acf6379ba4e4905 100644
 --- a/apps/server/src/usage/usageTranscriptReader.test.ts
@@ -502,3 +1103,397 @@ index a4b10a4df2045b1ddac9bff431ae38e5b28f8929..f9e4c296be94031ba865214b7b444f2e
          return (
            fileName !== undefined
              ? entry.name === fileName
+diff --git a/packages/effect-acp/src/rpc.ts b/packages/effect-acp/src/rpc.ts
+index 5154b948b0ad40e937f8d861bd05c9bb6b0b4058..c9257de615aa9e0f3041b1ba133f5b838913cbd1 100644
+--- a/packages/effect-acp/src/rpc.ts
++++ b/packages/effect-acp/src/rpc.ts
+@@ -247,6 +247,14 @@ const CompatPromptRpc = Rpc.make(AGENT_METHODS.session_prompt, {
+   payload: Schema.Union([AcpSchema.PromptRequest, AcpSchemaV1.PromptRequest]),
+   success: Schema.Union([
+     AcpSchemaV1.PromptResponse,
++    // fx's per-turn usage omits totalTokens, which TurnTokenUsage never reads.
++    Schema.Struct({
++      stopReason: AcpSchemaV1.StopReason,
++      usage: Schema.Struct({
++        ...AcpSchemaV1.Usage.fields,
++        totalTokens: Schema.optionalKey(AcpSchemaV1.Usage.fields.totalTokens),
++      }),
++    }),
+     // fx sends empty usage on cancellation; retain its stop reason when usage is invalid.
+     Schema.Struct({ stopReason: AcpSchemaV1.StopReason }),
+     AcpSchema.PromptResponse,
+diff --git a/packages/provider-core/src/server/textGenerationOperations.ts b/packages/provider-core/src/server/textGenerationOperations.ts
+index 60204a2d82c18f6e495443a3c0d9db4a1b3c2d8e..f6b49d3d2e9911a32194d6b95aeef401c01f9b6d 100644
+--- a/packages/provider-core/src/server/textGenerationOperations.ts
++++ b/packages/provider-core/src/server/textGenerationOperations.ts
+@@ -1,3 +1,4 @@
++import * as Context from "effect/Context";
+ import * as Effect from "effect/Effect";
+ import * as Schema from "effect/Schema";
+ 
+@@ -53,6 +54,58 @@ export const withoutInvestigation =
+       ? Effect.fail(investigationUnsupported(request.operation, provider))
+       : run(request);
+ 
++/** One generation's tokens; `input` is the uncached part. `model` when the reply names the one that ran. */
++export interface Tokens {
++  readonly model?: string;
++  readonly input: number;
++  readonly cacheRead: number;
++  readonly cacheWrite: number;
++  readonly output: number;
++}
++
++/** Where a driver hands back what its call used; the caller that records usage provides it. */
++export const UsageSink = Context.Reference<((tokens: ReadonlyArray<Tokens>) => void) | undefined>(
++  "@t3tools/provider-core/textGenerationOperations/UsageSink",
++  { defaultValue: () => undefined },
++);
++
++export const reportUsage = Effect.fn("TextGenerationOperations.reportUsage")(function* (
++  tokens: ReadonlyArray<Tokens>,
++) {
++  (yield* UsageSink)?.(tokens);
++});
++
++const nonNegative = (value: number | null | undefined) =>
++  typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
++
++/** An ACP PromptResponse's `usage`: its input counts the cache, except Gemini's, which also leaves thoughts out of output. */
++export const acpTokens = (
++  usage:
++    | {
++        readonly inputTokens: number;
++        readonly outputTokens: number;
++        readonly cachedReadTokens?: number | null | undefined;
++        readonly cachedWriteTokens?: number | null | undefined;
++        readonly thoughtTokens?: number | null | undefined;
++      }
++    | null
++    | undefined,
++  gemini = false,
++): ReadonlyArray<Tokens> => {
++  if (usage == null) return [];
++  const cacheRead = nonNegative(usage.cachedReadTokens);
++  const cacheWrite = nonNegative(usage.cachedWriteTokens);
++  const input = nonNegative(usage.inputTokens);
++  return [
++    {
++      input: gemini ? input : Math.max(0, input - cacheRead - cacheWrite),
++      cacheRead,
++      cacheWrite,
++      output: nonNegative(usage.outputTokens) + (gemini ? nonNegative(usage.thoughtTokens) : 0),
++    },
++  ];
++};
++
+ export const decodeJsonReply = <S extends Schema.Top>(
+   request: Pick<Request<S>, "operation" | "outputSchema">,
+   provider: string,
+diff --git a/packages/provider-fx/src/server/adapter.ts b/packages/provider-fx/src/server/adapter.ts
+index b48293f4fb98650989602949c6d6ad7c8a205440..dee09fbd3800f3402834b7c858dede1cf7e3c3c9 100644
+--- a/packages/provider-fx/src/server/adapter.ts
++++ b/packages/provider-fx/src/server/adapter.ts
+@@ -188,6 +188,8 @@ function makeFxAcpAdapterFlavor(options: FxAdapterV2Options): AcpAdapterV2Flavor
+     sessionModeForPolicy: fxSessionModeForPolicy,
+     permissionDisposition: fxPermissionDisposition,
+     extractSubagentUpdate: extractFxSubagentUpdate,
++    // Recorded fx turns report each prompt's own counters (turn 2 output does not include turn 1).
++    reportsPerTurnPromptUsage: true,
+     ...(options.assertComplete === undefined ? {} : { assertComplete: options.assertComplete }),
+   };
+ }
+diff --git a/packages/provider-grok/src/server/adapter.ts b/packages/provider-grok/src/server/adapter.ts
+index 7340ad213bed14e1c371aee98ebdfc926fff3929..ef42b2c019111d9dfdd5a397ef9b00f9b805e267 100644
+--- a/packages/provider-grok/src/server/adapter.ts
++++ b/packages/provider-grok/src/server/adapter.ts
+@@ -328,6 +328,7 @@ export function makeGrokAcpAdapterFlavor(
+     // Grok accepts image blocks despite advertising promptCapabilities.image:false.
+     supportsImagePrompts: true,
+     supportsCompaction: true,
++    reportsPerTurnPromptUsage: true,
+     // Grok expands only a leading `/name`, while the `$` picker inserts `$name` from the
+     // `grok inspect` catalog. Ask that catalog again so other `$` text is left alone.
+     rewriteUserText: (text, turnInput) => {
+diff --git a/packages/provider-grok/src/server/textGeneration.ts b/packages/provider-grok/src/server/textGeneration.ts
+index 61a6b2d482f531a4868348e99e538066d6999fd6..11375a2c3a3c674f70a0b47305ed89bc8b63cb9e 100644
+--- a/packages/provider-grok/src/server/textGeneration.ts
++++ b/packages/provider-grok/src/server/textGeneration.ts
+@@ -79,9 +79,13 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
+               cause,
+             }),
+         });
+-        return yield* runtime.prompt({
++        const result = yield* runtime.prompt({
+           prompt: [{ type: "text", text: prompt }],
+         });
++        yield* TextGenerationOperations.reportUsage(
++          TextGenerationOperations.acpTokens(result.usage),
++        );
++        return result;
+       }).pipe(
+         Effect.timeoutOption(GROK_TIMEOUT_MS),
+         Effect.flatMap(
+diff --git a/packages/provider-grok/src/server/xaiAcpExtension.ts b/packages/provider-grok/src/server/xaiAcpExtension.ts
+index 7181d1927923c92bd22280852e1bd5d2cf8230ef..78bb990e2498e14a551e4a62b794c0cc3f3b2921 100644
+--- a/packages/provider-grok/src/server/xaiAcpExtension.ts
++++ b/packages/provider-grok/src/server/xaiAcpExtension.ts
+@@ -3,6 +3,7 @@ import * as Cause from "effect/Cause";
+ import * as Deferred from "effect/Deferred";
+ import * as Effect from "effect/Effect";
+ import * as Fiber from "effect/Fiber";
++import * as Option from "effect/Option";
+ import * as Ref from "effect/Ref";
+ import * as Schema from "effect/Schema";
+ import * as EffectAcpErrors from "effect-acp/errors";
+@@ -19,6 +20,7 @@ const XAiPromptCompleteNotification = Schema.Struct({
+   promptId: Schema.optional(Schema.String),
+   stopReason: Schema.optional(Schema.String),
+   agentResult: Schema.optional(Schema.NullOr(Schema.Unknown)),
++  usage: Schema.optional(Schema.Unknown),
+ });
+ 
+ type XAiPromptCompleteNotification = typeof XAiPromptCompleteNotification.Type;
+@@ -32,6 +34,7 @@ const XAiSessionUpdateNotification = Schema.Struct({
+     stop_reason: Schema.optional(Schema.String),
+     stopReason: Schema.optional(Schema.String),
+     agent_result: Schema.optional(Schema.NullOr(Schema.Unknown)),
++    usage: Schema.optional(Schema.Unknown),
+     child_session_id: Schema.optional(Schema.String),
+     status: Schema.optional(Schema.String),
+     output: Schema.optional(Schema.NullOr(Schema.String)),
+@@ -70,6 +73,7 @@ export function xAiPromptCompleteFromSessionUpdate(
+     promptId,
+     ...(stopReason === undefined ? {} : { stopReason }),
+     ...(update.agent_result === undefined ? {} : { agentResult: update.agent_result }),
++    ...(update.usage === undefined ? {} : { usage: update.usage }),
+   };
+ }
+ 
+@@ -1286,6 +1290,33 @@ function promptIdFromResponse(response: EffectAcpSchema.PromptResponse): string
+   return typeof promptId === "string" && promptId.length > 0 ? promptId : undefined;
+ }
+ 
++const decodeXAiUsage = Schema.decodeUnknownOption(
++  Schema.Struct({
++    totalTokens: Schema.Number,
++    inputTokens: Schema.Number,
++    outputTokens: Schema.Number,
++    cachedReadTokens: Schema.optionalKey(Schema.Number),
++    cacheCreationTokens: Schema.optionalKey(Schema.Number),
++    reasoningTokens: Schema.optionalKey(Schema.Number),
++  }),
++);
++
++/** Grok carries per-prompt usage in `_meta.usage` (RPC result and turn_completed alike). */
++function withXAiUsage(response: EffectAcpSchema.PromptResponse): EffectAcpSchema.PromptResponse {
++  if (response.usage != null) return response;
++  const usage = decodeXAiUsage(response._meta?.usage);
++  if (Option.isNone(usage)) return response;
++  const { cacheCreationTokens, reasoningTokens, ...counters } = usage.value;
++  return {
++    ...response,
++    usage: {
++      ...counters,
++      cachedWriteTokens: cacheCreationTokens ?? null,
++      thoughtTokens: reasoningTokens ?? null,
++    },
++  };
++}
++
+ function normalizeXAiStopReason(value: string | undefined): EffectAcpSchema.StopReason {
+   switch (value) {
+     case "cancelled":
+@@ -1313,6 +1344,9 @@ function promptResponseFromXAi(
+   if (notification.agentResult !== undefined) {
+     meta.agentResult = notification.agentResult as Schema.Json;
+   }
++  if (notification.usage !== undefined) {
++    meta.usage = notification.usage as Schema.Json;
++  }
+   return {
+     stopReason,
+     _meta: meta,
+@@ -1582,6 +1616,7 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
+           ),
+           Deferred.await(fallback.deferred),
+         ).pipe(
++          Effect.map(withXAiUsage),
+           Effect.tap((response) =>
+             rememberCompletedXAiPromptId(completedXAiPromptIdsRef, response, fallback.promptId),
+           ),
+diff --git a/packages/provider-opencode/src/server/textGeneration.ts b/packages/provider-opencode/src/server/textGeneration.ts
+index bbb02d36e6323e1fa9e3764e6724a3989a5d025b..66071f3cbaa9f1b08598ad4f3209f9cd72c80e3b 100644
+--- a/packages/provider-opencode/src/server/textGeneration.ts
++++ b/packages/provider-opencode/src/server/textGeneration.ts
+@@ -300,6 +300,17 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
+             cause: promptError,
+           });
+         }
++        const tokens = result.data?.info?.tokens;
++        if (tokens !== undefined) {
++          yield* TextGenerationOperations.reportUsage([
++            {
++              input: tokens.input,
++              cacheRead: tokens.cache.read,
++              cacheWrite: tokens.cache.write,
++              output: tokens.output + tokens.reasoning,
++            },
++          ]);
++        }
+         const responseParts = result.data?.parts ?? [];
+         const rawText = getOpenCodeTextResponse(responseParts);
+         if (rawText.length === 0) {
+diff --git a/packages/provider-opencode/src/server/v2/textGeneration.ts b/packages/provider-opencode/src/server/v2/textGeneration.ts
+index 64c8293771954bd879c53ded7a465cb839e95e01..e68fdf572258d188b06ed00898ced7cccb45ec15 100644
+--- a/packages/provider-opencode/src/server/v2/textGeneration.ts
++++ b/packages/provider-opencode/src/server/v2/textGeneration.ts
+@@ -76,6 +76,19 @@ const runOnServer = Effect.fn("Opencode2TextGeneration.runOnServer")(function* (
+         case "session.text.ended":
+           texts.set(`${event.data.assistantMessageID}:${event.data.ordinal}`, event.data.text);
+           return Effect.void;
++        case "session.step.ended": {
++          const tokens = event.data.tokens;
++          return tokens === undefined
++            ? Effect.void
++            : TextGenerationOperations.reportUsage([
++                {
++                  input: tokens.input,
++                  cacheRead: tokens.cache.read,
++                  cacheWrite: tokens.cache.write,
++                  output: tokens.output + tokens.reasoning,
++                },
++              ]);
++        }
+         case "permission.asked":
+           return client.permission
+             .reply({
+diff --git a/packages/provider-pi/src/server/adapter.ts b/packages/provider-pi/src/server/adapter.ts
+index 2882a709a684732bb1ee2d9367fa857dbccfda6d..631080784f50d91617b6aea1cfe9b6a6d2755d30 100644
+--- a/packages/provider-pi/src/server/adapter.ts
++++ b/packages/provider-pi/src/server/adapter.ts
+@@ -23,6 +23,7 @@ import {
+   type ProviderInstanceId,
+   type MessageId,
+   type OrchestrationV2ProviderTurnTokenUsage,
++  type TurnTokenUsage,
+ } from "@t3tools/contracts";
+ import { PiSettings } from "../settings.ts";
+ import * as Cause from "effect/Cause";
+@@ -380,6 +381,15 @@ interface ActivePiTurn {
+   stopTreeRefs?: PiTurnTreeRefs | null;
+   /** The provider/model Pi reported on its latest assistant message. */
+   reportedModel?: string;
++  /** Summed usage of this turn's assistant messages; null until one reports usage. */
++  usage: {
++    input: number;
++    output: number;
++    cacheRead: number;
++    cacheWrite: number;
++    reasoning?: number;
++  } | null;
++  sawSubagent: boolean;
+ }
+ 
+ interface PiTurnTreeRefs {
+@@ -885,6 +895,26 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
+         };
+       };
+ 
++      const piTurnTokenUsage = (turn: ActivePiTurn, complete: boolean): TurnTokenUsage => {
++        const usage = turn.usage;
++        const hasSubagents = turn.sawSubagent;
++        if (usage === null) {
++          return { usageScope: "main_agent", usageStatus: "unavailable", hasSubagents };
++        }
++        return {
++          usageScope: "main_agent",
++          usageStatus: complete ? "complete" : "partial",
++          hasSubagents,
++          inputTokens: usage.input + usage.cacheRead + usage.cacheWrite,
++          outputTokens: usage.output,
++          cachedInputTokens: usage.cacheRead,
++          cacheCreationTokens: usage.cacheWrite,
++          ...(usage.reasoning === undefined
++            ? {}
++            : { reasoningTokens: Math.min(usage.reasoning, usage.output) }),
++        };
++      };
++
+       const readTokenUsage = (fallbackUsedTokens: number | null, updatedAt: DateTime.Utc) =>
+         request({ type: "get_session_stats" }, 2_000).pipe(
+           Effect.map((stats) => tokenUsageFromStats(stats, fallbackUsedTokens, updatedAt)),
+@@ -1291,6 +1321,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
+           },
+         });
+         if (toolName === "subagent") {
++          turn.sawSubagent = true;
+           yield* emitSubagentTasks(turn, toolCallId, resultRecord, completed);
+         }
+       });
+@@ -1768,6 +1799,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
+               : { nativeTurnRef: treeRefs.nativeTurnRef }),
+             status: interrupted ? "interrupted" : failure !== null ? "failed" : "completed",
+             completedAt,
++            turnTokenUsage: piTurnTokenUsage(turn, !interrupted && failure === null),
+             ...(tokenUsage === undefined ? {} : { tokenUsage }),
+             ...(turn.reportedModel === undefined ? {} : { model: turn.reportedModel }),
+           },
+@@ -2029,6 +2061,24 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
+             if (reportedProvider && reportedModelId) {
+               turn.reportedModel = `${reportedProvider}/${reportedModelId}`;
+             }
++            const usage = recordField(message, "usage");
++            const input = nonNegativeInteger(usage, "input");
++            const output = nonNegativeInteger(usage, "output");
++            if (input !== undefined && output !== undefined) {
++              const reasoning = nonNegativeInteger(usage, "reasoning");
++              const previous = turn.usage;
++              turn.usage = {
++                input: (previous?.input ?? 0) + input,
++                output: (previous?.output ?? 0) + output,
++                cacheRead:
++                  (previous?.cacheRead ?? 0) + (nonNegativeInteger(usage, "cacheRead") ?? 0),
++                cacheWrite:
++                  (previous?.cacheWrite ?? 0) + (nonNegativeInteger(usage, "cacheWrite") ?? 0),
++                ...(reasoning === undefined && previous?.reasoning === undefined
++                  ? {}
++                  : { reasoning: (previous?.reasoning ?? 0) + (reasoning ?? 0) }),
++              };
++            }
+             if (recordString(message, "stopReason") === "error" && turn.failure === null) {
+               turn.failure = makeProviderFailure({
+                 message: recordString(message, "errorMessage") ?? "Pi reported a model error.",
+@@ -2914,6 +2964,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
+                 compactCommand !== null || (payload?.message.trimStart().startsWith("/") ?? false),
+               latestCompactionAfterTokens: null,
+               lastLiveUsedTokens: null,
++              usage: null,
++              sawSubagent: false,
+               settleProbeGeneration: 0,
+               settleWhenIdle: false,
+               sawCompaction: false,
+diff --git a/packages/provider-pi/src/server/textGeneration.ts b/packages/provider-pi/src/server/textGeneration.ts
+index 8b75b3c3c0bad01fe2cd03a6129fc50a7e5eed33..01dfb738b7911fe057528f515c38feb6926d4011 100644
+--- a/packages/provider-pi/src/server/textGeneration.ts
++++ b/packages/provider-pi/src/server/textGeneration.ts
+@@ -105,6 +105,19 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function*
+               piRecordString(message, "stopReason") === "error"
+                 ? piTurnErrorDetail(piRecordString(message, "errorMessage"))
+                 : undefined;
++            const usage = (message as { usage?: Record<string, unknown> } | undefined)?.usage;
++            const count = (key: string) =>
++              typeof usage?.[key] === "number" ? (usage[key] as number) : 0;
++            if (usage !== undefined) {
++              yield* TextGenerationOperations.reportUsage([
++                {
++                  input: count("input"),
++                  cacheRead: count("cacheRead"),
++                  cacheWrite: count("cacheWrite"),
++                  output: count("output"),
++                },
++              ]);
++            }
+           }
+         }
+       });

@@ -20,6 +20,7 @@ describe("a paired device's turn, overlapping one of his", () => {
       guided: async () => "started",
       vault: { list: async () => "github-token", use: async () => "", savePending: async () => "" },
       rememberPrivate: async () => "Kept in his private memories.",
+      privateWaiting: async () => "- held-1: a held memory",
     } as unknown as ToolHost;
     const slot = createOutsideSlot({
       host,
@@ -59,7 +60,9 @@ describe("a paired device's turn, overlapping one of his", () => {
     expect(slot.host.vault).toBeUndefined();
     // Nor a private store: a device's turn cannot keep or read anyone's private memories.
     expect(slot.host.rememberPrivate).toBeUndefined();
+    expect(slot.host.privateWaiting).toBeUndefined();
     expect(buildTessayaTools(slot.host).map((t) => t.name)).not.toContain("private_remember");
+    expect(buildTessayaTools(slot.host).map((t) => t.name)).not.toContain("private_waiting");
     const vaultList = buildTessayaTools(slot.host).find((t) => t.name === "vault_list")!;
     expect((await vaultList.run({})).text).toBe("There is no vault on this computer.");
 

@@ -9,6 +9,7 @@ import * as NodeCrypto from "node:crypto";
 import {
   DEVICE_SPEAKER_OUTPUTS,
   DEVICE_TRANSPORTS,
+  OWN_MIC,
   OWN_SPEAKER,
   type OutputClass,
   EnrolCard,
@@ -74,6 +75,7 @@ import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { expressOr } from "../tessaya/TessayaExpression.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
+import { TessayaCast } from "../tessaya/TessayaCast.ts";
 import { LINE_EVENTS, sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
 import { inQuietHours } from "@t3tools/tessaya-shared/comms";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
@@ -93,6 +95,8 @@ import { houseZone } from "../tessaya/houseZone.ts";
 import * as Stream from "effect/Stream";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
+import { TurnLiveContext } from "../tessaya/TurnLiveContext.ts";
+import type { HandledHow } from "@t3tools/tessaya-shared/affect";
 import { readDndUntil, readQuietHours } from "../tessaya/quietHours.ts";
 import {
   MOTION_LINE,
@@ -155,7 +159,7 @@ export type DeviceCommand =
       readonly mac?: string;
       readonly name?: string;
       readonly output?: DeviceSpeakerOutput;
-      /** `order`: her own speaker (OWN_SPEAKER) and Bluetooth addresses, first choice first. */
+      /** `order`: her own speaker (OWN_SPEAKER) and Bluetooth addresses, first choice first; `inputs`: OWN_MIC and addresses. */
       readonly order?: ReadonlyArray<string>;
       /** `classes`: the output and what it may play; null privateCap is the usual level. */
       readonly target?: string;
@@ -245,7 +249,14 @@ const LOG_KEEP = 40;
 const SAMPLES_KEEP = 50;
 const SETTINGS_KEY = "devices.state";
 /** His per-device choices kept alike on all his servers (DeviceSync), so a standby hub serves her as he set her. */
-const SYNCED = ["outputs", "outputClasses", "earconsOff", "talkOverKeyword", "eyeStyle"] as const;
+const SYNCED = [
+  "outputs",
+  "inputs",
+  "outputClasses",
+  "earconsOff",
+  "talkOverKeyword",
+  "eyeStyle",
+] as const;
 
 /** The room loop's per-turn metrics, in pipeline order. */
 const STAGES = [
@@ -286,6 +297,10 @@ export interface Heard {
     bonds?: ReadonlyArray<{ readonly mac: string; readonly connected: boolean }>;
     /** Its firmware drops a held route's reply rather than playing it on her speaker (state/caps route_hold). */
     holdCap?: boolean;
+    /** smp 0.3.151 state/bt: the headset link (HFP) is up; absent on older firmware, which never gets cmd/bt/input. */
+    hfp?: boolean;
+    /** smp 0.3.151 state/bt: which mic a conversation on Bluetooth is heard through. */
+    input?: "headset" | "mic";
   } | null;
   /** Its saved Wi-Fi networks, first choice first (`state/net/saved`, retained); null until it reports them. */
   wifi: Array<DeviceWifiNetwork> | null;
@@ -485,15 +500,71 @@ const btFailLine = (name: string, reason: string | null | undefined): string => 
 /** The R1 says `onboard` on its older topics where its manifest says `speaker`. */
 const outputItem = (out: string | null) => (out === "onboard" ? "speaker" : out);
 
+/** A phone holding the phone route (`phone:<deviceId>`): its app plays her replies and may lend its mic. */
+export const PHONE = "phone:";
+const isPhone = (o: string) => o.startsWith(PHONE);
+
+/** One phone's live link to an R1 (PhoneLink.ts); gone when its app lets go. */
+export interface PhoneLink {
+  readonly id: string;
+  readonly name: string;
+  /** headphones while the phone plays on a headset or headphones, so it may take private replies; else speaker. */
+  readonly kind: BtKind;
+  /** On the R1's own network now; a phone away from home never takes her voice. */
+  readonly near: boolean;
+  readonly play: (pcm: Buffer) => void;
+  /** That many bytes of its mic, silence where it has none yet. */
+  readonly mic: (bytes: number) => Buffer;
+}
+
+/** firmware upformat v1: 16-byte header, flags (u16 at 12); the room loop reads bit 4 as a headset's mic. */
+const UP_HEADER = 16;
+const UP_FLAG_HEADSET = 16;
+export const UP_FLAG_PHONE = 32;
+
+/** The R1's mic frame with its PCM swapped for the phone's, its header (the R1's clock) kept. Pure. */
+export const phoneFrame = (frame: Buffer, link: Pick<PhoneLink, "kind" | "mic">): Buffer => {
+  const aligned = frame.length > UP_HEADER && (frame.length - UP_HEADER) % 2 === 0;
+  if (!aligned) return link.mic(frame.length);
+  const out = Buffer.concat([frame.subarray(0, UP_HEADER), link.mic(frame.length - UP_HEADER)]);
+  const flags =
+    out.readUInt16LE(12) | UP_FLAG_PHONE | (closedKind(link.kind) ? UP_FLAG_HEADSET : 0);
+  out.writeUInt16LE(flags, 12);
+  return out;
+};
+
 /** His saved output order over what it has paired now: her own speaker first by default, new pairings last. */
 export const outputOrderOf = (
   saved: ReadonlyArray<string> | undefined,
   bonds: ReadonlyArray<string>,
+  own: string = OWN_SPEAKER,
 ): Array<string> => {
-  const known = new Set<string>([OWN_SPEAKER, ...bonds]);
-  const kept = (saved ?? [OWN_SPEAKER]).filter((o, i, all) => known.has(o) && all.indexOf(o) === i);
-  if (!kept.includes(OWN_SPEAKER)) kept.unshift(OWN_SPEAKER);
+  const known = new Set<string>([own, ...bonds]);
+  // A phone keeps its place while its app is closed.
+  const kept = (saved ?? [own]).filter(
+    (o, i, all) => (known.has(o) || isPhone(o)) && all.indexOf(o) === i,
+  );
+  if (!kept.includes(own)) kept.unshift(own);
   return [...kept, ...bonds.filter((b) => !kept.includes(b))];
+};
+
+/** His saved input order the same way: her own mic first by default. */
+export const inputOrderOf = (
+  saved: ReadonlyArray<string> | undefined,
+  bonds: ReadonlyArray<string>,
+) => outputOrderOf(saved, bonds, OWN_MIC);
+
+/** Which mic hears a conversation on Bluetooth (`cmd/bt/input`): the first in his order that can hear now. */
+export const inputOf = (
+  order: ReadonlyArray<string>,
+  linked: string | null | undefined,
+  hfp: boolean,
+): "headset" | "mic" => {
+  for (const o of order) {
+    if (o === OWN_MIC) return "mic";
+    if (hfp && o === linked) return "headset";
+  }
+  return "mic";
 };
 
 const firstIn = (order: ReadonlyArray<string>, id: string): Array<string> => [
@@ -510,13 +581,17 @@ export const routeOf = (
   order: ReadonlyArray<string>,
   connected: ReadonlySet<string>,
   skipped: ReadonlySet<string>,
-): { readonly to: "speaker" } | { readonly to: "bt"; readonly mac: string } => {
+):
+  | { readonly to: "speaker" }
+  | { readonly to: "bt"; readonly mac: string }
+  | { readonly to: "phone"; readonly id: string } => {
   let page: string | null = null;
   for (const o of order) {
     if (o === OWN_SPEAKER) return page === null ? { to: "speaker" } : { to: "bt", mac: page };
     if (skipped.has(o)) continue;
-    if (connected.has(o)) return { to: "bt", mac: o };
-    page ??= o;
+    if (connected.has(o)) return isPhone(o) ? { to: "phone", id: o } : { to: "bt", mac: o };
+    // A phone is never paged: its app links when he opens it.
+    if (!isPhone(o)) page ??= o;
   }
   return page === null ? { to: "speaker" } : { to: "bt", mac: page };
 };
@@ -578,7 +653,8 @@ export const privateTargetOf = (
   order.find((o) => {
     const t = tagged(o);
     if (!t.private || (!alone && !t.closed)) return false;
-    return o === OWN_SPEAKER || (holdCap && connected.has(o) && !skipped.has(o));
+    // The server itself drops the rest of a reply whose phone went, so a phone needs no firmware hold.
+    return o === OWN_SPEAKER || ((holdCap || isPhone(o)) && connected.has(o) && !skipped.has(o));
   }) ?? null;
 
 /**
@@ -773,6 +849,9 @@ export const applyMessage = (
         d.speaker.output = chosen as DeviceSpeakerOutput;
       if (wanted !== null && out !== null && DEVICE_SPEAKER_OUTPUTS.includes(out as never))
         d.speaker.playing = out as DeviceSpeakerOutput;
+      if (typeof body?.["hfp"] === "boolean") d.speaker.hfp = body["hfp"];
+      const input = str(body?.["input"]);
+      if (input === "headset" || input === "mic") d.speaker.input = input;
       const mac = str(body?.["mac"]);
       d.speaker.linked =
         (state === "connected" || state === "streaming") && mac !== null && MAC.test(mac)
@@ -888,6 +967,8 @@ interface Saved {
   volume: Record<string, number>;
   /** Per R1: his output order (outputOrderOf); absent is her own speaker first. */
   outputs: Record<string, Array<string>>;
+  /** Per R1: his input order (inputOrderOf); absent is her own mic first. */
+  inputs: Record<string, Array<string>>;
   /** Per R1 and output: what it may play (defaultClassesOf when absent) and its private level. */
   outputClasses: Record<
     string,
@@ -946,6 +1027,14 @@ export class HomeDeviceBroker extends Context.Service<
     }) => Effect.Effect<DeviceLink>;
   }
 >()("t3/home/HomeDevices/HomeDeviceBroker") {}
+
+const HANDLED_WORDS = {
+  lifted: "picked up",
+  carried: "carried",
+  setdown: "set down",
+  shaken: "shaken",
+  dropped: "dropped",
+} as const satisfies Readonly<Record<HandledHow, string>>;
 
 const HANDLED = new Set(["event/motion", "event/wake/lifted", "event/touch", "event/key"]);
 const SUBSCRIBE = ["freya/r1/+/state/#", "freya/r1/+/event/#", "freya/r1/+/voice/stepup/done"];
@@ -1010,6 +1099,8 @@ export class HomeDevices extends Context.Service<
       cls: OutputClass,
       alone: boolean,
     ) => Effect.Effect<"play" | "hold">;
+    /** A phone's link to an R1 opened, changed or closed (open false): the phone route follows it. */
+    readonly phoneLink: (id: string, link: PhoneLink, open: boolean) => Effect.Effect<void>;
     /** A private reply that could not play: kept in memory and said once a private output connects. */
     readonly holdPrivate: (id: string, text: string) => Effect.Effect<void>;
     /** A JPEG the device posted; taken only inside the window he opened. */
@@ -1107,6 +1198,7 @@ const make = Effect.gen(function* () {
         eyeStyle: (value["eyeStyle"] ?? {}) as Saved["eyeStyle"],
         volume: (value["volume"] ?? {}) as Saved["volume"],
         outputs: (value["outputs"] ?? {}) as Saved["outputs"],
+        inputs: (value["inputs"] ?? {}) as Saved["inputs"],
         outputClasses: (value["outputClasses"] ?? {}) as Saved["outputClasses"],
         tags: (value["tags"] ?? {}) as Saved["tags"],
         keys: (value["keys"] ?? {}) as Saved["keys"],
@@ -1200,6 +1292,8 @@ const make = Effect.gen(function* () {
   // an empty retained message clears a member who has none left.
   const prefs = yield* Effect.serviceOption(MemberPreferences);
   const presence = yield* Effect.serviceOption(TessayaPresence);
+  /** Tessels with headphones linked now, so only a real disconnect cancels them. */
+  const phonesOn = new Set<string>();
   const sendPrefs = (ids: ReadonlyArray<string>, member: string, now: VoiceDefaults | null) =>
     Effect.forEach(ids, (id) => publish(id, `voice/prefs/${member}`, now ?? "", true), {
       discard: true,
@@ -1226,6 +1320,18 @@ const make = Effect.gen(function* () {
           )
         : Effect.void,
     );
+
+  // Who each Tessel wears (Settings → Cast): its loop opens each session on it and follows only when told to.
+  const cast = yield* Effect.serviceOption(TessayaCast);
+  const sendCast = (id: string, persona: string | null, follows: boolean | null) =>
+    publish(id, "voice/cast", { persona, follows }, true);
+  if (cast._tag === "Some") yield* cast.value.listen(sendCast);
+  const castOnline = (id: string) =>
+    cast._tag === "None"
+      ? Effect.void
+      : Effect.flatMap(cast.value.told(id), (t) =>
+          t === null ? Effect.void : sendCast(id, t.persona, t.follows),
+        );
 
   // An act her server holds until it knows who is speaking: that device's loop asks (StepUps).
   const stepUps = yield* Effect.serviceOption(StepUps);
@@ -1417,6 +1523,7 @@ const make = Effect.gen(function* () {
   // Being moved (§9.7M S3): her mood, her eyes and a line of her own, through the same paths as every other moment.
   const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
   const mood = yield* Effect.serviceOption(TessayaMood);
+  const liveContext = yield* Effect.serviceOption(TurnLiveContext);
   const motionSeen = new Map<string, MotionSeen>();
   const lastMoved = new Map<string, { at: number; said: number }>();
   const motionSettings =
@@ -1518,6 +1625,15 @@ const make = Effect.gen(function* () {
     const quiet = yield* quietNow(now);
     if (quiet && m.how !== "dropped") return;
     if (mood._tag === "Some") yield* mood.value.note(undefined, { kind: "handled", how: m.how });
+    // Her next two turns on this body know it just happened; the third never reads it as now (G6).
+    if (liveContext._tag === "Some")
+      yield* liveContext.value.inject({
+        key: "motion",
+        vessel: id,
+        source: "motion",
+        expiresAfterTurns: 2,
+        line: `A moment ago your body was ${HANDLED_WORDS[m.how]} (its motion sensor): mention it only if it fits.`,
+      });
     const feel = MOMENT_HAPTICS[m.how];
     if (feel !== null && !buzzed) yield* buzz(id, feel, "reactions", quiet);
     const event = MOTION_LINE[m.how];
@@ -1577,7 +1693,7 @@ const make = Effect.gen(function* () {
     if (result.ack !== null) yield* registry.acked(result.id, result.ack.itemId, result.ack);
     if (result.cameOnline) yield* rearm(result.id).pipe(Effect.forkIn(scope));
     if (result.cameOnline) yield* sendVoices([result.id], sharedVoices, []);
-    if (result.cameOnline) yield* prefsOnline(result.id);
+    if (result.cameOnline) yield* Effect.andThen(prefsOnline(result.id), castOnline(result.id));
     // A server restart empties the hub's retained copy; the Tessel saves its style, but a change made while it was away
     // must still reach it.
     if (result.cameOnline) {
@@ -1589,6 +1705,18 @@ const make = Effect.gen(function* () {
     // Picked up, moved, touched or pressed: someone is at this Tessel, not yet who (B-043).
     if (Option.isSome(presence) && HANDLED.has(tail))
       yield* presence.value.note({ member: null, source: "handled", vessel: result.id });
+    // Headphones on a Tessel's Bluetooth: its member is within range of it; off, they took them off (B-043).
+    if (Option.isSome(presence) && tail === "state/bt") {
+      const linked = heard.get(result.id)?.speaker?.linked ?? null;
+      const on = linked !== null && closedKind((yield* kindsOf(result.id)).get(linked));
+      // shortcut: a Tessel names no member, so its headphones are the owner's; per-member once B-002 ties Tessels.
+      const member = (yield* registry.get(result.id))?.member ?? OWNER_MEMBER_ID;
+      if (on) yield* presence.value.note({ member, source: "headphones", vessel: result.id });
+      else if (phonesOn.has(result.id))
+        yield* presence.value.note({ member, source: "headphonesOff", vessel: null });
+      if (on) phonesOn.add(result.id);
+      else phonesOn.delete(result.id);
+    }
     const seen = motionSeen.get(result.id) ?? freshSeen();
     motionSeen.set(result.id, seen);
     if (result.cameOnline) {
@@ -1624,6 +1752,7 @@ const make = Effect.gen(function* () {
       }
       if (tail !== "event/bt/devices") {
         yield* applyRoute(result.id);
+        yield* applyInput(result.id);
         // Off the broker's queue: its confirmation comes in on that queue.
         if (held.has(result.id))
           yield* releaseHeld(result.id).pipe(Effect.forkIn(scope, { startImmediately: true }));
@@ -1764,6 +1893,8 @@ const make = Effect.gen(function* () {
   const skips = new Map<string, Map<string, number>>();
   /** The route last sent per R1, so a burst of Bluetooth reports sends it once. */
   const routed = new Map<string, { readonly key: string; readonly at: number }>();
+  /** The same for the mic (`cmd/bt/input`). */
+  const inputSent = new Map<string, { readonly key: string; readonly at: number }>();
   /** The class of the reply playing now per R1, which picks the outputs its route may use. */
   const classNow = new Map<string, OutputClass>();
   /** A private reply's output while it plays: nothing else moves the route until the next reply. */
@@ -1775,12 +1906,40 @@ const make = Effect.gen(function* () {
   /** A private route waiting for the firmware to confirm it. */
   const routeWaits = new Map<string, Deferred.Deferred<void>>();
 
+  /** Per R1, the phones holding the phone route now (by `phone:` id), and where its voice is tapped to. */
+  const phones = new Map<string, Map<string, PhoneLink>>();
+  const phoneNames = new Map<string, string>();
+  const taps = new Map<string, { readonly down: string | null; readonly up: string | null }>();
+  const nearPhones = (id: string) => [...(phones.get(id)?.values() ?? [])].filter((l) => l.near);
+  /** Her replies to that phone (the R1 hears none of them), or its mic for the R1's; null gives that part back. */
+  const setTap = (id: string, part: "down" | "up", to: string | null) => {
+    const t = { ...(taps.get(id) ?? { down: null, up: null }), [part]: to };
+    taps.set(id, t);
+    if (hub._tag === "None") return;
+    if (t.down === null && t.up === null) return hub.value.tapVoice(id, null);
+    const link = (p: string) => phones.get(id)?.get(p) ?? null;
+    const { down, up } = t;
+    // A phone gone mid-reply drops the rest (a private reply never falls back) until the route moves.
+    hub.value.tapVoice(id, {
+      ...(down === null ? {} : { down: (pcm: Buffer) => link(down)?.play(pcm) }),
+      ...(up === null
+        ? {}
+        : {
+            up: (frame: Buffer) => {
+              const l = link(up);
+              return l === null ? frame : phoneFrame(frame, l);
+            },
+          }),
+    });
+  };
+
   const kindsOf = Effect.fn("HomeDevices.kindsOf")(function* (id: string) {
     const kinds = new Map<string, BtKind | undefined>();
+    for (const l of phones.get(id)?.values() ?? []) kinds.set(l.id, l.kind);
     for (const k of knownFrom(yield* registry.value(id, "bt.known")))
       kinds.set(k.mac.toUpperCase(), k.kind);
     const saved = heard.get(id)?.speaker?.saved;
-    if (saved != null && !kinds.has(saved.mac.toUpperCase()))
+    if (saved != null && kinds.get(saved.mac.toUpperCase()) === undefined)
       kinds.set(saved.mac.toUpperCase(), saved.kind);
     return kinds;
   });
@@ -1789,13 +1948,17 @@ const make = Effect.gen(function* () {
 
   const bondsOf = (id: string): Array<string> => {
     const sp = heard.get(id)?.speaker;
-    return sp?.bonds?.map((b) => b.mac) ?? (sp?.saved == null ? [] : [sp.saved.mac.toUpperCase()]);
+    return [
+      ...(sp?.bonds?.map((b) => b.mac) ?? (sp?.saved == null ? [] : [sp.saved.mac.toUpperCase()])),
+      ...(phones.get(id)?.keys() ?? []),
+    ];
   };
   const liveOf = (id: string, now: number) => {
     const sp = heard.get(id)?.speaker;
     const connected = new Set([
       ...(sp?.bonds ?? []).filter((b) => b.connected).map((b) => b.mac),
       ...(sp?.linked == null ? [] : [sp.linked]),
+      ...nearPhones(id).map((l) => l.id),
     ]);
     const skipped = new Set(
       [...(skips.get(id) ?? [])].filter(([, until]) => until > now).map(([mac]) => mac),
@@ -1822,6 +1985,8 @@ const make = Effect.gen(function* () {
     const allowed = order.filter((o) => tagsOf(saved, id, o, kinds.get(o)).classes.includes(cls));
     // shortcut: an order with nothing tagged for this class plays on the whole order, so she is never silent.
     const want = routeOf(allowed.length > 0 ? allowed : order, connected, skipped);
+    setTap(id, "down", want.to === "phone" ? want.id : null);
+    if (want.to === "phone") return void routed.delete(id);
     const on =
       want.to === "speaker"
         ? sp.output === "onboard"
@@ -1834,6 +1999,38 @@ const make = Effect.gen(function* () {
     if (last?.key === key && now - last.at < ROUTE_RESEND_MS) return;
     routed.set(id, { key, at: now });
     yield* publish(id, "cmd/audio/output", want);
+  });
+
+  /** The mic his input order gives, sent when the firmware is not on it; only firmware that reports `hfp` takes it. */
+  const applyInput = Effect.fn("HomeDevices.applyInput")(function* (id: string) {
+    const d = heard.get(id);
+    const sp = d?.speaker;
+    const order = inputOrderOf((yield* readSaved).inputs[id], bondsOf(id));
+    const near = new Set(nearPhones(id).map((l) => l.id));
+    const first = order.find(
+      (o) => o === OWN_MIC || near.has(o) || (sp?.hfp === true && o === sp.linked),
+    );
+    const phone = first !== undefined && isPhone(first) ? first : null;
+    setTap(id, "up", phone);
+    if (d === undefined || sp?.hfp === undefined || d.online === false) return;
+    const want = phone !== null ? "mic" : inputOf(order, sp.linked, sp.hfp);
+    if (sp.input === want) return void inputSent.delete(id);
+    const now = yield* Clock.currentTimeMillis;
+    const last = inputSent.get(id);
+    if (last?.key === want && now - last.at < ROUTE_RESEND_MS) return;
+    inputSent.set(id, { key: want, at: now });
+    yield* publish(id, "cmd/bt/input", { in: want });
+  });
+
+  const setInputs = Effect.fn("HomeDevices.setInputs")(function* (
+    id: string,
+    order: ReadonlyArray<string>,
+  ) {
+    yield* change((s) => {
+      s.inputs[id] = order.slice(0, 16);
+    });
+    inputSent.delete(id);
+    yield* applyInput(id);
   });
 
   /** His new order: kept as he gave it (a pairing not heard yet keeps its place), then routed at once. */
@@ -1852,6 +2049,8 @@ const make = Effect.gen(function* () {
 
   /** The firmware is on this private output now: her speaker without a Bluetooth route, or the device linked. */
   const onTarget = (id: string, target: string) => {
+    if (isPhone(target))
+      return taps.get(id)?.down === target && phones.get(id)?.has(target) === true;
     const sp = heard.get(id)?.speaker;
     if (sp == null) return target === OWN_SPEAKER;
     return target === OWN_SPEAKER
@@ -1902,7 +2101,8 @@ const make = Effect.gen(function* () {
       if (!levelBefore.has(id)) levelBefore.set(id, level);
       yield* publish(id, "cmd/volume", { pct: cap });
     }
-    if (!onTarget(id, target)) {
+    if (isPhone(target)) setTap(id, "down", target);
+    else if (!onTarget(id, target)) {
       routed.set(id, { key: target, at: now });
       yield* publish(
         id,
@@ -1938,6 +2138,35 @@ const make = Effect.gen(function* () {
     held.delete(id);
     yield* publish(id, "voice/say", { text: h.text });
     yield* closeHeldCard(id);
+  });
+
+  /** A phone's link opened, changed (its route, near or not) or closed: route and listen again, and note presence. */
+  const phoneLink = Effect.fn("HomeDevices.phoneLink")(function* (
+    id: string,
+    link: PhoneLink,
+    open: boolean,
+  ) {
+    const mine = phones.get(id) ?? new Map<string, PhoneLink>();
+    phones.set(id, mine);
+    if (open) {
+      mine.set(link.id, link);
+      phoneNames.set(link.id, link.name);
+    } else if (mine.get(link.id) === link) mine.delete(link.id);
+    routed.delete(id);
+    yield* applyRoute(id);
+    yield* applyInput(id);
+    if (Option.isSome(presence)) {
+      // shortcut: a Tessel names no member, so a phone on its network is the owner's; per-member once B-002 ties them.
+      const member = (yield* registry.get(id))?.member ?? OWNER_MEMBER_ID;
+      const near = open && link.near;
+      yield* presence.value.note({
+        member,
+        source: near ? "phone" : "phoneAway",
+        vessel: near ? id : null,
+      });
+    }
+    if (open && link.near && closedKind(link.kind))
+      yield* releaseHeld(id).pipe(Effect.forkIn(scope, { startImmediately: true }));
   });
 
   /** One card per device on his phone while a private reply waits; it never carries the reply itself. */
@@ -2488,6 +2717,7 @@ const make = Effect.gen(function* () {
           delete s.eyeStyle[id];
           delete s.keys[id];
           delete s.outputs[id];
+          delete s.inputs[id];
           delete s.outputClasses[id];
         });
         for (const kept of ["cmd/voice/earcons", "cmd/voice/talkover", "cmd/eye/style"])
@@ -2563,6 +2793,17 @@ const make = Effect.gen(function* () {
               });
             if (by.dryRun !== true) yield* setOrder(id, order, order[0] ?? null);
             return done("Saved. Replies play on the first output in this order that is connected.");
+          }
+          case "inputs": {
+            const order = (c.order ?? []).map((o) => (o === OWN_MIC ? o : o.toUpperCase()));
+            if (order.some((o) => o !== OWN_MIC && !MAC.test(o)))
+              return yield* new DeviceRefusedError({
+                why: "That order names something that is not a mic.",
+              });
+            if (by.dryRun !== true) yield* setInputs(id, order);
+            return done(
+              "Saved. She listens through the first mic in this order that can hear now.",
+            );
           }
           case "classes": {
             const target = c.target === OWN_SPEAKER ? OWN_SPEAKER : (c.target ?? "").toUpperCase();
@@ -2722,6 +2963,29 @@ const make = Effect.gen(function* () {
         { op: "speaker", action: "route", output: c.value === "speaker" ? "onboard" : c.value },
         by,
       );
+    // Which mic hears him (not a firmware item): his words put that one first, at once, like audio.output.
+    if (c.op === "item" && c.itemId === "audio.input") {
+      const sp = heard.get(id)?.speaker;
+      if (sp?.hfp === undefined)
+        return yield* new DeviceRefusedError({
+          why: `The ${DEVICE}'s firmware can't listen through headphones yet.`,
+        });
+      const order = inputOrderOf((yield* readSaved).inputs[id], bondsOf(id));
+      const first =
+        c.value === "mic" ? OWN_MIC : (sp.linked ?? order.find((o) => o !== OWN_MIC) ?? null);
+      if (first === null)
+        return yield* new DeviceRefusedError({
+          why: `Nothing is paired yet, so she listens through the ${DEVICE}'s own mic. Pair headphones first.`,
+        });
+      if (by.dryRun !== true) yield* setInputs(id, firstIn(order, first));
+      return {
+        status: "done",
+        line:
+          first === OWN_MIC
+            ? `She listens through the ${DEVICE}'s own mic first now.`
+            : `She listens through your headphones first now, and through the ${DEVICE}'s own mic whenever they aren't connected.`,
+      } satisfies DeviceOutcome;
+    }
     const tag = c.op === "item" && c.itemId === "audio.output" ? privateTagOf(c.value) : null;
     if (tag !== null && by.surface !== "agent" && heard.get(id)?.speaker != null)
       return yield* tagPrivate(id, tag, by);
@@ -2807,14 +3071,33 @@ const make = Effect.gen(function* () {
         ...(t.privateCap === undefined ? {} : { privateCap: t.privateCap }),
       };
     };
+    const tap = taps.get(id);
+    const phoneKinds = new Map([...(phones.get(id)?.values() ?? [])].map((l) => [l.id, l.kind]));
     const outputs = outputOrderOf(saved.outputs[id], bondsOf(id)).map((o) => {
       if (o === OWN_SPEAKER)
         return {
           id: o,
           name: `${DEVICE} speaker`,
-          state: playingBt && sp.linked != null ? ("ready" as const) : ("playing" as const),
+          state:
+            (playingBt && sp.linked != null) || (tap?.down ?? null) !== null
+              ? ("ready" as const)
+              : ("playing" as const),
           ...tagged(o, undefined),
         };
+      if (isPhone(o)) {
+        const kind = phoneKinds.get(o);
+        return {
+          id: o,
+          name: phoneNames.get(o) ?? "Phone",
+          ...(kind === undefined ? {} : { kind }),
+          state: !connected.has(o)
+            ? ("paired" as const)
+            : tap?.down === o
+              ? ("playing" as const)
+              : ("ready" as const),
+          ...tagged(o, kind),
+        };
+      }
       const k =
         known.find((x) => x.mac.toUpperCase() === o) ??
         (sp.saved?.mac.toUpperCase() === o ? sp.saved : null);
@@ -2832,6 +3115,43 @@ const make = Effect.gen(function* () {
         ...tagged(o, k?.kind),
       };
     });
+    const hearing = sp.input ?? "mic";
+    const inputs =
+      sp.hfp === undefined && phoneKinds.size === 0
+        ? undefined
+        : inputOrderOf(saved.inputs[id], bondsOf(id)).map((o) => {
+            if (o === OWN_MIC)
+              return {
+                id: o,
+                name: `${DEVICE} mic`,
+                state:
+                  hearing === "mic" && (tap?.up ?? null) === null
+                    ? ("listening" as const)
+                    : ("ready" as const),
+              };
+            const k = outputs.find((x) => x.id === o);
+            if (isPhone(o))
+              return {
+                id: o,
+                name: k?.name ?? "Phone",
+                state: !connected.has(o)
+                  ? ("paired" as const)
+                  : tap?.up === o
+                    ? ("listening" as const)
+                    : ("ready" as const),
+              };
+            return {
+              id: o,
+              name: k?.name ?? "",
+              ...(k?.kind === undefined ? {} : { kind: k.kind }),
+              state:
+                sp.hfp !== true || sp.linked !== o
+                  ? ("paired" as const)
+                  : hearing === "headset"
+                    ? ("listening" as const)
+                    : ("ready" as const),
+            };
+          });
     return {
       state: sp.state,
       saved: sp.saved,
@@ -2840,6 +3160,7 @@ const make = Effect.gen(function* () {
       found: sp.found,
       scannedAt: iso(sp.scannedAt),
       outputs,
+      ...(inputs === undefined ? {} : { inputs }),
     };
   };
 
@@ -2993,7 +3314,7 @@ const make = Effect.gen(function* () {
           // Another server's value is checked as Settings would check it; a malformed one is left out.
           const valid =
             v === null ||
-            (field === "outputs"
+            (field === "outputs" || field === "inputs"
               ? Array.isArray(v) && v.length <= 16 && v.every((o) => typeof o === "string")
               : field === "outputClasses"
                 ? typeof v === "object" && !Array.isArray(v)
@@ -3017,7 +3338,10 @@ const make = Effect.gen(function* () {
             );
           else if (field === "eyeStyle")
             yield* publish(id, "cmd/eye/style", { style: v ?? R1_EYE_STYLE_DEFAULT }, true);
-          else {
+          else if (field === "inputs") {
+            inputSent.delete(id);
+            yield* applyInput(id);
+          } else {
             routed.delete(id);
             yield* applyRoute(id);
           }
@@ -3063,6 +3387,7 @@ const make = Effect.gen(function* () {
     }),
     command,
     routeReply,
+    phoneLink,
     holdPrivate: Effect.fn("HomeDevices.holdPrivate")(function* (id: string, text: string) {
       const now = yield* Clock.currentTimeMillis;
       held.set(id, { text: recordText(text, 1_000), until: now + PRIVATE_HELD_MS });

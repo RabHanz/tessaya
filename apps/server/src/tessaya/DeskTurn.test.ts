@@ -71,7 +71,12 @@ const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
         ),
       ),
     );
-    return { said: [...said].join(""), turn: seen[0], touched };
+    return {
+      said: [...said].filter((w) => typeof w === "string").join(""),
+      events: [...said],
+      turn: seen[0],
+      touched,
+    };
   });
 
 effectIt.effect(
@@ -104,7 +109,7 @@ effectIt.effect(
   () =>
     Effect.gen(function* () {
       const facts: Array<unknown> = [];
-      const { said, turn, touched } = yield* run(true, [
+      const { said, events, turn, touched } = yield* run(true, [
         {
           id: "test",
           onTurn: async (t) => {
@@ -114,6 +119,7 @@ effectIt.effect(
               mood: "happy",
               gesture: "none",
               intensity: 0.5,
+              affect: "tender",
             };
           },
           signal: () => undefined,
@@ -121,6 +127,8 @@ effectIt.effect(
         },
       ]);
       expect(said).toBe("Only the layer speaks.");
+      // Its affect reaches the desktop before the line, so the whole line is said in it.
+      expect(events[0]).toEqual({ affect: "tender" });
       expect(turn).toBeUndefined();
       expect(touched).toEqual([]);
       expect(facts).toEqual([

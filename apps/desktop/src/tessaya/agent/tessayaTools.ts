@@ -13,6 +13,7 @@ import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
 import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
 import type { VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/tessaya-shared/operator";
+import { TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
 
 import type { TessayaTool, ToolOutput } from "./tessayaMcp.ts";
 
@@ -95,6 +96,8 @@ export interface ToolHost {
   readonly remember: (text: string) => Promise<string>;
   /** Keeps a private memory in the speaker's own encrypted store; absent where there is none (a device's turn). */
   readonly rememberPrivate?: (text: string, about: string | null) => Promise<string>;
+  /** His private memories waiting for his yes (an import's held items): read, keep or forget one. */
+  readonly privateWaiting?: (op: "list" | "keep" | "forget", id: string | null) => Promise<string>;
   readonly forget: (id: string) => Promise<string>;
   /** Memory the assistant may pin and the list of what the last answer used (D150). */
   readonly pin?: (id: string, pinned: boolean) => Promise<string>;
@@ -126,6 +129,8 @@ export interface ToolHost {
   };
   /** A thread's session between a terminal and Tessaya (the server's own guards apply; he is asked first). */
   readonly threadSession?: (op: "move" | "open", threadId: string) => Promise<string>;
+  /** Brings up Tessaya's window at one of her places. */
+  readonly openPlace?: (place: string) => void;
   /** Runs one of the app's own commands in T3's window, by name, as its key would; what came of it. */
   readonly appCommand?: (command: string) => Promise<"ran" | "idle" | "absent">;
   readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
@@ -793,6 +798,28 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
             }),
           },
         ]),
+    ...(host.privateWaiting === undefined
+      ? []
+      : [
+          {
+            name: "private_waiting",
+            description:
+              'His private memories waiting for his yes (from an import, held until he says keep). op "list" reads them; then read each to him and, on his answer, op "keep" or "forget" with its id. For "what is waiting for my yes in my private memories", "keep that one", "forget the third one".',
+            inputSchema: object(
+              {
+                op: { enum: ["list", "keep", "forget"] },
+                id: { type: "string", maxLength: 80 },
+              },
+              ["op"],
+            ),
+            run: async (a: Readonly<Record<string, unknown>>) => {
+              const op = a["op"] === "keep" || a["op"] === "forget" ? a["op"] : "list";
+              const id =
+                typeof a["id"] === "string" && a["id"].trim() !== "" ? a["id"].trim() : null;
+              return { text: await host.privateWaiting!(op, id) };
+            },
+          },
+        ]),
     {
       name: "memory_forget",
       description:
@@ -1371,6 +1398,21 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
         if (host.appCommand === undefined)
           return { text: "His sessions window is not on this computer." };
         return { text: appCommandLine(command, await host.appCommand(command)) };
+      },
+    },
+    {
+      name: "place_open",
+      description:
+        "Open Tessaya's own window at one of her pages. 'Add my phone', 'pair my phone' or 'set up my phone' is phone: it shows the QR the phone app scans to connect to this machine and every machine linked to it. Then tell him to scan it in the phone app (Environments, Add environment, Scan).",
+      inputSchema: object({ place: { enum: TESSAYA_PLACES.map((p) => p.id) } }, ["place"]),
+      run: async (a) => {
+        const place = str(a, "place", 40);
+        const found = TESSAYA_PLACES.find((p) => p.id === place);
+        if (found === undefined) return { text: `${place} is not one of Tessaya's pages.` };
+        if (host.openPlace === undefined)
+          return { text: "Tessaya's window is not on this computer." };
+        host.openPlace(found.id);
+        return { text: `Opened ${found.label}.` };
       },
     },
     {

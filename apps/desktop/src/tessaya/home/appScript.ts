@@ -96,7 +96,7 @@ const GROUP_OF = {}; for (const a of AREAS) for (const gid of a.pages) GROUP_OF[
 const openAreas = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.areas') || '[]')); } catch (e) { return new Set(); } })();
 const saveAreas = () => { try { localStorage.setItem('tessaya.areas', JSON.stringify([...openAreas])); } catch (e) {} };
 const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','intercom','homeassistant','phone','learn','help'].map(id => [id, L('tab.' + id)]);
-const CATS = ['accounts','apis','brain','general','voice','personas','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
+const CATS = ['accounts','apis','brain','general','voice','personas','cast','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
 const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant' };
 const INTRO = {};
 for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','intercom','homeassistant','phone','learn','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
@@ -352,8 +352,9 @@ function pvPeople(c) {
   const w = $('div', 'rowwrap stack membar');
   if (c.recovery) {
     const k = $('div', 'row'), t = $('div', 'text'); t.append($('div', 'label', L('pv.recovery.title', { name: c.recovery.name })), $('div', 'hint', L('pv.recovery.hint')), $('div', 'hpre vaultkey', c.recovery.code));
-    const bx = $('div', 'memacts'); for (const [k2, to, cls] of [['pv.recovery.save', 'm.pv.recoverySave', 'btn'], ['pv.recovery.copy', 'm.pv.recoveryCopy', 'btn'], ['pv.recovery.done', 'm.pv.recoveryDone', 'btn primary']]) { const b = $('button', cls, L(k2)); b.onclick = () => set(to, null); bx.appendChild(b); }
+    const bx = $('div', 'memacts'); for (const [k2, to] of [['pv.recovery.save', 'm.pv.recoverySave'], ['pv.recovery.copy', 'm.pv.recoveryCopy']]) { const b = $('button', 'btn', L(k2)); b.onclick = () => set(to, null); bx.appendChild(b); }
     k.append(t, bx); w.appendChild(k);
+    w.appendChild(vtForm([vtInput('pv-typed', L('pv.recovery.typeBack'))], { label: L('pv.recovery.done'), primary: true }, () => { const v = drafts.get('pv-typed') || ''; drafts.delete('pv-typed'); if (v.trim()) set('m.pv.recoveryDone', v.trim()); else render(); }));
   }
   const pinForm = (key, ph, button, primary, to) => vtForm([vtInput(key, ph, 'password')], { label: button, primary }, () => { const v = drafts.get(key) || ''; drafts.delete(key); if (v) set(to, v); else render(); });
   for (const p of c.people) {
@@ -952,7 +953,6 @@ function embed(p, page) {
   if (!embedUrl) { p.appendChild($('div', 'empty', L('embed.missing'))); const b = $('button', 'btn gap-top', L('embed.open')); b.onclick = () => real && ipc.send('baton-home:sessions', '/tessaya/' + page); p.appendChild(b); return; }
   const w = document.createElement('webview'); w.className = 'embed'; w.setAttribute('src', embedUrl + '?tessayaGuest=1#/tessaya/' + page); p.appendChild(w);
 }
-function phonePage(p) { p.appendChild(plainGroup([[L('phone.pair'), L('phone.pair.text'), L('phone.pair'), () => real && ipc.send('baton-home:sessions', '/settings/access')]])); }
 // Sessions are T3's thread list (P5): counts here, the list filtered to live sessions there.
 const showLive = () => real && ipc.send('baton-home:sessions', 'live');
 function liveSessionsPage(p) {
@@ -970,8 +970,7 @@ function tabPage(p) {
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   if (cur === 'sessions') return liveSessionsPage(p);
-  if (cur === 'hardware' || cur === 'homeassistant') return embed(p, cur);
-  if (cur === 'phone') return phonePage(p);
+  if (cur === 'hardware' || cur === 'homeassistant' || cur === 'phone') return embed(p, cur);
   const items = tabControls(cur);
   const EMPTY = { approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
@@ -1060,7 +1059,7 @@ function modalPage(b) {
   if (modal === 'about') { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = tourStart; b.appendChild(rr); ; return; }
   b.appendChild(pageHead(L('cat.' + modal), L('cat.' + modal + '.text')));
   const items = catSections(b, modal);
-  if (modal === 'accounts' || modal === 'apis' || modal === 'brain') embed(b, modal);
+  if (modal === 'accounts' || modal === 'apis' || modal === 'brain' || modal === 'cast') embed(b, modal);
   if (modal === 'personas') { b.appendChild($('h2', null, L('embed.voices'))); embed(b, 'voices'); }
   if (modal === 'general') {
     const ab = x.about || {}; const facts = [['Installed version', ab.version], ['Updates come from', ab.source]].filter(f => f[1]);

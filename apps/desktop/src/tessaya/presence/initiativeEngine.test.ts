@@ -71,4 +71,36 @@ describe("the initiative engine", () => {
     expect(shown).toEqual([]);
     expect(engine.state().offered).toEqual({});
   });
+  it("keeps sensing for the pulse while a long-lived card waits for his answer", async () => {
+    const later: Trigger = { ...trigger, id: "fail:b", topic: "ws:b", offer: "Other failed." };
+    let triggers: ReadonlyArray<Trigger> = [trigger];
+    let answer: (a: Answer) => void = () => undefined;
+    let opened: () => void = () => undefined;
+    const open = new Promise<void>((resolve) => (opened = resolve));
+    const shown: string[] = [];
+    const sensed: string[] = [];
+    const engine = createInitiative({
+      dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "init-")),
+      now: () => Date.parse("2026-11-02T12:00:00Z"),
+      hour: () => 12,
+      policy: () => DEFAULT_POLICY,
+      gather: async () => triggers,
+      present: (o) => {
+        shown.push(o.offer);
+        opened();
+        return new Promise<Answer>((resolve) => (answer = resolve));
+      },
+      act: async () => "x",
+      tell: () => undefined,
+      sense: async (t) => void sensed.push(t.id),
+    });
+    const first = engine.tick();
+    await open;
+    triggers = [trigger, later];
+    expect(await engine.tick()).toBe(0);
+    expect(sensed).toEqual(["fail:a", "fail:b"]);
+    expect(shown).toEqual([trigger.offer]);
+    answer("later");
+    expect(await first).toBe(1);
+  });
 });

@@ -23,6 +23,15 @@ export interface SpeakerProfile {
   readonly base?: Float32Array;
 }
 
+/** Which mic a turn came through (upformat v1 flags bit4 is the headset's): a voice sounds different on each. */
+export type VoiceInput = "mic" | "headset";
+
+/** The profiles to judge a turn on this input by: each person's own for it, else the one enrolled on her mic. */
+export const profilesFor = (
+  own: ReadonlyArray<SpeakerProfile>,
+  mic: ReadonlyArray<SpeakerProfile>,
+): ReadonlyArray<SpeakerProfile> => [...own, ...mic.filter((p) => !own.some((o) => o.id === p.id))];
+
 /** What the verdict is for: each use has its own cut-off, because a wrong "yes" costs more for some. */
 export type SpeakerUse = "listen" | "steer" | "act";
 
@@ -192,6 +201,8 @@ export interface SpeakerIdentity {
   readonly own?: { readonly score: number; readonly ms: number };
   /** His by his session's evidence, not this turn's own score: his path, never an owner-only act (`verified` false). */
   readonly lifted?: true;
+  /** `verified` by his session (three turns averaged, or a hold), not this turn's own clips: never opens anything private. */
+  readonly session?: true;
   /**
    * A guest's own embedding (base64 float32) for her server's people graph, so she knows them next time
    * (HOUSEHOLD-DESIGN §11). Numbers, never audio; only on a clip long enough to file.
@@ -253,8 +264,13 @@ export interface VoiceHold {
 }
 export const NO_HOLD: VoiceHold = { verifiedAt: null, scores: [], evidence: [] };
 export const HOLD_MS = 5 * 60_000;
-/** CAM++: under this a turn is not his (his held-out p2; LibriSpeech 1-2 s p99.5), so it is a speaker change. */
-export const SESSION_FLOOR = 0.37;
+/**
+ * CAM++: under this a turn is not his, so it is a speaker change. His live short turns on Tumble sit at 0.36-0.38
+ * (16 Nov 12:35Z); LibriSpeech 1-2 s p99.5 is 0.35.
+ */
+export const SESSION_FLOOR = 0.35;
+/** A short or weak turn averaged with his last pieces must reach this (held-out: the clone and strangers are unchanged). */
+const SESSION_MEAN = 0.37;
 /** A turn this far under his recent pieces' mean is a change of voice, however high the mean. */
 const SESSION_NEAR = 0.4;
 /** Under this much speech a low score is too noisy to call a change: the turn is only not lifted. */
@@ -280,7 +296,11 @@ export const holdVoice = (
     const verified = identity.verified || averaged || held;
     return {
       hold: { verifiedAt: verified ? now : hold.verifiedAt, scores, evidence },
-      identity: { ...identity, verified },
+      identity: {
+        ...identity,
+        verified,
+        ...(verified && !identity.verified ? { session: true as const } : {}),
+      },
     };
   }
   if (own === null) {
@@ -297,7 +317,7 @@ export const holdVoice = (
     last.length > 0 &&
     own >= SESSION_FLOOR &&
     own >= mean(last) - SESSION_NEAR &&
-    mean([own, ...last]) >= policy.single.steer
+    mean([own, ...last]) >= SESSION_MEAN
   )
     return {
       hold: { ...hold, verifiedAt: held ? now : hold.verifiedAt, evidence },
@@ -317,6 +337,28 @@ export const holdVoice = (
     ? { hold: { ...NO_HOLD, evidence }, identity }
     : { hold: { ...hold, evidence }, identity };
 };
+
+/**
+ * A session's first turn, also scored as one clip with her name's clip before it (`joined`): his when that clears steer
+ * and the turn alone clears the floor. Held-out, 16 Nov: his first turns 78% to 97%; the clone and strangers on their own
+ * unchanged (7.5%, 0%); the clone speaking after he called her 7.5% to 15%, as inside his session. Never `verified`.
+ */
+export const withName = (turn: SpeakerIdentity, joined: SpeakerIdentity): SpeakerIdentity =>
+  turn.kind !== "owner" &&
+  turn.kind !== "saved" &&
+  turn.test !== true &&
+  joined.kind === "owner" &&
+  (turn.own?.score ?? Number.NEGATIVE_INFINITY) >= SESSION_FLOOR
+    ? {
+        ...turn,
+        kind: "owner",
+        personId: "owner",
+        name: null,
+        confidence: turn.own!.score,
+        verified: false,
+        lifted: true,
+      }
+    : turn;
 
 /** His profile's cosine to one clip, the best of his owner profiles for this model; null with none. */
 export const ownerScoreOf = (
@@ -468,9 +510,14 @@ export const adaptProfile = (
  * clips score lower than a turn, so the cut-offs are per length (CAM++, 14 Nov: his 0.6 s clips 0.24 at the 2nd
  * percentile, 1 s p10 0.38; 109 other speakers 0.6 s p95 0.17, 1 s at most 0.33). "unsure" waits for more of it.
  */
-export const memberByVoice = (best: number, seconds: number): "member" | "other" | "unsure" => {
+export const memberByVoice = (
+  best: number,
+  seconds: number,
+  /** His session holds recent evidence: her voice in the mix lowers his (12:36Z, 16 Nov: 0.33); strangers 1-2 s >= 0.30: 0.6%. */
+  held = false,
+): "member" | "other" | "unsure" => {
   if (!Number.isFinite(best)) return "other";
-  if (best >= (seconds < 1.25 ? 0.4 : 0.36)) return "member";
+  if (best >= (seconds < 1.25 ? 0.4 : 0.36) - (held ? 0.06 : 0)) return "member";
   // Early only when plainly someone else: his own first half second can score low in a loud room (bench, 14 Nov).
   if (seconds >= 2 || (seconds >= 1 && best < 0.2) || best < 0.1) return "other";
   return "unsure";

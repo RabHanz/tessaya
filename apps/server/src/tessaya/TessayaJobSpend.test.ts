@@ -1,11 +1,9 @@
-// @effect-diagnostics nodeBuiltinImport:off
-import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
-
 import { describe, expect, it } from "vite-plus/test";
 
-import { findTranscript, spendOf } from "./TessayaJobSpend.ts";
+import { ProviderTurnId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+
+import { mergeUnits, spendOfTurns, turnUnits } from "./TessayaJobSpend.ts";
 import { parseRateTable } from "../usage/usagePricing.ts";
 
 const rates = parseRateTable({
@@ -17,63 +15,102 @@ const rates = parseRateTable({
   },
 });
 
-const claudeLine = (id: string, out: number, model = "claude-sonnet-4-5") =>
-  JSON.stringify({
-    type: "assistant",
-    requestId: `r${id}`,
-    message: {
-      id,
-      model,
-      usage: {
-        input_tokens: 1000,
-        output_tokens: out,
-        cache_read_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-      },
+const turn = (output: number, model = "claude-sonnet-4-5") =>
+  ({
+    status: "completed",
+    model,
+    turnTokenUsage: {
+      usageScope: "main_agent",
+      usageStatus: "complete",
+      hasSubagents: false,
+      // Input counts the 1,000 cached tokens.
+      inputTokens: 2_000,
+      cachedInputTokens: 1_000,
+      outputTokens: output,
     },
-  });
+  }) as const;
 
-const home = () => {
-  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "spend-"));
-  NodeFS.mkdirSync(NodePath.join(dir, ".claude", "projects", "proj-a"), { recursive: true });
-  return dir;
-};
-
-describe("a job's spend from its transcript", () => {
-  it("finds the session's transcript and prices what it used", () => {
-    const h = home();
-    const id = "11111111-2222-3333-4444-555555555555";
-    NodeFS.writeFileSync(
-      NodePath.join(h, ".claude", "projects", "proj-a", `${id}.jsonl`),
-      [claudeLine("m1", 1000), claudeLine("m2", 2000)].join("\n"),
+describe("a job's spend from its provider turns", () => {
+  it("prices each finished turn at its model's list price", () => {
+    const s = spendOfTurns(
+      [turn(1_000), turn(2_000), { ...turn(9_999), status: "running" }],
+      rates,
     );
-    expect(findTranscript(id, h)?.kind).toBe("claude");
-    const s = spendOf({ nativeIds: [id], stateDir: h, home: h, rates });
-    // 2000 in at 3e-6 + 3000 out at 15e-6
-    expect(s.tokens).toBe(5000);
-    expect(s.dollars).toBeCloseTo(0.006 + 0.045, 6);
+    expect(s.tokens).toBe(2 * 2_000 + 3_000);
+    // 2 × (1,000 uncached × $3 + 1,000 cached × $0.30) per M, and 3,000 output × $15 per M.
+    expect(s.dollars).toBeCloseTo(2 * (0.003 + 0.0003) + 0.045, 9);
     expect(s.partial).toBe(false);
   });
-  it("says it is a floor when a transcript is missing or a model has no price, and never invents zero", () => {
-    const h = home();
-    const id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-    NodeFS.writeFileSync(
-      NodePath.join(h, ".claude", "projects", "proj-a", `${id}.jsonl`),
-      claudeLine("m1", 10, "mystery-model"),
-    );
-    const unpriced = spendOf({ nativeIds: [id], stateDir: h, home: h, rates });
-    expect(unpriced.dollars).toBeNull();
+
+  it("is a floor, never zero, when a turn has no counts or no price", () => {
+    const unpriced = spendOfTurns([turn(1_000), turn(1_000, "unknown-model")], rates);
     expect(unpriced.partial).toBe(true);
-    const missing = spendOf({
-      nativeIds: ["99999999-9999-9999-9999-999999999999"],
-      stateDir: h,
-      home: h,
-      rates,
+    expect(unpriced.dollars).toBeCloseTo(0.003 + 0.0003 + 0.015, 9);
+    const uncounted = spendOfTurns([{ status: "completed" }], rates);
+    expect(uncounted).toEqual({ tokens: 0, dollars: null, partial: true });
+    expect(spendOfTurns([turn(1_000)], null)).toEqual({
+      tokens: 3_000,
+      dollars: null,
+      partial: true,
     });
-    expect(missing).toEqual({ tokens: 0, dollars: null, partial: true });
-    expect(spendOf({ nativeIds: [id], stateDir: h, home: h, rates: null }).dollars).toBeNull();
   });
-  it("will not follow an id that could climb out of the folders", () => {
-    expect(findTranscript("../../etc/passwd", home())).toBeNull();
+});
+
+describe("each job's and schedule's cost on the Usage page", () => {
+  const at = (iso: string) => DateTime.makeUnsafe(iso);
+  const ran = (id: string, runId: string, task: string | null, completed: string) => ({
+    turn: { ...turn(1_000), id: ProviderTurnId.make(id), completedAt: at(completed) },
+    runId,
+    scheduledTaskId: task,
+  });
+  const since = Date.parse("2026-11-10T00:00:00Z");
+
+  it("counts a job's turns in the range, and a schedule's per run it started", () => {
+    const units = turnUnits(
+      [
+        {
+          id: "job-1",
+          label: "Weekly report",
+          turns: [
+            ran("t1", "r1", null, "2026-11-11T10:00:00Z"),
+            ran("t2", "r2", "task-1", "2026-11-12T10:00:00Z"),
+            // A retry in the same run is one run.
+            ran("t3", "r2", "task-1", "2026-11-12T10:05:00Z"),
+            ran("t4", "r3", "task-1", "2026-11-13T10:00:00Z"),
+            ran("old", "r0", "task-1", "2026-11-01T10:00:00Z"),
+          ],
+        },
+      ],
+      since,
+      rates,
+    );
+    expect(units.map((u) => [u.kind, u.id, u.label, u.runs, u.calls, u.tokens])).toEqual([
+      ["job", "job-1", "Weekly report", 3, 4, 4 * 3_000],
+      ["schedule", "task-1", "Weekly report (scheduled)", 2, 3, 3 * 3_000],
+    ]);
+    // The plan's turns carry their list price only.
+    expect(units[1]?.dollars).toBeNull();
+    expect(units[1]?.listDollars).toBeCloseTo(3 * (0.003 + 0.0003 + 0.015), 9);
+  });
+
+  it("adds the ledger's calls to the same job, and keeps the ledger's own units", () => {
+    const fromTurns = turnUnits(
+      [{ id: "job-1", label: "Report", turns: [ran("t1", "r1", null, "2026-11-11T10:00:00Z")] }],
+      since,
+      rates,
+    );
+    const unit = { runs: 1, calls: 2, tokens: 100, dollars: 0.01, listDollars: 0.01 };
+    const merged = mergeUnits(
+      [
+        { kind: "job", id: "job-1", ...unit },
+        { kind: "schedule", id: "standing", ...unit },
+      ],
+      fromTurns,
+    );
+    expect(merged.map((u) => [u.kind, u.id, u.label, u.calls, u.tokens, u.dollars])).toEqual([
+      ["job", "job-1", "Report", 3, 3_100, 0.01],
+      ["schedule", "standing", undefined, 2, 100, 0.01],
+    ]);
+    expect(merged[0]?.listDollars).toBeCloseTo(0.01 + 0.003 + 0.0003 + 0.015, 9);
   });
 });

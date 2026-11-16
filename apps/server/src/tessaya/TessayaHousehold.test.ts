@@ -218,12 +218,16 @@ describe("TessayaHousehold", () => {
         yield* redeem(second.code!);
         const desk = { session: "desk", desktop: true } as const;
         yield* Effect.provideService(
-          stores.setup({ name: "Owner", pin: "27182818" }),
+          stores
+            .setup({ name: "Owner", pin: "27182818" })
+            .pipe(Effect.flatMap((o) => stores.confirmSetup(o))),
           PrivateCaller,
           desk,
         );
         yield* Effect.provideService(
-          stores.setup({ personId: id, name: "Sara", pin: "314159" }),
+          stores
+            .setup({ personId: id, name: "Sara", pin: "314159" })
+            .pipe(Effect.flatMap((o) => stores.confirmSetup(o))),
           PrivateCaller,
           desk,
         );
@@ -529,7 +533,9 @@ describe("one voice profile per member, on the home", () => {
       Effect.gen(function* () {
         const stores = yield* TessayaPrivateMemoryService;
         yield* Effect.provideService(
-          stores.setup({ name: "Owner", pin: "27182818" }),
+          stores
+            .setup({ name: "Owner", pin: "27182818" })
+            .pipe(Effect.flatMap((o) => stores.confirmSetup(o))),
           PrivateCaller,
           { session: "desk", desktop: true },
         );

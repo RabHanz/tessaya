@@ -15,6 +15,7 @@ import {
   createLowerHold,
   grownBounds,
   frostBounds,
+  clearOf,
 } from "./pillPlacement.ts";
 
 const size = { width: 420, height: 52 };
@@ -284,5 +285,40 @@ describe("the grown window and the cleanup's hold", () => {
     hold.holdUntil(7500);
     tick(7500);
     expect(lowered).toBe(2);
+  });
+});
+
+describe("the pill clear of her body", () => {
+  const pill = { x: 750, y: 944, ...size };
+  it("stays put when she is elsewhere or not on screen", () => {
+    expect(clearOf(pill, null, hd)).toEqual({ x: 750, y: 944 });
+    expect(clearOf(pill, { x: 100, y: 840, width: 200, height: 200 }, hd)).toEqual({
+      x: 750,
+      y: 944,
+    });
+  });
+  it("moves beside her, toward the side with more room", () => {
+    // Just left of centre: more room on the right.
+    expect(clearOf(pill, { x: 800, y: 840, width: 200, height: 200 }, hd)).toEqual({
+      x: 1008,
+      y: 944,
+    });
+    // Just right of centre: more room on the left.
+    expect(clearOf(pill, { x: 1000, y: 840, width: 200, height: 200 }, hd)).toEqual({
+      x: 572,
+      y: 944,
+    });
+  });
+  it("goes above her when neither side fits, else below", () => {
+    const narrow = { x: 0, y: 0, width: 600, height: 1040 };
+    const at = { x: 90, y: 944, ...size };
+    expect(clearOf(at, { x: 150, y: 840, width: 300, height: 200 }, narrow)).toEqual({
+      x: 90,
+      y: 840 - 8 - 52,
+    });
+    expect(clearOf({ ...at, y: 10 }, { x: 150, y: 0, width: 300, height: 200 }, narrow)).toEqual({
+      x: 90,
+      y: 208,
+    });
   });
 });

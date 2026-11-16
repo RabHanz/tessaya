@@ -1056,6 +1056,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_usage_report"],
   },
   {
+    id: "pulse-noticed",
+    proves: ["tessaya_pulse"],
+    said: ["What have you noticed today?"],
+    uses: [["tessaya_pulse"]],
+    clean: ["tessaya_pulse"],
+  },
+  {
     id: "whos-home",
     proves: ["tessaya_whos_home"],
     said: ["Who's home right now?"],
@@ -1068,6 +1075,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     proves: ["tessaya_whos_home"],
     said: ["Where am I?"],
     uses: [["tessaya_whos_home"]],
+  },
+  {
+    // Read only: "who" moves nobody, so the live suite never changes his cast.
+    id: "cast-who",
+    proves: ["tessaya_cast"],
+    said: ["Which persona is on which of my devices right now?"],
+    uses: [["tessaya_cast"]],
+    clean: ["tessaya_cast"],
   },
   {
     id: "memory-about",
@@ -1272,6 +1287,30 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     argsOf: "device_set",
     args: (input) => ({
       "the R1's own speaker": input["itemId"] === "audio.output" && input["value"] === "speaker",
+    }),
+  },
+  {
+    id: "bt-listen-headset",
+    device: true,
+    proves: [],
+    said: ["Listen through my headphones."],
+    voices: [{ speaker: SURE }],
+    uses: [["device_set"]],
+    argsOf: "device_set",
+    args: (input) => ({
+      "the headset's mic": input["itemId"] === "audio.input" && input["value"] === "headset",
+    }),
+  },
+  {
+    id: "bt-listen-own-mic",
+    device: true,
+    proves: [],
+    said: ["Use your own mic."],
+    voices: [{ speaker: SURE }],
+    uses: [["device_set"]],
+    argsOf: "device_set",
+    args: (input) => ({
+      "her own mic": input["itemId"] === "audio.input" && input["value"] === "mic",
     }),
   },
   {

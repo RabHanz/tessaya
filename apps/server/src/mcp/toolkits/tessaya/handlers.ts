@@ -17,6 +17,7 @@ import {
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
+  PHONE_PAIRING_TOOL,
   TessayaDesktopState,
   type TessayaRecordEntry,
 } from "@t3tools/tessaya-contracts";
@@ -45,6 +46,7 @@ import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { workNow } from "../../../tessaya/TessayaSessionsAcross.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { castLine, castOp, TessayaCast } from "../../../tessaya/TessayaCast.ts";
 import { TessayaVocabulary } from "../../../tessaya/TessayaVocabulary.ts";
 import {
   TessayaVoiceLibrary,
@@ -55,8 +57,11 @@ import { hisOwnTurn } from "../../../tessaya/consent.ts";
 import * as ServerConfig from "../../../config.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { TessayaWake } from "../../../tessaya/TessayaWake.ts";
+import * as Pulse from "../../../tessaya/TessayaPulse.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
+import * as EnvironmentAuth from "../../../auth/EnvironmentAuth.ts";
+import * as PhonePairing from "../../../tessaya/PhonePairing.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
 import * as HomeHandlers from "../home/handlers.ts";
@@ -230,6 +235,7 @@ export const layer = McpToolAccess.toLayer(
       };
     });
     const runtime = yield* TessayaRuntime;
+    const auth = yield* Effect.serviceOption(EnvironmentAuth.EnvironmentAuth);
     /** The turn pipeline's memory tools, or "unavailable" on a server built without Tessaya's services. */
     const withTurn = <A, E>(
       f: (turn: TessayaTurn["Service"]) => Effect.Effect<A, E>,
@@ -287,6 +293,32 @@ export const layer = McpToolAccess.toLayer(
                 ok: false,
                 error: "That is not a voice request.",
               }
+            );
+          }),
+        { linkedCallers: "allowed" },
+      ),
+      [PHONE_PAIRING_TOOL]: McpToolAccess.writes(
+        () =>
+          Effect.gen(function* () {
+            const scope = yield* McpInvocationContext.McpInvocationContext;
+            if (!PhonePairing.mayAskHere(scope.client))
+              return yield* new OrchestratorMcpFailure({
+                code: "capability_denied",
+                message: "Only another of his machines, linked with full access, may ask for this.",
+              });
+            if (auth._tag === "None")
+              return yield* new OrchestratorMcpFailure({
+                code: "orchestration_error",
+                message: "Pairing is not available on this server.",
+              });
+            return yield* PhonePairing.codeHere(auth.value).pipe(
+              Effect.mapError(
+                (error) =>
+                  new OrchestratorMcpFailure({
+                    code: "orchestration_error",
+                    message: error.message,
+                  }),
+              ),
             );
           }),
         { linkedCallers: "allowed" },
@@ -490,6 +522,37 @@ export const layer = McpToolAccess.toLayer(
           ),
         ),
       ),
+      // Her pulse's log and dials are the owner's: a guest's turn hears a line, never the log.
+      tessaya_pulse: McpToolAccess.writes((input) =>
+        call(
+          Effect.gen(function* () {
+            const origin = yield* TurnOrigin;
+            if (origin !== null && (origin.member !== OWNER_MEMBER_ID || origin.tainted))
+              return { line: "That's for the owner to ask.", items: [] };
+            if (runtime === null) return { line: "My pulse isn't on this server.", items: [] };
+            const run = <A>(effect: Effect.Effect<A, never, never>) =>
+              effect.pipe(Effect.provideContext(runtime));
+            if (input.action === "noticed") {
+              const rows = yield* run(Pulse.noticed(10));
+              return {
+                line: rows.length === 0 ? "I haven't noticed anything worth a note lately." : "",
+                items: rows.map((r) => ({
+                  at: r.at,
+                  did: r.outcome,
+                  what: r.subject,
+                  why: r.detail,
+                })),
+              };
+            }
+            if (input.action === "liked" || input.action === "told_off")
+              return { line: yield* run(Pulse.react(input.action)), items: [] };
+            return {
+              line: yield* run(Pulse.mute(input.about ?? "", input.action === "stop")),
+              items: [],
+            };
+          }),
+        ),
+      ),
       // A guest's voice learns nothing about who lives here.
       tessaya_whos_home: McpToolAccess.reads(() =>
         call(
@@ -513,6 +576,45 @@ export const layer = McpToolAccess.toLayer(
             }),
           ),
         ),
+      ),
+      // Moves need his own ask: a voice she knows, or a signed-in agent; never a guest's or tainted turn.
+      tessaya_cast: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          const origin = yield* TurnOrigin;
+          const cast = runtime === null ? Option.none() : Context.getOption(runtime, TessayaCast);
+          if (Option.isNone(cast)) return { line: "The cast is not on this server.", bodies: [] };
+          const verified =
+            origin === null ||
+            (origin.tainted !== true &&
+              origin.member !== null &&
+              origin.member !== undefined &&
+              (origin.kind !== "device" ||
+                origin.hisVoice === true ||
+                origin.speaker?.verified === true));
+          const body =
+            input.body === undefined || input.body.toLowerCase() === "here"
+              ? (origin?.id ?? input.body)
+              : input.body;
+          const op = castOp(input, body);
+          const view = yield* cast.value.call(op, verified).pipe(
+            Effect.map((v) => ({ v, line: castLine(op, v) })),
+            Effect.catch((reason: string) =>
+              Effect.map(cast.value.view, (v) => ({ v, line: reason })),
+            ),
+          );
+          const name = (id: string | null) => view.v.personas.find((p) => p.id === id)?.name ?? id;
+          return {
+            line: view.line,
+            bodies: view.v.bodies.map((b) => ({
+              name: b.name,
+              wearing: name(b.wearing),
+              why: b.why,
+              home: name(b.home),
+              follows: b.follows,
+              on: b.on.map((p) => name(p) ?? p),
+            })),
+          };
+        }),
       ),
       // Read as a client (MemoryViewer's default here): walls hold.
       tessaya_coming_up: McpToolAccess.reads(() =>

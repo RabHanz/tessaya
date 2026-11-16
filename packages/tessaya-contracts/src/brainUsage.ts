@@ -6,7 +6,10 @@
  */
 import * as Schema from "effect/Schema";
 
-export const BATON_BRAIN_WS_METHODS = { usage: "baton.brain.usage" } as const;
+export const BATON_BRAIN_WS_METHODS = {
+  usage: "baton.brain.usage",
+  record: "baton.brain.record",
+} as const;
 
 /** Who paid: his plan (tokens, and their list-price equivalent) or an API key (dollars at list price). */
 export const UsageBilling = Schema.Literals(["subscription", "apiKey"]);
@@ -55,6 +58,24 @@ export const BrainUsageInput = Schema.Struct({
 });
 export type BrainUsageInput = typeof BrainUsageInput.Type;
 
+const Count = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100_000_000 }));
+
+/** One call the desktop made on his own CLI login (a look at the screen, a rewrite, an operator turn). */
+export const BrainUsageRecordInput = Schema.Struct({
+  role: Schema.Literals(["vision", "cleanup", "deep", "agent"]),
+  /** `claude` or `codex`. */
+  provider: Schema.Literals(["claude", "codex"]),
+  model: Id,
+  input: Count,
+  cacheRead: Count,
+  cacheWrite: Count,
+  output: Count,
+  outcome: UsageOutcome,
+  feature: Id,
+  persona: Schema.optional(Id),
+});
+export type BrainUsageRecordInput = typeof BrainUsageRecordInput.Type;
+
 export const BrainUsageTotal = Schema.Struct({
   day: Schema.String,
   role: Schema.String,
@@ -77,10 +98,12 @@ export const BrainUsageTotal = Schema.Struct({
 });
 export type BrainUsageTotal = typeof BrainUsageTotal.Type;
 
-/** A schedule's or a job's own cost: a schedule per run, a job in all. */
+/** A schedule's or a job's own cost in the range: its provider turns and its calls in the ledger. */
 export const BrainUsageUnit = Schema.Struct({
   kind: Schema.Literals(["schedule", "job"]),
   id: Schema.String,
+  /** The job's title; absent for an id no job names. */
+  label: Schema.optional(Schema.String),
   runs: Schema.Number,
   calls: Schema.Number,
   tokens: Schema.Number,

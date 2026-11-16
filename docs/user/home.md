@@ -160,6 +160,17 @@ output connected she says "I'll tell you when your headphones are on" and says i
 room speaker tagged private plays one only when your recognised voice is alone with her. Ask her too ("only use my
 headphones for private stuff", "you can use your speaker for private too").
 
+**Where she listens** (firmware 0.3.151). With headphones that have a mic connected, Settings → Hardware → Bluetooth
+audio also lists her own mic and each paired device under **Listens through**. She hears you through the first one that
+can hear right now, and goes back to her own mic when the headset drops. Her own mic is first until you change it:
+drag the list, or ask her ("listen through my headphones", "use your own mic").
+
+**Through your phone** (mobile app). AirPods and headphones already paired with your phone can carry her too, which
+keeps the Tessel's own Bluetooth free. In the mobile app, Settings → Hardware → Bluetooth audio → **Use this phone**.
+While the app is open (or playing in the background) and the phone is on her network, it shows in both lists: move it
+up to hear her replies on the phone's headphones, or to talk to her through its mic. Private replies may play there
+whenever the phone is playing through headphones.
+
 **Screen** (firmware 3.32). Auto turns the screen with the Tessel; Normal or Upside down pins it. If Auto has it the
 wrong way up, stand the Tessel the way you use it and press **Set upright**.
 

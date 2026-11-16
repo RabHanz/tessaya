@@ -20,6 +20,7 @@ import {
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2ContextHandoff,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2ProviderTurn,
   type OrchestrationV2Run,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2TurnItem,
@@ -68,6 +69,13 @@ export interface TessayaThreadLaunch {
   readonly worktreePath: string | null;
   readonly branch: string | null;
   readonly text: string;
+}
+
+/** A provider turn with the run it belongs to and the scheduled task that started that run, if one did. */
+export interface TessayaTurnRun {
+  readonly turn: OrchestrationV2ProviderTurn;
+  readonly runId: string | null;
+  readonly scheduledTaskId: string | null;
 }
 
 export interface TessayaEngineShape {
@@ -128,6 +136,12 @@ export interface TessayaEngineShape {
   ) => Effect.Effect<ReadonlyArray<OrchestrationV2ConversationMessage>>;
   /** The thread's runs, for live-session turns (D83). Empty on an engine error. */
   readonly threadRuns: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<OrchestrationV2Run>>;
+  /** The thread's provider turns with their token counts, for a job's spend. Empty on an engine error. */
+  readonly providerTurns: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<OrchestrationV2ProviderTurn>>;
+  /** Each provider turn with its run and, for a run a scheduled task started, the task. Empty on an engine error. */
+  readonly turnRuns: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<TessayaTurnRun>>;
   /** A runtime request's status, for live-session terminal prompts (D88). Null when unknown. */
   readonly runtimeRequestStatus: (
     threadId: ThreadId,
@@ -606,6 +620,35 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed([])),
     );
 
+  const providerTurns: TessayaEngineShape["providerTurns"] = (threadId) =>
+    orchestrator.getThreadRecords(threadId, ["providerTurns"]).pipe(
+      Effect.map((records) => records.providerTurns),
+      Effect.catchCause(() => Effect.succeed([])),
+    );
+
+  const turnRuns: TessayaEngineShape["turnRuns"] = (threadId) =>
+    orchestrator.getThreadRecords(threadId, ["providerTurns", "attempts", "messages"]).pipe(
+      Effect.map(({ providerTurns, attempts, messages }) => {
+        const runOf = new Map(attempts.map((a) => [a.id, a.runId as string]));
+        const taskOf = new Map(
+          messages.flatMap((m) =>
+            m.runId === null || m.scheduledTaskId === undefined
+              ? []
+              : [[m.runId as string, m.scheduledTaskId as string] as const],
+          ),
+        );
+        return providerTurns.map((turn) => {
+          const runId = turn.runAttemptId === null ? null : (runOf.get(turn.runAttemptId) ?? null);
+          return {
+            turn,
+            runId,
+            scheduledTaskId: runId === null ? null : (taskOf.get(runId) ?? null),
+          };
+        });
+      }),
+      Effect.catchCause(() => Effect.succeed([])),
+    );
+
   const renameThread: TessayaEngineShape["renameThread"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -780,6 +823,8 @@ export const make = Effect.gen(function* () {
     turnItem,
     appThread,
     activeProviderThread,
+    providerTurns,
+    turnRuns,
     renameThread,
     resumeQueue,
     keepActive,
@@ -814,6 +859,8 @@ export const layerStatic = (input: {
   readonly messages?: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly text: string }>;
   /** Runs per thread, for the job caps. */
   readonly runs?: ReadonlyMap<string, ReadonlyArray<{ readonly status: string }>>;
+  readonly providerTurns?: ReadonlyMap<string, ReadonlyArray<unknown>>;
+  readonly turnRuns?: ReadonlyMap<string, ReadonlyArray<TessayaTurnRun>>;
   readonly contextHandoffs?: ReadonlyMap<string, ReadonlyArray<unknown>>;
   /** Pending runtime requests (approvals) per thread. */
   readonly pending?: ReadonlyMap<string, ReadonlyArray<unknown>>;
@@ -857,6 +904,9 @@ export const layerStatic = (input: {
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
     threadRuns: (threadId) => Effect.succeed((input.runs?.get(threadId) ?? []) as never),
+    providerTurns: (threadId) =>
+      Effect.succeed((input.providerTurns?.get(threadId) ?? []) as never),
+    turnRuns: (threadId) => Effect.succeed(input.turnRuns?.get(threadId) ?? []),
     contextHandoffs: (threadId) =>
       Effect.succeed((input.contextHandoffs?.get(threadId) ?? []) as never),
     runtimeRequestStatus: () => Effect.succeed(null),

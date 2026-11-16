@@ -72,7 +72,12 @@ export const createOutsideSlot = (input: {
     return closed ? { allow: false, reason: STOPPED } : verdict;
   };
   // A device's or agent's turn never reaches the vault or a private store.
-  const { vault: _noVault, rememberPrivate: _noPrivate, ...rest } = input.host;
+  const {
+    vault: _noVault,
+    rememberPrivate: _noPrivate,
+    privateWaiting: _noWaiting,
+    ...rest
+  } = input.host;
   const host: ToolHost = {
     ...rest,
     // Memory only, never his conversation: "what did he say about X" has nothing to find here.

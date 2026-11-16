@@ -175,3 +175,52 @@ export const LEDGERED_DIR = "tessaya-ledgered";
 
 /** Claude Code keeps a session under its cwd with every other character a dash, so the tag survives as the suffix. */
 export const isLedgeredDir = (name: string) => name.endsWith(`-${LEDGERED_DIR}`);
+
+/** One call's tokens on one model. `input` is the uncached part, as the API counts it. */
+export interface CallTokens {
+  readonly model: string;
+  readonly input: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  readonly output: number;
+}
+
+const count = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+
+/** The Messages API's `usage` (a whole response, or a stream's `message_start` and last `message_delta` merged). */
+export const apiTokens = (model: string, usage: unknown): CallTokens | null => {
+  if (typeof usage !== "object" || usage === null) return null;
+  const u = usage as Record<string, unknown>;
+  return {
+    model,
+    input: count(u["input_tokens"]),
+    cacheRead: count(u["cache_read_input_tokens"]),
+    cacheWrite: count(u["cache_creation_input_tokens"]),
+    output: count(u["output_tokens"]),
+  };
+};
+
+/**
+ * Claude Code's `result` event: `modelUsage` per resolved model id (a turn can use more than one), else its `usage`
+ * under the model it was asked for.
+ */
+export const cliTokens = (result: unknown, asked: string): ReadonlyArray<CallTokens> => {
+  if (typeof result !== "object" || result === null) return [];
+  const r = result as Record<string, unknown>;
+  const perModel = r["modelUsage"];
+  if (typeof perModel === "object" && perModel !== null) {
+    const rows = Object.entries(perModel as Record<string, Record<string, unknown>>).map(
+      ([model, u]) => ({
+        model,
+        input: count(u["inputTokens"]),
+        cacheRead: count(u["cacheReadInputTokens"]),
+        cacheWrite: count(u["cacheCreationInputTokens"]),
+        output: count(u["outputTokens"]),
+      }),
+    );
+    if (rows.length > 0) return rows;
+  }
+  const one = apiTokens(asked, r["usage"]);
+  return one === null ? [] : [one];
+};

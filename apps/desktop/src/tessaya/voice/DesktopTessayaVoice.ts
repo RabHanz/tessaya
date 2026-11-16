@@ -50,11 +50,13 @@ import {
   cleanupFromSaved,
   cleanupLevelFor,
   DICTATION_MODES,
+  DICTATION_SPELLINGS,
   localClean,
   MODE_LABELS,
   type CleanupLevel,
   type DictationContext,
   type DictationMode,
+  type DictationSpelling,
   type Refused,
 } from "@t3tools/tessaya-shared/dictationCleanup";
 import {
@@ -204,6 +206,7 @@ import { createSilenceWatch, DEFAULT_SILENCE_SECONDS } from "@t3tools/tessaya-sh
 import {
   HIDE_FOR_MS,
   isFullscreenWindow,
+  pillShowsPhase,
   restBarWanted,
 } from "@t3tools/tessaya-shared/pillVisibility";
 import {
@@ -762,6 +765,10 @@ interface VoiceSettings {
   readonly mascotCrew: string;
   /** Her face in the pill while he talks to her, when the desktop companion is off. */
   readonly pillFace: boolean;
+  /** The pill while she speaks; off, her voice, acting and speech bubble carry it. */
+  readonly pillWhenSpeaking: boolean;
+  /** The pill for speech she starts on her own (a character's moment, a remark); off by default. */
+  readonly pillOnHerOwn: boolean;
   /** Her body is the persona answering him, not only his chosen one (SPINE-UNIFY §10, P5). */
   readonly mascotFollows: boolean;
   /** Windows 11's acrylic behind the pill's island and the cards beside it; off by default. */
@@ -888,6 +895,8 @@ interface VoiceSettings {
   readonly cleanupModelChosen?: boolean;
   /** His own Claude plan first and his key only while it is out or at its limit, or his key first. */
   readonly cleanupRoute: "subscription" | "key";
+  /** Settings → Dictation → Spelling of the cleaned text. */
+  readonly dictationSpelling: DictationSpelling;
   readonly claudeBinary: string;
   /** His writing mode for an app, by exe name; anything else is chosen from the app. */
   readonly appModes: Readonly<Record<string, DictationMode>>;
@@ -956,6 +965,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   mascotHands: "arms",
   mascotCrew: "none",
   pillFace: false,
+  pillWhenSpeaking: true,
+  pillOnHerOwn: false,
   mascotFollows: false,
   frosted: false,
   waitMs: WAIT_DEFAULT_MS,
@@ -1013,6 +1024,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   dictationCleanup: "local",
   cleanupModel: "sonnet",
   cleanupRoute: "subscription",
+  dictationSpelling: "uk",
   claudeBinary: "claude",
   appModes: {},
   wakeWords: FRESH_WAKE_WORDS,
@@ -1102,6 +1114,7 @@ export const readSettings = (path: string): VoiceSettings => {
           ? saved["cleanupModel"]
           : "sonnet",
       cleanupRoute: saved["cleanupRoute"] === "key" ? "key" : "subscription",
+      dictationSpelling: DICTATION_SPELLINGS.find((s) => s === saved["dictationSpelling"]) ?? "uk",
       openTessayaOnStart: saved["openTessayaOnStart"] === true,
       openSessionsOnStart: saved["openSessionsOnStart"] !== false,
       devicesMayLook: saved["devicesMayLook"] === true,
@@ -1119,6 +1132,8 @@ export const readSettings = (path: string): VoiceSettings => {
       mascotHands: parseMascotHands(saved["mascotHands"]),
       mascotCrew: parseMascotCrew(saved["mascotCrew"]),
       pillFace: saved["pillFace"] === true,
+      pillWhenSpeaking: saved["pillWhenSpeaking"] !== false,
+      pillOnHerOwn: saved["pillOnHerOwn"] === true,
       mascotFollows: saved["mascotFollows"] === true,
       frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
@@ -1364,6 +1379,8 @@ export interface DesktopTessayaVoiceInput {
   readonly onGrants?: (keys: ReadonlyArray<string>) => void;
   /** His private memory stores on this machine's server, for the Memory tab. */
   readonly privateMemory?: PrivateMemory;
+  /** His private store was just made: what waited for it comes in now; a line saying what came, or null. */
+  readonly onOwnerStore?: () => Promise<string | null>;
   /** The household's members on this machine's server, for the Memory tab's Household area. */
   readonly household?: HouseholdCall;
   /** This machine's server for her wake models (it answers from her home server when there is one). */
@@ -2064,6 +2081,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     env: input.env,
     platform: input.platform,
     dictionary: () => dictionaryForCleanup(),
+    spelling: () => settings.dictationSpelling,
     keepWarm: () => cleanupStaysWarm(),
     ...(input.cleanupApi === undefined ? {} : { api: input.cleanupApi }),
     examples: (text, mode) => styleIndex?.nearest(text, mode, 4) ?? [],
@@ -5043,9 +5061,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     const rest = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.filter(
       (p) => p.id !== main,
     );
+    const named = settings.mascotCrew.split(",");
     return settings.mascotCrew === "all"
       ? rest.slice(0, CREW_MAX)
-      : rest.filter((p) => p.name.toLowerCase() === settings.mascotCrew).slice(0, 1);
+      : rest
+          .filter((p) => named.includes(p.id) || named.includes(p.name.toLowerCase()))
+          .slice(0, CREW_MAX);
   };
   /** The body that speaks: the talking persona's own when it is on his desktop, else hers. */
   const voiceBody = (): DesktopMascot => {
@@ -5143,6 +5164,14 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         ? mascotBody()
         : null,
     who: () => pillWho(speakerIdentity.session(), (m) => memberNames.get(m) ?? null),
+    shows: (phase, own) =>
+      pillShowsPhase({
+        phase,
+        ownSpeech: own,
+        whenSpeaking: settings.pillWhenSpeaking,
+        onHerOwn: settings.pillOnHerOwn,
+      }),
+    avoid: () => (settings.mascot ? voiceBody().bounds() : null),
     companionDir: COMPANION_DIR,
     ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
     onMoving: () => render(),
@@ -6099,6 +6128,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       ? null
       : createPrivateTab({
           memory: input.privateMemory,
+          ...(input.onOwnerStore === undefined ? {} : { onOwnerStore: input.onOwnerStore }),
           onlooker,
           voices: () =>
             voiceId
@@ -6290,14 +6320,19 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     ],
     present: async (offer) => {
       if (settings.initiativeMode === "spoken") input.extras?.announce(offer.offer, true);
-      const index = await (input.extras?.ask({
+      const card = {
         title: "Tessaya",
         detail: offer.offer,
         buttons: ["Yes", "Later", "Never"],
         cancel: 1,
         armMs: 1_500,
-        expiresMs: 5 * 60_000,
-      }) ?? Promise.resolve(1));
+        // The inbox's default card life (approvalCardMinutes); no answer by then is Later.
+        expiresMs: 30 * 60_000,
+      };
+      // The one question inbox: this card also shows on the phone and every linked server, answered wherever he is.
+      const index = await (input.extras?.askMirrored?.(card) ??
+        input.extras?.ask(card) ??
+        Promise.resolve(1));
       return index === 0 ? "yes" : index === 2 ? "never" : "later";
     },
     act: async (offer) => {
@@ -6313,6 +6348,16 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       return startLook(offer, false);
     },
     tell: (text) => input.extras?.announce(text, false),
+    sense: async (t) => {
+      await input.direct?.("baton.record.append", {
+        kind: "notice",
+        actor: "desktop",
+        ref: t.id,
+        subject: t.title.slice(0, 300),
+        outcome: t.kind,
+        detail: t.offer.slice(0, 1000),
+      });
+    },
   });
   setInterval(() => void initiative.tick().catch(() => undefined), INITIATIVE_MS).unref();
 
@@ -7388,6 +7433,20 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         disabled: settings.dictationCleanup !== "claude",
       },
       {
+        id: "v.spelling",
+        section: "Dictation",
+        label: "Spelling",
+        hint: "How Claude spells the cleaned text: colour or color. As heard keeps the recogniser's spelling.",
+        kind: "choice",
+        value: settings.dictationSpelling,
+        options: [
+          { value: "uk", label: "British (colour)" },
+          { value: "us", label: "American (color)" },
+          { value: "asis", label: "As heard" },
+        ],
+        disabled: settings.dictationCleanup !== "claude",
+      },
+      {
         id: "v.cleanupRoute",
         section: "Dictation",
         label: "Clean up through",
@@ -7806,6 +7865,23 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         hint: "While you talk to her, her face replaces the mark in the pill. Never during dictation, and not while she is on the desktop.",
         kind: "toggle",
         on: settings.pillFace,
+      },
+      {
+        id: "v.pillWhenSpeaking",
+        section: "Desktop companion",
+        label: "Show the pill when she speaks",
+        hint: 'Off, she still speaks and acts her lines and her speech bubble shows; the pill stays away. Say "hide the pill when you talk" or "show it again".',
+        kind: "toggle",
+        on: settings.pillWhenSpeaking,
+      },
+      {
+        id: "v.pillOnHerOwn",
+        section: "Desktop companion",
+        label: "Also when she speaks on her own",
+        hint: "The pill for what she says unprompted, like when you pick her up or she makes a remark. Her speech bubble shows either way.",
+        kind: "toggle",
+        on: settings.pillOnHerOwn,
+        disabled: !settings.pillWhenSpeaking,
       },
       {
         id: "v.motion",
@@ -8867,6 +8943,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     } else if (id === "v.cleanupModel" && (value === "sonnet" || value === "haiku")) {
       save({ cleanupModelChosen: true, cleanupModel: value });
       syncCleanupSession();
+    } else if (id === "v.spelling") {
+      const spelling = DICTATION_SPELLINGS.find((s) => s === value);
+      if (spelling !== undefined) save({ dictationSpelling: spelling });
     } else if (id === "v.cleanupRoute" && (value === "subscription" || value === "key")) {
       save({ cleanupRoute: value });
       syncCleanupSession();
@@ -9033,6 +9112,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.mascotHands") save({ mascotHands: parseMascotHands(value) });
     else if (id === "v.mascotCrew") save({ mascotCrew: parseMascotCrew(value) });
     else if (id === "v.pillFace") save({ pillFace: on });
+    else if (id === "v.pillWhenSpeaking") save({ pillWhenSpeaking: on });
+    else if (id === "v.pillOnHerOwn") save({ pillOnHerOwn: on });
     else if (id === "v.mascotFollows") {
       talking = null;
       save({ mascotFollows: on });
@@ -9736,7 +9817,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     respellings: () => settings.pronounce,
     onPlaying: (text) => {
       core?.playing(text);
-      voiceBody().line(text);
+      // With the pill kept away, her bubble carries the line.
+      voiceBody().line(text, pill.offScreen());
     },
     onTurnEnd: () => pill.on({ type: "finished" }),
     face: (name) => {

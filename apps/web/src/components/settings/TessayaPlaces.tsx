@@ -11,10 +11,12 @@ import { useState, type ReactNode } from "react";
 
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { Button } from "../ui/button";
+import { AddPhoneSection } from "./AddPhoneSettings";
 import { ApisSettingsPanel } from "./ApisSettings";
 import { TessayaAccountsSettings } from "./TessayaAccountsSettings";
 import { BrainSettingsPanel } from "./BrainSettings";
 import { BrainUsagePanel } from "./BrainUsageSettings";
+import { CastSection } from "./CastSettings";
 import { HardwareSettingsPanel } from "./HardwareSettings";
 import { HomeSettingsPanel } from "./HomeSettings";
 import { SettingsScopeProvider, useSettingsScope } from "./SettingsScopeContext";
@@ -37,6 +39,27 @@ function AccountsPage() {
   );
 }
 
+/** This machine's own server: the code pairs the phone with it and every machine linked to it. */
+function PhonePage() {
+  const primary = usePrimaryEnvironmentId();
+  return (
+    <SettingsPageContainer>
+      {primary === null ? null : <AddPhoneSection environmentId={primary} />}
+    </SettingsPageContainer>
+  );
+}
+
+function CastPage() {
+  const { environment } = useSettingsScope();
+  return (
+    <SettingsPageContainer>
+      {environment === null ? null : (
+        <CastSection key={environment.environmentId} environmentId={environment.environmentId} />
+      )}
+    </SettingsPageContainer>
+  );
+}
+
 function VoicesPage() {
   return (
     <SettingsPageContainer>
@@ -52,9 +75,11 @@ const TESSAYA_PAGES = {
   apis: ApisSettingsPanel,
   accounts: AccountsPage,
   voices: VoicesPage,
+  cast: CastPage,
   usage: BrainUsagePanel,
   brain: BrainSettingsPanel,
   team: TeamPanel,
+  phone: PhonePage,
 } as const;
 
 export type TessayaPage = keyof typeof TESSAYA_PAGES;
@@ -91,6 +116,8 @@ const PLACE_PAGE: Partial<Record<TessayaPlaceId, TessayaPage>> = {
   apis: "apis",
   accounts: "accounts",
   personas: "voices",
+  cast: "cast",
+  phone: "phone",
 };
 
 function OpenPlace({ id }: { readonly id: TessayaPlaceId }): ReactNode {

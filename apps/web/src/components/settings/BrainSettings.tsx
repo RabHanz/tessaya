@@ -3,7 +3,7 @@
  * login that pays (his subscription or the API key, interchangeable) and the model; the spend guard lists what the
  * key may pay for; hard tasks go to Opus by his escalation setting. Every call reads this when it is made.
  */
-import type { EnvironmentId } from "@t3tools/tessaya-contracts";
+import type { EnvironmentId, TessayaRecordEntry } from "@t3tools/tessaya-contracts";
 import { DEFAULT_DEEP_DAILY_CAP } from "@t3tools/tessaya-shared/brainEscalation";
 import { BRAIN_ROLE_LABELS, brainRoute, keyRoles } from "@t3tools/tessaya-shared/brainRoutes";
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
@@ -14,9 +14,14 @@ import {
   type BrainCredential,
   type BrainEscalationRule,
 } from "@t3tools/contracts";
-import { useState } from "react";
+import { pulseLog } from "@t3tools/tessaya-shared/pulse";
+import { useAtomValue } from "@effect/atom-react";
+import { ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -244,6 +249,7 @@ function BrainSections({ environmentId }: { readonly environmentId: EnvironmentI
       <Lines environmentId={environmentId} />
       <BeingMoved environmentId={environmentId} />
       <Haptics environmentId={environmentId} />
+      <Pulse environmentId={environmentId} />
       <PromptLab environmentId={environmentId} />
       <StandingYeses environmentId={environmentId} />
     </>
@@ -411,6 +417,154 @@ function Haptics({ environmentId }: { readonly environmentId: EnvironmentId }) {
           }
         />
       ))}
+    </SettingsSection>
+  );
+}
+
+const PULSE_ROWS = [
+  { key: "jobs", title: "Jobs", description: "A job that failed, stopped or waits on you." },
+  {
+    key: "sessions",
+    title: "Sessions",
+    description: "A session stuck, waiting or finished unseen.",
+  },
+  { key: "messages", title: "Messages", description: "Notes and calls waiting for you." },
+  {
+    key: "reminders",
+    title: "Reminders",
+    description: "What you asked her to keep track of, when due.",
+  },
+  {
+    key: "calendar",
+    title: "Coming up",
+    description: "Birthdays, plans and dates from your memories.",
+  },
+  { key: "people", title: "People", description: "Who arrived or left, and who has gone quiet." },
+  { key: "home", title: "Home", description: "Device and house events." },
+  { key: "mood", title: "Her mood", description: "When her own mood shifts." },
+  {
+    key: "patterns",
+    title: "Patterns",
+    description:
+      "Routines, unusual hours and what usually follows what, raised rarely, as a question.",
+  },
+] as const;
+
+/** Her pulse: what she may raise unprompted, what she was told to stop raising, and what she noticed and why. */
+function Pulse({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const pulse = useEnvironmentSettings(environmentId, (s) => s.tessayaPulse);
+  const update = useUpdateEnvironmentSettings(environmentId);
+  const read = useAtomCommand(tessayaWorkSessions.recordList, { reportFailure: false });
+  const react = useAtomCommand(tessayaWorkSessions.pulseReact);
+  const mayReact = useAtomValue(tessayaWorkSessions.pulseReact.permissionAtom(environmentId));
+  const [log, setLog] = useState<ReadonlyArray<TessayaRecordEntry>>([]);
+  const load = () =>
+    read({ environmentId, input: { kind: "pulse", limit: 60 } }).then((r) => {
+      if (r._tag === "Success") setLog(r.value.entries);
+    });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- loads the server's decision log once per environment
+  useEffect(() => {
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- one read per environment; load is remade each render
+    void load();
+  }, [environmentId]);
+  const rows = pulseLog(log).slice(0, 12);
+  // His reaction is a Record row the pulse learns from; reading the log back shows it on its row.
+  const reactTo = (row: number, reaction: "liked" | "told_off" | "stop") =>
+    void react({ environmentId, input: { row, reaction } }).then(load);
+  return (
+    <SettingsSection title="Pulse">
+      <SettingsRow
+        title="Notice on her own"
+        description="She reviews what happened since last time and decides whether to say anything. Usually she stays quiet. How often she speaks is Chatter above."
+        control={
+          <Switch
+            aria-label="Notice on her own"
+            checked={pulse.enabled}
+            onCheckedChange={(on) => update({ tessayaPulse: { enabled: on } })}
+          />
+        }
+      />
+      {PULSE_ROWS.map((row) => (
+        <SettingsRow
+          key={row.key}
+          title={row.title}
+          description={row.description}
+          control={
+            <Switch
+              aria-label={`Notice ${row.title.toLowerCase()}`}
+              checked={pulse.categories[row.key]}
+              disabled={!pulse.enabled}
+              onCheckedChange={(on) => update({ tessayaPulse: { categories: { [row.key]: on } } })}
+            />
+          }
+        />
+      ))}
+      {pulse.muted.map((words) => (
+        <SettingsRow
+          key={words}
+          title={`Stopped: ${words}`}
+          description="You told her to stop raising this."
+          control={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                update({ tessayaPulse: { muted: pulse.muted.filter((m) => m !== words) } })
+              }
+            >
+              Allow again
+            </Button>
+          }
+        />
+      ))}
+      {rows.length === 0 ? (
+        <SettingsRow
+          title="What she noticed"
+          description="Nothing yet. Each review she makes, and why she spoke or stayed quiet, shows here."
+        />
+      ) : (
+        rows.map((r) => (
+          <SettingsRow
+            key={r.id}
+            title={r.event}
+            description={`${new Date(r.at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })} · ${r.decision}${r.reason === "" ? "" : ` · ${r.reason}`}`}
+            control={
+              mayReact ? (
+                <div className="flex gap-1">
+                  <Button
+                    size="icon-sm"
+                    variant={r.reaction === "liked" ? "secondary" : "ghost"}
+                    aria-label="Helpful"
+                    aria-pressed={r.reaction === "liked"}
+                    onClick={() => reactTo(r.id, "liked")}
+                  >
+                    <ThumbsUpIcon />
+                  </Button>
+                  <Button
+                    size="icon-sm"
+                    variant={r.reaction === "told_off" ? "secondary" : "ghost"}
+                    aria-label="Not helpful"
+                    aria-pressed={r.reaction === "told_off"}
+                    onClick={() => reactTo(r.id, "told_off")}
+                  >
+                    <ThumbsDownIcon />
+                  </Button>
+                  {r.category === null ? null : (
+                    <Button
+                      size="sm"
+                      variant={r.reaction === "stopped" ? "secondary" : "ghost"}
+                      disabled={!pulse.categories[r.category]}
+                      onClick={() => reactTo(r.id, "stop")}
+                    >
+                      {pulse.categories[r.category] ? "Stop this" : "Stopped"}
+                    </Button>
+                  )}
+                </div>
+              ) : null
+            }
+          />
+        ))
+      )}
     </SettingsSection>
   );
 }

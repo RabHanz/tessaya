@@ -2,7 +2,7 @@ import type { ExpoConfig } from "expo/config";
 
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
-import { TESSAYA_VARIANT, tessayaEas } from "./tessaya.config.ts";
+import { TESSAYA_VARIANT, tessayaEas, tessayaRebrand } from "./tessaya.config.ts";
 
 type AppVariant = "development" | "preview" | "production" | "tessaya";
 
@@ -147,6 +147,11 @@ const tagLinksHost = repoEnv.TESSAYA_TAG_LINKS_HOST?.trim() || undefined;
 const iosBundleIdentifier = isIosPersonalTeamBuild
   ? personalTeamBundleIdentifier!
   : variant.iosBundleIdentifier;
+
+const splashBackground =
+  "splashBackgroundColor" in variant.assets
+    ? { light: variant.assets.splashBackgroundColor, dark: variant.assets.splashBackgroundColor }
+    : { light: "#ffffff", dark: "#0a0a0a" };
 
 const dmSansFonts = {
   regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
@@ -448,11 +453,11 @@ const config: ExpoConfig = {
       {
         image: variant.assets.splashIcon,
         resizeMode: "contain",
-        backgroundColor: "#ffffff",
+        backgroundColor: splashBackground.light,
         imageWidth: 220,
         dark: {
           image: variant.assets.splashIcon,
-          backgroundColor: "#0a0a0a",
+          backgroundColor: splashBackground.dark,
         },
         android: {
           // Android 12+ masks the central two thirds of the 288dp canvas; adaptive layers avoid clipped corners.
@@ -534,4 +539,4 @@ const config: ExpoConfig = {
   },
 };
 
-export default config;
+export default APP_VARIANT === "tessaya" ? tessayaRebrand(config) : config;

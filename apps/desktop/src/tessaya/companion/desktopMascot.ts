@@ -128,9 +128,10 @@ export const bodyOf = (personas: ReadonlyArray<Persona>, chosen: string): Person
 export const mascotChoices = (personas: ReadonlyArray<Persona>) =>
   personas.map((p) => ({ value: p.name.toLowerCase(), label: p.name }));
 
-/** Who else is on his desktop: "none", "all", or one persona by its lower-case name. */
+/** Who else is on his desktop: "none", "all", or personas by lower-case name or id, comma-separated (Settings → Cast). */
 export const parseMascotCrew = (value: unknown): string =>
-  value === "all" || (typeof value === "string" && /^[a-z][a-z0-9 -]{0,40}$/.test(value))
+  value === "all" ||
+  (typeof value === "string" && /^[a-z][a-z0-9 -]{0,40}(,[a-z][a-z0-9 -]{0,40}){0,11}$/.test(value))
     ? value
     : "none";
 
@@ -230,7 +231,9 @@ export interface DesktopMascot {
   /** Her own voice's level while she speaks, for the mouth. */
   readonly level: (value: number, shape?: VoiceShape) => void;
   /** The sentence her voice is playing now: her gestures land on its words by meaning. */
-  readonly line: (text: string) => void;
+  readonly line: (text: string, bubble?: boolean) => void;
+  /** Her window on screen (DIP) while she shows, so the pill opens clear of her. */
+  readonly bounds: () => Rect | null;
   /** Her mood from the spine (TessayaMood, CS6) and how strongly, which she wears at rest. */
   readonly mood: (label: string, intensity: number) => void;
   /** A job finished, failed or started waiting for him. */
@@ -1091,9 +1094,13 @@ export const createDesktopMascot = (input: {
       if (phase === "speaking" && win !== null && !win.isDestroyed() && win.isVisible())
         win.webContents.send("baton-mascot:level", value, shape);
     },
-    line: (text) => {
-      if (win !== null && win.isVisible()) call(`window.mascot.line(${JSON.stringify(text)})`);
+    line: (text, bubble) => {
+      if (win === null || !win.isVisible()) return;
+      call(`window.mascot.line(${JSON.stringify(text)})`);
+      if (bubble === true)
+        call(`window.mascot.say(${JSON.stringify({ text: text.slice(0, 120) })})`);
     },
+    bounds: () => (win !== null && !win.isDestroyed() && win.isVisible() ? win.getBounds() : null),
     mood: (label, intensity) => {
       const next = restFaceOf(label, intensity);
       if (JSON.stringify(next) === JSON.stringify(restMood)) return;

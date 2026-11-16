@@ -71,31 +71,37 @@ export const removeHeard = (
 /** A file that is not a list is no vocabulary; an entry that is not text is skipped. */
 export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> =>
   Array.isArray(value)
-    ? value.flatMap((item): ReadonlyArray<VocabularyEntry> => {
-        const entry = item as Partial<VocabularyEntry> | null;
-        if (typeof entry !== "object" || entry === null || typeof entry.phrase !== "string")
-          return [];
-        if (entry.phrase.trim().length === 0) return [];
-        // A correction at a sentence's end was once learned with its full stop ("Tessaya." heard as "Tsaya.").
-        const learned = entry.source === "learned";
-        const phrase = learned ? bare(entry.phrase) || entry.phrase : entry.phrase;
-        return [
-          {
-            phrase,
-            replacement:
-              typeof entry.replacement === "string" && entry.replacement.length > 0
-                ? entry.replacement
-                : null,
-            source: entry.source === "learned" || entry.source === "wispr" ? entry.source : "added",
-            count:
-              typeof entry.count === "number" && Number.isFinite(entry.count) && entry.count > 0
-                ? Math.floor(entry.count)
-                : 1,
-            ...(typeof entry.lastSeen === "string" ? { lastSeen: entry.lastSeen } : {}),
-            ...withHeard(phrase, entry.heard),
-          },
-        ];
-      })
+    ? // A stopped copy of a word ("Tessaya." beside Tessaya) is the same word: one entry.
+      mergeEntries(
+        [],
+        value.flatMap((item): ReadonlyArray<VocabularyEntry> => {
+          const entry = item as Partial<VocabularyEntry> | null;
+          if (typeof entry !== "object" || entry === null || typeof entry.phrase !== "string")
+            return [];
+          if (entry.phrase.trim().length === 0) return [];
+          // A word at a sentence's end was once learned or added with its stop ("Tessaya." heard as "Tsaya.").
+          const learned = entry.source === "learned";
+          const phrase =
+            (learned ? bare(entry.phrase) : entry.phrase.replace(/[.,!?;:]+$/, "")) || entry.phrase;
+          return [
+            {
+              phrase,
+              replacement:
+                typeof entry.replacement === "string" && entry.replacement.length > 0
+                  ? entry.replacement
+                  : null,
+              source:
+                entry.source === "learned" || entry.source === "wispr" ? entry.source : "added",
+              count:
+                typeof entry.count === "number" && Number.isFinite(entry.count) && entry.count > 0
+                  ? Math.floor(entry.count)
+                  : 1,
+              ...(typeof entry.lastSeen === "string" ? { lastSeen: entry.lastSeen } : {}),
+              ...withHeard(phrase, entry.heard),
+            },
+          ];
+        }),
+      )
     : [];
 
 /** The words the clean-up prompt gets, her own names first, then most used, capped; each with how it is mis-heard. */
@@ -705,7 +711,8 @@ export const unteach = (
 
 /**
  * Tessaya's own names as Parakeet writes them, mined from the training split of his Wispr clips (DICT-WISPR). Only
- * forms that are never everyday words or real names: "button", "baton", "Tessa" and "Tesla" are left to the model.
+ * forms that are never everyday words or real names: "Tessa" and "Tesla" are left to the model. Never an old name
+ * (Baton, Fabric): one here is put in every prompt, and Sonnet wrote "Batons" for his "buttons" (16 Nov).
  */
 const OWN_HEARD: ReadonlyArray<{
   readonly to: string;
@@ -715,7 +722,6 @@ const OWN_HEARD: ReadonlyArray<{
 }> = [
   // Her name's sound-alikes from the one list; a persona's reach turns through the dictionary's heard forms.
   ...NAME_SOUNDALIKES.tessaya!.heard.map((form) => ({ to: "Tessaya", form })),
-  { to: "Baton", form: "Buton" },
   // The dictation app he measures against, as Parakeet writes it.
   ...["WhisperFlow", "Whisper Flow", "Wisper Flow", "WisprFlow"].map((form) => ({
     to: "Wispr Flow",

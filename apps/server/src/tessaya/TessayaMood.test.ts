@@ -1,5 +1,7 @@
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { assert, it } from "@effect/vitest";
+import { EnvironmentId } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -16,6 +18,11 @@ import { TessayaTurn, layer as turnLayer, type TurnEnvelope } from "./TessayaTur
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood, layer as moodLayer } from "./TessayaMood.ts";
 import { TessayaPresence, layer as presenceLayer } from "./TessayaPresence.ts";
+import { CurrentPersona, layer as currentPersonaLayer } from "./CurrentPersona.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import { DeviceSync, layer as deviceSyncLayer } from "../home/DeviceSync.ts";
+import { HomeAssistantService } from "../home/HomeAssistantService.ts";
+import { makeHub, R1Hub } from "../home/R1Hub.ts";
 
 const learning = Layer.mock(TessayaMemoryLearning)({
   learn: () => Effect.succeed({ stored: 1, held: 0, corrections: 1 }),
@@ -233,4 +240,117 @@ it.effect(
         ),
       ),
     ),
+);
+
+/** One of his servers: its own database, mood, presence and the one sync, with no peer link of its own. */
+const server = (id: string) =>
+  moodLayer.pipe(
+    Layer.provideMerge(Layer.mock(TessayaOneShot)({})),
+    Layer.provideMerge(Layer.mergeAll(presenceLayer, currentPersonaLayer)),
+    Layer.provideMerge(
+      deviceSyncLayer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(HomeAssistantService)({ devices: Effect.succeed([]) }),
+            Layer.succeed(R1Hub, {
+              ...makeHub(() => Effect.succeed(null)),
+              busLogin: Effect.succeed({ user: "", key: "" }),
+              noteKeyUse: () => Effect.void,
+              keyUsedOutside: () => null,
+            }),
+            Layer.mock(ServerEnvironment.ServerEnvironment)({
+              getEnvironmentId: Effect.succeed(EnvironmentId.make(id)),
+            }),
+          ),
+        ),
+      ),
+    ),
+    Layer.provideMerge(
+      ServerSettingsService.layerTest({
+        tessayaMood: { enabled: true, intensity: 0.6, bondCap: 0.15 },
+      }),
+    ),
+    Layer.provideMerge(SqlitePersistenceMemory),
+  );
+
+it.effect(
+  "one mood across two linked servers: each event once, caught up after being apart, and away means away from every vessel",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const tumble = yield* Layer.build(server("env-tumble"));
+      const desk = yield* Layer.build(server("env-desk"));
+      // The peer link: the `device_sync` call answers with the callee's records, so one swap syncs both ways.
+      const link = Effect.gen(function* () {
+        const a = Context.get(tumble, DeviceSync);
+        yield* a.exchange(yield* Context.get(desk, DeviceSync).exchange(yield* a.exchange({})));
+      });
+      const mood = (ctx: typeof tumble) => Context.get(ctx, TessayaMood);
+      const on = <X, R>(ctx: typeof tumble, e: Effect.Effect<X, never, R>) =>
+        Effect.provideContext(e, ctx);
+      const his = (ctx: typeof tumble) =>
+        on(ctx, mood(ctx).view("companion", "UTC", OWNER_MEMBER_ID));
+      const row = (ctx: typeof tumble) =>
+        on(
+          ctx,
+          Effect.map(
+            Effect.orDie(
+              Effect.flatMap(
+                SqlClient.SqlClient,
+                (sql) => sql<{ state_json: string }>`SELECT state_json FROM tessaya_affect_state`,
+              ),
+            ),
+            (rows) => rows[0]?.state_json ?? null,
+          ),
+        );
+
+      // He talks to her on Tumble's server and is rude there: his desk's server shows the same mood after one swap.
+      yield* on(tumble, mood(tumble).heard("companion", "UTC", OWNER_MEMBER_ID));
+      yield* on(tumble, mood(tumble).note("companion", { kind: "rude" }, OWNER_MEMBER_ID));
+      yield* link;
+      assert.strictEqual((yield* his(desk)).label, "hurt");
+      assert.deepStrictEqual(yield* his(desk), yield* his(tumble));
+      // Swapping again applies nothing twice.
+      const before = yield* row(desk);
+      yield* link;
+      yield* link;
+      assert.strictEqual(yield* row(desk), before);
+
+      // Apart (one server off): each sees its own event; linked again, both hold both, in one mood.
+      yield* TestClock.adjust("10 minutes");
+      yield* on(tumble, mood(tumble).note("companion", { kind: "job", ok: false }));
+      yield* TestClock.adjust("1 minute");
+      yield* on(desk, mood(desk).note("companion", { kind: "apology" }, OWNER_MEMBER_ID));
+      yield* link;
+      const [t, d] = [yield* his(tumble), yield* his(desk)];
+      assert.include(t.why, "a job failed");
+      assert.include(t.why, "they said sorry");
+      assert.deepStrictEqual(t, d);
+
+      // Hours on, he never speaks to Tumble but works at his desk: Tumble's server does not miss him.
+      yield* TestClock.adjust("9 hours");
+      assert.include(["lonely", "putout", "sulky"], (yield* his(tumble)).label);
+      yield* on(
+        desk,
+        Context.get(desk, TessayaPresence).note({
+          member: OWNER_MEMBER_ID,
+          source: "typed",
+          vessel: "desktop",
+        }),
+      );
+      yield* link;
+      const back = yield* his(tumble);
+      assert.notInclude(["lonely", "putout", "sulky"], back.label);
+      assert.isNull(back.awayHours);
+      // Every vessel showing this persona to him reads the same mood.
+      assert.deepStrictEqual(back, yield* his(desk));
+
+      // The persona he talks to at his desk is the one Tumble's server follows.
+      yield* Context.get(desk, CurrentPersona).set(`person:${OWNER_MEMBER_ID}`, "companion");
+      yield* link;
+      assert.strictEqual(
+        yield* Context.get(tumble, CurrentPersona).of(`person:${OWNER_MEMBER_ID}`),
+        "companion",
+      );
+    }).pipe(Effect.scoped),
 );

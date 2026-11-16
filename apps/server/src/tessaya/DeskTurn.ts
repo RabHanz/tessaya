@@ -27,6 +27,7 @@ import { brainTurn, type ActOutcome, type TurnNotes } from "./TessayaBrain.ts";
 import { TessayaTurn, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { VesselHands, vesselTools } from "./VesselHands.ts";
 import { replyFor } from "./PersonaLayers.ts";
+import type { DeskSaid } from "@t3tools/tessaya-shared/deskTurnStream";
 import type { HandsBroker } from "@t3tools/tessaya-shared/remoteHands";
 
 const Speaker = Schema.Struct({
@@ -118,7 +119,7 @@ export const deskTurnStream = (
     readonly tainted?: boolean;
   } = { kind: "desktop", origin: "desktop" },
 ) =>
-  Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
+  Stream.callback((queue: Queue.Queue<DeskSaid, Cause.Done>) =>
     Effect.gen(function* () {
       const brain = yield* R1Brain;
       const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
@@ -155,6 +156,7 @@ export const deskTurnStream = (
       // A persona layer answers the whole turn itself: nothing below runs, so nothing is learned or recorded.
       const layered = yield* replyFor(turn);
       if (layered !== null) {
+        if (layered.affect !== undefined) Queue.offerUnsafe(queue, { affect: layered.affect });
         Queue.offerUnsafe(queue, layered.text);
         return yield* Queue.end(queue);
       }

@@ -228,6 +228,7 @@ export const DEVICE_SPEAKER_ACTIONS = [
   "route",
   "order",
   "classes",
+  "inputs",
 ] as const;
 export type DeviceSpeakerAction = (typeof DEVICE_SPEAKER_ACTIONS)[number];
 /** auto: the Bluetooth speaker while it streams, else the R1's own speaker. */
@@ -260,6 +261,21 @@ export const DeviceOutputEntry = Schema.Struct({
   privateCap: Schema.optionalKey(Schema.Number),
 });
 export type DeviceOutputEntry = typeof DeviceOutputEntry.Type;
+
+/**
+ * Her own mic's id in the input order; a Bluetooth address is that headset's mic. `phone:<deviceId>` is his phone's
+ * app holding the phone route (in both orders, while it is on her network); `laptop:<deviceId>` is reserved.
+ */
+export const OWN_MIC = "mic";
+/** listening: a conversation is heard there now; ready: it could be; paired: its headset link (HFP) is down. */
+export const DEVICE_INPUT_STATES = ["listening", "ready", "paired"] as const;
+export const DeviceInputEntry = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  kind: Schema.optionalKey(Schema.Literals(BT_KINDS)),
+  state: Schema.Literals(DEVICE_INPUT_STATES),
+});
+export type DeviceInputEntry = typeof DeviceInputEntry.Type;
 
 export const DeviceSpeaker = Schema.Struct({
   state: Schema.Literals([
@@ -298,6 +314,8 @@ export const DeviceSpeaker = Schema.Struct({
   scannedAt: Schema.NullOr(Schema.String),
   /** His output order, first choice first: her own speaker and every pairing; replies play on the first ready one. */
   outputs: Schema.optionalKey(Schema.Array(DeviceOutputEntry)),
+  /** His input order on firmware that reports a headset link: her own mic and every pairing; the first that hears now. */
+  inputs: Schema.optionalKey(Schema.Array(DeviceInputEntry)),
 });
 export type DeviceSpeaker = typeof DeviceSpeaker.Type;
 

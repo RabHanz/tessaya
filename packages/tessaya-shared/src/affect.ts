@@ -101,8 +101,15 @@ export type AffectEvent =
   | { readonly kind: "correction" }
   /** One of his turns reached this persona: the time away resolves, and the bond counts the day. */
   | { readonly kind: "his_turn"; readonly day: string }
+  /** Presence places them around her on any vessel (B-044): away from her means away from every vessel. No bond. */
+  | { readonly kind: "seen" }
   /** How his voice sounded, as the room heard it (SenseVoice's label): she meets it, warmer when he sounds low. */
-  | { readonly kind: "his_voice"; readonly emotion: string }
+  | {
+      readonly kind: "his_voice";
+      readonly emotion: string;
+      /** A second signal agrees (his words, the reply model's tag, his own baseline): only then a care mode. */
+      readonly confirmed?: boolean;
+    }
   /** A job she or a persona leads finished or failed (the Record's job rows): the world, not him. */
   | { readonly kind: "job"; readonly ok: boolean }
   /** Her body was moved (the Tessel's motion sensor): a quick reaction only, never her mood. */
@@ -265,6 +272,16 @@ const react = (
             state: { ...at, reaction: add(at.reaction, { arousal: 0.12, valence: -0.05 }) },
             reason: "a job failed",
           };
+    case "seen":
+      // Around her somewhere, so not missed; no return of its own (that is his turn's), and a return still to be
+      // answered keeps its marker.
+      return {
+        state:
+          at.seenAt !== null && at.seenAt === at.returnedAt && now - at.returnedAt < SULK_MS
+            ? at
+            : { ...at, seenAt: Math.max(now, at.seenAt ?? 0) },
+        reason: "they are around",
+      };
     case "his_turn": {
       const away = at.seenAt !== null && now - at.seenAt >= AWAY_MS;
       const bond =
@@ -274,7 +291,8 @@ const react = (
           ...at,
           bond,
           bondDay: event.day,
-          seenAt: now,
+          // An event from another server can arrive late: time away only ever moves forward.
+          seenAt: Math.max(now, at.seenAt ?? 0),
           ...(away
             ? { returnedAt: now, reaction: add(at.reaction, { warmth: 0.15, valence: 0.08 }) }
             : {}),
@@ -297,6 +315,8 @@ const VOICE_HOLD: Readonly<
   angry: { label: "steady", ms: 20 * MIN },
   surprised: { label: "surprised", ms: MIN },
 };
+/** Weak alone: SenseVoice said "sad" on about 8% of his ordinary turns (MA-022 bench, 16 Nov), so these need a second signal. */
+const NEEDS_SECOND_SIGNAL: ReadonlySet<string> = new Set(["sad", "fearful"]);
 /** Her jobs failing within the hour, by count: on it, then frustrated, then cross at the world (never at him). */
 const FAILED_HOLD: ReadonlyArray<ExpressionMood> = ["determined", "frustrated", "angry"];
 const LOG_KEEP = 8;
@@ -311,7 +331,9 @@ const holdOf = (
   switch (event.kind) {
     case "his_voice": {
       const h = VOICE_HOLD[event.emotion];
-      return h === undefined ? held : { label: h.label, until: now + h.ms };
+      return h === undefined || (NEEDS_SECOND_SIGNAL.has(event.emotion) && event.confirmed !== true)
+        ? held
+        : { label: h.label, until: now + h.ms };
     }
     case "rude":
       // He is cross at her: she stays steady in words; the face shows a short hurt (§3.5 rule 2).
@@ -349,6 +371,7 @@ export const appraise = (
       // A plain turn or a sound it doesn't know explains nothing, so it never pushes a reason out.
       log:
         next.reason === "they talked to her" ||
+        next.reason === "they are around" ||
         (event.kind === "his_voice" && !Object.hasOwn(VOICE_REACTION, event.emotion))
           ? (s.log ?? [])
           : [...(s.log ?? []), { at: now, reason: next.reason }].slice(-LOG_KEEP),
@@ -536,6 +559,7 @@ export const moodLine = (v: AffectView, spoken = false): string => {
 /** Events about one person (their words, tone, voice, time away): their relationship. Tasks and jobs are the world's. */
 const PERSONAL: ReadonlySet<AffectEvent["kind"]> = new Set([
   "his_turn",
+  "seen",
   "his_voice",
   "correction",
   ...HIS_TONES,

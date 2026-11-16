@@ -24,6 +24,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { ProjectChipIconRasterizer } from "./native/ProjectChipIconImages";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
+import { PhoneRouteHost } from "./features/tessel/phoneRoute";
 import * as Dialog from "./components/ui/Dialog";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
@@ -104,6 +105,10 @@ import {
 import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
 import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
 import { installAppUpdateChecks } from "./features/updates/app-updates";
+import {
+  TessayaLaunchSting,
+  markTessayaLaunchReady,
+} from "./features/tessaya/launch/TessayaLaunchSting";
 
 import "../global.css";
 
@@ -248,6 +253,7 @@ function SplashScreenCoordinator() {
     hidden.current = true;
     settleLaunchSplashHomeRows();
     void SplashScreen.hide();
+    markTessayaLaunchReady();
   }, [isReady, shellCachesRead, homeRowsPending, waitEnded]);
 
   return null;
@@ -297,6 +303,7 @@ function AppContent() {
                 />
                 <Dialog.Host />
                 <ThreadArrangementHost />
+                <PhoneRouteHost />
                 <ProjectChipIconRasterizer />
               </NativeLayoutMetricsProvider>
             </GlobalVoiceInputControl>
@@ -304,6 +311,7 @@ function AppContent() {
           </SafeAreaProvider>
         </KeyboardProvider>
       </GestureHandlerRootView>
+      <TessayaLaunchSting />
     </>
   );
 }

@@ -59,6 +59,8 @@ export const createVoicePlayer = (
   volume: () => number = () => 1,
   /** What is about to sound (16-bit mono at `rate`) and when, for telling his voice from hers (echo guard). */
   onReference?: (pcm: Int16Array, rate: number, soundsAtMs: number) => void,
+  /** Asked once per sentence with its text: where to report each of its words as it starts to sound, or null. */
+  wordSink?: (text: string) => ((word: number) => void) | null,
 ): VoicePlayer => {
   let ducked = false;
   let win: Electron.BrowserWindow | null = null;
@@ -103,6 +105,8 @@ export const createVoicePlayer = (
       let track: ReturnType<typeof createVisemeTrack> | null = null;
       let sent = 0;
       let bytes = 0;
+      const onWord = text === undefined ? null : (wordSink?.(text) ?? null);
+      let lastWord = -1;
       const pulses = new Set<ReturnType<typeof setTimeout>>();
       try {
         for await (const chunk of wav) {
@@ -149,6 +153,11 @@ export const createVoicePlayer = (
                   ...pcmShape(frame.pcm),
                   ...(viseme === undefined ? {} : { viseme }),
                 });
+                const word = onWord === null ? undefined : track?.wordAt(frame.atMs + into);
+                if (word !== undefined && word > lastWord) {
+                  lastWord = word;
+                  onWord?.(word);
+                }
               },
               frame.atMs - MOUTH_LEAD_MS - Date.now(),
             );

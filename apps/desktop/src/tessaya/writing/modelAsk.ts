@@ -24,6 +24,7 @@ export const createModelAsk = (input: {
       model: input.model(),
       systemPrompt: system,
       workDir: input.workDir,
+      feature: "rewrite",
       env: input.env(),
       platform: input.platform,
       timeoutMs: limit,

@@ -70,6 +70,8 @@ const TAB_VOICE: Record<TabId, DesktopSettingsControl["voice"] | null> = {
   cloud: "owner",
   homeassistant: "owner",
   phone: "owner",
+  // Moves go through tessaya_cast, which needs his own ask.
+  cast: null,
   setup: null,
   home: null,
   now: null,

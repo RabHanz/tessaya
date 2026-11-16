@@ -82,6 +82,22 @@ export const CASES: ReadonlyArray<DictationCase> = [
     must: ["buttons", "USB-C"],
     never: ["baton", "hold"],
   },
+  // 16 Nov, V-050: "color" stayed American in his text; he writes British.
+  {
+    id: "british-spelling",
+    heard:
+      "Change the color of the header and organize the settings so the behavior matches the center panel.",
+    must: ["colour", "organise", "behaviour", "centre"],
+    never: ["color", "organize", "behavior", "center"],
+  },
+  // 16 Nov, V-050: "Batons" for "buttons" on his press. A control: it passes on the old prompt too without his press.
+  {
+    id: "buttons-stay-buttons",
+    heard:
+      "Now the buttons on the Tessel work but the buttons wake it twice. Can you look at the buttons in the Tessaya app as well?",
+    must: ["buttons"],
+    never: ["baton"],
+  },
   // His message so far (cleaned already) and the next press, cleaned as one: the correction crosses the presses.
   {
     id: "correction-across-presses",

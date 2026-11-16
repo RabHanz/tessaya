@@ -69,6 +69,7 @@ import { startDesktopTessayaVoice, type DesktopTessayaVoice } from "./voice/Desk
 import { createBridgeCatalogService } from "./sessions/catalogBridge.ts";
 import { createCatalog } from "./sessions/catalogRows.ts";
 import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
+import { sendVisionUsageTo } from "./screen/claudeVision.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
 import { createVoicePlayer } from "./voice/voicePlayer.ts";
 import { createPocketEngine, type PocketVoice } from "./voice/pocketVoice.ts";
@@ -81,7 +82,7 @@ import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 import type { HouseholdCall } from "./memory/householdTab.ts";
 import type { CommsCall } from "./home/intercomTab.ts";
 import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
-import { runFreyaImport } from "./memory/freyaImport.ts";
+import { freyaPlanWaiting, importedLine, runFreyaImport } from "./memory/freyaImport.ts";
 import { isTessayaLink, placeInArgs, TESSAYA_SCHEME } from "./home/links.ts";
 import { getDesktopUrl } from "../electron/ElectronProtocol.ts";
 
@@ -379,6 +380,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
     let dictating = false;
     /** Undefined until a wake; null for a hotkey, which answers as the lead. */
     let lastWake: string | null | undefined;
+    /** Words of the current desk reply already handed to the player, so a layer's word cues count the whole reply. */
+    let cueBase = 0;
     /** Tessaya's own voice, waited for while it loads. The OS voice only when he chose it. */
     const chooseVoice = (
       name: PocketVoice | "system",
@@ -426,6 +429,14 @@ export const startTessayaDesktop = Effect.gen(function* () {
       (level, shape) => voice?.onSpeechLevel(level, shape),
       () => screen?.volume() ?? 1,
       (pcm, rate, soundsAtMs) => voice?.onReference(pcm, rate, soundsAtMs),
+      // While a layer session is open here, each word she reaches re-times its device acts (VOXTA I4).
+      (text) => {
+        if (!layerLink.isOpen()) return null;
+        const base = cueBase;
+        cueBase += text.split(/\s+/).filter((w) => w !== "").length;
+        return (word) =>
+          void layerPost("cue", { vessel: "desktop", word: base + word }).catch(() => undefined);
+      },
     );
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
@@ -515,19 +526,29 @@ export const startTessayaDesktop = Effect.gen(function* () {
     };
     const direct = (method: string, body: unknown, timeoutMs?: number) =>
       own(`/tessaya/desk/${method}`, body, timeoutMs);
+    // Her desktop calls on his own `claude` (looks, rewrites, clean-up) go to the one usage ledger; a lost row is not retried.
+    sendVisionUsageTo((row) => void direct("baton.brain.record", row).catch(() => undefined));
     // An owner-only persona layer on this machine's server, in internal builds only: the first 404 stops it.
     const layerKeyFile = NodePath.join(environment.stateDir, "tessaya-layer-device.key");
+    const layerFetch = async (path: string, body: unknown) => {
+      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      if (config._tag === "None") throw new Error("The local server is not ready.");
+      return fetch(new URL(path, config.value.httpBaseUrl), {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
+      });
+    };
+    /** A call to the layer's own routes, under the page its server named. */
+    const layerPost = async (path: string, body: unknown) => {
+      const page = layerLink.page();
+      if (page !== null) await layerFetch(`${page}/${path}`, body);
+    };
     const layerLink = startPersonaLayerLink({
       post: async (body) => {
-        const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
-        const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
-        if (config._tag === "None") throw new Error("The local server is not ready.");
-        const response = await fetch(new URL("/tessaya/layer/_desk", config.value.httpBaseUrl), {
-          method: "POST",
-          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(10_000),
-        });
+        const response = await layerFetch("/tessaya/layer/_desk", body);
         if (response.status === 404) return null;
         if (!response.ok) throw new Error(`layer link ${response.status}`);
         const answer = (await response.json()) as { open?: unknown; page?: unknown };
@@ -596,12 +617,20 @@ export const startTessayaDesktop = Effect.gen(function* () {
       args.some((a) => a.startsWith(`${TESSAYA_SCHEME}://layer`));
     Electron.powerMonitor.on("lock-screen", () => void layerLink.signal("screenLocked"));
     Electron.powerMonitor.on("suspend", () => void layerLink.signal("sleep"));
+    // Five minutes untouched: they stepped away (presence, B-043). Electron has no idle event, so a cheap minute check.
+    let idle = false;
+    setInterval(() => {
+      const now = Electron.powerMonitor.getSystemIdleState(300) === "idle";
+      if (now && !idle) void layerLink.signal("idle");
+      idle = now;
+    }, 60_000).unref();
     // His sentence through the one brain on this machine's server (SPINE-UNIFY S4): her words as they stream.
     const deskTurn = async (
       body: unknown,
       onWords: (words: string) => void,
       signal: AbortSignal,
     ): Promise<void> => {
+      cueBase = 0;
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
       if (config._tag === "None") throw new Error("The local server is not ready.");
@@ -640,12 +669,26 @@ export const startTessayaDesktop = Effect.gen(function* () {
     Electron.powerMonitor.on("lock-screen", lockPrivate);
     Electron.powerMonitor.on("suspend", lockPrivate);
     // A Freya import plan he dropped in comes in once this machine's server answers, then is deleted.
+    const freyaImport = () =>
+      runFreyaImport(environment.stateDir, {
+        memory: (op, args) => direct(`baton.memory.${op}`, args),
+        private: privateMemory.call,
+      });
+    const onOwnerStore = async () => {
+      const counts = await freyaImport();
+      return counts === null ? null : importedLine(counts);
+    };
     setTimeout(
       () =>
-        void runFreyaImport(environment.stateDir, {
-          memory: (op, args) => direct(`baton.memory.${op}`, args),
-          private: privateMemory.call,
-        }).catch(() => undefined),
+        void (async () => {
+          // A plan waits for a private store he has not made: the window opens where he sets his PIN.
+          if (
+            freyaPlanWaiting(environment.stateDir) &&
+            !(await privateMemory.people()).some((store) => store.kind === "owner")
+          )
+            voice?.openHome("memory");
+          await freyaImport();
+        })().catch(() => undefined),
       FREYA_IMPORT_DELAY_MS,
     ).unref();
     // While an update waits, what a restart would cut off here (SESS-SURVIVE): it restarts only when nothing is mid-turn.
@@ -779,6 +822,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
           );
           return result === "ran" || result === "idle" ? result : "absent";
         },
+        openPlace: (place) => voice?.openHome(place),
         deskTurn,
         privateMemory,
         speak: (text) => {
@@ -895,6 +939,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       direct,
       onGrants: (keys) => screen?.adoptGrants(keys),
       privateMemory,
+      onOwnerStore,
       household,
       wakeServer,
       comms,

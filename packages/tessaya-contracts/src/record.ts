@@ -33,7 +33,7 @@ export const TessayaRecordListInput = Schema.Struct({
 });
 export const TessayaRecordListResult = Schema.Struct({ entries: Schema.Array(TessayaRecordEntry) });
 
-/** What the desktop app's own session may write: its own assistant's turns, their traces (tools, argument names, times; no text), its standing jobs' runs, and his answers at its gate, stored as `approval_reported_by_client`. The server writes every other kind itself. */
+/** What the desktop app's own session may write: its own assistant's turns, their traces (tools, argument names, times; no text), its standing jobs' runs, what it sensed for her pulse, and his answers at its gate, stored as `approval_reported_by_client`. The server writes every other kind itself. */
 const appendRow = <const K extends string, const O extends ReadonlyArray<string>>(
   kind: K,
   outcomes: O,
@@ -53,5 +53,28 @@ export const TessayaRecordAppendInput = Schema.Union([
   appendRow("approval", ["approved", "declined"]),
   // "proposed": a device or another agent proposed one of his own standing jobs (KIRO-1); it is off until he says yes.
   appendRow("standing_job", ["ran", "held", "failed", "proposed"]),
+  // What the desktop sensed (watch, CI, anomalies, commitments) for the server's pulse (B-003); `ref` is the trigger id.
+  Schema.Struct({
+    ...appendRow("notice", [
+      "session_failed",
+      "session_stalled",
+      "session_waiting",
+      "session_finished",
+      "ci_failed",
+      "job_slow",
+      "step_repeating",
+      "pressure",
+      "commitment_due",
+    ]).fields,
+    ref: Line(200),
+  }),
 ]);
 export const TessayaRecordAppendResult = Schema.Struct({});
+
+/** His reaction to one pulse decision, from Settings → Brain → Pulse (B-003); voice uses `tessaya_pulse`. */
+export const BATON_PULSE_WS_METHODS = { react: "baton.pulse.react" } as const;
+export const TessayaPulseReactInput = Schema.Struct({
+  row: Schema.Number,
+  reaction: Schema.Literals(["liked", "told_off", "stop"]),
+});
+export const TessayaPulseReactResult = Schema.Struct({ line: Schema.String });

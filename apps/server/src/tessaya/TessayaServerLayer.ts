@@ -47,6 +47,8 @@ import * as VoiceForgets from "./VoiceForgets.ts";
 import * as MemberPreferences from "./MemberPreferences.ts";
 import * as TessayaPeople from "./TessayaPeople.ts";
 import * as TessayaPresence from "./TessayaPresence.ts";
+import * as TurnLiveContext from "./TurnLiveContext.ts";
+import * as TessayaPulse from "./TessayaPulse.ts";
 import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
 import * as TurnPools from "./TurnPools.ts";
@@ -78,6 +80,7 @@ import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as TessayaOneShot from "./TessayaOneShot.ts";
 import * as TessayaExpression from "./TessayaExpression.ts";
 import * as TessayaPhoneInbox from "./TessayaPhoneInbox.ts";
+import * as TessayaCast from "./TessayaCast.ts";
 import * as TessayaDesktopSettings from "./TessayaDesktopSettings.ts";
 import * as TessayaRoutes from "./TessayaRoutes.ts";
 import * as TessayaRpcHandlers from "./TessayaRpcHandlers.ts";
@@ -207,7 +210,8 @@ const homeDevicesLayer = HomeDevices.layer.pipe(
   Layer.provide(TessayaPhoneInbox.layer),
 );
 
-const servicesInner = IntentService.layer.pipe(
+// Her pulse (B-003) beside the intent surface, so every service provided below reaches it.
+const servicesInner = Layer.merge(IntentService.layer, TessayaPulse.layer).pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
   // through the same door.
@@ -320,10 +324,18 @@ const servicesInner = IntentService.layer.pipe(
       MemberPreferences.layer,
       // Where each member is, from every vessel's signals (B-043): the turn, comms, job news and the Tessels share it.
       TessayaPresence.layer,
+      // Live state for the next few turns, then gone (G6): motion and other feeders write, every vessel's turn reads.
+      TurnLiveContext.layer,
       // Who a voice that is no member is, across vessels (HOUSEHOLD-DESIGN §11): the household's people ops answer here.
       TessayaPeople.layer,
       expressionLayer,
       CurrentPersona.layer,
+      // Who wears which body (Settings → Cast): its siblings here are invisible to it, so they are provided.
+      TessayaCast.layer.pipe(
+        Layer.provide(CurrentPersona.layer),
+        Layer.provide(DeviceRegistry.layer),
+        Layer.provide(TessayaDesktopSettings.layer),
+      ),
       // Her mood per persona (CS6): the turn writes it, every vessel's face and words read it.
       TessayaMood.layer.pipe(Layer.provide(TessayaOneShot.layer)),
       PersonaLayers.layer,
@@ -362,6 +374,9 @@ export const services = TessayaRpcHandlers.runtimeLayer.pipe(
   Layer.provideMerge(servicesInner),
   Layer.provide(adoptEnv),
 );
+
+/** The usage ledger for T3's Usage page; the same layer as the services' (layers memoize by reference). */
+export const usageLedger = BrainUsage.layer;
 
 export const workers = Layer.effectDiscard(
   Effect.gen(function* () {

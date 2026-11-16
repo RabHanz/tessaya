@@ -13,6 +13,7 @@ import {
   TessayaPrivateCallResult,
   TessayaRpcGroup,
 } from "@t3tools/tessaya-contracts";
+import { deskEvent } from "@t3tools/tessaya-shared/deskTurnStream";
 import { buildPhoneState } from "@t3tools/tessaya-shared/phone";
 import { AuthTessayaHandsHostScope } from "@t3tools/contracts";
 import { watchFleet } from "@t3tools/tessaya-shared/watch";
@@ -428,7 +429,7 @@ export const routes = HttpRouter.use((router) =>
           turn.pipe(
             Stream.provideService(SessionMember, memberOfSubject(session.value.subject)),
             Stream.provideContext(context),
-            Stream.map((words) => `data: ${JSON.stringify({ words })}\n\n`),
+            Stream.map(deskEvent),
             Stream.concat(Stream.make("data: [DONE]\n\n")),
             Stream.encodeText,
           ),
@@ -627,7 +628,7 @@ export const routes = HttpRouter.use((router) =>
         return HttpServerResponse.stream(
           servePeerTurn(body.value, client.value.sessionId, deskTools).pipe(
             Stream.provideContext(context),
-            Stream.map((words) => `data: ${JSON.stringify({ words })}\n\n`),
+            Stream.map(deskEvent),
             Stream.concat(Stream.make("data: [DONE]\n\n")),
             Stream.encodeText,
           ),
@@ -679,7 +680,14 @@ export const deskReport = (body: unknown) => {
       : [],
   };
 };
-const DESK_SIGNALS = new Set(["screenLocked", "sleep", "call", "screenShared", "recording"]);
+const DESK_SIGNALS = new Set([
+  "screenLocked",
+  "sleep",
+  "idle",
+  "call",
+  "screenShared",
+  "recording",
+]);
 
 /**
  * Who is near a vessel, for a layer's Tessel rule: "alone" only when the owner is the one member likely home and is
@@ -768,13 +776,18 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       const desk = deskReport(body);
       if (desk.key !== null) deviceKey = desk.key;
       for (const kind of desk.signals) for (const l of registry.value.all) l.signal({ kind });
-      // A locked or sleeping desktop: they stepped away from it (B-043).
-      if (caller.member !== null && desk.signals.some((k) => k === "screenLocked" || k === "sleep"))
+      // A locked, sleeping or long-idle desktop: they stepped away from it (B-043).
+      const away = desk.signals.some((k) => k === "screenLocked" || k === "sleep")
+        ? "deskAway"
+        : desk.signals.includes("idle")
+          ? "deskIdle"
+          : null;
+      if (caller.member !== null && away !== null)
         yield* Effect.serviceOption(TessayaPresence).pipe(
           Effect.flatMap(
             Option.match({
               onNone: () => Effect.void,
-              onSome: (p) => p.note({ member: caller.member, source: "deskAway", vessel: null }),
+              onSome: (p) => p.note({ member: caller.member, source: away, vessel: null }),
             }),
           ),
         );

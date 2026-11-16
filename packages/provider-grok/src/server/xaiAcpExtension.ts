@@ -3,6 +3,7 @@ import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as EffectAcpErrors from "effect-acp/errors";
@@ -19,6 +20,7 @@ const XAiPromptCompleteNotification = Schema.Struct({
   promptId: Schema.optional(Schema.String),
   stopReason: Schema.optional(Schema.String),
   agentResult: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  usage: Schema.optional(Schema.Unknown),
 });
 
 type XAiPromptCompleteNotification = typeof XAiPromptCompleteNotification.Type;
@@ -32,6 +34,7 @@ const XAiSessionUpdateNotification = Schema.Struct({
     stop_reason: Schema.optional(Schema.String),
     stopReason: Schema.optional(Schema.String),
     agent_result: Schema.optional(Schema.NullOr(Schema.Unknown)),
+    usage: Schema.optional(Schema.Unknown),
     child_session_id: Schema.optional(Schema.String),
     status: Schema.optional(Schema.String),
     output: Schema.optional(Schema.NullOr(Schema.String)),
@@ -70,6 +73,7 @@ export function xAiPromptCompleteFromSessionUpdate(
     promptId,
     ...(stopReason === undefined ? {} : { stopReason }),
     ...(update.agent_result === undefined ? {} : { agentResult: update.agent_result }),
+    ...(update.usage === undefined ? {} : { usage: update.usage }),
   };
 }
 
@@ -1286,6 +1290,33 @@ function promptIdFromResponse(response: EffectAcpSchema.PromptResponse): string 
   return typeof promptId === "string" && promptId.length > 0 ? promptId : undefined;
 }
 
+const decodeXAiUsage = Schema.decodeUnknownOption(
+  Schema.Struct({
+    totalTokens: Schema.Number,
+    inputTokens: Schema.Number,
+    outputTokens: Schema.Number,
+    cachedReadTokens: Schema.optionalKey(Schema.Number),
+    cacheCreationTokens: Schema.optionalKey(Schema.Number),
+    reasoningTokens: Schema.optionalKey(Schema.Number),
+  }),
+);
+
+/** Grok carries per-prompt usage in `_meta.usage` (RPC result and turn_completed alike). */
+function withXAiUsage(response: EffectAcpSchema.PromptResponse): EffectAcpSchema.PromptResponse {
+  if (response.usage != null) return response;
+  const usage = decodeXAiUsage(response._meta?.usage);
+  if (Option.isNone(usage)) return response;
+  const { cacheCreationTokens, reasoningTokens, ...counters } = usage.value;
+  return {
+    ...response,
+    usage: {
+      ...counters,
+      cachedWriteTokens: cacheCreationTokens ?? null,
+      thoughtTokens: reasoningTokens ?? null,
+    },
+  };
+}
+
 function normalizeXAiStopReason(value: string | undefined): EffectAcpSchema.StopReason {
   switch (value) {
     case "cancelled":
@@ -1312,6 +1343,9 @@ function promptResponseFromXAi(
   }
   if (notification.agentResult !== undefined) {
     meta.agentResult = notification.agentResult as Schema.Json;
+  }
+  if (notification.usage !== undefined) {
+    meta.usage = notification.usage as Schema.Json;
   }
   return {
     stopReason,
@@ -1582,6 +1616,7 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
           ),
           Deferred.await(fallback.deferred),
         ).pipe(
+          Effect.map(withXAiUsage),
           Effect.tap((response) =>
             rememberCompletedXAiPromptId(completedXAiPromptIdsRef, response, fallback.promptId),
           ),

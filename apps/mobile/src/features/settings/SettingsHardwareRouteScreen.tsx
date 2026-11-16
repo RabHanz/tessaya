@@ -77,6 +77,7 @@ import { BodiesSection } from "./BodiesSection";
 import { R1SetupSection } from "./R1SetupSection";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
 import { WifiSection } from "./WifiSection";
+import { phoneRouteAvailable, setPhoneRoute, usePhoneRoute } from "../tessel/phoneRoute";
 import { DEVICE, FLASH_TOOL } from "@t3tools/tessaya-shared/productNames";
 
 const QUIET = { reportFailure: false } as const;
@@ -779,7 +780,13 @@ function DeviceControls({
       </SettingsSection>
 
       {d.speaker === null ? null : (
-        <SpeakerSection device={d} busy={busy} run={run} prefix={prefix} />
+        <SpeakerSection
+          device={d}
+          busy={busy}
+          run={run}
+          prefix={prefix}
+          environmentId={environmentId}
+        />
       )}
 
       <WifiSection device={d} busy={busy} run={run} prefix={prefix} />
@@ -1321,12 +1328,16 @@ function SpeakerSection({
   busy,
   run,
   prefix,
+  environmentId,
 }: {
   readonly device: DeviceView;
   readonly busy: boolean;
   readonly run: Run;
   readonly prefix: string;
+  readonly environmentId: EnvironmentId;
 }) {
+  const phoneRoute = usePhoneRoute();
+  const viaPhone = phoneRoute?.environmentId === environmentId && phoneRoute.deviceId === d.id;
   const id = d.id;
   const s = d.speaker!;
   const off = busy || d.online !== true;
@@ -1360,6 +1371,23 @@ function SpeakerSection({
           />
         )}
       </Row>
+      {phoneRouteAvailable ? (
+        <Row
+          divider
+          title="Play her through this phone"
+          description={
+            viaPhone
+              ? "This phone joins both lists while it is on her network: move it up to hear her in the headphones on this phone, or to talk through its mic."
+              : "Lets this phone play her replies on its headphones (AirPods too) and lend its mic, so her own Bluetooth stays free."
+          }
+        >
+          <ControlPill
+            variant={viaPhone ? "pill" : "primary"}
+            label={viaPhone ? "Stop" : "Use this phone"}
+            onPress={() => setPhoneRoute(viaPhone ? null : { environmentId, deviceId: d.id })}
+          />
+        </Row>
+      ) : null}
       {s.outputs !== undefined ? (
         s.outputs.map((o, i, all) => (
           <Row
@@ -1436,6 +1464,35 @@ function SpeakerSection({
           ))}
         </Row>
       )}
+      {s.inputs?.map((o, i, all) => (
+        <Row
+          key={`in:${o.id}`}
+          divider
+          title={`${i + 1}. ${outputLabel(o)}`}
+          description={
+            i === 0
+              ? `${OUTPUT_STATE_LINE[o.state]}. She listens through the first one that can hear now.`
+              : OUTPUT_STATE_LINE[o.state]
+          }
+        >
+          <ControlPill
+            variant="pill"
+            label="Move up"
+            disabled={off || i === 0}
+            onPress={() =>
+              void run("act", "speaker", { id, action: "inputs", order: moveOutput(all, o.id, -1) })
+            }
+          />
+          <ControlPill
+            variant="pill"
+            label="Move down"
+            disabled={off || i === all.length - 1}
+            onPress={() =>
+              void run("act", "speaker", { id, action: "inputs", order: moveOutput(all, o.id, 1) })
+            }
+          />
+        </Row>
+      ))}
       <Row divider title="Pair a device" description={scanLine(s)}>
         <ControlPill
           variant="pill"

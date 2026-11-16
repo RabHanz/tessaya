@@ -1,12 +1,12 @@
 diff --git a/apps/mobile/app.config.ts b/apps/mobile/app.config.ts
-index 97fe5cf977accddf63c60eca5f4dd4165d744f57..67229e267268df6abc5a4654de3e315b265f9889 100644
+index 97fe5cf977accddf63c60eca5f4dd4165d744f57..00fc550759be339bf0c64d8eda6f36a70ccc3739 100644
 --- a/apps/mobile/app.config.ts
 +++ b/apps/mobile/app.config.ts
 @@ -2,8 +2,9 @@ import type { ExpoConfig } from "expo/config";
  
  import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
  import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
-+import { TESSAYA_VARIANT, tessayaEas } from "./tessaya.config.ts";
++import { TESSAYA_VARIANT, tessayaEas, tessayaRebrand } from "./tessaya.config.ts";
  
 -type AppVariant = "development" | "preview" | "production";
 +type AppVariant = "development" | "preview" | "production" | "tessaya";
@@ -21,7 +21,7 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..67229e267268df6abc5a4654de3e315b
  } as const;
  
  function resolveAppVariant(value: string | undefined): AppVariant {
-@@ -109,17 +111,39 @@ function resolveAppVariant(value: string | undefined): AppVariant {
+@@ -109,21 +111,48 @@ function resolveAppVariant(value: string | undefined): AppVariant {
      case "development":
      case "preview":
      case "production":
@@ -62,7 +62,16 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..67229e267268df6abc5a4654de3e315b
  const iosBundleIdentifier = isIosPersonalTeamBuild
    ? personalTeamBundleIdentifier!
    : variant.iosBundleIdentifier;
-@@ -234,7 +258,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
+ 
++const splashBackground =
++  "splashBackgroundColor" in variant.assets
++    ? { light: variant.assets.splashBackgroundColor, dark: variant.assets.splashBackgroundColor }
++    : { light: "#ffffff", dark: "#0a0a0a" };
++
+ const dmSansFonts = {
+   regular: "@expo-google-fonts/dm-sans/400Regular/DMSans_400Regular.ttf",
+   medium: "@expo-google-fonts/dm-sans/500Medium/DMSans_500Medium.ttf",
+@@ -234,7 +263,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
  
  const config: ExpoConfig = {
    name: variant.appName,
@@ -71,7 +80,7 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..67229e267268df6abc5a4654de3e315b
    platforms: ["ios", "android"],
    scheme: variant.scheme,
    version: repoEnv.T3CODE_MOBILE_VERSION ?? "2.3.0",
-@@ -247,7 +271,7 @@ const config: ExpoConfig = {
+@@ -247,7 +276,7 @@ const config: ExpoConfig = {
    userInterfaceStyle: "automatic",
    updates: {
      enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
@@ -80,7 +89,7 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..67229e267268df6abc5a4654de3e315b
      checkAutomatically: "ON_LOAD",
      fallbackToCacheTimeout: 0,
    },
-@@ -257,11 +281,13 @@ const config: ExpoConfig = {
+@@ -257,11 +286,13 @@ const config: ExpoConfig = {
      requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
      bundleIdentifier: iosBundleIdentifier,
      // Avoid Personal Team fallback: it cannot sign App Groups, Apple sign-in or push entitlements.
@@ -95,7 +104,7 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..67229e267268df6abc5a4654de3e315b
      ],
      entitlements: {
        "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
-@@ -352,6 +378,17 @@ const config: ExpoConfig = {
+@@ -352,6 +383,17 @@ const config: ExpoConfig = {
      ],
      "expo-secure-store",
      "expo-sqlite",
@@ -113,7 +122,21 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..67229e267268df6abc5a4654de3e315b
      ...(isIosPersonalTeamBuild
        ? [sharingPlugin]
        : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),
-@@ -486,11 +523,11 @@ const config: ExpoConfig = {
+@@ -411,11 +453,11 @@ const config: ExpoConfig = {
+       {
+         image: variant.assets.splashIcon,
+         resizeMode: "contain",
+-        backgroundColor: "#ffffff",
++        backgroundColor: splashBackground.light,
+         imageWidth: 220,
+         dark: {
+           image: variant.assets.splashIcon,
+-          backgroundColor: "#0a0a0a",
++          backgroundColor: splashBackground.dark,
+         },
+         android: {
+           // Android 12+ masks the central two thirds of the 288dp canvas; adaptive layers avoid clipped corners.
+@@ -486,15 +528,15 @@ const config: ExpoConfig = {
        tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
      },
      eas: {
@@ -127,11 +150,83 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..67229e267268df6abc5a4654de3e315b
    experiments: {
      // Metro only runs babel-plugin-react-compiler when this is set; see src/reactCompilerCoverage.test.ts.
      reactCompiler: true,
+   },
+ };
+ 
+-export default config;
++export default APP_VARIANT === "tessaya" ? tessayaRebrand(config) : config;
 diff --git a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
-index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..c8407114b0d7538ab4e0463f0548fd4d845594c1 100644
+index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..5fb6255ca964c784478b31cf5bc8b950746c89b6 100644
 --- a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
 +++ b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
-@@ -263,8 +263,10 @@ const SCAN_RETICLE_SIZE = 150;
+@@ -22,7 +22,7 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
+ import { SettingsScreen } from "../settings/components/SettingsScreen";
+ import { AppText as Text, AppTextInput, type AppTextInputProps } from "../../components/ui/AppText";
+ import { FrostedCutout } from "../../components/ui/FrostedCutout";
+-import { buildPairingUrl, extractPairingUrlFromQrPayload, parsePairingUrl } from "./pairing";
++import { buildPairingUrl, extractPairingUrlsFromQrPayload, parsePairingUrl } from "./pairing";
+ import { useRemoteConnections } from "../../state/use-remote-environment-registry";
+ import { SymbolView } from "../../components/ui/AppSymbol";
+ import { hasCloudPublicConfig } from "../cloud/publicConfig";
+@@ -69,6 +69,8 @@ function PairingForm({
+   const [initialPairing] = useState(() => parsePairingUrl(routePairingUrl || connectionPairingUrl));
+   const [hostInput, setHostInput] = useState(initialPairing.host);
+   const [codeInput, setCodeInput] = useState(initialPairing.code);
++  // Tessaya's Add a phone code names more machines; each pairs after the one in the form.
++  const [morePairingUrls, setMorePairingUrls] = useState<ReadonlyArray<string>>([]);
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [submitError, setSubmitError] = useState<string | null>(null);
+   // The user's own edit or submit dismisses the dev auto-connect report.
+@@ -97,6 +99,7 @@ function PairingForm({
+ 
+   const handleHostChange = (value: string) => {
+     setHostInput(value);
++    setMorePairingUrls([]);
+     clearError();
+   };
+ 
+@@ -130,10 +133,11 @@ function PairingForm({
+     setScannerLocked(true);
+ 
+     try {
+-      const pairingUrl = extractPairingUrlFromQrPayload(data);
++      const [pairingUrl, ...more] = extractPairingUrlsFromQrPayload(data);
+       const { host, code } = parsePairingUrl(pairingUrl);
+       setHostInput(host);
+       setCodeInput(code);
++      setMorePairingUrls(more);
+       onChangeConnectionPairingUrl(pairingUrl);
+       setScanComplete(true);
+       setScannerLocked(false);
+@@ -156,8 +160,16 @@ function PairingForm({
+     setIsSubmitting(true);
+     onChangeConnectionPairingUrl(pairingUrl);
+     const outcome = await onConnectPress(pairingUrl, routeFor);
++    const notAdded: Array<string> = [];
++    if (outcome.ok)
++      for (const more of morePairingUrls) {
++        const added = await onConnectPress(more);
++        if (!added.ok)
++          notAdded.push(`${parsePairingUrl(more).host}: ${added.error ?? "not added"}`);
++      }
+     setIsSubmitting(false);
+     setSubmitError(outcome.error);
++    if (notAdded.length > 0) Dialog.alert("Some machines were not added", notAdded.join("\n"));
+     void Haptics.notificationAsync(
+       outcome.ok
+         ? Haptics.NotificationFeedbackType.Success
+@@ -247,7 +259,9 @@ function PairingForm({
+               )}
+             >
+               {pairingConnectionError ??
+-                "For machines on your local network or tailnet. The machine keeps its own provider credentials."}
++                (morePairingUrls.length > 0
++                  ? `This code also adds ${morePairingUrls.map((url) => parsePairingUrl(url).host.replace(/^https?:\/\//, "")).join(", ")}.`
++                  : "For machines on your local network or tailnet. The machine keeps its own provider credentials.")}
+             </Text>
+           </View>
+ 
+@@ -263,8 +277,10 @@ const SCAN_RETICLE_SIZE = 150;
  const SCAN_RETICLE_TOP = 36;
  const SCAN_RETICLE_RADIUS = 28;
  
@@ -143,7 +238,7 @@ index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..c8407114b0d7538ab4e0463f0548fd4d
    readonly onScan: (result: { readonly data: string }) => void;
    readonly onScanPress: () => void;
  }) {
-@@ -343,7 +345,7 @@ function PairingScanCard(props: {
+@@ -343,7 +359,7 @@ function PairingScanCard(props: {
            )}
          </View>
          <Text className={cn("text-center text-sm", light ? "text-black/70" : "text-white/80")}>

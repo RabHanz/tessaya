@@ -300,6 +300,17 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
             cause: promptError,
           });
         }
+        const tokens = result.data?.info?.tokens;
+        if (tokens !== undefined) {
+          yield* TextGenerationOperations.reportUsage([
+            {
+              input: tokens.input,
+              cacheRead: tokens.cache.read,
+              cacheWrite: tokens.cache.write,
+              output: tokens.output + tokens.reasoning,
+            },
+          ]);
+        }
         const responseParts = result.data?.parts ?? [];
         const rawText = getOpenCodeTextResponse(responseParts);
         if (rawText.length === 0) {

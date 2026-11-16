@@ -1,7 +1,22 @@
-/** Her words from the server's desk turn (`/tessaya/desk/turn`): `data: {"words"}` events until `data: [DONE]`. */
+/** A persona layer's tone for the reply that follows: its voice's affect clip says the whole line (VOXTA I5). */
+export interface DeskAffect {
+  readonly affect: string;
+}
+/** What a desk turn streams: her words, and at most one affect before them. */
+export type DeskSaid = string | DeskAffect;
+
+/** One server-sent event of a desk turn. */
+export const deskEvent = (said: DeskSaid): string =>
+  `data: ${JSON.stringify(typeof said === "string" ? { words: said } : said)}\n\n`;
+
+/**
+ * Her words from the server's desk turn (`/tessaya/desk/turn`): `data: {"words"}` events, and a layer's
+ * `data: {"affect"}`, until `data: [DONE]`.
+ */
 export const readDeskTurn = async (
   body: ReadableStream<Uint8Array>,
   onWords: (words: string) => void,
+  onAffect?: (affect: string) => void,
 ): Promise<void> => {
   const decoder = new TextDecoder();
   let held = "";
@@ -15,8 +30,9 @@ export const readDeskTurn = async (
       if (!event.startsWith("data: ")) continue;
       const data = event.slice(6);
       if (data === "[DONE]") return;
-      const words = (JSON.parse(data) as { words?: unknown }).words;
-      if (typeof words === "string") onWords(words);
+      const said = JSON.parse(data) as { words?: unknown; affect?: unknown };
+      if (typeof said.affect === "string") onAffect?.(said.affect);
+      if (typeof said.words === "string") onWords(said.words);
     }
   }
   throw new Error("The server brain stopped before it finished.");

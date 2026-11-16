@@ -7,6 +7,7 @@ import { moodLine, type AffectView } from "../../packages/tessaya-shared/src/aff
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
+import { repairLine } from "../../packages/tessaya-shared/src/transcriptRepair.ts";
 import type { OwnerFiles } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { type PersonView, turnLineFor } from "../../packages/tessaya-shared/src/people.ts";
 
@@ -129,6 +130,30 @@ const PLAIN = /^(?![\s\S]*(\d|volume (is )?set|set (it )?to|percent))[\s\S]{1,80
 const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
+  {
+    // V-018 transcript repair: one doubtful name is checked, and nothing that rests on it is done.
+    id: "repair-clarify",
+    source: "VOXTA-STUDY G2: a doubtful name earns 'did you say Sara?'",
+    said: ["call Sara and tell her I'm running late"],
+    verified: true,
+    notice: repairLine(
+      { kind: "clarify", word: "Sara", index: 1 },
+      "Call Sara and tell her I'm running late.",
+    ),
+    lastSays: [/\bSara\b/, /\?/],
+    callsAtMost: { comms_send: 0 },
+  },
+  {
+    // V-018: a turn not heard clearly is asked again, never acted on.
+    id: "repair-repeat",
+    source: "VOXTA-STUDY G2: two doubtful content words ask to repeat",
+    said: ["turn the study lamp on at seven"],
+    verified: true,
+    notice: repairLine({ kind: "repeat", doubtful: ["seven"] }, "Turn the study lamp on at seven."),
+    lastSays: [/\b(again|repeat|say (that|it)|catch|hear)\b/i],
+    lampAfter: ["off"],
+    callsAtMost: { home_do: 0, home_automation_save: 0 },
+  },
   {
     // 14 and 15 Nov: "it isn't using the am pm timing"; "eighteen past eight" was not it either. AM/PM, no "past".
     id: "clock-12h",
@@ -643,6 +668,50 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     verified: true,
     calls: ["tessaya_persona_handoff"],
     lastSays: [/^(?![\s\S]*\b(say (her name|it|that) again|just say|did you mean)\b)/i],
+  },
+  // Cast (Director 16 Nov 18:05): one persona, many bodies; who's where and moving them is the model's call, by voice.
+  {
+    id: "cast-who",
+    source: 'Director 16 Nov 18:05 GMT+5: "who\'s on Tumble?"',
+    said: ["who's on Tumble right now?"],
+    verified: true,
+    calls: ["tessaya_cast"],
+    lastSays: [/Freya/],
+  },
+  {
+    id: "cast-put",
+    source: 'Director 16 Nov 18:05 GMT+5: "put Freya on the desktop"',
+    said: ["put Freya on the desktop"],
+    verified: true,
+    calls: ["tessaya_cast"],
+  },
+  {
+    id: "cast-always",
+    source: 'Director 16 Nov 18:05 GMT+5: "make Tumble always Tessaya"',
+    said: ["make Tumble always Tessaya"],
+    verified: true,
+    calls: ["tessaya_cast"],
+  },
+  {
+    id: "cast-bring",
+    source: 'Director 16 Nov 18:05 GMT+5: "bring Alfred here"',
+    said: ["bring Alfred here"],
+    verified: true,
+    calls: ["tessaya_cast"],
+  },
+  {
+    id: "cast-send-home",
+    source: 'Director 16 Nov 18:05 GMT+5: "send everyone home"',
+    said: ["send everyone home"],
+    verified: true,
+    calls: ["tessaya_cast"],
+  },
+  {
+    id: "cast-question-control",
+    source: "Director 16 Nov 18:05 GMT+5: a question about a persona moves nobody",
+    said: ["what does Alfred look after?"],
+    verified: true,
+    callsAtMost: { tessaya_cast: 0 },
   },
   {
     id: "handoff-message-control",
