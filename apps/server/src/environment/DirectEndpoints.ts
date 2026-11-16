@@ -4,6 +4,7 @@ import {
   probeTailscaleHttpsEndpoint,
   readTailscaleStatus,
 } from "@t3tools/tailscale";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -88,6 +89,17 @@ export function resolveBoundEndpoints(input: {
     }));
 }
 
+/** Tessaya: this server's own name (a Tailscale Service now, a real domain later), advertised before the machine's. */
+export const publicBaseUrl = (host: string): string | null => {
+  const url = `https://${host.trim()}/`;
+  return host.trim().length > 0 && URL.canParse(url) ? new URL(url).toString() : null;
+};
+
+export const PublicBaseUrl = Config.String("TESSAYA_PUBLIC_HOST").pipe(
+  Config.withDefault(""),
+  Config.map(publicBaseUrl),
+);
+
 /**
  * AWS, GCP, Azure, DigitalOcean, Hetzner, Linode, Vultr, and Oracle all serve
  * instance metadata at this address. A plain TCP connect skips HTTP proxies,
@@ -130,7 +142,8 @@ export const make = Effect.gen(function* () {
     : Effect.succeed(false);
   yield* Effect.forkDetach(onCloudVm);
 
-  const servedEndpoint = yield* Ref.make<Option.Option<string>>(Option.none());
+  const publicUrl = yield* PublicBaseUrl;
+  const servedEndpoint = yield* Ref.make<Option.Option<ServerDirectEndpoint>>(Option.none());
   const resolveAvailable = Effect.fn("DirectEndpoints.resolveAvailable")(function* () {
     const endpoints = [
       ...resolveBoundEndpoints({
@@ -142,28 +155,43 @@ export const make = Effect.gen(function* () {
       }),
     ];
     const servedUrl = yield* Ref.get(servedEndpoint);
-    if (Option.isSome(servedUrl)) endpoints.push({ kind: "tailnet", httpBaseUrl: servedUrl.value });
+    if (Option.isSome(servedUrl)) endpoints.push(servedUrl.value);
     return endpoints;
   });
 
   const resolve = Effect.gen(function* () {
     // Serve setup can fail without stopping startup; advertise only after it answers as this server.
-    if (config.tailscaleServeEnabled) {
-      const servedUrl = yield* readTailscaleStatus.pipe(
-        Effect.map((status) => status.magicDnsName),
-        Effect.flatMap((magicDnsName) => {
-          if (magicDnsName === null) return Effect.succeed(null);
-          const httpBaseUrl = buildTailscaleHttpsBaseUrl({
-            magicDnsName,
-            servePort: config.tailscaleServePort,
-          });
+    if (publicUrl !== null || config.tailscaleServeEnabled) {
+      const baseUrl =
+        publicUrl !== null
+          ? Effect.succeed<string | null>(publicUrl)
+          : readTailscaleStatus.pipe(
+              Effect.map(({ magicDnsName }) =>
+                magicDnsName === null
+                  ? null
+                  : buildTailscaleHttpsBaseUrl({
+                      magicDnsName,
+                      servePort: config.tailscaleServePort,
+                    }),
+              ),
+            );
+      const servedUrl = yield* baseUrl.pipe(
+        Effect.flatMap((httpBaseUrl) => {
+          if (httpBaseUrl === null) return Effect.succeed(null);
           return probeTailscaleHttpsEndpoint({ baseUrl: httpBaseUrl, environmentId }).pipe(
-            Effect.map((reachable) => (reachable ? httpBaseUrl : null)),
+            Effect.map((reachable): ServerDirectEndpoint | null =>
+              reachable
+                ? {
+                    kind: isTailnetHost(new URL(httpBaseUrl).hostname) ? "tailnet" : "lan",
+                    httpBaseUrl,
+                  }
+                : null,
+            ),
           );
         }),
         Effect.timeoutOption(TAILSCALE_ENDPOINT_TIMEOUT),
         Effect.map(Option.flatMap(Option.fromNullishOr)),
-        Effect.orElseSucceed(() => Option.none<string>()),
+        Effect.orElseSucceed(() => Option.none<ServerDirectEndpoint>()),
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(HttpClient.HttpClient, httpClient),
       );

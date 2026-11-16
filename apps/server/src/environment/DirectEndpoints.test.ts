@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentId } from "@t3tools/contracts";
 import { it as effectIt } from "@effect/vitest";
 import type * as NodeOS from "node:os";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
@@ -273,14 +274,14 @@ const layerServeProbe = (status: number) =>
     HttpClient.make((request) => Effect.succeed(serveProbeResponse(request, status))),
   );
 
-const layerServeConfig = (host = "127.0.0.1") =>
+const layerServeConfig = (host = "127.0.0.1", tailscaleServeEnabled = true) =>
   Layer.effect(
     ServerConfig.ServerConfig,
     Effect.map(ServerConfig.ServerConfig, (config) => ({
       ...config,
       host,
       port: 3773,
-      tailscaleServeEnabled: true,
+      tailscaleServeEnabled,
       tailscaleServePort: 443,
     })),
   ).pipe(
@@ -294,12 +295,22 @@ const layerServeConfig = (host = "127.0.0.1") =>
     ),
   );
 
-const resolveWithServe = (probeStatus: number) =>
+const resolveWithServe = (
+  probeStatus: number,
+  options: { readonly publicHost?: string; readonly serve?: boolean } = {},
+) =>
   Effect.flatMap(DirectEndpoints.DirectEndpoints, (service) => service.resolve()).pipe(
     Effect.provide(
       DirectEndpoints.layer.pipe(
         Layer.provide(
-          Layer.mergeAll(layerServeConfig(), layerTailscaleUp, layerServeProbe(probeStatus)),
+          Layer.mergeAll(
+            layerServeConfig("127.0.0.1", options.serve ?? true),
+            layerTailscaleUp,
+            layerServeProbe(probeStatus),
+            ConfigProvider.layer(
+              ConfigProvider.fromUnknown({ TESSAYA_PUBLIC_HOST: options.publicHost ?? "" }),
+            ),
+          ),
         ),
       ),
     ),
@@ -374,4 +385,26 @@ describe("DirectEndpoints Tailscale Serve", () => {
       expect(yield* resolveWithServe(502)).toEqual([]);
     }),
   );
+
+  effectIt.effect("lists TESSAYA_PUBLIC_HOST instead of the machine name, without Serve", () =>
+    Effect.gen(function* () {
+      const publicHost = "tessaya.tail1234.ts.net";
+      expect(yield* resolveWithServe(200, { publicHost, serve: false })).toEqual([
+        { kind: "tailnet", httpBaseUrl: "https://tessaya.tail1234.ts.net/" },
+      ]);
+      expect(yield* resolveWithServe(200, { publicHost: "tessaya.example.com" })).toEqual([
+        { kind: "lan", httpBaseUrl: "https://tessaya.example.com/" },
+      ]);
+      expect(yield* resolveWithServe(502, { publicHost, serve: false })).toEqual([]);
+    }),
+  );
+
+  it.each([
+    ["tessaya.tail1234.ts.net", "https://tessaya.tail1234.ts.net/"],
+    [" tessaya.example.com:8443 ", "https://tessaya.example.com:8443/"],
+    ["", null],
+    ["not a host", null],
+  ])("publicBaseUrl(%j)", (host, expected) => {
+    expect(DirectEndpoints.publicBaseUrl(host)).toBe(expected);
+  });
 });
