@@ -524,6 +524,15 @@ const STALE_SESSION_MS = 3_000;
  * replies bunched and dropped), so the server moves her to the next output in his order.
  */
 export const UPLINK_STALL_MS = 2_500;
+/** How long his pieces are joined while he keeps talking: his pauses mid-sentence run 0.4-0.9 s (18 Nov). */
+const GONE_ON_MS = 12_000;
+/** The same face is sent again only after this long: a lost command on his weak Wi-Fi heals without a burst. */
+const EYE_RESEND_MS = 10_000;
+/** One of each gesture in this long: his pauses ended a piece of his sentence four times in 9 s (18 Nov, 00:15:55). */
+const GESTURE_GAP_MS = 2_000;
+/** The mood in an eye payload this loop wrote itself (always JSON). */
+const eyeMood = (payload: string | undefined) =>
+  payload === undefined ? undefined : (JSON.parse(payload) as { mood?: unknown }).mood;
 
 /** What a bench turn heard and what she was playing around it, to replay the echo guard's decision in a test. */
 export interface BenchTurn {
@@ -878,7 +887,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       echoLike = verdict.likeness;
       if (verdict.compared && !verdict.hers)
         deps.log(
-          `[${id}] heard over her voice${verdict.during ? "" : "'s tail"}, taken as his (likeness ${verdict.likeness.toFixed(2)})`,
+          `[${id}] heard over her voice${verdict.during ? "" : "'s tail"}, not her echo (echo likeness ${verdict.likeness.toFixed(2)}; Voice ID decides whose)`,
         );
       return verdict.hers;
     };
@@ -1345,6 +1354,22 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** Every eye command the loop sends is logged, and a persona look waits for the R1's acknowledgement. */
     const eye = (tail: string, body: Record<string, string>) => {
       const payload = JSON.stringify(body);
+      // Changes only: his Tessel's Wi-Fi is weak, and every pause sent "attentive" and a nod again (18 Nov, 00:15:55).
+      const shown = eyeShown.get(id);
+      if (
+        tail === "cmd/eye/set" &&
+        shown?.payload === payload &&
+        deps.now() - shown.at < EYE_RESEND_MS
+      )
+        return;
+      const gestureKey = `${id}|${body["name"]}`;
+      if (
+        tail === "cmd/eye/gesture" &&
+        deps.now() - (gestureAt.get(gestureKey) ?? -Infinity) < GESTURE_GAP_MS
+      )
+        return;
+      if (tail === "cmd/eye/set") eyeShown.set(id, { payload, at: deps.now() });
+      if (tail === "cmd/eye/gesture") gestureAt.set(gestureKey, deps.now());
       deps.log(`[${id}] eye sent ${tail} ${payload}`);
       if (tail === "cmd/eye/persona") {
         eyeAsked.set(id, { name: body["name"] ?? "", at: deps.now() });
@@ -1613,7 +1638,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           holdBefore ??= voiceHold;
           const out = holdVoice(holdBefore, heard, deps.now());
           if (n === scorings) voiceHold = out.hold;
-          const who = out.identity;
+          // Begun over her voice, his session alone never makes it his: it needs a voice score of its own (18 Nov, 00:16).
+          const who =
+            tainted && out.identity.lifted === true && heard.own === undefined
+              ? heard
+              : out.identity;
           // Our own test playback in the room never teaches, whatever it scored.
           const how = via === "mic" && (deps.playback?.() ?? null) === null ? teaches(who) : null;
           if (how !== null && n === scorings)
@@ -1951,12 +1980,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         kept = null;
       }
       // He stopped mid-sentence, or has already gone on: hold it for his next words.
-      // Held at most 2.5 s from the first piece: a room that keeps talking is never one endless sentence (10:35, 13 Nov).
+      // Held at most 2.5 s from the first piece, or `GONE_ON_MS` while he is already talking again (18 Nov, 00:15:55: his
+      // one question in six pieces over 10 s was cut at 2.8 s); a room that keeps talking is never one endless sentence.
       const since = held?.since ?? deps.now();
+      const goneOn = starts > seq;
       if (
         given === undefined &&
-        (isUnfinished(text) || starts > seq) &&
-        deps.now() - since < config.joinMs + 500
+        (isUnfinished(text) || goneOn) &&
+        deps.now() - since < (goneOn ? GONE_ON_MS : config.joinMs + 500)
       ) {
         const hold = { text, at: deps.now(), since, pieces };
         carry = hold;
@@ -2137,6 +2168,31 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         deps.log(
           `[${id}] turn ${turn}: TEST SPEAKER answered as him (test mode, until ${clockOf(testUntil)})`,
         );
+      // He went on while these words were on their way (the recogniser took 1.5-2 s): joined to the rest of his sentence
+      // in the order he said them, never answered apart and then talked over (18 Nov, 00:16:01).
+      if (given === undefined && starts > seq && deps.now() - since < GONE_ON_MS) {
+        kept?.control.abort();
+        if (prev !== null && prev.merged && current_ === prev) interrupt();
+        const mineHeld = { text, at: deps.now(), since, pieces };
+        const other = carry !== null && deps.now() - carry.at <= 15_000 ? carry : null;
+        const [first, then] =
+          other === null
+            ? [mineHeld, null]
+            : other.since <= since
+              ? [other, mineHeld]
+              : [mineHeld, other];
+        carry =
+          then === null
+            ? first
+            : {
+                text: `${first.text} ${then.text}`,
+                at: deps.now(),
+                since: first.since,
+                pieces: [...first.pieces, ...then.pieces],
+              };
+        deps.log(`[${id}] turn ${turn}: held for the rest of his sentence (${heldBack(text)})`);
+        return;
+      }
       // Her answer to a step-up ("say amber river", "is that you?"): scored, and the held act runs once verified.
       if (given === undefined && heldAct !== null && answersStepUp(heldAct.step, text)) {
         kept?.control.abort();
@@ -2950,6 +3006,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const micVerifiedAt = new Map<string, number>();
   /** Until when her server's last eye mood holds on each R1 (`voice/intent/eye`): the loop's own moods wait. */
   const eyeHold = new Map<string, number>();
+  /** The last `cmd/eye/set` each R1 was sent, and when: the same again is not sent until `EYE_RESEND_MS`. */
+  const eyeShown = new Map<string, { readonly payload: string; readonly at: number }>();
+  /** When each R1 last made each gesture: one nod per `GESTURE_GAP_MS`. */
+  const gestureAt = new Map<string, number>();
   /** Her mood at rest on each R1 (`voice/intent/rest`, retained): the eyes and the prop over them between turns. */
   const restFace = new Map<string, { readonly mood: string; readonly accessory: string }>();
   /** The persona look each R1's eyes last showed or were asked for; unknown after a restart. */
@@ -3061,6 +3121,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           eyeAsked.set(id, { name: String(json()["name"]), at: deps.now() });
         if (tail === "cmd/eye/persona" || tail === "state/eye/persona")
           worn.set(id, String(json()["name"]));
+        // Another writer, or the Tessel itself, changed the face: the next mood is sent whatever it is.
+        if (
+          (tail === "cmd/eye/set" || tail === "state/eye/mood") &&
+          json()["mood"] !== eyeMood(eyeShown.get(id)?.payload)
+        )
+          eyeShown.delete(id);
         if (tail === "state/eye/persona") {
           const asked = eyeAsked.get(id);
           eyeAsked.delete(id);
@@ -3100,6 +3166,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           deps.log(
             `[${id}] eye intent ${mood} for ${hold} ms${typeof reason === "string" ? ` (${reason.slice(0, 40)})` : ""}`,
           );
+          eyeShown.set(id, { payload: JSON.stringify({ mood }), at: deps.now() });
           deps.publish(topic(id, "cmd/eye/set"), JSON.stringify({ mood }));
         }
         return;
@@ -3118,11 +3185,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           `[${id}] rest mood ${mood ?? "neutral"}${typeof whose === "string" ? ` (${whose.slice(0, 40)})` : ""}`,
         );
         // Shown now unless a reply's mood still holds; then the next rest moment shows it.
-        if (deps.now() >= (eyeHold.get(id) ?? 0))
-          deps.publish(
-            topic(id, "cmd/eye/set"),
-            JSON.stringify(restFace.get(id) ?? { mood: "neutral", accessory: "auto" }),
+        if (deps.now() >= (eyeHold.get(id) ?? 0)) {
+          const payload = JSON.stringify(
+            restFace.get(id) ?? { mood: "neutral", accessory: "auto" },
           );
+          eyeShown.set(id, { payload, at: deps.now() });
+          deps.publish(topic(id, "cmd/eye/set"), payload);
+        }
         return;
       }
       if (tail === "voice/languages") {

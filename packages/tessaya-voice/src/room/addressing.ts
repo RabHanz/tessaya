@@ -114,10 +114,16 @@ export const isOwnVoice = (heard: string, herLines: ReadonlyArray<string>): bool
 const UNFINISHED =
   /\b(?:to|the|a|an|and|or|but|because|if|of|for|with|about|from|into|than|whether|my|your|our|their|whose|can|could|would|should|will|shall|need|needs|want|wants|gonna|wanna)$/i;
 
+/** "as they should.", "if you can.": a modal after its subject, with a full stop, ends the clause (18 Nov, 00:16). */
+const SUBJECT_MODAL =
+  /\b(?:i|you|we|they|he|she|it)\s+(?:can|could|would|should|will|shall|need|needs|want|wants)$/i;
 /** He stopped mid-sentence: what he says next belongs to it, so it is not answered on its own. */
 export const isUnfinished = (text: string): boolean => {
   const t = text.trim();
-  return !/[?!]$/.test(t) && UNFINISHED.test(t.replace(/[.,;:…\s]+$/, ""));
+  const bare = t.replace(/[.,;:…\s]+$/, "");
+  return (
+    !/[?!]$/.test(t) && UNFINISHED.test(bare) && !(t.endsWith(".") && SUBJECT_MODAL.test(bare))
+  );
 };
 
 /** What a log may keep of a line that was not for her: its length and a short hash, never its words. */
