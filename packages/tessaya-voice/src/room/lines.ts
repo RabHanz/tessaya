@@ -86,6 +86,8 @@ export const createLines = (deps: {
       })
       .then((got) => {
         on = got.on;
+        // With her words off only a persona's own greeting comes; nothing written while they were on stays held.
+        if (!got.on) held.clear();
         for (const [event, lines] of Object.entries(got.lines)) {
           const q = held.get(`${k}|${event}`) ?? [];
           held.set(`${k}|${event}`, [...q, ...(lines ?? [])].slice(-AHEAD * 2));
@@ -116,9 +118,9 @@ export const createLines = (deps: {
       plain: string,
       facts: Readonly<Record<string, string>> = {},
     ): SaidLine => {
-      if (!on) return { text: plain, mood: null };
       const k = key(persona, person);
       const q = held.get(`${k}|${event}`) ?? [];
+      if (!on && q.length === 0) return { text: plain, mood: null };
       const said = recent.get(k) ?? [];
       const next =
         q.shift() ??

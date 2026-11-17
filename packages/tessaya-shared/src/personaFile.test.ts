@@ -34,10 +34,16 @@ describe("persona registry changes", () => {
       traits: { sass: 0.9 },
       cloneVoice: "abc",
       model: "gpt-5",
+      greetings: ["Popcorn?", "Seen anything good?"],
     });
     expect(id).toBe("luna");
     let luna = packOf(tmp.dir).personas.find((p) => p.id === "luna");
-    expect(luna).toMatchObject({ name: "Luna", cloneVoice: "abc", traits: { sass: 0.9 } });
+    expect(luna).toMatchObject({
+      name: "Luna",
+      cloneVoice: "abc",
+      traits: { sass: 0.9 },
+      greetings: ["Popcorn?", "Seen anything good?"],
+    });
     expect(luna?.brain?.model).toBe("gpt-5");
     expect(packOf(tmp.dir).roles["luna"]).toBe("Dry, teases him about his taste.");
 
@@ -45,6 +51,8 @@ describe("persona registry changes", () => {
     editPersona(tmp.dir, "luna", { traits: { warmth: 0.7 } });
     luna = packOf(tmp.dir).personas.find((p) => p.id === "luna");
     expect(luna?.traits).toEqual({ warmth: 0.7, sass: 0.9 });
+    editPersona(tmp.dir, "luna", { greetings: [] });
+    expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.greetings).toBeUndefined();
 
     // A default face edited keeps its default dials beside the new one.
     editPersona(tmp.dir, "companion", { traits: { warmth: 0.5 } });

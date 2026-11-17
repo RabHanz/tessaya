@@ -173,10 +173,10 @@ index fd3aca76ad247c3101889df922e29f104f8de909..5bc505b36132fc74070b3b7bede32017
      "@tanstack/react-router": "^1.160.2",
      "@tiptap/core": "^3.31.3",
 diff --git a/evals/README.md b/evals/README.md
-index 8cfb697373c318c91927adeb4f373d54a7e1922e..45b4a26510784d869a31fc5686d6c8380b6d0f81 100644
+index 8cfb697373c318c91927adeb4f373d54a7e1922e..536012f881e63331841c7966131f1bbdad2809e0 100644
 --- a/evals/README.md
 +++ b/evals/README.md
-@@ -4,13 +4,24 @@ An eval runs a real model against T3 Code's real text or code and scores what th
+@@ -4,13 +4,25 @@ An eval runs a real model against T3 Code's real text or code and scores what th
  
  Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
  
@@ -205,14 +205,15 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..45b4a26510784d869a31fc5686d6c838
 +| [tessaya-learning](tessaya-learning/)           | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                    |
 +| [tessaya-pulse](tessaya-pulse/)                 | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                     |
 +| [tessaya-group](tessaya-group/)                 | Who speaks next in a group of personas: turn-taking, addressing by name, and the stop at the speaker budget.            |
++| [tessaya-hire](tessaya-hire/)                   | Whether a persona drafted from one sentence keeps his name and words, fits its dials, and obeys nothing inside them.    |
  
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..fbf71474a7485599d558be46143ea7978706ef3f 100644
+index 0659f65475da775fd54525d9147c84a8b0ad4a3a..99379bb855b3bbf11783a794eb49b0100e1aa8d4 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,8 +10,23 @@
+@@ -10,8 +10,24 @@
      "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
@@ -233,7 +234,8 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..fbf71474a7485599d558be46143ea797
 +    "tessaya-dictation": "node tessaya-dictation/run.ts",
 +    "tessaya-learning": "node tessaya-learning/run.ts",
 +    "tessaya-pulse": "node tessaya-pulse/run.ts",
-+    "tessaya-group": "node tessaya-group/run.ts"
++    "tessaya-group": "node tessaya-group/run.ts",
++    "tessaya-hire": "node tessaya-hire/run.ts"
    },
    "dependencies": {
      "@effect/platform-node": "catalog:",

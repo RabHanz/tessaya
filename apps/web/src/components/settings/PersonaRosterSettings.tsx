@@ -1,6 +1,6 @@
 /**
- * Settings → Voice → Personas: hire a persona, change its dials, brief and brain, copy it, retire it to the bin and
- * restore it. Every change goes to the environment's one registry (`baton.personas.change`); she does the same by voice.
+ * Settings → Voice → Personas: hire a persona (by hand, from one sentence, or from a Character Card), change its dials,
+ * brief, greetings and brain, export it as a card, copy it, retire it to the bin and restore it. Every change goes to the environment's one registry (`baton.personas.change`); she does the same by voice.
  */
 import type {
   SavedCloneView,
@@ -40,6 +40,8 @@ interface Form {
   readonly traits: Readonly<Partial<Record<Dial, number>>>;
   readonly model: string;
   readonly private: boolean;
+  /** One greeting per line. */
+  readonly greetings: string;
 }
 
 const blank: Form = {
@@ -50,6 +52,24 @@ const blank: Form = {
   traits: {},
   model: "",
   private: false,
+  greetings: "",
+};
+
+const formOfDraft = (d: TessayaPersonaDraft): Form => ({
+  ...blank,
+  name: d.name ?? "",
+  role: d.role ?? "",
+  about: d.about ?? "",
+  traits: d.traits ?? {},
+  greetings: (d.greetings ?? []).join("\n"),
+});
+
+const download = (name: string, blob: Blob) => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1_000);
 };
 
 export function PersonaRoster(props: {
@@ -63,6 +83,8 @@ export function PersonaRoster(props: {
   const [bin, setBin] = useState<TessayaPersonaChangeResult["bin"]>([]);
   const [form, setForm] = useState<Form | null>(null);
   const [note, setNote] = useState("");
+  const [sentence, setSentence] = useState("");
+  const [drafting, setDrafting] = useState(false);
 
   const ask = async (input: TessayaPersonaChangeInput): Promise<TessayaPersonaChangeResult> => {
     const result = await change({ environmentId: props.environmentId, input });
@@ -90,6 +112,10 @@ export function PersonaRoster(props: {
   }, [props.environmentId]);
 
   const save = async (f: Form) => {
+    const greetings = f.greetings
+      .split("\n")
+      .map((g) => g.trim())
+      .filter((g) => g !== "");
     const draft: TessayaPersonaDraft = {
       name: f.name,
       role: f.role,
@@ -97,11 +123,42 @@ export function PersonaRoster(props: {
       traits: f.traits,
       model: f.model.trim() === "" ? null : f.model.trim(),
       private: f.private,
+      ...(f.id === null && greetings.length === 0 ? {} : { greetings }),
     };
     const ok = await send(
       f.id === null ? { op: "create", draft } : { op: "edit", id: f.id, draft },
     );
     if (ok) setForm(null);
+  };
+
+  const hire = async () => {
+    setDrafting(true);
+    const reply = await ask({ op: "hire", sentence: sentence.trim() });
+    setDrafting(false);
+    if (reply.draft === undefined) return;
+    setSentence("");
+    setForm(formOfDraft(reply.draft));
+  };
+
+  const importCard = async (file: File) => {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const isJson = file.name.toLowerCase().endsWith(".json") || bytes[0] === 0x7b;
+    let binary = "";
+    for (const b of bytes) binary += String.fromCharCode(b);
+    await send({ op: "import", card: isJson ? new TextDecoder().decode(bytes) : btoa(binary) });
+  };
+
+  const exportCard = async (id: string, kind: "png" | "json") => {
+    const reply = await ask({ op: "export", id });
+    if (reply.card === undefined) return;
+    download(
+      `${id}.card.${kind}`,
+      kind === "json"
+        ? new Blob([reply.card.json], { type: "application/json" })
+        : new Blob([Uint8Array.from(atob(reply.card.png), (c) => c.charCodeAt(0))], {
+            type: "image/png",
+          }),
+    );
   };
 
   const status = note ? <span role="status">{note}</span> : undefined;
@@ -112,9 +169,50 @@ export function PersonaRoster(props: {
         description="Make new personas, tune each one’s personality and brain, copy or retire them. You can also ask Tessaya: “make a new persona called Luna”, “make Freya warmer”, “retire Onyx”."
         status={status}
         control={
-          <Button size="sm" variant="outline" onClick={() => setForm(blank)}>
-            New persona
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="ghost" render={<label />}>
+              Import card
+              <input
+                type="file"
+                accept=".png,.json,image/png,application/json"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file !== undefined) void importCard(file);
+                }}
+              />
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setForm(blank)}>
+              New persona
+            </Button>
+          </div>
+        }
+      />
+      <SettingsRow
+        title="Hire from a sentence"
+        description="Describe who you want; Tessaya drafts them for you to check before they join. Imports take Character Card PNG or JSON files from other apps. By voice: “hire me a cheerful cooking buddy”."
+        control={
+          <div className="flex items-center gap-1.5">
+            <Input
+              aria-label="Who to hire"
+              placeholder="A grumpy Scottish chef who rates my cooking"
+              maxLength={600}
+              value={sentence}
+              onChange={(e) => setSentence(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && sentence.trim() !== "") void hire();
+              }}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={drafting || sentence.trim() === ""}
+              onClick={() => void hire()}
+            >
+              {drafting ? "Drafting…" : "Draft"}
+            </Button>
+          </div>
         }
       />
       {form === null ? null : (
@@ -123,6 +221,7 @@ export function PersonaRoster(props: {
           onChange={setForm}
           onCancel={() => setForm(null)}
           onSave={() => void save(form)}
+          onExport={form.id === null ? undefined : (kind) => void exportCard(form.id!, kind)}
         />
       )}
       {personas.map((p) => (
@@ -152,6 +251,7 @@ export function PersonaRoster(props: {
                     traits: p.traits ?? {},
                     model: p.brain?.model ?? "",
                     private: p.private === true,
+                    greetings: (p.greetings ?? []).join("\n"),
                   })
                 }
               >
@@ -302,6 +402,7 @@ function PersonaForm(props: {
   readonly onChange: (form: Form) => void;
   readonly onCancel: () => void;
   readonly onSave: () => void;
+  readonly onExport: ((kind: "png" | "json") => void) | undefined;
 }) {
   const { form, onChange } = props;
   return (
@@ -351,6 +452,13 @@ function PersonaForm(props: {
           </span>
         </label>
       ))}
+      <Textarea
+        aria-label="Greetings, one per line"
+        placeholder="Greetings, one per line: one is picked when you first wake them each day"
+        rows={2}
+        value={form.greetings}
+        onChange={(e) => onChange({ ...form, greetings: e.target.value })}
+      />
       <Input
         aria-label="Brain model"
         placeholder="Brain model, any provider (empty for the default)"
@@ -366,6 +474,16 @@ function PersonaForm(props: {
         Private: only you, verified, can reach this persona and its memories
       </label>
       <div className="flex justify-end gap-1.5">
+        {props.onExport === undefined ? null : (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => props.onExport?.("png")}>
+              Export card (PNG)
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => props.onExport?.("json")}>
+              Export card (JSON)
+            </Button>
+          </>
+        )}
         <Button size="sm" variant="ghost" onClick={props.onCancel}>
           Cancel
         </Button>

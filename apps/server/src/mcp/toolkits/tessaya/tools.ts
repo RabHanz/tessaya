@@ -777,14 +777,38 @@ const VoiceTool = Tool.make("tessaya_voice", {
 const PersonaTool = Tool.make("tessaya_persona", {
   ...shared,
   description:
-    'Make and manage personas, only when he asks. `create` ("make a new persona called Luna, a sarcastic film buff"): `draft.name` and whatever he described: `role` (one line of who it is), `about` (personality, backstory, how it relates to him, in his words), `traits` dials 0 to 1 (energy, warmth, play, expr, formal, sass), `guilt` 0 to 3, `voice` (a library voice), `cloneVoice` (one of his saved clones, by name, e.g. "the voice I cloned yesterday"), `model` and `effort` (its brain: any provider\'s model), `wake`, `private` (owner-only private layer). `edit` changes only the fields given on `persona` ("make Freya warmer" is traits.warmth up a step from her current dial; "give Freya my cloned voice" is cloneVoice). `duplicate` copies `persona` as `name`. `retire` moves `persona` to the bin; `restore` brings it back; `bin` lists what is in it. Leave out anything he did not say. Say the line back.',
+    'Make and manage personas, only when he asks. `create` ("make a new persona called Luna, a sarcastic film buff"): `draft.name` and whatever he described: `role` (one line of who it is), `about` (personality, backstory, how it relates to him, in his words), `traits` dials 0 to 1 (energy, warmth, play, expr, formal, sass), `guilt` 0 to 3, `voice` (a library voice), `cloneVoice` (one of his saved clones, by name, e.g. "the voice I cloned yesterday"), `model` and `effort` (its brain: any provider\'s model), `wake`, `private` (owner-only private layer). `edit` changes only the fields given on `persona` ("make Freya warmer" is traits.warmth up a step from her current dial; "give Freya my cloned voice" is cloneVoice). `duplicate` copies `persona` as `name`. `retire` moves `persona` to the bin; `restore` brings it back; `bin` lists what is in it. `draft.greetings` are lines it may open with when first woken each day. `hire` when he asks for someone from a description and leaves the details to you ("hire me someone to nag me about the gym", "find me a cheerful cooking buddy"): pass his words as `sentence`; it drafts a persona without saving it, so read the draft back and, only on his yes, call `create` with that same draft. `import` takes a Character Card (from SillyTavern, chub and the like) from `source`, a file path on this server or an https link. `export` saves `persona` as a Character Card (JSON and PNG) and says where. Leave out anything he did not say. Say the line back.',
   parameters: Schema.Struct({
-    op: Schema.Literals(["create", "edit", "duplicate", "retire", "restore", "bin"]),
+    op: Schema.Literals([
+      "create",
+      "edit",
+      "duplicate",
+      "retire",
+      "restore",
+      "bin",
+      "hire",
+      "import",
+      "export",
+    ]),
     persona: Schema.optional(Word.annotate({ description: "The persona by name, e.g. Freya." })),
     name: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
     draft: Schema.optional(TessayaPersonaDraft),
+    sentence: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(600)).annotate({
+        description: "For hire: his description, in his words.",
+      }),
+    ),
+    source: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(1000)).annotate({
+        description: "For import: a card file's path on this server, or an https link to it.",
+      }),
+    ),
   }),
-  success: Schema.Struct({ line: Schema.String }),
+  success: Schema.Struct({
+    line: Schema.String,
+    /** hire: the drafted persona, to pass unchanged to `create` on his yes. */
+    draft: Schema.optional(TessayaPersonaDraft),
+  }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, false)
