@@ -51,6 +51,34 @@ const withStore = <A, E>(
     );
   }).pipe(Effect.scoped);
 
+/** The 15 words of his that the list rebuilt on 17 Nov lost, as his laptop stored them. */
+const HIS_WORDS: ReadonlyArray<VocabularyEntry> = [
+  { phrase: "btw", replacement: "by the way", source: "added", count: 1 },
+  { phrase: "deplok", replacement: null, source: "added", count: 3, heard: ["deploy"] },
+  { phrase: "google", replacement: null, source: "added", count: 32 },
+  { phrase: "dokploy", replacement: null, source: "added", count: 7, heard: ["deploy"] },
+  { phrase: "claude", replacement: null, source: "added", count: 20 },
+  { phrase: "ee", replacement: null, source: "added", count: 2, heard: ["see"] },
+  { phrase: "gmail", replacement: null, source: "added", count: 78, heard: ["female"] },
+  { phrase: "stripe", replacement: null, source: "added", count: 149, heard: ["strike"] },
+  { phrase: "coldmessaging", replacement: null, source: "added", count: 1, heard: ["messaging"] },
+  { phrase: "dothraki", replacement: null, source: "added", count: 1, heard: ["dotrices"] },
+  { phrase: "shotlist", replacement: null, source: "added", count: 2, heard: ["shortlist"] },
+  { phrase: "kodi", replacement: null, source: "added", count: 1, heard: ["Cody"] },
+  { phrase: "mushaf", replacement: null, source: "added", count: 1, heard: ["Musaf"] },
+  { phrase: "whop", replacement: null, source: "added", count: 23, heard: ["VOP"] },
+  {
+    phrase: "Tessaya",
+    replacement: null,
+    source: "added",
+    count: 1,
+    lastSeen: "2026-11-10T02:15:29.236Z",
+    heard: ["Tsaya"],
+  },
+];
+
+const HIS_TERMS = customWordsOf(HIS_WORDS).map((w) => ({ term: w.term, aliases: [...w.aliases] }));
+
 const decodeCustomWords = Schema.decodeUnknownSync(SpeechCustomWords);
 const stored = (file: string) => JSON.parse(NodeFS.readFileSync(file, "utf8")) as Array<unknown>;
 const customWords = Effect.map(
@@ -156,6 +184,66 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
       },
     ),
   );
+
+  it.effect(
+    "keeps his own small-letter words, and keeps a dropped word where he can add it back",
+    () =>
+      withStore(
+        (file) =>
+          Effect.gen(function* () {
+            // 17 Nov: rebuilt from T3's list, his dokploy, whop and mushaf were skipped as "ordinary".
+            const terms = (yield* customWords).map((w) => w.term);
+            expect(terms).toEqual(expect.arrayContaining(["dokploy", "whop", "mushaf", "Kaggle"]));
+            expect(terms).not.toContain("pass");
+            const removed = stored(
+              NodePath.join(NodePath.dirname(file), "dictionary-removed.json"),
+            );
+            expect(removed).toEqual([
+              expect.objectContaining({
+                phrase: "pass",
+                source: "learned",
+                removedAt: expect.any(String),
+              }),
+            ]);
+          }),
+        {
+          stored: JSON.stringify([
+            { phrase: "pass", replacement: null, source: "learned", count: 1, heard: ["past"] },
+            { phrase: "Kaggle", replacement: null, source: "learned", count: 3 },
+          ]),
+          words: [
+            { term: "pass", aliases: ["past"] },
+            { term: "Kaggle", aliases: [] },
+            { term: "dokploy", aliases: [] },
+            { term: "whop", aliases: [] },
+            { term: "mushaf", aliases: [] },
+          ],
+        },
+      ),
+  );
+
+  it.effect("starts with every word of his list kept as it was", () =>
+    withStore(
+      (file) =>
+        Effect.gen(function* () {
+          expect(stored(file)).toEqual(HIS_WORDS);
+          expect(yield* customWords).toEqual(expect.arrayContaining(HIS_TERMS));
+        }),
+      { stored: JSON.stringify(HIS_WORDS), words: HIS_TERMS },
+    ),
+  );
+
+  it.effect("never rebuilds a list that PowerShell 5.1 wrote as one item", () => {
+    const nested = JSON.stringify([HIS_WORDS]);
+    return withStore(
+      (file) =>
+        Effect.gen(function* () {
+          expect(NodeFS.readFileSync(file, "utf8")).toBe(nested);
+          expect(yield* customWords).toEqual(expect.arrayContaining(HIS_TERMS));
+        }),
+      { stored: nested, words: HIS_TERMS },
+    );
+  });
 
   it.effect("never overwrites a file it cannot read", () =>
     withStore(
