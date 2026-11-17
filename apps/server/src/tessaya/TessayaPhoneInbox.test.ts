@@ -12,10 +12,17 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
+import { OrchestratorMcpFailure } from "@t3tools/contracts";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
 import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { HOME_KEY } from "./BrainHost.ts";
+import { receiveAtBrain } from "./BrainReceive.ts";
+import { TessayaPresence, layer as TessayaPresenceLayer } from "./TessayaPresence.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaRecordService, layer as TessayaRecordLayer } from "./TessayaRecordService.ts";
 import {
@@ -582,5 +589,96 @@ it.effect(
         ),
         PROMPT_EXPIRED,
       );
+    }),
+);
+
+it.effect(
+  "one brain: a worker's cards and presence go to her brain, and a card waits on the worker only while the brain is away",
+  () =>
+    Effect.gen(function* () {
+      const brain = yield* Layer.build(
+        Layer.mergeAll(inboxLayer, TessayaPresenceLayer).pipe(
+          Layer.provideMerge(TessayaRecordLayer),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      );
+      let brainUp = true;
+      const peers = Layer.mergeAll(
+        Layer.succeed(PeerLinks.PeerLinks, {
+          enabled: Effect.succeed(true),
+          list: Effect.succeed([
+            { ...descriptorOf("env-studio", "studio"), label: "studio", status: "ok" } as never,
+          ]),
+        } as never),
+        Layer.succeed(
+          PeerMcpClient.PeerMcpClient,
+          PeerMcpClient.PeerMcpClient.of({
+            call: (input) =>
+              brainUp
+                ? (receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
+                    Effect.provideContext(brain),
+                  ) as never)
+                : Effect.fail(
+                    new OrchestratorMcpFailure({ code: "orchestration_error", message: "away" }),
+                  ),
+          }),
+        ),
+      );
+      const workerContext = yield* Layer.build(
+        Layer.mergeAll(inboxLayer, TessayaPresenceLayer).pipe(
+          Layer.provide(peers),
+          Layer.provideMerge(TessayaRecordLayer),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      );
+      const sql = Context.get(workerContext, SqlClient.SqlClient);
+      yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'studio')`;
+      const worker = Context.get(workerContext, TessayaPhoneInbox);
+      const atBrain = Context.get(brain, TessayaPhoneInbox);
+      const card = (id: string) => ({
+        id,
+        title: "Is this you?",
+        detail: id,
+        buttons: ["Yes, it's me", "No"],
+        yes: 0,
+        cancel: 1,
+      });
+
+      yield* worker.mirror(card("stepup-on-worker"));
+      assert.deepStrictEqual(
+        (yield* atBrain.pending).map((c) => c.id),
+        ["stepup-on-worker"],
+      );
+      assert.deepStrictEqual(
+        (yield* worker.pending).map((c) => c.id),
+        ["stepup-on-worker"],
+      );
+      assert.isTrue(yield* atBrain.answerPrompt("stepup-on-worker", 0));
+      assert.strictEqual(yield* worker.promptAnswer("stepup-on-worker"), 0);
+
+      yield* Context.get(workerContext, TessayaPresence).note({
+        member: "owner",
+        source: "voice",
+        vessel: "r1-1",
+      });
+      assert.include(
+        JSON.stringify(yield* Context.get(brain, TessayaPresence).estimate()),
+        "owner",
+      );
+
+      brainUp = false;
+      yield* worker.mirror(card("asked-while-away"));
+      assert.deepStrictEqual(
+        (yield* worker.pending).map((c) => c.id),
+        ["asked-while-away"],
+      );
+      assert.isTrue(yield* worker.answerPrompt("asked-while-away", 1));
+      assert.strictEqual(yield* worker.promptAnswer("asked-while-away"), 1);
+
+      // A worker is never her brain: an act sent to it is refused, not passed along.
+      const refused = yield* receiveAtBrain("presence", { forget: "owner" }).pipe(
+        Effect.provideContext(workerContext),
+      );
+      assert.isFalse(refused.ok);
     }),
 );

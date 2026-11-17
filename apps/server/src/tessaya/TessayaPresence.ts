@@ -24,6 +24,7 @@ import * as Stream from "effect/Stream";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { DeviceSync } from "../home/DeviceSync.ts";
+import { makeBrainLink } from "./BrainHost.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
 
 /** Plenty for a household's members and vessels; the oldest go first past it. */
@@ -74,6 +75,7 @@ const SAME_VISIT_MS = 2 * 60_000;
 
 export const make = Effect.gen(function* () {
   const sync = yield* Effect.serviceOption(DeviceSync);
+  const brain = yield* makeBrainLink;
   const kept = new Map<string, PresenceSignal>();
   const changed = yield* PubSub.sliding<void>(1);
   const keep = (key: string, signal: PresenceSignal, now: number) => {
@@ -96,7 +98,10 @@ export const make = Effect.gen(function* () {
       at: signal.at ?? now,
     };
     keep(key, next, now);
-    if (Option.isSome(sync) && (before === undefined || next.at - before.at >= RESEND_MS))
+    const fresh = before === undefined || next.at - before.at >= RESEND_MS;
+    // Kept here for this server's own faces; her brain's estimate is the one that decides.
+    if (fresh && !(yield* brain.isBrain)) yield* brain.send("presence", { note: next });
+    if (Option.isSome(sync) && fresh)
       yield* sync.value.put(PRESENCE_RECORD, key, next, "changed", next.at);
     if (
       before === undefined ||
@@ -123,6 +128,11 @@ export const make = Effect.gen(function* () {
   });
   // Forgetting reaches his other servers: each forgotten key goes as null, a moved one as its new key.
   const forget = Effect.fn("TessayaPresence.forget")(function* (member: string, into?: string) {
+    if (!(yield* brain.isBrain))
+      yield* brain.send(
+        "presence",
+        into === undefined ? { forget: member } : { forget: member, into },
+      );
     for (const [k, s] of kept)
       if (s.member === member) {
         kept.delete(k);

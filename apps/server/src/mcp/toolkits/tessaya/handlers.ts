@@ -89,6 +89,7 @@ import * as CommsHandlers from "../comms/handlers.ts";
 import * as SettingsHandlers from "../settings/handlers.ts";
 import { asForwarded, fromPeers, onPeer } from "../../../peer/PeerVessels.ts";
 import { OpenInTerminalReply, TessayaToolkit } from "./tools.ts";
+import { receiveAtBrain } from "../../../tessaya/BrainReceive.ts";
 
 const decodeAsked = Schema.decodeUnknownOption(
   Schema.Struct({
@@ -355,6 +356,18 @@ export const layer = McpToolAccess.toLayer(
             if (scope.client?.linked !== true || runtime === null)
               return { ...input, cards: [], answers: [] };
             return yield* Effect.flatMap(TessayaPhoneInbox, (inbox) => inbox.exchange(input)).pipe(
+              Effect.provideContext(runtime),
+            );
+          }),
+        { linkedCallers: "allowed" },
+      ),
+      tessaya_brain: McpToolAccess.writes(
+        (input) =>
+          Effect.gen(function* () {
+            const scope = yield* McpInvocationContext.McpInvocationContext;
+            if (scope.client?.linked !== true || runtime === null)
+              return { ok: false, line: "Only another of his servers sends here." };
+            return yield* receiveAtBrain(input.op, input.payload).pipe(
               Effect.provideContext(runtime),
             );
           }),

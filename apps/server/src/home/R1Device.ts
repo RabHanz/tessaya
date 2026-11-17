@@ -56,6 +56,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
+import { isBrain } from "../tessaya/BrainHost.ts";
 import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
 import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { TessayaRuntime } from "../tessaya/TessayaRpcHandlers.ts";
@@ -176,6 +177,8 @@ const publishRestMood = Effect.fn("R1Device.publishRestMood")(function* () {
     yield* cast.value.listen(() => Queue.offer(switched, undefined).pipe(Effect.asVoid));
   yield* Stream.runForEach(Stream.merge(mood.value.moves, Stream.fromQueue(switched)), () =>
     Effect.gen(function* () {
+      // A face at rest is the brain's to show: another server's mood is not hers.
+      if (!(yield* isBrain)) return;
       const pack = yield* r1Pack;
       const lead = (pack.personas.find((p) => p.lead) ?? pack.personas[0])?.id;
       for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices)) {

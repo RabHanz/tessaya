@@ -202,6 +202,7 @@ export const NOT_IN_ROOM: {
     "only his own t3 memory command calls it, to unlearn test playback; by voice he forgets with tessaya_memory_forget",
   phone_pairing_code: "only his other servers call it, for the desktop's Add a phone QR",
   tessaya_inbox_sync: "only his other servers call it, to show his waiting cards on each",
+  tessaya_brain: "only his other servers call it, to send what they heard to her brain",
   household_peer: "only another of this home's linked servers calls it",
   household_voice_forget: "only another of this home's linked servers calls it",
   tessaya_dev_feed: "a maintainer agent's live tail of the developer feed, never a person's",

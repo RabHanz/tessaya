@@ -71,6 +71,7 @@ import { CommsTools } from "../comms/tools.ts";
 import { AccountTools } from "../accounts/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
+import { BrainOp } from "../../../tessaya/BrainHost.ts";
 
 const shared = {
   failure: OrchestratorMcpFailure,
@@ -995,6 +996,20 @@ const InboxSyncTool = Tool.make("tessaya_inbox_sync", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+// A worker's acts (mood, presence, persona, cards) sent to the one server that is her brain (BrainHost).
+const BrainTool = Tool.make("tessaya_brain", {
+  ...shared,
+  description:
+    "For another of his servers only: something it heard, sent to this server because this one is her brain.",
+  parameters: Schema.Struct({ op: BrainOp, payload: Schema.Unknown }),
+  success: Schema.Unknown,
+})
+  .annotate(McpSchema.EnabledWhen, linkedServersOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 const ReportProblemTool = Tool.make("tessaya_report_problem", {
   ...shared,
   description:
@@ -1107,4 +1122,5 @@ export const TessayaToolkit = Toolkit.make(
   VoiceArbiterTool,
   PhonePairingCodeTool,
   InboxSyncTool,
+  BrainTool,
 );

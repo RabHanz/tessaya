@@ -13,6 +13,7 @@ import * as Schema from "effect/Schema";
 import { MAX_MEMBERS, type PersonaGroup } from "@t3tools/tessaya-shared/groupTalk";
 
 import { DeviceSync } from "../home/DeviceSync.ts";
+import { makeBrainLink } from "./BrainHost.ts";
 
 /** As long as a conversation itself lasts (TessayaTurn's idle boundary). */
 const HELD_MS = 10 * 60_000;
@@ -37,7 +38,7 @@ const PERSONA_RECORD = "@persona";
 const GROUP_RECORD = "@group";
 /** A group outlives a quiet spell: it ends when he ends it or after half a day without a word. */
 const GROUP_HELD_MS = 12 * 60 * 60_000;
-const GroupValue = Schema.NullOr(
+export const GroupValue = Schema.NullOr(
   Schema.Struct({
     members: Schema.Array(
       Schema.Struct({
@@ -52,6 +53,7 @@ const decodeGroup = Schema.decodeUnknownOption(GroupValue);
 
 const make = Effect.gen(function* () {
   const sync = yield* Effect.serviceOption(DeviceSync);
+  const brain = yield* makeBrainLink;
   // shortcut: in this server's memory, like the conversations it follows; a restart starts each on its lead.
   const held = new Map<string, { readonly persona: string; readonly at: number }>();
   const listeners = new Set<Listener>();
@@ -72,6 +74,7 @@ const make = Effect.gen(function* () {
   const set = Effect.fn("CurrentPersona.set")(function* (conversation: string, persona: string) {
     const at = yield* Clock.currentTimeMillis;
     yield* hold(conversation, persona, at);
+    if (!(yield* brain.isBrain)) yield* brain.send("persona", { conversation, persona });
     if (Option.isSome(sync))
       yield* sync.value.put(PERSONA_RECORD, conversation, persona, "changed", at);
   });
@@ -94,6 +97,7 @@ const make = Effect.gen(function* () {
   ) {
     const at = yield* Clock.currentTimeMillis;
     groups.set(conversation, { group: next, at });
+    if (!(yield* brain.isBrain)) yield* brain.send("group", { conversation, group: next });
     if (Option.isSome(sync)) yield* sync.value.put(GROUP_RECORD, conversation, next, "changed", at);
   });
   if (Option.isSome(sync))

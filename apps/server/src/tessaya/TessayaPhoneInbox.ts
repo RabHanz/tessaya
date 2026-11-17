@@ -24,8 +24,8 @@ import {
   TessayaDesktopState,
   BatonPhoneError,
   TessayaInboxSync,
-  type TessayaInboxAnswer,
-  type TessayaInboxCard,
+  TessayaInboxAnswer,
+  TessayaInboxCard,
   type TessayaPhoneCallInput,
 } from "@t3tools/tessaya-contracts";
 import {
@@ -50,6 +50,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { makeBrainLink } from "./BrainHost.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
 
@@ -267,6 +268,66 @@ export const answerCard = Effect.fn("BatonPhoneInbox.answerCard")(function* (
   if (refusal !== null) return refusal;
   const { role: _, ...by } = approver;
   return yield* inbox.answerPrompt(id, index, by);
+});
+
+/** A card as it travels between a worker and her brain. */
+const ForwardedPrompt = Schema.Struct({
+  ...TessayaInboxCard.fields,
+  expiresAt: Schema.optionalKey(Schema.Number),
+  on: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+});
+const decodePrompt = Schema.decodeUnknownOption(ForwardedPrompt);
+const decodeForwarded = Schema.decodeUnknownOption(Schema.Array(ForwardedPrompt));
+const ForwardedApprover = TessayaInboxAnswer.fields.by;
+const decodeApprover = Schema.decodeUnknownOption(ForwardedApprover);
+const ForwardedBatch = Schema.Struct({
+  id: TessayaInboxCard.fields.id,
+  title: TessayaInboxCard.fields.title,
+  detail: TessayaInboxCard.fields.detail,
+  items: Schema.Array(ForwardedPrompt).check(Schema.isMaxLength(50)),
+});
+const decodeBatch = Schema.decodeUnknownOption(ForwardedBatch);
+
+/** Her brain's end of a worker's inbox call (BrainReceive); undefined for a call it does not know. */
+export const inboxAtBrain = Effect.fn("BatonPhoneInbox.atBrain")(function* (
+  inbox: TessayaPhoneInbox["Service"],
+  op: string,
+  args: Readonly<Record<string, unknown>>,
+) {
+  const id = typeof args["id"] === "string" ? args["id"] : null;
+  switch (op) {
+    case "mirror": {
+      const prompt = decodePrompt(args["prompt"]);
+      if (Option.isNone(prompt)) return undefined;
+      yield* inbox.mirror(prompt.value);
+      return true;
+    }
+    case "mirrorBatch": {
+      const batch = decodeBatch(args["batch"]);
+      if (Option.isNone(batch)) return undefined;
+      yield* inbox.mirrorBatch(batch.value);
+      return true;
+    }
+    case "pending":
+      return yield* inbox.pending;
+    case "expiredBatch":
+      return yield* inbox.expiredBatch;
+    case "answerPrompt": {
+      const index = args["index"];
+      if (id === null || typeof index !== "number") return undefined;
+      const by = args["by"] === undefined ? Option.none() : decodeApprover(args["by"]);
+      return yield* inbox.answerPrompt(id, index, Option.getOrUndefined(by));
+    }
+    case "promptAnswer":
+      return id === null ? undefined : yield* inbox.promptAnswer(id);
+    case "closePrompt":
+      if (id === null) return undefined;
+      yield* inbox.closePrompt(id);
+      return true;
+    case "expired":
+      return id === null ? undefined : yield* inbox.expired(id);
+  }
+  return undefined;
 });
 
 export const make = Effect.gen(function* () {
@@ -513,8 +574,6 @@ export const make = Effect.gen(function* () {
     });
   });
 
-  const pendingBatch = Effect.map(pending, (cards) => cards.findLast(isBatch) ?? null);
-
   const answerOne = Effect.fn("BatonPhoneInbox.answerOne")(function* (
     id: string,
     index: number,
@@ -708,6 +767,61 @@ export const make = Effect.gen(function* () {
     );
   }
 
+  // One inbox, on her brain: a worker's cards wait there and are answered there (one-brain §2.1). Kept here only while
+  // the brain can't be reached, so an act still asks; reads take both, so such a card is never lost.
+  const brain = yield* makeBrainLink;
+  /** The brain's answer to an inbox call; None on the brain itself, or when it can't be reached. */
+  const atBrain = Effect.fn("BatonPhoneInbox.atBrain")(function* (
+    op: string,
+    args: Record<string, unknown>,
+  ) {
+    if (yield* brain.isBrain) return Option.none<unknown>();
+    return yield* brain.send("inbox", { op, args });
+  });
+  const brainSaid = Effect.fn("BatonPhoneInbox.brainSaid")(function* (
+    op: string,
+    args: Record<string, unknown>,
+  ) {
+    return Option.getOrNull(yield* atBrain(op, args)) === true;
+  });
+  const brainPending = Effect.gen(function* () {
+    const here = yield* pending;
+    const there = Option.flatMap(yield* atBrain("pending", {}), decodeForwarded);
+    if (Option.isNone(there)) return here;
+    return [...there.value, ...here.filter((c) => !there.value.some((t) => t.id === c.id))];
+  });
+  const mirrorAtBrain = Effect.fn("BatonPhoneInbox.mirrorAtBrain")(function* (prompt: PhonePrompt) {
+    if (Option.isNone(yield* atBrain("mirror", { prompt }))) yield* mirror(prompt);
+  });
+  const mirrorBatchAtBrain = Effect.fn("BatonPhoneInbox.mirrorBatchAtBrain")(function* (
+    batch: Parameters<typeof mirrorBatch>[0],
+  ) {
+    if (Option.isNone(yield* atBrain("mirrorBatch", { batch }))) yield* mirrorBatch(batch);
+  });
+  const answerAtBrain = Effect.fn("BatonPhoneInbox.answerAtBrain")(function* (
+    id: string,
+    index: number,
+    by?: PromptApprover,
+  ) {
+    return (
+      (yield* brainSaid("answerPrompt", { id, index, ...(by === undefined ? {} : { by }) })) ||
+      (yield* answerPrompt(id, index, by))
+    );
+  });
+  const promptAnswerAtBrain = Effect.fn("BatonPhoneInbox.promptAnswerAtBrain")(function* (
+    id: string,
+  ) {
+    const there = Option.getOrNull(yield* atBrain("promptAnswer", { id }));
+    return typeof there === "number" ? there : yield* promptAnswer(id);
+  });
+  const closeAtBrain = Effect.fn("BatonPhoneInbox.closeAtBrain")(function* (id: string) {
+    yield* atBrain("closePrompt", { id });
+    yield* closePrompt(id);
+  });
+  const expiredAtBrain = Effect.fn("BatonPhoneInbox.expiredAtBrain")(function* (id: string) {
+    return (yield* brainSaid("expired", { id })) || (yield* expired(id));
+  });
+
   return TessayaPhoneInbox.of({
     post,
     get,
@@ -728,15 +842,17 @@ export const make = Effect.gen(function* () {
       yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${BRAIN_ANSWERS_KEY}, ${on ? "1" : "0"})
         ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(Effect.orDie);
     }),
-    mirror,
-    mirrorBatch,
-    pending,
-    pendingBatch,
-    answerPrompt,
-    promptAnswer,
-    closePrompt,
-    expired,
-    expiredBatch,
+    mirror: mirrorAtBrain,
+    mirrorBatch: mirrorBatchAtBrain,
+    pending: brainPending,
+    pendingBatch: Effect.map(brainPending, (cards) => cards.findLast(isBatch) ?? null),
+    answerPrompt: answerAtBrain,
+    promptAnswer: promptAnswerAtBrain,
+    closePrompt: closeAtBrain,
+    expired: expiredAtBrain,
+    expiredBatch: Effect.gen(function* () {
+      return (yield* brainSaid("expiredBatch", {})) || (yield* expiredBatch);
+    }),
     cardLife,
     outgoing,
     absorb,

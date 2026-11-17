@@ -63,6 +63,7 @@ import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaPeople } from "./TessayaPeople.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence, whereToSay } from "./TessayaPresence.ts";
+import { isBrain } from "./BrainHost.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
 import { TessayaTurn } from "./TessayaTurn.ts";
 import { TurnLiveContext } from "./TurnLiveContext.ts";
@@ -700,9 +701,9 @@ export const noticed = Effect.fn("TessayaPulse.noticed")(function* (limit: numbe
   return yield* record.value.query({ kind: "pulse", limit });
 });
 
-/** The loop: a sense pass every minute; reviews follow their own adaptive beat inside it. */
+/** The loop: a sense pass every minute; reviews follow their own adaptive beat inside it. Only her brain decides. */
 export const layer = Layer.effectDiscard(
-  beat().pipe(
+  Effect.flatMap(isBrain, (here) => (here ? Effect.asVoid(beat()) : Effect.void)).pipe(
     Effect.catchCause((cause) => Effect.logWarning("pulse failed", cause)),
     Effect.repeat(Schedule.spaced(SENSE_MS)),
     Effect.delay("30 seconds"),
