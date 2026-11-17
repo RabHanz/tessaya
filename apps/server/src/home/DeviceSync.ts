@@ -1,9 +1,8 @@
 // @effect-diagnostics preferSchemaOverJson:off globalJsonInEffect:off
 /**
- * The one environment-state sync (B-044, `device_sync`): a Tessel's key, his choices for it, every server's hub, and
- * her shared state (mood events, presence, who each person and vessel is talking to) alike on all his linked servers.
- * Last writer wins per field, so merges commute and repeat harmlessly; a value never confirmed (stamp 0) only fills a
- * gap, so a stale key never overwrites the one the device logs in with. State only: the device's hub answers it.
+ * A Tessel's key, his choices for it and every server's hub, alike on his linked servers (`device_sync`). Her own
+ * state is not here: it lives once, on her brain (BrainHost). Last writer wins per field, so merges commute and repeat
+ * harmlessly; a value never confirmed (stamp 0) only fills a gap, so a stale key never overwrites the one in use.
  */
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -28,31 +27,6 @@ export const HUBS_RECORD = "@hubs";
 const SETTINGS_KEY = "devices.sync";
 const MAX_RECORDS = 64;
 const MAX_FIELDS = 64;
-/**
- * Shared-state records: many fields that expire. An event log's field is its id, so a merge applies each event once;
- * an expired field is dropped here and refused from a peer, so it never comes back to be applied again.
- */
-const SHARED_RECORDS: Readonly<
-  Record<string, { readonly fields: number; readonly ttlMs: number }>
-> = {
-  "@mood": { fields: 400, ttlMs: 12 * 3_600_000 },
-  "@presence": { fields: 500, ttlMs: 24 * 3_600_000 },
-  "@persona": { fields: 200, ttlMs: 3_600_000 },
-  // Cast visits per body; one he said "stay" to can last days.
-  "@cast": { fields: 100, ttlMs: 30 * 24 * 3_600_000 },
-};
-const limitOf = (record: string) => SHARED_RECORDS[record];
-/** Expired shared fields gone; past the cap, the oldest first. */
-const pruned = (record: string, fields: Readonly<Record<string, Stamp>>, now: number) => {
-  const limit = limitOf(record);
-  if (limit === undefined) return fields;
-  return Object.fromEntries(
-    Object.entries(fields)
-      .filter(([, st]) => now - st.at <= limit.ttlMs)
-      .toSorted(([, a], [, b]) => b.at - a.at)
-      .slice(0, limit.fields),
-  );
-};
 
 export interface Stamp {
   readonly v: unknown;
@@ -88,30 +62,24 @@ export interface Change {
 export const mergeRecords = (
   mine: SyncRecords,
   theirs: SyncRecords,
-  now = Number.POSITIVE_INFINITY,
 ): { readonly next: SyncRecords; readonly changed: ReadonlyArray<Change> } => {
   const next: Record<string, Record<string, Stamp>> = Object.fromEntries(
     Object.entries(mine).map(([id, fields]) => [id, { ...fields }]),
   );
   const changed: Array<Change> = [];
   for (const [id, fields] of Object.entries(theirs).slice(0, MAX_RECORDS)) {
-    const limit = limitOf(id);
     const kept = (next[id] ??= {});
-    for (const [field, stamp] of Object.entries(fields).slice(0, limit?.fields ?? MAX_FIELDS)) {
-      if (limit !== undefined && now - stamp.at > limit.ttlMs) continue;
+    for (const [field, stamp] of Object.entries(fields).slice(0, MAX_FIELDS)) {
       if (!replaces(stamp, kept[field])) continue;
       if (kept[field] === undefined || !same(kept[field]!.v, stamp.v))
         changed.push({ record: id, field, v: stamp.v, at: stamp.at });
       kept[field] = stamp;
     }
-    if (limit !== undefined && Number.isFinite(now)) next[id] = { ...pruned(id, kept, now) };
   }
   return { next, changed: changed.toSorted((a, b) => a.at - b.at) };
 };
 
 export type Applier = (record: string, v: unknown) => Effect.Effect<void>;
-/** A shared record's field arrived from another server: its field (an event id, a key), value and stamp time. */
-export type RecordApplier = (field: string, v: unknown, at: number) => Effect.Effect<void>;
 
 export class DeviceSync extends Context.Service<
   DeviceSync,
@@ -132,8 +100,6 @@ export class DeviceSync extends Context.Service<
     readonly get: (record: string) => Effect.Effect<Readonly<Record<string, Stamp>>>;
     /** Runs whenever a field's value came from another server; owners write it to their own state. */
     readonly onMerged: (field: string, apply: Applier) => Effect.Effect<void>;
-    /** Runs for each field of a shared record (SHARED_RECORDS) that came from another server, oldest first. */
-    readonly onRecord: (record: string, apply: RecordApplier) => Effect.Effect<void>;
     /** A linked server's records merged here; answers this server's, so one call syncs both ways. */
     readonly exchange: (theirs: unknown) => Effect.Effect<SyncRecords>;
   }
@@ -178,16 +144,10 @@ const make = Effect.gen(function* () {
     ),
   );
   const appliers = new Map<string, Array<Applier>>();
-  const recordAppliers = new Map<string, Array<RecordApplier>>();
   const push = yield* Queue.sliding<void>(1);
 
   const applyAll = Effect.fn("DeviceSync.applyAll")(function* (changed: ReadonlyArray<Change>) {
     for (const c of changed) {
-      if (limitOf(c.record) !== undefined) {
-        for (const apply of recordAppliers.get(c.record) ?? [])
-          yield* apply(c.field, c.v, c.at).pipe(Effect.ignoreCause({ log: true }));
-        continue;
-      }
       for (const apply of appliers.get(c.field) ?? [])
         yield* apply(c.record, c.v).pipe(Effect.ignoreCause({ log: true }));
     }
@@ -196,7 +156,7 @@ const make = Effect.gen(function* () {
   const merge = Effect.fn("DeviceSync.merge")(function* (theirs: unknown) {
     const decoded = decodeRecords(theirs);
     if (Option.isNone(decoded)) return;
-    const { next, changed } = mergeRecords(state, decoded.value, yield* Clock.currentTimeMillis);
+    const { next, changed } = mergeRecords(state, decoded.value);
     state = next;
     if (changed.length === 0) return;
     yield* persist;
@@ -213,12 +173,8 @@ const make = Effect.gen(function* () {
     const kept = state[record]?.[field];
     if (how === "seen" ? kept !== undefined : kept !== undefined && kept.at > 0 && same(kept.v, v))
       return;
-    const now = yield* Clock.currentTimeMillis;
-    const at = how === "seen" ? 0 : (when ?? now);
-    state = {
-      ...state,
-      [record]: pruned(record, { ...state[record], [field]: { v, at, by: self } }, now),
-    };
+    const at = how === "seen" ? 0 : (when ?? (yield* Clock.currentTimeMillis));
+    state = { ...state, [record]: { ...state[record], [field]: { v, at, by: self } } };
     yield* persist;
     if (how === "changed") Queue.offerUnsafe(push, undefined);
   });
@@ -327,9 +283,6 @@ const make = Effect.gen(function* () {
     }),
     onMerged: Effect.fn("DeviceSync.onMerged")(function* (field: string, apply: Applier) {
       appliers.set(field, [...(appliers.get(field) ?? []), apply]);
-    }),
-    onRecord: Effect.fn("DeviceSync.onRecord")(function* (record: string, apply: RecordApplier) {
-      recordAppliers.set(record, [...(recordAppliers.get(record) ?? []), apply]);
     }),
     exchange: Effect.fn("DeviceSync.exchange")(function* (theirs: unknown) {
       yield* merge(theirs);

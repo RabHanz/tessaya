@@ -37,23 +37,6 @@ it("keeps the newest value per field, the same whichever order servers merge in,
   expect(mergeRecords({}, { x: { f: s(2, 0, "b") } }).changed).toEqual([
     { record: "x", field: "f", v: 2, at: 0 },
   ]);
-  // A shared log: each event once, oldest first, and an expired one never comes back from a peer to apply again.
-  const H = 3_600_000;
-  const log = mergeRecords(
-    { "@mood": { e1: s("a", 10 * H, "home") } },
-    {
-      "@mood": {
-        e1: s("a", 10 * H, "home"),
-        e3: s("c", 13 * H, "cloud"),
-        e2: s("b", 12 * H, "cloud"),
-      },
-    },
-    14 * H,
-  );
-  expect(log.changed.map((c) => c.field)).toEqual(["e2", "e3"]);
-  const later = mergeRecords(log.next, { "@mood": { e0: s("z", 1 * H, "cloud") } }, 24 * H);
-  expect(later.changed).toEqual([]);
-  expect(Object.keys(later.next["@mood"]!).toSorted()).toEqual(["e2", "e3"]);
 });
 
 it.effect(
