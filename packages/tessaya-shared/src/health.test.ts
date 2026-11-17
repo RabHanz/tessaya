@@ -111,8 +111,9 @@ describe("diagnose", () => {
     );
     expect(d.severity).toBe("down");
     expect(d.findings[0]!.key).toBe("memory:orion");
-    expect(d.summary).toMatch(/orion is out of memory and swapping/i);
-    expect(d.summary).toMatch(/speech engine took 1\.8 s/);
+    expect(d.summary).toBe(
+      "Orion is short of memory and swapping. Speech waited 1.8 s (usually under 0.8 s).",
+    );
     expect(d.findings.some((f) => f.key.startsWith("stage:"))).toBe(false);
   });
   it("says nothing heard her name while the voice loop was stopped, and the turns her server missed", () => {
