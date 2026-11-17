@@ -472,11 +472,11 @@ export const startTessayaDesktop = Effect.gen(function* () {
     );
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
-      voice: () =>
+      voice: (persona) =>
         chooseVoice(
-          screen?.voice() ?? DEFAULT_POCKET_VOICE,
-          screen?.cloudVoice() ?? null,
-          screen?.cloneVoice() ?? null,
+          screen?.voice(persona) ?? DEFAULT_POCKET_VOICE,
+          screen?.cloudVoice(persona) ?? null,
+          screen?.cloneVoice(persona) ?? null,
         ),
       player: voicePlayer,
       silent: () => screen?.writtenOnly() ?? false,
@@ -930,9 +930,9 @@ export const startTessayaDesktop = Effect.gen(function* () {
         openPlace: (place) => voice?.openHome(place),
         deskTurn,
         privateMemory,
-        speak: (text) => {
+        speak: (text, persona) => {
           spokenThisTurn.push(text);
-          return speaker.speak(text);
+          return speaker.speak(text, persona);
         },
         onChange: () => voice?.refresh(),
         onTurnEnd: () => voice?.onTurnEnd(),

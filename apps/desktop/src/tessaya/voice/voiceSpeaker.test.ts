@@ -435,3 +435,46 @@ describe("silencing a reply of several sentences", () => {
     expect(said).toEqual(["one."]);
   });
 });
+
+describe("a line said as a persona", () => {
+  it("is said in that persona's voice, once it loads, while a line without one keeps the voice chosen now", async () => {
+    const said: string[] = [];
+    const voiceOf = (name: string): VoiceChoice => ({
+      kind: "synth",
+      synth: (text) => {
+        said.push(`${name}: ${text}`);
+        return {
+          stream: (async function* () {
+            yield Buffer.alloc(2);
+          })(),
+          cancel: () => {},
+        };
+      },
+    });
+    let release!: (ok: boolean) => void;
+    const loaded = new Promise<boolean>((resolve) => (release = resolve));
+    let freyaReady = false;
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async () => {} },
+      // Freya's voice is still downloading when her line is queued.
+      voice: (persona) =>
+        persona !== "companion"
+          ? voiceOf("eve")
+          : freyaReady
+            ? voiceOf("azelma")
+            : { kind: "wait", ready: loaded },
+      player: { ...player, play: async (wav) => (await drain(wav), true) },
+    });
+    const queue = queueSpeech(speaker.speak);
+    queue.add("Hello from Freya.", undefined, "companion");
+    queue.add("And from Tessaya.");
+    freyaReady = true;
+    release(true);
+    await queue.finished();
+    // Each line's words go to its own voice (the text is respelled for the engine: "Fray-uh").
+    expect(said.filter((s) => s.includes("from")).map((s) => s.split(" from ")[0])).toEqual([
+      "eve: And",
+      "azelma: Hello",
+    ]);
+  });
+});
