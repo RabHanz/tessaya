@@ -3,8 +3,8 @@
 /**
  * Her working mood, one row per persona: a general mood tied to no one and a relationship per person (a member, or a
  * stranger by people-graph id) with her opinion and their story, shaped by the persona's dials. Nothing that decides
- * what she may do reads this service (§7). Only her brain appraises (BrainHost); presence anywhere means he is not
- * away (B-044).
+ * what she may do reads this service (§7). Each event made here also goes to his other servers (DeviceSync `@mood`,
+ * id-deduped, oldest first) and each appraises it into its own row; presence anywhere means he is not away (B-044).
  */
 import {
   DEFAULT_AFFECT_SETTINGS,
@@ -37,12 +37,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import { DeviceSync } from "../home/DeviceSync.ts";
 import { makeBrainLink } from "./BrainHost.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -78,11 +80,13 @@ export class TessayaMood extends Context.Service<
     ) => Effect.Effect<AffectView>;
     /**
      * One typed event: the world's (an outcome, a job) to the general mood, a person's to `member`'s relationship.
+     * `source` names what was observed (a device), so two servers that saw the same act count it once.
      */
     readonly note: (
       persona: string | undefined,
       event: Exclude<AffectEvent, { kind: "his_turn" }>,
       member?: string | null,
+      source?: string,
     ) => Effect.Effect<void>;
     /**
      * The one cheap read of a turn (MA-021): how their words treat her, the talk's topic and how they seem, a joke or
@@ -140,8 +144,26 @@ const LEAD = "executive";
 /** How often a listener's mood is read again for what time alone changes (lonely builds over hours). */
 const SWEEP = "5 minutes";
 
+/** A mood event as it travels between his servers (`@mood`, keyed by its id). */
+const MOOD_RECORD = "@mood";
+const SyncedEvent = Schema.Struct({
+  p: Schema.String.check(Schema.isMaxLength(60)),
+  m: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
+  // The event whole (its kind plus fields such as `ok`, `day`, `emotion`): a Struct would strip those.
+  e: Schema.Record(Schema.String, Schema.Unknown),
+  /** The act's identity across servers: what happened, to whom, where. */
+  k: Schema.optional(Schema.String.check(Schema.isMaxLength(400))),
+  origin: Schema.optional(Schema.String.check(Schema.isMaxLength(80))),
+});
+const decodeSynced = Schema.decodeUnknownOption(SyncedEvent);
 /** How often presence may refresh someone's time seen (one write a minute at most). */
 const SEEN_EVERY_MS = 60_000;
+/** One act heard by two of his servers (both hubs hear one lift) lands within this of itself; then it counts once. */
+const SAME_ACT_MS = 10_000;
+const ACT_MEMORY_MS = 12 * 3_600_000;
+const actKey = (persona: string, member: string | null, event: unknown, source?: string) =>
+  JSON.stringify([persona, member, event, source ?? null]);
+
 const clockIn = (at: number, timeZone: string) => {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -179,8 +201,33 @@ const make = Effect.gen(function* () {
   /** A write happened: listeners read the view again. */
   const moved = yield* PubSub.sliding<void>(1);
   const oneShot = yield* Effect.serviceOption(TessayaOneShot);
+  const sync = yield* Effect.serviceOption(DeviceSync);
   const brain = yield* makeBrainLink;
+  let sent = 0;
   const people = yield* Effect.serviceOption(TessayaPeople);
+  /**
+   * The acts appraised here, by key: when, which server saw it, and the other servers' copies it already stands for.
+   * A copy from another server close in time is the same act; each copy pairs with one act, so real repeats still count.
+   */
+  const applied = new Map<
+    string,
+    Array<{ readonly at: number; readonly origin: string; readonly stands: Set<string> }>
+  >();
+  const twinApplied = (key: string, at: number, origin: string) => {
+    const twin = applied
+      .get(key)
+      ?.find(
+        (a) => a.origin !== origin && !a.stands.has(origin) && Math.abs(a.at - at) <= SAME_ACT_MS,
+      );
+    twin?.stands.add(origin);
+    return twin !== undefined;
+  };
+  const remember = (key: string, at: number, origin: string) =>
+    applied.set(key, [
+      ...(applied.get(key) ?? []).filter((a) => at - a.at <= ACT_MEMORY_MS),
+      { at, origin, stands: new Set() },
+    ]);
+
   const pack = () =>
     Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath));
   const personaOf = (id: string | undefined) => {
@@ -222,6 +269,7 @@ const make = Effect.gen(function* () {
     event: (day: string, dials: Dials) => AffectEvent,
     timeZone: string | undefined,
     member: string | null,
+    source?: string,
   ) {
     const current = yield* moodSettings;
     if (!current.enabled) return yield* clear;
@@ -234,10 +282,32 @@ const make = Effect.gen(function* () {
       yield* brain.send("mood", { p: persona, m: member, e: resolved });
       return;
     }
-    yield* appraiseInto(persona, resolved, now, member, current.bondCap, dials.forgiveness);
+    const self = Option.isSome(sync) ? sync.value.self : "";
+    const k = actKey(persona, member, resolved, source);
+    // Another server's copy of this very act came first: it already moved her here.
+    if (twinApplied(k, now, self)) return;
+    const reason = yield* appraiseInto(
+      persona,
+      resolved,
+      now,
+      member,
+      current.bondCap,
+      dials.forgiveness,
+    );
+    if (reason === null) return;
+    remember(k, now, self);
+    // Its provenance travels with it: the id (the field), when (the stamp), which server, who, why, and the act.
+    if (Option.isSome(sync))
+      yield* sync.value.put(
+        MOOD_RECORD,
+        `${self}:${now}:${sent++}`,
+        { p: persona, m: member, e: resolved, k, origin: self, reason },
+        "changed",
+        now,
+      );
   });
 
-  /** One event into a persona's row at its time (never before the row's own), as her brain heard it. */
+  /** One event into a persona's row at its time (never before the row's own), whichever server saw it. */
   const appraiseInto = (
     persona: string,
     event: AffectEvent,
@@ -258,6 +328,41 @@ const make = Effect.gen(function* () {
         return next.reason;
       }),
     );
+
+  if (Option.isSome(sync)) {
+    // What this server already holds was appraised before a restart: its twins arriving late stay counted once.
+    for (const [id, stamp] of Object.entries(yield* sync.value.get(MOOD_RECORD))) {
+      const held = decodeSynced(stamp.v);
+      if (Option.isSome(held))
+        remember(
+          held.value.k ?? actKey(held.value.p, held.value.m, held.value.e),
+          stamp.at,
+          held.value.origin ?? id.split(":")[0]!,
+        );
+    }
+    yield* sync.value.onRecord(MOOD_RECORD, (id, v, at) =>
+      Effect.gen(function* () {
+        const decoded = decodeSynced(v);
+        const current = yield* moodSettings;
+        if (Option.isNone(decoded) || !current.enabled) return;
+        const { p, m, e } = decoded.value;
+        if (typeof e["kind"] !== "string") return;
+        const { persona, dials } = dialsFor(p, current);
+        const k = decoded.value.k ?? actKey(p, m, e);
+        const origin = decoded.value.origin ?? id.split(":")[0]!;
+        if (twinApplied(k, at, origin)) return;
+        const reason = yield* appraiseInto(
+          persona,
+          e as unknown as AffectEvent,
+          at,
+          m,
+          current.bondCap,
+          dials.forgiveness,
+        );
+        if (reason !== null) remember(k, at, origin);
+      }),
+    );
+  }
 
   /** Someone presence places around her on any vessel, of his servers, is not away from her (B-044). */
   const seenByPresence = Effect.fn("TessayaMood.seenByPresence")(function* (
@@ -355,8 +460,8 @@ const make = Effect.gen(function* () {
   return TessayaMood.of({
     view,
     roomView,
-    note: Effect.fn("TessayaMood.note")(function* (persona, event, member) {
-      yield* apply(persona, () => event, undefined, member ?? null);
+    note: Effect.fn("TessayaMood.note")(function* (persona, event, member, source) {
+      yield* apply(persona, () => event, undefined, member ?? null, source);
     }),
     hisWords: Effect.fn("TessayaMood.hisWords")(function* (persona, said, member, context) {
       const current = yield* moodSettings;

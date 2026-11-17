@@ -50,6 +50,7 @@ import {
   DESKTOP_STATE_SECTIONS,
   PHONE_PAIRING_TOOL,
   TessayaPersonaDraft,
+  TessayaInboxSync,
   VocabularyChange,
 } from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
@@ -982,6 +983,20 @@ const PhonePairingCodeTool = Tool.make(PHONE_PAIRING_TOOL, {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+// His servers swap the cards waiting for his yes, so his phone on any of them shows all (TessayaPhoneInbox).
+const InboxSyncTool = Tool.make("tessaya_inbox_sync", {
+  ...shared,
+  description:
+    "For another of his servers only: its cards waiting for his yes and his answers to this server's, swapped for this server's.",
+  parameters: TessayaInboxSync,
+  success: TessayaInboxSync,
+})
+  .annotate(McpSchema.EnabledWhen, linkedServersOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 // A worker's acts (mood, presence, persona, cards) sent to the one server that is her brain (BrainHost).
 const BrainTool = Tool.make("tessaya_brain", {
   ...shared,
@@ -1108,5 +1123,6 @@ export const TessayaToolkit = Toolkit.make(
   SessionDefaultsTool,
   VoiceArbiterTool,
   PhonePairingCodeTool,
+  InboxSyncTool,
   BrainTool,
 );

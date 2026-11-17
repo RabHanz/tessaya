@@ -2,7 +2,11 @@
  * Settings → Voice → Personas in the ops system: which personas act in the ops system as their own worker, the accounts
  * The ops system shows each, and revoking one (its token leaves the brain). She does the same by voice (ops_access).
  */
-import type { PersonaOpsCallInput, PersonaOpsView } from "@t3tools/tessaya-contracts";
+import {
+  personaOpsDelegation,
+  type PersonaOpsCallInput,
+  type PersonaOpsView,
+} from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useState } from "react";
 
@@ -56,11 +60,15 @@ export function PersonaOpsAccess(props: { readonly environmentId: EnvironmentId 
               ? `No token on the brain: it can’t act in ${view.name}.`
               : p.accounts === null
                 ? (p.error ?? `${view.name} didn’t answer.`)
-                : p.accounts.length === 0
-                  ? `${view.name} shows it no warm-up schedules yet.`
-                  : `Warm-up schedules: ${p.accounts
-                      .map((a) => `@${a.account} on ${a.platform}${a.enabled ? "" : " (paused)"}`)
-                      .join(", ")}`
+                : p.delegated === true
+                  ? p.accounts.length === 0
+                    ? `${view.name} has given it no accounts yet.`
+                    : `Accounts: ${p.accounts.map(personaOpsDelegation).join(", ")}`
+                  : p.accounts.length === 0
+                    ? `${view.name} shows it no warm-up schedules yet.`
+                    : `Warm-up schedules: ${p.accounts
+                        .map((a) => `@${a.account} on ${a.platform}${a.enabled ? "" : " (paused)"}`)
+                        .join(", ")}`
           }
           control={
             p.hasToken ? (
