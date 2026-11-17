@@ -6,6 +6,9 @@
 import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
 import {
   GESTURES,
+  INTIMATE_FACES,
+  INTIMATE_STATES,
+  STILL,
   beastkin,
   faceWeights,
   mouthWeights,
@@ -13,11 +16,15 @@ import {
   swingAt,
   type BodyBone,
   type BodyCue,
+  type Motion,
+  type States,
   type Weights,
 } from "@t3tools/tessaya-shared/bodyCues";
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+import { applyMotion, makeOverlays, stateWeights, styleOf, type Style } from "./intimate";
 
 /** Tiers from cheapest: pixel ratio, antialiasing and the frame ceiling while talking. */
 const TIERS = [
@@ -32,6 +39,10 @@ const BLINK_MS = 160;
 /** Spring bones (hair, cloth) settle for this long after the last move. */
 const SETTLE_MS = 600;
 const LEVEL_HOLD_MS = 400;
+/** Breathing alone is slow: drawn at this ceiling unless something faster moves too. */
+const BREATH_FPS = 12;
+/** How quickly the intimate states and motion follow their targets (per second, exponential). */
+const FOLLOW = 3;
 const TOUCH_BONES: ReadonlyArray<BodyBone> = [
   "head",
   "neck",
@@ -103,7 +114,20 @@ export function mountBody(
   let faceTo: Weights = {};
   let faceAt = 0;
   let look: string | null = null;
-  let override: { face: Weights; until: number } | null = null;
+  let override: {
+    face: Weights;
+    states?: States;
+    motion?: Partial<Motion>;
+    until: number;
+  } | null = null;
+  // the intimate set: where the private layer wants it, and where it is on the way there
+  let statesTo: States = {};
+  let states: States = {};
+  let motionTo: Motion = STILL;
+  let motion: Motion = STILL;
+  let style: Style = "anime";
+  let overlays: ReturnType<typeof makeOverlays> | null = null;
+  let own = new Set<string>();
   let speech: { track: ReadonlyArray<VisemeSegment>; start: number; end: number } | null = null;
   let effects: Array<{ at: number; face?: string; gesture?: string }> = [];
   let level: { value: number; viseme?: VisemeSegment["viseme"]; at: number } | null = null;
@@ -136,7 +160,22 @@ export function mountBody(
     invalidate();
   };
 
-  const busy = (now: number) =>
+  const target = () => ({
+    states: { ...statesTo, ...override?.states },
+    motion: { ...motionTo, ...override?.motion },
+  });
+  const settling = () => {
+    const t = target();
+    return (
+      INTIMATE_STATES.some((n) => Math.abs((states[n] ?? 0) - (t.states[n] ?? 0)) > 0.01) ||
+      (["breath", "tremble", "arch"] as const).some((k) => Math.abs(motion[k] - t.motion[k]) > 0.01)
+    );
+  };
+  /** Only breathing (and slow settling) runs: the slow frame ceiling is enough. */
+  const breathing = () =>
+    motion.breath > 0.01 || motion.tremble > 0.01 || motion.arch > 0.01 || settling();
+
+  const active = (now: number) =>
     speech !== null ||
     level !== null ||
     gestures.length > 0 ||
@@ -150,6 +189,7 @@ export function mountBody(
     if (vrm === null) return;
     const bone = (b: BodyBone) => vrm!.humanoid.getNormalizedBoneNode(b);
     for (const b of [
+      "hips",
       "head",
       "neck",
       "spine",
@@ -193,7 +233,13 @@ export function mountBody(
       for (const e of effects.filter((e) => now >= e.at)) {
         if (e.gesture !== undefined) gestures.push({ name: e.gesture, start: now });
         if (e.face !== undefined) {
-          override = { face: faceWeights(e.face, 1), until };
+          const intimate = Object.hasOwn(INTIMATE_FACES, e.face)
+            ? INTIMATE_FACES[e.face]
+            : undefined;
+          override =
+            intimate === undefined
+              ? { face: faceWeights(e.face, 1), until }
+              : { ...intimate, until };
           setFace(override.face, now);
         }
       }
@@ -207,8 +253,31 @@ export function mountBody(
     const b = now - blinkAt;
     const blink = b < BLINK_MS ? Math.sin((Math.PI * b) / BLINK_MS) : 0;
 
+    // the intimate set eases toward where the layer (or a word-timed face) wants it
+    const to = target();
+    const f = 1 - Math.exp(-FOLLOW * delta);
+    states = Object.fromEntries(
+      INTIMATE_STATES.map((n) => [
+        n,
+        (states[n] ?? 0) + ((to.states[n] ?? 0) - (states[n] ?? 0)) * f,
+      ]),
+    );
+    motion = {
+      breath: motion.breath + (to.motion.breath - motion.breath) * f,
+      breathHz: to.motion.breathHz,
+      tremble: motion.tremble + (to.motion.tremble - motion.tremble) * f,
+      arch: motion.arch + (to.motion.arch - motion.arch) * f,
+    };
+    restPose();
+    const exhale = applyMotion((n) => vrm!.humanoid.getNormalizedBoneNode(n), motion, now / 1000);
+    const added = stateWeights(states, style, exhale, (n) => own.has(n));
+    overlays?.set(states);
+
     const em = vrm.expressionManager;
     if (em !== undefined) {
+      for (const n of own) em.setValue(n, states[n as keyof States] ?? 0);
+      // rolled-up eyes through the model's own lookAt (three-vrm: negative pitch looks up)
+      if (vrm.lookAt && !own.has("eyesRoll")) vrm.lookAt.pitch = -25 * (states.eyesRoll ?? 0);
       for (const p of [
         "happy",
         "angry",
@@ -223,11 +292,16 @@ export function mountBody(
         "blink",
         "blinkLeft",
       ] as const)
-        em.setValue(p, Math.min(1, (face[p] ?? 0) + (mouth[p] ?? 0) + (p === "blink" ? blink : 0)));
+        em.setValue(
+          p,
+          Math.min(
+            1,
+            (face[p] ?? 0) + (mouth[p] ?? 0) + (added[p] ?? 0) + (p === "blink" ? blink : 0),
+          ),
+        );
       if (look !== null) em.setValue(look, 1);
     }
 
-    restPose();
     gestures = gestures.filter((g) => {
       const move = GESTURES[g.name];
       if (move === undefined || now - g.start >= move.ms) return false;
@@ -241,12 +315,16 @@ export function mountBody(
     if (speech !== null || level !== null) lastMove = now;
 
     const wagging = now - kinAt < WAG_MS;
-    for (const e of ears) e.node.rotation.x = e.x - kin.earPitch;
+    const sec = now / 1000;
+    for (const [i, e] of ears.entries())
+      e.node.rotation.x = e.x - kin.earPitch + kin.earQuiver * Math.sin(sec * 31 + i * 1.7);
     for (const [i, t] of tails.entries()) {
       const fade = wagging ? Math.sin((Math.PI * (now - kinAt)) / WAG_MS) : 0;
       t.node.rotation.y =
         t.y +
-        kin.tailAmp * fade * Math.sin((2 * Math.PI * kin.tailHz * (now - kinAt)) / 1000 - i * 0.6);
+        kin.tailAmp * fade * Math.sin((2 * Math.PI * kin.tailHz * (now - kinAt)) / 1000 - i * 0.6) +
+        // a slow sway with her breath while she is stirred
+        0.12 * motion.breath * Math.sin(Math.PI * motion.breathHz * sec - i * 0.5);
       t.node.rotation.x = t.x + kin.tailDroop / Math.max(1, tails.length);
     }
     for (const p of props.values()) if (p.on) p.mixer?.update(delta * p.rate);
@@ -262,7 +340,8 @@ export function mountBody(
       slow = 0;
       resize();
     }
-    if (busy(now)) schedule(1000 / TIERS[tier]!.fps);
+    if (active(now) || motion.tremble > 0.05) schedule(1000 / TIERS[tier]!.fps);
+    else if (breathing()) schedule(1000 / Math.min(BREATH_FPS, TIERS[tier]!.fps));
     else planBlink();
   };
 
@@ -311,6 +390,11 @@ export function mountBody(
       VRMUtils.deepDispose(vrm.scene);
     }
     vrm = next;
+    overlays?.dispose();
+    style = styleOf(next);
+    overlays = makeOverlays(next, style);
+    // states the model carries itself as custom expressions win over the built ones
+    own = new Set(INTIMATE_STATES.filter((n) => next.expressionManager?.getExpression(n)));
     const humanoid = new Set(Object.values(vrm.humanoid.humanBones).map((b) => b?.node));
     ears = [];
     tails = [];
@@ -355,6 +439,12 @@ export function mountBody(
       const gltf = await loader.loadAsync(c.url);
       if (disposed) return VRMUtils.deepDispose(gltf.scene);
       dropProp(c.id);
+      // a prop's `attach` node is its grip: that point sits on the bone
+      const grip = gltf.scene.getObjectByName("attach");
+      if (grip) {
+        gltf.scene.updateMatrixWorld(true);
+        gltf.scene.position.sub(grip.getWorldPosition(new THREE.Vector3()));
+      }
       vrm.humanoid.getNormalizedBoneNode(c.bone ?? "rightHand")?.add(gltf.scene);
       const mixer = gltf.animations.length > 0 ? new THREE.AnimationMixer(gltf.scene) : null;
       for (const clip of gltf.animations) mixer?.clipAction(clip).play();
@@ -375,6 +465,8 @@ export function mountBody(
     effects = [];
     gestures = [];
     override = null;
+    statesTo = {};
+    motionTo = STILL;
     setFace(faceWeights("neutral", 0));
   };
 
@@ -416,6 +508,9 @@ export function mountBody(
         kin = beastkin(c);
         kinAt = now;
         look = c.look ?? null;
+        statesTo = c.states ?? {};
+        motionTo = c.motion ?? STILL;
+        invalidate();
         if (override === null) setFace(faceWeights(c.mood, c.intensity), now);
         return;
       case "gesture":
@@ -500,6 +595,7 @@ export function mountBody(
       seen.disconnect();
       sized.disconnect();
       for (const id of props.keys()) dropProp(id);
+      overlays?.dispose();
       if (vrm !== null) VRMUtils.deepDispose(vrm.scene);
       renderer.dispose();
     },

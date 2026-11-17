@@ -61,6 +61,18 @@ describe("beastkin", () => {
   ] as const)("%s at %s, arousal %s, comfort %s", (mood, intensity, arousal, comfort, holds) => {
     expect(holds(beastkin({ mood, intensity, arousal, comfort }))).toBe(true);
   });
+
+  it("flattens the ears, quivers them and lifts the tail stiff at an arch", () => {
+    const b = beastkin({
+      mood: "happy",
+      intensity: 1,
+      arousal: 1,
+      motion: { breath: 1, breathHz: 1, tremble: 1, arch: 1 },
+    });
+    expect(b.earPitch).toBeLessThan(-0.5);
+    expect(b.earQuiver).toBeGreaterThan(0);
+    expect(b.tailDroop).toBeLessThan(0);
+  });
 });
 
 describe("cue wire", () => {
@@ -73,6 +85,23 @@ describe("cue wire", () => {
     [
       { kind: "mood", mood: "happy", intensity: 0.5, arousal: 0.4, comfort: 9 },
       { kind: "mood", mood: "happy", intensity: 0.5, arousal: 0.4, comfort: 1 },
+    ],
+    // the intimate set: only named states, each clamped, and motion with every field
+    [
+      {
+        kind: "mood",
+        mood: "happy",
+        intensity: 0.5,
+        states: { blush: 2, eyesRoll: 0.5, tongue: 1 },
+        motion: { breath: 0.5, tremble: -1 },
+      },
+      {
+        kind: "mood",
+        mood: "happy",
+        intensity: 0.5,
+        states: { blush: 1, eyesRoll: 0.5 },
+        motion: { breath: 0.5, breathHz: 0.25, tremble: 0, arch: 0 },
+      },
     ],
     [{ kind: "model", persona: "freya", url: "/tessaya/layer/companion/body/model" }, "same"],
     // a cue can never point a body at another host
