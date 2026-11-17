@@ -48,6 +48,7 @@ import {
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
 import * as Fiber from "effect/Fiber";
+import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -334,6 +335,35 @@ const MemoryRememberTool = Tool.make("tessaya_memory_remember", {
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+/** Only the owner's own `t3 memory` command on this machine sees it; no agent does. */
+const memoryCliOnly = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope =
+    fiber && Context.getOrUndefined(fiber.context, McpInvocationContext.McpInvocationContext);
+  return scope?.client?.label === MEMORY_UNLEARN_CLIENT && scope.client.access === "full-access";
+};
+const MemoryUnlearnTool = Tool.make("tessaya_memory_unlearn", {
+  ...shared,
+  description:
+    "Forget memory items and day talk lines learned from audio that was not his (test playback), through the memory service.",
+  parameters: Schema.Struct({
+    ids: Schema.Array(Schema.String.check(Schema.isMaxLength(80))).check(Schema.isMaxLength(50)),
+    talks: Schema.Array(
+      Schema.Struct({
+        day: Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\d$/)),
+        line: Schema.String.check(Schema.isMaxLength(80)),
+      }),
+    ).check(Schema.isMaxLength(100)),
+    why: Schema.String.check(Schema.isMaxLength(200)),
+  }),
+  success: Schema.Struct({ forgotten: Schema.Number, talks: Schema.Number }),
+})
+  .annotate(McpSchema.EnabledWhen, memoryCliOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
@@ -962,6 +992,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryHistoryTool,
   MemoryRememberTool,
   MemoryForgetTool,
+  MemoryUnlearnTool,
   MemoryAboutTool,
   ComingUpTool,
   OwnerDocTool,

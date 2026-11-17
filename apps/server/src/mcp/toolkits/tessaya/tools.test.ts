@@ -2,6 +2,7 @@
 import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import { McpSchema, McpServer, Tool } from "effect/ai";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -35,7 +36,7 @@ it.effect("every Tessaya tool registers with the MCP server", () =>
 // through tessaya_ask, and the job handlers refuse it too (jobs/handlers.ts roomOnly).
 it.effect("an outside agent is not shown the job and schedule acts; the room is", () =>
   Effect.gen(function* () {
-    const shown = (sessionId: string) =>
+    const shown = (sessionId: string, label = "an agent") =>
       Effect.sync(() =>
         Object.values(TessayaToolkit.tools)
           .filter((tool: Tool.Any) => {
@@ -45,7 +46,7 @@ it.effect("an outside agent is not shown the job and schedule acts; the room is"
           .map((tool) => tool.name),
       ).pipe(
         Effect.provideService(McpInvocationContext.McpInvocationContext, {
-          client: { sessionId, label: "an agent", access: "full-access" },
+          client: { sessionId, label, access: "full-access" },
         } as McpInvocationContext.McpInvocationContext["Service"]),
       );
     const outside = yield* shown("outside-agent");
@@ -54,5 +55,8 @@ it.effect("an outside agent is not shown the job and schedule acts; the room is"
     expect(acts.filter((name) => outside.includes(name))).toEqual([]);
     expect(acts.filter((name) => !room.includes(name))).toEqual([]);
     expect(outside).toContain("tessaya_ask");
+    // Unlearning is the owner's own `t3 memory` command's alone: no agent, not even the room, sees it.
+    expect([...outside, ...room]).not.toContain("tessaya_memory_unlearn");
+    expect(yield* shown("cli", MEMORY_UNLEARN_CLIENT)).toContain("tessaya_memory_unlearn");
   }),
 );

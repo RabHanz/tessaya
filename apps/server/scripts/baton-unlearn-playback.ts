@@ -1,8 +1,8 @@
 // @effect-diagnostics globalConsole:off globalConsoleInEffect:off nodeBuiltinImport:off globalDate:off globalJsonInEffect:off
 /**
- * One-off (17 Nov): forgets what she learned from our test playback, through the memory service. Items have no bin, so
- * each goes into `--keep` first and `--restore` adds it back. Lists only without `--apply`; run at an idle gap.
- * Usage: --db <baton.sqlite> --windows <osp-playback-windows.json> --keep <out.json> [--apply] | --db <db> --restore <out.json>
+ * One-off (17 Nov): lists what she learned from our test playback, from a COPY of baton.sqlite (never the live file),
+ * into `--keep`, which also holds each item's full words. `t3 memory unlearn <keep>` then forgets them on the server.
+ * Usage: --db <copy of baton.sqlite> --windows <osp-playback-windows.json> --keep <out.json>
  */
 import * as NodeFS from "node:fs";
 import * as NodeUtil from "node:util";
@@ -20,11 +20,14 @@ const { values: args } = NodeUtil.parseArgs({
     db: { type: "string" },
     windows: { type: "string" },
     keep: { type: "string" },
-    restore: { type: "string" },
-    apply: { type: "boolean", default: false },
   },
 });
-if (args.db === undefined) throw new Error("--db <baton.sqlite> is required");
+const { db, windows, keep } = args;
+if (db === undefined || windows === undefined || keep === undefined)
+  throw new Error(
+    "--db <copy of baton.sqlite>, --windows <json> and --keep <out.json> are required",
+  );
+if (db.includes("/.t3/userdata/")) throw new Error("--db must be a copy, never the live database");
 
 interface Window {
   readonly from: string;
@@ -118,36 +121,8 @@ const find = Effect.fn("unlearnPlayback.find")(function* (wins: ReadonlyArray<Wi
 });
 
 const program = Effect.gen(function* () {
-  const memory = yield* Memory.TessayaMemoryService;
-  if (args.restore !== undefined) {
-    const kept = JSON.parse(NodeFS.readFileSync(args.restore, "utf8")) as Kept;
-    for (const item of kept.items) {
-      const back = yield* memory.add({
-        kind: item.kind,
-        text: item.text,
-        source: item.source,
-        sourceRef: item.sourceRef,
-        scope: item.scope,
-        scopeRef: item.scopeRef,
-        confidence: item.confidence,
-        pinned: item.pinned,
-        expiresAt: item.expiresAt,
-        createdAt: item.createdAt,
-        ...(item.persona === undefined ? {} : { persona: item.persona }),
-        ...(item.visibility === undefined ? {} : { visibility: item.visibility }),
-        ...(item.surface === undefined ? {} : { surface: item.surface }),
-        ...(item.speaker === undefined ? {} : { speaker: item.speaker }),
-      });
-      console.log(`restored ${item.id} as ${back.id}`);
-    }
-    for (const t of kept.talks) yield* memory.noteTalk(t.day, t.line);
-    console.log(`restored ${kept.talks.length} talk lines`);
-    return;
-  }
-  if (args.windows === undefined || args.keep === undefined)
-    throw new Error("--windows <json> and --keep <out.json> are required");
-  const kept = yield* find(acousticWindows(args.windows));
-  NodeFS.writeFileSync(args.keep, JSON.stringify(kept, null, 1));
+  const kept = yield* find(acousticWindows(windows));
+  NodeFS.writeFileSync(keep, JSON.stringify(kept, null, 1));
   console.log(`playback turns: ${kept.turns.length}`);
   for (const t of kept.turns) console.log(`  ${t.at} ${t.heard.slice(0, 90)}`);
   console.log(`memory items to forget: ${kept.items.length}`);
@@ -158,22 +133,10 @@ const program = Effect.gen(function* () {
   // No sighting can be binned alone: a person goes to People's bin whole, which he decides in People.
   console.log(`people sightings during playback (left for People): ${kept.sightings.length}`);
   for (const s of kept.sightings) console.log(`  ${s.at} ${s.entity}`);
-  console.log(`kept in ${args.keep}`);
-  if (!args.apply) return console.log("listed only; --apply forgets them");
-  for (const i of kept.items) {
-    const gone = yield* memory.forget(i.id);
-    if (!gone) throw new Error(`memory item ${i.id} was not forgotten`);
-  }
-  const days = [...new Set(kept.talks.map((t) => t.day))];
-  for (const day of days)
-    yield* memory.dropTalks(
-      day,
-      kept.talks.filter((t) => t.day === day).map((t) => t.line),
-    );
-  console.log(`forgot ${kept.items.length} items and ${kept.talks.length} talk lines`);
+  console.log(`kept in ${keep}; then: t3 memory unlearn ${keep}`);
 });
 
-const layer = Memory.layer.pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename: args.db })));
+const layer = Memory.layer.pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename: db })));
 await Effect.runPromise(
   Effect.scoped(
     Effect.gen(function* () {

@@ -31,6 +31,7 @@ import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -50,6 +51,8 @@ import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { workNow } from "../../../tessaya/TessayaSessionsAcross.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { MemoryViewer, TessayaMemoryService } from "../../../tessaya/TessayaMemoryService.ts";
+import { emitAction } from "../../../tessaya/turnActions.ts";
 import { castLine, castOp, TessayaCast } from "../../../tessaya/TessayaCast.ts";
 import { TessayaVocabulary } from "../../../tessaya/TessayaVocabulary.ts";
 import {
@@ -515,6 +518,42 @@ export const layer = McpToolAccess.toLayer(
               );
             }),
           );
+        }),
+      ),
+      tessaya_memory_unlearn: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          const client = (yield* McpInvocationContext.McpInvocationContext).client;
+          if (client?.label !== MEMORY_UNLEARN_CLIENT || client.access !== "full-access")
+            return yield* new OrchestratorMcpFailure({
+              code: "capability_denied",
+              message: "Only the owner's t3 memory command unlearns.",
+            });
+          const memory =
+            runtime === null ? Option.none() : Context.getOption(runtime, TessayaMemoryService);
+          if (Option.isNone(memory))
+            return yield* new OrchestratorMcpFailure({
+              code: "capability_denied",
+              message: "Memory is not available on this server.",
+            });
+          const unlearn = Effect.gen(function* () {
+            let forgotten = 0;
+            for (const id of input.ids) if (yield* memory.value.forget(id)) forgotten++;
+            let talks = 0;
+            for (const day of new Set(input.talks.map((t) => t.day)))
+              talks += yield* memory.value.dropTalks(
+                day,
+                input.talks.filter((t) => t.day === day).map((t) => t.line),
+              );
+            yield* emitAction({
+              kind: "memory.unlearn",
+              actor: { kind: "owner", id: client.label, certainty: 1 },
+              outcome: `${forgotten} items, ${talks} talk lines`,
+              evidence: input.ids.map((ref) => ({ kind: "memory", ref })),
+              data: { why: input.why, days: input.talks.map((t) => t.day) },
+            });
+            return { forgotten, talks };
+          });
+          return yield* unlearn.pipe(Effect.provideService(MemoryViewer, "server"));
         }),
       ),
       // Read as a client (MemoryViewer's default here): walls hold.

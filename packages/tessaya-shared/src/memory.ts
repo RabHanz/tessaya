@@ -656,3 +656,6 @@ export const datedQuery = (text: string, nowMs: number, timeZone?: string): stri
   ];
   return extra.length === 0 ? text : `${text} ${extra.join(" ")}`;
 };
+
+/** The session label of the owner's `t3 memory` command, the only caller of `tessaya_memory_unlearn`. */
+export const MEMORY_UNLEARN_CLIENT = "t3 memory cli";

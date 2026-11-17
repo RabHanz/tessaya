@@ -14,6 +14,7 @@ import type { TessayaMemoryQuery } from "@t3tools/tessaya-contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
@@ -46,7 +47,7 @@ const thread = ThreadId.make("thread:tessaya");
  * another server of his over an approval-required peer link ("linked").
  */
 const callTool = (
-  caller: AuthMcpClientAccess | "thread" | "room" | "desk-replay" | "linked",
+  caller: AuthMcpClientAccess | "thread" | "room" | "desk-replay" | "linked" | "memory-cli",
   runtime: Context.Context<never>,
   name: keyof (typeof TessayaToolkit)["tools"],
   input: unknown,
@@ -81,14 +82,20 @@ const callTool = (
                     ? ROOM_CLIENT
                     : caller === "desk-replay"
                       ? DESK_REPLAY_CLIENT
-                      : caller === "linked"
+                      : caller === "memory-cli"
                         ? {
                             sessionId,
-                            label: "T3 Code · home server",
-                            access: "approval-required",
-                            linked: true,
+                            label: MEMORY_UNLEARN_CLIENT,
+                            access: "full-access",
                           }
-                        : { sessionId, label: "Claude Code", access: caller },
+                        : caller === "linked"
+                          ? {
+                              sessionId,
+                              label: "T3 Code · home server",
+                              access: "approval-required",
+                              linked: true,
+                            }
+                          : { sessionId, label: "Claude Code", access: caller },
               capabilities: new Set(["orchestration" as const]),
               issuedAt: 0,
             }),
@@ -208,6 +215,31 @@ it.effect(
       expect(result.isFailure).toBe(false);
       expect(result.result).toEqual(found);
     }),
+);
+
+it.effect("only the owner's t3 memory command unlearns, through the memory service's forget", () =>
+  Effect.gen(function* () {
+    const forgot: string[] = [];
+    const dropped: string[] = [];
+    const memory = TessayaMemoryService.of({
+      forget: (id: string) => Effect.sync(() => (forgot.push(id), id !== "gone")),
+      dropTalks: (day: string, lines: ReadonlyArray<string>) =>
+        Effect.sync(() => (dropped.push(...lines.map((l) => `${day} ${l}`)), lines.length)),
+    } as never);
+    const input = {
+      ids: ["ep-1", "gone"],
+      talks: [{ day: "2026-11-17", line: "what is the capital of Japan?" }],
+      why: "test playback",
+    };
+    const runtime = Context.make(TessayaMemoryService, memory) as never;
+    const agent = yield* callTool("full-access", runtime, "tessaya_memory_unlearn", input);
+    expect(agent.result).toMatchObject({ code: "capability_denied" });
+    expect(forgot).toEqual([]);
+    const cli = yield* callTool("memory-cli", runtime, "tessaya_memory_unlearn", input);
+    expect(cli.result).toEqual({ forgotten: 1, talks: 1 });
+    expect(forgot).toEqual(["ep-1", "gone"]);
+    expect(dropped).toEqual(["2026-11-17 what is the capital of Japan?"]);
+  }),
 );
 
 it.effect(
