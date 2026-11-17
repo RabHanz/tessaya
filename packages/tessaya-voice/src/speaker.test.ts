@@ -393,13 +393,15 @@ describe("the speaker identity", () => {
       verified: true,
       own: { score: 0.7, ms: 4_000 },
     };
-    expect(replayChecked(him, -3, 0)).toBe(him);
+    // A pass keeps its logit too, so the metrics can show how near the cut it was.
+    expect(replayChecked(him, -3.5, 0)).toEqual({ ...him, replayScore: -3.5 });
     const played = replayChecked(him, 2, 0);
     expect(played).toMatchObject({
       kind: "guest",
       personId: null,
       verified: false,
       replay: "heard",
+      replayScore: 2,
     });
     // A replay ends his session, so nothing it said lends evidence to the next turn.
     expect(holdVoice(holdVoice(NO_HOLD, him, 0).hold, played, 1).hold).toEqual(NO_HOLD);
@@ -427,6 +429,10 @@ describe("the speaker identity", () => {
     const reply = holdVoice(start.hold, turn("guest", 0.2, 1_800, v(0.8, 0.6, 0)), 10_000);
     expect(reply.identity).toMatchObject({ kind: "owner", lifted: true, verified: false });
     expect(reply.identity.same).toBeCloseTo(0.8);
+    // His own turns in the session carry their likeness to it too, so the metrics show it on every turn.
+    const ownTurn = holdVoice(start.hold, turn("owner", 0.6, 4_000, v(0.6, 0.8, 0)), 5_000);
+    expect(ownTurn.identity.same).toBeCloseTo(0.6);
+    expect(start.identity.same).toBeUndefined();
     // Neither like him nor clearly not (0.3): not his, and his session waits.
     const unsure = holdVoice(reply.hold, turn("guest", 0.2, 1_800, v(0.3, 0.954, 0)), 20_000);
     expect(unsure.identity.kind).toBe("guest");

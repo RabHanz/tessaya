@@ -81,31 +81,40 @@ export const hedge = (
   general: RecogniserTurn,
   budget: () => Promise<void>,
   won: (who: "personal" | "general") => void,
-): RecogniserTurn => ({
-  feed: (pcm) => {
-    personal.feed(pcm);
-    general.feed(pcm);
-  },
-  cancel: () => {
-    personal.cancel();
-    general.cancel();
-  },
-  onPartial: (listener) => general.onPartial?.(listener),
-  finish: async () => {
-    const heard = (who: "personal" | "general", turn: RecogniserTurn) =>
-      turn.finish().then(
-        (text) => (text.trim() === "" ? null : { who, text }),
-        () => null,
-      );
-    const mine = heard("personal", personal);
-    const theirs = heard("general", general);
-    const best =
-      (await Promise.race([mine, budget().then(() => null)])) ?? (await firstWords([mine, theirs]));
-    if (best === null) return "";
-    won(best.who);
-    return best.text;
-  },
-});
+): RecogniserTurn => {
+  let taken: "personal" | "general" | null = null;
+  return {
+    feed: (pcm) => {
+      personal.feed(pcm);
+      general.feed(pcm);
+    },
+    cancel: () => {
+      personal.cancel();
+      general.cancel();
+    },
+    onPartial: (listener) => general.onPartial?.(listener),
+    by: () =>
+      taken === null
+        ? null
+        : { host: (taken === "personal" ? personal : general).by?.()?.host ?? null, hedge: taken },
+    finish: async () => {
+      const heard = (who: "personal" | "general", turn: RecogniserTurn) =>
+        turn.finish().then(
+          (text) => (text.trim() === "" ? null : { who, text }),
+          () => null,
+        );
+      const mine = heard("personal", personal);
+      const theirs = heard("general", general);
+      const best =
+        (await Promise.race([mine, budget().then(() => null)])) ??
+        (await firstWords([mine, theirs]));
+      if (best === null) return "";
+      taken = best.who;
+      won(best.who);
+      return best.text;
+    },
+  };
+};
 
 /** A turn running on one recogniser, and whether that recogniser failed it (refused, unreachable, gone). */
 export interface TurnOn {
@@ -136,11 +145,13 @@ export const turnAcross = (
   let active = open();
   /** Every recogniser has been tried: each gets one more go with the whole turn, so his words are not lost. */
   let retried = false;
+  let answered: string | null = null;
   return {
     feed: (pcm) => {
       fed.push(pcm);
       active?.turn.feed(pcm);
     },
+    by: () => (answered === null ? null : { host: answered.replace(/^wss?:\/\//, "") }),
     cancel: () => active?.turn.cancel(),
     onPartial: (listener) => {
       listeners.push(listener);
@@ -153,6 +164,7 @@ export const turnAcross = (
         const text = await active.turn.finish();
         const ms = clock() - started;
         if (!active.turn.failed()) {
+          answered = active.url;
           done(active.url, ms, false, null);
           return text;
         }

@@ -246,6 +246,14 @@ it.effect(
             id: "t1",
             samples: { asrMs: [1_700, 1_800, 1_900] },
             stalls: [],
+            turns: [
+              {
+                at: now,
+                speaker: "owner",
+                speakerScore: 0.6,
+                recogniser: { host: "voicebox:9000", hedge: "general" },
+              },
+            ],
             voiceHost: {
               host,
               services: [],
@@ -268,9 +276,12 @@ it.effect(
       const { diagnosis } = result.result as {
         diagnosis: { findings: ReadonlyArray<{ key: string; evidence: ReadonlyArray<string> }> };
       };
-      expect(diagnosis.findings.find((f) => f.key === "memory:voicebox")?.evidence[0]).toBe(
+      expect(
+        diagnosis.findings.find((f) => f.key === "memory:voicebox")?.evidence.slice(0, 2),
+      ).toEqual([
         "speech waited 1.8 s (usually under 0.8 s)",
-      );
+        "the last words came from the recogniser on voicebox:9000 (the general model)",
+      ]);
     }),
 );
 

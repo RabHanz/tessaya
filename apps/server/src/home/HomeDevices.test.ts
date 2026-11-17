@@ -164,6 +164,32 @@ it("folds the firmware's topics into a device, keeping only the times of a voice
     },
   );
   assert.notInclude(JSON.stringify(d.log), "unlock the door");
+  // Each turn's Voice ID and recogniser figures are kept for her health model, stamped when heard, never its words.
+  fold(
+    "event/voice/metrics",
+    JSON.stringify({
+      at: "2026-11-18T00:00:00.000Z",
+      text: "unlock the door",
+      speaker: "owner",
+      speakerScore: 0.41,
+      lifted: true,
+      same: 0.62,
+      replay: { verdict: "pass", score: -4.2 },
+      recogniser: { host: "voicebox:9000", hedge: "personal" },
+    }),
+    7_000,
+  );
+  assert.deepStrictEqual<unknown>(devices.get(ID)!.turns, [
+    {
+      at: 7_000,
+      speaker: "owner",
+      speakerScore: 0.41,
+      lifted: true,
+      same: 0.62,
+      replay: { verdict: "pass", score: -4.2 },
+      recogniser: { host: "voicebox:9000", hedge: "personal" },
+    },
+  ]);
   // The room loop's enrolment card is kept for the clients, a malformed one is not, and neither is logged.
   const card = {
     title: "Read these aloud",
