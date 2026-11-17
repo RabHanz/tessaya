@@ -39,15 +39,15 @@ export const pageText = (text: string, chars: number = PAGE_CHARS): ReadonlyArra
  * Every sentence reaches the speaker the moment it exists, so a cancel can reach it. Chaining the
  * calls instead hid the waiting sentences from cancel, and they played on after a stop.
  */
-export const queueSpeech = (speak: (text: string) => Promise<void>) => {
+export const queueSpeech = (speak: (text: string, persona?: string) => Promise<void>) => {
   let last: Promise<void> = Promise.resolve();
   let pending = 0;
   return {
-    /** `onStart` runs as this sentence begins to sound: when everything before it has finished. */
-    add: (text: string, onStart?: () => void): void => {
+    /** `onStart` runs as this sentence begins to sound: when everything before it has finished. `persona` is whose voice. */
+    add: (text: string, onStart?: () => void, persona?: string): void => {
       pending += 1;
       if (onStart !== undefined) void last.then(onStart);
-      const said = speak(text)
+      const said = speak(text, persona)
         .catch(() => undefined)
         .finally(() => (pending -= 1));
       last = Promise.all([last, said]).then(() => undefined);

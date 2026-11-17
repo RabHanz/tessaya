@@ -1345,8 +1345,8 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly notice: (text: string) => void;
   /** An unprompted line: a card, and aloud when `speak` and spoken answers are on. */
   readonly announce: (text: string, speak: boolean, spoken?: string) => void;
-  /** Aloud only, in her voice, when spoken answers are on; false when it was not said. */
-  readonly speak?: (text: string) => boolean;
+  /** Aloud only, in `persona`'s voice (an id) else hers, when spoken answers are on; false when it was not said. */
+  readonly speak?: (text: string, persona?: string) => boolean;
   /** Registers or drops the Transforms shortcuts. */
   readonly setTransformHotkeys?: (on: boolean) => void;
   readonly writtenOnly: () => boolean;
@@ -5142,9 +5142,11 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
                 8_000,
               ),
           }),
-      // Her answer aloud in her own voice, never in quiet hours or Do not disturb.
+      // Its answer aloud in the voice of the persona it wears (the lead's when none), never in quiet hours or Do not disturb.
       speak: (text) => {
-        if (!silenced(new Date())) input.extras?.speak?.(text);
+        if (silenced(new Date())) return;
+        const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas;
+        input.extras?.speak?.(text, persona().persona ?? (pack.find((p) => p.lead) ?? pack[0])?.id);
       },
     });
   const mascot = mirrorBody(

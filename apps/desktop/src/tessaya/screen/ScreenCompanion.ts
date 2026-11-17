@@ -638,14 +638,16 @@ export interface ScreenCompanion {
   /** An unprompted line: a card, and aloud when asked and spoken answers are on. */
   /** Shown in full; when spoken, `spoken` is said instead of the whole text (a job's answer is only announced). */
   readonly announce: (text: string, speak: boolean, spoken?: string) => void;
-  readonly speak: (text: string) => boolean;
+  /** Aloud in `persona`'s voice (an id), else the answering persona's. */
+  readonly speak: (text: string, persona?: string) => boolean;
   /** Spoken answers are off. */
   readonly writtenOnly: () => boolean;
-  readonly voice: () => PocketVoice | "system";
-  /** The speaking persona's Gemini voice (`cloud voice:` in its pack file), or null. */
-  readonly cloudVoice: () => string | null;
-  /** The speaking persona's saved clone (`clone voice:`, its id), or null. */
-  readonly cloneVoice: () => string | null;
+  /** The voice of `persona` (an id), else of the persona answering now. */
+  readonly voice: (persona?: string) => PocketVoice | "system";
+  /** That persona's Gemini voice (`cloud voice:` in its pack file), or null. */
+  readonly cloudVoice: (persona?: string) => string | null;
+  /** That persona's saved clone (`clone voice:`, its id), or null. */
+  readonly cloneVoice: (persona?: string) => string | null;
   readonly volume: () => number;
   /** The one Stop: everything running for him comes down; `quiet` (Esc, a click, "never mind") says nothing. */
   readonly stop: (quiet?: boolean) => void;
@@ -783,8 +785,8 @@ export const startScreenCompanion = (input: {
   readonly privateMemory?: PrivateMemory;
   /** How he wants times said: his household `timeFormat`, read from this machine's server. */
   readonly clockStyle?: () => ClockStyle;
-  /** Baton's one voice, injected so this module never loads the voice models. */
-  readonly speak: (text: string) => Promise<void>;
+  /** Baton's one voice, injected so this module never loads the voice models. `persona` picks whose voice. */
+  readonly speak: (text: string, persona?: string) => Promise<void>;
   /** A turn finished with nothing further coming, for the cue after a wake word. */
   readonly onTurnEnd?: () => void;
   readonly onTimings?: (timings: TurnTimings) => void;
@@ -926,11 +928,11 @@ export const startScreenCompanion = (input: {
   const outsideSaid = new Set<string>();
   let phoneMirror: PhoneMirror | null = null;
   /** False when nothing goes to the voice (written answers, nothing to say). */
-  const say = (text: string, onStart?: () => void): boolean => {
+  const say = (text: string, onStart?: () => void, persona?: string): boolean => {
     if (phoneCapture !== null && text.trim().length > 0) phoneCapture.spoken.push(text.trim());
     if (elsewhere() || settings.output === "written" || text.trim().length === 0) return false;
     spokenFrom ??= Date.now();
-    speech.add(text, onStart);
+    speech.add(text, onStart, persona);
     return true;
   };
   let driver: ReturnType<typeof createInputDriver> | null = null;
@@ -1326,12 +1328,18 @@ export const startScreenCompanion = (input: {
         ? `saved:${heardFrom.personId}`
         : heardFrom.kind;
   /** Quick and System are his choice for the whole machine; otherwise each persona speaks in its own voice. */
-  const voiceNow = (): PocketVoice | "system" =>
+  const voiceNow = (who: Persona = face): PocketVoice | "system" =>
     settings.voice === "quick" || settings.voice === "system"
       ? settings.voice
-      : (POCKET_VOICES as ReadonlyArray<string>).includes(face.voice)
-        ? (face.voice as PocketVoice)
+      : (POCKET_VOICES as ReadonlyArray<string>).includes(who.voice)
+        ? (who.voice as PocketVoice)
         : settings.voice;
+  /** A persona named by id (a desktop character speaking as itself), else the one answering now. */
+  const personaById = (id: string | undefined): Persona =>
+    (id === undefined
+      ? undefined
+      : readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find((p) => p.id === id)) ??
+    face;
   /**
    * The box, and on a voice turn the same question aloud, so no step needs his hands. Whichever he
    * answers first counts; a question that runs out leaves the box up.
@@ -4126,7 +4134,7 @@ export const startScreenCompanion = (input: {
       if (speak) say(spoken ?? text);
       linger("Tessaya", text);
     },
-    speak: (text) => say(text),
+    speak: (text, persona) => say(text, undefined, persona),
     writtenOnly: () => settings.output === "written",
     remoteHands: {
       enabled: () => settings.remoteHands || settings.serverBrain,
@@ -4168,9 +4176,15 @@ export const startScreenCompanion = (input: {
         }
       },
     },
-    voice: voiceNow,
-    cloudVoice: () => (voiceNow() === "system" ? null : (face.cloudVoice ?? null)),
-    cloneVoice: () => (voiceNow() === "system" ? null : (face.cloneVoice ?? null)),
+    voice: (persona) => voiceNow(personaById(persona)),
+    cloudVoice: (persona) => {
+      const who = personaById(persona);
+      return voiceNow(who) === "system" ? null : (who.cloudVoice ?? null);
+    },
+    cloneVoice: (persona) => {
+      const who = personaById(persona);
+      return voiceNow(who) === "system" ? null : (who.cloneVoice ?? null);
+    },
     volume: () => settings.volume,
     ask: windows.ask,
     askMirrored: (box, needs) =>
