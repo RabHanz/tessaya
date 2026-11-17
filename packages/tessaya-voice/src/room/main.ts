@@ -141,6 +141,8 @@ const recognisers = (online: () => boolean) => {
         `${env("R1_RECOGNIZER_URL")}=${env("R1_RECOGNIZER_TOKEN_FILE")}`,
       false,
     ),
+    // `R1_MORE_RECOGNIZERS`: others beside the bundled one (his laptop's), which naming R1_RECOGNIZERS would replace.
+    ...parse(process.env["R1_MORE_RECOGNIZERS"] ?? "", false),
     ...parse(process.env["R1_PERSONAL_RECOGNIZERS"] ?? "", true),
   ];
   let states: RecogniserState[] = list.map((r) => ({
