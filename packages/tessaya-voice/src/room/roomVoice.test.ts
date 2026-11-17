@@ -451,8 +451,13 @@ describe("answering only when he is talking to her", () => {
     expect(voices.at(-1)).toBe("eve");
     expect(
       t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload)),
-      // No acknowledgement here, so the sweep asks for Alfred's look again.
-    ).toEqual(['{"name":"alfred"}', '{"name":"alfred"}', '{"name":"tessaya"}']);
+      // A fresh loop shows the lead's first; no acknowledgement here, so the sweep asks for Alfred's look again.
+    ).toEqual([
+      '{"name":"tessaya"}',
+      '{"name":"alfred"}',
+      '{"name":"alfred"}',
+      '{"name":"tessaya"}',
+    ]);
   });
 
   it("says each group member's words in its own voice, its eyes queued with them, then returns to its own (M-021)", async () => {
@@ -478,7 +483,12 @@ describe("answering only when he is talking to her", () => {
     await t.deps.sleep(5_000);
     expect(
       t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload)),
-    ).toEqual(['{"name":"alfred"}', '{"name":"tessaya"}', '{"name":"tessaya"}']);
+    ).toEqual([
+      '{"name":"tessaya"}',
+      '{"name":"alfred"}',
+      '{"name":"tessaya"}',
+      '{"name":"tessaya"}',
+    ]);
   });
 
   it("does not chain into a conversation with the room (19:05, 12 Nov): audio alone opens nothing, a stray 'yeah' extends nothing", async () => {
@@ -696,7 +706,11 @@ describe("answering only when he is talking to her", () => {
       expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
         "Can I talk to someone else?",
       ]);
-      expect(t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona"))).toEqual([]);
+      expect(
+        t.published
+          .filter((p) => p.topic.endsWith("/cmd/eye/persona"))
+          .map((p) => String(p.payload)),
+      ).toEqual(['{"name":"tessaya"}']);
     },
   );
 
@@ -1258,6 +1272,7 @@ describe("how her reply sounds and looks on the R1", () => {
       .filter((p) => p.topic.includes("/cmd/eye/"))
       .map((p) => `${p.topic.split("/cmd/eye/")[1]} ${String(p.payload)}`);
     expect(face).toEqual([
+      'persona {"name":"tessaya"}',
       'set {"mood":"attentive"}',
       'gesture {"name":"nodSmall"}',
       'set {"mood":"neutral"}',
@@ -2018,6 +2033,26 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"alfred"}'));
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     expect(logs).toContain(`[${DEV}] eye sent cmd/eye/persona {"name":"alfred"}`);
+  });
+
+  it("puts the eyes of whoever answers on as each session opens (17 Nov, 23:29: Tessaya answered behind Alfred's eyes)", () => {
+    const t = setup();
+    const looks = () =>
+      t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload));
+    const wake = (persona: string) => {
+      t.room.woken(DEV, persona);
+      t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+      t.room.message(`freya/r1/${DEV}/event/session/end`, new Uint8Array());
+    };
+    // A loop just restarted does not know what the eyes show, so it says.
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    t.room.message(`freya/r1/${DEV}/event/session/end`, new Uint8Array());
+    wake("butler");
+    // Alfred again: his eyes are already on, so nothing flickers.
+    wake("butler");
+    // Her name on the next wake: the session opens on the lead, and her eyes come back with it.
+    wake("executive");
+    expect(looks()).toEqual(['{"name":"tessaya"}', '{"name":"alfred"}', '{"name":"tessaya"}']);
   });
 });
 
