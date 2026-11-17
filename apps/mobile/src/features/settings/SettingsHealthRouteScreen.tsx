@@ -12,6 +12,7 @@ import { ControlPill } from "../../components/ui/ControlPill";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import { useEnvironmentQuery } from "../../state/query";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
@@ -96,6 +97,50 @@ function HealthSections(props: {
           ))}
         </SettingsSection>
       ))}
+      <Reports environmentId={props.environmentId} prefix={prefix} />
     </>
+  );
+}
+
+/** The problem reports she sent, as on web's Health page, with withdraw and delete. */
+function Reports(props: { readonly environmentId: EnvironmentId; readonly prefix: string }) {
+  const query = useEnvironmentQuery(
+    tessayaWorkSessions.reportsQuery({ environmentId: props.environmentId, input: {} }),
+  );
+  const send = useAtomCommand(tessayaWorkSessions.reportsCall, "problem report change");
+  const reports = query.data?.reports ?? [];
+  if (reports.length === 0) return null;
+  const act = async (op: "withdraw" | "delete", id: string) => {
+    await send({ environmentId: props.environmentId, input: { op, id } });
+    query.refresh();
+  };
+  return (
+    <SettingsSection title={`${props.prefix}Problem reports`}>
+      {reports.map((r, i) => (
+        <View key={r.id}>
+          <Line
+            title={r.title}
+            detail={`${new Date(r.at).toLocaleString()} · ${r.status === "withdrawn" ? "withdrawn" : r.status === "filed" ? "filed as an issue" : "sent"}`}
+            first={i === 0}
+          />
+          <View className="flex-row gap-2 px-4 pb-3">
+            {r.status === "withdrawn" ? null : (
+              <ControlPill
+                variant="pill"
+                label="Withdraw"
+                accessibilityLabel={`Withdraw the report on ${r.title}`}
+                onPress={() => void act("withdraw", r.id)}
+              />
+            )}
+            <ControlPill
+              variant="pill"
+              label="Delete"
+              accessibilityLabel={`Delete the report on ${r.title}`}
+              onPress={() => void act("delete", r.id)}
+            />
+          </View>
+        </View>
+      ))}
+    </SettingsSection>
   );
 }

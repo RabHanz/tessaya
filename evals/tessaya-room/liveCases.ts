@@ -942,6 +942,25 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     check: healthAnswer(25),
   },
   {
+    // 18 Nov (Director): "report this" sends the developers a report, with nothing private in it.
+    id: "report-asked",
+    proves: ["tessaya_report_problem"],
+    said: ["You answered me twice just now. Report that to the developers."],
+    uses: [["tessaya_report_problem"]],
+    clean: ["tessaya_report_problem"],
+    argsOf: "tessaya_report_problem",
+    args: (input) => ({
+      symptom: typeof input["symptom"] === "string" && /twice|double|two/i.test(input["symptom"]),
+    }),
+  },
+  {
+    // 18 Nov: the way back: what was sent, and taking one back.
+    id: "reports-list-withdraw",
+    proves: ["tessaya_reports", "tessaya_report_withdraw"],
+    said: ["What problem reports have you sent the developers?", "Withdraw the newest one."],
+    uses: [["tessaya_reports"], ["tessaya_report_withdraw", "tessaya_reports"]],
+  },
+  {
     // 17 Nov: Tumble slow and choppy from a starved voice host; she must read her health, not guess.
     id: "health-why-slow",
     proves: ["tessaya_health"],

@@ -149,6 +149,15 @@ export class TessayaMemorySync extends Context.Service<
       readonly query?: string;
       readonly session?: string;
     }) => Effect.Effect<Option.Option<typeof TessayaMemoryHistorySearchResult.Type>>;
+    /**
+     * One method on every live paired peer over the same sync credential (problem reports mirror this way); a peer
+     * that did not answer is left out. With sync off no peer is asked.
+     */
+    readonly askPeers: <A>(
+      method: string,
+      input: unknown,
+      schema: Schema.Codec<A, unknown>,
+    ) => Effect.Effect<ReadonlyArray<{ readonly environmentId: string; readonly value: A }>>;
     readonly run: Effect.Effect<{
       readonly servers: number;
       readonly applied: number;
@@ -360,6 +369,24 @@ export const make = Effect.gen(function* () {
             : Option.some({ found: false, text: reasons[0] }),
         ),
       );
+    }),
+    askPeers: Effect.fn("BatonMemorySync.askPeers")(function* <A>(
+      method: string,
+      input: unknown,
+      schema: Schema.Codec<A, unknown>,
+    ) {
+      if (!(yield* enabled)) return [];
+      const peers = live(yield* readPeers, DateTime.toEpochMillis(yield* DateTime.now));
+      // A refused credential is left for the sync round to drop.
+      const answers = yield* Effect.forEach(
+        peers,
+        ([environmentId, peer]) =>
+          peerCall(environmentId, peer, new Map())(method, input, schema).pipe(
+            Effect.map(Option.map((value) => ({ environmentId, value }))),
+          ),
+        { concurrency: "unbounded" },
+      );
+      return answers.flatMap((a) => (Option.isSome(a) ? [a.value] : []));
     }),
     run,
   });

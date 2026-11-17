@@ -47,6 +47,7 @@ import {
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_HEALTH_WS_METHODS,
+  BATON_REPORTS_WS_METHODS,
   BATON_WS_METHODS,
   TessayaJobPlacementError,
   TessayaRpcGroup,
@@ -142,6 +143,7 @@ import { DeviceSync } from "../home/DeviceSync.ts";
 import { R1Updates } from "../home/R1Updates.ts";
 import { R1Loop } from "../home/R1Loop.ts";
 import * as TessayaHealth from "./TessayaHealth.ts";
+import { ProblemReports } from "./ProblemReports.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { VoiceArbiter } from "../home/VoiceArbiter.ts";
 import { DeviceTriggers } from "../home/DeviceTriggers.ts";
@@ -207,6 +209,7 @@ export type TessayaServices =
   | ProviderRegistry.ProviderRegistry
   | PromptLab
   | TessayaCast
+  | ProblemReports
   | ActionLog;
 
 /** The vessel a memory call comes from: the desktop app's own session, or another client (a browser, the phone page). */
@@ -590,6 +593,19 @@ export const makeHandlers = Effect.gen(function* () {
     // Settings → Health on web, desktop and mobile: the same snapshot and diagnosis as her tool.
     [BATON_HEALTH_WS_METHODS.get]: (input) =>
       run(TessayaHealth.explain(input.symptom ?? "any", { kind: "owner", id: "settings" })),
+    // Settings → Health: the reports with their status, and the way back (withdraw, delete).
+    [BATON_REPORTS_WS_METHODS.call]: (input) =>
+      run(
+        Effect.flatMap(ProblemReports, (r) =>
+          input.op === "sync"
+            ? r.syncSince(input.since ?? 0)
+            : input.op === undefined || input.id === undefined
+              ? r.view
+              : r.call(input.op, input.id),
+        ),
+      ),
+    [BATON_REPORTS_WS_METHODS.feed]: (input) =>
+      run(Effect.flatMap(ProblemReports, (r) => r.feed(input))),
     [BATON_WATCH_WS_METHODS.watchGet]: () =>
       run(
         Effect.gen(function* () {

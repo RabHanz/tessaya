@@ -1558,6 +1558,13 @@ export const ServerSettings = Schema.Struct({
   tessayaPulse: TessayaPulseSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_PULSE)),
   ),
+  // Tessaya: problem reports to the developers (tessaya-shared problemReport.ts): off, silent (sent, never said), or
+  // developer (the owner's live dev feed and triage, and she says one line when she sends one). Off collects nothing.
+  tessayaFeedback: Schema.Literals(["off", "silent", "developer"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("off" as const)),
+  ),
+  // Tessaya: each report also opens a GitHub issue labelled tessaya-report.
+  tessayaFeedbackGithub: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   speechModelId: Schema.String.pipe(
     Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
   ),
@@ -2042,6 +2049,8 @@ export const ServerSettingsPatch = Schema.Struct({
       reminders: Schema.optionalKey(Schema.Boolean),
     }),
   ),
+  tessayaFeedback: Schema.optionalKey(Schema.Literals(["off", "silent", "developer"])),
+  tessayaFeedbackGithub: Schema.optionalKey(Schema.Boolean),
   tessayaPulse: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.optionalKey(Schema.Boolean),

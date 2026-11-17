@@ -125,6 +125,14 @@ import {
 import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
 import { BATON_HEALTH_WS_METHODS, TessayaHealthInput, TessayaHealthResult } from "./health.ts";
 import {
+  BATON_REPORTS_WS_METHODS,
+  DevFeedInput,
+  DevFeedResult,
+  ReportsCallInput,
+  ReportsError,
+  ReportsView,
+} from "./problemReport.ts";
+import {
   TESSAYA_ACTIVITY_WS_METHODS,
   TessayaActivityListInput,
   TessayaActivityListResult,
@@ -868,6 +876,18 @@ const WsTessayaWatchGetRpc = Rpc.make(BATON_WATCH_WS_METHODS.watchGet, {
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
+const WsTessayaReportsCallRpc = Rpc.make(BATON_REPORTS_WS_METHODS.call, {
+  payload: ReportsCallInput,
+  success: ReportsView,
+  error: Schema.Union([ReportsError, EnvironmentAuthorizationError]),
+});
+// The developer feed, live: a maintainer's client long-polls it (`after` = the last `next`), one vessel or all.
+const WsTessayaReportsFeedRpc = Rpc.make(BATON_REPORTS_WS_METHODS.feed, {
+  payload: DevFeedInput,
+  success: DevFeedResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
 const WsTessayaHealthGetRpc = Rpc.make(BATON_HEALTH_WS_METHODS.get, {
   payload: TessayaHealthInput,
   success: TessayaHealthResult,
@@ -1154,6 +1174,8 @@ const BATON_RPCS = [
   WsTessayaJobSplitRpc,
   WsTessayaWatchGetRpc,
   WsTessayaHealthGetRpc,
+  WsTessayaReportsCallRpc,
+  WsTessayaReportsFeedRpc,
   WsTessayaRecordListRpc,
   WsTessayaRecordAppendRpc,
   WsTessayaPulseReactRpc,

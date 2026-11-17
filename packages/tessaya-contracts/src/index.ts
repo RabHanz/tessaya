@@ -44,3 +44,4 @@ export * from "./promptLab.ts";
 export * from "./comms.ts";
 export * from "./expression.ts";
 export * from "./health.ts";
+export * from "./problemReport.ts";

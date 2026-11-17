@@ -133,6 +133,20 @@ describe("the gap detector", () => {
     ]);
     expect(found.map((f) => f.rule)).toEqual(["owner_turn_unverified"]);
   });
+
+  it("flags two turn verdicts on one Tessel a second apart as two loops answering (18 Nov), not two on two Tessels", () => {
+    const verdict = (vessel: string, at: number) =>
+      ev({
+        kind: "room.voice_id",
+        actor: { kind: "owner", id: "owner", certainty: 0.95 },
+        outcome: "owner",
+        data: { vessel },
+        at,
+      });
+    const found = findGaps([verdict("t1", 0), verdict("t1", 900), verdict("t2", 1_000)]);
+    expect(found.map((f) => [f.rule, f.key])).toEqual([["double_turn", "double_turn|t1"]]);
+    expect(findGaps([verdict("t1", 0), verdict("t1", 20_000)])).toEqual([]);
+  });
 });
 
 describe("why", () => {

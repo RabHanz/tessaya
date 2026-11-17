@@ -75,7 +75,7 @@ export function BrainSettingsPanel() {
   );
 }
 
-function Choice<T extends string>({
+export function Choice<T extends string>({
   label,
   value,
   options,

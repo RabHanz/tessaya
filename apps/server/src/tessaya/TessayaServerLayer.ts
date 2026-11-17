@@ -52,6 +52,7 @@ import * as PresenceFeeds from "./PresenceFeeds.ts";
 import * as TessayaPresence from "./TessayaPresence.ts";
 import * as TurnLiveContext from "./TurnLiveContext.ts";
 import * as TessayaPulse from "./TessayaPulse.ts";
+import * as ProblemReports from "./ProblemReports.ts";
 import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
 import * as TurnPools from "./TurnPools.ts";
@@ -224,7 +225,8 @@ const servicesInner = Layer.mergeAll(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
   // through the same door.
-  Layer.provideMerge(IntentExecutor.layer),
+  // Problem reports and the developer feed sit under the pulse, which says her one line when she sends one.
+  Layer.provideMerge(Layer.mergeAll(IntentExecutor.layer, ProblemReports.layer)),
   Layer.provideMerge(SynopsisReactor.layer),
   Layer.provideMerge(OrchestrationReactor.layer),
   Layer.provideMerge(OrchestrationEffects.layer),

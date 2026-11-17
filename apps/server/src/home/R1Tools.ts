@@ -80,6 +80,10 @@ const ROOM_TOOLS = [
   "tessaya_watch",
   // Her health (17 Nov): "why are you slow?", "why didn't you wake?".
   "tessaya_health",
+  // "Report this" on any vessel: one report, the queue, and the way back.
+  "tessaya_report_problem",
+  "tessaya_reports",
+  "tessaya_report_withdraw",
   "tessaya_record",
   "tessaya_rules",
   "tessaya_memory_search",
@@ -200,6 +204,7 @@ export const NOT_IN_ROOM: {
   tessaya_inbox_sync: "only his other servers call it, to show his waiting cards on each",
   household_peer: "only another of this home's linked servers calls it",
   household_voice_forget: "only another of this home's linked servers calls it",
+  tessaya_dev_feed: "a maintainer agent's live tail of the developer feed, never a person's",
   device_sync: "only another of his linked servers calls it, to keep his devices' records alike",
   device_act:
     "the Tessel shows its own eyes, lights and voice as she speaks; the desktop drives them with device_act",

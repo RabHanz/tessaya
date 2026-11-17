@@ -56,6 +56,7 @@ import { houseZone } from "./houseZone.ts";
 import { readDndUntil, readQuietHours } from "./quietHours.ts";
 import { TessayaCommitmentService } from "./TessayaCommitmentService.ts";
 import * as TessayaHealth from "./TessayaHealth.ts";
+import { ProblemReports } from "./ProblemReports.ts";
 import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
@@ -373,6 +374,19 @@ export const sense = Effect.fn("TessayaPulse.sense")(function* (state: PulseStat
       urgent: false,
       told: false,
     });
+  // A report she sent on her own, in the owner's developer mode: one short line, once (its id), by the same gate.
+  const reports = yield* Effect.serviceOption(ProblemReports);
+  if (Option.isSome(reports))
+    for (const r of yield* reports.value.toAnnounce)
+      events.push({
+        ...r,
+        category: "home",
+        at: now,
+        member: null,
+        weight: 60,
+        urgent: false,
+        told: false,
+      });
   const fresh = events.filter((e) => state.reviewed[e.id] === undefined);
   return {
     ...state,

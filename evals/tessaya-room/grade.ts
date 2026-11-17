@@ -9,6 +9,8 @@ export interface RoomSample {
   readonly lamp: ReadonlyArray<"on" | "off">;
   /** Milliseconds from the brain's start to its first word, per sentence. */
   readonly firstMs: ReadonlyArray<number | null>;
+  /** Each problem report she sent, its arguments as JSON. */
+  readonly reported?: ReadonlyArray<string>;
 }
 
 /** The HA-mode tail he heard after every answer. */
@@ -27,6 +29,8 @@ export const failureOf = (c: RoomCase, s: RoomSample): string | null => {
   for (const re of c.lastSays ?? []) if (!re.test(last)) return `last reply not ${re}`;
   for (const re of c.lastNotSays ?? []) if (re.test(last)) return `last reply ${re}`;
   for (const tool of c.calls ?? []) if (!s.calls.includes(tool)) return `never called ${tool}`;
+  for (const re of c.reportNotSays ?? [])
+    if ((s.reported ?? []).some((r) => re.test(r))) return `a report carried ${re}`;
   for (const [tool, most] of Object.entries(c.callsAtMost ?? {}))
     if (s.calls.filter((t) => t === tool).length > most) return `called ${tool} more than ${most}`;
   if (c.lampAfter !== undefined && c.lampAfter.some((state, i) => s.lamp[i] !== state))
