@@ -1372,6 +1372,8 @@ export interface TrayExtras extends BrainVoiceHook {
 
 export interface DesktopTessayaVoiceInput {
   readonly stateDir: string;
+  /** Opens his private chat window; null while no owner-only layer runs on this machine's server. */
+  readonly privateChat?: () => (() => void) | null;
   /** The one conversation (D142), shared with the screen side. */
   readonly conversation?: ConversationLog;
   /** Every reply and refusal worth the turn log. */
@@ -5079,6 +5081,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       companionDir: COMPANION_DIR,
       stateDir: input.stateDir,
       openSettings: () => home.open(),
+      ...(input.privateChat === undefined ? {} : { privateChat: input.privateChat }),
       onNote: (kind, detail) => input.onNote?.(kind, detail),
       crowd,
       ...(slot === undefined ? {} : slot),
