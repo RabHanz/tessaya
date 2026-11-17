@@ -428,8 +428,9 @@ import {
 } from "../channels.ts";
 import {
   choiceDeviceId,
-  backupMics,
+  choiceReason,
   choiceSummary,
+  dictationMics,
   sameMic,
   setMicAt,
   micChannel,
@@ -4049,9 +4050,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     pushContext();
   });
 
+  // shortcut: a silent default is avoided until it is unplugged, the default moves, or he picks a mic; no re-test.
+  let silentMic: { readonly from: string; readonly to: string } | null = null;
   const preference = () => ({
     pinnedLabel: settings.pinnedLabel,
     micOrder: settings.micOrder.map((mic) => mic.name),
+    silent: silentMic,
   });
   const silence = createSilenceWatch({ seconds: () => settings.micSilenceSeconds });
   let chosen: string | null = null;
@@ -4065,7 +4069,11 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     silence.reset();
     // A new microphone has its own room and level: the waveform learns them afresh.
     pillGain.reset();
-    input.onNote?.("mic", now);
+    input.onNote?.("mic", { ...now, from: was.mic, reason: choiceReason(next) });
+    // His own pick is missing: said out loud, not only in the tray's tooltip.
+    if (next.kind === "default" && settings.pinnedLabel !== null) {
+      input.extras?.notice(next.reason);
+    }
     if (now.why === "kept" && was.why !== "kept") {
       const headset = devices.find((d) => d.isDefault === true)?.label ?? "a Bluetooth headset";
       input.extras?.notice(
@@ -4076,6 +4084,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   const reselect = () =>
     choose(selectInputDevice(devices, preference(), choiceSummary(choice).mic));
   const pickMic = (label: string | null) => {
+    silentMic = null;
     save({ pinnedLabel: label });
     void restart();
   };
@@ -4378,14 +4387,15 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   const configureDictation = () => {
     if (sidecar === null) return;
     micWarmSent = micWarmNow();
-    const device = choice.kind === "pinned" ? choice.device.label : null;
+    // Automatic names its default too: a default that hears nothing is then rescued by the mics beside it.
+    const { device, fallbacks } = dictationMics(devices, preference(), choice);
     const baton = settings.dictation === "baton" && parakeetPath !== null;
     sidecar.configure({
       model: parakeetPath,
       hold: baton ? keysOf("hold") : null,
       toggle: baton ? keysOf("toggle") : null,
       device,
-      fallbacks: backupMics(devices, preference(), device),
+      fallbacks,
       micWarmMs: micWarmNow(),
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
@@ -4717,6 +4727,17 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     if (event.ev === "binding") return onBinding(event.id, event.up === true);
     if (event.ev === "mic_switched") {
       input.onNote?.("mic_switched", { from: event.from, to: event.to, why: event.why });
+      if (event.why === "missing") onDeviceChange();
+      // Automatic on a default that heard nothing: wake listening and the next press move to the mic that heard him.
+      else if (
+        settings.pinnedLabel === null &&
+        choice.kind === "default" &&
+        event.from !== null &&
+        event.from === choice.label
+      ) {
+        silentMic = { from: event.from, to: event.to };
+        void restart();
+      }
       return showDictation(`Using ${event.to.replace(/^Microphone \((.*)\)$/, "$1")}`);
     }
     if (event.ev === "key_edge")
@@ -4934,7 +4955,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       });
       if (next !== null) {
         choose(next);
-        note = next.kind === "default" ? next.reason : null;
+        note = next.kind === "default" && settings.pinnedLabel !== null ? next.reason : null;
         configureDictation();
         speakerIdentity.reset();
         await loop?.switchDevice(choiceDeviceId(next));
@@ -5042,8 +5063,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     devices = await listSidecarDevices();
     markPhase("dictation-devices:end");
     reselect();
-    note =
-      choice.kind === "default" && choice.reason.includes("not connected") ? choice.reason : null;
+    note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     configureDictation();
     render();
   };
@@ -7412,6 +7432,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         id: "v.mic",
         section: "Wake and listening",
         label: "Microphone",
+        hint: `In use: ${deviceName()}. ${choiceReason(choice)}`,
         kind: "choice",
         value: settings.pinnedLabel ?? "",
         options: [
@@ -9451,8 +9472,11 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       {
         label: "Microphone",
         submenu: [
+          { label: `In use: ${deviceName()}`, enabled: false },
+          { label: choiceReason(choice), enabled: false },
+          { type: "separator" },
           {
-            label: "Automatic (system default)",
+            label: "Automatic",
             type: "checkbox",
             checked: settings.pinnedLabel === null,
             click: () => pickMic(null),
