@@ -87,7 +87,7 @@ import {
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
 import { eyeClipOf, greetEvent, isLineEvent } from "@t3tools/tessaya-shared/expression";
 import { effectFor, renderFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
-import { type ExpressionMood, TessayaVoicePrint } from "@t3tools/tessaya-contracts";
+import { type ExpressionMood, InputQuality, TessayaVoicePrint } from "@t3tools/tessaya-contracts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -644,6 +644,14 @@ const emotionOf = (voice: unknown): string | undefined => {
     : undefined;
 };
 
+const decodeInput = Schema.decodeUnknownOption(InputQuality);
+/** How his sound came in, as the loop measured it; a malformed one is dropped, and its cause is capped. */
+const inputOf = (voice: unknown): { readonly input?: InputQuality } => {
+  if (typeof voice !== "object" || voice === null || !("input" in voice)) return {};
+  const input = Option.getOrUndefined(decodeInput(voice.input));
+  return input === undefined ? {} : { input: { ...input, cause: input.cause.slice(0, 160) } };
+};
+
 /** The exchange before this one, so "yes, from now on" has a referent when it is learned from. */
 const previousOf = (history: R1Heard["history"]): string | null => {
   const last = history.slice(-2).map((t) => `${t.role}: ${t.content}`);
@@ -774,6 +782,7 @@ export const r1Envelope = (
     tainted: taintedOf(input.voice),
     timeZone,
     ...heardWordsOf(input.voice),
+    ...inputOf(input.voice),
     ...(emotionOf(input.voice) === undefined ? {} : { emotion: emotionOf(input.voice) }),
     // Each turn is a fresh call, with no session holding standing memory.
     sessionless: true,

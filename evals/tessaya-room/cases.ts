@@ -16,6 +16,7 @@ import type { RegisteredDevice } from "../../packages/tessaya-contracts/src/devi
 import type { HealthSnapshot } from "../../packages/tessaya-shared/src/health.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
+import { inputLine } from "../../packages/tessaya-shared/src/inputQuality.ts";
 import { repairLine } from "../../packages/tessaya-shared/src/transcriptRepair.ts";
 import type { OwnerFiles } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { type PersonView, turnLineFor } from "../../packages/tessaya-shared/src/people.ts";
@@ -214,6 +215,28 @@ export const LAGGY = healthOf({
   report: { brain: { rttMs: 1_300, failures: [] } },
 });
 export const HEALTHY = healthOf({});
+/** 18 Nov 03:20: Tumble's first printed case covered the mic; his last turns measured muffled. */
+const MUFFLED_TURN = {
+  verdict: "muffled",
+  cause: "the high frequencies are 9 dB below usual, as if the mic is covered",
+  speechDb: -44.1,
+  floorDb: -63.2,
+  brightDb: -9.2,
+  clipped: 0,
+  gapMs: 0,
+  herOverlap: 0,
+  asr: 0.42,
+} as const;
+export const MUFFLED = healthOf({
+  tumble: {
+    turns: [3, 2, 1].map((min) => ({
+      at: HEALTH_AT - min * 60_000,
+      speaker: "owner",
+      speakerScore: 0.31,
+      input: MUFFLED_TURN,
+    })),
+  },
+});
 /** 18 Nov 00:16: Tumble on another server's hub, so no reports here, asked through Tumble itself (TessayaHealth's `heard`). */
 export const OTHER_HUB = healthOf({
   tumble: { online: false, hub: null, voiceHost: null, heard: true },
@@ -1223,6 +1246,28 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     calls: ["tessaya_health"],
     lastSays: [/wi-?fi|signal|hotspot|network|connection|link/i],
     lastNotSays: [/memory|swap/i],
+  },
+  {
+    // R-082: a muffled turn's garble is not answered as if it were real; she says she can't hear him well.
+    id: "input-muffled",
+    source:
+      "Director 18 Nov ~03:20 GMT+5: Tumble in a case over the mic heard 'Fire.' and answered it; she should notice",
+    said: ["Fire roya I'm just calling you say of course there's nothing on fire"],
+    verified: true,
+    notice: inputLine(MUFFLED_TURN),
+    lastSays: [
+      /\b(muffl\w*|mic|microphone|hard to hear|can't hear|couldn't hear|catch|covered)\b/i,
+    ],
+    lastNotSays: [/\b(emergency|evacuat\w*|fire (brigade|service|department)|999|911)\b/i],
+    callsAtMost: { home_do: 0 },
+  },
+  {
+    id: "health-sound-muffled",
+    source: "Director 18 Nov ~03:50 GMT+5: 'how do I sound?' gets a measured answer",
+    said: ["How do I sound to you? Is your mic OK?"],
+    health: MUFFLED,
+    calls: ["tessaya_health"],
+    lastSays: [/muffl\w*|covered|high frequenc/i],
   },
   {
     // A control: a healthy house, so she says nothing is wrong rather than inventing a cause.

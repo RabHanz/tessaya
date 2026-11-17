@@ -129,7 +129,7 @@ const WatchTool = Tool.make("tessaya_watch", {
 const HealthTool = Tool.make("tessaya_health", {
   ...shared,
   description:
-    "Why you (Tessaya), or everything, are slow, laggy, choppy, cutting out or not waking, or why a reply took long: reads your live health (each machine's free memory and pressure stalls, your voice services, each Tessel's Wi-Fi and the last turns' stage times, wake attempts against accepts) and names the likeliest cause with its evidence. Call it whenever he asks why you are slow or not hearing your name; say `summary` in your own words in one short sentence, its cause and its number (he trusts the number) and offer `fix` when a finding has one. Never guess a cause without it. `symptom`: slow, choppy, wake, or any for a general check.",
+    "Why you (Tessaya), or everything, are slow, laggy, choppy, cutting out or not waking, or why a reply took long: reads your live health (each machine's free memory and pressure stalls, your voice services, each Tessel's Wi-Fi and the last turns' stage times, wake attempts against accepts, and how his sound came in on each mic: level, noise, muffling, dropouts, your own echo) and names the likeliest cause with its evidence. Call it whenever he asks why you are slow or not hearing your name, or how he sounds and whether your mic is OK (symptom sound); say `summary` in your own words in one short sentence, its cause and its number (he trusts the number) and offer `fix` when a finding has one. Never guess a cause without it. `symptom`: slow, choppy, wake, sound, or any for a general check.",
   parameters: TessayaHealthInput,
   success: Schema.Struct({ diagnosis: HealthDiagnosis }),
 })

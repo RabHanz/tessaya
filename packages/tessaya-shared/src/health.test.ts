@@ -188,6 +188,52 @@ describe("diagnose", () => {
     expect(d).toMatchObject({ severity: "ok", findings: [] });
     expect(d.summary).toMatch(/Nothing in my health readings explains that/);
   });
+  it("answers 'how do I sound?' from the measured turns, muffled or clear, on Tumble and in dictation (18 Nov)", () => {
+    const input = (verdict: "good" | "muffled") => ({
+      verdict,
+      cause:
+        verdict === "good"
+          ? ""
+          : "the high frequencies are 9 dB below usual, as if the mic is covered",
+      speechDb: -44,
+      floorDb: -63,
+      brightDb: verdict === "good" ? 0 : -9,
+      clipped: 0,
+      gapMs: 0,
+      herOverlap: 0,
+      asr: null,
+    });
+    const turn = (min: number, verdict: "good" | "muffled") => ({
+      at: NOW - min * 60_000,
+      speaker: "owner",
+      speakerScore: 0.3,
+      input: input(verdict),
+    });
+    const muffled = diagnose(
+      snap({
+        vessels: [
+          tumble({
+            turns: [turn(4, "good"), turn(3, "muffled"), turn(2, "muffled"), turn(1, "muffled")],
+          }),
+        ],
+      }),
+      "sound",
+    );
+    expect(muffled.severity).toBe("degraded");
+    expect(muffled.summary).toMatch(
+      /^On Tumble your sound came in muffled on 3 of the last 4 turns: the high frequencies/,
+    );
+    expect(muffled.findings[0]!.fix).toMatch(/covers the mic/);
+    // Only sound answers a sound question, and a clear one is said with its numbers.
+    expect(
+      diagnose(snap({ vessels: [tumble({ turns: [turn(1, "good")] })] }), "sound").summary,
+    ).toMatch(/^You sound good: on Tumble.*-44 dBFS/);
+    expect(
+      diagnose(snap({ dictation: { at: NOW - 60_000, input: input("muffled") } }), "sound")
+        .findings[0]!.key,
+    ).toBe("sound:dictation");
+    expect(diagnose(snap(), "sound").summary).toMatch(/haven't heard you/);
+  });
 });
 
 describe("healthNotice", () => {

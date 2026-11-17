@@ -13,6 +13,7 @@ import {
   type HealthStage,
   type HealthSymptom,
   type HostHealth,
+  type InputQuality,
   type ServiceHealth,
   type StageStat,
   type VesselHealth,
@@ -302,6 +303,53 @@ const vesselFindings = (v: VesselHealth, now: number): Array<HealthFinding> => {
   return out;
 };
 
+const SOUND_FIX: Record<Exclude<InputQuality["verdict"], "good">, string> = {
+  muffled: "check nothing covers the mic and that its port is open",
+  quiet: "come closer or speak up, or raise the mic gain",
+  noisy: "turn down the noise nearby, or speak closer to the mic",
+  "breaking up": "the audio is dropping on the way: move closer to the Wi-Fi or check the link",
+  echo: "lower my volume, or keep the mic further from my speaker",
+};
+const SOUND_TURNS = 5;
+
+/** How someone sounded lately on one input: a finding when the last turns' sound was not good, null when it was. */
+const soundFinding = (
+  key: string,
+  where: string,
+  inputs: ReadonlyArray<{ readonly at: number; readonly input: InputQuality }>,
+  now: number,
+): HealthFinding | null => {
+  const last = inputs.filter((x) => now - x.at < NOTE_RECENT_MS).slice(-SOUND_TURNS);
+  const latest = last.at(-1)?.input;
+  if (latest === undefined || latest.verdict === "good") return null;
+  const like = last.filter((x) => x.input.verdict === latest.verdict).length;
+  return {
+    key: `sound:${key}`,
+    severity: like >= 3 ? "degraded" : "minor",
+    says: `on ${where} your sound came in ${latest.verdict} on ${like} of the last ${last.length} turn${last.length === 1 ? "" : "s"}: ${latest.cause}`,
+    evidence: [
+      `last turn: speech ${latest.speechDb} dBFS, floor ${latest.floorDb} dBFS, high frequencies ${latest.brightDb} dB against usual${latest.gapMs > 0 ? `, ${latest.gapMs} ms missing` : ""}${latest.asr === null ? "" : `, recogniser sure ${Math.round(latest.asr * 100)}%`}`,
+    ],
+    fix: SOUND_FIX[latest.verdict],
+    symptoms: ["sound"],
+  };
+};
+
+const turnInputs = (v: VesselHealth) =>
+  (v.turns ?? []).flatMap((t) => (t.input === undefined ? [] : [{ at: t.at, input: t.input }]));
+
+/** "How do I sound?" with nothing wrong: the measured answer, not a guess. */
+const soundGood = (s: HealthSnapshot) => {
+  const heard = [
+    ...s.vessels.flatMap((v) => turnInputs(v).map((x) => ({ ...x, where: v.name }))),
+    ...(s.dictation === undefined ? [] : [{ ...s.dictation, where: "dictation" }]),
+  ].filter((x) => s.at - x.at < NOTE_RECENT_MS);
+  const latest = heard.toSorted((a, b) => a.at - b.at).at(-1);
+  return latest === undefined
+    ? "I haven't heard you in the last half hour, so I have nothing to measure your sound by."
+    : `You sound good: on ${latest.where}, your last turn measured clear (speech ${latest.input.speechDb} dBFS, noise ${latest.input.floorDb} dBFS, no dropouts).`;
+};
+
 /** A cause beats a symptom: a stage that is slow because its host is starving says so in one line. */
 const explainsStage = (cause: HealthFinding, stage: HealthFinding) =>
   stage.key.startsWith("stage:") &&
@@ -316,6 +364,10 @@ export const diagnose = (s: HealthSnapshot, symptom: HealthSymptom = "any"): Hea
     ...s.hosts.flatMap((h) => hostFindings(h, s.at)),
     ...serviceFindings(s.services, s.at),
     ...s.vessels.flatMap((v) => vesselFindings(v, s.at)),
+    ...s.vessels.flatMap((v) => soundFinding(v.id, v.name, turnInputs(v), s.at) ?? []),
+    ...[s.dictation].flatMap((d) =>
+      d === undefined ? [] : (soundFinding("dictation", "dictation", [d], s.at) ?? []),
+    ),
     ...s.notes
       .filter((n) => s.at - n.at < NOTE_RECENT_MS)
       .map((n): HealthFinding => ({
@@ -353,9 +405,11 @@ export const diagnose = (s: HealthSnapshot, symptom: HealthSymptom = "any"): Hea
     return {
       severity: "ok",
       summary:
-        symptom === "any"
-          ? "Everything looks healthy: memory, the services, the network and recent turns are all normal."
-          : "Nothing in my health readings explains that: memory, the services, the network and recent turns all look normal.",
+        symptom === "sound"
+          ? soundGood(s)
+          : symptom === "any"
+            ? "Everything looks healthy: memory, the services, the network and recent turns are all normal."
+            : "Nothing in my health readings explains that: memory, the services, the network and recent turns all look normal.",
       findings: [],
     };
   const because = top.evidence[0];

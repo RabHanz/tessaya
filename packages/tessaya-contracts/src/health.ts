@@ -35,6 +35,30 @@ export const ServiceHealth = Schema.Struct({
 });
 export type ServiceHealth = typeof ServiceHealth.Type;
 
+export const INPUT_VERDICTS = ["good", "quiet", "muffled", "noisy", "breaking up", "echo"] as const;
+export type InputVerdict = (typeof INPUT_VERDICTS)[number];
+
+/** How his sound came in on one turn (tessaya-shared/inputQuality), measured from the audio, never its words. */
+export const InputQuality = Schema.Struct({
+  verdict: Schema.Literals(INPUT_VERDICTS),
+  /** The cause in plain words ("the high frequencies are 8 dB below his usual"); "" when good. */
+  cause: Schema.String,
+  /** dBFS of the loud (p90) 20 ms frames, and of the quiet (p10) ones. */
+  speechDb: Schema.Number,
+  floorDb: Schema.Number,
+  /** High-frequency share against his usual (dB): well below zero is muffled. */
+  brightDb: Schema.Number,
+  /** Share of samples at full scale. */
+  clipped: Schema.Number,
+  /** Audio missing from the stream (dropped frames, digital silence), ms. */
+  gapMs: Schema.Number,
+  /** Share of the turn her own voice was sounding over. */
+  herOverlap: Schema.Number,
+  /** Mean recogniser word confidence, when it gave one. */
+  asr: Num,
+});
+export type InputQuality = typeof InputQuality.Type;
+
 export const StageStat = Schema.Struct({ p50: Num, p90: Num, n: Schema.Number });
 export type StageStat = typeof StageStat.Type;
 
@@ -81,6 +105,7 @@ export const VoiceIdTurn = Schema.Struct({
       hedge: Schema.optionalKey(Schema.Literals(["personal", "general"])),
     }),
   ),
+  input: Schema.optionalKey(InputQuality),
 });
 export type VoiceIdTurn = typeof VoiceIdTurn.Type;
 
@@ -129,12 +154,14 @@ export const HealthSnapshot = Schema.Struct({
   /** The room loop's standby state (A9), when this server has a Tessel on its hub. */
   roomLoop: Schema.NullOr(Schema.String),
   notes: Schema.Array(HealthNote),
+  /** The last dictation this server transcribed (desktop, web, phone mics), and how it sounded. */
+  dictation: Schema.optionalKey(Schema.Struct({ at: Schema.Number, input: InputQuality })),
 });
 export type HealthSnapshot = typeof HealthSnapshot.Type;
 
 export const HEALTH_SEVERITIES = ["ok", "minor", "degraded", "down"] as const;
 export type HealthSeverity = (typeof HEALTH_SEVERITIES)[number];
-export const HEALTH_SYMPTOMS = ["slow", "choppy", "wake", "any"] as const;
+export const HEALTH_SYMPTOMS = ["slow", "choppy", "wake", "sound", "any"] as const;
 export type HealthSymptom = (typeof HEALTH_SYMPTOMS)[number];
 
 export const HealthFinding = Schema.Struct({
@@ -146,7 +173,7 @@ export const HealthFinding = Schema.Struct({
   evidence: Schema.Array(Schema.String),
   /** What would fix it, in her words; null when nothing can be done from here. */
   fix: Schema.NullOr(Schema.String),
-  symptoms: Schema.Array(Schema.Literals(["slow", "choppy", "wake"])),
+  symptoms: Schema.Array(Schema.Literals(["slow", "choppy", "wake", "sound"])),
 });
 export type HealthFinding = typeof HealthFinding.Type;
 
@@ -159,7 +186,7 @@ export const HealthDiagnosis = Schema.Struct({
 export type HealthDiagnosis = typeof HealthDiagnosis.Type;
 
 export const TessayaHealthInput = Schema.Struct({
-  /** What he noticed: slow, choppy, not waking; "any" for a general check. */
+  /** What he noticed: slow, choppy, not waking, how he sounds to her; "any" for a general check. */
   symptom: Schema.optionalKey(Schema.Literals(HEALTH_SYMPTOMS)),
 });
 export const TessayaHealthResult = Schema.Struct({

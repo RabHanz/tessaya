@@ -80,6 +80,7 @@ effectIt.live("rejects oversized chunked audio without invoking transcription", 
         Layer.succeed(SpeechService.SpeechService, {
           status: Effect.succeed({ supported: false as const, reason: "test" }),
           prepareModel: Effect.void,
+          heard: Effect.succeed(null),
           models: () => Effect.succeed({ models: [] }),
           downloadModel: () => Effect.succeed({ models: [] }),
           linkModels: () => Effect.succeed({ models: [] }),
@@ -335,6 +336,7 @@ effectIt.effect.each([
       const service = Layer.succeed(SpeechService.SpeechService, {
         status: Effect.succeed({ supported: false as const, reason: "test" }),
         prepareModel: Effect.void,
+        heard: Effect.succeed(null),
         models: () => Effect.succeed({ models: [] }),
         downloadModel: () => Effect.fail(error),
         linkModels: () => Effect.fail(error),

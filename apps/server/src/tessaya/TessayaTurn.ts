@@ -14,6 +14,7 @@ import {
   vesselSubject,
   voiceAssurance,
 } from "@t3tools/tessaya-shared/household";
+import { inputLine } from "@t3tools/tessaya-shared/inputQuality";
 import { memoryBlock } from "@t3tools/tessaya-shared/memory";
 import {
   repairBoundsFor,
@@ -67,11 +68,12 @@ import {
 } from "@t3tools/tessaya-shared/affect";
 import { understandingLine } from "@t3tools/tessaya-shared/understanding";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
+import { SpeechService } from "../speech/SpeechService.ts";
 import { ownerLineFor, personasList } from "./OperatingSystemPack.ts";
 import { TessayaJobService } from "./TessayaJobService.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 import { leadFitLine } from "@t3tools/tessaya-shared/jobs";
-import type { RegisteredDevice, TessayaVoicePrint } from "@t3tools/tessaya-contracts";
+import type { InputQuality, RegisteredDevice, TessayaVoicePrint } from "@t3tools/tessaya-contracts";
 
 export { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
 
@@ -125,6 +127,8 @@ export interface TurnEnvelope {
   readonly words?: ReadonlyArray<HeardWord> | undefined;
   /** The recogniser that heard `words`, whose calibrated bounds judge them ("parakeet-tdt-v3"). */
   readonly recogniser?: string | undefined;
+  /** How their sound came in, measured by the vessel (inputQuality.ts); she mentions it when it was not good. */
+  readonly input?: InputQuality | undefined;
   /**
    * One speaker of a group turn (M-021): its reply is kept under its name, and only the first speaker keeps and
    * learns from his words, so they are not kept once per persona.
@@ -434,6 +438,8 @@ const CONVERSATION_TURNS = 12;
 const CONVERSATION_IDLE_MS = SAME_CONVERSATION_MS;
 /** How soon after a vessel's last exchange a turn Voice ID could not judge still continues it. */
 const THREAD_CARRY_MS = 2 * 60_000;
+/** A dictation this recent may be the turn it became; older words were typed again. */
+const DICTATION_FRESH_MS = 2 * 60_000;
 
 /** Standing memory a sessionless turn carries, as a session's system prompt does (MEMORY.md §5). */
 const STANDING_TOKENS = 600;
@@ -848,6 +854,20 @@ export const make = Effect.gen(function* () {
       .toSorted((a, b) => b.lastAt - a.lastAt);
   });
 
+  /** A desktop, web or phone turn whose words this server just dictated carries that dictation's sound. */
+  const withDictation = Effect.fn("TessayaTurn.dictation")(function* (turn: TurnEnvelope) {
+    if (turn.input !== undefined || turn.vessel.kind === "device") return turn;
+    const speech = yield* Effect.serviceOption(SpeechService);
+    if (Option.isNone(speech)) return turn;
+    const heard = yield* speech.value.heard;
+    const now = yield* Clock.currentTimeMillis;
+    return heard !== null &&
+      now - heard.at < DICTATION_FRESH_MS &&
+      turn.text.toLowerCase().includes(heard.text.trim().toLowerCase())
+      ? { ...turn, input: heard.input }
+      : turn;
+  });
+
   /** A typed turn takes its session's member when the vessel did not name one. */
   const withMember = Effect.fn("TessayaTurn.member")(function* (turn: TurnEnvelope) {
     if (turn.member !== undefined || (turn.speaker !== null && turn.speaker !== undefined))
@@ -884,7 +904,7 @@ export const make = Effect.gen(function* () {
   });
 
   const begin = Effect.fn("TessayaTurn.begin")(function* (raw: TurnEnvelope) {
-    const turn = yield* withMember(raw);
+    const turn = yield* withDictation(yield* withMember(raw));
     const repair = yield* repairFor(turn);
     const conversation = yield* conversationOf(turn);
     // Noise, or words never really heard: no thread, no memory, no mood, no reply.
@@ -979,7 +999,7 @@ export const make = Effect.gen(function* () {
     if (handed !== "") handedTo.delete(key);
     return {
       // An instruction, not remembered data: the brain reads `notice` as hers to act on, the block as his data.
-      notice: [repair === null ? "" : repairLine(repair, turn.text), waiting]
+      notice: [repair === null ? "" : repairLine(repair, turn.text), inputLine(turn.input), waiting]
         .filter((l) => l !== "")
         .join(" "),
       block: [

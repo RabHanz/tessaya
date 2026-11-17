@@ -243,6 +243,30 @@ describe("the room voice loop", () => {
     expect(learnt).toEqual(["headset:owner"]);
   });
 
+  it("tells her and her health when his uplink lost audio mid-turn: he was breaking up (18 Nov)", async () => {
+    const t = setup();
+    let seq = 0;
+    const feed = async (loud: boolean, n: number) => {
+      for (let i = 0; i < n; i += 1) {
+        const bytes = new Uint8Array(16 + 1_920);
+        new DataView(bytes.buffer).setUint32(0, seq, true);
+        bytes.set(frame(loud), 16);
+        t.room.message(`freya/r1/${DEV}/voice/up`, bytes);
+        seq += 1;
+        t.advance(60);
+        await t.room.session(DEV)!.drained();
+      }
+    };
+    t.s2();
+    await feed(true, 10);
+    seq += 8; // 480 ms of his voice that Wi-Fi never delivered
+    await feed(true, 10);
+    await feed(false, 30);
+    expect(t.brainCalls[0]!.tessaya.input).toMatchObject({ verdict: "breaking up", gapMs: 480 });
+    const metrics = t.published.find((p) => p.topic.endsWith("/event/voice/metrics"));
+    expect(JSON.parse(String(metrics!.payload)).input.verdict).toBe("breaking up");
+  });
+
   it("hands his headset's starved or silent mic back to her own without a word, never her own mic's quiet", async () => {
     for (const [flags, quiet, says] of [
       [16, "gap", "starved"],
@@ -2004,6 +2028,7 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       words: "Is it possible to have you turn it on for just one minute.",
       capabilities: ["bt_speaker", "eyes"],
       speaker: expect.objectContaining({ kind: "unverified" }),
+      input: expect.objectContaining({ verdict: expect.any(String) }),
     });
 
     // Nothing follows: the half sentence is answered on its own after the wait.
