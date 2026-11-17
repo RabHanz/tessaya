@@ -37,6 +37,7 @@ import {
   BATON_MEMORY_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_HEALTH_WS_METHODS,
+  BATON_REPORTS_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
   BATON_LIVE_WS_METHODS,
@@ -279,6 +280,16 @@ export function createTessayaWorkSessionAtoms<R, E>(
       label: "environment-data:baton:health-query",
       tag: BATON_HEALTH_WS_METHODS.get,
       staleTimeMs: 30_000,
+    }),
+    // Settings → Health: the problem reports she sent, and withdrawing or deleting one.
+    reportsQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:reports-query",
+      tag: BATON_REPORTS_WS_METHODS.call,
+      staleTimeMs: 30_000,
+    }),
+    reportsCall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:reports",
+      tag: BATON_REPORTS_WS_METHODS.call,
     }),
     castQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:baton:cast-query",

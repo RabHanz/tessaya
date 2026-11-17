@@ -34,6 +34,7 @@ import { clockLine } from "../../packages/tessaya-shared/src/brain.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/osPack.ts";
 import { ownerDoc, ownerLine } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { diagnose } from "../../packages/tessaya-shared/src/health.ts";
+import { reportLine } from "../../packages/tessaya-shared/src/problemReport.ts";
 import { HEALTHY, OWNER, roomCases, type RoomCase } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
 import { answerOf, retried } from "../shared/retry.ts";
@@ -396,6 +397,9 @@ type House = ReturnType<typeof makeHouse>;
 /** What her health reads in each case: `tessaya_health` answers with the real diagnosis of it. */
 const healthOf = new WeakMap<House, NonNullable<RoomCase["health"]>>();
 
+/** The problem reports she sent in each case, their arguments as JSON. */
+const reportedOf = new WeakMap<House, Array<string>>();
+
 /** Each case's R1 starts at the firmware's 0 dB. */
 const volumes = new WeakMap<House, number>();
 /** Which saved Wi-Fi is first on the fake Tessel; home until she moves it. */
@@ -539,6 +543,14 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       return { text: ownerDoc(OWNER.docs, args as { name?: string; section?: string }) };
     case "laptop_ask":
       return { ok: false, error: "your laptop isn't linked to this server, so I can't see it." };
+    case "tessaya_report_problem": {
+      const sent = reportedOf.get(house) ?? [];
+      sent.push(JSON.stringify(args));
+      reportedOf.set(house, sent);
+      return { id: `r${sent.length}`, say: reportLine(String(args["symptom"] ?? "that")) };
+    }
+    case "tessaya_reports":
+      return { reports: [] };
     case "tessaya_health": {
       const symptom = args["symptom"];
       return {
@@ -771,7 +783,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
       lamp.push(house.lamp());
       history.push({ role: "user", content: heard }, { role: "assistant", content: reply });
     }
-    return { replies, calls, lamp, firstMs };
+    return { replies, calls, lamp, firstMs, reported: reportedOf.get(house) ?? [] };
   } finally {
     await mcp?.close();
     NodeFS.rmSync(dir, { recursive: true, force: true });

@@ -28,7 +28,9 @@ import {
   BATON_SESSIONS_WS_METHODS,
   BATON_PROMPT_LAB_WS_METHODS,
   BATON_PULSE_WS_METHODS,
+  BATON_REPORTS_WS_METHODS,
   AuthSettingsWriteScope,
+  AuthEnvironmentMaintainScope,
   TessayaRecordAppendInput,
   DesktopSettingsSetInput,
   AuthGrantScopes,
@@ -69,6 +71,28 @@ describe("who may use the prompt lab and react to her pulse", () => {
     expect(roleCeiling("owner", false)).toContain(AuthSettingsWriteScope);
     for (const role of ["admin", "adult", "child", "guest"] as const)
       expect(roleCeiling(role, false)).not.toContain(AuthSettingsWriteScope);
+  });
+});
+
+describe("who may read, take back and mirror problem reports, and follow the developer feed", () => {
+  it("lets a reader list, only settings:write withdraw or delete, only a sync credential pull, and only a maintainer follow the feed", () => {
+    const call = BATON_REPORTS_WS_METHODS.call;
+    expect(missingTessayaScope(call, [AuthOrchestrationReadScope], {})).toBeNull();
+    expect(
+      missingTessayaScope(call, [AuthOrchestrationReadScope], { op: "delete", id: "r1" }),
+    ).toBe(AuthSettingsWriteScope);
+    expect(
+      missingTessayaScope(call, [AuthTessayaMemorySyncScope], { op: "sync", since: 0 }),
+    ).toBeNull();
+    expect(missingTessayaScope(call, [AuthOrchestrationReadScope], { op: "sync", since: 0 })).toBe(
+      AuthTessayaMemorySyncScope,
+    );
+    expect(
+      missingTessayaScope(BATON_REPORTS_WS_METHODS.feed, AuthStandardClientScopes, {}),
+    ).toBeNull();
+    expect(
+      missingTessayaScope(BATON_REPORTS_WS_METHODS.feed, [AuthOrchestrationReadScope], {}),
+    ).toBe(AuthEnvironmentMaintainScope);
   });
 });
 

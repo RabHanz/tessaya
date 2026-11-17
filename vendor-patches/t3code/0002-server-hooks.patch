@@ -2138,7 +2138,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..60b65aebe752eac019bffd2b7608baeaf1a9faa1 100644
+index 49470541d90be695ad24df030ca6522682a82611..8022cf2441a8ad363efa1b4d07913a77957cb705 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2297,7 +2297,7 @@ index 49470541d90be695ad24df030ca6522682a82611..60b65aebe752eac019bffd2b7608baea
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1510,54 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1510,61 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2349,10 +2349,17 @@ index 49470541d90be695ad24df030ca6522682a82611..60b65aebe752eac019bffd2b7608baea
 +  tessayaPulse: TessayaPulseSettings.pipe(
 +    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TESSAYA_PULSE)),
 +  ),
++  // Tessaya: problem reports to the developers (tessaya-shared problemReport.ts): off, silent (sent, never said), or
++  // developer (the owner's live dev feed and triage, and she says one line when she sends one). Off collects nothing.
++  tessayaFeedback: Schema.Literals(["off", "silent", "developer"]).pipe(
++    Schema.withDecodingDefault(Effect.succeed("off" as const)),
++  ),
++  // Tessaya: each report also opens a GitHub issue labelled tessaya-report.
++  tessayaFeedbackGithub: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1567,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1574,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2366,7 +2373,7 @@ index 49470541d90be695ad24df030ca6522682a82611..60b65aebe752eac019bffd2b7608baea
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +2005,62 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +2012,64 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2407,6 +2414,8 @@ index 49470541d90be695ad24df030ca6522682a82611..60b65aebe752eac019bffd2b7608baea
 +      reminders: Schema.optionalKey(Schema.Boolean),
 +    }),
 +  ),
++  tessayaFeedback: Schema.optionalKey(Schema.Literals(["off", "silent", "developer"])),
++  tessayaFeedbackGithub: Schema.optionalKey(Schema.Boolean),
 +  tessayaPulse: Schema.optionalKey(
 +    Schema.Struct({
 +      enabled: Schema.optionalKey(Schema.Boolean),
@@ -2429,7 +2438,7 @@ index 49470541d90be695ad24df030ca6522682a82611..60b65aebe752eac019bffd2b7608baea
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +2069,25 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +2078,25 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2455,7 +2464,7 @@ index 49470541d90be695ad24df030ca6522682a82611..60b65aebe752eac019bffd2b7608baea
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2337,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2346,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

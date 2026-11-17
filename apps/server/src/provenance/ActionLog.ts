@@ -49,6 +49,13 @@ let origin = "local";
 
 const randomBytes = (n: number) => new Uint8Array(NodeCrypto.randomBytes(n));
 
+const listeners = new Set<(e: ActionEnvelope) => void>();
+/** Each public action as it is recorded (the developer feed); a private one never reaches a listener. */
+export const onAction = (listener: (e: ActionEnvelope) => void): (() => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
 /** Records one action now, for code outside Effect (a Promise hook, a socket callback). Returns its id. */
 export const emitActionSync = (
   input: ActionInput,
@@ -62,6 +69,14 @@ export const emitActionSync = (
     cause: ctx.cause ?? [],
   });
   pending.push({ envelope, private: input.private === true });
+  if (input.private !== true)
+    for (const listener of listeners) {
+      try {
+        listener(envelope);
+      } catch {
+        // A listener (the developer feed) never breaks recording.
+      }
+    }
   if (pending.length > PENDING_MAX) {
     droppedCount += pending.length - PENDING_MAX;
     pending = pending.slice(-PENDING_MAX);

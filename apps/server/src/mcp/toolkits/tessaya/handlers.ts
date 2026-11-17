@@ -27,6 +27,7 @@ import {
 import { activityText } from "../../../provenance/activityText.ts";
 import { houseZone } from "../../../tessaya/houseZone.ts";
 import * as TessayaHealth from "../../../tessaya/TessayaHealth.ts";
+import { ProblemReports } from "../../../tessaya/ProblemReports.ts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Clock from "effect/Clock";
@@ -268,6 +269,15 @@ export const layer = McpToolAccess.toLayer(
         ? Effect.fail({ reason: "Wake-word training is not available on this server." })
         : f(wake.value).pipe(Effect.provideContext(runtime));
     };
+    const withReports = <A, E>(
+      f: (reports: ProblemReports["Service"]) => Effect.Effect<A, E>,
+    ): Effect.Effect<A, E | { readonly reason: string }> => {
+      const reports = runtime === null ? Option.none() : Context.getOption(runtime, ProblemReports);
+      // Her health and the log are read in Tessaya's context, as tessaya_health does.
+      return Option.isNone(reports) || runtime === null
+        ? Effect.fail({ reason: "Problem reports are not available on this server." })
+        : f(reports.value).pipe(Effect.provideContext(runtime));
+    };
     // The same handlers as the clients' RPC, behind T3's read check for this credential.
     const call = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       readCaller().pipe(
@@ -437,6 +447,63 @@ export const layer = McpToolAccess.toLayer(
       ),
       tessaya_jobs: McpToolAccess.reads(() => call(handlers[BATON_JOB_WS_METHODS.jobList]())),
       tessaya_watch: McpToolAccess.reads(() => call(handlers[BATON_WATCH_WS_METHODS.watchGet]())),
+      tessaya_report_problem: McpToolAccess.writes((input) =>
+        call(
+          McpInvocationContext.McpInvocationContext.pipe(
+            Effect.flatMap((scope) =>
+              withReports((reports) =>
+                reports.file({
+                  source: "asked",
+                  symptom: input.symptom,
+                  guess: input.guess,
+                  vessel: input.vessel ?? null,
+                  by: { kind: "agent", id: scope.client?.sessionId ?? "mcp" },
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+      tessaya_reports: McpToolAccess.reads((input) =>
+        call(
+          withReports((reports) =>
+            input.id === undefined
+              ? Effect.map(
+                  reports.list({
+                    ...(input.status === undefined ? {} : { status: input.status }),
+                    ...(input.limit === undefined ? {} : { limit: input.limit }),
+                  }),
+                  // The list is a summary; one report's bundle comes by its id.
+                  (all) => ({ reports: all.map((r) => ({ ...r, bundle: null })) }),
+                )
+              : Effect.map(reports.get(input.id), (r) => ({ reports: r === null ? [] : [r] })),
+          ),
+        ),
+      ),
+      tessaya_report_withdraw: McpToolAccess.writes((input) =>
+        call(
+          withReports((reports) =>
+            reports.call(input.delete === true ? "delete" : "withdraw", input.id).pipe(
+              Effect.as({
+                line: input.delete === true ? "Deleted that report." : "Withdrew that report.",
+              }),
+              Effect.catchTags({ ReportsError: (e) => Effect.succeed({ line: e.reason }) }),
+            ),
+          ),
+        ),
+      ),
+      tessaya_dev_feed: McpToolAccess.reads((input) =>
+        call(
+          McpInvocationContext.McpInvocationContext.pipe(
+            Effect.flatMap((scope) =>
+              // The maintainer gate: a full-access credential; the owner's setting gates the rest.
+              scope.client?.access !== "full-access"
+                ? Effect.succeed({ on: false, events: [], next: 0 })
+                : withReports((reports) => reports.feed(input)),
+            ),
+          ),
+        ),
+      ),
       tessaya_health: McpToolAccess.reads((input) =>
         call(
           McpInvocationContext.McpInvocationContext.pipe(

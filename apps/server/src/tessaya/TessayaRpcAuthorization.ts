@@ -16,6 +16,7 @@ import {
   AuthAccessReadScope,
   AuthOrchestrationReadScope,
   AuthSettingsWriteScope,
+  AuthEnvironmentMaintainScope,
   AuthTessayaGuestScope,
   AuthTessayaMemberScope,
   BATON_ACCOUNT_WS_METHODS,
@@ -51,6 +52,7 @@ import {
   BATON_PULSE_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_HEALTH_WS_METHODS,
+  BATON_REPORTS_WS_METHODS,
   BATON_WS_METHODS,
   TessayaRpcScopeAuthorization,
   type AuthEnvironmentScope,
@@ -118,6 +120,9 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
   [BATON_WATCH_WS_METHODS.watchGet]: AuthOrchestrationReadScope,
   [BATON_HEALTH_WS_METHODS.get]: AuthOrchestrationReadScope,
+  [BATON_REPORTS_WS_METHODS.call]: AuthOrchestrationReadScope,
+  // The live feed is a maintainer's: environment:maintain, which no standard client holds.
+  [BATON_REPORTS_WS_METHODS.feed]: AuthEnvironmentMaintainScope,
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_BRAIN_WS_METHODS.usage]: AuthOrchestrationReadScope,
   // A row says what his plan spent: the desktop app's own session only.
@@ -321,6 +326,7 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_JOB_WS_METHODS.jobLead,
   BATON_WATCH_WS_METHODS.watchGet,
   BATON_HEALTH_WS_METHODS.get,
+  BATON_REPORTS_WS_METHODS.call,
   BATON_RECORD_WS_METHODS.list,
   BATON_RECORD_WS_METHODS.append,
   BATON_DICTATION_WS_METHODS.cleanupApi,
@@ -408,6 +414,14 @@ export const missingTessayaScope = (
     >
   )[tag];
   if (required === undefined) return AuthOrchestrationOperateScope;
+  // A peer's mirror pull of the reports queue is a sync call: its credential holds the sync scope alone.
+  if (
+    tag === BATON_REPORTS_WS_METHODS.call &&
+    (payload as { op?: unknown } | undefined)?.op === "sync"
+  )
+    return scopes.includes(AuthTessayaMemorySyncScope) || scopes.includes(AuthTessayaHandsHostScope)
+      ? null
+      : AuthTessayaMemorySyncScope;
   if (SYNC_METHODS.has(tag) && scopes.includes(AuthTessayaHandsHostScope)) return null;
   const all: ReadonlyArray<AuthEnvironmentScope> =
     typeof required === "string" ? [required] : required;
@@ -432,6 +446,9 @@ export const missingTessayaScope = (
   // Revoking a standing yes is operate; giving one is his yes, as a card's is.
   if (tag === BATON_CONSENT_WS_METHODS.set && (fields as { allow?: unknown }).allow === true)
     desktopOnly.push(AuthTessayaCloudApproveScope);
+  // Listing reports is a read; withdrawing or deleting one is a settings change.
+  if (tag === BATON_REPORTS_WS_METHODS.call && (fields as { op?: unknown }).op !== undefined)
+    desktopOnly.push(AuthSettingsWriteScope);
   if (homeKind === "act") desktopOnly.push(AuthOrchestrationOperateScope);
   else if (homeKind === "answer") desktopOnly.push(AuthTessayaCloudApproveScope);
   else if (homeKind !== undefined && homeKind !== "read") return AuthOrchestrationOperateScope;

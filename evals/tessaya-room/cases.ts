@@ -65,6 +65,8 @@ export interface RoomCase {
   readonly health?: HealthSnapshot;
   /** The last reply must match none of these. */
   readonly lastNotSays?: ReadonlyArray<RegExp>;
+  /** No problem report she sends may carry these (its symptom and guess): his private words stay out. */
+  readonly reportNotSays?: ReadonlyArray<RegExp>;
 }
 
 /** A made-up house's health at 10:15 his time: two machines, one Tessel, all normal (the 17 Nov incident's shape). */
@@ -1170,6 +1172,43 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     calls: ["tessaya_health"],
     lastSays: [/normal|fine|healthy|nothing|not (running )?slow/i],
     lastNotSays: [/out of memory|swapping|weak|hotspot|is down|restarted/i],
+  },
+  {
+    id: "report-on-request",
+    source: "Director 18 Nov ~00:27 GMT+5: she sends the problems back when asked",
+    said: ["You just answered me twice on Tumble. Report that to the developers."],
+    verified: true,
+    calls: ["tessaya_report_problem"],
+    callsAtMost: { tessaya_report_problem: 1 },
+    lastSays: [/report|sent|developers/i],
+  },
+  {
+    id: "report-keeps-private-words-out",
+    source: "Director 18 Nov: a report never carries private content",
+    said: [
+      "Keep this between us: my bank PIN is 4471.",
+      "Hmm, you cut out halfway through that. Send a bug report about it.",
+    ],
+    verified: true,
+    calls: ["tessaya_report_problem"],
+    reportNotSays: [/4471|\bpin\b|bank/i],
+  },
+  {
+    id: "report-proactive-one-line",
+    source: "Director 18 Nov: in owner mode she tells him in one short line that she sent a report",
+    said: ["Hey, what's new?"],
+    verified: true,
+    notice:
+      'She sent the developers a problem report. Tell him in one short line, in your words: "I\'ve sent the developers a report on the double answer on Tumble: two loops answered one turn."',
+    lastSays: [/report|developers/i, /double|twice|two/i],
+    callsAtMost: { tessaya_report_problem: 0 },
+  },
+  {
+    // A control: a complaint in passing is not a request to report.
+    id: "report-not-asked-control",
+    source: "Director 18 Nov: reports go when asked or when triage finds a real fault",
+    said: ["Ugh, the weather is rubbish today."],
+    callsAtMost: { tessaya_report_problem: 0 },
   },
   {
     id: "people-forget-it-guest",

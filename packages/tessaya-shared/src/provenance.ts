@@ -149,7 +149,8 @@ export type FindingRule =
   | "repeating_failure"
   | "retry_storm"
   | "setting_overwritten"
-  | "owner_turn_unverified";
+  | "owner_turn_unverified"
+  | "double_turn";
 
 export interface Finding {
   readonly rule: FindingRule;
@@ -178,6 +179,8 @@ const SELF_STARTING: ReadonlySet<ActorKind> = new Set(["system", "rule", "device
 const FAILED = new Set(["fail", "failed", "error"]);
 const HOUR = 3_600_000;
 const SAMPLE_IDS = 5;
+/** Shorter than any one turn (endpointing alone is longer), so two verdicts this close are two loops. */
+const DOUBLE_TURN_MS = 2_500;
 
 const failureKey = (e: ActionEnvelope) => `${e.kind}|${e.subject}`;
 
@@ -245,12 +248,32 @@ export const findGaps = (events: ReadonlyArray<ActionEnvelope>): ReadonlyArray<F
       );
   }
 
+  // Two turn verdicts on one vessel closer than any one loop can finish a turn: two room loops answered it.
+  const verdicts = sorted.filter((e) => e.kind === "room.voice_id");
+  for (const [i, e] of verdicts.entries()) {
+    const vessel = (e.data as { vessel?: string } | null)?.vessel;
+    const twin = verdicts
+      .slice(i + 1)
+      .find(
+        (o) =>
+          o.at - e.at < DOUBLE_TURN_MS && (o.data as { vessel?: string } | null)?.vessel === vessel,
+      );
+    if (vessel !== undefined && twin !== undefined)
+      add(
+        "double_turn",
+        vessel,
+        `the double answer on ${vessel}: two loops answered one turn`,
+        twin,
+      );
+  }
+
   const minCount: Record<FindingRule, number> = {
     uncaused_state_change: 1,
     repeating_failure: 3,
     retry_storm: 3,
     setting_overwritten: 1,
     owner_turn_unverified: 1,
+    double_turn: 1,
   };
   const out: Finding[] = [];
   for (const [key, g] of groups) {

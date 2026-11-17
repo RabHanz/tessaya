@@ -32,6 +32,12 @@ import {
   WatchResult,
   HealthDiagnosis,
   TessayaHealthInput,
+  DevFeedInput,
+  DevFeedResult,
+  ProblemReport,
+  ReportProblemInput,
+  ReportProblemResult,
+  ReportsListInput,
   TessayaPreferenceKey,
 } from "@t3tools/tessaya-contracts";
 import {
@@ -989,6 +995,58 @@ const InboxSyncTool = Tool.make("tessaya_inbox_sync", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const ReportProblemTool = Tool.make("tessaya_report_problem", {
+  ...shared,
+  description:
+    "Send the developers a problem report: call it when he asks you to report something or send it to the developers ('report this', 'send that to the developers', 'log a bug', 'tell them about the double answer'). It attaches your health readings, the turn's stage times, recent errors and the log events that show it; nothing private. `symptom`: what went wrong, one short sentence about the fault, never his own words or anything private he said. `guess`: your plain-words guess at the cause (call tessaya_health first when it may be slow, choppy or not waking). Then say `say` in one short line, in your words. Reports you send on your own are triage's job; do not call this unasked.",
+  parameters: ReportProblemInput,
+  success: ReportProblemResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const ReportsTool = Tool.make("tessaya_reports", {
+  ...shared,
+  description:
+    "The problem reports queue, for maintainers and their agents: every report this server and his linked servers sent (the sync mirrors them), newest first, with status (open, filed as a GitHub issue, withdrawn). Give `id` for one report's whole bundle: symptom, her guess, the diagnosis, health snapshot and the redacted events.",
+  parameters: ReportsListInput,
+  success: Schema.Struct({ reports: Schema.Array(ProblemReport) }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const ReportWithdrawTool = Tool.make("tessaya_report_withdraw", {
+  ...shared,
+  description:
+    "Withdraw a problem report (it stays listed, marked withdrawn), or with `delete` remove its bundle everywhere it was mirrored. When he says 'don\'t send that', 'take that report back' or 'delete that report'.",
+  parameters: Schema.Struct({ id: Schema.String, delete: Schema.optional(Schema.Boolean) }),
+  success: Schema.Struct({ line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const DevFeedTool = Tool.make("tessaya_dev_feed", {
+  ...shared,
+  description:
+    "Tail the developer feed: every vessel's live conversation events (turns, stage timings, errors, cut turns, eye and persona commands, tool failures, health changes), redacted, never his words. For a full-access maintainer agent while the owner's feedback setting is developer; `on` is false otherwise. Call again with `after` set to the last `next`, and `waitSeconds` to long-poll.",
+  parameters: DevFeedInput,
+  success: DevFeedResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const TessayaToolkit = Toolkit.make(
   ...HomeTools,
   ...DeviceTools,
@@ -1001,6 +1059,10 @@ export const TessayaToolkit = Toolkit.make(
   JobsTool,
   WatchTool,
   HealthTool,
+  ReportProblemTool,
+  ReportsTool,
+  ReportWithdrawTool,
+  DevFeedTool,
   RecordTool,
   TeamBoardTool,
   MemorySearchTool,
