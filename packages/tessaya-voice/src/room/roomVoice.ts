@@ -531,7 +531,7 @@ export const routeForDevice = (tail: string, here: boolean): "room" | "drop" =>
 
 /**
  * The loop's one bus: the hub of the server whose brain it calls, so its acts and the device's events meet on one bus
- * with one loop election (18 Nov: a loop on onnyx's hub called hetzner's brain, whose acts went to hetzner's hub).
+ * with one loop election (18 Nov: a loop on one server's hub called another's brain, whose acts went to its own hub).
  */
 export const busOfBrain = (brainUrl: string): string => {
   const url = new URL("/api/tessel/mqtt", brainUrl);

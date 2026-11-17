@@ -1084,7 +1084,7 @@ describe("waking by name with no session open", () => {
     ];
     for (const [tail, here, want] of cases)
       expect([tail, here, routeForDevice(tail, here)]).toEqual([tail, here, want]);
-    // 18 Nov: a loop on onnyx's hub called hetzner's brain, so hetzner's acts went to a hub she was not on.
+    // 18 Nov: a loop on one server's hub called another's brain, whose acts went to a hub she was not on.
     expect(busOfBrain("https://brain.example/api/devices/r1/v1/chat/completions")).toBe(
       "wss://brain.example/api/tessel/mqtt",
     );
