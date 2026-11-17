@@ -15,9 +15,6 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { formatThreadLink, hostedThreadLink } from "@t3tools/shared/threadLinks";
 
-/** The session label of the owner's `t3 memory` command, the only caller of `tessaya_memory_unlearn`. */
-export const MEMORY_UNLEARN_CLIENT = "t3 memory cli";
-
 const ALL_MCP_CAPABILITIES = [
   "preview",
   "orchestration",

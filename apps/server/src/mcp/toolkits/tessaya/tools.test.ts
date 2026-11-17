@@ -2,6 +2,7 @@
 import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import { McpSchema, McpServer, Tool } from "effect/ai";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -56,8 +57,6 @@ it.effect("an outside agent is not shown the job and schedule acts; the room is"
     expect(outside).toContain("tessaya_ask");
     // Unlearning is the owner's own `t3 memory` command's alone: no agent, not even the room, sees it.
     expect([...outside, ...room]).not.toContain("tessaya_memory_unlearn");
-    expect(yield* shown("cli", McpInvocationContext.MEMORY_UNLEARN_CLIENT)).toContain(
-      "tessaya_memory_unlearn",
-    );
+    expect(yield* shown("cli", MEMORY_UNLEARN_CLIENT)).toContain("tessaya_memory_unlearn");
   }),
 );

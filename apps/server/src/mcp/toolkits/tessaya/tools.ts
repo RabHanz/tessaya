@@ -48,6 +48,7 @@ import {
 import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
 import * as Fiber from "effect/Fiber";
+import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -342,10 +343,7 @@ const memoryCliOnly = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope =
     fiber && Context.getOrUndefined(fiber.context, McpInvocationContext.McpInvocationContext);
-  return (
-    scope?.client?.label === McpInvocationContext.MEMORY_UNLEARN_CLIENT &&
-    scope.client.access === "full-access"
-  );
+  return scope?.client?.label === MEMORY_UNLEARN_CLIENT && scope.client.access === "full-access";
 };
 const MemoryUnlearnTool = Tool.make("tessaya_memory_unlearn", {
   ...shared,

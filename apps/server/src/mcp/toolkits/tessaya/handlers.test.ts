@@ -14,6 +14,7 @@ import type { TessayaMemoryQuery } from "@t3tools/tessaya-contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
@@ -84,7 +85,7 @@ const callTool = (
                       : caller === "memory-cli"
                         ? {
                             sessionId,
-                            label: McpInvocationContext.MEMORY_UNLEARN_CLIENT,
+                            label: MEMORY_UNLEARN_CLIENT,
                             access: "full-access",
                           }
                         : caller === "linked"

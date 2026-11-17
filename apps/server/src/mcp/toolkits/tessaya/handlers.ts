@@ -31,6 +31,7 @@ import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -522,10 +523,7 @@ export const layer = McpToolAccess.toLayer(
       tessaya_memory_unlearn: McpToolAccess.writes((input) =>
         Effect.gen(function* () {
           const client = (yield* McpInvocationContext.McpInvocationContext).client;
-          if (
-            client?.label !== McpInvocationContext.MEMORY_UNLEARN_CLIENT ||
-            client.access !== "full-access"
-          )
+          if (client?.label !== MEMORY_UNLEARN_CLIENT || client.access !== "full-access")
             return yield* new OrchestratorMcpFailure({
               code: "capability_denied",
               message: "Only the owner's t3 memory command unlearns.",
