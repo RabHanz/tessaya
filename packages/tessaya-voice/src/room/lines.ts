@@ -85,12 +85,13 @@ export const createLines = (deps: {
         count: AHEAD,
       })
       .then((got) => {
-        on = got.on;
         // With her words off only a persona's own greeting comes; nothing written while they were on stays held.
-        if (!got.on) held.clear();
+        // A held greeting is the day's one (the server gives it once): it stays until said, never pushed out.
+        if (on && !got.on) held.clear();
+        on = got.on;
         for (const [event, lines] of Object.entries(got.lines)) {
           const q = held.get(`${k}|${event}`) ?? [];
-          held.set(`${k}|${event}`, [...q, ...(lines ?? [])].slice(-AHEAD * 2));
+          held.set(`${k}|${event}`, [...q, ...(lines ?? [])].slice(0, AHEAD * 2));
         }
       })
       .catch((error: unknown) => deps.log(`lines: not fetched (${String(error)})`))
