@@ -21,6 +21,19 @@ import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { TurnOrigin } from "../tessaya/TurnOrigin.ts";
+
+/**
+ * Why a write to an unreachable device was refused. The device a turn came through plainly hears him, so only its
+ * link to this server is down: "offline" there had her tell him it lost power while he talked to it (17 Nov).
+ */
+export const offlineWhy = (id: string, name: string) =>
+  Effect.map(TurnOrigin, (turn) =>
+    turn?.kind === "device" && turn.id === id
+      ? `${name}'s link to this server is down, so nothing was sent; it still hears him and speaks.`
+      : `${name} is offline right now. Nothing was sent.`,
+  );
+
 export class DeviceRefusedError extends Schema.TaggedError<DeviceRefusedError>()(
   "DeviceRefusedError",
   { why: Schema.String },
@@ -352,9 +365,7 @@ const make = Effect.gen(function* () {
     if (own !== undefined && owned !== null)
       return { status: "done", line: yield* owned.writer(deviceId, itemId, checked.value) };
     if (!onlineOf(d, now))
-      return yield* new DeviceRefusedError({
-        why: `${d.name} is offline right now. Nothing was sent.`,
-      });
+      return yield* new DeviceRefusedError({ why: yield* offlineWhy(deviceId, d.name) });
     let result: { ok: boolean; error?: string } | null;
     if (d.via === "mqtt") {
       const writer = writers.get("mqtt");

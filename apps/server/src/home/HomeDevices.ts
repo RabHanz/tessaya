@@ -81,7 +81,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { TessayaPhoneInbox } from "../tessaya/TessayaPhoneInbox.ts";
 import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { VesselBodies } from "./VesselBodies.ts";
-import { DeviceRefusedError, DeviceRegistry } from "./DeviceRegistry.ts";
+import { DeviceRefusedError, DeviceRegistry, offlineWhy } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { expressOr } from "../tessaya/TessayaExpression.ts";
@@ -1439,8 +1439,8 @@ const make = Effect.gen(function* () {
           }),
         );
       if (heard.get(id)?.online !== true)
-        return Effect.fail(
-          new DeviceRefusedError({ why: `${id} is offline right now. Nothing was sent.` }),
+        return Effect.flatMap(offlineWhy(id, id), (why) =>
+          Effect.fail(new DeviceRefusedError({ why })),
         );
       return Effect.void;
     });

@@ -323,7 +323,7 @@ export interface TurnContext {
 }
 
 /** The most one turn's "where you are" line may add (P8): a few dozen tokens, flat however many people are home. */
-const HERE_MAX_CHARS = 360;
+const HERE_MAX_CHARS = 520;
 
 /**
  * Where she is this turn (SPINE-UNIFY §10, P8; PERSONA-MODEL-AUDIT CS0): the vessel she speaks through, the body and
@@ -333,32 +333,70 @@ const HERE_MAX_CHARS = 360;
 export const hereLine = (
   device: RegisteredDevice | null,
   home: ReadonlyArray<string> | null,
+  now: number,
 ): string => {
   const parts: string[] = [];
   if (device !== null) {
+    const valueOf = (id: string) => device.values.find((x) => x.itemId === id);
     const value = (id: string) => {
-      const v = device.values.find((x) => x.itemId === id)?.value;
+      const v = valueOf(id)?.value;
       return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
     };
     const body = value("body.current");
     const room = value("body.room");
     parts.push(
-      `You are speaking through ${device.name}${body === null ? "" : `, in ${body}`}${room === null ? "" : `, in the ${room}`}${device.online ? "" : " (offline)"}.`,
+      `You are speaking through ${device.name}${body === null ? "" : `, in ${body}`}${room === null ? "" : `, in the ${room}`}: this turn came through it, so it is on and hears him.`,
     );
-    const open = device.items.filter((i) => i.privacy !== true && i.group !== "body");
+    // He talks to her through it while the registry has it offline (17 Nov): the link is down, not its power.
+    if (!device.online)
+      parts.push(
+        "Its link to this server is down just now: its readings may be old and a change sent to it may not arrive.",
+      );
+    const open = device.items
+      .filter((i) => i.privacy !== true && i.group !== "body")
+      .toSorted((a, b) => hereRank(a.id) - hereRank(b.id));
+    // He said the battery is irrelevant while it charges (16 Nov), so it is not there to be said.
+    const charging = valueOf("power.charging")?.value === true;
+    const read = open
+      .filter((i) => !(charging && i.id === "power.battery_pct"))
+      .flatMap((i) => {
+        const v = valueOf(i.id);
+        if (
+          v === undefined ||
+          (typeof v.value !== "number" &&
+            typeof v.value !== "boolean" &&
+            typeof v.value !== "string")
+        )
+          return [];
+        const age = now - Date.parse(v.at);
+        return [
+          `${i.label} ${String(v.value)}${i.unit === undefined ? "" : i.unit}${age > HERE_FRESH_MS ? ` (as of ${agoWords(age)})` : ""}`,
+        ];
+      });
+    if (read.length > 0) parts.push(`Last reported: ${read.slice(0, 6).join(", ")}.`);
     const can = open.filter((i) => i.access.includes("write")).map((i) => i.label);
     if (can.length > 0) parts.push(`It can: ${can.slice(0, 8).join(", ")}.`);
-    const now = open.flatMap((i) => {
-      const v = device.values.find((x) => x.itemId === i.id)?.value;
-      return typeof v === "number" || typeof v === "boolean" || typeof v === "string"
-        ? [`${i.label} ${String(v)}${i.unit === undefined ? "" : i.unit}`]
-        : [];
-    });
-    if (now.length > 0) parts.push(`Now: ${now.slice(0, 6).join(", ")}.`);
   }
   if (home !== null && home.length > 0) parts.push(`Likely home: ${home.slice(0, 8).join(", ")}.`);
   const line = parts.join(" ");
   return line.length <= HERE_MAX_CHARS ? line : `${line.slice(0, HERE_MAX_CHARS - 1)}…`;
+};
+
+/** What a turn on a body most needs of its readings: whose eyes it shows and where its voice plays, first. */
+const HERE_FIRST = ["eye.persona", "audio.output", "audio.device", "power.charging"];
+const hereRank = (id: string) => {
+  const at = HERE_FIRST.indexOf(id);
+  return at === -1 ? HERE_FIRST.length : at;
+};
+/** A reading older than this is given with its age: the device may have changed since. */
+const HERE_FRESH_MS = 15 * 60_000;
+const agoWords = (ms: number) => {
+  const min = Math.round(ms / 60_000);
+  return min < 90
+    ? `${min} min ago`
+    : min < 36 * 60
+      ? `${Math.round(min / 60)} h ago`
+      : `${Math.round(min / 1440)} days ago`;
 };
 
 /** The presence board's ceiling (the bounded-context rule): about 100 tokens, however many talk to her at once. */
@@ -393,6 +431,8 @@ export const handOffLine = (from: string): string =>
 /** How much of a conversation every vessel shares, and how long it waits for him to go on. */
 const CONVERSATION_TURNS = 12;
 const CONVERSATION_IDLE_MS = SAME_CONVERSATION_MS;
+/** How soon after a vessel's last exchange a turn Voice ID could not judge still continues it. */
+const THREAD_CARRY_MS = 2 * 60_000;
 
 /** Standing memory a sessionless turn carries, as a session's system prompt does (MEMORY.md §5). */
 const STANDING_TOKENS = 600;
@@ -653,21 +693,43 @@ export const make = Effect.gen(function* () {
 
   // shortcut: held in this server's memory, so a restart starts every conversation afresh; persist when one must last.
   const conversations = new Map<string, { at: number; turns: Array<ConversationTurn> }>();
-  const conversationOf = Effect.fn("TessayaTurn.conversation")(function* (turn: TurnEnvelope) {
+  /** The conversation each vessel last spoke in. */
+  const lastOn = new Map<string, { key: string; at: number }>();
+  /**
+   * A turn too short for Voice ID to judge goes on with the conversation its vessel was just in: "Can you?" after
+   * his verified question was answered with no thread at all (17 Nov). A guest or another member never does.
+   */
+  const keyOf = (turn: TurnEnvelope, now: number) => {
     const key = conversationKey(turn);
-    const held = conversations.get(key);
+    const last = lastOn.get(turn.vessel.id);
+    return key === "household" &&
+      turn.speaker?.kind === "unverified" &&
+      last !== undefined &&
+      now - last.at <= THREAD_CARRY_MS
+      ? last.key
+      : key;
+  };
+  const conversationOf = Effect.fn("TessayaTurn.conversation")(function* (turn: TurnEnvelope) {
     const now = yield* Clock.currentTimeMillis;
+    const key = keyOf(turn, now);
+    const held = conversations.get(key);
+    const turns = held === undefined || now - held.at > CONVERSATION_IDLE_MS ? [] : held.turns;
     return {
       key,
-      turns: held === undefined || now - held.at > CONVERSATION_IDLE_MS ? [] : [...held.turns],
+      // Carried over, only what was said aloud through this vessel: its room heard that already.
+      turns:
+        key === conversationKey(turn)
+          ? [...turns]
+          : turns.filter((t) => t.vessel === turn.vessel.id),
     };
   });
   const addExchange = Effect.fn("TessayaTurn.converse")(function* (
     turn: TurnEnvelope,
     reply: string,
   ) {
-    const key = conversationKey(turn);
     const now = yield* Clock.currentTimeMillis;
+    const key = keyOf(turn, now);
+    lastOn.set(turn.vessel.id, { key, at: now });
     const held = conversations.get(key);
     const turns = held === undefined || now - held.at > CONVERSATION_IDLE_MS ? [] : held.turns;
     const said: Array<ConversationTurn> = [
@@ -960,12 +1022,13 @@ export const make = Effect.gen(function* () {
     const device = Option.isNone(registry)
       ? null
       : yield* registry.value.get(turn.vessel.id).pipe(Effect.orElseSucceed(() => null));
-    if (member === null || turn.sharedRoom === true) return hereLine(device, null);
+    const now = yield* Clock.currentTimeMillis;
+    if (member === null || turn.sharedRoom === true) return hereLine(device, null, now);
     const names: string[] = [];
     for (const p of (yield* presence.estimate()).members)
       if (p.confidence >= PRESENCE_BARS.around)
         names.push(p.guest ? GUEST_NAME : ((yield* memberName(p.member)) ?? p.member));
-    return hereLine(device, names);
+    return hereLine(device, names, now);
   });
 
   /**

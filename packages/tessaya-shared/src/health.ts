@@ -163,7 +163,17 @@ const serviceFindings = (services: ReadonlyArray<ServiceHealth>, now: number) =>
 const vesselFindings = (v: VesselHealth, now: number): Array<HealthFinding> => {
   const out: Array<HealthFinding> = [];
   const r = v.voiceHost;
-  if (v.online === false)
+  // Asked through it while its hub has it offline (17 Nov): the link to this server is what is down.
+  if (v.heard === true && v.online === false)
+    out.push({
+      key: `link:${v.id}`,
+      severity: "degraded",
+      says: `my link to ${v.name}'s controls is down, so its eyes and settings can't be changed from here; I still hear you through it`,
+      evidence: [`${v.name} is not connected to this server's hub`],
+      fix: `${v.name} is likely on another server's hub; it comes back when it reconnects here`,
+      symptoms: [],
+    });
+  if (v.heard !== true && v.online === false)
     out.push({
       key: `offline:${v.id}`,
       severity: "down",
@@ -172,7 +182,7 @@ const vesselFindings = (v: VesselHealth, now: number): Array<HealthFinding> => {
       fix: `check ${v.name} is powered and on Wi-Fi`,
       symptoms: ["wake"],
     });
-  if (v.online !== false && (r === null || now - r.at > REPORT_STALE_MS))
+  if (v.heard !== true && v.online !== false && (r === null || now - r.at > REPORT_STALE_MS))
     out.push({
       key: `loop:${v.id}`,
       severity: "down",
