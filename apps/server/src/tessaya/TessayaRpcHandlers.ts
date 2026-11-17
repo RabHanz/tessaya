@@ -38,6 +38,7 @@ import {
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   TESSAYA_ACTIVITY_WS_METHODS,
+  TESSAYA_HOUSEHOLD_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
   BATON_PULSE_WS_METHODS,
@@ -697,6 +698,8 @@ export const makeHandlers = Effect.gen(function* () {
       ),
     [TESSAYA_ACTIVITY_WS_METHODS.list]: (input) => run(activityList(input)),
     [TESSAYA_ACTIVITY_WS_METHODS.why]: (input) => run(activityWhy(input)),
+    [TESSAYA_HOUSEHOLD_WS_METHODS.call]: (input) =>
+      run(Effect.flatMap(TessayaHousehold, (household) => household.call(input))),
     [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input, JobFlow.usageUnits)),
     [BATON_BRAIN_WS_METHODS.record]: (input) => run(recordDesktopUsage(input)),
     [BATON_PERSONAS_WS_METHODS.list]: () => run(personasList),
