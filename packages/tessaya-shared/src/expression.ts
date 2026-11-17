@@ -101,6 +101,11 @@ export const LINE_EVENTS = {
     "Two people spoke to her at once and she can only take one.",
     { maxWords: 8, mood: "steady", gesture: "tilt" },
   ),
+  "err.restart": spec(
+    "Sorry, I just restarted. Go on.",
+    "Her body restarted while he was talking to her and missed his last words; she is back and he can carry on.",
+    { maxWords: 9, mood: "concerned", gesture: "shrug" },
+  ),
   "err.couldnt": spec(
     "I couldn't: {what}",
     "Something he asked for did not work; {what} says why.",

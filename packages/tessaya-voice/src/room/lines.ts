@@ -38,6 +38,7 @@ export const ROOM_EVENTS: ReadonlyArray<LineEvent> = [
   "ack.named",
   "ack.again",
   "err.overlap",
+  "err.restart",
   "err.brain",
   "persona.switch",
   "id.unsure",

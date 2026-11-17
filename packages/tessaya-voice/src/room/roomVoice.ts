@@ -512,6 +512,27 @@ const onlyEnglish = (languages: ReadonlyArray<string>) =>
 const FAR_DB = 18;
 /** A session that has had no mic audio for this long while wake audio arrives is one the R1 has already left. */
 const STALE_SESSION_MS = 3_000;
+/** Her server's acts for a Tessel that open a session or move the eyes: only the loop on the Tessel's hub may run them. */
+const DEVICE_ACTS = /^(voice\/(intent\/eye|stepup|say|ask|persona|enrol)|cmd\/voice\/start)$/;
+
+/**
+ * One loop drives a Tessel (18 Nov: a standby loop on her server's hub ran its eye moods and a step-up while she was on
+ * another hub). `tail` is the topic after `freya/r1/<id>/`; `here` is whether the Tessel is online on this loop's hub;
+ * `brainHub` that it came from her server's own hub, which this loop bridges when its brain runs on another host. A
+ * command from there is relayed to this loop's hub, except the link's own (`cmd/net/`), which is that hub's business.
+ */
+export const routeForDevice = (
+  tail: string,
+  here: boolean,
+  brainHub: boolean,
+): "room" | "relay" | "drop" => {
+  if (!brainHub) return !here && DEVICE_ACTS.test(tail) ? "drop" : "room";
+  if (!here || tail.startsWith("cmd/net/")) return "drop";
+  return tail.startsWith("cmd/") ? "relay" : "room";
+};
+
+/** This loop commands only a Tessel on its own hub: a bridging loop elsewhere would relay the rest to her (18 Nov). */
+export const loopMaySend = (tail: string, here: boolean) => here || !tail.startsWith("cmd/");
 /**
  * Her reply on Bluetooth and no mic frame for this long: the Tessel's shared radio is choked (16 Nov: 54 s late,
  * replies bunched and dropped), so the server moves her to the next output in his order.
@@ -2716,6 +2737,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         speakNow(text);
         stopAfterSaid();
       },
+      /** Back after the R1 rebooted mid-conversation: one short line, and the session stays open for him to go on. */
+      restarted: () => speakNow(own("err.restart", "Sorry, I just restarted. Go on.")),
       /** `mood` is the eyes' look for her own words (the brain's expression); none keeps the eyes as they are. */
       say: (text: string, mood?: string | null) => {
         if (reply !== null) interrupt();
@@ -3258,6 +3281,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           stop(id);
         }
         if (!muted.has(id)) deps.wake?.frame(id, payload);
+      } else if (tail === "event/wake/boot") {
+        // A reboot ends the R1's own session: one he was in reopens with a short line, never silence until he calls her
+        // again (18 Nov, 00:21: her watchdog rebooted her mid-answer and the loop waited 47 s on a dead session).
+        const open = sessions.get(id);
+        if (open === undefined) return;
+        stop(id);
+        deps.log(`[${id}] rebooted mid-session; reopening it`);
+        if (!muted.has(id) && !silent(id)) startOnR1(id, (s) => s.restarted());
       } else if (tail === "voice/wake/end") {
         const { seg, sent } = json();
         deps.wake?.end(
