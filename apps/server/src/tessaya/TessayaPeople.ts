@@ -58,6 +58,18 @@ export const BIN_DAYS_KEY = "people.binDays";
 /** A forgotten person can be restored this long (the Director, 16 Nov: forgetting must be hard to do by mistake). */
 export const BIN_DAYS_DEFAULT = 30;
 
+/** How long anything forgotten (a person, a fact she understood) can be restored: one setting for every bin. */
+export const readBinDays = Effect.flatMap(
+  SqlClient.SqlClient,
+  (sql) => sql<{ value: string }>`SELECT value FROM fabric_settings WHERE key = ${BIN_DAYS_KEY}`,
+).pipe(
+  Effect.map((rows) => {
+    const n = Number(rows[0]?.value);
+    return Number.isInteger(n) && n > 0 ? n : BIN_DAYS_DEFAULT;
+  }),
+  Effect.orElseSucceed(() => BIN_DAYS_DEFAULT),
+);
+
 const Forgotten = Schema.fromJsonString(
   Schema.Struct({
     at: Schema.String,
@@ -295,15 +307,7 @@ export const make = Effect.gen(function* () {
     );
   }, Effect.orDie);
 
-  const binDays = sql<{ value: string }>`
-    SELECT value FROM fabric_settings WHERE key = ${BIN_DAYS_KEY}
-  `.pipe(
-    Effect.map((rows) => {
-      const n = Number(rows[0]?.value);
-      return Number.isInteger(n) && n > 0 ? n : BIN_DAYS_DEFAULT;
-    }),
-    Effect.orElseSucceed(() => BIN_DAYS_DEFAULT),
-  );
+  const binDays = Effect.provideService(readBinDays, SqlClient.SqlClient, sql);
 
   /** What forgetting them takes away, said back before anything goes. */
   const whatGoes = Effect.fn("TessayaPeople.whatGoes")(function* (r: Row) {

@@ -534,6 +534,19 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       return { text: ownerDoc(OWNER.docs, args as { name?: string; section?: string }) };
     case "laptop_ask":
       return { ok: false, error: "your laptop isn't linked to this server, so I can't see it." };
+    // As TessayaUnderstanding answers: a fact is said back first, and goes only on a confirmed second call.
+    case "tessaya_memory_forget": {
+      const a = args as { fact?: unknown; confirmed?: unknown; restore?: unknown };
+      if (typeof a.fact !== "string") return { line: "There is no memory by that id." };
+      return {
+        line:
+          a.restore === true
+            ? `Put back: ${a.fact}.`
+            : a.confirmed === true
+              ? "Forgotten. It can be put back for 30 days."
+              : `Forget that ${a.fact}? It can be put back for 30 days. Ask for a clear yes, then call again with confirmed.`,
+      };
+    }
     default:
       return WORK[name] ?? { ok: true, value: [] };
   }

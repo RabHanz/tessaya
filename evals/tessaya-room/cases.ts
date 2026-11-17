@@ -16,6 +16,7 @@ import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
 import { repairLine } from "../../packages/tessaya-shared/src/transcriptRepair.ts";
 import type { OwnerFiles } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { type PersonView, turnLineFor } from "../../packages/tessaya-shared/src/people.ts";
+import { understandingLine } from "../../packages/tessaya-shared/src/understanding.ts";
 
 export interface RoomCase {
   readonly id: string;
@@ -94,6 +95,8 @@ const DOES_NOT_KNOW =
   /^(?![\s\S]*\b(I don'?t know|I haven'?t|not yet|no idea|I can'?t (read|see|open)|I don'?t have (access|it|any))\b)/i;
 
 const HERE = "You are speaking through R1, in the study.";
+/** Her understanding of him as his own turn gives it (TessayaTurn.understood). */
+const UNDERSTOOD = understandingLine("person", "- Has two kids\n- Hates football", "Sam");
 
 /** A voice the people graph has not been told a name for, and one it knows (made up, as every case is). */
 const NEW_VOICE: PersonView = {
@@ -1063,5 +1066,33 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     said: ["Who was that you were just talking to?"],
     verified: true,
     calls: ["people_who"],
+  },
+  {
+    // She says the fact back and asks; nothing goes on the first call.
+    id: "understanding-forget-asks",
+    source: "Director 17 Nov: remember everyone; forgetting is confirmed, one fact, reversible",
+    said: ["Forget that I hate football."],
+    verified: true,
+    memory: `${HERE} ${UNDERSTOOD}`,
+    calls: ["tessaya_memory_forget"],
+    lastSays: [/football/i, /\?/],
+  },
+  {
+    id: "understanding-forget-yes",
+    source: "Director 17 Nov: remember everyone; forgetting is confirmed, one fact, reversible",
+    said: ["Forget that I hate football.", "Yes."],
+    verified: true,
+    memory: `${HERE} ${UNDERSTOOD}`,
+    calls: ["tessaya_memory_forget"],
+    lastSays: [/forg[eo]t|gone|done|put (it )?back/i],
+  },
+  {
+    id: "understanding-restore",
+    source: "Director 17 Nov: a forgotten fact can be put back for the bin's days",
+    said: ["Actually, put back that I hate football, you were right about that."],
+    verified: true,
+    memory: `${HERE} ${understandingLine("person", "- Has two kids", "Sam")}`,
+    calls: ["tessaya_memory_forget"],
+    lastSays: [/football/i],
   },
 ];

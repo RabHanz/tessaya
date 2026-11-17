@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import type { UnderstandingRewrite } from "@t3tools/tessaya-shared/understanding";
 
@@ -116,27 +117,74 @@ it.effect("an understanding never reaches a sentence's recall or the default lis
 );
 
 it.effect(
-  "forgetting an understanding takes its earlier wordings too, so no rewrite brings it back",
+  "forgetting one fact is confirmed, takes only its wordings into the bin, never comes back by a rewrite, and restores",
   () =>
     Effect.gen(function* () {
       const prompts: string[] = [];
-      const wrong = "- Has two kids\n- Hates football";
+      const v1 = "- Has two kids\n- Hates football";
+      const v2 = `${v1}\n- Learning the guitar`;
       const { understanding, memory } = yield* fresh(
-        [write(wrong), write(`${wrong}\n- Learning the guitar`), write("- Plays the guitar")],
+        [
+          write(v1),
+          write(v2),
+          // The model slips and writes the forgotten fact back.
+          write(`${v2}\n- Plays on Sundays`),
+        ],
         prompts,
       );
+      const owner = { kind: "owner", certainty: 1 } as const;
       yield* understanding.evidence(sam, "two kids, football", "t1");
       for (const t of ["t2", "t3", "t4"]) yield* understanding.evidence(sam, "guitar", t);
-      const [current] = yield* memory.list({ kinds: ["understanding"], scope: "person" });
-      assert.isTrue(yield* memory.forget(current!.id));
+      const all = () =>
+        memory.list({ kinds: ["understanding"], scope: "person", includeSuperseded: true });
 
-      assert.strictEqual(yield* understanding.current(sam), null);
-      assert.deepStrictEqual(
-        yield* memory.list({ kinds: ["understanding"], scope: "person", includeSuperseded: true }),
-        [],
+      // By id, an understanding is never wiped; a fact unconfirmed is only said back.
+      const [current] = yield* memory.list({ kinds: ["understanding"], scope: "person" });
+      assert.isFalse(yield* memory.forget(current!.id));
+      const asked = yield* understanding.forget(sam, "hates football", { actor: owner });
+      assert.strictEqual(asked.status, "asked");
+      assert.include(asked.line, "Hates football");
+      assert.strictEqual(yield* understanding.current(sam), v2);
+
+      const done = yield* understanding.forget(sam, "hates football", {
+        actor: owner,
+        confirmed: true,
+      });
+      assert.strictEqual(done.status, "done");
+      assert.strictEqual(
+        yield* understanding.current(sam),
+        "- Has two kids\n- Learning the guitar",
       );
-      yield* understanding.evidence(sam, "I play the guitar", "t5");
-      assert.notInclude(prompts.at(-1)!, "Hates football");
-      assert.strictEqual(yield* understanding.current(sam), "- Plays the guitar");
+      const kept = (yield* all()).map((i) => i.text).toSorted();
+      assert.deepStrictEqual(kept, ["- Has two kids", "- Has two kids\n- Learning the guitar"]);
+
+      for (const t of ["t5", "t6", "t7"]) yield* understanding.evidence(sam, "sundays", t);
+      const asked2 = prompts.at(-1)!;
+      const named = "<forgotten>\n- Hates football\n</forgotten>";
+      assert.include(asked2, named);
+      assert.notInclude(asked2.replace(named, ""), "Hates football");
+      assert.strictEqual(
+        yield* understanding.current(sam),
+        "- Has two kids\n- Learning the guitar\n- Plays on Sundays",
+      );
+
+      const back = yield* understanding.restore(sam, "hates football", { actor: owner });
+      assert.strictEqual(back.status, "done");
+      assert.strictEqual(
+        yield* understanding.current(sam),
+        "- Has two kids\n- Learning the guitar\n- Plays on Sundays\n- Hates football",
+      );
+      assert.strictEqual(
+        (yield* understanding.restore(sam, "hates football", { actor: owner })).status,
+        "refused",
+      );
+
+      // Past the bin's days it is gone for good.
+      yield* understanding.forget(sam, "plays on sundays", { actor: owner, confirmed: true });
+      yield* TestClock.adjust("31 days");
+      assert.strictEqual(
+        (yield* understanding.restore(sam, "plays on sundays", { actor: owner })).status,
+        "refused",
+      );
     }).pipe(Effect.scoped),
 );

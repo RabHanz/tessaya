@@ -77,6 +77,7 @@ import Migration0045 from "./Migrations/Baton/045_PeopleGraph.ts";
 import Migration0046 from "./Migrations/Baton/046_UsageAttribution.ts";
 import Migration0047 from "./Migrations/Baton/047_PromptBatch.ts";
 import Migration0048 from "./Migrations/Baton/048_ActionEvents.ts";
+import Migration0049 from "./Migrations/Baton/049_UnderstandingBin.ts";
 
 /**
  * Baton's own tracking table. Upstream's `effect_sql_migrations` is left to
@@ -134,6 +135,7 @@ const tessayaMigrationEntries = [
   [46, "UsageAttribution", Migration0046],
   [47, "PromptBatch", Migration0047],
   [48, "ActionEvents", Migration0048],
+  [49, "UnderstandingBin", Migration0049],
 ] as const;
 
 export const tessayaMigrationManifest = tessayaMigrationEntries.map(

@@ -15,6 +15,8 @@ export interface UnderstandingCase {
   /** The new text must match each, and must not match any of `lacks`. */
   readonly has?: ReadonlyArray<RegExp>;
   readonly lacks?: ReadonlyArray<RegExp>;
+  /** Facts in the bin: the prompt names them as forgotten, and `lacks` checks the model's own answer. */
+  readonly forgotten?: ReadonlyArray<string>;
   /** A change that replaces an old fact: its old and new must match, with a cause and evidence. */
   readonly replaces?: { readonly old: RegExp; readonly new: RegExp };
 }
@@ -95,6 +97,21 @@ export const CASES: ReadonlyArray<UnderstandingCase> = [
     ],
     has: [/brief|short|concise|done|result|summar|outcome/i, /casual|relax|informal|less formal/i],
     lacks: [/explains each step in full detail/i, /^- speaks formally$/im],
+  },
+  {
+    id: "forgotten-stays-forgotten",
+    source:
+      "Director 17 Nov: a fact forgotten is never written back by a rewrite, even when it is said again",
+    about: "person",
+    current: "- Has two kids\n- Learning the guitar",
+    evidence: [
+      "let me be clear about one thing: I hate football, always have",
+      "and news: I started a new job as a librarian on Monday",
+    ],
+    forgotten: ["- Hates football"],
+    keep: ["- Has two kids", "- Learning the guitar"],
+    has: [/librarian/i],
+    lacks: [/(hates?|dislikes?|can'?t stand|not a fan of)\b.*football/i],
   },
   {
     id: "control-first-facts",

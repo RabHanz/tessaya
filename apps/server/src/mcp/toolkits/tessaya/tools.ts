@@ -340,8 +340,14 @@ const MemoryRememberTool = Tool.make("tessaya_memory_remember", {
 const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
   ...shared,
   description:
-    "Forget one of Tessaya's memories by its id, when he asks her to forget something: find it first with tessaya_memory_about, then call this with its id. Whether his voice may forget here is the tool's to decide, never yours: always call it, and say its line.",
-  parameters: Schema.Struct({ id: Schema.String.check(Schema.isMaxLength(80)) }),
+    'Forget one of Tessaya\'s memories by its id, when he asks her to forget something: find it first with tessaya_memory_about, then call this with its id. Something you understand of the person speaking (the facts after "What you understand of") or of yourself ("How you have come to see yourself": about herself) goes one fact at a time: pass that fact as `fact` instead of an id, first without confirmed; say back the fact its line names and ask for a clear yes, then call again with confirmed. When he asks to put back or undo a fact forgotten lately, call this with that `fact` and restore, not tessaya_memory_remember. Whether this voice may forget here is the tool\'s to decide, never yours: always call it, and say its line.',
+  parameters: Schema.Struct({
+    id: Schema.optional(Schema.String.check(Schema.isMaxLength(80))),
+    fact: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),
+    about: Schema.optional(Schema.Literals(["them", "herself"])),
+    confirmed: Schema.optional(Schema.Boolean),
+    restore: Schema.optional(Schema.Boolean),
+  }),
   success: Schema.Struct({ line: Schema.String }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
