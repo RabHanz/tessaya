@@ -1188,8 +1188,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
 
     /**
-     * She paused because a voice rose over hers (open talk-over): the R1's queue is flushed, her reply waits, and the
-     * voice is checked against the household's. `from` is her sample under the speaker when she paused.
+     * She paused because a voice rose over hers (open talk-over): her feed waits while the R1 plays what it holds, and
+     * the voice is checked against the household's. `from` is her next sample to send.
      */
     let hold: {
       readonly since: number;
@@ -1213,8 +1213,6 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
     /** Where each of her sentences began in the downlink: a long pause resumes from the start of the one it cut. */
     let phraseStarts: number[] = [];
-    /** Her sample under the R1's speaker as of the latest aligned frame. */
-    let underSpeaker = 0;
 
     /** Paced 60 ms publishes, at most `leadMs` ahead of what the R1 is playing. */
     const send = async (pcm: Int16Array, signal: AbortSignal, onFirst: () => void) => {
@@ -2642,7 +2640,6 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const at = seq * pcm.length;
       // From 32 ms before the device's latency: the detector finds the rest (it only looks later, never earlier).
       const from = (rx - q - downBase) / 2 - R1_LATENCY + 512;
-      underSpeaker = from - 512;
       const ref = new Int16Array(pcm.length);
       for (let i = 0; i < ref.length; i += 1) {
         const n = from + i;
@@ -2671,10 +2668,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (deps.member === undefined || deps.members?.() !== true) return;
       let release = () => undefined as void;
       const released = new Promise<void>((r) => (release = r));
-      // His first words began about the detector's 256 ms before it was sure, plus a frame.
+      // Only the feed pauses, no flush: her echo in a case passes the detector, and a flush drops what the R1 holds
+      // and refuses frames sent again within 400 ms, so each false pause skipped her speech (18 Nov, 03:23 GMT+5).
+      // A household voice flushes in stopHer; any other lets the feed go on from its next sample.
       hold = {
         since: deps.now(),
-        from: Math.max(0, underSpeaker),
+        from: downSamples,
+        // His first words began about the detector's 256 ms before it was sure, plus a frame.
         fromSeq: seq - 5,
         release,
         released,
@@ -2683,8 +2683,6 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         quietSince: null,
         resuming: false,
       };
-      playUntil = deps.now();
-      deps.publish(topic(id, "voice/ctl"), JSON.stringify({ ev: "flush" }));
       deps.log(`[${id}] a voice over hers; she paused`);
     };
 
