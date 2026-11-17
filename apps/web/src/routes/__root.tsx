@@ -29,6 +29,7 @@ import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPrompt
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
 import { isMainWindow } from "../components/panes/tessayaWindows";
 import { useTessayaPanesStore } from "../components/panes/tessayaPanesStore";
+import { LaptopRouteHost } from "../tessayaLaptopRoute";
 import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
 import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
 import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
@@ -193,6 +194,7 @@ function RootRouteBranch() {
       <ConnectOnboardingDialog />
       <SshPasswordPromptDialog />
       {isMainWindow() ? <SnapShotCoordinator /> : null}
+      {isMainWindow() && primaryEnvironmentAuthenticated ? <LaptopRouteHost /> : null}
       <ReopenClosedViewShortcut />
       <ConfirmDialogHost />
       <CustomSnoozeDialogHost />

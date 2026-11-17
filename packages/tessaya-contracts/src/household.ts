@@ -1,11 +1,14 @@
 /**
  * The household's members over the wire (tessaya-ops research/ACCOUNTS-IDENTITY-DESIGN.md I-1, HOUSEHOLD-DESIGN.md
- * 5b-i). Every request is one `op` posted to the server's `/tessaya/household` route, or made by voice through the
- * members tools; the server decides who may do what from the caller's member, role and assurance.
+ * 5b-i). Every request is one `op` posted to the server's `/tessaya/household` route (or `baton.household.call` over
+ * the socket), or made by voice through the members tools; the server decides who may do what from the caller's
+ * member, role and assurance.
  */
 import * as Schema from "effect/Schema";
 
 import { IsoDateTime, TrimmedNonEmptyString } from "@t3tools/contracts";
+
+export const TESSAYA_HOUSEHOLD_WS_METHODS = { call: "baton.household.call" } as const;
 
 export const TessayaMemberRole = Schema.Literals(["owner", "admin", "adult", "child", "guest"]);
 const InviteRole = Schema.Literals(["admin", "adult", "child", "guest"]);
@@ -339,7 +342,10 @@ export const TessayaHouseholdCallResult = Schema.Struct({
   people: Schema.optionalKey(Schema.Array(TessayaPerson)),
   suggestions: Schema.optionalKey(Schema.Array(TessayaPeopleSuggestion)),
   retentionDays: Schema.optionalKey(Schema.Number),
-  /** Recently forgotten: restorable for `binDays`, then deleted for good. `by`: owner, themselves or expiry. */
+  /**
+   * Recently forgotten, newest first: restorable for `binDays`, then deleted for good. `by`: owner, themselves or expiry.
+   * With `fact`: one fact forgotten from her understanding of `name` (a persona's name when about herself).
+   */
   forgotten: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
@@ -347,6 +353,7 @@ export const TessayaHouseholdCallResult = Schema.Struct({
         name: Schema.NullOr(Schema.String),
         by: Schema.String,
         at: Schema.String,
+        fact: Schema.optionalKey(Schema.String),
       }),
     ),
   ),

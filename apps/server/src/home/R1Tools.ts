@@ -389,6 +389,18 @@ const replayJob = (name: string, input: Record<string, unknown>) => {
  * A replay's other writes (an ask to his phone), checked against the tool's schema and then not sent (13 Nov 01:29: a
  * replay of "turn on the office fan" flipped his real fan). Null when the call is not one.
  */
+/**
+ * The job the live suite's sentences name (job-go, job-retry, job-unschedule): a replay's job list carries it, so a
+ * model that checks the list before acting finds the job he named rather than refusing a made-up id.
+ */
+const SUITE_JOB = {
+  workSessionId: "job-suite-1",
+  title: "Fix the flaky tests",
+  project: "acme app",
+  phase: "failed",
+  group: "needs_you",
+};
+
 export const replayDryRun = (name: string, input: unknown, device?: string): ToolOutcome | null => {
   if (device?.startsWith("replay-") !== true || SELF_DRY.has(name) || !decoders.has(name))
     return null;
@@ -427,7 +439,14 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
                         name.startsWith("people_")
                       ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
                       : name === "tessaya_memory_forget"
-                        ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })
+                        ? JSON.stringify({
+                            line:
+                              typeof (input as { fact?: unknown }).fact === "string" &&
+                              (input as { confirmed?: unknown }).confirmed !== true &&
+                              (input as { restore?: unknown }).restore !== true
+                                ? "Forget that? Ask for a clear yes, then call again with confirmed."
+                                : NOT_HIS_VOICE_TO_FORGET,
+                          })
                         : name === "device_watch" || name === "device_button"
                           ? // A rule is saved at once, not asked: "it waits for his answer" made her say so (13 Nov suite).
                             JSON.stringify({
@@ -817,7 +836,9 @@ const makeRunners = Effect.gen(function* () {
         } as ToolOutcome;
       }
       const own =
-        name === "tessaya_jobs" && device !== undefined ? rehearsed.get(device) : undefined;
+        name === "tessaya_jobs" && device?.startsWith("replay-") === true
+          ? [...(rehearsed.get(device) ?? []), SUITE_JOB]
+          : undefined;
       if (own !== undefined && typeof result === "object" && result !== null && "jobs" in result)
         return {
           text: JSON.stringify({ ...result, jobs: [...own, ...(result.jobs as Array<unknown>)] }),

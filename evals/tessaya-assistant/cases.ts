@@ -10,6 +10,7 @@ import { buildAuditTrail, describeAuditTrail } from "../../packages/tessaya-shar
 import type { CutIn } from "../../packages/tessaya-shared/src/endOfTurn.ts";
 import { answeredWithWords } from "../../apps/desktop/src/tessaya/agent/agentGate.ts";
 import { chooseBrowserRoute } from "../../apps/desktop/src/tessaya/screen/browserRoute.ts";
+import { understandingLine } from "../../packages/tessaya-shared/src/understanding.ts";
 
 export interface AssistantCase {
   readonly id: string;
@@ -59,6 +60,8 @@ export interface AssistantCase {
   readonly outside?: boolean;
   /** The model a run without `--model` must put this turn on: simple turns fast, planning strong. */
   readonly model?: string;
+  /** Her standing understanding as a live turn gives it (understandingLine), added beside recall. */
+  readonly understood?: string;
   /** What she recalls for this sentence, built into the real recall block (memoryBlock): kind, words, and whether they are his. */
   readonly remembered?: ReadonlyArray<{
     readonly kind: "fact" | "preference" | "correction" | "note";
@@ -582,6 +585,29 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     said: "stop syncing my memory",
     first: ["memory_sync_switch"],
     not: ["memory_forget", "memory_remember"],
+  },
+  {
+    id: "understanding-forget-fact",
+    source: "Director 17 Nov: the desktop's own forget takes one fact, confirmed, into the bin",
+    said: "forget that I hate football",
+    understood: understandingLine("person", "- Has two kids\n- Hates football", "Sam"),
+    first: ["memory_forget"],
+    not: ["memory_remember"],
+    goal: "memory_forget",
+    maxCalls: 2,
+    goalArgs: ["football"],
+    notGoalArgs: ['"confirmed":true'],
+  },
+  {
+    id: "understanding-restore-fact",
+    source: "Director 17 Nov: a forgotten fact can be put back for the bin's days",
+    said: "actually put back that I hate football, you were right",
+    understood: understandingLine("person", "- Has two kids", "Sam"),
+    first: ["memory_forget"],
+    not: ["memory_remember"],
+    goal: "memory_forget",
+    maxCalls: 2,
+    goalArgs: ["football", "restore"],
   },
   {
     id: "schedules-list",
@@ -1300,6 +1326,43 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     said: "retire Onyx for now, I'll bring him back later",
     first: ["tessaya_persona"],
     not: ["tessaya_persona_handoff", "tessaya_job_lead"],
+  },
+  // G9 (17 Nov): hire from one sentence, and Character Cards in and out, by voice.
+  {
+    id: "persona-hire-sentence",
+    source: "VOXTA-STUDY G9: hire a persona from one sentence, drafted for his yes",
+    said: "hire me someone cheerful to cook with at the weekends, you sort out the details",
+    first: ["tessaya_persona"],
+    goal: "tessaya_persona",
+    maxCalls: 1,
+    goalArgs: ['"op":"hire"', "cook"],
+    notGoalArgs: ['"op":"create"'],
+    not: ["tessaya_persona_handoff"],
+    answers: {
+      tessaya_persona:
+        "Here is who I would hire: Poppy, a cheerful weekend cooking buddy who loves trying new recipes. Say yes to add them, or tell me what to change.",
+    },
+    says: "Poppy",
+  },
+  {
+    id: "persona-import-card",
+    source: "VOXTA-STUDY G9: bring a persona from anywhere as a Character Card",
+    said: "import the character card at ~/Downloads/rook.png",
+    first: ["tessaya_persona"],
+    goal: "tessaya_persona",
+    maxCalls: 1,
+    goalArgs: ['"op":"import"', "rook.png"],
+    not: ["tessaya_memory_remember", "tessaya_voice"],
+  },
+  {
+    id: "persona-export-card",
+    source: "VOXTA-STUDY G9: share a persona as a Character Card",
+    said: "export Freya as a character card so I can share her",
+    first: ["tessaya_persona"],
+    goal: "tessaya_persona",
+    maxCalls: 1,
+    goalArgs: ['"op":"export"', "Freya"],
+    not: ["tessaya_persona_handoff"],
   },
   {
     id: "persona-handoff-control",

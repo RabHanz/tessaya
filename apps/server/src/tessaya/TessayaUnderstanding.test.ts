@@ -2,12 +2,15 @@ import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import type { UnderstandingRewrite } from "@t3tools/tessaya-shared/understanding";
+import { vectorToBase64 } from "@t3tools/tessaya-voice/speakerStore";
 
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaMemoryService, layer as memoryLayer } from "./TessayaMemoryService.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
+import { make as makePeople, type PeopleCaller, TessayaPeople } from "./TessayaPeople.ts";
 import { TessayaUnderstanding, layer as understandingLayer } from "./TessayaUnderstanding.ts";
 
 const write = (text: string, old: string | null = null): UnderstandingRewrite => ({
@@ -28,6 +31,7 @@ const fresh = (answers: Array<UnderstandingRewrite>, prompts: Array<string>) =>
           },
         }),
       ),
+      Layer.provideMerge(Layer.effect(TessayaPeople, makePeople)),
       Layer.provideMerge(memoryLayer),
       Layer.provideMerge(SqlitePersistenceMemory),
     ),
@@ -35,6 +39,9 @@ const fresh = (answers: Array<UnderstandingRewrite>, prompts: Array<string>) =>
     Effect.map((ctx) => ({
       understanding: Context.get(ctx, TessayaUnderstanding),
       memory: Context.get(ctx, TessayaMemoryService),
+      // As a client's call runs: with the server's services around it.
+      people: (input: Parameters<TessayaPeople["Service"]["call"]>[0], caller: PeopleCaller) =>
+        Context.get(ctx, TessayaPeople).call(input, caller).pipe(Effect.provideContext(ctx)),
     })),
   );
 
@@ -113,4 +120,124 @@ it.effect("an understanding never reaches a sentence's recall or the default lis
     );
     assert.isFalse((yield* memory.list()).some((i) => i.kind === "understanding"));
   }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "forgetting one fact is confirmed, takes only its wordings into the bin, never comes back by a rewrite, and restores",
+  () =>
+    Effect.gen(function* () {
+      const prompts: string[] = [];
+      const v1 = "- Has two kids\n- Hates football";
+      const v2 = `${v1}\n- Learning the guitar`;
+      const { understanding, memory } = yield* fresh(
+        [
+          write(v1),
+          write(v2),
+          // The model slips and writes the forgotten fact back.
+          write(`${v2}\n- Plays on Sundays`),
+        ],
+        prompts,
+      );
+      const owner = { kind: "owner", certainty: 1 } as const;
+      yield* understanding.evidence(sam, "two kids, football", "t1");
+      for (const t of ["t2", "t3", "t4"]) yield* understanding.evidence(sam, "guitar", t);
+      const all = () =>
+        memory.list({ kinds: ["understanding"], scope: "person", includeSuperseded: true });
+
+      // By id, an understanding is never wiped; a fact unconfirmed is only said back.
+      const [current] = yield* memory.list({ kinds: ["understanding"], scope: "person" });
+      assert.isFalse(yield* memory.forget(current!.id));
+      const asked = yield* understanding.forget(sam, "hates football", { actor: owner });
+      assert.strictEqual(asked.status, "asked");
+      assert.include(asked.line, "Hates football");
+      assert.strictEqual(yield* understanding.current(sam), v2);
+
+      const done = yield* understanding.forget(sam, "hates football", {
+        actor: owner,
+        confirmed: true,
+      });
+      assert.strictEqual(done.status, "done");
+      assert.strictEqual(
+        yield* understanding.current(sam),
+        "- Has two kids\n- Learning the guitar",
+      );
+      const kept = (yield* all()).map((i) => i.text).toSorted();
+      assert.deepStrictEqual(kept, ["- Has two kids", "- Has two kids\n- Learning the guitar"]);
+
+      for (const t of ["t5", "t6", "t7"]) yield* understanding.evidence(sam, "sundays", t);
+      const asked2 = prompts.at(-1)!;
+      const named = "<forgotten>\n- Hates football\n</forgotten>";
+      assert.include(asked2, named);
+      assert.notInclude(asked2.replace(named, ""), "Hates football");
+      assert.strictEqual(
+        yield* understanding.current(sam),
+        "- Has two kids\n- Learning the guitar\n- Plays on Sundays",
+      );
+
+      const back = yield* understanding.restore(sam, "hates football", { actor: owner });
+      assert.strictEqual(back.status, "done");
+      assert.strictEqual(
+        yield* understanding.current(sam),
+        "- Has two kids\n- Learning the guitar\n- Plays on Sundays\n- Hates football",
+      );
+      assert.strictEqual(
+        (yield* understanding.restore(sam, "hates football", { actor: owner })).status,
+        "refused",
+      );
+
+      // Past the bin's days it is gone for good.
+      yield* understanding.forget(sam, "plays on sundays", { actor: owner, confirmed: true });
+      yield* TestClock.adjust("31 days");
+      assert.strictEqual(
+        (yield* understanding.restore(sam, "plays on sundays", { actor: owner })).status,
+        "refused",
+      );
+    }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "forgetting a person bins their understanding with them, restore brings it back, and their facts share Recently forgotten",
+  () =>
+    Effect.gen(function* () {
+      const { understanding, people } = yield* fresh(
+        [write("- Plays the oud\n- Hates football")],
+        [],
+      );
+      const owner: PeopleCaller = { role: "owner", assurance: 2 };
+      const voice = new Float32Array(16);
+      voice[3] = 1;
+      const ali = (yield* people(
+        {
+          op: "peopleObserve",
+          vessel: "tessel-1",
+          said: "I'm Ali",
+          print: { model: "m1", vector: vectorToBase64(voice), ms: 3_000 },
+        },
+        { role: null, assurance: 0 },
+      )).person!;
+      const them = { about: "person", id: ali.id } as const;
+      yield* understanding.evidence(them, "I play the oud", "t1");
+      yield* understanding.forget(them, "hates football", {
+        actor: { kind: "owner", certainty: 1 },
+        confirmed: true,
+      });
+
+      yield* people({ op: "peopleManage", action: "forget", id: ali.id, confirmed: true }, owner);
+      assert.strictEqual(yield* understanding.current(them), "- Plays the oud");
+      const bin = (yield* people({ op: "peopleList" }, owner)).forgotten!;
+      assert.sameDeepMembers(
+        bin.map((f) => [f.id === ali.id, f.fact ?? null]),
+        [
+          [true, null],
+          [false, "- Hates football"],
+        ],
+      );
+
+      yield* people({ op: "peopleManage", action: "restore", id: ali.id }, owner);
+      const fact = bin.find((f) => f.fact !== undefined)!;
+      const back = yield* people({ op: "peopleManage", action: "restore", id: fact.id }, owner);
+      assert.strictEqual(back.status, "done");
+      assert.strictEqual(yield* understanding.current(them), "- Plays the oud\n- Hates football");
+      assert.lengthOf((yield* people({ op: "peopleList" }, owner)).forgotten!, 0);
+    }).pipe(Effect.scoped),
 );

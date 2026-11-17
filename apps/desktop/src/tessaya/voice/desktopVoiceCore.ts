@@ -27,6 +27,7 @@ import {
   type RouteOutcome,
   type SileroScorer,
   type SpeakerIdentity,
+  type HeardScores,
   type SttProvider,
   type TtsProvider,
   type VoiceCoreEvent,
@@ -202,6 +203,7 @@ export interface BrainVoiceHook {
       readonly cutIn?: CutIn | null;
       /** Whose voice said it (Voice ID). */
       readonly speaker?: SpeakerIdentity | null;
+      readonly heard?: HeardScores | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
 }
@@ -226,6 +228,7 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
       wake: context.wake ?? null,
       cutIn: context.cutIn ?? null,
       speaker: context.speaker ?? null,
+      heard: context.heard ?? null,
     });
     return decision.kind === "refused"
       ? { kind: "refused", reply: decision.reply, reason: "high_risk" }

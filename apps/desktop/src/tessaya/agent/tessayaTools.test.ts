@@ -121,12 +121,40 @@ describe("the assistant's tool table", () => {
       text: "changed",
     });
     expect(called).toEqual([["settings_set", { key: "desktop:chime", value: false }]]);
+    // One fact of her understanding goes to the server's forget, with its say-back, yes and bin.
+    const forget = tools.find((t) => t.name === "memory_forget")!;
+    await forget.run({ fact: "hates football", confirmed: true });
+    expect(called.at(-1)).toEqual([
+      "tessaya_memory_forget",
+      { fact: "hates football", about: "them", confirmed: true, restore: false },
+    ]);
     expect(
       buildTessayaTools(
         { ...host([]), shared: { specs: [spec("settings_set", false)], call: async () => "" } },
         { remote: true },
       ).some((t) => t.name === "settings_set"),
     ).toBe(false);
+  });
+  it("logs each own change with its outcome, never a look or a shared tool (the server logs those)", async () => {
+    const acted: string[] = [];
+    const tools = new Map(
+      buildTessayaTools({
+        ...host([]),
+        acted: (tool, outcome) => acted.push(`${tool} ${outcome}`),
+        shared: {
+          specs: [{ name: "settings_set", description: "", input_schema: {}, readonly: false }],
+          call: async () => "set",
+        },
+      }).map((t) => [t.name, t]),
+    );
+    await tools.get("dictation_start")!.run({});
+    await expect(tools.get("click")!.run({ x: "a", y: 2, why: "w" })).rejects.toThrow();
+    await tools.get("screen_capture")!.run({});
+    await tools.get("settings_set")!.run({ key: "k", value: 1 });
+    await tools.get("act_batch")!.run({
+      steps: [{ tool: "click_element", args: { label: "Save", why: "w" } }],
+    });
+    expect(acted).toEqual(["dictation_start ok", "click fail", "act_batch ok"]);
   });
   it("checks arguments before touching anything", async () => {
     const log: string[] = [];

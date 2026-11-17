@@ -103,6 +103,16 @@ describe("the room voice loop", () => {
     // Her listening sound on S2, then two sentences of 0.2 s each at 16 kHz, in 60 ms frames.
     const cue = Math.ceil((renderSound(PILL_SOUNDS.wake, 16_000).length * 2) / 1_920);
     expect(down.length).toBe(cue + 2 * Math.ceil(6_400 / 1_920));
+    expect(t.brainCalls[0]!.tessaya.playback).toBeUndefined();
+
+    // Our test run playing into the room: answered, and the turn says so, so her server learns nothing from it.
+    const played = setup({ playback: () => "osp-run1" });
+    played.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await played.feed(false, 5);
+    await played.feed(true, 20);
+    await played.feed(false, 8);
+    await played.metrics;
+    expect(played.brainCalls[0]!.tessaya.playback).toBe("osp-run1");
   });
 
   it("guides an enrolment with the card on his screen: never answered, made from his read, then summarised", async () => {

@@ -198,6 +198,8 @@ struct Done {
     audio: Option<String>,
     /// The release took the last preview's words: nothing was decoded after the key came up.
     reused: bool,
+    /// A clip's words, each with its weakest token's confidence (NaN: none), for transcript repair; empty otherwise.
+    words: Vec<(String, f32)>,
     /// Who wrote the words: "local", "remote" (his server) or "fallback" (the server failed, the laptop wrote).
     via: &'static str,
     /// What recognised them here: "cpu", "gpu", or "gpu-fallback" (the card failed, the CPU decoded the whole recording).
@@ -408,14 +410,43 @@ fn load(model: &Path) -> Result<(Session, u64), String> {
     Ok((session, started.elapsed().as_millis() as u64))
 }
 
-fn infer(session: &mut Session, pcm: &mut Vec<f32>, language: Option<String>) -> Result<(String, u64, u64), String> {
+type Scored = Vec<(String, f32)>;
+
+fn infer(
+    session: &mut Session,
+    pcm: &mut Vec<f32>,
+    language: Option<String>,
+) -> Result<(String, u64, u64, Scored), String> {
     let audio_ms = pcm.len() as u64 / 16;
     lift_gain(pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
     let started = Instant::now();
-    let options = RunOptions { language, ..Default::default() };
+    // Token timestamps: the same words, plus each token's confidence (Word alone leaves `tokens` empty).
+    let options = RunOptions { language, timestamps: TimestampKind::Token, ..Default::default() };
     let result = session.run(pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
-    Ok((result.text.trim().to_string(), audio_ms, started.elapsed().as_millis() as u64))
+    let infer_ms = started.elapsed().as_millis() as u64;
+    let text = result.text.trim().to_string();
+    let scores = word_scores(result.words.len(), result.tokens.iter().map(|t| (t.word_index as usize, t.p)));
+    let words = result.words.iter().zip(scores).map(|(w, p)| (w.text.trim().to_string(), p)).collect();
+    let words = spelled(&text, words);
+    Ok((text, audio_ms, infer_ms, words))
+}
+
+/// Each word's weakest token confidence, by word index; NaN for a word no token named.
+fn word_scores(n_words: usize, tokens: impl Iterator<Item = (usize, f32)>) -> Vec<f32> {
+    let mut scores = vec![f32::NAN; n_words];
+    for (index, p) in tokens {
+        if let Some(score) = scores.get_mut(index) {
+            *score = score.min(p);
+        }
+    }
+    scores
+}
+
+/// The scored words when they spell `text` word for word (as the room's recogniser sends them), else none.
+fn spelled(text: &str, words: Scored) -> Scored {
+    let words: Scored = words.into_iter().filter(|(w, _)| !w.is_empty()).collect();
+    if words.len() == text.split_whitespace().count() { words } else { Vec::new() }
 }
 
 /// The new words of one piece; the context before them only helps the model hear them.
@@ -772,6 +803,7 @@ impl Live {
                 timing: None,
                 audio: None,
                 reused: false,
+                words: Vec::new(),
                 via: "local",
                 backend: "cloud",
             });
@@ -791,6 +823,7 @@ impl Live {
                     timing: None,
                     audio,
                     reused,
+                    words: Vec::new(),
                     via: "remote",
                     backend: "server",
                 });
@@ -822,6 +855,7 @@ impl Live {
             timing: None,
             audio,
             reused: self.reused,
+            words: Vec::new(),
             via: self.via,
             backend: if self.on_gpu { "gpu" } else { "cpu" },
         })
@@ -983,7 +1017,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 let model = job.model.file_name().map(|name| name.to_string_lossy().into_owned());
                 let result = ensure_loaded(slot, &job.model).and_then(|load_ms| {
                     let session = &mut slot.as_mut().expect("loaded above").1;
-                    infer(session, &mut job.pcm, job.language.take()).map(|(text, audio_ms, infer_ms)| Done {
+                    infer(session, &mut job.pcm, job.language.take()).map(|(text, audio_ms, infer_ms, words)| Done {
                         text,
                         audio_ms,
                         infer_ms,
@@ -995,6 +1029,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         timing: None,
                         audio: None,
                         reused: false,
+                        words,
                         via: "local",
                         backend: "cpu",
                     })
@@ -2666,12 +2701,21 @@ fn serve() {
                         "dictated": dictated, "pasted": paste, "target": target,
                         "releaseMs": done.release_ms, "pieces": done.pieces, "wav": done.wav, "model": done.model,
                         "timing": done.timing, "pasteMs": paste_ms, "audio": done.audio,
+                        "words": scored_json(&done.words),
                     }));
                 }
                 Err(message) => emit(json!({"ev": "text", "id": id, "dictation": dictation, "error": message, "dictated": dictated})),
             },
         }
     }
+}
+
+/// Scored words as `[{text, p}]` (p null where none), or null when there are none.
+fn scored_json(words: &Scored) -> Value {
+    if words.is_empty() {
+        return Value::Null;
+    }
+    words.iter().map(|(w, p)| json!({"text": w, "p": if p.is_finite() { json!(p) } else { Value::Null }})).collect()
 }
 
 /// Raw 16-bit PCM to stdout, for voice-lab's scorer.
@@ -2712,7 +2756,7 @@ fn cli_transcribe(args: &[String]) -> Result<(), String> {
         let result = read_wav(Path::new(&file))
             .and_then(|mut pcm| infer(&mut session, &mut pcm, language.clone()));
         match result {
-            Ok((text, audio_ms, infer_ms)) => {
+            Ok((text, audio_ms, infer_ms, _)) => {
                 emit(json!({"file": file, "text": text, "audioMs": audio_ms, "inferMs": infer_ms}))
             }
             Err(error) => emit(json!({"file": file, "error": error})),
@@ -2839,6 +2883,21 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_clip_scores_each_word_by_its_weakest_token_and_only_when_the_words_spell_the_text() {
+        let scores = word_scores(3, [(0, 0.9), (0, 0.6), (2, 1.0), (7, 0.1)].into_iter());
+        assert_eq!(scores[0], 0.6);
+        assert!(scores[1].is_nan());
+        assert_eq!(scores[2], 1.0);
+        fn words(list: &[&str]) -> Scored {
+            list.iter().map(|w| (w.to_string(), 0.5)).collect()
+        }
+        assert_eq!(spelled("hi Tessaya", words(&["hi", "", "Tessaya"])).len(), 2);
+        assert!(spelled("hi Tessaya there", words(&["hi", "Tessaya"])).is_empty());
+        assert_eq!(scored_json(&vec![("hi".to_string(), f32::NAN)]), json!([{"text": "hi", "p": null}]));
+        assert_eq!(scored_json(&Vec::new()), Value::Null);
+    }
 
     #[test]
     fn the_mic_stays_open_on_the_mic_he_used_until_he_turns_it_off_or_changes_mic() {

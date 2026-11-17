@@ -35,6 +35,7 @@ import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/o
 import { ownerDoc, ownerLine } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { OWNER, roomCases, type RoomCase } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
+import { answerOf, retried } from "../shared/retry.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
@@ -534,6 +535,19 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       return { text: ownerDoc(OWNER.docs, args as { name?: string; section?: string }) };
     case "laptop_ask":
       return { ok: false, error: "your laptop isn't linked to this server, so I can't see it." };
+    // As TessayaUnderstanding answers: a fact is said back first, and goes only on a confirmed second call.
+    case "tessaya_memory_forget": {
+      const a = args as { fact?: unknown; confirmed?: unknown; restore?: unknown };
+      if (typeof a.fact !== "string") return { line: "There is no memory by that id." };
+      return {
+        line:
+          a.restore === true
+            ? `Put back: ${a.fact}.`
+            : a.confirmed === true
+              ? "Forgotten. It can be put back for 30 days."
+              : `Forget that ${a.fact}? It can be put back for 30 days. Ask for a clear yes, then call again with confirmed.`,
+      };
+    }
     default:
       return WORK[name] ?? { ok: true, value: [] };
   }
@@ -613,15 +627,23 @@ const claude = (args: ReadonlyArray<string>, cwd: string) =>
         "",
         "--no-session-persistence",
       ],
-      { cwd, stdio: ["ignore", "pipe", "ignore"] },
+      { cwd, stdio: ["ignore", "pipe", "pipe"] },
     );
     let text = "";
+    let stderr = "";
     child.stdout.on("data", (chunk: Buffer) => {
       text += chunk.toString();
       if (firstMs === null && text.includes('"text_delta"')) firstMs = Date.now() - started;
     });
+    child.stderr.on("data", (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-2000)));
     child.on("error", reject);
-    child.on("close", () => resolve({ lines: text.split("\n"), firstMs }));
+    child.on("close", (code) => {
+      try {
+        resolve({ lines: answerOf(text, code, stderr).split("\n"), firstMs });
+      } catch (error) {
+        reject(error);
+      }
+    });
   });
 
 const resultOf = (lines: ReadonlyArray<string>): string =>
@@ -748,7 +770,12 @@ for (const c of cases) {
   const runs: Array<RoomSample> = [];
   for (let i = 0; i < Number(values.samples); i += 1)
     runs.push(
-      await sample(c).catch(() => ({ replies: [], calls: ["error"], lamp: [], firstMs: [] })),
+      await retried(`${c.id} #${i}`, () => sample(c)).catch(() => ({
+        replies: [],
+        calls: ["error"],
+        lamp: [],
+        firstMs: [],
+      })),
     );
   const pass = casePasses(c, runs);
   rows.push({

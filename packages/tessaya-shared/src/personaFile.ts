@@ -80,6 +80,8 @@ export interface PersonaDraft {
   readonly model?: string | null;
   readonly effort?: string | null;
   readonly private?: boolean;
+  /** Lines it may open with when first woken each day; empty or null takes them out. */
+  readonly greetings?: ReadonlyArray<string> | null;
 }
 
 export const ABOUT_MAX = 4_000;
@@ -97,6 +99,10 @@ export const draftProblem = (draft: PersonaDraft): string | null => {
     return "The description is too long.";
   if (draft.about !== undefined && /^\s*---/.test(draft.about))
     return "The description cannot start with ---.";
+  if ((draft.greetings?.length ?? 0) > 8) return "At most eight greetings.";
+  for (const g of draft.greetings ?? [])
+    if (!/^[^\r\n]{1,400}$/.test(g.trim()))
+      return "Each greeting is one line of up to 400 letters.";
   for (const value of Object.values(draft.traits ?? {}))
     if (!(typeof value === "number" && value >= 0 && value <= 1))
       return "Each dial is between 0 and 1.";
@@ -144,6 +150,14 @@ export const withDraft = (text: string, draft: PersonaDraft): string => {
     ["model", draft.model === undefined ? undefined : draft.model?.trim() || null],
     ["effort", draft.effort === undefined ? undefined : draft.effort?.trim().toLowerCase() || null],
     ["private", draft.private === undefined ? undefined : draft.private ? "yes" : null],
+    [
+      "greetings",
+      draft.greetings === undefined
+        ? undefined
+        : draft.greetings === null || draft.greetings.length === 0
+          ? null
+          : JSON.stringify(draft.greetings.map((g) => g.trim())),
+    ],
   ];
   let out = text;
   for (const [key, value] of set) if (value !== undefined) out = withFrontField(out, key, value);

@@ -20,6 +20,7 @@ import type {
 } from "@t3tools/tessaya-contracts";
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import { TurnLiveContext, layer as liveLayer } from "./TurnLiveContext.ts";
+import { TessayaUnderstanding } from "./TessayaUnderstanding.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
   boardLine,
@@ -338,6 +339,64 @@ layer("TessayaTurn", (it) => {
           ["setPreference", "nadia", 1],
         ]);
         yield* sql`DELETE FROM fabric_settings WHERE key = 'household.home'`;
+      }),
+  );
+
+  it.effect(
+    "only the owner forgets what she understands of herself, and a member only their own facts",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const reached: Array<string> = [];
+        const understanding = TessayaUnderstanding.of({
+          current: () => Effect.succeed(null),
+          evidence: () => Effect.void,
+          forget: (subject, _fact, options) =>
+            Effect.sync(() => {
+              reached.push(
+                `${subject.about === "self" ? "self" : subject.id}:${options.actor.kind}:${options.confirmed === true}`,
+              );
+              return { status: "done", line: "Forgotten." } as const;
+            }),
+          restore: (subject) =>
+            Effect.sync(() => {
+              reached.push(`${subject.about === "self" ? "self" : subject.id}:restore`);
+              return { status: "done", line: "Put back." } as const;
+            }),
+        });
+        const as = (speaker: SpeakerLike, about: "them" | "herself", restore = false) =>
+          turn
+            .understandingFact({ fact: "hates football", about, confirmed: true, restore })
+            .pipe(
+              Effect.provideService(TurnOrigin, originOf({ vessel: device, text: "", speaker })),
+              Effect.provideService(TessayaUnderstanding, understanding),
+            );
+        const zayd: SpeakerLike = {
+          kind: "saved",
+          personId: "zayd",
+          verified: true,
+          inherited: false,
+        };
+        const refused = "I can change that only when I know it's your voice.";
+
+        assert.strictEqual(yield* as(owner(), "herself"), "Forgotten.");
+        assert.strictEqual(yield* as(owner(), "them"), "Forgotten.");
+        assert.strictEqual(yield* as(zayd, "them"), "Forgotten.");
+        assert.strictEqual(yield* as(zayd, "them", true), "Put back.");
+        // Nobody else's: not a member on how she sees herself, nor a carried-over, unverified or guest voice.
+        assert.strictEqual(yield* as(zayd, "herself"), refused);
+        assert.strictEqual(yield* as(owner({ inherited: true }), "herself"), refused);
+        assert.strictEqual(yield* as(owner({ verified: false }), "them"), refused);
+        assert.strictEqual(
+          yield* as({ kind: "guest", personId: null, verified: true, inherited: false }, "them"),
+          refused,
+        );
+        assert.deepStrictEqual(reached, [
+          "self:owner:true",
+          "owner:owner:true",
+          "zayd:member:true",
+          "zayd:restore",
+        ]);
       }),
   );
 

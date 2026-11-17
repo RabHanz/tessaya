@@ -22,14 +22,31 @@ const setup = (answer: (ask: LinesAsk) => LinesGot | Error) => {
 const l = (text: string) => ({ text, mood: "happy" as const, gesture: "nodSmall" as const });
 
 describe("the room loop's own words", () => {
-  it("says the plain line until the server says her own words are on", async () => {
-    const off = setup(() => ({ on: false, lines: { "ack.name": [l("Mm?")] } }));
+  it("says the plain line while her own words are off, except a persona's own greeting once", async () => {
+    let greeting = [l("Ahoy, you again!")];
+    const off = setup(() => {
+      const got = { on: false, lines: { "ack.name": greeting } };
+      greeting = [];
+      return got;
+    });
     expect(off.lines.take("ack.name", "executive", "owner", "Yes?").text).toBe("Yes?");
     await off.lines.prime("executive", "owner");
+    // Woken with a full request, the greeting goes unsaid: the next wake's prime must not drop it.
+    await off.lines.prime("executive", "owner");
+    expect(off.lines.take("ack.name", "executive", "owner", "Yes?").text).toBe("Ahoy, you again!");
     expect(off.lines.take("ack.name", "executive", "owner", "Yes?")).toEqual({
       text: "Yes?",
       mood: null,
     });
+    // With her words on, later wakes' fresh lines queue behind it rather than push it out.
+    let first = true;
+    const on = setup(() => {
+      const ack = first ? [l("Ahoy!"), l("Yes?")] : [l("Hm?"), l("Here."), l("Go on.")];
+      first = false;
+      return { on: true, lines: { "ack.name": ack } };
+    });
+    for (let i = 0; i < 3; i++) await on.lines.prime("executive", "owner");
+    expect(on.lines.take("ack.name", "executive", "owner", "Yes?").text).toBe("Ahoy!");
   });
 
   it("takes the server's wordings in order, facts exact, and asks for more when few are left", async () => {

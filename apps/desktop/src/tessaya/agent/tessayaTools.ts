@@ -137,6 +137,8 @@ export interface ToolHost {
   /** How loud her voice plays on this computer, changed by his words; the next sentence plays at it. */
   readonly speakingVolume?: (to: VolumeTo) => string;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
+  /** Each of this table's own tools that changes something, as it ends: into his action log. */
+  readonly acted?: (tool: string, outcome: "ok" | "fail") => void;
   /** His server's shared tools (the one registry every vessel uses): as last listed, and one call to them. */
   readonly shared?: {
     readonly specs: ReadonlyArray<SharedToolSpec>;
@@ -331,6 +333,57 @@ export const effectLine = (before: FocusState, after: FocusState): string => {
 };
 
 const ACT_TOOLS = new Set(["click", "click_element", "type_text", "press_keys"]);
+
+/** Own tools that only look, ask or draw: not actions. A tool missing here counts as one, so none is left out. */
+const DESK_READS = new Set([
+  "screen_capture",
+  "ui_tree",
+  "point_at",
+  "plan_show",
+  "wait_for",
+  "wait",
+  "sessions_list",
+  "sessions_find",
+  "session_show",
+  "fleet_status",
+  "memory_search",
+  "conversation_search",
+  "private_waiting",
+  "browser_route",
+  "history_search",
+  "vault_list",
+  "memory_history",
+  "memory_used",
+  "jobs_list",
+  "team_board",
+  "watch_report",
+  "what_happened",
+  "approvals_list",
+  "needs_me",
+  "commit_list",
+  "cloud_status",
+  "cloud_list",
+  "cloud_usage",
+  "trust_show",
+  "activity_today",
+  "note_search",
+  "weave_list",
+  "morning_brief",
+]);
+
+const withActed = (tool: TessayaTool, acted: NonNullable<ToolHost["acted"]>): TessayaTool => ({
+  ...tool,
+  run: async (a) => {
+    try {
+      const out = await tool.run(a);
+      acted(tool.name, "ok");
+      return out;
+    } catch (error) {
+      acted(tool.name, "fail");
+      throw error;
+    }
+  },
+});
 const SETTLE_MS = [150, 350];
 
 /** An action's result also says what it changed, so the model needs no extra turn to look (CU-8). */
@@ -823,9 +876,29 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
     {
       name: "memory_forget",
       description:
-        'Delete one memory by its id (from memory_search). For "forget that", search for what he means first. He is asked first.',
-      inputSchema: object({ id: { type: "string" } }, ["id"]),
-      run: async (a) => ({ text: await host.forget(str(a, "id", 200)) }),
+        'Delete one memory by its id (from memory_search). For "forget that", search for what he means first. He is asked first. Something you understand of him (the facts after "What you understand of") or of yourself ("How you have come to see yourself": about herself) goes one fact at a time: pass that fact as `fact` instead of an id, first without confirmed; say back the fact its line names and ask for a clear yes, then call again with confirmed. To put back a fact forgotten lately, call with that `fact` and restore.',
+      inputSchema: object({
+        id: { type: "string" },
+        fact: { type: "string", maxLength: 200 },
+        about: { enum: ["them", "herself"] },
+        confirmed: { type: "boolean" },
+        restore: { type: "boolean" },
+      }),
+      run: async (a) => {
+        if (typeof a["fact"] !== "string" || a["fact"].trim() === "")
+          return { text: await host.forget(str(a, "id", 200)) };
+        // One fact of her understanding: her server keeps it, with its own say-back, yes and 30-day bin.
+        if (host.shared === undefined)
+          return { text: "Facts I understand are kept on his server, which isn't reachable now." };
+        return {
+          text: await host.shared.call("tessaya_memory_forget", {
+            fact: str(a, "fact", 200),
+            about: a["about"] === "herself" ? "herself" : "them",
+            confirmed: a["confirmed"] === true,
+            restore: a["restore"] === true,
+          }),
+        };
+      },
     },
     {
       name: "browser_route",
@@ -1562,7 +1635,13 @@ export const buildTessayaTools = (
   // A batch runs the plain steps: it ends with the whole tree, so its steps need no readback each.
   const tools =
     read === undefined ? base : base.map((t) => (ACT_TOOLS.has(t.name) ? withEffect(t, read) : t));
-  const own = host.windowKey === undefined ? tools : [...tools, batchTool(host, base)];
+  const batched = host.windowKey === undefined ? tools : [...tools, batchTool(host, base)];
+  const acted = host.acted;
+  // Shared tools are logged on his server, as every vessel's are.
+  const own =
+    acted === undefined
+      ? batched
+      : batched.map((t) => (DESK_READS.has(t.name) ? t : withActed(t, acted)));
   return options.remote === true ? own : [...own, ...sharedTools(host, own)];
 };
 

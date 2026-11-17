@@ -21,6 +21,7 @@ import {
   PHONE_PAIRING_TOOL,
   TessayaDesktopState,
   type TessayaPersonaChangeInput,
+  type TessayaPersonaChangeResult,
   type TessayaRecordEntry,
 } from "@t3tools/tessaya-contracts";
 import { activityText } from "../../../provenance/activityText.ts";
@@ -481,7 +482,40 @@ export const layer = McpToolAccess.toLayer(
         ),
       ),
       tessaya_memory_forget: McpToolAccess.writes((input) =>
-        call(withTurn((turn) => Effect.map(turn.forget(input.id), (line) => ({ line })))),
+        Effect.gen(function* () {
+          const vessel = vesselOf((yield* McpInvocationContext.McpInvocationContext).client);
+          // His desktop app's own call has no turn, and its gate asked him: it is the owner's, by his voice.
+          const desk =
+            (yield* TurnOrigin) === null && vessel?.surface === "assistant"
+              ? {
+                  kind: "desktop" as const,
+                  id: "desktop",
+                  label: "his desktop",
+                  hisVoice: true,
+                  member: OWNER_MEMBER_ID,
+                  assurance: 2 as const,
+                  rehearsal: vessel.dryRun,
+                }
+              : null;
+          return yield* call(
+            withTurn((turn) => {
+              const fact =
+                input.fact === undefined
+                  ? null
+                  : turn.understandingFact({ ...input, fact: input.fact });
+              return Effect.map(
+                fact !== null
+                  ? desk === null
+                    ? fact
+                    : Effect.provideService(fact, TurnOrigin, desk)
+                  : input.id !== undefined
+                    ? turn.forget(input.id)
+                    : Effect.succeed("Say which memory, by its id, or which fact."),
+                (line) => ({ line }),
+              );
+            }),
+          );
+        }),
       ),
       // Read as a client (MemoryViewer's default here): walls hold.
       tessaya_preference_set: McpToolAccess.writes((input) =>
@@ -940,21 +974,39 @@ export const layer = McpToolAccess.toLayer(
               ? { op: "bin" }
               : input.op === "create"
                 ? { op: "create", draft: input.draft ?? {} }
-                : persona === ""
-                  ? null
-                  : input.op === "edit"
-                    ? { op: "edit", id: persona, draft: input.draft ?? {} }
-                    : input.op === "duplicate"
-                      ? {
-                          op: "duplicate",
-                          id: persona,
-                          name: input.name ?? input.draft?.name ?? "",
-                        }
-                      : { op: input.op, id: persona };
-          if (request === null) return yield* failed({ reason: "Say which persona." });
+                : input.op === "hire"
+                  ? input.sentence === undefined
+                    ? null
+                    : { op: "hire", sentence: input.sentence }
+                  : input.op === "import"
+                    ? input.source === undefined
+                      ? null
+                      : { op: "import", source: input.source }
+                    : persona === ""
+                      ? null
+                      : input.op === "edit"
+                        ? { op: "edit", id: persona, draft: input.draft ?? {} }
+                        : input.op === "duplicate"
+                          ? {
+                              op: "duplicate",
+                              id: persona,
+                              name: input.name ?? input.draft?.name ?? "",
+                            }
+                          : input.op === "export"
+                            ? { op: "export", id: persona }
+                            : { op: input.op, id: persona };
+          if (request === null)
+            return yield* failed({
+              reason:
+                input.op === "hire"
+                  ? "Say who to hire, in a sentence."
+                  : input.op === "import"
+                    ? "Say where the card is."
+                    : "Say which persona.",
+            });
           const result = yield* changePersona(request, { owner: true }).pipe(
             Effect.provideContext(runtime),
-            Effect.orElseSucceed(() => ({
+            Effect.orElseSucceed((): TessayaPersonaChangeResult => ({
               ok: false,
               error: "The roster could not be changed.",
               bin: [],
@@ -962,21 +1014,30 @@ export const layer = McpToolAccess.toLayer(
           );
           if (!result.ok) return yield* failed({ reason: result.error ?? "That did not work." });
           const bin = result.bin.map((p) => p.name).join(", ");
+          if (result.draft !== undefined)
+            return {
+              line: `Here is who I would hire: ${result.draft.name}, ${result.draft.role}. Say yes to add them, or tell me what to change.`,
+              draft: result.draft,
+            };
           return {
             line:
-              input.op === "bin"
-                ? bin === ""
-                  ? "The bin is empty."
-                  : `In the bin: ${bin}.`
-                : input.op === "create"
-                  ? `${input.draft?.name ?? "The new persona"} is on the team.`
-                  : input.op === "duplicate"
-                    ? `Made ${request.op === "duplicate" ? request.name : "a copy"}.`
-                    : input.op === "retire"
-                      ? `${persona} is in the bin; say "restore ${persona}" to bring them back.`
-                      : input.op === "restore"
-                        ? `${persona} is back.`
-                        : `Changed ${persona}.`,
+              input.op === "import"
+                ? (result.line ?? "They came from the card and are on the team.")
+                : input.op === "export"
+                  ? `Saved the card as ${result.card?.files.join(" and ") || "a file"}.`
+                  : input.op === "bin"
+                    ? bin === ""
+                      ? "The bin is empty."
+                      : `In the bin: ${bin}.`
+                    : input.op === "create"
+                      ? `${input.draft?.name ?? "The new persona"} is on the team.`
+                      : input.op === "duplicate"
+                        ? `Made ${request.op === "duplicate" ? request.name : "a copy"}.`
+                        : input.op === "retire"
+                          ? `${persona} is in the bin; say "restore ${persona}" to bring them back.`
+                          : input.op === "restore"
+                            ? `${persona} is back.`
+                            : `Changed ${persona}.`,
           };
         }),
       ),

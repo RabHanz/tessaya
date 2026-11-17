@@ -1,31 +1,39 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * Her standing understanding (VOXTA-STUDY G4): one per person, by their people-graph or member id, and one of herself
- * per persona. Each is one memory item of kind `understanding`; a rewrite is a new item that supersedes the last, so
- * every earlier wording stays with its date and nothing is deleted except by the people graph's forget. The cheap
- * rewrite runs only when evidence has gathered, never on every turn.
+ * per persona, each rewrite a new memory item superseding the last, run only once evidence has gathered. A fact is
+ * forgotten one at a time, confirmed: its wordings leave every version and wait, restorable, in a bin for the people
+ * bin's days, and no rewrite may write it back.
  */
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import {
+  earlierLine,
   EVIDENCE_PER_REWRITE,
+  factLines,
+  findFact,
   nextUnderstanding,
   understandingPrompt,
   UnderstandingRewrite,
 } from "@t3tools/tessaya-shared/understanding";
+import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
-import { TessayaPeople } from "./TessayaPeople.ts";
-import { emitAction } from "./turnActions.ts";
+import { readBinDays, TessayaPeople } from "./TessayaPeople.ts";
+import { emitAction, type TurnAction } from "./turnActions.ts";
 
 /** A person by their people-graph or member id, or herself as one persona (unset is the lead). */
 export type UnderstandingSubject =
@@ -34,6 +42,15 @@ export type UnderstandingSubject =
 
 /** Evidence lines held per subject; older ones drop first. */
 const HELD = 6;
+const DAY_MS = 86_400_000;
+
+/** A forget or restore's answer, in the people graph's shape: "asked" wants a clear yes before anything changes. */
+export interface FactAnswer {
+  readonly status: "asked" | "done" | "refused";
+  readonly line: string;
+}
+const isoAt = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+const shown = (fact: string) => fact.replace(/^\s*-\s*/, "");
 
 export class TessayaUnderstanding extends Context.Service<
   TessayaUnderstanding,
@@ -49,6 +66,18 @@ export class TessayaUnderstanding extends Context.Service<
       said: string,
       cause: string,
     ) => Effect.Effect<void>;
+    /** One fact forgotten, by its words: said back first, then into the bin with `confirmed`. Every other fact stays. */
+    readonly forget: (
+      subject: UnderstandingSubject,
+      fact: string,
+      options: { readonly actor: TurnAction["actor"]; readonly confirmed?: boolean | undefined },
+    ) => Effect.Effect<FactAnswer>;
+    /** A fact from the bin back into the current understanding. */
+    readonly restore: (
+      subject: UnderstandingSubject,
+      fact: string,
+      options: { readonly actor: TurnAction["actor"] },
+    ) => Effect.Effect<FactAnswer>;
   }
 >()("t3/tessaya/TessayaUnderstanding") {}
 
@@ -57,6 +86,8 @@ export const make = Effect.gen(function* () {
   const oneShot = yield* Effect.serviceOption(TessayaOneShot);
   const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
   const people = yield* Effect.serviceOption(TessayaPeople);
+  const sql = yield* SqlClient.SqlClient;
+  const binDays = Effect.provideService(readBinDays, SqlClient.SqlClient, sql);
   const lock = yield* Semaphore.make(1);
   // shortcut: held in memory, so a restart drops evidence short of a rewrite; persist it if that loses too much.
   const held = new Map<string, Array<{ readonly said: string; readonly cause: string }>>();
@@ -79,6 +110,38 @@ export const make = Effect.gen(function* () {
   const currentItem = (ref: string) =>
     Effect.map(versions(ref, false), (items) => items[0] ?? null);
 
+  /** The current version, then each one it was rewritten from, newest first, by the supersede chain. */
+  const lineage = (ref: string) =>
+    Effect.map(versions(ref, true), (items) => {
+      const chain: Array<(typeof items)[number]> = [];
+      for (
+        let at = items.find((i) => i.supersededBy === null);
+        at !== undefined && chain.length < items.length;
+        at = items.find((i) => i.supersededBy === at!.id)
+      )
+        chain.push(at);
+      return chain;
+    });
+
+  const binned = (ref: string) =>
+    sql<{ id: string; fact: string }>`
+      SELECT id, fact FROM tessaya_understanding_bin WHERE scope_ref = ${ref} ORDER BY at
+    `.pipe(Effect.orDie);
+
+  const personaOf = (ref: string) =>
+    ref.startsWith("self:") ? { persona: ref.slice("self:".length) } : {};
+
+  const store = (ref: string, text: string, cause: string) =>
+    memory.add({
+      kind: "understanding",
+      text,
+      source: "thread",
+      sourceRef: cause,
+      scope: "person",
+      scopeRef: ref,
+      ...personaOf(ref),
+    });
+
   const rewrite = Effect.fn("TessayaUnderstanding.rewrite")(function* (
     subject: UnderstandingSubject,
     ref: string,
@@ -90,43 +153,189 @@ export const make = Effect.gen(function* () {
       .filter((i) => i.supersededBy !== null)
       .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map((i) => ({ at: i.createdAt.slice(0, 10), text: i.text }));
+    const forgotten = (yield* binned(ref)).map((b) => b.fact);
     const answer = yield* oneShot.value.run({
       prompt: understandingPrompt({
         about: subject.about,
         current: old?.text ?? null,
         evidence: evidence.map((e) => e.said),
         earlier,
+        forgotten,
       }),
       outputSchema: UnderstandingRewrite,
       role: "consolidation",
       feature: "understanding",
     });
-    const next = nextUnderstanding(old?.text ?? null, answer);
+    const next = nextUnderstanding(old?.text ?? null, answer, forgotten);
     if (next === null) return;
     const cause = [...new Set(evidence.map((e) => e.cause))].join(", ").slice(0, 300);
-    const item = yield* memory.add({
-      kind: "understanding",
-      text: next.text,
-      source: "thread",
-      sourceRef: cause,
-      scope: "person",
-      scopeRef: ref,
-      ...(subject.about === "self" ? { persona: ref.slice("self:".length) } : {}),
-    });
+    const item = yield* store(ref, next.text, cause);
     if (old !== null) yield* memory.supersede(old.id, item.id);
     // Provenance (origin, actor, cause, evidence) for the write and the supersede, in the action log's shape.
     yield* emitAction({
       kind: old === null ? "understanding.write" : "understanding.supersede",
       actor: { kind: "persona", certainty: 0.7 },
       evidence: evidence.map((e) => ({ kind: "turn", ref: e.cause })),
-      ...(subject.about === "self" ? { persona: ref.slice("self:".length) } : {}),
+      ...personaOf(ref),
       subject: ref,
       outcome: item.id,
       data: { origin: memory.origin, supersedes: old?.id ?? null, changes: next.changes },
     });
   });
 
-  // The people graph's forget is the one real removal: every version of their understanding goes with them.
+  // Forget and restore hold the rewrite's lock, so neither reads a version a rewrite is replacing.
+  const forget = Effect.fn("TessayaUnderstanding.forget")(function* (
+    subject: UnderstandingSubject,
+    fact: string,
+    options: { readonly actor: TurnAction["actor"]; readonly confirmed?: boolean | undefined },
+  ) {
+    const ref = refOf(subject);
+    const chain = yield* lineage(ref);
+    const lines = chain.map((i) => factLines(i.text));
+    const at = chain[0] === undefined ? null : findFact(chain[0].text, fact);
+    if (at === null)
+      return {
+        status: "refused",
+        line: `Nothing I understand of ${subject.about === "self" ? "myself" : "you"} says that. Say it the way I have it.`,
+      } satisfies FactAnswer;
+    const line = lines[0]![at]!;
+    const days = yield* binDays;
+    if (options.confirmed !== true)
+      return {
+        status: "asked",
+        line: `Forget that ${shown(line)}? It can be put back for ${days} days. Ask for a clear yes, then call again with confirmed.`,
+      } satisfies FactAnswer;
+    // Its earlier wordings, traced back version by version: each version loses that one line and keeps the rest.
+    for (let v = 0, i: number | null = at; v < chain.length && i !== null; v++) {
+      const drop: number = i;
+      i = v + 1 < chain.length ? earlierLine(lines[v]!, lines[v + 1]!, drop) : null;
+      yield* memory.overwrite(chain[v]!.id, lines[v]!.filter((_, n) => n !== drop).join("\n"));
+    }
+    const id = NodeCrypto.randomUUID();
+    yield* sql`
+      INSERT INTO tessaya_understanding_bin (id, scope_ref, fact, at, by)
+      VALUES (${id}, ${ref}, ${line}, ${isoAt(yield* Clock.currentTimeMillis)}, ${options.actor.kind})
+    `.pipe(Effect.orDie);
+    yield* emitAction({
+      kind: "understanding.forget",
+      actor: options.actor,
+      ...personaOf(ref),
+      subject: ref,
+      outcome: id,
+      data: { origin: memory.origin, binDays: days },
+    });
+    return {
+      status: "done",
+      line: `Forgotten. It can be put back for ${days} days.`,
+    } satisfies FactAnswer;
+  }, lock.withPermits(1));
+
+  const restore = Effect.fn("TessayaUnderstanding.restore")(function* (
+    subject: UnderstandingSubject,
+    fact: string,
+    options: { readonly actor: TurnAction["actor"] },
+  ) {
+    const ref = refOf(subject);
+    const bin = yield* binned(ref);
+    const at = findFact(bin.map((b) => b.fact).join("\n"), fact);
+    const back = at === null ? undefined : bin[at];
+    if (back === undefined)
+      return {
+        status: "refused",
+        line: "That isn't among what I was asked to forget lately.",
+      } satisfies FactAnswer;
+    yield* putBack(ref, back, options.actor);
+    return { status: "done", line: `Put back: ${shown(back.fact)}.` } satisfies FactAnswer;
+  }, lock.withPermits(1));
+
+  const putBack = Effect.fn("TessayaUnderstanding.putBack")(function* (
+    ref: string,
+    back: { readonly id: string; readonly fact: string },
+    actor: TurnAction["actor"],
+  ) {
+    const old = yield* currentItem(ref);
+    if (old === null) yield* store(ref, back.fact, "restored").pipe(Effect.orDie);
+    else yield* memory.overwrite(old.id, `${old.text.trim()}\n${back.fact}`);
+    yield* sql`DELETE FROM tessaya_understanding_bin WHERE id = ${back.id}`.pipe(Effect.orDie);
+    yield* emitAction({
+      kind: "understanding.restore",
+      actor,
+      ...personaOf(ref),
+      subject: ref,
+      outcome: back.id,
+      data: { origin: memory.origin },
+    });
+  });
+
+  // Recently forgotten (People's list and restore, every client's Settings) reaches this bin through the memory service.
+  const all = sql<{ id: string; scope_ref: string; fact: string; by: string; at: string }>`
+    SELECT id, scope_ref, fact, by, at FROM tessaya_understanding_bin ORDER BY at DESC
+  `.pipe(Effect.orDie);
+  const purged = (
+    rows: ReadonlyArray<{ id: string; scope_ref: string }>,
+    actor: TurnAction["actor"],
+  ) =>
+    Effect.forEach(
+      rows,
+      (d) =>
+        emitAction({ kind: "understanding.purge", actor, subject: d.scope_ref, outcome: d.id }),
+      { discard: true },
+    );
+  yield* memory.setFactBin({
+    list: Effect.map(all, (rows) => {
+      const { personas } = Option.isNone(config)
+        ? DEFAULT_OS_PACK
+        : readPack(NodePath.dirname(config.value.dbPath));
+      return rows.map((r) => {
+        const self = r.scope_ref.startsWith("self:") ? r.scope_ref.slice("self:".length) : null;
+        return {
+          id: r.id,
+          ref: r.scope_ref,
+          whose: self === null ? null : (personas.find((p) => p.id === self)?.name ?? self),
+          fact: r.fact,
+          by: r.by,
+          at: r.at,
+        };
+      });
+    }),
+    restore: Effect.fn("TessayaUnderstanding.restoreById")(function* (
+      id: string,
+      actor: TurnAction["actor"],
+    ) {
+      const back = (yield* all).find((r) => r.id === id);
+      if (back === undefined) return null;
+      yield* putBack(back.scope_ref, back, actor);
+      return back.fact;
+    }, lock.withPermits(1)),
+    purge: Effect.fn("TessayaUnderstanding.purge")(function* (
+      id: string | undefined,
+      actor: TurnAction["actor"],
+    ) {
+      const gone = (yield* all).filter((r) => id === undefined || r.id === id);
+      for (const r of gone)
+        yield* sql`DELETE FROM tessaya_understanding_bin WHERE id = ${r.id}`.pipe(Effect.orDie);
+      yield* purged(gone, actor);
+      return gone.length;
+    }, lock.withPermits(1)),
+  });
+
+  /** Past the bin's days a forgotten fact is gone for good, as a forgotten person is. */
+  const sweep = Effect.gen(function* () {
+    const before = isoAt((yield* Clock.currentTimeMillis) - (yield* binDays) * DAY_MS);
+    const due = yield* sql<{ id: string; scope_ref: string }>`
+      SELECT id, scope_ref FROM tessaya_understanding_bin WHERE at <= ${before}
+    `;
+    yield* sql`DELETE FROM tessaya_understanding_bin WHERE at <= ${before}`;
+    yield* purged(due, { kind: "system", certainty: 1 });
+  }).pipe(Effect.orDie, Effect.withSpan("TessayaUnderstanding.sweep"));
+  yield* sweep.pipe(
+    Effect.catchCause((cause) => Effect.logWarning("understanding bin sweep failed", cause)),
+    Effect.repeat(Schedule.spaced("6 hours")),
+    Effect.forkScoped({ startImmediately: true }),
+  );
+
+  // A person purged from People's bin is the one wholesale removal: every version of their understanding goes with them.
+  // While they wait in that bin it stays as it was, so restoring them brings it back.
   // shortcut: a merge (`into`) leaves the merged id's understanding behind; carry it over if merges get common.
   if (Option.isSome(people))
     yield* people.value.forgotten.pipe(
@@ -134,7 +343,13 @@ export const make = Effect.gen(function* () {
         into !== undefined
           ? Effect.void
           : Effect.flatMap(versions(`person:${id}`, true), (items) =>
-              Effect.forEach(items, (i) => memory.forget(i.id), { discard: true }),
+              Effect.forEach(items, (i) => memory.overwrite(i.id, ""), { discard: true }).pipe(
+                Effect.andThen(
+                  sql`DELETE FROM tessaya_understanding_bin WHERE scope_ref = ${`person:${id}`}`.pipe(
+                    Effect.orDie,
+                  ),
+                ),
+              ),
             ),
       ),
       Effect.forkScoped({ startImmediately: true }),
@@ -164,6 +379,8 @@ export const make = Effect.gen(function* () {
         }),
       );
     }),
+    forget,
+    restore,
   });
 });
 

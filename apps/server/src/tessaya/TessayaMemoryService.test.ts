@@ -623,6 +623,9 @@ it.effect("scrubs secrets from talk notes kept before #410, once, keeping every 
     yield* sql`UPDATE fabric_memory_meta SET value = '["kept after"]' WHERE key = 'talks:2026-10-01'`;
     const again = Context.get(yield* Layer.build(memoryLayer), TessayaMemoryService);
     assert.deepStrictEqual(yield* again.talks("2026-10-01"), ["kept after"]);
+    // Our test playback's lines come out by their words; the rest stay.
+    assert.strictEqual(yield* again.dropTalks("2026-10-01", ["kept after", "never said"]), 1);
+    assert.deepStrictEqual(yield* again.talks("2026-10-01"), []);
   }).pipe(Effect.provide(SqlitePersistenceMemory)),
 );
 

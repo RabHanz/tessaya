@@ -1,0 +1,601 @@
+/**
+ * One cue protocol for every 3D body (M-047): the light VRM body in the private page and the VaM plugin read the same
+ * JSON lines, so a scene drives both. Cues carry what the spine already decided (mood, gesture, the aligner's visemes,
+ * G7 word-timed effects, the group's speaker); a body only renders them and never decides anything itself.
+ */
+import { fireAtMs, type EffectWhen } from "./speechEffects.ts";
+import { speechUnits, type Viseme, type VisemeSegment } from "./visemes.ts";
+
+export const BODY_CUE_VERSION = 1;
+
+/** The VRM 1.0 preset expressions a body blends (any VRM 0.x model maps onto them in three-vrm). */
+export type VrmPreset =
+  | "happy"
+  | "angry"
+  | "sad"
+  | "relaxed"
+  | "surprised"
+  | "aa"
+  | "ih"
+  | "ou"
+  | "ee"
+  | "oh"
+  | "blink"
+  | "blinkLeft";
+export type Weights = Partial<Record<VrmPreset, number>>;
+
+/**
+ * Every face library name (expressionMap FACE_LIBRARY) and spine mood as VRM weights. Kept free of the expression map's
+ * imports on purpose: those pull the contracts' schemas into the body's page script.
+ */
+export const BODY_FACES: Readonly<Record<string, Weights>> = {
+  neutral: {},
+  attentive: { surprised: 0.15 },
+  calm: { relaxed: 0.5 },
+  steady: { relaxed: 0.5 },
+  unimpressed: { relaxed: 0.3, angry: 0.15 },
+  bored: { relaxed: 0.4, blink: 0.3 },
+  happy: { happy: 0.7 },
+  delighted: { happy: 1 },
+  laughing: { happy: 1, aa: 0.3 },
+  giggle: { happy: 0.8, ih: 0.2 },
+  excited: { happy: 0.8, surprised: 0.3 },
+  proud: { happy: 0.5, relaxed: 0.3 },
+  smug: { happy: 0.4, relaxed: 0.4 },
+  relieved: { relaxed: 0.7 },
+  playful: { happy: 0.6 },
+  wink: { happy: 0.5, blinkLeft: 1 },
+  shy: { happy: 0.3, relaxed: 0.3 },
+  love: { happy: 0.7, relaxed: 0.4 },
+  embarrassed: { happy: 0.3, sad: 0.2 },
+  curious: { surprised: 0.3 },
+  thinking: { relaxed: 0.2 },
+  searching: { surprised: 0.2 },
+  skeptical: { angry: 0.2, relaxed: 0.2 },
+  dizzy: { surprised: 0.3, sad: 0.2 },
+  focused: { angry: 0.15 },
+  determined: { angry: 0.3 },
+  confused: { sad: 0.2, surprised: 0.2 },
+  surprised: { surprised: 1 },
+  amazed: { surprised: 0.8, happy: 0.3 },
+  nervous: { sad: 0.3, surprised: 0.2 },
+  concerned: { sad: 0.4 },
+  worried: { sad: 0.5, surprised: 0.2 },
+  sad: { sad: 0.8 },
+  hurt: { sad: 0.9 },
+  crying: { sad: 1 },
+  lonely: { sad: 0.6 },
+  sulky: { sad: 0.4, angry: 0.3 },
+  putout: { angry: 0.3, sad: 0.2 },
+  pout: { angry: 0.3, ou: 0.4 },
+  annoyed: { angry: 0.5 },
+  frustrated: { angry: 0.7 },
+  angry: { angry: 1 },
+  grumpy: { angry: 0.5 },
+  sleepy: { relaxed: 0.6, blink: 0.5 },
+  asleep: { relaxed: 0.5, blink: 1 },
+};
+
+/** A mood at an intensity as face weights: a faint feeling still shows a little, a strong one fully. */
+export const faceWeights = (mood: string, intensity: number): Weights => {
+  const k = 0.4 + 0.6 * Math.max(0, Math.min(1, intensity));
+  return Object.fromEntries(
+    Object.entries(Object.hasOwn(BODY_FACES, mood) ? BODY_FACES[mood]! : {}).map(([p, w]) => [
+      p,
+      p.startsWith("blink") ? w : w * k,
+    ]),
+  );
+};
+
+/** Mouth shapes per viseme (visemes.ts, the Character Studio's names), at full openness. */
+const MOUTH: Readonly<Record<Viseme, Weights>> = {
+  rest: {},
+  mbp: {},
+  fv: { ih: 0.3 },
+  th: { ih: 0.3, aa: 0.1 },
+  l: { aa: 0.3, ih: 0.2 },
+  ee: { ee: 0.8 },
+  aa: { aa: 1 },
+  uh: { aa: 0.5, ou: 0.2 },
+  oh: { oh: 0.9 },
+  oo: { ou: 1 },
+  sh: { ih: 0.5, ou: 0.3 },
+  er: { oh: 0.4, ih: 0.2 },
+  etc: { aa: 0.3, ih: 0.3 },
+};
+
+/** The mouth for a viseme, opened by the voice's level when the vessel hears one (0..1), else fully. */
+export const mouthWeights = (viseme: Viseme | undefined, open = 1): Weights => {
+  const o = Math.max(0, Math.min(1, open));
+  // no aligned shape yet: the level alone opens the jaw
+  if (viseme === undefined) return o > 0.05 ? { aa: 0.7 * o } : {};
+  return Object.fromEntries(Object.entries(MOUTH[viseme]).map(([p, w]) => [p, w * o]));
+};
+
+/**
+ * The intimate expression set (M-047), beside the presets. A renderer builds each from the model's own morphs, its
+ * lookAt and small overlays (blush, tears, sweat, skin sheen); a model carrying a custom expression of the same name
+ * wins. The private layer decides the weights from her feel; a body only draws them.
+ */
+export const INTIMATE_STATES = [
+  "eyesHalf",
+  "eyesRoll",
+  "eyesShut",
+  "eyesTeary",
+  "mouthPant",
+  "mouthO",
+  "mouthBite",
+  "blush",
+  "sweat",
+  "sheen",
+] as const;
+export type IntimateState = (typeof INTIMATE_STATES)[number];
+export type States = Partial<Record<IntimateState, number>>;
+
+/** Whole-body motion while she is stirred: breath depth, breaths a second, trembling and back arch (0..1 but `breathHz`). */
+export interface Motion {
+  readonly breath: number;
+  readonly breathHz: number;
+  readonly tremble: number;
+  readonly arch: number;
+}
+export const STILL: Motion = { breath: 0, breathHz: 0.25, tremble: 0, arch: 0 };
+
+/** Word-timed intimate faces: G7 effects name them like any face, and each holds over her felt state until the line ends. */
+export const INTIMATE_FACES: Readonly<
+  Record<
+    string,
+    { readonly face: Weights; readonly states: States; readonly motion?: Partial<Motion> }
+  >
+> = {
+  gasp: { face: { surprised: 0.4 }, states: { mouthO: 0.8 }, motion: { arch: 0.3 } },
+  moan: { face: { relaxed: 0.4 }, states: { mouthO: 0.5, eyesHalf: 0.7, blush: 0.6 } },
+  bite: { face: { happy: 0.2 }, states: { mouthBite: 1, eyesHalf: 0.5, blush: 0.5 } },
+  pleading: { face: { sad: 0.4 }, states: { eyesTeary: 0.7, eyesHalf: 0.3, blush: 0.6 } },
+  shiver: { face: {}, states: { eyesShut: 0.6 }, motion: { tremble: 0.7 } },
+  melt: { face: { relaxed: 0.7 }, states: { eyesHalf: 0.8, blush: 0.7, mouthPant: 0.3 } },
+  peak: {
+    face: { surprised: 0.2 },
+    states: { eyesRoll: 0.8, eyesTeary: 0.6, mouthO: 0.9, blush: 1, sweat: 0.6 },
+    motion: { tremble: 1, arch: 1 },
+  },
+};
+
+export type BodyBone =
+  | "head"
+  | "neck"
+  | "spine"
+  | "chest"
+  | "hips"
+  | "leftUpperArm"
+  | "rightUpperArm"
+  | "rightLowerArm"
+  | "leftShoulder"
+  | "rightShoulder"
+  | "leftHand"
+  | "rightHand";
+
+/** One joint's swing during a gesture: radians on an axis, `cycles` back-and-forths over the gesture's length. */
+export interface Swing {
+  readonly bone: BodyBone;
+  readonly axis: "x" | "y" | "z";
+  readonly rad: number;
+  readonly cycles: number;
+}
+
+/** The public gesture list (tessaya-contracts EXPRESSION_GESTURES) as short procedural moves; none means stillness. */
+export const GESTURES: Readonly<
+  Record<string, { readonly ms: number; readonly swings: ReadonlyArray<Swing> }>
+> = {
+  nodSmall: { ms: 600, swings: [{ bone: "head", axis: "x", rad: 0.12, cycles: 1 }] },
+  nodSoft: { ms: 900, swings: [{ bone: "head", axis: "x", rad: 0.18, cycles: 2 }] },
+  tilt: { ms: 1200, swings: [{ bone: "head", axis: "z", rad: 0.22, cycles: 0.5 }] },
+  shrug: {
+    ms: 900,
+    swings: [
+      { bone: "leftShoulder", axis: "z", rad: 0.25, cycles: 0.5 },
+      { bone: "rightShoulder", axis: "z", rad: -0.25, cycles: 0.5 },
+    ],
+  },
+  leanIn: { ms: 1600, swings: [{ bone: "spine", axis: "x", rad: 0.16, cycles: 0.5 }] },
+  wave: {
+    ms: 1600,
+    swings: [
+      { bone: "rightUpperArm", axis: "z", rad: -1.1, cycles: 0.5 },
+      { bone: "rightLowerArm", axis: "z", rad: -0.35, cycles: 3 },
+    ],
+  },
+  hop: { ms: 500, swings: [{ bone: "spine", axis: "x", rad: -0.08, cycles: 1 }] },
+  bounce: { ms: 800, swings: [{ bone: "spine", axis: "x", rad: -0.06, cycles: 2 }] },
+  lookAway: { ms: 1400, swings: [{ bone: "head", axis: "y", rad: 0.45, cycles: 0.5 }] },
+  chuckle: { ms: 700, swings: [{ bone: "chest", axis: "x", rad: 0.05, cycles: 3 }] },
+  sigh: { ms: 1600, swings: [{ bone: "chest", axis: "x", rad: -0.08, cycles: 0.5 }] },
+  yawn: { ms: 1800, swings: [{ bone: "head", axis: "x", rad: -0.2, cycles: 0.5 }] },
+  startle: { ms: 500, swings: [{ bone: "spine", axis: "x", rad: -0.12, cycles: 0.5 }] },
+  dizzy: { ms: 1500, swings: [{ bone: "head", axis: "z", rad: 0.15, cycles: 2 }] },
+  thumbsUp: { ms: 1200, swings: [{ bone: "rightUpperArm", axis: "z", rad: -0.7, cycles: 0.5 }] },
+  bow: { ms: 1600, swings: [{ bone: "spine", axis: "x", rad: 0.45, cycles: 0.5 }] },
+  think: {
+    ms: 1600,
+    swings: [
+      { bone: "head", axis: "z", rad: 0.12, cycles: 0.5 },
+      { bone: "head", axis: "x", rad: -0.1, cycles: 0.5 },
+    ],
+  },
+  giggleOnce: { ms: 600, swings: [{ bone: "chest", axis: "x", rad: 0.06, cycles: 2 }] },
+};
+
+/** A swing's angle `t` ms into its gesture: eases out and back so every gesture ends where it began. */
+export const swingAt = (s: Swing, ms: number, t: number): number => {
+  if (t <= 0 || t >= ms) return 0;
+  const p = t / ms;
+  const envelope = Math.sin(Math.PI * p);
+  return s.cycles <= 0.5
+    ? s.rad * envelope
+    : s.rad * envelope * Math.sin(2 * Math.PI * s.cycles * p);
+};
+
+export type BodyCue =
+  | { readonly kind: "show" }
+  | { readonly kind: "hide" }
+  /** Load a persona's model; the URL is same-origin and gated by the layer, never a public CDN. */
+  | { readonly kind: "model"; readonly persona: string; readonly url: string }
+  /** The group loop's speaker switch: who the body now is (or faces). */
+  | { readonly kind: "speaker"; readonly persona: string }
+  /** Affect: the spine's mood at its intensity, plus a private look the model may carry as a custom expression. */
+  | {
+      readonly kind: "mood";
+      readonly mood: string;
+      readonly intensity: number;
+      readonly look?: string;
+      /** The private layer's felt state (0..1), when it has one: how stirred she is and how at ease. */
+      readonly arousal?: number;
+      readonly comfort?: number;
+      /** The intimate set's weights and her body's motion, when the private layer sends them. */
+      readonly states?: States;
+      readonly motion?: Motion;
+    }
+  | { readonly kind: "gesture"; readonly gesture: string }
+  /** A prop held on a bone (gated by the layer like models); no url puts it away. */
+  | {
+      readonly kind: "prop";
+      readonly id: string;
+      readonly url?: string;
+      readonly bone?: BodyBone;
+      /** Its live state: running or not, how strongly, how fast (its own animation's speed). */
+      readonly on?: boolean;
+      readonly intensity?: number;
+      readonly speed?: number;
+    }
+  /** Stop word, Stop button or auto-off: every prop, gesture and line ends at once. */
+  | { readonly kind: "stop" }
+  /** A line spoken from now: its mouth track and word-timed effects, ms after the cue arrives. */
+  | {
+      readonly kind: "speak";
+      readonly track: ReadonlyArray<VisemeSegment>;
+      readonly effects: ReadonlyArray<{
+        readonly atMs: number;
+        readonly face?: string;
+        readonly gesture?: string;
+      }>;
+    }
+  /** Live audio from the vessel playing her voice: its level and the viseme aligned at this moment. */
+  | { readonly kind: "level"; readonly value: number; readonly viseme?: Viseme }
+  | { readonly kind: "silent" };
+
+const VISEMES = new Set<string>(Object.keys(MOUTH));
+const BONES = new Set<string>([
+  "head",
+  "neck",
+  "spine",
+  "chest",
+  "leftUpperArm",
+  "rightUpperArm",
+  "rightLowerArm",
+  "leftShoulder",
+  "rightShoulder",
+  "leftHand",
+  "rightHand",
+  "hips",
+]);
+const sameOrigin = (url: string) =>
+  url.startsWith("/") && !url.startsWith("//") && !url.includes("\\");
+const num = (v: unknown, lo: number, hi: number) =>
+  typeof v === "number" && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null;
+const str = (v: unknown, max = 200) =>
+  typeof v === "string" && v.length > 0 && v.length <= max ? v : null;
+
+const STATE_NAMES = new Set<string>(INTIMATE_STATES);
+const parseStates = (v: unknown): States | null => {
+  if (v === null || typeof v !== "object") return null;
+  const out = Object.fromEntries(
+    Object.entries(v as Record<string, unknown>).flatMap(([k, w]) => {
+      const n = num(w, 0, 1);
+      return STATE_NAMES.has(k) && n !== null ? [[k, n]] : [];
+    }),
+  );
+  return Object.keys(out).length > 0 ? out : null;
+};
+
+/** Reads one cue off the wire (page, plugin socket); null when it is not one. Every body decodes through this. */
+export const parseCue = (raw: unknown): BodyCue | null => {
+  if (raw === null || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  switch (c["kind"]) {
+    case "show":
+    case "hide":
+    case "silent":
+    case "stop":
+      return { kind: c["kind"] };
+    case "model": {
+      const persona = str(c["persona"], 64);
+      const url = str(c["url"], 500);
+      // same-origin paths only, so a cue can never point a body at another host
+      return persona && url && sameOrigin(url) ? { kind: "model", persona, url } : null;
+    }
+    case "speaker": {
+      const persona = str(c["persona"], 64);
+      return persona ? { kind: "speaker", persona } : null;
+    }
+    case "mood": {
+      const mood = str(c["mood"], 32);
+      const intensity = num(c["intensity"], 0, 1);
+      const look = str(c["look"], 32);
+      const arousal = num(c["arousal"], 0, 1);
+      const comfort = num(c["comfort"], 0, 1);
+      const states = parseStates(c["states"]);
+      const m = c["motion"];
+      const motion =
+        m !== null && typeof m === "object"
+          ? {
+              breath: num((m as Record<string, unknown>)["breath"], 0, 1) ?? 0,
+              breathHz: num((m as Record<string, unknown>)["breathHz"], 0.1, 1.5) ?? STILL.breathHz,
+              tremble: num((m as Record<string, unknown>)["tremble"], 0, 1) ?? 0,
+              arch: num((m as Record<string, unknown>)["arch"], 0, 1) ?? 0,
+            }
+          : null;
+      return mood && intensity !== null
+        ? {
+            kind: "mood",
+            mood,
+            intensity,
+            ...(look ? { look } : {}),
+            ...(arousal === null ? {} : { arousal }),
+            ...(comfort === null ? {} : { comfort }),
+            ...(states === null ? {} : { states }),
+            ...(motion === null ? {} : { motion }),
+          }
+        : null;
+    }
+    case "gesture": {
+      const gesture = str(c["gesture"], 32);
+      return gesture ? { kind: "gesture", gesture } : null;
+    }
+    case "prop": {
+      const id = str(c["id"], 64);
+      const url = c["url"] === undefined ? undefined : str(c["url"], 500);
+      const bone =
+        typeof c["bone"] === "string" && BONES.has(c["bone"]) ? (c["bone"] as BodyBone) : undefined;
+      if (!id || url === null || (url !== undefined && !sameOrigin(url))) return null;
+      const intensity = num(c["intensity"], 0, 1);
+      const speed = num(c["speed"], 0, 3);
+      return {
+        kind: "prop",
+        id,
+        ...(url ? { url } : {}),
+        ...(bone ? { bone } : {}),
+        ...(typeof c["on"] === "boolean" ? { on: c["on"] } : {}),
+        ...(intensity === null ? {} : { intensity }),
+        ...(speed === null ? {} : { speed }),
+      };
+    }
+    case "level": {
+      const value = num(c["value"], 0, 1);
+      const viseme =
+        typeof c["viseme"] === "string" && VISEMES.has(c["viseme"])
+          ? (c["viseme"] as Viseme)
+          : undefined;
+      return value === null ? null : { kind: "level", value, ...(viseme ? { viseme } : {}) };
+    }
+    case "speak": {
+      const track = (Array.isArray(c["track"]) ? c["track"] : [])
+        .slice(0, 4000)
+        .flatMap((s): VisemeSegment[] => {
+          const r = (s ?? {}) as Record<string, unknown>;
+          const at = num(r["at"], 0, 600_000);
+          const end = num(r["end"], 0, 600_000);
+          const v = r["viseme"];
+          return at !== null && end !== null && end >= at && typeof v === "string" && VISEMES.has(v)
+            ? [{ at, end, viseme: v as Viseme }]
+            : [];
+        });
+      const effects = (Array.isArray(c["effects"]) ? c["effects"] : [])
+        .slice(0, 50)
+        .flatMap((e) => {
+          const r = (e ?? {}) as Record<string, unknown>;
+          const atMs = num(r["atMs"], 0, 600_000);
+          const face = str(r["face"], 32);
+          const gesture = str(r["gesture"], 32);
+          return atMs === null || (!face && !gesture)
+            ? []
+            : [{ atMs, ...(face ? { face } : {}), ...(gesture ? { gesture } : {}) }];
+        });
+      return { kind: "speak", track, effects };
+    }
+    default:
+      return null;
+  }
+};
+
+/** Nominal length of each unit kind when no audio times it (ms): vowels carry, stops are brief, pauses breathe. */
+const NOMINAL: Readonly<Record<string, number>> = {
+  V: 110,
+  G: 60,
+  H: 160,
+  N: 70,
+  B: 70,
+  F: 80,
+  C: 55,
+  P: 40,
+};
+
+/**
+ * A line's mouth track without audio alignment: the text's visemes at nominal lengths, stretched to the sentence's
+ * measured duration when the vessel knows it, and pinned to the aligner's word starts where it has them.
+ */
+export const textTrack = (
+  text: string,
+  timing: {
+    readonly durationMs?: number;
+    readonly wordMs?: ReadonlyArray<number | undefined>;
+  } = {},
+): VisemeSegment[] => {
+  const units = speechUnits(text);
+  const nominal = units.map((u) =>
+    u.kind === "P" ? (u.skip ?? 0) * 25 + NOMINAL["P"]! : NOMINAL[u.kind]!,
+  );
+  const total = nominal.reduce((a, b) => a + b, 0);
+  const scale = timing.durationMs !== undefined && total > 0 ? timing.durationMs / total : 1;
+  const out: VisemeSegment[] = [];
+  let at = 0;
+  let lastWord = -1;
+  for (const [i, u] of units.entries()) {
+    // a word the aligner heard starts where it heard it
+    const pinned =
+      u.word !== undefined && u.word !== lastWord ? timing.wordMs?.[u.word] : undefined;
+    if (pinned !== undefined && pinned >= at) at = pinned;
+    if (u.word !== undefined) lastWord = u.word;
+    const end = at + nominal[i]! * scale;
+    out.push({ at: Math.round(at), end: Math.round(end), viseme: u.viseme });
+    at = end;
+  }
+  return out;
+};
+
+/**
+ * One spoken line as cues: the mood as it arrives, the gesture, and the speech with its G7 effects placed on their
+ * words (`fireAtMs` on a timeline that starts now, so `atMs` is ms after the cue).
+ */
+export const lineCues = (line: {
+  readonly persona?: string;
+  readonly text: string;
+  readonly mood: string;
+  readonly intensity: number;
+  readonly gesture?: string;
+  readonly look?: string;
+  readonly durationMs?: number;
+  readonly wordMs?: ReadonlyArray<number | undefined>;
+  readonly effects?: ReadonlyArray<{
+    readonly when: EffectWhen;
+    readonly face?: string;
+    readonly gesture?: string;
+  }>;
+}): BodyCue[] => {
+  const track = textTrack(line.text, line);
+  const durationMs = track.at(-1)?.end ?? 0;
+  const timeline = {
+    nowMs: 0,
+    endMs: durationMs,
+    sentences: [
+      { startMs: 0, durationMs, text: line.text, ...(line.wordMs ? { wordMs: line.wordMs } : {}) },
+    ],
+  };
+  const effects = (line.effects ?? []).flatMap((e) => {
+    const atMs = fireAtMs(e.when, timeline);
+    return atMs === null
+      ? []
+      : [
+          {
+            atMs,
+            ...(e.face ? { face: e.face } : {}),
+            ...(e.gesture ? { gesture: e.gesture } : {}),
+          },
+        ];
+  });
+  return [
+    ...(line.persona ? [{ kind: "speaker", persona: line.persona } as const] : []),
+    {
+      kind: "mood",
+      mood: line.mood,
+      intensity: line.intensity,
+      ...(line.look ? { look: line.look } : {}),
+    },
+    ...(line.gesture && line.gesture !== "none"
+      ? [{ kind: "gesture", gesture: line.gesture } as const]
+      : []),
+    { kind: "speak", track, effects },
+  ];
+};
+
+const EARS_DOWN = new Set([
+  "sad",
+  "hurt",
+  "crying",
+  "lonely",
+  "concerned",
+  "worried",
+  "nervous",
+  "sulky",
+  "putout",
+  "pout",
+  "sleepy",
+  "asleep",
+  "embarrassed",
+  "shy",
+]);
+const EARS_BACK = new Set(["angry", "annoyed", "frustrated", "grumpy"]);
+const WAGS = new Set([
+  "happy",
+  "delighted",
+  "laughing",
+  "giggle",
+  "excited",
+  "playful",
+  "love",
+  "proud",
+  "amazed",
+]);
+
+/**
+ * Ears and tail on a kemonomimi model, from her affect: ears perk when she is curious or surprised, droop when low,
+ * pin back when cross or ill at ease; the tail wags with joy and arousal, flicks when cross, hangs when low. Pitch is
+ * radians (negative is flattened back); a wag is a short burst after the mood arrives, never a continuous loop.
+ */
+export const beastkin = (input: {
+  readonly mood: string;
+  readonly intensity: number;
+  readonly arousal?: number;
+  readonly comfort?: number;
+  readonly motion?: Motion;
+}): {
+  readonly earPitch: number;
+  /** Radians of a fast ear twitch while she trembles. */
+  readonly earQuiver: number;
+  readonly tailHz: number;
+  readonly tailAmp: number;
+  /** Positive hangs the tail, negative lifts it (an arch raises it stiff). */
+  readonly tailDroop: number;
+} => {
+  const k = Math.max(0, Math.min(1, input.intensity));
+  const arousal = input.arousal ?? 0;
+  const uneasy = 1 - (input.comfort ?? 1);
+  let earPitch = 0;
+  if (["curious", "surprised", "amazed", "attentive", "excited"].includes(input.mood))
+    earPitch = 0.25 * k;
+  if (EARS_DOWN.has(input.mood)) earPitch = -0.5 * k;
+  if (EARS_BACK.has(input.mood)) earPitch = -0.9 * k;
+  // ill at ease pins the ears whatever the mood says
+  if (uneasy > 0.3) earPitch = Math.min(earPitch, -0.9 * uneasy);
+  const arch = input.motion?.arch ?? 0;
+  // arching back flattens the ears whatever else shows
+  if (arch > 0.3) earPitch = Math.min(earPitch, -0.8 * arch);
+  const wag = WAGS.has(input.mood) ? k : 0;
+  const cross = EARS_BACK.has(input.mood) ? k : 0;
+  return {
+    earPitch,
+    earQuiver: 0.12 * (input.motion?.tremble ?? 0),
+    tailHz: cross > 0 ? 3 : 1.2 + 1.8 * Math.max(wag, arousal),
+    tailAmp: Math.max(0.35 * wag, 0.25 * arousal, 0.15 * cross) * (1 - uneasy) * (1 - 0.7 * arch),
+    tailDroop: (EARS_DOWN.has(input.mood) ? 0.5 * k : 0) - 0.6 * arch,
+  };
+};

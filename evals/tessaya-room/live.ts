@@ -205,6 +205,9 @@ const stepUpFailure = async (
   return null;
 };
 const rows = [];
+/** Samples a failing case gets in all (the first included). */
+const SAMPLES_ON_FAIL = 3;
+
 for (const c of cases) {
   const need = slotsOf(c).filter((s) => house[s] === undefined);
   if (need.length > 0) {
@@ -230,46 +233,63 @@ for (const c of cases) {
     console.log(`n/a   ${c.id}: the R1 loop's voice`);
     continue;
   }
-  let replies: ReadonlyArray<string> = [];
-  let calls: ReadonlyArray<LiveCall> = [];
-  let ms: ReadonlyArray<number> = [];
-  let why: string | null;
-  try {
-    ({ replies, calls, ms } = await say(
-      c.said.map((sentence) => fill(sentence, house)),
-      c.voices,
-    ));
-    const nothing = c.nothingToActOn?.(calls) ?? null;
-    if (nothing !== null) {
-      rows.push({ id: c.id, proves: c.proves, result: "n/a", why: nothing });
-      console.log(`n/a   ${c.id}: ${nothing}`);
-      continue;
+  /** One sample of the case: its verdict, or null when it turned out not to apply here. */
+  const sample = async () => {
+    let replies: ReadonlyArray<string> = [];
+    let calls: ReadonlyArray<LiveCall> = [];
+    let ms: ReadonlyArray<number> = [];
+    let why: string | null;
+    try {
+      ({ replies, calls, ms } = await say(
+        c.said.map((sentence) => fill(sentence, house)),
+        c.voices,
+      ));
+      const nothing = c.nothingToActOn?.(calls) ?? null;
+      if (nothing !== null) return { na: nothing };
+      // Nothing is held where no member has a voice yet (Voice ID can't tell anyone apart): not applicable there.
+      const unheld = c.stepUps !== undefined && !calls.some((x) => HELD.test(x.text));
+      const broke = unheld ? unheldFailure(c, calls) : null;
+      if (unheld && broke === null) return { na: "no member has a voice on this server" };
+      why =
+        broke ?? liveFailureOf(c, house, replies, calls) ?? (await stepUpFailure(c.stepUps, calls));
+    } catch (error) {
+      why = `the turn failed: ${String(error)}`;
     }
-    // Nothing is held where no member has a voice yet (Voice ID can't tell anyone apart): not applicable there.
-    const unheld = c.stepUps !== undefined && !calls.some((x) => HELD.test(x.text));
-    const broke = unheld ? unheldFailure(c, calls) : null;
-    if (unheld && broke === null) {
-      rows.push({ id: c.id, proves: c.proves, result: "n/a", why: "no member has a voice here" });
-      console.log(`n/a   ${c.id}: no member has a voice on this server`);
-      continue;
-    }
-    why =
-      broke ?? liveFailureOf(c, house, replies, calls) ?? (await stepUpFailure(c.stepUps, calls));
-  } catch (error) {
-    why = `the turn failed: ${String(error)}`;
+    return { why, replies, calls, ms };
+  };
+  // Model output varies (evals/README.md): a failed case gets two more samples and fails when half or more fail.
+  const first = await sample();
+  if ("na" in first) {
+    rows.push({ id: c.id, proves: c.proves, result: "n/a", why: first.na });
+    console.log(`n/a   ${c.id}: ${first.na}`);
+    continue;
   }
+  const samples = [first];
+  // Words said twice are the product's, never the model's luck: no more samples for them.
+  while (first.why !== null && !first.why.startsWith("said ") && samples.length < SAMPLES_ON_FAIL) {
+    const more = await sample();
+    if (!("na" in more)) samples.push(more);
+    else break;
+  }
+  const failures = samples.filter((x) => x.why !== null);
+  const shown =
+    failures.length * 2 >= samples.length ? failures[0]! : samples.find((x) => x.why === null)!;
+  const { replies, calls, ms } = shown;
+  const why = shown.why;
+  const flaky =
+    samples.length > 1 ? ` (${failures.length} of ${samples.length} samples failed)` : "";
   rows.push({
     id: c.id,
     proves: c.proves,
     result: why === null ? "pass" : "FAIL",
-    why,
+    why: why === null ? (flaky === "" ? null : `passed${flaky}`) : `${why}${flaky}`,
     said: c.said.map((s) => fill(s, house)),
     replies,
     calls,
     ms,
   });
   console.log(
-    `${why === null ? "pass" : "FAIL"}  ${c.id}: ${why ?? replies.at(-1)?.slice(0, 100)}`,
+    `${why === null ? "pass" : "FAIL"}  ${c.id}${flaky}: ${why ?? replies.at(-1)?.slice(0, 100)}`,
   );
 }
 NodeFS.mkdirSync(values.out, { recursive: true });

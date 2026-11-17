@@ -239,21 +239,29 @@ export const peopleControls = (s: {
     value: String(s.binDays),
     options: [7, 30, 90].map((n) => ({ value: String(n), label: text("ppl.bin.keep", { n }) })),
   });
-  for (const f of s.forgotten)
+  for (const f of s.forgotten) {
+    // A fact forgotten from her understanding sits here too: whose, then the fact.
+    const name =
+      f.fact === undefined
+        ? (f.name ?? text("ppl.someone"))
+        : text("ppl.fact", {
+            name: f.name ?? text("ppl.fact.someone"),
+            fact: f.fact.replace(/^\s*-\s*/, ""),
+          });
+    // A member forgetting a fact of their own forgot it themselves.
+    const by = f.by === "member" ? "themselves" : f.by;
     rows.push({
       id: `${PREFIX}gone:${f.id}`,
       section: bin,
-      label:
-        s.confirmForget === `purge:${f.id}`
-          ? text("ppl.purge.confirm", { name: f.name ?? text("ppl.someone") })
-          : (f.name ?? text("ppl.someone")),
-      hint: text(`ppl.by.${f.by === "themselves" || f.by === "expiry" ? f.by : "owner"}`, {
+      label: s.confirmForget === `purge:${f.id}` ? text("ppl.purge.confirm", { name }) : name,
+      hint: text(`ppl.by.${by === "themselves" || by === "expiry" ? by : "owner"}`, {
         at: day(f.at),
       }),
       kind: "action",
       button: text("ppl.restore"),
       secondary: text("ppl.purge"),
     });
+  }
   if (s.forgotten.length > 0)
     rows.push({
       id: `${PREFIX}purgeAll`,

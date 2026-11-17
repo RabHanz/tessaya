@@ -61,6 +61,25 @@ import {
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
+import type { TurnAction } from "./turnActions.ts";
+
+/** One fact forgotten from her understanding of someone (`person:<id>`) or of herself (`self:<persona>`). */
+export interface BinnedFact {
+  readonly id: string;
+  readonly ref: string;
+  /** Herself, as which persona; null for a person (People names them). */
+  readonly whose: string | null;
+  readonly fact: string;
+  readonly by: string;
+  readonly at: string;
+}
+export interface FactBin {
+  readonly list: Effect.Effect<ReadonlyArray<BinnedFact>>;
+  /** Back where it was, by its bin id: its words, or null when it isn't in the bin. */
+  readonly restore: (id: string, actor: TurnAction["actor"]) => Effect.Effect<string | null>;
+  /** Gone for good now: one by id, or the whole bin; how many. */
+  readonly purge: (id: string | undefined, actor: TurnAction["actor"]) => Effect.Effect<number>;
+}
 
 interface ItemRow {
   readonly id: string;
@@ -210,8 +229,16 @@ export class TessayaMemoryService extends Context.Service<
       id: string,
       pinned: boolean,
     ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
-    /** Deletes the item and leaves a tombstone so a sync cannot bring it back. */
+    /** Deletes the item and leaves a tombstone so a sync cannot bring it back; never an understanding. */
     readonly forget: (id: string) => Effect.Effect<boolean>;
+    /** New words in place with no earlier wording kept (an understanding's forgotten fact); empty deletes it. */
+    readonly overwrite: (id: string, text: string) => Effect.Effect<void>;
+    /**
+     * Her understanding's bin of forgotten facts, set by TessayaUnderstanding, so People's Recently forgotten lists and
+     * restores them too: People sits below the understanding and can't import it.
+     */
+    readonly factBin: Effect.Effect<FactBin | null>;
+    readonly setFactBin: (bin: FactBin) => Effect.Effect<void>;
     /**
      * Current items close in meaning (cosine at or above `min`), within one scope and the same visibility, closest
      * first: what the nightly sweep judges. Empty without the local model.
@@ -277,6 +304,8 @@ export class TessayaMemoryService extends Context.Service<
     /** Notes what he talked about today (a few words), for the day's episode. */
     readonly noteTalk: (day: string, text: string) => Effect.Effect<void>;
     readonly talks: (day: string) => Effect.Effect<ReadonlyArray<string>>;
+    /** Takes these lines out of the day's talk notes (our test playback was never his); how many went. */
+    readonly dropTalks: (day: string, lines: ReadonlyArray<string>) => Effect.Effect<number>;
     /** Remembers `value` under `key`; true when it differs from what was there, so work is done once. */
     readonly noteOnce: (key: string, value: string) => Effect.Effect<boolean>;
   }
@@ -289,6 +318,7 @@ const decodeTalks = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Arra
 const scrubTalk = (line: string): string => (detectSecret(line) === null ? line : TALK_REDACTED);
 
 export const make = Effect.gen(function* () {
+  let factBin: FactBin | null = null;
   const sql = yield* SqlClient.SqlClient;
   const privateTexts = yield* MemoryPrivateTexts;
   // Absent or without a model: recall stays on keywords, as before MEM-13.
@@ -713,9 +743,21 @@ export const make = Effect.gen(function* () {
 
   const forget = Effect.fn("BatonMemoryService.forget")(function* (id: string) {
     const item = yield* read(id);
-    if (item === null || !(yield* viewFor(undefined, true))(item)) return false;
+    // An understanding is never wiped by id: one fact goes at a time, confirmed, into its bin (TessayaUnderstanding).
+    if (item === null || item.kind === "understanding" || !(yield* viewFor(undefined, true))(item))
+      return false;
     yield* remove(id, yield* nowIso);
     return true;
+  });
+
+  const overwrite = Effect.fn("BatonMemoryService.overwrite")(function* (id: string, text: string) {
+    const at = yield* nowIso;
+    if (text.trim() === "") return yield* remove(id, at);
+    yield* sql`
+      UPDATE fabric_memory_items SET text = ${text}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
+      WHERE id = ${id}
+    `.pipe(Effect.orDie);
+    yield* sql`DELETE FROM fabric_memory_versions WHERE item_id = ${id}`.pipe(Effect.orDie);
   });
 
   const accept = Effect.fn("BatonMemoryService.accept")(function* (id: string) {
@@ -1054,6 +1096,20 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  const dropTalks = Effect.fn("BatonMemoryService.dropTalks")(function* (
+    day: string,
+    lines: ReadonlyArray<string>,
+  ) {
+    const held = yield* talks(day);
+    const kept = held.filter((line) => !lines.includes(line));
+    if (kept.length === held.length) return 0;
+    // @effect-diagnostics-next-line globalJsonInEffect:off - an array of strings.
+    yield* sql`UPDATE fabric_memory_meta SET value = ${JSON.stringify(kept)} WHERE key = ${`talks:${day}`}`.pipe(
+      Effect.orDie,
+    );
+    return held.length - kept.length;
+  });
+
   const noteOnce = Effect.fn("BatonMemoryService.noteOnce")(function* (key: string, value: string) {
     const rows = yield* sql<{
       value: string;
@@ -1317,6 +1373,11 @@ export const make = Effect.gen(function* () {
     }),
     pin,
     forget,
+    overwrite,
+    factBin: Effect.sync(() => factBin),
+    setFactBin: Effect.fn("BatonMemoryService.setFactBin")(function* (bin: FactBin) {
+      factBin = bin;
+    }),
     meaningPairs,
     supersede,
     // An accepted proposal joins recall, so it is embedded now.
@@ -1338,6 +1399,7 @@ export const make = Effect.gen(function* () {
     setMeta,
     noteTalk,
     talks,
+    dropTalks,
     syncHello,
     changesSince,
     applyChanges: Effect.fn("BatonMemoryService.applyChangesThenEmbed")(function* (

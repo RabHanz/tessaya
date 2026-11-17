@@ -8,7 +8,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { KwsEvent } from "./wakeStream.ts";
+import { FRAME_SAMPLES, type KwsEvent } from "./wakeStream.ts";
 
 export interface Stage2 {
   /** Stage 2's verdict as the log line has it. */
@@ -26,6 +26,8 @@ export interface WakeCapture {
     pcm: Int16Array,
     stage2: Stage2,
     kws?: KwsEvent,
+    /** The frames the Tessel says it sent for this segment (`voice/wake/end`), when it counts them. */
+    sent?: number,
   ) => void;
   /** The R1's verdict arriving after the segment ended. */
   readonly kws: (id: string, event: KwsEvent) => void;
@@ -37,6 +39,8 @@ export const createWakeCapture = (opts: {
   readonly dir: string;
   readonly capBytes: number;
   readonly followMs?: number;
+  /** The test run playing into the room now (playbackWindow.ts), or null when what the Tessel hears is live. */
+  readonly playback?: () => string | null;
   readonly now?: () => number;
   readonly log: (line: string) => void;
 }): WakeCapture => {
@@ -84,17 +88,23 @@ export const createWakeCapture = (opts: {
   };
 
   return {
-    segment: (id, seg, pcm, stage2, kws) =>
+    segment: (id, seg, pcm, stage2, kws, sent) =>
       guard("save", () => {
         if (pcm.length === 0) return;
         const at = now();
+        const run = opts.playback?.() ?? null;
         const base = `${new Date(at).toISOString().replace(/[:.]/g, "-")}_${id.replace(/[^\w-]/g, "_")}_${seg ?? "x"}`;
         put(`${base}.pcm`, new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
         put(
           `${base}.json`,
           JSON.stringify({
-            v: 1,
+            v: 2,
             device: id,
+            // Wake training reads only "live": test playback (speaker, clone, wakeinject) is not his speech.
+            source: run === null ? "live" : "playback",
+            ...(run === null ? {} : { run }),
+            // False when frames were lost on the way: the Tessel's kws score is then for audio this file lacks.
+            complete: sent === undefined ? null : pcm.length >= sent * FRAME_SAMPLES,
             seg: seg ?? null,
             at: new Date(at).toISOString(),
             rate: 16_000,

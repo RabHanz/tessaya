@@ -31,7 +31,7 @@ const CONFIRM_SAMPLES = 2 * RATE;
  */
 const SEGMENT_GAP_MS = 3_000;
 /** The Tessel's wake frames are 60 ms each, so `sent` on `voice/wake/end` says how much of the stream is the segment. */
-const FRAME_SAMPLES = 960;
+export const FRAME_SAMPLES = 960;
 /** The silence the Tessel waits before it ends a segment: his last word came this long before `voice/wake/end`. */
 const END_SILENCE_MS = 480;
 /**
@@ -474,6 +474,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
               best: Object.fromEntries(d.words.map((w, i) => [w.word, d.best[i] ?? 0])),
             },
             seg === undefined ? undefined : pairs.get(`${id}#${seg}`)?.kws,
+            sent,
           );
         if (seg !== undefined && (deps.kwsWake?.length ?? 0) > 0) {
           const early = pairs.get(`${id}#${seg}`)?.kws;

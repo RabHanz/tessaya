@@ -86,6 +86,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { BodiesSection } from "./BodiesSection";
 import { DeviceUtilitySection } from "./DeviceUtilitySection";
+import { setLaptopRoute, useLaptopRoute } from "../../tessayaLaptopRoute";
 import { OutputOrderList, PrivateButtons } from "./OutputOrderList";
 import { R1SetupSection } from "./R1SetupSection";
 import { SecretInput } from "./SecretInput";
@@ -836,7 +837,9 @@ function DeviceControls({
         )}
       </SettingsSection>
 
-      {d.speaker === null ? null : <SpeakerSection device={d} busy={busy} run={run} />}
+      {d.speaker === null ? null : (
+        <SpeakerSection device={d} busy={busy} run={run} environmentId={environmentId} />
+      )}
 
       <WifiSection device={d} busy={busy} run={run} />
 
@@ -1069,11 +1072,15 @@ function SpeakerSection({
   device: d,
   busy,
   run,
+  environmentId,
 }: {
   readonly device: DeviceView;
   readonly busy: boolean;
   readonly run: Run;
+  readonly environmentId: EnvironmentId;
 }) {
+  const laptopRoute = useLaptopRoute();
+  const viaLaptop = laptopRoute?.environmentId === environmentId && laptopRoute.deviceId === d.id;
   const id = d.id;
   const s = d.speaker!;
   const off = busy || d.online !== true;
@@ -1126,6 +1133,23 @@ function SpeakerSection({
               </Button>
             )}
           </span>
+        }
+      />
+      <SettingsRow
+        title="Play her through this computer"
+        description={
+          viaLaptop
+            ? "This computer joins both lists while it is on: move it up to hear her in its headphones, or to talk through its mic (the one you chose for dictation)."
+            : "Lets this computer play her replies on its headphones or speakers and lend its mic, so you can talk to her at your desk."
+        }
+        control={
+          <Button
+            size="xs"
+            variant={viaLaptop ? "outline" : "default"}
+            onClick={() => setLaptopRoute(viaLaptop ? null : { environmentId, deviceId: id })}
+          >
+            {viaLaptop ? "Stop" : "Use this computer"}
+          </Button>
         }
       />
       {s.outputs !== undefined ? (

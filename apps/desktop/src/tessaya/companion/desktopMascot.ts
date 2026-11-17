@@ -306,6 +306,8 @@ export const createDesktopMascot = (input: {
   readonly companionDir: string;
   readonly stateDir: string;
   readonly openSettings: () => void;
+  /** Opens his private chat window, or null when there is none to open. */
+  readonly privateChat?: () => (() => void) | null;
   /** Her place file's name beside the others' (one per character on his desktop); unset is the first. */
   readonly key?: string;
   readonly crowd?: Crowd;
@@ -670,7 +672,11 @@ export const createDesktopMascot = (input: {
 
   const menu = () => {
     const many = Electron.screen.getAllDisplays().length > 1;
+    const chat = input.privateChat?.() ?? null;
     const items: Electron.MenuItemConstructorOptions[] = [
+      ...(chat === null
+        ? []
+        : [{ label: "Private chat", click: chat }, { type: "separator" as const }]),
       snoozed()
         ? { label: "End the snooze", click: () => (save({ snoozeUntil: 0 }), apply()) }
         : {

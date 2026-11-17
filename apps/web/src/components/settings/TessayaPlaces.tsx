@@ -17,6 +17,7 @@ import { TessayaAccountsSettings } from "./TessayaAccountsSettings";
 import { BrainSettingsPanel } from "./BrainSettings";
 import { BrainUsagePanel } from "./BrainUsageSettings";
 import { CastSection } from "./CastSettings";
+import { RecentlyForgottenSection } from "./RecentlyForgottenSettings";
 import { ActivityPanel } from "./ActivitySettings";
 import { HardwareSettingsPanel } from "./HardwareSettings";
 import { HomeSettingsPanel } from "./HomeSettings";
@@ -61,6 +62,20 @@ function CastPage() {
   );
 }
 
+function ForgottenPage() {
+  const { environment } = useSettingsScope();
+  return (
+    <SettingsPageContainer>
+      {environment === null ? null : (
+        <RecentlyForgottenSection
+          key={environment.environmentId}
+          environmentId={environment.environmentId}
+        />
+      )}
+    </SettingsPageContainer>
+  );
+}
+
 function VoicesPage() {
   return (
     <SettingsPageContainer>
@@ -82,6 +97,7 @@ const TESSAYA_PAGES = {
   brain: BrainSettingsPanel,
   team: TeamPanel,
   phone: PhonePage,
+  forgotten: ForgottenPage,
 } as const;
 
 export type TessayaPage = keyof typeof TESSAYA_PAGES;
@@ -184,6 +200,21 @@ export function TessayaPlacesPanel({ moved }: { readonly moved?: TessayaPlaceId 
               size="xs"
               variant="outline"
               render={<Link to="/tessaya/$page" params={{ page: "team" }} />}
+            >
+              Show here
+            </Button>
+          }
+        />
+      </SettingsSection>
+      <SettingsSection title="Memory">
+        <SettingsRow
+          title="Recently forgotten"
+          description="People and facts she forgot, to restore or delete for good."
+          control={
+            <Button
+              size="xs"
+              variant="outline"
+              render={<Link to="/tessaya/$page" params={{ page: "forgotten" }} />}
             >
               Show here
             </Button>

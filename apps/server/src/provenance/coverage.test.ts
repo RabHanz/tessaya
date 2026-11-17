@@ -82,8 +82,26 @@ describe("every action reaches the log", () => {
     expect(roomActionOf("t1", "event/button", JSON.stringify({ b: 1, long: true }))?.kind).toBe(
       "room.button",
     );
+    expect(
+      roomActionOf(
+        "t1",
+        "event/test/playback",
+        JSON.stringify({ open: true, run: "osp replay 1" }),
+      ),
+    ).toMatchObject({ actor: { kind: "system" }, outcome: "open", data: { run: "osp replay 1" } });
     expect(roomActionOf("t1", "event/enrol", "{}")).toBeNull();
     expect(roomActionOf("t1", "state/battery", "80")).toBeNull();
     expect(roomActionOf("t1", "state/online", "0")?.outcome).toBe("offline");
+  });
+
+  it("a tool call by voice, and the desktop's own acts and Settings saves, take the same doors", () => {
+    // The room and the desk run the shared toolkit without MCP's wrapper, so the runner traces its own changes.
+    expect(src("home/R1Tools.ts")).toMatch(/traced\(\{\s*kind: "tool\.call"/);
+    expect(src("tessaya/TessayaRoutes.ts")).toContain('if (calledAs === "action")');
+    const desktop = (file: string) => src(`../../desktop/src/tessaya/${file}`);
+    expect(desktop("agent/tessayaTools.ts")).toContain("withActed(t, acted)");
+    expect(desktop("screen/ScreenCompanion.ts")).toMatch(/acted: \(tool, outcome\) =>/);
+    for (const file of ["screen/ScreenCompanion.ts", "voice/DesktopTessayaVoice.ts"])
+      expect(desktop(file), file).toMatch(/const save = [^\n]+\n\s+settingsSaved\(/);
   });
 });

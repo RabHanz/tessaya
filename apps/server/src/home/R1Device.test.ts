@@ -1,4 +1,4 @@
-import { TurnOrigin, moodMember } from "../tessaya/TessayaTurn.ts";
+import { TurnOrigin, moodMember, notLearnable } from "../tessaya/TessayaTurn.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { it as effectIt } from "@effect/vitest";
 import { BAR_NOT_CONNECTED } from "@t3tools/tessaya-shared/phoneRelay";
@@ -71,6 +71,22 @@ describe("R1Device", () => {
     expect(
       r1Envelope({ ...heard, signed: true }, DEFAULT_OS_PACK, undefined).speaker,
     ).not.toHaveProperty("print");
+  });
+
+  it("answers our test playback and the trusted test clone as a rehearsal, so nothing learns from them", () => {
+    const heard = { heard: "what is the capital of Japan", history: [], device: "r1-a" };
+    const owner = { kind: "owner", personId: "owner", verified: true, inherited: false };
+    const live = r1Envelope({ ...heard, voice: { speaker: owner } }, DEFAULT_OS_PACK, undefined);
+    expect(notLearnable(live)).toBeNull();
+    for (const voice of [
+      { speaker: owner, playback: "run1" },
+      { speaker: { ...owner, test: true } },
+    ]) {
+      const turn = r1Envelope({ ...heard, voice }, DEFAULT_OS_PACK, undefined);
+      expect(turn.rehearsal).toBe(true);
+      expect(notLearnable(turn)).toBe("a rehearsal");
+      expect(moodMember(turn)).toBeNull();
+    }
   });
 
   it("says what really happened when an act waited or failed, never the model's 'done'", () => {
@@ -519,6 +535,46 @@ effectIt.effect(
       expect(said.join("")).toBe(
         "My accounts are out of capacity until Nov 16, 6pm, so I can't think that through now.",
       );
+      expect(acts).toBe(0);
+    }),
+);
+
+effectIt.effect(
+  "a route that fails after her first words ends the turn: no other route says the answer again",
+  () =>
+    Effect.gen(function* () {
+      let acts = 0;
+      const answer = "I can't see a cause. Two sessions are working, nothing is stuck.";
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => {
+          acts += 1;
+          return Stream.make(answer);
+        },
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: () =>
+          Stream.concat(
+            Stream.make(`${answer} `),
+            Stream.fail(new R1BrainError({ detail: "claude exited before answering" })),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.succeed([]),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([] as never),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
+      const said = yield* r1TurnStream({ heard: "why is everything slow?", history: [] }, brain, {
+        specs: [],
+        run: () => Effect.succeed({ text: "{}", isError: false }),
+      }).pipe(
+        Stream.runCollect,
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
+      );
+      expect(said.join("").split("I can't see a cause.").length - 1).toBe(1);
       expect(acts).toBe(0);
     }),
 );

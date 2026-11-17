@@ -21,6 +21,7 @@ import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSc
 import { TessayaToolkit } from "../../apps/server/src/mcp/toolkits/tessaya/tools.ts";
 import { McpInvocationContext } from "../../apps/server/src/mcp/McpInvocationContext.ts";
 import { outsideCases, type OutsideCase } from "./cases.ts";
+import { answerOf, retried } from "../shared/retry.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
@@ -101,12 +102,23 @@ const sample = async (c: OutsideCase): Promise<Sample> => {
           `${PREFIX}*`,
           "--no-session-persistence",
         ],
-        { cwd: dir, stdio: ["ignore", "pipe", "ignore"] },
+        { cwd: dir, stdio: ["ignore", "pipe", "pipe"] },
       );
       let text = "";
+      let stderr = "";
       child.stdout.on("data", (chunk: Buffer) => (text += chunk.toString()));
+      child.stderr.on(
+        "data",
+        (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-2000)),
+      );
       child.on("error", reject);
-      child.on("close", () => resolve(text));
+      child.on("close", (code) => {
+        try {
+          resolve(answerOf(text, code, stderr));
+        } catch (error) {
+          reject(error);
+        }
+      });
     });
     const lines = stdout.split("\n");
     const calls = lines
@@ -152,7 +164,12 @@ const rows = [];
 for (const c of cases) {
   const runs: Sample[] = [];
   for (let i = 0; i < Number(values.samples); i += 1)
-    runs.push(await sample(c).catch(() => ({ calls: [{ tool: "error", input: {} }], reply: "" })));
+    runs.push(
+      await retried(`${c.id} #${i}`, () => sample(c)).catch(() => ({
+        calls: [{ tool: "error", input: {} }],
+        reply: "",
+      })),
+    );
   const pass = runs.every((s) => samplePasses(c, s));
   rows.push({
     id: c.id,

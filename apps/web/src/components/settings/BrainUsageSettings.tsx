@@ -26,7 +26,7 @@ import {
   usageLines,
   type UsageLine,
   type UsageView,
-} from "./BrainUsage.logic";
+} from "@t3tools/tessaya-shared/brainUsageLines";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
 

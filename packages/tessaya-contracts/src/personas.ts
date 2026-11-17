@@ -27,6 +27,8 @@ export const TessayaPersona = Schema.Struct({
   eyes: Schema.optionalKey(Schema.String),
   guilt: Schema.optionalKey(Schema.Number),
   brain: Schema.optionalKey(Schema.Struct({ model: Schema.String, effort: Schema.String })),
+  /** What it may say when he first wakes it each day, one picked at random (Character Card `first_mes` and alternates). */
+  greetings: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type TessayaPersona = typeof TessayaPersona.Type;
 
@@ -68,6 +70,10 @@ export const TessayaPersonaDraft = Schema.Struct({
     Schema.NullOr(Schema.Literals(["low", "medium", "high", "xhigh", "max"])),
   ),
   private: Schema.optionalKey(Schema.Boolean),
+  /** Its greetings, one line each; an empty list or null takes them out. */
+  greetings: Schema.optionalKey(
+    Schema.NullOr(Schema.Array(Line(400)).check(Schema.isMaxLength(8))),
+  ),
 });
 export type TessayaPersonaDraft = typeof TessayaPersonaDraft.Type;
 
@@ -94,7 +100,11 @@ export const TessayaPersonaGroupChange = Schema.Union([
   Schema.Struct({ op: Schema.Literals(["end", "status"]) }),
 ]);
 
-/** Hire, edit, copy, retire to the bin and restore; `bin` only reads; `group` changes or reads his group. */
+/**
+ * Hire, edit, copy, retire to the bin and restore; `bin` only reads; `group` changes or reads his group. `import` hires
+ * from a Character Card (V1, V2 or V3: JSON text, a PNG as base64, or `source`, a file on this server or an https
+ * link); `export` gives a persona as a card; `hire` drafts a persona from his one sentence without saving it.
+ */
 export const TessayaPersonaChangeInput = Schema.Union([
   Schema.Struct({ op: Schema.Literal("group"), change: TessayaPersonaGroupChange }),
   Schema.Struct({ op: Schema.Literal("create"), draft: TessayaPersonaDraft }),
@@ -102,6 +112,13 @@ export const TessayaPersonaChangeInput = Schema.Union([
   Schema.Struct({ op: Schema.Literal("duplicate"), id: Line(60), name: Line(40) }),
   Schema.Struct({ op: Schema.Literals(["retire", "restore"]), id: Line(60) }),
   Schema.Struct({ op: Schema.Literal("bin") }),
+  Schema.Struct({
+    op: Schema.Literal("import"),
+    card: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(12_000_000))),
+    source: Schema.optionalKey(Line(1_000)),
+  }),
+  Schema.Struct({ op: Schema.Literal("export"), id: Line(60) }),
+  Schema.Struct({ op: Schema.Literal("hire"), sentence: Line(600) }),
 ]);
 export type TessayaPersonaChangeInput = typeof TessayaPersonaChangeInput.Type;
 
@@ -115,5 +132,11 @@ export const TessayaPersonaChangeResult = Schema.Struct({
   /** A group change: what she would say back, and his group as it now is (null: none). */
   line: Schema.optionalKey(Schema.String),
   group: Schema.optionalKey(Schema.NullOr(TessayaPersonaGroup)),
+  /** `hire`: the persona drafted from his sentence, for him to confirm with `create`. */
+  draft: Schema.optionalKey(TessayaPersonaDraft),
+  /** `export`: the card as Character Card V2 JSON, the same card inside a PNG (base64), and where both were saved. */
+  card: Schema.optionalKey(
+    Schema.Struct({ json: Schema.String, png: Schema.String, files: Schema.Array(Schema.String) }),
+  ),
 });
 export type TessayaPersonaChangeResult = typeof TessayaPersonaChangeResult.Type;

@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalJsonInEffect:off
+// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalJsonInEffect:off globalDate:off
 /**
  * His one dictionary for every vessel: `<userdata>/voice/dictionary.json`, the file desktop dictation keeps on its own
  * machine. Reads add persona, household and project names; T3's `speechProjectCustomWords` is derived after each change.
@@ -12,8 +12,8 @@ import {
   addEntry,
   customWordsOf,
   editEntry,
+  droppedOnRead,
   mergeEntries,
-  ordinaryWord,
   parseVocabulary,
   removeEntry,
   removeHeard,
@@ -30,6 +30,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
+import { emitActionSync } from "../provenance/ActionLog.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { fromPeers } from "../peer/PeerVessels.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -110,7 +111,50 @@ export const applyChange = (
   }
 };
 
-/** The stored list; null when the file is there but is not a list, so nothing overwrites what he can still mend. */
+/** Entries dropped on read, kept with when and why so he can add them back; never deleted. */
+const removedFile = (file: string) =>
+  NodePath.join(NodePath.dirname(file), "dictionary-removed.json");
+
+const readRemoved = (file: string): ReadonlyArray<VocabularyEntry> => {
+  try {
+    const value: unknown = JSON.parse(NodeFS.readFileSync(removedFile(file), "utf8"));
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+};
+
+/** Puts each entry the read drops into the removed list once, and records it, before any write can lose it. */
+const keepDropped = (file: string, value: unknown) => {
+  const removed = readRemoved(file);
+  const fresh = droppedOnRead(value).filter(
+    (d) =>
+      !removed.some(
+        (r) => sameWord(r.phrase, d.phrase) && (r.replacement ?? null) === (d.replacement ?? null),
+      ),
+  );
+  if (fresh.length === 0) return;
+  const removedAt = new Date().toISOString();
+  const why = "an ordinary word learned from one fix";
+  writeStored(removedFile(file), [...removed, ...fresh.map((e) => ({ ...e, removedAt, why }))]);
+  for (const e of fresh)
+    emitActionSync({
+      kind: "vocabulary.drop",
+      actor: { kind: "rule", id: "plain-learned-word", certainty: 1 },
+      subject: e.replacement === null ? e.phrase : `${e.phrase} -> ${e.replacement}`,
+      outcome: "removed",
+      evidence: [{ kind: "file", ref: removedFile(file) }],
+      data: { entry: e, why },
+    });
+};
+
+/** A list item that is not an entry (PowerShell 5.1 wrote the whole list as one, 17 Nov) means a damaged file. */
+const isEntryItem = (item: unknown) =>
+  typeof item === "object" &&
+  item !== null &&
+  typeof (item as { phrase?: unknown }).phrase === "string";
+
+/** The stored list; null when the file is there but is not a list of entries, so nothing overwrites what he can still mend. */
 const readStored = (file: string): ReadonlyArray<VocabularyEntry> | null => {
   let text: string;
   try {
@@ -120,7 +164,9 @@ const readStored = (file: string): ReadonlyArray<VocabularyEntry> | null => {
   }
   try {
     const value: unknown = JSON.parse(text);
-    return Array.isArray(value) ? parseVocabulary(value) : null;
+    if (!Array.isArray(value) || !value.every(isEntryItem)) return null;
+    keepDropped(file, value);
+    return parseVocabulary(value);
   } catch {
     return null;
   }
@@ -227,12 +273,12 @@ export const make = Effect.gen(function* () {
       if (e.replacement === null && slug(e.phrase))
         yield* change({ verb: "remove", phrase: e.phrase });
     const known = yield* read;
+    const removed = readRemoved(file);
     const extra = words.filter(
       (w) =>
         !slug(w.term) &&
-        // T3's list is derived from the store: an ordinary word there is one the store just dropped (0.1.147 brought
-        // back "pass" and "new" as his own), never one he typed.
-        !ordinaryWord(w.term) &&
+        // A word the store dropped is not taken back as his own (0.1.147 brought back "pass" and "new").
+        !removed.some((e) => sameWord(e.replacement ?? e.phrase, w.term)) &&
         !known.some((e) => sameWord(e.phrase, w.term) || sameWord(e.replacement ?? "", w.term)),
     );
     if (extra.length > 0)
