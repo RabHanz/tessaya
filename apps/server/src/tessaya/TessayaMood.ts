@@ -45,6 +45,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as ServerConfig from "../config.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { DeviceSync } from "../home/DeviceSync.ts";
+import { makeBrainLink } from "./BrainHost.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { readPack } from "./OperatingSystemPack.ts";
@@ -201,6 +202,7 @@ const make = Effect.gen(function* () {
   const moved = yield* PubSub.sliding<void>(1);
   const oneShot = yield* Effect.serviceOption(TessayaOneShot);
   const sync = yield* Effect.serviceOption(DeviceSync);
+  const brain = yield* makeBrainLink;
   let sent = 0;
   const people = yield* Effect.serviceOption(TessayaPeople);
   /**
@@ -275,6 +277,11 @@ const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const { day } = clockIn(now, timeZone ?? "UTC");
     const resolved = event(day, dials);
+    // Only her brain appraises; a worker sends what it saw there (one-brain §2.1).
+    if (!(yield* brain.isBrain)) {
+      yield* brain.send("mood", { p: persona, m: member, e: resolved });
+      return;
+    }
     const self = Option.isSome(sync) ? sync.value.self : "";
     const k = actKey(persona, member, resolved, source);
     // Another server's copy of this very act came first: it already moved her here.

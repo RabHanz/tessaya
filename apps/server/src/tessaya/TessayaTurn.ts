@@ -41,7 +41,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { TessayaMemoryLearning, type LearnResult } from "./TessayaMemoryLearning.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
-import { HOME_KEY, HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
+import { HOME_KEY } from "./BrainHost.ts";
+import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import {
   BatonMemoryRefusedError,
   type TessayaHouseholdCallInput,

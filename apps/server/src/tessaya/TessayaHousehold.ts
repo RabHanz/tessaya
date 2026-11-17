@@ -37,6 +37,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
+import { HOME_KEY } from "./BrainHost.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
@@ -99,8 +100,6 @@ interface Row {
 export const HOUSEHOLD_PEER_TOOL = "household_peer";
 /** The linked-server tool that tells a server a member's data was destroyed, so its vessels forget their voice. */
 export const VOICE_FORGET_TOOL = "household_voice_forget";
-/** The setting naming the linked server that holds this home's members; empty or absent: this one. */
-export const HOME_KEY = "household.home";
 /** Each member's Windows account (`HOST\\user`, lower case) on this server's desktops, for Windows Hello. */
 const WINDOWS_KEY = "household.windowsAccounts";
 /** A step-up's A3 lasts this long on the session that made it (ACCOUNTS-IDENTITY-DESIGN §3.1). */
@@ -1134,7 +1133,7 @@ export const make = Effect.gen(function* () {
           return refused(`${on} is not a server linked to this one.`);
         return yield* adminAct(
           role === "owner" ? null : "Only the owner chooses where the members live.",
-          on === null ? "Keep this home's members on this server" : `Ask ${on} who lives here`,
+          on === null ? "Make this server her brain" : `Make ${on} her brain`,
           Effect.gen(function* () {
             yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, ${on ?? ""}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(
               Effect.orDie,
@@ -1142,8 +1141,8 @@ export const make = Effect.gen(function* () {
             grantsCache = null;
             return done(
               on === null
-                ? "This server keeps its own members."
-                : `This server now asks ${on} who lives here.`,
+                ? "This server is her brain: it keeps her members, mood and cards."
+                : `${on} is her brain now: this server sends it what it hears and decides nothing itself.`,
             );
           }),
         );
