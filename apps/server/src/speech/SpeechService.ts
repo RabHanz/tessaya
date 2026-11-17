@@ -7,6 +7,8 @@ import {
   type SpeechTranscriptionOptions,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import type { InputQuality } from "@t3tools/tessaya-contracts";
+import { inputQualityOf, measureInput } from "@t3tools/tessaya-shared/inputQuality";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -129,6 +131,13 @@ export type SpeechStream = {
   readonly finish: Effect.Effect<string, SpeechError>;
 };
 
+/** The last dictation this server transcribed (desktop, web, phone), its words, and how it sounded. */
+export interface HeardDictation {
+  readonly at: number;
+  readonly text: string;
+  readonly input: InputQuality;
+}
+
 export class SpeechService extends Context.Service<
   SpeechService,
   {
@@ -148,6 +157,8 @@ export class SpeechService extends Context.Service<
     readonly startStream: (
       options: SpeechTranscriptionOptions,
     ) => Effect.Effect<SpeechStream, SpeechError, Scope.Scope>;
+    /** The last dictation's sound, for her health model and for the turn its words became. */
+    readonly heard: Effect.Effect<HeardDictation | null>;
     readonly updateAcceleration: (
       acceleration: SpeechAcceleration,
     ) => Effect.Effect<EnvironmentSpeechStatus, SpeechError>;
@@ -174,6 +185,19 @@ const make = Effect.gen(function* () {
   const scope = yield* Effect.scope;
   const clock = yield* Clock.Clock;
   const now = () => clock.currentTimeMillisUnsafe();
+  let heardLast: HeardDictation | null = null;
+  // One pass over the recording (no FFT), after the words are in: nothing on the streaming path.
+  const noteHeard = (chunks: ReadonlyArray<Float32Array>, text: string) => {
+    if (text.trim() === "") return text;
+    const pcm = new Float32Array(chunks.reduce((n, c) => n + c.length, 0));
+    let at = 0;
+    for (const c of chunks) {
+      pcm.set(c, at);
+      at += c.length;
+    }
+    heardLast = { at: now(), text, input: inputQualityOf(measureInput(pcm)) };
+    return text;
+  };
   const libc = platform === "linux" ? yield* HostProcess.LinuxLibc : undefined;
   const unsupportedReason = isSpeechPlatformSupported(platform, architecture, libc)
     ? null
@@ -676,10 +700,13 @@ const make = Effect.gen(function* () {
               vocabularyFor(inference).length > 0 ? [] : customWords,
               dictionary,
             );
-            return finalizeTranscript(
-              correct(result.text),
-              options,
-              translateToEnglish ? "en" : language === "auto" ? undefined : language,
+            return noteHeard(
+              [pcm],
+              finalizeTranscript(
+                correct(result.text),
+                options,
+                translateToEnglish ? "en" : language === "auto" ? undefined : language,
+              ),
             );
           }).pipe(
             Effect.ensuring(
@@ -872,10 +899,13 @@ const make = Effect.gen(function* () {
           throw cause;
         }
         finished = true;
-        return finalizeTranscript(
-          correct(text),
-          options,
-          translateToEnglish ? "en" : language === "auto" ? undefined : language,
+        return noteHeard(
+          received,
+          finalizeTranscript(
+            correct(text),
+            options,
+            translateToEnglish ? "en" : language === "auto" ? undefined : language,
+          ),
         );
       }),
     };
@@ -886,6 +916,7 @@ const make = Effect.gen(function* () {
     models: readModels,
     prepareModel,
     transcribe,
+    heard: Effect.sync(() => heardLast),
     startStream: Effect.fn("SpeechService.startStream")(function* (options) {
       const session = yield* Scope.fork(yield* Effect.scope);
       return yield* openStream(options).pipe(

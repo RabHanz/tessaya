@@ -27,6 +27,12 @@ import {
 import { addressedAtDesk } from "./turnRules.ts";
 import { answerOf, isDismissPhrase } from "@t3tools/tessaya-shared/voiceTurn";
 import { classifyDictation } from "@t3tools/tessaya-shared/dictation";
+import type { InputQuality } from "@t3tools/tessaya-contracts";
+import {
+  createInputBaselines,
+  inputQualityOf,
+  measureInput,
+} from "@t3tools/tessaya-shared/inputQuality";
 
 import {
   DEFAULT_TIMINGS,
@@ -458,6 +464,9 @@ export const createVoiceCore = (input: {
   let speakerNow: SpeakerIdentity | null = null;
   /** How sure the recogniser was of each word of the clip going to the router; null when typed or unscored. */
   let heardNow: HeardScores | null = null;
+  /** How his sound came in on that clip, against each verified voice's own usual. */
+  let soundNow: InputQuality | null = null;
+  const baselines = createInputBaselines();
   const wakeOf = (text: string) => namedWake(text, timings.wakeWords ?? []) ?? addressee;
   const thinkAhead = (text: string, cutIn: CutIn | null) => {
     ahead = null;
@@ -561,6 +570,7 @@ export const createVoiceCore = (input: {
               cutIn: steer,
               speaker: speakerNow,
               heard: heardNow,
+              sound: soundNow,
             }),
         ...(turn ? [dropped] : []),
       ]);
@@ -626,6 +636,7 @@ export const createVoiceCore = (input: {
       lastTranscript = cleaned;
       speakerNow = null;
       heardNow = null;
+      soundNow = null;
       emit({ type: "transcript", text: cleaned, at: now() });
       await dispatch({ type: "utterance", text: cleaned, at: now() });
     });
@@ -759,6 +770,10 @@ export const createVoiceCore = (input: {
       if (!dictating) {
         speakerNow = identity;
         heardNow = input.stt.scores?.(text) ?? null;
+        const m = measureInput(pcm, { confidences: heardNow?.words.map((w) => w.p) ?? [] });
+        const voice = identity?.verified === true ? identity.personId : null;
+        soundNow = inputQualityOf(m, baselines.of(voice));
+        if (voice !== null && soundNow.verdict === "good") baselines.learn(voice, m);
       }
       const said = turn.prefix === null ? cleaned : `${turn.prefix} ${cleaned}`;
       // In the follow-up window nobody said the name: only what reads as meant for Tessaya goes on, and

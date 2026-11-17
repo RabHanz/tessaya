@@ -154,7 +154,7 @@ import {
   type HandsToolSpec,
 } from "@t3tools/tessaya-shared/remoteHands";
 import { LOOK_GRANT, lookAsks, withGrant } from "@t3tools/tessaya-shared/consent";
-import { BATON_CONSENT_WS_METHODS } from "@t3tools/tessaya-contracts";
+import { BATON_CONSENT_WS_METHODS, type InputQuality } from "@t3tools/tessaya-contracts";
 import {
   sessionWithOwnMcp,
   startTessayaMcp,
@@ -594,6 +594,8 @@ export interface ScreenCompanion {
       readonly speaker?: SpeakerIdentity | null;
       /** The recogniser's confidence in each word, sent with a server-brain turn for transcript repair. */
       readonly heard?: HeardScores | null;
+      /** How his sound came in, sent with a server-brain turn so she can say he sounds muffled. */
+      readonly sound?: InputQuality | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
   readonly setActions: (actions: AssistantActions) => void;
@@ -1324,6 +1326,7 @@ export const startScreenCompanion = (input: {
   /** Whose voice the turn now running is (Voice ID), for the turn log and the Record. */
   let heardFrom: SpeakerIdentity | null = null;
   let heardWords: HeardScores | null = null;
+  let heardSound: InputQuality | null = null;
   const heardFromLabel = () =>
     heardFrom === null
       ? null
@@ -3517,6 +3520,7 @@ export const startScreenCompanion = (input: {
           ...(voiceTurn && heardWords !== null
             ? { words: heardWords.words, recogniser: heardWords.recogniser }
             : {}),
+          ...(voiceTurn && heardSound !== null ? { input: heardSound } : {}),
           project: where.project ?? null,
           app: appOf(where.window),
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -3756,6 +3760,7 @@ export const startScreenCompanion = (input: {
       cutIn = null,
       speaker = null,
       heard = null,
+      sound = null,
     }: Parameters<ScreenCompanion["said"]>[1],
     turn: {
       readonly onEnd?: () => void;
@@ -3768,6 +3773,7 @@ export const startScreenCompanion = (input: {
     woke = wake;
     heardFrom = speaker;
     heardWords = heard;
+    heardSound = sound;
     const pack = readPack(NodePath.join(input.stateDir, PACK_FOLDER));
     face = personaFor(pack.personas, { wake, text: outside ? "" : text });
     // A device's turn never changes whose conversation he is in.

@@ -583,7 +583,9 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       return {
         diagnosis: diagnose(
           healthOf.get(house) ?? HEALTHY,
-          symptom === "slow" || symptom === "choppy" || symptom === "wake" ? symptom : "any",
+          symptom === "slow" || symptom === "choppy" || symptom === "wake" || symptom === "sound"
+            ? symptom
+            : "any",
         ),
       };
     }

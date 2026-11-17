@@ -29,6 +29,7 @@ import * as Option from "effect/Option";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { R1Loop } from "../home/R1Loop.ts";
 import { ActionLog, emitAction } from "../provenance/ActionLog.ts";
+import { SpeechService } from "../speech/SpeechService.ts";
 import { TurnOrigin } from "./TurnOrigin.ts";
 
 const STALL_WINDOW_MS = 15 * 60_000;
@@ -125,8 +126,11 @@ export const snapshot = Effect.fn("TessayaHealth.snapshot")(function* () {
         ...(yield* log.value.list({ since: now - NOTES_MS, kindPrefix: "host.health", limit: 5 })),
       ]
     : [];
+  const speech = yield* Effect.serviceOption(SpeechService);
+  const dictation = Option.isSome(speech) ? yield* speech.value.heard : null;
   return {
     at: now,
+    ...(dictation === null ? {} : { dictation: { at: dictation.at, input: dictation.input } }),
     hosts: [...hosts.values()],
     services: [...services.values()],
     vessels,

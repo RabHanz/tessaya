@@ -89,6 +89,12 @@ import {
   type TurnConfig,
 } from "./turnTaking.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
+import type { InputQuality } from "@t3tools/tessaya-contracts";
+import {
+  createInputBaselines,
+  inputQualityOf,
+  measureInput,
+} from "@t3tools/tessaya-shared/inputQuality";
 
 const RATE = 16_000;
 /** Her downlink kept for open talk-over: 8 s, far more than the R1 ever holds unplayed. */
@@ -308,6 +314,8 @@ export interface Tessaya {
   readonly segments?: ReadonlyArray<{ readonly speaker: SpeakerIdentity; readonly words: string }>;
   /** The test run playing into the room (playbackWindow.ts): she answers, and her server learns nothing from it. */
   readonly playback?: string;
+  /** How his sound came in (inputQuality.ts): she mentions it when it was not good. */
+  readonly input?: InputQuality;
 }
 
 export interface RoomDeps {
@@ -616,6 +624,8 @@ export interface TurnMetrics {
   };
   /** The recogniser whose words were taken, and which model a hedged turn took. */
   readonly recogniser?: RecognisedBy;
+  /** How his sound came in on this turn, for her health model. */
+  readonly input?: InputQuality;
 }
 
 /** "Test mode on", "turn off test mode", "Tessaya, test mode off": which, or null. */
@@ -751,6 +761,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     return `Test mode is on until ${clockOf(until)}.`;
   };
 
+  /** Each speaker's usual sound, across sessions and Tessels: a muffled turn is judged against his own voice. */
+  const baselines = createInputBaselines();
   const openSession = (id: string) => {
     const vad = deps.vad();
     const turns = createTurnTaking(config.turn);
@@ -842,6 +854,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let firstUntil = 0;
     /** When its mic last sent anything (or it opened): a session with nothing for a while is one the R1 has left. */
     let lastUpAt = deps.now();
+    /** Mic samples the uplink never delivered (gaps in its frame numbers), and the count when this turn began. */
+    let missedSamples = 0;
+    let lastSeq: number | null = null;
+    let turnMissedFrom = 0;
     /** Her last few sentences, to tell her own voice coming back through the mic from his. */
     let herLines: string[] = [];
     /** Her line now asks him something (a question, or her answer to her name): what he says over it is his reply. */
@@ -1592,6 +1608,28 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
     /** When the turn being heard began: the window is about when he started, not when recognition finished. */
     let turnStartedAt = 0;
+    /** His sound on this turn against his usual; a good turn of a verified voice teaches that usual. */
+    const soundOf = (
+      pcm: Int16Array,
+      startedAt: number,
+      lastVoice: number,
+      speaker: SpeakerIdentity,
+      scores: ReadonlyArray<HeardWord> | undefined,
+    ): InputQuality => {
+      const herUntil = speechUntil + config.downDelayMs;
+      const m = measureInput(pcm, {
+        missingMs: ((missedSamples - turnMissedFrom) * 1000) / RATE,
+        herOverlap:
+          lastVoice > startedAt
+            ? Math.max(0, Math.min(lastVoice, herUntil) - startedAt) / (lastVoice - startedAt)
+            : 0,
+        ...(scores === undefined ? {} : { confidences: scores.map((w) => w.p) }),
+      });
+      const who = speaker.verified ? speaker.personId : null;
+      const quality = inputQualityOf(m, baselines.of(who));
+      if (who !== null && quality.verdict === "good") baselines.learn(who, m);
+      return quality;
+    };
     /**
      * `given` is a turn already in words (an R1 button's prompt): addressed to her, with no voice to read. `heard` is
      * his voice already in words (a request in the same breath as her name): his turn, with `pcm` its voice.
@@ -1619,6 +1657,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         // Still talking once her voice and its tail are gone: normal speech again (10:36, 13 Nov).
         lastVoice - config.upDelayMs <= speechUntil + config.downDelayMs + config.echoTailMs;
       const stopsAt = stops;
+      let sound: InputQuality | undefined;
       const envelope = (
         words: string,
         who: RoomPersona | undefined,
@@ -1627,8 +1666,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         speaker: SpeakerIdentity,
         affect: Affect | undefined,
         segments?: Tessaya["segments"],
-      ) =>
-        envelopeOf(
+      ): Tessaya => {
+        // Scores only for the very words they scored (not a joined or corrected turn).
+        const scores =
+          heardScores !== null && sameWords(heardScores.words.map((w) => w.text).join(" "), words)
+            ? heardScores
+            : null;
+        if (given === undefined && pcm.length > 0)
+          sound ??= soundOf(pcm, startedAt, lastVoice, speaker, scores?.words);
+        const t = envelopeOf(
           given,
           tainted,
           words,
@@ -1638,11 +1684,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           speaker,
           affect,
           segments,
-          // Scores only for the very words they scored (not a joined or corrected turn).
-          heardScores !== null && sameWords(heardScores.words.map((w) => w.text).join(" "), words)
-            ? heardScores
-            : null,
+          scores,
         );
+        return sound === undefined ? t : { ...t, input: sound };
+      };
       let heardScores: ReturnType<NonNullable<RecogniserTurn["words"]>> = null;
       const current = given === undefined && heard === undefined ? rec : null;
       if (current !== null) rec = null;
@@ -2474,6 +2519,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
               },
             }),
         ...(recognisedBy === null ? {} : { recogniser: recognisedBy }),
+        ...(sound === undefined ? {} : { input: sound }),
         emotion: (affect ?? affectNow)?.emotion ?? "unknown",
         bargedIn,
         speculative: kept !== null,
@@ -2548,6 +2594,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             // The preroll is already in `a.pcm`, so his first word came that long before now.
             turnStartedAt = deps.now() - (a.pcm.length / RATE) * 1000;
             turnTainted = deps.now() - lastTaintedAt < 500;
+            turnMissedFrom = missedSamples;
             if (!asleep) face("attentive");
             break;
           case "audio":
@@ -2831,6 +2878,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           chain = chain.then(() => onWindow(window, arrivedAt));
         }
         pending = all.slice(at);
+        if (head !== null) {
+          const seq = head.getUint32(0, true);
+          // A jump in frame numbers is mic audio Wi-Fi lost; a big one is the R1 restarting its count.
+          if (lastSeq !== null && seq > lastSeq + 1 && seq - lastSeq < 500)
+            missedSamples += (seq - lastSeq - 1) * pcm.length;
+          lastSeq = seq;
+        }
         if (head !== null && open(id)) {
           const seq = head.getUint32(0, true);
           const rx = head.getUint32(4, true);
