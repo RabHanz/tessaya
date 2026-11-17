@@ -1,8 +1,8 @@
 diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
-index b2ad65cf053741a30cda0333ad86ace107ab7ad6..da027cced8c08b15e60d4f8c4ddd7da4fba5c202 100644
+index b2ad65cf053741a30cda0333ad86ace107ab7ad6..84668a5ffa3b84197c5ce5503a87fed3b0013b2e 100644
 --- a/apps/mobile/src/Stack.tsx
 +++ b/apps/mobile/src/Stack.tsx
-@@ -92,6 +92,17 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
+@@ -92,6 +92,18 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
  import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
  import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
  import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
@@ -13,6 +13,7 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..da027cced8c08b15e60d4f8c4ddd7da4
 +import { SettingsPersonasRouteScreen } from "./features/settings/SettingsPersonasRouteScreen";
 +import { SettingsForgottenRouteScreen } from "./features/settings/SettingsForgottenRouteScreen";
 +import { SettingsPulseRouteScreen } from "./features/settings/SettingsPulseRouteScreen";
++import { SettingsHealthRouteScreen } from "./features/settings/SettingsHealthRouteScreen";
 +import { SettingsBrainUsageRouteScreen } from "./features/settings/SettingsBrainUsageRouteScreen";
 +import { SettingsActivityRouteScreen } from "./features/settings/SettingsActivityRouteScreen";
 +import { SettingsMoodRouteScreen } from "./features/settings/SettingsMoodRouteScreen";
@@ -20,7 +21,7 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..da027cced8c08b15e60d4f8c4ddd7da4
  import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
  import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
  import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
-@@ -208,6 +219,61 @@ const SETTINGS_SCREENS = {
+@@ -208,6 +220,66 @@ const SETTINGS_SCREENS = {
      linking: "settings/provider-accounts",
      options: settingsPage("Providers"),
    }),
@@ -59,6 +60,11 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..da027cced8c08b15e60d4f8c4ddd7da4
 +    linking: "settings/pulse",
 +    options: settingsPage("Pulse"),
 +  }),
++  SettingsHealth: createNativeStackScreen({
++    screen: SettingsHealthRouteScreen,
++    linking: "settings/health",
++    options: settingsPage("Health"),
++  }),
 +  SettingsBrainUsage: createNativeStackScreen({
 +    screen: SettingsBrainUsageRouteScreen,
 +    linking: "settings/brain-usage",
@@ -82,11 +88,31 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..da027cced8c08b15e60d4f8c4ddd7da4
    SettingsEnvironmentMaintenance: createNativeStackScreen({
      screen: SettingsEnvironmentMaintenanceRouteScreen,
      linking: "settings/maintenance",
+diff --git a/apps/mobile/src/components/ui/AppSymbol.android.tsx b/apps/mobile/src/components/ui/AppSymbol.android.tsx
+index 7aaeac554417aacedd4b16af4ca610469096d188..0aae5f8476e22b891bf25ca08bcf5a87799fc11f 100644
+--- a/apps/mobile/src/components/ui/AppSymbol.android.tsx
++++ b/apps/mobile/src/components/ui/AppSymbol.android.tsx
+@@ -29,6 +29,7 @@ import IconBrain from "@tabler/icons-react-native/IconBrain";
+ import IconCamera from "@tabler/icons-react-native/IconCamera";
+ import IconCar from "@tabler/icons-react-native/IconCar";
+ import IconChartBar from "@tabler/icons-react-native/IconChartBar";
++import IconHeartbeat from "@tabler/icons-react-native/IconHeartbeat";
+ import IconCheck from "@tabler/icons-react-native/IconCheck";
+ import IconCloud from "@tabler/icons-react-native/IconCloud";
+ import IconChevronDown from "@tabler/icons-react-native/IconChevronDown";
+@@ -178,6 +179,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
+   camera: IconCamera,
+   car: IconCar,
+   "chart.bar.xaxis": IconChartBar,
++  "waveform.path.ecg": IconHeartbeat,
+   checkmark: IconCheck,
+   "checkmark.circle": IconCircleCheck,
+   "checkmark.circle.fill": IconCircleCheck,
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 50ad81383addc75250b37025d1bfb43ce05a9da5..83ba12daf91fae77e3d29bc7147267ca84f04a59 100644
+index 50ad81383addc75250b37025d1bfb43ce05a9da5..bce9bd9f55ff521826efcdbd6f616b77138083bb 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-@@ -266,8 +266,35 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -266,8 +266,36 @@ function useSettingsIndexSections(): SettingsListSection[] {
    ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
    const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
      page(target, icon, label, { disabled: noServerTargets });
@@ -118,12 +144,13 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..83ba12daf91fae77e3d29bc7147267ca
 +        serverPage("SettingsHome", "house", "Home Assistant"),
 +        serverPage("SettingsHardware", "face.smiling", "Hardware"),
 +        serverPage("SettingsPresence", "person.fill.checkmark", "Presence"),
++        serverPage("SettingsHealth", "waveform.path.ecg", "Health"),
 +      ],
 +    },
      {
        rows: [
          page("SettingsOrganization", "gearshape", gt("General")),
-@@ -282,7 +309,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -282,7 +310,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
            ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
            : []),
          page("SettingsKeyboard", "keyboard", gt("Keyboard")),
@@ -146,10 +173,10 @@ index ce61dec7cfe69d5100b15fb3ac4766fec44e2e82..b773f4084130aeb25860b70d5e1e9cbc
        navigation.navigate(props.fullScreenTarget);
      } else {
 diff --git a/apps/mobile/src/features/settings/components/settings-page-targets.ts b/apps/mobile/src/features/settings/components/settings-page-targets.ts
-index a92922a66d1e3525b89f0e68de7da337f6770ce2..87baabeddf494c9712b76c161115360392834627 100644
+index a92922a66d1e3525b89f0e68de7da337f6770ce2..e0cd509e9bfed713e81d53fd7d32f21b9cc456a4 100644
 --- a/apps/mobile/src/features/settings/components/settings-page-targets.ts
 +++ b/apps/mobile/src/features/settings/components/settings-page-targets.ts
-@@ -15,6 +15,17 @@ export const SETTINGS_PAGE_TARGETS = [
+@@ -15,6 +15,18 @@ export const SETTINGS_PAGE_TARGETS = [
    "SettingsLabs",
    "SettingsEnvironmentMaintenance",
    "SettingsProviderAccounts",
@@ -164,6 +191,7 @@ index a92922a66d1e3525b89f0e68de7da337f6770ce2..87baabeddf494c9712b76c1611153603
 +  "SettingsActivity",
 +  "SettingsMood",
 +  "SettingsPresence",
++  "SettingsHealth",
    "SettingsKeyboard",
    "SettingsVoice",
    "SettingsFollowUp",
