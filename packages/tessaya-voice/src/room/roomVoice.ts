@@ -1326,8 +1326,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const eye = (tail: string, body: Record<string, string>) => {
       const payload = JSON.stringify(body);
       deps.log(`[${id}] eye sent ${tail} ${payload}`);
-      if (tail === "cmd/eye/persona")
+      if (tail === "cmd/eye/persona") {
         eyeAsked.set(id, { name: body["name"] ?? "", at: deps.now() });
+        worn.set(id, body["name"] ?? "");
+      }
       deps.publish(topic(id, tail), payload);
     };
     // Sent away always shows at once; otherwise a mood of her server's that still holds is not overwritten.
@@ -1373,6 +1375,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
     /** The persona's own eyes (the eye lane's looks; firmware without them ignores the topic). */
     const look = () => eye("cmd/eye/persona", { name: persona?.eyes ?? GENERIC_EYES });
+    /** A session opens on the lead whatever the last one wore: the eyes follow (17 Nov, 23:29). */
+    const wear = () => {
+      if (worn.get(id) !== (persona?.eyes ?? GENERIC_EYES)) look();
+    };
     /** Her own words for one of the loop's moments, her eyes showing its mood; `plain` while they are off. */
     const own = (event: LineEvent, plain: string, facts?: Readonly<Record<string, string>>) => {
       const said = deps.lines?.take(
@@ -2794,7 +2800,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const named = personas.find((p) => p.name === name || p.id === name);
         if (named !== undefined && named !== persona) {
           persona = named;
-          look();
+          wear();
         }
       },
       /** The R1's own stop (S2 or a tap while she speaks): she stops, and a turn on its way is not answered. */
@@ -2844,6 +2850,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return quiet && deps.now() - lastActivity > config.idleStopMs ? "stop" : null;
       },
       quietFor: () => deps.now() - lastUpAt,
+      wear,
       /** For the replay harness: everything heard so far has been scored. */
       drained: () => chain,
       close: () => {
@@ -2909,6 +2916,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const eyeHold = new Map<string, number>();
   /** Her mood at rest on each R1 (`voice/intent/rest`, retained): the eyes and the prop over them between turns. */
   const restFace = new Map<string, { readonly mood: string; readonly accessory: string }>();
+  /** The persona look each R1's eyes last showed or were asked for; unknown after a restart. */
+  const worn = new Map<string, string>();
   /** A persona look sent to an R1 and not yet acknowledged on `state/eye/persona`. */
   const eyeAsked = new Map<
     string,
@@ -2959,10 +2968,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       readonly request?: { readonly pcm: Int16Array; readonly words: Promise<WakeRequest | null> };
     }
   >();
-  const start = (id: string, how = "audio") => {
+  /** `wear` false: the caller names the persona first, then wears it, so the lead's eyes never flash between. */
+  const start = (id: string, how = "audio", wear = true) => {
     sessions.get(id)?.close();
     const s = openSession(id);
     sessions.set(id, s);
+    if (wear) s.wear();
     deps.warm?.();
     deps.link?.();
     deps.log(`[${id}] session open (${how})`);
@@ -3012,6 +3023,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         // The server's own (the loop's are logged as sent; a broker that echoes them shows them here too).
         if (tail === "cmd/eye/persona" && !eyeAsked.has(id))
           eyeAsked.set(id, { name: String(json()["name"]), at: deps.now() });
+        if (tail === "cmd/eye/persona" || tail === "state/eye/persona")
+          worn.set(id, String(json()["name"]));
         if (tail === "state/eye/persona") {
           const asked = eyeAsked.get(id);
           eyeAsked.delete(id);
@@ -3201,7 +3214,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       } else if (tail === "cmd/voice/start") {
         // S2 (not her name) proves someone is at this R1, for an act already waiting on who is speaking.
         if (!calledBy.has(id)) sessions.get(id)?.present();
-        const s = start(id, "S2 or wake");
+        const s = start(id, "S2 or wake", false);
         const called = calledBy.get(id);
         calledBy.delete(id);
         // Her name and a request in one breath: the request is his first turn, so no "I'm here" waits on it.
@@ -3232,6 +3245,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const then = onStart.get(id);
         onStart.delete(id);
         then?.(s);
+        s.wear();
       } else if (tail === "voice/wake") {
         // The R1 sends its wake stream only between sessions (SMP 0.3.35): a session still open here is a stale one,
         // left by a reboot or a stop we missed, and must not keep her name from being heard.
