@@ -523,6 +523,46 @@ effectIt.effect(
     }),
 );
 
+effectIt.effect(
+  "a route that fails after her first words ends the turn: no other route says the answer again",
+  () =>
+    Effect.gen(function* () {
+      let acts = 0;
+      const answer = "I can't see a cause. Two sessions are working, nothing is stuck.";
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => {
+          acts += 1;
+          return Stream.make(answer);
+        },
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: () =>
+          Stream.concat(
+            Stream.make(`${answer} `),
+            Stream.fail(new R1BrainError({ detail: "claude exited before answering" })),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.succeed([]),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([] as never),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
+      const said = yield* r1TurnStream({ heard: "why is everything slow?", history: [] }, brain, {
+        specs: [],
+        run: () => Effect.succeed({ text: "{}", isError: false }),
+      }).pipe(
+        Stream.runCollect,
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
+      );
+      expect(said.join("").split("I can't see a cause.").length - 1).toBe(1);
+      expect(acts).toBe(0);
+    }),
+);
+
 describe("limitResets", () => {
   it.each([
     ["You've hit your weekly limit · resets Nov 16, 6pm (Asia/Karachi)", "Nov 16, 6pm"],

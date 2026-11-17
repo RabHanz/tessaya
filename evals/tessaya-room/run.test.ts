@@ -179,6 +179,12 @@ describe("the room's live tool suite", () => {
     expect(failure("One moment. Checking. Done, twenty-four hour times from now on.")).toMatch(
       /filler twice/,
     );
+    // A turn whose words went out twice is a product bug, whatever the sampling (17 Nov).
+    expect(
+      failure(
+        "One moment. Done, twenty-four hour times from now on. Done, twenty-four hour times from now on.",
+      ),
+    ).toMatch(/same sentence twice/);
     expect(failure("Done, 24-hour from now on. It's twenty-three twenty-seven right now.")).toMatch(
       /last reply/,
     );
