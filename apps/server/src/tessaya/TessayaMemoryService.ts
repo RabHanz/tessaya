@@ -1,4 +1,4 @@
-// @effect-diagnostics tryCatchInEffectGen:off preferSchemaOverJson:off cryptoRandomUUIDInEffect:off flatMapConditionalToFilterOrFail:off nodeBuiltinImport:off
+// @effect-diagnostics tryCatchInEffectGen:off preferSchemaOverJson:off globalJsonInEffect:off cryptoRandomUUIDInEffect:off flatMapConditionalToFilterOrFail:off nodeBuiltinImport:off
 /**
  * Memory (D150, docs/baton/MEMORY.md): short items about him and his work, searchable, with a
  * single door that refuses what must never be kept. The desktop tools, the windows, a phone and
@@ -39,6 +39,7 @@ import {
   type MemoryQuery,
 } from "@t3tools/tessaya-shared/memory";
 import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/tessaya-shared/osPack";
+import { findFact } from "@t3tools/tessaya-shared/understanding";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -47,6 +48,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -61,13 +63,33 @@ import {
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
-import type { TurnAction } from "./turnActions.ts";
+import { emitAction, type TurnAction } from "./turnActions.ts";
 
-/** One fact forgotten from her understanding of someone (`person:<id>`) or of herself (`self:<persona>`). */
+export const BIN_DAYS_KEY = "people.binDays";
+/** Anything forgotten can be restored this long (the Director, 16 Nov: forgetting must be hard to do by mistake). */
+export const BIN_DAYS_DEFAULT = 30;
+
+/** How long anything forgotten (a person, a fact she understood, a memory) can be restored: one setting for every bin. */
+export const readBinDays = Effect.flatMap(
+  SqlClient.SqlClient,
+  (sql) => sql<{ value: string }>`SELECT value FROM fabric_settings WHERE key = ${BIN_DAYS_KEY}`,
+).pipe(
+  Effect.map((rows) => {
+    const n = Number(rows[0]?.value);
+    return Number.isInteger(n) && n > 0 ? n : BIN_DAYS_DEFAULT;
+  }),
+  Effect.orElseSucceed(() => BIN_DAYS_DEFAULT),
+);
+
+/** A forgotten memory's row in the understanding bin (migration 49): `scope_ref` is this and its id, `fact` its row. */
+const ITEM_BIN = "item:";
+const BY_SYSTEM: TurnAction["actor"] = { kind: "system", certainty: 1 };
+
+/** One fact forgotten from her understanding of someone (`person:<id>`) or of herself (`self:<persona>`), or a memory. */
 export interface BinnedFact {
   readonly id: string;
   readonly ref: string;
-  /** Herself, as which persona; null for a person (People names them). */
+  /** Herself, as which persona; "Memory" or "Episode" for a forgotten item; null for a person (People names them). */
   readonly whose: string | null;
   readonly fact: string;
   readonly by: string;
@@ -229,13 +251,17 @@ export class TessayaMemoryService extends Context.Service<
       id: string,
       pinned: boolean,
     ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
-    /** Deletes the item and leaves a tombstone so a sync cannot bring it back; never an understanding. */
-    readonly forget: (id: string) => Effect.Effect<boolean>;
+    /**
+     * Into the bin for the bin's days (restorable through `factBin`, then purged), with a tombstone so a sync cannot
+     * bring it back meanwhile; never an understanding. No actor: the system's own tidying.
+     */
+    readonly forget: (id: string, actor?: TurnAction["actor"]) => Effect.Effect<boolean>;
     /** New words in place with no earlier wording kept (an understanding's forgotten fact); empty deletes it. */
     readonly overwrite: (id: string, text: string) => Effect.Effect<void>;
     /**
-     * Her understanding's bin of forgotten facts, set by TessayaUnderstanding, so People's Recently forgotten lists and
-     * restores them too: People sits below the understanding and can't import it.
+     * Recently forgotten's memories, and her understanding's facts once TessayaUnderstanding sets them, so People lists
+     * and restores them too: People sits below the understanding and can't import it. `restore` takes a bin id, a
+     * memory's id or its words.
      */
     readonly factBin: Effect.Effect<FactBin | null>;
     readonly setFactBin: (bin: FactBin) => Effect.Effect<void>;
@@ -500,6 +526,7 @@ export const make = Effect.gen(function* () {
       `.pipe(Effect.orDie);
       return yield* requireItem(same.id);
     }
+    if (draft.source !== "user" && draft.source !== "import") yield* refuseForgotten(text);
 
     const id = globalThis.crypto.randomUUID();
     const expiresAt =
@@ -616,6 +643,7 @@ export const make = Effect.gen(function* () {
     const text = wordingFor(prior.kind, wording);
     const reason = refuseToStore(text, privateTexts(), prior.kind);
     if (reason !== null) return yield* refuse(reason);
+    if (similarity(prior.text, text) < SAME_ITEM_OVERLAP) yield* refuseForgotten(text);
     const at = yield* nowIso;
     if (text !== prior.text)
       yield* keepVersion(
@@ -728,26 +756,117 @@ export const make = Effect.gen(function* () {
     `.pipe(Effect.orDie)).map(fromRow);
   });
 
-  const remove = (id: string, at: string) =>
+  const remove = (id: string, at: string, binned = false) =>
     sql`DELETE FROM fabric_memory_items WHERE id = ${id}`.pipe(
       Effect.andThen(
         sql`INSERT OR REPLACE INTO fabric_memory_tombstones (id, deleted_at, origin, received_at) VALUES (${id}, ${at}, ${origin}, ${at})`,
       ),
       Effect.andThen(sql`DELETE FROM fabric_memory_uses WHERE item_id = ${id}`),
-      // Forgotten means forgotten: its earlier wordings go with it.
-      Effect.andThen(sql`DELETE FROM fabric_memory_versions WHERE item_id = ${id}`),
+      // Gone for good takes its earlier wordings; in the bin they wait to come back with it.
+      Effect.andThen(
+        binned ? Effect.void : sql`DELETE FROM fabric_memory_versions WHERE item_id = ${id}`,
+      ),
       Effect.andThen(sql`DELETE FROM fabric_memory_links WHERE item_id = ${id}`),
       Effect.andThen(sql`DELETE FROM fabric_memory_edges WHERE item_id = ${id}`),
       Effect.orDie,
     );
 
-  const forget = Effect.fn("BatonMemoryService.forget")(function* (id: string) {
+  const binDays = Effect.provideService(readBinDays, SqlClient.SqlClient, sql);
+  const itemBin = sql<{ id: string; scope_ref: string; fact: string; by: string; at: string }>`
+    SELECT id, scope_ref, fact, by, at FROM tessaya_understanding_bin
+    WHERE scope_ref LIKE ${`${ITEM_BIN}%`} ORDER BY at DESC
+  `.pipe(
+    Effect.orDie,
+    Effect.map((rows) =>
+      rows.map((r) => ({ ...r, row: JSON.parse(r.fact) as ItemRow & { received_at: string } })),
+    ),
+  );
+
+  const forget = Effect.fn("BatonMemoryService.forget")(function* (
+    id: string,
+    actor: TurnAction["actor"] = BY_SYSTEM,
+  ) {
     const item = yield* read(id);
     // An understanding is never wiped by id: one fact goes at a time, confirmed, into its bin (TessayaUnderstanding).
     if (item === null || item.kind === "understanding" || !(yield* viewFor(undefined, true))(item))
       return false;
-    yield* remove(id, yield* nowIso);
+    const at = yield* nowIso;
+    const [row] = yield* sql`SELECT * FROM fabric_memory_items WHERE id = ${id}`.pipe(Effect.orDie);
+    const binId = globalThis.crypto.randomUUID();
+    // The whole row, so a restore brings it back as itself: id, kind, walls, dates.
+    yield* sql`
+      INSERT INTO tessaya_understanding_bin (id, scope_ref, fact, at, by)
+      VALUES (${binId}, ${`${ITEM_BIN}${id}`}, ${JSON.stringify(row)}, ${at}, ${actor.kind === "system" ? "tidy" : actor.kind})
+    `.pipe(Effect.orDie);
+    yield* remove(id, at, true);
+    yield* emitAction({
+      kind: "memory.forget",
+      actor,
+      persona: item.persona ?? null,
+      subject: id,
+      outcome: binId,
+      data: { kind: item.kind, origin, binDays: yield* binDays },
+    });
     return true;
+  });
+
+  /** A forgotten memory back as itself, by bin id, its id or its words: its words, or null when it isn't in the bin. */
+  const restoreItem = Effect.fn("BatonMemoryService.restoreItem")(function* (
+    key: string,
+    actor: TurnAction["actor"],
+  ) {
+    const bin = yield* itemBin;
+    const byWords = findFact(bin.map((b) => b.row.text.replace(/\s*\n\s*/g, " ")).join("\n"), key);
+    const back =
+      bin.find((b) => b.id === key || b.scope_ref === `${ITEM_BIN}${key}`) ??
+      (byWords === null ? undefined : bin[byWords]);
+    if (back === undefined) return null;
+    const at = yield* nowIso;
+    // Changed now, so a paired server that took its tombstone takes it back too.
+    const row = { ...back.row, updated_at: at, received_at: at, origin };
+    yield* sql`DELETE FROM fabric_memory_tombstones WHERE id = ${row.id}`.pipe(Effect.orDie);
+    yield* sql`INSERT OR REPLACE INTO fabric_memory_items ${sql.insert(row)}`.pipe(Effect.orDie);
+    yield* sql`DELETE FROM tessaya_understanding_bin WHERE id = ${back.id}`.pipe(Effect.orDie);
+    yield* noteEntities(fromRow(row));
+    yield* poke;
+    yield* emitAction({
+      kind: "memory.restore",
+      actor,
+      persona: row.persona ?? null,
+      subject: row.id,
+      outcome: back.id,
+      data: { kind: row.kind, origin },
+    });
+    return row.text;
+  });
+
+  const purgeItems = (
+    rows: ReadonlyArray<{ readonly id: string; readonly row: ItemRow }>,
+    actor: TurnAction["actor"],
+  ) =>
+    Effect.forEach(
+      rows,
+      (b) =>
+        sql`DELETE FROM tessaya_understanding_bin WHERE id = ${b.id}`.pipe(
+          Effect.andThen(sql`DELETE FROM fabric_memory_versions WHERE item_id = ${b.row.id}`),
+          Effect.orDie,
+          Effect.andThen(
+            emitAction({
+              kind: "memory.purge",
+              actor,
+              subject: b.row.id,
+              outcome: b.id,
+              data: { kind: b.row.kind },
+            }),
+          ),
+        ),
+      { discard: true },
+    ).pipe(Effect.as(rows.length));
+
+  /** Learning and rewrites never bring back what he forgot; his own words may, as he said it again. */
+  const refuseForgotten = Effect.fn("BatonMemoryService.refuseForgotten")(function* (text: string) {
+    if ((yield* itemBin).some((b) => similarity(b.row.text, text) >= SAME_ITEM_OVERLAP))
+      return yield* refuse("that was forgotten; it comes back only if he puts it back");
   });
 
   const overwrite = Effect.fn("BatonMemoryService.overwrite")(function* (id: string, text: string) {
@@ -1299,6 +1418,21 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.forkScoped);
   }
 
+  // Past the bin's days a forgotten memory is gone for good, with its earlier wordings.
+  yield* Effect.gen(function* () {
+    const before = DateTime.formatIso(
+      DateTime.makeUnsafe((yield* nowMs) - (yield* binDays) * DAY_MS),
+    );
+    yield* purgeItems(
+      (yield* itemBin).filter((b) => b.at <= before),
+      BY_SYSTEM,
+    );
+  }).pipe(
+    Effect.catchCause((cause) => Effect.logWarning("memory bin sweep failed", cause)),
+    Effect.repeat(Schedule.spaced("6 hours")),
+    Effect.forkScoped({ startImmediately: true }),
+  );
+
   // Items kept before people and projects were noticed (step 7): once, every current item is read for them.
   yield* Effect.gen(function* () {
     yield* Effect.sleep(EMBED_START_DELAY);
@@ -1374,7 +1508,32 @@ export const make = Effect.gen(function* () {
     pin,
     forget,
     overwrite,
-    factBin: Effect.sync(() => factBin),
+    factBin: Effect.sync((): FactBin => ({
+      list: Effect.gen(function* () {
+        const items = (yield* itemBin).map((b) => ({
+          id: b.id,
+          ref: b.scope_ref,
+          whose: b.row.kind === "episode" ? "Episode" : "Memory",
+          fact: b.row.text,
+          by: b.by,
+          at: b.at,
+        }));
+        const facts = factBin === null ? [] : yield* factBin.list;
+        return [...items, ...facts].toSorted((a, b) => b.at.localeCompare(a.at));
+      }),
+      restore: Effect.fn("BatonMemoryService.restoreForgotten")(function* (id, actor) {
+        const back = yield* restoreItem(id, actor);
+        return back !== null || factBin === null ? back : yield* factBin.restore(id, actor);
+      }),
+      purge: Effect.fn("BatonMemoryService.purgeForgotten")(function* (id, actor) {
+        const n = yield* purgeItems(
+          (yield* itemBin).filter((b) => id === undefined || b.id === id),
+          actor,
+        );
+        if (factBin === null || (id !== undefined && n > 0)) return n;
+        return n + (yield* factBin.purge(id, actor));
+      }),
+    })),
     setFactBin: Effect.fn("BatonMemoryService.setFactBin")(function* (bin: FactBin) {
       factBin = bin;
     }),

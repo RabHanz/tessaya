@@ -815,7 +815,18 @@ layer("TessayaTurn", (it) => {
         const refused = yield* as(on(null), turn.forget(id));
         assert.strictEqual(refused, NOT_HIS_VOICE_TO_FORGET);
         assert.isDefined((yield* memory.list({ limit: 50 })).find((i) => i.id === id));
-        assert.strictEqual(yield* as(on(owner()), turn.forget(id)), "Forgotten.");
+        assert.strictEqual(
+          yield* as(on(owner()), turn.forget(id)),
+          "Forgotten. It can be put back for 30 days.",
+        );
+        assert.isUndefined((yield* memory.list({ limit: 50 })).find((i) => i.id === id));
+        // His voice puts it back from the bin, by the memory's words.
+        assert.include(
+          yield* as(on(owner()), turn.understandingFact({ fact: "spare key", restore: true })),
+          "Put back:",
+        );
+        assert.isDefined((yield* memory.list({ limit: 50 })).find((i) => i.id === id));
+        yield* as(on(owner()), turn.forget(id));
         assert.isUndefined((yield* memory.list({ limit: 50 })).find((i) => i.id === id));
 
         // About: the closest memories, his own words marked.

@@ -30,7 +30,7 @@ import {
   type SpeakerLike,
 } from "@t3tools/tessaya-shared/privateMemory";
 import { PRESENCE_BARS, presenceReason } from "@t3tools/tessaya-shared/presence";
-import { emitAction } from "./turnActions.ts";
+import { emitAction, type TurnAction } from "./turnActions.ts";
 import { make as makeLive, TurnLiveContext } from "./TurnLiveContext.ts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -46,7 +46,7 @@ import {
   BatonMemoryRefusedError,
   type TessayaHouseholdCallInput,
 } from "@t3tools/tessaya-contracts";
-import { TessayaMemoryService } from "./TessayaMemoryService.ts";
+import { readBinDays, TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaPrivateMemoryService, PrivateCaller } from "./TessayaPrivateMemoryService.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import { commsWaitingLine } from "@t3tools/tessaya-shared/comms";
@@ -460,8 +460,8 @@ export class TessayaTurn extends Context.Service<
      * outside a turn proposes it, held for his yes.
      */
     readonly remember: (text: string) => Effect.Effect<Remembered, BatonMemoryRefusedError>;
-    /** Forgets by id, only for his verified voice; otherwise says where he can. */
-    readonly forget: (id: string) => Effect.Effect<string>;
+    /** Forgets by id into the bin, or puts back from it, only for his verified voice; otherwise says where he can. */
+    readonly forget: (id: string, restore?: boolean) => Effect.Effect<string>;
     /**
      * One fact she understands of the person speaking (their own voice or device) or of herself (his voice), forgotten
      * once confirmed, or put back from the bin.
@@ -1423,11 +1423,31 @@ export const make = Effect.gen(function* () {
     return { kept: "theirs" as const, id: null, line: "Kept, in your own memory." };
   });
 
-  const forget = Effect.fn("TessayaTurn.forget")(function* (id: string) {
+  /** From Recently forgotten by its id or words: its words, or null. */
+  const putBackMemory = (key: string, actor: TurnAction["actor"]) =>
+    Effect.flatMap(memory.factBin, (bin) =>
+      bin === null ? Effect.succeed(null) : bin.restore(key, actor),
+    );
+  const ownerVoice = (assurance: number): TurnAction["actor"] => ({
+    kind: "owner",
+    id: OWNER_MEMBER_ID,
+    certainty: assurance >= 3 ? 1 : 0.8,
+  });
+
+  const forget = Effect.fn("TessayaTurn.forget")(function* (id: string, restore = false) {
     const origin = yield* TurnOrigin;
     if (origin === null || origin.hisVoice !== true) return NOT_HIS_VOICE_TO_FORGET;
-    if (origin.rehearsal === true) return "Forgotten.";
-    return (yield* memory.forget(id)) ? "Forgotten." : "There is no memory by that id.";
+    if (origin.rehearsal === true) return restore ? "Put back." : "Forgotten.";
+    const actor = ownerVoice(origin.assurance ?? 0);
+    if (restore) {
+      const back = yield* putBackMemory(id, actor);
+      return back === null
+        ? "That isn't among what I was asked to forget lately."
+        : `Put back: ${back}.`;
+    }
+    if (!(yield* memory.forget(id, actor))) return "There is no memory by that id.";
+    const days = yield* Effect.provideService(readBinDays, SqlClient.SqlClient, sql);
+    return `Forgotten. It can be put back for ${days} days.`;
   });
 
   const understandingFact = Effect.fn("TessayaTurn.understandingFact")(function* (input: {
@@ -1437,6 +1457,11 @@ export const make = Effect.gen(function* () {
     readonly restore?: boolean | undefined;
   }) {
     const origin = yield* TurnOrigin;
+    // "Put back" names a forgotten memory as often as a fact: his voice restores one by its words first.
+    if (input.restore === true && origin?.hisVoice === true && origin.rehearsal !== true) {
+      const back = yield* putBackMemory(input.fact, ownerVoice(origin.assurance ?? 0));
+      if (back !== null) return `Put back: ${back}.`;
+    }
     const understanding = yield* Effect.serviceOption(TessayaUnderstanding);
     const herself = input.about === "herself";
     // Their understanding is theirs to change, on their own voice or device; how she sees herself is his.

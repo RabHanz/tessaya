@@ -254,9 +254,12 @@ export const peopleControls = (s: {
       id: `${PREFIX}gone:${f.id}`,
       section: bin,
       label: s.confirmForget === `purge:${f.id}` ? text("ppl.purge.confirm", { name }) : name,
-      hint: text(`ppl.by.${by === "themselves" || by === "expiry" ? by : "owner"}`, {
-        at: day(f.at),
-      }),
+      hint: text(
+        `ppl.by.${by === "themselves" || by === "expiry" || by === "tidy" ? by : "owner"}`,
+        {
+          at: day(f.at),
+        },
+      ),
       kind: "action",
       button: text("ppl.restore"),
       secondary: text("ppl.purge"),

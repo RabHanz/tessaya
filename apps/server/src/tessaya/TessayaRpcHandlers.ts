@@ -811,7 +811,13 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_MEMORY_WS_METHODS.forget]: (input) =>
       run(
         Effect.flatMap(TessayaMemoryService, (memory) =>
-          Effect.map(memory.forget(input.id), (forgotten) => ({ forgotten })),
+          // A client signed in to memory forgets as him, from his Memory settings.
+          Effect.map(
+            memory.forget(input.id, { kind: "owner", id: "settings", certainty: 1 }),
+            (forgotten) => ({
+              forgotten,
+            }),
+          ),
         ),
       ),
     [BATON_MEMORY_WS_METHODS.accept]: (input) =>

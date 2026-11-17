@@ -42,7 +42,9 @@ export const forgottenRow = (f: Forgotten) => {
         ? `Forgot themselves on ${at}`
         : by === "expiry"
           ? `Forgotten on ${at}: no one saved them`
-          : `Forgotten by you on ${at}`,
+          : by === "tidy"
+            ? `Tidied away on ${at}`
+            : `Forgotten by you on ${at}`,
     confirm: `Delete ${label} for good? This can't be undone. Tap Delete for good again to do it.`,
   };
 };

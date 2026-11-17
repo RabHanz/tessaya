@@ -30,9 +30,9 @@ import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
-import { TessayaMemoryService } from "./TessayaMemoryService.ts";
+import { readBinDays, TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
-import { readBinDays, TessayaPeople } from "./TessayaPeople.ts";
+import { TessayaPeople } from "./TessayaPeople.ts";
 import { emitAction, type TurnAction } from "./turnActions.ts";
 
 /** A person by their people-graph or member id, or herself as one persona (unset is the lead). */
@@ -268,8 +268,10 @@ export const make = Effect.gen(function* () {
   });
 
   // Recently forgotten (People's list and restore, every client's Settings) reaches this bin through the memory service.
+  // Its forgotten memories (`item:`) share the table and are the memory service's own.
   const all = sql<{ id: string; scope_ref: string; fact: string; by: string; at: string }>`
-    SELECT id, scope_ref, fact, by, at FROM tessaya_understanding_bin ORDER BY at DESC
+    SELECT id, scope_ref, fact, by, at FROM tessaya_understanding_bin
+    WHERE scope_ref NOT LIKE 'item:%' ORDER BY at DESC
   `.pipe(Effect.orDie);
   const purged = (
     rows: ReadonlyArray<{ id: string; scope_ref: string }>,
@@ -323,9 +325,9 @@ export const make = Effect.gen(function* () {
   const sweep = Effect.gen(function* () {
     const before = isoAt((yield* Clock.currentTimeMillis) - (yield* binDays) * DAY_MS);
     const due = yield* sql<{ id: string; scope_ref: string }>`
-      SELECT id, scope_ref FROM tessaya_understanding_bin WHERE at <= ${before}
+      SELECT id, scope_ref FROM tessaya_understanding_bin WHERE at <= ${before} AND scope_ref NOT LIKE 'item:%'
     `;
-    yield* sql`DELETE FROM tessaya_understanding_bin WHERE at <= ${before}`;
+    yield* sql`DELETE FROM tessaya_understanding_bin WHERE at <= ${before} AND scope_ref NOT LIKE 'item:%'`;
     yield* purged(due, { kind: "system", certainty: 1 });
   }).pipe(Effect.orDie, Effect.withSpan("TessayaUnderstanding.sweep"));
   yield* sweep.pipe(
