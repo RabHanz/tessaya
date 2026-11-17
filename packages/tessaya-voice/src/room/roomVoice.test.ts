@@ -2123,8 +2123,9 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       return {
         flushed,
         asked: t.brainCalls.map((c) => c.messages.at(-1)!.content),
-        // All of her reply reached the R1 in the end (a pause sends again what the flush dropped).
-        sentAll: sent() >= her.length * 2,
+        // Her reply reached the R1 exactly once: nothing dropped, nothing sent twice.
+        sentOnce: sent() === her.length * 2,
+        paused: logs.some((l) => l.endsWith("a voice over hers; she paused")),
         stopped: logs.filter((l) => l.endsWith("talked over; she stopped")).length,
       };
     };
@@ -2136,11 +2137,13 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     });
     // Her own voice coming back is not him.
     expect((await run("open", false)).flushed).toBe(false);
-    // Someone not in the household: she pauses, then goes on with all of her reply, and their words are not answered.
+    // Someone not in the household, or her echo in a case (18 Nov, 03:23 GMT+5): her feed pauses without a flush,
+    // which would drop what the R1 holds and skip her speech, then goes on from the next sample; not answered.
     expect(await run("open", true, 0.05)).toEqual({
-      flushed: true,
+      flushed: false,
       asked: ["What time is it?"],
-      sentAll: true,
+      sentOnce: true,
+      paused: true,
       stopped: 0,
     });
     // Keyword mode never pauses her for a voice, but his whole turn over her is still his: answered
