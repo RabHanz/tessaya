@@ -57,6 +57,8 @@ import { createProfileSync, parseShared } from "./profileSync.ts";
 import {
   createRoomVoice,
   ROOM_CONFIG,
+  busOfBrain,
+  routeForDevice,
   servedRoster,
   type RecogniserTurn,
   type RoomDeps,
@@ -692,10 +694,10 @@ const main = async () => {
   /** The R1s whose last word on `state/online` was "1": only then are the recognisers kept warm. */
   const online = new Set<string>();
   let room: ReturnType<typeof createRoomVoice> | null = null;
+  const bus = busOfBrain(env("R1_BRAIN_URL"));
+  log(`bus: ${bus}`);
   const mqtt = connectMqtt({
-    // A broker URL (the server's `ws://<host>:<port>/api/r1/mqtt`), or the old host and port.
-    url:
-      process.env["R1_MQTT_URL"] || `mqtt://${env("R1_MQTT_HOST")}:${env("R1_MQTT_PORT", "1883")}`,
+    url: bus,
     clientId: `tessaya-room-${process.pid}`,
     // A short heartbeat: the hub drops a silent loop after 9 s, so a standby on the hub's server takes the room.
     keepAliveS: 6,
@@ -714,6 +716,7 @@ const main = async () => {
       "freya/r1/+/voice/wake",
       "freya/r1/+/voice/wake/end",
       "freya/r1/+/event/wake/kws",
+      "freya/r1/+/event/wake/boot",
       "freya/r1/+/event/wake/stats",
       "freya/r1/+/state/voice/kws",
       "freya/r1/+/state/mic",
@@ -830,6 +833,8 @@ const main = async () => {
         log(`voice profile refinement on this R1: ${on ? "on" : "off"}`);
         return;
       }
+      const to = /^freya\/r1\/([^/]+)\/(.+)$/.exec(t);
+      if (to !== null && routeForDevice(to[2]!, online.has(to[1]!)) === "drop") return;
       room?.message(t, p);
     },
     log,

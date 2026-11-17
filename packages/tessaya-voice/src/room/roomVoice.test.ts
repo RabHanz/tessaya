@@ -10,8 +10,10 @@ import { speechLike } from "../echoSim.ts";
 import { speechLevel, toBytes } from "./audio.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
+  busOfBrain,
   createRoomVoice,
   ROOM_CONFIG,
+  routeForDevice,
   servedRoster,
   splitSentences,
   testModeAsked,
@@ -44,6 +46,7 @@ const setup = (over: Partial<RoomDeps> = {}, config: typeof ROOM_CONFIG = QUIET)
       feed: () => undefined,
       finish: async () => "turn on the study light",
       cancel: () => undefined,
+      by: () => ({ host: "asr:1" }),
     }),
     speaker: async () => UNVERIFIED(clock),
     brain: async function* (input) {
@@ -93,7 +96,11 @@ describe("the room voice loop", () => {
       text: "turn on the study light",
       speaker: "unverified",
       reason: "complete",
+      lifted: false,
+      recogniser: { host: "asr:1" },
     });
+    // Stamped, so an old line is never read as a new turn.
+    expect(m.at).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z$/);
     expect(m.firstSoundMs).not.toBeNull();
     expect(t.brainCalls[0]!.messages).toEqual([
       { role: "user", content: "turn on the study light" },
@@ -743,10 +750,15 @@ describe("answering only when he is talking to her", () => {
 
   describe("stopping her while she speaks (13 Nov: he could not stop or dismiss her)", () => {
     /** Her reply, the mic open over it: each 60 ms frame of hers comes back as it sounds, or his words instead. */
-    const overHer = async (heard: ReadonlyArray<string>, over: "echo" | "his") => {
+    const overHer = async (
+      heard: ReadonlyArray<string>,
+      over: "echo" | "his",
+      extra: Partial<RoomDeps> = {},
+    ) => {
       const logs: string[] = [];
       const t = setup(
         {
+          ...extra,
           recognise: said(heard),
           brain: async function* (input) {
             t.brainCalls.push(input);
@@ -828,6 +840,29 @@ describe("answering only when he is talking to her", () => {
         "Turn the lamp on as well.",
       ]);
       expect(other.logs.some((l) => l.includes("not answered"))).toBe(false);
+    });
+
+    it("never puts a turn over her voice on his path without its own Voice ID verdict (18 Nov, 00:16:04)", async () => {
+      // His session verified on the first turn; Voice ID then has nothing for the words over her (it failed).
+      let n = 0;
+      const r = await overHer(["Turn the office fan on.", "Turn the lamp on as well."], "his", {
+        speaker: async () => {
+          n += 1;
+          if (n > 1) throw new Error("no embedding");
+          return {
+            kind: "owner",
+            personId: "owner",
+            name: null,
+            confidence: 0.7,
+            verified: true,
+            inherited: false,
+            at: 0,
+            own: { score: 0.7, ms: 1_200 },
+          };
+        },
+      });
+      expect(r.t.brainCalls.map((c) => c.tessaya.speaker?.kind)).toEqual(["owner", "unverified"]);
+      expect(r.t.brainCalls[1]!.tessaya.tainted).toBe(true);
     });
 
     it("stops on the R1's own stop (S2 or a tap), and a turn on its way then is not answered", async () => {
@@ -1010,6 +1045,52 @@ describe("waking by name with no session open", () => {
     t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
     expect(frames).toEqual([DEV, DEV]);
     expect(t.room.session(DEV)).toBeUndefined();
+  });
+
+  it("reopens a session the R1 lost to a reboot, with one short line, and leaves it open for him", async () => {
+    // 18 Nov, 00:21: her watchdog rebooted her mid-answer; the loop held the dead session 47 s, then she was silent.
+    const spoken: string[] = [];
+    const t = setup({
+      speak: async function* (text) {
+        spoken.push(text);
+        yield new Int16Array(320);
+      },
+    });
+    const starts = () =>
+      t.published.filter((p) => p.topic === `freya/r1/${DEV}/cmd/voice/start`).length;
+    t.room.message(`freya/r1/${DEV}/event/wake/boot`, Buffer.from('{"reason":1}'));
+    expect(starts()).toBe(0);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    spoken.length = 0;
+    t.room.message(`freya/r1/${DEV}/event/wake/boot`, Buffer.from('{"reason":1}'));
+    expect(starts()).toBe(1);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.room.session(DEV)!.drained();
+    expect(spoken).toEqual(["Sorry, I just restarted. Go on."]);
+    expect(t.room.session(DEV)).toBeDefined();
+  });
+
+  it("drives only a Tessel on its bus, and that bus is always its brain's hub", () => {
+    // [tail, online on this loop's bus] → what the loop does with it.
+    const cases: Array<[string, boolean, string]> = [
+      ["voice/intent/eye", true, "room"],
+      ["voice/intent/eye", false, "drop"],
+      ["voice/stepup", false, "drop"],
+      ["cmd/voice/start", false, "drop"],
+      ["voice/up", false, "room"],
+      ["cmd/voice/no-reply", false, "room"],
+    ];
+    for (const [tail, here, want] of cases)
+      expect([tail, here, routeForDevice(tail, here)]).toEqual([tail, here, want]);
+    // 18 Nov: a loop on one server's hub called another's brain, whose acts went to a hub she was not on.
+    expect(busOfBrain("https://brain.example/api/devices/r1/v1/chat/completions")).toBe(
+      "wss://brain.example/api/tessel/mqtt",
+    );
+    expect(busOfBrain("http://127.0.0.1:3773/api/devices/tessel/v1/chat/completions")).toBe(
+      "ws://127.0.0.1:3773/api/tessel/mqtt",
+    );
   });
 
   it("opens on the persona the Cast puts on this Tessel, and a wake word for another never re-homes it", async () => {
@@ -1277,6 +1358,48 @@ describe("how her reply sounds and looks on the R1", () => {
       'gesture {"name":"nodSmall"}',
       'set {"mood":"neutral"}',
     ]);
+  });
+
+  it("sends the eyes changes only: his pauses mid-sentence do not resend attentive or a nod each time (18 Nov, 00:15:55)", async () => {
+    // His words for each piece arrive once he has gone on, so the pieces are one turn.
+    const pieces = ["Anything odd", "that you might be noticing", "in your work?"];
+    const words: Array<(text: string) => void> = [];
+    const t = setup({
+      recognise: () => {
+        let done: (text: string) => void = () => undefined;
+        const text = new Promise<string>((r) => (done = r));
+        words.push(done);
+        return { feed: () => undefined, finish: () => text, cancel: () => undefined };
+      },
+    });
+    t.s2();
+    for (let i = 0; i < pieces.length; i += 1) {
+      await t.feed(true, 8);
+      await t.feed(false, 5);
+      if (i > 0) words[i - 1]!(pieces[i - 1]!);
+    }
+    words[2]!(pieces[2]!);
+    await t.feed(false, 40);
+    const face = t.published
+      .filter((p) => p.topic.includes("/cmd/eye/"))
+      .map((p) => `${p.topic.split("/cmd/eye/")[1]} ${String(p.payload)}`);
+    expect(face).toEqual([
+      'persona {"name":"tessaya"}',
+      'set {"mood":"attentive"}',
+      'gesture {"name":"nodSmall"}',
+      'set {"mood":"neutral"}',
+    ]);
+    // Once the Tessel shows another face (her server's, or its own), the same one is sent again.
+    const sets = () => t.published.filter((p) => p.topic.endsWith("/cmd/eye/set")).length;
+    await t.feed(true, 8);
+    await t.feed(false, 5);
+    const before = sets();
+    await t.feed(true, 8);
+    await t.feed(false, 5);
+    expect(sets()).toBe(before);
+    t.room.message(`freya/r1/${DEV}/state/eye/mood`, Buffer.from('{"mood":"sleepy","src":"idle"}'));
+    await t.feed(true, 8);
+    expect(sets()).toBe(before + 1);
   });
 });
 
@@ -2145,6 +2268,74 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
     },
   );
 
+  it("answers his one question once though he paused five times in it, his words in as he goes on (18 Nov, 00:15:55)", async () => {
+    // His pieces as he said them, each piece's words arriving once his next piece has begun (the recogniser took 0.4-2 s).
+    const pieces: Array<[string, number]> = [
+      ["Anything odd", 12],
+      ["that you might be noticing in your work?", 40],
+      ["Or", 5],
+      ["how you are", 15],
+      ["feeling and behaving and any tools that might not be working as", 55],
+      ["they should.", 10],
+    ];
+    const words: Array<(text: string) => void> = [];
+    const t = setup({
+      recognise: () => {
+        let done: (text: string) => void = () => undefined;
+        const text = new Promise<string>((r) => (done = r));
+        words.push(done);
+        return { feed: () => undefined, finish: () => text, cancel: () => undefined };
+      },
+    });
+    t.s2();
+    for (const [i, [, frames]] of pieces.entries()) {
+      await t.feed(true, frames);
+      await t.feed(false, 8);
+      if (i > 0) words[i - 1]!(pieces[i - 1]![0]);
+    }
+    words.at(-1)!(pieces.at(-1)![0]);
+    await t.feed(false, 60);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      pieces.map(([w]) => w).join(" "),
+    ]);
+  });
+
+  it("joins words whose whole sentence was still being recognised when he went on (18 Nov, 00:16:01)", async () => {
+    const words: Array<(text: string) => void> = [];
+    // The second recognition (a whole sentence, or an early start's) answers only when let go: none of it here.
+    const slow: Array<() => void> = [];
+    const letGo = () => slow.splice(0).forEach((f) => f());
+    const t = setup({
+      recognise: () => {
+        let done: (text: string) => void = () => undefined;
+        const text = new Promise<string>((r) => (done = r));
+        words.push(done);
+        return { feed: () => undefined, finish: () => text, cancel: () => undefined };
+      },
+      preview: () => new Promise<string>((r) => slow.push(() => r(""))),
+    });
+    t.s2();
+    await t.feed(true, 5);
+    await t.feed(false, 8);
+    await t.feed(true, 3);
+    words[0]!("Or");
+    await t.feed(true, 12);
+    await t.feed(false, 8);
+    // "Or how you are" is in, and its whole sentence still being recognised when he goes on.
+    words[1]!("how you are");
+    await t.feed(true, 3);
+    letGo();
+    await t.feed(true, 50);
+    await t.feed(false, 8);
+    words[2]!("feeling and behaving and any tools that might not be working as they should.");
+    await t.feed(false, 2);
+    letGo();
+    await t.feed(false, 60);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "Or how you are feeling and behaving and any tools that might not be working as they should.",
+    ]);
+  });
+
   it("never holds a room that keeps talking for more than 2.5 s (10:35:22 to 10:35:46: 24 s)", async () => {
     const logs: string[] = [];
     const t = setup({
@@ -2549,6 +2740,8 @@ describe("Voice ID never fails open to him (Director, 16 Nov)", () => {
     expect(t.brainCalls).toHaveLength(2);
     expect(t.brainCalls[1]!.tessaya.speaker).toMatchObject({ kind: "owner", verified: true });
     expect(m).toMatchObject({ voiceIdLate: true, reasked: true });
+    // Voice ID's own figures come from its late verdict, not the closed start's.
+    expect(m).toMatchObject({ speaker: "unverified", verdict: "owner", speakerScore: 0.7 });
     expect(m.firstSoundMs).not.toBeNull();
   });
 

@@ -153,6 +153,10 @@ describe("the room's tools for a replay", () => {
     expect(stepUpNeeds("tessaya_memory_remember", 0)).toBeNull();
     // 15 Nov, 08:19 GMT+5: his "say it in AM/PM" was held for a step-up that cut her reply off.
     expect(stepUpNeeds("tessaya_preference_set", 0)).toBeNull();
+    // 18 Nov, 00:38 GMT+5: "who's on which device?" waited on an "Is this you?" card; a look is never held.
+    expect(stepUpNeeds("tessaya_cast", 1, { action: "who" })).toBeNull();
+    expect(stepUpNeeds("tessaya_cast", 1, { action: "call", persona: "alfred" })).toBe(2);
+    expect(stepUpNeeds("access_manage", 1, { op: "links" })).toBeNull();
   });
   it("judges a job act by the desktop's own table: a schedule waits for his phone, a stop needs only his voice", () => {
     expect(jobVerdict("job_start", { project: "acme", goal: "fix it" }, false)).toBe("allow");

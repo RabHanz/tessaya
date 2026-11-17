@@ -221,12 +221,14 @@ export interface SpeakerIdentity {
     /** The turn's embedding, for his session's same-voice check and the room profile; never sent off this device. */
     readonly vector?: Float32Array;
   };
-  /** Its cosine to his own pieces earlier in this verified session (same room, same mic), when that decided it. */
+  /** Its cosine to his own pieces earlier in this verified session (same room, same mic), whenever it has some. */
   readonly same?: number;
   /** His by his session's evidence, not this turn's own score: his path, never an owner-only act (`verified` false). */
   readonly lifted?: true;
   /** The replay check on the room mic: "heard" a loudspeaker (a guest), or "unchecked" (it could not run: never verified). */
   readonly replay?: "heard" | "unchecked";
+  /** The replay model's logit whenever it judged the turn (a pass has no `replay`): how the check is measured live. */
+  readonly replayScore?: number;
   /** `verified` by his session (three turns averaged, or a hold), not this turn's own clips: never opens anything private. */
   readonly session?: true;
   /**
@@ -335,6 +337,10 @@ export const holdVoice = (
   const evidence =
     own !== null && own >= SESSION_FLOOR ? [...recent, { at: now, score: own }].slice(-3) : recent;
   const vector = identity.replay === undefined ? identity.own?.vector : undefined;
+  const same =
+    held && vector !== undefined && hold.anchor.length > 0
+      ? cosine(vector, meanUnit(hold.anchor))
+      : null;
   if (identity.kind === "owner") {
     const scores = [...hold.scores, own ?? 0].slice(-3);
     const averaged =
@@ -351,6 +357,7 @@ export const holdVoice = (
         ...identity,
         verified,
         ...(verified && !identity.verified ? { session: true as const } : {}),
+        ...(same === null ? {} : { same }),
       },
     };
   }
@@ -384,10 +391,6 @@ export const holdVoice = (
     };
   // In a verified session his own earlier pieces judge a follow-up better than his profile does (17 Nov: his bedroom
   // replies scored 0.1-0.3 against it). Still his path only, never an owner-only act.
-  const same =
-    held && vector !== undefined && hold.anchor.length > 0
-      ? cosine(vector, meanUnit(hold.anchor))
-      : null;
   if (same !== null && same >= SAME_VOICE)
     return {
       hold: { ...hold, verifiedAt: now, evidence },
@@ -483,8 +486,9 @@ export const replayChecked = (
         kind: "guest",
         confidence: identity.confidence,
         replay: "heard",
+        replayScore: logit,
       }
-    : identity;
+    : { ...identity, replayScore: logit };
 };
 
 /** His profile's cosine to one clip, the best of his owner profiles for this model; null with none. */

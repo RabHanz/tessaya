@@ -197,6 +197,8 @@ export const labVoice = (synth: Synthesise | null): VoiceChoice =>
   synth === null ? { kind: "wait", ready: Promise.resolve(false) } : { kind: "synth", synth };
 
 export interface Speaker extends TtsProvider {
+  /** `persona` (an id) speaks in that persona's voice; without one, in the voice chosen now. */
+  readonly speak: (text: string, persona?: string) => Promise<void>;
   readonly cancel: () => void;
   readonly dispose: () => void;
   /** Plays one line in a voice he is auditioning, even when answers are written only. */
@@ -205,8 +207,8 @@ export interface Speaker extends TtsProvider {
 
 export const createSpeaker = (input: {
   readonly os: TtsProvider;
-  /** The chosen voice. Asked per sentence, so a change applies at once. */
-  readonly voice: () => VoiceChoice;
+  /** The chosen voice, or `persona`'s. Asked per sentence, so a change applies at once. */
+  readonly voice: (persona?: string) => VoiceChoice;
   readonly player: VoicePlayer;
   /** Written only: nothing is synthesised and nothing plays. */
   readonly silent?: () => boolean;
@@ -338,7 +340,7 @@ export const createSpeaker = (input: {
     });
     return tail;
   };
-  const speak = (raw: string) => run(raw, input.voice, false);
+  const speak = (raw: string, persona?: string) => run(raw, () => input.voice(persona), false);
 
   const cancel = () => {
     generation += 1;

@@ -18,7 +18,7 @@ import * as Schedule from "effect/Schedule";
 
 import * as ServerConfig from "../config.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
-import { DEVICE_API, deviceSetting, HUB_PATH, R1Hub } from "./R1Hub.ts";
+import { DEVICE_API, deviceSetting, R1Hub } from "./R1Hub.ts";
 import { R1_VOICE_BUNDLE } from "./R1VoiceBundle.ts";
 import {
   BUNDLE_MARK,
@@ -117,7 +117,6 @@ export const loopPlan = (input: {
           }
         : {}),
       ...input.folderEnv,
-      R1_MQTT_URL: `ws://${base}${HUB_PATH}`,
       R1_MQTT_USER: "tessaya-bus",
       R1_MQTT_PASS_FILE: NodePath.join(secrets, "hub-bus"),
       R1_BRAIN_URL: `http://${base}${DEVICE_API}/chat/completions`,

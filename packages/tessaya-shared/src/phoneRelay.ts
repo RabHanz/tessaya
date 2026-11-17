@@ -45,6 +45,8 @@ export interface PhonePrompt {
   readonly title: string;
   /** The exact words of the question, as the desktop shows them. */
   readonly detail: string;
+  /** The raw request (a tool and its arguments), shown only behind Details: the title and detail are plain words. */
+  readonly more?: string;
   readonly buttons: ReadonlyArray<string>;
   readonly yes: number;
   readonly cancel: number;

@@ -60,6 +60,30 @@ export const HEALTH_STAGE_KEYS = [
 ] as const;
 export type HealthStage = (typeof HEALTH_STAGE_KEYS)[number];
 
+/** One turn's Voice ID and recogniser figures from the loop's `event/voice/metrics` (never its words). */
+export const VoiceIdTurn = Schema.Struct({
+  /** When her server heard it, epoch ms. */
+  at: Schema.Number,
+  /** Who the turn was answered as. */
+  speaker: Schema.String,
+  speakerScore: Num,
+  /** Voice ID's own verdict when it came too late to change the answer. */
+  verdict: Schema.optionalKey(Schema.String),
+  lifted: Schema.optionalKey(Schema.Boolean),
+  /** Cosine to his own earlier pieces in his verified session. */
+  same: Schema.optionalKey(Schema.Number),
+  replay: Schema.optionalKey(
+    Schema.Struct({ verdict: Schema.Literals(["pass", "heard", "unchecked"]), score: Num }),
+  ),
+  recogniser: Schema.optionalKey(
+    Schema.Struct({
+      host: Schema.NullOr(Schema.String),
+      hedge: Schema.optionalKey(Schema.Literals(["personal", "general"])),
+    }),
+  ),
+});
+export type VoiceIdTurn = typeof VoiceIdTurn.Type;
+
 export const VesselHealth = Schema.Struct({
   /** The device id, as in `freya/r1/<id>`. */
   id: Schema.String,
@@ -79,6 +103,8 @@ export const VesselHealth = Schema.Struct({
   /** Its audio stalls (stream gaps) in the last 15 minutes. */
   stalls: Schema.Number,
   voiceHost: Schema.NullOr(VoiceHostReport),
+  /** Its last turns' Voice ID verdicts and recognisers, newest last. */
+  turns: Schema.optionalKey(Schema.Array(VoiceIdTurn)),
 });
 export type VesselHealth = typeof VesselHealth.Type;
 

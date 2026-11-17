@@ -150,6 +150,7 @@ describe("his sentence left unfinished, and what a log keeps", () => {
       "My TikTok shop etcetera and much much more. Like the",
       "Can you turn on the.",
       "And how much would you say you have acquainted yourself about",
+      "I think you should",
     ])
       expect(isUnfinished(t), t).toBe(true);
     for (const t of [
@@ -159,6 +160,9 @@ describe("his sentence left unfinished, and what a log keeps", () => {
       "Thank you",
       "I don't want that",
       "Is it possible to?",
+      // A modal after its subject, with his full stop, ends the clause (18 Nov, 00:16: she waited 2 s for more).
+      "feeling and behaving and any tools that might not be working as they should.",
+      "Yeah, do that if you can.",
     ])
       expect(isUnfinished(t), t).toBe(false);
   });

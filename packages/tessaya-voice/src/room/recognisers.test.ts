@@ -69,8 +69,11 @@ it("hears a turn on the next recogniser, all of it, when the first turns it away
   );
   turn.feed(new Int16Array(100));
   turn.feed(new Int16Array(60));
+  expect(turn.by?.()).toBeNull();
   expect(await turn.finish()).toBe("heard 160 samples");
   expect(log).toEqual(["busy failed, next spare", "spare ok"]);
+  // The metrics name the one whose words were taken, not the one it started on.
+  expect(turn.by?.()).toEqual({ host: "spare" });
 });
 
 it("gives his only recogniser one more go with the whole turn when it drops the stream (01:39, 13 Nov)", async () => {
@@ -126,6 +129,7 @@ it("hears his turn on his personal model and a general one at once, and takes th
         feed: (pcm: Int16Array) => void fed.push(pcm.length),
         finish: () => new Promise<string>((r) => (answer = r)),
         cancel: () => undefined,
+        by: () => ({ host: text === "Kazi said" ? "mine:1" : "theirs:1" }),
       },
     };
   };
@@ -150,16 +154,21 @@ it("hears his turn on his personal model and a general one at once, and takes th
       if (step === "budget") budget();
       else (step === "personal" ? mine : theirs).answer();
     }
-    return { text: await text, won, fed: [mine.fed, theirs.fed] };
+    return { text: await text, won, fed: [mine.fed, theirs.fed], by: turn.by?.() };
   };
   // His model inside the budget: its words, though the general one answered first.
   expect(await run(["general", "personal"])).toEqual({
     text: "Kazi said",
     won: ["personal"],
     fed: [[160], [160]],
+    by: { host: "mine:1", hedge: "personal" },
   });
   // Over the budget (5336 ms that turn): the general words, as soon as they are there.
-  expect(await run(["budget", "general"])).toMatchObject({ text: "Causey said", won: ["general"] });
+  expect(await run(["budget", "general"])).toMatchObject({
+    text: "Causey said",
+    won: ["general"],
+    by: { host: "theirs:1", hedge: "general" },
+  });
   // Over the budget with the general one slower still: whichever answers first.
   expect((await run(["budget", "personal"])).won).toEqual(["personal"]);
   // His model heard nothing (or failed): the general words, without waiting out the budget.

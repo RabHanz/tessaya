@@ -324,8 +324,14 @@ it.effect(
           yield* TestClock.adjust("10 seconds");
         }
         expect(closed).toBe(false);
-        // 30 s of quiet: relinked, and no second move inside the dwell.
+        // A turn just ended: 30 s of quiet is a pause in the conversation, not its end (18 Nov).
+        yield* device.receive(
+          publishPacket("freya/r1/r1-a/event/voice/metrics", Buffer.from("{}")),
+        );
         yield* TestClock.adjust("40 seconds");
+        expect(closed).toBe(false);
+        // 2 min with no turn: relinked, and no second move inside the dwell.
+        yield* TestClock.adjust("90 seconds");
         expect(closed).toBe(true);
         expect(placed).toEqual(["env-cloud"]);
       }).pipe(Effect.provide(layer));

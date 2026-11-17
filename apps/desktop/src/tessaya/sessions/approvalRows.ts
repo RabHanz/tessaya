@@ -69,8 +69,9 @@ export const cardControls = (cards: ReadonlyArray<PhonePrompt>): ReadonlyArray<H
     {
       id: `ac:${c.yes}:${c.cancel}:${c.id}`,
       section: "Waiting for you",
-      label: `${c.title}: ${c.detail}`,
+      label: /[?.!]$/.test(c.title) ? `${c.title} ${c.detail}` : `${c.title}: ${c.detail}`,
       ...(c.on === undefined ? {} : { hint: `Asked on ${c.on}` }),
+      ...(c.more === undefined ? {} : { details: c.more }),
       kind: "action" as const,
       button: c.buttons[c.yes] ?? "Yes",
       ...(c.cancel === c.yes ? {} : { secondary: c.buttons[c.cancel] ?? "No" }),

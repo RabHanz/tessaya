@@ -93,6 +93,7 @@ export const snapshot = Effect.fn("TessayaHealth.snapshot")(function* () {
         ),
         stalls: (h?.stalls ?? []).filter((at) => now - at < STALL_WINDOW_MS).length,
         voiceHost: h?.voiceHost ?? null,
+        turns: h?.turns ?? [],
       };
     });
   const fresh = vessels
