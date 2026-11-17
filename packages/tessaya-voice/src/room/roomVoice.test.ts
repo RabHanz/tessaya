@@ -17,7 +17,6 @@ import {
   servedRoster,
   splitSentences,
   testModeAsked,
-  UPLINK_STALL_MS,
   type RoomDeps,
   type TurnMetrics,
 } from "./roomVoice.ts";
@@ -1226,37 +1225,64 @@ describe("the R1's own buttons (firmware 3.32)", () => {
     expect(t.published.some((p) => p.topic === `freya/r1/${DEV}/cmd/voice/stop`)).toBe(true);
   });
 
-  it("says a Bluetooth route stalled when the mic goes quiet while she plays there, never on her own speaker", async () => {
-    for (const out of ["bt", "onboard"]) {
-      let started: () => void = () => undefined;
-      const speaking = new Promise<void>((r) => (started = r));
-      let finish: () => void = () => undefined;
-      const t = setup({
-        // Her reply is still coming when the mic goes quiet.
+  it("starts her sentence again on the new output when replies move mid-reply, and a quiet mic on Bluetooth moves nothing", async () => {
+    let started: () => void = () => undefined;
+    const speaking = new Promise<void>((r) => (started = r));
+    let finish: () => void = () => undefined;
+    let go: () => void = () => undefined;
+    const heard = new Promise<void>((r) => (go = r));
+    const t = setup(
+      {
+        // Her reply is still coming when the output moves.
         speak: async function* () {
-          yield new Int16Array(3_200);
+          await heard;
+          yield Int16Array.from({ length: 48_000 }, (_, i) => (i % 50) * 100);
           started();
           await new Promise<void>((r) => (finish = r));
         },
-      });
-      t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
-      t.room.message(
-        `freya/r1/${DEV}/state/voice`,
-        Buffer.from(JSON.stringify({ ev: "start", out })),
+      },
+      // Sent as it comes: nothing held back for a preroll.
+      { ...QUIET, prerollMs: 0 },
+    );
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    t.room.message(
+      `freya/r1/${DEV}/state/voice`,
+      Buffer.from(JSON.stringify({ ev: "start", out: "bt" })),
+    );
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    go();
+    await speaking;
+    const downs = () =>
+      t.published.filter((p) => p.topic.endsWith("/voice/down")).map((p) => String(p.payload));
+    const flushes = () =>
+      t.published.filter(
+        (p) => p.topic.endsWith("/voice/ctl") && String(p.payload).includes("flush"),
       );
-      await t.feed(true, 20);
-      void t.feed(false, 8);
-      await speaking;
-      const stalls = () => t.published.filter((p) => p.topic.endsWith("/event/audio/stall"));
-      t.room.sweep();
-      expect(stalls()).toEqual([]);
-      // 16 Nov: on Bluetooth nothing from the Tessel reached the hub for 54 s, and her replies came out bunched.
-      t.advance(UPLINK_STALL_MS + 100);
-      t.room.sweep();
-      t.room.sweep();
-      expect(stalls().length).toBe(out === "bt" ? 1 : 0);
-      finish();
-    }
+    const sentence = Math.ceil((48_000 * 2) / 1_920);
+    // Her first sentence is out (her listening sound went first).
+    await vi.waitFor(() => expect(downs().length).toBeGreaterThanOrEqual(sentence));
+    const before = downs();
+    // 18 Nov, 00:38 GMT+5: moved to her speaker mid-reply, the rest played there while the headphones went on.
+    t.room.message(
+      `freya/r1/${DEV}/state/voice`,
+      Buffer.from(JSON.stringify({ ev: "out", out: "onboard" })),
+    );
+    expect(flushes()).toHaveLength(1);
+    // The whole sentence again from its start, on the new output, and nothing else.
+    await vi.waitFor(() => expect(downs().length).toBe(before.length + sentence));
+    expect(downs().slice(before.length)).toEqual(before.slice(-sentence));
+    // Back on Bluetooth once she is quiet: nothing to start again. A quiet mic there is the shared radio, not a stall.
+    t.advance(3_100);
+    t.room.message(
+      `freya/r1/${DEV}/state/voice`,
+      Buffer.from(JSON.stringify({ ev: "out", out: "bt" })),
+    );
+    t.room.sweep();
+    t.room.sweep();
+    expect(t.published.filter((p) => p.topic.endsWith("/event/audio/stall"))).toEqual([]);
+    expect(flushes()).toHaveLength(1);
+    finish();
   });
 
   it("hears nothing while his R1 is muted, and a reboot does not undo the mute", async () => {

@@ -721,6 +721,8 @@ const main = async () => {
       "freya/r1/+/state/voice/kws",
       "freya/r1/+/state/mic",
       "freya/r1/+/state/voice",
+      "freya/r1/+/state/audio/output",
+      "freya/r1/+/event/bt/stall",
       "freya/r1/+/event/key",
       "freya/r1/+/cmd/voice/earcons",
       "freya/r1/+/cmd/voice/talkover",
