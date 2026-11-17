@@ -22,6 +22,12 @@ const KEEP_SAMPLES = 7 * RATE;
  */
 const PRIME_SAMPLES = 1.3 * RATE;
 const TAIL_SAMPLES = 0.5 * RATE;
+/**
+ * A Tessel kws pass this close under the loop's bar wakes her only when her name leads the segment's words. Of the 22
+ * kept passes at 0.80-0.89 (to 17 Nov), one was his wake (16 Nov seg 172, "Tessaya, what time is it?", 0.89), and none
+ * of the other 21 began with her name.
+ */
+const NEAR_KWS = 0.8;
 /** What the confirm hears: the name and a little before it. */
 const CONFIRM_SAMPLES = 2 * RATE;
 /**
@@ -321,9 +327,10 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
   const kwsPass = (event: KwsEvent) => {
     const w = kwsWord(event.name);
     const best = Number(event.best ?? 0);
-    return w === undefined || event.pass !== true || best < w.threshold
-      ? undefined
-      : { w, best, trusted: wakeTrusted([w], w.word, best / w.threshold) };
+    if (w === undefined || event.pass !== true || best < Math.min(w.threshold, NEAR_KWS))
+      return undefined;
+    const near = best < w.threshold;
+    return { w, best, near, trusted: !near && wakeTrusted([w], w.word, best / w.threshold) };
   };
   const confirmClip = (event: KwsEvent, pcm: Int16Array, trusted: boolean) => {
     const end = kwsClipEnd(event, pcm.length);
@@ -349,12 +356,13 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
         `[${id}] seg ${event.seg} kws ${Number(event.best ?? 0).toFixed(3)} under the loop's ${kwsWord(event.name)!.threshold}; not a wake`,
       );
     if (pass === undefined || woke || pcm.length === 0) return;
-    const { w, best, trusted } = pass;
+    const { w, best, near, trusted } = pass;
     const voice = deps.voice?.(pcm).catch(() => undefined);
     const ratio = best / w.threshold;
     // The whole segment, for his request after her name; it also confirms a name the 2 s clip cut into.
     const whole = deps.confirm(pcm).catch((): ReadonlyArray<string> => []);
-    const texts = await (early ?? confirmClip(event, pcm, trusted));
+    // Under the bar, only her name leading the whole segment's words will do.
+    const texts = near ? [] : await (early ?? confirmClip(event, pcm, trusted));
     const at = `kws ${best.toFixed(3)}/${w.threshold}, segment ${(pcm.length / RATE).toFixed(1)} s`;
     // His name then his request in one breath ("Tessaya, are you there?") leads the text instead of ending it.
     const leads = (text: string) =>
@@ -375,7 +383,11 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
             };
       });
       deps.onWake(id, w.word, speechLevel(pcm), Math.min(1, best), pcm, request, voice);
-    } else
+    } else if (near)
+      deps.log(
+        `[${id}] seg ${event.seg} kws ${best.toFixed(3)} under the loop's ${w.threshold}; not a wake (her name does not lead: ${(await whole).map(heldBack).join("; ") || heldBack("")})`,
+      );
+    else
       deps.log(
         `[${id}] ${w.word} kws pass (${at}), not confirmed (${texts.map(heldBack).join("; ") || heldBack("")})`,
       );
@@ -424,7 +436,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
           // At the first window over the early threshold, mid-segment: the confirm starts now, not at its end.
           const pass = kwsPass(event);
           const d = devices.get(id);
-          if (pass !== undefined && d !== undefined)
+          if (pass !== undefined && !pass.near && d !== undefined)
             d.chain = d.chain.then(() => {
               if (d.seg.length >= kwsClipEnd(event, Number.POSITIVE_INFINITY))
                 earlyConfirm.set(key, confirmClip(event, d.seg, pass.trusted));
