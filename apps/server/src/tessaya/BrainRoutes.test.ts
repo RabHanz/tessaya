@@ -80,6 +80,9 @@ const SITES: Readonly<Record<string, Site>> = {
     routed: "dictation cleanup over RPC: the cleanup row",
   },
   "apps/server/src/speech/http.ts": { wiring: "the key's status and test only, no model call" },
+  "apps/server/src/tessaya/PersonaChanges.ts": {
+    routed: "drafting a persona from his one sentence (hire): the background row's one-shot",
+  },
   "apps/server/src/tessaya/GroupTalk.ts": {
     routed: "which persona a group line is for: the intent row's one-shot",
   },
