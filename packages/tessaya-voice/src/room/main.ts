@@ -56,8 +56,8 @@ import {
 import { createProfileSync, parseShared } from "./profileSync.ts";
 import {
   createRoomVoice,
-  loopMaySend,
   ROOM_CONFIG,
+  busOfBrain,
   routeForDevice,
   servedRoster,
   type RecogniserTurn,
@@ -694,10 +694,10 @@ const main = async () => {
   /** The R1s whose last word on `state/online` was "1": only then are the recognisers kept warm. */
   const online = new Set<string>();
   let room: ReturnType<typeof createRoomVoice> | null = null;
+  const bus = busOfBrain(env("R1_BRAIN_URL"));
+  log(`bus: ${bus}`);
   const mqtt = connectMqtt({
-    // A broker URL (the server's `ws://<host>:<port>/api/r1/mqtt`), or the old host and port.
-    url:
-      process.env["R1_MQTT_URL"] || `mqtt://${env("R1_MQTT_HOST")}:${env("R1_MQTT_PORT", "1883")}`,
+    url: bus,
     clientId: `tessaya-room-${process.pid}`,
     // A short heartbeat: the hub drops a silent loop after 9 s, so a standby on the hub's server takes the room.
     keepAliveS: 6,
@@ -834,41 +834,11 @@ const main = async () => {
         return;
       }
       const to = /^freya\/r1\/([^/]+)\/(.+)$/.exec(t);
-      if (to !== null && routeForDevice(to[2]!, online.has(to[1]!), false) === "drop") return;
+      if (to !== null && routeForDevice(to[2]!, online.has(to[1]!)) === "drop") return;
       room?.message(t, p);
     },
     log,
   });
-  // Her server's hub, when the brain runs on another host than this loop's hub: what it sends a Tessel there (eye moods,
-  // step-ups, a tool's command) reaches only the loop the Tessel is on, so this loop takes it from there (18 Nov).
-  // shortcut: needs that hub's bus key on this host; it must be another hub than R1_MQTT_URL, or a relay would echo.
-  const brainHub =
-    process.env["R1_BRAIN_MQTT_PASS_FILE"] && process.env["R1_BRAIN_MQTT_URL"]
-      ? connectMqtt({
-          url: env("R1_BRAIN_MQTT_URL"),
-          clientId: `tessaya-room-bridge-${process.pid}`,
-          user: env("R1_BRAIN_MQTT_USER", "tessaya-bus"),
-          pass: secret("R1_BRAIN_MQTT_PASS_FILE"),
-          subscribe: [
-            "freya/r1/+/voice/intent/eye",
-            "freya/r1/+/voice/intent/rest",
-            "freya/r1/+/voice/stepup",
-            "freya/r1/+/voice/say",
-            "freya/r1/+/voice/ask",
-            "freya/r1/+/voice/persona",
-            "freya/r1/+/voice/enrol",
-            "freya/r1/+/cmd/#",
-          ],
-          onMessage: (t, p) => {
-            const to = /^freya\/r1\/([^/]+)\/(.+)$/.exec(t);
-            if (to === null) return;
-            const route = routeForDevice(to[2]!, online.has(to[1]!), true);
-            if (route === "relay") mqtt.publish(t, p);
-            else if (route === "room") room?.message(t, p);
-          },
-          log,
-        })
-      : null;
   const inhouse = new Set(
     (process.env["R1_INHOUSE"] ?? "")
       .split(",")
@@ -1088,8 +1058,6 @@ const main = async () => {
     {
       ...(wake === undefined ? {} : { wake }),
       publish: (t, p) => {
-        const to = /^freya\/r1\/([^/]+)\/(.+)$/.exec(t);
-        if (to !== null && !loopMaySend(to[2]!, online.has(to[1]!))) return;
         mqtt.publish(t, p);
         if (t.endsWith("/event/voice/metrics"))
           NodeFS.appendFileSync(metricsFile, `${String(p)}\n`);
@@ -1307,7 +1275,6 @@ const main = async () => {
   const stop = () => {
     room?.close();
     mqtt.close();
-    brainHub?.close();
     process.exit(0);
   };
   process.on("SIGTERM", stop);

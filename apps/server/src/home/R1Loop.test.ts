@@ -128,7 +128,7 @@ const base = {
   devices: [r1("r1-a"), r1("r1-b")],
   port: 3773,
   busKey: "bus",
-  folderEnv: parseEnvFile("# voice\nR1_VOICE=anna\n\nR1_MQTT_URL=ws://elsewhere/mqtt\n"),
+  folderEnv: parseEnvFile("# voice\nR1_VOICE=anna\n\nR1_BRAIN_URL=http://elsewhere/chat\n"),
 };
 
 it("runs the loop against this server's own hub and brain, for every R1 on the hub", () => {
@@ -136,9 +136,8 @@ it("runs the loop against this server's own hub and brain, for every R1 on the h
   expect(plan.node).toBe("/home/user/.t3/userdata/r1-voice/node/bin/node");
   expect(plan.env).toMatchObject({
     R1_VOICE: "anna",
-    // The server's own hub wins over the folder's.
-    R1_MQTT_URL: "ws://127.0.0.1:3773/api/tessel/mqtt",
     R1_MQTT_USER: "tessaya-bus",
+    // The server's own brain, and so its hub, wins over the folder's.
     R1_BRAIN_URL: "http://127.0.0.1:3773/api/devices/tessel/v1/chat/completions",
     R1_INHOUSE: "r1-a,r1-b",
   });

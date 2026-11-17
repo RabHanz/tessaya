@@ -10,8 +10,8 @@ import { speechLike } from "../echoSim.ts";
 import { speechLevel, toBytes } from "./audio.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
+  busOfBrain,
   createRoomVoice,
-  loopMaySend,
   ROOM_CONFIG,
   routeForDevice,
   servedRoster,
@@ -1072,32 +1072,25 @@ describe("waking by name with no session open", () => {
     expect(t.room.session(DEV)).toBeDefined();
   });
 
-  it("drives only a Tessel on its own hub, and relays her server's commands from the brain's hub", () => {
-    // [tail, online on this loop's hub, from the brain's hub] → what the loop does with it.
-    const cases: Array<[string, boolean, boolean, string]> = [
-      ["voice/intent/eye", true, false, "room"],
-      ["voice/intent/eye", false, false, "drop"],
-      ["voice/stepup", false, false, "drop"],
-      ["cmd/voice/start", false, false, "drop"],
-      ["voice/up", false, false, "room"],
-      ["cmd/voice/no-reply", false, false, "room"],
-      ["voice/stepup", true, true, "room"],
-      ["voice/stepup", false, true, "drop"],
-      ["cmd/eye/gesture", true, true, "relay"],
-      ["cmd/volume", true, true, "relay"],
-      ["cmd/net/endpoints", true, true, "drop"],
+  it("drives only a Tessel on its bus, and that bus is always its brain's hub", () => {
+    // [tail, online on this loop's bus] → what the loop does with it.
+    const cases: Array<[string, boolean, string]> = [
+      ["voice/intent/eye", true, "room"],
+      ["voice/intent/eye", false, "drop"],
+      ["voice/stepup", false, "drop"],
+      ["cmd/voice/start", false, "drop"],
+      ["voice/up", false, "room"],
+      ["cmd/voice/no-reply", false, "room"],
     ];
-    for (const [tail, here, brainHub, want] of cases)
-      expect([tail, here, brainHub, routeForDevice(tail, here, brainHub)]).toEqual([
-        tail,
-        here,
-        brainHub,
-        want,
-      ]);
-    // Its own eye and voice commands go only to a Tessel on its hub, so a bridging loop never relays a second driver.
-    expect(loopMaySend("cmd/eye/set", false)).toBe(false);
-    expect(loopMaySend("cmd/eye/set", true)).toBe(true);
-    expect(loopMaySend("event/voice/metrics", false)).toBe(true);
+    for (const [tail, here, want] of cases)
+      expect([tail, here, routeForDevice(tail, here)]).toEqual([tail, here, want]);
+    // 18 Nov: a loop on one server's hub called another's brain, whose acts went to a hub she was not on.
+    expect(busOfBrain("https://brain.example/api/devices/r1/v1/chat/completions")).toBe(
+      "wss://brain.example/api/tessel/mqtt",
+    );
+    expect(busOfBrain("http://127.0.0.1:3773/api/devices/tessel/v1/chat/completions")).toBe(
+      "ws://127.0.0.1:3773/api/tessel/mqtt",
+    );
   });
 
   it("opens on the persona the Cast puts on this Tessel, and a wake word for another never re-homes it", async () => {
