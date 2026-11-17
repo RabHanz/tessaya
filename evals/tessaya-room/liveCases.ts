@@ -181,7 +181,7 @@ const brief =
 /** A short spoken offer of the rest at the end of an answer ("want the rest?"). */
 const MORE_OFFER =
   /\s*(?:(?:do )?you want|want|shall I give you|should I go on with)[^.!?]{0,30}\b(rest|more|details?|others?|list)\b[^.!?]{0,15}\?\s*$/i;
-/** Her answer names a session's project, or a machine, from the work read (tessaya_work_now). */
+/** Her answer names a session (its project or its own name), or a machine, from the work read (tessaya_work_now). */
 const saysFromWorkNow = (
   last: string,
   calls: ReadonlyArray<LiveCall>,
@@ -191,9 +191,13 @@ const saysFromWorkNow = (
   if (read === undefined) return "no work read";
   const now = JSON.parse(read.text) as {
     readonly machines: ReadonlyArray<string>;
-    readonly top: ReadonlyArray<{ readonly project: string }>;
+    readonly top: ReadonlyArray<{ readonly project: string; readonly session: string }>;
   };
-  const names = what === "machine" ? now.machines : now.top.map((t) => t.project);
+  // .185: "the shell in t3code, and the one named fab-t3code" names both sessions without their project.
+  const names =
+    what === "machine"
+      ? now.machines
+      : now.top.flatMap((t) => [t.project, ...t.session.split(" · ")]);
   return names.length === 0 || names.some((n) => last.toLowerCase().includes(n.toLowerCase()))
     ? null
     : `named no ${what} from the work read: ${last.slice(0, 120)}`;
