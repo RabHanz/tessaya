@@ -498,6 +498,26 @@ describe("answering only when he is talking to her", () => {
     ]);
   });
 
+  it("hears a bare name that answers her own question as his answer, not a switch (18 Nov, 00:22:59)", async () => {
+    const asked: Array<[string, true | undefined]> = [];
+    const t = setup({
+      recognise: said(["Tessaya, whose eyes are these?", "Alfred.", "Alfred, what broke?"]),
+      brain: async function* (input) {
+        asked.push([input.tessaya.persona, input.tessaya.switched]);
+        yield asked.length === 1 ? "Whose do you see, Alfred's or mine?" : "Noted.";
+      },
+    });
+    await turn(t);
+    await turn(t);
+    await turn(t);
+    // Her question named Alfred, so "Alfred." answers it; calling him with a request still switches.
+    expect(asked).toEqual([
+      ["executive", undefined],
+      ["executive", undefined],
+      ["butler", true],
+    ]);
+  });
+
   it("says each group member's words in its own voice, its eyes queued with them, then returns to its own (M-021)", async () => {
     const spoken: Array<[string, string | undefined]> = [];
     const t = setup({
