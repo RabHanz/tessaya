@@ -15,6 +15,8 @@ const SCHEMA = `
     received_at TEXT);
   CREATE TABLE tessaya_affect_state (persona TEXT PRIMARY KEY, state_json TEXT);
   CREATE TABLE fabric_phone_prompts (id TEXT PRIMARY KEY, status TEXT, expires_at INTEGER);
+  CREATE TABLE tessaya_private_stores (id TEXT PRIMARY KEY, person_id TEXT, keys_json TEXT, failures INTEGER);
+  CREATE TABLE tessaya_private_items (id TEXT, store_id TEXT, sealed_json TEXT, PRIMARY KEY (store_id, id));
 `;
 const db = (...rows: ReadonlyArray<string>) => {
   const d = new NodeSqlite.DatabaseSync(":memory:");
@@ -23,7 +25,7 @@ const db = (...rows: ReadonlyArray<string>) => {
   return d;
 };
 const event = (id: string, data = "{}") =>
-  `INSERT INTO tessaya_action_events VALUES ('${id}', 1, 'k', 'env-onnyx', 'system', 'a', 1, '[]', '[]', NULL, 's', 'o', '${data}')`;
+  `INSERT INTO tessaya_action_events VALUES ('${id}', 1, 'k', 'env-studio', 'system', 'a', 1, '[]', '[]', NULL, 's', 'o', '${data}')`;
 
 it("folds a peer's state into the brain once, keeping the brain's copy of anything it already holds", () => {
   const peer = db(
@@ -32,12 +34,17 @@ it("folds a peer's state into the brain once, keeping the brain's copy of anythi
     event("e3", '{"y":2}'),
     "INSERT INTO tessaya_brain_usage (at, role, model, input, output, event_id) VALUES (5, 'brain', 'm', 1, 1, 'u1')",
     "INSERT INTO tessaya_brain_usage (at, role, model, input, output, event_id) VALUES (6, 'brain', 'm', 1, 1, 'u2')",
-    "INSERT INTO fabric_memory_items VALUES ('m1', 'fact', 'likes tea', 'turn:1', 'env-onnyx', NULL)",
-    "INSERT INTO fabric_memory_items VALUES ('m2', 'fact', 'likes rain', 'turn:2', 'env-onnyx', NULL)",
+    "INSERT INTO fabric_memory_items VALUES ('m1', 'fact', 'likes tea', 'turn:1', 'env-studio', NULL)",
+    "INSERT INTO fabric_memory_items VALUES ('m2', 'fact', 'likes rain', 'turn:2', 'env-studio', NULL)",
     "INSERT INTO tessaya_affect_state VALUES ('executive', '{\"a\":1}')",
     "INSERT INTO tessaya_affect_state VALUES ('alter-ego', '{\"a\":2}')",
     "INSERT INTO fabric_phone_prompts VALUES ('p-live', 'pending', 100)",
     "INSERT INTO fabric_phone_prompts VALUES ('p-old', 'pending', 1)",
+    // Sara's private store, sealed, comes whole; the owner's meets the brain's own, sealed under another key.
+    "INSERT INTO tessaya_private_stores VALUES ('s-sara', 'sara', 'wrapped-a', 0)",
+    "INSERT INTO tessaya_private_items VALUES ('i1', 's-sara', 'ciphertext-1')",
+    "INSERT INTO tessaya_private_stores VALUES ('s-owner-peer', 'owner', 'wrapped-b', 0)",
+    "INSERT INTO tessaya_private_items VALUES ('i2', 's-owner-peer', 'ciphertext-2')",
   );
   const brain = db(
     event("e1"),
@@ -46,10 +53,11 @@ it("folds a peer's state into the brain once, keeping the brain's copy of anythi
     // Another autoincrement id for the same call.
     "INSERT INTO tessaya_brain_usage (id, at, role, model, input, output, event_id) VALUES (40, 5, 'brain', 'm', 1, 1, 'u1')",
     // The same memory under another id.
-    "INSERT INTO fabric_memory_items VALUES ('other', 'fact', 'likes tea', 'turn:1', 'env-hetzner', NULL)",
+    "INSERT INTO fabric_memory_items VALUES ('other', 'fact', 'likes tea', 'turn:1', 'env-brain', NULL)",
     "INSERT INTO tessaya_affect_state VALUES ('executive', '{\"a\":5}')",
+    "INSERT INTO tessaya_private_stores VALUES ('s-owner', 'owner', 'wrapped-c', 2)",
   );
-  const dry = fold(peer, brain, { label: "onnyx", apply: false, now: 50 });
+  const dry = fold(peer, brain, { label: "studio", apply: false, now: 50 });
   const byTable = Object.fromEntries(dry.tables.map((t) => [t.table, t]));
   assert.deepStrictEqual(
     [byTable["tessaya_action_events"]!.imported, byTable["tessaya_action_events"]!.duplicates],
@@ -60,19 +68,21 @@ it("folds a peer's state into the brain once, keeping the brain's copy of anythi
   assert.strictEqual(byTable["fabric_memory_items"]!.imported, 1);
   assert.deepStrictEqual(byTable["tessaya_affect_state"]!.conflicts, ["executive"]);
   assert.strictEqual(byTable["fabric_phone_prompts"]!.imported, 1);
+  assert.deepStrictEqual(byTable["tessaya_private_stores"]!.conflicts, ["person:owner"]);
+  assert.strictEqual(byTable["tessaya_private_items"]!.imported, 1);
   // A dry run writes nothing.
   assert.strictEqual(
     (brain.prepare("SELECT COUNT(*) AS n FROM tessaya_action_events").get() as { n: number }).n,
     2,
   );
 
-  fold(peer, brain, { label: "onnyx", apply: true, now: 50 });
+  fold(peer, brain, { label: "studio", apply: true, now: 50 });
   const e3 = brain.prepare("SELECT data_json FROM tessaya_action_events WHERE id = 'e3'").get() as {
     data_json: string;
   };
   assert.deepStrictEqual(JSON.parse(e3.data_json), {
     y: 2,
-    migrated: { from: "onnyx", at: new Date(50).toISOString() },
+    migrated: { from: "studio", at: new Date(50).toISOString() },
   });
   assert.strictEqual(
     (
@@ -93,8 +103,16 @@ it("folds a peer's state into the brain once, keeping the brain's copy of anythi
     '{"a":5}',
   );
   assert.ok(brain.prepare("SELECT 1 FROM tessaya_action_events WHERE kind = 'brain.fold'").get());
+  // Still ciphertext on the brain, opened only by his verification there.
+  assert.deepStrictEqual(
+    brain
+      .prepare("SELECT id, sealed_json FROM tessaya_private_items")
+      .all()
+      .map((r) => ({ ...r })),
+    [{ id: "i1", sealed_json: "ciphertext-1" }],
+  );
   // Run again: nothing new arrives.
-  const again = fold(peer, brain, { label: "onnyx", apply: false, now: 60 });
+  const again = fold(peer, brain, { label: "studio", apply: false, now: 60 });
   assert.strictEqual(
     again.tables.reduce((n, t) => n + t.imported, 0),
     0,

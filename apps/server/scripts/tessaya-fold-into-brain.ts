@@ -1,9 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalJsonInEffect:off preferSchemaOverJson:off
 /**
- * One brain, slice 3 (one-brain-2026-11-18 §3): folds a former peer's Tessaya state into the brain's `baton.sqlite`.
- * `--from` is always a copy (made read-only off that machine); `--into` is opened read-only unless `--apply`, which first
- * backs it up beside itself. Machine-local tables (its sessions, devices, settings) stay; the private layer never moves.
- * Usage: --from <copy of the peer's baton.sqlite> --into <brain's baton.sqlite> --label onnyx [--report out.json] [--apply]
+ * Folds a former peer's Tessaya state into the brain's baton.sqlite (one brain, slice 3). `--from` is a copy; `--into`
+ * opens read-only unless `--apply`, which backs it up first. Machine-local tables stay; the private layer comes as the
+ * ciphertext it is, never opened here.
+ * Usage: --from <copy of the peer's baton.sqlite> --into <brain's baton.sqlite> --label <peer> [--report out.json] [--apply]
  */
 import * as NodeFS from "node:fs";
 import * as NodeSqlite from "node:sqlite";
@@ -44,9 +44,8 @@ const KEPT: Readonly<Record<string, string>> = {
   fabric_memory_fts: "rebuilt from memory items by the brain",
   fabric_memory_vectors: "rebuilt from memory items by the brain",
   fabric_memory_meta: "that server's memory bookkeeping",
-  tessaya_private_stores: "the private layer never leaves its device",
-  tessaya_private_items: "the private layer never leaves its device",
-  tessaya_private_audit: "the private layer never leaves its device",
+  tessaya_private_audit:
+    "a hash chain of each server's own; the peer's stays in the kept export, and the fold's event records what came",
 };
 
 const has = (db: NodeSqlite.DatabaseSync, table: string) =>
@@ -80,7 +79,8 @@ interface Plan {
   readonly ignore?: ReadonlyArray<string>;
   /** Columns left for the brain to assign. */
   readonly drop?: ReadonlyArray<string>;
-  readonly take?: (row: Row, now: number) => boolean;
+  /** `stores`: the private stores the brain holds after this fold, so a sealed row comes only with its own store. */
+  readonly take?: (row: Row, now: number, stores: ReadonlySet<string>) => boolean;
   /** The row as the brain stores it, with where it came from. */
   readonly tag?: (row: Row, from: { label: string; at: string }) => Row;
 }
@@ -143,6 +143,23 @@ const PLANS: ReadonlyArray<Plan> = [
     key: (r) => String(r["id"]),
     take: (r, now) => r["status"] === "pending" && Number(r["expires_at"]) > now,
   },
+  // A person's private store, sealed: it comes whole when the brain has none for them. One there already is a conflict
+  // to settle in a private session after his verification, since the two are sealed under different keys.
+  {
+    table: "tessaya_private_stores",
+    key: (r) => `person:${String(r["person_id"])}`,
+    ignore: ["failures", "wait_until", "last_opened_at"],
+  },
+  {
+    table: "tessaya_private_items",
+    key: (r) => `${String(r["store_id"])}:${String(r["id"])}`,
+    take: (r, _now, stores) => stores.has(String(r["store_id"])),
+  },
+  {
+    table: "tessaya_private_events",
+    key: (r) => String(r["id"]),
+    take: (r, _now, stores) => stores.has(String(r["store_id"])),
+  },
 ];
 
 export const fold = (
@@ -152,10 +169,13 @@ export const fold = (
 ): FoldReport => {
   const at = new Date(options.now).toISOString();
   const tables: Array<TableReport> = [];
+  const stores = new Set<string>();
   if (options.apply) into.exec("BEGIN IMMEDIATE");
   try {
     for (const plan of PLANS) {
-      const theirs = all(from, plan.table).filter((r) => plan.take?.(r, options.now) ?? true);
+      const theirs = all(from, plan.table).filter(
+        (r) => plan.take?.(r, options.now, stores) ?? true,
+      );
       const mineRows = all(into, plan.table);
       const mine = new Map(mineRows.map((r) => [plan.key(r), r]));
       // Memory: the same words from the same source, under another id, are one memory.
@@ -170,8 +190,10 @@ export const fold = (
         const key = plan.key(row);
         const held = mine.get(key);
         if (held !== undefined) {
-          if (same(row, held, plan.ignore ?? [])) duplicates++;
-          else conflicts.push(key);
+          if (same(row, held, plan.ignore ?? [])) {
+            duplicates++;
+            if (plan.table === "tessaya_private_stores") stores.add(String(row["id"]));
+          } else conflicts.push(key);
           continue;
         }
         if (bySource?.has(`${String(row["source_ref"])}\u0000${String(row["text"])}`) === true) {
@@ -180,6 +202,7 @@ export const fold = (
         }
         imported++;
         mine.set(key, row);
+        if (plan.table === "tessaya_private_stores") stores.add(String(row["id"]));
         if (!options.apply || !has(into, plan.table)) continue;
         const tagged = plan.tag?.(row, { label: options.label, at }) ?? row;
         insert(
