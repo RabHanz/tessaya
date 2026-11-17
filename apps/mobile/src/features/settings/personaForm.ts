@@ -23,6 +23,8 @@ export interface PersonaForm {
   readonly traits: Readonly<Partial<Record<Dial, number>>>;
   readonly model: string;
   readonly private: boolean;
+  /** One greeting per line. */
+  readonly greetings: string;
 }
 
 export const BLANK_PERSONA: PersonaForm = {
@@ -33,6 +35,7 @@ export const BLANK_PERSONA: PersonaForm = {
   traits: {},
   model: "",
   private: false,
+  greetings: "",
 };
 
 /** Editing starts with an empty brief: the server keeps the current one unless he writes a new one. */
@@ -44,9 +47,26 @@ export const personaFormFor = (p: TessayaPersona): PersonaForm => ({
   traits: p.traits ?? {},
   model: p.brain?.model ?? "",
   private: p.private === true,
+  greetings: (p.greetings ?? []).join("\n"),
+});
+
+/** A drafted hire (or any draft) as an unsaved form; nothing is stored until he presses Create. */
+export const personaFormOfDraft = (d: TessayaPersonaDraft): PersonaForm => ({
+  ...BLANK_PERSONA,
+  name: d.name ?? "",
+  role: d.role ?? "",
+  about: d.about ?? "",
+  traits: d.traits ?? {},
+  model: d.model ?? "",
+  private: d.private === true,
+  greetings: (d.greetings ?? []).join("\n"),
 });
 
 export function personaSave(f: PersonaForm): TessayaPersonaChangeInput {
+  const greetings = f.greetings
+    .split("\n")
+    .map((g) => g.trim())
+    .filter((g) => g !== "");
   const draft: TessayaPersonaDraft = {
     name: f.name.trim(),
     role: f.role,
@@ -54,6 +74,7 @@ export function personaSave(f: PersonaForm): TessayaPersonaChangeInput {
     traits: f.traits,
     model: f.model.trim() === "" ? null : f.model.trim(),
     private: f.private,
+    ...(f.id === null && greetings.length === 0 ? {} : { greetings }),
   };
   return f.id === null ? { op: "create", draft } : { op: "edit", id: f.id, draft };
 }
