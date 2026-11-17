@@ -8,7 +8,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { FRAME_SAMPLES, type KwsEvent } from "./wakeStream.ts";
+import { FRAME_SAMPLES, KWS_LATE_MS, type KwsEvent } from "./wakeStream.ts";
 
 export interface Stage2 {
   /** Stage 2's verdict as the log line has it. */
@@ -53,7 +53,7 @@ export const createWakeCapture = (opts: {
   for (const f of NodeFS.readdirSync(opts.dir).toSorted())
     files.set(f, NodeFS.statSync(NodePath.join(opts.dir, f)).size);
   let total = [...files.values()].reduce((a, b) => a + b, 0);
-  const recent = new Map<string, string>();
+  const recent = new Map<string, { json: string; at: number }>();
   const last = new Map<string, { json: string; at: number }>();
 
   const put = (name: string, data: string | Uint8Array) => {
@@ -115,7 +115,7 @@ export const createWakeCapture = (opts: {
           }),
         );
         if (seg !== undefined) {
-          recent.set(`${id}#${seg}`, `${base}.json`);
+          recent.set(`${id}#${seg}`, { json: `${base}.json`, at });
           if (recent.size > 64) recent.delete(recent.keys().next().value!);
         }
         last.set(id, { json: `${base}.json`, at });
@@ -123,8 +123,8 @@ export const createWakeCapture = (opts: {
       }),
     kws: (id, event) =>
       guard("kws", () => {
-        const json = typeof event.seg === "number" ? recent.get(`${id}#${event.seg}`) : undefined;
-        if (json !== undefined) patch(json, { kws: event });
+        const r = typeof event.seg === "number" ? recent.get(`${id}#${event.seg}`) : undefined;
+        if (r !== undefined && now() - r.at < KWS_LATE_MS) patch(r.json, { kws: event });
       }),
     session: (id) =>
       guard("session", () => {

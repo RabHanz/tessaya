@@ -79,6 +79,25 @@ describe("keeping wake segments for training", () => {
     });
   });
 
+  it("never puts a rebooted Tessel's verdict on an older segment with the same number", () => {
+    // 18 Nov: Tumble rebooted at 03:48 and numbered her segments from 1 again; their kws landed on 03:45's files.
+    const dir = tmp();
+    let clock = 0;
+    const capture = createWakeCapture({
+      dir,
+      capBytes: 1e9,
+      now: () => clock,
+      log: () => undefined,
+    });
+    const stage2 = { outcome: "no fire", woke: false, best: {} };
+    capture.segment("r1", 3, new Int16Array(500), stage2);
+    clock += 200;
+    capture.kws("r1", { seg: 3, score: 0.01, pass: false, name: "alfred", best: 0.01 });
+    clock += 180_000;
+    capture.kws("r1", { seg: 3, score: 0.9, pass: true, name: "alfred", best: 0.998 });
+    expect(records(dir).map((r) => r.kws)).toMatchObject([{ best: 0.01 }]);
+  });
+
   it("drops the oldest segments past the cap, and a late session marks nothing", () => {
     const dir = tmp();
     let clock = 0;
