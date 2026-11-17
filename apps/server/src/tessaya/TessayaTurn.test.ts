@@ -860,9 +860,26 @@ layer("TessayaTurn", (it) => {
           "laptop assistant: About the shop deploy.",
         ]);
         // His verified voice has its own conversation; the household's stays apart from it.
+        yield* said(desktop, "my desk notes", { speaker: owner() });
         yield* said(device, "my private plans", { speaker: owner() });
-        assert.lengthOf(yield* heard({ speaker: owner() }), 2);
+        assert.lengthOf(yield* heard({ speaker: owner() }), 4);
         assert.notInclude((yield* heard()).join(" "), "private plans");
+        // A turn too short for Voice ID goes on with his thread on that device, only what it said aloud (17 Nov).
+        const unsure = owner({ kind: "unverified", personId: null, verified: false });
+        assert.deepStrictEqual(yield* heard({ speaker: unsure }), [
+          "desk-1 user: my private plans",
+          "desk-1 assistant: About my private plans.",
+        ]);
+        assert.notInclude(
+          (yield* heard({
+            speaker: owner({ kind: "guest", personId: null, verified: false }),
+          })).join(" "),
+          "private plans",
+        );
+        yield* said(device, "can you?", { speaker: unsure });
+        assert.include((yield* heard({ speaker: owner() })).join(" "), "can you?");
+        yield* TestClock.adjust("3 minutes");
+        assert.notInclude((yield* heard({ speaker: unsure })).join(" "), "private plans");
         // A conversation the arbiter names is the one continued.
         yield* said(device, "the kitchen timer", { conversation: "arbiter:k1" });
         assert.lengthOf(yield* heard({ conversation: "arbiter:k1" }), 2);
@@ -1071,31 +1088,52 @@ it("tells every turn where she is in a few dozen tokens: vessel, body, room, wha
     version: null,
     items: [
       item("volume", "Volume", "read,write", { unit: "%" }),
-      item("battery", "Battery", "read", { unit: "%" }),
+      item("power.battery_pct", "Battery", "read", { unit: "%" }),
       item("camera", "Camera", "read,write", { privacy: true }),
       item("body.current", "Body", "read", { group: "body" }),
       item("body.room", "Room", "read", { group: "body" }),
     ],
     values: [
       { itemId: "volume", value: 70, at: "2026-11-14T12:00:00Z" },
-      { itemId: "battery", value: 99, at: "2026-11-14T12:00:00Z" },
+      { itemId: "power.battery_pct", value: 99, at: "2026-11-14T12:00:00Z" },
       { itemId: "camera", value: "on", at: "2026-11-14T12:00:00Z" },
       { itemId: "body.current", value: "the Dock", at: "2026-11-14T12:00:00Z" },
       { itemId: "body.room", value: "study", at: "2026-11-14T12:00:00Z" },
     ],
   };
+  const now = Date.parse("2026-11-14T12:05:00Z");
   assert.strictEqual(
-    hereLine(device, ["Rab", "Sara"]),
-    "You are speaking through R1, in the Dock, in the study. It can: Volume. Now: Volume 70%, Battery 99%. Likely home: Rab, Sara.",
+    hereLine(device, ["Rab", "Sara"], now),
+    "You are speaking through R1, in the Dock, in the study: this turn came through it, so it is on and hears him. Last reported: Volume 70%, Battery 99%. It can: Volume. Likely home: Rab, Sara.",
   );
+  // He is talking through it while its link is down (17 Nov): never "offline"; old readings carry their age, and
+  // the battery is not said while it charges (16 Nov).
+  const linkDown = hereLine(
+    {
+      ...device,
+      online: false,
+      items: [...device.items, item("power.charging", "Charging", "read")],
+      values: [
+        ...device.values,
+        { itemId: "power.charging", value: true, at: "2026-11-14T12:00:00Z" },
+      ],
+    },
+    null,
+    now + 18 * 3_600_000,
+  );
+  assert.notInclude(linkDown, "offline");
+  assert.include(linkDown, "link to this server is down");
+  assert.include(linkDown, "Volume 70% (as of 18 h ago)");
+  assert.notInclude(linkDown, "Battery");
   // A guest's turn (no member) is not told who lives here; nothing known is nothing said.
-  assert.strictEqual(hereLine(null, null), "");
+  assert.strictEqual(hereLine(null, null, now), "");
   assert.isAtMost(
     hereLine(
       device,
       Array.from({ length: 50 }, (_, i) => `Person ${i}`),
+      now,
     ).length,
-    360,
+    520,
   );
 });
 

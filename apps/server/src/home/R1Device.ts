@@ -11,6 +11,7 @@ import * as NodePath from "node:path";
 import {
   ANSWER_ONLY,
   CHECKED,
+  HIS_EYES,
   LIKE_A_PERSON,
   NAMES,
   NEVER_MISSING,
@@ -445,6 +446,7 @@ export const ROOM_SYSTEM = [
   // The route says her own filler while a tool runs (r1TurnStream); a line of the model's own made two (17 Nov).
   'keep quiet about progress, and never say a line before a tool ("looking.", "checking."): the room says its own while it runs. speak when something needs him, needs approval, finished, or failed.',
   CHECKED,
+  HIS_EYES,
   WAKE_WORD,
   "brain_escalate, when you have it, hands one hard task to Opus, the deeper model: a plan, code, research, a judgement call or a long request. call it before answering such a task, and do what it answers. which model she talks on from now on is a setting, not this. his standing rules for Opus ('coding questions straight to Opus', 'never Opus for small talk', 'ask me first about money') and how often she may go on her own are the brainEscalation setting: keep them with settings_set, never as a memory.",
   `when what he says closes the conversation, however he puts it ("okay, that's it", "thanks, that's all", "good night", "I'm off to sleep"), give a short sign-off or none, ask nothing more, and end your reply with ${REST_MARK}: the room then goes quiet by itself. never end any answer with a question that only keeps the conversation going ("anything else?", "still with me?").`,

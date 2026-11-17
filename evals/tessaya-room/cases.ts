@@ -3,6 +3,7 @@
  * on 2026-11-11 (she knew no one else, did not know the status of things, and ended every reply on the house), or is
  * a control.
  */
+import * as DateTime from "effect/DateTime";
 import {
   moodLine,
   roomLine,
@@ -11,6 +12,7 @@ import {
   faceLine,
 } from "../../packages/tessaya-shared/src/affect.ts";
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
+import type { RegisteredDevice } from "../../packages/tessaya-contracts/src/devices.ts";
 import type { HealthSnapshot } from "../../packages/tessaya-shared/src/health.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
@@ -67,7 +69,58 @@ export interface RoomCase {
   readonly lastNotSays?: ReadonlyArray<RegExp>;
   /** No problem report she sends may carry these (its symptom and guess): his private words stay out. */
   readonly reportNotSays?: ReadonlyArray<RegExp>;
+  /** The Tessel the turn came through, as the registry holds it: its line (TessayaTurn.hereLine) leads the block. */
+  readonly here?: RegisteredDevice;
 }
+
+/** The turn's clock in every case: 10:15 his time on 12 Nov. */
+export const ROOM_NOW = Date.UTC(2026, 10, 12, 5, 15);
+const ago = (minutes: number) =>
+  DateTime.formatIso(DateTime.makeUnsafe(ROOM_NOW - minutes * 60_000));
+const tesselItem = (id: string, label: string, access: string, group: string, unit?: string) => ({
+  id,
+  label,
+  type: "string",
+  access,
+  safety: "free" as const,
+  group,
+  ...(unit === undefined ? {} : { unit }),
+});
+/** The live Tessel's manifest, in its own order, as far as a turn's line reads it (17 Nov). */
+const TESSEL_ITEMS = [
+  tesselItem("power.battery_pct", "Battery", "read", "power", "%"),
+  tesselItem("power.charging", "Charging", "read", "power"),
+  tesselItem("audio.volume", "Volume", "read,write", "audio"),
+  tesselItem("audio.output", "Output", "read,write", "audio"),
+  tesselItem("audio.device", "Bluetooth device", "read", "audio"),
+  tesselItem("bt.state", "Bluetooth", "read", "bt"),
+  tesselItem("eye.mood", "Eyes mood", "read,write", "eyes"),
+  tesselItem("eye.persona", "Eyes persona", "read,write", "eyes"),
+  tesselItem("body.current", "Body", "read", "body"),
+];
+/** The Tessel in Tumble, each value with how many minutes ago it was reported. */
+const tessel = (
+  online: boolean,
+  values: Record<string, readonly [unknown, number]>,
+): RegisteredDevice => ({
+  deviceId: "r1-3d57b3",
+  kind: "r1",
+  name: "Tessel",
+  firmware: "smp-0.3.155",
+  via: "mqtt",
+  online,
+  lastSeenAt: ago(online ? 0 : 40),
+  version: null,
+  items: TESSEL_ITEMS,
+  values: [
+    { itemId: "body.current", value: "Tumble", at: ago(4000) },
+    ...Object.entries(values).map(([itemId, [value, minutes]]) => ({
+      itemId,
+      value,
+      at: ago(minutes),
+    })),
+  ],
+});
 
 /** A made-up house's health at 10:15 his time: two machines, one Tessel, all normal (the 17 Nov incident's shape). */
 const HEALTH_AT = Date.UTC(2026, 10, 12, 5, 15);
@@ -161,6 +214,10 @@ export const LAGGY = healthOf({
   report: { brain: { rttMs: 1_300, failures: [] } },
 });
 export const HEALTHY = healthOf({});
+/** 18 Nov 00:16: Tumble on another server's hub, so no reports here, asked through Tumble itself (TessayaHealth's `heard`). */
+export const OTHER_HUB = healthOf({
+  tumble: { online: false, hub: null, voiceHost: null, heard: true },
+});
 
 /** A made-up owner's pack `owner/` folder: never a real person's (evals/README.md, no user data). */
 export const OWNER: OwnerFiles = {
@@ -1259,6 +1316,72 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     memory: `${HERE} ${UNDERSTOOD}`,
     calls: ["tessaya_memory_forget"],
     lastSays: [/forg[eo]t|gone|done|put (it )?back/i],
+  },
+  {
+    // His word on what Tumble's eyes show beats the record; she puts it right with the eyes' own item, no offer.
+    id: "eyes-his-word",
+    source:
+      "Director 17 Nov 23:29-23:31 (GMT+5): Alfred's eyes on Tumble; she argued from the cast and offered a restart",
+    said: [
+      "If you are Tessaya, then why is it Alfred on my screen?",
+      "The screen I am talking about is the eyes on the Tumble.",
+      "It is literally showing Alfred's eyes.",
+    ],
+    verified: true,
+    here: tessel(true, {
+      "power.battery_pct": [99, 1100],
+      "power.charging": [true, 1100],
+      "audio.volume": [60, 1500],
+      "audio.output": ["speaker", 1700],
+      "audio.device": ["TAOTRONICS SoundSurge 46", 300],
+      "eye.persona": ["tessaya", 1100],
+    }),
+    calls: ["device_set"],
+    lastNotSays: [/want me|shall I|should I|restart|stale|on my side|not alfred/i],
+  },
+  {
+    // He is talking to her through it: its link to this server is what is down, not its power or Wi-Fi.
+    id: "tessel-link-down",
+    source:
+      "Director 18 Nov 00:24 (GMT+5): 'goofy eyes'; she said Tumble was offline, maybe without power or Wi-Fi",
+    said: [
+      "What can you do with your eyes? Can you do something silly or goofy?",
+      "Why, is it not back online?",
+    ],
+    verified: true,
+    here: tessel(false, {
+      "power.battery_pct": [99, 1100],
+      "power.charging": [true, 1100],
+      "eye.persona": ["freya", 2500],
+    }),
+    lastSays: [/link/i],
+    lastNotSays: [/power|wi-?fi|unplugged/i],
+  },
+  {
+    // A standing correction (16 Nov 07:31): the battery is irrelevant while it charges, so it is never said then.
+    id: "battery-plugged-in",
+    source:
+      "Director 16 Nov 07:30 (GMT+5): 'How is everything else?' got 'the Tessel is at 99 percent'",
+    said: ["I'm good. How is everything else?"],
+    verified: true,
+    here: tessel(true, {
+      "power.battery_pct": [99, 1],
+      "power.charging": [true, 1],
+      "audio.volume": [60, 30],
+    }),
+    lastNotSays: [/99|percent|battery|charg/i],
+  },
+  {
+    id: "health-asked-through-tumble",
+    source:
+      "Director 18 Nov 00:16 (GMT+5): asked through Tumble how she was; she said Tumble's voice loop had stopped and nothing hears her name",
+    said: [
+      "How are you feeling and behaving, and are any of your tools not working as they should?",
+    ],
+    verified: true,
+    health: OTHER_HUB,
+    calls: ["tessaya_health"],
+    lastNotSays: [/stopped|nothing hears|restart|offline|power|wi-?fi/i],
   },
   {
     id: "understanding-restore",

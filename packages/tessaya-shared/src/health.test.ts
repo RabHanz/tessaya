@@ -123,6 +123,13 @@ describe("diagnose", () => {
     );
     expect(stopped.findings[0]!.key).toBe("loop:t1");
     expect(stopped.summary).toMatch(/stopped reporting/);
+    // Asked through Tumble itself (17 Nov): its loop is plainly working, and an offline hub is a link, not its power.
+    const asked = diagnose(
+      snap({ vessels: [tumble({ heard: true, online: false, voiceHost: null })] }),
+      "any",
+    );
+    expect(asked.findings.map((f) => f.key)).toEqual(["link:t1"]);
+    expect(asked.summary).not.toMatch(/stopped reporting|offline|power|wi-?fi/i);
     const missed = diagnose(
       snap({
         vessels: [

@@ -29,6 +29,7 @@ import * as Option from "effect/Option";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { R1Loop } from "../home/R1Loop.ts";
 import { ActionLog, emitAction } from "../provenance/ActionLog.ts";
+import { TurnOrigin } from "./TurnOrigin.ts";
 
 const STALL_WINDOW_MS = 15 * 60_000;
 const NOTES_MS = 30 * 60_000;
@@ -72,6 +73,7 @@ export const snapshot = Effect.fn("TessayaHealth.snapshot")(function* () {
   const devices = yield* Effect.serviceOption(HomeDevices);
   const overview = Option.isSome(devices) ? yield* devices.value.overview : null;
   const heard = Option.isSome(devices) ? yield* devices.value.heardHealth : [];
+  const origin = yield* TurnOrigin;
   const vessels = (overview?.devices ?? [])
     .filter((d) => d.configured || d.online === true)
     .map((d) => {
@@ -94,6 +96,7 @@ export const snapshot = Effect.fn("TessayaHealth.snapshot")(function* () {
         stalls: (h?.stalls ?? []).filter((at) => now - at < STALL_WINDOW_MS).length,
         voiceHost: h?.voiceHost ?? null,
         turns: h?.turns ?? [],
+        ...(origin?.kind === "device" && origin.id === d.id ? { heard: true } : {}),
       };
     });
   const fresh = vessels

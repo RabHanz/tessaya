@@ -11,6 +11,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
+import * as Effect from "effect/Effect";
 
 import { startTessayaMcp } from "../../apps/desktop/src/tessaya/agent/tessayaMcp.ts";
 import { toolUsesOf } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
@@ -28,6 +29,9 @@ import {
   type R1Context,
 } from "../../apps/server/src/home/R1Device.ts";
 import type { ActOutcome } from "../../apps/server/src/tessaya/TessayaBrain.ts";
+import { hereLine } from "../../apps/server/src/tessaya/TessayaTurn.ts";
+import { TurnOrigin } from "../../apps/server/src/tessaya/TurnOrigin.ts";
+import { offlineWhy } from "../../apps/server/src/home/DeviceRegistry.ts";
 import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speakingVolume.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { clockLine } from "../../packages/tessaya-shared/src/brain.ts";
@@ -35,7 +39,7 @@ import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/o
 import { ownerDoc, ownerLine } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { diagnose } from "../../packages/tessaya-shared/src/health.ts";
 import { reportLine } from "../../packages/tessaya-shared/src/problemReport.ts";
-import { HEALTHY, OWNER, roomCases, type RoomCase } from "./cases.ts";
+import { HEALTHY, OWNER, ROOM_NOW, roomCases, type RoomCase } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
 import { answerOf, retried } from "../shared/retry.ts";
 
@@ -399,6 +403,8 @@ const healthOf = new WeakMap<House, NonNullable<RoomCase["health"]>>();
 
 /** The problem reports she sent in each case, their arguments as JSON. */
 const reportedOf = new WeakMap<House, Array<string>>();
+/** The Tessel each case's turn came through, when it says. */
+const hereOf = new WeakMap<House, NonNullable<RoomCase["here"]>>();
 
 /** Each case's R1 starts at the firmware's 0 dB. */
 const volumes = new WeakMap<House, number>();
@@ -446,7 +452,7 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
           devices: [
             {
               id: "r1-3d57b3",
-              online: true,
+              online: hereOf.get(house)?.online ?? true,
               firmware: "smp-0.3.147",
               wifi: wifiOf(house),
             },
@@ -499,10 +505,30 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
         };
       }
       if (item === "net.forget") return { ok: true, value: { status: "done", line: "Forgot it." } };
+      // As DeviceRegistry.write answers the device the turn came through: refused while its link is down, else taken.
+      if (hereOf.get(house)?.online === false)
+        return {
+          ok: false,
+          error: Effect.runSync(
+            offlineWhy("r1-3d57b3", "Tessel").pipe(
+              Effect.provideService(TurnOrigin, {
+                kind: "device",
+                id: "r1-3d57b3",
+                label: "Tessel",
+              }),
+            ),
+          ),
+        };
+      if (item.startsWith("eye."))
+        return { ok: true, value: { status: "done", line: "Tessel took it." } };
       return WORK[name] ?? { ok: true, value: [] };
     }
-    case "device_read":
-      return { ok: true, value: { "net.ssid": "HomeNet", "net.state": "online" } };
+    case "device_read": {
+      const here = hereOf.get(house);
+      return here === undefined
+        ? { ok: true, value: { "net.ssid": "HomeNet", "net.state": "online" } }
+        : { ok: true, value: { online: here.online, values: here.values } };
+    }
     case "device_button":
       return { ok: true, value: { status: "done", line: "Saved." } };
     // One made-up guest the fake house's people know.
@@ -603,7 +629,12 @@ const context = (
     : [],
   lastAction: house.last(),
   automations: null,
-  memory: c.memoryByTurn?.[turn] ?? c.memory ?? "",
+  memory: [
+    c.here === undefined ? "" : hereLine(c.here, null, ROOM_NOW),
+    c.memoryByTurn?.[turn] ?? c.memory ?? "",
+  ]
+    .filter((l) => l !== "")
+    .join("\n\n"),
   ...(c.notice === undefined ? {} : { notice: c.notice }),
   preferences: {},
   voice:
@@ -613,7 +644,7 @@ const context = (
         ? { speaker: { kind: "guest", personId: null, verified: false, inherited: false } }
         : undefined,
   // His clock as the server gives it (clockLine), with the time as it is said; 10:15 on 12 Nov in Karachi.
-  now: clockLine(Date.UTC(2026, 10, 12, 5, 15), "Asia/Karachi", c.clock ?? "12h"),
+  now: clockLine(ROOM_NOW, "Asia/Karachi", c.clock ?? "12h"),
   // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.
   persona: c.persona === undefined ? null : calledPersona(DEFAULT_OS_PACK, { persona: c.persona }),
   switched: c.persona !== undefined && turn === 0,
@@ -687,6 +718,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   const house = makeHouse();
   if (c.wifiFirst !== undefined) wifiFirst.set(house, c.wifiFirst);
   if (c.health !== undefined) healthOf.set(house, c.health);
+  if (c.here !== undefined) hereOf.set(house, c.here);
   const calls: Array<string> = [];
   const replies: Array<string> = [];
   const lamp: Array<"on" | "off"> = [];

@@ -105,6 +105,8 @@ export const VesselHealth = Schema.Struct({
   voiceHost: Schema.NullOr(VoiceHostReport),
   /** Its last turns' Voice ID verdicts and recognisers, newest last. */
   turns: Schema.optionalKey(Schema.Array(VoiceIdTurn)),
+  /** The turn asking came through it, so it and its voice loop are working whatever their reports say. */
+  heard: Schema.optionalKey(Schema.Boolean),
 });
 export type VesselHealth = typeof VesselHealth.Type;
 
