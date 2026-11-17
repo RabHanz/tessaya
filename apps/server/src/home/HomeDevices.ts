@@ -325,7 +325,7 @@ export interface Heard {
   enrol: EnrolCard | null;
   /** Its room loop's last health report (`state/voicehost`, retained, each minute). */
   voiceHost: VoiceHostReport | null;
-  /** When its audio stalled (`event/audio/stall`), newest last. */
+  /** When its headphones or speaker stopped taking her audio (firmware `event/bt/stall`, lost), newest last. */
   stalls: Array<number>;
   /** Its last turns' Voice ID and recogniser figures, newest last. */
   turns: Array<VoiceIdTurn>;
@@ -738,7 +738,7 @@ export const applyMessage = (
     d.voiceHost = voiceHostReportOf(body);
     return done();
   }
-  if (rest === "event/audio/stall") {
+  if (rest === "event/bt/stall" && body?.["lost"] === true) {
     d.stalls.push(now);
     if (d.stalls.length > STALLS_KEEP) d.stalls.shift();
   }
@@ -1855,7 +1855,7 @@ const make = Effect.gen(function* () {
         if (held.has(result.id))
           yield* releaseHeld(result.id).pipe(Effect.forkIn(scope, { startImmediately: true }));
       }
-    } else if (tail === "event/audio/stall") yield* stalled(result.id, json(payload));
+    } else if (tail === "event/bt/stall") yield* stalled(result.id, json(payload));
     else if (tail === "state/net/ack") yield* netAcked(result.id, json(payload));
   });
 
@@ -2346,16 +2346,22 @@ const make = Effect.gen(function* () {
     };
   });
 
-  /** The firmware or the room loop says replies stopped reaching this device: the next in his order takes over. */
+  /**
+   * The firmware measured his headphones refusing her audio (`event/bt/stall`, lost): the next in his order takes over
+   * until they take it again. A quiet mic while she plays on Bluetooth is the shared radio, never a dead output (18 Nov).
+   */
   const stalled = Effect.fn("HomeDevices.stalled")(function* (
     id: string,
     body: Record<string, unknown> | null,
   ) {
     const mac = (str(body?.["mac"]) ?? heard.get(id)?.speaker?.linked ?? "").toUpperCase();
     if (!MAC.test(mac)) return;
-    const now = yield* Clock.currentTimeMillis;
     const mine = skips.get(id) ?? new Map<string, number>();
-    mine.set(mac, now + STALL_SKIP_MS);
+    if (body?.["lost"] === true) mine.set(mac, (yield* Clock.currentTimeMillis) + STALL_SKIP_MS);
+    // Back, unless he disconnected it himself (that pass-over has no end).
+    else if (body?.["lost"] === false && mine.get(mac) !== Number.POSITIVE_INFINITY)
+      mine.delete(mac);
+    else return;
     skips.set(id, mine);
     yield* applyRoute(id);
   });

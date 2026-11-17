@@ -538,11 +538,8 @@ export const busOfBrain = (brainUrl: string): string => {
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 };
-/**
- * Her reply on Bluetooth and no mic frame for this long: the Tessel's shared radio is choked (16 Nov: 54 s late,
- * replies bunched and dropped), so the server moves her to the next output in his order.
- */
-export const UPLINK_STALL_MS = 2_500;
+/** After a flush the firmware drops a reply's frames until none has come for 400 ms: a sentence sent again waits this. */
+const REFLUSH_GAP_MS = 600;
 /** How long his pieces are joined while he keeps talking: his pauses mid-sentence run 0.4-0.9 s (18 Nov). */
 const GONE_ON_MS = 12_000;
 /** The same face is sent again only after this long: a lost command on his weak Wi-Fi heals without a burst. */
@@ -839,9 +836,6 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let firstUntil = 0;
     /** When its mic last sent anything (or it opened): a session with nothing for a while is one the R1 has left. */
     let lastUpAt = deps.now();
-    /** A Bluetooth stall is said once per session. */
-    let stallSaid = false;
-    let pttDone = false;
     /** Her last few sentences, to tell her own voice coming back through the mic from his. */
     let herLines: string[] = [];
     /** Her line now asks him something (a question, or her answer to her name): what he says over it is his reply. */
@@ -2717,16 +2711,55 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const resume = (h: NonNullable<typeof hold>) => {
       h.resuming = true;
       const long = deps.now() - h.since > 2_000;
-      const back = long ? (phraseStarts.filter((p) => p <= h.from).at(-1) ?? h.from) : h.from;
-      const from = Math.max(back, downSamples - DOWN_RING + 1);
-      const again = new Int16Array(Math.max(0, downSamples - from));
-      for (let i = 0; i < again.length; i += 1) again[i] = down[(from + i) % DOWN_RING]!;
-      const signal = reply?.signal ?? new AbortController().signal;
       deps.log(
         `[${id}] not a household voice; she goes on${long ? " from her sentence's start" : ""}`,
       );
       otherVoice = { from: h.since - 1_000, until: deps.now() };
+      goOn(h, long, 0);
+    };
+
+    /**
+     * Where her replies play changed while she spoke (his route, or headphones that stopped taking audio): what the
+     * device held is dropped and the sentence starts again on the new output, so no sentence is split between two
+     * outputs and none plays on both (18 Nov, 00:38 GMT+5).
+     */
+    const rerouted = (out: string) => {
+      // Only audio sent and not yet over: a reply still thinking has nothing on the old output.
+      if (deps.now() >= playUntil + config.downDelayMs || hold !== null) return;
+      let release = () => undefined as void;
+      const released = new Promise<void>((r) => (release = r));
+      // Her sample sounding now, by this loop's clock: the uplink that would say it is the one a busy radio starves.
+      const sounding = downSamples - ((playUntil + config.downDelayMs - deps.now()) * RATE) / 1000;
+      const h: Parameters<typeof resume>[0] = {
+        since: deps.now(),
+        from: Math.max(0, sounding),
+        fromSeq: Number.MAX_SAFE_INTEGER,
+        release,
+        released,
+        checking: false,
+        checkedSeconds: 0,
+        quietSince: null,
+        resuming: true,
+      };
+      hold = h;
+      playUntil = deps.now();
+      deps.publish(topic(id, "voice/ctl"), JSON.stringify({ ev: "flush" }));
+      deps.log(`[${id}] replies now play on ${out}; her sentence starts again there`);
+      // The device refuses a flushed reply's frames until none has come for 400 ms.
+      goOn(h, true, REFLUSH_GAP_MS);
+    };
+
+    /** Her downlink again from `h.from` (its sentence's start when `fromSentence`), then the reply goes on. */
+    const goOn = (h: NonNullable<typeof hold>, fromSentence: boolean, afterMs: number) => {
+      const back = fromSentence
+        ? (phraseStarts.filter((p) => p <= h.from).at(-1) ?? h.from)
+        : h.from;
+      const from = Math.max(Math.floor(back), downSamples - DOWN_RING + 1);
+      const again = new Int16Array(Math.max(0, downSamples - from));
+      for (let i = 0; i < again.length; i += 1) again[i] = down[(from + i) % DOWN_RING]!;
+      const signal = reply?.signal ?? new AbortController().signal;
       void (async () => {
+        if (afterMs > 0) await deps.sleep(afterMs);
         const bytes = toBytes(again);
         for (let at = 0; at < bytes.length; at += DOWN_FRAME_BYTES) {
           // He or S2 may stop her mid-resume: the hold is gone or the reply cancelled.
@@ -2790,7 +2823,6 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       },
       /** He let go of push-to-talk (firmware 3.32 `ptt_end`): answer what he said, then end the session once it has played. */
       released: () => {
-        pttDone = true;
         return (chain = chain.then(async () => {
           act(turns.release());
           await answering.catch(() => undefined);
@@ -2940,20 +2972,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** Once a second: past the window she rests (sleepy eyes, name only); long quiet ends the session. */
       tick: (): "stop" | null => {
         if (heldAct !== null && deps.now() - heldAct.at > 60_000) settleStepUp(false, "no answer");
-        if (
-          playsOnBt.has(id) &&
-          !stallSaid &&
-          !pttDone &&
-          speaking() &&
-          deps.now() - lastUpAt > UPLINK_STALL_MS
-        ) {
-          stallSaid = true;
-          const quietMs = Math.round(deps.now() - lastUpAt);
-          deps.publish(topic(id, "event/audio/stall"), JSON.stringify({ why: "uplink", quietMs }));
-          deps.log(
-            `[${id}] no mic frames for ${quietMs} ms while she plays on Bluetooth; next output`,
-          );
-        }
+        // A quiet mic while she plays on Bluetooth is the radio A2DP shares, expected and never a dead output: the
+        // firmware measures that itself (`event/bt/stall`). Moving her then split a reply across both (18 Nov).
         const quiet = !turns.inTurn() && !speaking() && reply === null;
         // The persona he called holds for the whole session (13 Nov: Sebastian fell back within 14 s), or until he names another.
         if (quiet && !asleep && deps.now() > Math.max(openUntil, firstUntil)) {
@@ -2963,6 +2983,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return quiet && deps.now() - lastActivity > config.idleStopMs ? "stop" : null;
       },
       quietFor: () => deps.now() - lastUpAt,
+      rerouted,
       wear,
       /** For the replay harness: everything heard so far has been scored. */
       drained: () => chain,
@@ -3042,8 +3063,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   >();
   /** R1s muted from Tessaya: their audio is dropped unheard until unmuted, across sessions. */
   const muted = new Set<string>();
-  /** R1s whose replies play on Bluetooth now (`state/voice` start or out); the session's stall check reads it. */
-  const playsOnBt = new Set<string>();
+  /** Where each R1's replies play now ("bt" or "onboard"): a change while she speaks restarts her sentence there. */
+  const playsOn = new Map<string, string>();
+  const playsNow = (id: string, out: string, why: string) => {
+    const was = playsOn.get(id);
+    playsOn.set(id, out);
+    if (was !== undefined && was !== out) sessions.get(id)?.rerouted(why);
+  };
   /** R1s with her listening and closing sounds off (`cmd/voice/earcons {"on":false}`, retained); on by default. */
   const noCues = new Set<string>();
   /** R1s switched between keyword and open talk-over (`cmd/voice/talkover {"mode"}`, retained); else the config's. */
@@ -3307,8 +3333,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       } else if (tail === "state/voice" && json()["ev"] === "ptt_end") {
         void sessions.get(id)?.released();
       } else if (tail === "state/voice" && ["start", "out"].includes(String(json()["ev"]))) {
-        if (json()["out"] === "bt") playsOnBt.add(id);
-        else playsOnBt.delete(id);
+        const out = json()["out"] === "bt" ? "bt" : "onboard";
+        // A new session starts where it starts; only a move within one is a change mid-reply.
+        if (json()["ev"] === "start") playsOn.set(id, out);
+        else playsNow(id, out, out === "bt" ? "Bluetooth" : `the ${DEVICE}'s speaker`);
+      } else if (tail === "state/audio/output" && typeof json()["out"] === "string") {
+        const out = json()["out"] === "onboard" ? "onboard" : "bt";
+        playsNow(id, out, out === "bt" ? "Bluetooth" : `the ${DEVICE}'s speaker`);
+      } else if (tail === "event/bt/stall" && json()["lost"] === true) {
+        // The firmware measured his headphones refusing her audio: it moves her to its speaker.
+        playsNow(id, "onboard", `the ${DEVICE}'s speaker (the headphones stopped taking audio)`);
       } else if (tail === "event/key") {
         // Presses the device left to us (did "none"); none has a meaning yet, so they are only logged.
         const k = json();

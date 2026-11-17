@@ -238,7 +238,8 @@ it("folds the firmware's topics into a device, keeping only the times of a voice
   assert.strictEqual(devices.get(ID)!.voiceHost?.host.memPsiFull10, 29);
   assert.strictEqual(devices.get(ID)!.log.length, logged);
   assert.strictEqual(devices.get(ID)!.lastSeen, seenBefore);
-  fold("event/audio/stall", "{}", 9_500);
+  fold("event/audio/stall", "{}", 9_400);
+  fold("event/bt/stall", '{"lost":true}', 9_500);
   assert.deepStrictEqual(devices.get(ID)!.stalls, [9_500]);
   fold("state/online", "0");
   assert.isFalse(devices.get(ID)!.online);
@@ -1683,9 +1684,12 @@ it.effect(
       );
       assert.deepStrictEqual(yield* outputs(), [`${HP}:playing`, "speaker:ready"]);
 
-      // The room loop hears no mic frames while she plays on Bluetooth: the next output takes over.
+      // 18 Nov, 00:38 GMT+5: a quiet mic while she plays on Bluetooth is the shared radio, not a dead output.
       sent.length = 0;
-      yield* devices.receive(`${root}/event/audio/stall`, '{"why":"uplink","quietMs":2600}');
+      yield* devices.receive(`${root}/event/audio/stall`, '{"why":"uplink","quietMs":3059}');
+      assert.deepStrictEqual(sent, []);
+      // The firmware measured the headphones refusing her audio: the next output takes over.
+      yield* devices.receive(`${root}/event/bt/stall`, '{"stalls":1,"ms":4100,"lost":true}');
       assert.deepStrictEqual(sent, [{ topic: "cmd/audio/output", payload: { to: "speaker" } }]);
       assert.deepStrictEqual(yield* outputs(), [`${HP}:stalled`, "speaker:ready"]);
 
@@ -1698,6 +1702,9 @@ it.effect(
       );
       assert.strictEqual(moved.status, "done");
       assert.deepStrictEqual(yield* outputs(), ["speaker:ready", `${HP}:stalled`]);
+      // They take her audio again: no longer passed over.
+      yield* devices.receive(`${root}/event/bt/stall`, '{"stalls":1,"ms":0,"lost":false}');
+      assert.notInclude((yield* outputs()).join(), "stalled");
     }).pipe(Effect.provide(layer));
   },
 );
