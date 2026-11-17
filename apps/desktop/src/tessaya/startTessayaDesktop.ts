@@ -649,8 +649,9 @@ export const startTessayaDesktop = Effect.gen(function* () {
       },
       shield: (on) => setPrivateShield(on, Electron.BrowserWindow.getAllWindows()),
     });
-    // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer.
-    const openLayerPage = async () => {
+    // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer, and its
+    // private chat (his written threads) at tessaya://layer/chat.
+    const openLayerPage = async (chat = false) => {
       const page = layerLink.page();
       if (page === null) return;
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
@@ -664,17 +665,19 @@ export const startTessayaDesktop = Effect.gen(function* () {
           done({ requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${token}` } }),
       );
       const win = new Electron.BrowserWindow({
-        width: 1100,
-        height: 820,
+        width: chat ? 480 : 1100,
+        height: chat ? 760 : 820,
         title: "Tessaya",
         autoHideMenuBar: true,
         webPreferences: { session, contextIsolation: true, sandbox: true },
       });
       win.setContentProtection(true);
-      void win.loadURL(`${origin}${page}`);
+      void win.loadURL(`${origin}${page}${chat ? "/chat" : ""}`);
     };
     const wantsLayer = (args: ReadonlyArray<string>) =>
       args.some((a) => a.startsWith(`${TESSAYA_SCHEME}://layer`));
+    const wantsChat = (args: ReadonlyArray<string>) =>
+      args.some((a) => a.startsWith(`${TESSAYA_SCHEME}://layer/chat`));
     Electron.powerMonitor.on("lock-screen", () => void layerLink.signal("screenLocked"));
     Electron.powerMonitor.on("suspend", () => void layerLink.signal("sleep"));
     // Five minutes untouched: they stepped away (presence, B-043). Electron has no idle event, so a cheap minute check.
@@ -972,7 +975,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     // A second launch means "show me Tessaya". T3's own handler raises its main window first and slowly, so
     // Tessaya's window is raised after it, or the T3 window ends up on top.
     Electron.app.on("second-instance", (_event, argv) => {
-      if (wantsLayer(argv)) return void openLayerPage();
+      if (wantsLayer(argv)) return void openLayerPage(wantsChat(argv));
       const place = placeInArgs(argv) ?? undefined;
       setTimeout(() => voice?.openHome(place), SECOND_LAUNCH_RAISE_MS).unref();
     });
@@ -980,7 +983,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     Electron.app.on("open-url", (event, url) => {
       if (!isTessayaLink(url)) return;
       event.preventDefault();
-      if (wantsLayer([url])) return void openLayerPage();
+      if (wantsLayer([url])) return void openLayerPage(wantsChat([url]));
       voice?.openHome(tessayaPlaceOf(url) ?? undefined);
     });
     if (Electron.app.isPackaged) Electron.app.setAsDefaultProtocolClient(TESSAYA_SCHEME);
@@ -1008,6 +1011,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     markPhase("voice-start:begin");
     voice = startDesktopTessayaVoice({
       loginEntry: environment.appUserModelId,
+      privateChat: () => (layerLink.page() === null ? null : () => void openLayerPage(true)),
       stateDir: environment.stateDir,
       conversation: conversations.current,
       onNote: turnLog.note,
