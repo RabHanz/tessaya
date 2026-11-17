@@ -30,7 +30,7 @@ import { replyFor } from "./PersonaLayers.ts";
 import { groupFor, groupTurn } from "./GroupTalk.ts";
 import type { DeskSaid } from "@t3tools/tessaya-shared/deskTurnStream";
 import type { HandsBroker } from "@t3tools/tessaya-shared/remoteHands";
-import { TessayaVoicePrint } from "@t3tools/tessaya-contracts";
+import { InputQuality, TessayaVoicePrint } from "@t3tools/tessaya-contracts";
 
 const Speaker = Schema.Struct({
   kind: Schema.Literals(["owner", "saved", "guest", "unverified"]),
@@ -61,6 +61,8 @@ export const DeskTurnBody = Schema.Struct({
     ).check(Schema.isMaxLength(200)),
   ),
   recogniser: Schema.optional(Schema.String.check(Schema.isMaxLength(64))),
+  /** How his sound came in on that clip, measured on the desktop (tessaya-shared/inputQuality). */
+  input: Schema.optional(InputQuality),
   project: Schema.optional(Schema.NullOr(Schema.String.check(Schema.isMaxLength(200)))),
   /** This desktop's id in the device registry. */
   vessel: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
@@ -167,6 +169,7 @@ export const deskTurnStream = (
           : {}),
         ...(body.words === undefined ? {} : { words: body.words }),
         ...(body.recogniser === undefined ? {} : { recogniser: body.recogniser }),
+        ...(body.input === undefined ? {} : { input: body.input }),
         project: body.project ?? null,
         ...(body.app === undefined ? {} : { app: body.app }),
         ...(body.timeZone === undefined ? {} : { timeZone: body.timeZone }),

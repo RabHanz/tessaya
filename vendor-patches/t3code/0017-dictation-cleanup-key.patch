@@ -145,7 +145,7 @@ index aaa6152e219fcaba9a8acff055eb3939408b78b1..f01d99ece1a9ba1e453a800bd06ee4b0
      Effect.orElseSucceed(() => undefined),
    );
 diff --git a/apps/server/src/speech/http.test.ts b/apps/server/src/speech/http.test.ts
-index 07f2fe6b99d5d76d0666c43900571a361a1623ec..ef8a7c07c0ad95ec11dcc606a1a89eeaadd2eab2 100644
+index 07f2fe6b99d5d76d0666c43900571a361a1623ec..3a86e2b8fee167f3b212d87459f886ae71353abc 100644
 --- a/apps/server/src/speech/http.test.ts
 +++ b/apps/server/src/speech/http.test.ts
 @@ -28,6 +28,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
@@ -164,7 +164,15 @@ index 07f2fe6b99d5d76d0666c43900571a361a1623ec..ef8a7c07c0ad95ec11dcc606a1a89eea
    Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
    Layer.mock(ServerSettings.ServerSettingsService)({
      getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
-@@ -161,6 +163,14 @@ effectIt.effect(
+@@ -78,6 +80,7 @@ effectIt.live("rejects oversized chunked audio without invoking transcription",
+         Layer.succeed(SpeechService.SpeechService, {
+           status: Effect.succeed({ supported: false as const, reason: "test" }),
+           prepareModel: Effect.void,
++          heard: Effect.succeed(null),
+           models: () => Effect.succeed({ models: [] }),
+           downloadModel: () => Effect.succeed({ models: [] }),
+           linkModels: () => Effect.succeed({ models: [] }),
+@@ -161,6 +164,14 @@ effectIt.effect(
            return Effect.fail(new CloudSpeechError({ provider, reason: "rejected-key" }));
          },
        });
@@ -179,7 +187,7 @@ index 07f2fe6b99d5d76d0666c43900571a361a1623ec..ef8a7c07c0ad95ec11dcc606a1a89eea
        const { handler, dispose } = HttpRouter.toWebHandler(
          HttpApiBuilder.layer(HttpApi.make("environment").add(EnvironmentVoiceHttpApi)).pipe(
            Layer.provide(speechHttpApiLayer),
-@@ -191,6 +201,7 @@ effectIt.effect(
+@@ -191,6 +202,7 @@ effectIt.effect(
              }),
            ),
            Layer.provide(cloud),
@@ -187,7 +195,7 @@ index 07f2fe6b99d5d76d0666c43900571a361a1623ec..ef8a7c07c0ad95ec11dcc606a1a89eea
            Layer.provide(dependencies),
            Layer.provide(HttpServer.layerServices),
            Layer.provide(NodeServices.layer),
-@@ -221,6 +232,23 @@ effectIt.effect(
+@@ -221,6 +233,23 @@ effectIt.effect(
            headers: { "content-type": "application/json" },
            body: JSON.stringify({ key }),
          });
@@ -211,6 +219,14 @@ index 07f2fe6b99d5d76d0666c43900571a361a1623ec..ef8a7c07c0ad95ec11dcc606a1a89eea
        expect((yield* setReference(reference)).status).toBe(204);
        expect(save).toHaveBeenLastCalledWith("xai", reference);
        expect((yield* setReference(reference.reference)).status).toBe(400);
+@@ -307,6 +336,7 @@ effectIt.effect.each([
+       const service = Layer.succeed(SpeechService.SpeechService, {
+         status: Effect.succeed({ supported: false as const, reason: "test" }),
+         prepareModel: Effect.void,
++        heard: Effect.succeed(null),
+         models: () => Effect.succeed({ models: [] }),
+         downloadModel: () => Effect.fail(error),
+         linkModels: () => Effect.fail(error),
 diff --git a/apps/server/src/speech/http.ts b/apps/server/src/speech/http.ts
 index bf91b4c1ef3a6e0e1272bc32e2ff01e59ad158b1..6a57beeb57ee89d5e3f8ece83cd17eb15d7fc1d2 100644
 --- a/apps/server/src/speech/http.ts

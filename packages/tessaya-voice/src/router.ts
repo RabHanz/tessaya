@@ -18,6 +18,7 @@
  * @module baton-voice/router
  */
 import type { SpeakerIdentity } from "./speaker.ts";
+import type { InputQuality } from "@t3tools/tessaya-contracts";
 import type { HeardScores } from "./types.ts";
 import type { CutIn } from "@t3tools/tessaya-shared/endOfTurn";
 import type { TessayaIntentResolution } from "@t3tools/tessaya-contracts";
@@ -64,6 +65,8 @@ export interface RouteContext {
   readonly speaker?: SpeakerIdentity | null;
   /** The recogniser's confidence in each word of the clip that ended this turn. */
   readonly heard?: HeardScores | null;
+  /** How his sound came in on that clip (tessaya-shared/inputQuality). */
+  readonly sound?: InputQuality | null;
 }
 
 export type RouteOutcome =

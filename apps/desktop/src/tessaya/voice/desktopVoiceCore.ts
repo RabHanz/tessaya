@@ -12,7 +12,11 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { TessayaFocusTarget, TessayaIntentResolution } from "@t3tools/tessaya-contracts";
+import type {
+  InputQuality,
+  TessayaFocusTarget,
+  TessayaIntentResolution,
+} from "@t3tools/tessaya-contracts";
 import {
   createOpenWakeWordProvider,
   createOsTts,
@@ -204,6 +208,7 @@ export interface BrainVoiceHook {
       /** Whose voice said it (Voice ID). */
       readonly speaker?: SpeakerIdentity | null;
       readonly heard?: HeardScores | null;
+      readonly sound?: InputQuality | null;
     },
   ) => Promise<{ readonly kind: "handled" } | { readonly kind: "refused"; readonly reply: string }>;
 }
@@ -229,6 +234,7 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
       cutIn: context.cutIn ?? null,
       speaker: context.speaker ?? null,
       heard: context.heard ?? null,
+      sound: context.sound ?? null,
     });
     return decision.kind === "refused"
       ? { kind: "refused", reply: decision.reply, reason: "high_risk" }
