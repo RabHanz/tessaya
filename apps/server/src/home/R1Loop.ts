@@ -40,6 +40,9 @@ const SETTLE_MS = 60_000;
 const TAKEOVER_MS = 3_000;
 /** After this server starts, a loop elsewhere gets this long to reconnect (its retries reach 30 s) before this one answers. */
 const STARTUP_MS = 30_000;
+/** A loop that ran this long before stopping by itself starts again quickly; one that keeps dying waits longer each time. */
+const HEALTHY_MS = 120_000;
+const BACKOFF_MAX_MS = 10 * 60_000;
 
 /**
  * One tick of the election: this server's loop answers the room only once no other loop has been heard on the hub for
@@ -129,6 +132,116 @@ export const loopPlan = (input: {
   };
 };
 
+/** The fixed local ports the loop's own Pocket and recogniser listen on (room/main.ts defaults). */
+export const loopPorts = (env: Readonly<Record<string, string>>): ReadonlyArray<number> => [
+  Number(env["R1_POCKET_PORT"] ?? "58232"),
+  Number(env["R1_RECOGNIZER_PORT"] ?? "58233"),
+];
+
+/** The socket inodes listening on `port` in a /proc/net/tcp or tcp6 table. Pure. */
+export const listenInodes = (table: string, port: number): ReadonlyArray<string> =>
+  table
+    .split("\n")
+    .map((l) => l.trim().split(/\s+/))
+    .filter((f) => f.length > 9 && f[3] === "0A" && parseInt(f[1]!.split(":")[1]!, 16) === port)
+    .map((f) => f[9]!);
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+const gone = async (pid: number, ms: number) => {
+  for (const until = Date.now() + ms; Date.now() < until;) {
+    if (!alive(pid)) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return !alive(pid);
+};
+
+/**
+ * SIGTERM to `pid` (a negative pid is its whole process group), then SIGKILL if it is still there after `graceMs`;
+ * resolves once it is gone (or after a further 2 s), so a new start never races it for the ports.
+ */
+export const terminate = async (pid: number, graceMs = 5_000): Promise<void> => {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  if (await gone(pid, graceMs)) return;
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    return;
+  }
+  await gone(pid, 2_000);
+};
+
+/**
+ * Stops whatever still listens on the loop's fixed ports, but only a process of the loop's own (its program or working
+ * folder inside `dir`): a Pocket or recogniser orphaned by an older loop otherwise makes every new start die with
+ * "bind: AddrInUse". Returns what it did, for the log. Linux only (reads /proc); elsewhere it finds nothing.
+ */
+export const clearStalePorts = async (
+  dir: string,
+  ports: ReadonlyArray<number>,
+): Promise<ReadonlyArray<string>> => {
+  const lines: Array<string> = [];
+  const read = (path: string) => {
+    try {
+      return NodeFS.readFileSync(path, "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const tables = read("/proc/net/tcp") + read("/proc/net/tcp6");
+  const wanted = new Map<string, number>(
+    ports.flatMap((port) =>
+      listenInodes(tables, port).map((inode) => [`socket:[${inode}]`, port] as const),
+    ),
+  );
+  if (wanted.size === 0) return lines;
+  const root = NodeFS.realpathSync(dir) + NodePath.sep;
+  const inside = (link: string) => {
+    try {
+      return (NodeFS.realpathSync(link) + NodePath.sep).startsWith(root);
+    } catch {
+      return false;
+    }
+  };
+  const holds = (pid: number) => {
+    try {
+      return NodeFS.readdirSync(`/proc/${pid}/fd`)
+        .map((fd) => {
+          try {
+            return wanted.get(NodeFS.readlinkSync(`/proc/${pid}/fd/${fd}`));
+          } catch {
+            return undefined;
+          }
+        })
+        .find((port) => port !== undefined);
+    } catch {
+      return undefined; // another user's process, or gone
+    }
+  };
+  for (const pid of NodeFS.readdirSync("/proc").map(Number).filter(Number.isInteger)) {
+    const port = pid === process.pid ? undefined : holds(pid);
+    if (port === undefined) continue;
+    if (!inside(`/proc/${pid}/exe`) && !inside(`/proc/${pid}/cwd`)) {
+      lines.push(`port ${port} is held by pid ${pid}, which is not the room loop's; leaving it`);
+      continue;
+    }
+    lines.push(`stopping pid ${pid}, a leftover of an earlier room loop holding port ${port}`);
+    await terminate(pid);
+  }
+  return lines;
+};
+
 export type InstallState =
   | { readonly kind: "idle" }
   | { readonly kind: "fetching"; readonly progress: InstallProgress }
@@ -212,11 +325,18 @@ export const layer = Layer.effect(
         ? R1_VOICE_BUNDLE
         : null;
 
-    const stop = () => {
-      child?.kill("SIGTERM");
+    let startedAt = 0;
+    let lastExit = "";
+    // The loop's process group once it exited by itself: its Pocket and recogniser may still be in it.
+    let leftover: number | null = null;
+
+    // The loop runs in its own process group, so stopping it also stops the Pocket and recogniser it started.
+    const stop = async () => {
+      const pid = child?.pid;
       child = null;
+      if (pid !== undefined) await terminate(-pid);
     };
-    const start = (plan: LoopPlan) => {
+    const start = (plan: LoopPlan, now: number) => {
       NodeFS.mkdirSync(NodePath.join(dir, "secrets"), { recursive: true, mode: 0o700 });
       NodeFS.mkdirSync(NodePath.join(dir, "state"), { recursive: true });
       for (const s of plan.secrets) NodeFS.writeFileSync(s.path, s.value, { mode: 0o600 });
@@ -225,24 +345,34 @@ export const layer = Layer.effect(
         cwd: dir,
         env: { PATH: process.env["PATH"] ?? "", HOME: process.env["HOME"] ?? "", ...plan.env },
         stdio: ["ignore", log, log],
+        detached: true,
       });
       NodeFS.closeSync(log);
       child = proc;
-      proc.on("exit", () => {
+      startedAt = now;
+      proc.on("exit", (code, signal) => {
         if (child !== proc) return;
         child = null;
         exited = true;
+        leftover = proc.pid ?? null;
+        lastExit = signal === null ? `code ${code}` : signal;
       });
     };
 
     const tick = Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       if (exited) {
-        // It stopped by itself: back off before the next start (5 s, doubling to a minute).
+        // It stopped by itself: back off before the next start (5 s, doubling to 10 minutes; a long run resets it).
         exited = false;
         restarts += 1;
+        if (now - startedAt >= HEALTHY_MS) backoff = 5_000;
         nextStart = now + backoff;
-        backoff = Math.min(backoff * 2, 60_000);
+        yield* Effect.logWarning(
+          `room loop exited (${lastExit}) after ${Math.round((now - startedAt) / 1000)} s; restart ${restarts} in ${backoff / 1000} s (see r1-voice/state/loop.log)`,
+        );
+        backoff = Math.min(backoff * 2, BACKOFF_MAX_MS);
+        if (leftover !== null) yield* Effect.promise(() => terminate(-leftover!));
+        leftover = null;
       }
       const busKey = yield* hub.busLogin.pipe(Effect.map((l) => l.key));
       const devices = yield* home.devices;
@@ -332,12 +462,16 @@ export const layer = Layer.effect(
       const key = plan === null ? null : JSON.stringify(plan);
       // A changed plan (a new R1, a new key) restarts it; none stops it.
       if (key !== planned) {
-        stop();
+        yield* Effect.promise(stop);
         planned = key;
         backoff = 5_000;
         nextStart = 0;
       }
-      if (plan !== null && child === null && now >= nextStart) start(plan);
+      if (plan !== null && child === null && now >= nextStart) {
+        const cleared = yield* Effect.promise(() => clearStalePorts(dir, loopPorts(plan.env)));
+        for (const line of cleared) yield* Effect.logWarning(line);
+        start(plan, now);
+      }
     });
 
     yield* tick.pipe(
@@ -346,7 +480,7 @@ export const layer = Layer.effect(
       Effect.repeat(Schedule.spaced("2 seconds")),
       Effect.forkScoped,
     );
-    yield* Effect.addFinalizer(() => Effect.sync(stop));
+    yield* Effect.addFinalizer(() => Effect.promise(stop));
 
     return R1Loop.of({
       status: Effect.sync(() => {
