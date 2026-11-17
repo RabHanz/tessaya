@@ -15,8 +15,8 @@ import { TABS, tabOf } from "./tabs.ts";
 describe("the window's speed budget", () => {
   it("keeps the page small: script, stylesheet apart from fonts, and the whole document", () => {
     const cssWithoutFonts = APP_CSS.replace(/url\(data:[^)]*\)/g, "url()");
-    // Each raise and what it paid for is in docs/baton/SPEED.md; 167,000 until the people graph.
-    expect(APP_SCRIPT.length).toBeLessThan(172_000);
+    // Each raise and what it paid for is in docs/baton/SPEED.md; 172,000 until plain approval cards, 167,000 until the people graph.
+    expect(APP_SCRIPT.length).toBeLessThan(173_000);
     expect(cssWithoutFonts.length).toBeLessThan(48_000); // 46,000 until the voice card, 45,000 until the tip card; 43,000 until History's redesign
     expect(HOME_DOCUMENT.length).toBeLessThan(446_000); // 441,000 until the people graph, 438,000 until the Household area, 432,000 until the voice card, 420,000 until the tips
   });
