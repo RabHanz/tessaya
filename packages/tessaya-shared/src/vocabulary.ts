@@ -34,8 +34,7 @@ export const PROMPT_TERMS = 200;
 const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** All in small letters as written: an ordinary word ("prints", "new"), never a name or a term of his. */
-export const ordinaryWord = (word: string): boolean =>
-  /^\p{Ll}+(?:['’]\p{Ll}+)*$/u.test(word.trim());
+const ordinaryWord = (word: string): boolean => /^\p{Ll}+(?:['’]\p{Ll}+)*$/u.test(word.trim());
 
 /** A word without the full stop or quote that ended its sentence: "Tessaya." is taught as Tessaya. */
 const bare = (word: string): string => word.replace(/[.'’-]+$/, "");
@@ -72,6 +71,25 @@ export const removeHeard = (
     };
   });
 
+/**
+ * An ordinary word learned from his fixes ("new" heard as "Jewel", "past" to "pass", 16 Nov): dropped on read. Only
+ * ever a learned entry; a word he added stays whatever its case (google, dokploy, mushaf, 17 Nov).
+ */
+const plainLearned = (entry: Partial<VocabularyEntry>): boolean =>
+  entry.source === "learned" &&
+  typeof entry.phrase === "string" &&
+  (ordinaryWord(entry.phrase) ||
+    (typeof entry.replacement === "string" && ordinaryWord(entry.replacement)));
+
+/** The entries of a stored list that `parseVocabulary` drops as ordinary learned words, as stored. */
+export const droppedOnRead = (value: unknown): ReadonlyArray<VocabularyEntry> =>
+  Array.isArray(value)
+    ? value.filter(
+        (item): item is VocabularyEntry =>
+          typeof item === "object" && item !== null && plainLearned(item),
+      )
+    : [];
+
 /** A file that is not a list is no vocabulary; an entry that is not text is skipped. */
 export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> =>
   Array.isArray(value)
@@ -83,13 +101,7 @@ export const parseVocabulary = (value: unknown): ReadonlyArray<VocabularyEntry> 
           if (typeof entry !== "object" || entry === null || typeof entry.phrase !== "string")
             return [];
           if (entry.phrase.trim().length === 0) return [];
-          // An ordinary word learned from his fixes ("new" heard as "Jewel", "past" to "pass", 16 Nov) is dropped.
-          if (
-            entry.source === "learned" &&
-            (ordinaryWord(entry.phrase) ||
-              (typeof entry.replacement === "string" && ordinaryWord(entry.replacement)))
-          )
-            return [];
+          if (plainLearned(entry)) return [];
           // A word at a sentence's end was once learned or added with its stop ("Tessaya." heard as "Tsaya.").
           const learned = entry.source === "learned";
           const phrase =

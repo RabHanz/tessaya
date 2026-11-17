@@ -603,7 +603,9 @@ const isEntry = (value: unknown): value is DictionaryEntry =>
 export const dictionaryPath = (stateDir: string): string =>
   NodePath.join(stateDir, "voice", fileName);
 
-const isList = (value: unknown): value is ReadonlyArray<unknown> => Array.isArray(value);
+// A list holding a non-entry is damaged (PowerShell 5.1 wrote the whole list as one item, 17 Nov): the fallback, not [].
+const isList = (value: unknown): value is ReadonlyArray<unknown> =>
+  Array.isArray(value) && value.every(isEntry);
 
 /**
  * `<state dir>/voice/dictionary.json`, a list he can edit by hand. A missing or damaged file gives
