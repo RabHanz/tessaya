@@ -25,6 +25,7 @@ import { memoryBlock } from "../../packages/tessaya-shared/src/memory.ts";
 import { DESK_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { chooseTurnBrain } from "../../packages/tessaya-shared/src/turnTier.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
+import { retried } from "../shared/retry.ts";
 import {
   casePasses,
   firstTool,
@@ -146,9 +147,10 @@ const sample = async (c: AssistantCase, index: number): Promise<Sample> => {
     // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
     platform: process.platform,
   });
-  if (c.rubric === undefined) return { ...ran, model };
+  // The routed model, so a case's `model` still checks routing when --model runs every case on one model.
+  if (c.rubric === undefined) return { ...ran, model: brain.model };
   const verdict = await judge(c, face, ran.replies);
-  return { ...ran, model, judged: verdictOf(verdict), judgeNote: verdict };
+  return { ...ran, model: brain.model, judged: verdictOf(verdict), judgeNote: verdict };
 };
 
 /** A fresh session with no tools reads the replies against the case's rubric. */
@@ -194,7 +196,13 @@ for (const c of cases) {
   const ms: number[] = [];
   for (let i = 0; i < samples; i += 1) {
     const started = Date.now();
-    runs.push(await sample(c, i).catch(() => ({ calls: ["error"], inputs: [], reply: "" })));
+    runs.push(
+      await retried(`${c.id} #${i}`, () => sample(c, i)).catch(() => ({
+        calls: ["error"],
+        inputs: [],
+        reply: "",
+      })),
+    );
     ms.push(Date.now() - started);
   }
   const row = {
