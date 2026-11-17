@@ -462,6 +462,16 @@ export class TessayaTurn extends Context.Service<
     readonly remember: (text: string) => Effect.Effect<Remembered, BatonMemoryRefusedError>;
     /** Forgets by id, only for his verified voice; otherwise says where he can. */
     readonly forget: (id: string) => Effect.Effect<string>;
+    /**
+     * One fact she understands of the person speaking (their own voice or device) or of herself (his voice), forgotten
+     * once confirmed, or put back from the bin.
+     */
+    readonly understandingFact: (input: {
+      readonly fact: string;
+      readonly about?: "them" | "herself" | undefined;
+      readonly confirmed?: boolean | undefined;
+      readonly restore?: boolean | undefined;
+    }) => Effect.Effect<string>;
     /** "What do you know about X": the memories closest to it, best first, his words marked, at most `limit`. */
     readonly about: (
       subject: string,
@@ -1420,6 +1430,46 @@ export const make = Effect.gen(function* () {
     return (yield* memory.forget(id)) ? "Forgotten." : "There is no memory by that id.";
   });
 
+  const understandingFact = Effect.fn("TessayaTurn.understandingFact")(function* (input: {
+    readonly fact: string;
+    readonly about?: "them" | "herself" | undefined;
+    readonly confirmed?: boolean | undefined;
+    readonly restore?: boolean | undefined;
+  }) {
+    const origin = yield* TurnOrigin;
+    const understanding = yield* Effect.serviceOption(TessayaUnderstanding);
+    const herself = input.about === "herself";
+    // Their understanding is theirs to change, on their own voice or device; how she sees herself is his.
+    const member = origin?.member ?? null;
+    const assurance = origin?.assurance ?? 0;
+    const allowed =
+      origin !== null && (herself ? origin.hisVoice === true : member !== null && assurance >= 2);
+    if (!allowed || Option.isNone(understanding))
+      return "I can change that only when I know it's your voice.";
+    if (origin.rehearsal === true)
+      return input.restore === true
+        ? "Put back."
+        : input.confirmed === true
+          ? "Forgotten."
+          : "Forget that? Ask for a clear yes, then call again with confirmed.";
+    const subject: UnderstandingSubject = herself
+      ? { about: "self", persona: origin.persona ?? undefined }
+      : { about: "person", id: member! };
+    const actor = {
+      kind: (member ?? OWNER_MEMBER_ID) === OWNER_MEMBER_ID ? "owner" : "member",
+      id: member ?? OWNER_MEMBER_ID,
+      certainty: assurance >= 3 ? 1 : 0.8,
+    } as const;
+    const answer =
+      input.restore === true
+        ? yield* understanding.value.restore(subject, input.fact, { actor })
+        : yield* understanding.value.forget(subject, input.fact, {
+            actor,
+            confirmed: input.confirmed,
+          });
+    return answer.line;
+  });
+
   const about = Effect.fn("TessayaTurn.about")(function* (subject: string, limit = 8) {
     const origin = yield* TurnOrigin;
     const ranked = yield* memory.related({
@@ -1438,6 +1488,7 @@ export const make = Effect.gen(function* () {
     end,
     remember,
     forget,
+    understandingFact,
     about,
     setPreference,
     whoIsHome,

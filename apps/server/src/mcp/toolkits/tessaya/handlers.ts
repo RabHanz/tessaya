@@ -482,7 +482,18 @@ export const layer = McpToolAccess.toLayer(
         ),
       ),
       tessaya_memory_forget: McpToolAccess.writes((input) =>
-        call(withTurn((turn) => Effect.map(turn.forget(input.id), (line) => ({ line })))),
+        call(
+          withTurn((turn) =>
+            Effect.map(
+              input.fact !== undefined
+                ? turn.understandingFact({ ...input, fact: input.fact })
+                : input.id !== undefined
+                  ? turn.forget(input.id)
+                  : Effect.succeed("Say which memory, by its id, or which fact."),
+              (line) => ({ line }),
+            ),
+          ),
+        ),
       ),
       // Read as a client (MemoryViewer's default here): walls hold.
       tessaya_preference_set: McpToolAccess.writes((input) =>

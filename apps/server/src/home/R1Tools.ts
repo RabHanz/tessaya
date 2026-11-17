@@ -439,7 +439,14 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
                         name.startsWith("people_")
                       ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
                       : name === "tessaya_memory_forget"
-                        ? JSON.stringify({ line: NOT_HIS_VOICE_TO_FORGET })
+                        ? JSON.stringify({
+                            line:
+                              typeof (input as { fact?: unknown }).fact === "string" &&
+                              (input as { confirmed?: unknown }).confirmed !== true &&
+                              (input as { restore?: unknown }).restore !== true
+                                ? "Forget that? Ask for a clear yes, then call again with confirmed."
+                                : NOT_HIS_VOICE_TO_FORGET,
+                          })
                         : name === "device_watch" || name === "device_button"
                           ? // A rule is saved at once, not asked: "it waits for his answer" made her say so (13 Nov suite).
                             JSON.stringify({

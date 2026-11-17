@@ -22,6 +22,8 @@ export const understandingPrompt = (input: {
   readonly current: string | null;
   readonly evidence: ReadonlyArray<string>;
   readonly earlier?: ReadonlyArray<{ readonly at: string; readonly text: string }>;
+  /** Facts they asked her to forget, still in the bin: never written back. */
+  readonly forgotten?: ReadonlyArray<string>;
 }): string =>
   [
     input.about === "person"
@@ -38,6 +40,12 @@ export const understandingPrompt = (input: {
     ...(input.earlier ?? [])
       .slice(0, 2)
       .map((v) => `<earlier at="${clean(v.at, 10)}">${clean(v.text, 300)}</earlier>`),
+    ...((input.forgotten ?? []).length === 0
+      ? []
+      : [
+          "They asked you to forget the facts in <forgotten>: never write one back, nor the same thing in other words, even when the evidence says it again.",
+          `<forgotten>\n${input.forgotten!.map((f) => `- ${clean(f.replace(/^\s*-\s*/, ""), 200)}`).join("\n")}\n</forgotten>`,
+        ]),
     `<evidence>\n${input.evidence.map((e) => `- ${clean(e, 300)}`).join("\n")}\n</evidence>`,
   ].join("\n");
 
@@ -58,14 +66,84 @@ export const UnderstandingRewrite = Schema.Struct({
 });
 export type UnderstandingRewrite = typeof UnderstandingRewrite.Type;
 
-/** The new version to store, or null: unchanged, empty, or the same words again (nothing is written then). */
+/** A fact by its words alone: the leading "- ", case and punctuation aside. */
+export const factKey = (line: string): string =>
+  line
+    .replace(/^\s*-\s*/, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/** One fact a line, blank lines aside. */
+export const factLines = (text: string): Array<string> =>
+  text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
+
+/**
+ * The new version to store, or null: unchanged, empty, or the same words again (nothing is written then). A line that
+ * says a `forgotten` fact is dropped, so a model's slip cannot bring it back.
+ */
 export const nextUnderstanding = (
   current: string | null,
   answer: UnderstandingRewrite,
+  forgotten: ReadonlyArray<string> = [],
 ): { readonly text: string; readonly changes: UnderstandingRewrite["changes"] } | null => {
-  const text = answer.text?.trim() ?? "";
+  const gone = new Set(forgotten.map(factKey));
+  const text = (answer.text ?? "")
+    .split("\n")
+    .filter((l) => !gone.has(factKey(l)))
+    .join("\n")
+    .trim();
   if (answer.unchanged || text === "" || text === current?.trim()) return null;
-  return { text, changes: answer.changes };
+  return {
+    text,
+    changes: answer.changes.filter((c) => c.new === null || !gone.has(factKey(c.new))),
+  };
+};
+
+/** The line of `text` that `said` names: the same words, else the one line holding them (or held by them); else null. */
+export const findFact = (text: string, said: string): number | null => {
+  const want = factKey(said);
+  if (want === "") return null;
+  const keys = factLines(text).map(factKey);
+  const same = keys.indexOf(want);
+  if (same !== -1) return same;
+  const near = keys.flatMap((k, i) => (k.includes(want) || want.includes(k) ? [i] : []));
+  return near.length === 1 ? near[0]! : null;
+};
+
+/**
+ * Where line `at` of `newer` stood in `older`, the version it was rewritten from, or null when it was new. A rewrite keeps
+ * untouched facts verbatim and in order, so equal lines anchor an in-order match (their longest common run), and a
+ * replaced line sits in the same gap between anchors, at the same place in it.
+ */
+export const earlierLine = (
+  newer: ReadonlyArray<string>,
+  older: ReadonlyArray<string>,
+  at: number,
+): number | null => {
+  const run = Array.from({ length: newer.length + 1 }, () =>
+    Array.from({ length: older.length + 1 }, () => 0),
+  );
+  for (let i = newer.length - 1; i >= 0; i--)
+    for (let j = older.length - 1; j >= 0; j--)
+      run[i]![j] =
+        newer[i] === older[j]
+          ? run[i + 1]![j + 1]! + 1
+          : Math.max(run[i + 1]![j]!, run[i]![j + 1]!);
+  const anchors: Array<readonly [number, number]> = [];
+  for (let i = 0, j = 0; i < newer.length && j < older.length;)
+    if (newer[i] === older[j]) anchors.push([i++, j++]);
+    else if (run[i + 1]![j]! >= run[i]![j + 1]!) i++;
+    else j++;
+  const same = anchors.find(([i]) => i === at);
+  if (same !== undefined) return same[1];
+  const [i0, j0] = anchors.findLast(([i]) => i < at) ?? [-1, -1];
+  const end = anchors.find(([i]) => i > at)?.[1] ?? older.length;
+  const j = j0 + (at - i0);
+  return j < end ? j : null;
 };
 
 /** Her understanding for the turn's block: a person's only on their own turn, her own on every turn. */

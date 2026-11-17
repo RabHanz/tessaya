@@ -36,7 +36,12 @@ const rows = await Promise.all(
   cases.flatMap((c) =>
     Array.from({ length: samples }, async (_, sample) => {
       const answer = await askClaudeJson<UnderstandingRewrite>(
-        understandingPrompt({ about: c.about, current: c.current, evidence: c.evidence }),
+        understandingPrompt({
+          about: c.about,
+          current: c.current,
+          evidence: c.evidence,
+          ...(c.forgotten === undefined ? {} : { forgotten: c.forgotten }),
+        }),
         schema,
         { model: values.model!, claude: values.claude! },
       );

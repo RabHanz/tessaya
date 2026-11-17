@@ -210,8 +210,10 @@ export class TessayaMemoryService extends Context.Service<
       id: string,
       pinned: boolean,
     ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
-    /** Deletes the item and leaves a tombstone so a sync cannot bring it back. */
+    /** Deletes the item and leaves a tombstone so a sync cannot bring it back; never an understanding. */
     readonly forget: (id: string) => Effect.Effect<boolean>;
+    /** New words in place with no earlier wording kept (an understanding's forgotten fact); empty deletes it. */
+    readonly overwrite: (id: string, text: string) => Effect.Effect<void>;
     /**
      * Current items close in meaning (cosine at or above `min`), within one scope and the same visibility, closest
      * first: what the nightly sweep judges. Empty without the local model.
@@ -713,17 +715,21 @@ export const make = Effect.gen(function* () {
 
   const forget = Effect.fn("BatonMemoryService.forget")(function* (id: string) {
     const item = yield* read(id);
-    if (item === null || !(yield* viewFor(undefined, true))(item)) return false;
-    const at = yield* nowIso;
-    // An understanding's earlier wordings carry the same facts, and the next rewrite reads them: they go together.
-    const chain =
-      item.kind === "understanding"
-        ? yield* sql<{ id: string }>`
-            SELECT id FROM fabric_memory_items WHERE kind = 'understanding' AND scope_ref IS ${item.scopeRef}
-          `.pipe(Effect.orDie)
-        : [];
-    for (const each of new Set([id, ...chain.map((r) => r.id)])) yield* remove(each, at);
+    // An understanding is never wiped by id: one fact goes at a time, confirmed, into its bin (TessayaUnderstanding).
+    if (item === null || item.kind === "understanding" || !(yield* viewFor(undefined, true))(item))
+      return false;
+    yield* remove(id, yield* nowIso);
     return true;
+  });
+
+  const overwrite = Effect.fn("BatonMemoryService.overwrite")(function* (id: string, text: string) {
+    const at = yield* nowIso;
+    if (text.trim() === "") return yield* remove(id, at);
+    yield* sql`
+      UPDATE fabric_memory_items SET text = ${text}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
+      WHERE id = ${id}
+    `.pipe(Effect.orDie);
+    yield* sql`DELETE FROM fabric_memory_versions WHERE item_id = ${id}`.pipe(Effect.orDie);
   });
 
   const accept = Effect.fn("BatonMemoryService.accept")(function* (id: string) {
@@ -1325,6 +1331,7 @@ export const make = Effect.gen(function* () {
     }),
     pin,
     forget,
+    overwrite,
     meaningPairs,
     supersede,
     // An accepted proposal joins recall, so it is embedded now.
