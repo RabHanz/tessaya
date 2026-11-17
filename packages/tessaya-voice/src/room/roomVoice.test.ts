@@ -1101,16 +1101,24 @@ describe("waking by name with no session open", () => {
   it("reopens a session the R1 lost to a reboot, with one short line, and leaves it open for him", async () => {
     // 18 Nov, 00:21: her watchdog rebooted her mid-answer; the loop held the dead session 47 s, then she was silent.
     const spoken: string[] = [];
+    const logs: string[] = [];
     const t = setup({
       speak: async function* (text) {
         spoken.push(text);
         yield new Int16Array(320);
       },
+      log: (l) => logs.push(l),
     });
     const starts = () =>
       t.published.filter((p) => p.topic === `freya/r1/${DEV}/cmd/voice/start`).length;
-    t.room.message(`freya/r1/${DEV}/event/wake/boot`, Buffer.from('{"reason":1}'));
+    t.room.message(
+      `freya/r1/${DEV}/event/wake/boot`,
+      Buffer.from('{"reason":1,"fw_ver":"smp-0.3.156","kept":1,"why":"wd-cmd: a command"}'),
+    );
     expect(starts()).toBe(0);
+    expect(logs).toContain(
+      `[${DEV}] booted: fw_ver "smp-0.3.156" reason 1 why "wd-cmd: a command" uptime_s null kept 1`,
+    );
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     await t.feed(true, 20);
     await t.feed(false, 60);

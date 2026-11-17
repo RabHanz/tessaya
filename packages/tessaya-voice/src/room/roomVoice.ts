@@ -3456,6 +3456,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       } else if (tail === "event/wake/boot") {
         // A reboot ends the R1's own session: one he was in reopens with a short line, never silence until he calls her
         // again (18 Nov, 00:21: her watchdog rebooted her mid-answer and the loop waited 47 s on a dead session).
+        // Every boot is one line, so the dev-feed watch sees reboots and why (18 Nov 03:45: a reboot with no why).
+        const b = json();
+        const show = (k: string) => JSON.stringify(b[k] ?? null);
+        deps.log(
+          `[${id}] booted: fw_ver ${show("fw_ver")} reason ${show("reason")} why ${show("why")} uptime_s ${show("uptime_s")} kept ${show("kept")}`,
+        );
         const open = sessions.get(id);
         if (open === undefined) return;
         stop(id);
