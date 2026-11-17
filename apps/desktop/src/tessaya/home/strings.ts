@@ -291,8 +291,10 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "ppl.forget.confirm":
       "Forget {name}'s voice and what they said? They stay in Recently forgotten for {n} days, where you can restore them. Click Forget again to do it.",
     "ppl.bin.section": "Recently forgotten",
-    "ppl.bin.days": "Keep forgotten people for",
+    "ppl.bin.days": "Keep forgotten people and facts for",
     "ppl.bin.hint": "Until then you can restore them; after, they are deleted for good.",
+    "ppl.fact": "{name}: {fact}",
+    "ppl.fact.someone": "Someone",
     "ppl.bin.keep": "{n} days",
     "ppl.bin.empty": "Nobody forgotten lately.",
     "ppl.by.owner": "Forgotten by you on {at}",

@@ -339,7 +339,10 @@ export const TessayaHouseholdCallResult = Schema.Struct({
   people: Schema.optionalKey(Schema.Array(TessayaPerson)),
   suggestions: Schema.optionalKey(Schema.Array(TessayaPeopleSuggestion)),
   retentionDays: Schema.optionalKey(Schema.Number),
-  /** Recently forgotten: restorable for `binDays`, then deleted for good. `by`: owner, themselves or expiry. */
+  /**
+   * Recently forgotten, newest first: restorable for `binDays`, then deleted for good. `by`: owner, themselves or expiry.
+   * With `fact`: one fact forgotten from her understanding of `name` (a persona's name when about herself).
+   */
   forgotten: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
@@ -347,6 +350,7 @@ export const TessayaHouseholdCallResult = Schema.Struct({
         name: Schema.NullOr(Schema.String),
         by: Schema.String,
         at: Schema.String,
+        fact: Schema.optionalKey(Schema.String),
       }),
     ),
   ),

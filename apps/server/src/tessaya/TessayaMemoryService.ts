@@ -61,6 +61,25 @@ import {
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
+import type { TurnAction } from "./turnActions.ts";
+
+/** One fact forgotten from her understanding of someone (`person:<id>`) or of herself (`self:<persona>`). */
+export interface BinnedFact {
+  readonly id: string;
+  readonly ref: string;
+  /** Herself, as which persona; null for a person (People names them). */
+  readonly whose: string | null;
+  readonly fact: string;
+  readonly by: string;
+  readonly at: string;
+}
+export interface FactBin {
+  readonly list: Effect.Effect<ReadonlyArray<BinnedFact>>;
+  /** Back where it was, by its bin id: its words, or null when it isn't in the bin. */
+  readonly restore: (id: string, actor: TurnAction["actor"]) => Effect.Effect<string | null>;
+  /** Gone for good now: one by id, or the whole bin; how many. */
+  readonly purge: (id: string | undefined, actor: TurnAction["actor"]) => Effect.Effect<number>;
+}
 
 interface ItemRow {
   readonly id: string;
@@ -215,6 +234,12 @@ export class TessayaMemoryService extends Context.Service<
     /** New words in place with no earlier wording kept (an understanding's forgotten fact); empty deletes it. */
     readonly overwrite: (id: string, text: string) => Effect.Effect<void>;
     /**
+     * Her understanding's bin of forgotten facts, set by TessayaUnderstanding, so People's Recently forgotten lists and
+     * restores them too: People sits below the understanding and can't import it.
+     */
+    readonly factBin: Effect.Effect<FactBin | null>;
+    readonly setFactBin: (bin: FactBin) => Effect.Effect<void>;
+    /**
      * Current items close in meaning (cosine at or above `min`), within one scope and the same visibility, closest
      * first: what the nightly sweep judges. Empty without the local model.
      */
@@ -291,6 +316,7 @@ const decodeTalks = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Arra
 const scrubTalk = (line: string): string => (detectSecret(line) === null ? line : TALK_REDACTED);
 
 export const make = Effect.gen(function* () {
+  let factBin: FactBin | null = null;
   const sql = yield* SqlClient.SqlClient;
   const privateTexts = yield* MemoryPrivateTexts;
   // Absent or without a model: recall stays on keywords, as before MEM-13.
@@ -1332,6 +1358,10 @@ export const make = Effect.gen(function* () {
     pin,
     forget,
     overwrite,
+    factBin: Effect.sync(() => factBin),
+    setFactBin: Effect.fn("BatonMemoryService.setFactBin")(function* (bin: FactBin) {
+      factBin = bin;
+    }),
     meaningPairs,
     supersede,
     // An accepted proposal joins recall, so it is embedded now.

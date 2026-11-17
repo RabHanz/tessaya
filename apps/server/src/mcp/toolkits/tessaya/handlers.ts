@@ -482,18 +482,40 @@ export const layer = McpToolAccess.toLayer(
         ),
       ),
       tessaya_memory_forget: McpToolAccess.writes((input) =>
-        call(
-          withTurn((turn) =>
-            Effect.map(
-              input.fact !== undefined
-                ? turn.understandingFact({ ...input, fact: input.fact })
-                : input.id !== undefined
-                  ? turn.forget(input.id)
-                  : Effect.succeed("Say which memory, by its id, or which fact."),
-              (line) => ({ line }),
-            ),
-          ),
-        ),
+        Effect.gen(function* () {
+          const vessel = vesselOf((yield* McpInvocationContext.McpInvocationContext).client);
+          // His desktop app's own call has no turn, and its gate asked him: it is the owner's, by his voice.
+          const desk =
+            (yield* TurnOrigin) === null && vessel?.surface === "assistant"
+              ? {
+                  kind: "desktop" as const,
+                  id: "desktop",
+                  label: "his desktop",
+                  hisVoice: true,
+                  member: OWNER_MEMBER_ID,
+                  assurance: 2 as const,
+                  rehearsal: vessel.dryRun,
+                }
+              : null;
+          return yield* call(
+            withTurn((turn) => {
+              const fact =
+                input.fact === undefined
+                  ? null
+                  : turn.understandingFact({ ...input, fact: input.fact });
+              return Effect.map(
+                fact !== null
+                  ? desk === null
+                    ? fact
+                    : Effect.provideService(fact, TurnOrigin, desk)
+                  : input.id !== undefined
+                    ? turn.forget(input.id)
+                    : Effect.succeed("Say which memory, by its id, or which fact."),
+                (line) => ({ line }),
+              );
+            }),
+          );
+        }),
       ),
       // Read as a client (MemoryViewer's default here): walls hold.
       tessaya_preference_set: McpToolAccess.writes((input) =>
