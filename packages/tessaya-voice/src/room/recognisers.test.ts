@@ -1,6 +1,7 @@
 import { expect, it } from "vite-plus/test";
 
 import {
+  hedge,
   noteTime,
   pickRecogniser,
   recognisersFor,
@@ -112,4 +113,58 @@ it("gives his personal model only his held voice, and the general one everyone e
   expect(urls(recognisersFor([general, { ...personal, queue: null }], true))).toEqual(["general"]);
   // Tried and failed (left out of the pool): the general one hears it all.
   expect(urls(recognisersFor([general], true))).toEqual(["general"]);
+});
+
+it("hears his turn on his personal model and a general one at once, and takes the general words when his are late (23:30, 17 Nov)", async () => {
+  const after = (text: string) => {
+    let answer: (t: string) => void = () => undefined;
+    const fed: number[] = [];
+    return {
+      fed,
+      answer: () => answer(text),
+      turn: {
+        feed: (pcm: Int16Array) => void fed.push(pcm.length),
+        finish: () => new Promise<string>((r) => (answer = r)),
+        cancel: () => undefined,
+      },
+    };
+  };
+  // Who answers, in order ("budget": its timer fires); one left out never answers.
+  const run = async (
+    order: ReadonlyArray<"personal" | "general" | "budget">,
+    personalText = "Kazi said",
+  ) => {
+    const mine = after(personalText);
+    const theirs = after("Causey said");
+    let budget: () => void = () => undefined;
+    const won: string[] = [];
+    const turn = hedge(
+      mine.turn,
+      theirs.turn,
+      () => new Promise<void>((r) => (budget = r)),
+      (who) => won.push(who),
+    );
+    turn.feed(new Int16Array(160));
+    const text = turn.finish();
+    for (const step of order) {
+      if (step === "budget") budget();
+      else (step === "personal" ? mine : theirs).answer();
+    }
+    return { text: await text, won, fed: [mine.fed, theirs.fed] };
+  };
+  // His model inside the budget: its words, though the general one answered first.
+  expect(await run(["general", "personal"])).toEqual({
+    text: "Kazi said",
+    won: ["personal"],
+    fed: [[160], [160]],
+  });
+  // Over the budget (5336 ms that turn): the general words, as soon as they are there.
+  expect(await run(["budget", "general"])).toMatchObject({ text: "Causey said", won: ["general"] });
+  // Over the budget with the general one slower still: whichever answers first.
+  expect((await run(["budget", "personal"])).won).toEqual(["personal"]);
+  // His model heard nothing (or failed): the general words, without waiting out the budget.
+  expect(await run(["personal", "general"], "")).toMatchObject({
+    text: "Causey said",
+    won: ["general"],
+  });
 });

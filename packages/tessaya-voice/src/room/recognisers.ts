@@ -61,6 +61,52 @@ export const noteTime = (
   at: number,
 ): RecogniserState["recent"] => [...recent, { ms, at }].slice(-5);
 
+/** How long his turn waits on his personal model once it ends, before the general words will do. */
+export const PERSONAL_BUDGET_MS = 700;
+
+/** The first of these to bring words; null once all came back empty. */
+const firstWords = <W>(tries: ReadonlyArray<Promise<W | null>>) =>
+  new Promise<W | null>((resolve) => {
+    let left = tries.length;
+    for (const t of tries)
+      void t.then((w) => (w !== null ? resolve(w) : --left === 0 && resolve(null)));
+  });
+
+/**
+ * His turn on his personal model and a general one at once (23:30, 17 Nov: his took 5.3 s, a general one 0.6 s): his
+ * words when they come within `budget`, else whichever answers first. Partials come from the general one.
+ */
+export const hedge = (
+  personal: RecogniserTurn,
+  general: RecogniserTurn,
+  budget: () => Promise<void>,
+  won: (who: "personal" | "general") => void,
+): RecogniserTurn => ({
+  feed: (pcm) => {
+    personal.feed(pcm);
+    general.feed(pcm);
+  },
+  cancel: () => {
+    personal.cancel();
+    general.cancel();
+  },
+  onPartial: (listener) => general.onPartial?.(listener),
+  finish: async () => {
+    const heard = (who: "personal" | "general", turn: RecogniserTurn) =>
+      turn.finish().then(
+        (text) => (text.trim() === "" ? null : { who, text }),
+        () => null,
+      );
+    const mine = heard("personal", personal);
+    const theirs = heard("general", general);
+    const best =
+      (await Promise.race([mine, budget().then(() => null)])) ?? (await firstWords([mine, theirs]));
+    if (best === null) return "";
+    won(best.who);
+    return best.text;
+  },
+});
+
 /** A turn running on one recogniser, and whether that recogniser failed it (refused, unreachable, gone). */
 export interface TurnOn {
   readonly url: string;
