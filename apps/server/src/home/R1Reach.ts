@@ -35,6 +35,8 @@ const HEALTH_RECORD = "@health";
 const PLACEMENT_EVERY = "10 seconds";
 /** Readings with no voice either way before a moved device is relinked: 30 s quiet. */
 const QUIET_TICKS = 3;
+/** Readings with no finished turn before a relink: 2 min, so a pause to think is not the end of a conversation. */
+const TURN_QUIET_TICKS = 12;
 /** Set once he has answered the setup's one question about away-from-home, either way. */
 const OFFERED_SECRET = "r1-away-offered";
 /** The tunnel's hostname, remembered: cloudflared reports it only while connected, and a restart must not drop it. */
@@ -328,12 +330,24 @@ export const layerWith = (readHost: (now: number) => HostSample) =>
       // decides whether to move it, sends the new list, and relinks it once the device holds that list and is quiet.
       let rating = UNRATED;
       const frames = new Map<string, number>();
-      const heard = new Map<string, { frames: number; quietTicks: number }>();
+      /** Turns the room loop finished on each device (`event/voice/metrics`). */
+      const turns = new Map<string, number>();
+      const heard = new Map<
+        string,
+        { frames: number; quietTicks: number; turns: number; turnQuietTicks: number }
+      >();
       const relinkDue = new Set<string>();
-      const voice = hub.attach(["freya/r1/+/voice/up", "freya/r1/+/voice/down"], (topic) => {
-        const id = topic.split("/")[2];
-        if (id !== undefined) frames.set(id, (frames.get(id) ?? 0) + 1);
-      });
+      /** Devices whose held relink is already in the log, so a long conversation logs it once. */
+      const heldLogged = new Set<string>();
+      const voice = hub.attach(
+        ["freya/r1/+/voice/up", "freya/r1/+/voice/down", "freya/r1/+/event/voice/metrics"],
+        (topic) => {
+          const id = topic.split("/")[2];
+          if (id === undefined) return;
+          const counts = topic.endsWith("/event/voice/metrics") ? turns : frames;
+          counts.set(id, (counts.get(id) ?? 0) + 1);
+        },
+      );
       yield* Effect.addFinalizer(() => Effect.sync(voice.close));
       if (Option.isSome(devices))
         yield* devices.value.onMerged("placed", (id) =>
@@ -367,9 +381,18 @@ export const layerWith = (readHost: (now: number) => HostSample) =>
 
         for (const id of here) {
           const n = frames.get(id) ?? 0;
+          const t = turns.get(id) ?? 0;
           const was = heard.get(id);
           const quietTicks = was !== undefined && was.frames === n ? was.quietTicks + 1 : 0;
-          heard.set(id, { frames: n, quietTicks });
+          const turnQuietTicks =
+            was === undefined
+              ? t === 0
+                ? TURN_QUIET_TICKS
+                : 0
+              : was.turns === t
+                ? was.turnQuietTicks + 1
+                : 0;
+          heard.set(id, { frames: n, quietTicks, turns: t, turnQuietTicks });
           const { hubs, order, endpoints } = yield* compose(id);
           const record = yield* s.get(id);
           const move = placeRoom({
@@ -395,13 +418,22 @@ export const layerWith = (readHost: (now: number) => HostSample) =>
             yield* sync(id);
             continue;
           }
-          // Never mid-conversation: no voice either way for QUIET_TICKS readings.
-          if (
-            relinkDue.has(id) &&
-            quietTicks >= QUIET_TICKS &&
-            reportMatches(reported.get(id), endpoints)
-          ) {
+          // Never mid-conversation: no voice either way for QUIET_TICKS readings, and no turn for TURN_QUIET_TICKS.
+          if (!relinkDue.has(id) || !reportMatches(reported.get(id), endpoints)) continue;
+          if (quietTicks < QUIET_TICKS || turnQuietTicks < TURN_QUIET_TICKS) {
+            if (!heldLogged.has(id)) {
+              heldLogged.add(id);
+              yield* emitAction({
+                kind: "room.placement.held",
+                actor: { kind: "system", id: "room-placement", certainty: 1 },
+                subject: id,
+                outcome: "held: mid-conversation",
+                data: { quietS: quietTicks * 10, sinceTurnS: turnQuietTicks * 10 },
+              });
+            }
+          } else {
             relinkDue.delete(id);
+            heldLogged.delete(id);
             yield* emitAction({
               kind: "room.placement.relink",
               actor: { kind: "system", id: "room-placement", certainty: 1 },

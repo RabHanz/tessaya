@@ -11,7 +11,9 @@ import { speechLevel, toBytes } from "./audio.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
   createRoomVoice,
+  loopMaySend,
   ROOM_CONFIG,
+  routeForDevice,
   servedRoster,
   splitSentences,
   testModeAsked,
@@ -1043,6 +1045,59 @@ describe("waking by name with no session open", () => {
     t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
     expect(frames).toEqual([DEV, DEV]);
     expect(t.room.session(DEV)).toBeUndefined();
+  });
+
+  it("reopens a session the R1 lost to a reboot, with one short line, and leaves it open for him", async () => {
+    // 18 Nov, 00:21: her watchdog rebooted her mid-answer; the loop held the dead session 47 s, then she was silent.
+    const spoken: string[] = [];
+    const t = setup({
+      speak: async function* (text) {
+        spoken.push(text);
+        yield new Int16Array(320);
+      },
+    });
+    const starts = () =>
+      t.published.filter((p) => p.topic === `freya/r1/${DEV}/cmd/voice/start`).length;
+    t.room.message(`freya/r1/${DEV}/event/wake/boot`, Buffer.from('{"reason":1}'));
+    expect(starts()).toBe(0);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    spoken.length = 0;
+    t.room.message(`freya/r1/${DEV}/event/wake/boot`, Buffer.from('{"reason":1}'));
+    expect(starts()).toBe(1);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.room.session(DEV)!.drained();
+    expect(spoken).toEqual(["Sorry, I just restarted. Go on."]);
+    expect(t.room.session(DEV)).toBeDefined();
+  });
+
+  it("drives only a Tessel on its own hub, and relays her server's commands from the brain's hub", () => {
+    // [tail, online on this loop's hub, from the brain's hub] → what the loop does with it.
+    const cases: Array<[string, boolean, boolean, string]> = [
+      ["voice/intent/eye", true, false, "room"],
+      ["voice/intent/eye", false, false, "drop"],
+      ["voice/stepup", false, false, "drop"],
+      ["cmd/voice/start", false, false, "drop"],
+      ["voice/up", false, false, "room"],
+      ["cmd/voice/no-reply", false, false, "room"],
+      ["voice/stepup", true, true, "room"],
+      ["voice/stepup", false, true, "drop"],
+      ["cmd/eye/gesture", true, true, "relay"],
+      ["cmd/volume", true, true, "relay"],
+      ["cmd/net/endpoints", true, true, "drop"],
+    ];
+    for (const [tail, here, brainHub, want] of cases)
+      expect([tail, here, brainHub, routeForDevice(tail, here, brainHub)]).toEqual([
+        tail,
+        here,
+        brainHub,
+        want,
+      ]);
+    // Its own eye and voice commands go only to a Tessel on its hub, so a bridging loop never relays a second driver.
+    expect(loopMaySend("cmd/eye/set", false)).toBe(false);
+    expect(loopMaySend("cmd/eye/set", true)).toBe(true);
+    expect(loopMaySend("event/voice/metrics", false)).toBe(true);
   });
 
   it("opens on the persona the Cast puts on this Tessel, and a wake word for another never re-homes it", async () => {

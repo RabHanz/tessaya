@@ -76,11 +76,17 @@ export const roomActionOf = (id: string, tail: string, payload: string): ActionI
       data: { ...facts(body), vessel: id },
     };
   }
+  // The firmware's own reboot reason ("a voice start or stop") is a phrase it wrote, never his words.
+  const why = (body as { why?: unknown } | null)?.why;
   return {
     kind: `room.${tail.slice("event/".length).replaceAll("/", ".")}`,
     actor: { kind: "device", id, certainty: 1 },
     subject: id,
     evidence: [{ kind: "device", ref: id }],
-    data: { ...facts(body), vessel: id },
+    data: {
+      ...facts(body),
+      ...(tail === "event/wake/boot" && typeof why === "string" ? { why: why.slice(0, 40) } : {}),
+      vessel: id,
+    },
   };
 };

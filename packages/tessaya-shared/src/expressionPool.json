@@ -10699,6 +10699,43 @@
         "mood": "happy",
         "gesture": "giggleOnce"
       }
+    ],
+    "err.restart": [
+      {
+        "text": "Sorry, I just restarted. Go on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I dropped out for a moment. Carry on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Back now. What were you saying?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Restarted, sorry. Pick up where you were.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Lost you for a second there. Go ahead.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Apologies, quick restart. Continue.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm back. Mind repeating that last bit?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      }
     ]
   },
   "butler": {
@@ -21536,6 +21573,43 @@
         "mood": "curious",
         "gesture": "dizzy"
       }
+    ],
+    "err.restart": [
+      {
+        "text": "My apologies, I restarted. Please go on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Forgive me, I was away a moment. Do continue.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Back now. Where were we?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Pardon the interruption. Please carry on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I do beg your pardon. Restarted. Go on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Returned. Would you repeat that last part?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "A brief absence, I'm afraid. Please continue.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      }
     ]
   },
   "engineering": {
@@ -32317,6 +32391,43 @@
         "text": "Wheee. Okay, enough.",
         "mood": "happy",
         "gesture": "hop"
+      }
+    ],
+    "err.restart": [
+      {
+        "text": "Rebooted, sorry. Go ahead.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I restarted mid-sentence. Pick up where you were.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Back up. Go on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Watchdog bit me. Carry on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Quick reboot there. Say that again?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Lost a few seconds. Continue.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Back online. Where were we?",
+        "mood": "concerned",
+        "gesture": "shrug"
       }
     ]
   },
@@ -43175,6 +43286,43 @@
         "mood": "concerned",
         "gesture": "leanIn"
       }
+    ],
+    "err.restart": [
+      {
+        "text": "Oops, I blinked out. Go on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Back. Missed that last bit, say it again?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Sorry, restarted. Carry on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Well, that was rude of me. Go on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I vanished for a sec. Where were we?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Rebooted. Very dramatic. Continue.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Back from the void. Keep going.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      }
     ]
   },
   "companion": {
@@ -53946,6 +54094,43 @@
         "text": "Thrown, bonked, shoved. Busy morning.",
         "mood": "neutral",
         "gesture": "sigh"
+      }
+    ],
+    "err.restart": [
+      {
+        "text": "Sorry, I slipped away a moment. Go on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I'm back. What were you saying?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Oops, I restarted. Tell me again?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Sorry about that, I'm here now. Go on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I lost you for a second. Carry on.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Back with you. Where were we?",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Little hiccup there. Keep going.",
+        "mood": "concerned",
+        "gesture": "shrug"
       }
     ]
   }
