@@ -302,9 +302,12 @@ export const wakeTrusted = (
   return setting !== undefined && score * setting.threshold >= TRUSTED_OUTPUT;
 };
 
-/** "Get me", "talk to", "switch back to", "hey": the words after one are who he is calling, on every vessel. */
+/**
+ * "Get me", "talk to", "switch back to", "hey": the words after one are who he is calling, on every vessel.
+ * Parakeet writes his "pass to" as "pasta" (17 Nov, Tumble).
+ */
 export const CALL_SLOT =
-  /\b(?:switch(?: me)?(?: back| over)? to|hand (?:me |it )?(?:over |back )?to|pass me (?:over |back )?to|put me (?:through |back )?(?:to|on to|onto)|(?:get|give|bring) me(?: back)?|(?:talk|speak) to|connect me (?:to|with)|hey|okay|ok)\s+/giu;
+  /\b(?:switch(?: me)?(?: back| over)? to|hand (?:me |it )?(?:over |back )?to|pass (?:me |it )?(?:over |back )?to|pasta|put me (?:through |back )?(?:to|on to|onto)|(?:get|give|bring) me(?: back)?|(?:talk|speak) to|connect me (?:to|with)|hey|okay|ok)\s+/giu;
 
 const NOT_A_NAME = new Set([
   "me",
