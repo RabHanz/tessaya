@@ -47,6 +47,7 @@ import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
 import { PersonaRoster } from "./PersonaRosterSettings";
+import { PersonaOpsAccess } from "./PersonaOpsSettings";
 import { VoicePlayground } from "./VoicePlayground";
 
 const NO_CLOUD = "none";
@@ -199,6 +200,7 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
         clones={library.clones ?? []}
         onChanged={refresh}
       />
+      <PersonaOpsAccess environmentId={environmentId} />
       <SettingsSection id="voice-personas" title="Persona voices">
         <SettingsRow
           title="Who speaks in which voice"

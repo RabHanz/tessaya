@@ -7,6 +7,8 @@ import type {
   TessayaPersonaChangeInput,
   TessayaPersonaChangeResult,
   TessayaPersonaGroup,
+  PersonaOpsCallInput,
+  PersonaOpsView,
 } from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -59,11 +61,13 @@ export function SettingsPersonasRouteScreen() {
           <Text className="text-foreground-muted">Connect an environment to see the personas.</Text>
         ) : (
           selectedTargets.map((environment) => (
-            <PersonasSection
-              key={environment.environmentId}
-              environmentId={environment.environmentId}
-              label={selectedTargets.length > 1 ? environment.label : null}
-            />
+            <View key={environment.environmentId} className="gap-6">
+              <PersonasSection
+                environmentId={environment.environmentId}
+                label={selectedTargets.length > 1 ? environment.label : null}
+              />
+              <PersonaOpsSection environmentId={environment.environmentId} />
+            </View>
           ))
         )}
       </ScreenScrollView>
@@ -459,6 +463,64 @@ function PersonaFormSection(props: {
           onPress={props.onSave}
         />
       </View>
+    </SettingsSection>
+  );
+}
+
+/** Web's Personas in the ops system: who acts there as its own worker, its accounts, and revoking it. Only the brain shows it. */
+function PersonaOpsSection(props: { readonly environmentId: EnvironmentId }) {
+  const call = useAtomCommand(tessayaWorkSessions.personaOpsCall, QUIET);
+  const [view, setView] = useState<PersonaOpsView | null>(null);
+  const [note, setNote] = useState("");
+  const send = async (input: PersonaOpsCallInput) => {
+    const result = await call({ environmentId: props.environmentId, input });
+    if (result._tag !== "Success") return setNote("Couldn't reach this environment. Try again.");
+    setNote(result.value.ok ? "" : (result.value.error ?? "That didn't work."));
+    if (result.value.view !== undefined) setView(result.value.view);
+  };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the ops system access once per environment
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- one read per environment
+    void send({ op: "view" });
+  }, [props.environmentId]);
+  if (view === null || !view.available) return null;
+  return (
+    <SettingsSection
+      title={`Personas in ${view.name}`}
+      footer={
+        note === ""
+          ? `Each acts as its own ${view.name} worker; posts wait for your yes in ${view.name}.`
+          : note
+      }
+    >
+      {view.personas.map((p, i) => (
+        <View key={p.persona} className={i > 0 ? "border-t border-border-subtle" : undefined}>
+          <ListRowLayout
+            label={`${p.persona[0]?.toUpperCase() ?? ""}${p.persona.slice(1)}`}
+            description={
+              !p.hasToken
+                ? `No token on the brain: it can't act in ${view.name}.`
+                : p.accounts === null
+                  ? (p.error ?? `${view.name} didn't answer.`)
+                  : p.accounts.length === 0
+                    ? "No warm-up schedules yet."
+                    : p.accounts
+                        .map((a) => `@${a.account} on ${a.platform}${a.enabled ? "" : " (paused)"}`)
+                        .join(", ")
+            }
+            accessory={
+              p.hasToken ? (
+                <Button
+                  size="compact"
+                  tone="text"
+                  label="Revoke"
+                  onPress={() => void send({ op: "revoke", persona: p.persona })}
+                />
+              ) : undefined
+            }
+          />
+        </View>
+      ))}
     </SettingsSection>
   );
 }

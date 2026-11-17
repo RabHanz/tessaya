@@ -68,6 +68,7 @@ import { JobTools } from "../jobs/tools.ts";
 import { MembersTools } from "../members/tools.ts";
 import { PeopleTools } from "../people/tools.ts";
 import { CommsTools } from "../comms/tools.ts";
+import { PersonaOpsTools } from "../personaOps/tools.ts";
 import { AccountTools } from "../accounts/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
@@ -1069,6 +1070,7 @@ export const TessayaToolkit = Toolkit.make(
   ...MembersTools,
   ...PeopleTools,
   ...CommsTools,
+  ...PersonaOpsTools,
   ...JobTools,
   ...AccountTools,
   JobsTool,

@@ -249,6 +249,11 @@ import {
   TessayaLearnCallResult,
 } from "./learnCall.ts";
 import {
+  BATON_PERSONA_OPS_WS_METHODS,
+  PersonaOpsCallInput,
+  PersonaOpsCallResult,
+} from "./personaOps.ts";
+import {
   BATON_DEVICES_WS_METHODS,
   TessayaDevicesCallInput,
   TessayaDevicesCallResult,
@@ -615,6 +620,12 @@ const WsTessayaVoiceCallRpc = Rpc.make(BATON_VOICE_WS_METHODS.call, {
 const WsTessayaLearnCallRpc = Rpc.make(BATON_LEARN_WS_METHODS.call, {
   payload: TessayaLearnCallInput,
   success: TessayaLearnCallResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaPersonaOpsCallRpc = Rpc.make(BATON_PERSONA_OPS_WS_METHODS.call, {
+  payload: PersonaOpsCallInput,
+  success: PersonaOpsCallResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1297,6 +1308,7 @@ export const TessayaRpcGroup = RpcGroup.make(
   WsTessayaDevicesCallRpc,
   WsTessayaVoiceCallRpc,
   WsTessayaLearnCallRpc,
+  WsTessayaPersonaOpsCallRpc,
   WsTessayaPhonePairingRpc,
   WsTessayaCastGetRpc,
   WsTessayaCastCallRpc,

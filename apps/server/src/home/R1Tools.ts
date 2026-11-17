@@ -139,6 +139,13 @@ const ROOM_TOOLS = [
   "people_forget_me",
   "people_list",
   "people_manage",
+  // A persona acting in the ops system as its own worker: warm-ups, posts that wait for his yes, his decision by voice.
+  "ops_warmups",
+  "ops_warmup_set",
+  "ops_warmup_run",
+  "ops_post",
+  "ops_decide",
+  "ops_access",
   // Messages and announcements between the people here (COMMS-DESIGN C-1).
   "comms_send",
   "comms_inbox",
@@ -495,6 +502,7 @@ const READ_ACTIONS: Readonly<Record<string, readonly [string, ReadonlySet<unknow
   tessaya_prompt_lab: ["action", new Set(["list"])],
   tessaya_group: ["op", new Set(["status"])],
   access_manage: ["op", new Set(["links"])],
+  ops_access: ["op", new Set(["list"])],
 };
 const readsOnly = (name: string, input: unknown): boolean => {
   const read = READ_ACTIONS[name];
