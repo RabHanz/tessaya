@@ -285,6 +285,23 @@ const numberOfWords = (group: string): string => {
   return out;
 };
 
+const DIGIT_WORD = "zero|one|two|three|four|five|six|seven|eight|nine";
+/** "zero point zero eight" is 0.08; "at one point two of them" is a moment, not a figure. */
+const DECIMAL = new RegExp(
+  String.raw`(?<!\b(?:at|some|this|that|which|what|any|the)\s+)\b(${NUMBER_GROUP})\s+point\s+((?:${DIGIT_WORD}|\d)(?:\s+(?:${DIGIT_WORD}|\d))*)\b`,
+  "gi",
+);
+/**
+ * A code or number read digit by digit: "one seven two five" is 1725. A "to" inside a long run is his "two" mis-heard
+ * ("four to five nine nine two"), so "slot one to three" stays a range.
+ * shortcut: spaces and hyphens only, so a count "one, two, three" stays words; a spoken "oh" for 0 is not read.
+ */
+const DIGIT_RUN = new RegExp(
+  String.raw`\b(?:${DIGIT_WORD})(?:[ -]+(?:(?:to|too)[ -]+)?(?:${DIGIT_WORD})){2,}\b`,
+  "gi",
+);
+const SAID_NUMBER = /\bnumber (two|three|four|five|six|seven|eight|nine|ten)\b/gi;
+
 /** What he says as punctuation or as part of a name, written as it is meant, before anything else reads the text. */
 const spokenMarks = (text: string): string =>
   text
@@ -295,6 +312,16 @@ const spokenMarks = (text: string): string =>
         .map(numberOfWords)
         .join("."),
     )
+    .replace(DECIMAL, (_, whole: string, part: string) => {
+      const digits = part.toLowerCase().split(/\s+/);
+      return `${numberOfWords(whole)}.${digits.map((d) => NUMBER_WORDS[d] ?? d).join("")}`;
+    })
+    .replace(DIGIT_RUN, (said) => {
+      const words = said.toLowerCase().split(/[ -]+/);
+      if (words.length < 5 && (words.includes("to") || words.includes("too"))) return said;
+      return words.map((w) => NUMBER_WORDS[w] ?? "2").join("");
+    })
+    .replace(SAID_NUMBER, (_, n: string) => `number ${NUMBER_WORDS[n.toLowerCase()]}`)
     .replace(DOT_ENDING, (_, lead: string, ending: string, at: number, whole: string) =>
       lead === "" ||
       NAMING.has(lastWord(whole.slice(0, at))) ||
@@ -742,11 +769,25 @@ export const checkRewrite = (
       return fail(`rewrote number ${digits}`);
   // His "one" is left out of what he gave (it is as often a pronoun), so a 1 the answer wrote for it is his.
   const saidOne = /\bone\b/i.test(input);
+  // A figure he said in parts ("seven fifty" as $7.50, "three-sixty" as 360) is those numbers written together.
+  const joined = new Set<number>();
+  const inParts = (number: string): boolean => {
+    const digits = number.replace(/\D/g, "");
+    for (let from = 0; from < given.length; from++)
+      for (let to = from + 1, run = given[from]!; to < given.length; to++) {
+        run += given[to]!;
+        if (run.length > digits.length) break;
+        if (run !== digits) continue;
+        for (let i = from; i <= to; i++) joined.add(i);
+        return true;
+      }
+    return false;
+  };
   for (const number of kept)
-    if (!given.includes(number) && !(number === "1" && saidOne))
+    if (!given.includes(number) && !(number === "1" && saidOne) && !inParts(number))
       return fail(`new number ${number}`);
-  for (const number of given)
-    if (!kept.includes(number) && !correctedAway(input, number))
+  for (const [i, number] of given.entries())
+    if (!kept.includes(number) && !joined.has(i) && !correctedAway(input, number))
       return fail(`lost number ${number}`);
 
   const his = withOwnWords(dictionary);
@@ -873,6 +914,10 @@ export const checkRewrite = (
       !joinedPairs.has(lower) &&
       !gone.some((w) => soundsLike(w, name)) &&
       !soundsAcross(name) &&
+      // "F three five" written "F35": his letters, with the figure the number check already holds.
+      !(
+        /\d/.test(name) && inputWords.some((w) => w.toLowerCase() === lower.replace(/[\d-]+/g, ""))
+      ) &&
       // "type seat" written "Type-C": every longer part of the name is a word he said.
       !(
         name.includes("-") &&
@@ -947,7 +992,7 @@ Always:
 - Its mis-hearing is often a real word, or two, that reads as grammar but not as sense: judge each word against what the sentence is about, not only its grammar. In a sentence about computers, cables, phones or apps, "sink the folder" is "sync the folder", "plug it into the USB hob" is "the USB hub", "it will not pair over blue" is "pair over Bluetooth" (a term heard with a syllable lost); in a sentence about printing, "the proofs came out", not "the proves". Write the word that sounds like it and fits his topic. When no such word plainly fits, leave the words exactly as said: never guess a meaning or write a new phrase for words you cannot place ("It doesn't want you." stays).
 - Spell a well-known name, product or term correctly when the words around it make it certain (Playwright, GitHub, Oakeshott), and hyphenate compound modifiers (15th-century, retro-style, AI-native).
 - Put quotation marks around a label he quotes from a screen ("Build Your Engagement") and around words he reports someone saying.
-- Write counts, quantities, amounts, versions, sizes and angles as digits ("every 2 weeks", "version 2", "16:9", "3D", "4K", "$600", "360 degrees", never "360° degrees"), and a century as "15th-century". Keep times, ordinals and "one" as he said them ("half past seven", "the first one", "the one that"). A number already in digits stays as given.
+- Write numbers as digits wherever they are a figure: amounts and prices ("$150", "seven fifty" as a price is "$7.50"), measurements with a unit ("2 millimetres", "0.1 millimetres", "17 GB", "12V"), percentages, decimals, angles ("360 degrees", never "360° degrees"), versions and model names ("version 2", "ESP32", "F35", "3D", "4K", "16:9"), scores ("10 out of 10"), clock times ("at 9:30"), dates ("30 October", "the 27th"), codes and phone numbers read digit by digit ("425992"), "number 3", ranges ("2-3 lanes", "1.5 to 3 millimetres") and any count of 10 or more ("36 clips"). A century is "15th-century". Keep words where the number is not a figure: "one" as a word ("one more thing", "one of them", "the one that"), ranks ("the first one", "the third version"), and loose amounts and idioms ("one or two", "a week or two", "a couple", "all three"). A number already in digits stays as given.
 - He writes with few commas: add one only where a reader needs it, and none before an "and", "so" or "or" that joins two short clauses. A word he doubles for emphasis stays doubled with no comma between ("really really good").
 - "Like", "basically" and "honestly" stay when they carry meaning; never replace a word with another ("like 3%" stays "like 3%").
 - Break a long dictation into paragraphs where the topic turns, without changing a word to do it.
@@ -1002,7 +1047,9 @@ The archive also has a whole index of recipes. They are mainly from chefs. And I
 <dictation>put a fountain in the middle of the garden and a big statue. No terrible idea. A bench, but wider. Like an eighteenth century park bench</dictation>
 Put a fountain in the middle of the garden and a bench, but wider. Like an 18th-century park bench.
 <dictation>There should be a save button on the main page so you can see it worked and it will close the dialogue. It'll close the pop up. In some and quite a few screens it is still missing. Most screens actually. Also the jura board resets in March and the three D renders only turn one hundred eighty degrees</dictation>
-There should be a save button on the main page, so you can see it worked and it will close the pop-up. In most screens it is still missing. Also, the Jira board resets in March, and the 3D renders only turn 180 degrees.`;
+There should be a save button on the main page, so you can see it worked and it will close the pop-up. In most screens it is still missing. Also, the Jira board resets in March, and the 3D renders only turn 180 degrees.
+<dictation>one more thing the fee is seven fifty a month for all three of us and the ESP thirty two only needs thirty six pins so make the plate two to three millimetres thinner</dictation>
+One more thing: the fee is $7.50 a month for all three of us, and the ESP32 only needs 36 pins, so make the plate 2-3 millimetres thinner.`;
 
 /** Settings → Dictation → Spelling: British by default, American, or as the recogniser wrote it. */
 export const DICTATION_SPELLINGS = ["uk", "us", "asis"] as const;

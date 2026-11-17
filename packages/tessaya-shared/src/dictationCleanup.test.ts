@@ -197,8 +197,21 @@ describe("localClean", () => {
       "192.168.10.1",
     );
     expect(clean("My router is at ten dot one.")).toBe("My router is at 10.1.");
+    // Short dictations never reach the model, so a code, a decimal and "number three" are written here (18 Nov).
+    expect(clean("Four to five nine nine two.")).toBe("425992.");
+    expect(clean("One seven two five.")).toBe("1725.");
+    expect(clean("move it zero point zero eight up")).toBe("Move it 0.08 up");
+    expect(clean("It sits one point two millimeters below.")).toBe(
+      "It sits 1.2 millimeters below.",
+    );
+    expect(clean("Do number three as well.")).toBe("Do number 3 as well.");
     // Words, not marks.
     for (const said of [
+      "At one point two of them left.",
+      "This will be the one point of contact.",
+      "Pick slot one to three.",
+      "Count one, two, three and go.",
+      "We are number one.",
       "Make the dot between Robby and Dev more prominent.",
       "Put a comma after it.",
       "The question mark icon is too small.",
@@ -572,6 +585,17 @@ describe("checkRewrite on his 15 Nov refusals", () => {
     expect(checkRewrite("It took twenty five minutes", "It took 25 minutes.")).toEqual({
       ok: true,
     });
+    // Numbers said in parts are one figure: a price, an angle, a model name (Wispr writes them so, 18 Nov).
+    expect(checkRewrite("The monthly fee is seven fifty.", "The monthly fee is $7.50.")).toEqual({
+      ok: true,
+    });
+    expect(checkRewrite("It needs a full three-sixty read.", "It needs a full 360 read.")).toEqual({
+      ok: true,
+    });
+    expect(checkRewrite("Go with F three five.", "Go with F35.")).toEqual({ ok: true });
+    expect(checkRewrite("The monthly fee is seven fifty.", "The monthly fee is $7.55.").ok).toBe(
+      false,
+    );
   });
 
   it("passes a recogniser's capitals put right, and still refuses an acronym made lower case", () => {

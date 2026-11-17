@@ -52,6 +52,21 @@ export const CASES: ReadonlyArray<DictationCase> = [
     must: ["3D", "180 degrees", "360 degrees"],
     never: ["°", "three d"],
   },
+  // 18 Nov: his decimals, a price said in parts and a model name stayed words where Wispr Flow wrote figures.
+  {
+    id: "numbers-as-figures",
+    heard:
+      "Can you move the bracket zero point one millimeter left and the plan is seven fifty a month and it runs on the ESP thirty two.",
+    must: ["0.1", "$7.50", "ESP32"],
+    never: ["zero point", "seven fifty", "thirty"],
+  },
+  {
+    id: "numbers-stay-words",
+    heard:
+      "One more thing, one of them is broken so start one or two fixes and check all three boards for the first one that fails.",
+    must: ["One more thing", "one of them", "one or two", "all three", "first one"],
+    never: ["1 more", "1 of them", "1 or 2", "all 3", "1st"],
+  },
   {
     id: "recogniser-capital-on-plain-word",
     heard:
