@@ -37,7 +37,9 @@ import {
   suggestionsFor,
   VOICE_RULES,
 } from "./peopleGraph.ts";
+import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { peopleHere, TessayaPresence } from "./TessayaPresence.ts";
+import { emitAction, type TurnAction } from "./turnActions.ts";
 
 type Result = TessayaHouseholdCallResult;
 type PeopleOp = Extract<TessayaHouseholdCallInput, { op: `people${string}` }>;
@@ -139,7 +141,10 @@ export class TessayaPeople extends Context.Service<
         readonly seen: number;
       }>
     >;
-    /** Someone forgotten, or merged `into` the one they are: what is kept about them elsewhere follows. */
+    /**
+     * Someone gone for good (purged from the bin), or merged `into` the one they are: what is kept about them elsewhere
+     * follows. Never on a forget into the bin, so a restore brings everything back.
+     */
     readonly forgotten: Stream.Stream<{ readonly id: string; readonly into: string | undefined }>;
   }
 >()("t3/tessaya/TessayaPeople") {}
@@ -151,15 +156,23 @@ export const make = Effect.gen(function* () {
     readonly id: string;
     readonly into: string | undefined;
   }>();
-  // Where they were seen goes (or moves to the one they are) with them; TessayaMood follows `forgotten`.
-  const forgetPresence = (id: string, into?: string) =>
+  // Where they were seen goes (or moves to the one they are) with them.
+  const leavePresence = (id: string, into?: string) =>
     Effect.serviceOption(TessayaPresence).pipe(
       Effect.flatMap(
         Option.match({ onNone: () => Effect.void, onSome: (p) => p.forget(id, into) }),
       ),
+    );
+  // Gone for good: TessayaMood and TessayaUnderstanding follow `forgotten`.
+  const forgetPresence = (id: string, into?: string) =>
+    leavePresence(id, into).pipe(
       Effect.andThen(PubSub.publish(forgotten, { id, into })),
       Effect.asVoid,
     );
+  // Her understanding's forgotten facts, in the same Recently forgotten (found at call time: it sits above People).
+  const factBin = Effect.serviceOption(TessayaMemoryService).pipe(
+    Effect.flatMap(Option.match({ onNone: () => Effect.succeed(null), onSome: (m) => m.factBin })),
+  );
 
   const row = (id: string) =>
     sql<Row>`SELECT * FROM fabric_memory_entities WHERE id = ${id} AND forgotten_json IS NULL`.pipe(
@@ -335,8 +348,18 @@ export const make = Effect.gen(function* () {
         name = ${`~${r.id}`}
       WHERE id = ${r.id}
     `.pipe(Effect.orDie);
-    yield* forgetPresence(r.id);
-    return `${yield* binDays} days`;
+    yield* leavePresence(r.id);
+    const days = yield* binDays;
+    yield* emitAction({
+      kind: "people.forget",
+      actor:
+        by === "expiry"
+          ? { kind: "system", certainty: 1 }
+          : { kind: by === "themselves" ? "guest" : "owner", certainty: 1 },
+      subject: r.id,
+      data: { by, binDays: days },
+    });
+    return `${days} days`;
   });
 
   const binned =
@@ -344,7 +367,39 @@ export const make = Effect.gen(function* () {
       Effect.orDie,
     );
 
-  const restore = Effect.fn("TessayaPeople.restore")(function* (id: string) {
+  /** Facts forgotten from her understanding, as Recently forgotten rows named for whom they were about. */
+  const forgottenFacts = Effect.gen(function* () {
+    const bin = yield* factBin;
+    if (bin === null) return [];
+    const nameOf = (id: string) =>
+      sql<Row>`SELECT * FROM fabric_memory_entities WHERE id = ${id}`.pipe(
+        Effect.map(([r]) =>
+          r === undefined
+            ? null
+            : r.forgotten_json === null
+              ? named(r)
+              : (Option.getOrNull(decodeForgotten(r.forgotten_json))?.name ?? null),
+        ),
+        Effect.orDie,
+      );
+    return yield* Effect.forEach(yield* bin.list, (f) =>
+      Effect.map(
+        f.whose !== null || !f.ref.startsWith("person:")
+          ? Effect.succeed(f.whose)
+          : nameOf(f.ref.slice("person:".length)),
+        (name) => ({ id: f.id, name, by: f.by, at: f.at, fact: f.fact }),
+      ),
+    );
+  });
+
+  /** Purged from the bin, by the sweep or the owner. */
+  const purgeNode = (r: Row, actor: TurnAction["actor"]) =>
+    forgetNode(r).pipe(Effect.andThen(emitAction({ kind: "people.purge", actor, subject: r.id })));
+
+  const restore = Effect.fn("TessayaPeople.restore")(function* (
+    id: string,
+    actor: TurnAction["actor"],
+  ) {
     const r = (yield* binned).find((x) => x.id === id);
     const was = r === undefined ? null : Option.getOrNull(decodeForgotten(r.forgotten_json));
     if (r === undefined || was === null) return null;
@@ -357,6 +412,7 @@ export const make = Effect.gen(function* () {
     yield* sql`
       UPDATE fabric_memory_entities SET forgotten_json = NULL, name = ${name} WHERE id = ${r.id}
     `.pipe(Effect.orDie);
+    yield* emitAction({ kind: "people.restore", actor, subject: r.id });
     return was.name ?? "someone new";
   });
 
@@ -604,7 +660,7 @@ export const make = Effect.gen(function* () {
     for (const r of yield* binned) {
       const was = Option.getOrNull(decodeForgotten(r.forgotten_json));
       if (was !== null && Date.parse(was.at) + days * DAY_MS <= Date.parse(at)) {
-        yield* forgetNode(r);
+        yield* purgeNode(r, { kind: "system", certainty: 1 });
         purged += 1;
       }
     }
@@ -681,10 +737,13 @@ export const make = Effect.gen(function* () {
         retentionDays: yield* unnamedDays,
         askNames: yield* askNamesOn,
         binDays: yield* binDays,
-        forgotten: (yield* binned).flatMap((r) => {
-          const was = Option.getOrNull(decodeForgotten(r.forgotten_json));
-          return was === null ? [] : [{ id: r.id, name: was.name, by: was.by, at: was.at }];
-        }),
+        forgotten: [
+          ...(yield* binned).flatMap((r) => {
+            const was = Option.getOrNull(decodeForgotten(r.forgotten_json));
+            return was === null ? [] : [{ id: r.id, name: was.name, by: was.by, at: was.at }];
+          }),
+          ...(yield* forgottenFacts),
+        ].toSorted((a, b) => b.at.localeCompare(a.at)),
       },
     );
   });
@@ -817,20 +876,32 @@ export const make = Effect.gen(function* () {
         INSERT INTO fabric_settings (key, value) VALUES (${BIN_DAYS_KEY}, ${String(days)})
         ON CONFLICT (key) DO UPDATE SET value = excluded.value
       `.pipe(Effect.orDie);
-      return done(`Forgotten people can be restored for ${days} days.`);
+      return done(`Forgotten people and facts can be restored for ${days} days.`);
     }
+    const actor: TurnAction["actor"] = {
+      kind: owner ? "owner" : "member",
+      certainty: caller.assurance >= 3 ? 1 : 0.8,
+    };
+    const facts = yield* factBin;
     if (input.action === "restore") {
-      const back = yield* restore(input.id ?? "");
-      return back === null
+      const back = yield* restore(input.id ?? "", actor);
+      if (back !== null) return done(`Restored: ${back}.`);
+      const fact = facts === null ? null : yield* facts.restore(input.id ?? "", actor);
+      return fact === null
         ? refused("That isn't in Recently forgotten.")
-        : done(`Restored: ${back}.`);
+        : done(`Put back: ${fact.replace(/^\s*-\s*/, "")}.`);
     }
     if (input.action === "purge") {
-      // Permanent, so the owner's alone: one person, or the whole bin with no id.
+      // Permanent, so the owner's alone: one person or fact, or the whole bin with no id.
       if (!owner) return refused("Only the owner deletes people for good.");
       const gone = (yield* binned).filter((x) => input.id === undefined || x.id === input.id);
-      for (const x of gone) yield* forgetNode(x);
-      return done(gone.length === 0 ? "Nothing to delete." : `Deleted for good: ${gone.length}.`);
+      for (const x of gone) yield* purgeNode(x, actor);
+      const n =
+        gone.length +
+        (facts === null || (input.id !== undefined && gone.length > 0)
+          ? 0
+          : yield* facts.purge(input.id, actor));
+      return done(n === 0 ? "Nothing to delete." : `Deleted for good: ${n}.`);
     }
     const r = yield* target(input.id, input.vessel);
     if (r === null)

@@ -876,9 +876,29 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
     {
       name: "memory_forget",
       description:
-        'Delete one memory by its id (from memory_search). For "forget that", search for what he means first. He is asked first.',
-      inputSchema: object({ id: { type: "string" } }, ["id"]),
-      run: async (a) => ({ text: await host.forget(str(a, "id", 200)) }),
+        'Delete one memory by its id (from memory_search). For "forget that", search for what he means first. He is asked first. Something you understand of him (the facts after "What you understand of") or of yourself ("How you have come to see yourself": about herself) goes one fact at a time: pass that fact as `fact` instead of an id, first without confirmed; say back the fact its line names and ask for a clear yes, then call again with confirmed. To put back a fact forgotten lately, call with that `fact` and restore.',
+      inputSchema: object({
+        id: { type: "string" },
+        fact: { type: "string", maxLength: 200 },
+        about: { enum: ["them", "herself"] },
+        confirmed: { type: "boolean" },
+        restore: { type: "boolean" },
+      }),
+      run: async (a) => {
+        if (typeof a["fact"] !== "string" || a["fact"].trim() === "")
+          return { text: await host.forget(str(a, "id", 200)) };
+        // One fact of her understanding: her server keeps it, with its own say-back, yes and 30-day bin.
+        if (host.shared === undefined)
+          return { text: "Facts I understand are kept on his server, which isn't reachable now." };
+        return {
+          text: await host.shared.call("tessaya_memory_forget", {
+            fact: str(a, "fact", 200),
+            about: a["about"] === "herself" ? "herself" : "them",
+            confirmed: a["confirmed"] === true,
+            restore: a["restore"] === true,
+          }),
+        };
+      },
     },
     {
       name: "browser_route",

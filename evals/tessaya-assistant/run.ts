@@ -139,7 +139,9 @@ const sample = async (c: AssistantCase, index: number): Promise<Sample> => {
     ...(c.answers === undefined ? {} : { answers: c.answers }),
     ...(() => {
       const recalled = recalledFor(c);
-      const all = [extra, recalled].filter((x): x is string => x !== undefined && x !== "");
+      const all = [extra, recalled, c.understood].filter(
+        (x): x is string => x !== undefined && x !== "",
+      );
       return all.length === 0 ? {} : { extra: all.join("\n\n") };
     })(),
     env: process.env,

@@ -121,6 +121,13 @@ describe("the assistant's tool table", () => {
       text: "changed",
     });
     expect(called).toEqual([["settings_set", { key: "desktop:chime", value: false }]]);
+    // One fact of her understanding goes to the server's forget, with its say-back, yes and bin.
+    const forget = tools.find((t) => t.name === "memory_forget")!;
+    await forget.run({ fact: "hates football", confirmed: true });
+    expect(called.at(-1)).toEqual([
+      "tessaya_memory_forget",
+      { fact: "hates football", about: "them", confirmed: true, restore: false },
+    ]);
     expect(
       buildTessayaTools(
         { ...host([]), shared: { specs: [spec("settings_set", false)], call: async () => "" } },
