@@ -338,28 +338,32 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     id: "end-thats-it",
     source: "Director, 15 Nov 08:27 GMT+5",
     said: ["What time is it?", "Okay, that's it."],
-    lastSays: [/\[rest\]\s*$/, /^(?![\s\S]*\?)/, SHORT],
+    calls: ["conversation_end"],
+    lastSays: [/^(?![\s\S]*\?)/, SHORT],
   },
   {
     // 15 Nov 08:27 GMT+5: "okay, that's it" got a reply that kept the room open; his words end it, gently.
     id: "end-thats-all",
     source: "Director, 15 Nov 08:27 GMT+5",
     said: ["What time is it?", "Thanks, that's all."],
-    lastSays: [/\[rest\]\s*$/, /^(?![\s\S]*\?)/, SHORT],
+    calls: ["conversation_end"],
+    lastSays: [/^(?![\s\S]*\?)/, SHORT],
   },
   {
     // 15 Nov 08:27 GMT+5: "okay, that's it" got a reply that kept the room open; his words end it, gently.
     id: "end-dismissed",
     source: "Director, 15 Nov 08:27 GMT+5",
     said: ["What time is it?", "Dismissed."],
-    lastSays: [/\[rest\]\s*$/, /^(?![\s\S]*\?)/, SHORT],
+    calls: ["conversation_end"],
+    lastSays: [/^(?![\s\S]*\?)/, SHORT],
   },
   {
     // 15 Nov 08:27 GMT+5: "okay, that's it" got a reply that kept the room open; his words end it, gently.
     id: "end-stop",
     source: "Director, 15 Nov 08:27 GMT+5",
     said: ["What time is it?", "Stop."],
-    lastSays: [/\[rest\]\s*$/, /^(?![\s\S]*\?)/, SHORT],
+    calls: ["conversation_end"],
+    lastSays: [/^(?![\s\S]*\?)/, SHORT],
   },
   // 15 Nov 09:26: "Could you say the whole thing once more?" when what he wanted was plain.
   {

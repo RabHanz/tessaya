@@ -12,6 +12,7 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
+import { REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import { describe, expect, it } from "vite-plus/test";
 
 import * as PeerLinks from "../peer/PeerLinks.ts";
@@ -494,6 +495,53 @@ effectIt.effect(
       yield* TestClock.adjust("300 millis");
       yield* Fiber.join(stale);
       expect(sent).not.toMatch(/tessaya_watch/);
+    }),
+);
+
+effectIt.effect(
+  "the model's conversation_end rests the room after her goodbye, said at once, a goodbye of no words too (18 Nov)",
+  () =>
+    Effect.gen(function* () {
+      let goodbye = "";
+      let args = {};
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        // Her goodbye, the call, then a second goodbye the model wrote after it.
+        session: (turn) =>
+          Stream.concat(
+            Stream.make(goodbye),
+            Stream.unwrap(
+              Effect.map(turn.run("conversation_end", args), () => Stream.make("Goodnight again.")),
+            ),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.succeed([]),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([] as never),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
+      const turn = () =>
+        r1TurnStream({ heard: "we're done for now", history: [] }, brain, {
+          specs: [],
+          run: () => Effect.succeed({ text: "{}", isError: false }),
+        }).pipe(
+          Stream.runCollect,
+          Effect.map((said) => [...said].join("")),
+          Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
+        );
+      goodbye = "Goodnight.";
+      expect(yield* turn()).toBe(`Goodnight. ${REST_MARK}`);
+      goodbye = "";
+      expect(yield* turn()).toBe(`Goodnight again. ${REST_MARK}`);
+      // The goodbye in the call is said at once; what the model writes after it is not.
+      args = { goodbye: "Sleep well." };
+      expect(yield* turn()).toBe(`Sleep well. ${REST_MARK}`);
     }),
 );
 

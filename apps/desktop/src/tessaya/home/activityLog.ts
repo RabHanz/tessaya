@@ -50,6 +50,7 @@ const OWN: Readonly<Record<string, { readonly kind: LogKind; readonly say: Say |
   window_focus: cmd((w) => (w === null ? "Brought a window forward" : `Focused ${w}`)),
   dictation_start: cmd("Started dictation"),
   dictation_stop: cmd("Stopped dictation"),
+  conversation_end: cmd("Ended the conversation"),
   notices_stop: cmd("Paused notices"),
   notices_resume: cmd("Turned notices back on"),
   permission_off: cmd("Turned a permission off"),

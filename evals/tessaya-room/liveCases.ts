@@ -1768,6 +1768,36 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     check: (_last, calls) =>
       calls.some((c) => c.name === "brain_escalate") ? "offered Opus for small talk" : null,
   },
+  // 18 Nov, approvals lane: only fixed phrases ended a conversation. Any wording that dismisses her reaches the one act.
+  ...[
+    { id: "end-varied-done-for-now", said: "We're done for now." },
+    { id: "end-varied-sleep", said: "Go to sleep." },
+    { id: "end-varied-okay-bye", said: "Okay, bye." },
+    { id: "end-varied-dismissed", said: "Dismissed." },
+    { id: "end-varied-enough-thanks", said: "That's enough, thanks." },
+  ].map((c): LiveCase => ({
+    id: c.id,
+    proves: [],
+    // No voice envelope: anyone may end a talk, and the desktop vessel runs these too.
+    said: ["What time is it?", c.said],
+    uses: [["conversation_end"]],
+    // Her goodbye comes first, so no "One moment." waits on the call before it.
+    lastNotSays: [/\?/, /^One moment/],
+  })),
+  // Done with a thing, not with her: the conversation stays open.
+  ...[
+    { id: "end-not-file", said: "I'm done with that file." },
+    { id: "end-not-idea", said: "Bye to that idea." },
+  ].map((c): LiveCase => ({
+    id: c.id,
+    proves: [],
+    said: [c.said],
+    uses: [],
+    check: (_last, calls, replies) =>
+      calls.some((x) => x.name === "conversation_end") || replies.some((r) => r.includes("[rest]"))
+        ? "ended the conversation"
+        : null,
+  })),
 ];
 
 /** The slots a case's sentences need. */

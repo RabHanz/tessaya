@@ -33,6 +33,7 @@ import { hereLine } from "../../apps/server/src/tessaya/TessayaTurn.ts";
 import { TurnOrigin } from "../../apps/server/src/tessaya/TurnOrigin.ts";
 import { offlineWhy } from "../../apps/server/src/home/DeviceRegistry.ts";
 import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speakingVolume.ts";
+import { CONVERSATION_END } from "../../packages/tessaya-shared/src/stopPhrases.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { clockLine } from "../../packages/tessaya-shared/src/brain.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/osPack.ts";
@@ -727,7 +728,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   const mcp =
     values.brain === "tools"
       ? await startTessayaMcp({
-          tools: [...ROOM_TOOL_SPECS, LOOK].map((tool) => ({
+          tools: [...ROOM_TOOL_SPECS, LOOK, CONVERSATION_END].map((tool) => ({
             name: tool.name,
             description: tool.description,
             inputSchema: tool.input_schema as Record<string, unknown>,

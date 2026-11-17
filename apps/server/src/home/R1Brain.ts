@@ -9,6 +9,7 @@ import * as NodeChildProcess from "node:child_process";
 
 import { brainRoute, credentialOf } from "@t3tools/tessaya-shared/brainRoutes";
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
+import { CONVERSATION_END } from "@t3tools/tessaya-shared/stopPhrases";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -484,8 +485,13 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
                   used.push(event.name);
                   step(`call:${event.name}`);
                   actAt ??= Date.now();
-                  // Before her first word only: once she is talking, she says it herself.
-                  if (firstAt === null && used.length === 1) turn.cue(event.web);
+                  // Before her first word only: once she is talking, she says it herself. A goodbye needs no "one moment".
+                  if (
+                    firstAt === null &&
+                    used.length === 1 &&
+                    !event.name.endsWith(CONVERSATION_END.name)
+                  )
+                    turn.cue(event.web);
                 }
               },
             }),
