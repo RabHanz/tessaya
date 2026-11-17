@@ -424,7 +424,23 @@ export default defineConfig(() => {
       sourcemap: buildSourcemap,
       ...(builtDev ? { watch: { exclude: rolldownWatchExclude } } : {}),
       rolldownOptions: {
+        // The light body as a fixed-name script, for owner-only layer pages that load only same-origin scripts.
+        input: {
+          index: new URL("./index.html", import.meta.url).pathname,
+          "tessaya-body": new URL("./src/body/entry.ts", import.meta.url).pathname,
+        },
         output: {
+          entryFileNames: (chunk) =>
+            chunk.name === "tessaya-body" ? "assets/tessaya-body.js" : "assets/[name]-[hash].js",
+          // The body's few pure modules get their own chunk, so its page never pulls a large app chunk with them.
+          advancedChunks: {
+            groups: [
+              {
+                name: "tessaya-body-core",
+                test: /tessaya-shared[\\/]src[\\/](bodyCues|visemes|speechEffects)\.ts$/,
+              },
+            ],
+          },
           // PDF.js resolves decoder modules and ICC data relative to wasmUrl.
           assetFileNames: (asset) =>
             asset.originalFileNames.some((path) => /[/\\]pdfjs-dist[/\\]wasm[/\\]/.test(path))

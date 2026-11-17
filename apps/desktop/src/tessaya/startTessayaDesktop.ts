@@ -33,6 +33,7 @@ import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
 import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
+import type { BodyCue } from "@t3tools/tessaya-shared/bodyCues";
 import { cleanupApiLimitMs } from "@t3tools/tessaya-shared/dictationCleanup";
 import { readDeskTurn } from "@t3tools/tessaya-shared/deskTurnStream";
 import { speakerMark } from "@t3tools/tessaya-shared/groupTalk";
@@ -673,12 +674,32 @@ export const startTessayaDesktop = Effect.gen(function* () {
       });
       win.setContentProtection(true);
       void win.loadURL(`${origin}${page}${chat ? "/chat" : ""}`);
+      if (chat) {
+        privateChatWindow = win;
+        win.on("closed", () => {
+          if (privateChatWindow === win) privateChatWindow = null;
+        });
+      }
+    };
+    // The private chat page's 3D body takes her desktop speech and mood as cues; it ignores them while hidden.
+    let privateChatWindow: Electron.BrowserWindow | null = null;
+    const bodyCue = (cue: BodyCue) => {
+      const win = privateChatWindow;
+      if (win === null || win.isDestroyed()) return;
+      void win.webContents
+        .executeJavaScript(`window.tessayaBodyCue?.(${JSON.stringify(cue)})`)
+        .catch(() => undefined);
     };
     const wantsLayer = (args: ReadonlyArray<string>) =>
       args.some((a) => a.startsWith(`${TESSAYA_SCHEME}://layer`));
     const wantsChat = (args: ReadonlyArray<string>) =>
       args.some((a) => a.startsWith(`${TESSAYA_SCHEME}://layer/chat`));
-    Electron.powerMonitor.on("lock-screen", () => void layerLink.signal("screenLocked"));
+    // A lock hides her body at once, before the layer has even heard of it.
+    Electron.powerMonitor.on("lock-screen", () => {
+      bodyCue({ kind: "stop" });
+      bodyCue({ kind: "hide" });
+      void layerLink.signal("screenLocked");
+    });
     Electron.powerMonitor.on("suspend", () => void layerLink.signal("sleep"));
     // Five minutes untouched: they stepped away (presence, B-043). Electron has no idle event, so a cheap minute check.
     let idle = false;
@@ -1012,6 +1033,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     voice = startDesktopTessayaVoice({
       loginEntry: environment.appUserModelId,
       privateChat: () => (layerLink.page() === null ? null : () => void openLayerPage(true)),
+      bodyCue,
       stateDir: environment.stateDir,
       conversation: conversations.current,
       onNote: turnLog.note,

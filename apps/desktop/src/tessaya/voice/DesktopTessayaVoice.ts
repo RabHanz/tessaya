@@ -539,6 +539,7 @@ import type {
 } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, wantsMoving, type VoicePill } from "./voicePill.ts";
+import type { BodyCue } from "@t3tools/tessaya-shared/bodyCues";
 import { parsePillDesign, parsePillWave, type PillDesign, type PillWave } from "./pillLook.ts";
 import {
   bodyOf,
@@ -1370,10 +1371,35 @@ export interface TrayExtras extends BrainVoiceHook {
   }) => Promise<number>;
 }
 
+/** The mascot's speech, level and mood also go to the 3D body as cues: one source drives both bodies. */
+const mirrorBody = (m: DesktopMascot, cue: ((c: BodyCue) => void) | undefined): DesktopMascot => {
+  if (cue === undefined) return m;
+  let speaking = false;
+  return {
+    ...m,
+    turn: (phase) => {
+      m.turn(phase);
+      if (speaking && phase !== "speaking") cue({ kind: "silent" });
+      speaking = phase === "speaking";
+    },
+    level: (value, shape) => {
+      m.level(value, shape);
+      if (speaking)
+        cue({ kind: "level", value, ...(shape?.viseme ? { viseme: shape.viseme } : {}) });
+    },
+    mood: (label, intensity) => {
+      m.mood(label, intensity);
+      cue({ kind: "mood", mood: label, intensity });
+    },
+  };
+};
+
 export interface DesktopTessayaVoiceInput {
   readonly stateDir: string;
   /** Opens his private chat window; null while no owner-only layer runs on this machine's server. */
   readonly privateChat?: () => (() => void) | null;
+  /** Her speech and mood as 3D body cues (bodyCues.ts), for the private window's body while it is open (M-047). */
+  readonly bodyCue?: (cue: BodyCue) => void;
   /** The one conversation (D142), shared with the screen side. */
   readonly conversation?: ConversationLog;
   /** Every reply and refusal worth the turn log. */
@@ -5101,7 +5127,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         if (!silenced(new Date())) input.extras?.speak?.(text);
       },
     });
-  const mascot = makeMascot(() => mascotPersonaArg());
+  const mascot = mirrorBody(
+    makeMascot(() => mascotPersonaArg()),
+    input.bodyCue,
+  );
   /** The others with her, one per persona as his setting says, by persona id. */
   const crew = new Map<string, DesktopMascot>();
   const crewPersonas = () => {

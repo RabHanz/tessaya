@@ -96,7 +96,8 @@ const PAGE_HEADERS = {
   "cache-control": "no-store",
   "x-content-type-options": "nosniff",
   "content-security-policy":
-    "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; media-src blob:; manifest-src 'self'; frame-ancestors 'none'",
+    // blob: lets the 3D body's model loader read the textures packed inside a model file
+    "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; media-src blob:; manifest-src 'self'; frame-ancestors 'none'",
 } as const;
 
 const page = (body: string, contentType: string) =>
@@ -927,6 +928,12 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
           if (callers.get(caller.session) === caller) callers.delete(caller.session);
         }),
     );
+    if (answer.bytes !== undefined)
+      return HttpServerResponse.uint8Array(answer.bytes, {
+        status: answer.status,
+        contentType: answer.contentType ?? "application/octet-stream",
+        headers: PAGE_HEADERS,
+      });
     return answer.body === undefined
       ? HttpServerResponse.jsonUnsafe(answer.json ?? {}, {
           status: answer.status,
