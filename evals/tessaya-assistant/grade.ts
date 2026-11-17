@@ -12,7 +12,7 @@ export interface Sample {
   readonly reply: string;
   /** Every reply when the case says more than one sentence. */
   readonly replies?: ReadonlyArray<string>;
-  /** The model the sample ran on. */
+  /** The model a live turn routes the sentence to, whatever --model the run used. */
   readonly model?: string;
   /** The judge's verdict on the case's rubric, when it has one. */
   readonly judged?: boolean;
