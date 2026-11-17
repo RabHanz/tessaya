@@ -45,7 +45,9 @@ import { voicesOf } from "./segments.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import {
+  hedge,
   noteTime,
+  PERSONAL_BUDGET_MS,
   pickRecogniser,
   recognisersFor,
   turnAcross,
@@ -176,13 +178,12 @@ const recognisers = (online: () => boolean) => {
     }
   }, 45_000);
   const status = () => states.map((s) => ({ url: s.url, up: s.queue !== null }));
-  const turn = (owner = false): RecogniserTurn =>
+  const across = (
+    poolOf: (states: ReadonlyArray<RecogniserState>) => ReadonlyArray<RecogniserState>,
+  ): RecogniserTurn =>
     turnAcross(
       (tried) => {
-        const pool = recognisersFor(
-          states.filter((s) => !tried.has(s.url)),
-          owner,
-        );
+        const pool = poolOf(states.filter((s) => !tried.has(s.url)));
         const chosen = pickRecogniser(pool, Date.now()) ?? pool[0];
         if (chosen === undefined) return null;
         const token = list.find((r) => r.url === chosen.url)!.token;
@@ -200,6 +201,17 @@ const recognisers = (online: () => boolean) => {
       },
       () => performance.now(),
     );
+  /** `only`: his personal model alone (the wake check compares the two models), not hedged with a general one. */
+  const turn = (owner = false, only = false): RecogniserTurn => {
+    const mine = owner && states.some((s) => s.personal === true && s.queue !== null);
+    if (!mine || only) return across((pool) => recognisersFor(pool, owner));
+    return hedge(
+      across((pool) => pool.filter((s) => s.personal === true)),
+      across((pool) => recognisersFor(pool, false)),
+      () => new Promise((r) => setTimeout(r, PERSONAL_BUDGET_MS)),
+      (who) => log(`recogniser hedge: ${who} words taken`),
+    );
+  };
   return Object.assign(turn, { status });
 };
 
@@ -862,8 +874,11 @@ const main = async () => {
   setInterval(() => void readVocabulary(), VOCABULARY_EVERY_MS).unref();
   const fix = (text: string) =>
     biasTranscript(text, vocabulary, { names: roster.map((p) => p.name) });
-  const recognise = (who?: { readonly owner: boolean }): RecogniserTurn => {
-    const turn = heard(who?.owner);
+  const recognise = (who?: {
+    readonly owner: boolean;
+    readonly only?: boolean;
+  }): RecogniserTurn => {
+    const turn = heard(who?.owner, who?.only);
     return {
       ...turn,
       finish: async () => fix(await turn.finish()),
@@ -1009,7 +1024,7 @@ const main = async () => {
           confirm: (pcm) =>
             Promise.all(
               (personalConfirm ? [false, true] : [false]).map((owner) => {
-                const turn = recognise({ owner });
+                const turn = recognise({ owner, only: true });
                 turn.feed(pcm);
                 return turn.finish();
               }),
