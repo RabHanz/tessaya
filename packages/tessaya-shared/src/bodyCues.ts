@@ -112,6 +112,55 @@ export const mouthWeights = (viseme: Viseme | undefined, open = 1): Weights => {
   return Object.fromEntries(Object.entries(MOUTH[viseme]).map(([p, w]) => [p, w * o]));
 };
 
+/**
+ * The intimate expression set (M-047), beside the presets. A renderer builds each from the model's own morphs, its
+ * lookAt and small overlays (blush, tears, sweat, skin sheen); a model carrying a custom expression of the same name
+ * wins. The private layer decides the weights from her feel; a body only draws them.
+ */
+export const INTIMATE_STATES = [
+  "eyesHalf",
+  "eyesRoll",
+  "eyesShut",
+  "eyesTeary",
+  "mouthPant",
+  "mouthO",
+  "mouthBite",
+  "blush",
+  "sweat",
+  "sheen",
+] as const;
+export type IntimateState = (typeof INTIMATE_STATES)[number];
+export type States = Partial<Record<IntimateState, number>>;
+
+/** Whole-body motion while she is stirred: breath depth, breaths a second, trembling and back arch (0..1 but `breathHz`). */
+export interface Motion {
+  readonly breath: number;
+  readonly breathHz: number;
+  readonly tremble: number;
+  readonly arch: number;
+}
+export const STILL: Motion = { breath: 0, breathHz: 0.25, tremble: 0, arch: 0 };
+
+/** Word-timed intimate faces: G7 effects name them like any face, and each holds over her felt state until the line ends. */
+export const INTIMATE_FACES: Readonly<
+  Record<
+    string,
+    { readonly face: Weights; readonly states: States; readonly motion?: Partial<Motion> }
+  >
+> = {
+  gasp: { face: { surprised: 0.4 }, states: { mouthO: 0.8 }, motion: { arch: 0.3 } },
+  moan: { face: { relaxed: 0.4 }, states: { mouthO: 0.5, eyesHalf: 0.7, blush: 0.6 } },
+  bite: { face: { happy: 0.2 }, states: { mouthBite: 1, eyesHalf: 0.5, blush: 0.5 } },
+  pleading: { face: { sad: 0.4 }, states: { eyesTeary: 0.7, eyesHalf: 0.3, blush: 0.6 } },
+  shiver: { face: {}, states: { eyesShut: 0.6 }, motion: { tremble: 0.7 } },
+  melt: { face: { relaxed: 0.7 }, states: { eyesHalf: 0.8, blush: 0.7, mouthPant: 0.3 } },
+  peak: {
+    face: { surprised: 0.2 },
+    states: { eyesRoll: 0.8, eyesTeary: 0.6, mouthO: 0.9, blush: 1, sweat: 0.6 },
+    motion: { tremble: 1, arch: 1 },
+  },
+};
+
 export type BodyBone =
   | "head"
   | "neck"
@@ -202,6 +251,9 @@ export type BodyCue =
       /** The private layer's felt state (0..1), when it has one: how stirred she is and how at ease. */
       readonly arousal?: number;
       readonly comfort?: number;
+      /** The intimate set's weights and her body's motion, when the private layer sends them. */
+      readonly states?: States;
+      readonly motion?: Motion;
     }
   | { readonly kind: "gesture"; readonly gesture: string }
   /** A prop held on a bone (gated by the layer like models); no url puts it away. */
@@ -253,6 +305,18 @@ const num = (v: unknown, lo: number, hi: number) =>
 const str = (v: unknown, max = 200) =>
   typeof v === "string" && v.length > 0 && v.length <= max ? v : null;
 
+const STATE_NAMES = new Set<string>(INTIMATE_STATES);
+const parseStates = (v: unknown): States | null => {
+  if (v === null || typeof v !== "object") return null;
+  const out = Object.fromEntries(
+    Object.entries(v as Record<string, unknown>).flatMap(([k, w]) => {
+      const n = num(w, 0, 1);
+      return STATE_NAMES.has(k) && n !== null ? [[k, n]] : [];
+    }),
+  );
+  return Object.keys(out).length > 0 ? out : null;
+};
+
 /** Reads one cue off the wire (page, plugin socket); null when it is not one. Every body decodes through this. */
 export const parseCue = (raw: unknown): BodyCue | null => {
   if (raw === null || typeof raw !== "object") return null;
@@ -279,6 +343,17 @@ export const parseCue = (raw: unknown): BodyCue | null => {
       const look = str(c["look"], 32);
       const arousal = num(c["arousal"], 0, 1);
       const comfort = num(c["comfort"], 0, 1);
+      const states = parseStates(c["states"]);
+      const m = c["motion"];
+      const motion =
+        m !== null && typeof m === "object"
+          ? {
+              breath: num((m as Record<string, unknown>)["breath"], 0, 1) ?? 0,
+              breathHz: num((m as Record<string, unknown>)["breathHz"], 0.1, 1.5) ?? STILL.breathHz,
+              tremble: num((m as Record<string, unknown>)["tremble"], 0, 1) ?? 0,
+              arch: num((m as Record<string, unknown>)["arch"], 0, 1) ?? 0,
+            }
+          : null;
       return mood && intensity !== null
         ? {
             kind: "mood",
@@ -287,6 +362,8 @@ export const parseCue = (raw: unknown): BodyCue | null => {
             ...(look ? { look } : {}),
             ...(arousal === null ? {} : { arousal }),
             ...(comfort === null ? {} : { comfort }),
+            ...(states === null ? {} : { states }),
+            ...(motion === null ? {} : { motion }),
           }
         : null;
     }
@@ -489,10 +566,14 @@ export const beastkin = (input: {
   readonly intensity: number;
   readonly arousal?: number;
   readonly comfort?: number;
+  readonly motion?: Motion;
 }): {
   readonly earPitch: number;
+  /** Radians of a fast ear twitch while she trembles. */
+  readonly earQuiver: number;
   readonly tailHz: number;
   readonly tailAmp: number;
+  /** Positive hangs the tail, negative lifts it (an arch raises it stiff). */
   readonly tailDroop: number;
 } => {
   const k = Math.max(0, Math.min(1, input.intensity));
@@ -505,12 +586,16 @@ export const beastkin = (input: {
   if (EARS_BACK.has(input.mood)) earPitch = -0.9 * k;
   // ill at ease pins the ears whatever the mood says
   if (uneasy > 0.3) earPitch = Math.min(earPitch, -0.9 * uneasy);
+  const arch = input.motion?.arch ?? 0;
+  // arching back flattens the ears whatever else shows
+  if (arch > 0.3) earPitch = Math.min(earPitch, -0.8 * arch);
   const wag = WAGS.has(input.mood) ? k : 0;
   const cross = EARS_BACK.has(input.mood) ? k : 0;
   return {
     earPitch,
+    earQuiver: 0.12 * (input.motion?.tremble ?? 0),
     tailHz: cross > 0 ? 3 : 1.2 + 1.8 * Math.max(wag, arousal),
-    tailAmp: Math.max(0.35 * wag, 0.25 * arousal, 0.15 * cross) * (1 - uneasy),
-    tailDroop: EARS_DOWN.has(input.mood) ? 0.5 * k : 0,
+    tailAmp: Math.max(0.35 * wag, 0.25 * arousal, 0.15 * cross) * (1 - uneasy) * (1 - 0.7 * arch),
+    tailDroop: (EARS_DOWN.has(input.mood) ? 0.5 * k : 0) - 0.6 * arch,
   };
 };
