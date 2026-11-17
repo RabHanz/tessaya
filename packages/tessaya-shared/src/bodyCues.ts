@@ -122,9 +122,11 @@ export const INTIMATE_STATES = [
   "eyesRoll",
   "eyesShut",
   "eyesTeary",
+  "browsUp",
   "mouthPant",
   "mouthO",
   "mouthBite",
+  "tongue",
   "blush",
   "sweat",
   "sheen",
@@ -148,18 +150,50 @@ export const INTIMATE_FACES: Readonly<
     { readonly face: Weights; readonly states: States; readonly motion?: Partial<Motion> }
   >
 > = {
-  gasp: { face: { surprised: 0.4 }, states: { mouthO: 0.8 }, motion: { arch: 0.3 } },
-  moan: { face: { relaxed: 0.4 }, states: { mouthO: 0.5, eyesHalf: 0.7, blush: 0.6 } },
-  bite: { face: { happy: 0.2 }, states: { mouthBite: 1, eyesHalf: 0.5, blush: 0.5 } },
-  pleading: { face: { sad: 0.4 }, states: { eyesTeary: 0.7, eyesHalf: 0.3, blush: 0.6 } },
-  shiver: { face: {}, states: { eyesShut: 0.6 }, motion: { tremble: 0.7 } },
-  melt: { face: { relaxed: 0.7 }, states: { eyesHalf: 0.8, blush: 0.7, mouthPant: 0.3 } },
+  gasp: { face: { surprised: 0.4 }, states: { mouthO: 0.8, browsUp: 0.5 }, motion: { arch: 0.3 } },
+  moan: {
+    face: { relaxed: 0.4 },
+    states: { mouthO: 0.5, eyesHalf: 0.7, browsUp: 0.7, blush: 0.6 },
+  },
+  bite: { face: { happy: 0.2 }, states: { mouthBite: 1, eyesHalf: 0.5, browsUp: 0.3, blush: 0.5 } },
+  pleading: {
+    face: { sad: 0.4 },
+    states: { eyesTeary: 0.7, eyesHalf: 0.3, browsUp: 0.9, blush: 0.6 },
+  },
+  shiver: { face: {}, states: { eyesShut: 0.6, browsUp: 0.4 }, motion: { tremble: 0.7 } },
+  melt: {
+    face: { relaxed: 0.7 },
+    states: { eyesHalf: 0.8, browsUp: 0.5, blush: 0.7, mouthPant: 0.3 },
+  },
   peak: {
     face: { surprised: 0.2 },
-    states: { eyesRoll: 0.8, eyesTeary: 0.6, mouthO: 0.9, blush: 1, sweat: 0.6 },
+    states: {
+      eyesRoll: 0.8,
+      eyesTeary: 0.6,
+      browsUp: 1,
+      mouthO: 0.6,
+      tongue: 0.5,
+      blush: 1,
+      sweat: 0.6,
+    },
     motion: { tremble: 1, arch: 1 },
   },
 };
+
+/** Where he touched her on screen; the private layer decides what a touch there means at the moment's level. */
+export const TOUCH_ZONES = [
+  "head",
+  "face",
+  "neck",
+  "shoulder",
+  "arm",
+  "hand",
+  "chest",
+  "belly",
+  "hips",
+  "thigh",
+] as const;
+export type TouchZone = (typeof TOUCH_ZONES)[number];
 
 export type BodyBone =
   | "head"
