@@ -7,12 +7,12 @@ import * as Layer from "effect/Layer";
 import { TessayaPhoneInbox } from "../tessaya/TessayaPhoneInbox.ts";
 import { StepUps, layer } from "./StepUps.ts";
 
-/** A phone that has already answered `answer` to every card, and keeps the cards it was shown. */
-const phone = (answer: number | null, shown: Array<PhonePrompt>) =>
+/** A phone that has already answered `answer` to every card, and keeps the cards it was shown and closed. */
+const phone = (answer: number | null, shown: Array<PhonePrompt>, closed: Array<string> = []) =>
   Layer.succeed(TessayaPhoneInbox, {
     mirror: (prompt: PhonePrompt) => Effect.sync(() => void shown.push(prompt)),
     promptAnswer: () => Effect.succeed(answer),
-    closePrompt: () => Effect.void,
+    closePrompt: (id: string) => Effect.sync(() => void closed.push(id)),
     cardLife: Effect.succeed(120_000),
   } as unknown as TessayaPhoneInbox["Service"]);
 
@@ -50,6 +50,43 @@ it.effect("a card act asks his phone for a yes, and no voice releases it", () =>
     assert.strictEqual(shown[0]?.title, "Tessaya wants your yes");
     assert.strictEqual(shown[0]?.needs, "cloud-approve");
   }),
+);
+
+it.effect(
+  "a newer ask for the same act replaces the older card, in plain words with the call behind Details",
+  () => {
+    const shown: Array<PhonePrompt> = [];
+    const closed: Array<string> = [];
+    return Effect.gen(function* () {
+      const stepUps = yield* StepUps;
+      const hold = (body: string) =>
+        stepUps.hold({
+          device: "r1-1",
+          what: `bring Alfred to ${body}`,
+          key: "tessaya_cast:call",
+          details: `tessaya cast {"action":"call","body":"${body}"}`,
+          member: "owner",
+          needs: 2,
+          phone: true,
+          run: () => Effect.void,
+        });
+      const first = yield* hold("Tumble");
+      const second = yield* hold("the desktop");
+      assert.deepStrictEqual(closed, [first]);
+      assert.strictEqual(
+        shown[1]?.detail,
+        "Confirm it's you so she can bring Alfred to the desktop.",
+      );
+      assert.include(shown[1]?.more ?? "", '"action":"call"');
+      // The replaced act is gone; the newest still waits for their voice.
+      assert.isFalse(
+        yield* stepUps.settle("r1-1", { act: first, ok: true, how: "voice", member: "owner" }),
+      );
+      assert.isTrue(
+        yield* stepUps.settle("r1-1", { act: second, ok: true, how: "voice", member: "owner" }),
+      );
+    }).pipe(Effect.provide(layer.pipe(Layer.provide(phone(null, shown, closed)))));
+  },
 );
 
 it.effect("his yes on the card runs the act, as sure as it waited for", () =>

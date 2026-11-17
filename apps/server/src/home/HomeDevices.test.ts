@@ -362,7 +362,9 @@ it.effect(
       const asked = yield* devices.command(ID, { op: "camera" }, agent);
       assert.strictEqual(asked.status, "asked");
       assert.notInclude(topics(), "cmd/camera/capture");
-      const card = (yield* inbox.pending).find((p) => p.title.includes("Tessel"));
+      const card = (yield* inbox.pending).find((p) =>
+        p.title.startsWith("Take one camera picture"),
+      );
       assert.strictEqual(card?.needs, "cloud-approve");
       assert.isTrue(yield* inbox.answerPrompt(card!.id, 0));
       yield* devices.tick;
@@ -401,7 +403,7 @@ it.effect("offers away-from-home on his phone when the R1 says it is away from h
     assert.lengthOf(yield* inbox.pending, 0);
     yield* devices.receive(`${root}/event/net/away`, '{"away":true,"endpoint":1}');
     yield* devices.receive(`${root}/event/net/away`, '{"away":true,"endpoint":1}');
-    const cards = (yield* inbox.pending).filter((p) => p.detail.includes("away from home"));
+    const cards = (yield* inbox.pending).filter((p) => p.title.includes("away from home"));
     assert.lengthOf(cards, 1);
     assert.isFalse(away());
     assert.isTrue(yield* inbox.answerPrompt(cards[0]!.id, 0));
@@ -1007,7 +1009,7 @@ it.effect(
       const asked = yield* call("act", "set", { id: ID, itemId: "camera.capture" });
       assert.deepStrictEqual((asked as { value: { status: string } }).value.status, "asked");
       assert.notInclude(topics(), "cmd/camera/capture");
-      const card = (yield* inbox.pending).find((p) => p.detail.includes("camera.capture"));
+      const card = (yield* inbox.pending).find((p) => p.more?.includes("camera.capture"));
       assert.strictEqual(card?.needs, "cloud-approve");
       assert.isTrue(yield* inbox.answerPrompt(card!.id, 0));
       yield* devices.tick;
@@ -1444,6 +1446,38 @@ it.effect("knows his saved devices from the R1's bonds and says when one has for
       (yield* devices.overview).devices[0]!.speaker!.outputs!.map((o) => o.id),
       ["14:C6:00:00:00:01", "speaker", "E8:07:BF:35:26:5C"],
     );
+    // 18 Nov, 00:38 GMT+5: a voice not sure enough asked twice in different words; one card, in plain words.
+    const inbox = yield* TessayaPhoneInbox;
+    const unsure = { who: "Tessaya via Tessel", surface: "assistant" } as const;
+    const connect = (name: string, by: HomeDevices.DeviceActor) =>
+      devices.command(ID, { op: "item", itemId: "bt.connect", value: { name } }, by);
+    assert.strictEqual((yield* connect("Galaxy X", unsure)).status, "asked");
+    assert.strictEqual((yield* connect("my headphones", unsure)).status, "asked");
+    const cards = yield* inbox.pending;
+    assert.lengthOf(cards, 1);
+    assert.strictEqual(cards[0]!.title, "Connect R1 to your Galaxy X?");
+    assert.notInclude(cards[0]!.detail, "bt.connect");
+    assert.include(cards[0]!.more ?? "", "bt.connect");
+    // Connected anyway: the card is no longer wanted.
+    yield* devices.receive(
+      `${root}/state/bt`,
+      '{"state":"connected","mac":"14:C6:00:00:00:01","saved":true}',
+    );
+    assert.lengthOf(yield* inbox.pending, 0);
+    // His own conversation, his own paired speaker: it connects with no card.
+    sent.length = 0;
+    const own = yield* connect("my speaker", { ...unsure, his: true }).pipe(
+      Effect.forkChild({ startImmediately: true }),
+    );
+    assert.deepStrictEqual(sent, [
+      { topic: "cmd/audio/output", payload: { to: "bt", mac: "E8:07:BF:35:26:5C" } },
+    ]);
+    yield* devices.receive(
+      `${root}/state/bt`,
+      '{"state":"connected","mac":"E8:07:BF:35:26:5C","saved":true}',
+    );
+    assert.strictEqual((yield* Fiber.join(own)).status, "done");
+    assert.lengthOf(yield* inbox.pending, 0);
   }).pipe(Effect.provide(layer));
 });
 

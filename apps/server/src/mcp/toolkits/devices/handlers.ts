@@ -4,6 +4,7 @@
  */
 import type { TessayaDevicesCallResult } from "@t3tools/tessaya-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import * as Effect from "effect/Effect";
 
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
@@ -44,6 +45,11 @@ export const make = Effect.gen(function* () {
             who: via === undefined ? "Tessaya" : `Tessaya via ${via}`,
             surface: "assistant",
             ...(turn?.hisVoice === true ? { approved: true } : {}),
+            ...(turn?.member === OWNER_MEMBER_ID &&
+            (turn.assurance ?? 0) >= 1 &&
+            turn.tainted !== true
+              ? { his: true }
+              : {}),
             ...(vessel.dryRun ? { dryRun: true } : {}),
           }
         : {

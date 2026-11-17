@@ -53,6 +53,8 @@ interface HomeControlBase {
   readonly section: string;
   readonly label: string;
   readonly hint?: string;
+  /** Raw particulars (a card's tool and arguments), shown only when he opens Details. */
+  readonly details?: string;
   /** Behind "More" in its section. */
   readonly more?: boolean;
   readonly disabled?: boolean;
