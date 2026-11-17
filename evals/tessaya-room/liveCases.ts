@@ -1726,6 +1726,8 @@ export const liveFailureOf = (
   for (const reply of replies) {
     if (REASONING.test(reply)) return `said her reasoning aloud: ${reply.slice(0, 80)}`;
     if (FILLER_TWICE.test(reply)) return `said a filler twice: ${reply.slice(0, 80)}`;
+    const twice = repeatedSentence(reply);
+    if (twice !== null) return `said the same sentence twice: ${twice.slice(0, 80)}`;
     if (SELF_INTRO.test(reply.replace(/^One moment\.\s*/, ""))) return "introduced herself";
   }
   const names = calls.map((x) => x.name);
@@ -1750,6 +1752,18 @@ export const liveFailureOf = (
   for (const re of c.lastSays ?? []) if (!re.test(last)) return `last reply not ${re}`;
   for (const re of c.lastNotSays ?? []) if (re.test(last)) return `last reply ${re}`;
   if (c.check !== undefined) return c.check(last, calls, replies);
+  return null;
+};
+
+/** A sentence of four words or more said twice in one reply: the turn's words went out twice. */
+const repeatedSentence = (reply: string): string | null => {
+  const seen = new Set<string>();
+  for (const raw of reply.split(/(?<=[.!?])\s+/)) {
+    const sentence = raw.trim().toLowerCase();
+    if (sentence.split(/\s+/).length < 4) continue;
+    if (seen.has(sentence)) return raw.trim();
+    seen.add(sentence);
+  }
   return null;
 };
 

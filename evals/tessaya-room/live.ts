@@ -265,7 +265,8 @@ for (const c of cases) {
     continue;
   }
   const samples = [first];
-  while (first.why !== null && samples.length < SAMPLES_ON_FAIL) {
+  // Words said twice are the product's, never the model's luck: no more samples for them.
+  while (first.why !== null && !first.why.startsWith("said ") && samples.length < SAMPLES_ON_FAIL) {
     const more = await sample();
     if (!("na" in more)) samples.push(more);
     else break;
