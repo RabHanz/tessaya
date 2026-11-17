@@ -1,6 +1,6 @@
 /**
- * Settings → Personas, mirroring web's Voice › Personas: hire, tune, copy, retire and restore personas, and run his
- * group. Every change goes to the environment's one registry (`baton.personas.change`); she does the same by voice.
+ * Settings → Personas, mirroring web's Voice › Personas: hire (by hand, from one sentence, or from a Character Card),
+ * tune, export as a card, copy, retire and restore personas, and run his group. Every change goes to the environment's one registry (`baton.personas.change`); she does the same by voice.
  */
 import type {
   TessayaPersona,
@@ -27,12 +27,14 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
+import { pickCharacterCard, shareCharacterCard } from "./personaCardFiles";
 import {
   BLANK_PERSONA,
   DIALS,
   groupToggle,
   type PersonaForm,
   personaFormFor,
+  personaFormOfDraft,
   personaSave,
 } from "./personaForm";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
@@ -82,6 +84,8 @@ function PersonasSection(props: {
   const [bin, setBin] = useState<TessayaPersonaChangeResult["bin"]>([]);
   const [form, setForm] = useState<PersonaForm | null>(null);
   const [note, setNote] = useState("");
+  const [sentence, setSentence] = useState("");
+  const [drafting, setDrafting] = useState(false);
 
   const ask = async (input: TessayaPersonaChangeInput): Promise<TessayaPersonaChangeResult> => {
     const result = await change({ environmentId, input });
@@ -111,6 +115,32 @@ function PersonasSection(props: {
 
   const save = async (f: PersonaForm) => {
     if (await send(personaSave(f))) setForm(null);
+  };
+  // A draft fills the form; nothing is saved until he presses Create.
+  const hire = async () => {
+    setDrafting(true);
+    const reply = await ask({ op: "hire", sentence: sentence.trim() });
+    setDrafting(false);
+    if (reply.draft === undefined) return;
+    setSentence("");
+    setForm(personaFormOfDraft(reply.draft));
+  };
+  const importCard = async () => {
+    try {
+      const card = await pickCharacterCard();
+      if (card !== null) await send({ op: "import", card });
+    } catch {
+      setNote("Couldn't read that card file.");
+    }
+  };
+  const exportCard = async (id: string, kind: "png" | "json") => {
+    const reply = await ask({ op: "export", id });
+    if (reply.card === undefined) return;
+    try {
+      await shareCharacterCard(id, kind, reply.card);
+    } catch {
+      setNote("Couldn't open the share sheet. Try again.");
+    }
   };
   const prefix = props.label === null ? "" : `${props.label} · `;
   const team = personas ?? [];
@@ -157,6 +187,8 @@ function PersonasSection(props: {
                       title={p.name}
                       actions={[
                         { id: "edit", title: "Edit" },
+                        { id: "export-png", title: "Export card (PNG)" },
+                        { id: "export-json", title: "Export card (JSON)" },
                         ...(p.lead
                           ? []
                           : [
@@ -170,6 +202,8 @@ function PersonasSection(props: {
                       ]}
                       onPressAction={({ nativeEvent }) => {
                         if (nativeEvent.event === "edit") setForm(personaFormFor(p));
+                        else if (nativeEvent.event === "export-png") void exportCard(p.id, "png");
+                        else if (nativeEvent.event === "export-json") void exportCard(p.id, "json");
                         else if (nativeEvent.event === "duplicate")
                           void send({ op: "duplicate", id: p.id, name: `${p.name} copy` });
                         else if (nativeEvent.event === "retire")
@@ -186,6 +220,42 @@ function PersonasSection(props: {
         )}
         {note === "" ? null : <Muted>{note}</Muted>}
       </SettingsSection>
+      {canChange && form === null ? (
+        <SettingsSection
+          title={`${prefix}Hire`}
+          footer="Describe who you want; Tessaya drafts them for you to check before they join. Imports take Character Card PNG or JSON files from other apps. By voice: “hire me a cheerful cooking buddy”."
+        >
+          <View className="gap-2 px-4 py-3">
+            <TextInput
+              accessibilityLabel="Who to hire"
+              placeholder="A cheerful cooking buddy who keeps me on track"
+              maxLength={600}
+              value={sentence}
+              onChangeText={setSentence}
+              returnKeyType="go"
+              onSubmitEditing={() => {
+                if (sentence.trim() !== "" && !drafting) void hire();
+              }}
+              className={INPUT}
+            />
+            <View className="flex-row justify-end gap-2">
+              <Button
+                size="compact"
+                tone="text"
+                label="Import card"
+                onPress={() => void importCard()}
+              />
+              <Button
+                size="compact"
+                tone="primary"
+                label={drafting ? "Drafting…" : "Draft"}
+                disabled={drafting || sentence.trim() === ""}
+                onPress={() => void hire()}
+              />
+            </View>
+          </View>
+        </SettingsSection>
+      ) : null}
       {form === null ? null : (
         <PersonaFormSection
           form={form}
@@ -334,6 +404,17 @@ function PersonaFormSection(props: {
           value={form.about}
           onChangeText={(about) => onChange({ ...form, about })}
           className={`${INPUT} min-h-24`}
+          textAlignVertical="top"
+        />
+      </View>
+      <View className="px-4 pb-3">
+        <TextInput
+          accessibilityLabel="Greetings, one per line"
+          placeholder="Greetings when you first wake them each day, one per line"
+          multiline
+          value={form.greetings}
+          onChangeText={(greetings) => onChange({ ...form, greetings })}
+          className={`${INPUT} min-h-16`}
           textAlignVertical="top"
         />
       </View>

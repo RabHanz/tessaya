@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { BLANK_PERSONA, groupToggle, personaFormFor, personaSave } from "./personaForm";
+import {
+  BLANK_PERSONA,
+  groupToggle,
+  personaFormFor,
+  personaFormOfDraft,
+  personaSave,
+} from "./personaForm";
 
 describe("personaSave", () => {
   it("creates with the brief and the default brain when the model is blank", () => {
@@ -20,6 +26,7 @@ describe("personaSave", () => {
       lead: true,
       traits: { warmth: 0.8 },
       brain: { model: "opus", effort: "high" },
+      greetings: ["Morning.", "Back again?"],
     });
     expect(personaSave({ ...form, about: "   " })).toEqual({
       op: "edit",
@@ -30,6 +37,29 @@ describe("personaSave", () => {
         traits: { warmth: 0.8 },
         model: "opus",
         private: false,
+        greetings: ["Morning.", "Back again?"],
+      },
+    });
+  });
+
+  it("confirms a drafted hire as a create that keeps its greetings", () => {
+    const form = personaFormOfDraft({
+      name: "Basil",
+      role: "Cooking buddy",
+      about: "Cheerful.",
+      traits: { warmth: 0.9 },
+      greetings: ["What are we cooking?"],
+    });
+    expect(personaSave(form)).toEqual({
+      op: "create",
+      draft: {
+        name: "Basil",
+        role: "Cooking buddy",
+        about: "Cheerful.",
+        traits: { warmth: 0.9 },
+        model: null,
+        private: false,
+        greetings: ["What are we cooking?"],
       },
     });
   });
