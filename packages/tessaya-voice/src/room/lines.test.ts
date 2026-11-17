@@ -31,11 +31,22 @@ describe("the room loop's own words", () => {
     });
     expect(off.lines.take("ack.name", "executive", "owner", "Yes?").text).toBe("Yes?");
     await off.lines.prime("executive", "owner");
+    // Woken with a full request, the greeting goes unsaid: the next wake's prime must not drop it.
+    await off.lines.prime("executive", "owner");
     expect(off.lines.take("ack.name", "executive", "owner", "Yes?").text).toBe("Ahoy, you again!");
     expect(off.lines.take("ack.name", "executive", "owner", "Yes?")).toEqual({
       text: "Yes?",
       mood: null,
     });
+    // With her words on, later wakes' fresh lines queue behind it rather than push it out.
+    let first = true;
+    const on = setup(() => {
+      const ack = first ? [l("Ahoy!"), l("Yes?")] : [l("Hm?"), l("Here."), l("Go on.")];
+      first = false;
+      return { on: true, lines: { "ack.name": ack } };
+    });
+    for (let i = 0; i < 3; i++) await on.lines.prime("executive", "owner");
+    expect(on.lines.take("ack.name", "executive", "owner", "Yes?").text).toBe("Ahoy!");
   });
 
   it("takes the server's wordings in order, facts exact, and asks for more when few are left", async () => {
