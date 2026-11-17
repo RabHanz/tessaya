@@ -42,6 +42,7 @@ import {
   BATON_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   TESSAYA_ACTIVITY_WS_METHODS,
+  TESSAYA_HOUSEHOLD_WS_METHODS,
   TessayaFleetResult,
   type WorkSession,
   type WorkSessionStreamItem,
@@ -236,6 +237,11 @@ export function createTessayaWorkSessionAtoms<R, E>(
     pulseReact: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:pulse-react",
       tag: BATON_PULSE_WS_METHODS.react,
+    }),
+    // The household (Settings → Recently forgotten): its list and the owner's restores and deletes.
+    householdCall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:tessaya:household",
+      tag: TESSAYA_HOUSEHOLD_WS_METHODS.call,
     }),
     personasList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:personas",

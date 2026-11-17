@@ -56,6 +56,7 @@ import {
   type TessayaRpcGroup,
   BATON_METHOD_OF,
   TESSAYA_ACTIVITY_WS_METHODS,
+  TESSAYA_HOUSEHOLD_WS_METHODS,
 } from "@t3tools/tessaya-contracts";
 import {
   isMemberSubject,
@@ -208,6 +209,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // Activity / Why (B-046): reading the action log, like the Record.
   [TESSAYA_ACTIVITY_WS_METHODS.list]: AuthOrchestrationReadScope,
   [TESSAYA_ACTIVITY_WS_METHODS.why]: AuthOrchestrationReadScope,
+  // The household's rules are the service's, by the caller's member, role and assurance, as on its HTTP route.
+  [TESSAYA_HOUSEHOLD_WS_METHODS.call]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   [BATON_CONSENT_WS_METHODS.list]: AuthOrchestrationReadScope,

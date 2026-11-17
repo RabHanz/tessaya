@@ -273,6 +273,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
       rows: [
         page("SettingsVoice", "mic", "Voice and dictation"),
         serverPage("SettingsPersonas", "person.badge.plus", "Personas"),
+        serverPage("SettingsForgotten", "arrow.uturn.backward", "Recently forgotten"),
       ],
     },
     {

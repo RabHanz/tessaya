@@ -210,6 +210,11 @@ import {
 } from "./sessionCatalog.ts";
 import { BATON_CLOUD_WS_METHODS, TessayaCloudCallInput, TessayaCloudCallResult } from "./cloud.ts";
 import { BATON_HOME_WS_METHODS, TessayaHomeCallInput, TessayaHomeCallResult } from "./home.ts";
+import {
+  TESSAYA_HOUSEHOLD_WS_METHODS,
+  TessayaHouseholdCallInput,
+  TessayaHouseholdCallResult,
+} from "./household.ts";
 import { BATON_VOICE_WS_METHODS, TessayaVoiceCallInput, TessayaVoiceCallResult } from "./voice.ts";
 import {
   BATON_BRAIN_WS_METHODS,
@@ -577,6 +582,12 @@ const WsTessayaCloudActRpc = Rpc.make(BATON_CLOUD_WS_METHODS.act, {
 const WsTessayaHomeCallRpc = Rpc.make(BATON_HOME_WS_METHODS.call, {
   payload: TessayaHomeCallInput,
   success: TessayaHomeCallResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaHouseholdCallRpc = Rpc.make(TESSAYA_HOUSEHOLD_WS_METHODS.call, {
+  payload: TessayaHouseholdCallInput,
+  success: TessayaHouseholdCallResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1261,4 +1272,5 @@ export const TessayaRpcGroup = RpcGroup.make(
   WsTessayaCastCallRpc,
   WsTessayaActivityListRpc,
   WsTessayaActivityWhyRpc,
+  WsTessayaHouseholdCallRpc,
 ).middleware(TessayaRpcScopeAuthorization);
