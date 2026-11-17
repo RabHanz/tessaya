@@ -50,6 +50,7 @@ import {
   BATON_PROMPT_LAB_WS_METHODS,
   BATON_PULSE_WS_METHODS,
   BATON_WATCH_WS_METHODS,
+  BATON_HEALTH_WS_METHODS,
   BATON_WS_METHODS,
   TessayaRpcScopeAuthorization,
   type AuthEnvironmentScope,
@@ -116,6 +117,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_WS_METHODS.workSessionUnarchive]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
   [BATON_WATCH_WS_METHODS.watchGet]: AuthOrchestrationReadScope,
+  [BATON_HEALTH_WS_METHODS.get]: AuthOrchestrationReadScope,
   [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_BRAIN_WS_METHODS.usage]: AuthOrchestrationReadScope,
   // A row says what his plan spent: the desktop app's own session only.
@@ -318,6 +320,7 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_JOB_WS_METHODS.jobHandoff,
   BATON_JOB_WS_METHODS.jobLead,
   BATON_WATCH_WS_METHODS.watchGet,
+  BATON_HEALTH_WS_METHODS.get,
   BATON_RECORD_WS_METHODS.list,
   BATON_RECORD_WS_METHODS.append,
   BATON_DICTATION_WS_METHODS.cleanupApi,

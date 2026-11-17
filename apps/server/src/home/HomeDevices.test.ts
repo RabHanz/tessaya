@@ -179,6 +179,41 @@ it("folds the firmware's topics into a device, keeping only the times of a voice
   fold("event/enrol", JSON.stringify({ ...card, phase: "dancing" }));
   assert.deepStrictEqual<unknown>(devices.get(ID)!.enrol, card);
   assert.strictEqual(devices.get(ID)!.log.length, logged);
+  // Her room loop's health report (each minute, retained) is kept for her health model, never logged or "seen";
+  // a malformed one is not kept, and a stall is counted.
+  const host = { host: "voicebox", at: 5, memAvailMb: 300, memPsiFull10: 29, cores: 4 };
+  const report = {
+    host,
+    services: [],
+    wake: { attempts: 3, accepts: 1, since: 1 },
+    replay: { line: "", degraded: false },
+    brain: { rttMs: 80, failures: [] },
+    at: 5,
+  };
+  const seenBefore = devices.get(ID)!.lastSeen;
+  fold("state/voicehost", JSON.stringify(report), 9_000);
+  assert.isNull(devices.get(ID)!.voiceHost);
+  fold(
+    "state/voicehost",
+    JSON.stringify({
+      ...report,
+      host: {
+        ...host,
+        memTotalMb: 8000,
+        swapUsedMb: 900,
+        memPsiSome10: 40,
+        memPsiFull60: 25,
+        cpuPsiSome10: 3,
+        load1: 2,
+      },
+    }),
+    9_000,
+  );
+  assert.strictEqual(devices.get(ID)!.voiceHost?.host.memPsiFull10, 29);
+  assert.strictEqual(devices.get(ID)!.log.length, logged);
+  assert.strictEqual(devices.get(ID)!.lastSeen, seenBefore);
+  fold("event/audio/stall", "{}", 9_500);
+  assert.deepStrictEqual(devices.get(ID)!.stalls, [9_500]);
   fold("state/online", "0");
   assert.isFalse(devices.get(ID)!.online);
   assert.isNull(HomeDevices.applyMessage(devices, "other/topic", "1", 1));

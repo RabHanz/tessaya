@@ -17,6 +17,7 @@ import { TessayaAccountsSettings } from "./TessayaAccountsSettings";
 import { BrainSettingsPanel } from "./BrainSettings";
 import { BrainUsagePanel } from "./BrainUsageSettings";
 import { CastSection } from "./CastSettings";
+import { HealthSection } from "./HealthSettings";
 import { RecentlyForgottenSection } from "./RecentlyForgottenSettings";
 import { ActivityPanel } from "./ActivitySettings";
 import { HardwareSettingsPanel } from "./HardwareSettings";
@@ -62,6 +63,17 @@ function CastPage() {
   );
 }
 
+function HealthPage() {
+  const { environment } = useSettingsScope();
+  return (
+    <SettingsPageContainer>
+      {environment === null ? null : (
+        <HealthSection key={environment.environmentId} environmentId={environment.environmentId} />
+      )}
+    </SettingsPageContainer>
+  );
+}
+
 function ForgottenPage() {
   const { environment } = useSettingsScope();
   return (
@@ -98,6 +110,7 @@ const TESSAYA_PAGES = {
   team: TeamPanel,
   phone: PhonePage,
   forgotten: ForgottenPage,
+  health: HealthPage,
 } as const;
 
 export type TessayaPage = keyof typeof TESSAYA_PAGES;
@@ -136,6 +149,7 @@ const PLACE_PAGE: Partial<Record<TessayaPlaceId, TessayaPage>> = {
   personas: "voices",
   cast: "cast",
   phone: "phone",
+  health: "health",
 };
 
 function OpenPlace({ id }: { readonly id: TessayaPlaceId }): ReactNode {

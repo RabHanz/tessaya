@@ -33,7 +33,8 @@ import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { clockLine } from "../../packages/tessaya-shared/src/brain.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/osPack.ts";
 import { ownerDoc, ownerLine } from "../../packages/tessaya-shared/src/ownerProfile.ts";
-import { OWNER, roomCases, type RoomCase } from "./cases.ts";
+import { diagnose } from "../../packages/tessaya-shared/src/health.ts";
+import { HEALTHY, OWNER, roomCases, type RoomCase } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
 import { answerOf, retried } from "../shared/retry.ts";
 
@@ -392,6 +393,9 @@ const WORK = {
 
 type House = ReturnType<typeof makeHouse>;
 
+/** What her health reads in each case: `tessaya_health` answers with the real diagnosis of it. */
+const healthOf = new WeakMap<House, NonNullable<RoomCase["health"]>>();
+
 /** Each case's R1 starts at the firmware's 0 dB. */
 const volumes = new WeakMap<House, number>();
 /** Which saved Wi-Fi is first on the fake Tessel; home until she moves it. */
@@ -535,6 +539,15 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       return { text: ownerDoc(OWNER.docs, args as { name?: string; section?: string }) };
     case "laptop_ask":
       return { ok: false, error: "your laptop isn't linked to this server, so I can't see it." };
+    case "tessaya_health": {
+      const symptom = args["symptom"];
+      return {
+        diagnosis: diagnose(
+          healthOf.get(house) ?? HEALTHY,
+          symptom === "slow" || symptom === "choppy" || symptom === "wake" ? symptom : "any",
+        ),
+      };
+    }
     // As TessayaUnderstanding answers: a fact is said back first, and goes only on a confirmed second call.
     case "tessaya_memory_forget": {
       const a = args as { fact?: unknown; confirmed?: unknown; restore?: unknown };
@@ -661,6 +674,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-room-"));
   const house = makeHouse();
   if (c.wifiFirst !== undefined) wifiFirst.set(house, c.wifiFirst);
+  if (c.health !== undefined) healthOf.set(house, c.health);
   const calls: Array<string> = [];
   const replies: Array<string> = [];
   const lamp: Array<"on" | "off"> = [];

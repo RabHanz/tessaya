@@ -123,6 +123,7 @@ import {
   TessayaPulseReactResult,
 } from "./record.ts";
 import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
+import { BATON_HEALTH_WS_METHODS, TessayaHealthInput, TessayaHealthResult } from "./health.ts";
 import {
   TESSAYA_ACTIVITY_WS_METHODS,
   TessayaActivityListInput,
@@ -867,6 +868,12 @@ const WsTessayaWatchGetRpc = Rpc.make(BATON_WATCH_WS_METHODS.watchGet, {
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
+const WsTessayaHealthGetRpc = Rpc.make(BATON_HEALTH_WS_METHODS.get, {
+  payload: TessayaHealthInput,
+  success: TessayaHealthResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
 const WsTessayaRecordListRpc = Rpc.make(BATON_RECORD_WS_METHODS.list, {
   payload: TessayaRecordListInput,
   success: TessayaRecordListResult,
@@ -1146,6 +1153,7 @@ const BATON_RPCS = [
   WsTessayaJobScheduleRpc,
   WsTessayaJobSplitRpc,
   WsTessayaWatchGetRpc,
+  WsTessayaHealthGetRpc,
   WsTessayaRecordListRpc,
   WsTessayaRecordAppendRpc,
   WsTessayaPulseReactRpc,

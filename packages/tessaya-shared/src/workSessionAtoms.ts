@@ -36,6 +36,7 @@ import {
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_WATCH_WS_METHODS,
+  BATON_HEALTH_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
   BATON_LIVE_WS_METHODS,
@@ -273,6 +274,12 @@ export function createTessayaWorkSessionAtoms<R, E>(
       tag: BATON_PHONE_PAIRING_WS_METHODS.issue,
     }),
     // Who wears which body (Settings → Cast): the live map, refreshed while it is open, and his moves.
+    // Settings → Health: read when opened and on "Check again"; each read is a diagnosis she records, so no timer.
+    healthQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:health-query",
+      tag: BATON_HEALTH_WS_METHODS.get,
+      staleTimeMs: 30_000,
+    }),
     castQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:baton:cast-query",
       tag: BATON_CAST_WS_METHODS.get,

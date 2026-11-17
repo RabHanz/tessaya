@@ -26,6 +26,7 @@ import {
 } from "@t3tools/tessaya-contracts";
 import { activityText } from "../../../provenance/activityText.ts";
 import { houseZone } from "../../../tessaya/houseZone.ts";
+import * as TessayaHealth from "../../../tessaya/TessayaHealth.ts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Clock from "effect/Clock";
@@ -436,6 +437,20 @@ export const layer = McpToolAccess.toLayer(
       ),
       tessaya_jobs: McpToolAccess.reads(() => call(handlers[BATON_JOB_WS_METHODS.jobList]())),
       tessaya_watch: McpToolAccess.reads(() => call(handlers[BATON_WATCH_WS_METHODS.watchGet]())),
+      tessaya_health: McpToolAccess.reads((input) =>
+        call(
+          McpInvocationContext.McpInvocationContext.pipe(
+            Effect.flatMap((scope) => {
+              const explained = TessayaHealth.explain(input.symptom ?? "any", {
+                kind: "agent",
+                id: scope.client?.sessionId ?? "mcp",
+              });
+              return runtime === null ? explained : explained.pipe(Effect.provideContext(runtime));
+            }),
+            Effect.map(({ diagnosis }) => ({ diagnosis })),
+          ),
+        ),
+      ),
       // State and names only: no synopsis, prompt or folder, and a walled project's work by its project's name.
       // A linked server of his gets its projects and accounts resolved; any other outside reader, neither.
       tessaya_fleet: McpToolAccess.reads(() =>

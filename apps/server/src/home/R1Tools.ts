@@ -78,6 +78,8 @@ const ROOM_TOOLS = [
   "tessaya_fleet",
   "tessaya_jobs",
   "tessaya_watch",
+  // Her health (17 Nov): "why are you slow?", "why didn't you wake?".
+  "tessaya_health",
   "tessaya_record",
   "tessaya_rules",
   "tessaya_memory_search",

@@ -110,6 +110,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "tab.intercom": "Intercom",
     "tab.homeassistant": "Home Assistant",
     "tab.phone": "Phone",
+    "tab.health": "Health",
     "tab.learn": "Learn Tessaya",
     "intro.learn.title": "Learn Tessaya",
     "intro.learn.text":
@@ -143,6 +144,9 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "intro.homeassistant.title": "Home Assistant",
     "intro.homeassistant.text":
       "Connect Home Assistant so Tessaya can turn on lights and switches in a room when you ask.",
+    "intro.health.title": "Health",
+    "intro.health.text":
+      "How Tessaya is running: each machine's memory and load, her voice services, your Tessels' Wi-Fi and reply times, and what is slowing her down. Ask her \u201cwhy are you slow?\u201d for the same answer.",
     "intro.phone.title": "Phone",
     "intro.phone.text":
       "The Tessaya app on your phone reaches this computer: dictation, live sessions and your devices, away from the desk.",
