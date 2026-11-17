@@ -255,8 +255,6 @@ const PRIVATE_HELD_MS = 30 * 60_000;
 const CAMERA_WINDOW_MS = 30_000;
 const SHOT_KEEP_MS = 10 * 60_000;
 const ASK_TTL_MS = 10 * 60_000;
-/** A connect sent this recently is still under way: his firmware can take most of a minute to switch. */
-const CONNECTING_MS = 60_000;
 const ENROL_MS = 5 * 60_000;
 const REARM_AFTER_MS = [2_000, 8_000, 18_000] as const;
 export const MAX_SHOT_BYTES = 512 * 1024;
@@ -1710,7 +1708,7 @@ const make = Effect.gen(function* () {
     const quiet = yield* quietNow(now);
     if (quiet && m.how !== "dropped") return;
     if (mood._tag === "Some")
-      yield* mood.value.note(undefined, { kind: "handled", how: m.how }, null);
+      yield* mood.value.note(undefined, { kind: "handled", how: m.how }, null, `device:${id}`);
     // Her next two turns on this body know it just happened; the third never reads it as now (G6).
     if (liveContext._tag === "Some")
       yield* liveContext.value.inject({
@@ -3218,27 +3216,7 @@ const make = Effect.gen(function* () {
         return yield* new DeviceRefusedError({
           why: "That needs the Director's yes, and his phone inbox is not here.",
         });
-      // One yes does it (18 Nov, 00:37-00:45): asked again while his card waits, or while the connect his yes sent is
-      // still under way, nothing new goes out. A fresh card closed the one he was answering, so each yes was lost.
-      const sp = heard.get(id)?.speaker;
-      if (mac !== undefined && sp?.linked === mac && (sp.playing ?? sp.output) !== "onboard")
-        return {
-          status: "done",
-          line: `Connected to it now, and your voice plays through it now (live from the ${DEVICE}); nothing new was sent.`,
-        } satisfies DeviceOutcome;
-      const sent = mac === undefined ? undefined : routed.get(id);
-      if (sent !== undefined && sent.key === mac && now - sent.at < CONNECTING_MS)
-        return {
-          status: "done",
-          line: `A connect to it went out ${Math.round((now - sent.at) / 1000)} s ago and can take up to a minute; nothing new was sent. Read where your voice plays before saying it moved.`,
-        } satisfies DeviceOutcome;
-      const waiting = [...asks.values()].find((a) => a.id === id && a.key === key && a.mac === mac);
-      if (waiting !== undefined)
-        return {
-          status: "asked",
-          line: `The card asked ${Math.round((now - (waiting.until - ASK_TTL_MS)) / 1000)} s ago is still on the Director's phone; nothing new was sent. His yes there does it.`,
-        } satisfies DeviceOutcome;
-      // Asked again for another device: the newest card stands alone (18 Nov: three cards for one connect).
+      // Asked again, however worded: the newest card stands alone (18 Nov: three cards for one connect).
       for (const [other, ask] of asks)
         if (ask.id === id && ask.key === key) yield* dropAsk(other, "replaced by a newer ask");
       yield* inbox.value.mirror({

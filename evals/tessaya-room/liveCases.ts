@@ -1367,7 +1367,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
       ),
     }),
     // The pretend R1 sends nothing; she says the device she would connect, or asks which one.
-    lastSays: [/\b(connect\w*|which|speakers?|pair)\b/i],
+    lastSays: [/\b(connect\w*|which|speaker|pair)\b/i],
     lastNotSays: [/\bconnected to\b/i],
   },
   {
@@ -1426,24 +1426,6 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     args: (input) => ({
       "the headset's mic": input["itemId"] === "audio.input" && input["value"] === "headset",
     }),
-  },
-  // 18 Nov, 00:37-00:45 GMT+5: each "do it" sent a new card, she asked him to say "use my headphones" first, and a
-  // day-old reading said her voice was still on her speaker. One yes does it.
-  {
-    id: "bt-one-yes",
-    device: true,
-    proves: [],
-    said: ["Route your voice through my headphones.", "It is approved.", "Then do it."],
-    voices: [{ speaker: UNSURE }, { speaker: UNSURE }, { speaker: UNSURE }],
-    uses: [["device_set"]],
-    check: (_last, calls, replies) => {
-      const sets = calls.filter((c) => c.name === "device_set").length;
-      return sets > 1
-        ? `sent it again: ${sets} device_set calls`
-        : replies.some((r) => /\bsay\s+["“'‘]/i.test(r))
-          ? "asked him to say a phrase"
-          : null;
-    },
   },
   {
     id: "bt-listen-own-mic",

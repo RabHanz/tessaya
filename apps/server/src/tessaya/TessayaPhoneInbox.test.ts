@@ -16,11 +16,11 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HOME_KEY } from "./BrainHost.ts";
-import { CurrentPersona, layer as CurrentPersonaLayer } from "./CurrentPersona.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
 import { TessayaPresence, layer as TessayaPresenceLayer } from "./TessayaPresence.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
@@ -491,12 +491,113 @@ it.effect("asks past the old cap of twenty wait in the queue instead of being re
   }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );
 
+/** One of his servers: its own database, Record and environment id. */
+const server = (environmentId: string, label: string) =>
+  Layer.build(
+    inboxLayer.pipe(
+      Layer.provideMerge(TessayaRecordLayer),
+      Layer.provideMerge(SqlitePersistenceMemory),
+      Layer.provide(
+        Layer.succeed(ServerEnvironment.ServerEnvironment, {
+          getEnvironmentId: Effect.succeed(descriptorOf(environmentId, label).environmentId),
+          getDescriptor: Effect.succeed(descriptorOf(environmentId, label)),
+        }),
+      ),
+    ),
+  ).pipe(
+    Effect.map((context) => ({
+      inbox: Context.get(context, TessayaPhoneInbox),
+      record: Context.get(context, TessayaRecordService),
+    })),
+  );
+
+it.effect(
+  "a card asked on the laptop shows on studio's phone page, and his answer there is applied and recorded on the laptop",
+  () =>
+    Effect.gen(function* () {
+      const laptop = yield* server("env-laptop", "Desk-Laptop");
+      const studio = yield* server("env-studio", "studio");
+      // The laptop's swap with studio, as its loop makes it over the link: one call, both ways.
+      const swap = Effect.gen(function* () {
+        const mine = yield* laptop.inbox.outgoing("env-studio");
+        yield* laptop.inbox.absorb(yield* studio.inbox.exchange(mine));
+      });
+      const card = (id: string) => ({
+        id,
+        title: "Tessaya wants to change a setting",
+        detail: id,
+        buttons: ["Yes, change it", "No"],
+        yes: 0,
+        cancel: 1,
+        needs: "cloud-approve" as const,
+      });
+      const him = { member: "owner", name: "Him", assurance: 3, via: "his phone" };
+
+      // 16 Nov: settings_set on Desk-Laptop landed only in the laptop's inbox.
+      yield* laptop.inbox.mirror(card("setting-on-laptop"));
+      yield* swap;
+      assert.deepStrictEqual(
+        (yield* studio.inbox.pending).map((c) => [c.id, c.on, c.needs]),
+        [["setting-on-laptop", "Desk-Laptop", "cloud-approve"]],
+      );
+      assert.isTrue(yield* studio.inbox.answerPrompt("setting-on-laptop", 0, him));
+      assert.lengthOf(yield* studio.inbox.pending, 0);
+      assert.isNull(yield* laptop.inbox.promptAnswer("setting-on-laptop"));
+      yield* swap;
+      assert.strictEqual(yield* laptop.inbox.promptAnswer("setting-on-laptop"), 0);
+      const record = JSON.stringify(yield* laptop.record.query({ limit: 5 }));
+      assert.include(record, "Approved by Him (A3, his phone, through studio)");
+      assert.notInclude(
+        JSON.stringify(yield* studio.record.query({ limit: 5 })),
+        "setting-on-laptop",
+      );
+      // Applied there, so once the laptop's cards no longer list it, it is not sent again.
+      yield* swap;
+      assert.deepStrictEqual((yield* studio.inbox.outgoing("env-laptop")).answers, []);
+
+      // One request across both machines is one card; Approve all answers each machine's own items.
+      const batch = (inbox: typeof laptop.inbox, on: string) =>
+        inbox.mirrorBatch({
+          id: "settings-42",
+          title: "Tessaya wants to change 1 settings",
+          detail: on,
+          items: [card(`setting-42-${on}`)],
+        });
+      yield* batch(laptop.inbox, "laptop");
+      yield* batch(studio.inbox, "studio");
+      yield* swap;
+      const [one, ...none] = yield* studio.inbox.pending;
+      assert.deepStrictEqual(none, []);
+      assert.strictEqual(one?.id, "settings-42");
+      assert.strictEqual(one?.on, "studio, Desk-Laptop");
+      assert.strictEqual(one?.needs, "cloud-approve");
+      assert.strictEqual((yield* studio.inbox.pendingBatch)?.id, "settings-42");
+      assert.isTrue(yield* studio.inbox.answerPrompt("settings-42", 0, him));
+      assert.strictEqual(yield* studio.inbox.promptAnswer("setting-42-studio"), 0);
+      yield* swap;
+      assert.strictEqual(yield* laptop.inbox.promptAnswer("setting-42-laptop"), 0);
+
+      // A laptop card left past its life is gone from studio, and tapping it there says it expired.
+      yield* laptop.inbox.mirror(card("setting-late"));
+      yield* swap;
+      yield* TestClock.adjust(PROMPT_TTL_MS + 1_000);
+      yield* swap;
+      assert.lengthOf(yield* studio.inbox.pending, 0);
+      assert.strictEqual(
+        yield* answerCard("setting-late", 0, { ...him, role: "owner" }).pipe(
+          Effect.provideService(TessayaPhoneInbox, studio.inbox),
+        ),
+        PROMPT_EXPIRED,
+      );
+    }),
+);
+
 it.effect(
   "one brain: a worker's cards and presence go to her brain, and a card waits on the worker only while the brain is away",
   () =>
     Effect.gen(function* () {
       const brain = yield* Layer.build(
-        Layer.mergeAll(inboxLayer, TessayaPresenceLayer, CurrentPersonaLayer).pipe(
+        Layer.mergeAll(inboxLayer, TessayaPresenceLayer).pipe(
           Layer.provideMerge(TessayaRecordLayer),
           Layer.provideMerge(SqlitePersistenceMemory),
         ),
@@ -524,7 +625,7 @@ it.effect(
         ),
       );
       const workerContext = yield* Layer.build(
-        Layer.mergeAll(inboxLayer, TessayaPresenceLayer, CurrentPersonaLayer).pipe(
+        Layer.mergeAll(inboxLayer, TessayaPresenceLayer).pipe(
           Layer.provide(peers),
           Layer.provideMerge(TessayaRecordLayer),
           Layer.provideMerge(SqlitePersistenceMemory),
@@ -563,13 +664,6 @@ it.effect(
       assert.include(
         JSON.stringify(yield* Context.get(brain, TessayaPresence).estimate()),
         "owner",
-      );
-      // A group talk started on a worker is the brain's group (17 Nov: a synced group was never applied).
-      const group = { members: [{ id: "butler" }, { id: "companion" }], mode: "answer" as const };
-      yield* Context.get(workerContext, CurrentPersona).setGroup("person:owner", group);
-      assert.deepStrictEqual(
-        yield* Context.get(brain, CurrentPersona).group("person:owner"),
-        group,
       );
 
       brainUp = false;

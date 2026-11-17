@@ -35,16 +35,12 @@ import {
 } from "./personaOpsRelay.ts";
 
 export const PersonaOpsConfig = Schema.Struct({
-  command: Schema.String,
-  args: Schema.optionalKey(Schema.Array(Schema.String)),
-  cwd: Schema.optionalKey(Schema.String),
-  /** Non-secret environment for the ops system process (its database URL comes from its own config). */
-  env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  /** The ops system's MCP Streamable HTTP endpoint. */
+  url: Schema.String,
+  /** The request header that names the calling worker (the token goes in `Authorization: Bearer`). */
+  workerHeader: Schema.String,
   /** What he calls the system, in her words and in Settings. */
   name: Schema.optionalKey(Schema.String),
-  /** The child's environment variables that carry the worker id and its token (the system reads them at start). */
-  workerIdEnv: Schema.String,
-  tokenEnv: Schema.String,
   /** The ops system's web app, for "approve it in the ops system" links. */
   uiUrl: Schema.optionalKey(Schema.String),
   /** On once the ops system accepts `approval_relay` and he has registered the brain's key. */
@@ -73,6 +69,7 @@ export interface PersonaOpsActor {
 }
 
 export type PersonaOpsAct =
+  | { readonly op: "delegates" }
   | { readonly op: "status"; readonly deviceSerial?: string; readonly platform?: string }
   | {
       readonly op: "schedule";
@@ -133,6 +130,7 @@ export class PersonaOps extends Context.Service<
 >()("t3/tessaya/PersonaOps") {}
 
 const TOOL: Record<Exclude<PersonaOpsAct["op"], "answer">, string> = {
+  delegates: "device_delegates_list",
   status: "device_warmup_status",
   schedule: "device_warmup_schedule",
   run: "device_warmup_run",
@@ -183,14 +181,7 @@ const make = Effect.fn("PersonaOps.make")(function* (config: PersonaOpsConfig | 
     const token = yield* readToken(persona);
     if (Option.isNone(token)) return null;
     const connection = new PersonaOpsConnection(
-      {
-        command: config.command,
-        args: config.args ?? [],
-        cwd: config.cwd,
-        env: config.env,
-        workerIdEnv: config.workerIdEnv,
-        tokenEnv: config.tokenEnv,
-      },
+      { url: config.url, workerHeader: config.workerHeader },
       workerId,
       token.value,
     );
@@ -300,6 +291,8 @@ const make = Effect.fn("PersonaOps.make")(function* (config: PersonaOpsConfig | 
         return `Run a warm-up now on ${input.platform}, phone ${input.deviceSerial}.`;
       case "schedule":
         return `${input.enabled ? "Schedule" : "Pause"} the daily warm-up of @${input.account} on ${input.platform}, phone ${input.deviceSerial}.`;
+      case "delegates":
+        return "Read the accounts it may act as.";
       case "status":
         return "Read the warm-up schedules.";
       case "answer":
@@ -309,6 +302,8 @@ const make = Effect.fn("PersonaOps.make")(function* (config: PersonaOpsConfig | 
 
   const argsOf = (input: Exclude<PersonaOpsAct, { op: "answer" }>, actionId: string) => {
     switch (input.op) {
+      case "delegates":
+        return {};
       case "status":
         return {
           ...(input.deviceSerial === undefined ? {} : { deviceSerial: input.deviceSerial }),
@@ -501,6 +496,17 @@ const make = Effect.fn("PersonaOps.make")(function* (config: PersonaOpsConfig | 
   });
 
   const accountsOf = (data: unknown): ReadonlyArray<PersonaOpsAccount> => {
+    const delegates = record(data)["delegates"];
+    if (Array.isArray(delegates))
+      return delegates.map((d) => {
+        const row = record(d);
+        return {
+          platform: String(row["platform"] ?? ""),
+          account: String(row["account"] ?? ""),
+          enabled: row["mayWarmup"] === true,
+          mayPost: row["mayPost"] === true,
+        };
+      });
     const schedules = record(data)["schedules"];
     return Array.isArray(schedules)
       ? schedules.map((s) => {
@@ -527,13 +533,19 @@ const make = Effect.fn("PersonaOps.make")(function* (config: PersonaOpsConfig | 
         continue;
       }
       // Each look is an act too: the persona read the ops system as itself.
-      const read = yield* act(
-        { persona, hisVoice: false, score: null, tainted: false, via: "Settings" },
-        { op: "status" },
-      );
+      const asked = { persona, hisVoice: false, score: null, tainted: false, via: "Settings" };
+      const delegated = yield* act(asked, { op: "delegates" });
+      // An ops system without the delegates read still shows the warm-up schedules.
+      const read = delegated.status === "ok" ? delegated : yield* act(asked, { op: "status" });
       personas.push(
         read.status === "ok"
-          ? { persona, workerId, hasToken, accounts: accountsOf(read.data) }
+          ? {
+              persona,
+              workerId,
+              hasToken,
+              accounts: accountsOf(read.data),
+              delegated: read === delegated,
+            }
           : { persona, workerId, hasToken, accounts: null, error: read.line },
       );
     }

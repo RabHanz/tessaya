@@ -10,6 +10,7 @@ import type {
   PersonaOpsCallInput,
   PersonaOpsView,
 } from "@t3tools/tessaya-contracts";
+import { personaOpsDelegation } from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useState } from "react";
@@ -502,11 +503,17 @@ function PersonaOpsSection(props: { readonly environmentId: EnvironmentId }) {
                 ? `No token on the brain: it can't act in ${view.name}.`
                 : p.accounts === null
                   ? (p.error ?? `${view.name} didn't answer.`)
-                  : p.accounts.length === 0
-                    ? "No warm-up schedules yet."
-                    : p.accounts
-                        .map((a) => `@${a.account} on ${a.platform}${a.enabled ? "" : " (paused)"}`)
-                        .join(", ")
+                  : p.delegated === true
+                    ? p.accounts.length === 0
+                      ? "No accounts given to it yet."
+                      : p.accounts.map(personaOpsDelegation).join(", ")
+                    : p.accounts.length === 0
+                      ? "No warm-up schedules yet."
+                      : p.accounts
+                          .map(
+                            (a) => `@${a.account} on ${a.platform}${a.enabled ? "" : " (paused)"}`,
+                          )
+                          .join(", ")
             }
             accessory={
               p.hasToken ? (

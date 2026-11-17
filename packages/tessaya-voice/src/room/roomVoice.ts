@@ -308,8 +308,6 @@ export interface Tessaya {
   readonly segments?: ReadonlyArray<{ readonly speaker: SpeakerIdentity; readonly words: string }>;
   /** The test run playing into the room (playbackWindow.ts): she answers, and her server learns nothing from it. */
   readonly playback?: string;
-  /** Where her voice plays now, as the device last told this loop: live, where the server's record may be old. */
-  readonly plays?: "bt" | "onboard";
 }
 
 export interface RoomDeps {
@@ -1009,7 +1007,6 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       ...(segments === undefined ? {} : { segments }),
       ...(scored == null ? {} : { heardWords: scored.words, recogniser: scored.model }),
       ...playbackNow(),
-      ...(playsOn.has(id) ? { plays: playsOn.get(id) === "bt" ? "bt" : "onboard" } : {}),
     });
 
     /**

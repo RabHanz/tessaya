@@ -454,11 +454,14 @@ export const makeHub = (
   const publish = (topic: string, payload: string | Uint8Array, retain = false) =>
     route(topic, toBuffer(payload), retain);
 
-  /** Closes every socket an R1 holds. Forgotten: no will, and its next CONNECT is refused by the record. */
-  const dropDevice = (id: string) => {
+  /**
+   * Closes every socket an R1 holds. Forgotten: no will, and its next CONNECT is refused by the record. `relink`: its will
+   * marks it offline here and it reconnects to the first hub on its list (a health move).
+   */
+  const dropDevice = (id: string, relink = false) => {
     for (const session of sessions.values())
       if (session.grant?.kind === "device" && session.grant.id === id) {
-        session.will = null;
+        if (!relink) session.will = null;
         session.close();
       }
   };

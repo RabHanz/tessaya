@@ -6,10 +6,18 @@ export const BATON_PERSONA_OPS_WS_METHODS = { call: "baton.personaOps.call" } as
 export const PersonaOpsAccount = Schema.Struct({
   platform: Schema.String,
   account: Schema.String,
-  deviceSerial: Schema.String,
+  /** Set when the account came from a warm-up schedule. */
+  deviceSerial: Schema.optionalKey(Schema.String),
+  /** Its warm-up runs (a schedule), or it may be warmed up (a delegation). */
   enabled: Schema.Boolean,
+  /** Set when the account came from a delegation: it may post. */
+  mayPost: Schema.optionalKey(Schema.Boolean),
 });
 export type PersonaOpsAccount = typeof PersonaOpsAccount.Type;
+
+/** One delegated account in Settings: "@handle on tiktok (warm-up, posts)". */
+export const personaOpsDelegation = (a: PersonaOpsAccount) =>
+  `@${a.account} on ${a.platform} (${[a.enabled ? "warm-up" : "", a.mayPost === true ? "posts" : ""].filter(Boolean).join(", ") || "read only"})`;
 
 export const PersonaOpsPersonaView = Schema.Struct({
   persona: Schema.String,
@@ -19,6 +27,8 @@ export const PersonaOpsPersonaView = Schema.Struct({
   /** The accounts the ops system shows it, or null when it could not be asked (`error` says why). */
   accounts: Schema.NullOr(Schema.Array(PersonaOpsAccount)),
   error: Schema.optionalKey(Schema.String),
+  /** The accounts are its delegations; otherwise they are its warm-up schedules (an ops system without that read). */
+  delegated: Schema.optionalKey(Schema.Boolean),
 });
 export type PersonaOpsPersonaView = typeof PersonaOpsPersonaView.Type;
 

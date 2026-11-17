@@ -1,19 +1,15 @@
-// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off preferSchemaOverJson:off globalTimers:off
+// @effect-diagnostics globalJsonInEffect:off preferSchemaOverJson:off globalFetch:off
 /**
- * One stdio MCP connection to the ops system's MCP server, as one worker. The system reads who the connection is from
- * its environment (the worker id and token variables its config names) once, at start, so a connection is a process: it
- * opens on the first call, stays up, and a dead one is reopened by the next call. The token only ever reaches the
- * child's environment; nothing here logs it.
+ * One MCP Streamable HTTP connection to the ops system, as one worker: every request carries the worker's token and id
+ * in headers. The session opens on the first call and is reused; one the server has forgotten (404) is reopened once,
+ * and any other failure throws so the caller drops the connection and the next call opens a new one. Nothing here logs
+ * the token.
  */
-import * as NodeChildProcess from "node:child_process";
 
-interface PersonaOpsLaunch {
-  readonly command: string;
-  readonly args: ReadonlyArray<string>;
-  readonly cwd?: string | undefined;
-  readonly env?: Readonly<Record<string, string>> | undefined;
-  readonly workerIdEnv: string;
-  readonly tokenEnv: string;
+export interface PersonaOpsEndpoint {
+  readonly url: string;
+  /** The header that names the calling worker. */
+  readonly workerHeader: string;
 }
 
 /** A `tools/call` answer: the ops system's JSON (its data on success, its error object on a refusal). */
@@ -24,42 +20,68 @@ export interface PersonaOpsToolResult {
 
 const PROTOCOL_VERSION = "2025-06-18";
 const CALL_TIMEOUT_MS = 30_000;
-const STDERR_KEEP = 2_000;
 
-interface Pending {
-  readonly resolve: (value: unknown) => void;
-  readonly reject: (error: Error) => void;
-  readonly timer: ReturnType<typeof setTimeout>;
+interface RpcMessage {
+  readonly id?: unknown;
+  readonly result?: unknown;
+  readonly error?: { readonly code?: number; readonly message?: string };
 }
 
-export class PersonaOpsConnection {
-  private child: NodeChildProcess.ChildProcess | null = null;
-  private ready: Promise<void> | null = null;
-  private nextId = 1;
-  private readonly pending = new Map<number, Pending>();
-  private buffer = "";
-  private stderr = "";
+/** The JSON-RPC answer to `id`: a JSON body, or the event carrying it in a server-sent stream. */
+const answerOf = (contentType: string, body: string, id: number): RpcMessage | null => {
+  const messages: unknown[] = contentType.includes("text/event-stream")
+    ? body.split(/\r?\n\r?\n/).flatMap((event) => {
+        const data = event
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n");
+        try {
+          return data === "" ? [] : [JSON.parse(data)];
+        } catch {
+          return [];
+        }
+      })
+    : [JSON.parse(body)];
+  const found = messages.flat().find((m) => (m as RpcMessage | null)?.id === id);
+  return (found as RpcMessage | undefined) ?? null;
+};
 
-  private readonly launch: PersonaOpsLaunch;
+export class PersonaOpsConnection {
+  private session: Promise<{ id: string | null; version: string }> | null = null;
+  private nextId = 1;
+
+  private readonly endpoint: PersonaOpsEndpoint;
   private readonly workerId: string;
   private readonly token: string;
 
-  constructor(launch: PersonaOpsLaunch, workerId: string, token: string) {
-    this.launch = launch;
+  constructor(endpoint: PersonaOpsEndpoint, workerId: string, token: string) {
+    this.endpoint = endpoint;
     this.workerId = workerId;
     this.token = token;
   }
 
   get open(): boolean {
-    return this.child !== null;
+    return this.session !== null;
   }
 
   async callTool(
     name: string,
     args: Readonly<Record<string, unknown>>,
   ): Promise<PersonaOpsToolResult> {
-    await this.connect();
-    const result = (await this.request("tools/call", { name, arguments: args })) as {
+    let answer = await this.request("tools/call", { name, arguments: args });
+    if (answer === "gone") {
+      this.session = null;
+      answer = await this.request("tools/call", { name, arguments: args });
+      if (answer === "gone") throw new Error("The ops system keeps forgetting the session.");
+    }
+    // A JSON-RPC error (an unknown tool, bad arguments) is the ops system's answer, not a broken connection.
+    if (answer.error !== undefined)
+      return {
+        isError: true,
+        data: { code: answer.error.code ?? null, message: answer.error.message ?? "refused" },
+      };
+    const result = (answer.result ?? {}) as {
       readonly content?: ReadonlyArray<{ readonly type: string; readonly text?: string }>;
       readonly structuredContent?: unknown;
       readonly isError?: boolean;
@@ -77,100 +99,104 @@ export class PersonaOpsConnection {
   }
 
   close(): void {
-    const child = this.child;
-    this.drop(new Error("The ops connection was closed."));
-    child?.kill("SIGTERM");
+    this.session = null;
   }
 
-  private connect(): Promise<void> {
-    if (this.ready !== null) return this.ready;
-    const child = NodeChildProcess.spawn(this.launch.command, [...this.launch.args], {
-      cwd: this.launch.cwd,
-      env: {
-        ...process.env,
-        ...this.launch.env,
-        [this.launch.workerIdEnv]: this.workerId,
-        [this.launch.tokenEnv]: this.token,
+  private post(
+    body: object,
+    session: { id: string | null; version: string } | null,
+  ): Promise<Response> {
+    return fetch(this.endpoint.url, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        authorization: `Bearer ${this.token}`,
+        [this.endpoint.workerHeader]: this.workerId,
+        ...(session === null ? {} : { "mcp-protocol-version": session.version }),
+        ...(session?.id == null ? {} : { "mcp-session-id": session.id }),
       },
-      stdio: ["pipe", "pipe", "pipe"],
+      body: JSON.stringify({ jsonrpc: "2.0", ...body }),
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    }).catch((e: unknown) => {
+      throw new Error(
+        e instanceof Error && e.name === "TimeoutError"
+          ? "The ops system did not answer in time."
+          : `The ops system could not be reached (${e instanceof Error ? e.message : String(e)})`,
+      );
     });
-    this.child = child;
-    this.stderr = "";
-    child.stdout?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => this.read(chunk));
-    child.stderr?.setEncoding("utf8");
-    child.stderr?.on("data", (chunk: string) => {
-      this.stderr = (this.stderr + chunk).slice(-STDERR_KEEP);
-    });
-    const gone = (why: string) => {
-      if (this.child !== child) return;
-      const tail = this.stderr.trim().split("\n").at(-1) ?? "";
-      this.drop(new Error(tail === "" ? why : `${why}: ${tail}`));
-    };
-    child.on("error", (e) => gone(`The ops system could not start (${e.message})`));
-    child.on("exit", (code) => gone(`The ops system stopped (exit ${code ?? "signal"})`));
-    this.ready = this.request("initialize", {
-      protocolVersion: PROTOCOL_VERSION,
-      capabilities: {},
-      clientInfo: { name: "tessaya-brain", version: "1" },
-    }).then(() => this.notify("notifications/initialized"));
-    this.ready.catch(() => undefined);
-    return this.ready;
   }
 
-  private drop(error: Error): void {
-    this.child = null;
-    this.ready = null;
-    this.buffer = "";
-    for (const [id, p] of this.pending) {
-      clearTimeout(p.timer);
-      p.reject(error);
-      this.pending.delete(id);
+  /** The server's own words for a refused request, never echoing what was sent. */
+  private static async refusal(response: Response): Promise<Error> {
+    const body = (await response.text().catch(() => "")).trim();
+    let message = body;
+    try {
+      const parsed = JSON.parse(body) as {
+        error?: { message?: string } | string;
+        message?: string;
+      };
+      message =
+        (typeof parsed.error === "object" ? parsed.error.message : parsed.error) ??
+        parsed.message ??
+        body;
+    } catch {
+      // not JSON: keep the text
     }
+    return new Error(
+      `The ops system refused the connection (HTTP ${response.status}${message === "" ? "" : `: ${message.slice(0, 200)}`})`,
+    );
   }
 
-  private read(chunk: string): void {
-    this.buffer += chunk;
-    let at = this.buffer.indexOf("\n");
-    while (at >= 0) {
-      const line = this.buffer.slice(0, at).trim();
-      this.buffer = this.buffer.slice(at + 1);
-      at = this.buffer.indexOf("\n");
-      if (line === "") continue;
-      let message: { id?: unknown; result?: unknown; error?: { message?: string } };
-      try {
-        message = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (typeof message.id !== "number") continue;
-      const p = this.pending.get(message.id);
-      if (p === undefined) continue;
-      this.pending.delete(message.id);
-      clearTimeout(p.timer);
-      if (message.error !== undefined)
-        p.reject(new Error(message.error.message ?? "The ops system refused the call."));
-      else p.resolve(message.result);
-    }
-  }
-
-  private write(message: object): void {
-    this.child?.stdin?.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
-  }
-
-  private notify(method: string): void {
-    this.write({ method });
-  }
-
-  private request(method: string, params: object): Promise<unknown> {
+  private connect(): Promise<{ id: string | null; version: string }> {
+    if (this.session !== null) return this.session;
     const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error("The ops system did not answer in time."));
-      }, CALL_TIMEOUT_MS);
-      this.pending.set(id, { resolve, reject, timer });
-      this.write({ id, method, params });
+    const opening = (async () => {
+      const response = await this.post(
+        {
+          id,
+          method: "initialize",
+          params: {
+            protocolVersion: PROTOCOL_VERSION,
+            capabilities: {},
+            clientInfo: { name: "tessaya-brain", version: "1" },
+          },
+        },
+        null,
+      );
+      if (!response.ok) throw await PersonaOpsConnection.refusal(response);
+      const answer = answerOf(
+        response.headers.get("content-type") ?? "",
+        await response.text(),
+        id,
+      );
+      if (answer === null || answer.error !== undefined)
+        throw new Error(answer?.error?.message ?? "The ops system did not finish the handshake.");
+      const session = {
+        id: response.headers.get("mcp-session-id"),
+        version:
+          (answer.result as { protocolVersion?: string } | undefined)?.protocolVersion ??
+          PROTOCOL_VERSION,
+      };
+      const initialized = await this.post({ method: "notifications/initialized" }, session);
+      await initialized.body?.cancel();
+      return session;
+    })();
+    this.session = opening;
+    opening.catch(() => {
+      if (this.session === opening) this.session = null;
     });
+    return opening;
+  }
+
+  private async request(method: string, params: object): Promise<RpcMessage | "gone"> {
+    const session = await this.connect();
+    const id = this.nextId++;
+    const response = await this.post({ id, method, params }, session);
+    if (response.status === 404 && session.id !== null) return "gone";
+    if (!response.ok) throw await PersonaOpsConnection.refusal(response);
+    const answer = answerOf(response.headers.get("content-type") ?? "", await response.text(), id);
+    if (answer === null) throw new Error("The ops system answered something else.");
+    return answer;
   }
 }

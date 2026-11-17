@@ -4,9 +4,6 @@ import type { ActionEnvelope } from "@t3tools/tessaya-shared/provenance";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { onAction } from "../provenance/ActionLog.ts";
@@ -21,8 +18,9 @@ import {
   type PersonaOpsConfig,
 } from "./PersonaOps.ts";
 import { relayKeyOf } from "./personaOpsRelay.ts";
+import { startOpsMock } from "./__fixtures__/personaOpsMcpMock.ts";
 
-const MOCK = NodePath.join(import.meta.dirname, "__fixtures__", "persona-ops-mcp-mock.mjs");
+const WORKER_HEADER = "X-Ops-Worker";
 const WORKER = "00000000-0000-4000-8000-00000000aaaa";
 const TOKEN = "vos_mcp_test_token";
 
@@ -40,10 +38,16 @@ const setup = (
     readonly relay?: boolean;
     readonly token?: string;
     readonly home?: string | null;
+    readonly delegatesTool?: boolean;
   } = {},
 ) => {
-  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "persona-ops-mock-"));
-  const mockLog = NodePath.join(dir, "calls.jsonl");
+  const mock = startOpsMock({
+    workerHeader: WORKER_HEADER,
+    workerId: WORKER,
+    token: TOKEN,
+    delegates: [{ platform: "tiktok", account: "his_handle", mayWarmup: true, mayPost: true }],
+    delegatesTool: options.delegatesTool ?? true,
+  });
   const values = new Map<string, Uint8Array>();
   values.set(tokenSecretName("sebastian"), new TextEncoder().encode(`${options.token ?? TOKEN}\n`));
   const secrets = Layer.succeed(
@@ -66,37 +70,28 @@ const setup = (
   const household = Layer.succeed(TessayaHousehold, {
     homeOn: Effect.succeed(options.home ?? null),
   } as unknown as TessayaHousehold["Service"]);
-  const env: Record<string, string> = {
-    MOCK_WORKER_ID: WORKER,
-    MOCK_TOKEN: TOKEN,
-    MOCK_LOG: mockLog,
-    MOCK_DELEGATES: JSON.stringify([
-      { platform: "tiktok", account: "his_handle", warmup: true, post: true },
-    ]),
-  };
-  const config: PersonaOpsConfig = {
-    command: process.execPath,
-    args: [MOCK],
+  const config = (url: string): PersonaOpsConfig => ({
+    url,
+    workerHeader: WORKER_HEADER,
     uiUrl: "https://cockpit.example/",
-    workerIdEnv: "OPS_WORKER_ID",
-    tokenEnv: "OPS_TOKEN",
     relay: options.relay ?? false,
-    env,
     personas: { sebastian: WORKER },
-  };
+  });
   const events: ActionEnvelope[] = [];
-  const stop = onAction((e) => void events.push(e));
-  const layer = layerWith(config).pipe(Layer.provide(Layer.mergeAll(secrets, inbox, household)));
-  const calls = () =>
-    NodeFS.existsSync(mockLog)
-      ? NodeFS.readFileSync(mockLog, "utf8")
-          .trim()
-          .split("\n")
-          .map((l) => JSON.parse(l) as { name: string; args: Record<string, unknown> })
-      : [];
-  // Read when the connection opens, which is after the key is first asked for.
-  const withRelayPub = (pub: string) => void (env["MOCK_RELAY_PUBKEY"] = pub);
-  return { layer, cards, events, calls, values, stop, withRelayPub };
+  const unsubscribe = onAction((e) => void events.push(e));
+  const stop = () => {
+    unsubscribe();
+    mock.close();
+  };
+  const layer = Layer.unwrap(
+    Effect.map(
+      Effect.promise(() => mock.url),
+      (url) => layerWith(config(url)),
+    ),
+  ).pipe(Layer.provide(Layer.mergeAll(secrets, inbox, household)));
+  const calls = () => mock.calls;
+  const withRelayPub = (pub: string) => void (mock.state.relayPubkey = pub);
+  return { layer, cards, events, calls, values, stop, withRelayPub, mock };
 };
 
 const run = <A, E>(
@@ -155,6 +150,16 @@ it.live(
           certainty: 1,
         });
         assert.strictEqual(logged[1]!.outcome, "refused");
+        // A session the server forgot reopens in place; a broken connection reopens on the next call.
+        t.mock.forget();
+        assert.strictEqual((yield* vos.act(sebastian, { op: "status" })).status, "ok");
+        assert.strictEqual(t.mock.state.initializes, 2);
+        t.mock.state.failNext = true;
+        const broken = yield* vos.act(sebastian, { op: "status" });
+        assert.strictEqual(broken.status, "error");
+        assert.include(broken.line, "HTTP 502");
+        assert.strictEqual((yield* vos.act(sebastian, { op: "status" })).status, "ok");
+        assert.strictEqual(t.mock.state.initializes, 3);
       }),
     );
   },
@@ -253,8 +258,15 @@ it.live("runs only on the brain, and revoking takes the persona's token away", (
         const before = yield* vos.view;
         assert.deepStrictEqual(
           before.personas.map((p) => [p.persona, p.hasToken, p.accounts]),
-          [["sebastian", true, []]],
+          [
+            [
+              "sebastian",
+              true,
+              [{ platform: "tiktok", account: "his_handle", enabled: true, mayPost: true }],
+            ],
+          ],
         );
+        assert.isTrue(before.personas[0]!.delegated);
         const nobody = yield* vos.act({ ...sebastian, persona: "alfred" }, { op: "status" });
         assert.include(nobody.line, "Only sebastian");
         yield* vos.revoke("sebastian");
@@ -274,6 +286,21 @@ it.live("a token that is not the worker's says so instead of acting", () => {
       const result = yield* vos.act(sebastian, { op: "status" });
       assert.strictEqual(result.status, "error");
       assert.include(result.line, "does not belong to this worker");
+    }),
+  );
+});
+
+it.live("an ops system without the delegates read shows the warm-up schedules instead", () => {
+  const t = setup({ delegatesTool: false });
+  return run(t, (vos) =>
+    Effect.gen(function* () {
+      const view = yield* vos.view;
+      assert.deepStrictEqual(view.personas[0]!.accounts, []);
+      assert.isFalse(view.personas[0]!.delegated);
+      assert.deepStrictEqual(
+        t.calls().map((c) => c.name),
+        ["device_delegates_list", "device_warmup_status"],
+      );
     }),
   );
 });
