@@ -42,7 +42,7 @@ const proc = (path: string) => {
   }
 };
 
-const readSelf = (now: number): HostHealth =>
+export const readSelf = (now: number): HostHealth =>
   hostHealthOf({
     host: NodeOS.hostname(),
     at: now,
