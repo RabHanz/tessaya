@@ -1390,6 +1390,39 @@ export const liveCases: ReadonlyArray<LiveCase> = [
       "the headset's mic": input["itemId"] === "audio.input" && input["value"] === "headset",
     }),
   },
+  // 18 Nov, Tumble: "why do I have to say exact sentences". Any wording for his headphones reaches the same act.
+  ...[
+    { id: "bt-varied-earbuds", said: "Switch to the earbuds." },
+    { id: "bt-varied-headset", said: "Use the headset." },
+    { id: "bt-varied-these", said: "Put yourself through these headphones I've got on." },
+  ].map((c) => ({
+    ...c,
+    device: true,
+    proves: [],
+    said: [c.said],
+    voices: [{ speaker: SURE }],
+    uses: [["device_set"]],
+    argsOf: "device_set",
+    args: (input: Record<string, unknown>) => ({
+      "his headphones, as output or as the mic": [
+        "bt.connect",
+        "audio.output",
+        "audio.input",
+      ].includes(String(input["itemId"])),
+    }),
+  })),
+  {
+    id: "bt-varied-hear-me",
+    device: true,
+    proves: [],
+    said: ["Can you hear me through these?"],
+    voices: [{ speaker: SURE }],
+    uses: [["device_set"]],
+    argsOf: "device_set",
+    args: (input) => ({
+      "the headset's mic": input["itemId"] === "audio.input" && input["value"] === "headset",
+    }),
+  },
   {
     id: "bt-listen-own-mic",
     device: true,

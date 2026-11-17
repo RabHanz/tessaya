@@ -1621,6 +1621,46 @@ it.effect(
 );
 
 it.effect(
+  "hears him through the headphones he has on with no phrase, and through her own mic once her loop finds theirs poor",
+  () => {
+    const { sent, layer } = setup();
+    const HP = "AA:00:00:00:00:46";
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const her = { who: "Tessaya via R1", surface: "assistant" } as const;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(`${root}/state/caps`, '{"bt_speaker":true}');
+      yield* devices.receive(
+        `${root}/state/bt/bonds`,
+        JSON.stringify({
+          devices: [{ mac: HP, name: "TaoTronics", kind: "headphones", connected: true }],
+        }),
+      );
+      const inputSends = () => sent.filter((s) => s.topic === "cmd/bt/input").map((s) => s.payload);
+      const bt = (input: string) =>
+        devices.receive(
+          `${root}/state/bt`,
+          JSON.stringify({ state: "connected", mac: HP, saved: true, hfp: true, input }),
+        );
+      // 18 Nov: he had to say "listen through my headphones". Linked, worn, never chosen otherwise: they hear him.
+      yield* bt("mic");
+      assert.deepStrictEqual(inputSends().at(-1), { in: "headset" });
+      yield* bt("headset");
+      // Her loop found their mic starved: her own mic, without a word.
+      sent.length = 0;
+      yield* devices.receive(`${root}/event/audio/input`, '{"poor":true,"why":"starved"}');
+      assert.deepStrictEqual(inputSends(), [{ in: "mic" }]);
+      yield* bt("mic");
+      assert.deepStrictEqual(inputSends(), [{ in: "mic" }]);
+      // His own word puts them back at once.
+      yield* devices.command(ID, { op: "item", itemId: "audio.input", value: "headset" }, her);
+      assert.deepStrictEqual(inputSends().at(-1), { in: "headset" });
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
   "keeps her on her own speaker over linked headphones, obeys his order at once, and moves on when a route stalls",
   () => {
     const { sent, layer } = setup();

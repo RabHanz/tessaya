@@ -243,6 +243,38 @@ describe("the room voice loop", () => {
     expect(learnt).toEqual(["headset:owner"]);
   });
 
+  it("hands his headset's starved or silent mic back to her own without a word, never her own mic's quiet", async () => {
+    for (const [flags, quiet, says] of [
+      [16, "gap", "starved"],
+      [16, "zeros", "silent"],
+      [0, "gap", null],
+      [0, "zeros", null],
+    ] as const) {
+      const t = setup();
+      const framed = (flagged: number) => {
+        const bytes = new Uint8Array(16 + 1_920);
+        new DataView(bytes.buffer).setUint16(12, flagged, true);
+        bytes.set(frame(false), 16);
+        return bytes;
+      };
+      t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+      t.room.message(`freya/r1/${DEV}/voice/up`, framed(flags));
+      // Nothing from the radio for 2.1 s, or 3.1 s of exact silence: no real room is that quiet.
+      if (quiet === "gap") t.advance(2_100);
+      else
+        for (let i = 0; i < 52; i += 1) {
+          t.advance(60);
+          t.room.message(`freya/r1/${DEV}/voice/up`, framed(flags));
+        }
+      t.room.sweep();
+      t.room.sweep();
+      const poor = t.published.filter((p) => p.topic.endsWith("/event/audio/input"));
+      expect(poor.map((p) => JSON.parse(String(p.payload)).why)).toEqual(
+        says === null ? [] : [says],
+      );
+    }
+  });
+
   it("does not answer a voice the gate keeps out", async () => {
     const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.05 };
     const t = setup({ speaker: async () => guest });
