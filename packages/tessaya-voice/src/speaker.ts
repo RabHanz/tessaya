@@ -367,8 +367,12 @@ export const withName = (turn: SpeakerIdentity, joined: SpeakerIdentity): Speake
  * him, is a guest whatever its voice scores, and ends his session. With no verdict (no model, or it failed) the turn keeps
  * its path but never opens an owner-only act: never fail open.
  */
-/** The replay model's logit cut-off: CALIBRATE (1% of his live clips over it). */
-export const REPLAY_CUT = 0;
+/**
+ * The replay model's logit cut-off (replay.onnx sha 8ab0f145, trained 17 Nov on his room). Over all 696 of his live Tumble clips
+ * 0.4% score above it. Held-out playback passes 3 of 190: 0 of 150 cast through the office speaker today, 3 of 40 of the 16 Nov
+ * Bluetooth clone.
+ */
+export const REPLAY_CUT = -3;
 export const replayChecked = (
   identity: SpeakerIdentity,
   logit: number | null,
