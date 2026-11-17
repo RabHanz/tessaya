@@ -38,6 +38,7 @@ export * from "./workSession.ts";
 export * from "@t3tools/contracts";
 export * from "./places.ts";
 export * from "./learnCall.ts";
+export * from "./personaOps.ts";
 export * from "./brainUsage.ts";
 export * from "./personas.ts";
 export * from "./promptLab.ts";

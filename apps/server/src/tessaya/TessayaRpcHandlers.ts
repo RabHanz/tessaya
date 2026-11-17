@@ -10,6 +10,7 @@
  * server without Baton's layer answers `fabric.*` with a defect naming why.
  */
 import { ActionLog } from "../provenance/ActionLog.ts";
+import { PersonaOps } from "./PersonaOps.ts";
 import { activityList, activityWhy } from "../provenance/activity.ts";
 import { teamBoard } from "./TessayaTeamBoard.ts";
 import { readGrants, setGrant } from "./consent.ts";
@@ -28,6 +29,7 @@ import {
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  BATON_PERSONA_OPS_WS_METHODS,
   BATON_PHONE_PAIRING_WS_METHODS,
   BATON_CAST_WS_METHODS,
   CastError,
@@ -210,7 +212,8 @@ export type TessayaServices =
   | PromptLab
   | TessayaCast
   | ProblemReports
-  | ActionLog;
+  | ActionLog
+  | PersonaOps;
 
 /** The vessel a memory call comes from: the desktop app's own session, or another client (a browser, the phone page). */
 const vesselOf = (viewer: "server" | "desktop" | "client"): TurnEnvelope["vessel"] =>
@@ -701,6 +704,8 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_DEVICES_WS_METHODS.call]: (input) => run(serveDevicesCall(input, devicesActorOf(input))),
     [BATON_VOICE_WS_METHODS.call]: (input) => run(serveVoiceCall(input)),
     [BATON_LEARN_WS_METHODS.call]: (input) => run(serveLearnCall(input)),
+    [BATON_PERSONA_OPS_WS_METHODS.call]: (input) =>
+      run(Effect.flatMap(PersonaOps, (v) => v.call(input))),
     [BATON_PHONE_PAIRING_WS_METHODS.issue]: () => run(PhonePairing.issue()),
     [BATON_CAST_WS_METHODS.get]: () => run(Effect.flatMap(TessayaCast, (c) => c.view)),
     // A signed-in client with operate scope is his own app: verified for the cast's guard.

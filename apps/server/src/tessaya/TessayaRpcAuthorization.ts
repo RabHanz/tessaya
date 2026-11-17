@@ -35,6 +35,7 @@ import {
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  BATON_PERSONA_OPS_WS_METHODS,
   BATON_PHONE_PAIRING_WS_METHODS,
   BATON_CAST_WS_METHODS,
   AuthStandardClientScopes,
@@ -209,6 +210,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_VOICE_WS_METHODS.call]: AuthOrchestrationReadScope,
   // Which tips he has seen: reading and marking them changes nothing but the tips.
   [BATON_LEARN_WS_METHODS.call]: AuthOrchestrationReadScope,
+  // Which personas act in the ops system, and revoking one: his own app (operate), never a member's or a guest's.
+  [BATON_PERSONA_OPS_WS_METHODS.call]: AuthOrchestrationOperateScope,
   // It mints a standard client's pairing code, so the caller must hold every scope that code delegates, as upstream's.
   [BATON_PHONE_PAIRING_WS_METHODS.issue]: AuthStandardClientScopes,
   [BATON_CAST_WS_METHODS.get]: AuthOrchestrationReadScope,

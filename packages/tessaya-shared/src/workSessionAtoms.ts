@@ -29,6 +29,7 @@ import {
   BATON_HOME_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_LEARN_WS_METHODS,
+  BATON_PERSONA_OPS_WS_METHODS,
   BATON_PHONE_PAIRING_WS_METHODS,
   BATON_CAST_WS_METHODS,
   BATON_VOICE_WS_METHODS,
@@ -306,6 +307,10 @@ export function createTessayaWorkSessionAtoms<R, E>(
     learnCall: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:learn",
       tag: BATON_LEARN_WS_METHODS.call,
+    }),
+    personaOpsCall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:persona-ops",
+      tag: BATON_PERSONA_OPS_WS_METHODS.call,
     }),
     commitmentsList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:commitments-list",

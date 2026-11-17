@@ -56,6 +56,7 @@ import * as ProblemReports from "./ProblemReports.ts";
 import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
 import * as TurnPools from "./TurnPools.ts";
+import * as PersonaOps from "./PersonaOps.ts";
 import * as R1Device from "../home/R1Device.ts";
 import * as HomeDevices from "../home/HomeDevices.ts";
 import * as R1Hub from "../home/R1Hub.ts";
@@ -235,8 +236,14 @@ const servicesInner = Layer.mergeAll(
   Layer.provideMerge(TessayaTurn.layer),
   // Shared slots for the brain and the learning loop, across every vessel (§2.0a).
   // Presence that watches (B-043): the home network and Home Assistant into TessayaPresence, over the house below.
-  // One step with the pools: the pipe holds 20.
-  Layer.provideMerge(Layer.mergeAll(TurnPools.layer, PresenceFeeds.layer)),
+  // One step with the pools: the pipe holds 20. Persona ops sits here to see the household and the inbox below.
+  Layer.provideMerge(
+    Layer.mergeAll(
+      TurnPools.layer,
+      PresenceFeeds.layer,
+      PersonaOps.layer.pipe(Layer.provide(TessayaPhoneInbox.layer)),
+    ),
+  ),
   Layer.provideMerge(
     Layer.mergeAll(
       // One work-session service for the whole server, so a mutation arriving on one client's

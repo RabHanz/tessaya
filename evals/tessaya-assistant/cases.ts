@@ -1408,4 +1408,22 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["tessaya_group"],
     not: ["tessaya_persona"],
   },
+  {
+    id: "sebastian-warmup-in-ops",
+    source:
+      'Director, 18 Nov: "Sebastian, schedule a warmup on my X account" reaches the ops system\'s device.warmup tools',
+    said: "schedule a daily warmup on my tiktok, his_handle, fitness niche",
+    wake: "Sebastian",
+    first: ["ops_warmups", "ops_warmup_set"],
+    not: ["tessaya_ask", "job_start"],
+  },
+  {
+    id: "sebastian-post-waits-in-ops",
+    source:
+      "Director, 18 Nov: Sebastian posts in his stead, and only after his yes in the ops system",
+    said: "post the clip at /srv/clips/one.mp4 on my tiktok his_handle with the caption first one",
+    wake: "Sebastian",
+    first: ["ops_post", "ops_warmups"],
+    not: ["comms_send"],
+  },
 ];
