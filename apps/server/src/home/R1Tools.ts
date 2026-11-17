@@ -192,6 +192,8 @@ export const NOT_IN_ROOM: {
   tessaya_session_defaults:
     "settings_get reads newSessionsRun and mainThreadId, and settings_set changes them",
   tessaya_voice_arbiter: "only his other servers call it, never a person",
+  tessaya_memory_unlearn:
+    "only his own t3 memory command calls it, to unlearn test playback; by voice he forgets with tessaya_memory_forget",
   phone_pairing_code: "only his other servers call it, for the desktop's Add a phone QR",
   tessaya_inbox_sync: "only his other servers call it, to show his waiting cards on each",
   household_peer: "only another of this home's linked servers calls it",
