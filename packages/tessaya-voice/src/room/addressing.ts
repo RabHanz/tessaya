@@ -56,6 +56,23 @@ export const calledName = (text: string, names: ReadonlyArray<string>): string |
   return names.find((n) => wakeWordHeard(text, n)) ?? null;
 };
 
+/**
+ * The name alone ("Alfred.", "Alfred's") after her own question that named it ("Alfred's or mine?"): his answer to
+ * her, for her brain to read, not a call or a switch (18 Nov, 00:22:59).
+ */
+export const answersHer = (text: string, name: string | null, herLast: string | undefined) => {
+  if (name === null || herLast === undefined || !herLast.includes("?")) return false;
+  const bare = text
+    .toLowerCase()
+    .replace(/['’]s\b/g, "")
+    .replace(/[^\p{L} ]/gu, "")
+    .trim();
+  return (
+    bare === name.toLowerCase() &&
+    new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(herLast)
+  );
+};
+
 /** He is done with her for now: no follow-up window after her reply, only her name or S2 wakes her. */
 export const isDismissal = (text: string): boolean =>
   /\b(?:dismiss(?:ed)?|that(?:'?s| is| will be|'?ll be| would be|'?d be) all|go to sleep|goodbye|good night|stop listening)\b/i.test(

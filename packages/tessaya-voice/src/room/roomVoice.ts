@@ -47,6 +47,7 @@ import {
 import { addressedInRoom, beganOverHer, echoVerdict, type Playback } from "../turnRules.ts";
 import {
   askedFor,
+  answersHer,
   calledName,
   heldBack,
   isBackchannel,
@@ -2031,7 +2032,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         text = await wholeSentence(text, pieces, deps.preview);
       }
       text = askedFor(text, names)?.text ?? text;
-      const called = calledName(text, names);
+      const heardName = calledName(text, names);
+      const called = answersHer(
+        text,
+        heardName,
+        history.findLast((h) => h.role === "assistant")?.content,
+      )
+        ? null
+        : heardName;
       // Another device of his is answering: what this one hears now is her voice from there, or his to that one.
       if (given === undefined && deps.now() < (quietUntil.get(id) ?? 0)) {
         kept?.control.abort();
