@@ -269,7 +269,7 @@ it.effect(
         diagnosis: { findings: ReadonlyArray<{ key: string; evidence: ReadonlyArray<string> }> };
       };
       expect(diagnosis.findings.find((f) => f.key === "memory:voicebox")?.evidence[0]).toBe(
-        "the speech engine took 1.8 s (usually under 0.8 s)",
+        "speech waited 1.8 s (usually under 0.8 s)",
       );
     }),
 );

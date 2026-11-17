@@ -225,6 +225,40 @@ const briefAnswer =
       ? null
       : `said nothing from what the tools read: ${last.slice(0, 120)}`;
   };
+/**
+ * "Why is it slow" (manager, 17 Nov): the top cause her health read named, said within `max` words before any offer
+ * of its fix; on a clean read, that nothing explains it, never a cause of her own. .183 said "Two of your sessions
+ * are working… I can't tell you why it's slow" in 27 words.
+ */
+export const healthAnswer =
+  (max: number) =>
+  (last: string, calls: ReadonlyArray<LiveCall>): string | null => {
+    const answer = last.replace(/^((One moment|Looking|Checking)\.\s*)+/i, "");
+    const offer = OFFER.exec(answer);
+    const cause = offer === null ? answer : answer.slice(0, offer.index);
+    const words = cause.split(/\s+/).filter((w) => w !== "").length;
+    if (words > max) return `${words} words before any offer: ${last.slice(0, 160)}`;
+    const read = calls.find((c) => c.name === "tessaya_health" && !c.isError);
+    if (read === undefined) return "never read her health";
+    const top = (() => {
+      try {
+        const d = (
+          JSON.parse(read.text) as { diagnosis?: { findings?: Array<{ says?: unknown }> } }
+        ).diagnosis;
+        return d?.findings?.[0]?.says;
+      } catch {
+        return undefined;
+      }
+    })();
+    if (typeof top !== "string")
+      return /\b(nothing|normal|fine|healthy|no sign|all good)\b/i.test(cause)
+        ? null
+        : `gave a cause her clean health read did not: ${last.slice(0, 120)}`;
+    const said = new Set(contentWords(cause));
+    return contentWords(top).some((w) => said.has(w))
+      ? null
+      : `did not name the cause her health read gave ("${top}"): ${last.slice(0, 120)}`;
+  };
 const UNASKED_TIME =
   /\b(right now it'?s|it'?s (now )?(\w+[- ]){0,2}(twenty|thirty|forty|fifty|o'?clock|\d))|\bright now\.?$/i;
 /** Advice on how he should feel or rest, after small talk ("rest your head", "you've earned it"). */
@@ -900,22 +934,12 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   },
   // 16 Nov (L-brief): open and status questions answered at 45-50 words aloud. Made-up sentences of the same shapes.
   {
+    // 17 Nov (manager): "why is it slow" is her health read's cause, briefly; .183 counted sessions and said it could not tell.
     id: "brief-why-slow",
-    proves: ["tessaya_fleet"],
+    proves: ["tessaya_health"],
     said: ["Why is everything so slow right now?"],
-    uses: [
-      [
-        // Her own slowness is one reading of "everything" (17 Nov).
-        "tessaya_health",
-        "tessaya_work_now",
-        "tessaya_fleet",
-        "tessaya_in_flight",
-        "tessaya_watch",
-        "tessaya_sessions",
-        "tessaya_team_board",
-      ],
-    ],
-    check: briefAnswer(25),
+    uses: [["tessaya_health"]],
+    check: healthAnswer(25),
   },
   {
     // 17 Nov: Tumble slow and choppy from a starved voice host; she must read her health, not guess.
@@ -923,7 +947,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     proves: ["tessaya_health"],
     said: ["Why are you being so slow and choppy with me right now?"],
     uses: [["tessaya_health"]],
-    check: briefAnswer(30),
+    check: healthAnswer(25),
   },
   {
     id: "brief-how-things",

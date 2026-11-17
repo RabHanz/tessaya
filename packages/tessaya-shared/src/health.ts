@@ -36,11 +36,11 @@ export type {
 
 /** The room loop's per-turn metric keys in pipeline order (roomVoice.ts TurnMetrics), as she says them. */
 export const HEALTH_STAGES: ReadonlyArray<readonly [HealthStage, string]> = [
-  ["endpointMs", "deciding you had finished"],
-  ["asrMs", "the speech engine"],
-  ["brainFirstMs", "the brain's first words"],
-  ["ttsFirstMs", "the voice's first sound"],
-  ["firstSoundMs", "from your last word to her first sound"],
+  ["endpointMs", "turn detection"],
+  ["asrMs", "speech"],
+  ["brainFirstMs", "the brain"],
+  ["ttsFirstMs", "her voice"],
+  ["firstSoundMs", "the whole reply"],
 ];
 
 /** Above these a stage's median is slow (ms). firstSoundMs is the sum the others explain, so it is not a cause. */
@@ -98,7 +98,7 @@ const hostFindings = (h: HostHealth, now: number): Array<HealthFinding> => {
     out.push({
       key: `memory:${h.host}`,
       severity: full >= 20 ? "down" : "degraded",
-      says: `${h.host} is out of memory and swapping, so everything on it waits`,
+      says: `${h.host} is short of memory and swapping`,
       evidence,
       fix: `free memory on ${h.host}: stop a heavy job there, or move the voice to another machine`,
       symptoms: ["slow", "choppy", "wake"],
@@ -251,9 +251,9 @@ const vesselFindings = (v: VesselHealth, now: number): Array<HealthFinding> => {
     out.push({
       key: `stage:${v.id}:${top.k}`,
       severity: top.p50! > STAGE_BUDGET_MS[top.k] * 2 ? "degraded" : "minor",
-      says: `on ${v.name}, ${top.words} took ${sec(top.p50!)} a turn lately`,
+      says: `on ${v.name}, ${top.words} waited ${sec(top.p50!)} a turn lately`,
       evidence: slow.map(
-        (s) => `${s.words} took ${sec(s.p50!)} (usually under ${sec(STAGE_BUDGET_MS[s.k])})`,
+        (s) => `${s.words} waited ${sec(s.p50!)} (usually under ${sec(STAGE_BUDGET_MS[s.k])})`,
       ),
       fix: null,
       symptoms: ["slow"],

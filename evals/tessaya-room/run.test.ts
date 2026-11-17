@@ -211,7 +211,7 @@ describe("the room's live tool suite", () => {
       isError: false,
       text: JSON.stringify({ machines: [{ name: "build-box", state: "busy", load: "high" }] }),
     };
-    const slow = liveCases.find((c) => c.id === "brief-why-slow")!;
+    const slow = liveCases.find((c) => c.id === "brief-how-things")!;
     const failure = (reply: string) => liveFailureOf(slow, {}, [reply], [fleet]);
     expect(
       failure(
@@ -233,6 +233,40 @@ describe("the room's live tool suite", () => {
     expect(liveFailureOf(stuck, {}, ["No, nothing is stuck."], [watch])).toBeNull();
     expect(liveFailureOf(stuck, {}, ["No, nothing is stuck. Want the rest?"], [watch])).toMatch(
       /offered more/,
+    );
+  });
+
+  it("fails a 'why is it slow' answer that does not name her health read's cause within 25 words (.183, 17 Nov)", () => {
+    const health = (findings: ReadonlyArray<{ says: string }>): LiveCall => ({
+      name: "tessaya_health",
+      input: { symptom: "slow" },
+      isError: false,
+      text: JSON.stringify({ diagnosis: { severity: "down", summary: "", findings } }),
+    });
+    const starved = health([{ says: "orion is short of memory and swapping" }]);
+    const slow = liveCases.find((c) => c.id === "brief-why-slow")!;
+    const failure = (reply: string, call = starved) => liveFailureOf(slow, {}, [reply], [call]);
+    expect(
+      failure(
+        "One moment. Orion is short of memory and swapping; speech waited 1.8 s. Want me to stop the heavy job there?",
+      ),
+    ).toBeNull();
+    // What .183 said: 27 words, and no cause.
+    expect(
+      failure(
+        "One moment. Two of your sessions are working on tessaya at the same time, and that's the only load I can see. I can't tell you why it's slow.",
+      ),
+    ).toMatch(/words before any offer/);
+    expect(failure("Two sessions are busy on tessaya; that is the load.")).toMatch(
+      /did not name the cause/,
+    );
+    const clean = health([]);
+    expect(
+      failure("Nothing in my health readings explains it; everything looks normal.", clean),
+    ).toBeNull();
+    expect(failure("The network is congested right now.", clean)).toMatch(/clean health read/);
+    expect(liveFailureOf(slow, {}, ["Orion is short of memory."], [])).toMatch(
+      /never|tessaya_health/,
     );
   });
 
