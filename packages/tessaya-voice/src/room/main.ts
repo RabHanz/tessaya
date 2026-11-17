@@ -59,6 +59,7 @@ import {
 import { recogniserTurn } from "./recogniserTurn.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
+import { createPlaybackWindows, PLAYBACK_TOPIC } from "./playbackWindow.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { bothCaptures, createWakeTrace } from "./wakeTrace.ts";
 import { createWakeStream, kwsSettingsCommand, parseWakeGate } from "./wakeStream.ts";
@@ -614,12 +615,14 @@ const main = async () => {
 
   // Off unless the host names a private folder (R1_WAKE_CAPTURE_DIR), capped at R1_WAKE_CAPTURE_MB (default 1024).
   const captureDir = process.env["R1_WAKE_CAPTURE_DIR"] ?? "";
+  const playback = createPlaybackWindows(Date.now);
   const capture =
     captureDir === ""
       ? undefined
       : createWakeCapture({
           dir: captureDir,
           capBytes: Number(process.env["R1_WAKE_CAPTURE_MB"] ?? "1024") * 1_048_576,
+          playback: playback.run,
           log,
         });
   // Always on, no audio: every segment and kws verdict, capped at R1_WAKE_TRACE_MB (default 50) in two files.
@@ -702,8 +705,15 @@ const main = async () => {
       "freya/r1/+/voice/up/tainted",
       "freya/r1/+/event/voice/interrupt",
       "freya/r1/+/event/voice/flush",
+      "freya/r1/+/event/test/playback",
+      "freya/r1/+/cmd/voice/wakeinject",
     ],
     onMessage: (t, p) => {
+      if (PLAYBACK_TOPIC.test(t)) {
+        const line = playback.message(t, String(p));
+        if (line !== null) log(line);
+        return;
+      }
       const wakePath = /^freya\/r1\/([^/]+)\/(voice\/wake\/end|event\/wake\/stats)$/.exec(t);
       if (wakePath !== null) trace.report(wakePath[1]!, wakePath[2]!, String(p));
       const seen = /^freya\/r1\/([^/]+)\/state\/online$/.exec(t);

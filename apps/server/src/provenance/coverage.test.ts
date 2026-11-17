@@ -82,6 +82,13 @@ describe("every action reaches the log", () => {
     expect(roomActionOf("t1", "event/button", JSON.stringify({ b: 1, long: true }))?.kind).toBe(
       "room.button",
     );
+    expect(
+      roomActionOf(
+        "t1",
+        "event/test/playback",
+        JSON.stringify({ open: true, run: "osp replay 1" }),
+      ),
+    ).toMatchObject({ actor: { kind: "system" }, outcome: "open", data: { run: "osp replay 1" } });
     expect(roomActionOf("t1", "event/enrol", "{}")).toBeNull();
     expect(roomActionOf("t1", "state/battery", "80")).toBeNull();
     expect(roomActionOf("t1", "state/online", "0")?.outcome).toBe("offline");

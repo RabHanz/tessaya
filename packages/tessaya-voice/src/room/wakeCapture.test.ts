@@ -5,6 +5,7 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
+import { createPlaybackWindows } from "./playbackWindow.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { createWakeTrace } from "./wakeTrace.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
@@ -97,6 +98,48 @@ describe("keeping wake segments for training", () => {
     clock += 20_000;
     capture.session("r1");
     expect(records(dir).map((r) => r.session)).toEqual([false, false]);
+  });
+
+  it("marks segments inside a declared test playback or wakeinject window, and those missing frames", () => {
+    const dir = tmp();
+    let clock = 0;
+    const windows = createPlaybackWindows(() => clock);
+    const capture = createWakeCapture({
+      dir,
+      capBytes: 1e9,
+      playback: windows.run,
+      now: () => clock,
+      log: () => undefined,
+    });
+    const stage2 = { outcome: "no fire", woke: false, best: {} };
+    const at = (ms: number, seg: number, sent?: number) => {
+      clock = ms;
+      capture.segment("r1", seg, new Int16Array(960 * 3), stage2, undefined, sent);
+    };
+    const topic = "freya/r1/r1/event/test/playback";
+    at(1_000, 1, 3);
+    expect(windows.message(topic, JSON.stringify({ open: true, run: "osp 0412" }))).toMatch(/open/);
+    at(2_000, 2, 5);
+    expect(windows.message(topic, JSON.stringify({ open: false }))).toMatch(/closed/);
+    // A segment ending just after the close still holds the last clip.
+    at(9_000, 3);
+    at(30_000, 4);
+    windows.message("freya/r1/r1/cmd/voice/wakeinject", '{"on":1}');
+    at(31_000, 5);
+    // A run that never closes lapses at its own `until`.
+    windows.message("freya/r1/r1/cmd/voice/wakeinject", '{"on":0}');
+    windows.message(topic, JSON.stringify({ open: true, run: "chain", until: 50_000 }));
+    at(45_000, 6);
+    at(70_000, 7);
+    expect(records(dir).map((r) => [r.seg, r.source, r.run ?? null, r.complete])).toEqual([
+      [1, "live", null, true],
+      [2, "playback", "osp_0412", false],
+      [3, "playback", "osp_0412", null],
+      [4, "live", null, null],
+      [5, "playback", "wakeinject", null],
+      [6, "playback", "chain", null],
+      [7, "live", null, null],
+    ]);
   });
 
   it("traces every segment, kws verdict and Tessel report without audio, in two files under the cap", async () => {
