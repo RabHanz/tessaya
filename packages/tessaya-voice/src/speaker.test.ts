@@ -7,14 +7,18 @@ import {
   cosine,
   decideSpeaker,
   enrol,
+  forWire,
   HOLD_MS,
   holdVoice,
   identityOf,
   memberByVoice,
   NO_HOLD,
+  profileScore,
   profilesFor,
+  REPLAY_CUT,
   replayChecked,
   speakerPath,
+  teaches,
   TEST_SPEAKER_ID,
   trustTestSpeaker,
   UNVERIFIED,
@@ -404,6 +408,81 @@ describe("the speaker identity", () => {
     // Not even his held session verifies it.
     const held = holdVoice(NO_HOLD, him, 0).hold;
     expect(holdVoice(held, unjudged, 1).identity.verified).toBe(false);
+  });
+
+  it("keeps his verified session through replies his profile scores low, unless the voice clearly changes", () => {
+    // 17 Nov, his bedroom: verified, then replies at 0.1-0.3 to his profile that each ended his session.
+    const turn = (kind: SpeakerIdentity["kind"], score: number, ms: number, vector: Float32Array) =>
+      ({
+        ...UNVERIFIED(0),
+        kind,
+        personId: kind === "owner" ? "owner" : null,
+        confidence: kind === "unverified" ? null : score,
+        verified: kind === "owner" && score >= 0.53 && ms >= 4_000,
+        own: { score, ms, vector },
+      }) as SpeakerIdentity;
+    const start = holdVoice(NO_HOLD, turn("owner", 0.6, 4_000, v(1, 0, 0)), 0);
+    expect(start.identity.verified).toBe(true);
+    // Like his own first turn (cosine 0.8), whatever his profile says: his path, never an owner-only act.
+    const reply = holdVoice(start.hold, turn("guest", 0.2, 1_800, v(0.8, 0.6, 0)), 10_000);
+    expect(reply.identity).toMatchObject({ kind: "owner", lifted: true, verified: false });
+    expect(reply.identity.same).toBeCloseTo(0.8);
+    // Neither like him nor clearly not (0.3): not his, and his session waits.
+    const unsure = holdVoice(reply.hold, turn("guest", 0.2, 1_800, v(0.3, 0.954, 0)), 20_000);
+    expect(unsure.identity.kind).toBe("guest");
+    expect(unsure.hold.verifiedAt).toBe(10_000);
+    // Another voice (0.1 to his pieces) ends it, so nothing of his reaches the turns after it.
+    const other = holdVoice(unsure.hold, turn("guest", 0.2, 1_800, v(0.1, 0.995, 0)), 30_000);
+    expect(other.hold).toEqual(NO_HOLD);
+    expect(holdVoice(other.hold, turn("guest", 0.2, 1_800, v(1, 0, 0)), 40_000).identity.kind).toBe(
+      "guest",
+    );
+    // A session never verified lends nothing, and a loudspeaker is a guest however like him it sounds.
+    const unheld = holdVoice(NO_HOLD, turn("owner", 0.46, 2_000, v(1, 0, 0)), 0);
+    expect(holdVoice(unheld.hold, turn("guest", 0.2, 1_800, v(1, 0, 0)), 1).identity.kind).toBe(
+      "guest",
+    );
+    const played = replayChecked(turn("guest", 0.2, 1_800, v(1, 0, 0)), 2, REPLAY_CUT);
+    expect(holdVoice(start.hold, played, 10_000).identity.kind).toBe("guest");
+  });
+
+  it("teaches the room profile only from turns it is sure of, never a replay, a guest or a short turn", () => {
+    const him = (more: Partial<SpeakerIdentity>): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      kind: "owner",
+      personId: "owner",
+      own: { score: 0.4, ms: 2_000, vector: v(1, 0, 0) },
+      ...more,
+    });
+    expect(teaches(him({ verified: true }))).toBe("verified");
+    expect(teaches(him({ verified: true, session: true }))).toBe("session");
+    expect(teaches(him({ lifted: true, same: 0.6 }))).toBe("continuity");
+    expect(teaches(him({ lifted: true, same: 0.45 }))).toBeNull();
+    expect(teaches(him({ lifted: true }))).toBeNull();
+    expect(teaches(him({}))).toBeNull();
+    expect(teaches(him({ verified: true, replay: "unchecked" }))).toBeNull();
+    expect(teaches(him({ verified: true, test: true }))).toBeNull();
+    expect(
+      teaches(him({ verified: true, own: { score: 0.6, ms: 1_000, vector: v(1) } })),
+    ).toBeNull();
+    expect(teaches({ ...him({}), kind: "guest", personId: null })).toBeNull();
+    // The embedding never leaves the device with the identity.
+    expect(forWire(him({})).own).toEqual({ score: 0.4, ms: 2_000 });
+  });
+
+  it("scores a clip against a person's room centroid too, the better of the two", () => {
+    const roomed = { ...owner, room: v(0, 1, 0) };
+    expect(profileScore(v(0, 1, 0), owner)).toBe(0);
+    expect(profileScore(v(0, 1, 0), roomed)).toBe(1);
+    expect(
+      decideSpeaker({
+        clips: [{ vector: v(0, 1, 0), ms: 4_000 }],
+        model: "m",
+        profiles: [roomed],
+        policy,
+        use: "act",
+      }).kind,
+    ).toBe("owner");
   });
 
   const who = (kind: SpeakerIdentity["kind"], more: Partial<SpeakerIdentity> = {}) => ({

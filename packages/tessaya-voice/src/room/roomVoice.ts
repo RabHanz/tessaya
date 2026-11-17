@@ -60,7 +60,9 @@ import { createEnrolGuide, enrolScript, type EnrolGuide } from "../enrolGuide.ts
 import {
   admits,
   CAMPLUS_POLICY,
+  forWire,
   memberByVoice,
+  teaches,
   withName,
   UNVERIFIED,
   HOLD_MS,
@@ -318,6 +320,17 @@ export interface RoomDeps {
   readonly speaker?: (pcm: Int16Array, input?: VoiceInput) => Promise<SpeakerIdentity>;
   /** A turn on another input in a session his voice was verified in on her mic: that input's profile learns from it. */
   readonly learnInput?: (input: VoiceInput, personId: string, pcm: Int16Array) => void;
+  /** A mic turn sure to be this person's (`teaches`): this R1's room profile for them learns from its embedding. */
+  readonly learnRoom?: (
+    personId: string,
+    vector: Float32Array,
+    sample: {
+      readonly at: number;
+      readonly how: string;
+      readonly score: number;
+      readonly ms: number;
+    },
+  ) => void;
   /** Who spoke when in the turn (`segments.ts`); "one" at once when fewer than two voices are enrolled. */
   readonly voices?: (pcm: Int16Array) => Promise<TurnVoices>;
   readonly affect?: (pcm: Int16Array) => Promise<Affect>;
@@ -783,8 +796,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let pttDone = false;
     /** Her last few sentences, to tell her own voice coming back through the mic from his. */
     let herLines: string[] = [];
+    /** Her line now asks him something (a question, or her answer to her name): what he says over it is his reply. */
+    let asking = false;
     const saying = (text: string) => {
       herLines = [...herLines, text].slice(-6);
+      asking = invitesReply(text);
     };
     let asleep = false;
     const personas = roster;
@@ -933,7 +949,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       capabilities: capabilities.get(id) ?? [],
       ...(conversationOf.has(id) ? { conversation: conversationOf.get(id)! } : {}),
       ...(nameOnce === null ? {} : { nameOnce }),
-      speaker,
+      speaker: forWire(speaker),
       ...(affect === undefined
         ? {}
         : { emotion: { label: affect.emotion, events: affect.events } }),
@@ -1458,6 +1474,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       );
       deps.log(`[${id}] her name alone: "${words}"`);
       speakNow(words, ackAudio.get(`${voiceNow() ?? ""}|${words}`));
+      asking = true;
       prerenderOwn();
     };
 
@@ -1571,6 +1588,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           const out = holdVoice(holdBefore, heard, deps.now());
           if (n === scorings) voiceHold = out.hold;
           const who = out.identity;
+          // Our own test playback in the room never teaches, whatever it scored.
+          const how = via === "mic" && (deps.playback?.() ?? null) === null ? teaches(who) : null;
+          if (how !== null && n === scorings)
+            deps.learnRoom?.(who.personId!, who.own!.vector!, {
+              at: deps.now(),
+              how,
+              score: who.own!.score,
+              ms: who.own!.ms,
+            });
           if (via === "mic" && who.verified) micVerifiedAt.set(id, deps.now());
           else if (
             via !== "mic" &&
@@ -1801,11 +1827,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         // With a household enrolled, the whole turn's voice decides: his own words over her are answered, the TV's and
         // a visitor's are not (14 Nov, 21:39: his, dropped; keyword mode never ran the check while she played).
-        if (deps.members?.() === true) {
+        // A reply to her question or her name is judged on what came after her voice: mixed with hers, his own reply
+        // scored 0.02-0.30 (17 Nov, 19:22). With under a second of it alone it is answered; Voice ID still picks the path.
+        const herEnd = speechUntil + config.downDelayMs + config.echoTailMs;
+        const judged = asking
+          ? pcm.subarray(
+              Math.min(pcm.length, Math.max(0, Math.round(((herEnd - startedAt) * RATE) / 1000))),
+            )
+          : pcm;
+        if (deps.members?.() === true && (!asking || judged.length >= RATE)) {
           const best = await (
-            deps.member?.(pcm) ?? Promise.resolve(Number.NEGATIVE_INFINITY)
+            deps.member?.(judged) ?? Promise.resolve(Number.NEGATIVE_INFINITY)
           ).catch(() => Number.NEGATIVE_INFINITY);
-          const verdict = memberByVoice(best, pcm.length / RATE, hisSession());
+          const verdict = memberByVoice(best, judged.length / RATE, hisSession() || asking);
           if (verdict !== "member") {
             kept?.control.abort();
             dropped(turn, `over her voice and not a household voice (${best.toFixed(2)})`, raw);
@@ -2314,6 +2348,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         speaker: identity.kind,
         speakerScore: score === null ? null : Math.round(score * 1000) / 1000,
         ...(identity.lifted === true ? { lifted: true } : {}),
+        ...(identity.same === undefined ? {} : { same: Math.round(identity.same * 1000) / 1000 }),
         emotion: (affect ?? affectNow)?.emotion ?? "unknown",
         bargedIn,
         speculative: kept !== null,

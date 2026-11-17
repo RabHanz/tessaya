@@ -36,7 +36,7 @@ const rig = () => {
     model: "m1",
     log: () => undefined,
   });
-  return { store, sync, done: () => NodeFS.rmSync(dir, { recursive: true, force: true }) };
+  return { dir, store, sync, done: () => NodeFS.rmSync(dir, { recursive: true, force: true }) };
 };
 
 describe("enrol once, recognised everywhere: shared profiles and this R1's refinement", () => {
@@ -94,6 +94,44 @@ describe("enrol once, recognised everywhere: shared profiles and this R1's refin
     expect(Array.from(r.store.list()[0]!.centroid)).toEqual(before);
     r.sync.shared(parseShared(shared(2, vec(1, 0, 0)))!);
     expect(Array.from(r.store.list()[0]!.centroid)).toEqual([1, 0, 0]);
+    r.done();
+  });
+
+  it("learns a room profile on its mic from sure turns, versioned, never far from the enrolled one, and resets it", () => {
+    const r = rig();
+    r.sync.shared(parseShared(shared(1, vec(1, 0, 0)))!);
+    const learn = (v: Float32Array, at: number) =>
+      r.sync.learn("member-1", v, { at, how: "verified", score: 0.6, ms: 3_000 });
+    // Too few sure turns: none yet.
+    for (let i = 0; i < 11; i += 1) learn(vec(0.8, 0.6, i % 2 === 0 ? 0.05 : -0.05), i);
+    expect(r.sync.room("member-1")).toBeUndefined();
+    learn(vec(0.8, 0.6, 0), 11);
+    const room = r.sync.room("member-1")!;
+    expect(room[1]!).toBeGreaterThan(0.5);
+    // Kept beside the enrolled centroid, and what made it is on disk.
+    expect(Array.from(r.store.list()[0]!.centroid)).toEqual([1, 0, 0]);
+    const file = JSON.parse(
+      NodeFS.readFileSync(NodePath.join(r.dir, "voice", "room.json"), "utf8"),
+    );
+    expect(file["member-1"].version).toBe(1);
+    expect(file["member-1"].samples[11]).toMatchObject({ at: 11, how: "verified" });
+    expect(file["member-1"].versions[0]).toMatchObject({ version: 1, samples: 12 });
+    // Someone else's turns, however many, never become a room profile far from the enrolled one.
+    for (let i = 0; i < 200; i += 1) {
+      learn(vec(0, 0.2, 1), 100 + i);
+      expect(r.sync.room("member-1")![0]!).toBeGreaterThanOrEqual(0.6);
+    }
+    // A reset, switched off, or the member gone: dropped, or nothing learnt.
+    r.sync.reset();
+    expect(r.sync.room("member-1")).toBeUndefined();
+    r.sync.setRefining(false);
+    for (let i = 0; i < 12; i += 1) learn(vec(0.8, 0.6, 0), i);
+    expect(r.sync.room("member-1")).toBeUndefined();
+    r.sync.setRefining(true);
+    for (let i = 0; i < 12; i += 1) learn(vec(0.8, 0.6, 0), i);
+    expect(r.sync.room("member-1")).toBeDefined();
+    r.sync.clear("member-1");
+    expect(r.sync.room("member-1")).toBeUndefined();
     r.done();
   });
 });

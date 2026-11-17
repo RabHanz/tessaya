@@ -21,7 +21,15 @@ export interface SpeakerProfile {
   readonly version?: number;
   /** That shared profile's centroid: this device's own refinements stay within reach of it. */
   readonly base?: Float32Array;
+  /** Their voice as this device's own mic hears it, learnt from turns it was sure of (profileSync): scored beside `centroid`. */
+  readonly room?: Float32Array;
 }
+
+/** A clip's cosine to a profile: the better of its enrolled centroid and this device's room centroid. */
+export const profileScore = (vector: Float32Array, profile: SpeakerProfile): number =>
+  profile.room === undefined
+    ? cosine(vector, profile.centroid)
+    : Math.max(cosine(vector, profile.centroid), cosine(vector, profile.room));
 
 /** Which mic a turn came through (upformat v1 flags bit4 is the headset's): a voice sounds different on each. */
 export type VoiceInput = "mic" | "headset";
@@ -59,6 +67,15 @@ export const CAMPLUS_POLICY: Omit<SpeakerPolicy, "model"> = {
   single: { listen: 0.36, steer: 0.45, act: 0.53 },
   averaged: { listen: 0.36, steer: 0.45, act: 0.47 },
   margin: 0.05,
+};
+/**
+ * Tumble's room mic, scored with its room centroid: steer 0.40 (17 Nov, held out: his room clips 57% -> 91%, LibriSpeech
+ * 2/4 s 0%, no stranger, replay or clone verified). Act is unchanged, so owner-only acts are as strict as before.
+ */
+export const ROOM_POLICY: Omit<SpeakerPolicy, "model"> = {
+  ...CAMPLUS_POLICY,
+  single: { ...CAMPLUS_POLICY.single, steer: 0.4 },
+  averaged: { ...CAMPLUS_POLICY.averaged, steer: 0.4 },
 };
 /** One clip must be this long to be scored at the "act" level on its own. */
 export const ACT_SINGLE_MS = 4_000;
@@ -132,7 +149,7 @@ export const decideSpeaker = (input: {
   const cut = averaged ? policy.averaged[input.use] : policy.single[input.use];
   const scores = mine.map((p) => ({
     p,
-    score: used.reduce((n, c) => n + cosine(c.vector, p.centroid), 0) / used.length,
+    score: used.reduce((n, c) => n + profileScore(c.vector, p), 0) / used.length,
   }));
   if (!scores.every((s) => Number.isFinite(s.score))) return { kind: "unverified", why: "failed" };
   const [best, next] = scores.toSorted((a, b) => b.score - a.score);
@@ -198,7 +215,14 @@ export interface SpeakerIdentity {
   /** The test clone, trusted as him only while test mode is on (roomTestMode.ts); every such turn is marked. */
   readonly test?: true;
   /** This turn's own cosine to his profile and its length, whatever the verdict (even too short): session evidence. */
-  readonly own?: { readonly score: number; readonly ms: number };
+  readonly own?: {
+    readonly score: number;
+    readonly ms: number;
+    /** The turn's embedding, for his session's same-voice check and the room profile; never sent off this device. */
+    readonly vector?: Float32Array;
+  };
+  /** Its cosine to his own pieces earlier in this verified session (same room, same mic), when that decided it. */
+  readonly same?: number;
   /** His by his session's evidence, not this turn's own score: his path, never an owner-only act (`verified` false). */
   readonly lifted?: true;
   /** The replay check on the room mic: "heard" a loudspeaker (a guest), or "unchecked" (it could not run: never verified). */
@@ -211,6 +235,12 @@ export interface SpeakerIdentity {
    */
   readonly print?: { readonly model: string; readonly vector: string; readonly ms: number };
 }
+
+/** The identity as it leaves this device: the turn's embedding stays here (a guest's `print` is the one that travels). */
+export const forWire = (identity: SpeakerIdentity): SpeakerIdentity =>
+  identity.own?.vector === undefined
+    ? identity
+    : { ...identity, own: { score: identity.own.score, ms: identity.own.ms } };
 
 /** A stranger's clip shorter than this is too unsure to file (his own 2.2 s turns scored 0.27 against his profile). */
 export const PRINT_MIN_MS = 2_000;
@@ -263,8 +293,10 @@ export interface VoiceHold {
   readonly scores: ReadonlyArray<number>;
   /** His recent pieces that cleared the floor: what can lift a short or weak turn. */
   readonly evidence: ReadonlyArray<{ readonly at: number; readonly score: number }>;
+  /** The embeddings of his last two owner turns: what a later turn in a verified session is compared with. */
+  readonly anchor: ReadonlyArray<Float32Array>;
 }
-export const NO_HOLD: VoiceHold = { verifiedAt: null, scores: [], evidence: [] };
+export const NO_HOLD: VoiceHold = { verifiedAt: null, scores: [], evidence: [], anchor: [] };
 export const HOLD_MS = 5 * 60_000;
 /**
  * CAM++: under this a turn is not his, so it is a speaker change. His live short turns on Tumble sit at 0.36-0.38
@@ -277,6 +309,17 @@ const SESSION_MEAN = 0.37;
 const SESSION_NEAR = 0.4;
 /** Under this much speech a low score is too noisy to call a change: the turn is only not lifted. */
 const CHANGE_MIN_MS = 1_000;
+/**
+ * A turn in his verified session this close (cosine) to his own pieces earlier in it is still him, whatever its score to
+ * his profile: same room, same mic. Tumble 14-17 Nov, held out: his path 95% of his clips, other room voices inside his
+ * session 0.03-0.07% (0.2-0.3% at 0.4).
+ */
+export const SAME_VOICE = 0.45;
+/** Under this, with a second of speech, the voice clearly changed (his own next turn p1 0.22-0.29). */
+const CHANGED_VOICE = 0.2;
+
+const meanUnit = (vs: ReadonlyArray<Float32Array>): Float32Array =>
+  unitOrNull(Float32Array.from(vs[0]!, (_, i) => vs.reduce((n, v) => n + v[i]!, 0))) ?? vs[0]!;
 
 export const holdVoice = (
   hold: VoiceHold,
@@ -291,13 +334,19 @@ export const holdVoice = (
   const recent = hold.evidence.filter((e) => now - e.at <= HOLD_MS);
   const evidence =
     own !== null && own >= SESSION_FLOOR ? [...recent, { at: now, score: own }].slice(-3) : recent;
+  const vector = identity.replay === undefined ? identity.own?.vector : undefined;
   if (identity.kind === "owner") {
     const scores = [...hold.scores, own ?? 0].slice(-3);
     const averaged =
       scores.length === 3 && scores.reduce((a, b) => a + b, 0) / 3 >= policy.averaged.act;
     const verified = identity.replay === undefined && (identity.verified || averaged || held);
     return {
-      hold: { verifiedAt: verified ? now : hold.verifiedAt, scores, evidence },
+      hold: {
+        verifiedAt: verified ? now : hold.verifiedAt,
+        scores,
+        evidence,
+        anchor: vector === undefined ? hold.anchor : [...hold.anchor, vector].slice(-2),
+      },
       identity: {
         ...identity,
         verified,
@@ -333,12 +382,60 @@ export const holdVoice = (
         lifted: true,
       },
     };
-  if (own < SESSION_FLOOR && (identity.own?.ms ?? CHANGE_MIN_MS) >= CHANGE_MIN_MS)
+  // In a verified session his own earlier pieces judge a follow-up better than his profile does (17 Nov: his bedroom
+  // replies scored 0.1-0.3 against it). Still his path only, never an owner-only act.
+  const same =
+    held && vector !== undefined && hold.anchor.length > 0
+      ? cosine(vector, meanUnit(hold.anchor))
+      : null;
+  if (same !== null && same >= SAME_VOICE)
+    return {
+      hold: { ...hold, verifiedAt: now, evidence },
+      identity: {
+        ...identity,
+        kind: "owner",
+        personId: "owner",
+        name: null,
+        confidence: own,
+        verified: false,
+        lifted: true,
+        same,
+      },
+    };
+  const long = (identity.own?.ms ?? CHANGE_MIN_MS) >= CHANGE_MIN_MS;
+  if (long && (same === null ? own < SESSION_FLOOR : same < CHANGED_VOICE))
     return { hold: NO_HOLD, identity };
+  // Not clearly him, not clearly another voice: his session waits for the next turn.
+  if (same !== null) return { hold: { ...hold, evidence }, identity: { ...identity, same } };
   return identity.kind === "guest"
     ? { hold: { ...NO_HOLD, evidence }, identity }
     : { hold: { ...hold, evidence }, identity };
 };
+
+/**
+ * Whether this turn may teach this device's room profile for its person, and on what evidence: verified on its own
+ * clips, verified by his session, or the same voice as his verified session's own pieces by a wide margin. Never a
+ * replay or a turn the replay check could not judge, the test clone, a guest or a turn under 1.5 s.
+ */
+export const teaches = (
+  identity: SpeakerIdentity,
+): "verified" | "session" | "continuity" | null => {
+  if (
+    identity.personId === null ||
+    identity.kind === "guest" ||
+    identity.kind === "unverified" ||
+    identity.test === true ||
+    identity.replay !== undefined ||
+    identity.own?.vector === undefined ||
+    identity.own.ms < TEACH_MIN_MS
+  )
+    return null;
+  if (identity.verified) return identity.session === true ? "session" : "verified";
+  return identity.lifted === true && (identity.same ?? 0) >= TEACH_SAME ? "continuity" : null;
+};
+const TEACH_MIN_MS = 1_500;
+/** Far above other voices' likeness to his session (p99 0.31-0.42), so a lifted turn that teaches is surely his. */
+const TEACH_SAME = 0.5;
 
 /**
  * A session's first turn, also scored as one clip with her name's clip before it (`joined`): his when that clears steer
@@ -398,7 +495,7 @@ export const ownerScoreOf = (
 ): number | null => {
   const scores = profiles
     .filter((p) => p.kind === "owner" && p.model === model)
-    .map((p) => cosine(vector, p.centroid))
+    .map((p) => profileScore(vector, p))
     .filter(Number.isFinite);
   return scores.length === 0 ? null : Math.max(...scores);
 };
