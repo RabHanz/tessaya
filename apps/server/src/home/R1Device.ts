@@ -625,6 +625,15 @@ export const namedIn = (
 const taintedOf = (voice: unknown): boolean =>
   typeof voice === "object" && voice !== null && "tainted" in voice && voice.tainted === true;
 
+/** Where her voice plays now, as the device last told the room loop (`plays`). */
+const playsOf = (voice: unknown): { plays?: "bt" | "onboard" } =>
+  typeof voice === "object" &&
+  voice !== null &&
+  "plays" in voice &&
+  (voice.plays === "bt" || voice.plays === "onboard")
+    ? { plays: voice.plays }
+    : {};
+
 /** The zone the room loop runs in (`tz`), the last guess before this machine's. */
 const zoneOfVoice = (voice: unknown): string | undefined =>
   typeof voice === "object" && voice !== null && "tz" in voice && typeof voice.tz === "string"
@@ -772,6 +781,7 @@ export const r1Envelope = (
     ...nameOnceOf(input.voice),
     // Begun while her own voice could still be heard: what it teaches waits for his yes, and nothing private is read.
     tainted: taintedOf(input.voice),
+    ...playsOf(input.voice),
     timeZone,
     ...heardWordsOf(input.voice),
     ...(emotionOf(input.voice) === undefined ? {} : { emotion: emotionOf(input.voice) }),
