@@ -24,7 +24,7 @@ export interface LevelState {
 
 export const UNRATED: LevelState = { level: null, pending: null };
 
-// From the memory lane's onnyx readings on 17 Nov: at PSI full 15-30% the loop's link to its own hub dropped for 1-10 s.
+// From readings on his home server on 17 Nov: at PSI full 15-30% the loop's link to its own hub dropped for 1-10 s.
 const BAD_PSI_FULL = 20;
 const BAD_AVAIL_MB = 600;
 const GOOD_PSI_FULL = 5;

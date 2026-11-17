@@ -54,7 +54,7 @@ it("does not flap: a blip resets the hold, figures between the bands and missing
   expect(
     run(deg, [...Array(50).fill(between), ...Array(50).fill(null)]).every((l) => l === "degraded"),
   ).toBe(true);
-  // PSI swinging between 15 and 30 (onnyx, 17 Nov) still degrades: a reading between the bands does not restart it.
+  // PSI swinging between 15 and 30 (his home server, 17 Nov) still degrades: a reading between the bands does not restart it.
   const swinging = run(
     ok0,
     Array(bads + 1)
@@ -73,7 +73,7 @@ it("leaves a server that just started unrated until its figures hold either way"
   expect(run(unrated, Array(DEGRADE_MS / 10_000 + 1).fill(starving)).at(-1)).toBe("degraded");
 });
 
-const order = ["onnyx", "hetzner", "laptop"];
+const order = ["home", "cloud", "laptop"];
 const place = (
   current: string,
   levels: Record<string, HostLevel | undefined>,
@@ -82,31 +82,29 @@ const place = (
 ) => placeRoom({ order, current, levels, movedAt, now });
 
 it("moves a device off a degraded hub to the first ok one in his order, and back once his first is ok", () => {
-  expect(place("onnyx", { onnyx: "degraded", hetzner: "ok", laptop: "ok" })).toEqual({
-    to: "hetzner",
+  expect(place("home", { home: "degraded", cloud: "ok", laptop: "ok" })).toEqual({
+    to: "cloud",
     why: "degraded",
   });
-  expect(place("onnyx", { onnyx: "degraded", hetzner: "degraded", laptop: "ok" })?.to).toBe(
-    "laptop",
-  );
+  expect(place("home", { home: "degraded", cloud: "degraded", laptop: "ok" })?.to).toBe("laptop");
   // Nowhere better, or nothing known about the others: it stays.
-  expect(place("onnyx", { onnyx: "degraded", hetzner: "degraded" })).toBeNull();
-  expect(place("onnyx", { onnyx: "degraded" })).toBeNull();
+  expect(place("home", { home: "degraded", cloud: "degraded" })).toBeNull();
+  expect(place("home", { home: "degraded" })).toBeNull();
   // Healthy and first: it stays.
-  expect(place("onnyx", { onnyx: "ok", hetzner: "ok" })).toBeNull();
+  expect(place("home", { home: "ok", cloud: "ok" })).toBeNull();
   // On the standby: stays while his first is degraded or unknown, goes back once it is ok.
-  expect(place("hetzner", { onnyx: "degraded", hetzner: "ok" })).toBeNull();
-  expect(place("hetzner", { hetzner: "ok" })).toBeNull();
-  expect(place("hetzner", { onnyx: "ok", hetzner: "ok" })).toEqual({
-    to: "onnyx",
+  expect(place("cloud", { home: "degraded", cloud: "ok" })).toBeNull();
+  expect(place("cloud", { cloud: "ok" })).toBeNull();
+  expect(place("cloud", { home: "ok", cloud: "ok" })).toEqual({
+    to: "home",
     why: "recovered",
   });
   // Off a degraded standby to his first when that one is ok, rather than further down.
-  expect(place("hetzner", { onnyx: "ok", hetzner: "degraded", laptop: "ok" })?.to).toBe("onnyx");
+  expect(place("cloud", { home: "ok", cloud: "degraded", laptop: "ok" })?.to).toBe("home");
 });
 
 it("waits out the dwell after any move, on whichever server made it", () => {
-  const levels = { onnyx: "ok", hetzner: "ok" } as const;
-  expect(place("hetzner", levels, 0, DWELL_MS - 1)).toBeNull();
-  expect(place("hetzner", levels, 0, DWELL_MS)?.to).toBe("onnyx");
+  const levels = { home: "ok", cloud: "ok" } as const;
+  expect(place("cloud", levels, 0, DWELL_MS - 1)).toBeNull();
+  expect(place("cloud", levels, 0, DWELL_MS)?.to).toBe("home");
 });

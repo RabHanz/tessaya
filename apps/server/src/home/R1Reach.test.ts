@@ -263,7 +263,7 @@ it.effect(
         "r1-a": { key: { v: {}, at: 5, by: "env-home" } },
       };
       const placed: Array<unknown> = [];
-      // onnyx on 17 Nov: 195 MB free, memory PSI full 30%.
+      // His home server on 17 Nov: 195 MB free, memory PSI full 30%.
       const layer = R1ReachModule.layerWith(() => ({ memAvailMb: 195, memPsiFull10: 30 })).pipe(
         Layer.provide(
           Layer.mergeAll(
