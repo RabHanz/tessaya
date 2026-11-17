@@ -1,4 +1,11 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodePath from "node:path";
+
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import { createPersona } from "@t3tools/tessaya-shared/personaFile";
+import * as TestClock from "effect/testing/TestClock";
+import * as ServerConfig from "../config.ts";
 import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { LINE_EVENTS, lineId } from "@t3tools/tessaya-shared/expression";
 import type { BrainRole } from "@t3tools/contracts";
@@ -160,3 +167,33 @@ it.effect("hands the room loop its next wordings unfilled, distinct, and nothing
     assert.deepStrictEqual(none, { on: false, lines: {} });
   });
 });
+
+it.effect(
+  "a persona's own greeting comes first on its first wake of the day, words on or off",
+  () => {
+    const t = setup({});
+    const config = ServerConfig.layerTest(process.cwd(), { prefix: "t3-greet-" }).pipe(
+      Layer.provide(NodeServices.layer),
+    );
+    return Effect.gen(function* () {
+      const dir = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
+      createPersona(NodePath.join(dir, "operating-system"), {
+        name: "Rook",
+        role: "a pirate",
+        greetings: ["Ahoy!"],
+      });
+      const x = yield* TessayaExpression;
+      assert.deepStrictEqual(yield* x.ahead(["ack.name", "greet.hello"], { persona: "rook" }, 2), {
+        on: false,
+        lines: { "ack.name": [{ text: "Ahoy!", mood: "happy", gesture: "wave" }] },
+      });
+      assert.deepStrictEqual(yield* x.ahead(["ack.name"], { persona: "rook" }, 2), {
+        on: false,
+        lines: {},
+      });
+      // The next day it greets again.
+      yield* TestClock.adjust("1 day");
+      assert.strictEqual((yield* x.express("ack.name", { persona: "rook" }))?.text, "Ahoy!");
+    }).pipe(Effect.provide(t.layer.pipe(Layer.provideMerge(config))));
+  },
+);

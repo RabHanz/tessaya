@@ -22,10 +22,16 @@ const setup = (answer: (ask: LinesAsk) => LinesGot | Error) => {
 const l = (text: string) => ({ text, mood: "happy" as const, gesture: "nodSmall" as const });
 
 describe("the room loop's own words", () => {
-  it("says the plain line until the server says her own words are on", async () => {
-    const off = setup(() => ({ on: false, lines: { "ack.name": [l("Mm?")] } }));
+  it("says the plain line while her own words are off, except a persona's own greeting once", async () => {
+    let greeting = [l("Ahoy, you again!")];
+    const off = setup(() => {
+      const got = { on: false, lines: { "ack.name": greeting } };
+      greeting = [];
+      return got;
+    });
     expect(off.lines.take("ack.name", "executive", "owner", "Yes?").text).toBe("Yes?");
     await off.lines.prime("executive", "owner");
+    expect(off.lines.take("ack.name", "executive", "owner", "Yes?").text).toBe("Ahoy, you again!");
     expect(off.lines.take("ack.name", "executive", "owner", "Yes?")).toEqual({
       text: "Yes?",
       mood: null,

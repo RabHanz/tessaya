@@ -1301,6 +1301,43 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["tessaya_persona"],
     not: ["tessaya_persona_handoff", "tessaya_job_lead"],
   },
+  // G9 (17 Nov): hire from one sentence, and Character Cards in and out, by voice.
+  {
+    id: "persona-hire-sentence",
+    source: "VOXTA-STUDY G9: hire a persona from one sentence, drafted for his yes",
+    said: "hire me someone cheerful to cook with at the weekends, you sort out the details",
+    first: ["tessaya_persona"],
+    goal: "tessaya_persona",
+    maxCalls: 1,
+    goalArgs: ['"op":"hire"', "cook"],
+    notGoalArgs: ['"op":"create"'],
+    not: ["tessaya_persona_handoff"],
+    answers: {
+      tessaya_persona:
+        "Here is who I would hire: Poppy, a cheerful weekend cooking buddy who loves trying new recipes. Say yes to add them, or tell me what to change.",
+    },
+    says: "Poppy",
+  },
+  {
+    id: "persona-import-card",
+    source: "VOXTA-STUDY G9: bring a persona from anywhere as a Character Card",
+    said: "import the character card at ~/Downloads/rook.png",
+    first: ["tessaya_persona"],
+    goal: "tessaya_persona",
+    maxCalls: 1,
+    goalArgs: ['"op":"import"', "rook.png"],
+    not: ["tessaya_memory_remember", "tessaya_voice"],
+  },
+  {
+    id: "persona-export-card",
+    source: "VOXTA-STUDY G9: share a persona as a Character Card",
+    said: "export Freya as a character card so I can share her",
+    first: ["tessaya_persona"],
+    goal: "tessaya_persona",
+    maxCalls: 1,
+    goalArgs: ['"op":"export"', "Freya"],
+    not: ["tessaya_persona_handoff"],
+  },
   {
     id: "persona-handoff-control",
     source: "Control: talking to a persona is a handoff, not a change to the roster",

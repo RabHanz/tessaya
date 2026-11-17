@@ -128,6 +128,24 @@ export const make = Effect.gen(function* () {
   const history = new Map<string, ReadonlyArray<string>>();
   const batches: Array<number> = [];
   const tried = new Map<string, number>();
+  // shortcut: in memory, so a restart the same day greets once more; persist if that is heard.
+  const greetedOn = new Map<string, string>();
+
+  /** A persona's own greeting (Character Card `first_mes` and alternates), one at random, on its first wake of the day. */
+  const greeting = Effect.fnUntraced(function* (
+    event: LineEvent,
+    personaId: string,
+    at: number,
+    zone: string,
+  ) {
+    const greetings = personaOf(personaId)?.greetings ?? [];
+    if ((event !== "ack.name" && event !== "greet.hello") || greetings.length === 0) return null;
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(at);
+    if (greetedOn.get(personaId) === day) return null;
+    greetedOn.set(personaId, day);
+    const pick = greetings[Math.floor((yield* Random.next) * greetings.length)]!;
+    return { text: pick, mood: "happy", gesture: "wave" } satisfies Line;
+  });
   let writing = false;
 
   const quietHours = readQuietHours.pipe(Effect.provideService(SqlClient.SqlClient, sql));
@@ -235,6 +253,8 @@ export const make = Effect.gen(function* () {
       });
       if (!allowed) return null;
       const persona = personaOf(input.persona)?.id ?? "executive";
+      const greeted = yield* greeting(event, persona, at, zone);
+      if (greeted !== null) return expressionOf(event, persona, greeted, {}, "fresh");
       const fixed = plainExpression(event, persona, facts, input.plain);
       const picked =
         current?.tessayaExpression === true
@@ -256,11 +276,17 @@ export const make = Effect.gen(function* () {
   const ahead: TessayaExpression["Service"]["ahead"] = Effect.fn("TessayaExpression.ahead")(
     function* (events, input, count) {
       const { current, at, zone } = yield* now;
-      if (current?.tessayaExpression !== true) return { on: false, lines: {} };
       const persona = personaOf(input.persona)?.id ?? "executive";
+      // Its greeting goes first, even with her own words off: it is the persona's, not hers to write.
+      const greeted: Partial<Record<LineEvent, ReadonlyArray<Line>>> = {};
+      for (const event of events) {
+        const line = yield* greeting(event, persona, at, zone);
+        if (line !== null) greeted[event] = [line];
+      }
+      if (current?.tessayaExpression !== true) return { on: false, lines: greeted };
       const lines: Partial<Record<LineEvent, ReadonlyArray<Line>>> = {};
       for (const event of events) {
-        const got: Array<Line> = [];
+        const got: Array<Line> = [...(greeted[event] ?? [])];
         for (let i = 0; i < count; i++) {
           const picked = yield* pickTemplate(event, persona, input.person, at, zone);
           if (picked !== null && !got.some((g) => g.text === picked.line.text))

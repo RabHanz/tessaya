@@ -92,6 +92,8 @@ export interface Persona {
   readonly brain?: Brain;
   /** How much of his own profile it carries (`owner:`); unset is the slice (`ownerLine`). */
   readonly owner?: OwnerReach;
+  /** What it may say when first woken each day (`greetings:`, a JSON list of lines), one at random. */
+  readonly greetings?: ReadonlyArray<string>;
 }
 
 export const TRAITS = ["energy", "warmth", "play", "expr", "formal", "sass"] as const;
@@ -223,7 +225,23 @@ const face = (
     ...(ownerReachOf(fields["owner"]) === undefined
       ? {}
       : { owner: ownerReachOf(fields["owner"])! }),
+    ...(greetingsOf(fields["greetings"]).length === 0
+      ? {}
+      : { greetings: greetingsOf(fields["greetings"]) }),
   };
+};
+
+/** `greetings: ["Hi.", "You again!"]`; anything that is not a list of lines reads as none. */
+export const greetingsOf = (field: string | undefined): ReadonlyArray<string> => {
+  if (field === undefined || field.trim() === "") return [];
+  try {
+    const list: unknown = JSON.parse(field);
+    return Array.isArray(list)
+      ? list.filter((g): g is string => typeof g === "string" && g.trim() !== "").slice(0, 8)
+      : [];
+  } catch {
+    return [];
+  }
 };
 
 const BODY_ID = /^[a-z][a-z0-9-]{0,40}$/i;
