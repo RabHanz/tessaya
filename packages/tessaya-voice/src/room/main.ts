@@ -21,12 +21,13 @@ import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import {
   ACT_SINGLE_MS,
   CAMPLUS_POLICY,
-  cosine,
   decideSpeaker,
   enrol,
   identityOf,
   ownerScoreOf,
+  profileScore,
   REPLAY_CUT,
+  ROOM_POLICY,
   replayChecked,
   PRINT_MIN_MS,
   profilesFor,
@@ -591,6 +592,7 @@ const main = async () => {
   });
   sharedProfiles.setRefining(process.env["R1_VOICE_REFINE"] !== "0");
   const policy = { ...CAMPLUS_POLICY, model: SPEAKER_MODEL_ID };
+  const roomPolicy = { ...ROOM_POLICY, model: SPEAKER_MODEL_ID };
   log("starting: models loaded");
   const deviceKey = secret("R1_DEVICE_KEY_FILE");
   let roster = (await servedPersonas(env("R1_BRAIN_URL"), deviceKey)) ?? ROOM_CONFIG.personas;
@@ -898,6 +900,12 @@ const main = async () => {
     testSpeaker = readTest();
     return `test speaker enrolled from ${made.kept} clips (${made.dropped} dropped)`;
   };
+  /** Her mic's profiles, each with this R1's room centroid for that person when it has learnt one. */
+  const withRoom = () =>
+    store.list().map((p) => {
+      const room = sharedProfiles.room(p.id);
+      return room === undefined || room.length !== p.centroid.length ? p : { ...p, room };
+    });
   const speakerOf = async (pcm: Int16Array, input: VoiceInput = "mic") => {
     const at = Date.now();
     const live =
@@ -906,14 +914,26 @@ const main = async () => {
     if (vector === null) return UNVERIFIED(at);
     const clips = [{ vector, ms: (pcm.length / 16_000) * 1000 }];
     const until = room?.testUntil() ?? 0;
-    const mine = input === "mic" ? store.list() : profilesFor(headsetStore.list(), store.list());
+    const mine = input === "mic" ? withRoom() : profilesFor(headsetStore.list(), store.list());
     const profiles = testSpeaker !== null && Date.now() < until ? [...mine, testSpeaker] : mine;
     const decide = (use: "steer" | "act") =>
-      decideSpeaker({ clips, model: SPEAKER_MODEL_ID, profiles, policy, use });
+      decideSpeaker({
+        clips,
+        model: SPEAKER_MODEL_ID,
+        profiles,
+        policy: input === "mic" ? roomPolicy : policy,
+        use,
+      });
     const judged = identityOf(decide("steer"), decide("act"), at);
     if (judged.personId === TEST_SPEAKER_ID) return trustTestSpeaker(judged, Date.now(), until);
     const own = ownerScoreOf(vector, profiles, SPEAKER_MODEL_ID);
-    const owned = own === null ? judged : { ...judged, own: { score: own, ms: clips[0]!.ms } };
+    const owned =
+      own === null
+        ? judged
+        : {
+            ...judged,
+            own: { score: own, ms: clips[0]!.ms, ...(input === "mic" ? { vector } : {}) },
+          };
     const scored = live === null ? owned : replayChecked(owned, await live, REPLAY_CUT);
     // A guest's voice goes to her server's people graph, so she knows them next time: numbers, never audio.
     const identity =
@@ -1018,6 +1038,13 @@ const main = async () => {
         void learnInput(input, personId, pcm).catch((e: unknown) =>
           log(`headset voice profile not learnt: ${String(e)}`),
         ),
+      learnRoom: (personId, vector, sample) => {
+        const p = store
+          .list()
+          .find((p) => (personId === "owner" ? p.kind === "owner" : p.id === personId));
+        if (p !== undefined && p.model === SPEAKER_MODEL_ID)
+          sharedProfiles.learn(p.id, vector, sample);
+      },
       ...(testMode ? { testMode: { ready: () => testSpeaker !== null } } : {}),
       playback: playback.run,
       voices: (pcm) =>
@@ -1117,10 +1144,10 @@ const main = async () => {
       embed: (pcm) => embedder.embed(pcm),
       member: async (pcm) => {
         const vector = await embedder.embed(pcm);
-        const mine = store.list().filter((p) => p.model === SPEAKER_MODEL_ID);
+        const mine = withRoom().filter((p) => p.model === SPEAKER_MODEL_ID);
         return vector === null
           ? Number.NEGATIVE_INFINITY
-          : Math.max(Number.NEGATIVE_INFINITY, ...mine.map((p) => cosine(vector, p.centroid)));
+          : Math.max(Number.NEGATIVE_INFINITY, ...mine.map((p) => profileScore(vector, p)));
       },
       members: () => store.list().some((p) => p.model === SPEAKER_MODEL_ID),
       now,

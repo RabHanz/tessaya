@@ -1829,7 +1829,13 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
   it("open talk-over: a household voice over her stops her and is answered; another voice or her echo never does", async () => {
     // Her reply as speech-like sound, and the R1's 0.3.92 uplink: each frame says how much of her it has played.
     const her = Int16Array.from(speechLike(6, 3, 190), (v) => v * 32768);
-    const run = async (mode: "open" | "keyword", him: boolean, likeness = 0.6, enrolled = true) => {
+    const run = async (
+      mode: "open" | "keyword",
+      him: boolean,
+      likeness = 0.6,
+      enrolled = true,
+      line = "It's seven forty here, and the sun is up.",
+    ) => {
       const logs: string[] = [];
       const t = setup({
         log: (l) => logs.push(l),
@@ -1846,7 +1852,7 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
         }),
         brain: async function* (input, signal) {
           t.brainCalls.push(input);
-          yield "It's seven forty here, and the sun is up.";
+          yield line;
           if (input.messages.at(-1)!.content === "What time is it?") await abortedBy(signal);
         },
         speak: async function* (_text, signal) {
@@ -1928,6 +1934,11 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       "No, I meant in London.",
     ]);
     expect((await run("keyword", true, 0.05)).asked).toEqual(["What time is it?"]);
+    // Over her question, his reply mixed with her voice scores like a stranger (17 Nov, 19:22: 0.30): with no second
+    // of it after her voice, it is answered.
+    expect(
+      (await run("keyword", true, 0.05, true, "It's seven forty. Want the weather too? ")).asked,
+    ).toEqual(["What time is it?", "No, I meant in London."]);
     // Nobody enrolled (14 Nov, 18:57): what the person who woke her says over her is answered, in either mode.
     for (const mode of ["open", "keyword"] as const)
       expect(await run(mode, true, 0.6, false)).toMatchObject({
