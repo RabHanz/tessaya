@@ -905,6 +905,8 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["Why is everything so slow right now?"],
     uses: [
       [
+        // Her own slowness is one reading of "everything" (17 Nov).
+        "tessaya_health",
         "tessaya_work_now",
         "tessaya_fleet",
         "tessaya_in_flight",
@@ -914,6 +916,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
       ],
     ],
     check: briefAnswer(25),
+  },
+  {
+    // 17 Nov: Tumble slow and choppy from a starved voice host; she must read her health, not guess.
+    id: "health-why-slow",
+    proves: ["tessaya_health"],
+    said: ["Why are you being so slow and choppy with me right now?"],
+    uses: [["tessaya_health"]],
+    check: briefAnswer(30),
   },
   {
     id: "brief-how-things",

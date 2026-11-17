@@ -25,6 +25,7 @@ export const TABS = [
   { id: "intercom", label: "Intercom" },
   { id: "homeassistant", label: "Home Assistant" },
   { id: "phone", label: "Phone" },
+  { id: "health", label: "Health" },
   { id: "learn", label: "Learn Tessaya" },
   { id: "help", label: "Help" },
 ] as const;
@@ -50,7 +51,7 @@ export const AREAS = [
   {
     id: "devices",
     label: "Devices",
-    pages: ["hardware", "intercom", "homeassistant", "phone"],
+    pages: ["hardware", "intercom", "homeassistant", "phone", "health"],
     settings: null,
   },
   {

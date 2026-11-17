@@ -86,6 +86,12 @@ export const TESSAYA_PLACES = [
     terms: ["mobile", "iphone", "android", "pair", "app", "add a phone", "qr", "scan"],
   },
   {
+    id: "health",
+    label: "Health",
+    group: "Home and devices",
+    terms: ["health", "slow", "lag", "choppy", "not waking", "diagnostics", "memory", "swap"],
+  },
+  {
     id: "assistant",
     label: "Working for you",
     group: "Working for you",

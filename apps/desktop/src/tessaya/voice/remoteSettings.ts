@@ -70,6 +70,8 @@ const TAB_VOICE: Record<TabId, DesktopSettingsControl["voice"] | null> = {
   cloud: "owner",
   homeassistant: "owner",
   phone: "owner",
+  // Read only: her health has no controls; "why are you slow?" goes through tessaya_health.
+  health: null,
   // Moves go through tessaya_cast, which needs his own ask.
   cast: null,
   setup: null,

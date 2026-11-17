@@ -26,6 +26,7 @@ export const SETTINGS_PAGE_TARGETS = [
   "SettingsActivity",
   "SettingsMood",
   "SettingsPresence",
+  "SettingsHealth",
   "SettingsKeyboard",
   "SettingsVoice",
   "SettingsFollowUp",

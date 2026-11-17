@@ -6,6 +6,7 @@
 import { DEFAULT_TESSAYA_PULSE } from "@t3tools/contracts";
 import { inQuietHours, quietHoursOf } from "@t3tools/tessaya-shared/comms";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { diagnose, healthNotice } from "@t3tools/tessaya-shared/health";
 import { DEFAULT_POLICY } from "@t3tools/tessaya-shared/initiative";
 import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import {
@@ -54,6 +55,7 @@ import { BrainUsage, periodStarts } from "./BrainUsage.ts";
 import { houseZone } from "./houseZone.ts";
 import { readDndUntil, readQuietHours } from "./quietHours.ts";
 import { TessayaCommitmentService } from "./TessayaCommitmentService.ts";
+import * as TessayaHealth from "./TessayaHealth.ts";
 import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
@@ -88,6 +90,12 @@ const PulseState = Schema.Struct({
   /** Member -> nearest vessel at the last sense, and her mood then: the diffs that make events. */
   near: Schema.Record(Schema.String, Schema.NullOr(Schema.String)),
   mood: Schema.NullOr(Schema.String),
+  /** Her own health's worst cause and how many senses it has held (healthNotice). */
+  health: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({ key: Schema.String, since: Schema.Number, count: Schema.Number }),
+    ),
+  ),
 });
 export type PulseState = Omit<typeof PulseState.Type, "digest" | "learned"> & {
   readonly digest: ReadonlyArray<PulseEvent>;
@@ -349,9 +357,26 @@ export const sense = Effect.fn("TessayaPulse.sense")(function* (state: PulseStat
           yield* memory.value.add(patternFact(p, now)).pipe(Effect.ignoreCause({ log: true }));
   }
   if (stats !== statsBefore) yield* writeStats(stats);
+  // Her own health (17 Nov): a cause that holds a few minutes is one event per episode; the review and its gate decide
+  // whether she says it, sends a card or only logs it, by presence and quiet hours like anything else.
+  const health = healthNotice(
+    state.health ?? null,
+    diagnose(yield* TessayaHealth.snapshot(), "any"),
+    now,
+  );
+  if (health.notice !== null)
+    events.push({
+      ...health.notice,
+      category: "home",
+      at: now,
+      member: null,
+      urgent: false,
+      told: false,
+    });
   const fresh = events.filter((e) => state.reviewed[e.id] === undefined);
   return {
     ...state,
+    health: health.episode,
     lastSense: now,
     lastRowId,
     learned,

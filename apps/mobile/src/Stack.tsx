@@ -99,6 +99,7 @@ import { SettingsCastRouteScreen } from "./features/settings/SettingsCastRouteSc
 import { SettingsPersonasRouteScreen } from "./features/settings/SettingsPersonasRouteScreen";
 import { SettingsForgottenRouteScreen } from "./features/settings/SettingsForgottenRouteScreen";
 import { SettingsPulseRouteScreen } from "./features/settings/SettingsPulseRouteScreen";
+import { SettingsHealthRouteScreen } from "./features/settings/SettingsHealthRouteScreen";
 import { SettingsBrainUsageRouteScreen } from "./features/settings/SettingsBrainUsageRouteScreen";
 import { SettingsActivityRouteScreen } from "./features/settings/SettingsActivityRouteScreen";
 import { SettingsMoodRouteScreen } from "./features/settings/SettingsMoodRouteScreen";
@@ -253,6 +254,11 @@ const SETTINGS_SCREENS = {
     screen: SettingsPulseRouteScreen,
     linking: "settings/pulse",
     options: settingsPage("Pulse"),
+  }),
+  SettingsHealth: createNativeStackScreen({
+    screen: SettingsHealthRouteScreen,
+    linking: "settings/health",
+    options: settingsPage("Health"),
   }),
   SettingsBrainUsage: createNativeStackScreen({
     screen: SettingsBrainUsageRouteScreen,

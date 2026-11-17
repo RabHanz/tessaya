@@ -63,6 +63,7 @@ import { recogniserTurn } from "./recogniserTurn.ts";
 import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
 import { createPlaybackWindows, PLAYBACK_TOPIC } from "./playbackWindow.ts";
+import { createHealthReport, readHost } from "./healthReport.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { bothCaptures, createWakeTrace } from "./wakeTrace.ts";
 import { createWakeStream, kwsSettingsCommand, parseWakeGate } from "./wakeStream.ts";
@@ -77,6 +78,8 @@ const env = (key: string, fallback?: string): string => {
 };
 const secret = (key: string) => NodeFS.readFileSync(env(key), "utf8").trim();
 const log = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
+const startedAt = Date.now();
+const healthReport = createHealthReport();
 /** A fatal stop that is always in the journal: written synchronously to stderr before exiting. */
 const fail = (line: string): never => {
   NodeFS.writeSync(2, `${new Date().toISOString()} ${line}\n`);
@@ -169,7 +172,8 @@ const recognisers = (online: () => boolean) => {
       void turn.finish().then(() => turn.failed() || timed(r.url, performance.now() - at));
     }
   }, 45_000);
-  return (owner = false): RecogniserTurn =>
+  const status = () => states.map((s) => ({ url: s.url, up: s.queue !== null }));
+  const turn = (owner = false): RecogniserTurn =>
     turnAcross(
       (tried) => {
         const pool = recognisersFor(
@@ -193,6 +197,7 @@ const recognisers = (online: () => boolean) => {
       },
       () => performance.now(),
     );
+  return Object.assign(turn, { status });
 };
 
 /** Pocket TTS's own server, kept running beside the loop (her voice, as on the desktop). */
@@ -430,9 +435,11 @@ const link = (url: string): NonNullable<RoomDeps["link"]> => {
   return () => {
     if (Date.now() - at < 2000) return;
     at = Date.now();
+    const sent = performance.now();
     for (let i = 0; i < 2; i += 1)
       void fetch(health, { signal: AbortSignal.timeout(5000) })
         .then((res) => res.arrayBuffer())
+        .then(() => i === 0 && healthReport.rtt(performance.now() - sent))
         .catch(() => undefined);
   };
 };
@@ -450,8 +457,14 @@ const brain = (url: string, key: string): RoomDeps["brain"] =>
         device: input.deviceId,
       }),
       signal,
+    }).catch((e: unknown) => {
+      if (!signal.aborted) healthReport.brainFailed();
+      throw e;
     });
-    if (!res.ok || res.body === null) throw new Error(`Tessaya answered ${res.status}`);
+    if (!res.ok || res.body === null) {
+      healthReport.brainFailed();
+      throw new Error(`Tessaya answered ${res.status}`);
+    }
     const decoder = new TextDecoder();
     let buf = "";
     for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
@@ -726,6 +739,9 @@ const main = async () => {
       }
       const wakePath = /^freya\/r1\/([^/]+)\/(voice\/wake\/end|event\/wake\/stats)$/.exec(t);
       if (wakePath !== null) trace.report(wakePath[1]!, wakePath[2]!, String(p));
+      const kwsPass = /^freya\/r1\/([^/]+)\/event\/wake\/kws$/.exec(t);
+      if (kwsPass !== null && /"pass"\s*:\s*true/.test(String(p)))
+        healthReport.attempt(kwsPass[1]!);
       const seen = /^freya\/r1\/([^/]+)\/state\/online$/.exec(t);
       if (seen !== null) String(p).trim() === "1" ? online.add(seen[1]!) : online.delete(seen[1]!);
       // Her early kws threshold and wake gate, which the Tessel loses on every boot: sent whenever it reports others.
@@ -976,7 +992,8 @@ const main = async () => {
                 return turn.finish();
               }),
             ),
-          onWake: (id, word, level, score, clip, request, voice) =>
+          onWake: (id, word, level, score, clip, request, voice) => {
+            healthReport.accept(id);
             room?.woken(
               id,
               words.find((w) => w.word === word)?.persona ?? word,
@@ -985,7 +1002,8 @@ const main = async () => {
               clip,
               request,
               voice,
-            ),
+            );
+          },
           voice: (pcm) => speakerOf(pcm),
           log,
           kwsWake,
@@ -1168,6 +1186,43 @@ const main = async () => {
       );
     });
   }, 10 * 60_000);
+  // Her health model's room part, each minute, retained so a restarted server has it at once; an old `at` is a
+  // stopped loop. Only for Tessels online now: nothing goes out while the room is empty.
+  setInterval(() => {
+    if (online.size === 0) return;
+    const pocket = `http://127.0.0.1:${env("R1_POCKET_PORT", "58232")}/health`;
+    void fetch(pocket, { signal: AbortSignal.timeout(2_000) })
+      .then(
+        (r) => r.ok,
+        () => false,
+      )
+      .then((pocketUp) => {
+        const host = readHost(Date.now());
+        const services = [
+          { name: "room loop", host: host.host, up: true, startedAt },
+          { name: "pocket-tts", host: host.host, up: pocketUp, startedAt },
+          ...heard.status().map((r) => ({
+            name: `recogniser ${r.url.replace(/^wss?:\/\//, "")}`,
+            host: host.host,
+            up: r.up,
+            startedAt: null,
+          })),
+        ];
+        const degraded = "degraded" in replay.status && replay.status.degraded;
+        for (const id of online)
+          mqtt.publish(
+            `freya/r1/${id}/state/voicehost`,
+            JSON.stringify(
+              healthReport.report(id, {
+                host,
+                services,
+                replay: { line: replayStatusLine(replay.status), degraded },
+              }),
+            ),
+            true,
+          );
+      });
+  }, 60_000);
   const stop = () => {
     room?.close();
     mqtt.close();

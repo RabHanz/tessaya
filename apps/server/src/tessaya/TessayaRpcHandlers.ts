@@ -46,6 +46,7 @@ import {
   BATON_DICTATION_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
+  BATON_HEALTH_WS_METHODS,
   BATON_WS_METHODS,
   TessayaJobPlacementError,
   TessayaRpcGroup,
@@ -140,6 +141,7 @@ import { R1Reach } from "../home/R1Reach.ts";
 import { DeviceSync } from "../home/DeviceSync.ts";
 import { R1Updates } from "../home/R1Updates.ts";
 import { R1Loop } from "../home/R1Loop.ts";
+import * as TessayaHealth from "./TessayaHealth.ts";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { VoiceArbiter } from "../home/VoiceArbiter.ts";
 import { DeviceTriggers } from "../home/DeviceTriggers.ts";
@@ -585,6 +587,9 @@ export const makeHandlers = Effect.gen(function* () {
           };
         }),
       ),
+    // Settings → Health on web, desktop and mobile: the same snapshot and diagnosis as her tool.
+    [BATON_HEALTH_WS_METHODS.get]: (input) =>
+      run(TessayaHealth.explain(input.symptom ?? "any", { kind: "owner", id: "settings" })),
     [BATON_WATCH_WS_METHODS.watchGet]: () =>
       run(
         Effect.gen(function* () {

@@ -30,6 +30,8 @@ import {
   OrchestrationRuleListInput,
   OrchestrationRuleListResult,
   WatchResult,
+  HealthDiagnosis,
+  TessayaHealthInput,
   TessayaPreferenceKey,
 } from "@t3tools/tessaya-contracts";
 import {
@@ -110,6 +112,18 @@ const WatchTool = Tool.make("tessaya_watch", {
     'What you are watching for him: Tessaya\'s watch report on his agents\' running work that looks stuck, failed or waiting for the Director. Use it for "what are you watching" or "is anything stuck". Standing rules on device state are listed by home_automations.',
   // No `parameters`: Tool.EmptyParams serializes as a plain object, which every client accepts.
   success: WatchResult,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const HealthTool = Tool.make("tessaya_health", {
+  ...shared,
+  description:
+    "Why you (Tessaya) are slow, laggy, choppy, cutting out or not waking, or why a reply took long: reads your live health (each machine's free memory and pressure stalls, your voice services, each Tessel's Wi-Fi and the last turns' stage times, wake attempts against accepts) and names the likeliest cause with its evidence. Call it whenever he asks why you are slow or not hearing your name; say `summary` in your own words, both its cause and its number (he trusts the number) and offer `fix` when a finding has one. Never guess a cause without it. `symptom`: slow, choppy, wake, or any for a general check.",
+  parameters: TessayaHealthInput,
+  success: Schema.Struct({ diagnosis: HealthDiagnosis }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, true)
@@ -986,6 +1000,7 @@ export const TessayaToolkit = Toolkit.make(
   ...AccountTools,
   JobsTool,
   WatchTool,
+  HealthTool,
   RecordTool,
   TeamBoardTool,
   MemorySearchTool,

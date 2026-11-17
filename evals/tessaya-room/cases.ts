@@ -11,6 +11,7 @@ import {
   faceLine,
 } from "../../packages/tessaya-shared/src/affect.ts";
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
+import type { HealthSnapshot } from "../../packages/tessaya-shared/src/health.ts";
 import { leadFitLine } from "../../packages/tessaya-shared/src/jobs.ts";
 import { DEFAULT_OS_PACK } from "../../packages/tessaya-shared/src/osPack.ts";
 import { repairLine } from "../../packages/tessaya-shared/src/transcriptRepair.ts";
@@ -60,7 +61,104 @@ export interface RoomCase {
   readonly clock?: "12h" | "24h";
   /** His own profile and documents are in his pack (`OWNER`), as `TessayaTurn.begin` reads them for his turn. */
   readonly owner?: boolean;
+  /** What her health reads (`tessaya_health` answers with the real diagnosis of it); a healthy house when absent. */
+  readonly health?: HealthSnapshot;
+  /** The last reply must match none of these. */
+  readonly lastNotSays?: ReadonlyArray<RegExp>;
 }
+
+/** A made-up house's health at 10:15 his time: two machines, one Tessel, all normal (the 17 Nov incident's shape). */
+const HEALTH_AT = Date.UTC(2026, 10, 12, 5, 15);
+const healthHost = (host: string, over: Partial<HealthSnapshot["hosts"][number]> = {}) => ({
+  host,
+  at: HEALTH_AT,
+  memTotalMb: 16_000,
+  memAvailMb: 7_000,
+  swapUsedMb: 0,
+  memPsiSome10: 0.2,
+  memPsiFull10: 0,
+  memPsiFull60: 0,
+  cpuPsiSome10: 3,
+  load1: 1.2,
+  cores: 8,
+  ...over,
+});
+const healthOf = (over: {
+  readonly voice?: Partial<HealthSnapshot["hosts"][number]>;
+  readonly tumble?: Partial<HealthSnapshot["vessels"][number]>;
+  readonly report?: Partial<NonNullable<HealthSnapshot["vessels"][number]["voiceHost"]>>;
+}): HealthSnapshot => {
+  const voice = healthHost("orion", over.voice);
+  return {
+    at: HEALTH_AT,
+    hosts: [healthHost("homeserver"), voice],
+    services: [],
+    vessels: [
+      {
+        id: "t1",
+        name: "Tumble",
+        online: true,
+        rssi: -52,
+        route: "wifi",
+        hub: "homeserver",
+        stages: {
+          endpointMs: { p50: 600, p90: 800, n: 10 },
+          asrMs: { p50: 350, p90: 500, n: 10 },
+          brainFirstMs: { p50: 1_400, p90: 2_000, n: 10 },
+          ttsFirstMs: { p50: 300, p90: 450, n: 10 },
+        },
+        stalls: 0,
+        voiceHost: {
+          host: voice,
+          services: [],
+          wake: { attempts: 5, accepts: 5, since: HEALTH_AT - 3_600_000 },
+          replay: { line: "replay check loaded", degraded: false },
+          brain: { rttMs: 70, failures: [] },
+          at: HEALTH_AT - 20_000,
+          ...over.report,
+        },
+        ...over.tumble,
+      },
+    ],
+    providers: [],
+    roomLoop: null,
+    notes: [],
+  };
+};
+/** 17 Nov: the voice host starved of memory, ~30% stalled; the speech engine and her voice waited. */
+export const STARVED = healthOf({
+  voice: {
+    memAvailMb: 250,
+    swapUsedMb: 5_400,
+    memPsiSome10: 44,
+    memPsiFull10: 29,
+    memPsiFull60: 31,
+  },
+  tumble: {
+    stages: {
+      asrMs: { p50: 1_800, p90: 2_700, n: 10 },
+      ttsFirstMs: { p50: 1_500, p90: 2_200, n: 10 },
+      brainFirstMs: { p50: 1_600, p90: 2_100, n: 10 },
+    },
+    stalls: 4,
+  },
+});
+/** 17 Nov: her server was stopped for an update; three turns from Tumble got no answer, and her name went unheard. */
+export const SERVER_STOPPED = healthOf({
+  report: {
+    brain: {
+      rttMs: 90,
+      failures: [HEALTH_AT - 6 * 60_000, HEALTH_AT - 5 * 60_000, HEALTH_AT - 4 * 60_000],
+    },
+    wake: { attempts: 4, accepts: 1, since: HEALTH_AT - 3_600_000 },
+  },
+});
+/** Tumble on a weak hotspot, far from the router, with a slow link to her server. */
+export const LAGGY = healthOf({
+  tumble: { rssi: -84, route: "hotspot", stalls: 3 },
+  report: { brain: { rttMs: 1_300, failures: [] } },
+});
+export const HEALTHY = healthOf({});
 
 /** A made-up owner's pack `owner/` folder: never a real person's (evals/README.md, no user data). */
 export const OWNER: OwnerFiles = {
@@ -1036,6 +1134,43 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [/\?|\b(sure|confirm|yes)\b/i],
   },
   // Near-misses: a passing "forget it" or "never mind" forgets no one.
+  {
+    id: "health-slow-memory",
+    source:
+      "Director 17 Nov: Tumble slow and choppy; the voice host was starved of memory and nobody could say why",
+    said: ["Why are you so slow and choppy today?"],
+    health: STARVED,
+    calls: ["tessaya_health"],
+    lastSays: [/memory|swap/i, /orion/i, /\d/],
+  },
+  {
+    id: "health-not-waking",
+    source: "Director 17 Nov: she didn't wake while her server was being restarted",
+    said: ["Why didn't you wake up when I called you a few minutes ago?"],
+    health: SERVER_STOPPED,
+    calls: ["tessaya_health"],
+    lastSays: [/server|restart|reach|answer/i],
+    lastNotSays: [/memory|swap|wi-?fi/i],
+  },
+  {
+    id: "health-network-lag",
+    source: "Director 17 Nov: a laggy turn must be pinned on the link, not guessed",
+    said: ["That took ages. Why was that so slow?"],
+    health: LAGGY,
+    calls: ["tessaya_health"],
+    lastSays: [/wi-?fi|signal|hotspot|network|connection|link/i],
+    lastNotSays: [/memory|swap/i],
+  },
+  {
+    // A control: a healthy house, so she says nothing is wrong rather than inventing a cause.
+    id: "health-healthy-control",
+    source: "Director 17 Nov: names the cause with evidence, never a guess",
+    said: ["Are you running slow at the moment?"],
+    health: HEALTHY,
+    calls: ["tessaya_health"],
+    lastSays: [/normal|fine|healthy|nothing|not (running )?slow/i],
+    lastNotSays: [/out of memory|swapping|weak|hotspot|is down|restarted/i],
+  },
   {
     id: "people-forget-it-guest",
     source: "Director 16 Nov ~14:35: 'forget it' or 'never mind' must never trigger it",

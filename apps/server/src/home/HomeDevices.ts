@@ -50,6 +50,7 @@ import {
 } from "@t3tools/tessaya-shared/btNames";
 import { isTestVessel, valueText } from "@t3tools/tessaya-shared/deviceItems";
 import { displaySupported } from "@t3tools/tessaya-shared/deviceView";
+import { voiceHostReportOf, type VoiceHostReport } from "@t3tools/tessaya-shared/health";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -252,6 +253,7 @@ const REARM_AFTER_MS = [2_000, 8_000, 18_000] as const;
 export const MAX_SHOT_BYTES = 512 * 1024;
 const LOG_KEEP = 40;
 const SAMPLES_KEEP = 50;
+const STALLS_KEEP = 20;
 const SETTINGS_KEY = "devices.state";
 /** His per-device choices kept alike on all his servers (DeviceSync), so a standby hub serves her as he set her. */
 const SYNCED = [
@@ -313,6 +315,10 @@ export interface Heard {
   log: Array<{ at: number; topic: string; text: string }>;
   /** The room loop's enrolment card while he enrols, and its summary until he closes it. */
   enrol: EnrolCard | null;
+  /** Its room loop's last health report (`state/voicehost`, retained, each minute). */
+  voiceHost: VoiceHostReport | null;
+  /** When its audio stalled (`event/audio/stall`), newest last. */
+  stalls: Array<number>;
 }
 
 const blank = (): Heard => ({
@@ -329,6 +335,8 @@ const blank = (): Heard => ({
   samples: {},
   log: [],
   enrol: null,
+  voiceHost: null,
+  stalls: [],
 });
 
 /** `state/net/saved` as his order: priority first, then as the device listed them. Pure. */
@@ -712,6 +720,15 @@ export const applyMessage = (
     d.lastSeen = now;
     return done();
   }
+  // Retained and repeated each minute: kept for her health model, never logged, and not a sign it is online.
+  if (rest === "state/voicehost") {
+    d.voiceHost = voiceHostReportOf(body);
+    return done();
+  }
+  if (rest === "event/audio/stall") {
+    d.stalls.push(now);
+    if (d.stalls.length > STALLS_KEEP) d.stalls.shift();
+  }
   if (/^(state|event)\/(imu\/)?(posture|activity)$/.test(rest)) {
     const which = rest.endsWith("posture") ? "imu.posture" : "imu.activity";
     item(
@@ -1092,6 +1109,15 @@ export class HomeDevices extends Context.Service<
   HomeDevices,
   {
     readonly overview: Effect.Effect<DevicesOverview>;
+    /** What each device's broker traffic says about its health: its loop's report, stalls and turn times. */
+    readonly heardHealth: Effect.Effect<
+      ReadonlyArray<{
+        readonly id: string;
+        readonly voiceHost: VoiceHostReport | null;
+        readonly stalls: ReadonlyArray<number>;
+        readonly samples: Readonly<Record<string, ReadonlyArray<number>>>;
+      }>
+    >;
     readonly command: (
       id: string,
       command: DeviceCommand,
@@ -3448,6 +3474,14 @@ const make = Effect.gen(function* () {
         registry: registered,
       } satisfies DevicesOverview;
     }),
+    heardHealth: Effect.sync(() =>
+      [...heard.entries()].map(([id, d]) => ({
+        id,
+        voiceHost: d.voiceHost,
+        stalls: d.stalls,
+        samples: d.samples,
+      })),
+    ),
     // Every device command is an action (B-046), with who asked and through which surface.
     command: Effect.fn("HomeDevices.recordedCommand")(
       (id: string, c: DeviceCommand, by: DeviceActor) =>

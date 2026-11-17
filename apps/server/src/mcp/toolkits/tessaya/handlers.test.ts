@@ -12,6 +12,7 @@ import {
 } from "@t3tools/contracts";
 import type { TessayaMemoryQuery } from "@t3tools/tessaya-contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
@@ -30,6 +31,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistantService.ts";
+import { HomeDevices } from "../../../home/HomeDevices.ts";
 import { DeviceRegistry } from "../../../home/DeviceRegistry.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { TessayaVoiceLibrary } from "../../../tessaya/TessayaVoiceLibrary.ts";
@@ -214,6 +216,61 @@ it.effect(
       );
       expect(result.isFailure).toBe(false);
       expect(result.result).toEqual(found);
+    }),
+);
+
+it.effect(
+  "names a starved voice host and the stage that waited when asked why she is slow (17 Nov)",
+  () =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const host = {
+        host: "voicebox",
+        at: now,
+        memTotalMb: 16_000,
+        memAvailMb: 250,
+        swapUsedMb: 5_400,
+        memPsiSome10: 44,
+        memPsiFull10: 29,
+        memPsiFull60: 31,
+        cpuPsiSome10: 3,
+        load1: 1,
+        cores: 8,
+      };
+      const devices = HomeDevices.of({
+        overview: Effect.succeed({
+          devices: [{ id: "t1", name: "Tumble", configured: true, online: true, rssi: -50 }],
+        }),
+        heardHealth: Effect.succeed([
+          {
+            id: "t1",
+            samples: { asrMs: [1_700, 1_800, 1_900] },
+            stalls: [],
+            voiceHost: {
+              host,
+              services: [],
+              wake: { attempts: 2, accepts: 2, since: now },
+              replay: { line: "", degraded: false },
+              brain: { rttMs: 60, failures: [] },
+              at: now,
+            },
+          },
+        ]),
+      } as never);
+      const result = yield* callTool(
+        "read-only",
+        Context.make(HomeDevices, devices) as never,
+        "tessaya_health",
+        { symptom: "slow" },
+      );
+      expect(result.isFailure).toBe(false);
+      // This host's own /proc is read too, so the test looks for the voice host's finding, not the first one.
+      const { diagnosis } = result.result as {
+        diagnosis: { findings: ReadonlyArray<{ key: string; evidence: ReadonlyArray<string> }> };
+      };
+      expect(diagnosis.findings.find((f) => f.key === "memory:voicebox")?.evidence[0]).toBe(
+        "the speech engine took 1.8 s (usually under 0.8 s)",
+      );
     }),
 );
 
