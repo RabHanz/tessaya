@@ -36,7 +36,8 @@ Shared type: `packages/tessaya-shared/src/memory.ts` (`MemoryItem`). Fields:
 - `scope`: `global`, `project` or `person`; `scopeRef`: the project or person it belongs to (null for global).
 - `confidence` 0 to 1, `pinned`, `createdAt`, `updatedAt`, `lastUsedAt`, `expiresAt`, `supersededBy`.
 - Tombstones are separate (`memory_tombstones`: id, deleted time, origin), so a forgotten item stays forgotten through a
-  sync and its text is gone from the store the moment he forgets it.
+  sync. Its row waits in the shared forgotten bin (`tessaya_understanding_bin`, `item:<id>`) for the bin's days, out
+  of every read and refused to learning and rewrites, so a restore brings it back as itself; then it is purged.
 
 ### Provenance and confidence
 

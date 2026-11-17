@@ -473,6 +473,53 @@ it.effect(
     }),
 );
 
+it.effect(
+  "a forgotten memory or episode waits in the bin: restorable, never relearned, gone after the bin's days",
+  () =>
+    Effect.gen(function* () {
+      const memory = yield* server;
+      const owner = { kind: "owner", certainty: 1 } as const;
+      const tea = yield* memory.add({
+        kind: "fact",
+        text: "He takes his tea with no sugar",
+        source: "user",
+      });
+      const day = yield* memory.add({
+        kind: "episode",
+        text: "Spent the morning fixing the router",
+        source: "thread",
+      });
+      assert.isTrue(yield* memory.forget(tea.id, owner));
+      assert.isTrue(yield* memory.forget(day.id));
+      assert.lengthOf(yield* memory.search({ text: "sugar" }), 0);
+      const bin = yield* memory.factBin;
+      assert.isNotNull(bin);
+      assert.sameMembers(
+        (yield* bin!.list).map((f) => f.fact),
+        [tea.text, day.text],
+      );
+      // Learning hears it again: it stays forgotten. His own words are his to say again.
+      const relearned = yield* Effect.flip(
+        memory.add({ kind: "fact", text: "He takes his tea with no sugar", source: "thread" }),
+      );
+      assert.include(relearned.reason, "forgotten");
+      // Back by his words, as itself, with its id.
+      assert.strictEqual(yield* bin!.restore("tea with no sugar", owner), tea.text);
+      assert.deepEqual(
+        (yield* memory.search({ text: "sugar" })).map((h) => h.item.id),
+        [tea.id],
+      );
+      assert.deepEqual(
+        (yield* bin!.list).map((f) => f.fact),
+        [day.text],
+      );
+      // Past the bin's days it is gone for good.
+      yield* TestClock.adjust("31 days");
+      assert.lengthOf(yield* bin!.list, 0);
+      assert.isNull(yield* bin!.restore(day.id, owner));
+    }),
+);
+
 it.effect("two servers converge: last writer wins, a forget travels and stays forgotten", () =>
   Effect.gen(function* () {
     const a = yield* server;

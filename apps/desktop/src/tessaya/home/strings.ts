@@ -300,6 +300,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "ppl.by.owner": "Forgotten by you on {at}",
     "ppl.by.themselves": "Forgot themselves on {at}",
     "ppl.by.expiry": "Forgotten on {at}: no one saved them",
+    "ppl.by.tidy": "Tidied away on {at}",
     "ppl.restore": "Restore",
     "ppl.purge": "Delete for good",
     "ppl.purge.confirm":

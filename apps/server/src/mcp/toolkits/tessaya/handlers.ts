@@ -512,7 +512,7 @@ export const layer = McpToolAccess.toLayer(
                     ? fact
                     : Effect.provideService(fact, TurnOrigin, desk)
                   : input.id !== undefined
-                    ? turn.forget(input.id)
+                    ? turn.forget(input.id, input.restore === true)
                     : Effect.succeed("Say which memory, by its id, or which fact."),
                 (line) => ({ line }),
               );
@@ -537,7 +537,8 @@ export const layer = McpToolAccess.toLayer(
             });
           const unlearn = Effect.gen(function* () {
             let forgotten = 0;
-            for (const id of input.ids) if (yield* memory.value.forget(id)) forgotten++;
+            const actor = { kind: "owner", id: client.label, certainty: 1 } as const;
+            for (const id of input.ids) if (yield* memory.value.forget(id, actor)) forgotten++;
             let talks = 0;
             for (const day of new Set(input.talks.map((t) => t.day)))
               talks += yield* memory.value.dropTalks(
@@ -546,7 +547,7 @@ export const layer = McpToolAccess.toLayer(
               );
             yield* emitAction({
               kind: "memory.unlearn",
-              actor: { kind: "owner", id: client.label, certainty: 1 },
+              actor,
               outcome: `${forgotten} items, ${talks} talk lines`,
               evidence: input.ids.map((ref) => ({ kind: "memory", ref })),
               data: { why: input.why, days: input.talks.map((t) => t.day) },
