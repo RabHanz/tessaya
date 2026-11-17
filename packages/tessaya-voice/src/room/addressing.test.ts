@@ -62,6 +62,10 @@ describe("whether he was talking to her", () => {
     expect(calledName("Switch me over to Fraya.", names)).toBe("Freya");
     expect(calledName("Can you put me through to Onix?", names)).toBe("Onyx");
     expect(calledName("Give me Nova.", [...names, "Nova"])).toBe("Nova");
+    // His "pass to Alfred, please" on Tumble (17 Nov, 08:54-08:58): three tries, no switch.
+    expect(calledName("Pasta Alfred, please.", names)).toBe("Alfred");
+    expect(calledName("Pass to Alfred, please.", names)).toBe("Alfred");
+    expect(calledName("Pass it over to Freya.", names)).toBe("Freya");
     // The same resolver as the shared correction, so the room and the server agree on a near spelling.
     expect(askedFor("Switch me back to Alfie.", names)?.text).toBe("Switch me back to Alfred.");
     for (const t of [
@@ -73,6 +77,8 @@ describe("whether he was talking to her", () => {
       "Okay then.",
       "Hey you.",
       "Speak to Tim.",
+      "Pass the salt.",
+      "Pasta for dinner.",
     ])
       expect(askedFor(t, [...names, "Maya"])).toBeNull();
   });
