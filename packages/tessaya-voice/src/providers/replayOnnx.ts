@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * The replay check (V-045): does this clip come from a loudspeaker rather than a live voice in the room? A small CNN
  * trained on his room (the Tessel hearing him live, and his own clips and his clone played through the office speaker).
@@ -5,6 +6,8 @@
  *
  * @module baton-voice/providers/replayOnnx
  */
+import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
 import type * as Ort from "onnxruntime-node";
 
 let ortModule: Promise<typeof Ort> | undefined;
@@ -36,3 +39,38 @@ export const createReplayCheck = async (path: string, threads = 1): Promise<Repl
     },
   };
 };
+
+export type ReplayStatus =
+  | { readonly state: "loaded"; readonly sha: string }
+  | { readonly state: "missing" | "failed"; readonly reason: string; readonly degraded: boolean };
+
+/**
+ * The check and what became of it, for the start log and the ready line. Without it every room-mic turn stays
+ * unverified (replayChecked), so owner-only acts need the step-up; `expected` marks that as degraded on this host.
+ */
+export const loadReplayCheck = async (
+  path: string,
+  expected: boolean,
+): Promise<{ readonly check: ReplayCheck | null; readonly status: ReplayStatus }> => {
+  let bytes: Buffer;
+  try {
+    bytes = NodeFS.readFileSync(path);
+  } catch (error) {
+    const reason =
+      (error as NodeJS.ErrnoException).code === "ENOENT" ? `no ${path}` : String(error);
+    return { check: null, status: { state: "missing", reason, degraded: expected } };
+  }
+  try {
+    const check = await createReplayCheck(path);
+    const sha = NodeCrypto.createHash("sha256").update(bytes).digest("hex").slice(0, 8);
+    return { check, status: { state: "loaded", sha } };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { check: null, status: { state: "failed", reason, degraded: expected } };
+  }
+};
+
+export const replayStatusLine = (s: ReplayStatus): string =>
+  s.state === "loaded"
+    ? `replay check loaded (sha ${s.sha})`
+    : `replay check ${s.degraded ? "DEGRADED, " : ""}${s.state}: ${s.reason}; owner-only acts need the step-up`;

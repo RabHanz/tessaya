@@ -16,7 +16,7 @@ import { fetchSignedWake, wakeKey } from "@t3tools/tessaya-shared/wakeModels";
 
 import { gainLimiter, integratedLufs, loudnessGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
-import { createReplayCheck } from "../providers/replayOnnx.ts";
+import { loadReplayCheck, replayStatusLine } from "../providers/replayOnnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
 import {
   ACT_SINGLE_MS,
@@ -571,10 +571,13 @@ const main = async () => {
       })
     : null;
   const embedder = await createSpeakerEmbedder(model("campplus.onnx"), SPEAKER_MODEL_ID, 1);
-  // Without the model every room-mic turn stays unverified (replayChecked): owner-only acts then need the step-up.
-  const replayCheck = NodeFS.existsSync(model("replay.onnx"))
-    ? await createReplayCheck(model("replay.onnx")).catch(() => null)
-    : null;
+  // TESSEL_REPLAY_EXPECTED=1 on a host that should have the model: without it the loop reports itself degraded.
+  const replay = await loadReplayCheck(
+    model("replay.onnx"),
+    process.env["R1_REPLAY_EXPECTED"] === "1",
+  );
+  const replayCheck = replay.check;
+  log(replayStatusLine(replay.status));
   const store = createSpeakerStore(state);
   /** Profiles learnt on his headset's mic (another channel and codec than hers), apart from the mic's. */
   const headsetStore = createSpeakerStore(state, "headset");
@@ -1172,7 +1175,7 @@ const main = async () => {
   };
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
-  log("room loop ready");
+  log(`room loop ready; ${replayStatusLine(replay.status)}`);
 };
 
 void main().catch((error: unknown) => {
