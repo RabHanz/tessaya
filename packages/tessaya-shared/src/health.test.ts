@@ -138,6 +138,28 @@ describe("diagnose", () => {
     );
     expect(missed.summary).toMatch(/server did not answer 2 times lately, last 3 min ago/);
   });
+  it("says when the replay check could not judge his recent turns, unless the check is already known down", () => {
+    const turn = (at: number, verdict: "pass" | "unchecked") => ({
+      at,
+      speaker: "owner",
+      speakerScore: 0.5,
+      replay: { verdict, score: verdict === "pass" ? -4 : null },
+    });
+    const turns = [
+      turn(NOW - 60 * 60_000, "unchecked"),
+      turn(NOW - 9 * 60_000, "unchecked"),
+      turn(NOW - 5 * 60_000, "pass"),
+      turn(NOW - 2 * 60_000, "unchecked"),
+    ];
+    const d = diagnose(snap({ vessels: [tumble({ turns })] }));
+    expect(d.findings.find((f) => f.key === "voiceid:t1")).toMatchObject({
+      says: "on Tumble, Voice ID's replay check could not judge 2 of the last 3 turns, so they could not open anything private",
+      evidence: ["2 turns unchecked in 30 min, last 2 min ago"],
+    });
+    const degraded = { ...tumble().voiceHost!, replay: { line: "no model", degraded: true } };
+    const known = diagnose(snap({ vessels: [tumble({ turns, voiceHost: degraded })] }));
+    expect(known.findings.map((f) => f.key)).not.toContain("voiceid:t1");
+  });
   it("blames a weak hotspot link and a slow round trip for a laggy turn, not the brain", () => {
     const d = diagnose(
       snap({

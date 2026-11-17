@@ -187,6 +187,11 @@ export const servedRoster = (body: unknown): RoomPersona[] | null => {
 /** The look a persona without its own shows on the R1. */
 export const GENERIC_EYES = "generic";
 
+export interface RecognisedBy {
+  readonly host: string | null;
+  readonly hedge?: "personal" | "general";
+}
+
 export interface RecogniserTurn {
   readonly feed: (pcm: Int16Array) => void;
   /** The final text once the audio has ended. */
@@ -197,6 +202,8 @@ export interface RecogniserTurn {
     readonly model: string;
   } | null;
   readonly cancel: () => void;
+  /** After `finish`: the recogniser whose words were taken, and which model won a hedged turn; null when unknown. */
+  readonly by?: () => RecognisedBy | null;
   /** Each partial the recogniser sends while it still works (its words so far); the room guesses ahead with them. */
   readonly onPartial?: (listener: (text: string) => void) => void;
 }
@@ -534,6 +541,8 @@ export interface BenchTurn {
 }
 
 export interface TurnMetrics {
+  /** When the turn ended, ISO UTC: an old line is never read as a new turn. */
+  readonly at: string;
   readonly device: string;
   readonly turn: number;
   readonly reason: string;
@@ -565,6 +574,17 @@ export interface TurnMetrics {
   readonly test?: boolean;
   /** His by his session's evidence, not this turn's own score. */
   readonly lifted?: boolean;
+  /** Voice ID's last verdict when it differs from the `speaker` the turn was answered as (it came late). */
+  readonly verdict?: string;
+  /** Cosine to his own earlier pieces in his verified session (continuity), when he has one. */
+  readonly same?: number;
+  /** The replay check on the room mic: its verdict and logit (null when it could not run). */
+  readonly replay?: {
+    readonly verdict: "pass" | "heard" | "unchecked";
+    readonly score: number | null;
+  };
+  /** The recogniser whose words were taken, and which model a hedged turn took. */
+  readonly recogniser?: RecognisedBy;
 }
 
 /** "Test mode on", "turn off test mode", "Tessaya, test mode off": which, or null. */
@@ -1766,6 +1786,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       heardScores = current?.words?.() ?? null;
+      const recognisedBy = current?.by?.() ?? null;
       // Pure noise, or words the recogniser never really heard (V-018): no turn, and nothing said about it.
       if (
         given === undefined &&
@@ -2340,8 +2361,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (said !== "") lastExchangeAt = deps.now();
         lastActivity = deps.now();
       }
-      const score = identity.own?.score ?? identity.confidence;
+      // Voice ID's own figures come from its last verdict, even one that came after her answer began.
+      const verdict = speakerNow?.identity ?? identity;
+      const score = verdict.own?.score ?? verdict.confidence;
+      const r3 = (n: number) => Math.round(n * 1000) / 1000;
       const metrics: TurnMetrics = {
+        // @effect-diagnostics-next-line globalDate:off - the loop has no Effect; a plain ISO stamp.
+        at: new Date(deps.now()).toISOString(),
         device: id,
         turn,
         reason,
@@ -2352,9 +2378,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         firstSoundMs: firstSound === null ? null : Math.round(firstSound),
         text,
         speaker: identity.kind,
-        speakerScore: score === null ? null : Math.round(score * 1000) / 1000,
-        ...(identity.lifted === true ? { lifted: true } : {}),
-        ...(identity.same === undefined ? {} : { same: Math.round(identity.same * 1000) / 1000 }),
+        ...(verdict.kind === identity.kind ? {} : { verdict: verdict.kind }),
+        speakerScore: score === null ? null : r3(score),
+        lifted: verdict.lifted === true,
+        ...(verdict.same === undefined ? {} : { same: r3(verdict.same) }),
+        ...(verdict.replay === undefined && verdict.replayScore === undefined
+          ? {}
+          : {
+              replay: {
+                verdict: verdict.replay ?? "pass",
+                score: verdict.replayScore === undefined ? null : r3(verdict.replayScore),
+              },
+            }),
+        ...(recognisedBy === null ? {} : { recogniser: recognisedBy }),
         emotion: (affect ?? affectNow)?.emotion ?? "unknown",
         bargedIn,
         speculative: kept !== null,

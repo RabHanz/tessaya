@@ -50,7 +50,12 @@ import {
 } from "@t3tools/tessaya-shared/btNames";
 import { isTestVessel, valueText } from "@t3tools/tessaya-shared/deviceItems";
 import { displaySupported } from "@t3tools/tessaya-shared/deviceView";
-import { voiceHostReportOf, type VoiceHostReport } from "@t3tools/tessaya-shared/health";
+import {
+  voiceHostReportOf,
+  voiceIdTurnOf,
+  type VoiceHostReport,
+  type VoiceIdTurn,
+} from "@t3tools/tessaya-shared/health";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -254,6 +259,7 @@ export const MAX_SHOT_BYTES = 512 * 1024;
 const LOG_KEEP = 40;
 const SAMPLES_KEEP = 50;
 const STALLS_KEEP = 20;
+const TURNS_KEEP = 10;
 const SETTINGS_KEY = "devices.state";
 /** His per-device choices kept alike on all his servers (DeviceSync), so a standby hub serves her as he set her. */
 const SYNCED = [
@@ -319,6 +325,8 @@ export interface Heard {
   voiceHost: VoiceHostReport | null;
   /** When its audio stalled (`event/audio/stall`), newest last. */
   stalls: Array<number>;
+  /** Its last turns' Voice ID and recogniser figures, newest last. */
+  turns: Array<VoiceIdTurn>;
 }
 
 const blank = (): Heard => ({
@@ -337,6 +345,7 @@ const blank = (): Heard => ({
   enrol: null,
   voiceHost: null,
   stalls: [],
+  turns: [],
 });
 
 /** `state/net/saved` as his order: priority first, then as the device listed them. Pure. */
@@ -958,7 +967,7 @@ export const applyMessage = (
       return done();
     }
     case "event/voice/metrics": {
-      // The loop sends what was heard too; only the times are kept.
+      // The loop sends what was heard too; only the times and Voice ID figures are kept.
       const parts: Array<string> = [];
       for (const [key, name] of STAGES) {
         const ms = num(body?.[key]);
@@ -969,6 +978,11 @@ export const applyMessage = (
         parts.push(`${name} ${Math.round(ms)} ms`);
       }
       line = parts.join(", ") || "turn";
+      const voiceId = voiceIdTurnOf(body, now);
+      if (voiceId !== null) {
+        d.turns.push(voiceId);
+        if (d.turns.length > TURNS_KEEP) d.turns.shift();
+      }
       break;
     }
   }
@@ -1116,6 +1130,7 @@ export class HomeDevices extends Context.Service<
         readonly voiceHost: VoiceHostReport | null;
         readonly stalls: ReadonlyArray<number>;
         readonly samples: Readonly<Record<string, ReadonlyArray<number>>>;
+        readonly turns: ReadonlyArray<VoiceIdTurn>;
       }>
     >;
     readonly command: (
@@ -3480,6 +3495,7 @@ const make = Effect.gen(function* () {
         voiceHost: d.voiceHost,
         stalls: d.stalls,
         samples: d.samples,
+        turns: d.turns,
       })),
     ),
     // Every device command is an action (B-046), with who asked and through which surface.

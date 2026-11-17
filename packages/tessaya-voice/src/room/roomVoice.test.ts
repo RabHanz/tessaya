@@ -44,6 +44,7 @@ const setup = (over: Partial<RoomDeps> = {}, config: typeof ROOM_CONFIG = QUIET)
       feed: () => undefined,
       finish: async () => "turn on the study light",
       cancel: () => undefined,
+      by: () => ({ host: "asr:1" }),
     }),
     speaker: async () => UNVERIFIED(clock),
     brain: async function* (input) {
@@ -93,7 +94,11 @@ describe("the room voice loop", () => {
       text: "turn on the study light",
       speaker: "unverified",
       reason: "complete",
+      lifted: false,
+      recogniser: { host: "asr:1" },
     });
+    // Stamped, so an old line is never read as a new turn.
+    expect(m.at).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z$/);
     expect(m.firstSoundMs).not.toBeNull();
     expect(t.brainCalls[0]!.messages).toEqual([
       { role: "user", content: "turn on the study light" },
@@ -2549,6 +2554,8 @@ describe("Voice ID never fails open to him (Director, 16 Nov)", () => {
     expect(t.brainCalls).toHaveLength(2);
     expect(t.brainCalls[1]!.tessaya.speaker).toMatchObject({ kind: "owner", verified: true });
     expect(m).toMatchObject({ voiceIdLate: true, reasked: true });
+    // Voice ID's own figures come from its late verdict, not the closed start's.
+    expect(m).toMatchObject({ speaker: "unverified", verdict: "owner", speakerScore: 0.7 });
     expect(m.firstSoundMs).not.toBeNull();
   });
 

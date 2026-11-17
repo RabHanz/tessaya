@@ -16,6 +16,7 @@ import {
   type ServiceHealth,
   type StageStat,
   type VesselHealth,
+  VoiceIdTurn,
 } from "@t3tools/tessaya-contracts";
 
 import { hostHealthOf } from "./hostHealth.ts";
@@ -32,6 +33,7 @@ export type {
   ServiceHealth,
   VesselHealth,
   VoiceHostReport,
+  VoiceIdTurn,
 };
 
 /** The room loop's per-turn metric keys in pipeline order (roomVoice.ts TurnMetrics), as she says them. */
@@ -58,6 +60,13 @@ const decodeReport = Schema.decodeUnknownOption(VoiceHostReport);
 /** A room loop's `state/voicehost` as it came off the broker; null when it is not one. */
 export const voiceHostReportOf = (body: unknown): VoiceHostReport | null =>
   Option.getOrNull(decodeReport(body));
+
+const decodeTurn = Schema.decodeUnknownOption(VoiceIdTurn);
+/** A turn's `event/voice/metrics` as Voice ID figures heard at `at`; its words are dropped. Null when it is not one. */
+export const voiceIdTurnOf = (
+  body: Record<string, unknown> | null,
+  at: number,
+): VoiceIdTurn | null => (body === null ? null : Option.getOrNull(decodeTurn({ ...body, at })));
 
 /** Median and 90th percentile of the last `last` samples. */
 export const stageStatOf = (samples: ReadonlyArray<number>, last = 10): StageStat => {
@@ -241,6 +250,20 @@ const vesselFindings = (v: VesselHealth, now: number): Array<HealthFinding> => {
       fix: null,
       symptoms: ["choppy"],
     });
+  const turns = (v.turns ?? []).filter((t) => now - t.at < NOTE_RECENT_MS);
+  const unchecked = turns.filter((t) => t.replay?.verdict === "unchecked");
+  if (unchecked.length >= 2 && r?.replay.degraded !== true)
+    out.push({
+      key: `voiceid:${v.id}`,
+      severity: "minor",
+      says: `on ${v.name}, Voice ID's replay check could not judge ${unchecked.length} of the last ${turns.length} turns, so they could not open anything private`,
+      evidence: [
+        `${unchecked.length} turns unchecked in 30 min, last ${ago(now, unchecked.at(-1)!.at)}`,
+      ],
+      fix: null,
+      symptoms: [],
+    });
+  const heardBy = turns.findLast((t) => typeof t.recogniser?.host === "string")?.recogniser;
   // The slowest stage against its budget: the place a slow turn spent its time.
   const slow = HEALTH_STAGES.filter(([k]) => k !== "firstSoundMs")
     .map(([k, words]) => ({ k, words, p50: v.stages[k]?.p50 ?? null }))
@@ -252,9 +275,16 @@ const vesselFindings = (v: VesselHealth, now: number): Array<HealthFinding> => {
       key: `stage:${v.id}:${top.k}`,
       severity: top.p50! > STAGE_BUDGET_MS[top.k] * 2 ? "degraded" : "minor",
       says: `on ${v.name}, ${top.words} waited ${sec(top.p50!)} a turn lately`,
-      evidence: slow.map(
-        (s) => `${s.words} waited ${sec(s.p50!)} (usually under ${sec(STAGE_BUDGET_MS[s.k])})`,
-      ),
+      evidence: [
+        ...slow.map(
+          (s) => `${s.words} waited ${sec(s.p50!)} (usually under ${sec(STAGE_BUDGET_MS[s.k])})`,
+        ),
+        ...(heardBy !== undefined && slow.some((s) => s.k === "asrMs")
+          ? [
+              `the last words came from the recogniser on ${heardBy.host}${heardBy.hedge === undefined ? "" : heardBy.hedge === "personal" ? " (his own model)" : " (the general model)"}`,
+            ]
+          : []),
+      ],
       fix: null,
       symptoms: ["slow"],
     });
