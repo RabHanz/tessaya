@@ -4,6 +4,7 @@ import {
   calibrationOf,
   EMPTY_STATS,
   findings,
+  keyOfRow,
   observe,
   predictNext,
   type LocalClock,
@@ -38,6 +39,9 @@ describe("patterns", () => {
     expect(findings(s, 8 * DAY, clock).map((f) => f.id)).toContain(
       "stat:seq:job:failed>assistant_turn:answered",
     );
+    // A replay's or our test playback's turn is never counted as his use of her.
+    expect(keyOfRow({ kind: "device", outcome: "answered", actor: "r1" })).toBe("device:answered");
+    expect(keyOfRow({ kind: "device", outcome: "answered", actor: "r1-playback" })).toBeNull();
   });
 
   it("finds a weekly routine but not a scattered key", () => {
