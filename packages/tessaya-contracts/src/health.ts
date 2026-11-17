@@ -110,7 +110,7 @@ export const HEALTH_SYMPTOMS = ["slow", "choppy", "wake", "any"] as const;
 export type HealthSymptom = (typeof HEALTH_SYMPTOMS)[number];
 
 export const HealthFinding = Schema.Struct({
-  /** Stable per cause and place ("memory:onnyx"), so a repeat is suppressed. */
+  /** Stable per cause and place ("memory:orion"), so a repeat is suppressed. */
   key: Schema.String,
   severity: Schema.Literals(HEALTH_SEVERITIES),
   /** The cause in plain words. */

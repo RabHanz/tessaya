@@ -11,7 +11,7 @@ import {
 
 const NOW = 1_800_000_000_000;
 const host = (over: Partial<ReturnType<typeof hostHealthOf>> = {}) => ({
-  host: "onnyx",
+  host: "orion",
   at: NOW,
   memTotalMb: 16_000,
   memAvailMb: 6_000,
@@ -30,7 +30,7 @@ const tumble = (over: Partial<VesselHealth> = {}): VesselHealth => ({
   online: true,
   rssi: -55,
   route: "wifi",
-  hub: "hetzner",
+  hub: "homeserver",
   stages: { asrMs: { p50: 400, p90: 600, n: 10 }, brainFirstMs: { p50: 1_500, p90: 2_000, n: 10 } },
   stalls: 0,
   voiceHost: {
@@ -45,7 +45,7 @@ const tumble = (over: Partial<VesselHealth> = {}): VesselHealth => ({
 });
 const snap = (over: Partial<HealthSnapshot> = {}): HealthSnapshot => ({
   at: NOW,
-  hosts: [host({ host: "hetzner" })],
+  hosts: [host({ host: "homeserver" })],
   services: [],
   vessels: [tumble()],
   providers: [],
@@ -57,7 +57,7 @@ const snap = (over: Partial<HealthSnapshot> = {}): HealthSnapshot => ({
 describe("hostHealthOf", () => {
   it("reads meminfo, loadavg and pressure files, and leaves out what a kernel lacks", () => {
     const h = hostHealthOf({
-      host: "onnyx",
+      host: "orion",
       at: NOW,
       cores: 4,
       meminfo:
@@ -85,7 +85,7 @@ describe("hostHealthOf", () => {
 });
 
 describe("diagnose", () => {
-  it("names onnyx's memory starvation as the cause of a slow, choppy Tumble, with the stage that waited (17 Nov)", () => {
+  it("names orion's memory starvation as the cause of a slow, choppy Tumble, with the stage that waited (17 Nov)", () => {
     const starving = host({
       memAvailMb: 300,
       swapUsedMb: 5_200,
@@ -105,13 +105,13 @@ describe("diagnose", () => {
             voiceHost: { ...tumble().voiceHost!, host: starving },
           }),
         ],
-        hosts: [host({ host: "hetzner" }), starving],
+        hosts: [host({ host: "homeserver" }), starving],
       }),
       "slow",
     );
     expect(d.severity).toBe("down");
-    expect(d.findings[0]!.key).toBe("memory:onnyx");
-    expect(d.summary).toMatch(/onnyx is out of memory and swapping/i);
+    expect(d.findings[0]!.key).toBe("memory:orion");
+    expect(d.summary).toMatch(/orion is out of memory and swapping/i);
     expect(d.summary).toMatch(/speech engine took 1\.8 s/);
     expect(d.findings.some((f) => f.key.startsWith("stage:"))).toBe(false);
   });
@@ -164,7 +164,7 @@ describe("healthNotice", () => {
   it("raises a cause only once it has held three senses, once per episode, and forgets it when it clears", () => {
     const bad = diagnose(
       snap({
-        hosts: [host({ host: "onnyx", memAvailMb: 200, swapUsedMb: 4_000, memPsiFull10: 30 })],
+        hosts: [host({ host: "orion", memAvailMb: 200, swapUsedMb: 4_000, memPsiFull10: 30 })],
       }),
     );
     const first = healthNotice(null, bad, NOW);
@@ -172,7 +172,7 @@ describe("healthNotice", () => {
     const third = healthNotice(second.episode, bad, NOW + 120_000);
     const fourth = healthNotice(third.episode, bad, NOW + 180_000);
     expect([first.notice, second.notice]).toEqual([null, null]);
-    expect(third.notice).toMatchObject({ id: `health:memory:onnyx:${NOW}`, weight: 75 });
+    expect(third.notice).toMatchObject({ id: `health:memory:orion:${NOW}`, weight: 75 });
     expect(fourth.notice?.id).toBe(third.notice?.id);
     expect(healthNotice(fourth.episode, diagnose(snap()), NOW + 240_000)).toEqual({
       episode: null,
