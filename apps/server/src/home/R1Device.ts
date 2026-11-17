@@ -712,6 +712,17 @@ export interface R1Heard {
 }
 
 const isReplay = (input: R1Heard) => input.device?.startsWith("replay-") === true;
+/**
+ * Our test audio in his real room (`voice.playback`, the run the loop saw declared) or the test clone trusted as him
+ * (`speaker.test`): answered as a rehearsal, so nothing is learned from it or done for real.
+ */
+const playbackOf = (voice: unknown): string | null => {
+  if (typeof voice !== "object" || voice === null) return null;
+  if ("playback" in voice && typeof voice.playback === "string" && voice.playback !== "")
+    return voice.playback.slice(0, 60);
+  const s = "speaker" in voice ? voice.speaker : null;
+  return typeof s === "object" && s !== null && "test" in s && s.test === true ? "test-mode" : null;
+};
 
 /** The house, the last action and memories for this turn, and the eyes set to thinking. */
 /** His shared dictionary as vocabulary entries: each term spelt his way, its aliases as the forms it is heard as. */
@@ -761,7 +772,7 @@ export const r1Envelope = (
     ...(emotionOf(input.voice) === undefined ? {} : { emotion: emotionOf(input.voice) }),
     // Each turn is a fresh call, with no session holding standing memory.
     sessionless: true,
-    rehearsal: isReplay(input),
+    rehearsal: isReplay(input) || playbackOf(input.voice) !== null,
     // The arbiter's or loop's conversation, when it names one; else his person's or the household's.
     ...(conversationOf(input.voice) === undefined
       ? {}
@@ -1098,7 +1109,11 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
   if (record._tag === "Some")
     yield* record.value.append({
       kind: "device",
-      actor: isReplay(input) ? "r1-replay" : "r1",
+      actor: isReplay(input)
+        ? "r1-replay"
+        : playbackOf(input.voice) === null
+          ? "r1"
+          : "r1-playback",
       subject: `heard ${JSON.stringify(recordText(input.heard, 160))}`,
       outcome: outcomes.length === 0 ? "answered" : `acted ${outcomes.length}`,
       detail: recordText(said.replaceAll(REST_MARK, ""), 300),

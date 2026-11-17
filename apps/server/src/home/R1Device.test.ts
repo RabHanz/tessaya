@@ -1,4 +1,4 @@
-import { TurnOrigin, moodMember } from "../tessaya/TessayaTurn.ts";
+import { TurnOrigin, moodMember, notLearnable } from "../tessaya/TessayaTurn.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { it as effectIt } from "@effect/vitest";
 import { BAR_NOT_CONNECTED } from "@t3tools/tessaya-shared/phoneRelay";
@@ -71,6 +71,22 @@ describe("R1Device", () => {
     expect(
       r1Envelope({ ...heard, signed: true }, DEFAULT_OS_PACK, undefined).speaker,
     ).not.toHaveProperty("print");
+  });
+
+  it("answers our test playback and the trusted test clone as a rehearsal, so nothing learns from them", () => {
+    const heard = { heard: "what is the capital of Japan", history: [], device: "r1-a" };
+    const owner = { kind: "owner", personId: "owner", verified: true, inherited: false };
+    const live = r1Envelope({ ...heard, voice: { speaker: owner } }, DEFAULT_OS_PACK, undefined);
+    expect(notLearnable(live)).toBeNull();
+    for (const voice of [
+      { speaker: owner, playback: "run1" },
+      { speaker: { ...owner, test: true } },
+    ]) {
+      const turn = r1Envelope({ ...heard, voice }, DEFAULT_OS_PACK, undefined);
+      expect(turn.rehearsal).toBe(true);
+      expect(notLearnable(turn)).toBe("a rehearsal");
+      expect(moodMember(turn)).toBeNull();
+    }
   });
 
   it("says what really happened when an act waited or failed, never the model's 'done'", () => {

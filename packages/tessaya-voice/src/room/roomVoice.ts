@@ -296,6 +296,8 @@ export interface Tessaya {
   readonly callId?: string;
   /** Several people this turn, in speaking order: each one's words with their own voice (absent for one voice). */
   readonly segments?: ReadonlyArray<{ readonly speaker: SpeakerIdentity; readonly words: string }>;
+  /** The test run playing into the room (playbackWindow.ts): she answers, and her server learns nothing from it. */
+  readonly playback?: string;
 }
 
 export interface RoomDeps {
@@ -338,6 +340,8 @@ export interface RoomDeps {
    * Absent everywhere else, so no public build can turn it on.
    */
   readonly testMode?: { readonly ready: () => boolean };
+  /** The test run playing into the room now, or null when what she hears is live. */
+  readonly playback?: () => string | null;
   /** Optional enrolment: the owner profile from these 4 s windows of his speech, and what she says about it. */
   readonly enrolOwner?: (
     windows: ReadonlyArray<Int16Array>,
@@ -900,6 +904,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       heldAct = null;
     };
 
+    const playbackNow = () => {
+      const run = deps.playback?.() ?? null;
+      return run === null ? {} : { playback: run };
+    };
     /** The turn as her server's one pipeline takes it (MEMORY-V2-DESIGN §2.0). */
     const envelopeOf = (
       given: string | undefined,
@@ -931,6 +939,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         : { emotion: { label: affect.emotion, events: affect.events } }),
       ...(segments === undefined ? {} : { segments }),
       ...(scored == null ? {} : { heardWords: scored.words, recogniser: scored.model }),
+      ...playbackNow(),
     });
 
     /**
@@ -1566,7 +1575,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           else if (
             via !== "mic" &&
             who.personId === "owner" &&
-            deps.now() - (micVerifiedAt.get(id) ?? -Infinity) <= HOLD_MS
+            deps.now() - (micVerifiedAt.get(id) ?? -Infinity) <= HOLD_MS &&
+            (deps.playback?.() ?? null) === null
           )
             deps.learnInput?.(via, who.personId, audio);
           return who;

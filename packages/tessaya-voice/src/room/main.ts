@@ -1006,6 +1006,7 @@ const main = async () => {
           log(`headset voice profile not learnt: ${String(e)}`),
         ),
       ...(testMode ? { testMode: { ready: () => testSpeaker !== null } } : {}),
+      playback: playback.run,
       voices: (pcm) =>
         voicesOf({ pcm, embed: embedder.embed, profiles: store.list(), policy, at: Date.now() }),
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),

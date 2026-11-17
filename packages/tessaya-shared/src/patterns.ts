@@ -66,8 +66,13 @@ export const predictNext = (
 export const keyOfRow = (row: {
   readonly kind: string;
   readonly outcome: string;
+  readonly actor?: string;
 }): string | null =>
-  row.kind === "pulse" || row.kind === "brain_spend" || row.kind === "turn_trace"
+  row.kind === "pulse" ||
+  row.kind === "brain_spend" ||
+  row.kind === "turn_trace" ||
+  // A replay's or our test playback's turn is not his use of her.
+  /-(?:replay|playback)$/.test(row.actor ?? "")
     ? null
     : `${row.kind}:${row.outcome}`.slice(0, 60);
 

@@ -304,6 +304,8 @@ export class TessayaMemoryService extends Context.Service<
     /** Notes what he talked about today (a few words), for the day's episode. */
     readonly noteTalk: (day: string, text: string) => Effect.Effect<void>;
     readonly talks: (day: string) => Effect.Effect<ReadonlyArray<string>>;
+    /** Takes these lines out of the day's talk notes (our test playback was never his); how many went. */
+    readonly dropTalks: (day: string, lines: ReadonlyArray<string>) => Effect.Effect<number>;
     /** Remembers `value` under `key`; true when it differs from what was there, so work is done once. */
     readonly noteOnce: (key: string, value: string) => Effect.Effect<boolean>;
   }
@@ -1094,6 +1096,20 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  const dropTalks = Effect.fn("BatonMemoryService.dropTalks")(function* (
+    day: string,
+    lines: ReadonlyArray<string>,
+  ) {
+    const held = yield* talks(day);
+    const kept = held.filter((line) => !lines.includes(line));
+    if (kept.length === held.length) return 0;
+    // @effect-diagnostics-next-line globalJsonInEffect:off - an array of strings.
+    yield* sql`UPDATE fabric_memory_meta SET value = ${JSON.stringify(kept)} WHERE key = ${`talks:${day}`}`.pipe(
+      Effect.orDie,
+    );
+    return held.length - kept.length;
+  });
+
   const noteOnce = Effect.fn("BatonMemoryService.noteOnce")(function* (key: string, value: string) {
     const rows = yield* sql<{
       value: string;
@@ -1383,6 +1399,7 @@ export const make = Effect.gen(function* () {
     setMeta,
     noteTalk,
     talks,
+    dropTalks,
     syncHello,
     changesSince,
     applyChanges: Effect.fn("BatonMemoryService.applyChangesThenEmbed")(function* (
