@@ -11,6 +11,10 @@
       "types": "./src/fbank.ts",
       "import": "./src/fbank.ts"
     },
+    "./loudness": {
+      "types": "./src/loudness.ts",
+      "import": "./src/loudness.ts"
+    },
     "./speaker": {
       "types": "./src/speaker.ts",
       "import": "./src/speaker.ts"

@@ -95,6 +95,25 @@ export type MascotHands = "arms" | "float";
 export const parseMascotHands = (value: unknown): MascotHands =>
   value === "float" ? "float" : "arms";
 
+/** How loud her body's sounds and her bed are (Settings → Desktop companion); Off plays nothing. */
+export type MascotSound = "off" | "soft" | "normal" | "full";
+export const parseMascotSound = (value: unknown): MascotSound =>
+  value === "off" || value === "soft" || value === "full" ? value : "normal";
+/** Each level's gain over sounds.js's own; her bed as it plays is about -25 LUFS at Normal, -27.5 Soft, -22.5 Full. */
+export const SOUND_GAIN: Readonly<Record<MascotSound, number>> = {
+  off: 0,
+  soft: 0.75,
+  normal: 1,
+  full: 1.33,
+};
+export const SOUND_LEVELS: ReadonlyArray<{ readonly value: MascotSound; readonly label: string }> =
+  [
+    { value: "off", label: "Off" },
+    { value: "soft", label: "Soft" },
+    { value: "normal", label: "Normal" },
+    { value: "full", label: "Full" },
+  ];
+
 /** Where a throw may take her: only the screen she is thrown on, or every screen as one desktop in its real layout. */
 export type MascotScreens = "one" | "span";
 export const parseMascotScreens = (value: unknown): MascotScreens =>
@@ -222,6 +241,9 @@ export interface MascotOptions {
   /** Her body: the persona's own character, or one he picked from the Studio's. */
   readonly character: MascotCharacter;
   readonly hands: MascotHands;
+  /** Her body's sounds as he pokes, drags and drops her, and the bed under her presence (one per desktop: hers). */
+  readonly sounds: MascotSound;
+  readonly bed: MascotSound;
 }
 
 export interface DesktopMascot {
@@ -270,6 +292,7 @@ const WANDER_CHECK_MS = 60_000;
 const WANDER_CHANCE = 1 / 6;
 /** He is at the computer, but not typing this second. */
 const WANDER_IDLE_S: readonly [number, number] = [3, 120];
+const BED_AWAY_S = 120;
 /** A wander that also brings a remark of hers to herself: about one every 25 minutes he works quietly. */
 const REMARK_CHANCE = 1 / 4;
 
@@ -345,12 +368,15 @@ export const createDesktopMascot = (input: {
     screens: "span",
     character: "persona",
     hands: "arms",
+    sounds: "normal",
+    bed: "off",
   };
   let win: Electron.BrowserWindow | null = null;
   let ready: Promise<void> = Promise.resolve();
   let fg: Rect | null = null;
   let fullscreen = false;
   let sleeping = false;
+  let away = false;
   let phase: TurnPhase = "idle";
   let edge: Edge | null = null;
   // A place saved on a screen no longer there (or off every work area) starts her afresh.
@@ -579,6 +605,8 @@ export const createDesktopMascot = (input: {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
+        // her body's sounds play without a click on her first
+        autoplayPolicy: "no-user-gesture-required",
         preload: NodePath.join(__dirname, "mascotPreload.cjs"),
       },
     });
@@ -620,10 +648,17 @@ export const createDesktopMascot = (input: {
     });
   };
 
+  /** His sound levels, and whether the bed steps back: she shows, and he is talking to her or dictating (the mic). */
+  const audio = () =>
+    call(
+      `window.mascot.audio(${JSON.stringify({ physics: SOUND_GAIN[options.sounds], bed: away ? 0 : SOUND_GAIN[options.bed], shown: wanted(), listening: phase === "listening" || phase === "dictating" })})`,
+    );
+
   /** Shows, hides or builds her window to match his settings, a snooze or hide, and a full-screen app. */
   const apply = () => {
     if (!wanted()) {
       if (win !== null && !win.isDestroyed()) {
+        audio();
         if (options.on) win.hide();
         else win.destroy();
       }
@@ -632,6 +667,7 @@ export const createDesktopMascot = (input: {
     }
     const target = build();
     init();
+    audio();
     if (edge === null || !target.isVisible()) settle();
     if (!target.isVisible()) target.showInactive();
     cue(momentOf(phase) ?? "rest");
@@ -983,6 +1019,15 @@ export const createDesktopMascot = (input: {
    * Lively only: now and then a short walk, one of her funny moments or her character's own act, as her personality
    * leans (mascotPage idleChoice), while he is around and not typing this second.
    */
+  /** Her bed plays to him, not an empty room: away this long (no keys or mouse), it fades out until he is back. */
+  const awayCheck = setInterval(() => {
+    if (options.bed === "off" || win === null || !win.isVisible()) return;
+    const now = Electron.powerMonitor.getSystemIdleTime() > BED_AWAY_S;
+    if (now === away) return;
+    away = now;
+    audio();
+  }, 15_000);
+  awayCheck.unref();
   const wander = setInterval(() => {
     if (!wanders(options.motion) || win === null || !win.isVisible() || edge === null) return;
     if (dragging !== null || moving !== null || phase !== "idle" || sleeping || snoozed()) return;
@@ -1093,6 +1138,11 @@ export const createDesktopMascot = (input: {
       const was = phase;
       phase = next;
       if (win === null || !win.isVisible()) return;
+      if (
+        (next === "listening" || next === "dictating") !==
+        (was === "listening" || was === "dictating")
+      )
+        audio();
       if (next === "speaking" && was !== "speaking") call("window.mascot.speak(true)");
       if (next !== "speaking" && was === "speaking") call("window.mascot.speak(false)");
       const moment = momentOf(next);
@@ -1167,6 +1217,7 @@ export const createDesktopMascot = (input: {
     dispose: () => {
       input.crowd?.delete(self);
       clearInterval(wander);
+      clearInterval(awayCheck);
       if (wakeTimer !== null) clearTimeout(wakeTimer);
       Electron.ipcMain.removeListener("baton-mascot:press", onPress);
       Electron.ipcMain.removeListener("baton-mascot:release", onRelease);

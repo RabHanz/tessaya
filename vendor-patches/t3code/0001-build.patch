@@ -682,7 +682,7 @@ index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..0c68bca77aceb2a88dc372d1dcef982c
 +  );
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index bf7add37828adad593b77de8f062963b479f6fc7..40cb47659316e822ba02953a1d360c24bdaf0043 100644
+index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb8980466691 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -831,7 +831,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..40cb47659316e822ba02953a1d360c24
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2428,199 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2347,6 +2428,200 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -850,6 +850,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..40cb47659316e822ba02953a1d360c24
 +  "bodies.js",
 +  "props.js",
 +  "speech.js",
++  "sounds.js",
 +] as const;
 +
 +/** Preloads voicePill.ts and desktopMascot.ts load beside the main bundle (`__dirname`), inside app.asar. */
@@ -1031,7 +1032,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..40cb47659316e822ba02953a1d360c24
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +3066,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2792,6 +3067,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -1039,7 +1040,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..40cb47659316e822ba02953a1d360c24
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3162,6 +3437,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3162,6 +3438,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -1059,7 +1060,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..40cb47659316e822ba02953a1d360c24
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3425,6 +3713,78 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3425,6 +3714,78 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -1138,7 +1139,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..40cb47659316e822ba02953a1d360c24
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3814,6 +4174,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3814,6 +4175,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -1152,7 +1153,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..40cb47659316e822ba02953a1d360c24
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3846,6 +4213,25 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3846,6 +4214,25 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
