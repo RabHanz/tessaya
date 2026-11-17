@@ -48,6 +48,18 @@ export const roomActionOf = (id: string, tail: string, payload: string): ActionI
   }
   if (!tail.startsWith("event/") || SKIP.has(tail)) return null;
   const body = parse(payload);
+  // A test run playing audio into the room (our speaker, his clone): the window wake training drops.
+  if (tail === "event/test/playback") {
+    const b = body as { open?: unknown; run?: unknown } | null;
+    return {
+      kind: "room.test.playback",
+      actor: { kind: "system", id: "test-run", certainty: 1 },
+      subject: id,
+      outcome: b?.open === true ? "open" : "closed",
+      evidence: [{ kind: "device", ref: id }],
+      data: { run: String(b?.run ?? "").slice(0, 60), vessel: id },
+    };
+  }
   if (tail === "event/voice/metrics") {
     const m = body as { speaker?: string; speakerScore?: number | null } | null;
     const speaker = (m?.speaker ?? "unverified") as keyof typeof SPEAKER_ACTOR;
