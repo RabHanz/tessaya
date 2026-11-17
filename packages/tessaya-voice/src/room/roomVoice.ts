@@ -523,23 +523,21 @@ const STALE_SESSION_MS = 3_000;
 const DEVICE_ACTS = /^(voice\/(intent\/eye|stepup|say|ask|persona|enrol)|cmd\/voice\/start)$/;
 
 /**
- * One loop drives a Tessel (18 Nov: a standby loop on her server's hub ran its eye moods and a step-up while she was on
- * another hub). `tail` is the topic after `freya/r1/<id>/`; `here` is whether the Tessel is online on this loop's hub;
- * `brainHub` that it came from her server's own hub, which this loop bridges when its brain runs on another host. A
- * command from there is relayed to this loop's hub, except the link's own (`cmd/net/`), which is that hub's business.
+ * One loop drives a Tessel (18 Nov: a standby loop ran her eye moods and a step-up while she was on another hub).
+ * `tail` is the topic after `freya/r1/<id>/`; `here` is whether the Tessel is online on this loop's bus.
  */
-export const routeForDevice = (
-  tail: string,
-  here: boolean,
-  brainHub: boolean,
-): "room" | "relay" | "drop" => {
-  if (!brainHub) return !here && DEVICE_ACTS.test(tail) ? "drop" : "room";
-  if (!here || tail.startsWith("cmd/net/")) return "drop";
-  return tail.startsWith("cmd/") ? "relay" : "room";
-};
+export const routeForDevice = (tail: string, here: boolean): "room" | "drop" =>
+  !here && DEVICE_ACTS.test(tail) ? "drop" : "room";
 
-/** This loop commands only a Tessel on its own hub: a bridging loop elsewhere would relay the rest to her (18 Nov). */
-export const loopMaySend = (tail: string, here: boolean) => here || !tail.startsWith("cmd/");
+/**
+ * The loop's one bus: the hub of the server whose brain it calls, so its acts and the device's events meet on one bus
+ * with one loop election (18 Nov: a loop on onnyx's hub called hetzner's brain, whose acts went to hetzner's hub).
+ */
+export const busOfBrain = (brainUrl: string): string => {
+  const url = new URL("/api/tessel/mqtt", brainUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+};
 /**
  * Her reply on Bluetooth and no mic frame for this long: the Tessel's shared radio is choked (16 Nov: 54 s late,
  * replies bunched and dropped), so the server moves her to the next output in his order.
