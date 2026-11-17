@@ -32,14 +32,18 @@ export interface DevicePreference {
   readonly pinnedLabel: string | null;
   /** Tried in order after the pin, by part of the name: "Scarlett Solo", "Wireless Mic Rx". */
   readonly micOrder?: ReadonlyArray<string>;
+  /** A system default that heard nothing at a press while `to` heard him: Automatic moves to `to` while both are here. */
+  readonly silent?: { readonly from: string; readonly to: string } | null;
 }
 
 export type DeviceChoice =
   | {
       readonly kind: "pinned";
       readonly device: AudioInputDevice;
-      /** The pin, the order, or the mic he was on when a Bluetooth headset took the default. */
-      readonly by: "pin" | "order" | "kept";
+      /** The pin, the order, the mic he was on when a Bluetooth headset took the default, or the one that heard him. */
+      readonly by: "pin" | "order" | "kept" | "heard";
+      /** For "heard": the system default that heard nothing. */
+      readonly over?: string;
     }
   | {
       readonly kind: "default";
@@ -139,6 +143,12 @@ export const selectInputDevice = (
   const candidates = realDevices(devices);
   const systemDefault = (reason: string): DeviceChoice => {
     const label = candidates.find((d) => d.isDefault === true)?.label ?? null;
+    const silent = preference.silent;
+    const heard =
+      preference.pinnedLabel === null && silent != null && silent.from === label
+        ? candidates.find((d) => d.label === silent.to)
+        : undefined;
+    if (heard !== undefined) return { kind: "pinned", device: heard, by: "heard", over: label! };
     const kept =
       label !== null && isHandsFree(label) && previous !== null && !isHandsFree(previous)
         ? candidates.find((d) => d.label === previous)
@@ -148,7 +158,7 @@ export const selectInputDevice = (
       : { kind: "pinned", device: kept, by: "kept" };
   };
   const wants = wantsOf(preference);
-  if (wants.length === 0) return systemDefault("No microphone is pinned.");
+  if (wants.length === 0) return systemDefault("Using the system default.");
   for (const label of wants) {
     const loose = findWanted(candidates, label);
     if (loose !== undefined) {
@@ -159,13 +169,37 @@ export const selectInputDevice = (
       };
     }
   }
-  return systemDefault(`${wants[0]} is not connected. Using the system microphone.`);
+  const missing = preference.pinnedLabel === null ? wants.join(" and ") : wants[0]!;
+  const are = preference.pinnedLabel === null && wants.length > 1 ? "are" : "is";
+  return systemDefault(`${missing} ${are} not plugged in. Using the system default.`);
+};
+
+/** Why this mic, in a line for Settings, the tray and the record. */
+export const choiceReason = (choice: DeviceChoice): string => {
+  if (choice.kind === "default") return choice.reason;
+  if (choice.by === "pin") return "You chose it.";
+  if (choice.by === "order") return "The first of your mics that is plugged in.";
+  if (choice.by === "kept") return "Kept over the Bluetooth headset's call mic.";
+  return `${choice.over} heard nothing when you spoke.`;
+};
+
+/**
+ * What the dictation helper opens: the mic by name, even the system default's, and the other plugged-in mics beside
+ * it, so a default that hears nothing (a remote's receiver) moves to one that hears him.
+ */
+export const dictationMics = (
+  devices: ReadonlyArray<AudioInputDevice>,
+  preference: DevicePreference,
+  choice: DeviceChoice,
+): { readonly device: string | null; readonly fallbacks: ReadonlyArray<string> } => {
+  const device = choiceSummary(choice).mic;
+  return { device, fallbacks: backupMics(devices, preference, device) };
 };
 
 /** The mic a choice captures from, by name, and why: for the record and the tray. */
 export const choiceSummary = (
   choice: DeviceChoice,
-): { readonly mic: string | null; readonly why: "pin" | "order" | "kept" | "default" } =>
+): { readonly mic: string | null; readonly why: "pin" | "order" | "kept" | "heard" | "default" } =>
   choice.kind === "pinned"
     ? { mic: choice.device.label, why: choice.by }
     : { mic: choice.label, why: "default" };

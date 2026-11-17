@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   backupMics,
+  choiceReason,
+  dictationMics,
   setMicAt,
   micChannel,
   normalizeDeviceName,
@@ -88,6 +90,59 @@ describe("the microphone order", () => {
 
   it("falls back to the system microphone when neither is there", () => {
     expect(selectInputDevice([remote], order)).toMatchObject({ kind: "default" });
+  });
+
+  // 17 Nov: Scarlett and DJI unplugged, Windows' default on the remote's receiver, which hears nothing.
+  const realtek = {
+    deviceId: "Microphone (Realtek High Definition Audio)",
+    label: "Microphone (Realtek High Definition Audio)",
+  };
+  const headset = {
+    deviceId: "Headset (TAOTRONICS SoundSurge 46 Hands-Free)",
+    label: "Headset (TAOTRONICS SoundSurge 46 Hands-Free)",
+  };
+  const present = [{ ...remote, isDefault: true }, realtek, headset];
+
+  it("names the present default to the helper, with the other present mics to rescue a silent one", () => {
+    const choice = selectInputDevice(present, order);
+    expect(dictationMics(present, order, choice)).toEqual({
+      device: remote.label,
+      fallbacks: [realtek.label],
+    });
+    expect(choiceReason(choice)).toBe(
+      "Scarlett Solo and Wireless Mic Rx are not plugged in. Using the system default.",
+    );
+  });
+
+  it("moves Automatic off a default that heard nothing while another mic heard him, and back when that mic goes", () => {
+    const silent = { ...order, silent: { from: remote.label, to: realtek.label } };
+    const choice = selectInputDevice(present, silent);
+    expect(choice).toMatchObject({ kind: "pinned", device: realtek, by: "heard" });
+    expect(choiceReason(choice)).toBe("Microphone (USBAudio2.0) heard nothing when you spoke.");
+    expect(dictationMics(present, silent, choice).device).toBe(realtek.label);
+    const gone = [{ ...remote, isDefault: true }, headset];
+    expect(
+      reconcileDeviceChange({ current: choice, devices: gone, preference: silent }),
+    ).toMatchObject({
+      kind: "default",
+      label: remote.label,
+    });
+    // A mic in his order always outranks it, and so does a pin.
+    expect(selectInputDevice([...present, scarlett], silent)).toMatchObject({ device: scarlett });
+    expect(selectInputDevice(present, { ...silent, pinnedLabel: remote.label })).toMatchObject({
+      device: remote,
+      by: "pin",
+    });
+  });
+
+  it("falls back from a pinned mic that is missing, and says so", () => {
+    const pin = { ...order, pinnedLabel: scarlett.label };
+    const choice = selectInputDevice(present, pin);
+    expect(choice).toMatchObject({ kind: "default", label: remote.label });
+    expect(choiceReason(choice)).toBe(
+      "Microphone (Scarlett Solo USB) is not plugged in. Using the system default.",
+    );
+    expect(dictationMics(present, pin, choice).device).toBe(remote.label);
   });
 
   it("moves when the first mic vanishes, and back when it returns", () => {
