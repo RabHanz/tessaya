@@ -1856,6 +1856,7 @@ const make = Effect.gen(function* () {
           yield* releaseHeld(result.id).pipe(Effect.forkIn(scope, { startImmediately: true }));
       }
     } else if (tail === "event/bt/stall") yield* stalled(result.id, json(payload));
+    else if (tail === "event/audio/input") yield* inputPoor(result.id, json(payload));
     else if (tail === "state/net/ack") yield* netAcked(result.id, json(payload));
   });
 
@@ -1993,6 +1994,8 @@ const make = Effect.gen(function* () {
   const routed = new Map<string, { readonly key: string; readonly at: number }>();
   /** The same for the mic (`cmd/bt/input`). */
   const inputSent = new Map<string, { readonly key: string; readonly at: number }>();
+  /** Per R1, until when its headset's mic is passed over: her loop measured it starved or dead. */
+  const headsetPoor = new Map<string, number>();
   /** The class of the reply playing now per R1, which picks the outputs its route may use. */
   const classNow = new Map<string, OutputClass>();
   /** A private reply's output while it plays: nothing else moves the route until the next reply. */
@@ -2111,7 +2114,19 @@ const make = Effect.gen(function* () {
   const applyInput = Effect.fn("HomeDevices.applyInput")(function* (id: string) {
     const d = heard.get(id);
     const sp = d?.speaker;
-    const order = inputOrderOf((yield* readSaved).inputs[id], bondsOf(id));
+    const saved = (yield* readSaved).inputs[id];
+    const linked = sp?.linked ?? null;
+    const now = yield* Clock.currentTimeMillis;
+    // The headphones he has on hear him as they play to him, until he picks a mic himself (18 Nov: "listen through my
+    // headphones" was needed). Her loop measured their mic starved or dead: her own, silently, for a while.
+    const poor = linked !== null && (headsetPoor.get(id) ?? 0) > now;
+    const worn =
+      saved === undefined &&
+      linked !== null &&
+      closedKind((yield* kindsOf(id)).get(linked.toUpperCase()));
+    let order = inputOrderOf(saved, bondsOf(id));
+    if (worn && !poor && linked !== null) order = firstIn(order, linked);
+    if (poor) order = firstIn(order, OWN_MIC);
     const near = new Set(nearPhones(id).map((l) => l.id));
     const first = order.find(
       (o) => o === OWN_MIC || near.has(o) || (sp?.hfp === true && o === sp.linked),
@@ -2121,7 +2136,6 @@ const make = Effect.gen(function* () {
     if (d === undefined || sp?.hfp === undefined || d.online === false) return;
     const want = phone !== null ? "mic" : inputOf(order, sp.linked, sp.hfp);
     if (sp.input === want) return void inputSent.delete(id);
-    const now = yield* Clock.currentTimeMillis;
     const last = inputSent.get(id);
     if (last?.key === want && now - last.at < ROUTE_RESEND_MS) return;
     inputSent.set(id, { key: want, at: now });
@@ -2135,6 +2149,18 @@ const make = Effect.gen(function* () {
     yield* change((s) => {
       s.inputs[id] = order.slice(0, 16);
     });
+    inputSent.delete(id);
+    headsetPoor.delete(id);
+    yield* applyInput(id);
+  });
+
+  /** Her loop heard the headset's mic starved or dead while nobody was talking over it (`event/audio/input`). */
+  const inputPoor = Effect.fn("HomeDevices.inputPoor")(function* (
+    id: string,
+    body: Record<string, unknown> | null,
+  ) {
+    if (body?.["poor"] !== true) return;
+    headsetPoor.set(id, (yield* Clock.currentTimeMillis) + STALL_SKIP_MS);
     inputSent.delete(id);
     yield* applyInput(id);
   });

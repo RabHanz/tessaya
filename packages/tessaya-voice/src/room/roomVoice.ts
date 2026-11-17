@@ -538,6 +538,11 @@ export const busOfBrain = (brainUrl: string): string => {
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 };
+/** His headset's mic sent nothing this long while she was quiet: the radio is starved, so her own mic hears him. */
+const HEADSET_STARVED_MS = 2_000;
+/** Or it sent only near-silence this quiet (no real room is) this long: the SCO link carries no audio. */
+const HEADSET_DEAD_PEAK = 8;
+const HEADSET_DEAD_MS = 3_000;
 /** After a flush the firmware drops a reply's frames until none has come for 400 ms: a sentence sent again waits this. */
 const REFLUSH_GAP_MS = 600;
 /** How long his pieces are joined while he keeps talking: his pauses mid-sentence run 0.4-0.9 s (18 Nov). */
@@ -855,6 +860,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let nameClip: Int16Array | null = null;
     /** The mic his frames come through now. */
     let input: VoiceInput = "mic";
+    /** Since when the headset's mic has sent only silence; its fallback is said once a session. */
+    let headsetDeadSince: number | null = null;
+    let headsetPoorSaid = false;
     const hisSession = () => voiceHold.evidence.some((e) => deps.now() - e.at <= HOLD_MS);
     const heldVoice = (heard: SpeakerIdentity) => {
       const out = holdVoice(voiceHold, heard, deps.now());
@@ -2798,6 +2806,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const head = aligned ? new DataView(bytes.buffer, bytes.byteOffset, UP_HEADER) : null;
         if (head !== null)
           input = (head.getUint16(12, true) & UP_FLAG_HEADSET) !== 0 ? "headset" : "mic";
+        if (input === "headset" && pcm.every((v) => Math.abs(v) < HEADSET_DEAD_PEAK))
+          headsetDeadSince ??= arrivedAt;
+        else headsetDeadSince = null;
         // Her own voice (the intro) is not his read.
         if (guide !== null && guide.phase() === "reading" && !speaking()) {
           const g = guide;
@@ -2974,6 +2985,21 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (heldAct !== null && deps.now() - heldAct.at > 60_000) settleStepUp(false, "no answer");
         // A quiet mic while she plays on Bluetooth is the radio A2DP shares, expected and never a dead output: the
         // firmware measures that itself (`event/bt/stall`). Moving her then split a reply across both (18 Nov).
+        // Not while she plays: his headset's mic starved, or sending only silence, cannot hear him. Her own mic takes
+        // over without a word; the server passes the headset's mic over for a while.
+        const why =
+          input !== "headset" || headsetPoorSaid || speaking()
+            ? null
+            : deps.now() - lastUpAt > HEADSET_STARVED_MS
+              ? "starved"
+              : headsetDeadSince !== null && deps.now() - headsetDeadSince > HEADSET_DEAD_MS
+                ? "silent"
+                : null;
+        if (why !== null) {
+          headsetPoorSaid = true;
+          deps.publish(topic(id, "event/audio/input"), JSON.stringify({ poor: true, why }));
+          deps.log(`[${id}] the headset's mic is ${why}; her own mic hears him`);
+        }
         const quiet = !turns.inTurn() && !speaking() && reply === null;
         // The persona he called holds for the whole session (13 Nov: Sebastian fell back within 14 s), or until he names another.
         if (quiet && !asleep && deps.now() > Math.max(openUntil, firstUntil)) {
