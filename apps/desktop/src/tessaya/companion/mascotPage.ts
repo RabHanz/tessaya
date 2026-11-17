@@ -24,6 +24,8 @@ export const MASCOT_SCRIPT = String.raw`(() => {
  window.cancelAnimationFrame = () => { queued = []; };
  const svg = document.getElementById("c");
  let rig = null, persona = "", level = 0, sound = { zcr: 0, bright: 0 }, speaking = false, moodProp = null;
+ // her body's sounds and her bed (sounds.js), silent until the main process sends his levels
+ const snd = TCS.SOUND ? TCS.SOUND.create({ P: () => (rig && rig.physics ? rig.physics() : null) }) : null;
  const ipc = window.mascotIpc;
  ipc.onLevel((v, shape) => { level = v; sound = shape || { zcr: 0, bright: 0 }; });
  // Her mouth from the sound she is playing: the level opens the jaw (fast attack, slow release, gated and normalised to
@@ -67,6 +69,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    if (rig && rig.handMode !== o.hands) rig.setHandMode(o.hands);
    if (rig && persona === key) return;
    persona = key;
+   if (snd) snd.state({ energy: P.traits.energy ?? 0.5 });
    if (rig) { rig.setCharacter(P.character); rig.setPersonality(P.traits); return; }
    // at rest she costs next to nothing (release smoke): her blinks and idle acts draw 30 a second, Calm's half as often
    rig = TCS.create(svg, { character: P.character, personality: P.traits, expression: "neutral", intensity: 0.85, quiet: o.quiet, reduced: o.reduced, hands: o.hands, beatFps: 30, idleEvery: o.calm ? 2 : 1 });
@@ -77,6 +80,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    if (!speaking) fps = still;
    const name = TCS.EXPRESSIONS[c.expression] ? c.expression : "neutral";
    rig.setExpression(name, { noCut: name === "neutral", brief: !!c.brief, intensity: c.intensity ?? 0.85 });
+   if (snd) snd.state({ group: TCS.EXPRESSIONS[name].g, asleep: name === "asleep" });
    if (c.clip) rig.play(c.clip);
    if (c.fx) rig.spawn(c.fx);
    // the prop her mood brings (tessaya-shared expressionMap): a new one replaces it, null puts it away
@@ -89,6 +93,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   speak(on) {
    if (!rig || on === speaking) return;
    speaking = on; fps = on ? 30 : still;
+   if (snd) snd.state({ speaking: on });
    if (on) { calibrate(); rig.speak(lineNext ? planOf(lineNext) : forever, { mouth }); lineNext = ""; } else rig.stopSpeech();
   },
   // the sentence now sounding: her gestures and feelings land on its words by meaning (speech.js), her mouth stays on
@@ -99,10 +104,12 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    rig.speak(planOf(text), { mouth });
   },
   play(name) { if (rig) rig.play(name); },
-  motion(vx, vy) { if (rig && rig.motion) rig.motion(vx, vy); },
+  motion(vx, vy) { if (rig && rig.motion) rig.motion(vx, vy); if (snd) snd.motion(vx, vy); },
   // her character's own body (bodies.js TCS.PHYSICS): her flight for the window's physics, and how she reacts
   physics() { return rig && rig.physics ? TCS.flightOf(rig.physics()) : null; },
-  react(kind, speed) { if (rig && rig.react) rig.react(kind, speed || 0); },
+  react(kind, speed) { if (rig && rig.react) rig.react(kind, speed || 0); if (snd) snd.react(kind, speed || 0); },
+  // his levels (gains, 0 off), whether she shows, and whether he is talking to her (the bed steps back for the mic)
+  audio(o) { if (snd) snd.state(o); },
   walk(ms, dir) { if (rig && rig.walk) rig.walk(ms, dir); else if (rig) rig.play("hop"); },
   look(gx, gy) { if (rig && rig.look) rig.look(gx, gy); },
   impact(speed, landed) { if (rig && rig.impact) rig.impact(speed, landed !== false); },
@@ -128,8 +135,8 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    const T = rig ? rig.personality : { energy: 0.5, play: 0.5, formal: 0.5 };
    return TCS.util.weighted([["walk", 0.4 + T.energy], ["funny", 0.2 + T.play], ["signature", 0.4 + T.formal * 0.6]]);
   },
-  press(a) { if (rig && rig.press) rig.press(a); },
-  release() { if (rig && rig.release) rig.release(); },
+  press(a) { if (rig && rig.press) rig.press(a); if (snd) snd.press(a); },
+  release() { if (rig && rig.release) rig.release(); if (snd) snd.release(); },
   // a funny moment of her own (bodies.js funny, likeliest first) or the one named; what the window must do with it
   humour(name, can) {
    if (!rig || !rig.humour) return null;

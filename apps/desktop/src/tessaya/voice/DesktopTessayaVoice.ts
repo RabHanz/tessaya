@@ -553,12 +553,15 @@ import {
   parseMascotHands,
   parseMascotScreens,
   parseMascotSize,
+  parseMascotSound,
+  SOUND_LEVELS,
   type Crowd,
   type DesktopMascot,
   type MascotCharacter,
   type MascotHands,
   type MascotScreens,
   type MascotSize,
+  type MascotSound,
   type PersonaBody,
 } from "../companion/desktopMascot.ts";
 import {
@@ -776,6 +779,9 @@ interface VoiceSettings {
   /** Her body: her persona's own character or one from the Studio (EMOTION D10), and arms or floating hands. */
   readonly mascotCharacter: MascotCharacter;
   readonly mascotHands: MascotHands;
+  /** Her body's sounds (poked, squished, dropped) and the warm bed under her presence. */
+  readonly mascotSounds: MascotSound;
+  readonly mascotBed: MascotSound;
   /** Other personas' characters with her on the desktop: none, all of them (up to three), or one by name. */
   readonly mascotCrew: string;
   /** Her face in the pill while he talks to her, when the desktop companion is off. */
@@ -978,6 +984,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   mascotScreens: "span",
   mascotCharacter: "persona",
   mascotHands: "arms",
+  mascotSounds: "normal",
+  mascotBed: "normal",
   mascotCrew: "none",
   pillFace: false,
   pillWhenSpeaking: true,
@@ -1145,6 +1153,8 @@ export const readSettings = (path: string): VoiceSettings => {
       mascotScreens: parseMascotScreens(saved["mascotScreens"]),
       mascotCharacter: parseMascotCharacter(saved["mascotCharacter"]),
       mascotHands: parseMascotHands(saved["mascotHands"]),
+      mascotSounds: parseMascotSound(saved["mascotSounds"]),
+      mascotBed: parseMascotSound(saved["mascotBed"]),
       mascotCrew: parseMascotCrew(saved["mascotCrew"]),
       pillFace: saved["pillFace"] === true,
       pillWhenSpeaking: saved["pillWhenSpeaking"] !== false,
@@ -5332,6 +5342,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       screens: settings.mascotScreens,
       character: settings.mascotCharacter,
       hands: settings.mascotHands,
+      sounds: settings.mascotSounds,
+      bed: settings.mascotBed,
     });
     // Jobs are read on a timer only once something wants them; she does.
     if (settings.mascot) wantJobs();
@@ -5355,6 +5367,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         screens: settings.mascotScreens,
         character: "persona",
         hands: settings.mascotHands,
+        sounds: settings.mascotSounds,
+        // one bed per desktop: hers
+        bed: "off",
       });
     });
   };
@@ -7943,6 +7958,26 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         disabled: !settings.mascot,
       },
       {
+        id: "v.mascotSounds",
+        section: "Desktop companion",
+        label: "Her body's sounds",
+        hint: "Soft squishes, boings and bumps as you poke, squish, drag and drop her, shaped by what her body is made of. Quiet during quiet hours.",
+        kind: "choice",
+        value: settings.mascotSounds,
+        options: SOUND_LEVELS,
+        disabled: !settings.mascot,
+      },
+      {
+        id: "v.mascotBed",
+        section: "Desktop companion",
+        label: "Her ambient bed",
+        hint: "A warm, quiet tone under her presence that breathes with her mood. It steps back while she talks or you talk to her, and stops during quiet hours.",
+        kind: "choice",
+        value: settings.mascotBed,
+        options: SOUND_LEVELS,
+        disabled: !settings.mascot,
+      },
+      {
         id: "v.mascotCrew",
         section: "Desktop companion",
         label: "Others with her",
@@ -9230,6 +9265,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.mascotScreens") save({ mascotScreens: parseMascotScreens(value) });
     else if (id === "v.mascotCharacter") save({ mascotCharacter: parseMascotCharacter(value) });
     else if (id === "v.mascotHands") save({ mascotHands: parseMascotHands(value) });
+    else if (id === "v.mascotSounds") save({ mascotSounds: parseMascotSound(value) });
+    else if (id === "v.mascotBed") save({ mascotBed: parseMascotSound(value) });
     else if (id === "v.mascotCrew") save({ mascotCrew: parseMascotCrew(value) });
     else if (id === "v.pillFace") save({ pillFace: on });
     else if (id === "v.pillWhenSpeaking") save({ pillWhenSpeaking: on });

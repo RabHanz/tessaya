@@ -2443,6 +2443,7 @@ export const COMPANION_PAYLOAD_FILES = [
   "bodies.js",
   "props.js",
   "speech.js",
+  "sounds.js",
 ] as const;
 
 /** Preloads voicePill.ts and desktopMascot.ts load beside the main bundle (`__dirname`), inside app.asar. */
