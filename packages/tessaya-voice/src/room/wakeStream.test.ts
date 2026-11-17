@@ -140,6 +140,21 @@ describe("waking her by name with no session open", () => {
     heard = "I told Tessaya about it.";
     await segment(9, { pass: true, best: 0.95 });
     expect(t.woken).toHaveLength(5);
+    // Just under the loop's bar, her name must lead the whole segment's words: of the 22 kept 0.80-0.89 passes (to
+    // 17 Nov), only seg 172 (16 Nov, 05:04 GMT+5, 0.89) was his wake; the rest were his talk to others, as seg 326.
+    heard = "Tessaya, what time is it?";
+    await segment(10, { pass: true, best: 0.89 });
+    expect(t.woken).toHaveLength(6);
+    heard = "And see what are the problems. So";
+    await segment(11, { pass: true, best: 0.87 });
+    heard = "So I said, Tessaya.";
+    await segment(12, { pass: true, best: 0.85 });
+    heard = "Tessaya, what time is it?";
+    await segment(13, { pass: true, best: 0.7 });
+    expect(t.woken).toHaveLength(6);
+    expect(t.lines.join("\n")).toMatch(
+      /seg 11 kws 0\.870 under the loop's 0\.9; not a wake \(her name does not lead/,
+    );
   });
 
   it.each([
