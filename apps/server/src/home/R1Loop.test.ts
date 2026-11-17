@@ -1,7 +1,118 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeReadline from "node:readline";
+
 import { expect, it } from "vite-plus/test";
 
 import type { R1Device } from "./HomeAssistantService.ts";
-import { elect, loopPlan, parseEnvFile, voiceLine } from "./R1Loop.ts";
+import {
+  clearStalePorts,
+  elect,
+  listenInodes,
+  loopPlan,
+  loopPorts,
+  parseEnvFile,
+  terminate,
+  voiceLine,
+} from "./R1Loop.ts";
+
+/** A node program and the first `count` lines it prints (pids, ports). */
+const spawnNode = (code: string, options: NodeChildProcess.SpawnOptions = {}) => {
+  const proc = NodeChildProcess.spawn(process.execPath, ["-e", code], {
+    stdio: ["ignore", "pipe", "inherit"],
+    ...options,
+  });
+  const lines = NodeReadline.createInterface({ input: proc.stdout! })[Symbol.asyncIterator]();
+  const line = async () => Number((await lines.next()).value);
+  return { proc, line };
+};
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+// A loop that starts a helper of its own (Pocket, the recogniser) and prints both pids; `stubborn` ignores SIGTERM.
+const loopWithHelper = (stubborn: boolean) =>
+  spawnNode(
+    `const c = require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(
+      `${stubborn ? 'process.on("SIGTERM", () => {});' : ""} console.log(process.pid); setInterval(() => {}, 1e6);`,
+    )}], { stdio: ["ignore", "inherit", "inherit"] });
+     console.log(process.pid); setInterval(() => {}, 1e6);`,
+    { detached: true },
+  );
+
+it("stopping a loop also stops the helpers it started, so none is left holding its ports", async () => {
+  const { line } = loopWithHelper(false);
+  const loop = await line();
+  const helper = await line();
+  await terminate(-loop);
+  expect([alive(loop), alive(helper)]).toEqual([false, false]);
+});
+
+it("a helper that ignores SIGTERM is killed once the grace runs out", async () => {
+  const { line } = loopWithHelper(true);
+  const loop = await line();
+  const helper = await line();
+  await terminate(-loop, 200);
+  expect([alive(loop), alive(helper)]).toEqual([false, false]);
+});
+
+it("a helper left by a loop that died is stopped through the loop's process group", async () => {
+  const { proc, line } = loopWithHelper(false);
+  const loop = await line();
+  const helper = await line();
+  const exited = new Promise((r) => proc.once("exit", r));
+  process.kill(loop, "SIGKILL");
+  await exited;
+  expect(alive(helper)).toBe(true);
+  await terminate(-loop);
+  expect(alive(helper)).toBe(false);
+});
+
+it("finds who listens on a port in /proc/net/tcp", () => {
+  const table = [
+    "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode",
+    "   0: 0100007F:E3A9 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 4242 1",
+    "   1: 0100007F:E3A8 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 4343 1",
+    "   2: 0100007F:E3A9 0100007F:9C40 01 00000000:00000000 00:00000000 00000000  1000        0 4444 1",
+  ].join("\n");
+  expect(listenInodes(table, 58281)).toEqual(["4242"]);
+  expect(listenInodes(table, 58280)).toEqual(["4343"]);
+  expect(listenInodes(table, 1)).toEqual([]);
+  expect(loopPorts({})).toEqual([58232, 58233]);
+  expect(loopPorts({ R1_POCKET_PORT: "7000", R1_RECOGNIZER_PORT: "7001" })).toEqual([7000, 7001]);
+});
+
+it("on start, frees the loop's ports from its own orphan but never from someone else's process", async () => {
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "r1-voice-"));
+  const elsewhere = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "other-"));
+  const listen = (cwd: string) =>
+    spawnNode(
+      `const s = require("node:net").createServer().listen(0, "127.0.0.1", () => console.log(s.address().port));`,
+      { cwd },
+    );
+  const orphan = listen(dir);
+  const stranger = listen(elsewhere);
+  const [orphanPort, strangerPort] = [await orphan.line(), await stranger.line()];
+  try {
+    const lines = await clearStalePorts(dir, [orphanPort, strangerPort]);
+    expect([...lines].sort()).toEqual([
+      `port ${strangerPort} is held by pid ${stranger.proc.pid}, which is not the room loop's; leaving it`,
+      `stopping pid ${orphan.proc.pid}, a leftover of an earlier room loop holding port ${orphanPort}`,
+    ]);
+    expect([alive(orphan.proc.pid!), alive(stranger.proc.pid!)]).toEqual([false, true]);
+  } finally {
+    stranger.proc.kill("SIGKILL");
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+    NodeFS.rmSync(elsewhere, { recursive: true, force: true });
+  }
+});
 
 const r1 = (id: string, mqttUrl: string | null = null): R1Device => ({
   deviceKey: `${id}-key-0123456789abcdef`,
