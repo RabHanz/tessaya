@@ -11,6 +11,7 @@ import {
 } from "@t3tools/tessaya-shared/appCommands";
 import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
 import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
+import { CONVERSATION_END } from "@t3tools/tessaya-shared/stopPhrases";
 import type { VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/tessaya-shared/operator";
 import { TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
@@ -136,6 +137,8 @@ export interface ToolHost {
   readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
   /** How loud her voice plays on this computer, changed by his words; the next sentence plays at it. */
   readonly speakingVolume?: (to: VolumeTo) => string;
+  /** He closed the conversation: her voice rests once this reply has played. */
+  readonly rest?: () => void;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
   /** Each of this table's own tools that changes something, as it ends: into his action log. */
   readonly acted?: (tool: string, outcome: "ok" | "fail") => void;
@@ -785,6 +788,19 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
           a["effort"] === undefined ? null : str(a, "effort", 20),
         ),
       }),
+    },
+    {
+      name: CONVERSATION_END.name,
+      description: CONVERSATION_END.description,
+      inputSchema: CONVERSATION_END.input_schema,
+      run: async (a) => {
+        host.rest?.();
+        const goodbye = typeof a["goodbye"] === "string" ? str(a, "goodbye", 200) : "";
+        // Her words are her reply here, so the goodbye goes back to be said.
+        return {
+          text: goodbye === "" ? "Ended: say nothing more." : `Ended: say only "${goodbye}".`,
+        };
+      },
     },
     {
       name: "dictation_stop",

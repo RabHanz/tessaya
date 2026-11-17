@@ -79,3 +79,23 @@ export const stopIntent = (
 
 /** The room brain's own "he is done": the end of a reply that closes the conversation, never said (15 Nov). */
 export const REST_MARK = "[rest]";
+
+/**
+ * The model's way to end the conversation, on every vessel: the fixed phrases above are only the fast path (18 Nov).
+ * Evals: evals/tessaya-room/liveCases.ts (the end-* cases).
+ */
+export const CONVERSATION_END = {
+  name: "conversation_end",
+  description:
+    'End this conversation: you go quiet and stop listening until he wakes you again. Call it when he is done talking to you, however he puts it ("we\'re done for now", "go to sleep", "okay, bye", "dismissed", "stop", "that\'s enough, thanks", "good night"). Not when he is done with something else ("I\'m done with that file", "bye to that idea", "stop the music"): answer that as usual. Call it straight away with your goodbye in goodbye, and write nothing else.',
+  input_schema: {
+    type: "object",
+    properties: {
+      goodbye: {
+        type: "string",
+        description:
+          "A short goodbye that fits the moment, a few words; leave it out to end in silence.",
+      },
+    },
+  },
+} as const;

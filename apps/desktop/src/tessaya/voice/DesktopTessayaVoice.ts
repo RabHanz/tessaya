@@ -1534,6 +1534,8 @@ export interface DesktopTessayaVoice {
   readonly onReference: (pcm: Int16Array, rate: number, soundsAtMs: number) => void;
   /** He dismissed the assistant's output. */
   readonly onDismissed: () => void;
+  /** Her brain heard him close the conversation: the open window ends, and she waits for her name again. */
+  readonly rest: () => void;
   /** A line for the tray: a voice downloading, or why it could not. */
   readonly onNote: (message: string | null) => void;
 }
@@ -9999,6 +10001,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     },
     onReference: (pcm, rate, soundsAtMs) => core?.reference(resampleTo16k(pcm, rate), soundsAtMs),
     onDismissed: () => pill.on({ type: "dismissed" }),
+    rest: () => loop?.activate("dismiss"),
     onNote: (message) => {
       note = message;
       render();

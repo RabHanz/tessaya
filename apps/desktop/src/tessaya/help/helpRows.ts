@@ -38,6 +38,10 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   session_send: ["Tell the build session to rerun the tests", "Sends a message to a session."],
   fleet_status: ["What is everyone working on?", "A summary across machines."],
   dictation_stop: ["Stop dictating", "Ends dictation."],
+  conversation_end: [
+    "We're done for now",
+    "She says goodbye and stops listening until you wake her.",
+  ],
   dictation_start: ["Start dictating", "Your words are typed into the app you are in."],
   job_create: [
     "Every morning at 8, check CI and tell me what broke",

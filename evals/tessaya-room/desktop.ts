@@ -12,6 +12,7 @@ import {
   type ToolHost,
 } from "../../apps/desktop/src/tessaya/agent/tessayaTools.ts";
 import { DEFAULT_OS_PACK, modelOf } from "../../packages/tessaya-shared/src/osPack.ts";
+import { CONVERSATION_END } from "../../packages/tessaya-shared/src/stopPhrases.ts";
 import { chooseTurnBrain } from "../../packages/tessaya-shared/src/turnTier.ts";
 import type { LiveCall } from "./liveCases.ts";
 
@@ -42,11 +43,12 @@ export const desktopVessel = async (input: {
       return out.text;
     },
   });
-  /** The shared tools her table shows (its own tools cover the rest), for whether a case can run here. */
+  /** The shared tools her table shows, and the one own tool a case can see here, for whether a case can run. */
   const offered = new Set(
     buildTessayaTools({ shared: sharedOf([]) } as ToolHost)
       .filter((t) => t.shared !== undefined)
-      .map((t) => t.name),
+      .map((t) => t.name)
+      .concat(CONVERSATION_END.name),
   );
   /** One case's sentences in one session, as he would say them to his desktop. */
   const say = async (sentences: ReadonlyArray<string>) => {
@@ -61,10 +63,15 @@ export const desktopVessel = async (input: {
       now: { at: new Date(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
       where: { window: "Notepad", session: null },
       shared: sharedOf(calls),
+      // Her own way to end the talk: answered here so the trace can show it (the voice loop is not running).
+      answers: { [CONVERSATION_END.name]: "Ended: say nothing more." },
       env: process.env,
       // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
       platform: process.platform,
     });
+    for (const name of ran.calls)
+      if (name.endsWith(CONVERSATION_END.name))
+        calls.push({ name: CONVERSATION_END.name, input: {}, isError: false, text: "" });
     return { replies: ran.replies, calls, ms: [Date.now() - started] };
   };
   return { offered, say, call: sharedOf([]).call };
