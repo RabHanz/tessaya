@@ -104,6 +104,11 @@ export const kwsSettingsCommand = (
   return Object.keys(send).length === 0 ? null : JSON.stringify(send);
 };
 
+/**
+ * A Tessel's segment numbers start again at 1 when it reboots, so a verdict belongs to segment `seg` only when that one
+ * ended this recently (it comes ~0.2 s after the end): 18 Nov 03:48, a reboot's scores landed on segments from 03:45.
+ */
+export const KWS_LATE_MS = 10_000;
 /** `event/wake/kws`: the R1's on-device wake model on one segment (firmware contract). */
 export interface KwsEvent {
   readonly seg?: number;
@@ -427,8 +432,9 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       kwsSeen.add(id);
       if (typeof event.seg === "number") {
         const key = `${id}#${event.seg}`;
-        const done = ended.get(key);
+        const stale = ended.get(key);
         ended.delete(key);
+        const done = stale !== undefined && now() - stale.at < KWS_LATE_MS ? stale : undefined;
         if (done !== undefined) {
           const d = of(id);
           d.chain = d.chain.then(() => kwsDecide(id, event, done.pcm, done.woke, done.at));

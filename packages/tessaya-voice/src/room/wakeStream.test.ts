@@ -233,6 +233,20 @@ describe("waking her by name with no session open", () => {
     });
   });
 
+  it("never decides a rebooted Tessel's kws pass on an older segment with the same number (18 Nov 03:48)", async () => {
+    let clock = 0;
+    const t = rig("Hey Tessaya.", () => clock, [{ word: "Tessaya", threshold: 0.9 }]);
+    t.stream.kws("r1", { seg: 1, name: "tessaya", score: 0, pass: false, best: 0.1 });
+    for (let i = 0; i < 4; i += 1) t.stream.frame("r1", frame(7));
+    t.stream.end("r1", 3);
+    await t.stream.drained("r1");
+    // Its verdict never came; she rebooted, and her new segment 3 passes before it ends.
+    clock += 180_000;
+    t.stream.kws("r1", { seg: 3, name: "tessaya", score: 0, pass: true, best: 0.95 });
+    await t.stream.drained("r1");
+    expect(t.woken).toEqual([]);
+  });
+
   it("on a Tessel whose kws scorer is ready, openWakeWord never wakes her, even before its first kws event (01:18, 16 Nov)", async () => {
     const t = createWakeStream({
       words: [{ word: "Tessaya", threshold: 0.99 }],
