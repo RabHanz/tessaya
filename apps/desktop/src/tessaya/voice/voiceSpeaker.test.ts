@@ -171,12 +171,9 @@ describe("createSpeaker on the OS voice", () => {
       respellings: () => ({ Kiro: "Keer-oh" }),
     });
     await speaker.speak("Freya asked Kiro about the PR.");
-    expect(synthesised).toEqual(["Fray-uh asked Keer-oh about the P R."]);
+    expect(synthesised).toEqual(["Freya asked Keer-oh about the P R."]);
     // Both, so her own voice is known whether the recogniser writes "PR" or "P R".
-    expect(noted).toEqual([
-      "Freya asked Kiro about the PR.",
-      "Fray-uh asked Keer-oh about the P R.",
-    ]);
+    expect(noted).toEqual(["Freya asked Kiro about the PR.", "Freya asked Keer-oh about the P R."]);
     // A stage direction is a sound between the words, never words; an interjection is respelled for the voice.
     synthesised.length = 0;
     noted.length = 0;
