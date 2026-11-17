@@ -61,6 +61,8 @@ export interface LayerHttpResponse {
   readonly json?: unknown;
   /** A page or script the layer serves itself, with its content type. */
   readonly body?: string;
+  /** A file the layer serves from its own store (a 3D body model, a prop), with its content type. */
+  readonly bytes?: Uint8Array;
   readonly contentType?: string;
 }
 
