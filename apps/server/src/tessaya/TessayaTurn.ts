@@ -88,6 +88,8 @@ export interface TurnEnvelope {
   readonly addressed?: boolean | undefined;
   /** The turn read outside content: what it learns waits for his yes, and nothing private is read. */
   readonly tainted?: boolean | undefined;
+  /** Where her voice plays now, live from the vessel that heard it; over any older record of the device's. */
+  readonly plays?: "bt" | "onboard" | undefined;
   /** The app in front, for a vessel with a screen ("excel.exe"): which of his skills fit. */
   readonly app?: string | null | undefined;
   /** The project the turn is about (the focused session's); other projects' items stay out. */
@@ -335,6 +337,7 @@ export const hereLine = (
   device: RegisteredDevice | null,
   home: ReadonlyArray<string> | null,
   now: number,
+  plays?: "bt" | "onboard",
 ): string => {
   const parts: string[] = [];
   if (device !== null) {
@@ -353,8 +356,14 @@ export const hereLine = (
       parts.push(
         "Its link to this server is down just now: its readings may be old and a change sent to it may not arrive.",
       );
+    // Live from the device this turn (18 Nov, 00:38: a day-old "output speaker" told him his headphones had not taken).
+    if (plays !== undefined)
+      parts.push(
+        `Your voice plays ${plays === "bt" ? "through Bluetooth (his headphones or speaker)" : "on its own speaker"} right now, live from it.`,
+      );
     const open = device.items
       .filter((i) => i.privacy !== true && i.group !== "body")
+      .filter((i) => plays === undefined || !LIVE_FROM_VESSEL.has(i.id))
       .toSorted((a, b) => hereRank(a.id) - hereRank(b.id));
     // He said the battery is irrelevant while it charges (16 Nov), so it is not there to be said.
     const charging = valueOf("power.charging")?.value === true;
@@ -382,6 +391,13 @@ export const hereLine = (
   const line = parts.join(" ");
   return line.length <= HERE_MAX_CHARS ? line : `${line.slice(0, HERE_MAX_CHARS - 1)}…`;
 };
+
+/** Readings the vessel's own live word replaces: where her voice plays. */
+const LIVE_FROM_VESSEL: ReadonlySet<string> = new Set([
+  "audio.output",
+  "audio.playing",
+  "audio.device",
+]);
 
 /** What a turn on a body most needs of its readings: whose eyes it shows and where its voice plays, first. */
 const HERE_FIRST = ["eye.persona", "audio.output", "audio.device", "power.charging"];
@@ -1024,12 +1040,12 @@ export const make = Effect.gen(function* () {
       ? null
       : yield* registry.value.get(turn.vessel.id).pipe(Effect.orElseSucceed(() => null));
     const now = yield* Clock.currentTimeMillis;
-    if (member === null || turn.sharedRoom === true) return hereLine(device, null, now);
+    if (member === null || turn.sharedRoom === true) return hereLine(device, null, now, turn.plays);
     const names: string[] = [];
     for (const p of (yield* presence.estimate()).members)
       if (p.confidence >= PRESENCE_BARS.around)
         names.push(p.guest ? GUEST_NAME : ((yield* memberName(p.member)) ?? p.member));
-    return hereLine(device, names, now);
+    return hereLine(device, names, now, turn.plays);
   });
 
   /**

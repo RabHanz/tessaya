@@ -1453,9 +1453,14 @@ it.effect("knows his saved devices from the R1's bonds and says when one has for
     const connect = (name: string, by: HomeDevices.DeviceActor) =>
       devices.command(ID, { op: "item", itemId: "bt.connect", value: { name } }, by);
     assert.strictEqual((yield* connect("Galaxy X", unsure)).status, "asked");
-    assert.strictEqual((yield* connect("my headphones", unsure)).status, "asked");
+    const first = (yield* inbox.pending)[0]!.id;
+    // 00:37-00:45: asked again while it waits, the card he is answering stays, so his yes there still does it.
+    const again = yield* connect("my headphones", unsure);
+    assert.strictEqual(again.status, "asked");
+    assert.include(again.line, "nothing new was sent");
     const cards = yield* inbox.pending;
     assert.lengthOf(cards, 1);
+    assert.strictEqual(cards[0]!.id, first);
     assert.strictEqual(cards[0]!.title, "Connect R1 to your Galaxy X?");
     assert.notInclude(cards[0]!.detail, "bt.connect");
     assert.include(cards[0]!.more ?? "", "bt.connect");
@@ -1473,11 +1478,22 @@ it.effect("knows his saved devices from the R1's bonds and says when one has for
     assert.deepStrictEqual(sent, [
       { topic: "cmd/audio/output", payload: { to: "bt", mac: "E8:07:BF:35:26:5C" } },
     ]);
+    // A connect just sent is under way: "do it" again sends nothing and asks for no new yes.
+    const busy = yield* connect("my speaker", unsure);
+    assert.strictEqual(busy.status, "done");
+    assert.include(busy.line, "nothing new was sent");
+    assert.lengthOf(sent, 1);
+    assert.lengthOf(yield* inbox.pending, 0);
     yield* devices.receive(
       `${root}/state/bt`,
       '{"state":"connected","mac":"E8:07:BF:35:26:5C","saved":true}',
     );
     assert.strictEqual((yield* Fiber.join(own)).status, "done");
+    assert.lengthOf(yield* inbox.pending, 0);
+    // Connected and playing there, live: asked again, she says so; no card.
+    const there = yield* connect("my speaker", unsure);
+    assert.strictEqual(there.status, "done");
+    assert.include(there.line, "plays through it now");
     assert.lengthOf(yield* inbox.pending, 0);
   }).pipe(Effect.provide(layer));
 });
