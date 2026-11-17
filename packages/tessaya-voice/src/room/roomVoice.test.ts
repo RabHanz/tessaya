@@ -748,10 +748,15 @@ describe("answering only when he is talking to her", () => {
 
   describe("stopping her while she speaks (13 Nov: he could not stop or dismiss her)", () => {
     /** Her reply, the mic open over it: each 60 ms frame of hers comes back as it sounds, or his words instead. */
-    const overHer = async (heard: ReadonlyArray<string>, over: "echo" | "his") => {
+    const overHer = async (
+      heard: ReadonlyArray<string>,
+      over: "echo" | "his",
+      extra: Partial<RoomDeps> = {},
+    ) => {
       const logs: string[] = [];
       const t = setup(
         {
+          ...extra,
           recognise: said(heard),
           brain: async function* (input) {
             t.brainCalls.push(input);
@@ -833,6 +838,29 @@ describe("answering only when he is talking to her", () => {
         "Turn the lamp on as well.",
       ]);
       expect(other.logs.some((l) => l.includes("not answered"))).toBe(false);
+    });
+
+    it("never puts a turn over her voice on his path without its own Voice ID verdict (18 Nov, 00:16:04)", async () => {
+      // His session verified on the first turn; Voice ID then has nothing for the words over her (it failed).
+      let n = 0;
+      const r = await overHer(["Turn the office fan on.", "Turn the lamp on as well."], "his", {
+        speaker: async () => {
+          n += 1;
+          if (n > 1) throw new Error("no embedding");
+          return {
+            kind: "owner",
+            personId: "owner",
+            name: null,
+            confidence: 0.7,
+            verified: true,
+            inherited: false,
+            at: 0,
+            own: { score: 0.7, ms: 1_200 },
+          };
+        },
+      });
+      expect(r.t.brainCalls.map((c) => c.tessaya.speaker?.kind)).toEqual(["owner", "unverified"]);
+      expect(r.t.brainCalls[1]!.tessaya.tainted).toBe(true);
     });
 
     it("stops on the R1's own stop (S2 or a tap), and a turn on its way then is not answered", async () => {

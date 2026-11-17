@@ -878,7 +878,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       echoLike = verdict.likeness;
       if (verdict.compared && !verdict.hers)
         deps.log(
-          `[${id}] heard over her voice${verdict.during ? "" : "'s tail"}, taken as his (likeness ${verdict.likeness.toFixed(2)})`,
+          `[${id}] heard over her voice${verdict.during ? "" : "'s tail"}, not her echo (echo likeness ${verdict.likeness.toFixed(2)}; Voice ID decides whose)`,
         );
       return verdict.hers;
     };
@@ -1613,7 +1613,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           holdBefore ??= voiceHold;
           const out = holdVoice(holdBefore, heard, deps.now());
           if (n === scorings) voiceHold = out.hold;
-          const who = out.identity;
+          // Begun over her voice, his session alone never makes it his: it needs a voice score of its own (18 Nov, 00:16).
+          const who =
+            tainted && out.identity.lifted === true && heard.own === undefined
+              ? heard
+              : out.identity;
           // Our own test playback in the room never teaches, whatever it scored.
           const how = via === "mic" && (deps.playback?.() ?? null) === null ? teaches(who) : null;
           if (how !== null && n === scorings)
