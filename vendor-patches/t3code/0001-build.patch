@@ -263,7 +263,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..99379bb855b3bbf11783a794eb49b010
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index e3589f643c3259fac880e60fb4b13b9af3c95d39..c91a745035ad7a94bae3febea6635e753d47bc3c 100644
+index e3589f643c3259fac880e60fb4b13b9af3c95d39..85b90f3b5251c34f38cb94f2841342ad4f5b32d1 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -41,6 +41,9 @@
@@ -276,7 +276,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c91a745035ad7a94bae3febea6635e75
        ],
        "ignoreDependencies": ["esbuild"],
        // The `t3` npm package's files: copied into the package, never imported.
-@@ -54,6 +57,8 @@
+@@ -54,22 +57,34 @@
          "src/bin.ts!",
          "src/claude-history-worker.ts!",
          "scripts/cli.ts",
@@ -285,7 +285,10 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c91a745035ad7a94bae3febea6635e75
          "scripts/fetch-expo-schema.ts",
          "scripts/probe-claude-fork-local-rollback-replay.ts",
          "scripts/update-test-shard-weights.ts",
-@@ -63,13 +68,22 @@
+         "scripts/verify-background-live.ts",
+         "src/provider/testFixtures/*.mjs",
++        "src/tessaya/__fixtures__/*.mjs",
+         // graphqlgen reads its config.
          "graphql.config.ts",
        ],
        // The generated operations export every selection's class.
@@ -309,7 +312,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c91a745035ad7a94bae3febea6635e75
          "@t3tools/web",
          "@napi-rs/keyring",
          "ffi-rs",
-@@ -77,13 +91,21 @@
+@@ -77,13 +92,21 @@
        ],
      },
      "apps/desktop": {
@@ -331,7 +334,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c91a745035ad7a94bae3febea6635e75
          "src/boot.ts!",
          "src/compileCache.ts!",
          "src/serverCompileCache.ts!",
-@@ -96,7 +118,8 @@
+@@ -96,7 +119,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -341,7 +344,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c91a745035ad7a94bae3febea6635e75
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -105,13 +128,21 @@
+@@ -105,13 +129,21 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -364,7 +367,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c91a745035ad7a94bae3febea6635e75
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -157,6 +188,18 @@
+@@ -157,6 +189,18 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
