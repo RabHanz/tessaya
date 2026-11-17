@@ -79,6 +79,7 @@ interface PromptRow {
   readonly status: string;
   readonly answer: number | null;
   readonly batch: string | null;
+  readonly more: string | null;
 }
 
 const fromAsk = (r: AskRow): PhoneAsk => ({
@@ -119,6 +120,7 @@ const fromPrompt = (r: PromptRow): PhonePrompt => ({
   id: r.id,
   title: r.title,
   detail: r.detail,
+  ...(r.more === null ? {} : { more: r.more }),
   buttons: decodeButtons(r.buttons),
   yes: r.yes,
   cancel: r.cancel,
@@ -428,9 +430,9 @@ export const make = Effect.gen(function* () {
   ) {
     const now = yield* Clock.currentTimeMillis;
     yield* sql`
-      INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, needs, status, answer, created_at, expires_at, batch)
+      INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, needs, status, answer, created_at, expires_at, batch, more)
       VALUES (${prompt.id}, ${prompt.title.slice(0, 200)}, ${prompt.detail.slice(0, 4000)}, ${encodeButtons(prompt.buttons.slice(0, MAX_BUTTONS))},
-              ${prompt.yes}, ${prompt.cancel}, ${prompt.needs ?? null}, 'pending', NULL, ${now}, ${now + (yield* cardLife)}, ${batch})
+              ${prompt.yes}, ${prompt.cancel}, ${prompt.needs ?? null}, 'pending', NULL, ${now}, ${now + (yield* cardLife)}, ${batch}, ${prompt.more?.slice(0, 2000) ?? null})
     `.pipe(Effect.orDie);
     yield* changed;
   });

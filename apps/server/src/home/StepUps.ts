@@ -23,8 +23,12 @@ export type HeldRun = (raised: {
 
 export interface HeldAct {
   readonly device: string;
-  /** Her words for it, on the card. */
+  /** Her plain words for it, finishing "so she can …" on the card. */
   readonly what: string;
+  /** The act however it was worded: a newer hold of it on the same device replaces this one and its card. */
+  readonly key?: string;
+  /** The raw call, behind the card's Details. */
+  readonly details?: string;
   readonly member: string | null;
   readonly needs: Assurance;
   /** Also a card on the phone inbox; never for a replay. */
@@ -94,6 +98,12 @@ const make = Effect.gen(function* () {
 
   const hold = Effect.fn("StepUps.hold")(function* (act: HeldAct) {
     const id = `stepup-${yield* Clock.currentTimeMillis}-${yield* Random.nextIntBetween(0, 1e6)}`;
+    // Asked again, however worded: one card, the newest (18 Nov: the same connect piled up three cards).
+    for (const [other, was] of held)
+      if (act.key !== undefined && was.key === act.key && was.device === act.device) {
+        held.delete(other);
+        if (Option.isSome(inbox)) yield* inbox.value.closePrompt(other);
+      }
     held.set(id, act);
     // A card act is not the voice's to settle, so the vessel is not asked who spoke.
     if (act.card !== true) for (const l of listeners) yield* l(act.device, id);
@@ -104,7 +114,7 @@ const make = Effect.gen(function* () {
         ...(act.card === true
           ? {
               title: "Tessaya wants your yes",
-              detail: `Asked on ${act.device}: ${act.what}.`,
+              detail: `Can she ${act.what}?`,
               buttons:
                 act.always === undefined ? ["Yes, do it", "No"] : ["Yes, do it", "No", "Always"],
               // Only a phone that may approve answers it, as the house's owner asks are.
@@ -112,15 +122,20 @@ const make = Effect.gen(function* () {
             }
           : {
               title: "Is this you?",
-              detail: `Tessaya is holding this until she knows who asked: ${act.what}.`,
+              detail: `Confirm it's you so she can ${act.what}.`,
               buttons: ["Yes, it's me", "No"],
             }),
+        ...(act.details === undefined ? {} : { more: act.details }),
         yes: 0,
         cancel: 1,
       });
       // A yes on their own phone is their device at A2 (§3.1), and the yes a card act waited for; a no lets it go.
       yield* phone.promptAnswer(id).pipe(
-        Effect.repeat({ schedule: Schedule.spaced("2 seconds"), until: (a) => a !== null }),
+        Effect.repeat({
+          schedule: Schedule.spaced("2 seconds"),
+          // A newer ask for the same act closed this card: stop watching it.
+          until: (a) => a !== null || !held.has(id),
+        }),
         Effect.timeoutOption(`${yield* phone.cardLife} millis`),
         Effect.flatMap((answer) => {
           const always = Option.isSome(answer) && answer.value === 2 ? act.always : undefined;

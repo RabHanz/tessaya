@@ -475,18 +475,90 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
  * A tool call that changes something (the house, a device, a send, a memory) or looks through the camera: on a turn
  * started from his partial words it waits until the final words match the guess. Only shared reads go ahead.
  */
-export const changesSomething = (name: string): boolean =>
+export const changesSomething = (name: string, input?: unknown): boolean =>
   !(
     decoders.has(name) &&
     Context.get(TessayaToolkit.tools[name as SharedName].annotations, Tool.Readonly)
-  ) && name !== LAPTOP.name;
+  ) &&
+  name !== LAPTOP.name &&
+  !readsOnly(name, input);
+
+/** A write tool's actions that only look: "who's on which device?" was held for a step-up (18 Nov, 00:38 GMT+5). */
+const READ_ACTIONS: Readonly<Record<string, readonly [string, ReadonlySet<unknown>]>> = {
+  tessaya_cast: ["action", new Set(["who"])],
+  tessaya_prompt_lab: ["action", new Set(["list"])],
+  tessaya_group: ["op", new Set(["status"])],
+  access_manage: ["op", new Set(["links"])],
+};
+const readsOnly = (name: string, input: unknown): boolean => {
+  const read = READ_ACTIONS[name];
+  return (
+    read !== undefined &&
+    typeof input === "object" &&
+    input !== null &&
+    read[1].has((input as Record<string, unknown>)[read[0]])
+  );
+};
+
+/**
+ * Her words for a held act, finishing "so she can …": never a tool's name or its arguments, which go behind the card's
+ * Details (18 Nov: "tessaya cast {"action":"who"}" was shown to him).
+ */
+const plainAct = (name: string, input: unknown): string => {
+  const i = (typeof input === "object" && input !== null ? input : {}) as Record<string, unknown>;
+  const text = (key: string, otherwise: string) =>
+    typeof i[key] === "string" && i[key] !== "" ? recordText(i[key], 40) : otherwise;
+  const body = text("body", "here").toLowerCase() === "here" ? "this device" : text("body", "");
+  switch (name) {
+    case "tessaya_cast":
+      return i["action"] === "call"
+        ? `bring ${text("persona", "a persona")} to ${body}`
+        : i["action"] === "sendHome"
+          ? "send everyone back to their own device"
+          : "change who is on which device";
+    case "settings_set":
+    case "settings_set_many":
+    case "settings_answer_all":
+      return "change your settings";
+    case "home_automation_save":
+      return "save a home automation";
+    case "tessaya_prompt_lab":
+      return "change which prompt is live";
+    case "job_start":
+      return `open a job${typeof i["title"] === "string" ? `: ${recordText(i["title"], 60)}` : ""}`;
+    case "job_agree":
+      return "start the job plan you agreed";
+    case "job_schedule":
+      return "run a job again on a schedule";
+    case "project_add":
+      return "add a project to this computer";
+    case "schedule_delete":
+      return "delete a scheduled task";
+    case "access_manage":
+      return "change who can reach your work";
+    default:
+      return name.startsWith("member_")
+        ? "change who is in your household"
+        : "go ahead with what you just asked";
+  }
+};
+
+/** One act, however it was worded: a newer ask for it on the same device takes the older one's place. */
+const actKey = (name: string, input: unknown): string => {
+  const i = (typeof input === "object" && input !== null ? input : {}) as Record<string, unknown>;
+  return `${name}:${String(i["action"] ?? i["op"] ?? i["id"] ?? "")}`;
+};
 
 /**
  * The assurance a room act waits for (recognition.ts's step-up), or null to run now: a change that needs more than the
  * turn's voice gave (ACCOUNTS-IDENTITY-DESIGN §3.2). Their own memory keeps its own rule in the turn.
  */
-export const stepUpNeeds = (name: string, assurance: Assurance): Assurance | null => {
-  if (!changesSomething(name) || toolReach(name) === "personal") return null;
+export const stepUpNeeds = (
+  name: string,
+  assurance: Assurance,
+  input?: unknown,
+): Assurance | null => {
+  if (!changesSomething(name, input) || toolReach(name) === "personal") return null;
   const needs = reachAssurance(name);
   return needs >= 2 && assurance < needs ? needs : null;
 };
@@ -736,7 +808,9 @@ const makeRunners = Effect.gen(function* () {
           } as ToolOutcome;
         const act = yield* stepUps.value.hold({
           device: at,
-          what,
+          what: plainAct(name, input),
+          key: actKey(name, input),
+          details: what,
           member: origin.member ?? null,
           needs: CARD_YES,
           card: true,
@@ -752,7 +826,7 @@ const makeRunners = Effect.gen(function* () {
       }
       // Held for a step-up only where a vessel judged the voice (it sent one) and Voice ID can tell anyone apart (a
       // member has a voice). A replay holds too, with no card on his phone, and its act then runs as a dry run.
-      const needs = origin === null ? null : stepUpNeeds(name, origin.assurance ?? 0);
+      const needs = origin === null ? null : stepUpNeeds(name, origin.assurance ?? 0, input);
       if (
         needs !== null &&
         origin !== null &&
@@ -765,7 +839,9 @@ const makeRunners = Effect.gen(function* () {
       ) {
         const act = yield* stepUps.value.hold({
           device,
-          what: `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`,
+          what: plainAct(name, input),
+          key: actKey(name, input),
+          details: `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`,
           member: origin.member ?? null,
           needs,
           phone: !device.startsWith("replay-"),
@@ -793,7 +869,7 @@ const makeRunners = Effect.gen(function* () {
         linkedEnvironments: false,
       };
       // A change by voice is an action, as the same call over /mcp is; reads stay out of the log.
-      const logged = changesSomething(name)
+      const logged = changesSomething(name, input)
         ? traced({
             kind: "tool.call",
             actor:

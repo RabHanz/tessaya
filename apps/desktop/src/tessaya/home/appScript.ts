@@ -437,6 +437,11 @@ function row(c) {
   if (c.kind === 'brain') { const r = $('div', 'brainRow'); if (c.hint) r.appendChild($('div', 'hint', c.hint)); r.appendChild(brain(c)); return r; }
   const r = $('div', 'row'); if (c.disabled) r.setAttribute('data-disabled', '');
   const t = $('div', 'text'); t.appendChild($('div', 'label', c.label)); if (c.hint) t.appendChild($('div', 'hint', c.hint));
+  if (c.details) {
+    const open = openPrompts.has(c.id), d = $('button', 'btn quiet', open ? 'Hide details' : 'Details'); d.setAttribute('aria-expanded', String(open));
+    d.onclick = () => { if (open) openPrompts.delete(c.id); else openPrompts.add(c.id); render(); }; t.appendChild(d);
+    if (open) t.appendChild($('div', 'hint prompt open', c.details));
+  }
   r.append(t, control(c)); return r;
 }
 function rowsOf(list, host) {

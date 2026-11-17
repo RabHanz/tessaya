@@ -34,6 +34,7 @@ export const TessayaInboxCard = Schema.Struct({
   id: Schema.String.check(Schema.isMaxLength(80)),
   title: Schema.String.check(Schema.isMaxLength(200)),
   detail: Schema.String.check(Schema.isMaxLength(4000)),
+  more: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2000))),
   buttons: Schema.Array(Schema.String.check(Schema.isMaxLength(60))).check(Schema.isMaxLength(8)),
   yes: Schema.Int,
   cancel: Schema.Int,

@@ -133,6 +133,8 @@ export interface DeviceActor {
   readonly surface: "settings" | "agent" | "assistant";
   /** His yes is already given: his own spoken request at the R1, his voice verified this turn (R1Device). */
   readonly approved?: boolean;
+  /** His own conversation (his voice, or one carried on from it): enough to connect his own paired devices. */
+  readonly his?: boolean;
   /** The suite's pretend vessel: judged and answered as for real, and nothing is sent to a device. */
   readonly dryRun?: boolean;
 }
@@ -480,6 +482,8 @@ const btTargetOf = (
     return name === "" && !pair ? null : { name, pair };
   return null;
 };
+
+const capitalized = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The firmware's Class of Device: a number, or hex text ("0x240404"). */
 const codOf = (v: unknown): number | undefined => {
@@ -1239,8 +1243,25 @@ const make = Effect.gen(function* () {
   >();
   const asks = new Map<
     string,
-    { id: string; command: DeviceCommand; line: string; by: DeviceActor; until: number }
+    {
+      id: string;
+      command: DeviceCommand;
+      line: string;
+      by: DeviceActor;
+      until: number;
+      /** The act it is, on its device: one card each. */
+      key: string;
+      /** The Bluetooth device a connect names: its card closes once that device is connected anyway. */
+      mac?: string;
+    }
   >();
+  const dropAsk = Effect.fn("HomeDevices.dropAsk")(function* (askId: string, why: string) {
+    const ask = asks.get(askId);
+    if (ask === undefined) return;
+    asks.delete(askId);
+    if (inbox._tag === "Some") yield* inbox.value.closePrompt(askId);
+    yield* audit(ask.by, ask.id, ask.line, why);
+  });
   // One link per broker the R1 records name (this server's hub is the null URL): R1s may sit on different ones.
   const links = new Map<string, { readonly link: DeviceLink; readonly host: string }>();
   let devices: ReadonlyArray<R1Device> = [];
@@ -2483,6 +2504,11 @@ const make = Effect.gen(function* () {
         lastAt: linked ? now : null,
         ...withKind(str(body?.["name"]) ?? "", codOf(body?.["cod"]), body?.["kind"]),
       });
+    // Connected anyway: a card still asking to connect it is no longer wanted.
+    if (linked && mac !== null)
+      for (const [askId, ask] of asks)
+        if (ask.id === id && ask.mac === mac.toUpperCase())
+          yield* dropAsk(askId, "no longer needed: it connected");
     // 0.3.52: up to four saved devices, each with its name, class and kind, and which one is linked.
     if (tail === "state/bt/bonds" && Array.isArray(body?.["devices"]))
       for (const raw of (body["devices"] as Array<unknown>).slice(0, 8)) {
@@ -2589,6 +2615,13 @@ const make = Effect.gen(function* () {
                     : c.op === "hubs"
                       ? `change which servers the ${DEVICE} tries first`
                       : c.op;
+
+  /** What he calls a device on a card: a Tessel by its body ("Tumble"), anything else by its name. */
+  const placeName = Effect.fn("HomeDevices.placeName")(function* (id: string) {
+    const reg = yield* registry.get(id);
+    const body = reg?.kind === "r1" ? yield* registry.value(id, "body.current") : null;
+    return typeof body === "string" && body !== "" ? body : (reg?.name ?? id);
+  });
 
   /** A registry item and its device, or why there is none. */
   const itemOf = Effect.fn("HomeDevices.itemOf")(function* (id: string, itemId: string) {
@@ -3095,8 +3128,24 @@ const make = Effect.gen(function* () {
       return yield* tagPrivate(id, tag, by);
     // A registry item is checked by its own class; the registry says when its device is away.
     let needsYes = RISKY_OPS.has(c.op);
+    const where = yield* placeName(id);
+    // The card's question in plain words, and the act it is (one card per act and device, however it was worded).
+    let question = `${capitalized(describe(c))} on ${where}?`;
+    let key: string = c.op;
+    let mac: string | undefined;
     if (c.op === "item") {
       const { reg, item } = yield* itemOf(id, c.itemId);
+      question = `${item.label} on ${where}${item.type === "action" ? "" : ` to ${valueText(item, c.value)}`}?`;
+      key = `item:${c.itemId}`;
+      const bt = reg.via === "mqtt" ? btTargetOf(c.itemId, c.value, item.values) : null;
+      if (bt !== null) {
+        key = "bt";
+        const found = bt.pair ? null : resolveBluetooth(bt.name, yield* knownOf(id));
+        if (found?.kind === "one") {
+          mac = found.device.mac.toUpperCase();
+          question = `Connect ${where} to your ${btLabel(found.device)}?`;
+        } else if (bt.pair) question = `Pair a new Bluetooth device with ${where}?`;
+      }
       if (item.safety === "never" && by.surface !== "settings")
         return yield* new DeviceRefusedError({
           why: `${item.label} on ${reg.name} is changed only in Settings → Hardware.`,
@@ -3108,6 +3157,8 @@ const make = Effect.gen(function* () {
           line: `Ask him first, in a few words: ${item.label} on ${reg.name}${item.type === "action" ? "" : ` to ${valueText(item, c.value)}`}? Then call again with confirmed: true once he says yes.`,
         } satisfies DeviceOutcome;
       needsYes = item.safety === "owner" || (item.safety === "confirm" && by.surface === "agent");
+      // His own paired headphones or speaker, asked for in his own conversation: no card (18 Nov, 00:38 GMT+5).
+      if (mac !== undefined && by.surface === "assistant" && by.his === true) needsYes = false;
     } else if (c.op === "forget") {
       // His own: Settings, or his Tessaya when he asks her; never an outside agent.
       if (by.surface === "agent")
@@ -3133,19 +3184,28 @@ const make = Effect.gen(function* () {
         return yield* new DeviceRefusedError({
           why: "That needs the Director's yes, and his phone inbox is not here.",
         });
+      // Asked again, however worded: the newest card stands alone (18 Nov: three cards for one connect).
+      for (const [other, ask] of asks)
+        if (ask.id === id && ask.key === key) yield* dropAsk(other, "replaced by a newer ask");
       yield* inbox.value.mirror({
         id: askId,
-        title:
-          c.op === "item"
-            ? "Tessaya wants to use one of your devices"
-            : `Tessaya wants to use the ${DEVICE}`,
-        detail: `${line}.`,
+        title: question,
+        detail: `${by.who.startsWith("Tessaya") ? "Tessaya" : capitalized(by.who)} asked on ${where}. Nothing happens unless you say yes.`,
+        more: `${line}.`,
         buttons: ["Yes, do it", "No"],
         yes: 0,
         cancel: 1,
         needs: "cloud-approve",
       });
-      asks.set(askId, { id, command: c, line, by, until: now + ASK_TTL_MS });
+      asks.set(askId, {
+        id,
+        command: c,
+        line,
+        by,
+        until: now + ASK_TTL_MS,
+        key,
+        ...(mac === undefined ? {} : { mac }),
+      });
       yield* audit(by, id, line, "asked");
       return {
         status: "asked",
@@ -3377,8 +3437,12 @@ const make = Effect.gen(function* () {
       const picked = inbox._tag === "None" ? null : yield* inbox.value.promptAnswer(askId);
       if (picked === null && ask.until > now) continue;
       asks.delete(askId);
-      if (picked === 0) yield* run(ask.id, ask.command, ask.by).pipe(Effect.ignore);
-      else {
+      if (picked === 0) {
+        for (const [other, same] of asks)
+          if (same.id === ask.id && same.key === ask.key)
+            yield* dropAsk(other, "answered on another card");
+        yield* run(ask.id, ask.command, ask.by).pipe(Effect.ignore);
+      } else {
         if (inbox._tag === "Some") yield* inbox.value.closePrompt(askId);
         yield* audit(ask.by, ask.id, ask.line, picked === null ? "expired" : "denied");
       }
