@@ -134,6 +134,12 @@ function MoodSections(props: {
           onValueChange={(on) => patch({ tessayaExpression: on })}
         />
         <SettingsSwitchRow
+          label="Fix misheard words"
+          subtitle="When words she heard on the Tessel sound like one of your names but are not, she fixes them from what you were talking about before answering. Clear turns never wait for it."
+          value={settings.tessayaRoomCleanup}
+          onValueChange={(on) => patch({ tessayaRoomCleanup: on })}
+        />
+        <SettingsSwitchRow
           label="Her mood"
           subtitle="A working state that shapes her tone and her face on every device, moved only by your own turns. It never changes what she does. Off keeps her face neutral and clears her mood."
           value={settings.tessayaMood.enabled}
