@@ -15,7 +15,7 @@ import { captureDraftImageDrops } from "./health/draftImageDropLog.ts";
 import { installR1Bluetooth } from "./bluetooth/r1Pairing.ts";
 import { installR1flash } from "./devices/r1flash.ts";
 import { rescueMainWindow } from "./mainWindowRescue.ts";
-import { capturingApps, startPersonaLayerLink } from "./personaLayerLink.ts";
+import { capturingApps, createLayerHello, startPersonaLayerLink } from "./personaLayerLink.ts";
 import { setPrivateShield } from "./captureProtection.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -88,7 +88,8 @@ import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
 import { createOnnxHost, type OnnxReply } from "./voice/onnxHost.ts";
 import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
-import type { HouseholdCall } from "./memory/householdTab.ts";
+import { windowsAccountOf, type HouseholdCall } from "./memory/householdTab.ts";
+import { windowsHello } from "./vault/hello.ts";
 import type { CommsCall } from "./home/intercomTab.ts";
 import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
 import { freyaPlanWaiting, importedLine, runFreyaImport } from "./memory/freyaImport.ts";
@@ -679,12 +680,32 @@ export const startTessayaDesktop = Effect.gen(function* () {
     };
     // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer, and its
     // private chat (his written threads) at tessaya://layer/chat.
+    // Windows Hello for a layer page: this app runs the prompt and sends the step-up on its own session.
+    const layerHello = createLayerHello({
+      hello: () => windowsHello("Open Freya's private window", environment.platform),
+      post: async (op, body) => {
+        const page = layerLink.page();
+        const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+        const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+        if (page === null || config._tag === "None") return null;
+        const response = await fetch(new URL(`${page}/${op}`, config.value.httpBaseUrl), {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(20_000),
+        }).catch(() => null);
+        return response?.ok === true ? ((await response.json()) as Record<string, unknown>) : null;
+      },
+      account: windowsAccountOf(NodeOS.hostname(), NodeOS.userInfo().username),
+    });
     const openLayerPage = async (chat = false) => {
       const page = layerLink.page();
       if (page === null) return;
       const at = await layerSession();
       if (at === null) return;
       const { origin, session } = at;
+      // The pages offer Hello only where this marker says the app will answer their ask.
+      session.setUserAgent(`${session.getUserAgent()} TessayaHello/1`);
       const win = new Electron.BrowserWindow({
         width: chat ? 480 : 1100,
         height: chat ? 760 : 820,
@@ -693,6 +714,15 @@ export const startTessayaDesktop = Effect.gen(function* () {
         webPreferences: { session, contextIsolation: true, sandbox: true },
       });
       win.setContentProtection(true);
+      win.webContents.setWindowOpenHandler(({ url }) => {
+        const asked = new URL(url);
+        if (asked.origin !== origin || asked.pathname !== `${page}/hello`)
+          return { action: "allow" };
+        void layerHello(asked.searchParams.get("for") ?? "chat").then((opened) => {
+          if (opened && !win.isDestroyed()) win.webContents.reload();
+        });
+        return { action: "deny" };
+      });
       void win.loadURL(`${origin}${page}${chat ? "/chat" : ""}`);
       if (chat) {
         privateChatWindow = win;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { capturingApps, startPersonaLayerLink } from "./personaLayerLink.ts";
+import { capturingApps, createLayerHello, startPersonaLayerLink } from "./personaLayerLink.ts";
 
 const REG = `
 HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone\\NonPackaged\\C:#Program Files#Zoom#bin#Zoom.exe
@@ -62,5 +62,39 @@ describe("startPersonaLayerLink", () => {
     expect(posts.at(-1)?.signals).toEqual(expect.arrayContaining(["screenLocked", "call"]));
     expect(shield).toEqual([true, false]);
     link.stop();
+  });
+});
+
+describe("createLayerHello", () => {
+  const make = (result: "verified" | "declined" | "unavailable") => {
+    const posts: Array<[string, unknown]> = [];
+    const ask = createLayerHello({
+      hello: async () => result,
+      post: async (op, body) => (
+        posts.push([op, body]),
+        op === "window" ? { vessel: "pw-s1" } : { open: true }
+      ),
+      account: "laptop\\him",
+    });
+    return { ask, posts };
+  };
+
+  it("sends the window's step-up with Hello itself once Windows verifies, and the lab's unlock for the lab", async () => {
+    const t = make("verified");
+    expect(await t.ask("chat")).toBe(true);
+    expect(await t.ask("lab")).toBe(true);
+    expect(t.posts).toEqual([
+      ["window", { surface: "desktop" }],
+      ["activate", { surface: "desktop", vessel: "pw-s1", stepUp: { hello: "laptop\\him" } }],
+      ["unlock", { stepUp: { hello: "laptop\\him" } }],
+    ]);
+  });
+
+  it("sends nothing when Hello is declined or unavailable, so the page keeps its PIN", async () => {
+    for (const result of ["declined", "unavailable"] as const) {
+      const t = make(result);
+      expect(await t.ask("chat")).toBe(false);
+      expect(t.posts).toEqual([]);
+    }
   });
 });

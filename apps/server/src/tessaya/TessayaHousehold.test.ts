@@ -648,6 +648,31 @@ describe("one voice profile per member, on the home", () => {
       }),
     ));
 
+  test("with only the owner in the household, his desktop's Windows Hello confirms him without mapping it first", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const desk = {
+          member: "owner",
+          assurance: 2,
+          via: "the desktop",
+          session: "desk",
+          desktop: true,
+        } as const;
+        assert.strictEqual(
+          (yield* as(desk)(call({ op: "stepUp", hello: "LAPTOP\\rab" }))).status,
+          "done",
+        );
+        const me = (yield* as(owner)(call({ op: "list" }))).members!.find((m) => m.you)!;
+        assert.strictEqual(me.windowsAccount, "laptop\\rab", "kept, so the household tab shows it");
+        assert.strictEqual(
+          (yield* as(desk)(call({ op: "stepUp", hello: "LAPTOP\\guest" }))).status,
+          "refused",
+          "another account on the machine still isn't him",
+        );
+      }),
+    ));
+
   test("a passkey added on their own device confirms it's them there: A3 for 5 minutes, on that site, by that member only", () =>
     run(
       null,
