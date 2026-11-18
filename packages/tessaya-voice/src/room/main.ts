@@ -62,6 +62,7 @@ import {
   brainOrLocal,
   fromBrainHub,
   loopBuses,
+  relayToBrain,
   routeForDevice,
   toBrainHub,
   servedRoster,
@@ -871,6 +872,23 @@ const main = async () => {
     },
     log,
   });
+  // What she reports on her hub, copied to the brain's, so its record of her is live (online, readings, metrics).
+  const relay =
+    buses.brain === null
+      ? null
+      : connectMqtt({
+          url: bus,
+          clientId: `tessaya-room-relay-${process.pid}`,
+          user: env("R1_MQTT_USER"),
+          pass: secret("R1_MQTT_PASS_FILE"),
+          subscribe: ["freya/r1/+/state/#", "freya/r1/+/event/#"],
+          onMessage: (t, p) => {
+            const tail = /^freya\/r1\/[^/]+\/(.+)$/.exec(t)?.[1];
+            const how = tail === undefined ? null : relayToBrain(tail);
+            if (how !== null) brainHub?.publish(t, p, how === "retain");
+          },
+          log,
+        });
   // The brain on another host publishes its turn's acts on its own hub: this loop, on her hub, takes them in order.
   const brainHub =
     buses.brain === null
@@ -1346,6 +1364,7 @@ const main = async () => {
     room?.close();
     mqtt.close();
     brainHub?.close();
+    relay?.close();
     process.exit(0);
   };
   process.on("SIGTERM", stop);
