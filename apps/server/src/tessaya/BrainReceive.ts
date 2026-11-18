@@ -11,6 +11,8 @@ import { brainOn, type BrainOp } from "./BrainHost.ts";
 import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
+import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
+import * as Clock from "effect/Clock";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
 
@@ -46,6 +48,7 @@ const decodePersonaAct = Schema.decodeUnknownOption(PersonaAct);
 const decodeGroupAct = Schema.decodeUnknownOption(GroupAct);
 const decodeInboxAct = Schema.decodeUnknownOption(InboxAct);
 const decodeLibraryRemoved = Schema.decodeUnknownOption(LibraryRemovedAct);
+const decodePrivateTier = Schema.decodeUnknownOption(PrivateTierAct);
 
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
@@ -102,6 +105,15 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
       if (Option.isNone(inbox)) return refused("No inbox here.");
       const value = yield* inboxAtBrain(inbox.value, act.value.op, act.value.args);
       return value === undefined ? refused("Not an inbox call.") : done(value);
+    }
+    case "privateTier": {
+      const act = decodePrivateTier(payload);
+      if (Option.isNone(act)) return refused("Not a sealed file.");
+      const value = yield* tierAct(act.value, yield* Clock.currentTimeMillis).pipe(
+        Effect.map((v) => ({ v })),
+        Effect.catchCause(() => Effect.succeed(null)),
+      );
+      return value === null ? refused("The private tier is not here.") : done(value.v);
     }
     case "libraryRemoved": {
       const act = decodeLibraryRemoved(payload);

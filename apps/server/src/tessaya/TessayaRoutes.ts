@@ -64,6 +64,7 @@ import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import * as BrainHost from "./BrainHost.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
+import { type PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import * as PersonaLayers from "./PersonaLayers.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import * as FleetQuery from "./FleetQuery.ts";
@@ -859,6 +860,24 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
           else yield* brain.send("libraryRemoved", { sources });
         }).pipe(Effect.ignore),
       ),
+    tier: {
+      get: (name) =>
+        run(onBrain({ get: name })).then((v) => {
+          const file = v as { rev?: unknown; blob?: unknown } | null;
+          return file !== null && typeof file.rev === "number" && typeof file.blob === "string"
+            ? { rev: file.rev, bytes: new Uint8Array(Buffer.from(file.blob, "base64")) }
+            : null;
+        }),
+      put: (name, rev, bytes) =>
+        run(onBrain({ put: { name, rev, blob: Buffer.from(bytes).toString("base64") } })).then(
+          (v) => {
+            const kept = v as { kept?: unknown; rev?: unknown } | null;
+            return kept !== null && typeof kept.kept === "boolean" && typeof kept.rev === "number"
+              ? { kept: kept.kept, rev: kept.rev }
+              : null;
+          },
+        ),
+    },
     presence: (vessel) => run(presenceOn(vessel)),
     // Her own window's turns read and act as every other turn of hers does, on this server's shared tools.
     brain: (turn) =>
@@ -891,6 +910,15 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
     }),
   };
   let deviceKey: Uint8Array | null = null;
+  // A tier act on the brain: here when this server is the brain, else over the peer link; null when not reached.
+  const onBrain = Effect.fn("TessayaRoutes.privateTier")(
+    function* (act: PrivateTierAct) {
+      const brain = yield* BrainHost.makeBrainLink;
+      if (yield* brain.isBrain) return yield* tierAct(act, yield* Clock.currentTimeMillis);
+      return Option.getOrNull(yield* brain.send("privateTier", act));
+    },
+    Effect.orElseSucceed(() => null),
+  );
   registry.value.all.push(...(yield* Effect.promise(() => PersonaLayers.loadPersonaLayers(host))));
   const notHere = HttpServerResponse.jsonUnsafe(
     { message: "Not here." },

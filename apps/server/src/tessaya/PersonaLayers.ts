@@ -151,6 +151,20 @@ export interface LayerHost {
   readonly privateEvent?: (event: Omit<ActionInput, "private">) => string;
   /** The brain's reach for a turn the layer takes itself (its own window), from this server's shared tools. */
   readonly brain?: (turn: LayerTurn) => LayerBrain;
+  /**
+   * The private tier of her one store, on the brain (PrivateTier.ts): the layer's sealed files as ciphertext, so the
+   * brain and its standby hold them. `put` keeps a file only when `rev` is newer; null when the brain is not reached.
+   */
+  readonly tier?: {
+    readonly get: (
+      name: string,
+    ) => Promise<{ readonly rev: number; readonly bytes: Uint8Array } | null>;
+    readonly put: (
+      name: string,
+      rev: number,
+      bytes: Uint8Array,
+    ) => Promise<{ readonly kept: boolean; readonly rev: number } | null>;
+  };
 }
 
 export interface PersonaLayer {
