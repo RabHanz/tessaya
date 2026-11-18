@@ -34,11 +34,12 @@ const stores = Layer.mock(TessayaPrivateMemoryService)({
   recall: () => Effect.succeed({ block: "", count: 0, whose: "yours" }),
 });
 
-const setup = (enabled = true) =>
+/** `judge`: the mood's own cheap read, under the mood layer so it reaches `hisWords`. */
+const setup = (enabled = true, judge = Layer.empty as Layer.Layer<never>) =>
   turnLayer.pipe(
     Layer.provideMerge(expressionLayer),
     Layer.provideMerge(Layer.mock(TessayaOneShot)({})),
-    Layer.provideMerge(moodLayer),
+    Layer.provideMerge(moodLayer.pipe(Layer.provideMerge(judge))),
     Layer.provideMerge(MemberPreferencesLayer),
     Layer.provideMerge(
       ServerSettingsService.layerTest({ tessayaMood: { enabled, intensity: 0.6, bondCap: 0.15 } }),
@@ -87,6 +88,32 @@ it.effect("his return after hours is in his next turn once; nobody else hears or
     assert.strictEqual((yield* mood.view("companion", "UTC", "sara")).label, "neutral");
   }).pipe(Effect.provide(setup())),
 );
+
+it.effect("a private moment's words never reach the mood judge; the public turn's do", () => {
+  const judged: Array<string> = [];
+  const done = Deferred.makeUnsafe<void>();
+  return Effect.gen(function* () {
+    yield* blockOf({ ...his, text: "just between us", private: true });
+    yield* blockOf({ ...his, text: "thank you" });
+    yield* Deferred.await(done);
+    assert.deepStrictEqual(judged.length, 1);
+    assert.notInclude(judged[0], "just between us");
+  }).pipe(
+    Effect.provide(
+      setup(
+        true,
+        Layer.mock(TessayaOneShot)({
+          run: ({ prompt }) =>
+            Effect.sync(() => {
+              judged.push(prompt);
+              Deferred.doneUnsafe(done, Effect.void);
+              return toneOnly("praise");
+            }) as never,
+        }),
+      ),
+    ),
+  );
+});
 
 it.effect("a correction the learning loop kept moves the corrected persona", () =>
   Effect.gen(function* () {

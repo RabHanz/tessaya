@@ -911,6 +911,8 @@ export const make = Effect.gen(function* () {
       new Set(personas.map((p) => p.name.toLowerCase())),
     );
     const scores = turn.words.flatMap((w) => (w.p === null ? [] : [w.p]));
+    // The verdict carries the words it doubted: a private moment's stay out of the shared log.
+    if (turn.private === true) return verdict.kind === "accept" ? null : verdict;
     yield* emitAction({
       kind: "turn.repair.verdict",
       actor: {
@@ -1135,21 +1137,23 @@ export const make = Effect.gen(function* () {
     if (turn.emotion !== undefined)
       yield* mood.value.note(turn.persona, { kind: "his_voice", emotion: turn.emotion }, member);
     // Judged beside her reply, not before it: the cheap model's second would be their wait. Her face and next turn see it.
-    // A turn that showed something new about them is evidence for her understanding of them (G4).
-    yield* mood.value
-      .hisWords(turn.persona, turn.text, member, { voice: turn.emotion, before })
-      .pipe(
-        Effect.flatMap((news) =>
-          news && Option.isSome(understanding)
-            ? understanding.value.evidence(
-                { about: "person", id: member },
-                turn.text,
-                turnSource(turn),
-              )
-            : Effect.void,
-        ),
-        Effect.forkDetach,
-      );
+    // A turn that showed something new about them is evidence for her understanding of them (G4). A private moment's
+    // words stay sealed: her one mood hears that he came (`heard`), never what was said.
+    if (turn.private !== true)
+      yield* mood.value
+        .hisWords(turn.persona, turn.text, member, { voice: turn.emotion, before })
+        .pipe(
+          Effect.flatMap((news) =>
+            news && Option.isSome(understanding)
+              ? understanding.value.evidence(
+                  { about: "person", id: member },
+                  turn.text,
+                  turnSource(turn),
+                )
+              : Effect.void,
+          ),
+          Effect.forkDetach,
+        );
     const view = yield* mood.value.view(turn.persona, zone, member);
     const others = room.here.some((h) => h.key !== member);
     const line = moodLine(others ? privateOut(view) : view, spoken, who);

@@ -7,6 +7,7 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 
+import { onAction } from "../provenance/ActionLog.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaMemoryLearning } from "./TessayaMemoryLearning.ts";
 import { TessayaMemoryService, layer as memoryLayer } from "./TessayaMemoryService.ts";
@@ -980,6 +981,19 @@ layer("TessayaTurn", (it) => {
       });
       assert.deepStrictEqual(checked.repair, { kind: "clarify", word: "Sara", index: 1 });
       assert.include(checked.notice, "did they say Sara?");
+      // A private moment's turn is repaired the same way, and its doubted words never reach the shared log.
+      const logged: Array<string> = [];
+      const stop = onAction((e) => void logged.push(e.kind));
+      const hidden = yield* turn.begin({
+        vessel: device,
+        text: "Call Sara now.",
+        words,
+        recogniser: "tdt",
+        private: true,
+      });
+      stop();
+      assert.deepStrictEqual(hidden.repair, checked.repair);
+      assert.notInclude(logged, "turn.repair.verdict");
       const noise = yield* turn.begin({
         vessel: device,
         text: "Uhh.",
