@@ -219,6 +219,8 @@ export const createRemoteSettings = (input: {
   readonly controls?: () => ReadonlyArray<HomeControl>;
   /** His standing yeses as this server holds them, from every sync. */
   readonly onGrants?: (keys: ReadonlyArray<string>) => void;
+  /** His pronunciations as her brain holds them, from every sync that carries them. */
+  readonly onPronounce?: (pronounce: Readonly<Record<string, string>>) => void;
   readonly now?: () => number;
 }) => {
   let applied = 0;
@@ -242,6 +244,8 @@ export const createRemoteSettings = (input: {
     const answer = decodeSync(await report());
     if (answer._tag === "Some" && answer.value.grants !== undefined)
       input.onGrants?.(answer.value.grants);
+    if (answer._tag === "Some" && answer.value.pronounce !== undefined)
+      input.onPronounce?.(answer.value.pronounce);
     const change = answer._tag === "Some" ? answer.value.change : null;
     if (change === null || change.version <= applied) return false;
     for (const [id, value] of controlsFor(change.patch)) input.apply(id, value);

@@ -48,7 +48,6 @@ import { AskOwner } from "../../../tessaya/TessayaPhoneInbox.ts";
 import { DesktopSettingsCaller } from "../../../tessaya/TessayaDesktopSettings.ts";
 import packageJson from "../../../../package.json" with { type: "json" };
 import * as TessayaRpcHandlers from "../../../tessaya/TessayaRpcHandlers.ts";
-import { ServerSettingsService } from "../../../serverSettings.ts";
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { workNow } from "../../../tessaya/TessayaSessionsAcross.ts";
@@ -64,6 +63,7 @@ import {
 } from "../../../tessaya/TessayaVoiceLibrary.ts";
 import { Consent, grantWho, hisOwnTurn } from "../../../tessaya/consent.ts";
 import { grantLabel, grantNamed } from "@t3tools/tessaya-shared/consent";
+import { pronunciations } from "../../../tessaya/Pronunciations.ts";
 import * as ServerConfig from "../../../config.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { changePersona } from "../../../tessaya/PersonaChanges.ts";
@@ -111,18 +111,6 @@ const decodeStateReply = Schema.decodeUnknownOption(
     state: Schema.NullOr(TessayaDesktopState),
   }),
 );
-
-/** His pronunciation list after one change: `sayAs` sets the word, none removes it. */
-const nextPronounce = (
-  map: Readonly<Record<string, string>>,
-  word: string,
-  sayAs: string | undefined,
-): Readonly<Record<string, string>> => {
-  const { [word.trim()]: _, ...rest } = map;
-  return sayAs === undefined || sayAs.trim() === ""
-    ? rest
-    : { ...rest, [word.trim()]: sayAs.trim() };
-};
 
 /** What she says after a wake-word change, or why it was refused. */
 const wakeChangeLine = (
@@ -224,7 +212,6 @@ export const layer = McpToolAccess.toLayer(
   TessayaToolkit,
   Effect.gen(function* () {
     const handlers = yield* TessayaRpcHandlers.makeHandlers;
-    const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
     const random = yield* SecureRandom.SecureRandom;
     // No RPC session here, so the inbox's AskSource stays "device": the desktop's gate asks him before any act.
     const phone = (op: "ask" | "askGet", args: Record<string, unknown>) =>
@@ -973,25 +960,25 @@ export const layer = McpToolAccess.toLayer(
           ),
         ),
       ),
-      // The one store (server settings), which the R1 reads from MQTT; a replay's pretend R1 never reaches here.
+      // The one store (her brain's server settings), which the R1 reads from MQTT; a replay's pretend R1 never reaches here.
       tessaya_pronounce: McpToolAccess.writes((input) =>
-        Option.isNone(serverSettings)
-          ? Effect.fail(failed({ reason: "Pronunciations can't be kept on this server." }))
-          : serverSettings.value.getSettings.pipe(
-              Effect.flatMap((current) =>
-                serverSettings.value.updateSettings({
-                  voicePronounce: nextPronounce(current.voicePronounce, input.word, input.sayAs),
+        pronunciations({
+          word: input.word,
+          ...(input.sayAs === undefined ? {} : { sayAs: input.sayAs }),
+        }).pipe(
+          Effect.mapError(() => failed({ reason: "The pronunciation was not saved." })),
+          Effect.flatMap((saved) =>
+            Option.isNone(saved)
+              ? Effect.fail(failed({ reason: "Pronunciations can't be kept on this server." }))
+              : Effect.succeed({
+                  pronounce: saved.value,
+                  line:
+                    input.sayAs === undefined
+                      ? `"${input.word}" is said the voice's own way again.`
+                      : `"${input.word}" is now said as "${input.sayAs}".`,
                 }),
-              ),
-              Effect.map((saved) => ({
-                pronounce: saved.voicePronounce,
-                line:
-                  input.sayAs === undefined
-                    ? `"${input.word}" is said the voice's own way again.`
-                    : `"${input.word}" is now said as "${input.sayAs}".`,
-              })),
-              Effect.mapError(() => failed({ reason: "The pronunciation was not saved." })),
-            ),
+          ),
+        ),
       ),
       // The one dictionary; a linked server's change is kept here and never sent on (TessayaVocabulary.toPeers).
       tessaya_vocabulary: McpToolAccess.writes(

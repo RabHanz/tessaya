@@ -811,7 +811,7 @@ interface VoiceSettings {
    * Automatic reads the playback device; the other two are his override.
    */
   readonly outputDevice: OutputDevice;
-  /** His own pronunciations, word → how to say it ("pronounce" in fabric-voice.json); see pronounce.ts. */
+  /** This machine's own pronunciations ("pronounce" in fabric-voice.json); her brain's list (`voicePronounce`) wins. */
   readonly pronounce: Readonly<Record<string, string>>;
   /** Over speakers: hear him through her voice (the echo guard). Measured, not yet reliable enough to be the default. */
   readonly voiceBargeIn: boolean;
@@ -9811,6 +9811,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   // An agent's change to his dictation settings, through this machine's server, applied as his own click would be.
   const direct = input.direct;
   let screenLocked = false;
+  // shortcut: her brain's pronunciations are held in memory, so until the first sync after a start only this file's
+  // own "pronounce" applies; keep a copy in the file if that gap is ever heard.
+  let herPronounce: Readonly<Record<string, string>> = {};
   if (direct !== undefined) {
     const remote = createRemoteSettings({
       // The server holds a sync open up to 25 s while nothing waits: the wait covers it.
@@ -9819,6 +9822,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       apply: applyHome,
       controls: homeControls,
       ...(input.onGrants === undefined ? {} : { onGrants: input.onGrants }),
+      onPronounce: (pronounce) => void (herPronounce = pronounce),
     });
     const remoteLoop = () =>
       void remote
@@ -9982,7 +9986,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       pill.on({ type: "speaking", active });
     },
     onSpoken: (text) => core?.noteSpoken(text),
-    respellings: () => settings.pronounce,
+    respellings: () => ({ ...settings.pronounce, ...herPronounce }),
     onPlaying: (text) => {
       core?.playing(text);
       // With the pill kept away, her bubble carries the line.

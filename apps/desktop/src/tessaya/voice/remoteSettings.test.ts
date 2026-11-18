@@ -43,11 +43,13 @@ describe("createRemoteSettings", () => {
         openSessionsOnStart: false,
       },
     };
+    const heard: Array<Readonly<Record<string, string>>> = [];
     const remote = createRemoteSettings({
       sync: async (body) => {
         sent.push(body);
-        return { change };
+        return { change, pronounce: { Kazi: "Kah-zee" } };
       },
+      onPronounce: (p) => heard.push(p),
       current: () => settings,
       apply: (id, value) => {
         clicked.push([id, value]);
@@ -59,6 +61,8 @@ describe("createRemoteSettings", () => {
       },
     });
     expect(await remote.tick()).toBe(true);
+    // Her brain's pronunciations, the one list the room's voice also reads, reach the desktop's voice.
+    expect(heard[0]).toEqual({ Kazi: "Kah-zee" });
     expect(clicked).toEqual([
       ["v.cleanup", "claude"],
       ["v.pillDesign", "quiet"],
