@@ -263,7 +263,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..99379bb855b3bbf11783a794eb49b010
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index e3589f643c3259fac880e60fb4b13b9af3c95d39..85b90f3b5251c34f38cb94f2841342ad4f5b32d1 100644
+index e3589f643c3259fac880e60fb4b13b9af3c95d39..9bda0f1c0cff8565e18eed17f7bdcd0c4f2d725b 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -41,6 +41,9 @@
@@ -367,7 +367,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..85b90f3b5251c34f38cb94f2841342ad
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -157,6 +189,18 @@
+@@ -157,6 +189,19 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
@@ -379,6 +379,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..85b90f3b5251c34f38cb94f2841342ad
 +        "src/room/main.ts!",
 +        "src/room/replay.ts!",
 +        "src/room/transcribe.ts!",
++        "src/room/topologyGate.ts!",
 +        "test/segmentsEval.ts",
 +      ],
 +      "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"],
