@@ -196,6 +196,27 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   },
   // ONE-SPINE-MAP §12 (18 Nov): set_device_volume meant the desktop's own speaker here and the Tessel's in the room;
   // from the desktop he could not make the Tessel louder.
+  // M-065 (18 Nov): her brain moves her own body, intent and timing in one move, and checks it when unsure.
+  {
+    id: "body-wave",
+    source: "M-065, Director 18 Nov",
+    said: "Wave at me.",
+    first: ["tessaya_body_move", "tessaya_body_state"],
+    not: ["device_set", "device_registry"],
+    goal: "tessaya_body_move",
+    maxCalls: 2,
+    goalArgs: ["wave"],
+  },
+  {
+    id: "body-lean-shy",
+    source: "M-065, Director 18 Nov",
+    said: "Come lean in a little closer, but a bit shy about it.",
+    first: ["tessaya_body_move", "tessaya_body_state"],
+    not: ["device_set"],
+    goal: "tessaya_body_move",
+    maxCalls: 2,
+    goalArgs: ["lean", "shy"],
+  },
   {
     id: "tessel-louder-from-desk",
     source: "ONE-SPINE-MAP §12, 18 Nov",
