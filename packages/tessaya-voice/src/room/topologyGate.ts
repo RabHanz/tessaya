@@ -431,7 +431,8 @@ if (values.out !== undefined) {
   );
 }
 const failed = rows.filter((r) => r.result === "FAIL").length;
-console.log(`topology: ${rows.length - failed} pass, ${failed} fail`);
+const warned = rows.filter((r) => r.result === "WARN").length;
+console.log(`topology: ${rows.length - failed - warned} pass, ${failed} fail, ${warned} warn`);
 bridge.close();
 tessel.close();
 loopOnHub.close();
