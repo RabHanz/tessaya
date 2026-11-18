@@ -289,7 +289,8 @@ jobs:
     needs: [resolve_version, build_linux, build_windows, build_macos]
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Uploading ~2 GB of installers can pass 15 min (18 Nov: 0.1.165 timed out mid-upload, left a draft).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
