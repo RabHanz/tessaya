@@ -214,6 +214,24 @@ const SyncTool = Tool.make("device_sync", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+/** The vessels' `set_device_volume` on his server, for a device other than the one a turn is heard on. */
+const VolumeTool = Tool.make("set_device_volume", {
+  ...shared,
+  description: DEVICE_TOOL_TEXT.set_device_volume,
+  parameters: Schema.Struct({
+    to: Schema.Union([
+      Schema.Literals(["up", "down", "max", "default"]),
+      Schema.Number.check(Schema.isBetween({ minimum: 10, maximum: 100 })),
+    ]),
+    id: Id,
+    ...PeerOrigin,
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 /** Spread into Tessaya's toolkit, beside the house's tools. */
 export const DeviceTools = [
   ListTool,
@@ -225,4 +243,5 @@ export const DeviceTools = [
   WatchTool,
   ButtonTool,
   SyncTool,
+  VolumeTool,
 ] as const;

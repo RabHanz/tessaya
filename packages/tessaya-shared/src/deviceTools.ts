@@ -14,5 +14,25 @@ export const DEVICE_TOOL_TEXT = {
   device_watch: `Make a standing rule on any device's state, when he asks for one ("warn me when my phone is under 15%", "when the ${DEVICE} is unplugged, lower its volume to 40", "if the ${DEVICE} is turned face down, mute it"). Give rule.name, the device id and item id from device_registry, and when ({op: "<", ">", "==", "!=", "changes" or "event", value}) for a plain condition; or leave when null and put his words in intent, and the brain judges them on each change of that device and item. then is one action: device_set, home (a Home Assistant service on one entity), notify (a card on his phone) or say (spoken on a device that speaks); leave then null with an intent to let the brain pick. kind temporary needs expiresInMinutes; once ends it after it fires. Each action still passes its own gate. Read back what you saved in a few plain words; it is paused, resumed, deleted or undone with the automation tools by its id.`,
   device_button: `Change what one press of a ${DEVICE} button, or of his Bluetooth headphones' or speaker's buttons, does, when he asks ("make double-press S1 switch to Freya", "let my headphones' next button read the time"). slot is key.press. Keys: s1 (left), s2 (middle, the talk button), s3 (right), head (a touch on its head), play, next, prev (his headphones or speaker). Presses: tap, double, triple, hold (released before 3 s), long (3 s); the headphones have tap only. bind is one action: {kind: "device", do: none | talk | mute | vol_up | vol_down | sleep} (the ${DEVICE}'s own; talk starts a conversation or ends one); {kind: "persona", name} (no name: the next persona); {kind: "whatsNext"}; {kind: "mute"} (mutes Tessaya); {kind: "home", entityId} (toggles a lamp or runs a scene or script); {kind: "prompt", text} (said to her as if he had said it, e.g. "What time is it?", "Say your last reply again."). device_registry shows each device's current keys. S2 tap, hold and long and a head tap are fixed, and older firmware refuses some presses: say why. Then say back the change in a few words.`,
   set_device_volume:
-    'Change how loud you speak, when he asks: "speak up", "louder", "I can\'t hear you": up; "quieter", "too loud": down; "max volume", "as loud as you can": max; "normal volume": default; or a level from 10 to 100. It takes effect from your very next sentence. Call it every time he asks: a "Better?" without the call changes nothing (13 Nov). Then confirm in a word or two at the new level, such as "Better?" or "How\'s this?", never a number and never "volume set". If it was already at the top, say that is as loud as you go here.',
+    'Change how loud you speak on a device, when he asks: "speak up", "louder", "I can\'t hear you": up; "quieter", "too loud": down; "max volume", "as loud as you can": max; "normal volume": default; or a level from 10 to 100. Leave out `id` for the device you are speaking through now; for another ("make the Tessel louder" from his desktop) pass its `id` from device_registry. It takes effect from the next sentence there. Call it every time he asks: a "Better?" without the call changes nothing (13 Nov). Then confirm in a word or two, such as "Better?" or "How\'s this?", never a number and never "volume set". If it was already at the top, say that is as loud as it goes.',
+} as const;
+
+/** `set_device_volume`'s input on every vessel that has it (the room, the desktop); the server's MCP tool matches it. */
+export const VOLUME_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    to: {
+      description: "up, down, max, default, or a level from 10 to 100.",
+      anyOf: [
+        { type: "string", enum: ["up", "down", "max", "default"] },
+        { type: "number", minimum: 10, maximum: 100 },
+      ],
+    },
+    id: {
+      type: "string",
+      description:
+        "Another device's id from device_registry; leave out for the one you are speaking through.",
+    },
+  },
+  required: ["to"],
 } as const;

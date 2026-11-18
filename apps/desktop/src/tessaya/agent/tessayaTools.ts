@@ -9,7 +9,7 @@ import {
   scriptCommand,
   VOICED_APP_COMMANDS,
 } from "@t3tools/tessaya-shared/appCommands";
-import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
+import { DEVICE_TOOL_TEXT, VOLUME_INPUT_SCHEMA } from "@t3tools/tessaya-shared/deviceTools";
 import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
 import { CONVERSATION_END } from "@t3tools/tessaya-shared/stopPhrases";
 import type { VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
@@ -1299,19 +1299,11 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
           {
             name: "set_device_volume",
             description: DEVICE_TOOL_TEXT.set_device_volume,
-            inputSchema: object(
-              {
-                to: {
-                  description: "up, down, max, default, or a level from 10 to 100.",
-                  anyOf: [
-                    { type: "string", enum: ["up", "down", "max", "default"] },
-                    { type: "number", minimum: 10, maximum: 100 },
-                  ],
-                },
-              },
-              ["to"],
-            ),
-            run: async ({ to }: Args) => {
+            inputSchema: VOLUME_INPUT_SCHEMA,
+            run: async ({ to, id }: Args) => {
+              // Another device (the Tessel): his server sets it, as the room's own turn would.
+              if (typeof id === "string" && id.trim() !== "" && host.shared !== undefined)
+                return { text: await host.shared.call("set_device_volume", { to, id }) };
               const level =
                 typeof to === "number"
                   ? to
