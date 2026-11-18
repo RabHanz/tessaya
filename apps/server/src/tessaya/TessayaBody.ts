@@ -12,6 +12,8 @@ import {
   isPrivateMove,
   moveCues,
   rateGate,
+  STREAM_LAPSE_MS,
+  STREAM_RATE,
   type BodyMove,
   type RateState,
 } from "@t3tools/tessaya-shared/bodyControl";
@@ -66,6 +68,8 @@ const MASCOT_ITEM = "mascot.do";
 
 // shortcut: per-process rate state, so a restart forgets it; fine for a burst limit, move it to a store if it must hold across restarts
 const rates = new Map<string, RateState>();
+// when each caller's stream last sent a frame: a stream is recorded once as it starts, not at 30 a second
+const streaming = new Map<string, number>();
 
 const deskActsOf = (m: BodyMove): MascotAct[] =>
   [m, ...(m.then ?? [])].flatMap((s) => {
@@ -80,16 +84,22 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
   if (!decoded.ok)
     return { ok: false, route: "none", said: decoded.error } satisfies BodyMoveAnswer;
   const now = yield* Clock.currentTimeMillis;
-  const gate = rateGate(rates.get(caller.id), now);
-  rates.set(caller.id, gate.state);
+  const move = decoded.move;
+  const stream = move.stream === true;
+  const bucket = stream ? `${caller.id}:stream` : caller.id;
+  const gate = rateGate(rates.get(bucket), now, stream ? STREAM_RATE : undefined);
+  rates.set(bucket, gate.state);
   if (!gate.ok)
     return {
       ok: false,
       route: "none",
-      said: `Too many moves at once; try again in ${gate.retryMs} ms, or send one move with steps or keys.`,
+      said: stream
+        ? `Stream frames come at most ${STREAM_RATE.perSecond} a second; try again in ${gate.retryMs} ms.`
+        : `Too many moves at once; try again in ${gate.retryMs} ms, or send one move with steps or keys.`,
       retryMs: gate.retryMs,
     } satisfies BodyMoveAnswer;
-  const move = decoded.move;
+  const startsStream = stream && now - (streaming.get(caller.id) ?? -Infinity) > STREAM_LAPSE_MS;
+  if (stream) streaming.set(caller.id, now);
   const privateMove = isPrivateMove(move);
   const actor = {
     kind: caller.kind === "persona" ? ("persona" as const) : ("agent" as const),
@@ -105,12 +115,17 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
     },
     caller,
   );
+  if (stream && !startsStream) return answer;
   yield* emitAction({
     kind: "body.move",
     actor,
     subject: answer.route,
     outcome: answer.ok ? "ok" : "refused",
-    data: { steps: 1 + (move.then?.length ?? 0), private: privateMove },
+    data: {
+      steps: 1 + (move.then?.length ?? 0),
+      private: privateMove,
+      ...(stream ? { stream: true } : {}),
+    },
     // a private moment's moves are sealed whole in his private store; only their id is kept here
     ...(privateMove ? { private: true } : {}),
   });

@@ -46,6 +46,9 @@ const FACE_PRESETS = [
   "blinkLeft",
 ] as const satisfies ReadonlyArray<VrmPreset>;
 const MAX_STEPS = 8;
+const STREAMABLE: ReadonlySet<string> = new Set(["stream", "bones", "look", "face", "ms"]);
+/** A stream lets go this long after its last frame, unless another comes. */
+export const STREAM_LAPSE_MS = 1000;
 const MAX_KEYS = 32;
 const MAX_MS = 20_000;
 
@@ -79,6 +82,11 @@ export interface BodyMove {
   };
   /** Hand her body back to her own feelings: drop held bones, posture and keyframes. */
   readonly release?: boolean;
+  /**
+   * One frame of a live stream of direct control (bones, look, face), up to STREAM_RATE a second. The body
+   * lets go and returns to her own posture when no frame comes within STREAM_LAPSE_MS (a dead-man lapse).
+   */
+  readonly stream?: boolean;
   /** More of the same, each `afterMs` from the start: one request, one coordinated performance. */
   readonly then?: ReadonlyArray<BodyMove & { readonly afterMs: number }>;
 }
@@ -212,6 +220,15 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
     };
   }
   if (raw["release"] === true) m["release"] = true;
+  if (raw["stream"] === true) {
+    const extra = Object.keys(raw).filter((k) => !STREAMABLE.has(k));
+    if (extra.length > 0)
+      return {
+        ok: false,
+        error: `a stream frame carries only bones, look, face and ms; send ${extra.join(", ")} as a move`,
+      };
+    m["stream"] = true;
+  }
   if (raw["then"] !== undefined) {
     if (depth > 0) return { ok: false, error: "steps cannot have steps" };
     if (!Array.isArray(raw["then"]) || raw["then"].length > MAX_STEPS)
@@ -288,8 +305,12 @@ const stepCues = (m: BodyMove, id: string): BodyCue[] => {
   if (m.mood !== undefined)
     out.push({ kind: "mood", mood: m.mood.name, intensity: m.mood.intensity });
   if (m.gesture !== undefined) out.push({ kind: "gesture", gesture: m.gesture });
-  if (m.look !== undefined) out.push({ kind: "gaze", x: m.look.x, y: m.look.y, ms: m.look.ms });
-  if (m.face !== undefined) out.push({ kind: "face", weights: m.face.weights, ms: m.face.ms });
+  // a stream's gaze and face last only until the lapse; each frame renews them
+  const hold = (ms: number) => (m.stream === true ? STREAM_LAPSE_MS : ms);
+  if (m.look !== undefined)
+    out.push({ kind: "gaze", x: m.look.x, y: m.look.y, ms: hold(m.look.ms) });
+  if (m.face !== undefined)
+    out.push({ kind: "face", weights: m.face.weights, ms: hold(m.face.ms) });
   if (m.morphs !== undefined) out.push({ kind: "morphs", weights: m.morphs });
   if (m.touch !== undefined) out.push({ kind: "hand", ...m.touch });
   if (m.keys !== undefined)
@@ -310,7 +331,9 @@ const stepCues = (m: BodyMove, id: string): BodyCue[] => {
       loop: false,
       grounded: false,
       frames: [m.bones],
-      ...(m.ms === undefined ? {} : { ms: m.ms }),
+      // a stream's frames follow closely (unless it says otherwise) and lapse when they stop
+      ...(m.ms === undefined ? (m.stream === true ? { ms: 80 } : {}) : { ms: m.ms }),
+      ...(m.stream === true ? { lapseMs: STREAM_LAPSE_MS } : {}),
     });
   return out;
 };
@@ -333,6 +356,8 @@ export interface RateState {
   readonly at: number;
 }
 export const RATE = { burst: 12, perSecond: 4 } as const;
+/** Stream frames have their own bucket, so a live stream never starves a caller's moves. */
+export const STREAM_RATE = { burst: 30, perSecond: 30 } as const;
 export const rateGate = (
   s: RateState | undefined,
   now: number,
@@ -394,4 +419,5 @@ export const BODY_CAPABILITIES = {
       ]),
   ),
   rate: RATE,
+  stream: { rate: STREAM_RATE, lapseMs: STREAM_LAPSE_MS },
 } as const;

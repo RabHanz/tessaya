@@ -89,6 +89,16 @@ describe("TessayaBody", () => {
         answers.push(yield* moveBody({ gesture: "tilt" }, caller).pipe(Effect.provide(layers)));
       expect(answers.slice(0, 12).every((a) => a.ok)).toBe(true);
       expect(answers[12]).toMatchObject({ ok: false, retryMs: expect.any(Number) });
+      // a live stream has its own bucket: its frames still go through, then it too is held to its rate
+      const frames = [];
+      for (let i = 0; i < 31; i++)
+        frames.push(
+          yield* moveBody({ stream: true, bones: { head: [0.01 * i, 0, 0] } }, caller).pipe(
+            Effect.provide(layers),
+          ),
+        );
+      expect(frames.slice(0, 30).every((a) => a.ok)).toBe(true);
+      expect(frames[30]).toMatchObject({ ok: false, said: expect.stringMatching(/30 a second/) });
       expect(yield* moveBody({ bones: { tail: [0, 0, 0] } }, her)).toMatchObject({
         ok: false,
         said: expect.stringMatching(/unknown bone/),

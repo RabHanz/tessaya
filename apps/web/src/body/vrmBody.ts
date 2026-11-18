@@ -400,6 +400,7 @@ export function mountBody(
   } | null = null;
   // a quick poke makes her pull back, then settle (a reflex, over REFLEX_MS)
   let reflexAt = -Infinity;
+  let lapse: ReturnType<typeof setTimeout> | null = null;
   // a pointer resting on her is still there: it fades only once it leaves her (a tracker fades when it loses her)
   let handHeld = false;
   let handMesh: {
@@ -1403,13 +1404,26 @@ export function mountBody(
       case "act":
         doAct(c.act, now);
         return invalidate();
-      case "clip":
+      case "clip": {
         setPose(now);
-        clip = { ...c, start: now };
+        const held = { ...c, start: now };
+        clip = held;
         // a direct pose asked to arrive in `ms`: her springs take that long instead of her own pace
         pace = c.ms === undefined ? 1 : c.ms / 450;
+        // a stream's frame: if no newer frame comes within its lapse, she takes her own posture back
+        if (lapse !== null) clearTimeout(lapse);
+        lapse =
+          c.lapseMs === undefined
+            ? null
+            : setTimeout(() => {
+                lapse = null;
+                if (clip !== held) return;
+                setPose(performance.now());
+                invalidate();
+              }, c.lapseMs);
         wake(now);
         return invalidate();
+      }
       case "zones":
         zones = c.zones;
         return;
@@ -1801,6 +1815,7 @@ export function mountBody(
     }),
     dispose: () => {
       disposed = true;
+      if (lapse !== null) clearTimeout(lapse);
       hideNow();
       if (blinkTimer !== null) clearTimeout(blinkTimer);
       document.removeEventListener("visibilitychange", onVisibility);
