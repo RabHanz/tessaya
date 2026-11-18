@@ -557,6 +557,7 @@ import {
   parseMascotScreens,
   parseMascotSize,
   parseMascotSound,
+  parsePrivateBodySize,
   SOUND_LEVELS,
   type Crowd,
   type DesktopMascot,
@@ -566,6 +567,7 @@ import {
   type MascotSize,
   type MascotSound,
   type PersonaBody,
+  type PrivateBodySize,
 } from "../companion/desktopMascot.ts";
 import {
   islandFaceShows,
@@ -777,6 +779,8 @@ interface VoiceSettings {
   /** A persona in his pack, by name in lower case; custom ones too. */
   readonly mascotPersona: string;
   readonly mascotSize: MascotSize;
+  /** Her private body on the desk, apart from the mascot's size. */
+  readonly privateBodySize: PrivateBodySize;
   /** Thrown, she stays on her screen or flies across all of them as one desktop. */
   readonly mascotScreens: MascotScreens;
   /** Her body: her persona's own character or one from the Studio (EMOTION D10), and arms or floating hands. */
@@ -987,6 +991,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   mascotMotion: "calm",
   mascotPersona: "tessaya",
   mascotSize: "medium",
+  privateBodySize: "medium",
   mascotScreens: "span",
   mascotCharacter: "persona",
   mascotHands: "arms",
@@ -1158,6 +1163,7 @@ export const readSettings = (path: string): VoiceSettings => {
       mascotMotion: parseCompanionMotion(saved["mascotMotion"]),
       mascotPersona: parseMascotPersona(saved["mascotPersona"]),
       mascotSize: parseMascotSize(saved["mascotSize"]),
+      privateBodySize: parsePrivateBodySize(saved["privateBodySize"]),
       mascotScreens: parseMascotScreens(saved["mascotScreens"]),
       mascotCharacter: parseMascotCharacter(saved["mascotCharacter"]),
       mascotHands: parseMascotHands(saved["mascotHands"]),
@@ -5368,6 +5374,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       motion: settings.mascotMotion,
       persona: mascotBody(),
       size: settings.mascotSize,
+      privateSize: settings.privateBodySize,
       reduced: settings.motion !== "full",
       screens: settings.mascotScreens,
       character: settings.mascotCharacter,
@@ -7951,6 +7958,21 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         disabled: !settings.mascot,
       },
       {
+        id: "v.privateBodySize",
+        section: "Desktop companion",
+        label: "Private body size",
+        hint: "How tall she stands on your desktop in a private moment. Drag her corner to fine-tune.",
+        kind: "choice",
+        value: settings.privateBodySize,
+        options: [
+          { value: "small", label: "Small" },
+          { value: "medium", label: "Medium" },
+          { value: "large", label: "Large" },
+          { value: "huge", label: "Huge" },
+        ],
+        disabled: !settings.mascot,
+      },
+      {
         id: "v.mascotScreens",
         section: "Desktop companion",
         label: "When you throw her",
@@ -9302,6 +9324,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.mascotMotion") save({ mascotMotion: parseCompanionMotion(value) });
     else if (id === "v.mascotPersona") save({ mascotPersona: parseMascotPersona(value) });
     else if (id === "v.mascotSize") save({ mascotSize: parseMascotSize(value) });
+    else if (id === "v.privateBodySize") save({ privateBodySize: parsePrivateBodySize(value) });
     else if (id === "v.mascotScreens") save({ mascotScreens: parseMascotScreens(value) });
     else if (id === "v.mascotCharacter") save({ mascotCharacter: parseMascotCharacter(value) });
     else if (id === "v.mascotHands") save({ mascotHands: parseMascotHands(value) });
