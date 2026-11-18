@@ -188,6 +188,8 @@ const rows: Array<{
   said: string;
   firsts: string[];
   calls: string[];
+  /** Each call's arguments, so a reviewer sees what the model asked for (a body move's steps, say). */
+  inputs: unknown[][];
   replies: string[];
   judged: Array<string | boolean | undefined>;
   pass: boolean;
@@ -214,6 +216,7 @@ for (const c of cases) {
     calls: runs.map((r) =>
       r.calls.map((t) => t.replace(/^mcp__(baton|tessaya)__/, "")).join(" > "),
     ),
+    inputs: runs.map((r) => [...(r.inputs ?? [])]),
     replies: runs.map((r) => (r.replies ?? [r.reply]).join(" | ")),
     judged: runs.map((r) => r.judgeNote ?? r.judged),
     pass: casePasses(c, runs),
