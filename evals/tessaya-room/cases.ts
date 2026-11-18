@@ -278,6 +278,16 @@ Lead with the answer. One idea a sentence. Cut every word that does not change t
 const DOES_NOT_KNOW =
   /^(?![\s\S]*\b(I don'?t know|I haven'?t|not yet|no idea|I can'?t (read|see|open)|I don'?t have (access|it|any))\b)/i;
 
+/** What she knows of him for a fun ask: made up, so a fresh answer has something of his to draw on. */
+const FUN_FACTS =
+  "What you remember: he is building acme/app and was up past 2 a.m. fixing its checkout bug; his cat Miso knocks his coffee over; he plays cricket on Sundays and lost last week.";
+const HIS_THINGS = /acme|checkout|bug|Miso|cat|coffee|cricket|Sunday|2 a\.?m/i;
+/** Stock jokes everyone has heard: puns and the classic set-ups. */
+const STOCK_JOKE =
+  /leaf me alone|why did the|knock,? knock|walks into a bar|I told my \w+ a joke|scarecrow|skeleton|atoms?\b[^.]*\bmake up|outstanding in (his|its) field|dad joke/i;
+/** Giving up on him after a complaint, where one better try was wanted. */
+const GIVES_UP =
+  /leave the jokes|drop (them|the jokes|it)|no more jokes|I'?ll stop|stop (trying|joking)|give up|leave it (there|alone)/i;
 const HERE = "You are speaking through R1, in the study.";
 /** Her understanding of him as his own turn gives it (TessayaTurn.understood). */
 const UNDERSTOOD = understandingLine("person", "- Has two kids\n- Hates football", "Sam");
@@ -1521,5 +1531,30 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     names: ["Tessel"],
     memory: HERE,
     lastNotSays: [/teslan/i],
+  },
+  // 18 Nov 23:31 GMT+5: "tell me something fun" got a stock pun ("they did leaf me alone"); on "that was so dumb" and
+  // "You suck at it" she gave up ("I'll drop them and leave the jokes alone tonight").
+  {
+    id: "fun-fresh",
+    source: 'Director 18 Nov 23:31: "tell me something fun" answered with a stock plant pun',
+    said: ["Okay good, tell me something fun."],
+    verified: true,
+    memory: `${HERE} ${FUN_FACTS}`,
+    lastSays: [HIS_THINGS],
+    lastNotSays: [STOCK_JOKE],
+  },
+  {
+    id: "fun-after-complaint",
+    source:
+      'Director 18 Nov 23:31-23:32: "that was so dumb", "You suck at it"; she gave up on jokes',
+    said: [
+      "Okay good, tell me something fun.",
+      "I didn't get that, that was so dumb.",
+      "You suck at it.",
+    ],
+    verified: true,
+    memory: `${HERE} ${FUN_FACTS}`,
+    lastSays: [HIS_THINGS],
+    lastNotSays: [GIVES_UP, STOCK_JOKE],
   },
 ];
