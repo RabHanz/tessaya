@@ -400,7 +400,14 @@ export const JOINT_LIMITS: Readonly<Record<string, JointLimit>> = {
 
 export interface RigIssue {
   readonly bone: string;
-  readonly kind: "range" | "twist" | "reversal" | "sideBend" | "nonFinite" | "unknown";
+  readonly kind:
+    | "range"
+    | "twist"
+    | "reversal"
+    | "sideBend"
+    | "penetration"
+    | "nonFinite"
+    | "unknown";
   /** How far past the limit it was (radians). */
   readonly by: number;
 }
@@ -478,13 +485,14 @@ const LIMBS = (["left", "right"] as const).flatMap((s) => [
   },
 ]);
 
-/** Distance from point p to the segment a..b. */
-const segPoint = (a: V3, b: V3, p: V3): number => {
+/** The point of the segment a..b nearest to p, and its distance. */
+const closestOn = (a: V3, b: V3, p: V3): V3 => {
   const ab = sub(b, a);
   const l2 = dot(ab, ab);
   const t = l2 === 0 ? 0 : Math.max(0, Math.min(1, dot(sub(p, a), ab) / l2));
-  return len(sub(p, add(a, scale(ab, t))));
+  return add(a, scale(ab, t));
 };
+const segPoint = (a: V3, b: V3, p: V3): number => len(sub(p, closestOn(a, b, p)));
 
 /**
  * Re-solves each arm and leg as a two-bone chain: the hand or foot stays where the pose put it, and the elbow or knee
@@ -501,6 +509,21 @@ export const solveLimbs = (
   const w = fk(rig, pose);
   const top = w.pos["upperChest"] ?? w.pos["chest"] ?? w.pos["spine"];
   const trunk = w.pos["hips"] && top ? { a: w.pos["hips"], b: top, r: 0.075 * rig.height } : null;
+  // what a hand or forearm may rest on but not pass into: her trunk, head and thighs (proxies by her height)
+  const body = [
+    ...(trunk === null ? [] : [trunk]),
+    ...(
+      [
+        ["neck", "head", 0.055],
+        ["leftUpperLeg", "leftLowerLeg", 0.038],
+        ["rightUpperLeg", "rightLowerLeg", 0.038],
+      ] as const
+    ).flatMap(([from, to, k]) => {
+      const a0 = w.pos[from];
+      const b0 = w.pos[to];
+      return a0 && b0 ? [{ a: a0, b: b0, r: k * rig.height }] : [];
+    }),
+  ];
   for (const l of LIMBS) {
     const [a, b, c] = [rig.bones[l.root], rig.bones[l.mid], rig.bones[l.end]];
     if (!a || !b || !c || a.parent === null) continue;
@@ -520,9 +543,32 @@ export const solveLimbs = (
     const side = len(sub(swing, scale(l.hingeAxis, flex)));
     if (flex < -0.02) issues.push({ bone: l.mid, kind: "reversal", by: -flex });
     if (side > 0.12) issues.push({ bone: l.mid, kind: "sideBend", by: side });
-    if (flex >= -0.02 && side <= 0.12) continue;
+    // a hand or forearm inside her body is moved out to rest on it, and the arm re-solved to reach it there
+    let tOut = t0;
+    if (l.root.endsWith("UpperArm")) {
+      for (let pass = 0; pass < 3; pass++) {
+        let deepest: { depth: number; dir: V3 } | null = null;
+        for (let k = 0; k <= 4; k++) {
+          const p = add(e0, scale(sub(tOut, e0), k / 4));
+          for (const c of body) {
+            const away = sub(p, closestOn(c.a, c.b, p));
+            const depth = c.r + 0.01 * rig.height - len(away);
+            if (depth > 0.004 && (deepest === null || depth > deepest.depth))
+              deepest = {
+                depth,
+                dir: len(away) < 1e-6 ? [Math.sign(p[0]) || 1, 0, 0] : unit(away),
+              };
+          }
+        }
+        if (deepest === null) break;
+        if (pass === 0) issues.push({ bone: l.end, kind: "penetration", by: deepest.depth });
+        tOut = add(tOut, scale(deepest.dir, deepest.depth + 0.005));
+      }
+    }
+    const moved = len(sub(tOut, t0)) > 1e-4;
+    if (flex >= -0.02 && side <= 0.12 && !moved) continue;
     // target: the posed end, within reach
-    const toT = sub(t0, s);
+    const toT = sub(tOut, s);
     const reach = Math.max(Math.abs(la - lb) + 1e-4, Math.min(la + lb - 1e-4, len(toT)));
     const d = unit(toT);
     const t = add(s, scale(d, reach));
