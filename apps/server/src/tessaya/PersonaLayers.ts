@@ -108,6 +108,15 @@ export interface LayerHost {
    * the brain, which seals them under the library's key; fire and forget.
    */
   readonly libraryRemoved?: (sources: ReadonlyArray<string>) => void;
+  /**
+   * One of the layer's lines in a persona's voice, as WAV, for its own window to play: his saved clone when the layer
+   * names one, else the persona's own voice, on this machine only (never a cloud voice). Null when it can't.
+   */
+  readonly speak?: (input: {
+    readonly persona: string;
+    readonly clone?: string;
+    readonly text: string;
+  }) => Promise<Uint8Array | null>;
   /** A private action for the host to seal in his private store (M-002) and point to; returns its id. */
   readonly privateEvent?: (event: Omit<ActionInput, "private">) => string;
 }

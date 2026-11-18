@@ -53,7 +53,7 @@ import {
 import { MemoryViewer, SyncCredential } from "./TessayaMemoryService.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
-import { EMBEDDING_ROUTE, TessayaVoiceLibrary } from "./TessayaVoiceLibrary.ts";
+import { EMBEDDING_ROUTE, privateVoice, TessayaVoiceLibrary } from "./TessayaVoiceLibrary.ts";
 import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
 import { runAskWorker } from "./AskWorker.ts";
 import { peerTurnHands, PeerTurnBody, relayDeskTurn, servePeerTurn } from "./DeskRelay.ts";
@@ -835,6 +835,16 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
     },
     // The desktop's own key for the layer's store, kept by Windows (DPAPI) and sent by the desktop app.
     deviceKey: async () => deviceKey,
+    speak: ({ persona, clone, text }) =>
+      run(
+        Effect.gen(function* () {
+          const voices = yield* TessayaVoiceLibrary;
+          const pick = privateVoice(yield* voices.library, persona, clone);
+          if (pick === null) return null;
+          const said = yield* voices.say({ ...pick, text });
+          return new Uint8Array(Buffer.from(said.base64, "base64"));
+        }).pipe(Effect.orElseSucceed(() => null)),
+      ),
     privatePointer: ({ id, at, cause }) =>
       void emitActionSync(
         { id, at, kind: PRIVATE_KIND, actor: { kind: "system", certainty: 1 }, cause },

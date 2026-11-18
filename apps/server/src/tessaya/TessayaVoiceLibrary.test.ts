@@ -385,6 +385,19 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
               voice: id,
               name: "Freya",
             });
+            // A private layer's own line: his named clone, else her local voice, never a cloud one.
+            assert.deepStrictEqual(TessayaVoiceLibrary.privateVoice(view, "Freya", id), {
+              engine: "clone",
+              voice: id,
+            });
+            const cloudy = {
+              ...view,
+              clones: [],
+              cloud: [],
+              personas: view.personas.map((p) => ({ ...p, cloudVoice: "Kore" })),
+            };
+            assert.strictEqual(TessayaVoiceLibrary.voiceFor(cloudy, "Freya")?.engine, "gemini");
+            assert.strictEqual(TessayaVoiceLibrary.privateVoice(cloudy, "Freya")?.engine, "pocket");
             const made = yield* changePersona(
               { op: "create", draft: { name: "Luna", cloneVoice: "me" } },
               { owner: true },
