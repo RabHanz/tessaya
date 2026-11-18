@@ -119,7 +119,10 @@ export const hedge = (
 /** A turn running on one recogniser, and whether that recogniser failed it (refused, unreachable, gone). */
 export interface TurnOn {
   readonly url: string;
-  readonly turn: RecogniserTurn & { readonly failed: () => boolean };
+  readonly turn: RecogniserTurn & {
+    readonly failed: () => boolean;
+    readonly why?: () => string | null;
+  };
 }
 
 /**
@@ -129,7 +132,13 @@ export interface TurnOn {
  */
 export const turnAcross = (
   start: (tried: ReadonlySet<string>) => TurnOn | null,
-  done: (url: string, ms: number, failed: boolean, next: string | null) => void,
+  done: (
+    url: string,
+    ms: number,
+    failed: boolean,
+    next: string | null,
+    why?: string | null,
+  ) => void,
   clock: () => number,
 ): RecogniserTurn => {
   const fed: Int16Array[] = [];
@@ -176,7 +185,7 @@ export const turnAcross = (
           tried.clear();
           next = open();
         }
-        done(active.url, ms, true, next?.url ?? null);
+        done(active.url, ms, true, next?.url ?? null, active.turn.why?.() ?? null);
         if (next === null) return text;
         active = next;
         for (const pcm of fed) next.turn.feed(pcm);

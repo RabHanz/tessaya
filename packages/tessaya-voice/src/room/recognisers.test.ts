@@ -55,6 +55,7 @@ it("hears a turn on the next recogniser, all of it, when the first turns it away
         },
         cancel: () => undefined,
         failed: () => failed,
+        why: () => (failed ? "busy: 16 connections open" : null),
       },
     };
   };
@@ -64,14 +65,16 @@ it("hears a turn on the next recogniser, all of it, when the first turns it away
       const url = order.find((u) => !tried.has(u));
       return url === undefined ? null : on(url, url === "busy");
     },
-    (url, _ms, failed, next) => log.push(`${url} ${failed ? `failed, next ${next}` : "ok"}`),
+    (url, _ms, failed, next, why) =>
+      log.push(`${url} ${failed ? `failed (${why}), next ${next}` : "ok"}`),
     () => 0,
   );
   turn.feed(new Int16Array(100));
   turn.feed(new Int16Array(60));
   expect(turn.by?.()).toBeNull();
   expect(await turn.finish()).toBe("heard 160 samples");
-  expect(log).toEqual(["busy failed, next spare", "spare ok"]);
+  // The recogniser's own reason reaches the log (18 Nov: four first tries "failed" with none).
+  expect(log).toEqual(["busy failed (busy: 16 connections open), next spare", "spare ok"]);
   // The metrics name the one whose words were taken, not the one it started on.
   expect(turn.by?.()).toEqual({ host: "spare" });
 });

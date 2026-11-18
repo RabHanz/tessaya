@@ -24,8 +24,8 @@ use tungstenite::{accept_hdr, Message, WebSocket};
 
 use engine::{Feed, Job, Reply};
 
-/// Connections served at once; more are closed at once. One person dictates, with a health check or two beside.
-const MAX_CONNECTIONS: usize = 8;
+/// Connections served at once; more are told busy. One person dictates, beside the room loop's health checks and confirms.
+const MAX_CONNECTIONS: usize = 16;
 /// How long the opening handshake may take.
 const HANDSHAKE: Duration = Duration::from_secs(5);
 /// A dictation whose client sends nothing for this long is dropped: a laptop that slept or lost the network.
@@ -53,7 +53,21 @@ fn accept_loop(listener: TcpListener, token: Arc<String>, jobs: Sender<Job>, que
     let open = Arc::new(AtomicUsize::new(0));
     for stream in listener.incoming().flatten() {
         if open.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
-            open.fetch_sub(1, Ordering::SeqCst);
+            // Said, not a silent close: the loop's first try on the laptop "failed after 47-204 ms" with no reason (18 Nov).
+            if open.load(Ordering::SeqCst) <= MAX_CONNECTIONS * 2 {
+                let (token, open) = (token.clone(), open.clone());
+                std::thread::spawn(move || {
+                    if let Some(mut socket) = handshake(stream, &token) {
+                        let busy = json!({"ev": "error", "message": format!("busy: {MAX_CONNECTIONS} connections open")});
+                        let _ = socket.send(Message::text(busy.to_string()));
+                        let _ = socket.close(None);
+                        let _ = socket.flush();
+                    }
+                    open.fetch_sub(1, Ordering::SeqCst);
+                });
+            } else {
+                open.fetch_sub(1, Ordering::SeqCst);
+            }
             continue;
         }
         let (token, jobs, queue, open) = (token.clone(), jobs.clone(), queue.clone(), open.clone());
@@ -72,8 +86,8 @@ fn same_secret(a: &[u8], b: &[u8]) -> bool {
     a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// One connection: health checks and dictations, one at a time.
-fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsize>) {
+/// The opening handshake with his token checked; None when it failed or the token was wrong.
+fn handshake(stream: TcpStream, token: &str) -> Option<WebSocket<TcpStream>> {
     let _ = stream.set_nodelay(true);
     // A client that connects and says nothing is not waited on.
     let _ = stream.set_read_timeout(Some(HANDSHAKE));
@@ -89,7 +103,12 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
             Err(refused)
         }
     };
-    let Ok(mut socket) = accept_hdr(stream, check) else { return };
+    accept_hdr(stream, check).ok()
+}
+
+/// One connection: health checks and dictations, one at a time.
+fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsize>) {
+    let Some(mut socket) = handshake(stream, token) else { return };
     // Reads wait at most 10 ms, then the words waiting go back: one thread owns the socket, so a reply is never held up
     // behind the reader (a shared lock starved replies for 5 to 25 s, 14 Nov).
     let _ = socket.get_ref().set_read_timeout(Some(Duration::from_millis(10)));
