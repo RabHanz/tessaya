@@ -806,7 +806,8 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     id: "memory",
     proves: ["tessaya_memory_search"],
-    said: ["What do you remember about how I take my tea?"],
+    // A topic his memory lacks, so the lines she was given cannot answer it: since the 18 Nov fold his tea is one.
+    said: ["What do you remember about how I take my porridge?"],
     // By words or by meaning: either lookup is the right one.
     uses: [["tessaya_memory_search", "tessaya_memory_about"]],
     clean: ["tessaya_memory_search", "tessaya_memory_about"],
@@ -1188,6 +1189,8 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     id: "note",
     proves: ["tessaya_note_add", "tessaya_note_search"],
     said: ["Note that the replay suite ran today.", "What did I note about the replay suite?"],
+    // His notes are his alone: his verified voice, as on Tumble.
+    voices: [{ speaker: SURE }, { speaker: SURE }],
     uses: [["tessaya_note_add"], ["tessaya_note_search"]],
     clean: ["tessaya_note_add", "tessaya_note_search"],
   },

@@ -505,6 +505,7 @@ effectIt.effect(
     Effect.gen(function* () {
       let goodbye = "";
       let args = {};
+      let slow = false;
       const brain = R1Brain.of({
         route: Effect.succeed("subscription"),
         subscription: () => Stream.empty,
@@ -515,7 +516,11 @@ effectIt.effect(
           Stream.concat(
             Stream.make(goodbye),
             Stream.unwrap(
-              Effect.map(turn.run("conversation_end", args), () => Stream.make("Goodnight again.")),
+              Effect.map(turn.run("conversation_end", args), () =>
+                slow
+                  ? Stream.fromEffect(Effect.as(Effect.sleep("4 seconds"), "Goodnight again."))
+                  : Stream.make("Goodnight again."),
+              ),
             ),
           ),
       });
@@ -543,6 +548,12 @@ effectIt.effect(
       // The goodbye in the call is said at once; what the model writes after it is not.
       args = { goodbye: "Sleep well." };
       expect(yield* turn()).toBe(`Sleep well. ${REST_MARK}`);
+      // A silent end, then a slow pass that writes the goodbye: no "One moment." before it (.189 room gate).
+      args = {};
+      slow = true;
+      const late = yield* Effect.forkChild(turn());
+      yield* TestClock.adjust("5 seconds");
+      expect(yield* Fiber.join(late)).toBe(`Goodnight again. ${REST_MARK}`);
     }),
 );
 
