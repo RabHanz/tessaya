@@ -1215,15 +1215,15 @@ describe("waking by name with no session open", () => {
   });
 
   it("turns run on the brain while she stays on her own hub, with its acts and acks bridged (18 Nov: 1.3 s → 3.0 s)", async () => {
-    const brain = "http://100.124.164.43:3773/api/devices/r1/v1/chat/completions";
+    const brain = "http://brain.example:3773/api/devices/r1/v1/chat/completions";
     // Unset, one bus as before (slice 1); set, her own hub, plus the brain's hub for its acts.
     expect(loopBuses(brain, undefined)).toEqual({
-      hub: "ws://100.124.164.43:3773/api/tessel/mqtt",
+      hub: "ws://brain.example:3773/api/tessel/mqtt",
       brain: null,
     });
     expect(loopBuses(brain, "ws://127.0.0.1:3773/api/tessel/mqtt")).toEqual({
       hub: "ws://127.0.0.1:3773/api/tessel/mqtt",
-      brain: "ws://100.124.164.43:3773/api/tessel/mqtt",
+      brain: "ws://brain.example:3773/api/tessel/mqtt",
     });
     // From the brain's hub: its turn's acts for a Tessel here; a device command goes by the peer route, with its ack.
     const cases: Array<[string, boolean, boolean]> = [

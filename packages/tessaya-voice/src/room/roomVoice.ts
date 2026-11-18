@@ -582,7 +582,7 @@ export const busOfBrain = (brainUrl: string): string => {
 };
 /**
  * `R1_HUB_URL` unset: one bus, the brain's hub (slice 1). Set: her own hub, and the brain's hub as well (`brain`), so turns run
- * on the brain while room audio stays on her LAN (18 Nov: first word 1.3 s on hetzner's brain, 3.0 s on onnyx's).
+ * on the brain while room audio stays on her LAN (18 Nov: first word 1.3 s on the brain host, 3.0 s on a busy hub host).
  */
 export const loopBuses = (brainUrl: string, hubUrl: string | undefined) => {
   const brain = busOfBrain(brainUrl);
