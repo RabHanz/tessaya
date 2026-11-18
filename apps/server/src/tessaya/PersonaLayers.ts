@@ -103,6 +103,11 @@ export interface LayerHost {
     readonly at: number;
     readonly cause: ReadonlyArray<string>;
   }) => void;
+  /**
+   * Sources of models he removed in his model viewer, for the private design library to hide. The host sends them to
+   * the brain, which seals them under the library's key; fire and forget.
+   */
+  readonly libraryRemoved?: (sources: ReadonlyArray<string>) => void;
   /** A private action for the host to seal in his private store (M-002) and point to; returns its id. */
   readonly privateEvent?: (event: Omit<ActionInput, "private">) => string;
 }
