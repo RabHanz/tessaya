@@ -27,7 +27,6 @@ import {
   POSE_BONES,
   POSTURES,
   TOUCH_FACE,
-  blendAt,
   danceAt,
   outfitPiece,
   postureFor,
@@ -45,6 +44,22 @@ import {
   type TouchKind,
   type Trace,
 } from "@t3tools/tessaya-shared/bodyMotion";
+import {
+  QI,
+  halfLifeOf,
+  makeRig,
+  manifestOf,
+  preparePose,
+  settled,
+  springStep,
+  type BoneSpring,
+  type Q,
+  type Rig,
+  type RigBone,
+  type RigIssue,
+  type RigManifest,
+  type V3,
+} from "@t3tools/tessaya-shared/bodyRig";
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -74,15 +89,53 @@ const LEVEL_HOLD_MS = 400;
 /** Breathing alone is slow: drawn at this ceiling unless something faster moves too. */
 const BREATH_FPS = 12;
 /**
- * VRM 0.x keeps its X and Z axes flipped on three-vrm's normalized rig even after rotateVRM0 (three-vrm's own retarget
- * example negates them too), so the same pose would raise the arms. Mirroring the normalized rotations around the update
- * lets every pose here be written once, in VRM 1.0's axes.
+ * Some models (VRM 0.x on three-vrm's normalized rig, even after rotateVRM0) turn X and Z the other way, so the same
+ * pose would raise the arms. Which way a model turns is measured when it loads (mirroredOf); a mirrored one has its
+ * normalized rotations mirrored around the update, so every pose here is written once, in VRM 1.0's axes.
  */
 const flipVrm0 = (vrm: VRM) => {
   for (const b of Object.values(vrm.humanoid.normalizedHumanBones)) {
     const r = b?.node.rotation;
     if (r) r.set(-r.x, r.y, -r.z);
   }
+};
+/** Lower the left arm by a radian on the normalized rig: a hand that rises means this model turns Z the other way. */
+const mirroredOf = (vrm: VRM): boolean => {
+  const arm = vrm.humanoid.getNormalizedBoneNode("leftUpperArm");
+  const hand =
+    vrm.humanoid.getRawBoneNode("leftHand") ?? vrm.humanoid.getRawBoneNode("leftLowerArm");
+  if (!arm || !hand) return vrm.meta.metaVersion === "0";
+  const y = () => {
+    vrm.update(0);
+    vrm.scene.updateMatrixWorld(true);
+    return hand.getWorldPosition(new THREE.Vector3()).y;
+  };
+  arm.quaternion.identity();
+  const rest = y();
+  arm.rotation.set(0, 0, -1);
+  const lowered = y();
+  arm.quaternion.identity();
+  vrm.update(0);
+  return lowered > rest;
+};
+/** The model's skeleton at rest for the rig: humanoid bones by VRM name, every other bone by its own (for the manifest). */
+const rigOf = (vrm: VRM): Rig => {
+  vrm.scene.updateMatrixWorld(true);
+  const human = new Map<THREE.Object3D, string>();
+  for (const [name, b] of Object.entries(vrm.humanoid.humanBones))
+    if (b?.node) human.set(b.node, name);
+  const bones: RigBone[] = [];
+  const at = new THREE.Vector3();
+  vrm.scene.traverse((o) => {
+    if (!(o as THREE.Bone).isBone && !human.has(o)) return;
+    let p = o.parent;
+    while (p !== null && !(p as THREE.Bone).isBone && !human.has(p)) p = p.parent;
+    const name = human.get(o) ?? o.name;
+    const parent = p === null ? null : (human.get(p) ?? p.name);
+    o.getWorldPosition(at);
+    bones.push({ name, parent, rest: [at.x, at.y, at.z] });
+  });
+  return makeRig(bones);
 };
 /** Body expressions a model may carry, driven from her motion and states rather than set directly. */
 const BODY_EXPRESSIONS = ["breath", "flush", "hairDamp"] as const;
@@ -122,7 +175,6 @@ const PROP_BONE: Readonly<Record<TouchZone, BodyBone>> = {
 const IDLE_MS = 20_000;
 /** Walking toward or away from him, metres a second. */
 const WALK_SPEED = 0.45;
-const ZERO: Euler = [0, 0, 0];
 /** How long her head and eyes follow a touch, and a little more than the 150 ms in which a person turns to one. */
 const TOUCH_MS = 1600;
 /** A hover's raycast at most this often while the mouse moves over her. */
@@ -228,7 +280,7 @@ export function mountBody(
   // ARKit unit (any case) -> the model's own expression name, when it carries perfect sync
   let sync: Map<string, string> | null = null;
   let bodyOwn = new Set<string>();
-  let vrm0 = false;
+  let mirrored = false;
   let speech: { track: ReadonlyArray<VisemeSegment>; start: number; end: number } | null = null;
   let effects: Array<{ at: number; face?: string; gesture?: string; act?: keyof typeof ACTS }> = [];
   let level: { value: number; viseme?: VisemeSegment["viseme"]; at: number } | null = null;
@@ -242,9 +294,15 @@ export function mountBody(
   // her posture: the one her affect picks, a scene's held one, and the crossfade between them
   let affectPose: PostureName = "stand";
   let scenePose: PostureName | null = null;
-  let poseFrom: Partial<Record<PoseBone, Euler>> = POSTURES.stand.bones;
-  let poseShown: Partial<Record<PoseBone, Euler>> = POSTURES.stand.bones;
-  let poseAt = 0;
+  // the rig of the model on screen, every bone's spring toward its target, and what the last target needed fixing
+  let rig: Rig | null = null;
+  let manifest: RigManifest | null = null;
+  let springs = new Map<string, BoneSpring>();
+  let springing = false;
+  let lastSpring = 0;
+  let goalKey = "";
+  let goal: Record<string, Q> = {};
+  let issues: ReadonlyArray<RigIssue> = [];
   let stepping: number | null = null;
   let dancing: number | null = null;
   let closer = 0;
@@ -306,8 +364,7 @@ export function mountBody(
   };
   const setPose = (now: number) => {
     clip = null;
-    poseFrom = poseShown;
-    poseAt = now;
+    springing = true;
     armOut = { left: 0, right: 0 };
     lastMove = now;
   };
@@ -333,7 +390,7 @@ export function mountBody(
     now - blinkAt < BLINK_MS ||
     now - lastMove < SETTLE_MS ||
     (touch !== null && now - touch.at < TOUCH_MS) ||
-    now - poseAt < 500 ||
+    springing ||
     stepping !== null ||
     dancing !== null ||
     (clip !== null &&
@@ -341,19 +398,14 @@ export function mountBody(
     (tails.length > 0 && kin.tailAmp > 0 && now - kinAt < WAG_MS) ||
     propsRunning();
 
-  /** Her posture, crossfaded from the last one, with any step or dance on top; every bone it names is set. */
+  /**
+   * Her posture, with a playing clip's frame and any step or dance over it, made right for this model by the rig
+   * (limits, hinge elbows and knees, her own rest pose), then followed by a spring per bone: any change of target, at
+   * any moment, bends the motion smoothly instead of cutting it. Once every bone has arrived, nothing moves.
+   */
   const applyPose = (now: number) => {
-    if (vrm === null) return;
-    const to: Partial<Record<PoseBone, Euler>> = posture().bones;
-    const k = blendAt(now - poseAt);
-    const blended: Partial<Record<PoseBone, Euler>> = {};
-    for (const b of POSE_BONES) {
-      const f = poseFrom[b] ?? ZERO;
-      const t = to[b] ?? ZERO;
-      blended[b] = [f[0] + (t[0] - f[0]) * k, f[1] + (t[1] - f[1]) * k, f[2] + (t[2] - f[2]) * k];
-    }
-    poseShown = blended;
-    let frameNow: Partial<Record<PoseBone, Euler>> = {};
+    if (vrm === null || rig === null) return;
+    const bones: Partial<Record<PoseBone, Euler>> = { ...posture().bones };
     if (clip !== null) {
       const n = clip.frames.length;
       const at = ((now - clip.start) / 1000) * clip.fps;
@@ -362,29 +414,49 @@ export function mountBody(
       const b =
         clip.frames[clip.loop ? (Math.floor(i) + 1) % n : Math.min(n - 1, Math.floor(i) + 1)]!;
       const t = i - Math.floor(i);
-      // the clip eases in over the posture like any other change
-      const w = blendAt(now - clip.start);
       for (const bone of new Set([...Object.keys(a), ...Object.keys(b)]) as Set<PoseBone>) {
-        const x = a[bone] ?? ZERO;
+        const x = a[bone] ?? b[bone]!;
         const y = b[bone] ?? x;
-        const base = blended[bone] ?? ZERO;
-        frameNow[bone] = [0, 1, 2].map((k) => {
-          const v = x[k]! + (y[k]! - x[k]!) * t;
-          return base[k]! + (v - base[k]!) * w;
-        }) as unknown as Euler;
+        bones[bone] = [0, 1, 2].map((k) => x[k]! + (y[k]! - x[k]!) * t) as unknown as Euler;
       }
-      if (!clip.loop && at >= n - 1 && now - clip.start > 500)
-        poseShown = { ...blended, ...frameNow };
     }
-    const cycles = {
-      ...frameNow,
-      ...(dancing === null ? {} : danceAt(now - dancing)),
-      ...(stepping === null ? {} : stepAt(now - stepping)),
-    } as Partial<Record<PoseBone, Euler>>;
+    Object.assign(
+      bones,
+      dancing === null ? {} : danceAt(now - dancing),
+      stepping === null ? {} : stepAt(now - stepping),
+    );
+    // the rig's work is redone only when the target changes (a held posture costs nothing per frame)
+    const key = JSON.stringify(bones);
+    if (key !== goalKey) {
+      goalKey = key;
+      const prepared = preparePose(rig, bones as Record<string, V3>);
+      goal = prepared.pose;
+      if (
+        prepared.issues.length > 0 &&
+        prepared.issues.some((i) => !issues.some((j) => j.bone === i.bone && j.kind === i.kind))
+      )
+        console.debug("[tessaya-body] pose corrected", prepared.issues);
+      issues = prepared.issues;
+      springing = true;
+    }
+    const dt = lastSpring === 0 ? 1000 / 30 : Math.min(100, now - lastSpring);
+    lastSpring = now;
+    let moving = false;
     for (const b of POSE_BONES) {
-      const r = cycles[b] ?? blended[b]!;
-      vrm.humanoid.getNormalizedBoneNode(b)?.rotation.set(r[0], r[1], r[2]);
+      const node = vrm.humanoid.getNormalizedBoneNode(b);
+      if (!node) continue;
+      const g = goal[b] ?? QI;
+      const s = springs.get(b) ?? { q: g, w: [0, 0, 0] as V3 };
+      const next = springing ? springStep(s, g, halfLifeOf(b), dt) : s;
+      const done = settled(next, g);
+      const shown = done ? { q: g, w: [0, 0, 0] as V3 } : next;
+      if (!done) moving = true;
+      springs.set(b, shown);
+      node.quaternion.set(shown.q[0], shown.q[1], shown.q[2], shown.q[3]);
     }
+    springing = moving;
+    if (moving) lastMove = now;
+    else lastSpring = 0;
     const la = vrm.humanoid.getNormalizedBoneNode("leftUpperArm");
     const ra = vrm.humanoid.getNormalizedBoneNode("rightUpperArm");
     if (la) la.rotation.z += armOut.left;
@@ -693,9 +765,9 @@ export function mountBody(
         head.rotation.y += 0.3 * Math.max(-0.6, Math.min(0.6, Math.atan2(toHim.x, toHim.z)));
       }
     }
-    if (vrm0) flipVrm0(vrm);
+    if (mirrored) flipVrm0(vrm);
     vrm.update(delta);
-    if (vrm0) flipVrm0(vrm);
+    if (mirrored) flipVrm0(vrm);
     const f2 = 1 - Math.exp(-4 * delta);
     if (settleBody(f2) || placeCamera(f2)) lastMove = now;
     renderer.render(scene, camera);
@@ -778,7 +850,14 @@ export function mountBody(
       ]),
     );
     sync = names.has("jawopen") && names.has("eyeblinkleft") ? names : null;
-    vrm0 = next.meta.metaVersion === "0";
+    mirrored = mirroredOf(next);
+    rig = rigOf(next);
+    manifest = manifestOf(rig, {
+      expressions: (next.expressionManager?.expressions ?? []).map((e) => e.expressionName),
+      springChains: next.springBoneManager?.joints.size ?? 0,
+    });
+    springs = new Map();
+    goalKey = "";
     bodyOwn = new Set(BODY_EXPRESSIONS.filter((n) => next.expressionManager?.getExpression(n)));
     const humanoid = new Set(Object.values(vrm.humanoid.humanBones).map((b) => b?.node));
     ears = [];
@@ -1229,6 +1308,8 @@ export function mountBody(
       touchAs = kind;
     },
     outfit: () => [...outfit.keys()],
+    /** What this model's body can do (its rig's manifest) and what the rig last had to correct in a pose. */
+    rig: () => ({ manifest, issues }),
     /** Where each of her joints is on the canvas (CSS px), for a page that labels or aims at her parts. */
     joints: () => {
       const r = canvas.getBoundingClientRect();
