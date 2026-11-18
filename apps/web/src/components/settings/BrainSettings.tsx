@@ -268,6 +268,7 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const written = useEnvironmentSettings(environmentId, (s) => s.tessayaExpression);
   const motion = useEnvironmentSettings(environmentId, (s) => s.companionMotion);
   const mood = useEnvironmentSettings(environmentId, (s) => s.tessayaMood.enabled);
+  const cleanup = useEnvironmentSettings(environmentId, (s) => s.tessayaRoomCleanup);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
     <SettingsSection title="Her lines">
@@ -279,6 +280,17 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             aria-label="Her own words"
             checked={written}
             onCheckedChange={(on) => update({ tessayaExpression: on })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Fix misheard words"
+        description="When words she heard on the Tessel sound like one of your names but are not, she fixes them from what you were talking about before answering. Clear turns never wait for it."
+        control={
+          <Switch
+            aria-label="Fix misheard words"
+            checked={cleanup}
+            onCheckedChange={(on) => update({ tessayaRoomCleanup: on })}
           />
         }
       />

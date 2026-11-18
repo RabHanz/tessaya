@@ -1546,6 +1546,8 @@ export const ServerSettings = Schema.Struct({
   voiceIdGate: VoiceIdGate.pipe(Schema.withDecodingDefault(Effect.succeed(VOICE_ID_GATE_DEFAULTS))),
   // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
   tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Tessaya: a room turn that looks misheard is fixed from what was being talked about before she answers (contextCleanup.ts).
+  tessayaRoomCleanup: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
   // moved only by their identified turns; `devices` ties a device to a member and says whether it shows theirs.
   tessayaMood: Schema.Struct({
@@ -2034,6 +2036,7 @@ export const ServerSettingsPatch = Schema.Struct({
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
   tessayaExpression: Schema.optionalKey(Schema.Boolean),
+  tessayaRoomCleanup: Schema.optionalKey(Schema.Boolean),
   tessayaMood: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.optionalKey(Schema.Boolean),

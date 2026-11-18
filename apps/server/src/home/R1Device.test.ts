@@ -53,7 +53,9 @@ import {
   withoutNarration,
   withoutSelfIntros,
   type R1Context,
+  contextCleaned,
 } from "./R1Device.ts";
+import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
 
 describe("R1Device", () => {
   it("believes a guest's voiceprint only from the device whose key the call came with", () => {
@@ -1345,4 +1347,44 @@ describe("the house read before a turn", () => {
     expect(namedIn(lamp, "Turn the lights off")).toBe(true);
     expect(namedIn(ramadan, "Is it Ramadan yet?")).toBe(true);
   });
+});
+
+describe("a room turn that looks misheard is fixed from the talk before it", () => {
+  const NAMES = ["Tessaya", "Alfred", "Freya", "BillingHub"];
+  const run = (heard: string, settings: { tessayaRoomCleanup?: boolean } = {}) => {
+    const asked: string[] = [];
+    const out = contextCleaned(
+      heard,
+      [{ role: "assistant", content: "The BillingHub session is open." }],
+      NAMES,
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.mock(DictationCleanupApi)({
+            cleanup: (input) =>
+              Effect.sync(() => {
+                asked.push(input.message);
+                return { configured: true, text: "What about BillingHub?", ms: 300 } as const;
+              }),
+          }),
+          ServerSettingsService.layerTest(settings),
+        ),
+      ),
+    );
+    return { asked, out };
+  };
+  effectIt.effect("fixes a near-miss, and never asks on a clear turn or with the setting off", () =>
+    Effect.gen(function* () {
+      // As 18 Nov 00:50, his project heard as ordinary words.
+      const misheard = run("What about bill in hub?");
+      expect(yield* misheard.out).toBe("What about BillingHub?");
+      expect(misheard.asked[0]).toContain("The BillingHub session is open.");
+      const clear = run("What time is it?");
+      expect(yield* clear.out).toBe("What time is it?");
+      expect(clear.asked).toEqual([]);
+      const off = run("What about bill in hub?", { tessayaRoomCleanup: false });
+      expect(yield* off.out).toBe("What about bill in hub?");
+      expect(off.asked).toEqual([]);
+    }),
+  );
 });
