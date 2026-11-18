@@ -221,6 +221,8 @@ export interface RigManifest {
   readonly jaw: boolean;
   readonly extras: Readonly<Partial<Record<ExtraRole, ReadonlyArray<string>>>>;
   readonly expressions: ReadonlyArray<string>;
+  /** Shape keys on its meshes, which direct control can drive by name. */
+  readonly morphs: ReadonlyArray<string>;
   readonly springChains: number;
   /** Arms at rest below horizontal by this much (radians): an A-pose model, corrected by restFix. */
   readonly armRestDrop: number;
@@ -288,7 +290,11 @@ export const makeRig = (bones: ReadonlyArray<RigBone>): Rig => {
 
 export const manifestOf = (
   rig: Rig,
-  extra: { readonly expressions?: ReadonlyArray<string>; readonly springChains?: number } = {},
+  extra: {
+    readonly expressions?: ReadonlyArray<string>;
+    readonly morphs?: ReadonlyArray<string>;
+    readonly springChains?: number;
+  } = {},
 ): RigManifest => {
   const names = Object.keys(rig.bones);
   const humanoid = names.filter(isHumanBone);
@@ -324,6 +330,7 @@ export const manifestOf = (
     jaw: has("jaw"),
     extras,
     expressions: extra.expressions ?? [],
+    morphs: extra.morphs ?? [],
     springChains: extra.springChains ?? 0,
     armRestDrop: Math.round(drop * 1000) / 1000,
   };
