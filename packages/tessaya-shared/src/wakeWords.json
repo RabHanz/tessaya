@@ -1,0 +1,22 @@
+{
+  "words": [
+    { "word": "Tessaya", "persona": "executive", "threshold": 0.99, "onByDefault": true },
+    { "word": "Sebastian", "persona": "alter-ego", "threshold": 0.97, "onByDefault": false },
+    {
+      "word": "Alfred",
+      "persona": "butler",
+      "threshold": 0.95,
+      "measured": 0.9,
+      "onByDefault": true
+    },
+    { "word": "Freya", "persona": "companion", "threshold": 0.95, "onByDefault": true },
+    {
+      "word": "Onyx",
+      "persona": "engineering",
+      "threshold": 0.95,
+      "measured": 0.9,
+      "onByDefault": false
+    }
+  ],
+  "measuredNote": "measured: the threshold D98 measured on 6.6 hours of real speech and held-out en-GB voices. The app ships threshold, which stays until a tuning decision moves it (14 Nov)."
+}

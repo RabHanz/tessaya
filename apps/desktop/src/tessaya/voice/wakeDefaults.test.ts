@@ -9,6 +9,14 @@ describe("wake words at start", () => {
   it("gives a fresh install Tessaya, Alfred and Freya, all on", () => {
     expect(enabled(wakeWordsFor(null))).toEqual(["Tessaya", "Alfred", "Freya"]);
     expect(wakeWordsFor(null)).toBe(FRESH_WAKE_WORDS);
+    // The shared table must hand the desktop exactly what it shipped before the room loop read it too.
+    expect(FRESH_WAKE_WORDS).toEqual([
+      { word: "Tessaya", enabled: true, threshold: 0.99 },
+      { word: "Sebastian", enabled: false, threshold: 0.97 },
+      { word: "Alfred", enabled: true, threshold: 0.95 },
+      { word: "Freya", enabled: true, threshold: 0.95 },
+      { word: "Onyx", enabled: false, threshold: 0.95 },
+    ]);
   });
 
   it("gives an existing install the three once, keeping his thresholds and other words", () => {

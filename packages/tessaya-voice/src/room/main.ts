@@ -13,6 +13,7 @@ import * as NodePath from "node:path";
 import { pocketSpeech } from "@t3tools/tessaya-shared/speechSplice";
 import { pocketVoiceUrl } from "@t3tools/tessaya-shared/voiceLibrary";
 import { fetchSignedWake, wakeKey } from "@t3tools/tessaya-shared/wakeModels";
+import { WAKE_WORDS, wakeModelFile } from "@t3tools/tessaya-shared/wakeWords";
 
 import { gainLimiter, integratedLufs, loudnessGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
@@ -847,13 +848,19 @@ const main = async () => {
       .map((s) => s.trim())
       .filter(Boolean),
   );
-  // His wake words as the desktop ships them (wakeDefaults.ts); a word whose model is not on this host is skipped.
-  const shipped = [
-    // Each trained word belongs to a persona's id, so a renamed persona keeps its wake word.
-    { word: "Tessaya", persona: "executive", file: model("tessaya.onnx"), threshold: 0.99 },
-    { word: "Alfred", persona: "butler", file: model("alfred.onnx"), threshold: 0.95 },
-    { word: "Freya", persona: "companion", file: model("freya.onnx"), threshold: 0.95 },
-  ].filter((w) => NodeFS.existsSync(w.file));
+  // The words a fresh desktop wakes to, from the one table; a word whose model is not in R1_MODELS is skipped, and said.
+  const shipped = WAKE_WORDS.filter((w) => w.onByDefault)
+    .map((w) => ({
+      word: w.word,
+      persona: w.persona,
+      file: model(wakeModelFile(w.word)),
+      threshold: w.threshold,
+    }))
+    .filter((w) => {
+      const there = NodeFS.existsSync(w.file);
+      if (!there) log(`wake: no ${NodePath.basename(w.file)} in R1_MODELS`);
+      return there;
+    });
   const wakeWords = async (): Promise<RoomWake[]> => [
     ...shipped,
     ...(await trainedWakes(
