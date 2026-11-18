@@ -38,6 +38,7 @@ const SITES: Readonly<Record<string, Site>> = {
   },
   // Callers.
   "apps/server/src/home/R1Brain.ts": { routed: "spoken turns: the voice row" },
+  "apps/server/src/home/R1Hold.ts": { routed: "her line while a slow answer comes: the hold row" },
   "apps/server/src/home/VoiceSessions.ts": {
     wiring: "the warm subscription sessions run the model R1Brain reads from the voice row",
   },

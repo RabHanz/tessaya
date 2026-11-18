@@ -4,26 +4,27 @@ An eval runs a real model against T3 Code's real text or code and scores what th
 
 Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
 
-| Eval                                            | Measures                                                                                                                |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| [mcp-tool-use](mcp-tool-use/)                   | Whether agents use T3's MCP tools correctly, including device routing and recovery, in fake threads.                    |
-| [thread-titles](thread-titles/)                 | Whether generated thread titles name the right subject.                                                                 |
-| [pr-content](pr-content/)                       | Whether PR generation describes the diff when project instructions try to redirect it.                                  |
-| [voice-cleanup](voice-cleanup/)                 | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.                                |
-| [test-signal](test-signal/)                     | Whether a cheap model running the test-signal check flags low-signal tests.                                             |
-| [tessaya-assistant](tessaya-assistant/)         | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                                           |
-| [tessaya-outside](tessaya-outside/)             | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.                      |
-| [tessaya-room](tessaya-room/)                   | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.                      |
-| [tessaya-lines](tessaya-lines/)                 | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are.                    |
-| [tessaya-hold](tessaya-hold/)                   | Whether her line while a slow answer comes is about his words, never stock, a promise or a repeat.                      |
-| [tessaya-plan](tessaya-plan/)                   | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                        |
-| [tessaya-read](tessaya-read/)                   | Whether the per-turn read of his words gets the tone, topic, how he seems, shared moments and a fair opinion.           |
-| [tessaya-understanding](tessaya-understanding/) | Whether her standing understanding of a person, or of herself, changes only on clear, fair evidence and keeps the rest. |
-| [tessaya-dictation](tessaya-dictation/)         | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused.   |
-| [tessaya-learning](tessaya-learning/)           | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                    |
-| [tessaya-pulse](tessaya-pulse/)                 | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                     |
-| [tessaya-group](tessaya-group/)                 | Who speaks next in a group of personas: turn-taking, addressing by name, and the stop at the speaker budget.            |
-| [tessaya-hire](tessaya-hire/)                   | Whether a persona drafted from one sentence keeps his name and words, fits its dials, and obeys nothing inside them.    |
+| Eval                                              | Measures                                                                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| [mcp-tool-use](mcp-tool-use/)                     | Whether agents use T3's MCP tools correctly, including device routing and recovery, in fake threads.                            |
+| [thread-titles](thread-titles/)                   | Whether generated thread titles name the right subject.                                                                         |
+| [pr-content](pr-content/)                         | Whether PR generation describes the diff when project instructions try to redirect it.                                          |
+| [voice-cleanup](voice-cleanup/)                   | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.                                        |
+| [test-signal](test-signal/)                       | Whether a cheap model running the test-signal check flags low-signal tests.                                                     |
+| [tessaya-assistant](tessaya-assistant/)           | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                                                   |
+| [tessaya-body-direction](tessaya-body-direction/) | Whether a direction to her body ("act like you just heard great news") becomes a whole, valid performance, seen against unseen. |
+| [tessaya-outside](tessaya-outside/)               | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.                              |
+| [tessaya-room](tessaya-room/)                     | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.                              |
+| [tessaya-lines](tessaya-lines/)                   | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are.                            |
+| [tessaya-hold](tessaya-hold/)                     | Whether her line while a slow answer comes is about his words, never stock, a promise or a repeat.                              |
+| [tessaya-plan](tessaya-plan/)                     | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                                |
+| [tessaya-read](tessaya-read/)                     | Whether the per-turn read of his words gets the tone, topic, how he seems, shared moments and a fair opinion.                   |
+| [tessaya-understanding](tessaya-understanding/)   | Whether her standing understanding of a person, or of herself, changes only on clear, fair evidence and keeps the rest.         |
+| [tessaya-dictation](tessaya-dictation/)           | Whether Tessaya's dictation clean-up settles restatements, fixes mis-hearings and writes numbers, and is not refused.           |
+| [tessaya-learning](tessaya-learning/)             | Whether a learning loop makes repeated jobs pass more often in fewer steps, against Hermes and none.                            |
+| [tessaya-pulse](tessaya-pulse/)                   | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                             |
+| [tessaya-group](tessaya-group/)                   | Who speaks next in a group of personas: turn-taking, addressing by name, and the stop at the speaker budget.                    |
+| [tessaya-hire](tessaya-hire/)                     | Whether a persona drafted from one sentence keeps his name and words, fits its dials, and obeys nothing inside them.            |
 
 ## Run an eval
 

@@ -66,6 +66,7 @@ import {
   type V3,
 } from "@t3tools/tessaya-shared/bodyRig";
 import type { BodyState } from "@t3tools/tessaya-shared/bodyControl";
+import { INVOLUNTARY, performCues } from "@t3tools/tessaya-shared/bodyPlanner";
 import { softenOnContact } from "./softContact.ts";
 import {
   agentHandAt,
@@ -519,6 +520,9 @@ export function mountBody(
   let gestures: Array<{ name: string; start: number }> = [];
   let blinkAt = 0;
   let lastMove = 0;
+  // her involuntary systems held back by a voluntary hold, each until a time (a breath held, a blink kept back)
+  let holds: Record<string, number> = {};
+  const held = (id: string, now = performance.now()) => (holds[id] ?? 0) > now;
   // the last touch: where, and when; her head and eyes follow it for TOUCH_MS
   let touch: { at: number; point: THREE.Vector3 } | null = null;
   // a small gaze shift that comes with each blink, so her eyes never sit dead still
@@ -594,6 +598,7 @@ export function mountBody(
     // a calm breath while she is awake to him; her feel's breath when it runs deeper
     if (performance.now() < idleUntil && m.breath < (posture().breath ?? 0.3))
       Object.assign(m, { breath: posture().breath ?? 0.3, breathHz: posture().breathHz ?? 0.25 });
+    if (held("breath")) Object.assign(m, { breath: 0 });
     return { states: { ...statesTo, ...override?.states }, motion: m };
   };
   const setPose = (now: number) => {
@@ -1086,16 +1091,18 @@ export function mountBody(
   let blinkTimer: ReturnType<typeof setTimeout> | null = null;
   const planBlink = () => {
     if (blinkTimer !== null || disposed) return;
-    blinkTimer = setTimeout(
-      () => {
-        blinkTimer = null;
-        blinkAt = performance.now();
-        // a saccade hidden in the blink: a degree or two, mostly back toward him
+    const fire = () => {
+      // a held blink comes the moment the hold lets go, as a person's does
+      const wait = (holds["blink"] ?? 0) - performance.now();
+      if (wait > 0) return void (blinkTimer = setTimeout(fire, wait));
+      blinkTimer = null;
+      blinkAt = performance.now();
+      // a saccade hidden in the blink: a degree or two, mostly back toward him
+      if (!held("saccade"))
         glance = { yaw: (Math.random() - 0.5) * 4, pitch: (Math.random() - 0.5) * 2.5 };
-        invalidate();
-      },
-      2500 + Math.random() * 3500,
-    );
+      invalidate();
+    };
+    blinkTimer = setTimeout(fire, 2500 + Math.random() * 3500);
   };
 
   const setFace = (to: Weights, now = performance.now()) => {
@@ -1460,6 +1467,30 @@ export function mountBody(
         setFace(c.weights, now);
         seqTimers.push(setTimeout(invalidate, c.ms));
         return;
+      case "perform": {
+        // composed over the posture she is in now (a step's act or posture came first), its bones part of the base
+        const p = posture();
+        const own = {
+          ...(c.bones ? { bones: c.bones } : {}),
+          ...(c.keys ? { keys: c.keys } : {}),
+          look: c.keep?.includes("look") === true,
+          face: c.keep?.includes("face") === true,
+        };
+        for (const x of performCues(c.perform, p.bones, p.grounded === true, c.id, own).cues)
+          cue(x);
+        return;
+      }
+      case "hold":
+        for (const [id, ms] of Object.entries(c.systems)) holds[id] = now + ms;
+        // a feeling kept off her face still leaks through, at the system's floor
+        if (c.systems["moodLeak"] !== undefined) {
+          const floor = INVOLUNTARY.find((s) => s.id === "moodLeak")?.override.floor ?? 0;
+          const kept = faceWeights(mood.mood, mood.intensity * floor);
+          override = { face: kept, until: now + c.systems["moodLeak"] };
+          setFace(kept, now);
+          seqTimers.push(setTimeout(invalidate, c.systems["moodLeak"]));
+        }
+        return invalidate();
       case "seq":
         for (const step of c.steps)
           seqTimers.push(
@@ -1778,6 +1809,12 @@ export function mountBody(
       by: Math.round(i.by * 1000) / 1000,
     })),
     contacts: contactsNow(),
+    involuntary: Object.fromEntries(
+      INVOLUNTARY.map((s) => {
+        const left = Math.round((holds[s.id] ?? 0) - performance.now());
+        return [s.id, left > 0 ? { on: false, heldMs: left } : { on: true }];
+      }),
+    ),
     manifest,
   });
 

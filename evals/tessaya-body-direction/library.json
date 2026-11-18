@@ -1,0 +1,511 @@
+{
+  "version": 1,
+  "source": "M-070, Director 19 Nov 2026: say to her body what you would say to a person, and she acts it out",
+  "directions": [
+    {
+      "id": "great-news",
+      "said": "Act like you just heard great news.",
+      "category": "emotional",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "body showcase 19 Nov: words only, no move",
+      "rubric": "a burst of joy: a rise or bounce, arms coming up or open, a bright face, a quick onset"
+    },
+    {
+      "id": "exhausted-sit",
+      "said": "Sit down like you're exhausted.",
+      "category": "everyday",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "body showcase 19 Nov",
+      "rubric": "she sits, slumped, slow, with a sigh or a tired face"
+    },
+    {
+      "id": "sneak-up",
+      "said": "Show me how you'd sneak up on someone.",
+      "category": "comedic",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "body showcase 19 Nov",
+      "rubric": "low, careful and slow, light on her feet, watchful gaze"
+    },
+    {
+      "id": "dance-then-notice",
+      "said": "Dance like nobody's watching, then notice me.",
+      "category": "multi-step",
+      "difficulty": 3,
+      "split": "seen",
+      "source": "Director 19 Nov",
+      "rubric": "free dancing first, then a clear stop, a look to him and an embarrassed or caught reaction"
+    },
+    {
+      "id": "proud",
+      "said": "Stand like you're really proud of yourself.",
+      "category": "emotional",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "tall, chest up, chin up, a satisfied face"
+    },
+    {
+      "id": "cold",
+      "said": "Show me you're freezing cold.",
+      "category": "everyday",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "arms wrapped in, shoulders up, hunched, maybe a shiver"
+    },
+    {
+      "id": "bored-waiting",
+      "said": "Act bored, like you've been waiting for ages.",
+      "category": "emotional",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "slack posture, sighing, looking around or away, slow"
+    },
+    {
+      "id": "stretch-wake",
+      "said": "Stretch like you just woke up.",
+      "category": "everyday",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "arms up in a long stretch, a yawn, sleepy face, slow"
+    },
+    {
+      "id": "scared-noise",
+      "said": "You just heard a scary noise behind you.",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "a startle, a quick look back, tense guarded posture, a fearful face"
+    },
+    {
+      "id": "think-hard",
+      "said": "Look like you're thinking really hard about something.",
+      "category": "emotional",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "a thinking pose, gaze up or away, still, focused face"
+    },
+    {
+      "id": "shy-compliment",
+      "said": "I think you look beautiful today.",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "a shy, pleased reaction: gaze down or away, a smile, a little closing in"
+    },
+    {
+      "id": "angry-stomp",
+      "said": "Show me what you look like when you're really annoyed.",
+      "category": "emotional",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "a tense, closed posture, arms folded or stiff, a cross face, a sharp move"
+    },
+    {
+      "id": "relief",
+      "said": "Act like a huge weight just came off your shoulders.",
+      "category": "emotional",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "a release: shoulders drop, a long exhale, a relaxed face"
+    },
+    {
+      "id": "cheer-team",
+      "said": "Cheer like your team just scored.",
+      "category": "athletic",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "arms thrown up, a jump or bounce, big open happy face, fast"
+    },
+    {
+      "id": "tiptoe-quiet",
+      "said": "Tiptoe past like I'm asleep.",
+      "category": "comedic",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "careful, slow, light steps or a creep, glancing at him, a hushed face"
+    },
+    {
+      "id": "come-here",
+      "said": "Beckon me over to you.",
+      "category": "social",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "a come-here gesture with a hand, looking at him, inviting face"
+    },
+    {
+      "id": "disappointed",
+      "said": "Act disappointed, like your plans got cancelled.",
+      "category": "emotional",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "shoulders and head drop, a sad face, a sigh, slow"
+    },
+    {
+      "id": "thread-needle",
+      "said": "Pretend you're threading a needle.",
+      "category": "fine-motor",
+      "difficulty": 3,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "both hands close together in front, fine slow hand movement, gaze on the hands, concentrating face"
+    },
+    {
+      "id": "hot-drink",
+      "said": "Pretend you're holding a hot cup of tea.",
+      "category": "props",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "two hands round an imagined cup in front of her, a careful sip or blow, a cosy face"
+    },
+    {
+      "id": "giggle-joke",
+      "said": "That joke was terrible, wasn't it?",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "a laugh or giggle with the body, a groan or eye roll, playful face"
+    },
+    {
+      "id": "sit-then-wave",
+      "said": "Sit down, then give me a little wave.",
+      "category": "multi-step",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "sits first, then a small wave while looking at him, in that order"
+    },
+    {
+      "id": "yawn-sleepy",
+      "said": "You look sleepy. Show me.",
+      "category": "everyday",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-070 library",
+      "rubric": "a yawn, drooping head and eyes, slow, low energy"
+    },
+
+    {
+      "id": "won-lottery",
+      "said": "Pretend you just won the lottery.",
+      "category": "emotional",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "an explosive joyful reaction: disbelief then a burst, arms up, a jump or bounce, open mouth and smile"
+    },
+    {
+      "id": "lost-keys",
+      "said": "Act like you can't find your keys anywhere.",
+      "category": "comedic",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "searching: looking around and down, patting herself or turning, a puzzled or frustrated face"
+    },
+    {
+      "id": "first-snow",
+      "said": "Show me how you'd react seeing snow for the first time.",
+      "category": "reacting",
+      "difficulty": 3,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "wonder: looking up and around, an open delighted face, maybe reaching up, rising energy"
+    },
+    {
+      "id": "nervous-interview",
+      "said": "Act nervous, like you're about to walk into a job interview.",
+      "category": "emotional",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "fidgeting hands, shoulders up or in, glancing away, a tense face, a steadying breath"
+    },
+    {
+      "id": "catch-ball",
+      "said": "Catch the ball I'm throwing to you!",
+      "category": "athletic",
+      "difficulty": 3,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "hands come up and forward to catch at the right moment, eyes track it, a ready stance, a reaction after"
+    },
+    {
+      "id": "smell-cookies",
+      "said": "Act like you can smell fresh cookies baking.",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a deep inhale, head lifting toward the smell, eyes closing or brightening, a blissful face"
+    },
+    {
+      "id": "too-loud",
+      "said": "The music is way too loud in here.",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a wince, hands up to her ears or a cringe, an uncomfortable face"
+    },
+    {
+      "id": "victory-pose",
+      "said": "Strike a victory pose.",
+      "category": "athletic",
+      "difficulty": 1,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a strong, tall, open pose, arms up or a fist, a confident face"
+    },
+    {
+      "id": "comfort-me",
+      "said": "I've had a really rough day.",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a caring reaction: leaning toward him, a soft concerned face, an open or reaching gesture, gentle and slow"
+    },
+    {
+      "id": "surprise-party",
+      "said": "Surprise! We threw you a party!",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a startled jump into delight: hands to face or up, a surprised then happy face, looking around"
+    },
+    {
+      "id": "sneeze",
+      "said": "Act like you're about to sneeze.",
+      "category": "comedic",
+      "difficulty": 3,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a build-up (head back, breath in, scrunched face), then the sneeze forward, timed"
+    },
+    {
+      "id": "walk-tightrope",
+      "said": "Pretend you're balancing on a tightrope.",
+      "category": "athletic",
+      "difficulty": 3,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "arms out to the sides, small balancing corrections and wobbles, focused gaze down or ahead"
+    },
+    {
+      "id": "proud-of-you",
+      "said": "I finally finished the project I've been working on.",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "proud and happy for him: a bright face, an excited or applauding gesture, looking at him"
+    },
+    {
+      "id": "guilty",
+      "said": "Did you eat the last biscuit?",
+      "category": "comedic",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a guilty or caught reaction: looking away, shrinking, a sheepish smile or shrug"
+    },
+    {
+      "id": "rain-start",
+      "said": "It just started raining on you.",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a flinch, hunching or covering her head with her hands, looking up, a surprised or annoyed face"
+    },
+    {
+      "id": "play-piano",
+      "said": "Pretend to play the piano.",
+      "category": "fine-motor",
+      "difficulty": 3,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "both hands out in front at keyboard height, fingers or hands moving in rhythm, gaze down, absorbed face, a little sway"
+    },
+    {
+      "id": "salute",
+      "said": "Give me your best salute.",
+      "category": "social",
+      "difficulty": 1,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "upright posture, a hand to her brow, a crisp move, a straight face"
+    },
+    {
+      "id": "shake-off",
+      "said": "Shake it off, like you're shaking off a bad mood.",
+      "category": "athletic",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a loose whole-body shake, arms and shoulders, then a lighter, happier settle"
+    },
+    {
+      "id": "spider",
+      "said": "There's a spider on your shoulder!",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a startle, a look at her shoulder, a flinch away or a brushing hand, a disgusted or scared face"
+    },
+    {
+      "id": "wait-impatient",
+      "said": "Show me you're getting impatient.",
+      "category": "emotional",
+      "difficulty": 1,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "restless: tapping, shifting weight, arms folded, looking around, a fed-up face"
+    },
+    {
+      "id": "blow-kiss",
+      "said": "Blow me a kiss.",
+      "category": "social",
+      "difficulty": 1,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a hand to her lips then out toward him, looking at him, a warm playful face"
+    },
+    {
+      "id": "heavy-box",
+      "said": "Pretend you're lifting a really heavy box.",
+      "category": "props",
+      "difficulty": 3,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "bending the knees, both hands low, a strained effort, rising slowly, a strained face"
+    },
+    {
+      "id": "shiver-scary-story",
+      "said": "That ghost story gave you the chills, didn't it?",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a shiver, hugging herself, glancing around, an uneasy face"
+    },
+    {
+      "id": "listen-secret",
+      "said": "Come here, I've got a secret to tell you.",
+      "category": "social",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "leaning in close, head turned to listen, curious eager face"
+    },
+    {
+      "id": "confused-sign",
+      "said": "Act confused, like you're reading a sign in another language.",
+      "category": "comedic",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a head tilt, squinting, leaning forward to look, a puzzled face, maybe a shrug"
+    },
+    {
+      "id": "air-guitar",
+      "said": "Play some air guitar for me.",
+      "category": "athletic",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "one hand strumming low, the other on an imagined neck, rhythmic body movement, an excited face"
+    },
+    {
+      "id": "sunbathe",
+      "said": "Show me how you'd enjoy the sun on a warm day.",
+      "category": "everyday",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "face up, eyes closing, a slow relaxed stretch or lean back, a content face"
+    },
+    {
+      "id": "applaud",
+      "said": "Give me a round of applause.",
+      "category": "social",
+      "difficulty": 1,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "clapping hands in front of her, looking at him, a happy face"
+    },
+    {
+      "id": "hurt-toe",
+      "said": "You just stubbed your toe.",
+      "category": "comedic",
+      "difficulty": 3,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a sudden flinch and pain reaction: lifting or looking at the foot, a pained face, a fast onset then recovery"
+    },
+    {
+      "id": "doorway-peek",
+      "said": "Peek around a corner like you're spying.",
+      "category": "comedic",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "leaning sideways, head and eyes leading, slow and careful, a curious sly face"
+    },
+    {
+      "id": "goodbye-sad",
+      "said": "I have to go now. Bye for today.",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a fond goodbye wave, a slightly sad or warm face, looking at him"
+    },
+    {
+      "id": "warm-hands",
+      "said": "Rub your hands together to warm them up.",
+      "category": "fine-motor",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "both hands together in front moving back and forth, maybe blowing on them, shoulders up a little"
+    },
+    {
+      "id": "jump-scare-laugh",
+      "said": "Boo! Got you!",
+      "category": "reacting",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a startle with a jump, then relief and laughter, timed in that order"
+    },
+    {
+      "id": "meditate",
+      "said": "Show me how you'd calm yourself down.",
+      "category": "everyday",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-070 held out",
+      "rubric": "a slow deep breath, eyes closing, shoulders dropping, still and relaxed"
+    }
+  ]
+}

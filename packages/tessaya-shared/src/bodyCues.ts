@@ -4,6 +4,7 @@
  * G7 word-timed effects, the group's speaker); a body only renders them and never decides anything itself.
  */
 import { HAND_MOTIONS, type HandMotion } from "./bodyHand.ts";
+import { decodeHold, decodePerform, type Perform } from "./bodyPlanner.ts";
 import { fireAtMs, type EffectWhen } from "./speechEffects.ts";
 import {
   isAct,
@@ -361,6 +362,22 @@ export type BodyCue =
   | { readonly kind: "morphs"; readonly weights: Readonly<Record<string, number>> }
   /** Face weights held for `ms` over her mood's face. */
   | { readonly kind: "face"; readonly weights: Weights; readonly ms: number }
+  /** A whole performance the body composes over its current posture (bodyPlanner.ts), `bones` part of its base. */
+  | {
+      readonly kind: "perform";
+      readonly id: string;
+      readonly perform: Perform;
+      /** What the agent placed itself, kept as placed: held bones, and keys over time. */
+      readonly bones?: Partial<Record<PoseBone, Euler>>;
+      readonly keys?: ReadonlyArray<{
+        readonly atMs: number;
+        readonly bones: Partial<Record<PoseBone, Euler>>;
+      }>;
+      /** Channels the same step set itself (its own look or face), which the performance leaves alone. */
+      readonly keep?: ReadonlyArray<"look" | "face">;
+    }
+  /** Her involuntary systems held back for ms each (breath, blink, saccade, moodLeak, sway). */
+  | { readonly kind: "hold"; readonly systems: Readonly<Record<string, number>> }
   /** Cues the body plays by its own clock, each `atMs` after this one arrives (a move's later steps). */
   | {
       readonly kind: "seq";
@@ -524,6 +541,47 @@ export const parseCue = (raw: unknown): BodyCue | null => {
     }
     case "act":
       return isAct(c["act"]) ? { kind: "act", act: c["act"] } : null;
+    case "perform": {
+      const id = str(c["id"], 60);
+      const p = decodePerform(c["perform"]);
+      const bones = new Set<string>(POSE_BONES);
+      const pose = (v: unknown): Partial<Record<PoseBone, Euler>> =>
+        Object.fromEntries(
+          Object.entries((v ?? {}) as Record<string, unknown>).flatMap(([b, r]) =>
+            bones.has(b) &&
+            Array.isArray(r) &&
+            r.length === 3 &&
+            r.every((x) => num(x, -Math.PI, Math.PI) !== null)
+              ? [[b, r as unknown as Euler]]
+              : [],
+          ),
+        );
+      const base = pose(c["bones"]);
+      const keys = (Array.isArray(c["keys"]) ? c["keys"] : []).slice(0, 32).flatMap((k) => {
+        const at = num((k as { atMs?: unknown } | null)?.atMs, 0, 20_000);
+        return at === null ? [] : [{ atMs: at, bones: pose((k as { bones?: unknown }).bones) }];
+      });
+      return id && p.ok
+        ? {
+            kind: "perform",
+            id,
+            perform: p.perform,
+            ...(Object.keys(base).length === 0 ? {} : { bones: base }),
+            ...(keys.length < 2 ? {} : { keys }),
+            ...(Array.isArray(c["keep"])
+              ? {
+                  keep: (["look", "face"] as const).filter((k) =>
+                    (c["keep"] as ReadonlyArray<unknown>).includes(k),
+                  ),
+                }
+              : {}),
+          }
+        : null;
+    }
+    case "hold": {
+      const h = decodeHold(c["systems"]);
+      return h.ok ? { kind: "hold", systems: h.hold } : null;
+    }
     case "clip": {
       const id = str(c["id"], 40);
       const bones = new Set<string>(POSE_BONES);
