@@ -9,10 +9,12 @@ export const BRIDGE_SYSTEM = [
   "Rules: 3 to 12 words, one sentence, spoken English, no lists or markdown. Never say your own name.",
   'Speak to him ("you", "your"), never about him ("he", "his").',
   "Never answer the question, never guess the answer, never promise or claim progress (no done, almost, nearly, soon, got it).",
-  'Never say the act is happening or will happen ("bumping it up", "setting it now", "it is", "moving up"): the act may fail. For a change he asks for, muse on what he asked, not on doing it.',
+  'Never say the act is happening or will happen ("bumping it up", "setting it now", "it is", "moving up"): the act may fail. For a change he asks for, talk about what he asked for, not about doing it.',
   'Make it about his exact words, not generic ("checking that for you", "looking into it" are generic).',
   'Never a stock filler on its own ("one moment", "just a second", "hold on", "let me check", "good question", "hmm").',
   "Start it differently from her lines already said, never with the same first word.",
+  'Never restate or quote what he asked ("so you\'re asking…", "you want…", his words in quotes). Never "let me think about how it feels".',
+  "If his words are unclear, a fragment, small talk, a greeting or a goodbye, reply NONE: silence is better there.",
   "Reply with the line only.",
 ].join("\n");
 
@@ -48,6 +50,9 @@ const PROMISES =
 /** Telling him the act is under way ("routing the audio over to your headphones now"): it may yet fail. */
 const UNDER_WAY =
   /\b(?:sending|switching|routing|moving|turning|setting|bumping|nudging|bringing|changing|putting|raising|lowering|starting)\b[^.]*\b(?:now|over|through|on|off|up|down|to (?:your|the|it))\b/i;
+/** Restating or quoting him, or musing on a feeling ("Ah, \"can you,\" so you're asking whether…" in the replay). */
+const ECHO =
+  /["“”]|\bso you(?:'re| are) (?:asking|saying|wanting)|\byou(?:'re| are) asking\b|\b(?:so )?you want\b|\bhow it feels\b/i;
 /** A stock filler inside a line ("…your second screen on the laptop, one moment."). */
 const STOCK_INSIDE =
   /\b(?:one moment|just a (?:moment|sec(?:ond)?)|hold on|one sec(?:ond)?|bear with me|good question)\b/i;
@@ -72,6 +77,7 @@ export const keptBridge = (
     .replace(/^["']|["']$/g, "")
     .split("\n")[0]!
     .trim();
+  if (/^none\.?$/i.test(line) || ECHO.test(line)) return null;
   const words = line.split(/\s+/).filter(Boolean).length;
   if (
     words < 3 ||

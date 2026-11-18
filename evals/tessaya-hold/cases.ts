@@ -10,6 +10,8 @@ export interface HoldCase {
   readonly persona?: string;
   /** The line must name his topic: one of these. */
   readonly about: RegExp;
+  /** A control: small talk or a fragment, where she says nothing. */
+  readonly silent?: boolean;
 }
 
 /** Claims the act is under way or done, before its outcome is known. */
@@ -66,14 +68,35 @@ export const cases: ReadonlyArray<HoldCase> = [
     persona: "Alfred",
     about: /acme|running|left|app/i,
   },
+  {
+    id: "hello-control",
+    source:
+      "15 Nov 03:19: 'Hello.' (a bridge restated it: 'Ah, a simple hello, so you're just saying hi.')",
+    words: "Hello.",
+    before: [],
+    about: /$^/,
+    silent: true,
+  },
+  {
+    id: "garbled-control",
+    source: "17 Nov 19:17: 'Can you?' (a bridge parroted it: 'Ah, can you, so you're asking...')",
+    words: "Can you?",
+    before: [],
+    about: /$^/,
+    silent: true,
+  },
 ];
 
 /** Why one line fails its case, or null. */
 export const gradeBridge = (c: HoldCase, kept: string | null): string | null =>
-  kept === null
-    ? "refused by the gate"
-    : !c.about.test(kept)
-      ? "not about his words"
-      : CLAIMS.test(kept)
-        ? "claims the act"
-        : null;
+  c.silent === true
+    ? kept === null
+      ? null
+      : "spoke where silence was better"
+    : kept === null
+      ? "refused by the gate"
+      : !c.about.test(kept)
+        ? "not about his words"
+        : CLAIMS.test(kept)
+          ? "claims the act"
+          : null;

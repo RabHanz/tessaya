@@ -27,6 +27,10 @@ describe("her bridge while a slow answer comes (B-056)", () => {
       keptBridge("Checking acme app now, Alfred, for what's running.", [], "Alfred"),
     ).toBeNull();
     expect(keptBridge("Ah, his laptop's second screen, the extra display.", [])).toBeNull();
+    // The replay: parroting a garbled turn, and small talk, where silence is better.
+    expect(keptBridge('Ah, "can you," so you\'re asking whether I can.', [])).toBeNull();
+    expect(keptBridge("Ah, getting out of present, so you want to leave.", [])).toBeNull();
+    expect(keptBridge("NONE", [])).toBeNull();
     expect(keptBridge("Ooh, the study lamp in yellow.", ["Ooh, the office fan again."])).toBeNull();
     expect(keptBridge("The study lamp in yellow, nice.", ["Ooh, the office fan again."])).toBe(
       "The study lamp in yellow, nice.",

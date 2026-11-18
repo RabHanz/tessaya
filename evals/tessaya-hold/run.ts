@@ -71,7 +71,10 @@ for (const c of cases.filter((x) => values.case === undefined || values.case.inc
   }
   // A line the gate refuses is silence, which is allowed; a line she says must be good, and she must say some.
   const spoken = lines.filter((l) => l.kept !== null);
-  const pass = spoken.length > 0 && spoken.every((l) => l.why === null);
+  const pass =
+    c.silent === true
+      ? lines.every((l) => l.why === null)
+      : spoken.length > 0 && spoken.every((l) => l.why === null);
   rows.push({ id: c.id, pass, kept: spoken.length, lines });
   console.log(
     `${pass ? "pass" : "FAIL"}  ${c.id}: ${lines.map((l) => l.kept ?? `(${l.why})`).join(" | ")}`,
