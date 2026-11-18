@@ -58,6 +58,7 @@ import { createProfileSync, parseShared } from "./profileSync.ts";
 import {
   createRoomVoice,
   ROOM_CONFIG,
+  brainNotReached,
   brainOrLocal,
   fromBrainHub,
   loopBuses,
@@ -475,24 +476,13 @@ const link = (url: string): NonNullable<RoomDeps["link"]> => {
   };
 };
 
-/**
- * A brain that has not begun its answer this long after the request is taken as unreachable, and her hub's server answers.
- * shortcut: a brain that is up but this slow could run the turn too; a turn id the brain dedupes would close that.
- */
-const BRAIN_ANSWER_MS = 3_000;
 /** Her hub's own server's turn route, from the hub's bus URL. */
 const localBrainOf = (hub: string) =>
   new URL("/api/devices/r1/v1/chat/completions", hub.replace(/^ws/, "http")).toString();
 
 /** Tessaya's turn on her server, OpenAI chat-completions shape, streamed. */
-const brain = (url: string, key: string, answerMs?: number): RoomDeps["brain"] =>
+const brain = (url: string, key: string): RoomDeps["brain"] =>
   async function* (input, signal) {
-    // Only until the answer begins: the same signal also governs the streamed body.
-    const late = new AbortController();
-    const timer =
-      answerMs === undefined
-        ? undefined
-        : setTimeout(() => late.abort(new Error(`no answer in ${answerMs} ms`)), answerMs);
     const res = await fetch(url, {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
@@ -502,16 +492,15 @@ const brain = (url: string, key: string, answerMs?: number): RoomDeps["brain"] =
         tessaya: input.tessaya,
         device: input.deviceId,
       }),
-      signal: AbortSignal.any([signal, late.signal]),
-    })
-      .catch((e: unknown) => {
-        if (!signal.aborted) healthReport.brainFailed();
-        throw e;
-      })
-      .finally(() => clearTimeout(timer));
+      signal,
+    }).catch((e: unknown) => {
+      if (signal.aborted) throw e;
+      healthReport.brainFailed();
+      throw brainNotReached(String(e));
+    });
     if (!res.ok || res.body === null) {
       healthReport.brainFailed();
-      throw new Error(`Tessaya answered ${res.status}`);
+      throw brainNotReached(`Tessaya answered ${res.status}`);
     }
     const decoder = new TextDecoder();
     let buf = "";
@@ -1167,7 +1156,7 @@ const main = async () => {
         buses.brain === null
           ? brain(env("R1_BRAIN_URL"), deviceKey)
           : brainOrLocal(
-              brain(env("R1_BRAIN_URL"), deviceKey, BRAIN_ANSWER_MS),
+              brain(env("R1_BRAIN_URL"), deviceKey),
               brain(localBrainOf(bus), deviceKey),
               log,
             ),
