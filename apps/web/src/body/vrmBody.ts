@@ -47,6 +47,7 @@ import {
 import {
   QI,
   halfLifeOf,
+  qToEuler,
   makeRig,
   manifestOf,
   preparePose,
@@ -60,6 +61,7 @@ import {
   type RigManifest,
   type V3,
 } from "@t3tools/tessaya-shared/bodyRig";
+import type { BodyState } from "@t3tools/tessaya-shared/bodyControl";
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -214,6 +216,8 @@ export function mountBody(
     readonly onOutfit?: (pieces: ReadonlyArray<OutfitPiece>) => void;
     /** "body" frames all of her (the phone's touch view); the default frames head and shoulders. */
     readonly framing?: "bust" | "body";
+    /** Each time she comes to rest after moving: what her body is doing now (proprioception), for the layer to keep. */
+    readonly onSettle?: (state: BodyState) => void;
   } = {},
 ) {
   let tier = options.tier ?? startTier();
@@ -263,6 +267,11 @@ export function mountBody(
   let faceTo: Weights = {};
   let faceAt = 0;
   let look: string | null = null;
+  // direct control: where she was asked to look and until when, and the pace a direct pose was asked to arrive at
+  let gazeHold: { yaw: number; pitch: number; until: number } | null = null;
+  let pace = 1;
+  let seqTimers: Array<ReturnType<typeof setTimeout>> = [];
+  let settledSent = true;
   let override: {
     face: Weights;
     states?: States;
@@ -364,6 +373,7 @@ export function mountBody(
   };
   const setPose = (now: number) => {
     clip = null;
+    pace = 1;
     springing = true;
     armOut = { left: 0, right: 0 };
     lastMove = now;
@@ -447,7 +457,7 @@ export function mountBody(
       if (!node) continue;
       const g = goal[b] ?? QI;
       const s = springs.get(b) ?? { q: g, w: [0, 0, 0] as V3 };
-      const next = springing ? springStep(s, g, halfLifeOf(b), dt) : s;
+      const next = springing ? springStep(s, g, halfLifeOf(b) * pace, dt) : s;
       const done = settled(next, g);
       const shown = done ? { q: g, w: [0, 0, 0] as V3 } : next;
       if (!done) moving = true;
@@ -692,10 +702,17 @@ export function mountBody(
         const toHim = camera.position.clone().sub(eye);
         const himYaw = (Math.atan2(toHim.x, toHim.z) * 180) / Math.PI;
         const himPitch = (-Math.atan2(toHim.y, Math.hypot(toHim.x, toHim.z)) * 180) / Math.PI;
+        const held = gazeHold !== null && now < gazeHold.until ? gazeHold : null;
         vrm.lookAt.yaw =
-          toTouch === null ? himYaw + glance.yaw : (Math.atan2(toTouch.x, 0.6) * 180) / Math.PI;
+          toTouch !== null
+            ? (Math.atan2(toTouch.x, 0.6) * 180) / Math.PI
+            : held !== null
+              ? held.yaw
+              : himYaw + glance.yaw;
         vrm.lookAt.pitch =
-          -25 * roll + (1 - roll) * (toTouch === null ? himPitch + glance.pitch : -12 * felt);
+          -25 * roll +
+          (1 - roll) *
+            (toTouch !== null ? -12 * felt : held !== null ? held.pitch : himPitch + glance.pitch);
       }
       for (const p of [
         "happy",
@@ -783,7 +800,15 @@ export function mountBody(
     }
     if (active(now) || motion.tremble > 0.05) schedule(1000 / TIERS[tier]!.fps);
     else if (breathing()) schedule(1000 / Math.min(BREATH_FPS, TIERS[tier]!.fps));
-    else planBlink();
+    else {
+      planBlink();
+      // she has come to rest: tell the page what her body is doing now, once per settle
+      if (!settledSent) {
+        settledSent = true;
+        options.onSettle?.(bodyState());
+      }
+    }
+    if (active(now)) settledSent = false;
   };
 
   const schedule = (afterMs = 0) => {
@@ -946,6 +971,9 @@ export function mountBody(
     effects = [];
     gestures = [];
     override = null;
+    gazeHold = null;
+    for (const t of seqTimers) clearTimeout(t);
+    seqTimers = [];
     statesTo = {};
     motionTo = STILL;
     setFace(faceWeights("neutral", 0));
@@ -1035,10 +1063,31 @@ export function mountBody(
       case "clip":
         setPose(now);
         clip = { ...c, start: now };
+        // a direct pose asked to arrive in `ms`: her springs take that long instead of her own pace
+        pace = c.ms === undefined ? 1 : c.ms / 450;
         wake(now);
         return invalidate();
       case "zones":
         zones = c.zones;
+        return;
+      case "gaze":
+        gazeHold = { yaw: c.x * 30, pitch: -c.y * 20, until: now + c.ms };
+        lastMove = now;
+        // her eyes come back to him when it ends, even if nothing else is moving then
+        seqTimers.push(setTimeout(() => ((lastMove = performance.now()), invalidate()), c.ms));
+        return invalidate();
+      case "face":
+        override = { face: c.weights, until: now + c.ms };
+        setFace(c.weights, now);
+        seqTimers.push(setTimeout(invalidate, c.ms));
+        return;
+      case "seq":
+        for (const step of c.steps)
+          seqTimers.push(
+            setTimeout(() => {
+              for (const x of step.cues) cue(x);
+            }, step.atMs),
+          );
         return;
       case "expressions":
         expMap = c.map;
@@ -1289,8 +1338,64 @@ export function mountBody(
   sized.observe(canvas);
   canvas.hidden = true;
 
+  /** Where her hands are resting, from her joints: on her own body (hip, thigh, chest, face) or not. */
+  const contactsNow = (): BodyState["contacts"] => {
+    const out: Array<{ part: string; with: string }> = [];
+    const reach = 0.09 * (rig?.height ?? 1.6);
+    for (const side of ["left", "right"] as const) {
+      const hand = worldOf(`${side}Hand`);
+      if (!hand) continue;
+      for (const [part, bone] of [
+        ["face", "head"],
+        ["chest", "upperChest"],
+        ["hip", `${side}UpperLeg`],
+        ["thigh", `${side}LowerLeg`],
+        ["other hand", side === "left" ? "rightHand" : "leftHand"],
+      ] as const) {
+        const at = worldOf(bone as VRMHumanBoneName);
+        // a thigh is touched along it, so its midpoint stands for it
+        const p =
+          bone.endsWith("LowerLeg") && at
+            ? at.clone().lerp(worldOf(`${side}UpperLeg`) ?? at, 0.5)
+            : at;
+        if (p && hand.distanceTo(p) < reach) out.push({ part: `${side} hand`, with: part });
+      }
+    }
+    return out;
+  };
+  const bodyState = (): BodyState => ({
+    at: Date.now(),
+    vessel: "",
+    model,
+    posture: scenePose ?? affectPose,
+    moving: springing || (vrm !== null && active(performance.now())),
+    bones: Object.fromEntries(
+      [...springs].map(([b, s]) => [
+        b,
+        qToEuler(s.q).map((x) => Math.round(x * 1000) / 1000) as [number, number, number],
+      ]),
+    ),
+    face: Object.fromEntries(Object.entries(face).filter(([, w]) => (w ?? 0) > 0.01)) as Record<
+      string,
+      number
+    >,
+    gaze:
+      gazeHold !== null && performance.now() < gazeHold.until
+        ? { x: gazeHold.yaw / 30, y: -gazeHold.pitch / 20 }
+        : null,
+    corrected: issues.map((i) => ({
+      bone: i.bone,
+      kind: i.kind,
+      by: Math.round(i.by * 1000) / 1000,
+    })),
+    contacts: contactsNow(),
+    manifest,
+  });
+
   return {
     cue,
+    /** Her body now (proprioception): posture, every posed bone, face, gaze, contacts, corrections and manifest. */
+    state: bodyState,
     /** Bust or whole body, at any time (the page's "whole body" button). */
     frame: (next: "bust" | "body") => {
       framing = next;
@@ -1343,6 +1448,7 @@ export function mountBody(
       canvas.removeEventListener("pointerleave", offHer);
       offHer();
       if (holdTimer !== null) clearTimeout(holdTimer);
+      for (const t of seqTimers) clearTimeout(t);
       seen.disconnect();
       sized.disconnect();
       for (const id of props.keys()) dropProp(id);

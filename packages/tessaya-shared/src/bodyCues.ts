@@ -337,6 +337,20 @@ export type BodyCue =
       readonly loop: boolean;
       readonly grounded: boolean;
       readonly frames: ReadonlyArray<Partial<Record<PoseBone, Euler>>>;
+      /** How long the body takes to arrive (direct control); her own pace when absent. */
+      readonly ms?: number;
+    }
+  /** Where she looks, -1..1 across (her left +) and up, for `ms`; then back to him. */
+  | { readonly kind: "gaze"; readonly x: number; readonly y: number; readonly ms: number }
+  /** Face weights held for `ms` over her mood's face. */
+  | { readonly kind: "face"; readonly weights: Weights; readonly ms: number }
+  /** Cues the body plays by its own clock, each `atMs` after this one arrives (a move's later steps). */
+  | {
+      readonly kind: "seq";
+      readonly steps: ReadonlyArray<{
+        readonly atMs: number;
+        readonly cues: ReadonlyArray<BodyCue>;
+      }>;
     }
   /** Extra touch regions: within `radius` m of a humanoid bone, a touch is that region. */
   | {
@@ -383,6 +397,20 @@ export type BodyCue =
   | { readonly kind: "silent" };
 
 const VISEMES = new Set<string>(Object.keys(MOUTH));
+const FACE_PRESET_NAMES = new Set<string>([
+  "happy",
+  "angry",
+  "sad",
+  "relaxed",
+  "surprised",
+  "aa",
+  "ih",
+  "ou",
+  "ee",
+  "oh",
+  "blink",
+  "blinkLeft",
+]);
 const BONES = new Set<string>([
   "head",
   "neck",
@@ -501,6 +529,7 @@ export const parseCue = (raw: unknown): BodyCue | null => {
             loop: c["loop"] === true,
             grounded: c["grounded"] === true,
             frames,
+            ...(num(c["ms"], 80, 5000) === null ? {} : { ms: num(c["ms"], 80, 5000)! }),
           }
         : null;
     }
@@ -556,6 +585,37 @@ export const parseCue = (raw: unknown): BodyCue | null => {
         ...(intensity === null ? {} : { intensity }),
         ...(speed === null ? {} : { speed }),
       };
+    }
+    case "gaze": {
+      const x = num(c["x"], -1, 1);
+      const y = num(c["y"], -1, 1);
+      return x === null || y === null
+        ? null
+        : { kind: "gaze", x, y, ms: num(c["ms"], 100, 20_000) ?? 2500 };
+    }
+    case "face": {
+      const w = c["weights"];
+      if (w === null || typeof w !== "object") return null;
+      const weights: Weights = Object.fromEntries(
+        Object.entries(w as Record<string, unknown>).flatMap(([k, v]) => {
+          const n = num(v, 0, 1);
+          return FACE_PRESET_NAMES.has(k) && n !== null ? [[k, n]] : [];
+        }),
+      );
+      return { kind: "face", weights, ms: num(c["ms"], 100, 20_000) ?? 3000 };
+    }
+    case "seq": {
+      // one level deep: a step's cues are plain cues, never another sequence
+      const steps = (Array.isArray(c["steps"]) ? c["steps"] : []).slice(0, 8).flatMap((s) => {
+        const r = (s ?? {}) as Record<string, unknown>;
+        const atMs = num(r["atMs"], 0, 20_000);
+        const cues = (Array.isArray(r["cues"]) ? r["cues"] : [])
+          .slice(0, 12)
+          .map(parseCue)
+          .filter((x): x is BodyCue => x !== null && x.kind !== "seq");
+        return atMs === null ? [] : [{ atMs, cues }];
+      });
+      return steps.length === 0 ? null : { kind: "seq", steps };
     }
     case "level": {
       const value = num(c["value"], 0, 1);

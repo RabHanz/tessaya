@@ -85,6 +85,7 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as EnvironmentAuth from "../../../auth/EnvironmentAuth.ts";
 import * as PhonePairing from "../../../tessaya/PhonePairing.ts";
 import { readCaller } from "../../threadAccess.ts";
+import * as BodyHandlers from "../body/handlers.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
 import * as HomeHandlers from "../home/handlers.ts";
 import { vesselOf } from "../home/handlers.ts";
@@ -374,6 +375,7 @@ export const layer = McpToolAccess.toLayer(
         { linkedCallers: "allowed" },
       ),
       ...(yield* HomeHandlers.make),
+      ...(yield* BodyHandlers.make),
       ...(yield* DeviceHandlers.make),
       ...(yield* SettingsHandlers.make),
       ...(yield* MembersHandlers.make),

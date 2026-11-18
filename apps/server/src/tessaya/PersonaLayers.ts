@@ -176,6 +176,18 @@ export interface PersonaLayer {
   readonly http: (request: LayerHttpRequest) => Promise<LayerHttpResponse>;
   /** Whether a session is open on this vessel, so its client can keep the screen out of capture. Nothing more. */
   readonly active?: (vessel: string) => boolean;
+  /**
+   * Her body asked to move (TessayaBody): bounded cues, whether they need the private gate, and owner-extension acts
+   * for the layer to resolve at its level. Null when no session of the layer is open, so the move goes elsewhere.
+   */
+  readonly body?: (move: {
+    readonly cues: ReadonlyArray<unknown>;
+    readonly private: boolean;
+    readonly acts: ReadonlyArray<string>;
+    readonly by: string;
+  }) => { readonly ok: boolean; readonly said: string } | null;
+  /** What the body on its open session last reported of itself (bodyControl BodyState); null when none is open. */
+  readonly bodyState?: () => unknown;
 }
 
 /** The loaded layers: empty in every public build, filled once at startup in an internal one. */
