@@ -189,17 +189,38 @@ export const make = Effect.gen(function* () {
   const file = NodePath.join(config.stateDir, "voice", "dictionary.json");
   const oneAtATime = yield* Semaphore.make(1);
   const brain = yield* makeBrainLink;
+  /** This server's own words have reached the brain; false at start and after a change made while it was away. */
+  let uploaded = false;
   /** The brain's list after `change` (none: just read), cached here; None on the brain or while it can't be reached. */
   const atBrain = Effect.fn("TessayaVocabulary.atBrain")(
     function* (change: VocabularyChange | null) {
       if (yield* brain.isBrain) return Option.none<ReadonlyArray<VocabularyEntry>>();
+      // His words here go up before the brain's list may replace this file, so none is lost to the cache.
+      // shortcut: additive, so a word removed here while the brain was away stays there; a tombstone list would carry it.
+      if (!uploaded) {
+        const mine = readStored(file);
+        if (mine === null) return Option.none<ReadonlyArray<VocabularyEntry>>();
+        if (
+          mine.length > 0 &&
+          Option.isNone(
+            yield* brain.send("vocabulary", { change: { verb: "learn", entries: mine } }),
+          )
+        )
+          return Option.none<ReadonlyArray<VocabularyEntry>>();
+        uploaded = true;
+      }
       const answer = Option.flatMap(yield* brain.send("vocabulary", { change }), decodeAtBrain);
       if (Option.isNone(answer)) return Option.none<ReadonlyArray<VocabularyEntry>>();
       const stored = parseVocabulary(answer.value.stored);
       yield* oneAtATime.withPermits(1)(
         Effect.sync(() => {
-          if (JSON.stringify(readStored(file)) !== JSON.stringify(stored))
+          const here = readStored(file);
+          // A file it cannot read is left for him to mend; the first time the cache replaces his own file, a copy stays.
+          if (here !== null && JSON.stringify(here) !== JSON.stringify(stored)) {
+            const kept = NodePath.join(NodePath.dirname(file), "dictionary.before-brain.json");
+            if (here.length > 0 && !NodeFS.existsSync(kept)) NodeFS.copyFileSync(file, kept);
             writeStored(file, stored);
+          }
         }),
       );
       return Option.some(parseVocabulary(answer.value.all));
@@ -275,6 +296,8 @@ export const make = Effect.gen(function* () {
         return withNames(next, yield* names);
       }),
     );
+    // Made here while her brain was away: it goes up with his other words at the next reach.
+    if (!(yield* brain.isBrain)) uploaded = false;
     yield* deriveCustomWords(all).pipe(Effect.ignore);
     return all;
   });
@@ -306,14 +329,6 @@ export const make = Effect.gen(function* () {
     else yield* deriveCustomWords(known);
   });
   yield* adopt.pipe(Effect.ignore);
-  // What this server's cache learned while her brain was away goes to the brain once it is up.
-  // shortcut: additive, so a word removed here while the brain was away stays there; a tombstone list would carry it.
-  yield* Effect.suspend(() => {
-    const stored = readStored(file);
-    return stored === null || stored.length === 0
-      ? Effect.void
-      : atBrain({ verb: "learn", entries: stored });
-  }).pipe(Effect.delay("1 minute"), Effect.ignore, Effect.forkScoped);
 
   const stored = Effect.sync(() => readStored(file) ?? []);
   return TessayaVocabulary.of({ read, stored, change });
