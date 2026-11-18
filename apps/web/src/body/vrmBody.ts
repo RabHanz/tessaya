@@ -41,6 +41,19 @@ const SETTLE_MS = 600;
 const LEVEL_HOLD_MS = 400;
 /** Breathing alone is slow: drawn at this ceiling unless something faster moves too. */
 const BREATH_FPS = 12;
+/**
+ * VRM 0.x keeps its X and Z axes flipped on three-vrm's normalized rig even after rotateVRM0 (three-vrm's own retarget
+ * example negates them too), so the same pose would raise the arms. Mirroring the normalized rotations around the update
+ * lets every pose here be written once, in VRM 1.0's axes.
+ */
+const flipVrm0 = (vrm: VRM) => {
+  for (const b of Object.values(vrm.humanoid.normalizedHumanBones)) {
+    const r = b?.node.rotation;
+    if (r) r.set(-r.x, r.y, -r.z);
+  }
+};
+/** Body expressions a model may carry, driven from her motion and states rather than set directly. */
+const BODY_EXPRESSIONS = ["breath", "flush", "hairDamp"] as const;
 /** How quickly the intimate states and motion follow their targets (per second, exponential). */
 const FOLLOW = 3;
 const TOUCH_BONES: ReadonlyArray<BodyBone> = [
@@ -128,6 +141,8 @@ export function mountBody(
   let style: Style = "anime";
   let overlays: ReturnType<typeof makeOverlays> | null = null;
   let own = new Set<string>();
+  let bodyOwn = new Set<string>();
+  let vrm0 = false;
   let speech: { track: ReadonlyArray<VisemeSegment>; start: number; end: number } | null = null;
   let effects: Array<{ at: number; face?: string; gesture?: string }> = [];
   let level: { value: number; viseme?: VisemeSegment["viseme"]; at: number } | null = null;
@@ -271,11 +286,23 @@ export function mountBody(
     restPose();
     const exhale = applyMotion((n) => vrm!.humanoid.getNormalizedBoneNode(n), motion, now / 1000);
     const added = stateWeights(states, style, exhale, (n) => own.has(n));
-    overlays?.set(states);
+    // drawn overlays only for the states the model can't show itself
+    overlays?.set(
+      own.size === 0
+        ? states
+        : Object.fromEntries(Object.entries(states).filter(([n]) => !own.has(n))),
+    );
 
     const em = vrm.expressionManager;
     if (em !== undefined) {
       for (const n of own) em.setValue(n, states[n as keyof States] ?? 0);
+      // a model's own body shapes: chest and belly rise on the inhale, skin flushes with her blush, hair dampens with sweat
+      for (const [n, w] of [
+        ["breath", motion.breath * (1 - exhale)],
+        ["flush", states.blush ?? 0],
+        ["hairDamp", states.sweat ?? 0],
+      ] as const)
+        if (bodyOwn.has(n)) em.setValue(n, w);
       // rolled-up eyes through the model's own lookAt (three-vrm: negative pitch looks up)
       if (vrm.lookAt && !own.has("eyesRoll")) vrm.lookAt.pitch = -25 * (states.eyesRoll ?? 0);
       for (const p of [
@@ -328,7 +355,9 @@ export function mountBody(
       t.node.rotation.x = t.x + kin.tailDroop / Math.max(1, tails.length);
     }
     for (const p of props.values()) if (p.on) p.mixer?.update(delta * p.rate);
+    if (vrm0) flipVrm0(vrm);
     vrm.update(delta);
+    if (vrm0) flipVrm0(vrm);
     renderer.render(scene, camera);
     frames++;
     const spent = performance.now() - t0;
@@ -395,6 +424,8 @@ export function mountBody(
     overlays = makeOverlays(next, style);
     // states the model carries itself as custom expressions win over the built ones
     own = new Set(INTIMATE_STATES.filter((n) => next.expressionManager?.getExpression(n)));
+    vrm0 = next.meta.metaVersion === "0";
+    bodyOwn = new Set(BODY_EXPRESSIONS.filter((n) => next.expressionManager?.getExpression(n)));
     const humanoid = new Set(Object.values(vrm.humanoid.humanBones).map((b) => b?.node));
     ears = [];
     tails = [];
