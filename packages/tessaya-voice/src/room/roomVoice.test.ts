@@ -1180,6 +1180,15 @@ describe("waking by name with no session open", () => {
     ]);
   });
 
+  it("sends her live volume with each turn, so the brain answers it without a tool round (18 Nov, 23:07)", async () => {
+    const t = setup();
+    t.room.message(`freya/r1/${DEV}/state/volume`, Buffer.from('{"pct":40}'));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls.at(-1)?.tessaya.volume).toBe(40);
+  });
+
   it("wears a persona her server puts on this Tessel mid-session, once her reply has ended", async () => {
     const t = setup();
     t.room.message(`freya/r1/${DEV}/voice/cast`, Buffer.from('{"persona":"executive"}'));

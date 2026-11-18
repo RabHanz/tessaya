@@ -92,6 +92,8 @@ export interface TurnEnvelope {
   readonly tainted?: boolean | undefined;
   /** Where her voice plays now, live from the vessel that heard it; over any older record of the device's. */
   readonly plays?: "bt" | "onboard" | undefined;
+  /** Her volume now (0-100), live from the vessel; over the device record, which may be another hub's. */
+  readonly volume?: number | undefined;
   /** The app in front, for a vessel with a screen ("excel.exe"): which of his skills fit. */
   readonly app?: string | null | undefined;
   /** The project the turn is about (the focused session's); other projects' items stay out. */
@@ -347,6 +349,7 @@ export const hereLine = (
   home: ReadonlyArray<string> | null,
   now: number,
   plays?: "bt" | "onboard",
+  volume?: number,
 ): string => {
   const parts: string[] = [];
   if (device !== null) {
@@ -370,9 +373,11 @@ export const hereLine = (
       parts.push(
         `Your voice plays ${plays === "bt" ? "through Bluetooth (his headphones or speaker)" : "on its own speaker"} right now, live from it.`,
       );
+    if (volume !== undefined) parts.push(`Its volume is ${volume}% right now, live from it.`);
     const open = device.items
       .filter((i) => i.privacy !== true && i.group !== "body")
       .filter((i) => plays === undefined || !LIVE_FROM_VESSEL.has(i.id))
+      .filter((i) => volume === undefined || i.id !== "audio.volume")
       .toSorted((a, b) => hereRank(a.id) - hereRank(b.id));
     // He said the battery is irrelevant while it charges (16 Nov), so it is not there to be said.
     const charging = valueOf("power.charging")?.value === true;
@@ -1086,12 +1091,13 @@ export const make = Effect.gen(function* () {
       ? null
       : yield* registry.value.get(turn.vessel.id).pipe(Effect.orElseSucceed(() => null));
     const now = yield* Clock.currentTimeMillis;
-    if (member === null || turn.sharedRoom === true) return hereLine(device, null, now, turn.plays);
+    if (member === null || turn.sharedRoom === true)
+      return hereLine(device, null, now, turn.plays, turn.volume);
     const names: string[] = [];
     for (const p of (yield* presence.estimate()).members)
       if (p.confidence >= PRESENCE_BARS.around)
         names.push(p.guest ? GUEST_NAME : ((yield* memberName(p.member)) ?? p.member));
-    return hereLine(device, names, now, turn.plays);
+    return hereLine(device, names, now, turn.plays, turn.volume);
   });
 
   /**

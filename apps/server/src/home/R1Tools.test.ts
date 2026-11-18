@@ -18,6 +18,12 @@ import {
 import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
+import * as Layer from "effect/Layer";
+
+import { EnvironmentId } from "@t3tools/contracts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { DeviceRefusedError } from "./DeviceRegistry.ts";
 import { HomeDevices } from "./HomeDevices.ts";
 
 const decodes = (name: keyof typeof TessayaToolkit.tools, input: unknown) => {
@@ -249,5 +255,40 @@ effectIt.effect(
         ["r1-here", "up"],
         ["r1-kitchen", 40],
       ]);
+      // 18 Nov, 23:07: the brain's turn set Tumble to 40% on its own hub, where she isn't; the server whose hub has her
+      // sets it, and only a refusal from every server is said as one.
+      const NOT_HERE = "It didn't go through: Tumble isn't linked to this server's hub right now.";
+      const asked: unknown[] = [];
+      const there = yield* setRoomVolume({ to: 40 }, "r1-3d57b3").pipe(
+        Effect.provideService(HomeAssistantService, {
+          device: Effect.succeed({ deviceId: "r1-3d57b3" }),
+        } as never),
+        Effect.provideService(HomeDevices, {
+          command: () => Effect.fail(new DeviceRefusedError({ why: NOT_HERE, notLinked: true })),
+        } as never),
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.mock(PeerLinks.PeerLinks)({
+              enabled: Effect.succeed(true),
+              list: Effect.succeed([
+                {
+                  environmentId: EnvironmentId.make("env-home"),
+                  label: "home",
+                  status: "reachable",
+                },
+              ] as never),
+            }),
+            Layer.mock(PeerMcpClient.PeerMcpClient)({
+              call: (input) =>
+                Effect.sync(() => {
+                  asked.push([input.tool, input.arguments]);
+                  return { ok: true, value: { status: "done", line: "Volume 40%." } };
+                }) as never,
+            }),
+          ),
+        ),
+      );
+      expect(there).toMatchObject({ text: "Volume 40%.", isError: false });
+      expect(asked).toMatchObject([["set_device_volume", { id: "r1-3d57b3", to: 40 }]]);
     }),
 );

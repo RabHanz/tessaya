@@ -58,6 +58,7 @@ import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices } from "./HomeDevices.ts";
+import { onPeer } from "../peer/PeerVessels.ts";
 import { StepUps } from "./StepUps.ts";
 import { VoiceForgets } from "../tessaya/VoiceForgets.ts";
 import { askHisYes, VesselHands } from "../tessaya/VesselHands.ts";
@@ -307,7 +308,37 @@ export const setRoomVolume = Effect.fn("R1Tools.volume")(function* (
     .pipe(
       Effect.map((o): ToolOutcome => ({ text: o.line, isError: false })),
       Effect.catchTags({
-        DeviceRefusedError: (e) => Effect.succeed<ToolOutcome>({ text: e.why, isError: true }),
+        DeviceRefusedError: (e) =>
+          e.notLinked !== true
+            ? Effect.succeed<ToolOutcome>({ text: e.why, isError: true })
+            : // On another server's hub (the brain's turn, her hub local): that server sets it, as device_set does.
+              onPeer(
+                "set_device_volume",
+                { id: target, to: (input as { readonly to?: unknown }).to },
+                {
+                  takes: (v) => (v as { readonly notLinked?: unknown }).notLinked !== true,
+                  wait: "4 seconds",
+                },
+              ).pipe(
+                Effect.map((held): ToolOutcome => {
+                  const answer = held?.value as
+                    | {
+                        readonly ok?: unknown;
+                        readonly error?: unknown;
+                        readonly value?: { readonly line?: unknown };
+                      }
+                    | undefined;
+                  if (answer === undefined) return { text: e.why, isError: true };
+                  // Refused there too, for its own reason: said as that, never as done.
+                  if (answer.ok !== true)
+                    return {
+                      text: typeof answer.error === "string" ? answer.error : e.why,
+                      isError: true,
+                    };
+                  const line = answer.value?.line;
+                  return { text: typeof line === "string" ? line : "Done.", isError: false };
+                }),
+              ),
       }),
     );
 });

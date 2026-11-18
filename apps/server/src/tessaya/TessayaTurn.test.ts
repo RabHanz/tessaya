@@ -1200,6 +1200,16 @@ it("tells every turn where she is in a few dozen tokens: vessel, body, room, wha
   const live = hereLine(playing, null, now, "bt");
   assert.include(live, "plays through Bluetooth");
   assert.notInclude(live, "Output speaker");
+  // 18 Nov, 23:07: "What percentage is the volume?" took a tool round on the brain, whose record was another hub's 10%.
+  // The vessel's live volume answers it, over that record.
+  const loud = {
+    ...device,
+    items: [...device.items, item("audio.volume", "Volume", "read,write", { unit: "%" })],
+    values: [...device.values, { itemId: "audio.volume", value: 10, at: "2026-11-14T09:00:00Z" }],
+  };
+  const heard = hereLine(loud, null, now, "onboard", 40);
+  assert.include(heard, "Its volume is 40% right now, live from it.");
+  assert.notInclude(heard, "Volume 10%");
   // A guest's turn (no member) is not told who lives here; nothing known is nothing said.
   assert.strictEqual(hereLine(null, null, now), "");
   assert.isAtMost(
