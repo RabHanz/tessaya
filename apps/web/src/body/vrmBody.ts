@@ -54,6 +54,8 @@ import {
   manifestOf,
   preparePose,
   settled,
+  SOFT_DEPTH,
+  softContacts,
   springStep,
   type BoneSpring,
   type Q,
@@ -64,6 +66,7 @@ import {
   type V3,
 } from "@t3tools/tessaya-shared/bodyRig";
 import type { BodyState } from "@t3tools/tessaya-shared/bodyControl";
+import { softenOnContact } from "./softContact.ts";
 import {
   euroStep,
   handContact,
@@ -113,6 +116,25 @@ const flipVrm0 = (vrm: VRM) => {
   }
 };
 /** Lower the left arm by a radian on the normalized rig: a hand that rises means this model turns Z the other way. */
+const CONTACT_BONES = [
+  "hips",
+  "spine",
+  "chest",
+  "upperChest",
+  "neck",
+  "head",
+  "leftLowerArm",
+  "rightLowerArm",
+  "leftHand",
+  "rightHand",
+  "leftUpperLeg",
+  "rightUpperLeg",
+  "leftLowerLeg",
+  "rightLowerLeg",
+  "leftFoot",
+  "rightFoot",
+] as const satisfies ReadonlyArray<VRMHumanBoneName>;
+
 const mirroredOf = (vrm: VRM): boolean => {
   const arm = vrm.humanoid.getNormalizedBoneNode("leftUpperArm");
   const hand =
@@ -440,6 +462,7 @@ export function mountBody(
   let motion: Motion = STILL;
   let style: Style = "anime";
   let overlays: ReturnType<typeof makeOverlays> | null = null;
+  let soft: ReturnType<typeof softenOnContact> | null = null;
   let own = new Set<string>();
   // ARKit unit (any case) -> the model's own expression name, when it carries perfect sync
   let sync: Map<string, string> | null = null;
@@ -948,6 +971,27 @@ export function mountBody(
     const f2 = 1 - Math.exp(-4 * delta);
     if (settleBody(f2) || placeCamera(f2)) lastMove = now;
     if (drawHand(now)) lastMove = now;
+    if (soft !== null && rig !== null) {
+      const pos: Record<string, V3> = {};
+      for (const b of CONTACT_BONES) {
+        const p = worldOf(b);
+        if (p) pos[b] = [p.x, p.y, p.z];
+      }
+      const own = softContacts(rig, pos, 3);
+      // his hand gives her skin too, as firmly as he presses
+      const his =
+        handFrame !== null && handHeld && handFrame.pressure > 0.05
+          ? [
+              {
+                at: handFrame.palm,
+                normal: handFrame.normal.map((v) => -v) as unknown as V3,
+                radius: handLength() * 0.5,
+                depth: SOFT_DEPTH * 1.25 * handFrame.pressure,
+              },
+            ]
+          : [];
+      soft.set([...his, ...own]);
+    }
     renderer.render(scene, camera);
     frames++;
     const spent = performance.now() - t0;
@@ -1027,6 +1071,7 @@ export function mountBody(
     sun.intensity = 1.5 * k;
     rim.intensity = 1.3 * k;
     overlays = makeOverlays(next, style);
+    soft = softenOnContact(next.scene);
     // states the model carries itself as custom expressions win over the built ones
     own = new Set(INTIMATE_STATES.filter((n) => next.expressionManager?.getExpression(n)));
     const names = new Map(
