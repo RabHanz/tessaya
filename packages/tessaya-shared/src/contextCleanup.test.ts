@@ -2,12 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { cleanupFires, keptCleanup } from "./contextCleanup.ts";
 
-const NAMES = ["Tessaya", "Alfred", "Freya", "Onyx", "Sebastian", "Tessel", "Tumble", "VentureOS"];
+const NAMES = ["Tessaya", "Alfred", "Freya", "Onyx", "Sebastian", "Tessel", "Tumble", "BillingHub"];
 
 describe("the room's clean-up fires only on words that look misheard (19 Nov replay)", () => {
   it("fires on a near-miss of his names and a recipient-less send, never on a clear turn", () => {
     for (const heard of [
-      "What about adventure or us?",
+      "What about bill in hub?",
       "I was talking to Anfrey.",
       "One's for The Tesla why not use those?",
       "Okay good, send me something fun.",
@@ -24,8 +24,8 @@ describe("the room's clean-up fires only on words that look misheard (19 Nov rep
   });
 
   it("keeps only a plausible fix of his words", () => {
-    expect(keptCleanup("What about adventure or us?", "What about VentureOS?")).toBe(
-      "What about VentureOS?",
+    expect(keptCleanup("What about bill in hub?", "What about BillingHub?")).toBe(
+      "What about BillingHub?",
     );
     expect(keptCleanup("send me something fun", '"tell me something fun"')).toBe(
       "tell me something fun",

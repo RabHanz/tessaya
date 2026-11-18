@@ -1350,12 +1350,12 @@ describe("the house read before a turn", () => {
 });
 
 describe("a room turn that looks misheard is fixed from the talk before it", () => {
-  const NAMES = ["Tessaya", "Alfred", "Freya", "VentureOS"];
+  const NAMES = ["Tessaya", "Alfred", "Freya", "BillingHub"];
   const run = (heard: string, settings: { tessayaRoomCleanup?: boolean } = {}) => {
     const asked: string[] = [];
     const out = contextCleaned(
       heard,
-      [{ role: "assistant", content: "The VentureOS session is open." }],
+      [{ role: "assistant", content: "The BillingHub session is open." }],
       NAMES,
     ).pipe(
       Effect.provide(
@@ -1364,7 +1364,7 @@ describe("a room turn that looks misheard is fixed from the talk before it", () 
             cleanup: (input) =>
               Effect.sync(() => {
                 asked.push(input.message);
-                return { configured: true, text: "What about VentureOS?", ms: 300 } as const;
+                return { configured: true, text: "What about BillingHub?", ms: 300 } as const;
               }),
           }),
           ServerSettingsService.layerTest(settings),
@@ -1375,15 +1375,15 @@ describe("a room turn that looks misheard is fixed from the talk before it", () 
   };
   effectIt.effect("fixes a near-miss, and never asks on a clear turn or with the setting off", () =>
     Effect.gen(function* () {
-      // 18 Nov 00:50: "What about adventure or us?" for VentureOS.
-      const misheard = run("What about adventure or us?");
-      expect(yield* misheard.out).toBe("What about VentureOS?");
-      expect(misheard.asked[0]).toContain("The VentureOS session is open.");
+      // As 18 Nov 00:50, his project heard as ordinary words.
+      const misheard = run("What about bill in hub?");
+      expect(yield* misheard.out).toBe("What about BillingHub?");
+      expect(misheard.asked[0]).toContain("The BillingHub session is open.");
       const clear = run("What time is it?");
       expect(yield* clear.out).toBe("What time is it?");
       expect(clear.asked).toEqual([]);
-      const off = run("What about adventure or us?", { tessayaRoomCleanup: false });
-      expect(yield* off.out).toBe("What about adventure or us?");
+      const off = run("What about bill in hub?", { tessayaRoomCleanup: false });
+      expect(yield* off.out).toBe("What about bill in hub?");
       expect(off.asked).toEqual([]);
     }),
   );
