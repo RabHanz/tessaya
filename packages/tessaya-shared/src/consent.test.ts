@@ -1,6 +1,34 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { grantLabel, lookAsks, LOOK_GRANT, standingKey, stands, withGrant } from "./consent.ts";
+import {
+  grantHolds,
+  grantLabel,
+  grantNamed,
+  lookAsks,
+  LOOK_GRANT,
+  standingKey,
+  stands,
+  withGrant,
+  withScopedGrant,
+} from "./consent.ts";
+
+describe("his scoped grants", () => {
+  it("names the yes his words take back, and keeps one grant per key and scope", () => {
+    const schedule = standingKey("job_schedule", "It runs by itself later.");
+    const keys = [LOOK_GRANT, schedule];
+    expect(grantNamed(keys, "stop letting you look at my screen")).toBe(LOOK_GRANT);
+    expect(grantNamed(keys, "ask me again before scheduling jobs")).toBe(schedule);
+    expect(grantNamed(keys, "the kettle")).toBeNull();
+    const owner = { key: LOOK_GRANT, member: "owner" };
+    const twice = withScopedGrant(withScopedGrant([], owner, true), owner, true);
+    expect(twice).toEqual([owner]);
+    const scoped = withScopedGrant(twice, { ...owner, device: "r1" }, true);
+    expect(scoped).toHaveLength(2);
+    expect(withScopedGrant(scoped, owner, false)).toEqual([]);
+    expect(grantHolds(scoped, LOOK_GRANT, { member: "owner", assurance: 1 }, 0)).toBe(true);
+    expect(grantHolds(scoped, LOOK_GRANT, { member: null, assurance: 2 }, 0)).toBe(false);
+  });
+});
 
 describe("his standing yeses", () => {
   it("he allows a look at his screen once and is never asked again on any vessel, while a guest still is", () => {

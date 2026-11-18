@@ -1484,22 +1484,19 @@ export const startScreenCompanion = (input: {
       })
     )
       return true;
-    // A paired device's turn may get one look, never an hour or always.
+    // A device's turn gets no hour (whoever is at it may not be him) but may be allowed always: his server then lets a
+    // later device turn look only while Voice ID knows him (grantHolds), so a guest or an unverified voice is asked.
     const lasting = !turnLock.deviceRunning();
+    const allow = forWhat === null ? "Allow" : `Allow for this ${forWhat}`;
     let how: "always" | "words" | null = null;
     const answered = await askHandsFree(
       {
         title: "Let Tessaya see your screen?",
         detail: `To answer: “${question}”\n\n${forWhat === null ? "One screenshot of each display goes to Claude on your subscription." : `Screenshots are taken during this ${forWhat}, after each step, until it ends.`} Nothing is stored after the answer.`,
         buttons: lasting
-          ? [
-              forWhat === null ? "Allow" : `Allow for this ${forWhat}`,
-              "Allow for an hour",
-              "Always allow",
-              "Not now",
-            ]
-          : [forWhat === null ? "Allow" : `Allow for this ${forWhat}`, "Not now"],
-        cancel: lasting ? 3 : 1,
+          ? [allow, "Allow for an hour", "Always allow", "Not now"]
+          : [allow, "Always allow", "Not now"],
+        cancel: lasting ? 3 : 2,
         scoped: true,
       },
       "Can I see your screen? Yes or no.",
@@ -1508,12 +1505,9 @@ export const startScreenCompanion = (input: {
       undefined,
       (h) => (how = h),
     );
-    // "Always" said aloud is the Always allow button.
-    const response = lasting && answered === 0 && how === "always" ? 2 : answered;
-    if (!lasting) {
-      await new Promise((r) => setTimeout(r, 300));
-      return response === 0;
-    }
+    // "Always" said aloud is the Always allow button; a device's three buttons read as the four.
+    const response =
+      answered === 0 && how === "always" ? 2 : lasting ? answered : ([0, 2, 3][answered] ?? 3);
     if (response === 1) allowedUntil = Date.now() + 60 * 60_000;
     if (response === 2) {
       save({ captureApproval: "always" });

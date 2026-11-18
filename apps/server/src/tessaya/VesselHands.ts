@@ -81,9 +81,13 @@ const handsOrigin = (origin: TurnOriginValue): HandsOrigin => ({
   tainted: origin.tainted === true,
 });
 
+/** The box each identical ask is waiting on, per broker: a second ask for the same act joins the first box. */
+const asking = new WeakMap<HandsBroker, Map<string, Promise<HandsResult>>>();
+
 /**
  * His yes in the desktop's own approval box, for a desk turn running here; "unreachable" when the desktop is not
- * listening or does not answer, so the caller asks his phone instead.
+ * listening or does not answer, so the caller asks his phone instead. The same act asked again while its box is up
+ * gets that box's answer, not a second box.
  */
 export const askHisYes = (
   hands: HandsBroker,
@@ -92,14 +96,23 @@ export const askHisYes = (
   /** A standing-yes key: the box offers "Always allow", answered "always". */
   key: string | null = null,
 ) =>
-  Effect.promise(() =>
-    hands.call(
-      `turn:${origin.label}`,
-      HIS_YES,
-      key === null ? { what } : { what, key },
-      handsOrigin(origin),
-    ),
-  ).pipe(
+  Effect.promise(() => {
+    const open = asking.get(hands) ?? new Map<string, Promise<HandsResult>>();
+    asking.set(hands, open);
+    const id = JSON.stringify([what, key]);
+    const was = open.get(id);
+    if (was !== undefined) return was;
+    const answer = hands
+      .call(
+        `turn:${origin.label}`,
+        HIS_YES,
+        key === null ? { what } : { what, key },
+        handsOrigin(origin),
+      )
+      .finally(() => open.delete(id));
+    open.set(id, answer);
+    return answer;
+  }).pipe(
     Effect.map((r): "yes" | "always" | "no" | "unreachable" =>
       !r.ok ? "unreachable" : r.text === "yes" || r.text === "always" ? r.text : "no",
     ),

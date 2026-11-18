@@ -20,7 +20,7 @@ import {
   type TrustAgent,
 } from "@t3tools/tessaya-shared/trust";
 import { BATON_TOOL_PREFIX } from "@t3tools/tessaya-shared/operator";
-import { standingKey, stands } from "@t3tools/tessaya-shared/consent";
+import { standingKey } from "@t3tools/tessaya-shared/consent";
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
@@ -108,6 +108,8 @@ const ROOM_TOOLS = [
   "tessaya_ask",
   "tessaya_ask_status",
   "tessaya_pronounce",
+  // His standing yeses by voice: "stop letting you look at my screen".
+  "tessaya_always_allowed",
   // His prompt lab (B-030): "try my variant B on Sonnet"; making one live waits for his yes.
   "tessaya_prompt_lab",
   "settings_find",
@@ -707,9 +709,12 @@ const makeRunners = Effect.gen(function* () {
   const stepUps = yield* Effect.serviceOption(StepUps);
   const voices = yield* Effect.serviceOption(VoiceForgets);
   const consent = yield* Effect.serviceOption(Consent);
-  const grants = Option.isSome(consent) ? consent.value.read : Effect.succeed([]);
-  const grant = (key: string) =>
-    Option.isSome(consent) ? Effect.asVoid(consent.value.set(key, true)) : Effect.void;
+  const granted = (key: string, origin: Parameters<Consent["Service"]["holds"]>[1]) =>
+    Option.isSome(consent) ? consent.value.holds(key, origin) : Effect.succeed(false);
+  const grant = (key: string, member: string | null | undefined) =>
+    Option.isSome(consent)
+      ? Effect.asVoid(consent.value.set(key, true, { member: member ?? OWNER_MEMBER_ID }))
+      : Effect.void;
   // A replay's own rehearsed jobs, by its device: listed with the real ones so the next sentence can act on one.
   const rehearsed = new Map<string, Array<Record<string, unknown>>>();
   /**
@@ -791,12 +796,7 @@ const makeRunners = Effect.gen(function* () {
             Effect.provideService(TurnOrigin, { ...o, assurance: CARD_YES }),
           );
         // His "Always allow", given on any vessel, is his yes here; never a guest's or an unverified voice's.
-        if (
-          origin !== null &&
-          !origin.tainted &&
-          stands(yield* grants, key, { his: hisOwnTurn(origin) })
-        )
-          return yield* asCard(origin);
+        if (yield* granted(key, origin)) return yield* asCard(origin!);
         const what = `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`;
         // A desk turn on the brain asks in his desktop's own approval box; his phone is asked only when it can't be.
         if (!vessel.holds && origin !== null) {
@@ -804,7 +804,7 @@ const makeRunners = Effect.gen(function* () {
           const yes = Option.isNone(hands)
             ? "unreachable"
             : yield* askHisYes(hands.value, origin, what, origin.tainted === true ? null : key);
-          if (yes === "always") yield* grant(key);
+          if (yes === "always") yield* grant(key, origin.member);
           if (yes === "yes" || yes === "always") return yield* asCard(origin);
           if (yes === "no")
             return {
@@ -827,7 +827,7 @@ const makeRunners = Effect.gen(function* () {
           member: origin.member ?? null,
           needs: CARD_YES,
           card: true,
-          ...(!origin.tainted && hisOwnTurn(origin) ? { always: grant(key) } : {}),
+          ...(!origin.tainted && hisOwnTurn(origin) ? { always: grant(key, origin.member) } : {}),
           phone: !at.startsWith("replay-"),
           run: (raised) =>
             run(name, raw, device).pipe(

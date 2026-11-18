@@ -62,7 +62,8 @@ import {
   type VoiceRefusedError,
   voiceFor,
 } from "../../../tessaya/TessayaVoiceLibrary.ts";
-import { hisOwnTurn } from "../../../tessaya/consent.ts";
+import { Consent, grantWho, hisOwnTurn } from "../../../tessaya/consent.ts";
+import { grantLabel, grantNamed } from "@t3tools/tessaya-shared/consent";
 import * as ServerConfig from "../../../config.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { changePersona } from "../../../tessaya/PersonaChanges.ts";
@@ -1027,6 +1028,33 @@ export const layer = McpToolAccess.toLayer(
             };
           }),
         { linkedCallers: "allowed" },
+      ),
+      // A revoke only narrows what she may do, so his voice at A1 (held included) is enough; never a guest's.
+      tessaya_always_allowed: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          const consent = runtime === null ? Option.none() : Context.getOption(runtime, Consent);
+          if (Option.isNone(consent))
+            return yield* failed({ reason: "This server keeps no standing yeses." });
+          const keys = yield* consent.value.read;
+          const said = (list: ReadonlyArray<string>) => list.map(grantLabel);
+          if (input.revoke === undefined)
+            return {
+              allowed: said(keys),
+              line:
+                keys.length === 0
+                  ? "Nothing is allowed without asking."
+                  : `Allowed without asking: ${said(keys).join("; ")}.`,
+            };
+          const turn = yield* TurnOrigin;
+          const who = turn === null ? null : grantWho(turn);
+          if (who !== null && (who.member !== OWNER_MEMBER_ID || who.assurance < 1 || who.tainted))
+            return yield* failed({ reason: "Only he can take back what he allowed." });
+          const key = grantNamed(keys, input.revoke);
+          if (key === null)
+            return { allowed: said(keys), line: "Nothing he allowed matches that." };
+          const after = yield* consent.value.set(key, false);
+          return { allowed: said(after), line: `I'll ask again before: ${grantLabel(key)}.` };
+        }),
       ),
       // The Playground's say and clone by voice: the same service methods, for his own turn or full-access client only.
       tessaya_voice: McpToolAccess.writesEnvironment((input) =>

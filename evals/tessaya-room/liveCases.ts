@@ -1194,6 +1194,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     args: (input) => ({ word: String(input["word"] ?? "").toLowerCase() === "tessaya" }),
   },
   {
+    // 15 Nov ~09:31 GMT+5: what he allowed lived only on the desktop, with no way to take it back by voice.
+    id: "always-allowed",
+    proves: ["tessaya_always_allowed"],
+    said: ["Stop letting you look at my screen without asking."],
+    uses: [["tessaya_always_allowed"]],
+    clean: ["tessaya_always_allowed"],
+  },
+  {
     id: "ask-phone",
     proves: ["tessaya_ask"],
     said: ["Send me a question on my phone: should I order more coffee?"],

@@ -36,6 +36,9 @@ import { DeviceRefusedError, DeviceRegistry } from "../../../home/DeviceRegistry
 import * as PeerLinks from "../../../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../../../peer/PeerMcpClient.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { Consent, layer as ConsentLayer } from "../../../tessaya/consent.ts";
+import { LOOK_GRANT } from "@t3tools/tessaya-shared/consent";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { TessayaVoiceLibrary } from "../../../tessaya/TessayaVoiceLibrary.ts";
 import * as ServerConfig from "../../../config.ts";
 import { ServerSettingsService } from "../../../serverSettings.ts";
@@ -152,6 +155,24 @@ it.effect("the room keeps how a word is said in the server's one list, and can g
     yield* callTool("room", Context.empty() as never, "tessaya_pronounce", { word: "Tessaya" });
     expect((yield* settings.getSettings).voicePronounce).toEqual({});
   }).pipe(Effect.provide(ServerSettingsService.layerTest())),
+);
+
+it.effect("his voice takes back a standing yes in his words, and a guest's cannot", () =>
+  Effect.gen(function* () {
+    const consent = yield* Consent;
+    const runtime = Context.make(Consent, consent) as never;
+    const revoke = (turn: { member: string | null; assurance: 0 | 1 }) =>
+      callTool("room", runtime, "tessaya_always_allowed", {
+        revoke: "stop letting you look at my screen",
+      }).pipe(
+        Effect.provideService(TurnOrigin, { kind: "device", id: "r1", label: "R1", ...turn }),
+      );
+    yield* consent.set(LOOK_GRANT, true);
+    expect((yield* revoke({ member: null, assurance: 0 })).isFailure).toBe(true);
+    expect(yield* consent.read).toEqual([LOOK_GRANT]);
+    expect((yield* revoke({ member: OWNER_MEMBER_ID, assurance: 1 })).isFailure).toBe(false);
+    expect(yield* consent.read).toEqual([]);
+  }).pipe(Effect.provide(Layer.provideMerge(ConsentLayer, SqlitePersistenceMemory))),
 );
 
 it.effect("says a line in the voice he names, only on his own turn, through the one library", () =>

@@ -7,6 +7,9 @@ import { BAR_NOT_CONNECTED } from "@t3tools/tessaya-shared/phoneRelay";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
+import { LOOK_GRANT } from "@t3tools/tessaya-shared/consent";
+
+import { Consent } from "../tessaya/consent.ts";
 import { TurnOrigin } from "../tessaya/TessayaTurn.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
@@ -49,7 +52,11 @@ export const askLaptop = Effect.fn("R1Laptop.ask")(function* (question: string) 
   );
   if (linked.length === 0) return failed(NOT_LINKED);
   const turn = yield* TurnOrigin;
-  const hisVoice = turn?.hisVoice === true;
+  const consent = yield* Effect.serviceOption(Consent);
+  // His "Always allow" for a look, on any vessel, is his yes here when Voice ID knows him at all (A1, held included).
+  const hisVoice =
+    turn?.hisVoice === true ||
+    (consent._tag === "Some" && (yield* consent.value.holds(LOOK_GRANT, turn)));
   const text = `Asked aloud at his desk device at home; answer in one or two spoken sentences: ${question}`;
   let why = OFFLINE;
   for (const link of linked) {
