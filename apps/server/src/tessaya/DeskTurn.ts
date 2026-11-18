@@ -25,6 +25,7 @@ import { TessayaRecordService } from "./TessayaRecordService.ts";
 import { readPack, readTemplates } from "./OperatingSystemPack.ts";
 import { brainTurn, type ActOutcome, type TurnNotes } from "./TessayaBrain.ts";
 import { TessayaTurn, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
+import { Consent } from "./consent.ts";
 import { VesselHands, vesselTools } from "./VesselHands.ts";
 import { layerPresence, replyFor } from "./PersonaLayers.ts";
 import { groupFor, groupTurn } from "./GroupTalk.ts";
@@ -139,6 +140,7 @@ export const deskTurnStream = (
     Effect.gen(function* () {
       const brain = yield* R1Brain;
       const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+      const consent = Option.getOrNull(yield* Effect.serviceOption(Consent));
       const userdata = Option.isNone(config)
         ? NodeOS.homedir()
         : NodePath.dirname(config.value.dbPath);
@@ -185,7 +187,7 @@ export const deskTurnStream = (
         // runs, so nothing is learned or recorded.
         const layered = yield* replyFor(turn, {
           tools,
-          own: hands === null ? [] : vesselTools(hands, originOf(turn)),
+          own: hands === null ? [] : vesselTools(hands, originOf(turn), consent),
           allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
           device: body.vessel,
         }).pipe((layer) =>
@@ -245,7 +247,7 @@ export const deskTurnStream = (
                     .filter((l) => l !== "")
                     .join("\n"),
                 readBefore: [],
-                own: hands === null ? [] : vesselTools(hands, originOf(turn)),
+                own: hands === null ? [] : vesselTools(hands, originOf(turn), consent),
                 finish: Effect.fn("DeskTurn.finish")(function* (
                   reply: string,
                   outcomes: ReadonlyArray<ActOutcome>,
