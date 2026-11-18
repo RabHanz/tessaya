@@ -2,11 +2,46 @@ import { it as effectIt } from "@effect/vitest";
 import { createHandsBroker, HIS_YES } from "@t3tools/tessaya-shared/remoteHands";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import { LOOK_GRANT } from "@t3tools/tessaya-shared/consent";
 import { expect } from "vite-plus/test";
 
 import { askHisYes, vesselTools } from "./VesselHands.ts";
+import { Consent, layer as consentLayer } from "./consent.ts";
+import { layerMemory } from "./TessayaDatabase.ts";
 
 const origin = { label: "desktop", hisVoice: false, member: "owner", assurance: 2, tainted: false };
+
+effectIt.effect(
+  "once he allowed looks, a brain turn's screenshot passes only for him, never a guest's or unverified voice",
+  () =>
+    Effect.gen(function* () {
+      const consent = yield* Consent;
+      yield* consent.set(LOOK_GRANT, true);
+      let id = 0;
+      const hands = createHandsBroker({ now: () => 0, newId: () => `c${++id}` });
+      yield* Effect.promise(() =>
+        hands.take(1, [{ name: "screen_capture", description: "", input_schema: {} }]),
+      );
+      const look = (who: Record<string, unknown>) =>
+        vesselTools(hands, { ...origin, kind: "desktop", id: "desktop", ...who }, consent)[0]!.run(
+          {},
+        );
+      // A guest's voice at his desk, and his own unverified (A0): refused, and the desktop is never called.
+      for (const who of [
+        { speaker: { kind: "guest" }, member: null, assurance: 0 },
+        { speaker: { kind: "unverified" }, member: "owner", assurance: 0 },
+      ])
+        expect((yield* look(who)).isError).toBe(true);
+      expect(yield* Effect.promise(() => hands.take(1))).toBeNull();
+      // His typed turn at his own desktop reaches it.
+      const his = yield* Effect.forkChild(look({ speaker: null }));
+      const call = (yield* Effect.promise(() => hands.take(1)))!;
+      expect(call.tool).toBe("screen_capture");
+      hands.reply(call.id, { ok: true, text: "a window" });
+      expect((yield* Fiber.join(his)).isError).toBe(false);
+    }).pipe(Effect.provide(Layer.provideMerge(consentLayer, layerMemory))),
+);
 
 effectIt.effect(
   "a desk turn's act asks his yes in the desktop's own box, and says when the desktop can't be asked",

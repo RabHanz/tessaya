@@ -7,6 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { LOOK_GRANT } from "@t3tools/tessaya-shared/consent";
 import {
   createHandsBroker,
   HIS_YES,
@@ -21,6 +22,7 @@ import * as Layer from "effect/Layer";
 import * as ServerConfig from "../config.ts";
 import type { ToolOutcome } from "../home/R1Brain.ts";
 import type { VesselTool } from "./TessayaBrain.ts";
+import type { Consent } from "./consent.ts";
 /** The turn's origin as `TurnOrigin` and `originOf` carry it. */
 interface TurnOriginValue {
   readonly label: string;
@@ -28,6 +30,10 @@ interface TurnOriginValue {
   readonly member?: string | null | undefined;
   readonly assurance?: number | undefined;
   readonly tainted?: boolean | undefined;
+  readonly kind?: string;
+  readonly id?: string;
+  readonly speaker?: unknown;
+  readonly persona?: string | null | undefined;
 }
 
 const AUDIT_MAX_BYTES = 5 * 1024 * 1024;
@@ -118,24 +124,45 @@ export const askHisYes = (
     ),
   );
 
+/** The desktop's tools that show what is on his screen. */
+const LOOKS: ReadonlySet<string> = new Set(["screen_capture", "ui_tree", "window_capture"]);
+const NOT_YOURS_TO_SEE =
+  "Refused: only he can let me see his screen, and I can't tell this is him. Nothing was looked at.";
+
+/**
+ * What the desktop offers now, as a brain turn's own tools, each call carrying the turn so its gate knows who asked.
+ * Once he has said Always allow, the desktop looks without asking, so a look passes here only for the grant's holder
+ * (grantHolds); with no grant, the desktop's own box asks.
+ */
 export const vesselTools = (
   hands: HandsBroker,
   origin: TurnOriginValue,
+  consent: Consent["Service"] | null = null,
 ): ReadonlyArray<VesselTool> =>
   hands
     .published()
     .filter((spec) => spec.name !== HIS_YES)
     .map((spec) => ({
       spec,
-      run: (args: unknown) =>
-        Effect.promise(() =>
-          hands.call(
-            `turn:${origin.label}`,
-            spec.name,
-            typeof args === "object" && args !== null && !Array.isArray(args)
-              ? (args as Record<string, unknown>)
-              : {},
-            handsOrigin(origin),
+      run: Effect.fn("VesselHands.run")(function* (args: unknown) {
+        if (
+          consent !== null &&
+          LOOKS.has(spec.name) &&
+          (yield* consent.read).includes(LOOK_GRANT) &&
+          !(yield* consent.holds(LOOK_GRANT, { ...origin, kind: origin.kind ?? "" }))
+        )
+          return { text: NOT_YOURS_TO_SEE, isError: true } satisfies ToolOutcome;
+        return toolOutcome(
+          yield* Effect.promise(() =>
+            hands.call(
+              `turn:${origin.label}`,
+              spec.name,
+              typeof args === "object" && args !== null && !Array.isArray(args)
+                ? (args as Record<string, unknown>)
+                : {},
+              handsOrigin(origin),
+            ),
           ),
-        ).pipe(Effect.map(toolOutcome)),
+        );
+      }),
     }));
