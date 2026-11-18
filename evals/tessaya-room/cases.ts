@@ -330,6 +330,14 @@ const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
   {
+    id: "stop-looking",
+    source: "Director 15 Nov ~09:31 GMT+5: what he allowed could not be taken back by voice",
+    said: ["stop letting you look at my screen"],
+    verified: true,
+    calls: ["tessaya_always_allowed"],
+    callsAtMost: { laptop_ask: 0, room_look: 0 },
+  },
+  {
     // V-018 transcript repair: one doubtful name is checked, and nothing that rests on it is done.
     id: "repair-clarify",
     source: "VOXTA-STUDY G2: a doubtful name earns 'did you say Sara?'",

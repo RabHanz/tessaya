@@ -54,6 +54,7 @@ const memoryConsent = (keys: Array<string>) =>
           keys.splice(0, keys.length, ...next);
           return next;
         }),
+      holds: (key) => Effect.sync(() => keys.includes(key)),
     }),
   );
 

@@ -30,3 +30,23 @@ effectIt.effect(
       expect(yield* Fiber.join(asking)).toBe("no");
     }),
 );
+
+effectIt.effect(
+  "the same act asked twice while its box is up is one box, and both hear its answer",
+  () =>
+    Effect.gen(function* () {
+      let id = 0;
+      const hands = createHandsBroker({ now: () => 0, newId: () => `c${++id}` });
+      yield* Effect.promise(() =>
+        hands.take(1, [{ name: HIS_YES, description: "", input_schema: {} }]),
+      );
+      const ask = askHisYes(hands, origin, "connect Tumble to your headphones", "device_set|x|");
+      const first = yield* Effect.forkChild(ask);
+      const second = yield* Effect.forkChild(ask);
+      const call = (yield* Effect.promise(() => hands.take(1)))!;
+      hands.reply(call.id, { ok: true, text: "always" });
+      expect([yield* Fiber.join(first), yield* Fiber.join(second)]).toEqual(["always", "always"]);
+      // No second box was queued.
+      expect(yield* Effect.promise(() => hands.take(1))).toBeNull();
+    }),
+);

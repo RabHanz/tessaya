@@ -792,6 +792,21 @@ const PronounceTool = Tool.make("tessaya_pronounce", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const AlwaysAllowedTool = Tool.make("tessaya_always_allowed", {
+  ...shared,
+  description:
+    'What he has allowed Tessaya to do without asking ("Always allow": seeing his screen, scheduling a job, and so on). Without `revoke` it lists them. When he takes one back ("stop letting you look at my screen", "ask me again before scheduling"), pass his words as `revoke`; she asks him again from then on. Only the owner may revoke. Returns the list after and a line to say.',
+  parameters: Schema.Struct({
+    revoke: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
+  }),
+  success: Schema.Struct({ allowed: Schema.Array(Schema.String), line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const VocabularyTool = Tool.make("tessaya_vocabulary", {
   ...shared,
   description:
@@ -1098,6 +1113,7 @@ export const TessayaToolkit = Toolkit.make(
   StateTool,
   DesktopSettingsTool,
   PronounceTool,
+  AlwaysAllowedTool,
   VocabularyTool,
   VoiceTool,
   PersonaTool,
