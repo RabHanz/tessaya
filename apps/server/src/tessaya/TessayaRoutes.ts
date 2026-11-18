@@ -855,6 +855,14 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
             ? { rev: file.rev, bytes: new Uint8Array(Buffer.from(file.blob, "base64")) }
             : null;
         }),
+      revs: () =>
+        run(onBrain({ revs: true })).then((v) =>
+          typeof v === "object" &&
+          v !== null &&
+          Object.values(v).every((r) => typeof r === "number")
+            ? (v as Record<string, number>)
+            : null,
+        ),
       put: (name, rev, bytes) =>
         run(onBrain({ put: { name, rev, blob: Buffer.from(bytes).toString("base64") } })).then(
           (v) => {

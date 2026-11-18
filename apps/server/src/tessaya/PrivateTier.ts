@@ -14,6 +14,8 @@ export const TIER_MAX_BYTES = 24 * 1024 * 1024;
 const Name = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9.-]{0,79}$/));
 export const PrivateTierAct = Schema.Union([
   Schema.Struct({ get: Name }),
+  // Every file's revision and no bytes, so a vessel fetches only what changed.
+  Schema.Struct({ revs: Schema.Literal(true) }),
   Schema.Struct({
     put: Schema.Struct({
       name: Name,
@@ -44,6 +46,16 @@ export const tierGet = Effect.fn("PrivateTier.get")(function* (name: string) {
   return rows[0] ?? null;
 });
 
+/** Each kept file's revision by name. */
+export const tierRevs = Effect.fn("PrivateTier.revs")(function* () {
+  const sql = yield* tierSql;
+  const rows = yield* sql<{
+    name: string;
+    rev: number;
+  }>`SELECT name, rev FROM tessaya_private_tier`;
+  return Object.fromEntries(rows.map((r) => [r.name, r.rev]));
+});
+
 /** Keeps `blob` when `rev` is newer than what is kept; the revision kept afterwards either way. */
 export const tierPut = Effect.fn("PrivateTier.put")(function* (
   name: string,
@@ -67,6 +79,7 @@ export const tierPut = Effect.fn("PrivateTier.put")(function* (
 
 /** A tier act as the brain applies it, here or for a worker. */
 export const tierAct = Effect.fn("PrivateTier.act")(function* (act: PrivateTierAct, at: number) {
+  if ("revs" in act) return yield* tierRevs();
   return "get" in act
     ? yield* tierGet(act.get)
     : yield* tierPut(act.put.name, act.put.rev, act.put.blob, at);
