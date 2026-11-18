@@ -2,6 +2,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import type { VoiceClaimInput } from "@t3tools/tessaya-contracts";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -10,6 +11,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { TessayaMemoryEmbedder } from "../tessaya/TessayaMemoryEmbedder.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { VoiceArbiter, layer as arbiterLayer, serveArbiter } from "./VoiceArbiter.ts";
 
@@ -254,4 +256,19 @@ it.effect(
       assert.strictEqual(yield* Clock.currentTimeMillis, at);
       assert.isAbove(at, startedAt);
     }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "a wake's claim starts recall's embedder, so the first turn after a quiet spell is not 0.3 s slower (18 Nov, 23:07)",
+  () =>
+    Effect.gen(function* () {
+      const warmed = yield* Deferred.make<string>();
+      yield* serveArbiter("claim", {}).pipe(
+        Effect.provideService(TessayaMemoryEmbedder, {
+          model: "test",
+          embed: (text: string) => Deferred.succeed(warmed, text).pipe(Effect.as(null)),
+        }),
+      );
+      assert.strictEqual(yield* Deferred.await(warmed), "warm up");
+    }),
 );

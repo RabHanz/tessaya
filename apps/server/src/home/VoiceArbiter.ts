@@ -29,6 +29,7 @@ import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { conversationKey } from "../tessaya/TessayaTurn.ts";
+import { TessayaMemoryEmbedder } from "../tessaya/TessayaMemoryEmbedder.ts";
 
 export type VoiceVerdict =
   | { readonly answer: true; readonly round: string; readonly conversation: string }
@@ -289,6 +290,12 @@ const decodePrimary = Schema.decodeUnknownOption(
 /** The arbiter's ops on the voice door and the R1 loop's route; null for an op that is not the arbiter's. */
 export const serveArbiter = Effect.fn("VoiceArbiter.serve")(function* (op: string, args: unknown) {
   if (!["arbiter", "claim", "speaking", "ended", "answerFrom"].includes(op)) return null;
+  // A claim is a wake, and the turn's recall comes next: its embedder, let go after 10 idle minutes, starts now
+  // (18 Nov 23:07: the first turn after a quiet spell spent 320 ms starting it).
+  if (op === "claim") {
+    const embedder = yield* Effect.serviceOption(TessayaMemoryEmbedder);
+    if (embedder._tag === "Some") yield* Effect.forkDetach(embedder.value.embed("warm up"));
+  }
 
   const found = yield* Effect.serviceOption(VoiceArbiter);
   if (found._tag === "None")
