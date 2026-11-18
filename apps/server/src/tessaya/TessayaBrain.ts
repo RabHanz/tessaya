@@ -52,7 +52,6 @@ export interface RoomCall {
   readonly text: string;
 }
 
-export const HOLD_ON = "One moment.";
 /** The most of one tool's answer her turn reads: a whole device report came back "too large to read" (18 Nov). */
 export const TOOL_TEXT_MAX = 8_000;
 export const capToolText = (o: ToolOutcome): ToolOutcome =>
@@ -62,8 +61,6 @@ export const capToolText = (o: ToolOutcome): ToolOutcome =>
         ...o,
         text: `${o.text.slice(0, TOOL_TEXT_MAX)}\n[cut: ${o.text.length - TOOL_TEXT_MAX} more characters. Ask for one item or one device for the rest.]`,
       };
-/** What she says when a web search starts before her first word (B0: the subscription writes no line itself). */
-export const WEB_CUE = "Let me look that up.";
 /** His work's reads before the model starts take 20-180 ms; past this they wait for nobody. */
 const WORK_READ_MS = 300;
 /**
@@ -282,8 +279,8 @@ export interface VesselTurn<E, R> {
   /** The shared tools (the one registry), called for `device`. */
   readonly tools: RoomToolSet;
   readonly device: string | undefined;
-  /** Her fillers for this turn, in her own words; unset says the plain ones. */
-  readonly fillers?: { readonly hold: string; readonly web: string };
+  /** Her fillers for this turn, in her own words about it; unset or null says nothing (B-056: no fixed phrase). */
+  readonly fillers?: { readonly hold: string | null; readonly web: string | null };
   /** Wraps every call: a guessed turn's changes wait for his final words. */
   readonly hold: (name: string) => (call: Effect.Effect<ToolOutcome>) => Effect.Effect<ToolOutcome>;
   /** The model failed before a word: why, in its own words (a login's limit and when it resets, say). */
@@ -515,9 +512,10 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   function cue(web: boolean) {
     if (!web) return;
     readTheWeb = true;
-    if (said === "") {
+    const line = vessel.fillers?.web ?? null;
+    if (said === "" && line !== null) {
       cueAt ??= clock.currentTimeMillisUnsafe();
-      say(`${vessel.fillers?.web ?? WEB_CUE} `);
+      say(`${line} `);
     }
   }
   const speak = (stream: typeof words) =>

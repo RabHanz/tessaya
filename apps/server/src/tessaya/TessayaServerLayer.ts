@@ -43,6 +43,7 @@ import * as TessayaCloudService from "./TessayaCloudService.ts";
 import * as HomeAssistantConnection from "../home/HomeAssistantConnection.ts";
 import * as HomeAssistantService from "../home/HomeAssistantService.ts";
 import * as R1Brain from "../home/R1Brain.ts";
+import * as R1Hold from "../home/R1Hold.ts";
 import * as TessayaHousehold from "./TessayaHousehold.ts";
 import * as TessayaComms from "./TessayaComms.ts";
 import * as VoiceForgets from "./VoiceForgets.ts";
@@ -340,7 +341,10 @@ const servicesInner = Layer.mergeAll(
   // The voices, and his one dictionary, which the voice door, the device route and every vessel's turn read.
   Layer.provideMerge(Layer.mergeAll(TessayaVoiceLibrary.layer, TessayaVocabulary.layer)),
   // Voices to forget, between the household and every vessel's owner: under both, so each sees it.
-  Layer.provideMerge(VoiceForgets.layer),
+  // Beside them, her hold line: written about his words by a warm Haiku while a slow answer comes (B-056).
+  Layer.provideMerge(
+    Layer.mergeAll(VoiceForgets.layer, R1Hold.layer.pipe(Layer.provide(BrainUsage.layer))),
+  ),
   // Members' voice defaults and acts held for a step-up, between the turn and runner and every vessel's owner.
   // Her lines for every vessel, beside the members' preferences.
   // Who each person is talking to (P5), written by the turn and told to the room loops by the broker.

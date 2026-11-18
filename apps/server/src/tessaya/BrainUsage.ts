@@ -71,6 +71,8 @@ export interface UsageRow extends CallTokens {
   readonly outcome?: UsageOutcome;
   /** Audio a speech call heard or said, which its provider bills by. */
   readonly audioMs?: number;
+  /** Why a failed call failed, kept on its action so a later look can tell. */
+  readonly why?: string;
 }
 
 /** One day's use of one model by one role on one login, the day in the asker's time zone. */
@@ -387,7 +389,13 @@ export const make = Effect.fn("BrainUsage.make")(function* (readRateList: () => 
           ...(a.scheduleId == null ? [] : [{ kind: "schedule", ref: a.scheduleId }]),
           ...(a.device == null ? [] : [{ kind: "device", ref: a.device }]),
         ],
-        data: { input: row.input, output: row.output, billing, surface: a.surface ?? null },
+        data: {
+          input: row.input,
+          output: row.output,
+          billing,
+          surface: a.surface ?? null,
+          ...(row.why === undefined ? {} : { why: row.why.slice(0, 300) }),
+        },
       });
       const written = yield* sql<{ id: number }>`
       INSERT INTO tessaya_brain_usage

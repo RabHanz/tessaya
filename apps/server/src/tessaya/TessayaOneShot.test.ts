@@ -78,7 +78,13 @@ it.effect(
       const failed = oneShot("", 1);
       yield* Effect.flip(failed.run);
       expect(failed.rows).toEqual([
-        expect.objectContaining({ outcome: "failed", input: 0, output: 0 }),
+        // Why it failed is on its row (18 Nov 23:07: "lines: sonnet failed" with no reason anywhere).
+        expect.objectContaining({
+          outcome: "failed",
+          input: 0,
+          output: 0,
+          why: "claude exited 1: ",
+        }),
       ]);
     }),
 );
