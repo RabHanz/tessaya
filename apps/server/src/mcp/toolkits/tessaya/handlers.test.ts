@@ -925,8 +925,8 @@ it.effect(
                 status: "reachable",
               },
               {
-                environmentId: EnvironmentId.make("env-onnyx"),
-                label: "onnyx",
+                environmentId: EnvironmentId.make("env-studio"),
+                label: "studio",
                 status: "reachable",
               },
             ] as never),
@@ -950,13 +950,13 @@ it.effect(
         Context.make(HomeDevices, devices) as never,
         "device_set",
         set,
-      ).pipe(Effect.provide(peers("env-onnyx")));
-      // 18 Nov 04:50 GMT+5: Tumble was on onnyx's hub, hetzner's brain said "Done" for a publish that went nowhere.
+      ).pipe(Effect.provide(peers("env-studio")));
+      // 18 Nov 04:50 GMT+5: Tumble was on the studio server's hub, the brain said "Done" for a publish that went nowhere.
       expect(there.result).toEqual({
         ok: true,
-        value: { on: "onnyx", status: "done", line: "Replies play on its own speaker first now." },
+        value: { on: "studio", status: "done", line: "Replies play on its own speaker first now." },
       });
-      expect(sent.map(([env]) => env)).toEqual(["env-laptop", "env-onnyx"]);
+      expect(sent.map(([env]) => env)).toEqual(["env-laptop", "env-studio"]);
       expect(sent[1]![1]).toMatchObject({ ...set, origin: "Tessel" });
       const nowhere = yield* callTool(
         "room",

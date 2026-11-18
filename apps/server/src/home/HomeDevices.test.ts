@@ -1778,7 +1778,7 @@ it.effect(
         `${root}/state/bt`,
         JSON.stringify({ state: "streaming", mac: HP, out: "bt", wanted: "bt", saved: true }),
       );
-      // 18 Nov 04:50 GMT+5: Tumble was on onnyx's hub; this server's publish went nowhere and she said "Done".
+      // 18 Nov 04:50 GMT+5: Tumble was on another server's hub; this server's publish went nowhere and she said "Done".
       sent.length = 0;
       const away = yield* serveDevicesCall(
         { kind: "act", op: "set", args: { id: ID, ...own } },
