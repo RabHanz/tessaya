@@ -48,6 +48,28 @@ describe("createScratchStore", () => {
     await store.sync();
     expect(brain.map((n) => n.id)).toEqual(["n1", "old"]);
     expect(acts.filter((a) => a.op === "remove")).toEqual([{ op: "remove", ids: ["tessel"] }]);
+    // His file from before stays as it was beside the cache.
+    expect(
+      JSON.parse(NodeFS.readFileSync(NodePath.join(dir, "scratchpad.before-brain.json"), "utf8")),
+    ).toEqual({ notes: [{ id: "old", at: 1, text: "from before" }], hotkey: false });
+    NodeFS.rmSync(dir, { recursive: true });
+  });
+
+  it("never syncs over a file it cannot read: his notes in it stay for him to mend", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "scratch-"));
+    const file = NodePath.join(dir, "scratchpad.json");
+    const damaged = JSON.stringify({ note: "invoice due Friday" });
+    NodeFS.writeFileSync(file, damaged);
+    const store = createScratchStore(
+      dir,
+      () => 1,
+      () => "x",
+      async () => ({
+        notes: [{ id: "b", at: 2, text: "from the brain" }],
+      }),
+    );
+    await store.sync();
+    expect(NodeFS.readFileSync(file, "utf8")).toBe(damaged);
     NodeFS.rmSync(dir, { recursive: true });
   });
 });
