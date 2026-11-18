@@ -107,7 +107,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   motion(vx, vy) { if (rig && rig.motion) rig.motion(vx, vy); if (snd) snd.motion(vx, vy); },
   // her character's own body (bodies.js TCS.PHYSICS): her flight for the window's physics, and how she reacts
   physics() { return rig && rig.physics ? TCS.flightOf(rig.physics()) : null; },
-  react(kind, speed) { if (rig && rig.react) rig.react(kind, speed || 0); if (snd) snd.react(kind, speed || 0); },
+  react(kind, speed) { if (rig && rig.react) rig.react(kind, speed || 0); if (snd && kind !== "trace") snd.react(kind, speed || 0); },
   // his levels (gains, 0 off), whether she shows, and whether he is talking to her (the bed steps back for the mic)
   audio(o) { if (snd) snd.state(o); },
   walk(ms, dir) { if (rig && rig.walk) rig.walk(ms, dir); else if (rig) rig.play("hop"); },

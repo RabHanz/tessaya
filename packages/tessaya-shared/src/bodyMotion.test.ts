@@ -6,6 +6,9 @@ import {
   POSTURES,
   outfitPiece,
   readTouch,
+  TRACE_EVERY_MS,
+  TRACE_LINGER_MS,
+  traceStep,
   postureFor,
   stepAt,
   talkBeats,
@@ -107,6 +110,36 @@ describe("touch map", () => {
     expect(touchKind(120, 3)).toBe("tap");
     expect(touchKind(700, 5)).toBe("hold");
     expect(touchKind(300, 60)).toBe("stroke");
+  });
+
+  it("reads a hover with nothing pressed as a light trace, felt more as it dwells", () => {
+    const moving = readTouch({ ms: 400, travelPx: 200, hover: true });
+    expect(moving.kind).toBe("trace");
+    expect(moving.intensity).toBeLessThanOrEqual(0.5);
+    expect(
+      readTouch({ ms: 400, travelPx: 200, hover: true, dwellMs: 4000 }).intensity,
+    ).toBeGreaterThan(moving.intensity);
+  });
+
+  it("throttles a hover to one trace per beat, at once on a new part of her, once when it rests", () => {
+    let s = traceStep(null, "waist", 30, 0);
+    expect(s.feel?.kind).toBe("trace");
+    // continuous motion over the same place: nothing until the beat is up
+    let felt = 0;
+    for (let t = 16; t < TRACE_EVERY_MS; t += 16) {
+      s = traceStep(s.trace, "waist", 10, t);
+      if (s.feel !== null) felt++;
+    }
+    expect(felt).toBe(0);
+    expect(traceStep(s.trace, "waist", 10, TRACE_EVERY_MS).feel).not.toBeNull();
+    // a new part of her is felt straight away
+    expect(traceStep(s.trace, "hips", 30, TRACE_EVERY_MS - 100).feel?.kind).toBe("trace");
+    // resting: one linger, then nothing more until it moves again
+    const rest = traceStep(s.trace, "waist", 0, 600 + TRACE_LINGER_MS);
+    expect(rest.feel?.speed).toBe(0);
+    expect(traceStep(rest.trace, "waist", 0, 600 + 3 * TRACE_LINGER_MS).feel).toBeNull();
+    // off her, the trace ends
+    expect(traceStep(rest.trace, null, 40, 5000)).toEqual({ trace: null, feel: null });
   });
 });
 

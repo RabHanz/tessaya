@@ -21,6 +21,7 @@ import {
   type MascotAct,
 } from "@t3tools/tessaya-shared/companion";
 import type { TurnPhase } from "@t3tools/tessaya-shared/voiceTurn";
+import { traceStep, type Trace } from "@t3tools/tessaya-shared/bodyMotion";
 import type { Persona } from "@t3tools/tessaya-shared/osPack";
 
 import { protectFromCapture } from "../captureProtection.ts";
@@ -33,6 +34,8 @@ import {
   isPoke,
   isStill,
   stroke,
+  deskHover,
+  answersNow,
   type Strokes,
   edgesFor,
   followFocus,
@@ -244,6 +247,8 @@ export interface MascotOptions {
   /** Her body's sounds as he pokes, drags and drops her, and the bed under her presence (one per desktop: hers). */
   readonly sounds: MascotSound;
   readonly bed: MascotSound;
+  /** She feels his mouse moving over her with nothing pressed, lightly (off by default). */
+  readonly hover?: boolean;
 }
 
 export interface DesktopMascot {
@@ -555,7 +560,7 @@ export const createDesktopMascot = (input: {
     hitTimer = null;
   };
   /** Something happened to her body: her character reacts in its own way and returns to her mood by itself (rig.react). */
-  const react = (kind: "pickup" | "land" | "wall" | "poke" | "pet" | "bump", speed = 0) =>
+  const react = (kind: "pickup" | "land" | "wall" | "poke" | "pet" | "bump" | "trace", speed = 0) =>
     call(`window.mascot.react(${JSON.stringify(kind)},${Math.round(speed)})`);
   /** Her eyes follow the cursor while it is near; sent only when the look changes. */
   let looking = "";
@@ -567,6 +572,8 @@ export const createDesktopMascot = (input: {
   };
   let strokes: Strokes = { points: [] };
   let pettedAt = 0;
+  let traced: Trace | null = null;
+  let tracedAt: { readonly x: number; readonly y: number } | null = null;
 
   /** The window takes the mouse exactly while the cursor is over her body, decided here; the rest clicks through. */
   const hitTest = () => {
@@ -592,6 +599,21 @@ export const createDesktopMascot = (input: {
         moment("moment.petted");
       }
     } else if (strokes.points.length > 0) strokes = { points: [] };
+    // light awareness of his mouse over her when he turned it on; in a private moment her private body feels it
+    const hovering =
+      over &&
+      dragging === null &&
+      !sleeping &&
+      deskHover(options.hover === true, veil !== null) === "light";
+    const step = traceStep(
+      hovering ? traced : null,
+      hovering ? "body" : null,
+      tracedAt === null ? 0 : Math.hypot(cursor.x - tracedAt.x, cursor.y - tracedAt.y),
+      Date.now(),
+    );
+    traced = step.trace;
+    tracedAt = hovering ? cursor : null;
+    if (step.feel !== null) react("trace", Math.round(step.feel.speed * 1000));
     // within reach she watches the cursor; past it she looks ahead again
     if (near && dragging === null && !sleeping) {
       const round = (v: number) => Math.round(Math.max(-1, Math.min(1, v)) * 10) / 10;
@@ -789,7 +811,8 @@ export const createDesktopMascot = (input: {
   /** His act on her goes to the spine; her answer, when it comes, plays over whatever she does then. */
   const moment = (event: MascotMoment) => {
     const now = Date.now();
-    if (input.express === undefined || asking || now - lastMoment < MOMENT_GAP_MS) return;
+    if (input.express === undefined || !answersNow(phase, asking, now - lastMoment, MOMENT_GAP_MS))
+      return;
     lastMoment = now;
     asking = true;
     void input

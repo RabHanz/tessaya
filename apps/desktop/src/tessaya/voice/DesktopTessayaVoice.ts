@@ -795,6 +795,7 @@ interface VoiceSettings {
   readonly pillOnHerOwn: boolean;
   /** Her body is the persona answering him, not only his chosen one (SPINE-UNIFY §10, P5). */
   readonly mascotFollows: boolean;
+  readonly mascotHover: boolean;
   /** Windows 11's acrylic behind the pill's island and the cards beside it; off by default. */
   readonly frosted: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
@@ -996,6 +997,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   pillWhenSpeaking: true,
   pillOnHerOwn: false,
   mascotFollows: false,
+  mascotHover: false,
   frosted: false,
   waitMs: WAIT_DEFAULT_MS,
   wakeListenMs: 8_000,
@@ -1166,6 +1168,7 @@ export const readSettings = (path: string): VoiceSettings => {
       pillWhenSpeaking: saved["pillWhenSpeaking"] !== false,
       pillOnHerOwn: saved["pillOnHerOwn"] === true,
       mascotFollows: saved["mascotFollows"] === true,
+      mascotHover: saved["mascotHover"] === true,
       frosted: saved["frosted"] === true,
       quietSpeech: saved["quietSpeech"] === true,
       outputDevice: outputDeviceFrom(saved),
@@ -5371,6 +5374,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       hands: settings.mascotHands,
       sounds: settings.mascotSounds,
       bed: settings.mascotBed,
+      hover: settings.mascotHover,
     });
     // Jobs are read on a timer only once something wants them; she does.
     if (settings.mascot) wantJobs();
@@ -8019,6 +8023,15 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         disabled: !settings.mascot,
       },
       {
+        id: "v.mascotHover",
+        section: "Desktop companion",
+        label: "Feels your mouse",
+        hint: "Moving the mouse over her, with no button pressed, she notices it lightly. Off, working near her never sets her off. In a private moment she always feels it.",
+        kind: "toggle",
+        on: settings.mascotHover,
+        disabled: !settings.mascot,
+      },
+      {
         id: "v.mascotFollows",
         section: "Desktop companion",
         label: "Follows who is talking",
@@ -9295,6 +9308,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.mascotSounds") save({ mascotSounds: parseMascotSound(value) });
     else if (id === "v.mascotBed") save({ mascotBed: parseMascotSound(value) });
     else if (id === "v.mascotCrew") save({ mascotCrew: parseMascotCrew(value) });
+    else if (id === "v.mascotHover") save({ mascotHover: on });
     else if (id === "v.pillFace") save({ pillFace: on });
     else if (id === "v.pillWhenSpeaking") save({ pillWhenSpeaking: on });
     else if (id === "v.pillOnHerOwn") save({ pillOnHerOwn: on });
