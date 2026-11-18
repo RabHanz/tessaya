@@ -5,7 +5,11 @@ import type { RecogniserTurn } from "./roomVoice.ts";
 
 /** Tessaya's recogniser (native/tessaya-recognizer) over its WebSocket protocol: words stream in, the text at the end. */
 /** A turn on one recogniser, and whether it failed (refused, unreachable, or gone before the text). */
-export type LiveTurn = RecogniserTurn & { readonly failed: () => boolean };
+export type LiveTurn = RecogniserTurn & {
+  readonly failed: () => boolean;
+  /** Why it failed, as the recogniser or the socket said: a reason in the log, not just "failed". */
+  readonly why?: () => string | null;
+};
 
 export const recogniserTurn = (url: string, token: string): LiveTurn => {
   const ws = new WebSocket(url, {
@@ -17,6 +21,7 @@ export const recogniserTurn = (url: string, token: string): LiveTurn => {
   let open = false;
   let ended = false;
   let failed = false;
+  let why: string | null = null;
   let answered = false;
   let scored: { readonly words: ReadonlyArray<HeardWord>; readonly model: string } | null = null;
   let lastSent = Date.now();
@@ -33,11 +38,15 @@ export const recogniserTurn = (url: string, token: string): LiveTurn => {
     settle = resolve;
     ws.addEventListener("error", () => {
       failed = true;
+      why ??= "connection error";
       resolve("");
     });
     ws.addEventListener("close", () => {
       clearInterval(keepAlive);
-      if (!answered) failed = true;
+      if (!answered) {
+        failed = true;
+        why ??= "closed before the text";
+      }
       resolve("");
     });
   });
@@ -65,6 +74,7 @@ export const recogniserTurn = (url: string, token: string): LiveTurn => {
     }
     if (m.ev === "error") {
       failed = true;
+      why = typeof m.message === "string" ? m.message.slice(0, 80) : "error";
       settle?.("");
     }
     if (m.ev === "text" || m.ev === "error") ws.close();
@@ -86,6 +96,7 @@ export const recogniserTurn = (url: string, token: string): LiveTurn => {
     onPartial: (listener) => void partialListeners.push(listener),
     words: () => scored,
     failed: () => failed,
+    why: () => why,
   };
 };
 

@@ -197,13 +197,13 @@ const recognisers = (online: () => boolean) => {
         const token = list.find((r) => r.url === chosen.url)!.token;
         return { url: chosen.url, turn: recogniserTurn(chosen.url, token) };
       },
-      (url, ms, failed, next) => {
+      (url, ms, failed, next, why) => {
         // A failed one counts as very slow, so the next turns leave it alone for a while (STALE_MS).
         timed(url, failed ? 30_000 : ms);
         const host = url.replace(/^ws:\/\//, "");
         log(
           failed
-            ? `recogniser ${host} failed after ${Math.round(ms)} ms; ${next === null ? "no other to try" : `trying ${next.replace(/^ws:\/\//, "")}`}`
+            ? `recogniser ${host} failed after ${Math.round(ms)} ms (${why ?? "no reason"}); ${next === null ? "no other to try" : `trying ${next.replace(/^ws:\/\//, "")}`}`
             : `recogniser ${host} ${Math.round(ms)} ms`,
         );
       },
