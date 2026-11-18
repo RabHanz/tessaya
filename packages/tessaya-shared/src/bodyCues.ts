@@ -253,8 +253,12 @@ export const GESTURES: Readonly<
   wave: {
     ms: 1600,
     swings: [
-      { bone: "rightUpperArm", axis: "z", rad: -1.1, cycles: 0.5 },
-      { bone: "rightLowerArm", axis: "z", rad: -0.35, cycles: 3 },
+      // the arm up to the side, turned so the elbow folds the hand up (not sideways), and the hand waves from the
+      // elbow: a turn of the upper arm about its own length, as a person's does
+      { bone: "rightUpperArm", axis: "z", rad: -1.0, cycles: 0.5 },
+      { bone: "rightUpperArm", axis: "x", rad: -1.45, cycles: 0.5 },
+      { bone: "rightLowerArm", axis: "y", rad: 1.35, cycles: 0.5 },
+      { bone: "rightUpperArm", axis: "x", rad: 0.28, cycles: 3 },
     ],
   },
   hop: { ms: 500, swings: [{ bone: "spine", axis: "x", rad: -0.08, cycles: 1 }] },
