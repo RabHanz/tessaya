@@ -11,12 +11,16 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { brainRoute } from "@t3tools/tessaya-shared/brainRoutes";
+import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
+
+import { ServerSettingsService } from "../serverSettings.ts";
+import { onSubscription } from "../tessaya/BrainRoutes.ts";
 import { BrainUsage, cliTokens, ledgeredCwd } from "../tessaya/BrainUsage.ts";
 import { BRIDGE_SYSTEM, bridgePrompt, keptBridge } from "@t3tools/tessaya-shared/holdLine";
 
 import { readLine } from "./R1Brain.ts";
 
-const MODEL = "haiku";
 /** A warm process older than this is replaced, as the voice sessions are. */
 const MAX_IDLE_MS = 10 * 60_000;
 /** The lines kept per vessel so none is said twice in a session. */
@@ -37,6 +41,7 @@ export class R1Hold extends Context.Service<
 
 interface Warm {
   readonly proc: NodeChildProcess.ChildProcess;
+  readonly model: string;
   readonly bornAt: number;
   onLine: (line: string) => void;
   onExit: () => void;
@@ -46,9 +51,16 @@ export const layer = Layer.effect(
   R1Hold,
   Effect.gen(function* () {
     const usage = yield* BrainUsage;
+    const settings = yield* ServerSettingsService;
+    /** The model the routing table's hold row runs on, or null when it is routed where this warm process can't go. */
+    const holdModel = settings.getSettings.pipe(
+      Effect.map((value) => onSubscription(brainRoute(value, "hold", DEFAULT_ROUTING.cheap))),
+      Effect.map((path) => ("model" in path ? path.model : null)),
+      Effect.orElseSucceed(() => null),
+    );
     const context = yield* Effect.context<never>();
     const recent = new Map<string, Array<string>>();
-    const spawn = (): Warm => {
+    const spawn = (model: string): Warm => {
       const proc = NodeChildProcess.spawn(
         "claude",
         [
@@ -60,7 +72,7 @@ export const layer = Layer.effect(
           "--include-partial-messages",
           "--verbose",
           "--model",
-          MODEL,
+          model,
           "--system-prompt",
           BRIDGE_SYSTEM,
           "--settings",
@@ -78,6 +90,7 @@ export const layer = Layer.effect(
       );
       const warm: Warm = {
         proc,
+        model,
         bornAt: Date.now(),
         onLine: () => undefined,
         onExit: () => undefined,
@@ -96,21 +109,26 @@ export const layer = Layer.effect(
       return warm;
     };
     let ready: Warm | null = null;
-    const take = () => {
+    const take = (model: string) => {
       const old = ready;
       ready = null;
-      if (old !== null && old.proc.exitCode === null && Date.now() - old.bornAt < MAX_IDLE_MS)
+      if (
+        old !== null &&
+        old.model === model &&
+        old.proc.exitCode === null &&
+        Date.now() - old.bornAt < MAX_IDLE_MS
+      )
         return old;
       old?.proc.kill();
-      return spawn();
+      return spawn(model);
     };
     yield* Effect.addFinalizer(() => Effect.sync(() => ready?.proc.kill()));
 
-    const write: R1Hold["Service"]["write"] = (input) =>
+    const bridge = (input: Parameters<R1Hold["Service"]["write"]>[0], model: string) =>
       Effect.callback<string | null>((resume) => {
         const said = recent.get(input.vessel) ?? [];
-        const warm = take();
-        ready = spawn();
+        const warm = take(model);
+        ready = spawn(model);
         let text = "";
         let settled = false;
         const end = (line: string | null) => {
@@ -124,11 +142,11 @@ export const layer = Layer.effect(
         warm.onLine = (line) => {
           const r = readLine(line);
           if (r.result !== undefined)
-            for (const tokens of cliTokens(r.result, MODEL))
+            for (const tokens of cliTokens(r.result, model))
               Effect.runForkWith(context)(
                 usage.record({
                   ...tokens,
-                  role: "voice",
+                  role: "hold",
                   credential: "subscription",
                   attribution: { feature: "hold", origin: "user", device: input.vessel },
                 }),
@@ -143,6 +161,11 @@ export const layer = Layer.effect(
         );
         return Effect.sync(() => end(null));
       });
+
+    const write: R1Hold["Service"]["write"] = (input) =>
+      Effect.flatMap(holdModel, (model) =>
+        model === null ? Effect.succeed(null) : bridge(input, model),
+      );
 
     return R1Hold.of({ write });
   }),
