@@ -41,6 +41,16 @@ describe("decodeBodyMove", () => {
       error: expect.stringMatching(/nothing to do/),
     });
     expect(decodeBodyMove({ then: [{ afterMs: 10, then: [] }] })).toMatchObject({ ok: false });
+    expect(ok({ touch: { part: "shoulder", pressure: 4 } }).touch).toEqual({
+      part: "shoulder",
+      motion: "rest",
+      pressure: 1,
+      ms: 1500,
+    });
+    expect(decodeBodyMove({ touch: { part: "elbow" } })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/part is one of head/),
+    });
   });
 });
 
@@ -59,6 +69,10 @@ describe("the private gate", () => {
     expect(isPrivateMove(ext)).toBe(true);
     expect(extensionActs(ext)).toEqual(["myOwnAct"]);
     expect(BODY_CAPABILITIES.postures).not.toContain("aroused");
+    // a hand on her head or arm is everyday; on her chest or thigh it waits for a private moment
+    expect(isPrivateMove(ok({ touch: { part: "head", motion: "pat" } }))).toBe(false);
+    expect(isPrivateMove(ok({ then: [{ afterMs: 0, touch: { part: "thigh" } }] }))).toBe(true);
+    expect(BODY_CAPABILITIES.touch.parts).not.toContain("chest");
   });
 });
 
@@ -73,6 +87,16 @@ describe("moveCues", () => {
     );
     expect(cues.map((c) => c.kind)).toEqual(["act", "mood", "seq"]);
     for (const c of cues) expect(parseCue(c)).toEqual(c);
+    const [hand] = moveCues(
+      ok({ touch: { part: "arm", motion: "stroke", pressure: 0.3, ms: 2000 } }),
+    );
+    expect(parseCue(hand)).toEqual({
+      kind: "hand",
+      part: "arm",
+      motion: "stroke",
+      pressure: 0.3,
+      ms: 2000,
+    });
     // a model's own shape keys by name, bounded, for what its expressions don't cover
     const [shapes] = moveCues(ok({ morphs: { Fcl_MTH_Up: 2, Fcl_BRW_Surprised: 0.4 } }));
     expect(parseCue(shapes)).toEqual({

@@ -3,6 +3,7 @@
  * JSON lines, so a scene drives both. Cues carry what the spine already decided (mood, gesture, the aligner's visemes,
  * G7 word-timed effects, the group's speaker); a body only renders them and never decides anything itself.
  */
+import { HAND_MOTIONS, type HandMotion } from "./bodyHand.ts";
 import { fireAtMs, type EffectWhen } from "./speechEffects.ts";
 import {
   isAct,
@@ -346,6 +347,14 @@ export type BodyCue =
     }
   /** Where she looks, -1..1 across (her left +) and up, for `ms`; then back to him. */
   | { readonly kind: "gaze"; readonly x: number; readonly y: number; readonly ms: number }
+  /** A hand (an agent's, or a second body's) on a part of her, moving as `motion` for `ms` (bodyHand.ts). */
+  | {
+      readonly kind: "hand";
+      readonly part: TouchZone;
+      readonly motion: HandMotion;
+      readonly pressure: number;
+      readonly ms: number;
+    }
   /** The model's own shape keys by name (0..1), held until set again; 0 lets one go. */
   | { readonly kind: "morphs"; readonly weights: Readonly<Record<string, number>> }
   /** Face weights held for `ms` over her mood's face. */
@@ -590,6 +599,19 @@ export const parseCue = (raw: unknown): BodyCue | null => {
         ...(typeof c["on"] === "boolean" ? { on: c["on"] } : {}),
         ...(intensity === null ? {} : { intensity }),
         ...(speed === null ? {} : { speed }),
+      };
+    }
+    case "hand": {
+      const part = c["part"];
+      const motion = c["motion"];
+      if (!(TOUCH_ZONES as ReadonlyArray<unknown>).includes(part)) return null;
+      if (!(HAND_MOTIONS as ReadonlyArray<unknown>).includes(motion)) return null;
+      return {
+        kind: "hand",
+        part: part as TouchZone,
+        motion: motion as HandMotion,
+        pressure: num(c["pressure"], 0, 1) ?? 0.4,
+        ms: num(c["ms"], 150, 10_000) ?? 1500,
       };
     }
     case "gaze": {

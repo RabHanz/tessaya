@@ -4,7 +4,7 @@
  * sure the source is. Frames are smoothed and lightly predicted (One Euro filter), and when tracking is lost the hand
  * relaxes and fades instead of freezing. Pure, so every body and its tests share it.
  */
-import type { V3 } from "./bodyRig.ts";
+import { dot, len, v3, type V3 } from "./bodyRig.ts";
 
 export const HAND_SOURCES = [
   "pointer",
@@ -124,4 +124,79 @@ export const handContact = (
     area: Math.round(fingertip + (palm - fingertip) * Math.max(0, 1 - h.curl / 0.75)),
     pressure: h.pressure,
   };
+};
+
+/** How an agent's hand moves on her: laid still, stroking along her, patting, a quick poke, or holding firmly. */
+export const HAND_MOTIONS = ["rest", "stroke", "pat", "poke", "hold"] as const;
+export type HandMotion = (typeof HAND_MOTIONS)[number];
+/**
+ * An agent's hand `t` ms into a touch of `ms`: how far along her surface from where it landed (-1..1 of a stroke's
+ * reach), how firmly, and whether it is a fingertip. It eases on and off so it never snaps; null once it is over.
+ */
+export const agentHandAt = (
+  motion: HandMotion,
+  pressure: number,
+  ms: number,
+  t: number,
+): { readonly along: number; readonly pressure: number; readonly fingertip: boolean } | null => {
+  if (t < 0 || t > ms) return null;
+  if (motion === "poke") {
+    // in and out within 250 ms, wherever the touch's own length says
+    const k = Math.sin(Math.PI * Math.min(1, t / Math.min(ms, 250)));
+    return { along: 0, pressure: pressure * k, fingertip: true };
+  }
+  const ease = Math.min(1, t / 200, (ms - t) / 200);
+  const firm = motion === "hold" ? Math.max(0.6, pressure) : pressure;
+  if (motion === "pat") {
+    // light pats at about 2.5 a second
+    const beat = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / 400);
+    return { along: 0, pressure: firm * ease * (0.15 + 0.85 * beat), fingertip: false };
+  }
+  // a stroke goes along her and back once a second and a half
+  const along = motion === "stroke" ? Math.sin((2 * Math.PI * t) / 1500) : 0;
+  return { along, pressure: firm * ease, fingertip: false };
+};
+
+/**
+ * The parts of her that give to a hand, each turning at its first joint, and how far a full press turns it (radians).
+ * The trunk sways, the head tilts away, an arm moves; a standing leg barely gives, since it carries her.
+ */
+const GIVE: ReadonlyArray<readonly [string, string, number]> = [
+  ["neck", "head", 0.14],
+  ["spine", "upperChest", 0.07],
+  ["leftUpperArm", "leftLowerArm", 0.16],
+  ["rightUpperArm", "rightLowerArm", 0.16],
+  ["leftLowerArm", "leftHand", 0.2],
+  ["rightLowerArm", "rightHand", 0.2],
+  ["leftUpperLeg", "leftLowerLeg", 0.03],
+  ["rightUpperLeg", "rightLowerLeg", 0.03],
+];
+/**
+ * How her body answers a hand pressing at `at` in direction `push` (into her): the part nearest the press turns
+ * about its first joint, away along the push, by how firmly it presses plus a reflex (a quick poke makes her pull
+ * back further, then settle). A world-space rotation (axis, radians) for the renderer to add; null when nothing gives.
+ */
+export const yieldTo = (
+  pos: Readonly<Record<string, V3>>,
+  at: V3,
+  push: V3,
+  pressure: number,
+  reflex = 0,
+): { readonly bone: string; readonly axis: V3; readonly angle: number } | null => {
+  let best: { bone: string; pivot: V3; max: number; d: number } | null = null;
+  for (const [from, to0, max] of GIVE) {
+    const to = to0 === "upperChest" && pos[to0] === undefined ? "chest" : to0;
+    const a = pos[from];
+    const b = pos[to];
+    if (!a || !b) continue;
+    const ab = v3.sub(b, a);
+    const u = Math.max(0, Math.min(1, dot(v3.sub(at, a), ab) / Math.max(1e-9, dot(ab, ab))));
+    const d = len(v3.sub(at, v3.add(a, v3.scale(ab, u))));
+    if (best === null || d < best.d) best = { bone: from, pivot: a, max, d };
+  }
+  const firm = Math.min(1, Math.max(0, pressure) + Math.max(0, reflex));
+  if (best === null || firm < 0.02) return null;
+  const axis = v3.cross(v3.sub(at, best.pivot), push);
+  if (len(axis) < 1e-6) return null;
+  return { bone: best.bone, axis: v3.unit(axis), angle: best.max * firm };
 };
