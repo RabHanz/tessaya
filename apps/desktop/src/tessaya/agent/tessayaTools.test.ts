@@ -47,7 +47,7 @@ describe("the assistant's tool table", () => {
       input_schema: { type: "object" },
       readonly,
     });
-    const house = ["home_find", "home_state", "home_automations", "device_list"].map((n) =>
+    const house = ["home_find", "home_state", "home_automations", "device_registry"].map((n) =>
       spec(n, true),
     );
     const acts = ["home_do", "home_undo", "home_automation_save", "home_automation_set"];

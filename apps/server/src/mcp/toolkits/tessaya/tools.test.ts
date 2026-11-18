@@ -6,6 +6,7 @@ import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import { McpSchema, McpServer, Tool } from "effect/ai";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { DeviceToolkit } from "../device/tools.ts";
 import { JobTools } from "../jobs/tools.ts";
 import { TessayaToolkit } from "./tools.ts";
 
@@ -29,6 +30,9 @@ it.effect("every Tessaya tool registers with the MCP server", () =>
     ) as Effect.Effect<void>;
     yield* registration;
     expect(registered.toSorted()).toEqual(Object.keys(TessayaToolkit.tools).toSorted());
+    // One /mcp serves both: a shared name hid one of them (Tessaya's device registry behind T3's simulators).
+    const upstream = Object.keys(DeviceToolkit.tools);
+    expect(registered.filter((name) => upstream.includes(name))).toEqual([]);
   }),
 );
 

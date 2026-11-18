@@ -94,12 +94,13 @@ export const make = Effect.gen(function* () {
   // His other servers may drive a device here for a turn they heard; the camera and a restart still ask his phone.
   const linked = { linkedCallers: "allowed" } as const;
   return {
-    device_list: McpToolAccess.reads((input: Args) =>
+    device_registry: McpToolAccess.reads((input: Args) =>
       asForwarded(
         input,
         Effect.gen(function* () {
           const here = yield* devices("read", "list", {});
-          const elsewhere = yield* fromPeers("device_list", {});
+          // shortcut: a linked server older than this name answers nothing here until it updates.
+          const elsewhere = yield* fromPeers("device_registry", {});
           if (elsewhere.length === 0) return here;
           return {
             ...here,

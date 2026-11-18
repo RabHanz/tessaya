@@ -449,7 +449,7 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       volumes.set(house, after);
       return { ok: true, value: volumeLine(before, after) };
     }
-    case "device_list":
+    case "device_registry":
       return {
         ok: true,
         value: {

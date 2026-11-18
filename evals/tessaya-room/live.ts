@@ -177,12 +177,12 @@ const house = await discover([...new Set(cases.flatMap(slotsOf))], async (domain
 const devicesHere = !cases.some((c) => c.device === true)
   ? false
   : desktop !== null
-    ? hasDevices(await desktop.call("device_list", {}).catch(() => "{}"))
+    ? hasDevices(await desktop.call("device_registry", {}).catch(() => "{}"))
     : (
         await turn([
-          { role: "user", content: "List my devices with device_list; just their names." },
+          { role: "user", content: "List my devices with device_registry; just their names." },
         ])
-      ).calls.some((c) => c.name === "device_list" && !c.isError && hasDevices(c.text));
+      ).calls.some((c) => c.name === "device_registry" && !c.isError && hasDevices(c.text));
 /** The loop's answers to the act her server held, over its HTTP door: why the case fails, or null. */
 const stepUpFailure = async (
   answers: (typeof cases)[number]["stepUps"],

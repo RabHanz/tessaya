@@ -140,7 +140,7 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
     "Anything later or repeating becomes a Home Assistant automation.",
   ],
   home_automation_set: ["Pause the night lights automation", "Pauses, resumes or deletes one."],
-  device_list: [`Is the ${DEVICE} online?`, "Your devices: online, battery, signal, firmware."],
+  device_registry: [`Is the ${DEVICE} online?`, "Your devices: online, battery, signal, firmware."],
   device_act: [`Make the ${DEVICE} look happy`, "Its eyes, light, a buzz or a line said aloud."],
   device_owner: [
     `Take a picture with the ${DEVICE}`,

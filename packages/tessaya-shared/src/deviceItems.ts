@@ -109,7 +109,7 @@ export const groupItems = <A>(items: ReadonlyArray<DeviceItem>, f: (item: Device
   return out;
 };
 
-/** device_list for a model: each device's items by group, without values. Labels are the device's words, as data. */
+/** device_registry for a model: each device's items by group, without values. Labels are the device's words, as data. */
 export const itemsView = (devices: ReadonlyArray<RegisteredDevice>) =>
   devices.map((d) => ({
     id: d.deviceId,

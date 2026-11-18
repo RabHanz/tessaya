@@ -32,7 +32,7 @@ const shared = {
   success: TessayaDevicesCallResult,
 };
 const Id = Schema.String.check(Schema.isMaxLength(60)).annotate({
-  description: "The device id from device_list, e.g. r1-3d57b3.",
+  description: "The device id from device_registry, e.g. r1-3d57b3.",
 });
 
 /** The act ops a tool may use; forget is refused for outside agents (his own Tessaya forgets one when he asks). */
@@ -50,9 +50,9 @@ const AGENT_ACT_OPS = [
   "forget",
 ] as const;
 
-const ListTool = Tool.make("device_list", {
+const ListTool = Tool.make("device_registry", {
   ...shared,
-  description: `${DEVICE_TOOL_TEXT.device_list} Devices on his other linked servers carry \`on\`: pass it back to drive one.`,
+  description: `${DEVICE_TOOL_TEXT.device_registry} Devices on his other linked servers carry \`on\`: pass it back to drive one.`,
   parameters: Schema.Struct({ ...PeerOrigin }),
 })
   .annotate(Tool.Readonly, true)
@@ -91,7 +91,7 @@ const OwnerTool = Tool.make("device_owner", {
     }),
     version: Schema.optional(Schema.String.check(Schema.isMaxLength(30))).annotate({
       description:
-        "For update: a signed release such as smp-0.3.95 from device_list's updates; leave out for the recommended one.",
+        "For update: a signed release such as smp-0.3.95 from device_registry's updates; leave out for the recommended one.",
     }),
     on: Schema.optional(On),
     ...PeerOrigin,
