@@ -652,6 +652,13 @@ layer("TessayaTurn", (it) => {
           rehearsal: true,
           persona: "operations",
         });
+        // A private moment's turn reads as a real one and shows on no board.
+        yield* turn.begin({
+          vessel: device,
+          text: "just us",
+          private: true,
+          persona: "operations",
+        });
         const freya = yield* turn.threads("operations");
         assert.deepStrictEqual(
           freya.map((t) => [t.person, t.vessel.id, t.lastAt - t.openedAt]),

@@ -33,6 +33,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import { HomeAssistantService, r1ByKey } from "../home/HomeAssistantService.ts";
 import { DeskTools } from "../home/R1Tools.ts";
+import type { RoomToolSet } from "../home/R1Brain.ts";
 import * as ServerConfig from "../config.ts";
 import * as JobFlow from "./TessayaJobFlow.ts";
 import { TessayaWeaveService } from "./TessayaWeaveService.ts";
@@ -801,9 +802,7 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
   router: HttpRouter.HttpRouter,
   context: Context.Context<TessayaRpcHandlers.TessayaServices>,
   auth: EnvironmentAuth.EnvironmentAuth["Service"],
-  deskTools: {
-    readonly specs: ReadonlyArray<{ readonly name: string; readonly description: string }>;
-  } | null,
+  deskTools: RoomToolSet | null,
   userdata: string,
 ) {
   const run = Effect.runPromiseWith(context);
@@ -851,6 +850,25 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
         }).pipe(Effect.ignore),
       ),
     presence: (vessel) => run(presenceOn(vessel)),
+    // Her own window's turns read and act as every other turn of hers does, on this server's shared tools.
+    brain: (turn) =>
+      Effect.runSyncWith(context)(
+        PersonaLayers.layerBrain(
+          {
+            vessel: turn.vessel,
+            origin: turn.vessel.kind,
+            text: turn.text,
+            ...(turn.persona === null ? {} : { persona: turn.persona }),
+            member: turn.member,
+            conversation: turn.conversation,
+            sessionless: true,
+            tainted: turn.tainted,
+            sharedRoom: turn.sharedRoom,
+            rehearsal: turn.rehearsal,
+          },
+          { tools: deskTools },
+        ),
+      ),
     capabilities: async () => ({
       personas: readPack(userdata)
         .personas.filter((p) => p.private !== true)

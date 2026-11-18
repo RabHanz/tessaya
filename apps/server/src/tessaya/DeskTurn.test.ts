@@ -17,6 +17,7 @@ const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
     const seen: Array<SessionToolTurn> = [];
     const touched: Array<string> = [];
     const begun: Array<TurnEnvelope> = [];
+    const ran: Array<{ name: string; input: unknown }> = [];
     const hands = createHandsBroker({ now: () => 0, newId: () => "c1" });
     // The desktop is listening and offers its screen.
     void hands.take(1, [
@@ -33,7 +34,25 @@ const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
         ],
         recogniser: "parakeet-tdt-0.6b-v3-Q8_0",
       },
-      { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
+      {
+        specs: [
+          {
+            name: "home_do",
+            description: "change a home device",
+            input_schema: { type: "object" },
+          },
+          {
+            name: "tessaya_memory_remember",
+            description: "remember",
+            input_schema: { type: "object" },
+          },
+        ],
+        run: (name, input) =>
+          Effect.sync(() => {
+            ran.push({ name, input });
+            return { text: "done", isError: false };
+          }),
+      },
       ownMachine,
       hands,
     ).pipe(
@@ -86,6 +105,7 @@ const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
       turn: seen[0],
       touched,
       begun,
+      ran,
     };
   });
 
@@ -156,5 +176,47 @@ effectIt.effect(
           vessel: { kind: "desktop", id: "desktop" },
         }),
       ]);
+    }),
+);
+
+effectIt.effect(
+  "a private turn has her main memory and every tool of the turn, and leaves nothing on shared views",
+  () =>
+    Effect.gen(function* () {
+      const seen: Array<{ memory: string; tools: Array<string>; acted: string; refused: boolean }> =
+        [];
+      const { said, touched, begun, ran } = yield* run(true, [
+        {
+          id: "test",
+          onTurn: async (_t, brain) => {
+            const context = await brain!.context();
+            const acted = await brain!.run("home_do", { light: "desk", on: false });
+            const refused = await brain!.run("tessaya_memory_remember", { text: "x" });
+            seen.push({
+              memory: context.memory,
+              tools: brain!.tools.map((t) => t.name),
+              acted: acted.text,
+              refused: refused.isError,
+            });
+            return { text: "Done, love.", mood: "happy", gesture: "none", intensity: 0.5 };
+          },
+          signal: () => undefined,
+          http: async () => ({ status: 404 }),
+        },
+      ]);
+      expect(said).toBe("Done, love.");
+      expect(seen).toEqual([
+        {
+          memory: "he likes short answers",
+          // The shared home tools and the desktop's own hands; never the public memory write.
+          tools: ["home_do", "screen_capture"],
+          acted: "done",
+          refused: true,
+        },
+      ]);
+      expect(ran).toEqual([{ name: "home_do", input: { light: "desk", on: false } }]);
+      expect(begun[0]?.private).toBe(true);
+      // Read through the one pipeline, but no end, no Record.
+      expect(touched).toEqual(["begin"]);
     }),
 );

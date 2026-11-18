@@ -825,9 +825,15 @@ export const r1Envelope = (
 
 /** A persona layer's whole reply, asked before anything is gathered, so nothing else runs, learns or records. */
 const r1Layer = Effect.fn("R1Device.layer")(function* (input: R1Heard) {
-  const turn = r1Envelope(input, yield* r1Pack, undefined);
+  const pack = yield* r1Pack;
+  const turn = r1Envelope(input, pack, undefined);
   return yield* replyFor(
     turnsOf(turn, input.voice).length > 1 ? { ...turn, sharedRoom: true } : turn,
+    {
+      tools: yield* RoomTools,
+      allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
+      device: input.device,
+    },
   );
 });
 

@@ -134,6 +134,11 @@ export interface TurnEnvelope {
    * learns from his words, so they are not kept once per persona.
    */
   readonly group?: { readonly name: string; readonly first: boolean } | undefined;
+  /**
+   * A private moment's turn (PersonaLayers.ts): it reads all she reads, and leaves no trace on shared views (the live
+   * thread board, the action log, used-memory marks). Its words are kept only by the layer, sealed.
+   */
+  readonly private?: boolean | undefined;
 }
 
 /**
@@ -937,7 +942,7 @@ export const make = Effect.gen(function* () {
         who: { member: turnIdentity(turn).member, name: null },
         repair,
       } satisfies TurnContext;
-    yield* touchThread(turn);
+    if (turn.private !== true) yield* touchThread(turn);
     const view = {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
       // Persona x person (P7): a known person's turn reads none of the persona's notes from someone else.
@@ -969,7 +974,7 @@ export const make = Effect.gen(function* () {
     const first = new Set(asked.map((i) => i.id));
     const added = around.filter((i) => !first.has(i.id));
     const ranked = [...asked, ...added];
-    if (window !== "")
+    if (window !== "" && turn.private !== true)
       yield* emitAction({
         kind: "turn.recall.window",
         actor: { kind: "rule", id: "recall", certainty: 1 },
@@ -985,7 +990,7 @@ export const make = Effect.gen(function* () {
       ranked.filter((i) => !held.has(i.id)),
       SENTENCE_TOKENS,
     ).block;
-    if (turn.turnRef !== undefined && sentence.ids.length > 0)
+    if (turn.turnRef !== undefined && sentence.ids.length > 0 && turn.private !== true)
       yield* memory.markUsed(turn.turnRef, sentence.ids);
     const member = turnIdentity(turn).member;
     const person = yield* personFor(turn);
