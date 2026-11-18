@@ -1,4 +1,6 @@
 import { it } from "@effect/vitest";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import { SpawnExecutableResolution } from "@t3tools/shared/shell";
 import { LEDGERED_DIR } from "@t3tools/tessaya-shared/brainRoutes";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -8,15 +10,22 @@ import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { expect } from "vite-plus/test";
 
+import { ClaudeExecutableFileCheck } from "../provider/Drivers/ClaudeExecutable.ts";
 import { BrainUsage, type UsageRow } from "./BrainUsage.ts";
 import * as TessayaOneShot from "./TessayaOneShot.ts";
 
 const encoder = new TextEncoder();
 
-/** A `claude -p` that prints `stdout` and exits `code`; it keeps the folder each call ran from. */
-const cli = (stdout: string, code: number, cwds: Array<string | undefined>) =>
+/** A `claude -p` that prints `stdout` and exits `code`; it keeps the folder and program each call ran. */
+const cli = (
+  stdout: string,
+  code: number,
+  cwds: Array<string | undefined>,
+  programs: Array<string | undefined>,
+) =>
   ChildProcessSpawner.make((command) => {
     cwds.push(ChildProcess.isStandardCommand(command) ? command.options.cwd : undefined);
+    programs.push(ChildProcess.isStandardCommand(command) ? command.command : undefined);
     return Effect.succeed(
       ChildProcessSpawner.makeHandle({
         pid: ChildProcessSpawner.ProcessId(900_000_003),
@@ -37,11 +46,14 @@ const cli = (stdout: string, code: number, cwds: Array<string | undefined>) =>
 const oneShot = (stdout: string, code: number) => {
   const rows: Array<UsageRow> = [];
   const cwds: Array<string | undefined> = [];
+  const programs: Array<string | undefined> = [];
   const layer = Layer.effect(TessayaOneShot.TessayaOneShot, TessayaOneShot.make).pipe(
     Layer.provide(
       Layer.mock(BrainUsage)({ record: (row) => Effect.sync(() => void rows.push(row)) }),
     ),
-    Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, cli(stdout, code, cwds))),
+    Layer.provide(
+      Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, cli(stdout, code, cwds, programs)),
+    ),
   );
   const run = Effect.flatMap(TessayaOneShot.TessayaOneShot, (s) =>
     s.run({
@@ -51,7 +63,7 @@ const oneShot = (stdout: string, code: number) => {
       feature: "synopsis",
     }),
   ).pipe(Effect.provide(layer));
-  return { rows, cwds, run };
+  return { rows, cwds, programs, run };
 };
 
 it.effect(
@@ -86,5 +98,23 @@ it.effect(
           why: "claude exited 1: ",
         }),
       ]);
+    }),
+);
+
+const NPM = "C:\\Users\\him\\AppData\\Roaming\\npm";
+const EXE = `${NPM}\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe`;
+
+it.effect(
+  "runs the packaged claude.exe on Windows, where a bare claude is an npm shim it cannot spawn",
+  () =>
+    Effect.gen(function* () {
+      // 19 Nov: his laptop's server failed every one-shot (ENOENT) since claude there is only claude.cmd.
+      const call = oneShot(JSON.stringify({ type: "result", structured_output: { ok: true } }), 0);
+      yield* call.run.pipe(
+        Effect.provideService(HostProcess.Platform, "win32"),
+        Effect.provideService(SpawnExecutableResolution, () => `${NPM}\\claude.cmd`),
+        Effect.provideService(ClaudeExecutableFileCheck, (file) => file === EXE),
+      );
+      expect(call.programs).toEqual([EXE]);
     }),
 );

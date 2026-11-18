@@ -18,11 +18,18 @@ import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { toJsonSchemaObject } from "@t3tools/provider-core/server/textGenerationUtils";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import { deferredRole, onSubscription, routeFor } from "./BrainRoutes.ts";
 import type { UsageAttribution } from "@t3tools/tessaya-contracts";
 
 import { BrainUsage, cliTokens, ledgeredCwd, layer as brainUsageLayer } from "./BrainUsage.ts";
+import { resolveClaudeSdkExecutablePath } from "../provider/Drivers/ClaudeExecutable.ts";
+
+/** The claude CLI to spawn: on Windows a bare `claude` is an npm .cmd shim that cannot be spawned without a shell. */
+export const claudeProgram = Effect.flatMap(HostProcess.Environment, (env) =>
+  resolveClaudeSdkExecutablePath("claude", env),
+);
 
 const TIMEOUT = "90 seconds";
 
@@ -98,7 +105,7 @@ export const make = Effect.gen(function* () {
       // @effect-diagnostics-next-line globalJsonInEffect:off - a JSON Schema object, always serialisable.
       const jsonSchema = JSON.stringify(toJsonSchemaObject(outputSchema));
       const command = ChildProcess.make(
-        "claude",
+        yield* claudeProgram,
         [
           "-p",
           "--output-format",

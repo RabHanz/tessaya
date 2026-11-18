@@ -20,6 +20,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import { onSubscription } from "../tessaya/BrainRoutes.ts";
+import { claudeProgram } from "../tessaya/TessayaOneShot.ts";
 import {
   BrainUsage,
   cliTokens,
@@ -258,6 +259,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   const api = yield* DictationCleanupApi;
   const usage = yield* BrainUsage;
   const context = yield* Effect.context<never>();
+  const claude = yield* claudeProgram;
   /** A subscription turn's `result` event, as usage rows: the plan pays, so tokens and no dollars. */
   const used = (role: BrainRole, model: string, result: unknown) => {
     for (const tokens of cliTokens(result, model))
@@ -281,7 +283,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   );
   const spawn = (model: string): Warm => {
     const proc = NodeChildProcess.spawn(
-      "claude",
+      claude,
       [
         "-p",
         "--input-format",

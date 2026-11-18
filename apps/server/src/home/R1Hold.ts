@@ -17,6 +17,7 @@ import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { onSubscription } from "../tessaya/BrainRoutes.ts";
 import { BrainUsage, cliTokens, ledgeredCwd } from "../tessaya/BrainUsage.ts";
+import { claudeProgram } from "../tessaya/TessayaOneShot.ts";
 import { BRIDGE_SYSTEM, bridgePrompt, keptBridge } from "@t3tools/tessaya-shared/holdLine";
 
 import { readLine } from "./R1Brain.ts";
@@ -59,10 +60,11 @@ export const layer = Layer.effect(
       Effect.orElseSucceed(() => null),
     );
     const context = yield* Effect.context<never>();
+    const claude = yield* claudeProgram;
     const recent = new Map<string, Array<string>>();
     const spawn = (model: string): Warm => {
       const proc = NodeChildProcess.spawn(
-        "claude",
+        claude,
         [
           "-p",
           "--input-format",
