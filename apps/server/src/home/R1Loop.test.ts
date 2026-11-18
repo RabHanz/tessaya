@@ -198,12 +198,18 @@ it("tells him where the R1's voice is: downloading, running, elsewhere, or not i
 });
 
 /** Runs the election over a timeline of (seconds since start, other loops heard): whether this server answers at each. */
-const run = (timeline: ReadonlyArray<readonly [number, number]>) => {
+const run = (timeline: ReadonlyArray<readonly [number, number]>) =>
+  vote(timeline.map(([s, others]) => [s, others, 1, true] as const)).map((v) => v.answers);
+
+/** The election over (seconds, other loops heard, Tessels on this hub, our loop up and hearing): each tick's vote. */
+const vote = (timeline: ReadonlyArray<readonly [number, number, number, boolean]>) => {
   let lastOtherAt = 0;
-  return timeline.map(([s, others]) => {
-    const vote = elect({ others, lastOtherAt, bornAt: 0, now: s * 1000 });
-    lastOtherAt = vote.lastOtherAt;
-    return vote.answers;
+  let lastHereAt = 0;
+  return timeline.map(([s, others, here, ready]) => {
+    const v = elect({ others, here, ready, lastOtherAt, lastHereAt, bornAt: 0, now: s * 1000 });
+    lastOtherAt = v.lastOtherAt;
+    lastHereAt = v.lastHereAt;
+    return v;
   });
 };
 
@@ -256,4 +262,36 @@ it("answers alone after a start only once no other loop reconnected, so two star
       [30, 0],
     ]),
   ).toEqual([false, false, true]);
+});
+
+it("claims the room only while its own loop is up and hearing a Tessel on this hub", () => {
+  // 18 Nov 19:34: the loop was off on hetzner, she landed there, and it still recorded a takeover. Never ready, no claim.
+  expect(
+    vote([
+      [31, 0, 1, false],
+      [60, 0, 1, false],
+    ]).map((v) => [v.answers, v.claims]),
+  ).toEqual([
+    [true, false],
+    [true, false],
+  ]);
+  // No Tessel on this hub: nothing to serve, so no loop runs here and nothing is claimed, whatever else is quiet.
+  expect(vote([[40, 0, 0, false]]).map((v) => [v.answers, v.claims])).toEqual([[false, false]]);
+  // She arrives: the loop starts, and the claim follows once it hears her. She leaves: no claim, and after a minute
+  // away the loop stops.
+  expect(
+    vote([
+      [40, 0, 1, false],
+      [42, 0, 1, true],
+      [50, 0, 0, true],
+      [111, 0, 0, true],
+    ]).map((v) => [v.answers, v.claims]),
+  ).toEqual([
+    [true, false],
+    [true, true],
+    [true, false],
+    [false, false],
+  ]);
+  // Another loop on this hub always wins, even with ours up.
+  expect(vote([[40, 1, 1, true]]).map((v) => v.claims)).toEqual([false]);
 });
