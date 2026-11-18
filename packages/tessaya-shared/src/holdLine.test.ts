@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { bridgePrompt, keptBridge } from "./R1Hold.ts";
+import { bridgePrompt, keptBridge } from "./holdLine.ts";
 
 describe("her bridge while a slow answer comes (B-056)", () => {
   it("keeps a short line about his words, and never a stock filler, a promise or one said lately", () => {
@@ -13,13 +13,24 @@ describe("her bridge while a slow answer comes (B-056)", () => {
     // 18 Nov: "One moment." on every slow turn.
     expect(keptBridge("One moment.", [])).toBeNull();
     expect(keptBridge("Let me check.", [])).toBeNull();
+    expect(keptBridge("Ah, checking your second screen on the laptop, one moment.", [])).toBeNull();
     // Said before an answer not yet known: a promise it may break.
     expect(keptBridge("Almost there with the fan for you.", [])).toBeNull();
     expect(keptBridge("Okay.", [])).toBeNull();
     expect(
       keptBridge("The fan in the study, one sec.", ["the fan in the study, one sec"]),
     ).toBeNull();
-    expect(keptBridge("word ".repeat(13), [])).toBeNull();
+    expect(keptBridge("word ".repeat(15), [])).toBeNull();
+    // The eval's headphone turn: the switch may yet fail, and Alfred never names himself.
+    expect(keptBridge("Right, routing the audio over to your headphones now.", [])).toBeNull();
+    expect(
+      keptBridge("Checking acme app now, Alfred, for what's running.", [], "Alfred"),
+    ).toBeNull();
+    expect(keptBridge("Ah, his laptop's second screen, the extra display.", [])).toBeNull();
+    expect(keptBridge("Ooh, the study lamp in yellow.", ["Ooh, the office fan again."])).toBeNull();
+    expect(keptBridge("The study lamp in yellow, nice.", ["Ooh, the office fan again."])).toBe(
+      "The study lamp in yellow, nice.",
+    );
   });
 
   it("gives the writer his words, the talk before and the lines to avoid", () => {
