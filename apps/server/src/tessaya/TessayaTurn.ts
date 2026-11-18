@@ -434,7 +434,7 @@ export const handOffLine = (from: string): string =>
   `${from} handed this conversation to you: carry on from where it is, without a greeting or starting over.`;
 
 /** How much of a conversation every vessel shares, and how long it waits for him to go on. */
-const CONVERSATION_TURNS = 12;
+const CONVERSATION_TURNS = 24;
 const CONVERSATION_IDLE_MS = SAME_CONVERSATION_MS;
 /** How soon after a vessel's last exchange a turn Voice ID could not judge still continues it. */
 const THREAD_CARRY_MS = 2 * 60_000;
@@ -838,6 +838,25 @@ export const make = Effect.gen(function* () {
     if (Option.isSome(current)) yield* current.value.set(conversation, target.id);
     const fromName = personas.find((p) => p.id === from)?.name ?? "the persona before";
     if (from !== null) handedFrom.set(conversation, from);
+    // On a Tessel the persona must be worn there too, or "Alfred has it from here" is not what he hears (18 Nov).
+    const body =
+      origin.kind !== "device" || Option.isNone(cast) || origin.persona === target.id
+        ? null
+        : yield* cast.value
+            .call(
+              { op: "call", body: origin.id, persona: target.id, stay: false },
+              false,
+              origin.tainted !== true,
+            )
+            .pipe(
+              Effect.as(null),
+              Effect.catch((why: string) => Effect.succeed(why)),
+            );
+    if (body !== null)
+      return {
+        line: `${target.name} has this conversation, but this device could not switch to ${target.name} (${body}): say that plainly, never that ${target.name} is here.`,
+        persona: target.id,
+      };
     // The persona speaking now carries on itself; another one hears it on its next turn.
     if (origin.persona === target.id) return { line: handOffLine(fromName), persona: target.id };
     handedTo.set(conversation, { to: target.id, from: fromName });

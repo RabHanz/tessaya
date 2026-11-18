@@ -21,6 +21,7 @@ import type {
 import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import { TurnLiveContext, layer as liveLayer } from "./TurnLiveContext.ts";
 import { TessayaUnderstanding } from "./TessayaUnderstanding.ts";
+import { TessayaCast } from "./TessayaCast.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
   boardLine,
@@ -73,8 +74,23 @@ const stores = Layer.mock(TessayaPrivateMemoryService)({
     }),
 });
 
+/** The bodies a hand-off was asked to wear: "dead-1" refuses, as a body this server cannot move would. */
+const castCalls: Array<{ body: string; persona: string; visitOk: boolean | undefined }> = [];
+const cast = Layer.mock(TessayaCast)({
+  touch: () => Effect.void,
+  call: (input, _verified, visitOk) =>
+    input.op === "call" && input.body === "dead-1"
+      ? Effect.fail("That Tessel is not linked to this server.")
+      : Effect.sync(() => {
+          if (input.op === "call")
+            castCalls.push({ body: input.body, persona: input.persona, visitOk });
+          return { personas: [], bodies: [] };
+        }),
+});
+
 const layer = it.layer(
   turnLayer.pipe(
+    Layer.provideMerge(cast),
     Layer.provideMerge(MemberPreferencesLayer),
     Layer.provideMerge(liveLayer),
     Layer.provideMerge(ServerSettingsService.layerTest()),
@@ -692,6 +708,31 @@ layer("TessayaTurn", (it) => {
       // The persona speaking may take it itself; a name with no persona moves nothing.
       assert.include((yield* handOff("engineering", { to: "Zed" })).line, "no persona called Zed");
       assert.lengthOf(yield* turn.threads("engineering"), 1);
+    }),
+  );
+
+  it.effect("a hand-off on a Tessel wears the persona there, or says plainly it could not", () =>
+    Effect.gen(function* () {
+      const turn = yield* TessayaTurn;
+      // "I said Alfred, I was talking to him" on a short unverified turn (18 Nov, 05:52): a switch, not an act.
+      const handOff = (id: string) =>
+        turn.handOff({ to: "Alfred" }).pipe(
+          Effect.provideService(
+            TurnOrigin,
+            originOf({
+              vessel: { kind: "device", id },
+              text: "",
+              speaker: owner({ kind: "unverified", personId: null, verified: false }),
+              persona: "executive",
+            }),
+          ),
+        );
+      castCalls.length = 0;
+      assert.include((yield* handOff("tumble-1")).line, "Alfred has this conversation now");
+      assert.deepStrictEqual(castCalls, [{ body: "tumble-1", persona: "butler", visitOk: true }]);
+      const refused = (yield* handOff("dead-1")).line;
+      assert.include(refused, "could not switch to Alfred");
+      assert.include(refused, "never that Alfred is here");
     }),
   );
 

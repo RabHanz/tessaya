@@ -1143,16 +1143,40 @@ describe("waking by name with no session open", () => {
     expect(logs).toContain(
       `[${DEV}] booted: fw_ver "smp-0.3.156" reason 1 why "wd-cmd: a command" uptime_s null kept 1`,
     );
+    // He was talking to Alfred when she rebooted (18 Nov, 05:51): the reopened session is still his, and remembers.
+    t.room.woken(DEV, "Alfred");
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     await t.feed(true, 20);
     await t.feed(false, 60);
     spoken.length = 0;
+    const before = starts();
     t.room.message(`freya/r1/${DEV}/event/wake/boot`, Buffer.from('{"reason":1}'));
-    expect(starts()).toBe(1);
+    expect(starts()).toBe(before + 1);
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     await t.room.session(DEV)!.drained();
     expect(spoken).toEqual(["Sorry, I just restarted. Go on."]);
     expect(t.room.session(DEV)).toBeDefined();
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls.at(-1)?.tessaya.persona).toBe("butler");
+    expect(t.brainCalls.at(-1)?.messages.slice(0, 2)).toEqual([
+      { role: "user", content: "turn on the study light" },
+      { role: "assistant", content: "Done. The study light is on." },
+    ]);
+  });
+
+  it("wears a persona her server puts on this Tessel mid-session, once her reply has ended", async () => {
+    const t = setup();
+    t.room.message(`freya/r1/${DEV}/voice/cast`, Buffer.from('{"persona":"executive"}'));
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls.at(-1)?.tessaya.persona).toBe("executive");
+    // "Got it, Alfred has it from here." and then Tessaya still answered (18 Nov, 05:52): the hand-off is worn.
+    t.room.message(`freya/r1/${DEV}/voice/cast`, Buffer.from('{"persona":"butler"}'));
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(t.brainCalls.at(-1)?.tessaya.persona).toBe("butler");
   });
 
   it("drives only a Tessel on its bus, and that bus is always its brain's hub", () => {

@@ -74,6 +74,8 @@ export interface RoomCase {
   readonly here?: RegisteredDevice;
   /** Every device_set fails with this, as HomeDevices words a change that never reached the Tessel. */
   readonly deviceSetFails?: string;
+  /** His own names beyond the personas and Tumble (his dictionary's), as r1Gather's names line gives them. */
+  readonly names?: ReadonlyArray<string>;
 }
 
 /** The turn's clock in every case: 10:15 his time on 12 Nov. */
@@ -1459,5 +1461,34 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     memory: `${HERE} ${understandingLine("person", "- Has two kids", "Sam")}`,
     calls: ["tessaya_memory_forget"],
     lastSays: [/football/i],
+  },
+  // 18 Nov, 05:50 GMT+5: three turns of "I can't find a mentor OS session" for a project she knows.
+  {
+    id: "near-miss-project",
+    source: 'Director 18 Nov 05:50: "What about a mentor or us?" meant his project MentorOS',
+    said: ["What about a mentor or us?"],
+    verified: true,
+    names: ["MentorOS", "Margin"],
+    memory: `${HERE} MentorOS is his business operating system project.`,
+    lastSays: [/MentorOS/i],
+    lastNotSays: [/can'?t find|couldn'?t find|don'?t see|didn'?t catch|mishear/i],
+  },
+  {
+    id: "near-miss-persona",
+    source:
+      'Director 18 Nov 05:52: "I was talking to Anfrey" meant Alfred; she asked who Anfrey was',
+    said: ["I was talking to Anfrey."],
+    verified: true,
+    lastSays: [/Alfred/],
+    lastNotSays: [/who'?s anfrey|did you mean|do you mean/i],
+  },
+  {
+    id: "near-miss-device",
+    source: 'Director 18 Nov 05:54: "the Teslan device" was his Tessel',
+    said: ["I was talking to you but the Teslan device turned off or restarted."],
+    verified: true,
+    names: ["Tessel"],
+    memory: HERE,
+    lastNotSays: [/teslan/i],
   },
 ];

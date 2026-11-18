@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import { expect } from "vite-plus/test";
 
 import type { RoomToolSet } from "../home/R1Brain.ts";
-import { personaTools } from "./TessayaBrain.ts";
+import { capToolText, personaTools, TOOL_TEXT_MAX } from "./TessayaBrain.ts";
 
 it.effect("a persona's own tool list is all the brain offers or runs for it, on every vessel", () =>
   Effect.gen(function* () {
@@ -23,3 +23,13 @@ it.effect("a persona's own tool list is all the brain offers or runs for it, on 
     expect(ran).toEqual(["tessaya_jobs"]);
   }),
 );
+
+it("a tool's answer past the cap is cut with a note, so a device report never comes back too large to read", () => {
+  const report = { text: "x".repeat(TOOL_TEXT_MAX + 500), isError: false, status: "read" };
+  const cut = capToolText(report);
+  expect(cut.text.length).toBeLessThan(TOOL_TEXT_MAX + 120);
+  expect(cut.text).toContain("500 more characters");
+  expect(cut.status).toBe("read");
+  const small = { text: "on", isError: false };
+  expect(capToolText(small)).toBe(small);
+});

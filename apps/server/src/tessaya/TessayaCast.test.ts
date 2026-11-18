@@ -128,6 +128,25 @@ it.effect("never moves a body for an unverified voice, so a false wake can't re-
 });
 
 it.effect(
+  "a visit for this conversation is a switch, not an act: any untainted turn may ask",
+  () => {
+    const { layer } = setup();
+    return Effect.gen(function* () {
+      const cast = yield* TessayaCast;
+      // "Yes." to "want me to bring him here?" was refused for a voice too short to verify (18 Nov, 05:52).
+      yield* cast.call({ op: "call", body: "Tumble", persona: "alfred", stay: false }, false, true);
+      expect(yield* cast.wearing("r1-tumble")).toBe("butler");
+      // Keeping it there is lasting, and her own echo never moves anyone.
+      const stay = { op: "call", body: "Tumble", persona: "onyx", stay: true } as const;
+      expect(yield* Effect.flip(cast.call(stay, false, true))).toContain("voice she knows");
+      const echo = { op: "call", body: "Tumble", persona: "onyx", stay: false } as const;
+      expect(yield* Effect.flip(cast.call(echo, false, false))).toContain("voice she knows");
+      expect(yield* cast.wearing("r1-tumble")).toBe("butler");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
   "puts several on the desktop from its own companion settings, and a call stands beside her",
   () => {
     const { layer, controls } = setup();

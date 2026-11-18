@@ -43,8 +43,15 @@ export class TessayaCast extends Context.Service<
     readonly view: Effect.Effect<CastView>;
     /** The persona a body wears now, for its face, its mood and its next session. */
     readonly wearing: (body: string) => Effect.Effect<string | null>;
-    /** His change; refused unless `mayRecast` (only his verified ask, never a wake word). */
-    readonly call: (input: CastCallInput, verified: boolean) => Effect.Effect<CastView, string>;
+    /**
+     * His change; refused unless `mayRecast` (only his verified ask, never a wake word). A visit for this conversation
+     * only needs `visitOk`: it is as harmless as the wake word that does the same (18 Nov).
+     */
+    readonly call: (
+      input: CastCallInput,
+      verified: boolean,
+      visitOk?: boolean,
+    ) => Effect.Effect<CastView, string>;
     /** A turn on this body: a visit there lasts while the conversation does. */
     readonly touch: (body: string) => Effect.Effect<void>;
     readonly told: (body: string) => Effect.Effect<{
@@ -263,9 +270,13 @@ const make = Effect.gen(function* () {
     yield* tell(body);
   });
 
-  const call = Effect.fn("TessayaCast.call")(function* (input: CastCallInput, verified: boolean) {
+  const call = Effect.fn("TessayaCast.call")(function* (
+    input: CastCallInput,
+    verified: boolean,
+    visitOk = verified,
+  ) {
     if (input.op === "view") return yield* bodies;
-    if (!mayRecast("ask", verified))
+    if (input.op === "call" && !input.stay ? !visitOk : !mayRecast("ask", verified))
       return yield* Effect.fail(
         "Only a voice she knows, or his signed-in app, can move a persona.",
       );

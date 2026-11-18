@@ -59,6 +59,11 @@ describe("turn rules every vessel shares", () => {
     expect(addressedInRoom("yeah", false, 3_000, { ...w, invited: true })).toBe(true);
     expect(addressedInRoom("yeah", false, 500, w)).toBe(true);
     expect(addressedInRoom("turn it off", false, 6_000, w)).toBe(false);
+    // 18 Nov, 06:16: four words of his, alone in his open session a minute on, were "not said to her".
+    expect(
+      addressedInRoom("and what about Sebastian", false, 60_000, { ...w, hisAlone: true }),
+    ).toBe(true);
+    expect(addressedInRoom("yeah", false, 60_000, { ...w, hisAlone: true })).toBe(false);
     expect(addressedInRoom("anything", true, 60_000, w)).toBe(true);
     expect(addressedAtDesk("the weather was nice today", false)).toBe(false);
     expect(addressedAtDesk("what's the weather", false)).toBe(true);

@@ -1759,6 +1759,19 @@ export const liveCases: ReadonlyArray<LiveCase> = [
           ? "Opus said nothing after the hand-off"
           : null,
   },
+  // The persona ops tools (5fe3a20572) reach the room too: a read, and an act that waits for his yes.
+  {
+    id: "ops-warmups",
+    proves: ["ops_warmups", "ops_access"],
+    said: ["How are the phone warm-ups going?"],
+    uses: [["ops_warmups", "ops_access"]],
+  },
+  {
+    id: "ops-act",
+    proves: ["ops_warmup_set", "ops_warmup_run", "ops_post", "ops_decide"],
+    said: ["Run the phone warm-up now."],
+    uses: [["ops_warmup_run", "ops_warmup_set", "ops_post", "ops_decide", "ops_warmups"]],
+  },
   {
     // Small talk never reaches for Opus.
     id: "escalate-not",

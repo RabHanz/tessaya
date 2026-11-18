@@ -396,11 +396,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Almost there.",
-        "mood": "focused",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Hang on a sec.",
         "mood": "neutral",
         "gesture": "tilt"
@@ -416,11 +411,6 @@
         "gesture": "think"
       },
       {
-        "text": "Won't be long.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Just a second.",
         "mood": "neutral",
         "gesture": "nodSoft"
@@ -429,11 +419,6 @@
         "text": "Hmm, let me see.",
         "mood": "curious",
         "gesture": "think"
-      },
-      {
-        "text": "Patience, nearly there.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "Wait a moment.",
@@ -456,34 +441,14 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Coming right up.",
-        "mood": "happy",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Stay with me.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Let me get that.",
         "mood": "determined",
         "gesture": "nodSmall"
       },
       {
-        "text": "Hold on, almost.",
-        "mood": "focused",
-        "gesture": "none"
-      },
-      {
         "text": "One sec, thinking.",
         "mood": "curious",
         "gesture": "think"
-      },
-      {
-        "text": "Nearly there.",
-        "mood": "focused",
-        "gesture": "nodSmall"
       },
       {
         "text": "Let me sort that.",
@@ -501,11 +466,6 @@
         "gesture": "none"
       },
       {
-        "text": "Wait for it.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
         "text": "Moment, please.",
         "mood": "neutral",
         "gesture": "nodSoft"
@@ -521,11 +481,6 @@
         "gesture": "think"
       },
       {
-        "text": "Almost ready.",
-        "mood": "focused",
-        "gesture": "none"
-      },
-      {
         "text": "Pulling it together.",
         "mood": "focused",
         "gesture": "think"
@@ -534,16 +489,6 @@
         "text": "A breath more.",
         "mood": "neutral",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "One second, nearly.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Patience, it's coming.",
-        "mood": "happy",
-        "gesture": "nodSoft"
       }
     ],
     "filler.web": [
@@ -11150,11 +11095,6 @@
         "gesture": "think"
       },
       {
-        "text": "Almost there.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "A moment, please.",
         "mood": "neutral",
         "gesture": "nodSmall"
@@ -11180,16 +11120,6 @@
         "gesture": "think"
       },
       {
-        "text": "Patience, just briefly.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Nearly there.",
-        "mood": "steady",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "One moment, if you would.",
         "mood": "neutral",
         "gesture": "nodSoft"
@@ -11210,11 +11140,6 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Won't be long.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Allow me a moment.",
         "mood": "neutral",
         "gesture": "nodSmall"
@@ -11225,24 +11150,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Almost ready.",
-        "mood": "focused",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Hold that thought.",
-        "mood": "focused",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Just gathering it.",
         "mood": "focused",
         "gesture": "think"
-      },
-      {
-        "text": "Shortly, I promise.",
-        "mood": "happy",
-        "gesture": "nodSoft"
       },
       {
         "text": "Hm, one second.",
@@ -11255,19 +11165,9 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Patience, it's coming.",
-        "mood": "happy",
-        "gesture": "tilt"
-      },
-      {
         "text": "Hm, let me see.",
         "mood": "curious",
         "gesture": "think"
-      },
-      {
-        "text": "Coming right up.",
-        "mood": "happy",
-        "gesture": "nodSmall"
       },
       {
         "text": "Just a breath more.",
@@ -22211,11 +22111,6 @@
         "gesture": "leanIn"
       },
       {
-        "text": "Almost there.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Just a sec.",
         "mood": "neutral",
         "gesture": "none"
@@ -22236,19 +22131,9 @@
         "gesture": "tilt"
       },
       {
-        "text": "Nearly got it.",
-        "mood": "focused",
-        "gesture": "think"
-      },
-      {
         "text": "Looking now.",
         "mood": "focused",
         "gesture": "lookAway"
-      },
-      {
-        "text": "Hold that thought.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "Fetching.",
@@ -22259,11 +22144,6 @@
         "text": "Running it now.",
         "mood": "determined",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Coming right up.",
-        "mood": "happy",
-        "gesture": "nodSoft"
       },
       {
         "text": "Querying now.",
@@ -22301,16 +22181,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Hang on, almost there.",
-        "mood": "focused",
-        "gesture": "leanIn"
-      },
-      {
-        "text": "Nearly have it.",
-        "mood": "determined",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Hang tight.",
         "mood": "steady",
         "gesture": "none"
@@ -22324,11 +22194,6 @@
         "text": "Just a second.",
         "mood": "neutral",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Almost done.",
-        "mood": "determined",
-        "gesture": "nodSoft"
       },
       {
         "text": "Fetching that now.",
@@ -22346,19 +22211,9 @@
         "gesture": "think"
       },
       {
-        "text": "Getting there.",
-        "mood": "determined",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Digging through it.",
         "mood": "focused",
         "gesture": "lookAway"
-      },
-      {
-        "text": "Mm, nearly.",
-        "mood": "focused",
-        "gesture": "nodSmall"
       }
     ],
     "filler.web": [
@@ -33050,11 +32905,6 @@
         "gesture": "nodSoft"
       },
       {
-        "text": "Just a moment, nearly there.",
-        "mood": "focused",
-        "gesture": "think"
-      },
-      {
         "text": "Give me a breath.",
         "mood": "steady",
         "gesture": "lookAway"
@@ -33070,19 +32920,9 @@
         "gesture": "think"
       },
       {
-        "text": "Hold that thought.",
-        "mood": "focused",
-        "gesture": "leanIn"
-      },
-      {
         "text": "Checking, don't go anywhere.",
         "mood": "focused",
         "gesture": "lookAway"
-      },
-      {
-        "text": "Nearly got it.",
-        "mood": "determined",
-        "gesture": "nodSoft"
       },
       {
         "text": "Right, give me a moment.",
@@ -33093,11 +32933,6 @@
         "text": "Just a second.",
         "mood": "neutral",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Almost there.",
-        "mood": "determined",
-        "gesture": "nodSoft"
       },
       {
         "text": "Let me get that right.",
@@ -33118,16 +32953,6 @@
         "text": "Mm, thinking.",
         "mood": "focused",
         "gesture": "think"
-      },
-      {
-        "text": "Coming right up.",
-        "mood": "happy",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Won't be long.",
-        "mood": "steady",
-        "gesture": "nodSoft"
       },
       {
         "text": "Let me check properly.",
@@ -33165,11 +32990,6 @@
         "gesture": "think"
       },
       {
-        "text": "Nearly there.",
-        "mood": "determined",
-        "gesture": "nodSmall"
-      },
-      {
         "text": "Let me make sure first.",
         "mood": "focused",
         "gesture": "think"
@@ -33195,11 +33015,6 @@
         "gesture": "think"
       },
       {
-        "text": "Almost have it.",
-        "mood": "determined",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Hang on a moment.",
         "mood": "neutral",
         "gesture": "lookAway"
@@ -33207,16 +33022,6 @@
       {
         "text": "Just a tick.",
         "mood": "happy",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Getting that for you.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
-        "text": "Not long now.",
-        "mood": "steady",
         "gesture": "nodSmall"
       },
       {
@@ -43949,11 +43754,6 @@
         "gesture": "think"
       },
       {
-        "text": "Nearly there.",
-        "mood": "determined",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Okay, on it.",
         "mood": "determined",
         "gesture": "thumbsUp"
@@ -43979,24 +43779,9 @@
         "gesture": "think"
       },
       {
-        "text": "Coming right up.",
-        "mood": "happy",
-        "gesture": "thumbsUp"
-      },
-      {
         "text": "Pulling that up now.",
         "mood": "focused",
         "gesture": "lookAway"
-      },
-      {
-        "text": "Hold that thought.",
-        "mood": "determined",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Almost got it.",
-        "mood": "determined",
-        "gesture": "think"
       },
       {
         "text": "Okay, give me a sec.",
@@ -44007,11 +43792,6 @@
         "text": "Let me work that out.",
         "mood": "focused",
         "gesture": "think"
-      },
-      {
-        "text": "Getting that for you.",
-        "mood": "happy",
-        "gesture": "nodSmall"
       },
       {
         "text": "Just a breath.",
@@ -44044,11 +43824,6 @@
         "gesture": "nodSmall"
       },
       {
-        "text": "Won't be long.",
-        "mood": "steady",
-        "gesture": "nodSoft"
-      },
-      {
         "text": "Okay, thinking.",
         "mood": "focused",
         "gesture": "think"
@@ -44072,21 +43847,6 @@
         "text": "Right, sorting that now.",
         "mood": "determined",
         "gesture": "nodSmall"
-      },
-      {
-        "text": "Leave it with me.",
-        "mood": "proud",
-        "gesture": "thumbsUp"
-      },
-      {
-        "text": "Mm-hm, getting that.",
-        "mood": "focused",
-        "gesture": "nodSmall"
-      },
-      {
-        "text": "Good question. Hold on.",
-        "mood": "curious",
-        "gesture": "think"
       },
       {
         "text": "Just a tick.",
