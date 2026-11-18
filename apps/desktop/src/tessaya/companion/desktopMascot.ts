@@ -268,6 +268,15 @@ export interface DesktopMascot {
   readonly asleep: (on: boolean) => void;
   /** Something the brain or an agent has her do (the device registry's `mascot.do`); false when she cannot now. */
   readonly act: (what: MascotAct) => boolean;
+  /**
+   * An owner-only persona layer's body for her while its session is open on this desktop (PersonaLayers.ts): its page,
+   * out of capture, drawn over her in place, and her own rig hidden underneath; null puts her back. Content-free here.
+   */
+  readonly layerBody: (
+    page: { readonly url: string; readonly session: Electron.Session } | null,
+  ) => void;
+  /** A cue for the layer's body (her speech and mood as they happen); nothing while none is shown. */
+  readonly layerCue: (cue: unknown) => void;
   readonly dispose: () => void;
 }
 
@@ -453,6 +462,17 @@ export const createDesktopMascot = (input: {
     }
   };
 
+  let veil: Electron.BrowserWindow | null = null;
+  const placeVeil = () => {
+    if (veil === null || veil.isDestroyed() || win === null || win.isDestroyed()) return;
+    veil.setBounds(win.getBounds());
+  };
+  const dropVeil = () => {
+    if (veil !== null && !veil.isDestroyed()) veil.destroy();
+    veil = null;
+    call(`document.body.style.opacity = ""`);
+  };
+
   const call = (code: string) => {
     const target = win;
     void ready.then(() => {
@@ -623,6 +643,9 @@ export const createDesktopMascot = (input: {
       stopHitTest();
       stopMoving();
     });
+    // The layer's body goes wherever she goes.
+    created.on("move", () => placeVeil());
+    created.on("resize", () => placeVeil());
     win = created;
     const stage = NodeURL.pathToFileURL(NodePath.join(input.companionDir, "stage.html")).href;
     ready = created
@@ -1209,6 +1232,48 @@ export const createDesktopMascot = (input: {
       else funny(what === "funny" ? undefined : what);
       return true;
     },
+    layerBody: (page) => {
+      if (page === null) return dropVeil();
+      if (veil !== null && !veil.isDestroyed()) return;
+      const shown = new Electron.BrowserWindow({
+        ...(win !== null && !win.isDestroyed()
+          ? win.getBounds()
+          : { width: size(), height: size() }),
+        frame: false,
+        transparent: true,
+        resizable: false,
+        focusable: false,
+        skipTaskbar: true,
+        alwaysOnTop: true,
+        hasShadow: false,
+        show: false,
+        webPreferences: { session: page.session, contextIsolation: true, sandbox: true },
+      });
+      // Always out of capture, whatever the capture setting says for her public self.
+      shown.setContentProtection(true);
+      shown.setAlwaysOnTop(true, "floating");
+      markCompanionWindow(shown);
+      shown.on("closed", () => {
+        if (veil === shown) dropVeil();
+      });
+      veil = shown;
+      void shown
+        .loadURL(page.url)
+        .then(() => {
+          if (veil !== shown) return;
+          placeVeil();
+          shown.showInactive();
+          call(`document.body.style.opacity = "0"`);
+        })
+        .catch(() => dropVeil());
+    },
+    layerCue: (c) => {
+      const target = veil;
+      if (target === null || target.isDestroyed()) return;
+      void target.webContents
+        .executeJavaScript(`window.tessayaBodyCue?.(${JSON.stringify(c)})`)
+        .catch(() => undefined);
+    },
     asleep: (on) => {
       if (on === sleeping) return;
       sleeping = on;
@@ -1225,6 +1290,7 @@ export const createDesktopMascot = (input: {
       Electron.screen.removeListener("display-added", onDisplays);
       Electron.screen.removeListener("display-removed", onDisplays);
       Electron.screen.removeListener("display-metrics-changed", onDisplays);
+      dropVeil();
       if (win !== null && !win.isDestroyed()) win.destroy();
     },
   };

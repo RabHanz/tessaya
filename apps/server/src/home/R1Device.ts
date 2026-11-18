@@ -91,7 +91,12 @@ import {
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
 import { eyeClipOf, greetEvent, isLineEvent } from "@t3tools/tessaya-shared/expression";
 import { effectFor, renderFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
-import { type ExpressionMood, InputQuality, TessayaVoicePrint } from "@t3tools/tessaya-contracts";
+import {
+  EXPRESSION_MOODS,
+  type ExpressionMood,
+  InputQuality,
+  TessayaVoicePrint,
+} from "@t3tools/tessaya-contracts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -827,7 +832,7 @@ export const r1Envelope = (
 const r1Layer = Effect.fn("R1Device.layer")(function* (input: R1Heard) {
   const pack = yield* r1Pack;
   const turn = r1Envelope(input, pack, undefined);
-  return yield* replyFor(
+  const reply = yield* replyFor(
     turnsOf(turn, input.voice).length > 1 ? { ...turn, sharedRoom: true } : turn,
     {
       tools: yield* RoomTools,
@@ -835,6 +840,17 @@ const r1Layer = Effect.fn("R1Device.layer")(function* (input: R1Heard) {
       device: input.device,
     },
   );
+  // Her eyes follow her private self: a layer answers only where its own gate allows this Tessel (his room, alone).
+  if (
+    reply !== null &&
+    !isReplay(input) &&
+    (EXPRESSION_MOODS as ReadonlyArray<string>).includes(reply.mood)
+  ) {
+    const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices);
+    const device = input.device === undefined ? (all[0] ?? null) : r1ById(all, input.device);
+    yield* eyes(device, reply.mood as ExpressionMood, 6000, "her private self");
+  }
+  return reply;
 });
 
 /** His conversation's group of personas for this turn (M-021), as `groupFor` allows it; null for one persona. */

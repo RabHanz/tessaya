@@ -343,7 +343,7 @@ effectIt.effect(
 );
 
 effectIt.effect(
-  "a persona layer that answers takes the Tessel's whole turn: no brain, no house, nothing in the Record",
+  "a persona layer that answers takes the Tessel's whole turn: no brain, no house act, nothing in the Record",
   () =>
     Effect.gen(function* () {
       const touched: Array<string> = [];
@@ -387,7 +387,8 @@ effectIt.effect(
         ),
       );
       expect([...said].join("")).toBe("Only the layer.");
-      expect(touched).toEqual([]);
+      // Only the Tessel list, for her eyes to follow her: no brain, no house act, no Record.
+      expect(touched).toEqual(["house"]);
     }),
 );
 
