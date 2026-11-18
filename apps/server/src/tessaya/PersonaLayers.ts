@@ -179,7 +179,8 @@ export interface PersonaLayer {
   readonly active?: (vessel: string) => boolean;
   /**
    * Her body asked to move (TessayaBody): bounded cues, whether they need the private gate, and owner-extension acts
-   * for the layer to resolve at its level. Null when no session of the layer is open, so the move goes elsewhere.
+   * for the layer to resolve at its level. Taken by her full body wherever the layer shows one, in public too (a
+   * private move only inside a private moment); null when it shows none, so the move goes to the desk character.
    */
   readonly body?: (move: {
     readonly cues: ReadonlyArray<unknown>;

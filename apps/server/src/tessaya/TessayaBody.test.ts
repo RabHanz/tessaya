@@ -30,14 +30,14 @@ const desk = (writes: Array<unknown>) =>
   );
 
 describe("TessayaBody", () => {
-  it.effect("puts a move on the open private session's bodies as bounded cues", () =>
+  it.effect("puts a move on her shown full body as bounded cues, private moment or not", () =>
     Effect.gen(function* () {
       const taken: Array<{ cues: Array<{ kind: string }>; private: boolean }> = [];
       const answer = yield* moveBody(
         { act: "lean", mood: { name: "shy" }, then: [{ afterMs: 500, look: { x: -1, y: 0 } }] },
         her,
       ).pipe(Effect.provideService(PersonaLayers, { all: [openLayer(taken as Array<unknown>)] }));
-      expect(answer).toEqual({ ok: true, route: "private", said: "moved" });
+      expect(answer).toEqual({ ok: true, route: "body", said: "moved" });
       expect(taken[0]!.private).toBe(false);
       expect(taken[0]!.cues.map((c) => c.kind)).toEqual(["act", "mood", "seq"]);
     }),
@@ -62,8 +62,36 @@ describe("TessayaBody", () => {
     }),
   );
 
+  it.effect("a private cue her shown body refuses outside a private moment goes nowhere else", () =>
+    Effect.gen(function* () {
+      const writes: Array<unknown> = [];
+      const shownPublic: PersonaLayer = {
+        ...openLayer([]),
+        body: (m) =>
+          m.private
+            ? { ok: false, said: "Not outside a private moment." }
+            : { ok: true, said: "moved" },
+      };
+      const refused = yield* moveBody({ posture: "aroused" }, her).pipe(
+        Effect.provideService(PersonaLayers, { all: [shownPublic] }),
+        Effect.provide(desk(writes)),
+      );
+      expect(refused).toEqual({
+        ok: false,
+        route: "private",
+        said: "Not outside a private moment.",
+      });
+      const waved = yield* moveBody({ act: "wave" }, her).pipe(
+        Effect.provideService(PersonaLayers, { all: [shownPublic] }),
+        Effect.provide(desk(writes)),
+      );
+      expect(waved).toMatchObject({ ok: true, route: "body" });
+      expect(writes).toEqual([]);
+    }),
+  );
+
   it.effect(
-    "with no private moment open, her desk character does what it can of an everyday move",
+    "with no full body shown, her desk character does what it can of an everyday move",
     () =>
       Effect.gen(function* () {
         const writes: Array<unknown> = [];
@@ -125,7 +153,7 @@ describe("TessayaBody", () => {
           { id: "thread:scene", kind: "agent", mayBePrivate: true },
           false,
         ).pipe(Effect.provideService(PersonaLayers, { all: [openLayer(taken as Array<unknown>)] }));
-        expect(played).toMatchObject({ ok: true, route: "private" });
+        expect(played).toMatchObject({ ok: true, route: "body" });
         expect(taken[0]!.cues.map((c) => c.kind)).toEqual(["mood", "gaze", "seq"]);
         const bad = yield* playScene(
           {

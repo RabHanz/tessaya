@@ -193,7 +193,7 @@ const MoveTool = Tool.make("tessaya_body_move", {
   }),
   success: Schema.Struct({
     ok: Schema.Boolean,
-    route: Schema.Literals(["private", "desk", "none"]),
+    route: Schema.Literals(["body", "private", "desk", "none"]),
     said: Schema.String,
     retryMs: Schema.optionalKey(Schema.Number),
   }),
