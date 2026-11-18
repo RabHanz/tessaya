@@ -21,7 +21,6 @@ import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
-import { DeviceSync } from "../home/DeviceSync.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
 import { personasList } from "./OperatingSystemPack.ts";
@@ -155,19 +154,8 @@ const make = Effect.gen(function* () {
   const registry = yield* DeviceRegistry;
   const desktop = yield* Effect.serviceOption(TessayaDesktopSettings);
   const current = yield* Effect.serviceOption(CurrentPersona);
-  const sync = yield* Effect.serviceOption(DeviceSync);
-  // A Tessel's visit is shared with his other servers (DeviceSync "@cast"); a desktop's stays with its own crew here.
+  // Kept where the turns run, on her brain; a desktop's visit stays with its own crew here.
   const visits = new Map<string, Visit & { readonly crewBefore?: ReadonlyArray<string> }>();
-  const share = (body: string, visit: Visit | null) =>
-    Option.isNone(sync)
-      ? Effect.void
-      : sync.value.put(
-          "@cast",
-          `body:${body}`,
-          visit === null ? null : { persona: visit.persona, stay: visit.stay, at: visit.at },
-          "changed",
-          visit?.at,
-        );
   const listeners = new Set<Listener>();
   const roster = Effect.map(personasList, (l) =>
     l.personas.map((p) => ({ id: p.id, name: p.name })),
@@ -266,7 +254,6 @@ const make = Effect.gen(function* () {
     visits.delete(body);
     if (v.crewBefore !== undefined)
       yield* setDesktop([{ id: "v.mascotCrew", value: crewValue(v.crewBefore) }]);
-    else yield* share(body, null);
     yield* tell(body);
   });
 
@@ -336,7 +323,6 @@ const make = Effect.gen(function* () {
           }
         } else if (persona !== body!.wearing || input.stay) {
           visits.set(body!.id, { persona: persona!, at: now, stay: input.stay });
-          yield* share(body!.id, visits.get(body!.id)!);
         }
         break;
       }
@@ -358,29 +344,6 @@ const make = Effect.gen(function* () {
       Schedule.spaced("30 seconds"),
     ),
   );
-  // A visit started or ended on another of his servers: the newer one wins, and its Tessel hears it.
-  if (Option.isSome(sync))
-    yield* sync.value.onRecord("@cast", (field, v, at) =>
-      Effect.gen(function* () {
-        if (!field.startsWith("body:")) return;
-        const body = field.slice("body:".length);
-        const held = visits.get(body);
-        if (held !== undefined && held.at > at) return;
-        const visit = v as {
-          readonly persona?: unknown;
-          readonly stay?: unknown;
-          readonly at?: unknown;
-        } | null;
-        if (visit === null || typeof visit.persona !== "string") visits.delete(body);
-        else
-          visits.set(body, {
-            persona: visit.persona,
-            at: typeof visit.at === "number" ? visit.at : at,
-            stay: visit.stay === true,
-          });
-        yield* tell(body);
-      }).pipe(Effect.ignore),
-    );
   // A follows body moves with the persona its person last talked to.
   if (Option.isSome(current))
     yield* current.value.listen((conversation) =>
@@ -402,9 +365,7 @@ const make = Effect.gen(function* () {
     touch: Effect.fn("TessayaCast.touch")(function* (body: string) {
       const v = visits.get(body);
       if (v === undefined) return;
-      const next = { ...v, at: yield* Clock.currentTimeMillis };
-      visits.set(body, next);
-      if (v.crewBefore === undefined) yield* share(body, next);
+      visits.set(body, { ...v, at: yield* Clock.currentTimeMillis });
     }),
     listen: Effect.fn("TessayaCast.listen")((listener: Listener) =>
       Effect.sync(() => void listeners.add(listener)),

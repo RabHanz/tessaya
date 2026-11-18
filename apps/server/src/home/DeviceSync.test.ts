@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
 import { it } from "@effect/vitest";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -37,23 +41,6 @@ it("keeps the newest value per field, the same whichever order servers merge in,
   expect(mergeRecords({}, { x: { f: s(2, 0, "b") } }).changed).toEqual([
     { record: "x", field: "f", v: 2, at: 0 },
   ]);
-  // A shared log: each event once, oldest first, and an expired one never comes back from a peer to apply again.
-  const H = 3_600_000;
-  const log = mergeRecords(
-    { "@mood": { e1: s("a", 10 * H, "home") } },
-    {
-      "@mood": {
-        e1: s("a", 10 * H, "home"),
-        e3: s("c", 13 * H, "cloud"),
-        e2: s("b", 12 * H, "cloud"),
-      },
-    },
-    14 * H,
-  );
-  expect(log.changed.map((c) => c.field)).toEqual(["e2", "e3"]);
-  const later = mergeRecords(log.next, { "@mood": { e0: s("z", 1 * H, "cloud") } }, 24 * H);
-  expect(later.changed).toEqual([]);
-  expect(Object.keys(later.next["@mood"]!).toSorted()).toEqual(["e2", "e3"]);
 });
 
 it.effect(
@@ -118,3 +105,31 @@ it.effect(
     }).pipe(Effect.provide(layer.pipe(Layer.provide(deps))));
   },
 );
+
+// One brain (slice 4): her state lives on the brain, never copied between servers. A stale-tree commit brought it back once.
+it("no peer sync of her state comes back", () => {
+  const gone = [
+    ...["mood", "presence", "persona", "cast", "group", "health"].map((r) => `"@${r}"`),
+    "tessaya_inbox_sync",
+    "TessayaInboxSync",
+    "RoomPlacement",
+    "placeRoom",
+    ".onRecord(",
+  ];
+  const self = NodePath.join(import.meta.dirname, "DeviceSync.test.ts");
+  const roots = [
+    "..",
+    "../../../../packages/tessaya-contracts/src",
+    "../../../../packages/tessaya-shared/src",
+  ];
+  const found = roots.flatMap((root) => {
+    const dir = NodePath.resolve(import.meta.dirname, root);
+    return NodeFS.readdirSync(dir, { recursive: true, encoding: "utf8" })
+      .filter((f) => /\.tsx?$/.test(f) && NodePath.join(dir, f) !== self)
+      .flatMap((f) => {
+        const text = NodeFS.readFileSync(NodePath.join(dir, f), "utf8");
+        return gone.filter((g) => text.includes(g)).map((g) => `${f}: ${g}`);
+      });
+  });
+  expect(found).toEqual([]);
+});
