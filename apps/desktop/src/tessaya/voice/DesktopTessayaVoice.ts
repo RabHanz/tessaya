@@ -1512,6 +1512,8 @@ export interface DesktopTessayaVoice {
   readonly busy: () => boolean;
   /** Bring Baton's own window up, at a place (`hardware`) when given. */
   readonly openHome: (place?: string) => void;
+  /** Where her voice plays now: a private reply is said aloud on speakers only while he is alone there. */
+  readonly speakerMode: () => "speakers" | "headphones";
   /** Baton's voice started or stopped. */
   readonly onSpeaking: (active: boolean) => void;
   /** A sentence going to the speakers. */
@@ -9969,6 +9971,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   return {
     refresh: render,
     openHome: (place) => home.open(place),
+    speakerMode: () => speakerModeOf(settings.outputDevice, output.kind()),
     busy: () => speakingNow || !["sleeping", "listening", "muted"].includes(state),
     onSpeaking: (active) => {
       // Her reply starts: whether he can talk over it depends on what she is playing through now.

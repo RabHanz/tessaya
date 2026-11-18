@@ -8,6 +8,7 @@
 import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
 
+import { PRIVATE_HELD_LINE } from "@t3tools/tessaya-shared/deskTurnStream";
 import {
   ANSWER_ONLY,
   CHECKED,
@@ -883,9 +884,6 @@ const asSpeaker = (input: R1Heard, persona: string): R1Heard => ({
     switched: false,
   },
 });
-
-/** Said on her speaker instead of a private reply no output may play now; it gives nothing away. */
-const PRIVATE_HELD_LINE = "I'll tell you when your headphones are on.";
 
 /**
  * Puts the Tessel on an output tagged for this reply before it plays. A private reply (`text`) plays only where he

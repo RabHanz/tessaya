@@ -35,7 +35,7 @@ import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironment
 import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
 import type { BodyCue } from "@t3tools/tessaya-shared/bodyCues";
 import { cleanupApiLimitMs } from "@t3tools/tessaya-shared/dictationCleanup";
-import { readDeskTurn } from "@t3tools/tessaya-shared/deskTurnStream";
+import { PRIVATE_HELD_LINE, readDeskTurn } from "@t3tools/tessaya-shared/deskTurnStream";
 import { speakerMark } from "@t3tools/tessaya-shared/groupTalk";
 import { conversationsIn } from "./conversation/conversationLog.ts";
 import { moveRoster } from "./pack/rosterMove.ts";
@@ -763,12 +763,21 @@ export const startTessayaDesktop = Effect.gen(function* () {
       });
       if (!response.ok || response.body === null)
         throw new Error(`The server brain did not answer (${response.status}).`);
+      // A private reply that may not play here (speakers, and he is not alone) is held: one neutral line instead.
+      let held: boolean | null = null;
       await readDeskTurn(
         response.body,
-        onWords,
+        (words) => {
+          if (held === null) return onWords(words);
+          if (!held) onWords(`${PRIVATE_HELD_LINE} `);
+          held = true;
+        },
         (affect) => void (lineAffect = affect),
         // In line with the words, so the voice switches after the last speaker's sentence is queued, not before.
         (persona) => onWords(speakerMark(persona)),
+        (speakers) => {
+          if (!speakers && voice?.speakerMode() !== "headphones") held = false;
+        },
       );
     };
     // His private stores live on this machine's own server: always asked here, never through T3's window.

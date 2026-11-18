@@ -131,6 +131,9 @@ export const relayDeskTurn = Effect.fn("DeskRelay.relay")(function* (
               Queue.offerUnsafe(queue, words);
             },
             (affect) => Queue.offerUnsafe(queue, { affect }),
+            undefined,
+            // A private reply stays private through the relay: the desktop still decides where it may play.
+            (speakers) => Queue.offerUnsafe(queue, { private: { speakers } }),
           );
         },
         catch: (error) => (error instanceof Error ? error : new Error(String(error))),

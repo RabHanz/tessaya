@@ -10,6 +10,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
 
 import type { RoomToolSet } from "../home/R1Brain.ts";
@@ -218,6 +220,20 @@ const layerTurnOf = (turn: TurnEnvelope): LayerTurn => {
     rehearsal: turn.rehearsal === true,
   };
 };
+
+/**
+ * Who is near a vessel, for a layer's Tessel rule: "alone" only when the owner is the one member likely home and is
+ * placed at that vessel past the alone bar; another member likely home is "others"; anything less is "unknown", which
+ * fails closed.
+ */
+export const layerPresence = Effect.fn("PersonaLayers.presence")(function* (vessel: string) {
+  const home = (yield* (yield* TessayaTurn).whoIsHome).filter((p) => p.likelyHome);
+  if (home.some((p) => p.member !== OWNER_MEMBER_ID)) return "others" as const;
+  const owner = home.find((p) => p.member === OWNER_MEMBER_ID);
+  return owner?.nearest?.vessel === vessel && owner.nearest.confidence >= PRESENCE_BARS.alone
+    ? ("alone" as const)
+    : ("unknown" as const);
+});
 
 /** Memory-writing tools stay out of a private turn: what she keeps from it goes to the layer's sealed tier. */
 const PUBLIC_WRITES = new Set(["tessaya_memory_remember"]);
