@@ -29,9 +29,12 @@ import {
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
+import { SessionMember } from "./TessayaTurn.ts";
+import { TurnLiveContext } from "./TurnLiveContext.ts";
 
 /** Who is asking: her own turn on a vessel, an agent in T3, or one signed in from outside. */
 export interface BodyCaller {
@@ -115,6 +118,15 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
     },
     caller,
   );
+  if (answer.ok && move.touch !== undefined)
+    yield* feel({
+      vessel: "window",
+      part: move.touch.part,
+      kind: move.touch.motion,
+      agent: caller.id,
+      pressure: move.touch.pressure,
+      private: privateMove,
+    });
   if (stream && !startsStream) return answer;
   yield* emitAction({
     kind: "body.move",
@@ -263,4 +275,66 @@ export const playScene = Effect.fn("TessayaBody.scene")(function* (
     ...(privateMove ? { private: true } : {}),
   });
   return { ok: answer.ok, said: answer.said, route: answer.route, notes: decoded.notes };
+});
+
+/** A touch or a handling her body felt, on any vessel: where on her, what kind, whose hand, on which body. */
+export interface Felt {
+  /** The vessel whose body felt it ("desktop", a device id, "window"). */
+  readonly vessel: string;
+  readonly persona?: string | null | undefined;
+  /** The part of her (a touch zone), or "body" when it was all of her (picked up, thrown, squashed). */
+  readonly part: string;
+  readonly kind: "poke" | "stroke" | "pat" | "rest" | "hold" | "squeeze" | "throw" | "carry";
+  /** An agent's hand names the agent; a person's is the session's member (SessionMember) unless given. */
+  readonly agent?: string | undefined;
+  readonly member?: string | null | undefined;
+  readonly pressure?: number | undefined;
+  readonly private?: boolean | undefined;
+}
+const FELT_VERB: Readonly<Record<Felt["kind"], string>> = {
+  poke: "poked",
+  stroke: "stroked",
+  pat: "patted",
+  rest: "laid a hand on",
+  hold: "held",
+  squeeze: "squashed",
+  throw: "threw",
+  carry: "carried",
+};
+const WHERE: Readonly<Record<string, string>> = {
+  desktop: "on his desktop",
+  window: "in her window",
+};
+/**
+ * One felt event into the one system: a provenance row (vessel, persona, and the member or agent whose hand it was),
+ * and a line every vessel's next turns read, so on Tumble or the phone she knows what was done to her body on the
+ * desk. A private moment's touch is sealed whole in his private store and reaches no shared context.
+ */
+export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
+  const member = f.agent === undefined ? (f.member ?? (yield* SessionMember)) : null;
+  const owner = f.agent === undefined && (member === null || member === OWNER_MEMBER_ID);
+  yield* emitAction({
+    kind: "body.felt",
+    actor:
+      f.agent !== undefined
+        ? { kind: "agent", id: f.agent, certainty: 1 }
+        : owner
+          ? { kind: "owner", certainty: 1 }
+          : { kind: "member", id: member!, certainty: 1 },
+    persona: f.persona ?? null,
+    subject: f.part,
+    outcome: f.kind,
+    data: { vessel: f.vessel, ...(f.pressure === undefined ? {} : { pressure: f.pressure }) },
+    ...(f.private === true ? { private: true } : {}),
+  });
+  if (f.private === true) return;
+  const live = yield* Effect.serviceOption(TurnLiveContext);
+  if (live._tag === "None") return;
+  const who = f.agent !== undefined ? "an agent's hand" : owner ? "he" : "someone in the household";
+  yield* live.value.inject({
+    key: `felt:${f.vessel}`,
+    source: "touch",
+    expiresAfterTurns: 3,
+    line: `A moment ago ${WHERE[f.vessel] ?? `on ${f.vessel}`}, ${who} ${FELT_VERB[f.kind]} ${f.part === "body" ? "your body" : `your ${f.part}`}: mention it only if it fits.`,
+  });
 });
