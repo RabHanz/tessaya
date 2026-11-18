@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeVM from "node:vm";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -145,5 +149,18 @@ describe("a sentence's shapes as its audio streams in", () => {
     expect(track.at(310)).toBe("mbp");
     expect(track.at(345)).toBe("oh");
     expect(track.at(450)).toBe("oh");
+  });
+});
+
+describe("the Studio's TCS.g2v (apps/web/public/companion/speech.js)", () => {
+  it("gives the same shapes as wordUnits, hums and digits included: one table, generated", () => {
+    const speech = NodeFS.readFileSync(
+      new URL("../../../apps/web/public/companion/speech.js", import.meta.url),
+      "utf8",
+    );
+    const g: { TCS: { g2v?: (w: string) => string[] } } = { TCS: {} };
+    NodeVM.runInNewContext(speech, { window: g, globalThis: g, ...g });
+    for (const word of ["Tessaya", "mmm", "nation", "thought", "make", "2", "brightly"])
+      expect(g.TCS.g2v!(word), word).toEqual(wordUnits(word).map((u) => u.viseme));
   });
 });
