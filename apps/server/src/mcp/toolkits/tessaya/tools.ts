@@ -61,6 +61,7 @@ import { McpSchema, Tool, Toolkit } from "effect/ai";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { PhonePairingCode } from "../../../tessaya/PhonePairing.ts";
+import { BodyTools } from "../body/tools.ts";
 import { DeviceTools } from "../devices/tools.ts";
 import { HomeTools } from "../home/tools.ts";
 import { JobTools } from "../jobs/tools.ts";
@@ -1100,6 +1101,7 @@ const DevFeedTool = Tool.make("tessaya_dev_feed", {
 
 export const TessayaToolkit = Toolkit.make(
   ...HomeTools,
+  ...BodyTools,
   ...DeviceTools,
   ...SettingsTools,
   ...MembersTools,
