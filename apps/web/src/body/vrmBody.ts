@@ -1050,7 +1050,16 @@ export function mountBody(
       slow = 0;
       resize();
     }
-    if (active(now) || motion.tremble > 0.05) schedule(1000 / TIERS[tier]!.fps);
+    // her body moving gets the tier's full rate; a blink or a face alone needs no more than 30
+    const bodyMoving =
+      springing ||
+      gestures.length > 0 ||
+      dancing !== null ||
+      stepping !== null ||
+      handHeld ||
+      now - lastMove < SETTLE_MS;
+    if (active(now) || motion.tremble > 0.05)
+      schedule(1000 / (bodyMoving ? TIERS[tier]!.fps : Math.min(30, TIERS[tier]!.fps)));
     else if (breathing()) schedule(1000 / Math.min(BREATH_FPS, TIERS[tier]!.fps));
     else {
       planBlink();
@@ -1379,15 +1388,16 @@ export function mountBody(
           gestures.push({ name: "tilt", start: now });
         return invalidate();
       case "mood": {
+        // the page re-sends her mood every few seconds: an unchanged one does nothing at all (no face blend, no frame)
+        const key = JSON.stringify([c.mood, c.intensity, c.states, c.motion, c.look]);
+        if (key === moodKey) return;
         mood = { mood: c.mood, intensity: c.intensity };
         const next = postureFor(c);
         if (next !== affectPose) {
           if (scenePose === null && clip === null) setPose(now);
           affectPose = next;
         }
-        // the page re-sends her mood every few seconds: only a change wakes her idle breathing
-        const key = JSON.stringify([c.mood, c.intensity, c.states, c.motion]);
-        if (key !== moodKey) wake(now);
+        wake(now);
         moodKey = key;
         kin = beastkin(c);
         kinAt = now;

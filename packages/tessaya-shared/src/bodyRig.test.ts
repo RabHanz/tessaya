@@ -18,6 +18,7 @@ import {
   qFromVec,
   qRotate,
   len,
+  settled,
   softContacts,
   springStep,
   swingTwist,
@@ -365,6 +366,11 @@ describe("springStep", () => {
       acc.push((len(r.w) - was) * 60);
     }
     expect(acc[0]!).toBeLessThan(0.35 * Math.max(...acc));
+    // at rest it sleeps: a settled bone stepped at its goal stays settled and still, so nothing ticks between blinks
+    let rest = { q: goal, w: [0, 0, 0] as V3 };
+    for (let i = 0; i < 600; i++) rest = springStep(rest, goal, 210, 1000 / 60);
+    expect(settled(rest, goal)).toBe(true);
+    expect(qAngle(rest.q, goal)).toBeLessThan(1e-9);
   });
 });
 
