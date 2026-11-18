@@ -4,7 +4,10 @@ import * as Layer from "effect/Layer";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { PersonaLayers, type PersonaLayer } from "./PersonaLayers.ts";
-import { bodyState, moveBody, playScene, type BodyCaller } from "./TessayaBody.ts";
+import { onAction } from "../provenance/ActionLog.ts";
+import { bodyState, feel, moveBody, playScene, type BodyCaller } from "./TessayaBody.ts";
+import { SessionMember } from "./TessayaTurn.ts";
+import * as TurnLiveContext from "./TurnLiveContext.ts";
 
 const her: BodyCaller = { id: "desktop:a", kind: "persona", mayBePrivate: true };
 const outside: BodyCaller = { id: "client:x", kind: "outside", mayBePrivate: false };
@@ -133,5 +136,34 @@ describe("TessayaBody", () => {
         });
         expect(yield* playScene("nope", her, false)).toMatchObject({ ok: false });
       }),
+  );
+
+  it.effect(
+    "a touch on the desk body is one provenance row with its member and vessel, and the next turn on any vessel knows it",
+    () =>
+      Effect.gen(function* () {
+        const rows: Array<{ kind: string; actor: { kind: string; id?: string }; data: unknown }> =
+          [];
+        const off = onAction((e) => void (e.kind === "body.felt" && rows.push(e)));
+        const live = yield* TurnLiveContext.TurnLiveContext;
+        yield* feel({ vessel: "desktop", part: "head", kind: "pat" }).pipe(
+          Effect.provideService(SessionMember, "member-sam"),
+        );
+        // an agent's hand through a move is felt the same way, named as the agent
+        yield* moveBody({ touch: { part: "arm", motion: "stroke" } }, her).pipe(
+          Effect.provideService(PersonaLayers, { all: [openLayer([])] }),
+        );
+        // a private moment's touch is sealed: recorded, but never in shared context
+        yield* feel({ vessel: "window", part: "hand", kind: "hold", private: true });
+        off();
+        expect(rows.map((r) => [r.actor.kind, r.actor.id, r.data])).toEqual([
+          ["member", "member-sam", { vessel: "desktop" }],
+          ["agent", "desktop:a", { vessel: "window", pressure: 0.4 }],
+        ]);
+        const onTumble = yield* live.take({ vessel: "tessel-1", persona: null, spend: true });
+        expect(onTumble).toMatch(/on his desktop, someone in the household patted your head/);
+        expect(onTumble).toMatch(/an agent's hand stroked your arm/);
+        expect(onTumble).not.toMatch(/hand:|held your hand/);
+      }).pipe(Effect.provide(TurnLiveContext.layer)),
   );
 });

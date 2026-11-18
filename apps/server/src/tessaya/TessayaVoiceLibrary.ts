@@ -63,6 +63,7 @@ import { Consent, readGrants, setGrant } from "./consent.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { feel, type Felt } from "./TessayaBody.ts";
 import { SessionMember } from "./TessayaTurn.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import {
@@ -956,6 +957,13 @@ const OWNER: ReadonlySet<string> = new Set(BATON_VOICE_OWNER_OPS);
 const CLIP_BASE64_MAX = 8_000_000;
 
 /** The `baton.voice.call` door: decodes one op's arguments, calls one service method, and answers in a sentence. */
+/** The desktop character's moments that are a touch or a handling of her body. */
+const DESK_FELT: Readonly<Record<string, Felt["kind"]>> = {
+  "moment.poked": "poke",
+  "moment.petted": "stroke",
+  "moment.squished": "squeeze",
+  "moment.thrown": "throw",
+};
 export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
   input: TessayaVoiceCallInput,
 ) {
@@ -994,6 +1002,10 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
     case "express": {
       const a = decode(Schema.Struct({ event: Text(16), persona: Schema.optionalKey(Text(60)) }));
       if (Option.isNone(a) || !isLineEvent(a.value.event)) return bad;
+      // what he did to her desktop body is felt by the one system: provenance and every vessel's next turns
+      const felt = DESK_FELT[a.value.event];
+      if (felt !== undefined)
+        yield* feel({ vessel: "desktop", part: "body", kind: felt, persona: a.value.persona });
       const lines = yield* Effect.serviceOption(TessayaExpression);
       const said = Option.isNone(lines)
         ? null
