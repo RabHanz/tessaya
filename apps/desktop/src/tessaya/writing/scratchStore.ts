@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import type { TessayaScratchpadAct } from "@t3tools/tessaya-contracts";
@@ -33,16 +34,31 @@ export const createScratchStore = (
   newId: () => string = () => NodeCrypto.randomUUID().slice(0, 8),
   call?: ScratchCall,
 ) => {
+  const path = NodePath.join(stateDir, "scratchpad.json");
+  /** A file that is there but is not his notes: left for him to mend, never synced over. */
+  const unreadable = () => {
+    try {
+      return !valid(JSON.parse(NodeFS.readFileSync(path, "utf8")));
+    } catch (error) {
+      return (error as { code?: string }).code !== "ENOENT";
+    }
+  };
   const store = createJsonStore<ScratchFile>(
-    NodePath.join(stateDir, "scratchpad.json"),
+    path,
     { notes: [], hotkey: false, unsent: [], removed: [] },
     valid,
   );
+  // A file from before the brain kept his notes: a copy stays as it was, before anything here rewrites it.
+  const kept = NodePath.join(stateDir, "scratchpad.before-brain.json");
+  if (call !== undefined && !unreadable() && !NodeFS.existsSync(kept)) {
+    const before = store.read();
+    if (before.unsent === undefined && before.notes.length > 0) NodeFS.copyFileSync(path, kept);
+  }
   const unsentOf = (f: ScratchFile) => f.unsent ?? f.notes.map((n) => n.id);
   let running: Promise<void> | null = null;
   /** Sends what waits, then takes her brain's list; a brain that can't be reached leaves the cache as it is. */
   const sync = (): Promise<void> => {
-    if (call === undefined) return Promise.resolve();
+    if (call === undefined || unreadable()) return Promise.resolve();
     running ??= (async () => {
       const file = store.read();
       const unsent = unsentOf(file);
