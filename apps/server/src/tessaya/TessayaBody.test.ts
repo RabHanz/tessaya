@@ -76,6 +76,12 @@ describe("TessayaBody", () => {
           ["d1", "mascot.do", "wave"],
           ["d1", "mascot.do", "nod"],
         ]);
+        // a performance becomes the nearest of its few acts: joy hops
+        yield* moveBody(
+          { perform: { feel: { valence: 0.9, arousal: 0.8, dominance: 0.4 } } },
+          her,
+        ).pipe(Effect.provide(desk(writes)));
+        expect(writes.at(-1)).toEqual(["d1", "mascot.do", "hop"]);
         const cannot = yield* moveBody({ bones: { head: [0.2, 0, 0] } }, her).pipe(
           Effect.provide(desk(writes)),
         );
@@ -162,7 +168,10 @@ describe("TessayaBody", () => {
         ]);
         const onTumble = yield* live.take({ vessel: "tessel-1", persona: null, spend: true });
         expect(onTumble).toMatch(/on his desktop, someone in the household patted your head/);
-        expect(onTumble).toMatch(/an agent's hand stroked your arm/);
+        // her nerves say what it was like: a slow stroke on hairy skin reaches her caress fibres
+        expect(onTumble).toMatch(
+          /an agent's hand stroked your arm \(you felt a slow stroke, 4 cm\/s\)/,
+        );
         expect(onTumble).not.toMatch(/hand:|held your hand/);
       }).pipe(Effect.provide(TurnLiveContext.layer)),
   );

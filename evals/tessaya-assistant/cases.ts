@@ -227,6 +227,17 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     maxCalls: 3,
     goalArgs: ["dance"],
   },
+  // M-070 (19 Nov): the body showcase answered this in words only; a direction to her body is a performance.
+  {
+    id: "body-great-news",
+    source: "M-070, body showcase 19 Nov",
+    said: "Act like you just heard great news.",
+    first: ["tessaya_body_move", "tessaya_body_state"],
+    not: ["none"],
+    goal: "tessaya_body_move",
+    maxCalls: 2,
+    goalArgs: ["perform"],
+  },
   // M-065 (19 Nov): a touch he describes by voice is drawn on her body, and her body gives to it.
   {
     id: "body-touch-voice",

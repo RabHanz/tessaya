@@ -20,12 +20,20 @@ import {
 import type { BodyCue } from "@t3tools/tessaya-shared/bodyCues";
 import {
   CORE_SCENES,
-  REFERENCE_RIG,
   decodeScene,
   dryRun,
   isPrivateScene,
   sceneCues,
 } from "@t3tools/tessaya-shared/bodyScene";
+import { REFERENCE_RIG } from "@t3tools/tessaya-shared/bodyRig";
+import {
+  feltWords,
+  fire,
+  HUMAN_SENSE,
+  mergeSense,
+  NO_SENSE,
+  type SenseState,
+} from "@t3tools/tessaya-shared/bodySense";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
@@ -74,11 +82,21 @@ const rates = new Map<string, RateState>();
 // when each caller's stream last sent a frame: a stream is recorded once as it starts, not at 30 a second
 const streaming = new Map<string, number>();
 
+/** The nearest of the desk character's few acts to a performance's feeling: a hop of joy, a drained yawn, a nod. */
+const deskFeel = (p: NonNullable<BodyMove["perform"]>): MascotAct | undefined =>
+  p.feel.valence > 0.3 && p.feel.arousal > 0.3
+    ? "hop"
+    : p.feel.arousal < -0.5
+      ? "yawn"
+      : p.feel.valence > 0.3
+        ? "nod"
+        : undefined;
 const deskActsOf = (m: BodyMove): MascotAct[] =>
   [m, ...(m.then ?? [])].flatMap((s) => {
     const a =
       (s.act !== undefined ? DESK[s.act] : undefined) ??
-      (s.gesture !== undefined ? DESK[s.gesture] : undefined);
+      (s.gesture !== undefined ? DESK[s.gesture] : undefined) ??
+      (s.perform !== undefined ? deskFeel(s.perform) : undefined);
     return a === undefined ? [] : [a];
   });
 
@@ -310,6 +328,28 @@ const WHERE: Readonly<Record<string, string>> = {
  * and a line every vessel's next turns read, so on Tumble or the phone she knows what was done to her body on the
  * desk. A private moment's touch is sealed whole in his private store and reaches no shared context.
  */
+/** How fast a hand moves over her for each kind of touch (cm/s), until the hand frame carries its own speed. */
+const MOVING: Readonly<Partial<Record<Felt["kind"], number>>> = { stroke: 4, carry: 10, throw: 40 };
+// shortcut: her nerves' state is per process (habituation forgets a restart); move it to a store if that matters
+const senses = new Map<string, SenseState>();
+const SENSE = mergeSense([HUMAN_SENSE], false);
+/** Her nerves' answer to a touch (bodySense.ts): what it feels like, in words her brain reads. */
+const nervesFor = (f: Felt, now: number): string | null => {
+  const key = f.persona ?? "her";
+  const cmPerS = MOVING[f.kind] ?? 0;
+  const step = fire(
+    SENSE,
+    senses.get(key) ?? NO_SENSE,
+    [{ region: f.part, pressure: f.pressure ?? 0.4, cmPerS, areaCm2: 6 }],
+    now,
+  );
+  senses.set(key, step.state);
+  const r = step.rates[f.part];
+  return r === undefined || Object.keys(r).length === 0
+    ? null
+    : feltWords(f.part, r, step.state, cmPerS);
+};
+
 export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
   const member = f.agent === undefined ? (f.member ?? (yield* SessionMember)) : null;
   const owner = f.agent === undefined && (member === null || member === OWNER_MEMBER_ID);
@@ -330,11 +370,12 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
   if (f.private === true) return;
   const live = yield* Effect.serviceOption(TurnLiveContext);
   if (live._tag === "None") return;
+  const nerves = nervesFor(f, yield* Clock.currentTimeMillis);
   const who = f.agent !== undefined ? "an agent's hand" : owner ? "he" : "someone in the household";
   yield* live.value.inject({
     key: `felt:${f.vessel}`,
     source: "touch",
     expiresAfterTurns: 3,
-    line: `A moment ago ${WHERE[f.vessel] ?? `on ${f.vessel}`}, ${who} ${FELT_VERB[f.kind]} ${f.part === "body" ? "your body" : `your ${f.part}`}: mention it only if it fits.`,
+    line: `A moment ago ${WHERE[f.vessel] ?? `on ${f.vessel}`}, ${who} ${FELT_VERB[f.kind]} ${f.part === "body" ? "your body" : `your ${f.part}`}${nerves === null ? "" : ` (you felt ${nerves})`}: mention it only if it fits.`,
   });
 });

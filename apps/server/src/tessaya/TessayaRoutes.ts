@@ -106,6 +106,8 @@ const PAGE_HEADERS = {
 const page = (body: string, contentType: string) =>
   HttpServerResponse.text(body, { contentType, headers: PAGE_HEADERS });
 
+const decodePushBody = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
+
 export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
     const context = yield* TessayaRuntime;
@@ -905,6 +907,8 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
     Effect.orElseSucceed(() => null),
   );
   registry.value.all.push(...(yield* Effect.promise(() => PersonaLayers.loadPersonaLayers(host))));
+  // the long polls a layer answers that its pages may take as a socket instead
+  const PUSHED: ReadonlySet<string> = new Set(["body.stream", "body.moves"]);
   const notHere = HttpServerResponse.jsonUnsafe(
     { message: "Not here." },
     { status: 404, headers: PAGE_HEADERS },
@@ -966,6 +970,11 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       );
     }
     if (target === undefined) return notHere;
+    if (rest[0] === "_push" && request.headers["upgrade"]?.toLowerCase() === "websocket") {
+      const path = rest.slice(1).join("/");
+      if (!PUSHED.has(path)) return notHere;
+      return yield* pushSocket(request, target, path, caller);
+    }
     callers.set(caller.session, caller);
     const answer = yield* Effect.promise(() =>
       target
@@ -997,6 +1006,37 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
           headers: PAGE_HEADERS,
         });
   }).pipe(Effect.catchCause(() => Effect.succeed(notHere)));
+  /**
+   * A layer's long poll (body.stream, body.moves) as a socket: the server holds the poll in-process and pushes each
+   * answer the moment the layer has one, so a move never waits for the client's next request (remote links most).
+   * `?body=` is the poll's own body; the server sets `after` and `wait`. Nothing runs while nothing is published.
+   */
+  const pushSocket = Effect.fn("TessayaRoutes.layerPush")(function* (
+    request: HttpServerRequest.HttpServerRequest,
+    target: PersonaLayers.PersonaLayer,
+    path: string,
+    caller: { readonly member: string | null; readonly session: string },
+  ) {
+    const raw = new URL(request.url, "http://local").searchParams.get("body") ?? "{}";
+    const base =
+      raw.length > 2000 ? {} : yield* decodePushBody(raw).pipe(Effect.orElseSucceed(() => ({})));
+    const fields = typeof base === "object" && base !== null && !Array.isArray(base) ? base : {};
+    const socket = yield* request.upgrade;
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const write = (yield* socket.writer).write;
+        const { pull } = yield* socket.reader;
+        const loop = PersonaLayers.pushAnswers(
+          target,
+          { path, member: caller.member, session: caller.session, body: fields },
+          (text) => write(text),
+        );
+        // the client closing its end (or anything it sends) ends the push
+        return yield* Effect.raceFirst(loop, Effect.forever(pull));
+      }),
+    ).pipe(Effect.ignoreCause);
+    return HttpServerResponse.empty();
+  });
   yield* router.add("GET", "/tessaya/layer/*", serve);
   yield* router.add("POST", "/tessaya/layer/*", serve);
 });

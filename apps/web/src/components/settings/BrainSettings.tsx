@@ -52,6 +52,7 @@ const ROLE_HINTS: Readonly<Record<BrainRole, string>> = {
   vision: "Reading your screen.",
   intent: "Reading a sentence the grammar did not catch.",
   synopsis: "Two lines on what a work session did.",
+  hold: "A short line while a slow answer comes.",
 };
 const MODE_LABELS = {
   ask: "Ask me each time",

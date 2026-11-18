@@ -89,6 +89,23 @@ describe("moveCues", () => {
     );
     expect(cues.map((c) => c.kind)).toEqual(["act", "mood", "seq"]);
     for (const c of cues) expect(parseCue(c)).toEqual(c);
+    // a performance is composed by the body over the posture the step chose, so it comes last; a hold is its own cue
+    const performed = moveCues(
+      ok({
+        act: "sit",
+        hold: { breath: 60_000 },
+        bones: { rightHand: [0, 0, 0.4] },
+        perform: { feel: { valence: -0.5, arousal: -0.9, dominance: -0.4 } },
+      }),
+    );
+    expect(performed.map((c) => c.kind)).toEqual(["act", "hold", "perform"]);
+    expect(performed[1]).toEqual({ kind: "hold", systems: { breath: 30_000 } });
+    for (const c of performed) expect(parseCue(c)).toEqual(c);
+    expect(decodeBodyMove({ perform: { feel: { valence: 1 } } })).toMatchObject({ ok: false });
+    expect(decodeBodyMove({ hold: { withdrawal: 1000 } })).toMatchObject({
+      ok: false,
+      error: "withdrawal is a reflex: she cannot hold it",
+    });
     const [hand] = moveCues(
       ok({ touch: { part: "arm", motion: "stroke", pressure: 0.3, ms: 2000 } }),
     );
