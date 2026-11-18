@@ -17,6 +17,7 @@ import { readGrants, setGrant } from "./consent.ts";
 import { pronunciations } from "./Pronunciations.ts";
 import { voiceIdGate } from "./VoiceIdGate.ts";
 import { scratchpad } from "./TessayaScratchpad.ts";
+import * as TessayaDatabase from "./TessayaDatabase.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
@@ -231,7 +232,10 @@ export const TessayaRuntime = Context.Reference<Context.Context<TessayaServices>
 );
 
 /** Captures Baton's services for the routes; part of `TessayaServerLayer.services`. A `MemoryViewer` provided here would override every caller's. */
-export const runtimeLayer = Layer.effect(TessayaRuntime, Effect.context<TessayaServices>());
+export const runtimeLayer = Layer.effect(TessayaRuntime, Effect.context<TessayaServices>()).pipe(
+  // Code run here reads her tables at call time (Scratchpad, the brain's address, grants): baton.sqlite, not upstream's.
+  Layer.provide(TessayaDatabase.layer),
+);
 
 const unavailable = () => new Error("Tessaya's services are not running on this server.");
 

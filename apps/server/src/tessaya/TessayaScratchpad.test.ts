@@ -1,10 +1,18 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
+
+import * as ServerConfig from "../config.ts";
 
 import { HOME_KEY } from "./BrainHost.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
+import { runtimeLayer, TessayaRuntime } from "./TessayaRpcHandlers.ts";
+import { scratchpad } from "./TessayaScratchpad.ts";
 
 const note = (id: string, at: number, text: string) => ({ id, at, text });
 
@@ -39,3 +47,32 @@ it.layer(SqlitePersistenceMemory)("his Scratchpad on the brain", (it) => {
     }),
   );
 });
+
+// .189's room gate: the Tessel's note tools run in the routes' runtime, whose ambient SqlClient was upstream's.
+it.effect(
+  "the routes' runtime keeps his notes in baton.sqlite, beside upstream's own database",
+  () =>
+    Effect.gen(function* () {
+      const runtime = yield* TessayaRuntime;
+      assert.isNotNull(runtime);
+      const act = (a: Parameters<typeof scratchpad>[0]) =>
+        scratchpad(a).pipe(Effect.provideContext(runtime!));
+      yield* act({ op: "add", notes: [note("a", 1, "the replay suite ran")] });
+      assert.deepStrictEqual(
+        yield* act({ op: "search", query: "replay" }),
+        Option.some({ notes: [note("a", 1, "the replay suite ran")] }),
+      );
+    }).pipe(
+      Effect.provide(
+        // Its services are not read here; only the database the runtime carries.
+        (runtimeLayer as unknown as Layer.Layer<never, unknown, ServerConfig.ServerConfig>).pipe(
+          Layer.provide(
+            ServerConfig.layerTest(process.cwd(), { prefix: "t3-scratchpad-runtime-" }),
+          ),
+          // Upstream's own client, without her tables: the ambient one the routes run beside.
+          Layer.provide(NodeSqliteClient.layer({ filename: ":memory:" })),
+          Layer.provide(NodeServices.layer),
+        ),
+      ),
+    ),
+);

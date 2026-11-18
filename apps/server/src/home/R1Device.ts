@@ -85,6 +85,7 @@ import {
   inBrainSlot,
   type RoomCall,
   type TurnNotes,
+  type VesselTurn,
   speakableSentences,
   brainFailure,
   sessionTools,
@@ -1340,12 +1341,12 @@ const r1Vessel = (
   input: R1Heard,
   tools: RoomToolSet,
   fillers?: { readonly hold: string; readonly web: string },
-  failed?: (detail: string) => void,
+  hooks?: Pick<VesselTurn<never, never>, "failed" | "ended">,
   /** In a group: who speaks, whether first, and what it is told of the others (`groupLine`). */
   group?: { readonly name: string; readonly first: boolean; readonly line: string },
 ) => ({
   system: ROOM_SYSTEM,
-  ...(failed === undefined ? {} : { failed }),
+  ...hooks,
   ...(fillers === undefined ? {} : { fillers }),
   tools,
   device: input.device,
@@ -1419,6 +1420,8 @@ export const r1TurnStream = (
       const failed = (detail: string) => {
         limited ??= limitResets(detail);
       };
+      // An ended talk is never filled: a silent end's next pass was a 3 s "One moment." before her goodbye (18 Nov).
+      const hooks = { failed, ended: () => void (offered = true) };
       // Out of capacity: one honest line from her pool, not the other routes on the same spent login.
       const outOfCapacity = Effect.gen(function* () {
         const line = yield* expressOr("err.limit", {
@@ -1445,7 +1448,7 @@ export const r1TurnStream = (
               Queue.offerUnsafe(queue, text);
               return text;
             }
-            const vessel = r1Vessel(as, tools, fillers, failed, {
+            const vessel = r1Vessel(as, tools, fillers, hooks, {
               name: speaker.name,
               first,
               line,
@@ -1469,7 +1472,7 @@ export const r1TurnStream = (
       }
       if (way === "subscription" && tools !== null) {
         const done = yield* brainTurn(
-          r1Vessel(input, tools, fillers, failed),
+          r1Vessel(input, tools, fillers, hooks),
           brain,
           say,
           "session",
@@ -1480,7 +1483,7 @@ export const r1TurnStream = (
       }
       if (way !== "subscription" && tools !== null) {
         const done = yield* brainTurn(
-          r1Vessel(input, tools, fillers, failed),
+          r1Vessel(input, tools, fillers, hooks),
           brain,
           say,
           "api",
@@ -1490,7 +1493,7 @@ export const r1TurnStream = (
         if (way === "auto") {
           // The key failed before a word; the subscription is the fallback his table names.
           const fallback = yield* brainTurn(
-            r1Vessel(input, tools, fillers, failed),
+            r1Vessel(input, tools, fillers, hooks),
             brain,
             say,
             "session",

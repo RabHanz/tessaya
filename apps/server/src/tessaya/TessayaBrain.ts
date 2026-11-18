@@ -288,6 +288,8 @@ export interface VesselTurn<E, R> {
   readonly hold: (name: string) => (call: Effect.Effect<ToolOutcome>) => Effect.Effect<ToolOutcome>;
   /** The model failed before a word: why, in its own words (a login's limit and when it resets, say). */
   readonly failed?: (detail: string) => void;
+  /** She ended the conversation (conversation_end): no filler may come after it, only her goodbye. */
+  readonly ended?: () => void;
 }
 
 /** A brain failure's own words, for the log: the R1BrainError's detail, else the cause as text. */
@@ -476,6 +478,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
                   sentences.flush();
                   ended = true;
                   goodbye = said;
+                  vessel.ended?.();
                   return { text: "Ended: say nothing more.", isError: false };
                 })
               : (own.find((t) => t.spec.name === name)?.run(args) ??
