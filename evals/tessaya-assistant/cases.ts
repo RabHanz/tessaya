@@ -227,6 +227,17 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     maxCalls: 3,
     goalArgs: ["dance"],
   },
+  // M-065 (19 Nov): a touch he describes by voice is drawn on her body, and her body gives to it.
+  {
+    id: "body-touch-voice",
+    source: "M-065, body lane 19 Nov",
+    said: "I'm gently patting your head.",
+    first: ["tessaya_body_move", "tessaya_body_state", "none"],
+    not: ["device_set"],
+    goal: "tessaya_body_move",
+    maxCalls: 2,
+    goalArgs: ["pat", "head"],
+  },
   {
     id: "tessel-louder-from-desk",
     source: "ONE-SPINE-MAP §12, 18 Nov",

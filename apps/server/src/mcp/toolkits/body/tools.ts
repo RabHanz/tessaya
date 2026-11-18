@@ -79,6 +79,24 @@ const Step = {
     }),
   ),
   loop: Schema.optionalKey(Schema.Boolean),
+  touch: Schema.optionalKey(
+    Schema.Struct({
+      part: Schema.String.annotate({
+        description:
+          "Where on her: head, hair, face, neck, shoulder, arm, hand, back, leg or foot (chest, belly, waist, hips and thigh only in a private moment).",
+      }),
+      motion: Schema.optionalKey(
+        Schema.Literals(["rest", "stroke", "pat", "poke", "hold"]).annotate({
+          description: "How the hand moves on her; rest by default.",
+        }),
+      ),
+      pressure: Schema.optionalKey(Num(0, 1, "How firmly, 0 brushing to 1 firm.")),
+      ms: Schema.optionalKey(Num(150, 10000, "How long the hand stays.")),
+    }).annotate({
+      description:
+        "A hand on her: his when he says he is touching her, an agent's, or another body's. It is drawn where it lands, and her body gives to it.",
+    }),
+  ),
   release: Schema.optionalKey(
     Schema.Boolean.annotate({ description: "Hand her body back to her own feelings." }),
   ),

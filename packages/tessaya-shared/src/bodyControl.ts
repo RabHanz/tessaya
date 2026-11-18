@@ -3,7 +3,16 @@
  * control (bones, face, keys) in one bounded move with timed steps. Pure: decoding, the cues a move becomes, whether it
  * needs a private moment, the per-caller rate gate, and what the body reports back (proprioception).
  */
-import { BODY_FACES, GESTURES, INTIMATE_FACES, type BodyCue, type VrmPreset } from "./bodyCues.ts";
+import {
+  BODY_FACES,
+  GESTURES,
+  INTIMATE_FACES,
+  TOUCH_ZONES,
+  type BodyCue,
+  type TouchZone,
+  type VrmPreset,
+} from "./bodyCues.ts";
+import { HAND_MOTIONS, type HandMotion } from "./bodyHand.ts";
 import {
   ACT_NAMES,
   ACTS,
@@ -20,6 +29,8 @@ import { JOINT_LIMITS } from "./bodyRig.ts";
 export const BODY_MOVE_VERSION = 1;
 /** Postures, faces and acts that belong to a private moment only. */
 const PRIVATE_POSTURES: ReadonlySet<string> = new Set(["aroused"]);
+/** Parts a hand other than his may touch only in a private moment. */
+const PRIVATE_ZONES: ReadonlySet<string> = new Set(["chest", "belly", "waist", "hips", "thigh"]);
 const FACE_PRESETS = [
   "happy",
   "angry",
@@ -59,6 +70,13 @@ export interface BodyMove {
     readonly bones: Partial<Record<PoseBone, Euler>>;
   }>;
   readonly loop?: boolean;
+  /** A hand on her (an agent's, or a second body's): where, how it moves, how firmly (0..1), for how long. */
+  readonly touch?: {
+    readonly part: TouchZone;
+    readonly motion: HandMotion;
+    readonly pressure: number;
+    readonly ms: number;
+  };
   /** Hand her body back to her own feelings: drop held bones, posture and keyframes. */
   readonly release?: boolean;
   /** More of the same, each `afterMs` from the start: one request, one coordinated performance. */
@@ -176,6 +194,23 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
     m["keys"] = keys;
     if (raw["loop"] === true) m["loop"] = true;
   }
+  if (raw["touch"] !== undefined) {
+    const t = raw["touch"];
+    if (!isObj(t) || !(TOUCH_ZONES as ReadonlyArray<unknown>).includes(t["part"]))
+      return {
+        ok: false,
+        error: `touch is {part, motion, pressure, ms}; part is one of ${TOUCH_ZONES.join(", ")}`,
+      };
+    const motion = t["motion"] ?? "rest";
+    if (!(HAND_MOTIONS as ReadonlyArray<unknown>).includes(motion))
+      return { ok: false, error: `touch motion is one of ${HAND_MOTIONS.join(", ")}` };
+    m["touch"] = {
+      part: t["part"],
+      motion,
+      pressure: num(t["pressure"], 0, 1) ?? 0.4,
+      ms: num(t["ms"], 150, 10_000) ?? 1500,
+    };
+  }
   if (raw["release"] === true) m["release"] = true;
   if (raw["then"] !== undefined) {
     if (depth > 0) return { ok: false, error: "steps cannot have steps" };
@@ -195,7 +230,7 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
     return {
       ok: false,
       error:
-        "nothing to do: give an act, posture, gesture, mood, look, face, morphs, bones, keys or release",
+        "nothing to do: give an act, posture, gesture, mood, look, face, morphs, bones, keys, touch or release",
     };
   return { ok: true, move: m as BodyMove };
 };
@@ -209,7 +244,8 @@ export const isPrivateMove = (m: BodyMove): boolean =>
     (s) =>
       (s.posture !== undefined && PRIVATE_POSTURES.has(s.posture)) ||
       (s.mood !== undefined && Object.hasOwn(INTIMATE_FACES, s.mood.name)) ||
-      (s.act !== undefined && !isAct(s.act)),
+      (s.act !== undefined && !isAct(s.act)) ||
+      (s.touch !== undefined && PRIVATE_ZONES.has(s.touch.part)),
   );
 /** Acts a private moment resolves itself (owner extensions), in order. */
 export const extensionActs = (m: BodyMove): ReadonlyArray<string> =>
@@ -255,6 +291,7 @@ const stepCues = (m: BodyMove, id: string): BodyCue[] => {
   if (m.look !== undefined) out.push({ kind: "gaze", x: m.look.x, y: m.look.y, ms: m.look.ms });
   if (m.face !== undefined) out.push({ kind: "face", weights: m.face.weights, ms: m.face.ms });
   if (m.morphs !== undefined) out.push({ kind: "morphs", weights: m.morphs });
+  if (m.touch !== undefined) out.push({ kind: "hand", ...m.touch });
   if (m.keys !== undefined)
     out.push({
       kind: "clip",
@@ -342,6 +379,10 @@ export const BODY_CAPABILITIES = {
   gestures: Object.keys(GESTURES),
   moods: Object.keys(BODY_FACES),
   faceWeights: FACE_PRESETS,
+  touch: {
+    parts: TOUCH_ZONES.filter((z) => !PRIVATE_ZONES.has(z)),
+    motions: HAND_MOTIONS,
+  },
   bones: POSE_BONES,
   axes: "VRM 1.0 normalized from a T-pose: she faces +z, her left is +x; Euler XYZ in radians. Arms down: leftUpperArm z -1.2, rightUpperArm z 1.2. Elbows fold on y (left -, right +); knees on x (+); trunk bends forward on x (+).",
   limits: Object.fromEntries(

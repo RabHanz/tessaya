@@ -68,13 +68,16 @@ import {
 import type { BodyState } from "@t3tools/tessaya-shared/bodyControl";
 import { softenOnContact } from "./softContact.ts";
 import {
+  agentHandAt,
   euroStep,
   handContact,
   handPresence,
   pointerHand,
   predict,
+  yieldTo,
   type EuroState,
   type HandFrame,
+  type HandMotion,
 } from "@t3tools/tessaya-shared/bodyHand";
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
@@ -251,6 +254,33 @@ const PROP_BONE: Readonly<Record<TouchZone, BodyBone>> = {
 const IDLE_MS = 20_000;
 /** Walking toward or away from him, metres a second. */
 const WALK_SPEED = 0.45;
+const REFLEX_MS = 350;
+/**
+ * Where an agent's hand lands for each part: between which joints (`at` along them, then `up` of her height above),
+ * and the side it comes from (she faces +z, her right is -x), so a pat on the head lands on top, not on her face.
+ */
+const REACH: Readonly<
+  Record<
+    TouchZone,
+    { from: VRMHumanBoneName; to: VRMHumanBoneName; at: number; up: number; dir: V3 }
+  >
+> = {
+  head: { from: "head", to: "head", at: 0, up: 0.07, dir: [0, 1, 0.3] },
+  hair: { from: "head", to: "head", at: 0, up: 0.06, dir: [0, 0.6, -1] },
+  face: { from: "head", to: "head", at: 0, up: 0.04, dir: [0, 0, 1] },
+  neck: { from: "neck", to: "head", at: 0.5, up: 0, dir: [0, 0, 1] },
+  shoulder: { from: "rightUpperArm", to: "rightUpperArm", at: 0, up: 0, dir: [-0.3, 1, 0] },
+  arm: { from: "rightUpperArm", to: "rightLowerArm", at: 0.5, up: 0, dir: [-1, 0, 0.2] },
+  hand: { from: "rightHand", to: "rightHand", at: 0, up: 0, dir: [-1, 0.4, 0] },
+  chest: { from: "chest", to: "upperChest", at: 0.5, up: 0, dir: [0, 0, 1] },
+  belly: { from: "spine", to: "spine", at: 0, up: 0, dir: [0, 0, 1] },
+  back: { from: "chest", to: "upperChest", at: 0.5, up: 0, dir: [0, 0, -1] },
+  waist: { from: "spine", to: "spine", at: 0, up: 0, dir: [-1, 0, 0] },
+  hips: { from: "hips", to: "hips", at: 0, up: 0, dir: [-1, 0, 0] },
+  thigh: { from: "rightUpperLeg", to: "rightLowerLeg", at: 0.4, up: 0, dir: [0, 0, 1] },
+  leg: { from: "rightLowerLeg", to: "rightFoot", at: 0.4, up: 0, dir: [0, 0, 1] },
+  foot: { from: "rightFoot", to: "rightFoot", at: 0, up: 0, dir: [0, 1, 0.5] },
+};
 /** How long her head and eyes follow a touch, and a little more than the 150 ms in which a person turns to one. */
 const TOUCH_MS = 1600;
 /** A hover's raycast at most this often while the mouse moves over her. */
@@ -357,6 +387,19 @@ export function mountBody(
   // filtered, and the see-through hand drawn there while it is present
   let handFrame: HandFrame | null = null;
   let handEuro: EuroState | null = null;
+  // an agent's hand on her: where it landed on her surface, the way along her it strokes, and its motion
+  let agentTouch: {
+    start: number;
+    part: string;
+    motion: HandMotion;
+    pressure: number;
+    ms: number;
+    hit: THREE.Vector3;
+    normal: THREE.Vector3;
+    along: THREE.Vector3;
+  } | null = null;
+  // a quick poke makes her pull back, then settle (a reflex, over REFLEX_MS)
+  let reflexAt = -Infinity;
   // a pointer resting on her is still there: it fades only once it leaves her (a tracker fades when it loses her)
   let handHeld = false;
   let handMesh: {
@@ -806,6 +849,8 @@ export function mountBody(
       arch: motion.arch + (to.motion.arch - motion.arch) * f,
     };
     applyPose(now);
+    if (moveAgentHand(now)) lastMove = now;
+    giveToHand(now);
     // walking to or from him: steps while the distance closes, then she stands
     if (closer !== closerTo) {
       const stride = WALK_SPEED * delta;
@@ -1232,6 +1277,83 @@ export function mountBody(
     wake(now);
   };
 
+  /** Lays an agent's hand on a part of her: found on her surface from his side, the way he would reach it. */
+  const startAgentTouch = (
+    c: { part: TouchZone; motion: HandMotion; pressure: number; ms: number },
+    now: number,
+  ) => {
+    const r = REACH[c.part];
+    const a = worldOf(r.from) ?? worldOf("upperChest") ?? worldOf("chest");
+    const b = worldOf(r.to) ?? a;
+    if (vrm === null || a === undefined || b === undefined) return;
+    const p = a.lerp(b, r.at).add(new THREE.Vector3(0, r.up * (rig?.height ?? 1.6), 0));
+    vrm.scene.updateMatrixWorld(true);
+    // reached from that part's own side, from a little way off her
+    const from = p.clone().addScaledVector(new THREE.Vector3(...r.dir).normalize(), 0.6);
+    ray.set(from, p.clone().sub(from).normalize());
+    const hit = ray.intersectObject(vrm.scene, true).find((h) => h.object.visible);
+    const normal =
+      hit?.face?.normal.clone().transformDirection(hit.object.matrixWorld) ??
+      from.clone().sub(p).normalize();
+    const up = Math.abs(normal.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+    agentTouch = {
+      start: now,
+      part: c.part,
+      motion: c.motion,
+      pressure: c.pressure,
+      ms: c.ms,
+      hit: hit?.point.clone() ?? p,
+      normal,
+      along: up.sub(normal.clone().multiplyScalar(up.dot(normal))).normalize(),
+    };
+    if (c.motion === "poke") reflexAt = now;
+    wake(now);
+  };
+  /** The agent's hand this frame, as the same hand frame the pointer makes; false once its touch is over. */
+  const moveAgentHand = (now: number): boolean => {
+    if (agentTouch === null) return false;
+    const a = agentTouch;
+    // a frame's clock can trail the cue's by a frame: that is the touch's start, not before it
+    const h = agentHandAt(a.motion, a.pressure, a.ms, Math.max(0, now - a.start));
+    if (h === null) {
+      agentTouch = null;
+      handHeld = false;
+      return false;
+    }
+    const at = a.hit.clone().addScaledVector(a.along, h.along * 0.05 * (rig?.height ?? 1.6));
+    handFrame = pointerHand({
+      at: now,
+      hit: [at.x, at.y, at.z],
+      normal: [a.normal.x, a.normal.y, a.normal.z],
+      pressure: h.pressure,
+      pressed: h.pressure > 0.02,
+      fingertip: h.fingertip,
+      source: "agent",
+    });
+    handEuro = euroStep(handEuro, handFrame.palm, now);
+    handHeld = true;
+    return true;
+  };
+  /** Her body gives to the hand on her: the part under it turns away by how firmly, more for a reflex. */
+  const giveToHand = (now: number) => {
+    if (vrm === null || handFrame === null || !handHeld) return;
+    const reflex = Math.max(0, Math.sin(Math.PI * Math.min(1, (now - reflexAt) / REFLEX_MS))) * 0.6;
+    const pos: Record<string, V3> = {};
+    for (const b of CONTACT_BONES) {
+      const w = worldOf(b);
+      if (w) pos[b] = [w.x, w.y, w.z];
+    }
+    const give = yieldTo(pos, handFrame.palm, handFrame.normal, handFrame.pressure, reflex);
+    const node = give && vrm.humanoid.getNormalizedBoneNode(give.bone as VRMHumanBoneName);
+    if (!give || !node?.parent) return;
+    // the turn is in her world: carried into the bone's parent frame, then added to its pose
+    const parent = node.parent.getWorldQuaternion(new THREE.Quaternion());
+    const turn = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(...give.axis),
+      give.angle,
+    );
+    node.quaternion.premultiply(parent.clone().invert().multiply(turn).multiply(parent));
+  };
   const cue = (raw: unknown) => {
     const c: BodyCue | null = parseCue(raw);
     if (c === null || disposed) return;
@@ -1291,6 +1413,8 @@ export function mountBody(
       case "zones":
         zones = c.zones;
         return;
+      case "hand":
+        return startAgentTouch(c, now);
       case "gaze":
         gazeHold = { yaw: c.x * 30, pitch: -c.y * 20, until: now + c.ms };
         lastMove = now;
@@ -1435,6 +1559,7 @@ export function mountBody(
     handAt(hit, true, e.pressure || 0.5, (e.pressure || 0.5) >= 0.6);
     canvas.setPointerCapture?.(e.pointerId);
     const now = performance.now();
+    if ((e.pressure || 0.5) >= 0.6) reflexAt = now;
     touch = { at: now, point: hit.point.clone() };
     blinkAt = now;
     taps = taps.filter((t) => now - t < 900);
@@ -1598,6 +1723,7 @@ export function mountBody(
         if (p && hand.distanceTo(p) < reach) out.push({ part: `${side} hand`, with: part });
       }
     }
+    if (agentTouch !== null) out.push({ part: "agent hand", with: agentTouch.part });
     return out;
   };
   const bodyState = (): BodyState => ({
