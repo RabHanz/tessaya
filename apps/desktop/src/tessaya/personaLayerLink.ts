@@ -95,3 +95,34 @@ export const capturingApps = (regOutput: string, ownDir: string): ReadonlyArray<
   flush();
   return busy;
 };
+
+/**
+ * Windows Hello for a layer page that asked (it opens `<page>/hello?for=<chat|viewer|lab>`, which the app catches): on
+ * a verified Hello this app itself sends the step-up, so the page never claims Hello; anything else sends nothing and
+ * the page keeps its PIN. One prompt at a time.
+ */
+export const createLayerHello = (deps: {
+  readonly hello: () => Promise<"verified" | "declined" | "unavailable">;
+  /** The layer's POST `op`, on this desktop's session; the answer's JSON, or null when it refused. */
+  readonly post: (op: string, body: unknown) => Promise<Record<string, unknown> | null>;
+  /** This Windows account (`host\\user`), which the household maps to him. */
+  readonly account: string;
+}) => {
+  let busy = false;
+  return async (kind: string): Promise<boolean> => {
+    if (busy) return false;
+    busy = true;
+    try {
+      if ((await deps.hello()) !== "verified") return false;
+      const stepUp = { hello: deps.account };
+      if (kind === "lab") return (await deps.post("unlock", { stepUp })) !== null;
+      const w = await deps.post("window", { surface: "desktop" });
+      if (typeof w?.["vessel"] !== "string") return false;
+      return (
+        (await deps.post("activate", { surface: "desktop", vessel: w["vessel"], stepUp })) !== null
+      );
+    } finally {
+      busy = false;
+    }
+  };
+};

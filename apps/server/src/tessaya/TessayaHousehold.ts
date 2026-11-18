@@ -430,6 +430,11 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  const saveWindowsAccounts = (next: Readonly<Record<string, string>>) =>
+    sql`INSERT INTO fabric_settings (key, value) VALUES (${WINDOWS_KEY}, ${accountsJson(next)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(
+      Effect.orDie,
+    );
+
   const list = Effect.gen(function* () {
     const c = yield* HouseholdCaller;
     const role = yield* callerRole;
@@ -697,6 +702,17 @@ export const make = Effect.gen(function* () {
       if (c.desktop !== true)
         return refused("Only Tessaya's desktop app can vouch for Windows Hello.");
       const account = input.hello.toLowerCase();
+      const accounts = yield* windowsAccounts;
+      const people = (yield* rows).filter((r) => r.removed_at === null && r.machine !== 1);
+      // Nobody mapped yet and the owner is the only person here: his desktop's account is his, kept from now on.
+      const [only] = people;
+      if (
+        Object.keys(accounts).length === 0 &&
+        people.length === 1 &&
+        only?.id === c.member &&
+        only.role === "owner"
+      )
+        yield* saveWindowsAccounts({ [only.id]: account });
       const holders = Object.entries(yield* windowsAccounts)
         .filter(([, a]) => a === account)
         .map(([m]) => m);
@@ -936,9 +952,7 @@ export const make = Effect.gen(function* () {
           const next = { ...(yield* windowsAccounts) };
           if (account === null) delete next[row.id];
           else next[row.id] = account;
-          yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${WINDOWS_KEY}, ${accountsJson(next)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(
-            Effect.orDie,
-          );
+          yield* saveWindowsAccounts(next);
           return done(
             account === null
               ? `Windows Hello no longer confirms ${row.name}.`
