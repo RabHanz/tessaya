@@ -15,7 +15,14 @@ import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 export const HOME_KEY = "household.home";
 /** The linked-server tool a worker sends its acts to the brain by. */
 export const BRAIN_TOOL = "tessaya_brain";
-export const BrainOp = Schema.Literals(["mood", "presence", "persona", "group", "inbox"]);
+export const BrainOp = Schema.Literals([
+  "mood",
+  "presence",
+  "persona",
+  "group",
+  "inbox",
+  "libraryRemoved",
+]);
 export type BrainOp = typeof BrainOp.Type;
 
 /** The brain's link label, read now; null: this server is the brain (also with no Tessaya database here). */

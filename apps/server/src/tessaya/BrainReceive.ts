@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 import { brainOn, type BrainOp } from "./BrainHost.ts";
 import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
 
@@ -44,6 +45,7 @@ const decodePresenceAct = Schema.decodeUnknownOption(PresenceAct);
 const decodePersonaAct = Schema.decodeUnknownOption(PersonaAct);
 const decodeGroupAct = Schema.decodeUnknownOption(GroupAct);
 const decodeInboxAct = Schema.decodeUnknownOption(InboxAct);
+const decodeLibraryRemoved = Schema.decodeUnknownOption(LibraryRemovedAct);
 
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
@@ -100,6 +102,20 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
       if (Option.isNone(inbox)) return refused("No inbox here.");
       const value = yield* inboxAtBrain(inbox.value, act.value.op, act.value.args);
       return value === undefined ? refused("Not an inbox call.") : done(value);
+    }
+    case "libraryRemoved": {
+      const act = decodeLibraryRemoved(payload);
+      if (Option.isNone(act)) return refused("Not a removed list.");
+      const written = yield* Effect.try({
+        try: () => writeLibraryRemoved(act.value.sources),
+        catch: (e) => String(e),
+      }).pipe(
+        Effect.tapError((error) =>
+          Effect.logWarning("library removed list not written", { error }),
+        ),
+        Effect.orElseSucceed(() => false),
+      );
+      return written ? done() : refused("No private library here.");
     }
   }
 });

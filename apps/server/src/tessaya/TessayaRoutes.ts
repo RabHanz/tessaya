@@ -61,6 +61,8 @@ import { memberOfSubject, OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/househ
 import { callPrivate, PrivateCaller } from "./TessayaPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaComms } from "./TessayaComms.ts";
+import * as BrainHost from "./BrainHost.ts";
+import { receiveAtBrain } from "./BrainReceive.ts";
 import * as PersonaLayers from "./PersonaLayers.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import * as FleetQuery from "./FleetQuery.ts";
@@ -839,6 +841,15 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
         { now: at },
       ),
     privateEvent: (event) => emitActionSync({ ...event, private: true }),
+    libraryRemoved: (sources) =>
+      void run(
+        Effect.gen(function* () {
+          const brain = yield* BrainHost.makeBrainLink;
+          // the library key never leaves the brain: a worker sends the list, the brain seals it
+          if (yield* brain.isBrain) yield* receiveAtBrain("libraryRemoved", { sources });
+          else yield* brain.send("libraryRemoved", { sources });
+        }).pipe(Effect.ignore),
+      ),
     presence: (vessel) => run(presenceOn(vessel)),
     capabilities: async () => ({
       personas: readPack(userdata)
