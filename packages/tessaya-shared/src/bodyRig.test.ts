@@ -18,6 +18,7 @@ import {
   qFromVec,
   qRotate,
   len,
+  softContacts,
   springStep,
   swingTwist,
   type Q,
@@ -118,6 +119,7 @@ for (const s of [1, -1]) {
 }
 const aPose = makeRig(bonesOf(Object.keys(AT), aAt));
 
+const sub3 = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const near = (a: V3, b: V3, tol = 0.01) => len([a[0] - b[0], a[1] - b[1], a[2] - b[2]]) < tol;
 
 describe("quaternions", () => {
@@ -207,10 +209,58 @@ describe("preparePose", () => {
     expect(out.issues.map((i) => [i.bone, i.kind])).toContainEqual(["leftHand", "penetration"]);
     const w = fk(vroid, out.pose).pos;
     const hand = w["leftHand"]!;
+    // and the skin under it gives a little
+    expect(softContacts(vroid, w).some((c) => c.depth > 0 && len(sub3(c.at, hand)) < 0.15)).toBe(
+      true,
+    );
     const axisX = w["hips"]![0];
     expect(Math.hypot(hand[0] - axisX, hand[2] - w["hips"]![2])).toBeGreaterThan(
       0.075 * vroid.height,
     );
+  });
+  it("crosses her legs beside or in front of each other, never through, and says so", () => {
+    const crossed = {
+      ...POSTURES.stand.bones,
+      leftUpperLeg: [0, 0, -0.35] as V3,
+      rightUpperLeg: [0, 0, 0.1] as V3,
+    };
+    const out = preparePose(vroid, crossed);
+    expect(out.issues.some((i) => /Foot$/.test(i.bone) && i.kind === "penetration")).toBe(true);
+    const w = fk(vroid, out.pose).pos;
+    const gap = (a: V3, b: V3, c: V3, d: V3) => {
+      let best = Infinity;
+      for (let i = 0; i <= 10; i++)
+        for (let j = 0; j <= 10; j++) {
+          const p = a.map((x, k) => x + ((b[k]! - x) * i) / 10);
+          const q = c.map((x, k) => x + ((d[k]! - x) * j) / 10);
+          best = Math.min(best, Math.hypot(p[0]! - q[0]!, p[1]! - q[1]!, p[2]! - q[2]!));
+        }
+      return best;
+    };
+    const thigh = 0.038 * vroid.height;
+    const shin = 0.026 * vroid.height;
+    const L = (b: string) => w[`left${b}`]!;
+    const R = (b: string) => w[`right${b}`]!;
+    expect(gap(L("UpperLeg"), L("LowerLeg"), R("UpperLeg"), R("LowerLeg"))).toBeGreaterThan(
+      2 * thigh - 0.01,
+    );
+    expect(gap(L("LowerLeg"), L("Foot"), R("LowerLeg"), R("Foot"))).toBeGreaterThan(
+      2 * shin - 0.01,
+    );
+    expect(gap(L("UpperLeg"), L("LowerLeg"), R("LowerLeg"), R("Foot"))).toBeGreaterThan(
+      thigh + shin - 0.01,
+    );
+    // legs apart are left exactly as posed
+    expect(preparePose(vroid, POSTURES.stand.bones).issues.some((i) => /Foot$/.test(i.bone))).toBe(
+      false,
+    );
+    // where they now meet, the skin gives; standing apart, nothing does
+    const between = softContacts(vroid, w);
+    expect(between.length).toBeGreaterThan(0);
+    expect(between.every((c) => c.at[1] < w["hips"]![1] && c.depth > 0)).toBe(true);
+    expect(
+      softContacts(vroid, fk(vroid, preparePose(vroid, POSTURES.stand.bones).pose).pos),
+    ).toEqual([]);
   });
   it("lifts the shoulder with a raised arm, a third past 30°, and leaves a lowered arm's shoulder alone", () => {
     const up = preparePose(vroid, { rightUpperArm: [0, 0, -0.3] });
