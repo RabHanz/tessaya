@@ -72,6 +72,93 @@ export const MASCOT_SIZES: Readonly<Record<MascotSize, number>> = {
 export const parseMascotSize = (value: unknown): MascotSize =>
   value === "small" || value === "large" ? value : "medium";
 
+/** Her private body on the desk stands full height: its own size, a share of the screen's height (not the mascot's). */
+export type PrivateBodySize = "small" | "medium" | "large" | "huge";
+export const PRIVATE_BODY_HEIGHTS: Readonly<Record<PrivateBodySize, number>> = {
+  small: 0.3,
+  medium: 0.45,
+  large: 0.6,
+  huge: 0.75,
+};
+export const parsePrivateBodySize = (value: unknown): PrivateBodySize =>
+  value === "small" || value === "large" || value === "huge" ? value : "medium";
+/** Where he left her private body on one display: from its work area's right and bottom edges, and her height. */
+export interface BodyPlace {
+  readonly right: number;
+  readonly bottom: number;
+  readonly height?: number;
+}
+const BODY_MIN_PX = 160;
+const BODY_MARGIN_PX = 24;
+/**
+ * Her private body's window on a display: where he left her there, else bottom-right above the taskbar at her size's
+ * share of the work area's height. Half as wide as tall (a standing figure), and always wholly on the display.
+ */
+export const privateBodyBounds = (work: Rect, size: PrivateBodySize, place?: BodyPlace): Rect => {
+  const clamp = (v: number, lo: number, hi: number) => Math.round(Math.max(lo, Math.min(hi, v)));
+  const height = clamp(
+    place?.height ?? work.height * PRIVATE_BODY_HEIGHTS[size],
+    Math.min(BODY_MIN_PX, work.height),
+    work.height,
+  );
+  const width = Math.min(work.width, Math.round(height / 2));
+  const right = clamp(place?.right ?? BODY_MARGIN_PX, 0, work.width - width);
+  const bottom = clamp(place?.bottom ?? 0, 0, work.height - height);
+  return {
+    x: work.x + work.width - width - right,
+    y: work.y + work.height - height - bottom,
+    width,
+    height,
+  };
+};
+/** The place to remember for a window he moved or resized on this work area. */
+export const bodyPlaceOf = (work: Rect, at: Rect): BodyPlace => ({
+  right: Math.round(work.x + work.width - (at.x + at.width)),
+  bottom: Math.round(work.y + work.height - (at.y + at.height)),
+  height: Math.round(at.height),
+});
+/**
+ * What her body page asks of its window, through its title (the page has no other way out of its sandbox): the
+ * shape that takes clicks (her body, the rest clicks through), a move or a resize as he drags her grips, and the end
+ * of a drag. Anything else is ignored.
+ */
+export type BodyAsk =
+  | { readonly shape: ReadonlyArray<Rect> }
+  | { readonly move: readonly [number, number] }
+  | { readonly grow: number }
+  | { readonly done: true };
+export const readBodyAsk = (title: string): BodyAsk | null => {
+  if (!title.startsWith("tessaya-body:")) return null;
+  let v: Record<string, unknown>;
+  try {
+    v = JSON.parse(title.slice("tessaya-body:".length)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const n = (x: unknown) => typeof x === "number" && Number.isFinite(x) && Math.abs(x) < 10_000;
+  if (Array.isArray(v["shape"])) {
+    const rects = v["shape"]
+      .slice(0, 8)
+      .filter(
+        (r): r is [number, number, number, number] =>
+          Array.isArray(r) && r.length === 4 && r.every(n),
+      );
+    return {
+      shape: rects.map(([x, y, width, height]) => ({
+        x: Math.round(x),
+        y: Math.round(y),
+        width: Math.max(1, Math.round(width)),
+        height: Math.max(1, Math.round(height)),
+      })),
+    };
+  }
+  const m = v["move"];
+  if (Array.isArray(m) && m.length === 2 && m.every(n))
+    return { move: [Math.round(m[0]), Math.round(m[1])] };
+  if (n(v["grow"])) return { grow: Math.round(v["grow"] as number) };
+  return v["done"] === true ? { done: true } : null;
+};
+
 /** The Character Studio's characters (bodies.js), by id, with the names his drafts use. */
 export const MASCOT_CHARACTERS = {
   selvedge: "Selvedge",
@@ -249,6 +336,8 @@ export interface MascotOptions {
   readonly bed: MascotSound;
   /** She feels his mouse moving over her with nothing pressed, lightly (off by default). */
   readonly hover?: boolean;
+  /** Her private body's own size on the desk (layerBody), apart from the mascot's. */
+  readonly privateSize?: PrivateBodySize;
 }
 
 export interface DesktopMascot {
@@ -291,6 +380,8 @@ interface Saved {
   readonly hiddenUntil?: number;
   /** He put her somewhere himself: she stays there instead of following his windows. */
   readonly placed?: boolean;
+  /** Where he left her private body, per display id. */
+  readonly bodies?: Readonly<Record<string, BodyPlace>>;
 }
 
 const HIT_NEAR_MS = 80;
@@ -329,6 +420,9 @@ const readSaved = (file: string): Saved => {
       ...(num("snoozeUntil") === undefined ? {} : { snoozeUntil: num("snoozeUntil")! }),
       ...(num("hiddenUntil") === undefined ? {} : { hiddenUntil: num("hiddenUntil")! }),
       ...(value["placed"] === true ? { placed: true } : {}),
+      ...(value["bodies"] !== null && typeof value["bodies"] === "object"
+        ? { bodies: value["bodies"] as Record<string, BodyPlace> }
+        : {}),
     };
   } catch {
     return {};
@@ -471,9 +565,42 @@ export const createDesktopMascot = (input: {
   };
 
   let veil: Electron.BrowserWindow | null = null;
+  /** Her private body's place: where he left her on the display it is on, else her size's default on the main one. */
+  const veilDisplay = () =>
+    veil !== null && !veil.isDestroyed()
+      ? Electron.screen.getDisplayMatching(veil.getBounds())
+      : Electron.screen.getPrimaryDisplay();
   const placeVeil = () => {
-    if (veil === null || veil.isDestroyed() || win === null || win.isDestroyed()) return;
-    veil.setBounds(win.getBounds());
+    if (veil === null || veil.isDestroyed()) return;
+    const d = veilDisplay();
+    veil.setBounds(
+      privateBodyBounds(d.workArea, options.privateSize ?? "medium", saved.bodies?.[String(d.id)]),
+    );
+  };
+  const keepVeil = () => {
+    if (veil === null || veil.isDestroyed()) return;
+    const d = veilDisplay();
+    save({
+      bodies: { ...saved.bodies, [String(d.id)]: bodyPlaceOf(d.workArea, veil.getBounds()) },
+    });
+  };
+  const askVeil = (target: Electron.BrowserWindow, ask: BodyAsk) => {
+    const b = target.getBounds();
+    if ("shape" in ask) {
+      // Windows and Linux shape a window; macOS has no setShape, and there her whole box takes clicks
+      if (typeof target.setShape === "function") target.setShape([...ask.shape]);
+    } else if ("move" in ask)
+      target.setBounds({ ...b, x: b.x + ask.move[0], y: b.y + ask.move[1] });
+    else if ("grow" in ask) {
+      // her feet and right edge stay put; the top-left corner follows his drag
+      const work = Electron.screen.getDisplayMatching(b).workArea;
+      const height = Math.max(
+        Math.min(BODY_MIN_PX, work.height),
+        Math.min(work.height, b.height + ask.grow),
+      );
+      const width = Math.round(height / 2);
+      target.setBounds({ x: b.x + b.width - width, y: b.y + b.height - height, width, height });
+    } else keepVeil();
   };
   const dropVeil = () => {
     if (veil !== null && !veil.isDestroyed()) veil.destroy();
@@ -669,8 +796,6 @@ export const createDesktopMascot = (input: {
       stopMoving();
     });
     // The layer's body goes wherever she goes.
-    created.on("move", () => placeVeil());
-    created.on("resize", () => placeVeil());
     win = created;
     const stage = NodeURL.pathToFileURL(NodePath.join(input.companionDir, "stage.html")).href;
     ready = created
@@ -1187,8 +1312,21 @@ export const createDesktopMascot = (input: {
       // Turning her on in Settings is his way back from "Hide until tomorrow" and a snooze.
       if (next.on && !options.on && (hidden() || snoozed()))
         save({ hiddenUntil: 0, snoozeUntil: 0 });
+      const resized = (next.privateSize ?? "medium") !== (options.privateSize ?? "medium");
       options = next;
       if (rebuild && win !== null && !win.isDestroyed()) win.destroy();
+      // a new size for her private body ("make her bigger") replaces the heights he dragged; where he put her stays
+      if (resized) {
+        save({
+          bodies: Object.fromEntries(
+            Object.entries(saved.bodies ?? {}).map(([id, p]) => [
+              id,
+              { right: p.right, bottom: p.bottom },
+            ]),
+          ),
+        });
+        placeVeil();
+      }
       apply();
     },
     turn: (next) => {
@@ -1270,9 +1408,10 @@ export const createDesktopMascot = (input: {
       if (page === null) return dropVeil();
       if (veil !== null && !veil.isDestroyed()) return;
       const shown = new Electron.BrowserWindow({
-        ...(win !== null && !win.isDestroyed()
-          ? win.getBounds()
-          : { width: size(), height: size() }),
+        ...privateBodyBounds(
+          Electron.screen.getPrimaryDisplay().workArea,
+          options.privateSize ?? "medium",
+        ),
         frame: false,
         transparent: true,
         resizable: false,
@@ -1291,6 +1430,12 @@ export const createDesktopMascot = (input: {
         if (veil === shown) dropVeil();
       });
       veil = shown;
+      shown.webContents.on("page-title-updated", (event, title) => {
+        const ask = readBodyAsk(title);
+        if (ask === null) return;
+        event.preventDefault();
+        askVeil(shown, ask);
+      });
       void shown
         .loadURL(page.url)
         .then(() => {
