@@ -24,6 +24,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
 import * as CurrentPersona from "../tessaya/CurrentPersona.ts";
 import { groupConversation } from "../tessaya/GroupTalk.ts";
+import { R1Hold } from "./R1Hold.ts";
 import { R1Brain, R1BrainError, toolLoop, type ToolTurn } from "./R1Brain.ts";
 import { sessionTools, speakableSentences } from "../tessaya/TessayaBrain.ts";
 import { PersonaLayers } from "../tessaya/PersonaLayers.ts";
@@ -686,7 +687,8 @@ effectIt.effect(
         Stream.runForEach((words) => Effect.sync(() => said.push(words))),
         Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
       );
-      expect(said.join("")).toBe("Let me look that up. It is 23 degrees and hazy. ");
+      // No line of her own for it, so no fixed one either (B-056: "Let me look that up." on every search).
+      expect(said.join("")).toBe("It is 23 degrees and hazy. ");
       expect(details).toEqual(["It is 23 degrees and hazy."]);
     }),
 );
@@ -777,13 +779,20 @@ effectIt.effect(
             home,
             Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
             Layer.mock(TessayaOneShot)({}),
+            // Her bridge about his words, written beside the turn (B-056), in place of "One moment.".
+            Layer.mock(R1Hold)({
+              write: (w) =>
+                Effect.succeed(
+                  w.words.includes("request") ? "That request of yours, let me look." : null,
+                ),
+            }),
           ),
         ),
         Effect.forkChild,
       );
       yield* TestClock.adjust("5 seconds");
       yield* Fiber.join(turn);
-      expect(said.join("")).toBe("One moment. Done. ");
+      expect(said.join("")).toBe("That request of yours, let me look. Done. ");
     }),
 );
 

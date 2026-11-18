@@ -152,7 +152,7 @@ export const make = Effect.gen(function* () {
             : new TessayaOneShotError({ detail: String(cause) }),
         ),
         // A call that ran and failed still spent: its row says so, with no tokens it could count.
-        Effect.tapError(() =>
+        Effect.tapError((e) =>
           usage.record({
             ...row,
             model,
@@ -161,6 +161,7 @@ export const make = Effect.gen(function* () {
             cacheWrite: 0,
             output: 0,
             outcome: "failed",
+            why: e.detail,
           }),
         ),
       );
