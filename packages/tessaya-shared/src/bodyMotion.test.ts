@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { GESTURES, TOUCH_ZONES } from "./bodyCues.ts";
 import {
   ACTS,
+  clipAt,
   POSTURES,
   outfitPiece,
   readTouch,
@@ -199,5 +200,19 @@ describe("motion set", () => {
     const beats = talkBeats(words);
     expect(beats.map((b) => b.atMs)).toEqual([0, 1800]);
     expect(beats[0]!.gesture).not.toBe(beats[1]!.gesture);
+  });
+});
+
+describe("clipAt", () => {
+  const clip = {
+    fps: 10,
+    loop: false,
+    frames: [{ head: [0, 0, 0] as const }, { head: [0.4, 0, 0] as const }],
+  };
+  it("plays from the first frame even when the display frame began just before the clip", () => {
+    expect(clipAt(clip, -8)).toEqual({ head: [0, 0, 0] });
+    expect(clipAt(clip, 50).head![0]).toBeCloseTo(0.2);
+    expect(clipAt(clip, 5000)).toEqual({ head: [0.4, 0, 0] });
+    expect(clipAt({ ...clip, loop: true }, 150).head![0]).toBeCloseTo(0.2);
   });
 });
