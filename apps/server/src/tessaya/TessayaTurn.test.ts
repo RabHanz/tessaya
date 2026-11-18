@@ -1166,6 +1166,19 @@ it("tells every turn where she is in a few dozen tokens: vessel, body, room, wha
   assert.include(linkDown, "link to this server is down");
   assert.include(linkDown, "Volume 70% (as of 18 h ago)");
   assert.notInclude(linkDown, "Battery");
+  // 18 Nov, 00:38: a day-old "output speaker" said his headphones had not taken; the loop's live word replaces it.
+  const playing = {
+    ...device,
+    items: [...device.items, item("audio.output", "Output", "read,write")],
+    values: [
+      ...device.values,
+      { itemId: "audio.output", value: "speaker", at: "2026-11-13T06:00:00Z" },
+    ],
+  };
+  assert.include(hereLine(playing, null, now), "Output speaker (as of");
+  const live = hereLine(playing, null, now, "bt");
+  assert.include(live, "plays through Bluetooth");
+  assert.notInclude(live, "Output speaker");
   // A guest's turn (no member) is not told who lives here; nothing known is nothing said.
   assert.strictEqual(hereLine(null, null, now), "");
   assert.isAtMost(

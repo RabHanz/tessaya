@@ -316,6 +316,8 @@ export interface Tessaya {
   readonly playback?: string;
   /** How his sound came in (inputQuality.ts): she mentions it when it was not good. */
   readonly input?: InputQuality;
+  /** Where her voice plays now, as the device last told this loop: live, where the server's record may be old. */
+  readonly plays?: "bt" | "onboard";
 }
 
 export interface RoomDeps {
@@ -1023,6 +1025,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       ...(segments === undefined ? {} : { segments }),
       ...(scored == null ? {} : { heardWords: scored.words, recogniser: scored.model }),
       ...playbackNow(),
+      ...(playsOn.has(id) ? { plays: playsOn.get(id) === "bt" ? "bt" : "onboard" } : {}),
     });
 
     /**
