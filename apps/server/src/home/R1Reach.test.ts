@@ -64,12 +64,20 @@ it("gives every hub a slot in his order, and every server the same list, so she 
   expect(composeEndpoints({ hubs: [home, cloud, laptop], fallback: [], proxy: "" }).broker).toEqual(
     [...home, ...cloud, ...laptop],
   );
-  // A fifth address: each hub keeps one slot before any keeps a second; cut to one, home keeps its tunnel, which
-  // answers from anywhere.
+  // Home, cloud, laptop and a fallback (18 Nov 19:30): cut short, home keeps its LAN, never its relay for it, since
+  // TLS through the relay starved her wake heap; a hub address goes before a fallback broker.
+  expect(
+    composeEndpoints({ hubs: [home, cloud, laptop], fallback: ["ws://old/mqtt"], proxy: "" })
+      .broker,
+  ).toEqual([...home, ...cloud, ...laptop]);
   const big = ["ws://10.0.0.1/api/r1/mqtt", ...home];
   expect(
     composeEndpoints({ hubs: [big, cloud, laptop], fallback: ["ws://old/mqtt"], proxy: "" }).broker,
-  ).toEqual([big.at(-1), cloud[0], laptop[0], "ws://old/mqtt"]);
+  ).toEqual([big[0], big.at(-1), cloud[0], laptop[0]]);
+  // Room left over: the fallback still gets it.
+  expect(
+    composeEndpoints({ hubs: [home, cloud], fallback: ["ws://old/mqtt"], proxy: "" }).broker,
+  ).toEqual([...home, ...cloud, "ws://old/mqtt"]);
   const known = [
     { id: "env-home", label: "home" },
     { id: "env-cloud", label: "cloud" },
