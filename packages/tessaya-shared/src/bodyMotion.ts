@@ -519,6 +519,34 @@ export type Act = keyof typeof ACTS;
 export const ACT_NAMES = Object.keys(ACTS) as ReadonlyArray<Act>;
 export const isAct = (v: unknown): v is Act => typeof v === "string" && Object.hasOwn(ACTS, v);
 
+/**
+ * A clip's pose `ms` after it started, each bone between its two nearest frames. A frame can be timed just before
+ * its clip's start (a display frame begun before the cue arrived): that is the first frame, never before it.
+ */
+export const clipAt = (
+  clip: {
+    readonly fps: number;
+    readonly loop: boolean;
+    readonly frames: ReadonlyArray<Partial<Record<PoseBone, Euler>>>;
+  },
+  ms: number,
+): Partial<Record<PoseBone, Euler>> => {
+  const n = clip.frames.length;
+  if (n === 0) return {};
+  const at = Math.max(0, (ms / 1000) * clip.fps);
+  const i = clip.loop ? at % n : Math.min(n - 1, at);
+  const a = clip.frames[Math.floor(i)]!;
+  const b = clip.frames[clip.loop ? (Math.floor(i) + 1) % n : Math.min(n - 1, Math.floor(i) + 1)]!;
+  const t = i - Math.floor(i);
+  const out: Partial<Record<PoseBone, Euler>> = {};
+  for (const bone of new Set([...Object.keys(a), ...Object.keys(b)]) as Set<PoseBone>) {
+    const x = a[bone] ?? b[bone]!;
+    const y = b[bone] ?? x;
+    out[bone] = [0, 1, 2].map((k) => x[k]! + (y[k]! - x[k]!) * t) as unknown as Euler;
+  }
+  return out;
+};
+
 /** Dancing in place: a hip sway, swinging arms and alternating knee bends on a beat; feet stay where they are. */
 export const danceAt = (t: number, bpm = 100): Partial<Record<PoseBone, Euler>> => {
   const beat = (t / 60000) * bpm;

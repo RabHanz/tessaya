@@ -27,6 +27,7 @@ import {
   POSE_BONES,
   POSTURES,
   TOUCH_FACE,
+  clipAt,
   danceAt,
   outfitPiece,
   postureFor,
@@ -321,6 +322,8 @@ export function mountBody(
   let closer = 0;
   let closerTo = 0;
   let ground = 0;
+  // where her feet meet the floor at rest, measured when the model loads
+  let sole = Number.NaN;
   // extra lift of each upper arm when a hand or elbow would pass into her body on this model
   let armOut = { left: 0, right: 0 };
   let idleUntil = 0;
@@ -420,20 +423,7 @@ export function mountBody(
   const applyPose = (now: number) => {
     if (vrm === null || rig === null) return;
     const bones: Partial<Record<PoseBone, Euler>> = { ...posture().bones };
-    if (clip !== null) {
-      const n = clip.frames.length;
-      const at = ((now - clip.start) / 1000) * clip.fps;
-      const i = clip.loop ? at % n : Math.min(n - 1, at);
-      const a = clip.frames[Math.floor(i)]!;
-      const b =
-        clip.frames[clip.loop ? (Math.floor(i) + 1) % n : Math.min(n - 1, Math.floor(i) + 1)]!;
-      const t = i - Math.floor(i);
-      for (const bone of new Set([...Object.keys(a), ...Object.keys(b)]) as Set<PoseBone>) {
-        const x = a[bone] ?? b[bone]!;
-        const y = b[bone] ?? x;
-        bones[bone] = [0, 1, 2].map((k) => x[k]! + (y[k]! - x[k]!) * t) as unknown as Euler;
-      }
-    }
+    if (clip !== null) Object.assign(bones, clipAt(clip, now - clip.start));
     Object.assign(
       bones,
       dancing === null ? {} : danceAt(now - dancing),
@@ -515,6 +505,14 @@ export function mountBody(
       }
       // bones run through her middle: the lowest stays a little above the floor
       if (Number.isFinite(low)) groundTo = ground + (0.06 - low);
+    } else {
+      // standing: her lower foot is on the floor, whatever her hips or knees do (a lean, a dance, a clip)
+      let low = Infinity;
+      for (const b of ["leftFoot", "rightFoot", "leftToes", "rightToes"] as const) {
+        const p = worldOf(b);
+        if (p) low = Math.min(low, p.y);
+      }
+      if (Number.isFinite(low) && Number.isFinite(sole)) groundTo = ground + (sole - low);
     }
     if (Math.abs(groundTo - ground) > 0.003) {
       ground += (groundTo - ground) * f;
@@ -924,6 +922,12 @@ export function mountBody(
     ground = 0;
     closer = closerTo = 0;
     placeCamera(1);
+    sole = Math.min(
+      ...(["leftFoot", "rightFoot", "leftToes", "rightToes"] as const).flatMap((b) => {
+        const p = worldOf(b);
+        return p ? [p.y] : [];
+      }),
+    );
     outfit = new Map();
     vrm.scene.traverse((o) => {
       const mats = (o as THREE.Mesh).isMesh ? [(o as THREE.Mesh).material].flat() : [];
