@@ -48,12 +48,16 @@ const { values } = NodeUtil.parseArgs({
     judge: { type: "string", default: "sonnet" },
     // An earlier run's results.json: grade and judge its recorded calls again (after a grader change), no new turns.
     regrade: { type: "string" },
+    // Another direction file (the motion library's seed set), instead of library.json.
+    library: { type: "string" },
+    // "intent": the turn is told to give only an intent, as a weaker model would (M-081's lower tier).
+    tier: { type: "string" },
   },
 });
 if (values.out === undefined) throw new Error("Use --out <directory>.");
 const out = values.out;
 const library = JSON.parse(
-  NodeFS.readFileSync(new URL("./library.json", import.meta.url), "utf8"),
+  NodeFS.readFileSync(values.library ?? new URL("./library.json", import.meta.url), "utf8"),
 ) as { directions: Direction[] };
 const directions = library.directions.filter(
   (d) =>
@@ -82,6 +86,9 @@ const bodyAnswer = (name: string, input: unknown): string => {
     return JSON.stringify({ ok: true, route: "desk", said: "Her body took it." });
   return `(eval) ${name} was not run.`;
 };
+
+const INTENT_TIER =
+  "Your body: when he directs it, call tessaya_body_state to see her `motions`, then tessaya_body_move with only `intent`: the listed motion nearest to what he asked, or a few plain words. Her body knows how to perform it.";
 
 const ask = async (system: string, text: string): Promise<string> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-direction-judge-"));
@@ -134,6 +141,7 @@ const sample = async (d: Direction, index: number): Promise<Row> => {
       said: d.said,
       where: { window: "Notepad", session: null },
       notes: assistantFrame(DEFAULT_OS_PACK) + templateFrame(mergeTemplates()),
+      ...(values.tier === "intent" ? { extra: INTENT_TIER } : {}),
       env: process.env,
       // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
       platform: process.platform,

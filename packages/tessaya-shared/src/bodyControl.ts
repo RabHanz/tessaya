@@ -24,6 +24,8 @@ import {
   type PoseBone,
   type PostureName,
 } from "./bodyMotion.ts";
+import { recall } from "./bodyLibrary.ts";
+import { MOTION_LIBRARY } from "./bodyMotionLibrary.ts";
 import { decodeHold, decodePerform, INVOLUNTARY, type Perform } from "./bodyPlanner.ts";
 import { JOINT_LIMITS } from "./bodyRig.ts";
 
@@ -129,6 +131,22 @@ const bonesOf = (v: unknown): Partial<Record<PoseBone, Euler>> | string => {
 
 const decodeOne = (raw: unknown, depth: number): Decoded => {
   if (!isObj(raw)) return { ok: false, error: "a move is an object" };
+  // an intent in words: her library's nearest validated performance, under whatever else this step says
+  if (typeof raw["intent"] === "string") {
+    const { intent, ...rest } = raw;
+    const hit = recall(String(intent).slice(0, 200), MOTION_LIBRARY);
+    if (hit === null && Object.keys(rest).length === 0)
+      return {
+        ok: false,
+        error: `her motion library has nothing near "${String(intent).slice(0, 60)}": give a perform (feel) or other fields`,
+      };
+    const own = (hit?.entry.move ?? {}) as Record<string, unknown>;
+    // its later steps stay unless this step brings its own
+    return decodeOne(
+      { ...own, ...rest, ...(rest["then"] === undefined ? {} : { then: rest["then"] }) },
+      depth,
+    );
+  }
   const m: Record<string, unknown> = {};
   if (raw["act"] !== undefined) {
     if (typeof raw["act"] !== "string" || !/^[a-zA-Z][\w-]{0,39}$/.test(raw["act"]))
@@ -462,4 +480,6 @@ export const BODY_CAPABILITIES = {
   rate: RATE,
   stream: { rate: STREAM_RATE, lapseMs: STREAM_LAPSE_MS },
   involuntary: INVOLUNTARY.map((s) => ({ system: s.id, ...s.override })),
+  /** Her motion library's validated performances, by the words that asked for them: an `intent` near one plays it. */
+  motions: MOTION_LIBRARY.map((m) => m.text),
 } as const;
