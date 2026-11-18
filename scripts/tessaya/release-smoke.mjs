@@ -36,7 +36,9 @@ const desktop = (name) => {
   }
 };
 
-const browser = await chromium.connectOverCDP("http://127.0.0.1:9229");
+// noDefaults: Playwright's default focus emulation registers every page it attaches as a capturer, which holds a
+// minimized or covered window visible and drawing (0.1.161 measured 2369 ms per 10 s so; his app has nothing attached).
+const browser = await chromium.connectOverCDP("http://127.0.0.1:9229", { noDefaults: true });
 const pages = () => browser.contexts().flatMap((c) => c.pages());
 const describe = async () =>
   Promise.all(
@@ -403,6 +405,8 @@ if (popout) {
   });
 // A working thread's pulse in his window repaints it six times a second for as long as the turn runs; untouched for a
 // minute, it must hold still. The idle below then runs with one pulsing, as his did with his lanes working.
+// The runner's Windows has animations turned off, which motion-safe honours; his laptop has them on.
+await t3?.emulateMedia({ reducedMotion: "no-preference" }).catch(() => undefined);
 const pulse = t3
   ? await t3
       .evaluate(() => {

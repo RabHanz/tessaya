@@ -10,14 +10,20 @@ describe("startStillIndicators", () => {
     using _visibility = vi
       .spyOn(document, "visibilityState", "get")
       .mockImplementation(() => visibility);
+    // Focused first: the window gains focus here, so the second field's focus is the element's alone.
+    const fields = [0, 1].map(() => document.body.appendChild(document.createElement("input")));
+    fields[0]!.focus();
     using indicators = new DisposableStack();
     indicators.defer(startStillIndicators());
     const still = () => document.documentElement.hasAttribute("data-still");
 
-    vi.advanceTimersByTime(45_000);
+    vi.advanceTimersByTime(30_000);
+    fields[1]!.focus();
+    vi.advanceTimersByTime(15_000);
     expect(still()).toBe(false);
     vi.advanceTimersByTime(15_000);
     expect(still()).toBe(true);
+    for (const field of fields) field.remove();
 
     window.dispatchEvent(new Event("pointermove"));
     expect(still()).toBe(false);
