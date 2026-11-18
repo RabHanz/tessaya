@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { BrainUsage, cliTokens, ledgeredCwd } from "../tessaya/BrainUsage.ts";
+import { claudeProgram } from "../tessaya/TessayaOneShot.ts";
 import { BRIDGE_SYSTEM, bridgePrompt, keptBridge } from "@t3tools/tessaya-shared/holdLine";
 
 import { readLine } from "./R1Brain.ts";
@@ -47,10 +48,11 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const usage = yield* BrainUsage;
     const context = yield* Effect.context<never>();
+    const claude = yield* claudeProgram;
     const recent = new Map<string, Array<string>>();
     const spawn = (): Warm => {
       const proc = NodeChildProcess.spawn(
-        "claude",
+        claude,
         [
           "-p",
           "--input-format",
