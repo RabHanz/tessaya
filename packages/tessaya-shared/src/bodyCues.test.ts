@@ -138,6 +138,67 @@ describe("cue wire", () => {
       { kind: "prop", id: "p1", bone: "tail" },
       { kind: "prop", id: "p1" },
     ],
+    [{ kind: "pose", pose: "sit" }, "same"],
+    [{ kind: "pose", pose: "auto" }, "same"],
+    [{ kind: "pose", pose: "cartwheel" }, null],
+    [{ kind: "act", act: "walkOver" }, "same"],
+    [{ kind: "act", act: "toString" }, null],
+    [
+      { kind: "outfit", off: ["tops", "tops", "skin", 3] },
+      { kind: "outfit", off: ["tops"] },
+    ],
+    [
+      {
+        kind: "speak",
+        track: [],
+        effects: [
+          { atMs: 10, act: "sit" },
+          { atMs: 20, act: "fly" },
+        ],
+      },
+      { kind: "speak", track: [], effects: [{ atMs: 10, act: "sit" }] },
+    ],
+    [
+      {
+        kind: "clip",
+        id: "sway",
+        fps: 4,
+        loop: true,
+        frames: [{ spine: [0, 0, 0.1], tail: [0, 0, 1] }, { head: [9, 0, 0] }],
+      },
+      // out-of-range angles clamp, unknown bones drop
+      {
+        kind: "clip",
+        id: "sway",
+        fps: 4,
+        loop: true,
+        grounded: false,
+        frames: [{ spine: [0, 0, 0.1] }, { head: [Math.PI, 0, 0] }],
+      },
+    ],
+    [
+      {
+        kind: "zones",
+        zones: [
+          { id: "ears", bone: "head", radius: 0.05 },
+          { id: "x", bone: "head", radius: 3 },
+        ],
+      },
+      {
+        kind: "zones",
+        zones: [
+          { id: "ears", bone: "head", radius: 0.05 },
+          { id: "x", bone: "head", radius: 0.3 },
+        ],
+      },
+    ],
+    [
+      {
+        kind: "expressions",
+        map: { blush: [{ name: "Cheek", weight: 0.8 }, { name: 3 }], sad: [] },
+      },
+      { kind: "expressions", map: { blush: [{ name: "Cheek", weight: 0.8 }] } },
+    ],
     [{ kind: "nope" }, null],
     ["show", null],
   ])("%j", (raw, want) => {
@@ -186,6 +247,10 @@ describe("line timing", () => {
     });
     expect(cues.map((c) => c.kind)).toEqual(["speaker", "mood", "gesture", "speak"]);
     const speak = cues[3]!;
-    expect(speak.kind === "speak" && speak.effects).toEqual([{ atMs: 900, face: "laughing" }]);
+    // "brilliant" carries the line, so a talking beat lands on its own word too
+    expect(speak.kind === "speak" && speak.effects).toEqual([
+      { atMs: 555, gesture: "beatR" },
+      { atMs: 900, face: "laughing" },
+    ]);
   });
 });
