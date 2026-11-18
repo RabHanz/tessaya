@@ -1,9 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalJsonInEffect:off globalDate:off
 /**
  * The R1's room voice loop as this server's child process, run against its own hub and brain from `<T3 home>/r1-voice`
- * once an R1 is on the hub; a release build installs it there itself. A loop on another machine hearing the R1s keeps
- * this one installed but silent: a standby that takes the room when that loop goes quiet and hands it back when it
- * returns (A9). `TESSAYA_TESSEL_LOOP=off` (or the old `TESSAYA_R1_LOOP`) keeps this server out of it.
+ * once an R1 is paired to the hub; a release build installs it there itself. It runs only while an R1 is on this hub
+ * and no other loop is heard here, so a standby costs nothing until she falls over to it and hands back when the
+ * other loop returns (A9). `TESSAYA_TESSEL_LOOP=off` (or the old `TESSAYA_R1_LOOP`) keeps this server out of it.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -44,23 +44,44 @@ const STARTUP_MS = 30_000;
 const HEALTHY_MS = 120_000;
 const BACKOFF_MAX_MS = 10 * 60_000;
 
+/** A Tessel gone from this hub this long stops the loop here; a relink or a hub hop back within it keeps it warm. */
+const LINGER_MS = 60_000;
+
 /**
- * One tick of the election: this server's loop answers the room only once no other loop has been heard on the hub for
- * TAKEOVER_MS and the server has been up STARTUP_MS. Another loop always wins, so two never answer at once. Pure.
+ * One tick of the election for this hub: its loop runs only while a Tessel is on this hub (or left it under LINGER_MS
+ * ago), no other loop has been heard on the hub for TAKEOVER_MS, and the server has been up STARTUP_MS. Another loop
+ * always wins, so two never answer at once. It claims the room only while that loop is up, subscribed here (`ready`),
+ * and a Tessel is here to hear: a loop turned off or never started claims nothing. Pure.
  */
 export const elect = (input: {
   readonly others: number;
+  /** Tessels connected to this hub now. */
+  readonly here: number;
+  /** This server's own loop is running and subscribed to the Tessels' voice on this hub. */
+  readonly ready: boolean;
   readonly lastOtherAt: number;
+  readonly lastHereAt: number;
   readonly bornAt: number;
   readonly now: number;
-}): { readonly answers: boolean; readonly lastOtherAt: number } => {
+}): {
+  readonly answers: boolean;
+  readonly claims: boolean;
+  readonly lastOtherAt: number;
+  readonly lastHereAt: number;
+} => {
   const lastOtherAt = input.others > 0 ? input.now : input.lastOtherAt;
+  const lastHereAt = input.here > 0 ? input.now : input.lastHereAt;
+  const answers =
+    input.others === 0 &&
+    input.now - lastOtherAt >= TAKEOVER_MS &&
+    input.now - input.bornAt >= STARTUP_MS &&
+    lastHereAt > 0 &&
+    input.now - lastHereAt < LINGER_MS;
   return {
     lastOtherAt,
-    answers:
-      input.others === 0 &&
-      input.now - lastOtherAt >= TAKEOVER_MS &&
-      input.now - input.bornAt >= STARTUP_MS,
+    lastHereAt,
+    answers,
+    claims: answers && input.ready && input.here > 0,
   };
 };
 
@@ -314,7 +335,9 @@ export const layer = Layer.effect(
     let installState: InstallState = { kind: "idle" };
     let elsewhere = false;
     let lastOtherAt = bornAt;
+    let lastHereAt = 0;
     let answering = false;
+    let claimed = false;
     let standby = false;
     let onHub = false;
     const bundle =
@@ -378,20 +401,35 @@ export const layer = Layer.effect(
       onHub = devices.some((d) => d.deviceId !== null && d.mqttUrl === null);
       // Another loop hearing the R1s here (his own voice host) keeps ours silent; the hub drops one whose heartbeat stops.
       const ours = child?.pid === undefined ? null : `tessaya-room-${child.pid}`;
-      const others = hub.busHears(VOICE_TOPIC).filter((id) => id !== ours);
-      elsewhere = others.length > 0;
+      const hearing = hub.busHears(VOICE_TOPIC);
+      const others = hearing.filter((id) => id !== ours);
+      const here = devices
+        .filter((d) => d.deviceId !== null && d.mqttUrl === null && hub.connected(d.deviceId))
+        .map((d) => d.deviceId!);
       const quietMs = now - lastOtherAt;
-      const vote = elect({ others: others.length, lastOtherAt, bornAt, now });
+      const vote = elect({
+        others: others.length,
+        here: here.length,
+        ready: ours !== null && hearing.includes(ours),
+        lastOtherAt,
+        lastHereAt,
+        bornAt,
+        now,
+      });
       lastOtherAt = vote.lastOtherAt;
-      const answer = vote.answers;
-      if (answer !== answering) {
-        answering = answer;
+      lastHereAt = vote.lastHereAt;
+      answering = vote.answers;
+      // Another loop on this hub, or the Tessels on another server's hub: either way her voice runs elsewhere.
+      elsewhere = others.length > 0 || (!answering && here.length === 0);
+      // The room is claimed only by a loop that is up and hearing a Tessel here; the record says which.
+      if (vote.claims !== claimed) {
+        claimed = vote.claims;
         yield* emitAction({
-          kind: answer ? "room.loop.takeover" : "room.loop.handback",
+          kind: claimed ? "room.loop.takeover" : "room.loop.handback",
           actor: { kind: "system", id: "room-loop", certainty: 1 },
           subject: "room-loop",
-          outcome: answer ? "answering here" : "standing by",
-          data: { others, quietMs },
+          outcome: claimed ? "answering here" : "standing by",
+          data: { others, quietMs, devices: here, loop: ours },
         });
       }
       const bundleMark = NodeFS.existsSync(NodePath.join(dir, BUNDLE_MARK))
