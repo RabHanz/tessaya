@@ -185,10 +185,10 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     source:
       "Director 17 Nov 23:30 (GMT+5): 'the screen I mean is the eyes on the Tumble'; she argued from the cast",
     said: "The screen I'm talking about is the eyes on the Tumble. It's literally showing Alfred's eyes.",
-    first: ["device_list", "device_set", "device_act"],
+    first: ["device_registry", "device_set", "device_act"],
     not: ["none", "screen_capture", "tessaya_cast", "laptop_ask"],
     answers: {
-      device_list:
+      device_registry:
         "r1-3d57b3: Tessel, in Tumble, online. Eyes persona tessaya (reported 18 h ago).",
       device_set: "Tessel took it.",
       device_act: "Tessel took it.",

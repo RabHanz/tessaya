@@ -203,7 +203,7 @@ const RulesTool = Tool.make("tessaya_rules", {
 const FleetTool = Tool.make("tessaya_fleet", {
   ...shared,
   description:
-    "This computer's agent work in full: each piece of work with its state and branch, every Herdr pane and every running Claude Code process. Use it for \"what's running here\" or \"what's in my Herdr panes\"; for which sessions are open or which machines are up across all his machines, `tessaya_work_now`; `tessaya_sessions` finds a past or present session. Battery, Wi-Fi and other hardware readings are device_list's.",
+    "This computer's agent work in full: each piece of work with its state and branch, every Herdr pane and every running Claude Code process. Use it for \"what's running here\" or \"what's in my Herdr panes\"; for which sessions are open or which machines are up across all his machines, `tessaya_work_now`; `tessaya_sessions` finds a past or present session. Battery, Wi-Fi and other hardware readings are device_registry's.",
   // No `parameters`: Tool.EmptyParams serializes as a plain object, which every client accepts.
   success: TessayaFleetResult,
 })

@@ -87,7 +87,7 @@ export interface LiveCase {
     readonly device?: string;
     readonly ran: boolean;
   }>;
-  /** Needs a device in the server's registry (device_list); not applicable on a server with none. */
+  /** Needs a device in the server's registry (device_registry); not applicable on a server with none. */
   readonly device?: boolean;
   /** Asks his real laptop (read-only); runs only with --laptop. */
   readonly laptop?: boolean;
@@ -137,7 +137,7 @@ export const spokenCounts = (
     of: /^paused$/i.test(word!) ? "paused" : /^automations?$/i.test(word!) ? "total" : "running",
   }));
 
-/** Whether a device_list answer names any device. */
+/** Whether a device_registry answer names any device. */
 export const hasDevices = (text: string): boolean => {
   try {
     const v = JSON.parse(text) as {
@@ -1331,14 +1331,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     id: "device-read",
     device: true,
-    proves: ["device_list", "device_read"],
+    proves: ["device_registry", "device_read"],
     said: ["How much battery does my desk device have left?"],
-    uses: [["device_read", "device_list"]],
-    clean: ["device_read", "device_list"],
+    uses: [["device_read", "device_registry"]],
+    clean: ["device_read", "device_registry"],
     // The level she says must be the one the device reported, never a guess.
     check: (last, calls) => {
       const levels = calls
-        .filter((c) => (c.name === "device_read" || c.name === "device_list") && !c.isError)
+        .filter((c) => (c.name === "device_read" || c.name === "device_registry") && !c.isError)
         .flatMap((c) => [
           ...c.text.matchAll(/"(?:power\.battery_pct|batteryPct)"[^0-9]{0,40}?(\d+)/g),
         ])

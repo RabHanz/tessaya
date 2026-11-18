@@ -117,7 +117,7 @@ const REACH: Readonly<Record<string, ToolReach>> = {
   ...Object.fromEntries(
     [
       "set_device_volume",
-      "device_list",
+      "device_registry",
       "device_read",
       "device_set",
       "home_find",
@@ -466,7 +466,7 @@ const UNATTENDED_TOOLS: ReadonlySet<string> = new Set([
   "home_find",
   "home_state",
   "home_automations",
-  "device_list",
+  "device_registry",
   "watch_report",
   "what_happened",
   "morning_brief",

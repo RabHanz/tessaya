@@ -120,7 +120,7 @@ const ROOM_TOOLS = [
   "settings_answer_all",
   "tessaya_account_use",
   // Every vessel's self-described items, from any vessel (R1-P13).
-  "device_list",
+  "device_registry",
   "device_read",
   "device_set",
   "device_watch",

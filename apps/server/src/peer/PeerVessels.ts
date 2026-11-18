@@ -29,7 +29,7 @@ export const PeerOrigin = {
 
 export const On = Schema.String.check(Schema.isMaxLength(60)).annotate({
   description:
-    "The machine it lives on, as settings_find or device_list named it (`on`). Leave it out for this one.",
+    "The machine it lives on, as settings_find or device_registry named it (`on`). Leave it out for this one.",
 });
 
 /** The tool runs as the turn that asked on the other server, when that server is the caller. */

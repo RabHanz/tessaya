@@ -174,7 +174,7 @@ const BATON_QUIET = new Set([
   "home_find",
   "home_state",
   "home_automations",
-  "device_list",
+  "device_registry",
 ]);
 /** Tools only the R1's runner has (R1Tools), judged by this same table; the desktop's own table never holds them. */
 export const ROOM_ONLY_TOOLS: ReadonlySet<string> = new Set([

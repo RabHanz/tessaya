@@ -133,7 +133,7 @@ const PreferenceSetTool = Tool.make("member_preference_set", {
 const VesselTool = Tool.make("member_vessel", {
   ...shared,
   description:
-    'Say whose a Tessel is ("the kitchen Tessel is Sara\'s"), so the headphones on it and someone picking it up count for that member; null gives it back to the whole home. The owner or an admin only. `vessel` is the device id from device_list.',
+    'Say whose a Tessel is ("the kitchen Tessel is Sara\'s"), so the headphones on it and someone picking it up count for that member; null gives it back to the whole home. The owner or an admin only. `vessel` is the device id from device_registry.',
   parameters: Schema.Struct({
     vessel: Schema.String.check(Schema.isMaxLength(128)),
     id: Schema.NullOr(Id),
