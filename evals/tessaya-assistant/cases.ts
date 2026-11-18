@@ -218,6 +218,16 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     goalArgs: ["lean", "shy"],
   },
   {
+    id: "body-dance-scene",
+    source: "M-065, Director 18 Nov",
+    said: "Do a little dance for me.",
+    first: ["tessaya_body_scene", "tessaya_body_move", "tessaya_body_state"],
+    not: ["device_set"],
+    goal: "tessaya_body_scene",
+    maxCalls: 3,
+    goalArgs: ["dance"],
+  },
+  {
     id: "tessel-louder-from-desk",
     source: "ONE-SPINE-MAP §12, 18 Nov",
     said: "Make the Tessel in the living room louder, I can't hear it from the kitchen.",

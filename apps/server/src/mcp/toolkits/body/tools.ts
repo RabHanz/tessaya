@@ -124,5 +124,30 @@ const StateTool = Tool.make("tessaya_body_state", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const SceneTool = Tool.make("tessaya_body_scene", {
+  ...shared,
+  description:
+    "Play a whole scene on her body: a timeline of moves (beats, each `atMs` from the start, each with the same `move` fields as tessaya_body_move). Pass a core scene by name (greeting, sitAndTalk, dance, stretch) or your own `{version: 1, id, title, beats}`. With `dryRun` it only checks the scene and reports, beat by beat, what her rig would correct (joint limits, elbows or knees bent the wrong way, hands inside her body); errors say where and how to fix them. Write and dry-run a scene before playing it.",
+  parameters: Schema.Struct({
+    scene: Schema.Unknown.annotate({
+      description:
+        "A core scene's name, or a scene {version: 1, id, title, loop?, beats: [{atMs, label?, move}]}.",
+    }),
+    dryRun: Schema.optionalKey(Schema.Boolean),
+  }),
+  success: Schema.Struct({
+    ok: Schema.Boolean,
+    said: Schema.String,
+    route: Schema.optionalKey(Schema.String),
+    errors: Schema.optionalKey(Schema.Unknown),
+    corrected: Schema.optionalKey(Schema.Unknown),
+    notes: Schema.optionalKey(Schema.Unknown),
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 /** Spread into Tessaya's toolkit. */
-export const BodyTools = [MoveTool, StateTool] as const;
+export const BodyTools = [MoveTool, StateTool, SceneTool] as const;

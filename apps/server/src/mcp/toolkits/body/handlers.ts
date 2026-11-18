@@ -2,7 +2,7 @@
 import * as Effect from "effect/Effect";
 
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
-import { bodyState, moveBody, type BodyCaller } from "../../../tessaya/TessayaBody.ts";
+import { bodyState, moveBody, playScene, type BodyCaller } from "../../../tessaya/TessayaBody.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -39,6 +39,16 @@ export const make = Effect.gen(function* () {
           ? moveBody(input, caller)
           : moveBody(input, caller).pipe(Effect.provideContext(context)),
       ),
+    ),
+    tessaya_body_scene: McpToolAccess.writes(
+      (input: { readonly scene: unknown; readonly dryRun?: boolean }) =>
+        Effect.flatMap(callerNow, (caller) =>
+          context === null
+            ? playScene(input.scene, caller, input.dryRun === true)
+            : playScene(input.scene, caller, input.dryRun === true).pipe(
+                Effect.provideContext(context),
+              ),
+        ),
     ),
     tessaya_body_state: McpToolAccess.reads(() =>
       Effect.flatMap(callerNow, (caller) =>
