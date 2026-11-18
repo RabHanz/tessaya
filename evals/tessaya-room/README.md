@@ -43,3 +43,13 @@ node tessaya-room/live.ts --vessel desktop --server <server> --key-file <the Tes
 ```
 
 - A phone adapter follows the phone app (#809): the phone has no turn of its own on the server yet.
+
+## Topology gate
+
+The live suite's pretend Tessel is a rehearsal, so its device writes never reach a hub and it cannot catch a turn whose brain is on one server while she sits on another's hub (`R1_BRAIN_URL` and `R1_HUB_URL` apart, 18 Nov: "Tumble isn't linked to the server"). The topology gate runs that layout for real on two scratch copies of the build: a brain linked to a hub server as his servers are linked, a pretend Tessel logged in to the hub with a device key, and the loop's own bridge (`packages/tessaya-voice/src/room/brainBridge.ts`) between them. It checks volume read and set, the output switch, status, mic quality, that no reply says her link is down, and that the brain's acts reach her in order. The device writes land on the pretend Tessel; nothing of his but the brain's model key is copied.
+
+```sh
+scripts/tessaya/room-topology.sh <t3 binary of the build> <topologyGate.mjs> [userdata dir]
+```
+
+`topologyGate.mjs` is `packages/tessaya-voice/src/room/topologyGate.ts` bundled as the loop is. Any change to the loop's env or to which host is her brain or hub passes this gate first.

@@ -197,6 +197,7 @@
         "src/room/main.ts!",
         "src/room/replay.ts!",
         "src/room/transcribe.ts!",
+        "src/room/topologyGate.ts!",
         "test/segmentsEval.ts",
       ],
       "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"],

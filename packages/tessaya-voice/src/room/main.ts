@@ -45,6 +45,7 @@ import { servedVocabulary, VOCABULARY_EVERY_MS } from "./vocabulary.ts";
 import { voicesOf } from "./segments.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
+import { connectBrainBridge } from "./brainBridge.ts";
 import {
   hedge,
   noteTime,
@@ -60,11 +61,8 @@ import {
   ROOM_CONFIG,
   brainNotReached,
   brainOrLocal,
-  fromBrainHub,
   loopBuses,
-  relayToBrain,
   routeForDevice,
-  toBrainHub,
   servedRoster,
   type RecogniserTurn,
   type RoomDeps,
@@ -872,44 +870,21 @@ const main = async () => {
     },
     log,
   });
-  // What she reports on her hub, copied to the brain's, so its record of her is live (online, readings, metrics).
-  const relay =
+  // Her reports copied to the brain's hub, and the brain's turn acts taken from it, when the brain is on another host.
+  const bridge =
     buses.brain === null
       ? null
-      : connectMqtt({
-          url: bus,
-          clientId: `tessaya-room-relay-${process.pid}`,
-          user: env("R1_MQTT_USER"),
-          pass: secret("R1_MQTT_PASS_FILE"),
-          subscribe: ["freya/r1/+/state/#", "freya/r1/+/event/#"],
-          onMessage: (t, p) => {
-            const tail = /^freya\/r1\/[^/]+\/(.+)$/.exec(t)?.[1];
-            const how = tail === undefined ? null : relayToBrain(tail);
-            if (how !== null) brainHub?.publish(t, p, how === "retain");
+      : connectBrainBridge({
+          hub: bus,
+          hubLogin: { user: env("R1_MQTT_USER"), pass: secret("R1_MQTT_PASS_FILE") },
+          brain: buses.brain,
+          brainLogin: {
+            user: env("R1_BRAIN_MQTT_USER", "tessaya-bus"),
+            pass: secret("R1_BRAIN_MQTT_PASS_FILE"),
           },
-          log,
-        });
-  // The brain on another host publishes its turn's acts on its own hub: this loop, on her hub, takes them in order.
-  const brainHub =
-    buses.brain === null
-      ? null
-      : connectMqtt({
-          url: buses.brain,
-          clientId: `tessaya-room-bridge-${process.pid}`,
-          user: env("R1_BRAIN_MQTT_USER", "tessaya-bus"),
-          pass: secret("R1_BRAIN_MQTT_PASS_FILE"),
-          subscribe: [
-            "freya/r1/+/voice/intent/eye",
-            "freya/r1/+/voice/intent/rest",
-            "freya/r1/+/voice/stepup",
-            "freya/r1/+/voice/say",
-            "freya/r1/+/voice/ask",
-            "freya/r1/+/voice/persona",
-          ],
-          onMessage: (t, p) => {
-            const to = /^freya\/r1\/([^/]+)\/(.+)$/.exec(t);
-            if (to !== null && fromBrainHub(to[2]!, online.has(to[1]!))) room?.message(t, p);
-          },
+          clientSuffix: String(process.pid),
+          here: (id) => online.has(id),
+          deliver: (t, p) => room?.message(t, p),
           log,
         });
   const inhouse = new Set(
@@ -1138,8 +1113,7 @@ const main = async () => {
       ...(wake === undefined ? {} : { wake }),
       publish: (t, p) => {
         mqtt.publish(t, p);
-        const tail = /^freya\/r1\/[^/]+\/(.+)$/.exec(t)?.[1];
-        if (tail !== undefined && toBrainHub(tail)) brainHub?.publish(t, p);
+        bridge?.answer(t, p);
         if (t.endsWith("/event/voice/metrics"))
           NodeFS.appendFileSync(metricsFile, `${String(p)}\n`);
       },
@@ -1363,8 +1337,7 @@ const main = async () => {
   const stop = () => {
     room?.close();
     mqtt.close();
-    brainHub?.close();
-    relay?.close();
+    bridge?.close();
     process.exit(0);
   };
   process.on("SIGTERM", stop);
