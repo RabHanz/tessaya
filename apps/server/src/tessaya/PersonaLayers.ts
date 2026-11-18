@@ -9,10 +9,16 @@ import * as NodeURL from "node:url";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
 
+import type { RoomToolSet } from "../home/R1Brain.ts";
+import { capToolText, personaTools, type VesselTool } from "./TessayaBrain.ts";
 import {
   conversationKey,
+  originOf,
+  TessayaTurn,
+  TurnOrigin,
   type TurnEnvelope,
   turnIdentity,
   type VesselKind,
@@ -64,6 +70,30 @@ export interface LayerHttpResponse {
   /** A file the layer serves from its own store (a 3D body model, a prop), with its content type. */
   readonly bytes?: Uint8Array;
   readonly contentType?: string;
+}
+
+/**
+ * The one brain's reach for a layer's turn (one brain, 18 Nov): a private moment is a mode of the same companion, so
+ * it reads what her public turn reads and calls the same tools, with the same approvals.
+ */
+export interface LayerBrain {
+  /** Read only when the layer's gate holds, so a public turn never pays for it. */
+  readonly context: () => Promise<LayerContext>;
+  readonly tools: ReadonlyArray<{ readonly name: string; readonly description: string }>;
+  readonly run: (
+    name: string,
+    input: unknown,
+  ) => Promise<{ readonly text: string; readonly isError: boolean }>;
+}
+
+export interface LayerContext {
+  /** Her memory, his own private memories and her line about him, as the public turn reads them (data). */
+  readonly memory: string;
+  /** What she should tell him now (messages that waited for him). */
+  readonly notice: string;
+  readonly preferences: Readonly<Record<string, string>>;
+  /** Their conversation on every vessel, oldest first. */
+  readonly conversation: ReadonlyArray<{ readonly role: string; readonly content: string }>;
 }
 
 export interface LayerHost {
@@ -119,11 +149,13 @@ export interface LayerHost {
   }) => Promise<Uint8Array | null>;
   /** A private action for the host to seal in his private store (M-002) and point to; returns its id. */
   readonly privateEvent?: (event: Omit<ActionInput, "private">) => string;
+  /** The brain's reach for a turn the layer takes itself (its own window), from this server's shared tools. */
+  readonly brain?: (turn: LayerTurn) => LayerBrain;
 }
 
 export interface PersonaLayer {
   readonly id: string;
-  readonly onTurn: (turn: LayerTurn) => Promise<LayerReply | null>;
+  readonly onTurn: (turn: LayerTurn, brain?: LayerBrain) => Promise<LayerReply | null>;
   readonly signal: (signal: LayerSignal) => void;
   readonly http: (request: LayerHttpRequest) => Promise<LayerHttpResponse>;
   /** Whether a session is open on this vessel, so its client can keep the screen out of capture. Nothing more. */
@@ -173,13 +205,91 @@ const layerTurnOf = (turn: TurnEnvelope): LayerTurn => {
   };
 };
 
-/** The first layer reply for this turn, or null (always null in a public build). A failing layer answers nothing. */
-export const replyFor = Effect.fn("PersonaLayers.replyFor")(function* (turn: TurnEnvelope) {
+/** Memory-writing tools stay out of a private turn: what she keeps from it goes to the layer's sealed tier. */
+const PUBLIC_WRITES = new Set(["tessaya_memory_remember"]);
+
+/** What a vessel brings to a layer's turn: the shared tools, its own hands, and the answering persona's tool list. */
+export interface LayerReach {
+  readonly tools: RoomToolSet | null;
+  readonly own?: ReadonlyArray<VesselTool>;
+  readonly allowed?: ReadonlyArray<string> | null;
+  readonly device?: string | undefined;
+}
+
+/** The brain's reach for this turn, run in the caller's services: its approvals and hands are the vessel's own. */
+export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
+  turn: TurnEnvelope,
+  reach: LayerReach,
+) {
+  const run = Effect.runPromiseWith(yield* Effect.context<never>());
+  const shared =
+    reach.tools === null
+      ? null
+      : reach.allowed == null
+        ? reach.tools
+        : personaTools(reach.tools, reach.allowed);
+  const own = reach.own ?? [];
+  const specs = [...(shared?.specs ?? []), ...own.map((t) => t.spec)].filter(
+    (t) => !PUBLIC_WRITES.has(t.name),
+  );
+  const privateTurn: TurnEnvelope = { ...turn, private: true };
+  const brain: LayerBrain = {
+    context: () =>
+      run(
+        Effect.serviceOption(TessayaTurn).pipe(
+          Effect.flatMap((pipeline) =>
+            Option.isNone(pipeline)
+              ? Effect.succeed({ memory: "", notice: "", preferences: {}, conversation: [] })
+              : pipeline.value.begin(privateTurn).pipe(
+                  Effect.map((c) => ({
+                    memory: [c.block, c.privateBlock, c.owner ?? ""]
+                      .filter((b) => b !== "")
+                      .join("\n\n"),
+                    notice: c.notice ?? "",
+                    preferences: c.preferences as Readonly<Record<string, string>>,
+                    conversation: c.conversation.turns.map((t) => ({
+                      role: t.role,
+                      content: t.content,
+                    })),
+                  })),
+                ),
+          ),
+        ),
+      ),
+    tools: specs.map((t) => ({ name: t.name, description: t.description })),
+    run: (name, input) =>
+      run(
+        (!specs.some((t) => t.name === name)
+          ? Effect.succeed({ text: `${name} is not one of her tools here.`, isError: true })
+          : (own.find((t) => t.spec.name === name)?.run(input) ??
+            shared!.run(name, input, reach.device))
+        ).pipe(
+          Effect.provideService(TurnOrigin, originOf(privateTurn)),
+          Effect.catchCause(() => Effect.succeed({ text: "it did not work", isError: true })),
+          Effect.map((o) => {
+            const capped = capToolText(o);
+            return { text: capped.text, isError: capped.isError };
+          }),
+        ),
+      ),
+  };
+  return brain;
+});
+
+/**
+ * The first layer reply for this turn, or null (always null in a public build). A failing layer answers nothing.
+ * `reach`: what the vessel brings, so a private moment has every tool and memory her public turn has.
+ */
+export const replyFor = Effect.fn("PersonaLayers.replyFor")(function* (
+  turn: TurnEnvelope,
+  reach?: LayerReach,
+) {
   const layers = yield* Effect.serviceOption(PersonaLayers);
   if (layers._tag === "None" || layers.value.all.length === 0) return null;
   const facts = layerTurnOf(turn);
+  const brain = reach === undefined ? undefined : yield* layerBrain(turn, reach);
   for (const l of layers.value.all) {
-    const reply = yield* Effect.promise(() => l.onTurn(facts).catch(() => null));
+    const reply = yield* Effect.promise(() => l.onTurn(facts, brain).catch(() => null));
     if (reply !== null) return reply;
   }
   return null;
