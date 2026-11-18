@@ -5,7 +5,11 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { createEpisodeWatch, type EpisodeSend } from "./conversationEpisodes.ts";
+import {
+  createEpisodeWatch,
+  EPISODE_BACKOFF_MS,
+  type EpisodeSend,
+} from "./conversationEpisodes.ts";
 import { createPersonaConversations } from "./conversationLog.ts";
 
 describe("a conversation gone quiet becomes an episode (MEM-18)", () => {
@@ -85,6 +89,62 @@ describe("a conversation gone quiet becomes an episode (MEM-18)", () => {
     expect(sent.at(-1)?.transcript).toBe(
       "he said: deploy?\nAlfred replied: Fixed.\n\nhe said: and you?\nexecutive replied: Fine.",
     );
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("drains a backlog two at a time, only while he is away, and rests after a failure", async () => {
+    // 19 Nov: his laptop had ~1,250 episodes waiting; sent back to back every 5 minutes they would burst his plan.
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-episodes-"));
+    let clock = Date.parse("2026-11-08T10:00:00Z");
+    const conversations = createPersonaConversations({
+      dir,
+      legacy: NodePath.join(dir, "none.ndjson"),
+      lead: "executive",
+      now: () => new Date(clock),
+    });
+    const log = conversations.of("operations");
+    log.add({ route: "answer", said: "start", reply: "Ok.", persona: "operations" });
+    let away = false;
+    let answer: "done" | "retry" = "done";
+    const sent: EpisodeSend[] = [];
+    const watch = createEpisodeWatch({
+      conversations,
+      file: NodePath.join(dir, "episodes.json"),
+      nameOf: () => "Freya",
+      send: async (e) => (sent.push(e), answer),
+      away: () => away,
+      now: () => clock,
+    });
+    away = true;
+    expect(await watch.tick()).toBe(0);
+    // Five stretches, one per project.
+    for (const project of ["a", "b", "c", "d", "e"]) {
+      log.add({ route: "answer", said: "one", reply: "Ok.", persona: "operations", project });
+      log.add({ route: "answer", said: "two", reply: "Ok.", persona: "operations", project });
+    }
+    clock += 31 * 60_000;
+    away = false;
+    expect(await watch.tick()).toBe(0);
+    away = true;
+    expect(await watch.tick()).toBe(2);
+    answer = "retry";
+    expect(await watch.tick()).toBe(0);
+    expect(sent).toHaveLength(3);
+    // Resting: no send until the backoff passes, then twice as long after a second failure.
+    clock += EPISODE_BACKOFF_MS - 1;
+    expect(await watch.tick()).toBe(0);
+    expect(sent).toHaveLength(3);
+    clock += 1;
+    expect(await watch.tick()).toBe(0);
+    expect(sent).toHaveLength(4);
+    clock += EPISODE_BACKOFF_MS;
+    expect(await watch.tick()).toBe(0);
+    expect(sent).toHaveLength(4);
+    clock += EPISODE_BACKOFF_MS;
+    answer = "done";
+    expect(await watch.tick()).toBe(2);
+    expect(await watch.tick()).toBe(1);
+    expect(sent.map((e) => e.project)).toEqual(["a", "b", "c", "c", "c", "d", "e"]);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });
