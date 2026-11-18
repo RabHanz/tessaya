@@ -168,7 +168,19 @@ describe("preparePose", () => {
       // a hand the rig moved out of her body (a reported penetration) may move by that much more
       for (const end of ["leftHand", "rightHand", "leftFoot", "rightFoot"]) {
         const pushed = out.issues.find((i) => i.bone === end && i.kind === "penetration");
-        expect(near(before[end]!, after[end]!, 0.02 + (pushed ? pushed.by + 0.02 : 0))).toBe(true);
+        // a raised arm's shoulder lifts with it (scapulohumeral rhythm), carrying the hand a few cm
+        const side = end.startsWith("left") ? "left" : "right";
+        const lifted =
+          /Hand/.test(end) &&
+          !(`${side}Shoulder` in bones) &&
+          out.pose[`${side}Shoulder`] !== undefined;
+        expect(
+          near(
+            before[end]!,
+            after[end]!,
+            0.02 + (pushed ? pushed.by + 0.02 : 0) + (lifted ? 0.05 : 0),
+          ),
+        ).toBe(true);
       }
       // prepared once, it is already right
       const again = preparePose(
@@ -197,6 +209,23 @@ describe("preparePose", () => {
     expect(Math.hypot(hand[0] - axisX, hand[2] - w["hips"]![2])).toBeGreaterThan(
       0.075 * vroid.height,
     );
+  });
+  it("lifts the shoulder with a raised arm, a third past 30°, and leaves a lowered arm's shoulder alone", () => {
+    const up = preparePose(vroid, { rightUpperArm: [0, 0, -0.3] });
+    const lift = swingTwist(up.pose["rightShoulder"]!, [1, 0, 0]).swing[2];
+    expect(lift).toBeLessThan(-0.2);
+    // the arm still points where the pose put it
+    const w = fk(vroid, up.pose);
+    const dir = qRotate(w.rot["rightUpperArm"]!, [-1, 0, 0]);
+    const want = qRotate(qFromEuler([0, 0, -0.3]), [-1, 0, 0]);
+    expect(near(dir, want, 0.01)).toBe(true);
+    expect(
+      preparePose(vroid, { rightUpperArm: [0, 0, 1.2] }).pose["rightShoulder"],
+    ).toBeUndefined();
+    // no shoulder bone, no coupling and no error
+    expect(
+      preparePose(minimal, { rightUpperArm: [0, 0, -0.3] }).pose["rightShoulder"],
+    ).toBeUndefined();
   });
   it("drops unknown and non-finite bones and names them", () => {
     const out = preparePose(vroid, {

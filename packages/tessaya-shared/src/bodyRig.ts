@@ -664,6 +664,32 @@ export const handCurl = (rig: Rig, side: "left" | "right", curl: number): Record
   return out;
 };
 
+/**
+ * Scapulohumeral rhythm (Inman 1944): past about 30° of arm elevation the shoulder girdle takes about a third of the
+ * rest, so a raised arm lifts its shoulder as a person's does. Only when the model has a shoulder bone and the pose
+ * left it alone; the arm keeps its direction, carried up a little with the girdle.
+ */
+const coupleShoulders = (
+  rig: Rig,
+  local: Record<string, Q>,
+  euler: Readonly<Record<string, unknown>>,
+): void => {
+  const rot = fk(rig, local).rot;
+  for (const side of ["left", "right"] as const) {
+    const sh = `${side}Shoulder`;
+    const arm = `${side}UpperArm`;
+    if (!Object.hasOwn(rig.bones, sh) || sh in euler || rot[arm] === undefined) continue;
+    const dir = qRotate(rot[arm]!, T_DIR[arm]!);
+    const elevation = Math.acos(Math.max(-1, Math.min(1, -dir[1])));
+    const lift = Math.min(0.4, Math.max(0, (elevation - 0.52) / 3));
+    if (lift < 1e-3) continue;
+    // left raises on +z, right on -z; the arm is counter-turned so it points where the pose put it
+    const girdle = qFromVec([0, 0, side === "left" ? lift : -lift]);
+    local[sh] = qMul(local[sh] ?? QI, girdle);
+    local[arm] = qMul(qConj(girdle), local[arm] ?? QI);
+  }
+};
+
 export interface Prepared {
   readonly pose: Record<string, Q>;
   readonly issues: ReadonlyArray<RigIssue>;
@@ -701,6 +727,7 @@ export const preparePose = (
   if (trunk.length > 1 && local["spine"] !== undefined && !trunk.slice(1).some((b) => b in euler)) {
     Object.assign(local, distribute(rig, trunk, local["spine"]));
   }
+  coupleShoulders(rig, local, euler);
   // the T-pose convention onto this model's rest: local' = F(parent) · local · F(bone)⁻¹
   const fixOf = (b: string) => rig.restFix[b] ?? QI;
   const parentFix = (b: string) => fixOf(rig.bones[b]?.parent ?? "");
