@@ -79,7 +79,7 @@ export interface ToolTurn {
 export interface SessionToolTurn extends ToolTurn {
   /** The vessel that heard it: each has its own warm session waiting. */
   readonly vessel: string;
-  /** A tool call started before she said a word: the vessel says a short line (`web`: a search, which takes seconds). */
+  /** A tool call started before she said a word; a web search (`web`), which takes seconds, is cued aloud. */
   readonly cue: (web: boolean) => void;
   /** `deep`: a task she handed to Opus (BRAIN-DESIGN §2), in sessions of its own; else her voice row. */
   readonly role?: "voice" | "deep";

@@ -77,6 +77,8 @@ export interface Windows {
   readonly openUntil: number;
   /** Her last line asked him something, so his next words are the answer. */
   readonly invited: boolean;
+  /** The session is open, his voice holds it and no other voice is in the room: he is talking to her. */
+  readonly hisAlone?: boolean;
 }
 
 /**
@@ -91,7 +93,7 @@ export const addressedInRoom = (
 ): boolean =>
   called ||
   startedAt <= w.firstUntil ||
-  (startedAt <= w.openUntil && (w.invited || !isBackchannel(words)));
+  ((startedAt <= w.openUntil || w.hisAlone === true) && (w.invited || !isBackchannel(words)));
 
 /**
  * A follow-up with no name at a desk: only what reads as meant for her (a question, a request, a continuation, her

@@ -53,6 +53,15 @@ export interface RoomCall {
 }
 
 export const HOLD_ON = "One moment.";
+/** The most of one tool's answer her turn reads: a whole device report came back "too large to read" (18 Nov). */
+export const TOOL_TEXT_MAX = 8_000;
+export const capToolText = (o: ToolOutcome): ToolOutcome =>
+  o.text.length <= TOOL_TEXT_MAX
+    ? o
+    : {
+        ...o,
+        text: `${o.text.slice(0, TOOL_TEXT_MAX)}\n[cut: ${o.text.length - TOOL_TEXT_MAX} more characters. Ask for one item or one device for the rest.]`,
+      };
 /** What she says when a web search starts before her first word (B0: the subscription writes no line itself). */
 export const WEB_CUE = "Let me look that up.";
 /** His work's reads before the model starts take 20-180 ms; past this they wait for nobody. */
@@ -450,31 +459,35 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     user,
     tools: sessionTools(tools.specs, ownSpecs),
     run: (name, args) =>
-      (name === ESCALATE.name
-        ? escalate(args)
-        : name === CONVERSATION_END.name
-          ? Effect.sync((): ToolOutcome => {
-              // Her goodbye plays now, not after the model's next pass (that wait was a 3 s "One moment.", 18 Nov).
-              const words =
-                typeof args === "object" && args !== null && "goodbye" in args
-                  ? args.goodbye
-                  : null;
-              if (said.trim() === "" && typeof words === "string")
-                sentences.push(words.slice(0, 200));
-              sentences.flush();
-              ended = true;
-              goodbye = said;
-              return { text: "Ended: say nothing more.", isError: false };
-            })
-          : (own.find((t) => t.spec.name === name)?.run(args) ??
-            tools.run(name, args, vessel.device))
-      ).pipe(
+      // Her own words before a tool ("Let me find that project.") are heard now, not held until the tool answers.
+      Effect.sync(() => sentences.flush()).pipe(
+        Effect.andThen(() =>
+          name === ESCALATE.name
+            ? escalate(args)
+            : name === CONVERSATION_END.name
+              ? Effect.sync((): ToolOutcome => {
+                  // Her goodbye plays now, not after the model's next pass (that wait was a 3 s "One moment.", 18 Nov).
+                  const words =
+                    typeof args === "object" && args !== null && "goodbye" in args
+                      ? args.goodbye
+                      : null;
+                  if (said.trim() === "" && typeof words === "string")
+                    sentences.push(words.slice(0, 200));
+                  sentences.flush();
+                  ended = true;
+                  goodbye = said;
+                  return { text: "Ended: say nothing more.", isError: false };
+                })
+              : (own.find((t) => t.spec.name === name)?.run(args) ??
+                tools.run(name, args, vessel.device)),
+        ),
         vessel.hold(name),
         // Every tool the turn calls knows which vessel heard it.
         Effect.provideService(TurnOrigin, originOf(turn)),
         Effect.catchCause(() =>
           Effect.succeed<ToolOutcome>({ text: "it did not work", isError: true }),
         ),
+        Effect.map(capToolText),
         Effect.tap((o: ToolOutcome) =>
           Effect.sync(() => {
             calls?.push({
@@ -495,11 +508,13 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     via === "api"
       ? brain.converse(toolTurn)
       : brain.session({ ...toolTurn, vessel: vesselId, cue, ...builtins });
+  // Only a web search, which takes seconds, is cued: a stock line at every tool start sounded out of place (18 Nov).
   function cue(web: boolean) {
-    if (web) readTheWeb = true;
+    if (!web) return;
+    readTheWeb = true;
     if (said === "") {
       cueAt ??= clock.currentTimeMillisUnsafe();
-      say(`${web ? (vessel.fillers?.web ?? WEB_CUE) : (vessel.fillers?.hold ?? HOLD_ON)} `);
+      say(`${vessel.fillers?.web ?? WEB_CUE} `);
     }
   }
   const speak = (stream: typeof words) =>

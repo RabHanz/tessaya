@@ -680,6 +680,51 @@ effectIt.effect(
 );
 
 effectIt.effect(
+  "a tool before her first word gets no stock line, and her own words before it are a sentence of their own",
+  () =>
+    Effect.gen(function* () {
+      const said: Array<string> = [];
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: (turn) =>
+          Stream.concat(
+            Stream.suspend(() => {
+              // "Where is he?" answered "Patience, it's coming." first (18 Nov): a tool start says nothing itself.
+              turn.cue(false);
+              return Stream.make("Let me find him.");
+            }),
+            Stream.fromEffect(turn.run("tessaya_cast", {}).pipe(Effect.as("He's on the desktop."))),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.succeed([]),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      yield* r1TurnStream({ heard: "where is he?", history: [] }, brain, {
+        specs: [],
+        run: () => Effect.succeed({ text: "", isError: false }),
+      }).pipe(
+        Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+        Effect.provide(
+          Layer.mergeAll(
+            home,
+            Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
+            Layer.mock(TessayaOneShot)({}),
+          ),
+        ),
+      );
+      // Held until the tool answered, it ran into the answer as one sentence ("Let me find him.He's on…").
+      expect(said).toEqual(["Let me find him. ", "He's on the desktop. "]);
+    }),
+);
+
+effectIt.effect(
   "a tool call that starts after the 3 s hold is not cued again: one filler a turn",
   () =>
     Effect.gen(function* () {

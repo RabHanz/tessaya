@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  nearNames,
   applyKnownNames,
   biasTranscript,
   candidateWords,
@@ -152,6 +153,26 @@ describe("an edit of T3's list in Settings", () => {
       },
     ]);
     expect(changesFromCustomWords(after, after)).toEqual([]);
+  });
+});
+
+describe("his names, misheard", () => {
+  it("points the brain at the name a run of ordinary words sounds like, and leaves plain talk alone", () => {
+    const names = ["Tessaya", "Alfred", "Sebastian", "Tumble", "VentureOS", "Margin"];
+    // 18 Nov, 05:50-05:52: three turns of "I can't find Adventure OS", then "who's Anfrey?".
+    expect(nearNames("What about adventure or us?", names)).toEqual([
+      { heard: "adventure or", name: "VentureOS" },
+    ]);
+    expect(nearNames("I was talking to Anfrey.", names)).toEqual([
+      { heard: "Anfrey", name: "Alfred" },
+    ]);
+    for (const plain of [
+      "Let me talk to Alfred, please.",
+      "What's the status?",
+      "the tumble dryer is on",
+      "You took quite a long time to reply. Why?",
+    ])
+      expect(nearNames(plain, names)).toEqual([]);
   });
 });
 

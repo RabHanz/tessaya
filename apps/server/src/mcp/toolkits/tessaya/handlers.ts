@@ -770,7 +770,7 @@ export const layer = McpToolAccess.toLayer(
           ),
         ),
       ),
-      // Moves need his own ask: a voice she knows, or a signed-in agent; never a guest's or tainted turn.
+      // Lasting moves need his own ask: a voice she knows, or a signed-in agent; never a guest's or tainted turn.
       tessaya_cast: McpToolAccess.writes((input) =>
         Effect.gen(function* () {
           const origin = yield* TurnOrigin;
@@ -789,7 +789,8 @@ export const layer = McpToolAccess.toLayer(
               ? (origin?.id ?? input.body)
               : input.body;
           const op = castOp(input, body);
-          const view = yield* cast.value.call(op, verified).pipe(
+          // A visit for this conversation is a persona switch, as a wake word is: any untainted turn may ask.
+          const view = yield* cast.value.call(op, verified, origin?.tainted !== true).pipe(
             Effect.map((v) => ({ v, line: castLine(op, v) })),
             Effect.catch((reason: string) =>
               Effect.map(cast.value.view, (v) => ({ v, line: reason })),

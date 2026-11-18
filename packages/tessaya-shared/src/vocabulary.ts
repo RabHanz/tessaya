@@ -385,6 +385,37 @@ export const soundKey = (word: string): string =>
     .replace(/y/g, "i")
     .replace(/(.)\1+/g, "$1");
 
+/**
+ * Runs of his words (up to four) that sound like one of his names, for the brain to weigh, never to rewrite: "adventure
+ * or us" was VentureOS (18 Nov) and is ordinary words to a model. A name already said as itself is left out.
+ */
+export const nearNames = (
+  heard: string,
+  names: ReadonlyArray<string>,
+): ReadonlyArray<{ readonly heard: string; readonly name: string }> => {
+  const words = heard.match(/[\p{L}\p{N}'’]+/gu) ?? [];
+  const said = new Set(words.map((w) => w.toLowerCase()));
+  const found: Array<{ heard: string; name: string }> = [];
+  for (const name of names) {
+    const key = soundKey(name);
+    if (key.length < 4 || said.has(name.toLowerCase())) continue;
+    let best: { heard: string; score: number } | null = null;
+    for (let i = 0; i < words.length; i++)
+      for (let n = 1; n <= 4 && i + n <= words.length; n++) {
+        const run = words.slice(i, i + n);
+        const joined = soundKey(run.join(""));
+        // A sound or two may lead the name ("adventureorus" is "ad" and "ventureorus"); one word keeps its first letter.
+        for (let at = 0; at <= (n === 1 ? 0 : 2); at++) {
+          const score = similar(joined.slice(at), key);
+          const fits = n === 1 ? joined[0] === key[0] && score >= 0.65 : score >= 0.75;
+          if (fits && (best === null || score > best.score)) best = { heard: run.join(" "), score };
+        }
+      }
+    if (best !== null) found.push({ heard: best.heard, name });
+  }
+  return found;
+};
+
 /** Whether a heard word could be one of his terms mis-heard ("Tesla" for Tessaya, "button" for Baton). */
 export const soundsLike = (heard: string, term: string): boolean =>
   heard.toLowerCase() !== term.toLowerCase() && similar(soundKey(heard), soundKey(term)) >= 0.6;

@@ -511,7 +511,7 @@ export const ROOM_CONFIG: RoomConfig = {
     savedBarge: false,
     strictWhenUnavailable: false,
   },
-  historyTurns: 6,
+  historyTurns: 8,
   inhouse: new Set(),
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
   languages: ["en"],
@@ -1460,6 +1460,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const wear = () => {
       if (worn.get(id) !== (persona?.eyes ?? GENERIC_EYES)) look();
     };
+    /** Who her server put on this body mid-session (a hand-off, "bring Alfred here"), worn once her reply ends. */
+    let recastTo: string | null = null;
+    const wearCast = () => {
+      const named = personas.find((p) => p.id === recastTo);
+      recastTo = null;
+      if (named === undefined || named === persona) return;
+      persona = named;
+      wear();
+    };
     /** Her own words for one of the loop's moments, her eyes showing its mood; `plain` while they are off. */
     const own = (event: LineEvent, plain: string, facts?: Readonly<Record<string, string>>) => {
       const said = deps.lines?.take(
@@ -1604,7 +1613,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
     /** Said to her: she was named, or it began inside the window and is more than a stray "yeah" she did not ask for. */
     const addressed = (words: string, called: string | null, startedAt: number) =>
-      addressedInRoom(words, called !== null, startedAt, { firstUntil, openUntil, invited });
+      addressedInRoom(words, called !== null, startedAt, {
+        firstUntil,
+        openUntil,
+        invited,
+        hisAlone: hisSession() && otherVoice.until < startedAt - config.followMs,
+      });
 
     /** When the turn being heard began: the window is about when he started, not when recognition finished. */
     let turnStartedAt = 0;
@@ -2476,6 +2490,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
               (invited ? config.replyHoldMs : config.followMs);
         }
         if (reply === control) reply = null;
+        if (reply === null && recastTo !== null) wearCast();
         if (current_ === me) current_ = null;
         if (reply === null) {
           spokeAt = Number.NEGATIVE_INFINITY;
@@ -2930,6 +2945,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         speakNow(text);
         stopAfterSaid();
       },
+      /** What a reopened session goes on with: the conversation so far and the persona he was talking to. */
+      kept: () => ({ history: [...history], persona: persona?.id ?? null }),
+      carry: (k: { readonly history: typeof history; readonly persona: string | null }) => {
+        history.push(...k.history.slice(-config.historyTurns * 2));
+        const was = personas.find((p) => p.id === k.persona);
+        if (was !== undefined) persona = was;
+      },
       /** Back after the R1 rebooted mid-conversation: one short line, and the session stays open for him to go on. */
       restarted: () => speakNow(own("err.restart", "Sorry, I just restarted. Go on.")),
       /** `mood` is the eyes' look for her own words (the brain's expression); none keeps the eyes as they are. */
@@ -3009,6 +3031,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         // A request in the same breath is scored once, as his turn, on this same clip.
         if (evidence) heldVoice(identity);
         hear(identity, ms);
+      },
+      /** Her server moved `personaId` onto this body: it answers from his next turn, never mid-sentence. */
+      recast: (personaId: string) => {
+        recastTo = personaId;
+        if (reply === null) wearCast();
       },
       call: (name: string, level = Number.NEGATIVE_INFINITY) => {
         if (Number.isFinite(level)) hisLevel = level;
@@ -3340,10 +3367,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
       if (tail === "voice/cast") {
         const { persona: p, follows: f } = json();
-        castOf.set(id, {
-          persona: typeof p === "string" && /^[\w-]{1,40}$/.test(p) ? p : null,
-          follows: typeof f === "boolean" ? f : null,
-        });
+        const was = castOf.get(id)?.persona ?? null;
+        const now = typeof p === "string" && /^[\w-]{1,40}$/.test(p) ? p : null;
+        castOf.set(id, { persona: now, follows: typeof f === "boolean" ? f : null });
+        // A change while he talks to it reaches the open session: "Alfred has it from here" was said and not worn (18 Nov).
+        if (now !== null && now !== was) sessions.get(id)?.recast(now);
         return;
       }
       if (tail.startsWith("voice/current/")) {
@@ -3515,9 +3543,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         );
         const open = sessions.get(id);
         if (open === undefined) return;
+        // The conversation and who he was talking to go on: "what were we talking about?" had lost both (18 Nov, 05:51).
+        const kept = open.kept();
         stop(id);
         deps.log(`[${id}] rebooted mid-session; reopening it`);
-        if (!muted.has(id) && !silent(id)) startOnR1(id, (s) => s.restarted());
+        if (!muted.has(id) && !silent(id))
+          startOnR1(id, (s) => {
+            s.carry(kept);
+            s.restarted();
+          });
       } else if (tail === "voice/wake/end") {
         const { seg, sent } = json();
         deps.wake?.end(

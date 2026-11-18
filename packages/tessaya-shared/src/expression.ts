@@ -27,6 +27,8 @@ export interface LineSpec {
   readonly slots: ReadonlyArray<string>;
   /** Words a wording must keep (safety, approvals): what the person has to hear, in any wording. */
   readonly required?: ReadonlyArray<string>;
+  /** What a wording may never say here, and why; the gate drops it. */
+  readonly never?: { readonly words: RegExp; readonly why: string };
   /** Words outside the slots. */
   readonly maxWords: number;
   readonly mood: ExpressionMood;
@@ -76,11 +78,21 @@ export const LINE_EVENTS = {
     "He greeted her again minutes after they last spoke: the same conversation going on, so a few words, no good morning, no how are you, nothing that starts afresh.",
     { maxWords: 5, mood: "happy", gesture: "nodSmall" },
   ),
-  "filler.hold": spec("One moment.", "He asked something and her answer is a few seconds away.", {
-    maxWords: 6,
-    mood: "focused",
-    gesture: "think",
-  }),
+  "filler.hold": spec(
+    "One moment.",
+    "He said something and her answer is a few seconds away; it may turn out to be a no or a failure, so a short neutral hold only.",
+    {
+      maxWords: 6,
+      mood: "focused",
+      gesture: "think",
+      // Said before an answer not yet known, these pre-empted it ("Almost there." before "I couldn't", 18 Nov).
+      never: {
+        words:
+          /\b(?:almost|nearly|coming|soon|shortly|promise|long|question|wait for it|patience|patient|stay with me|hold that thought|leave it with me|getting (?:there|that)|ready|done|sorted?|right up|got it|have it)\b/i,
+        why: "promises, praises or claims progress before the answer is known",
+      },
+    },
+  ),
   "filler.web": spec("Let me look that up.", "She is starting a web search before answering him.", {
     maxWords: 8,
     mood: "curious",
@@ -473,6 +485,7 @@ export const lineProblem = (event: LineEvent, line: Line): string | null => {
   if (/\d/.test(text.replace(SLOT, ""))) return "a number outside a slot";
   if (wordsOutsideSlots(text) > s.maxWords) return `longer than ${s.maxWords} words`;
   if (isNarration(text)) return "narrates her reasoning";
+  if (s.never?.words.test(text) === true) return s.never.why;
   const lower = text.toLowerCase();
   const missing = (s.required ?? []).find((r) => !lower.includes(r));
   if (missing !== undefined) return `leaves out "${missing}"`;
