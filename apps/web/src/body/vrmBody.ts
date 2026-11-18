@@ -47,6 +47,7 @@ import {
 } from "@t3tools/tessaya-shared/bodyMotion";
 import {
   QI,
+  fitProxies,
   halfLifeOf,
   qToEuler,
   makeRig,
@@ -120,6 +121,47 @@ const mirroredOf = (vrm: VRM): boolean => {
   arm.quaternion.identity();
   vrm.update(0);
   return lowered > rest;
+};
+/**
+ * Up to ~30k of the model's skinned vertices at rest, each with the humanoid bone that moves it most: what the rig
+ * fits her own thickness to (fitProxies). Read once when the model loads.
+ */
+const skinSamples = (vrm: VRM): Array<{ bone: string; p: V3 }> => {
+  const human = new Map<THREE.Object3D, string>();
+  for (const [name, b] of Object.entries(vrm.humanoid.humanBones))
+    if (b?.node) human.set(b.node, name);
+  const meshes: THREE.SkinnedMesh[] = [];
+  vrm.scene.traverse((o) => {
+    // hair sways away from the head on its own springs: it is not where a hand meets her
+    const hair =
+      /hair/i.test(o.name) ||
+      [(o as THREE.Mesh).material].flat().some((m) => /hair/i.test(m?.name ?? ""));
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh && !hair) meshes.push(o as THREE.SkinnedMesh);
+  });
+  const total = meshes.reduce((n, m) => n + (m.geometry.getAttribute("position")?.count ?? 0), 0);
+  const stride = Math.max(1, Math.ceil(total / 30_000));
+  const out: Array<{ bone: string; p: V3 }> = [];
+  const v = new THREE.Vector3();
+  for (const m of meshes) {
+    const pos = m.geometry.getAttribute("position");
+    const idx = m.geometry.getAttribute("skinIndex");
+    const wt = m.geometry.getAttribute("skinWeight");
+    if (!pos || !idx || !wt) continue;
+    m.updateMatrixWorld(true);
+    for (let i = 0; i < pos.count; i += stride) {
+      let best = -1;
+      let bw = 0;
+      for (let k = 0; k < 4; k++) {
+        const w = wt.getComponent(i, k);
+        if (w > bw) [bw, best] = [w, idx.getComponent(i, k)];
+      }
+      const name = best < 0 ? undefined : human.get(m.skeleton.bones[best]!);
+      if (name === undefined) continue;
+      v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+      out.push({ bone: name, p: [v.x, v.y, v.z] });
+    }
+  }
+  return out;
 };
 /** The model's skeleton at rest for the rig: humanoid bones by VRM name, every other bone by its own (for the manifest). */
 const rigOf = (vrm: VRM): Rig => {
@@ -894,6 +936,7 @@ export function mountBody(
     });
     morphHold = {};
     rig = rigOf(next);
+    rig = { ...rig, proxies: fitProxies(rig, skinSamples(next)) };
     manifest = manifestOf(rig, {
       expressions: (next.expressionManager?.expressions ?? []).map((e) => e.expressionName),
       morphs: [...shapeKeys.keys()],
