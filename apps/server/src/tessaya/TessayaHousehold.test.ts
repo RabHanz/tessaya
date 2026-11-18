@@ -457,6 +457,10 @@ describe("one voice profile per member, on the home", () => {
           listed.map((v) => [v.id, v.samples, v.version]),
           [["owner", 2, 3]],
         );
+        // Filed under his member name, never a vessel's placeholder ("Owner" from the room, "You" from the desktop).
+        const him = (yield* as(owner)(h.callHere({ op: "list" }))).members![0]!.name;
+        assert.notStrictEqual(him, "owner");
+        assert.strictEqual(listed[0]!.name, him);
         assert.deepStrictEqual(
           shared.at(-1)?.map((v) => [v.id, v.version]),
           [["owner", 3]],

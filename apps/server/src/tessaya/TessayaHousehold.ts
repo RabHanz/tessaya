@@ -1112,7 +1112,8 @@ export const make = Effect.gen(function* () {
         yield* sql`INSERT INTO tessaya_voice_profiles ${sql.insert({
           member_id: p.id,
           model: p.model,
-          name: p.name,
+          // His member name: a vessel sends a placeholder ("Owner" from the room, "You" from the desktop).
+          name: target.value.name,
           kind: p.kind,
           centroid: p.centroid,
           samples: p.samples,
