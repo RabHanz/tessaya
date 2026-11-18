@@ -350,7 +350,10 @@ if (popout) {
   try {
     const title = `smoke-popout-${process.pid}`;
     await popout.evaluate((t) => {
-      document.title = t;
+      // T3 sets its own title as its state changes; held here until the window is found by it.
+      window.__smokeTitle = setInterval(() => {
+        if (document.title !== t) document.title = t;
+      }, 50);
       const dot = document.body.appendChild(document.createElement("div"));
       window.__smokeFrames = 0;
       const tick = () => {
@@ -363,8 +366,9 @@ if (popout) {
     execFileSync("powershell", [
       "-NoProfile",
       "-Command",
-      `Add-Type -Name W -Namespace S -MemberDefinition '[DllImport("user32.dll")] public static extern System.IntPtr FindWindow(string c, string t); [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int n);'; for ($i = 0; $i -lt 30; $i++) { $h=[S.W]::FindWindow($null,'${title}'); if ($h -ne [System.IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }; if ($h -eq [System.IntPtr]::Zero) { throw 'no window titled ${title}' }; [void][S.W]::ShowWindow($h, 6)`,
+      `Add-Type -Name W -Namespace S -MemberDefinition '[DllImport("user32.dll")] public static extern System.IntPtr FindWindow(string c, string t); [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int n);'; for ($i = 0; $i -lt 50; $i++) { $h=[S.W]::FindWindow($null,'${title}'); if ($h -ne [System.IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }; if ($h -eq [System.IntPtr]::Zero) { throw 'no window titled ${title}' }; [void][S.W]::ShowWindow($h, 6)`,
     ]);
+    await popout.evaluate(() => clearInterval(window.__smokeTitle));
     await sleep(2000);
     const from = await popout.evaluate(() => window.__smokeFrames);
     await sleep(5000);
