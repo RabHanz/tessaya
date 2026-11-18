@@ -22,6 +22,7 @@ export const BrainOp = Schema.Literals([
   "group",
   "inbox",
   "libraryRemoved",
+  "privateTier",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
