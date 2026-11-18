@@ -3,7 +3,7 @@
  * old devices: it draws only while something moves (speech, a gesture, a blend, a blink), capped per quality tier, and
  * nothing at all while hidden. At rest it is a still picture with a blink every few seconds.
  */
-import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
+import { VRMLoaderPlugin, VRMUtils, type VRM, type VRMHumanBoneName } from "@pixiv/three-vrm";
 import {
   GESTURES,
   INTIMATE_FACES,
@@ -18,13 +18,21 @@ import {
   type BodyCue,
   type Motion,
   type States,
+  type TouchZone,
   type Weights,
 } from "@t3tools/tessaya-shared/bodyCues";
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-import { applyMotion, makeOverlays, stateWeights, styleOf, type Style } from "./intimate";
+import {
+  applyMotion,
+  makeOverlays,
+  perfectSyncWeights,
+  stateWeights,
+  styleOf,
+  type Style,
+} from "./intimate";
 
 /** Tiers from cheapest: pixel ratio, antialiasing and the frame ceiling while talking. */
 const TIERS = [
@@ -43,15 +51,39 @@ const LEVEL_HOLD_MS = 400;
 const BREATH_FPS = 12;
 /** How quickly the intimate states and motion follow their targets (per second, exponential). */
 const FOLLOW = 3;
-const TOUCH_BONES: ReadonlyArray<BodyBone> = [
-  "head",
-  "neck",
-  "chest",
-  "spine",
-  "hips",
-  "leftHand",
-  "rightHand",
+/** Every ARKit unit the intimate set can move, and the states it then sculpts instead of the presets' approximation. */
+const SYNC_UNITS = Object.keys(
+  perfectSyncWeights(Object.fromEntries(INTIMATE_STATES.map((n) => [n, 1])), 0.5),
+);
+const SCULPTED = new Set<string>([
+  "eyesHalf",
+  "eyesShut",
+  "eyesTeary",
+  "mouthPant",
+  "mouthO",
+  "mouthBite",
+]);
+/** Humanoid bones a touch lands on, the zone each one means, and the bone a held prop goes on. */
+const TOUCH_AT: ReadonlyArray<readonly [VRMHumanBoneName, TouchZone, BodyBone]> = [
+  ["head", "head", "head"],
+  ["neck", "neck", "neck"],
+  ["upperChest", "chest", "chest"],
+  ["chest", "chest", "chest"],
+  ["spine", "belly", "spine"],
+  ["hips", "hips", "hips"],
+  ["leftUpperLeg", "thigh", "hips"],
+  ["rightUpperLeg", "thigh", "hips"],
+  ["leftShoulder", "shoulder", "leftShoulder"],
+  ["rightShoulder", "shoulder", "rightShoulder"],
+  ["leftUpperArm", "arm", "leftUpperArm"],
+  ["rightUpperArm", "arm", "rightUpperArm"],
+  ["leftLowerArm", "arm", "leftUpperArm"],
+  ["rightLowerArm", "arm", "rightLowerArm"],
+  ["leftHand", "hand", "leftHand"],
+  ["rightHand", "hand", "rightHand"],
 ];
+/** How long her head and eyes follow a touch, and a little more than the 150 ms in which a person turns to one. */
+const TOUCH_MS = 1600;
 
 export interface BodyStats {
   readonly tier: number;
@@ -70,7 +102,13 @@ const startTier = () => {
 
 export function mountBody(
   canvas: HTMLCanvasElement,
-  options: { readonly tier?: number; readonly onTouch?: (bone: BodyBone) => void } = {},
+  options: {
+    readonly tier?: number;
+    /** `bone` is where a held prop goes; `zone` is the part of her he touched. */
+    readonly onTouch?: (bone: BodyBone, zone: TouchZone) => void;
+    /** "body" frames all of her (the phone's touch view); the default frames head and shoulders. */
+    readonly framing?: "bust" | "body";
+  } = {},
 ) {
   let tier = options.tier ?? startTier();
   const renderer = new THREE.WebGLRenderer({
@@ -84,10 +122,15 @@ export function mountBody(
   const camera = new THREE.PerspectiveCamera(24, 1, 0.1, 20);
   camera.position.set(0, 1.35, 2.1);
   camera.lookAt(0, 1.3, 0);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.4);
-  sun.position.set(0.6, 1.8, 2);
+  // stage lighting: a soft fill, a warm key and a cool rim that lifts her off the background
+  const fill = new THREE.HemisphereLight(0xfff4ee, 0x2a2630, 1.1);
+  scene.add(fill);
+  const sun = new THREE.DirectionalLight(0xfff0e6, 1.5);
+  sun.position.set(0.8, 1.9, 2);
   scene.add(sun);
+  const rim = new THREE.DirectionalLight(0xcfe0ff, 1.3);
+  rim.position.set(-1.2, 2.2, -1.6);
+  scene.add(rim);
   const loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
 
@@ -128,12 +171,18 @@ export function mountBody(
   let style: Style = "anime";
   let overlays: ReturnType<typeof makeOverlays> | null = null;
   let own = new Set<string>();
+  // ARKit unit (any case) -> the model's own expression name, when it carries perfect sync
+  let sync: Map<string, string> | null = null;
   let speech: { track: ReadonlyArray<VisemeSegment>; start: number; end: number } | null = null;
   let effects: Array<{ at: number; face?: string; gesture?: string }> = [];
   let level: { value: number; viseme?: VisemeSegment["viseme"]; at: number } | null = null;
   let gestures: Array<{ name: string; start: number }> = [];
   let blinkAt = 0;
   let lastMove = 0;
+  // the last touch: where, and when; her head and eyes follow it for TOUCH_MS
+  let touch: { at: number; point: THREE.Vector3 } | null = null;
+  // a small gaze shift that comes with each blink, so her eyes never sit dead still
+  let glance = { yaw: 0, pitch: 0 };
   let mood = { mood: "neutral", intensity: 0.5 };
   // kemonomimi parts on this model (ear and tail nodes by name) and their rest rotations
   let ears: Array<{ node: THREE.Object3D; x: number }> = [];
@@ -182,6 +231,7 @@ export function mountBody(
     now - faceAt < BLEND_MS ||
     now - blinkAt < BLINK_MS ||
     now - lastMove < SETTLE_MS ||
+    (touch !== null && now - touch.at < TOUCH_MS) ||
     (tails.length > 0 && kin.tailAmp > 0 && now - kinAt < WAG_MS) ||
     propsRunning();
 
@@ -270,14 +320,52 @@ export function mountBody(
     };
     restPose();
     const exhale = applyMotion((n) => vrm!.humanoid.getNormalizedBoneNode(n), motion, now / 1000);
-    const added = stateWeights(states, style, exhale, (n) => own.has(n));
+    // a touch: she turns her head toward it and flinches a little, then eases back
+    const felt = touch === null ? 0 : Math.sin(Math.PI * Math.min(1, (now - touch.at) / TOUCH_MS));
+    if (touch !== null && felt > 0) {
+      const headNode = vrm.humanoid.getNormalizedBoneNode("head");
+      const neckNode = vrm.humanoid.getNormalizedBoneNode("neck");
+      const chestNode = vrm.humanoid.getNormalizedBoneNode("chest");
+      const from = (headNode ?? vrm.scene).getWorldPosition(new THREE.Vector3());
+      const to = touch.point.clone().sub(from);
+      const yaw = Math.max(-0.5, Math.min(0.5, Math.atan2(to.x, Math.max(0.05, to.z + 0.3))));
+      const pitch = Math.max(-0.45, Math.min(0.3, Math.atan2(-to.y, 0.4)));
+      if (neckNode) neckNode.rotation.y += 0.45 * yaw * felt;
+      if (headNode) {
+        headNode.rotation.y += 0.35 * yaw * felt;
+        headNode.rotation.x += 0.6 * pitch * felt;
+      }
+      if (chestNode) chestNode.rotation.x += -0.05 * felt * (now - touch.at < 300 ? 1 : 0.4);
+    }
+    const added = stateWeights(
+      states,
+      style,
+      exhale,
+      (n) => own.has(n) || (sync !== null && SCULPTED.has(n)),
+    );
     overlays?.set(states);
 
     const em = vrm.expressionManager;
     if (em !== undefined) {
       for (const n of own) em.setValue(n, states[n as keyof States] ?? 0);
+      if (sync !== null) {
+        const units = perfectSyncWeights(states, exhale);
+        for (const u of SYNC_UNITS) {
+          const name = sync.get(u.toLowerCase());
+          if (name !== undefined) em.setValue(name, units[u] ?? 0);
+        }
+      }
       // rolled-up eyes through the model's own lookAt (three-vrm: negative pitch looks up)
-      if (vrm.lookAt && !own.has("eyesRoll")) vrm.lookAt.pitch = -25 * (states.eyesRoll ?? 0);
+      if (vrm.lookAt) {
+        const roll = own.has("eyesRoll") ? 0 : (states.eyesRoll ?? 0);
+        const toTouch =
+          touch !== null && felt > 0
+            ? touch.point.clone().sub(vrm.scene.getWorldPosition(new THREE.Vector3()))
+            : null;
+        vrm.lookAt.yaw =
+          toTouch === null ? glance.yaw : (Math.atan2(toTouch.x, 0.6) * 180) / Math.PI;
+        vrm.lookAt.pitch = -25 * roll + (1 - roll) * (toTouch === null ? glance.pitch : -12 * felt);
+      }
       for (const p of [
         "happy",
         "angry",
@@ -362,6 +450,8 @@ export function mountBody(
       () => {
         blinkTimer = null;
         blinkAt = performance.now();
+        // a saccade hidden in the blink: a degree or two, mostly back toward him
+        glance = { yaw: (Math.random() - 0.5) * 4, pitch: (Math.random() - 0.5) * 2.5 };
         invalidate();
       },
       2500 + Math.random() * 3500,
@@ -392,9 +482,21 @@ export function mountBody(
     vrm = next;
     overlays?.dispose();
     style = styleOf(next);
+    // cel shading adds every light at full strength, so anime models get a gentler stage
+    const k = style === "anime" ? 0.8 : 1;
+    fill.intensity = 1.1 * k;
+    sun.intensity = 1.5 * k;
+    rim.intensity = 1.3 * k;
     overlays = makeOverlays(next, style);
     // states the model carries itself as custom expressions win over the built ones
     own = new Set(INTIMATE_STATES.filter((n) => next.expressionManager?.getExpression(n)));
+    const names = new Map(
+      (next.expressionManager?.expressions ?? []).map((e) => [
+        e.expressionName.toLowerCase(),
+        e.expressionName,
+      ]),
+    );
+    sync = names.has("jawopen") && names.has("eyeblinkleft") ? names : null;
     const humanoid = new Set(Object.values(vrm.humanoid.humanBones).map((b) => b?.node));
     ears = [];
     tails = [];
@@ -410,7 +512,11 @@ export function mountBody(
     // frame the head and shoulders, whatever the model's height
     vrm.scene.updateMatrixWorld(true);
     const head = vrm.humanoid.getRawBoneNode("head")?.getWorldPosition(new THREE.Vector3());
-    if (head) {
+    if (head && options.framing === "body") {
+      // all of her, top of the head to the knees, so every part can be touched
+      camera.position.set(0, head.y * 0.62, head.y * 2.6);
+      camera.lookAt(0, head.y * 0.6, 0);
+    } else if (head) {
       camera.position.set(0, head.y, 1.4);
       camera.lookAt(0, head.y - 0.08, 0);
     }
@@ -549,16 +655,27 @@ export function mountBody(
     );
     const hit = ray.intersectObject(vrm.scene, true)[0];
     if (hit === undefined) return;
-    let best: BodyBone | null = null;
+    touch = { at: performance.now(), point: hit.point.clone() };
+    blinkAt = touch.at;
+    invalidate();
+    let best: (typeof TOUCH_AT)[number] | null = null;
     let bestD = Infinity;
     const at = new THREE.Vector3();
-    for (const b of TOUCH_BONES) {
-      const node = vrm.humanoid.getNormalizedBoneNode(b);
+    for (const t of TOUCH_AT) {
+      const node = vrm.humanoid.getNormalizedBoneNode(t[0]);
       if (!node) continue;
       const d = node.getWorldPosition(at).distanceTo(hit.point);
-      if (d < bestD) [best, bestD] = [b, d];
+      if (d < bestD) [best, bestD] = [t, d];
     }
-    if (best !== null) options.onTouch(best);
+    if (best === null) return;
+    const head = vrm.humanoid.getNormalizedBoneNode("head")?.getWorldPosition(at);
+    // the head bone sits at the skull's base: a hit at or below eye height on its front is her face
+    const face =
+      best[1] === "head" &&
+      head !== undefined &&
+      hit.point.y < head.y + 0.1 &&
+      hit.point.z > head.z;
+    options.onTouch(best[2], face ? "face" : best[1]);
   };
   canvas.addEventListener("pointerdown", onPointer);
 
