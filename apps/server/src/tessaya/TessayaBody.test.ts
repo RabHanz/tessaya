@@ -168,7 +168,10 @@ describe("TessayaBody", () => {
         ]);
         const onTumble = yield* live.take({ vessel: "tessel-1", persona: null, spend: true });
         expect(onTumble).toMatch(/on his desktop, someone in the household patted your head/);
-        expect(onTumble).toMatch(/an agent's hand stroked your arm/);
+        // her nerves say what it was like: a slow stroke on hairy skin reaches her caress fibres
+        expect(onTumble).toMatch(
+          /an agent's hand stroked your arm \(you felt a slow stroke, 4 cm\/s\)/,
+        );
         expect(onTumble).not.toMatch(/hand:|held your hand/);
       }).pipe(Effect.provide(TurnLiveContext.layer)),
   );
