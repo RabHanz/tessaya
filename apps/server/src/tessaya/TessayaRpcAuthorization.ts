@@ -30,6 +30,7 @@ import {
   BATON_LIVE_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
   BATON_CONSENT_WS_METHODS,
+  BATON_SCRATCHPAD_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
@@ -225,6 +226,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   [BATON_CONSENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_CONSENT_WS_METHODS.set]: AuthOrchestrationOperateScope,
+  [BATON_SCRATCHPAD_WS_METHODS.call]: AuthOrchestrationOperateScope,
   // The desktop relay takes and answers the phone's asks: operate.
   [BATON_PHONE_WS_METHODS.call]: AuthOrchestrationOperateScope,
   // Memory (D150): reading and searching are reads. Every write is operate-level, and so is

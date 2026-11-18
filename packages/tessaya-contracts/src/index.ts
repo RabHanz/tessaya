@@ -15,6 +15,7 @@ export * from "./synopsis.ts";
 export * from "./jobs.ts";
 export * from "./commitments.ts";
 export * from "./consent.ts";
+export * from "./scratchpad.ts";
 export * from "./phone.ts";
 export * from "./phonePairing.ts";
 export * from "./cast.ts";

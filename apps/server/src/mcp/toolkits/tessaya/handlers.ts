@@ -23,6 +23,9 @@ import {
   type TessayaPersonaChangeInput,
   type TessayaPersonaChangeResult,
   type TessayaRecordEntry,
+  type TessayaScratchNote,
+  type TessayaScratchpadAct,
+  type TessayaScratchpadResult,
 } from "@t3tools/tessaya-contracts";
 import { activityText } from "../../../provenance/activityText.ts";
 import { houseZone } from "../../../tessaya/houseZone.ts";
@@ -32,6 +35,7 @@ import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { MEMORY_UNLEARN_CLIENT } from "@t3tools/tessaya-shared/memory";
 import * as Option from "effect/Option";
@@ -64,6 +68,7 @@ import {
 import { Consent, grantWho, hisOwnTurn } from "../../../tessaya/consent.ts";
 import { grantLabel, grantNamed } from "@t3tools/tessaya-shared/consent";
 import { pronunciations } from "../../../tessaya/Pronunciations.ts";
+import { scratchpad } from "../../../tessaya/TessayaScratchpad.ts";
 import * as ServerConfig from "../../../config.ts";
 import { ownerDocs } from "../../../tessaya/OperatingSystemPack.ts";
 import { changePersona } from "../../../tessaya/PersonaChanges.ts";
@@ -242,6 +247,24 @@ export const layer = McpToolAccess.toLayer(
     });
     const runtime = yield* TessayaRuntime;
     const auth = yield* Effect.serviceOption(EnvironmentAuth.EnvironmentAuth);
+    /** His Scratchpad on her brain, in Tessaya's own database. */
+    const onScratchpad = (act: TessayaScratchpadAct) =>
+      (runtime === null
+        ? Effect.succeed(Option.none<TessayaScratchpadResult>())
+        : scratchpad(act).pipe(Effect.provideContext(runtime))
+      ).pipe(
+        Effect.orElseSucceed(Option.none<TessayaScratchpadResult>),
+        Effect.flatMap((r) =>
+          Option.isSome(r)
+            ? Effect.succeed(r.value.notes)
+            : Effect.fail(failed({ reason: "His notes can't be reached just now." })),
+        ),
+      );
+    const shownNote = (n: TessayaScratchNote) => ({
+      id: n.id,
+      at: DateTime.formatIso(DateTime.makeUnsafe(n.at)),
+      text: n.text,
+    });
     /** The turn pipeline's memory tools, or "unavailable" on a server built without Tessaya's services. */
     const withTurn = <A, E>(
       f: (turn: TessayaTurn["Service"]) => Effect.Effect<A, E>,
@@ -961,6 +984,38 @@ export const layer = McpToolAccess.toLayer(
         ),
       ),
       // The one store (her brain's server settings), which the R1 reads from MQTT; a replay's pretend R1 never reaches here.
+      tessaya_note_add: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          const turn = yield* TurnOrigin;
+          if (turn !== null && (turn.tainted === true || !hisOwnTurn(turn)))
+            return yield* failed({ reason: "Only he can add to his notes." });
+          const note = {
+            id: (yield* random.uuidV4()).slice(0, 8),
+            at: yield* Clock.currentTimeMillis,
+            text: input.text.trim(),
+          };
+          const saved = yield* onScratchpad({ op: "add", notes: [note] });
+          return { notes: saved.map(shownNote), line: "Noted." };
+        }),
+      ),
+      tessaya_note_search: McpToolAccess.reads((input) =>
+        Effect.gen(function* () {
+          const turn = yield* TurnOrigin;
+          if (turn !== null && (turn.tainted === true || !hisOwnTurn(turn)))
+            return yield* failed({ reason: "Only he can read his notes." });
+          const query = input.query?.trim() ?? "";
+          const found = (yield* onScratchpad(
+            query === "" ? { op: "list" } : { op: "search", query },
+          )).slice(0, 10);
+          return {
+            notes: found.map(shownNote),
+            line:
+              found.length === 0
+                ? "There's nothing like that in your notes."
+                : `${found.length} found.`,
+          };
+        }),
+      ),
       tessaya_pronounce: McpToolAccess.writes((input) =>
         pronunciations({
           word: input.word,
