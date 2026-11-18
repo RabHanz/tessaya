@@ -48,7 +48,7 @@ index 4dc30d29a6cffd394fd14d6ac4dde70e51ceb2e3..89defd31df0eb120285f6c62ff6e20e6
      // A file that failed to decode must stay on disk for the user to repair.
      const settingsFileTrusted = Option.isNone(parseFailure);
 diff --git a/apps/web/src/appInit.tsx b/apps/web/src/appInit.tsx
-index faa71137db0493e09fcf9d3f505dab27b360cda1..6127c0d213cafa800c54be3fcdcbfcf27748019f 100644
+index faa71137db0493e09fcf9d3f505dab27b360cda1..f37bff0e2e3ce4ef67f3d6d07ec16d3e47dca0cb 100644
 --- a/apps/web/src/appInit.tsx
 +++ b/apps/web/src/appInit.tsx
 @@ -44,6 +44,7 @@ import {
@@ -59,7 +59,23 @@ index faa71137db0493e09fcf9d3f505dab27b360cda1..6127c0d213cafa800c54be3fcdcbfcf2
  import { syncBrowserChromeTheme } from "./hooks/useTheme";
  import { startThreadVisitedMigration } from "./hooks/useThreadVisitedMigration";
  import { installDesktopPasteAsText } from "./lib/desktopPasteAsText";
-@@ -267,6 +268,7 @@ export function startAppServices(): AppRouter {
+@@ -59,6 +60,7 @@ import { primaryServerConfigAtom } from "./state/server";
+ import { environmentShell } from "./state/shell";
+ import { installChatRouteCommands } from "./shortcuts/chatRouteCommands";
+ import { startWorkspaceFocus } from "./lib/workspaceFocus";
++import { startStillIndicators } from "./lib/visibleAnimation";
+ import { startI18n } from "./i18n/runtime";
+ import { installCommandPaletteCommands } from "./shortcuts/commandPaletteCommands";
+ import { registerOpenFavoriteEditorCommand } from "./components/chat/OpenInPickerShortcut";
+@@ -260,6 +262,7 @@ export function startAppServices(): AppRouter {
+   installDesktopPasteAsText(window.desktopBridge, window);
+ 
+   startClientAppearance();
++  startStillIndicators();
+   startI18n();
+   startDocumentTitle(router);
+   startHostEnvironmentLookup();
+@@ -267,6 +270,7 @@ export function startAppServices(): AppRouter {
    startBrowserChromeThemeSync(router);
    startDefaultThemeAdoption();
    startModelPreferencesMigration();
