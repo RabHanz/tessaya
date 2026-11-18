@@ -3,6 +3,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as TestClock from "effect/testing/TestClock";
+import { connectPacket, publishPacket } from "@t3tools/tessaya-shared/mqtt";
 import { expect } from "vite-plus/test";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
@@ -105,7 +107,7 @@ it.effect("on the standby hub, keeps the first hub first and says which one the 
       [HUBS_RECORD]: { "env-home": { v: { label: "home", urls: [HOME] }, at: 5, by: "env-home" } },
       "r1-a": { key: { v: {}, at: 5, by: "env-home" } },
     };
-    const layer = R1ReachModule.layer.pipe(
+    const layer = R1ReachModule.layerWith(() => ({ memAvailMb: null, memPsiFull10: null })).pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(R1Hub, {
@@ -174,7 +176,7 @@ it.effect("sends the R1 its list when it comes online, again only when the list 
       mqttPass: null,
       deviceId: "r1-a",
     };
-    const layer = R1ReachModule.layer.pipe(
+    const layer = R1ReachModule.layerWith(() => ({ memAvailMb: null, memPsiFull10: null })).pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(R1Hub, {
@@ -235,4 +237,103 @@ it.effect("sends the R1 its list when it comes online, again only when the list 
       expect(JSON.parse(sent.at(-1)!).broker).toEqual([`ws://192.168.1.20:3773${HUB}`]);
     }).pipe(Effect.provide(layer));
   }),
+);
+
+it.effect(
+  "moves a device off a starving hub once it holds the new list and the room is quiet",
+  () =>
+    Effect.gen(function* () {
+      const KEY = "k".repeat(32);
+      const hub = makeHub((user, pass) =>
+        Effect.succeed(user === "r1-a" && pass === KEY ? { kind: "device", id: "r1-a" } : null),
+      );
+      const record: R1Device = {
+        deviceKey: KEY,
+        mqttUrl: null,
+        mqttUser: null,
+        mqttPass: null,
+        deviceId: "r1-a",
+      };
+      const CLOUD = `wss://cloud.example.net${HUB}`;
+      const stamps: Record<string, Record<string, { v: unknown; at: number; by: string }>> = {
+        [HUBS_RECORD]: {
+          "env-cloud": { v: { label: "cloud", urls: [CLOUD] }, at: 5, by: "env-cloud" },
+        },
+        "@health": { "env-cloud": { v: "ok", at: 5, by: "env-cloud" } },
+        "r1-a": { key: { v: {}, at: 5, by: "env-home" } },
+      };
+      const placed: Array<unknown> = [];
+      // His home server on 17 Nov: 195 MB free, memory PSI full 30%.
+      const layer = R1ReachModule.layerWith(() => ({ memAvailMb: 195, memPsiFull10: 30 })).pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(R1Hub, {
+              ...hub,
+              busLogin: Effect.succeed({ user: "", key: "" }),
+              noteKeyUse: () => Effect.void,
+              keyUsedOutside: () => null,
+            }),
+            Layer.mock(HomeAssistantService)({ devices: Effect.succeed([record]) }),
+            Layer.mock(ServerSecretStore)({
+              get: () => Effect.succeedNone,
+              set: () => Effect.void,
+            }),
+            Layer.mock(DirectEndpoints)({
+              resolveAvailable: () =>
+                Effect.succeed([{ kind: "lan", httpBaseUrl: "http://192.168.1.20:3773/" }]),
+            }),
+            Layer.mock(DeviceSync)({
+              self: "env-home",
+              put: (rec, field, v) =>
+                Effect.sync(() => {
+                  if (rec === "r1-a" && field === "placed") placed.push(v);
+                  stamps[rec] = { ...stamps[rec], [field]: { v, at: 9, by: "env-home" } };
+                }),
+              get: (rec) => Effect.sync(() => stamps[rec] ?? {}),
+              onMerged: () => Effect.void,
+            }),
+          ),
+        ),
+      );
+      const pushed: Array<string> = [];
+      hub.attach(["freya/r1/+/cmd/net/endpoints"], (_t, p) => void pushed.push(p.toString("utf8")));
+      let closed = false;
+      const device = hub.open({ send: () => {}, close: () => void (closed = true) });
+      yield* device.receive(
+        connectPacket({ clientId: "r1-a", user: "r1-a", pass: KEY, keepAliveS: 600 }),
+      );
+      const report = (json: string) =>
+        device.receive(publishPacket("freya/r1/r1-a/state/net/endpoints", Buffer.from(json), true));
+      yield* Effect.gen(function* () {
+        yield* device.receive(publishPacket("freya/r1/r1-a/state/online", Buffer.from("1"), true));
+        yield* TestClock.adjust("1 second");
+        expect(JSON.parse(pushed.at(-1)!).broker[0]).toBe(`ws://192.168.1.20:3773${HUB}`);
+        yield* report(pushed.at(-1)!);
+        // Degraded only once the bad figures have held 60 s; then the cloud hub goes first.
+        yield* TestClock.adjust("50 seconds");
+        expect(placed).toEqual([]);
+        yield* TestClock.adjust("20 seconds");
+        expect(placed).toEqual(["env-cloud"]);
+        expect(JSON.parse(pushed.at(-1)!).broker[0]).toBe(CLOUD);
+        // His order is pinned first, so the move back has something to return to.
+        expect(stamps["r1-a"]?.["hubs"]?.v).toEqual(["env-home", "env-cloud"]);
+        yield* report(pushed.at(-1)!);
+        // He is talking: voice keeps flowing, so the socket stays.
+        for (let i = 0; i < 6; i++) {
+          yield* device.receive(publishPacket("freya/r1/r1-a/voice/up", Buffer.from([1, 2])));
+          yield* TestClock.adjust("10 seconds");
+        }
+        expect(closed).toBe(false);
+        // A turn just ended: 30 s of quiet is a pause in the conversation, not its end (18 Nov).
+        yield* device.receive(
+          publishPacket("freya/r1/r1-a/event/voice/metrics", Buffer.from("{}")),
+        );
+        yield* TestClock.adjust("40 seconds");
+        expect(closed).toBe(false);
+        // 2 min with no turn: relinked, and no second move inside the dwell.
+        yield* TestClock.adjust("90 seconds");
+        expect(closed).toBe(true);
+        expect(placed).toEqual(["env-cloud"]);
+      }).pipe(Effect.provide(layer));
+    }),
 );
