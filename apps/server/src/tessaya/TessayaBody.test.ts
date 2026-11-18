@@ -76,6 +76,12 @@ describe("TessayaBody", () => {
           ["d1", "mascot.do", "wave"],
           ["d1", "mascot.do", "nod"],
         ]);
+        // a performance becomes the nearest of its few acts: joy hops
+        yield* moveBody(
+          { perform: { feel: { valence: 0.9, arousal: 0.8, dominance: 0.4 } } },
+          her,
+        ).pipe(Effect.provide(desk(writes)));
+        expect(writes.at(-1)).toEqual(["d1", "mascot.do", "hop"]);
         const cannot = yield* moveBody({ bones: { head: [0.2, 0, 0] } }, her).pipe(
           Effect.provide(desk(writes)),
         );

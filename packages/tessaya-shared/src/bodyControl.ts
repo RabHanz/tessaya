@@ -24,6 +24,7 @@ import {
   type PoseBone,
   type PostureName,
 } from "./bodyMotion.ts";
+import { decodeHold, decodePerform, INVOLUNTARY, type Perform } from "./bodyPlanner.ts";
 import { JOINT_LIMITS } from "./bodyRig.ts";
 
 export const BODY_MOVE_VERSION = 1;
@@ -82,6 +83,13 @@ export interface BodyMove {
   };
   /** Hand her body back to her own feelings: drop held bones, posture and keyframes. */
   readonly release?: boolean;
+  /**
+   * A whole performance composed for this body from how the moment feels and moves (bodyPlanner.ts): over this step's
+   * posture; the step's own `bones` and `keys` stay as placed, and the performance moves everything else.
+   */
+  readonly perform?: Perform;
+  /** Her involuntary systems held back, each up to a person's limit (INVOLUNTARY): {breath: 5000}. */
+  readonly hold?: Readonly<Record<string, number>>;
   /**
    * One frame of a live stream of direct control (bones, look, face), up to STREAM_RATE a second. The body
    * lets go and returns to her own posture when no frame comes within STREAM_LAPSE_MS (a dead-man lapse).
@@ -220,6 +228,16 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
     };
   }
   if (raw["release"] === true) m["release"] = true;
+  if (raw["perform"] !== undefined) {
+    const p = decodePerform(raw["perform"]);
+    if (!p.ok) return p;
+    m["perform"] = p.perform;
+  }
+  if (raw["hold"] !== undefined) {
+    const h = decodeHold(raw["hold"]);
+    if (!h.ok) return h;
+    m["hold"] = h.hold;
+  }
   if (raw["stream"] === true) {
     const extra = Object.keys(raw).filter((k) => !STREAMABLE.has(k));
     if (extra.length > 0)
@@ -247,7 +265,7 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
     return {
       ok: false,
       error:
-        "nothing to do: give an act, posture, gesture, mood, look, face, morphs, bones, keys, touch or release",
+        "nothing to do: give a perform, act, posture, gesture, mood, look, face, morphs, bones, keys, touch, hold or release",
     };
   return { ok: true, move: m as BodyMove };
 };
@@ -313,7 +331,26 @@ const stepCues = (m: BodyMove, id: string): BodyCue[] => {
     out.push({ kind: "face", weights: m.face.weights, ms: hold(m.face.ms) });
   if (m.morphs !== undefined) out.push({ kind: "morphs", weights: m.morphs });
   if (m.touch !== undefined) out.push({ kind: "hand", ...m.touch });
-  if (m.keys !== undefined)
+  if (m.hold !== undefined) out.push({ kind: "hold", systems: m.hold });
+  // last, so the body composes it over the posture this step chose; the step's bones are part of its base
+  if (m.perform !== undefined)
+    out.push({
+      kind: "perform",
+      id: `${id}-perform`,
+      perform: m.perform,
+      ...(m.bones === undefined ? {} : { bones: m.bones }),
+      ...(m.keys === undefined ? {} : { keys: m.keys }),
+      // her own look or face in this step is what she chose: the performance leaves it alone
+      ...(m.look === undefined && m.face === undefined
+        ? {}
+        : {
+            keep: [
+              ...(m.look === undefined ? [] : (["look"] as const)),
+              ...(m.face === undefined ? [] : (["face"] as const)),
+            ],
+          }),
+    });
+  else if (m.keys !== undefined)
     out.push({
       kind: "clip",
       id: `${id}-keys`,
@@ -393,6 +430,10 @@ export interface BodyState {
   }>;
   /** Where she is touching herself or something now (hand on hip): part, what it meets. */
   readonly contacts: ReadonlyArray<{ readonly part: string; readonly with: string }>;
+  /** What her body is doing on its own (the involuntary layer), and what is held back and for how much longer. */
+  readonly involuntary?: Readonly<
+    Record<string, { readonly on: boolean; readonly heldMs?: number }>
+  >;
   readonly manifest: unknown;
 }
 
@@ -420,4 +461,5 @@ export const BODY_CAPABILITIES = {
   ),
   rate: RATE,
   stream: { rate: STREAM_RATE, lapseMs: STREAM_LAPSE_MS },
+  involuntary: INVOLUNTARY.map((s) => ({ system: s.id, ...s.override })),
 } as const;
