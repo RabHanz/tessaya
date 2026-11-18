@@ -10,7 +10,10 @@ import { speechLike } from "../echoSim.ts";
 import { speechLevel, toBytes } from "./audio.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
+  brainOrLocal,
   busOfBrain,
+  fromBrainHub,
+  loopBuses,
   createRoomVoice,
   ROOM_CONFIG,
   routeForDevice,
@@ -1209,6 +1212,69 @@ describe("waking by name with no session open", () => {
     expect(busOfBrain("http://127.0.0.1:3773/api/devices/tessel/v1/chat/completions")).toBe(
       "ws://127.0.0.1:3773/api/tessel/mqtt",
     );
+  });
+
+  it("turns run on the brain while she stays on her own hub, with its acts and acks bridged (18 Nov: 1.3 s → 3.0 s)", async () => {
+    const brain = "http://100.124.164.43:3773/api/devices/r1/v1/chat/completions";
+    // Unset, one bus as before (slice 1); set, her own hub, plus the brain's hub for its acts.
+    expect(loopBuses(brain, undefined)).toEqual({
+      hub: "ws://100.124.164.43:3773/api/tessel/mqtt",
+      brain: null,
+    });
+    expect(loopBuses(brain, "ws://127.0.0.1:3773/api/tessel/mqtt")).toEqual({
+      hub: "ws://127.0.0.1:3773/api/tessel/mqtt",
+      brain: "ws://100.124.164.43:3773/api/tessel/mqtt",
+    });
+    // From the brain's hub: its turn's acts for a Tessel here; a device command goes by the peer route, with its ack.
+    const cases: Array<[string, boolean, boolean]> = [
+      ["voice/intent/eye", true, true],
+      ["voice/intent/rest", true, true],
+      ["voice/stepup", true, true],
+      ["voice/say", true, true],
+      ["voice/intent/eye", false, false],
+      ["cmd/voice/volume", true, false],
+      ["voice/up", true, false],
+    ];
+    for (const [tail, here, want] of cases)
+      expect([tail, here, fromBrainHub(tail, here)]).toEqual([tail, here, want]);
+    // The brain unreachable: the turn goes to her own hub's server, never silence; once a word is out, no second turn.
+    const lines: string[] = [];
+    const down = (): AsyncIterable<string> => ({
+      [Symbol.asyncIterator]: () => ({
+        next: () => Promise.reject(new Error("connect ECONNREFUSED")),
+      }),
+    });
+    const local = async function* (): AsyncGenerator<string> {
+      yield "Nine ";
+      yield "oh nine.";
+    };
+    const turn = { deviceId: "r1", messages: [], tessaya: {} as never };
+    const said: string[] = [];
+    for await (const w of brainOrLocal(down, local, (l) => lines.push(l))(
+      turn,
+      new AbortController().signal,
+    ))
+      said.push(w);
+    expect(said.join("")).toBe("Nine oh nine.");
+    expect(lines.join("\n")).toMatch(
+      /brain unreachable .*ECONNREFUSED.*; this hub's server answers/,
+    );
+    const halfway = async function* (): AsyncGenerator<string> {
+      yield "Nine ";
+      throw new Error("reset");
+    };
+    const again: string[] = [];
+    await expect(
+      (async () => {
+        for await (const w of brainOrLocal(
+          halfway,
+          local,
+          () => undefined,
+        )(turn, new AbortController().signal))
+          again.push(w);
+      })(),
+    ).rejects.toThrow("reset");
+    expect(again).toEqual(["Nine "]);
   });
 
   it("opens on the persona the Cast puts on this Tessel, and a wake word for another never re-homes it", async () => {
