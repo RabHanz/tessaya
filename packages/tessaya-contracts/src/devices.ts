@@ -613,6 +613,8 @@ export const TessayaDevicesCallResult = Schema.Struct({
   ok: Schema.Boolean,
   error: Schema.optionalKey(Schema.String),
   value: Schema.optionalKey(Schema.Unknown),
+  /** Not on this server's hub now: another of his servers may have it. */
+  notLinked: Schema.optionalKey(Schema.Boolean),
 });
 export type TessayaDevicesCallResult = typeof TessayaDevicesCallResult.Type;
 

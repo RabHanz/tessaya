@@ -39,8 +39,10 @@ export const make = Effect.gen(function* () {
     const vessel = vesselOf(scope.client);
     // A vessel's own Tessaya acts as his assistant does: harmless controls at once, an owner item on his verified
     // voice or his yes on the phone. The suite's pretend vessel sends nothing to a device.
+    // Another of his servers driving a device here for its turn acts as her, as that server's own Tessaya would.
+    const forwarded = scope.client?.linked === true && turn?.kind === "mcp" && via !== undefined;
     const by: DeviceActor =
-      vessel !== null
+      vessel !== null || forwarded
         ? {
             who: via === undefined ? "Tessaya" : `Tessaya via ${via}`,
             surface: "assistant",
@@ -50,7 +52,7 @@ export const make = Effect.gen(function* () {
             turn.tainted !== true
               ? { his: true }
               : {}),
-            ...(vessel.dryRun ? { dryRun: true } : {}),
+            ...(vessel?.dryRun === true ? { dryRun: true } : {}),
           }
         : {
             who: scope.client === undefined ? "an agent in T3" : "an outside agent",
@@ -61,18 +63,34 @@ export const make = Effect.gen(function* () {
   const split = ({ op, on: _on, origin: _origin, hisVoice: _voice, ...rest }: Args) =>
     [String(op), { ...rest }] as const;
   /** A device `on` another of his servers is driven there, as that server's own Tessaya would. */
-  const routed = <A, E, R>(tool: string, input: Args, here: Effect.Effect<A, E, R>) =>
+  const routed = <E, R>(
+    tool: string,
+    input: Args,
+    here: Effect.Effect<TessayaDevicesCallResult, E, R>,
+  ) =>
     asForwarded(
       input,
       Effect.gen(function* () {
         const on = typeof input["on"] === "string" ? input["on"] : undefined;
         const there =
           on === undefined ? null : yield* onPeer(tool, input, { on, takes: () => true });
-        if (there === null) return yield* here;
-        const answer = there.value as TessayaDevicesCallResult;
-        return { ...answer, value: { on: there.on, ...(answer.value as object | undefined) } };
+        if (there === null) {
+          const mine = yield* here;
+          if (on !== undefined || mine.notLinked !== true) return mine;
+          // Not on this hub: the server whose hub it is on now drives it, and only it.
+          const holder = yield* onPeer(tool, input, {
+            takes: (v) => (v as TessayaDevicesCallResult).notLinked !== true,
+            wait: "4 seconds",
+          });
+          return holder === null ? mine : withOn(holder);
+        }
+        return withOn(there);
       }),
     );
+  const withOn = (there: { readonly on: string; readonly value: unknown }) => {
+    const answer = there.value as TessayaDevicesCallResult;
+    return { ...answer, value: { on: there.on, ...(answer.value as object | undefined) } };
+  };
   // His other servers may drive a device here for a turn they heard; the camera and a restart still ask his phone.
   const linked = { linkedCallers: "allowed" } as const;
   return {
