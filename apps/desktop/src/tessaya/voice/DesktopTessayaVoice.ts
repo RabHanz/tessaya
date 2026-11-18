@@ -1411,6 +1411,8 @@ export interface DesktopTessayaVoiceInput {
   readonly privateChat?: () => (() => void) | null;
   /** Her speech and mood as 3D body cues (bodyCues.ts), for the private window's body while it is open (M-047). */
   readonly bodyCue?: (cue: BodyCue) => void;
+  /** Her one mascot on the desk, once made, so an owner-only layer can draw its body over her (layerBody). */
+  readonly onMascot?: (mascot: DesktopMascot) => void;
   /** The one conversation (D142), shared with the screen side. */
   readonly conversation?: ConversationLog;
   /** Every reply and refusal worth the turn log. */
@@ -5165,6 +5167,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     makeMascot(() => mascotPersonaArg()),
     input.bodyCue,
   );
+  input.onMascot?.(mascot);
   /** The others with her, one per persona as his setting says, by persona id. */
   const crew = new Map<string, DesktopMascot>();
   const crewPersonas = () => {

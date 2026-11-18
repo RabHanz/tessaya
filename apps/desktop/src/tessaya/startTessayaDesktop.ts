@@ -74,6 +74,7 @@ import { clockStyleOf, type ClockStyle } from "@t3tools/tessaya-shared/brain";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
 import { startDesktopTessayaVoice, type DesktopTessayaVoice } from "./voice/DesktopTessayaVoice.ts";
+import type { DesktopMascot } from "./companion/desktopMascot.ts";
 import { createBridgeCatalogService } from "./sessions/catalogBridge.ts";
 import { createCatalog } from "./sessions/catalogRows.ts";
 import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
@@ -648,16 +649,16 @@ export const startTessayaDesktop = Effect.gen(function* () {
         const [mic, cam] = await Promise.all([query("microphone"), query("webcam")]);
         return capturingApps(mic, ownDir).length > 0 || capturingApps(cam, ownDir).length > 0;
       },
-      shield: (on) => setPrivateShield(on, Electron.BrowserWindow.getAllWindows()),
+      shield: (on) => {
+        setPrivateShield(on, Electron.BrowserWindow.getAllWindows());
+        void showLayerBody(on);
+      },
     });
-    // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer, and its
-    // private chat (his written threads) at tessaya://layer/chat.
-    const openLayerPage = async (chat = false) => {
-      const page = layerLink.page();
-      if (page === null) return;
+    /** The layer's pages load in their own in-memory session that carries this server's token, and nothing else. */
+    const layerSession = async () => {
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
-      if (config._tag === "None") return;
+      if (config._tag === "None") return null;
       const origin = new URL(config.value.httpBaseUrl).origin;
       const session = Electron.session.fromPartition(`layer-${NodeCrypto.randomUUID()}`);
       session.webRequest.onBeforeSendHeaders(
@@ -665,6 +666,25 @@ export const startTessayaDesktop = Effect.gen(function* () {
         (details, done) =>
           done({ requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${token}` } }),
       );
+      return { origin, session };
+    };
+    // While a layer's session is open on this desktop, her body on the desk is the layer's own (its `mascot` page).
+    let deskMascot: DesktopMascot | null = null;
+    const showLayerBody = async (open: boolean) => {
+      const page = layerLink.page();
+      if (!open || page === null) return deskMascot?.layerBody(null);
+      const at = await layerSession();
+      if (at !== null && layerLink.isOpen())
+        deskMascot?.layerBody({ url: `${at.origin}${page}/mascot`, session: at.session });
+    };
+    // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer, and its
+    // private chat (his written threads) at tessaya://layer/chat.
+    const openLayerPage = async (chat = false) => {
+      const page = layerLink.page();
+      if (page === null) return;
+      const at = await layerSession();
+      if (at === null) return;
+      const { origin, session } = at;
       const win = new Electron.BrowserWindow({
         width: chat ? 480 : 1100,
         height: chat ? 760 : 820,
@@ -684,6 +704,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     // The private chat page's 3D body takes her desktop speech and mood as cues; it ignores them while hidden.
     let privateChatWindow: Electron.BrowserWindow | null = null;
     const bodyCue = (cue: BodyCue) => {
+      deskMascot?.layerCue(cue);
       const win = privateChatWindow;
       if (win === null || win.isDestroyed()) return;
       void win.webContents
@@ -698,6 +719,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     Electron.powerMonitor.on("lock-screen", () => {
       bodyCue({ kind: "stop" });
       bodyCue({ kind: "hide" });
+      deskMascot?.layerBody(null);
       void layerLink.signal("screenLocked");
     });
     Electron.powerMonitor.on("suspend", () => void layerLink.signal("sleep"));
@@ -1035,6 +1057,10 @@ export const startTessayaDesktop = Effect.gen(function* () {
       loginEntry: environment.appUserModelId,
       privateChat: () => (layerLink.page() === null ? null : () => void openLayerPage(true)),
       bodyCue,
+      onMascot: (m) => {
+        deskMascot = m;
+        void showLayerBody(layerLink.isOpen());
+      },
       stateDir: environment.stateDir,
       conversation: conversations.current,
       onNote: turnLog.note,
