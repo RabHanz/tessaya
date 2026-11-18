@@ -37,7 +37,9 @@ node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1]
 declare -A port
 for side in brain hub; do
   port[$side]="$(free_port)"
-  TESSAYA_VOICE_POOL=lean "$t3" serve --base-dir "$work/$side" --port "${port[$side]}" --host 127.0.0.1 > "$work/$side.log" 2>&1 &
+  # The brain runs no room loop, as his laptop's hub does: her list must leave it out.
+  loop=""; [ "$side" = brain ] && loop=off
+  env ${loop:+TESSAYA_TESSEL_LOOP=$loop} TESSAYA_VOICE_POOL=lean "$t3" serve --base-dir "$work/$side" --port "${port[$side]}" --host 127.0.0.1 > "$work/$side.log" 2>&1 &
   pids+=("$!")
 done
 for side in brain hub; do

@@ -164,7 +164,10 @@ const hubLayer = R1Hub.layer.pipe(Layer.provide(homeLayer));
 // Each device's key, his choices for it and every server's hub, kept alike on his linked servers. One instance.
 const syncLayer = DeviceSync.layer.pipe(Layer.provide(hubLayer), Layer.provide(homeLayer));
 // Where the R1 should connect (every one of his hubs in its order), kept current on it.
+// The room loop says whether this hub can hear her; a hub that cannot is left out of her list.
+const loopLayer = R1Loop.layer.pipe(Layer.provide(hubLayer), Layer.provide(homeLayer));
 const reachLayer = R1Reach.layer.pipe(
+  Layer.provide(loopLayer),
   Layer.provide(syncLayer),
   Layer.provide(hubLayer),
   Layer.provide(homeLayer),
@@ -176,8 +179,6 @@ const updatesLayer = R1Updates.layer.pipe(
   Layer.provide(hubLayer),
   Layer.provide(homeLayer),
 );
-// The room voice loop as this server's child, where it is installed beside it (R1Loop.ts).
-const loopLayer = R1Loop.layer.pipe(Layer.provide(hubLayer), Layer.provide(homeLayer));
 const pairingLayer = R1Pairing.layer.pipe(
   Layer.provide(reachLayer),
   Layer.provide(hubLayer),
