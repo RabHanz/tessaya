@@ -3,159 +3,6 @@ import type { MotionEntry } from "./bodyLibrary.ts";
 
 export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
   {
-    id: "angry-stomp",
-    text: "Show me what you look like when you're really annoyed.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.8,
-          arousal: 0.8,
-          dominance: 0.6,
-        },
-        intensity: 0.9,
-        hands: {
-          left: "hip",
-          right: "hip",
-        },
-      },
-      mood: {
-        name: "angry",
-        intensity: 0.9,
-      },
-      face: {
-        weights: {
-          angry: 0.9,
-          sad: 0.1,
-        },
-        ms: 3000,
-      },
-      then: [
-        {
-          afterMs: 900,
-          gesture: "sigh",
-        },
-        {
-          afterMs: 1800,
-          gesture: "lookAway",
-        },
-      ],
-    },
-    score: 4,
-    source: "after-3",
-  },
-  {
-    id: "bored-waiting",
-    text: "Act bored, like you've been waiting for ages.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.4,
-          arousal: -0.8,
-          dominance: -0.3,
-        },
-        intensity: 0.8,
-        hands: {
-          left: "face",
-        },
-      },
-      act: "sigh",
-      posture: "sleepy",
-      look: {
-        x: -0.4,
-        y: -0.3,
-        ms: 600,
-      },
-      then: [
-        {
-          afterMs: 1500,
-          gesture: "yawn",
-        },
-        {
-          afterMs: 3000,
-          gesture: "lookAway",
-        },
-      ],
-    },
-    score: 5,
-    source: "after-3",
-  },
-  {
-    id: "cheer-team",
-    text: "Cheer like your team just scored.",
-    move: {
-      perform: {
-        feel: {
-          valence: 1,
-          arousal: 1,
-          dominance: 0.8,
-        },
-        hands: {
-          left: "up",
-          right: "up",
-          repeat: 4,
-        },
-        intensity: 1,
-      },
-      act: "dance",
-      gesture: "hop",
-      face: {
-        weights: {
-          happy: 1,
-          aa: 0.6,
-        },
-        ms: 3000,
-      },
-      then: [
-        {
-          afterMs: 900,
-          gesture: "bounce",
-        },
-        {
-          afterMs: 1800,
-          gesture: "thumbsUp",
-        },
-      ],
-    },
-    score: 5,
-    source: "after-3",
-  },
-  {
-    id: "cold",
-    text: "Show me you're freezing cold.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.5,
-          arousal: 0.6,
-          dominance: -0.4,
-        },
-        hands: {
-          left: "shoulder",
-          right: "shoulder",
-          repeat: 6,
-        },
-        intensity: 0.8,
-      },
-      act: "sit",
-      face: {
-        weights: {
-          sad: 0.4,
-          ee: 0.5,
-        },
-        ms: 3000,
-      },
-      gesture: "shrug",
-      then: [
-        {
-          afterMs: 1500,
-          gesture: "sigh",
-        },
-      ],
-    },
-    score: 4,
-    source: "after-3",
-  },
-  {
     id: "dance-then-notice",
     text: "Dance like nobody's watching, then notice me.",
     move: {
@@ -207,45 +54,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
             y: 0,
             ms: 400,
           },
-        },
-      ],
-    },
-    score: 4,
-    source: "after-3",
-  },
-  {
-    id: "disappointed",
-    text: "Act disappointed, like your plans got cancelled.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.6,
-          arousal: -0.5,
-          dominance: -0.4,
-        },
-        hands: {
-          left: "hip",
-        },
-        intensity: 0.7,
-      },
-      act: "sigh",
-      posture: "sad",
-      face: {
-        weights: {
-          sad: 0.7,
-          relaxed: 0.2,
-        },
-        ms: 2500,
-      },
-      look: {
-        x: 0,
-        y: -0.4,
-        ms: 800,
-      },
-      then: [
-        {
-          afterMs: 1500,
-          gesture: "shrug",
         },
       ],
     },
@@ -316,144 +124,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
     source: "after-3",
   },
   {
-    id: "hot-drink",
-    text: "Pretend you're holding a hot cup of tea.",
-    move: {
-      perform: {
-        feel: {
-          valence: 0.6,
-          arousal: -0.3,
-          dominance: 0.2,
-        },
-        hands: {
-          left: "together",
-          right: "together",
-        },
-        intensity: 0.5,
-        ms: 4000,
-      },
-      then: [
-        {
-          afterMs: 1200,
-          gesture: "nodSoft",
-          face: {
-            weights: {
-              happy: 0.4,
-              relaxed: 0.5,
-            },
-          },
-        },
-        {
-          afterMs: 2200,
-          perform: {
-            feel: {
-              valence: 0.6,
-              arousal: -0.4,
-              dominance: 0.2,
-            },
-            hands: {
-              left: "mouth",
-              right: "together",
-            },
-          },
-          gesture: "leanIn",
-        },
-      ],
-      face: {
-        weights: {
-          relaxed: 0.6,
-          happy: 0.3,
-        },
-        ms: 1000,
-      },
-    },
-    score: 4,
-    source: "after-3",
-  },
-  {
-    id: "proud",
-    text: "Stand like you're really proud of yourself.",
-    move: {
-      act: "stand",
-      perform: {
-        feel: {
-          valence: 0.9,
-          arousal: 0.5,
-          dominance: 0.9,
-        },
-        hands: {
-          left: "hip",
-          right: "hip",
-        },
-        shape: {
-          rise: 0.8,
-          spread: 0.7,
-          advance: 0.3,
-        },
-        intensity: 0.8,
-      },
-      posture: "happy",
-      then: [
-        {
-          afterMs: 600,
-          gesture: "thumbsUp",
-        },
-      ],
-    },
-    score: 5,
-    source: "after-3",
-  },
-  {
-    id: "scared-noise",
-    text: "You just heard a scary noise behind you.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.6,
-          arousal: 0.95,
-          dominance: -0.4,
-        },
-        hands: {
-          left: "heart",
-          right: "mouth",
-        },
-        intensity: 0.9,
-      },
-      gesture: "startle",
-      look: {
-        x: -0.8,
-        y: 0.1,
-        ms: 300,
-      },
-      face: {
-        weights: {
-          surprised: 0.9,
-          oh: 0.5,
-        },
-      },
-      then: [
-        {
-          afterMs: 1200,
-          gesture: "lookAway",
-          look: {
-            x: 0.6,
-            y: 0,
-            ms: 400,
-          },
-          perform: {
-            feel: {
-              valence: -0.2,
-              arousal: 0.6,
-              dominance: -0.2,
-            },
-          },
-        },
-      ],
-    },
-    score: 4,
-    source: "after-3",
-  },
-  {
     id: "shy-compliment",
     text: "I think you look beautiful today.",
     move: {
@@ -500,67 +170,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
             },
             intensity: 0.5,
           },
-        },
-      ],
-    },
-    score: 4,
-    source: "after-3",
-  },
-  {
-    id: "sneak-up",
-    text: "Show me how you'd sneak up on someone.",
-    move: {
-      perform: {
-        feel: {
-          valence: 0.4,
-          arousal: -0.3,
-          dominance: 0.2,
-        },
-        intensity: 0.7,
-        hands: {
-          left: "mouth",
-          right: "forward",
-        },
-      },
-      act: "stepBack",
-      look: {
-        x: 0.4,
-        y: 0.1,
-      },
-      then: [
-        {
-          afterMs: 500,
-          act: "walkOver",
-          perform: {
-            feel: {
-              valence: 0.5,
-              arousal: -0.4,
-              dominance: 0.3,
-            },
-            effort: {
-              weight: -0.8,
-              time: -0.5,
-              flow: 0.8,
-              space: 0.7,
-            },
-            hands: {
-              left: "mouth",
-              right: "forward",
-            },
-          },
-        },
-        {
-          afterMs: 2200,
-          gesture: "leanIn",
-          face: {
-            weights: {
-              happy: 0.6,
-            },
-          },
-        },
-        {
-          afterMs: 3000,
-          gesture: "giggleOnce",
         },
       ],
     },
@@ -699,26 +308,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
     source: "seed-sonnet",
   },
   {
-    id: "t03",
-    text: "Cover your ears, it's too loud.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.2,
-          arousal: 0.3,
-          dominance: -0.2,
-        },
-        hands: {
-          left: "ear",
-          right: "ear",
-        },
-      },
-      act: "stepBack",
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
     id: "t04",
     text: "Clap for me.",
     move: {
@@ -813,79 +402,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
     source: "seed-sonnet",
   },
   {
-    id: "t08",
-    text: "Put your hands on your hips, annoyed.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.5,
-          arousal: 0.5,
-          dominance: 0.6,
-        },
-        hands: {
-          left: "hip",
-          right: "hip",
-        },
-        intensity: 0.7,
-      },
-      face: {
-        weights: {
-          angry: 0.5,
-          sad: 0.1,
-        },
-      },
-      look: {
-        x: 0,
-        y: 0,
-      },
-      then: [
-        {
-          afterMs: 600,
-          gesture: "sigh",
-        },
-      ],
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t09",
-    text: "Hug yourself, you're scared.",
-    move: {
-      act: "hug",
-      perform: {
-        feel: {
-          valence: -0.6,
-          arousal: 0.6,
-          dominance: -0.7,
-        },
-        hands: {
-          left: "shoulder",
-          right: "shoulder",
-        },
-        intensity: 0.8,
-      },
-      face: {
-        weights: {
-          sad: 0.6,
-          surprised: 0.4,
-        },
-      },
-      look: {
-        x: 0,
-        y: -0.3,
-      },
-      then: [
-        {
-          afterMs: 1500,
-          gesture: "sigh",
-        },
-      ],
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
     id: "t10",
     text: "Wave goodbye sadly.",
     move: {
@@ -973,75 +489,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
     source: "seed-sonnet",
   },
   {
-    id: "t15",
-    text: "Yawn, you're sleepy.",
-    move: {
-      act: "stretch",
-      gesture: "yawn",
-      perform: {
-        feel: {
-          valence: -0.1,
-          arousal: -0.8,
-          dominance: -0.3,
-        },
-        hands: {
-          right: "mouth",
-        },
-      },
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t16",
-    text: "Peek around nervously.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.2,
-          arousal: 0.5,
-          dominance: -0.6,
-        },
-        hands: {
-          left: "mouth",
-          right: "shoulder",
-        },
-        intensity: 0.7,
-      },
-      posture: "guarded",
-      look: {
-        x: -0.6,
-        y: 0.1,
-        ms: 500,
-      },
-      then: [
-        {
-          afterMs: 900,
-          look: {
-            x: 0.6,
-            y: 0.1,
-            ms: 500,
-          },
-        },
-        {
-          afterMs: 1800,
-          look: {
-            x: 0,
-            y: 0.3,
-            ms: 400,
-          },
-          gesture: "lookAway",
-        },
-        {
-          afterMs: 2800,
-          release: true,
-        },
-      ],
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
     id: "t18",
     text: "Cheer loudly.",
     move: {
@@ -1119,108 +566,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
     source: "seed-sonnet",
   },
   {
-    id: "t20",
-    text: "Act shocked.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.2,
-          arousal: 0.95,
-          dominance: -0.4,
-        },
-        hands: {
-          left: "mouth",
-          right: "mouth",
-        },
-        intensity: 0.9,
-      },
-      gesture: "startle",
-      face: {
-        weights: {
-          surprised: 1,
-          oh: 0.7,
-        },
-        ms: 3000,
-      },
-      act: "stepBack",
-    },
-    score: 5,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t21",
-    text: "Act embarrassed.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.3,
-          arousal: 0.4,
-          dominance: -0.7,
-        },
-        hands: {
-          left: "face",
-          right: "face",
-        },
-        intensity: 0.8,
-      },
-      gesture: "lookAway",
-      mood: {
-        name: "shy",
-        intensity: 0.9,
-      },
-      look: {
-        x: -0.6,
-        y: -0.4,
-      },
-      face: {
-        weights: {
-          happy: 0.3,
-          sad: 0.2,
-          relaxed: 0.2,
-        },
-      },
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t22",
-    text: "Pout like you're sulking.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.5,
-          arousal: -0.2,
-          dominance: -0.3,
-        },
-        hands: {
-          left: "shoulder",
-          right: "shoulder",
-        },
-      },
-      act: "turnAway",
-      face: {
-        weights: {
-          sad: 0.6,
-          angry: 0.2,
-        },
-        ms: 3000,
-      },
-      look: {
-        x: -0.6,
-        y: -0.3,
-      },
-      then: [
-        {
-          afterMs: 2500,
-          gesture: "lookAway",
-        },
-      ],
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
     id: "t23",
     text: "Be bashful and shy.",
     move: {
@@ -1251,78 +596,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
               relaxed: 0.3,
             },
           },
-        },
-      ],
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t26",
-    text: "Wince in pain.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.7,
-          arousal: 0.5,
-          dominance: -0.3,
-        },
-        hands: {
-          left: "heart",
-          right: "face",
-        },
-        intensity: 0.8,
-      },
-      face: {
-        weights: {
-          sad: 0.7,
-          angry: 0.2,
-          blink: 0.8,
-        },
-        ms: 1500,
-      },
-      gesture: "startle",
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t29",
-    text: "Laugh really hard.",
-    move: {
-      act: "giggle",
-      perform: {
-        feel: {
-          valence: 0.9,
-          arousal: 0.9,
-          dominance: 0.2,
-        },
-        intensity: 1,
-        ms: 3500,
-        hands: {
-          left: "mouth",
-          right: "hip",
-        },
-      },
-      face: {
-        weights: {
-          happy: 1,
-          aa: 0.6,
-        },
-        ms: 3500,
-      },
-      then: [
-        {
-          afterMs: 600,
-          gesture: "bounce",
-        },
-        {
-          afterMs: 1400,
-          gesture: "chuckle",
-        },
-        {
-          afterMs: 2200,
-          gesture: "giggleOnce",
         },
       ],
     },
@@ -1473,34 +746,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
     source: "seed-sonnet",
   },
   {
-    id: "t38",
-    text: "Cover your mouth, you made a mistake.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.4,
-          arousal: 0.3,
-          dominance: -0.5,
-        },
-        hands: {
-          left: "mouth",
-          right: "mouth",
-        },
-        intensity: 0.7,
-      },
-      mood: {
-        name: "shy",
-        intensity: 0.6,
-      },
-      look: {
-        x: 0,
-        y: -0.3,
-      },
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
     id: "t39",
     text: "Hold your head, you have a headache.",
     move: {
@@ -1525,30 +770,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
         },
         ms: 4000,
       },
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t40",
-    text: "Dance happily.",
-    move: {
-      act: "dance",
-      perform: {
-        feel: {
-          valence: 0.9,
-          arousal: 0.8,
-          dominance: 0.5,
-        },
-        intensity: 0.8,
-        ms: 5000,
-      },
-      then: [
-        {
-          afterMs: 4000,
-          gesture: "giggleOnce",
-        },
-      ],
     },
     score: 4,
     source: "seed-sonnet",
@@ -1591,117 +812,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
     source: "seed-sonnet",
   },
   {
-    id: "t45",
-    text: "Lean in to listen closely.",
-    move: {
-      act: "lean",
-      perform: {
-        feel: {
-          valence: 0.2,
-          arousal: -0.1,
-          dominance: -0.1,
-        },
-        intensity: 0.6,
-        hands: {
-          left: "ear",
-        },
-      },
-      gesture: "leanIn",
-      look: {
-        x: 0,
-        y: 0,
-      },
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t46",
-    text: "Step back in surprise.",
-    move: {
-      act: "stepBack",
-      perform: {
-        feel: {
-          valence: 0.1,
-          arousal: 0.8,
-          dominance: -0.3,
-        },
-        hands: {
-          left: "mouth",
-          right: "heart",
-        },
-        intensity: 0.8,
-      },
-      gesture: "startle",
-      face: {
-        weights: {
-          surprised: 0.9,
-        },
-        ms: 1500,
-      },
-    },
-    score: 5,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t49",
-    text: "Shrink back, frightened.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.7,
-          arousal: 0.8,
-          dominance: -0.8,
-        },
-        hands: {
-          left: "mouth",
-          right: "mouth",
-        },
-        intensity: 0.8,
-      },
-      act: "stepBack",
-      gesture: "startle",
-      look: {
-        x: 0.3,
-        y: -0.2,
-      },
-      face: {
-        weights: {
-          surprised: 0.7,
-          sad: 0.5,
-        },
-      },
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t50",
-    text: "Pump your fist, yes!",
-    move: {
-      perform: {
-        feel: {
-          valence: 0.9,
-          arousal: 0.9,
-          dominance: 0.7,
-        },
-        hands: {
-          right: "up",
-        },
-        intensity: 0.9,
-      },
-      gesture: "bounce",
-      then: [
-        {
-          afterMs: 600,
-          gesture: "thumbsUp",
-        },
-      ],
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
     id: "t51",
     text: "Wipe sweat from your brow, exhausted.",
     move: {
@@ -1720,109 +830,6 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
         {
           afterMs: 900,
           gesture: "sigh",
-        },
-      ],
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t55",
-    text: "Strike a model pose.",
-    move: {
-      perform: {
-        feel: {
-          valence: 0.7,
-          arousal: 0.3,
-          dominance: 0.8,
-        },
-        hands: {
-          right: "hip",
-          left: "head",
-        },
-        intensity: 0.8,
-      },
-      posture: "stand",
-      then: [
-        {
-          afterMs: 600,
-          gesture: "tilt",
-          look: {
-            x: 0.3,
-            y: 0.1,
-          },
-        },
-        {
-          afterMs: 1400,
-          gesture: "giggleOnce",
-        },
-      ],
-    },
-    score: 4,
-    source: "seed-sonnet",
-  },
-  {
-    id: "t56",
-    text: "Act like you're cold and windy.",
-    move: {
-      perform: {
-        feel: {
-          valence: -0.4,
-          arousal: 0.3,
-          dominance: -0.3,
-        },
-        hands: {
-          left: "shoulder",
-          right: "shoulder",
-        },
-        intensity: 0.8,
-        ms: 4000,
-      },
-      act: "sit",
-      face: {
-        weights: {
-          sad: 0.3,
-          blink: 0.4,
-        },
-        ms: 4000,
-      },
-      then: [
-        {
-          afterMs: 600,
-          keys: [
-            {
-              atMs: 0,
-              bones: {
-                spine: [0.15, 0, 0.05],
-                head: [0.2, 0, 0.08],
-                leftShoulder: [0, 0, 0.2],
-                rightShoulder: [0, 0, -0.2],
-              },
-            },
-            {
-              atMs: 300,
-              bones: {
-                spine: [0.15, 0, -0.05],
-                head: [0.2, 0, -0.08],
-                leftShoulder: [0, 0, 0.2],
-                rightShoulder: [0, 0, -0.2],
-              },
-            },
-            {
-              atMs: 600,
-              bones: {
-                spine: [0.15, 0, 0.05],
-                head: [0.2, 0, 0.08],
-                leftShoulder: [0, 0, 0.2],
-                rightShoulder: [0, 0, -0.2],
-              },
-            },
-          ],
-          loop: true,
-        },
-        {
-          afterMs: 1000,
-          gesture: "lookAway",
         },
       ],
     },
@@ -1919,6 +926,637 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
     },
     score: 4,
     source: "after-3",
+  },
+  {
+    id: "u05",
+    text: "Jump back from a snake.",
+    move: {
+      act: "stepBack",
+      perform: {
+        feel: {
+          valence: -0.6,
+          arousal: 0.95,
+          dominance: -0.3,
+        },
+        hands: {
+          left: "up",
+          right: "up",
+        },
+        intensity: 0.9,
+      },
+      gesture: "startle",
+      face: {
+        weights: {
+          surprised: 1,
+          aa: 0.5,
+        },
+        ms: 1500,
+      },
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u10",
+    text: "Shield your eyes from bright sun.",
+    move: {
+      perform: {
+        feel: {
+          valence: -0.2,
+          arousal: 0.3,
+          dominance: 0.1,
+        },
+        hands: {
+          right: "brow",
+        },
+      },
+      gesture: "lookAway",
+      face: {
+        weights: {
+          sad: 0.2,
+          blink: 0.5,
+        },
+      },
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u13",
+    text: "Comfort someone who is sad.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.3,
+          arousal: -0.4,
+          dominance: -0.1,
+        },
+        hands: {
+          left: "heart",
+          right: "forward",
+        },
+      },
+      act: "lean",
+      gesture: "nodSoft",
+      mood: {
+        name: "concerned",
+        intensity: 0.5,
+      },
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u14",
+    text: "Give a big welcoming hug.",
+    move: {
+      act: "hug",
+      perform: {
+        feel: {
+          valence: 0.9,
+          arousal: 0.5,
+          dominance: 0.3,
+        },
+        hands: {
+          left: "out",
+          right: "out",
+        },
+        intensity: 0.8,
+      },
+      mood: {
+        name: "happy",
+        intensity: 0.8,
+      },
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u15",
+    text: "Wave to a friend across the street.",
+    move: {
+      act: "wave",
+      perform: {
+        feel: {
+          valence: 0.8,
+          arousal: 0.6,
+          dominance: 0.5,
+        },
+        hands: {
+          right: "up",
+          repeat: 4,
+        },
+      },
+      gesture: "wave",
+      then: [
+        {
+          afterMs: 1800,
+          mood: {
+            name: "happy",
+            intensity: 0.6,
+          },
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u16",
+    text: "Say goodbye at a door.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.4,
+          arousal: 0.3,
+          dominance: 0.2,
+        },
+        hands: {
+          right: "up",
+        },
+        ms: 2500,
+      },
+      act: "stand",
+      gesture: "leanIn",
+      then: [
+        {
+          afterMs: 600,
+          gesture: "wave",
+        },
+        {
+          afterMs: 1800,
+          gesture: "nodSoft",
+          mood: {
+            name: "happy",
+            intensity: 0.5,
+          },
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u19",
+    text: "Give a thumbs up.",
+    move: {
+      gesture: "thumbsUp",
+      perform: {
+        feel: {
+          valence: 0.8,
+          arousal: 0.3,
+          dominance: 0.5,
+        },
+      },
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u24",
+    text: "Hold a baby gently.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.7,
+          arousal: -0.5,
+          dominance: 0.1,
+        },
+        hands: {
+          left: "together",
+          right: "together",
+        },
+        intensity: 0.5,
+      },
+      posture: "affectionate",
+      gesture: "nodSoft",
+      look: {
+        x: 0,
+        y: -0.4,
+      },
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u26",
+    text: "Push a heavy door.",
+    move: {
+      perform: {
+        feel: {
+          valence: -0.1,
+          arousal: 0.6,
+          dominance: 0.5,
+        },
+        effort: {
+          weight: 0.9,
+          time: -0.6,
+          flow: 0.7,
+          space: 0.3,
+        },
+        hands: {
+          left: "forward",
+          right: "forward",
+        },
+        intensity: 0.8,
+        ms: 2500,
+      },
+      act: "reach",
+      then: [
+        {
+          afterMs: 600,
+          gesture: "leanIn",
+        },
+        {
+          afterMs: 1800,
+          perform: {
+            feel: {
+              valence: 0.2,
+              arousal: -0.2,
+              dominance: 0.3,
+            },
+          },
+          gesture: "sigh",
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u30",
+    text: "Do a few jumping jacks.",
+    move: {
+      act: "dance",
+      perform: {
+        feel: {
+          valence: 0.7,
+          arousal: 0.9,
+          dominance: 0.5,
+        },
+        hands: {
+          left: "up",
+          right: "up",
+          repeat: 6,
+        },
+        intensity: 0.9,
+        ms: 5000,
+      },
+      then: [
+        {
+          afterMs: 0,
+          gesture: "hop",
+        },
+        {
+          afterMs: 600,
+          gesture: "hop",
+        },
+        {
+          afterMs: 1200,
+          gesture: "hop",
+        },
+        {
+          afterMs: 1800,
+          gesture: "hop",
+        },
+        {
+          afterMs: 2400,
+          gesture: "hop",
+        },
+        {
+          afterMs: 3000,
+          gesture: "hop",
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u31",
+    text: "Stretch your back after sitting.",
+    move: {
+      act: "stretch",
+      perform: {
+        feel: {
+          valence: 0.5,
+          arousal: -0.2,
+          dominance: 0.3,
+        },
+        hands: {
+          left: "up",
+          right: "up",
+        },
+        shape: {
+          rise: 0.8,
+          spread: 0.6,
+          advance: 0,
+        },
+      },
+      then: [
+        {
+          afterMs: 2500,
+          gesture: "sigh",
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u37",
+    text: "Do a silly dance.",
+    move: {
+      act: "dance",
+      perform: {
+        feel: {
+          valence: 0.9,
+          arousal: 0.9,
+          dominance: 0.4,
+        },
+        intensity: 0.9,
+        hands: {
+          left: "up",
+          right: "up",
+          repeat: 4,
+        },
+      },
+      then: [
+        {
+          afterMs: 1500,
+          gesture: "hop",
+        },
+        {
+          afterMs: 2500,
+          gesture: "bounce",
+        },
+        {
+          afterMs: 3500,
+          gesture: "giggleOnce",
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u43",
+    text: "Act proud of a drawing you made.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.9,
+          arousal: 0.5,
+          dominance: 0.7,
+        },
+        hands: {
+          left: "heart",
+          right: "out",
+        },
+        intensity: 0.7,
+      },
+      posture: "happy",
+      gesture: "bounce",
+      mood: {
+        name: "proud",
+        intensity: 0.8,
+      },
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u47",
+    text: "Act nervous before a speech.",
+    move: {
+      perform: {
+        feel: {
+          valence: -0.4,
+          arousal: 0.8,
+          dominance: -0.6,
+        },
+        hands: {
+          left: "together",
+          right: "together",
+          repeat: 6,
+        },
+        intensity: 0.7,
+      },
+      posture: "guarded",
+      mood: {
+        name: "nervous",
+        intensity: 0.8,
+      },
+      then: [
+        {
+          afterMs: 800,
+          gesture: "lookAway",
+        },
+        {
+          afterMs: 1800,
+          gesture: "sigh",
+        },
+        {
+          afterMs: 3000,
+          face: {
+            weights: {
+              surprised: 0.3,
+              sad: 0.2,
+            },
+          },
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u48",
+    text: "Pace back and forth, worried.",
+    move: {
+      act: "walkOver",
+      perform: {
+        feel: {
+          valence: -0.5,
+          arousal: 0.5,
+          dominance: -0.4,
+        },
+        hands: {
+          left: "together",
+          right: "together",
+          repeat: 3,
+        },
+        ms: 6000,
+      },
+      mood: {
+        name: "worried",
+        intensity: 0.7,
+      },
+      then: [
+        {
+          afterMs: 2000,
+          act: "stepBack",
+          perform: {
+            feel: {
+              valence: -0.5,
+              arousal: 0.5,
+              dominance: -0.4,
+            },
+            hands: {
+              left: "mouth",
+              right: "together",
+            },
+          },
+        },
+        {
+          afterMs: 4000,
+          act: "walkOver",
+          perform: {
+            feel: {
+              valence: -0.5,
+              arousal: 0.5,
+              dominance: -0.4,
+            },
+            hands: {
+              left: "brow",
+              right: "together",
+            },
+          },
+        },
+        {
+          afterMs: 6000,
+          act: "stepBack",
+          perform: {
+            feel: {
+              valence: -0.5,
+              arousal: 0.4,
+              dominance: -0.4,
+            },
+            hands: {
+              left: "mouth",
+              right: "hip",
+            },
+          },
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u49",
+    text: "Act confused by a puzzle.",
+    move: {
+      perform: {
+        feel: {
+          valence: -0.2,
+          arousal: 0.3,
+          dominance: -0.4,
+        },
+        hands: {
+          left: "brow",
+          right: "head",
+        },
+      },
+      gesture: "tilt",
+      mood: {
+        name: "confused",
+        intensity: 0.7,
+      },
+      then: [
+        {
+          afterMs: 1500,
+          gesture: "think",
+        },
+        {
+          afterMs: 3000,
+          gesture: "shrug",
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u50",
+    text: "Scratch your head, puzzled.",
+    move: {
+      perform: {
+        feel: {
+          valence: -0.2,
+          arousal: 0.2,
+          dominance: -0.2,
+        },
+        hands: {
+          right: "head",
+        },
+        intensity: 0.6,
+      },
+      gesture: "tilt",
+      face: {
+        weights: {
+          surprised: 0.3,
+          sad: 0.2,
+        },
+      },
+      then: [
+        {
+          afterMs: 1800,
+          release: true,
+        },
+      ],
+    },
+    score: 4,
+    source: "seed2-sonnet",
+  },
+  {
+    id: "u52",
+    text: "Act surprised by a gift.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.9,
+          arousal: 0.8,
+          dominance: 0.1,
+        },
+        hands: {
+          left: "mouth",
+          right: "mouth",
+        },
+        intensity: 0.8,
+      },
+      gesture: "startle",
+      face: {
+        weights: {
+          surprised: 1,
+          happy: 0.6,
+          oh: 0.5,
+        },
+      },
+      then: [
+        {
+          afterMs: 900,
+          gesture: "bounce",
+          mood: {
+            name: "happy",
+            intensity: 0.9,
+          },
+          perform: {
+            feel: {
+              valence: 0.9,
+              arousal: 0.7,
+              dominance: 0.2,
+            },
+            hands: {
+              left: "heart",
+              right: "heart",
+            },
+          },
+        },
+      ],
+    },
+    score: 5,
+    source: "seed2-sonnet",
   },
   {
     id: "yawn-sleepy",

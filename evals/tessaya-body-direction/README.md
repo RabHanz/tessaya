@@ -23,9 +23,15 @@ pnpm tessaya-body-direction --out runs/regraded --regrade runs/direction/results
 ```
 
 - Flags: `--model`, `--effort` (default: what a live turn picks), `--case <id>` (repeatable), `--split seen|unseen`, `--samples <n>` (default 1), `--parallel <n>` (default 3), `--judge <model>` (default Sonnet).
+- `--tier intent` tells the turn to give only an `intent`, as a weaker model would. Run it with `--model haiku` to measure what her motion library adds, against a strong model with `--model sonnet` and no tier.
+- `--library <file>` runs a different direction file, such as a seed set for the motion library.
 - `--regrade` grades and judges an earlier run's recorded body calls again, with no new turns. Use it after a grader change, so a before and an after are judged the same way.
 - A run writes `results.json` and `summary.md`, with the seen against unseen table first.
 - Cost: one assistant turn (about 25k input tokens, mostly cached) and one short judge call a sample. A full run with 2 samples is 112 of each.
+
+## Grow her motion library
+
+`pnpm tessaya-body-direction:harvest <results.json>... > ../packages/tessaya-shared/src/bodyMotionLibrary.ts` keeps each direction's best performance that passed every check and scored 4 or more. Only seen directions and seed sets are harvested; unseen ones never are. Run a seed set on a strong model, harvest it, then check the gain with `--tier intent`.
 
 ## Add a direction
 

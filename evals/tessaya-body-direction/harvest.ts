@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off
 /**
- * Grows her motion library (M-081) from direction runs: a performance enters only when it passed every check here
- * (moved, all four channels, no rig correction, within human speed) and the judge scored it 4 or more. Only seen
- * directions and seed sets may be harvested; unseen eval directions never are, so the unseen score stays honest.
- * usage: node harvest.ts <results.json>... > packages/tessaya-shared/src/bodyMotionLibrary.ts
+ * Grows her motion library (M-081): a seen or seed performance that passed every check and scored 4 or more, and,
+ * with `--physics <verdicts.json>` (the offline MuJoCo check, `{id: {pass}}`), passed that too. Unseen never enter.
+ * usage: node harvest.ts [--physics <verdicts.json>] <results.json>... > a file, then copy over bodyMotionLibrary.ts
  */
 import * as NodeFS from "node:fs";
 
@@ -22,8 +21,17 @@ interface Row {
   readonly graded: { readonly corrections: number; readonly overSpeed: ReadonlyArray<string> };
 }
 
+const args = process.argv.slice(2);
+const at = args.indexOf("--physics");
+const physics =
+  at < 0
+    ? null
+    : (JSON.parse(NodeFS.readFileSync(args.splice(at, 2)[1]!, "utf8")) as Record<
+        string,
+        { readonly pass: boolean }
+      >);
 const best = new Map<string, MotionEntry>();
-for (const file of process.argv.slice(2)) {
+for (const file of args) {
   for (const r of JSON.parse(NodeFS.readFileSync(file, "utf8")) as Row[]) {
     if (r.split !== "seen" || !r.pass || r.graded.corrections > 0 || r.graded.overSpeed.length > 0)
       continue;
@@ -33,6 +41,7 @@ for (const file of process.argv.slice(2)) {
       .toReversed()
       .find((m) => decodeBodyMove(m).ok && !(typeof m === "object" && m !== null && "intent" in m));
     if (move === undefined) continue;
+    if (physics !== null && physics[r.id]?.pass !== true) continue;
     const was = best.get(r.said);
     if (was !== undefined && was.score >= r.score) continue;
     best.set(r.said, {
