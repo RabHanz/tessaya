@@ -16,6 +16,13 @@ import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
+import * as Context from "effect/Context";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { HOME_KEY } from "./BrainHost.ts";
+import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import * as Vocabulary from "./TessayaVocabulary.ts";
 import { serveVoiceCall, TessayaVoiceLibrary } from "./TessayaVoiceLibrary.ts";
 
@@ -152,6 +159,71 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
           ).toBe(false);
         }),
       ),
+  );
+
+  it.effect(
+    "a worker's own words go up to her brain before the brain's list may replace its cache (17 Nov's 62)",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dirs = {
+          brain: yield* fs.makeTempDirectoryScoped({ prefix: "t3code-vocab-brain-" }),
+          worker: yield* fs.makeTempDirectoryScoped({ prefix: "t3code-vocab-worker-" }),
+        };
+        const fileIn = (base: string) =>
+          Effect.map(
+            ServerConfig.ServerConfig.pipe(
+              Effect.provide(ServerConfig.layerTest(process.cwd(), base)),
+            ),
+            (c) => NodePath.join(c.stateDir, "voice", "dictionary.json"),
+          );
+        const write = (file: string, entries: ReadonlyArray<VocabularyEntry>) => {
+          NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+          NodeFS.writeFileSync(file, JSON.stringify(entries));
+        };
+        const brainFile = yield* fileIn(dirs.brain);
+        const workerFile = yield* fileIn(dirs.worker);
+        write(brainFile, [{ phrase: "kodi", replacement: null, source: "added", count: 1 }]);
+        write(workerFile, HIS_WORDS.slice(0, 3));
+        const brain = yield* Layer.build(
+          Vocabulary.layer.pipe(
+            Layer.provideMerge(ServerSettingsService.layerTest()),
+            Layer.provide(ServerConfig.layerTest(process.cwd(), dirs.brain)),
+          ),
+        );
+        const peers = Layer.mergeAll(
+          Layer.succeed(PeerLinks.PeerLinks, {
+            enabled: Effect.succeed(true),
+            list: Effect.succeed([
+              { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
+            ]),
+          } as never),
+          Layer.succeed(
+            PeerMcpClient.PeerMcpClient,
+            PeerMcpClient.PeerMcpClient.of({
+              call: (input) =>
+                receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
+                  Effect.provideContext(brain),
+                ) as never,
+            }),
+          ),
+        );
+        const worker = yield* Layer.build(
+          Vocabulary.layer.pipe(
+            Layer.provideMerge(ServerSettingsService.layerTest()),
+            Layer.provide(ServerConfig.layerTest(process.cwd(), dirs.worker)),
+            Layer.provide(peers),
+            Layer.provideMerge(SqlitePersistenceMemory),
+          ),
+        );
+        const sql = Context.get(worker, SqlClient.SqlClient);
+        yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`;
+        yield* Context.get(worker, TessayaVocabulary).read;
+        const phrases = (file: string) => stored(file).map((e) => (e as { phrase: string }).phrase);
+        // Nothing of his is lost: the brain gained his three, and the worker's cache holds all four.
+        expect(phrases(brainFile).toSorted()).toEqual(["btw", "deplok", "google", "kodi"]);
+        expect(phrases(workerFile).toSorted()).toEqual(["btw", "deplok", "google", "kodi"]);
+      }).pipe(Effect.scoped),
   );
 
   it.effect("adds the persona names once, beside his own spelling of one", () =>
