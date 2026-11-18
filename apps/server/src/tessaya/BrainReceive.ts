@@ -16,6 +16,7 @@ import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
 import { VoiceIdGateChange, voiceIdGateHere } from "./VoiceIdGate.ts";
 import { TessayaScratchpadAct } from "@t3tools/tessaya-contracts";
 import { scratchpadHere } from "./TessayaScratchpad.ts";
+import { TessayaVocabulary, VocabularyAtBrain } from "./TessayaVocabulary.ts";
 import * as Clock from "effect/Clock";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
@@ -56,6 +57,7 @@ const decodePrivateTier = Schema.decodeUnknownOption(PrivateTierAct);
 const decodePronounce = Schema.decodeUnknownOption(PronounceChange);
 const decodeVoiceIdGate = Schema.decodeUnknownOption(VoiceIdGateChange);
 const decodeScratchpad = Schema.decodeUnknownOption(TessayaScratchpadAct);
+const decodeVocabulary = Schema.decodeUnknownOption(VocabularyAtBrain);
 
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
@@ -141,6 +143,18 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
       if (Option.isNone(act)) return refused("Not a Scratchpad act.");
       const result = yield* scratchpadHere(act.value).pipe(Effect.orElseSucceed(Option.none));
       return Option.isNone(result) ? refused("No Scratchpad here.") : done(result.value);
+    }
+    case "vocabulary": {
+      const act = decodeVocabulary(payload);
+      if (Option.isNone(act)) return refused("Not a dictionary change.");
+      const vocabulary = yield* Effect.serviceOption(TessayaVocabulary);
+      if (Option.isNone(vocabulary)) return refused("No dictionary here.");
+      const all =
+        act.value.change === null
+          ? Option.some(yield* vocabulary.value.read)
+          : yield* vocabulary.value.change(act.value.change).pipe(Effect.option);
+      if (Option.isNone(all)) return refused("The dictionary was not changed.");
+      return done({ stored: yield* vocabulary.value.stored, all: all.value });
     }
     case "libraryRemoved": {
       const act = decodeLibraryRemoved(payload);

@@ -26,6 +26,7 @@ export const BrainOp = Schema.Literals([
   "pronounce",
   "voiceIdGate",
   "scratchpad",
+  "vocabulary",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 

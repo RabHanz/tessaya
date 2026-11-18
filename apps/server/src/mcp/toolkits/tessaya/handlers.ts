@@ -1035,7 +1035,7 @@ export const layer = McpToolAccess.toLayer(
           ),
         ),
       ),
-      // The one dictionary; a linked server's change is kept here and never sent on (TessayaVocabulary.toPeers).
+      // The one dictionary, on her brain: a worker server passes the change there (TessayaVocabulary.atBrain).
       tessaya_vocabulary: McpToolAccess.writes(
         (input) =>
           Effect.gen(function* () {
