@@ -16,6 +16,8 @@ import {
   standAt,
   wanderTo,
   type DisplayArea,
+  bodyWithin,
+  windowAround,
 } from "./mascotDock.ts";
 
 const SIZE = 150;
@@ -214,6 +216,15 @@ describe("dropAt", () => {
     const drop = dropAt(edges, { x: 3400, y: 400 }, 190);
     expect(drop.edge.kind).toBe("window");
     expect(drop.spot.y + 190 * FOOT_SHARE).toBeCloseTo(700, 0);
+  });
+});
+
+describe("her window's room", () => {
+  it("leaves room on every side for her reach and effects, around the same body box", () => {
+    const window = windowAround({ x: 500, y: 900 }, SIZE);
+    expect(window).toEqual({ x: 440, y: 840, width: 270, height: 270 });
+    // every placement still works in her body's box
+    expect(bodyWithin(window, SIZE)).toEqual({ x: 500, y: 900, width: SIZE, height: SIZE });
   });
 });
 
