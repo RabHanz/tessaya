@@ -55,6 +55,7 @@ import { traced } from "../provenance/ActionLog.ts";
 import { Consent, hisOwnTurn } from "../tessaya/consent.ts";
 import { trustAgentOf } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
+import { houseZone, onHouseClockText } from "../tessaya/houseZone.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { HomeDevices, routedAct } from "./HomeDevices.ts";
@@ -789,190 +790,196 @@ const makeRunners = Effect.gen(function* () {
     readonly holds: boolean;
   }) => {
     const allowed = new Set(vessel.specs.map((s) => s.name));
-    const run = Effect.fn("R1Tools.run")(function* (
-      name: string,
-      raw: unknown,
-      device?: string,
-    ): Effect.fn.Return<ToolOutcome> {
-      const spec = vessel.specs.find((s) => s.name === name);
-      const input = spec === undefined ? raw : asAdvertised(spec, raw);
-      const refused = yield* householdRefusal(name);
-      if (refused !== null) return { text: refused, isError: true } as ToolOutcome;
-      if (name === LAPTOP.name && allowed.has(name)) {
-        const question =
-          typeof input === "object" && input !== null && "question" in input
-            ? String(input.question)
-            : "";
-        const told = yield* askLaptop(question);
-        return { text: told.line, isError: !told.ok, status: told.status } as ToolOutcome;
-      }
-      if (name === VOLUME.name && allowed.has(name)) return yield* setRoomVolume(input, device);
-      if (!allowed.has(name))
-        return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
-      const origin = yield* TurnOrigin;
-      const judged = jobVerdict(
-        name,
-        input,
-        origin?.tainted === true,
-        yield* trustAgentOf(origin?.persona),
-      );
-      if (typeof judged === "object" && "refused" in judged)
-        return { text: judged.refused, isError: true } as ToolOutcome;
-      // The desk with no turn is the desktop app's own call through its desk door: its gate already asked him.
-      if (
-        judged !== "allow" &&
-        (origin !== null || vessel.holds) &&
-        (origin?.assurance ?? 0) < CARD_YES
-      ) {
-        const key = standingKey(name, judged.card);
-        const asCard = (o: NonNullable<typeof origin>) =>
-          run(name, raw, device).pipe(
-            Effect.provideService(TurnOrigin, { ...o, assurance: CARD_YES }),
-          );
-        // His "Always allow", given on any vessel, is his yes here; never a guest's or an unverified voice's.
-        if (yield* granted(key, origin)) return yield* asCard(origin!);
-        const what = `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`;
-        // A desk turn on the brain asks in his desktop's own approval box; his phone is asked only when it can't be.
-        if (!vessel.holds && origin !== null) {
-          const hands = yield* Effect.serviceOption(VesselHands);
-          const yes = Option.isNone(hands)
-            ? "unreachable"
-            : yield* askHisYes(hands.value, origin, what, origin.tainted === true ? null : key);
-          if (yes === "always") yield* grant(key, origin.member);
-          if (yes === "yes" || yes === "always") return yield* asCard(origin);
-          if (yes === "no")
-            return {
-              text: "He said no on his desktop. Nothing was done.",
-              isError: false,
-              status: "refused",
-            } as ToolOutcome;
+    const run = Effect.fn("R1Tools.run")(
+      function* (name: string, raw: unknown, device?: string): Effect.fn.Return<ToolOutcome> {
+        const spec = vessel.specs.find((s) => s.name === name);
+        const input = spec === undefined ? raw : asAdvertised(spec, raw);
+        const refused = yield* householdRefusal(name);
+        if (refused !== null) return { text: refused, isError: true } as ToolOutcome;
+        if (name === LAPTOP.name && allowed.has(name)) {
+          const question =
+            typeof input === "object" && input !== null && "question" in input
+              ? String(input.question)
+              : "";
+          const told = yield* askLaptop(question);
+          return { text: told.line, isError: !told.ok, status: told.status } as ToolOutcome;
         }
-        const at = device ?? (vessel.holds ? undefined : "desktop");
-        if (at === undefined || origin === null || Option.isNone(stepUps))
+        if (name === VOLUME.name && allowed.has(name)) return yield* setRoomVolume(input, device);
+        if (!allowed.has(name))
+          return { text: `${name} is not a tool here.`, isError: true } as ToolOutcome;
+        const origin = yield* TurnOrigin;
+        const judged = jobVerdict(
+          name,
+          input,
+          origin?.tainted === true,
+          yield* trustAgentOf(origin?.persona),
+        );
+        if (typeof judged === "object" && "refused" in judged)
+          return { text: judged.refused, isError: true } as ToolOutcome;
+        // The desk with no turn is the desktop app's own call through its desk door: its gate already asked him.
+        if (
+          judged !== "allow" &&
+          (origin !== null || vessel.holds) &&
+          (origin?.assurance ?? 0) < CARD_YES
+        ) {
+          const key = standingKey(name, judged.card);
+          const asCard = (o: NonNullable<typeof origin>) =>
+            run(name, raw, device).pipe(
+              Effect.provideService(TurnOrigin, { ...o, assurance: CARD_YES }),
+            );
+          // His "Always allow", given on any vessel, is his yes here; never a guest's or an unverified voice's.
+          if (yield* granted(key, origin)) return yield* asCard(origin!);
+          const what = `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`;
+          // A desk turn on the brain asks in his desktop's own approval box; his phone is asked only when it can't be.
+          if (!vessel.holds && origin !== null) {
+            const hands = yield* Effect.serviceOption(VesselHands);
+            const yes = Option.isNone(hands)
+              ? "unreachable"
+              : yield* askHisYes(hands.value, origin, what, origin.tainted === true ? null : key);
+            if (yes === "always") yield* grant(key, origin.member);
+            if (yes === "yes" || yes === "always") return yield* asCard(origin);
+            if (yes === "no")
+              return {
+                text: "He said no on his desktop. Nothing was done.",
+                isError: false,
+                status: "refused",
+              } as ToolOutcome;
+          }
+          const at = device ?? (vessel.holds ? undefined : "desktop");
+          if (at === undefined || origin === null || Option.isNone(stepUps))
+            return {
+              text: "That needs his yes on his phone, and it can't be asked from here.",
+              isError: true,
+            } as ToolOutcome;
+          const act = yield* stepUps.value.hold({
+            device: at,
+            what: plainAct(name, input),
+            key: actKey(name, input),
+            details: what,
+            member: origin.member ?? null,
+            needs: CARD_YES,
+            card: true,
+            ...(!origin.tainted && hisOwnTurn(origin) ? { always: grant(key, origin.member) } : {}),
+            phone: !at.startsWith("replay-"),
+            run: (raised) =>
+              run(name, raw, device).pipe(
+                Effect.provideService(TurnOrigin, { ...origin, ...raised }),
+                Effect.asVoid,
+              ),
+          });
+          return { text: `${CARD_LINE} (${act})`, isError: false, status: "asked" } as ToolOutcome;
+        }
+        // Held for a step-up only where a vessel judged the voice (it sent one) and Voice ID can tell anyone apart (a
+        // member has a voice). A replay holds too, with no card on his phone, and its act then runs as a dry run.
+        const needs = origin === null ? null : stepUpNeeds(name, origin.assurance ?? 0, input);
+        if (
+          needs !== null &&
+          origin !== null &&
+          origin.speaker != null &&
+          vessel.holds &&
+          device !== undefined &&
+          Option.isSome(stepUps) &&
+          Option.isSome(voices) &&
+          (yield* voices.value.current).length > 0
+        ) {
+          const act = yield* stepUps.value.hold({
+            device,
+            what: plainAct(name, input),
+            key: actKey(name, input),
+            details: `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`,
+            member: origin.member ?? null,
+            needs,
+            phone: !device.startsWith("replay-"),
+            run: (raised) =>
+              run(name, raw, device).pipe(
+                Effect.provideService(TurnOrigin, { ...origin, ...raised }),
+                Effect.asVoid,
+              ),
+          });
+          return { text: `${HELD_LINE} (${act})`, isError: false, status: "asked" } as ToolOutcome;
+        }
+        const dry = replayDryRun(name, input, device);
+        if (dry !== null) {
+          if (
+            device !== undefined &&
+            !dry.isError &&
+            (name === "job_start" || name === "job_agree")
+          )
+            rehearse(device, name, input as Record<string, unknown>);
+          return dry;
+        }
+        const scope: McpInvocationScope = {
+          environmentId,
+          capabilities: new Set(["orchestration"]),
+          issuedAt: yield* Clock.currentTimeMillis,
+          requestNamespace: vessel.client.sessionId,
+          thread: undefined,
+          client: device?.startsWith("replay-") === true ? vessel.replay : vessel.client,
+          linkedEnvironments: false,
+        };
+        // A change by voice is an action, as the same call over /mcp is; reads stay out of the log.
+        const logged = changesSomething(name, input)
+          ? traced({
+              kind: "tool.call",
+              actor:
+                origin === null
+                  ? { kind: "system", id: vessel.client.sessionId, certainty: 1 }
+                  : {
+                      kind:
+                        origin.member == null || origin.member === OWNER_MEMBER_ID
+                          ? "owner"
+                          : "member",
+                      id: origin.member ?? OWNER_MEMBER_ID,
+                      certainty: origin.assurance ?? 0,
+                    },
+              subject: name,
+              persona: origin?.persona ?? null,
+              evidence: device === undefined ? [] : [{ kind: "device", ref: device }],
+            })
+          : <A, E, R>(effect: Effect.Effect<A, E, R>) => effect;
+        const last = yield* toolkit.handle(name as SharedName, input as never).pipe(
+          Effect.flatMap(Stream.runLast),
+          logged,
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+          Effect.provideService(ThreadManagement.ThreadManagementService, threads),
+          Effect.catchCause((cause) =>
+            Effect.succeedSome({ isFailure: true, result: Cause.squash(cause) }),
+          ),
+        );
+        if (Option.isNone(last)) return { text: "No answer.", isError: true } as ToolOutcome;
+        const { isFailure, result } = last.value as { isFailure: boolean; result: unknown };
+        if (isFailure) return { text: reasonOf(result), isError: true } as ToolOutcome;
+        const home = decodeHome(result);
+        if (Option.isSome(home)) {
+          if (!home.value.ok)
+            return {
+              text: home.value.error ?? "it did not work",
+              isError: true,
+              status: "failed",
+            } as ToolOutcome;
+          const value = home.value.value as { status?: unknown } | undefined;
           return {
-            text: "That needs his yes on his phone, and it can't be asked from here.",
-            isError: true,
+            text: JSON.stringify(home.value.value ?? null),
+            isError: false,
+            ...(typeof value?.status === "string" ? { status: value.status } : {}),
           } as ToolOutcome;
-        const act = yield* stepUps.value.hold({
-          device: at,
-          what: plainAct(name, input),
-          key: actKey(name, input),
-          details: what,
-          member: origin.member ?? null,
-          needs: CARD_YES,
-          card: true,
-          ...(!origin.tainted && hisOwnTurn(origin) ? { always: grant(key, origin.member) } : {}),
-          phone: !at.startsWith("replay-"),
-          run: (raised) =>
-            run(name, raw, device).pipe(
-              Effect.provideService(TurnOrigin, { ...origin, ...raised }),
-              Effect.asVoid,
-            ),
-        });
-        return { text: `${CARD_LINE} (${act})`, isError: false, status: "asked" } as ToolOutcome;
-      }
-      // Held for a step-up only where a vessel judged the voice (it sent one) and Voice ID can tell anyone apart (a
-      // member has a voice). A replay holds too, with no card on his phone, and its act then runs as a dry run.
-      const needs = origin === null ? null : stepUpNeeds(name, origin.assurance ?? 0, input);
-      if (
-        needs !== null &&
-        origin !== null &&
-        origin.speaker != null &&
-        vessel.holds &&
-        device !== undefined &&
-        Option.isSome(stepUps) &&
-        Option.isSome(voices) &&
-        (yield* voices.value.current).length > 0
-      ) {
-        const act = yield* stepUps.value.hold({
-          device,
-          what: plainAct(name, input),
-          key: actKey(name, input),
-          details: `${name.replace(/_/g, " ")} ${recordText(JSON.stringify(input ?? {}), 120)}`,
-          member: origin.member ?? null,
-          needs,
-          phone: !device.startsWith("replay-"),
-          run: (raised) =>
-            run(name, raw, device).pipe(
-              Effect.provideService(TurnOrigin, { ...origin, ...raised }),
-              Effect.asVoid,
-            ),
-        });
-        return { text: `${HELD_LINE} (${act})`, isError: false, status: "asked" } as ToolOutcome;
-      }
-      const dry = replayDryRun(name, input, device);
-      if (dry !== null) {
-        if (device !== undefined && !dry.isError && (name === "job_start" || name === "job_agree"))
-          rehearse(device, name, input as Record<string, unknown>);
-        return dry;
-      }
-      const scope: McpInvocationScope = {
-        environmentId,
-        capabilities: new Set(["orchestration"]),
-        issuedAt: yield* Clock.currentTimeMillis,
-        requestNamespace: vessel.client.sessionId,
-        thread: undefined,
-        client: device?.startsWith("replay-") === true ? vessel.replay : vessel.client,
-        linkedEnvironments: false,
-      };
-      // A change by voice is an action, as the same call over /mcp is; reads stay out of the log.
-      const logged = changesSomething(name, input)
-        ? traced({
-            kind: "tool.call",
-            actor:
-              origin === null
-                ? { kind: "system", id: vessel.client.sessionId, certainty: 1 }
-                : {
-                    kind:
-                      origin.member == null || origin.member === OWNER_MEMBER_ID
-                        ? "owner"
-                        : "member",
-                    id: origin.member ?? OWNER_MEMBER_ID,
-                    certainty: origin.assurance ?? 0,
-                  },
-            subject: name,
-            persona: origin?.persona ?? null,
-            evidence: device === undefined ? [] : [{ kind: "device", ref: device }],
-          })
-        : <A, E, R>(effect: Effect.Effect<A, E, R>) => effect;
-      const last = yield* toolkit.handle(name as SharedName, input as never).pipe(
-        Effect.flatMap(Stream.runLast),
-        logged,
-        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
-        Effect.provideService(ThreadManagement.ThreadManagementService, threads),
-        Effect.catchCause((cause) =>
-          Effect.succeedSome({ isFailure: true, result: Cause.squash(cause) }),
+        }
+        const own =
+          name === "tessaya_jobs" && device?.startsWith("replay-") === true
+            ? [...(rehearsed.get(device) ?? []), SUITE_JOB]
+            : undefined;
+        if (own !== undefined && typeof result === "object" && result !== null && "jobs" in result)
+          return {
+            text: JSON.stringify({ ...result, jobs: [...own, ...(result.jobs as Array<unknown>)] }),
+            isError: false,
+          } as ToolOutcome;
+        return { text: JSON.stringify(result), isError: false } as ToolOutcome;
+      },
+      (outcome) =>
+        Effect.flatMap(outcome, (o) =>
+          Effect.map(houseZone(), (zone) => ({ ...o, text: onHouseClockText(o.text, zone) })),
         ),
-      );
-      if (Option.isNone(last)) return { text: "No answer.", isError: true } as ToolOutcome;
-      const { isFailure, result } = last.value as { isFailure: boolean; result: unknown };
-      if (isFailure) return { text: reasonOf(result), isError: true } as ToolOutcome;
-      const home = decodeHome(result);
-      if (Option.isSome(home)) {
-        if (!home.value.ok)
-          return {
-            text: home.value.error ?? "it did not work",
-            isError: true,
-            status: "failed",
-          } as ToolOutcome;
-        const value = home.value.value as { status?: unknown } | undefined;
-        return {
-          text: JSON.stringify(home.value.value ?? null),
-          isError: false,
-          ...(typeof value?.status === "string" ? { status: value.status } : {}),
-        } as ToolOutcome;
-      }
-      const own =
-        name === "tessaya_jobs" && device?.startsWith("replay-") === true
-          ? [...(rehearsed.get(device) ?? []), SUITE_JOB]
-          : undefined;
-      if (own !== undefined && typeof result === "object" && result !== null && "jobs" in result)
-        return {
-          text: JSON.stringify({ ...result, jobs: [...own, ...(result.jobs as Array<unknown>)] }),
-          isError: false,
-        } as ToolOutcome;
-      return { text: JSON.stringify(result), isError: false } as ToolOutcome;
-    });
+    );
     return run;
   };
   const room: RoomToolSet = {
