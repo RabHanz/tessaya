@@ -5,6 +5,8 @@ import {
   JOINT_LIMITS,
   QI,
   clampJoint,
+  fitProxies,
+  proxiesByHeight,
   fk,
   makeRig,
   manifestOf,
@@ -304,5 +306,39 @@ describe("springStep", () => {
     const speed = len(s.w);
     const next = springStep(s, qFromEuler([0.8, 0, 0]), 110, 1000 / 60);
     expect(len(next.w)).toBeGreaterThan(speed * 0.5);
+  });
+});
+
+describe("fitProxies", () => {
+  it("fits each part's thickness to the model's own skin, and keeps her height's share where it has too little", () => {
+    const ring = (bone: string, a: V3, b: V3, r: number) =>
+      Array.from({ length: 60 }, (_, i) => {
+        const t = (i % 10) / 10;
+        const ang = (i / 60) * Math.PI * 2;
+        return {
+          bone,
+          p: [
+            a[0] + (b[0] - a[0]) * t + r * Math.cos(ang),
+            a[1] + (b[1] - a[1]) * t,
+            a[2] + r * Math.sin(ang),
+          ] as V3,
+        };
+      });
+    const fitted = fitProxies(vroid, [
+      ...ring("leftUpperLeg", AT["leftUpperLeg"]!, AT["leftLowerLeg"]!, 0.07),
+      ...ring("spine", AT["hips"]!, AT["upperChest"]!, 0.1),
+    ]);
+    expect(fitted.thigh).toBeCloseTo(0.07, 2);
+    expect(fitted.trunk).toBeCloseTo(0.1, 2);
+    expect(fitted.head).toBe(proxiesByHeight(vroid.height).head);
+    // a model with fuller hips moves a resting hand further out than a slim one
+    const hand = (proxies: typeof fitted) => {
+      const rig = { ...vroid, proxies };
+      const w = fk(rig, preparePose(rig, POSTURES.teasing.bones).pose).pos;
+      return Math.hypot(w["leftHand"]![0] - w["hips"]![0], w["leftHand"]![2] - w["hips"]![2]);
+    };
+    expect(hand({ ...fitted, trunk: 0.14 })).toBeGreaterThan(
+      hand({ ...fitted, trunk: 0.09 }) + 0.03,
+    );
   });
 });

@@ -207,7 +207,77 @@ export interface Rig {
    * arms rest lower). Poses are corrected by it, so the same numbers mean the same body on every model.
    */
   readonly restFix: Readonly<Record<string, Q>>;
+  /** This model's own thickness (metres) where parts meet, fitted to its mesh (fitProxies); her height's share if not. */
+  readonly proxies?: Proxies;
 }
+
+export interface Proxies {
+  readonly trunk: number;
+  readonly head: number;
+  readonly thigh: number;
+  readonly forearm: number;
+}
+/** Proxy sizes as shares of her height, for a model whose mesh was not measured. */
+export const proxiesByHeight = (height: number): Proxies => ({
+  trunk: 0.075 * height,
+  head: 0.055 * height,
+  thigh: 0.038 * height,
+  forearm: 0.01 * height,
+});
+/** Which proxy a skinned vertex belongs to, by the bone that moves it most. */
+const PROXY_OF: Readonly<Record<string, keyof Proxies>> = {
+  hips: "trunk",
+  spine: "trunk",
+  chest: "trunk",
+  upperChest: "trunk",
+  neck: "head",
+  head: "head",
+  leftUpperLeg: "thigh",
+  rightUpperLeg: "thigh",
+  leftLowerArm: "forearm",
+  rightLowerArm: "forearm",
+};
+const PROXY_SEGMENT: Readonly<Record<keyof Proxies, (side: string) => readonly [string, string]>> =
+  {
+    trunk: () => ["hips", "upperChest"],
+    head: () => ["neck", "head"],
+    thigh: (side) => [`${side}UpperLeg`, `${side}LowerLeg`],
+    forearm: (side) => [`${side}LowerArm`, `${side}Hand`],
+  };
+/**
+ * Proxy sizes fitted to this model's mesh at rest: for each part, how far its skin (and clothes) sit from its bone
+ * line, taken at a high percentile so a hand rests on the surface rather than in it. `samples` are rest positions of
+ * skinned vertices with the humanoid bone that moves each most; a part with too few keeps its share of her height.
+ */
+export const fitProxies = (
+  rig: Rig,
+  samples: ReadonlyArray<{ readonly bone: string; readonly p: V3 }>,
+): Proxies => {
+  const fallback = proxiesByHeight(rig.height);
+  const dist: Record<keyof Proxies, number[]> = { trunk: [], head: [], thigh: [], forearm: [] };
+  for (const { bone, p } of samples) {
+    const part = PROXY_OF[bone];
+    if (part === undefined) continue;
+    const side = bone.startsWith("right") ? "right" : "left";
+    const [from, to] = PROXY_SEGMENT[part](side);
+    const a = rig.bones[from === "upperChest" && !rig.bones["upperChest"] ? "chest" : from]?.rest;
+    const b = rig.bones[to]?.rest;
+    if (a && b) dist[part].push(segPoint(a, b, p));
+  }
+  const pick = (part: keyof Proxies, pct: number) => {
+    const d = dist[part].toSorted((x, y) => x - y);
+    if (d.length < 20) return fallback[part];
+    // never thinner than half, never fatter than twice, her height's share: a stray vertex can't break it
+    const r = d[Math.floor(d.length * pct)]!;
+    return Math.max(fallback[part] / 2, Math.min(fallback[part] * 2, r));
+  };
+  return {
+    trunk: pick("trunk", 0.8),
+    head: pick("head", 0.6),
+    thigh: pick("thigh", 0.85),
+    forearm: pick("forearm", 0.8),
+  };
+};
 
 export interface RigManifest {
   readonly tier: "minimal" | "standard" | "rich";
@@ -226,6 +296,8 @@ export interface RigManifest {
   readonly springChains: number;
   /** Arms at rest below horizontal by this much (radians): an A-pose model, corrected by restFix. */
   readonly armRestDrop: number;
+  /** Her thickness where parts meet (metres), fitted to the mesh when it was measured. */
+  readonly proxies?: Proxies;
 }
 
 /** The T-pose direction each limb and trunk bone points along (to its child), in her own axes. */
@@ -333,6 +405,7 @@ export const manifestOf = (
     morphs: extra.morphs ?? [],
     springChains: extra.springChains ?? 0,
     armRestDrop: Math.round(drop * 1000) / 1000,
+    ...(rig.proxies === undefined ? {} : { proxies: rig.proxies }),
   };
 };
 
@@ -508,20 +581,21 @@ export const solveLimbs = (
   const issues: RigIssue[] = [];
   const w = fk(rig, pose);
   const top = w.pos["upperChest"] ?? w.pos["chest"] ?? w.pos["spine"];
-  const trunk = w.pos["hips"] && top ? { a: w.pos["hips"], b: top, r: 0.075 * rig.height } : null;
+  const size = rig.proxies ?? proxiesByHeight(rig.height);
+  const trunk = w.pos["hips"] && top ? { a: w.pos["hips"], b: top, r: size.trunk } : null;
   // what a hand or forearm may rest on but not pass into: her trunk, head and thighs (proxies by her height)
   const body = [
     ...(trunk === null ? [] : [trunk]),
     ...(
       [
-        ["neck", "head", 0.055],
-        ["leftUpperLeg", "leftLowerLeg", 0.038],
-        ["rightUpperLeg", "rightLowerLeg", 0.038],
+        ["neck", "head", size.head],
+        ["leftUpperLeg", "leftLowerLeg", size.thigh],
+        ["rightUpperLeg", "rightLowerLeg", size.thigh],
       ] as const
     ).flatMap(([from, to, k]) => {
       const a0 = w.pos[from];
       const b0 = w.pos[to];
-      return a0 && b0 ? [{ a: a0, b: b0, r: k * rig.height }] : [];
+      return a0 && b0 ? [{ a: a0, b: b0, r: k }] : [];
     }),
   ];
   for (const l of LIMBS) {
@@ -552,7 +626,7 @@ export const solveLimbs = (
           const p = add(e0, scale(sub(tOut, e0), k / 4));
           for (const c of body) {
             const away = sub(p, closestOn(c.a, c.b, p));
-            const depth = c.r + 0.01 * rig.height - len(away);
+            const depth = c.r + size.forearm - len(away);
             if (depth > 0.004 && (deepest === null || depth > deepest.depth))
               deepest = {
                 depth,
