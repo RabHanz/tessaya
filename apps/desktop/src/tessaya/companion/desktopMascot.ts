@@ -46,6 +46,9 @@ import {
   type DisplayArea,
   type Edge,
   type Rect,
+  bodyWithin,
+  roomOf,
+  windowAround,
 } from "./mascotDock.ts";
 import { MASCOT_SCRIPT } from "./mascotPage.ts";
 import type { VoiceShape } from "../voice/voiceSpeaker.ts";
@@ -92,7 +95,7 @@ const BODY_MIN_PX = 160;
 const BODY_MARGIN_PX = 24;
 /**
  * Her private body's window on a display: where he left her there, else bottom-right above the taskbar at her size's
- * share of the work area's height. Half as wide as tall (a standing figure), and always wholly on the display.
+ * share of the work area's height. As wide as tall, and always wholly on the display.
  */
 export const privateBodyBounds = (work: Rect, size: PrivateBodySize, place?: BodyPlace): Rect => {
   const clamp = (v: number, lo: number, hi: number) => Math.round(Math.max(lo, Math.min(hi, v)));
@@ -101,7 +104,8 @@ export const privateBodyBounds = (work: Rect, size: PrivateBodySize, place?: Bod
     Math.min(BODY_MIN_PX, work.height),
     work.height,
   );
-  const width = Math.min(work.width, Math.round(height / 2));
+  // as wide as tall: room for her arms out and a lean (her page's shape keeps the room clicking through)
+  const width = Math.min(work.width, height);
   const right = clamp(place?.right ?? BODY_MARGIN_PX, 0, work.width - width);
   const bottom = clamp(place?.bottom ?? 0, 0, work.height - height);
   return {
@@ -508,13 +512,11 @@ export const createDesktopMascot = (input: {
   let wakeTimer: ReturnType<typeof setTimeout> | null = null;
 
   const size = () => MASCOT_SIZES[options.size];
-  // Every move sets her size too: setPosition alone lets Windows grow her across screens of different scale.
-  const box = (at: { readonly x: number; readonly y: number }) => ({
-    x: Math.round(at.x),
-    y: Math.round(at.y),
-    width: size(),
-    height: size(),
-  });
+  // Every move sets her size too: setPosition alone lets Windows grow her across screens of different scale. Her
+  // window has room around her body's box for her reach and effects (mascotDock windowAround).
+  const box = (at: { readonly x: number; readonly y: number }) => windowAround(at, size());
+  /** Her body's box on screen, inside her window's room. */
+  const bodyBox = (target: Electron.BrowserWindow) => bodyWithin(target.getBounds(), size());
   const snoozed = () => (saved.snoozeUntil ?? 0) > Date.now();
   const hidden = () => (saved.hiddenUntil ?? 0) > Date.now();
   const wanted = () => options.on && !hidden() && !fullscreen;
@@ -598,7 +600,7 @@ export const createDesktopMascot = (input: {
         Math.min(BODY_MIN_PX, work.height),
         Math.min(work.height, b.height + ask.grow),
       );
-      const width = Math.round(height / 2);
+      const width = height;
       target.setBounds({ x: b.x + b.width - width, y: b.y + b.height - height, width, height });
     } else keepVeil();
   };
@@ -640,9 +642,9 @@ export const createDesktopMascot = (input: {
     if (target === null || target.isDestroyed()) return;
     stopMoving();
     // Frames are counted at 30 a second; she moves at 60, so the same move takes the same time, twice as smoothly.
-    const steps = pathBetween(target.getBounds(), to, Math.max(1, frames) * 2);
+    const steps = pathBetween(bodyBox(target), to, Math.max(1, frames) * 2);
     let i = 0;
-    let from = target.getBounds();
+    let from = bodyBox(target);
     moving = setInterval(() => {
       const step = steps[i++];
       if (step === undefined || target.isDestroyed()) {
@@ -711,7 +713,7 @@ export const createDesktopMascot = (input: {
     const target = win;
     if (target === null || target.isDestroyed() || !target.isVisible()) return;
     const cursor = Electron.screen.getCursorScreenPoint();
-    const b = target.getBounds();
+    const b = bodyBox(target);
     const body = bodyRect(b.width);
     const dx = cursor.x - b.x - body.x;
     const dy = cursor.y - b.y - body.y;
@@ -763,8 +765,7 @@ export const createDesktopMascot = (input: {
   const build = () => {
     if (win !== null && !win.isDestroyed()) return win;
     const created = new Electron.BrowserWindow({
-      width: size(),
-      height: size(),
+      ...box({ x: 0, y: 0 }),
       frame: false,
       transparent: true,
       resizable: false,
@@ -800,6 +801,12 @@ export const createDesktopMascot = (input: {
     const stage = NodeURL.pathToFileURL(NodePath.join(input.companionDir, "stage.html")).href;
     ready = created
       .loadURL(stage)
+      // her drawing keeps its size, centred in the window's room, and draws out into it (the svg overflows)
+      .then(() =>
+        created.webContents.executeJavaScript(
+          `document.getElementById("c").style.inset = "${roomOf(size())}px"`,
+        ),
+      )
       .then(() => created.webContents.executeJavaScript(MASCOT_SCRIPT))
       .then(() => undefined)
       .catch((cause: unknown) => input.onNote?.("mascot_load_failed", { cause: String(cause) }));
@@ -1051,7 +1058,7 @@ export const createDesktopMascot = (input: {
       return;
     }
     if (options.motion !== "important" && !options.reduced) {
-      const b = target.getBounds();
+      const b = bodyBox(target);
       return fling(
         {
           x: b.x + size() / 2,
@@ -1062,7 +1069,7 @@ export const createDesktopMascot = (input: {
         true,
       );
     }
-    const drop = dropAt(edges(), target.getBounds(), size());
+    const drop = dropAt(edges(), bodyBox(target), size());
     edge = drop.edge;
     x = drop.x;
     save({ x: drop.x, placed: drop.edge.kind === "floor" });
@@ -1082,7 +1089,7 @@ export const createDesktopMascot = (input: {
     shrugOff();
     pickedFrom = edge?.display;
     const cursor = Electron.screen.getCursorScreenPoint();
-    const b = target.getBounds();
+    const b = bodyBox(target);
     // a brief reaction in her own way: her face, never her mood's colour
     react("pickup");
     const samples: Array<{ readonly x: number; readonly y: number; readonly t: number }> = [];
@@ -1243,7 +1250,7 @@ export const createDesktopMascot = (input: {
 
   /** Her window's middle, where her feet are. */
   const middle = () => {
-    const b = win?.getBounds();
+    const b = win === null || win.isDestroyed() ? undefined : bodyBox(win);
     return b === undefined ? x : b.x + size() / 2;
   };
   const still = () =>
@@ -1272,7 +1279,7 @@ export const createDesktopMascot = (input: {
     fall: () => {
       const target = win;
       if (dragging !== null || target === null || target.isDestroyed()) return;
-      const b = target.getBounds();
+      const b = bodyBox(target);
       fling({ x: b.x + size() / 2, y: b.y + size() * FOOT_SHARE, vx: 0, vy: 0, on: null });
     },
     standing: () =>
@@ -1284,7 +1291,7 @@ export const createDesktopMascot = (input: {
       if (dragging !== null || target === null || target.isDestroyed()) return;
       call(`window.mascot.look(${vx > 0 ? -0.9 : 0.9},0)`);
       if (Math.abs(vx) > IMPACT_SPEED) react("bump", Math.abs(vx));
-      const b = target.getBounds();
+      const b = bodyBox(target);
       fling({
         x: b.x + size() / 2,
         y: b.y + size() * FOOT_SHARE,
@@ -1353,7 +1360,7 @@ export const createDesktopMascot = (input: {
       if (bubble === true)
         call(`window.mascot.say(${JSON.stringify({ text: text.slice(0, 120) })})`);
     },
-    bounds: () => (win !== null && !win.isDestroyed() && win.isVisible() ? win.getBounds() : null),
+    bounds: () => (win !== null && !win.isDestroyed() && win.isVisible() ? bodyBox(win) : null),
     mood: (label, intensity) => {
       const next = restFaceOf(label, intensity);
       if (JSON.stringify(next) === JSON.stringify(restMood)) return;

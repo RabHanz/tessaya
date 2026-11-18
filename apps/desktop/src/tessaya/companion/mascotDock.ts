@@ -306,6 +306,30 @@ export const pathBetween = (
     };
   });
 
+/**
+ * Room around her body's box on every side for her reach and effects: the halo and mood light, sparkles, a hand or a
+ * lean past her outline. Her window is that much bigger and the room clicks through (bodyRect), so it costs nothing.
+ */
+export const ROOM_SHARE = 0.4;
+export const roomOf = (size: number) => Math.round(size * ROOM_SHARE);
+/** Her window around her body's box (size × size at `at`). */
+export const windowAround = (
+  at: { readonly x: number; readonly y: number },
+  size: number,
+): Rect => ({
+  x: Math.round(at.x) - roomOf(size),
+  y: Math.round(at.y) - roomOf(size),
+  width: size + 2 * roomOf(size),
+  height: size + 2 * roomOf(size),
+});
+/** Her body's box inside her window: what every placement, throw and hit test works in. */
+export const bodyWithin = (window: Rect, size: number): Rect => ({
+  x: window.x + roomOf(size),
+  y: window.y + roomOf(size),
+  width: size,
+  height: size,
+});
+
 /** The silhouette inside her window that takes the mouse; everything else clicks through. */
 export const bodyRect = (size: number): Rect => ({
   x: Math.round(size * 0.24),
