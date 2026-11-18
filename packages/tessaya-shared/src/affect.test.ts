@@ -6,6 +6,8 @@ import {
   appraise,
   appraiseFor,
   dialsOf,
+  TEMPERAMENTS,
+  temperamentOf,
   movePerson,
   personaRoomView,
   roomLine,
@@ -322,6 +324,20 @@ describe("relationships", () => {
         estimate: fusePresence([], now),
       }),
     ).toBeNull();
+  });
+});
+
+describe("a persona's own temperament", () => {
+  it("a hired persona's comes from its own traits, never the lead's; a shipped one keeps its tuning", () => {
+    const lively = temperamentOf("marketing", { energy: 0.9, warmth: 0.9, play: 0.8 });
+    const cool = temperamentOf("legal", { energy: 0.1, warmth: 0.1, play: 0.1, formal: 0.9 });
+    expect(lively).not.toEqual(temperamentOf("executive"));
+    expect(lively.warmth).toBeGreaterThan(cool.warmth);
+    expect(lively.arousal).toBeGreaterThan(cool.arousal);
+    expect(temperamentOf("butler", { warmth: 1 })).toEqual(TEMPERAMENTS["butler"]);
+    expect(dialsOf("marketing", 1, undefined, { warmth: 0.9 }).warmth).toBe(
+      temperamentOf("marketing", { warmth: 0.9 }).warmth,
+    );
   });
 });
 

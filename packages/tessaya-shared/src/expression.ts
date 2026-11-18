@@ -636,13 +636,16 @@ export const keptLines = (
   return out;
 };
 
-/** The shipped offline wordings, by persona id then event; a persona without its own uses the lead's. */
+/**
+ * The shipped offline wordings, by persona id then event. A persona without its own has none: it speaks the lines its
+ * brain writes for it in context, or the plain line, never another persona's words.
+ */
 export type LinePool = Readonly<
   Record<string, Readonly<Partial<Record<LineEvent, ReadonlyArray<Line>>>>>
 >;
 export const LINE_POOL = POOL as LinePool;
 export const poolLines = (persona: string, event: LineEvent, pool: LinePool = LINE_POOL) =>
-  pool[persona]?.[event] ?? pool["executive"]?.[event] ?? [];
+  pool[persona]?.[event] ?? [];
 
 const INTENSITY: Readonly<Record<ExpressionPriority, number>> = {
   ambient: 0.4,

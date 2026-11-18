@@ -194,7 +194,10 @@ const make = Effect.gen(function* () {
   const dialsFor = (personaId: string | undefined, current: typeof DEFAULT_AFFECT_SETTINGS) => {
     const face = personaOf(personaId);
     const persona = face?.id ?? LEAD;
-    return { persona, dials: dialsOf(persona, face?.guilt, current.personas?.[persona]) };
+    return {
+      persona,
+      dials: dialsOf(persona, face?.guilt, current.personas?.[persona], face?.traits),
+    };
   };
 
   // Off is also the reset: turned back on, every persona starts from its temperament, bonds included.

@@ -31,8 +31,31 @@ export const TEMPERAMENTS: Readonly<Record<string, Temperament>> = {
   engineering: { valence: 0.1, arousal: 0.35, curiosity: 0.55, confidence: 0.7, warmth: 0.35 },
 };
 const DEFAULT_TEMPERAMENT = TEMPERAMENTS["executive"]!;
-export const temperamentOf = (persona: string): Temperament =>
-  TEMPERAMENTS[persona] ?? DEFAULT_TEMPERAMENT;
+/** How a pack face's traits (osPack `traits:`, 0 to 1) sit on the affect's resting dimensions. */
+export interface FaceTraits {
+  readonly energy?: number;
+  readonly warmth?: number;
+  readonly play?: number;
+  readonly expr?: number;
+  readonly formal?: number;
+  readonly sass?: number;
+}
+/**
+ * A shipped persona's tuned temperament; any other persona's from its own traits (a hired one's are drafted for it),
+ * within the shipped range, so a new persona never wears the lead's.
+ */
+export const temperamentOf = (persona: string, traits?: FaceTraits): Temperament => {
+  const tuned = TEMPERAMENTS[persona];
+  if (tuned !== undefined || traits === undefined) return tuned ?? DEFAULT_TEMPERAMENT;
+  const t = (k: keyof FaceTraits) => clamp(traits[k] ?? 0.5, 0, 1);
+  return {
+    valence: 0.05 + 0.2 * t("play"),
+    arousal: 0.2 + 0.25 * t("energy"),
+    curiosity: 0.4 + 0.3 * t("expr"),
+    confidence: 0.5 + 0.22 * ((t("formal") + t("sass")) / 2),
+    warmth: 0.35 + 0.35 * t("warmth"),
+  };
+};
 
 const MOOD_HALF_LIFE_MS = 3 * 3_600_000;
 const REACTION_HALF_LIFE_MS = 4 * 60_000;
@@ -80,8 +103,9 @@ export const dialsOf = (
   persona: string,
   packGuilt: number | undefined,
   set: Readonly<Record<string, number>> | undefined,
+  traits?: FaceTraits,
 ): Dials => {
-  const t = temperamentOf(persona);
+  const t = temperamentOf(persona, traits);
   const guilt = guiltOf(packGuilt);
   const out: Record<string, number> = {
     ...t,

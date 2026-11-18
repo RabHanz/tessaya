@@ -186,9 +186,9 @@ describe("the chatter dial and quiet", () => {
 });
 
 describe("the pool", () => {
-  it("uses the lead's wordings for a persona without its own", () => {
+  it("never gives a persona another's wordings: one without its own has none (no dumb moments)", () => {
     const pool = { executive: { "ok.done": [l("Sorted.")] } };
-    expect(poolLines("marketing", "ok.done", pool).map((x) => x.text)).toEqual(["Sorted."]);
-    expect(poolLines("marketing", "ack.name", pool)).toEqual([]);
+    expect(poolLines("executive", "ok.done", pool).map((x) => x.text)).toEqual(["Sorted."]);
+    expect(poolLines("marketing", "ok.done", pool)).toEqual([]);
   });
 });
