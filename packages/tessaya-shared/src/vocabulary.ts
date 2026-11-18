@@ -386,8 +386,8 @@ export const soundKey = (word: string): string =>
     .replace(/(.)\1+/g, "$1");
 
 /**
- * Runs of his words (up to four) that sound like one of his names, for the brain to weigh, never to rewrite: "adventure
- * or us" was VentureOS (18 Nov) and is ordinary words to a model. A name already said as itself is left out.
+ * Runs of his words (up to four) that sound like one of his names, for the brain to weigh, never to rewrite: "a mentor
+ * or us" was a project of his (18 Nov) and is ordinary words to a model. A name already said as itself is left out.
  */
 export const nearNames = (
   heard: string,
@@ -404,7 +404,7 @@ export const nearNames = (
       for (let n = 1; n <= 4 && i + n <= words.length; n++) {
         const run = words.slice(i, i + n);
         const joined = soundKey(run.join(""));
-        // A sound or two may lead the name ("adventureorus" is "ad" and "ventureorus"); one word keeps its first letter.
+        // A sound or two may lead the name ("amentororus" is "a" and "mentororus"); one word keeps its first letter.
         for (let at = 0; at <= (n === 1 ? 0 : 2); at++) {
           const score = similar(joined.slice(at), key);
           const fits = n === 1 ? joined[0] === key[0] && score >= 0.65 : score >= 0.75;

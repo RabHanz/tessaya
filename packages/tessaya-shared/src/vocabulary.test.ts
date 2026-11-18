@@ -158,10 +158,10 @@ describe("an edit of T3's list in Settings", () => {
 
 describe("his names, misheard", () => {
   it("points the brain at the name a run of ordinary words sounds like, and leaves plain talk alone", () => {
-    const names = ["Tessaya", "Alfred", "Sebastian", "Tumble", "VentureOS", "Margin"];
-    // 18 Nov, 05:50-05:52: three turns of "I can't find Adventure OS", then "who's Anfrey?".
-    expect(nearNames("What about adventure or us?", names)).toEqual([
-      { heard: "adventure or", name: "VentureOS" },
+    const names = ["Tessaya", "Alfred", "Sebastian", "Tumble", "MentorOS", "Margin"];
+    // 18 Nov, 05:50-05:52: three turns of "I can't find a mentor OS", then "who's Anfrey?".
+    expect(nearNames("What about a mentor or us?", names)).toEqual([
+      { heard: "a mentor or", name: "MentorOS" },
     ]);
     expect(nearNames("I was talking to Anfrey.", names)).toEqual([
       { heard: "Anfrey", name: "Alfred" },

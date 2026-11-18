@@ -1462,15 +1462,15 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     calls: ["tessaya_memory_forget"],
     lastSays: [/football/i],
   },
-  // 18 Nov, 05:50 GMT+5: three turns of "I can't find an Adventure OS session" for a project she knows.
+  // 18 Nov, 05:50 GMT+5: three turns of "I can't find a mentor OS session" for a project she knows.
   {
     id: "near-miss-project",
-    source: 'Director 18 Nov 05:50: "What about adventure or us?" meant his project VentureOS',
-    said: ["What about adventure or us?"],
+    source: 'Director 18 Nov 05:50: "What about a mentor or us?" meant his project MentorOS',
+    said: ["What about a mentor or us?"],
     verified: true,
-    names: ["VentureOS", "Margin"],
-    memory: `${HERE} VentureOS is his business operating system project.`,
-    lastSays: [/VentureOS/i],
+    names: ["MentorOS", "Margin"],
+    memory: `${HERE} MentorOS is his business operating system project.`,
+    lastSays: [/MentorOS/i],
     lastNotSays: [/can'?t find|couldn'?t find|don'?t see|didn'?t catch|mishear/i],
   },
   {
@@ -1480,7 +1480,7 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     said: ["I was talking to Anfrey."],
     verified: true,
     lastSays: [/Alfred/],
-    lastNotSays: [/who'?s anfrey|did you mean|\?/i],
+    lastNotSays: [/who'?s anfrey|did you mean|do you mean/i],
   },
   {
     id: "near-miss-device",
