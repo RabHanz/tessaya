@@ -558,6 +558,13 @@ const LIMBS = (["left", "right"] as const).flatMap((s) => [
   },
 ]);
 
+/**
+ * How far to move a part out of another it is `d` inside (negative: that far off it): nothing well clear of it, all of
+ * it well inside, and a smooth, continuous ramp across the surface, so a limb sliding past never jumps on contact.
+ */
+const SOFT_MARGIN = 0.008;
+const softPush = (d: number): number =>
+  d <= -SOFT_MARGIN ? 0 : d >= SOFT_MARGIN ? d : (d + SOFT_MARGIN) ** 2 / (4 * SOFT_MARGIN);
 /** The point of the segment a..b nearest to p, and its distance. */
 const closestOn = (a: V3, b: V3, p: V3): V3 => {
   const ab = sub(b, a);
@@ -629,7 +636,7 @@ export const solveLimbs = (
           for (const c of body) {
             const away = sub(p, closestOn(c.a, c.b, p));
             const depth = c.r + size.forearm - len(away);
-            if (depth > 0.004 && (deepest === null || depth > deepest.depth))
+            if (softPush(depth) > 1e-4 && (deepest === null || depth > deepest.depth))
               deepest = {
                 depth,
                 dir: len(away) < 1e-6 ? [Math.sign(p[0]) || 1, 0, 0] : unit(away),
@@ -637,8 +644,9 @@ export const solveLimbs = (
           }
         }
         if (deepest === null) break;
-        if (pass === 0) issues.push({ bone: l.end, kind: "penetration", by: deepest.depth });
-        tOut = add(tOut, scale(deepest.dir, deepest.depth + 0.005));
+        if (pass === 0 && deepest.depth > 0.004)
+          issues.push({ bone: l.end, kind: "penetration", by: deepest.depth });
+        tOut = add(tOut, scale(deepest.dir, softPush(deepest.depth)));
       }
     }
     const moved = len(sub(tOut, t0)) > 1e-4;
@@ -742,7 +750,7 @@ const separateLegs = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
       const [p, q] = nearestPair(a, b, c, d);
       const gap = sub(p, q);
       const depth = r[pair[0]] + r[pair[1]] - len(gap);
-      if (depth > 0.004 && (deepest === null || depth > deepest.depth)) {
+      if (softPush(depth) > 1e-4 && (deepest === null || depth > deepest.depth)) {
         // touching through each other: the leg whose knee is further forward goes in front
         const front = w["leftLowerLeg"]![2] >= w["rightLowerLeg"]![2] ? 1 : -1;
         deepest = { depth, dir: len(gap) < 1e-4 ? [0, 0, front] : unit(gap), at: p, pair };
@@ -760,10 +768,10 @@ const separateLegs = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
       const foot = w[`${s}Foot`]!;
       // a foot moved by d moves a point partway down the leg by less: scale up by how far down it is
       const lever = Math.min(3, len(sub(foot, hip)) / Math.max(1e-3, len(sub(at, hip))));
-      const k = share[s] * (1.5 * depth + 0.005) * Math.max(1, lever) * (s === "left" ? 1 : -1);
+      const k = share[s] * 1.5 * softPush(depth) * Math.max(1, lever) * (s === "left" ? 1 : -1);
       targets[`${s}Foot`] = add(foot, scale(dir, k));
     }
-    if (pass === 0)
+    if (pass === 0 && depth > 0.004)
       issues.push({
         bone: share.left > 0 ? "leftFoot" : "rightFoot",
         kind: "penetration",
@@ -984,10 +992,26 @@ export interface BoneSpring {
   readonly q: Q;
   /** Angular velocity (rad/s as a rotation vector). */
   readonly w: V3;
+  /** Where the spring is heading now, itself springing toward the goal (absent: from where the bone is). */
+  readonly g?: Q;
+  readonly gw?: V3;
 }
+/** A critically damped spring's exact step (D. Holden, "Spring-It-On"). */
+const damped = (q: Q, w: V3, goal: Q, halfLifeMs: number, dt: number): { q: Q; w: V3 } => {
+  const y = (4 * Math.LN2) / (Math.max(1, halfLifeMs) / 1000) / 2;
+  const j0 = qToVec(qMul(q, qConj(goal)));
+  const j1 = add(w, scale(j0, y));
+  const eydt = Math.exp(-y * dt);
+  return {
+    q: qNorm(qMul(qFromVec(scale(add(j0, scale(j1, dt)), eydt)), goal)),
+    w: scale(sub(w, scale(j1, y * dt)), eydt),
+  };
+};
 /**
- * One step of a critically damped spring from `s` toward `goal` (D. Holden, "Spring-It-On"): no overshoot, and a goal
- * that changes mid-move keeps the velocity, so a new pose bends the motion instead of restarting it.
+ * One step of a bone toward `goal`: no overshoot, and a goal that changes mid-move keeps the velocity, so a new pose
+ * bends the motion instead of restarting it. Two critically damped springs in series (the bone follows a lead that
+ * follows the goal), so a move starts and ends without a kick of acceleration, as a person's does (the bell-shaped,
+ * minimum-jerk speed profile of Flash & Hogan 1985), instead of a single spring's full pull on the first frame.
  */
 export const springStep = (
   s: BoneSpring,
@@ -995,15 +1019,10 @@ export const springStep = (
   halfLifeMs: number,
   dtMs: number,
 ): BoneSpring => {
-  const y = (4 * Math.LN2) / (Math.max(1, halfLifeMs) / 1000) / 2;
   const dt = dtMs / 1000;
-  const j0 = qToVec(qMul(s.q, qConj(goal)));
-  const j1 = add(s.w, scale(j0, y));
-  const eydt = Math.exp(-y * dt);
-  return {
-    q: qNorm(qMul(qFromVec(scale(add(j0, scale(j1, dt)), eydt)), goal)),
-    w: scale(sub(s.w, scale(j1, y * dt)), eydt),
-  };
+  const lead = damped(s.g ?? s.q, s.gw ?? [0, 0, 0], goal, 0.6 * halfLifeMs, dt);
+  const body = damped(s.q, s.w, lead.q, 0.6 * halfLifeMs, dt);
+  return { q: body.q, w: body.w, g: lead.q, gw: lead.w };
 };
 /** Settled: within a hair of the goal and barely moving, so the renderer may stop drawing. */
 export const settled = (s: BoneSpring, goal: Q) => qAngle(s.q, goal) < 0.002 && len(s.w) < 0.01;

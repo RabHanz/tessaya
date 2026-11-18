@@ -96,7 +96,8 @@ import {
 const TIERS = [
   { ratio: 0.75, aa: false, fps: 20 },
   { ratio: 1, aa: false, fps: 30 },
-  { ratio: 1.5, aa: true, fps: 30 },
+  // a desktop-class device draws her moves at 60: at 30 a moving body judders on a 60 Hz screen; at rest nothing draws
+  { ratio: 1.5, aa: true, fps: 60 },
 ] as const;
 /** A frame slower than this on average (ms of our own work) steps the tier down. */
 const SLOW_FRAME_MS = 14;
@@ -1064,7 +1065,8 @@ export function mountBody(
 
   const schedule = (afterMs = 0) => {
     if (disposed || !shown || !onScreen || raf !== 0 || timer !== null) return;
-    const wait = Math.max(0, afterMs - (performance.now() - lastFrame));
+    // half a frame early: the animation frame then lands on the intended vsync, not one after (uneven 16/33 ms steps)
+    const wait = Math.max(0, afterMs - (performance.now() - lastFrame) - 8);
     timer = setTimeout(() => {
       timer = null;
       raf = requestAnimationFrame(frame);
