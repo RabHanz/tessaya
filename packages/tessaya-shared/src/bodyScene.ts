@@ -6,7 +6,7 @@
  */
 import type { BodyCue } from "./bodyCues.ts";
 import { decodeBodyMove, isPrivateMove, moveCues, type BodyMove } from "./bodyControl.ts";
-import { makeRig, preparePose, type Rig, type RigBone, type RigIssue, type V3 } from "./bodyRig.ts";
+import { preparePose, type Rig, type RigIssue, type V3 } from "./bodyRig.ts";
 
 export const SCENE_VERSION = 1;
 const MAX_BEATS = 64;
@@ -213,37 +213,6 @@ export const dryRun = (
       ? []
       : [{ at: `beats[${i}]`, label: b.label ?? `beat ${i + 1}`, corrected }];
   });
-
-/** A 1.6 m T-pose body in VRM 1.0 axes, for a dry run before the model is known. */
-export const REFERENCE_RIG: Rig = (() => {
-  const left: Record<string, readonly [string | null, V3]> = {
-    hips: [null, [0, 0.95, 0]],
-    spine: ["hips", [0, 1.02, 0]],
-    chest: ["spine", [0, 1.12, 0]],
-    upperChest: ["chest", [0, 1.22, 0]],
-    neck: ["upperChest", [0, 1.36, 0]],
-    head: ["neck", [0, 1.44, 0]],
-    leftShoulder: ["upperChest", [0.04, 1.32, 0]],
-    leftUpperArm: ["leftShoulder", [0.12, 1.33, 0]],
-    leftLowerArm: ["leftUpperArm", [0.37, 1.33, 0]],
-    leftHand: ["leftLowerArm", [0.61, 1.33, 0]],
-    leftUpperLeg: ["hips", [0.08, 0.88, 0]],
-    leftLowerLeg: ["leftUpperLeg", [0.09, 0.48, 0.01]],
-    leftFoot: ["leftLowerLeg", [0.09, 0.07, 0]],
-    leftToes: ["leftFoot", [0.09, 0.02, 0.12]],
-  };
-  const bones: RigBone[] = [];
-  for (const [name, [parent, rest]] of Object.entries(left)) {
-    bones.push({ name, parent, rest });
-    if (name.startsWith("left"))
-      bones.push({
-        name: name.replace("left", "right"),
-        parent: parent?.startsWith("left") ? parent.replace("left", "right") : parent,
-        rest: [-rest[0], rest[1], rest[2]],
-      });
-  }
-  return makeRig(bones);
-})();
 
 /** Everyday scenes every body has (content-neutral): a starting point to copy, and what the tool plays by name. */
 export const CORE_SCENES: Readonly<Record<string, unknown>> = {

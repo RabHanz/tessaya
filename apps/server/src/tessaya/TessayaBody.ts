@@ -20,12 +20,12 @@ import {
 import type { BodyCue } from "@t3tools/tessaya-shared/bodyCues";
 import {
   CORE_SCENES,
-  REFERENCE_RIG,
   decodeScene,
   dryRun,
   isPrivateScene,
   sceneCues,
 } from "@t3tools/tessaya-shared/bodyScene";
+import { REFERENCE_RIG } from "@t3tools/tessaya-shared/bodyRig";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
@@ -74,11 +74,21 @@ const rates = new Map<string, RateState>();
 // when each caller's stream last sent a frame: a stream is recorded once as it starts, not at 30 a second
 const streaming = new Map<string, number>();
 
+/** The nearest of the desk character's few acts to a performance's feeling: a hop of joy, a drained yawn, a nod. */
+const deskFeel = (p: NonNullable<BodyMove["perform"]>): MascotAct | undefined =>
+  p.feel.valence > 0.3 && p.feel.arousal > 0.3
+    ? "hop"
+    : p.feel.arousal < -0.5
+      ? "yawn"
+      : p.feel.valence > 0.3
+        ? "nod"
+        : undefined;
 const deskActsOf = (m: BodyMove): MascotAct[] =>
   [m, ...(m.then ?? [])].flatMap((s) => {
     const a =
       (s.act !== undefined ? DESK[s.act] : undefined) ??
-      (s.gesture !== undefined ? DESK[s.gesture] : undefined);
+      (s.gesture !== undefined ? DESK[s.gesture] : undefined) ??
+      (s.perform !== undefined ? deskFeel(s.perform) : undefined);
     return a === undefined ? [] : [a];
   });
 

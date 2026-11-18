@@ -1026,3 +1026,34 @@ export const springStep = (
 };
 /** Settled: within a hair of the goal and barely moving, so the renderer may stop drawing. */
 export const settled = (s: BoneSpring, goal: Q) => qAngle(s.q, goal) < 0.002 && len(s.w) < 0.01;
+
+/** A 1.6 m T-pose body in VRM 1.0 axes, for a dry run before the model is known. */
+export const REFERENCE_RIG: Rig = (() => {
+  const left: Record<string, readonly [string | null, V3]> = {
+    hips: [null, [0, 0.95, 0]],
+    spine: ["hips", [0, 1.02, 0]],
+    chest: ["spine", [0, 1.12, 0]],
+    upperChest: ["chest", [0, 1.22, 0]],
+    neck: ["upperChest", [0, 1.36, 0]],
+    head: ["neck", [0, 1.44, 0]],
+    leftShoulder: ["upperChest", [0.04, 1.32, 0]],
+    leftUpperArm: ["leftShoulder", [0.12, 1.33, 0]],
+    leftLowerArm: ["leftUpperArm", [0.37, 1.33, 0]],
+    leftHand: ["leftLowerArm", [0.61, 1.33, 0]],
+    leftUpperLeg: ["hips", [0.08, 0.88, 0]],
+    leftLowerLeg: ["leftUpperLeg", [0.09, 0.48, 0.01]],
+    leftFoot: ["leftLowerLeg", [0.09, 0.07, 0]],
+    leftToes: ["leftFoot", [0.09, 0.02, 0.12]],
+  };
+  const bones: RigBone[] = [];
+  for (const [name, [parent, rest]] of Object.entries(left)) {
+    bones.push({ name, parent, rest });
+    if (name.startsWith("left"))
+      bones.push({
+        name: name.replace("left", "right"),
+        parent: parent?.startsWith("left") ? parent.replace("left", "right") : parent,
+        rest: [-rest[0], rest[1], rest[2]],
+      });
+  }
+  return makeRig(bones);
+})();

@@ -10,6 +10,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
@@ -189,6 +190,44 @@ export interface PersonaLayer {
   /** What the body on its open session last reported of itself (bodyControl BodyState); null when none is open. */
   readonly bodyState?: () => unknown;
 }
+
+const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+/**
+ * A layer's long poll answered as a push: polls in-process, each answer written the moment the layer has it, the next
+ * poll after its `seq` (the first one at once, for the whole picture), until the layer says closed or refuses.
+ */
+export const pushAnswers = Effect.fn("PersonaLayers.pushAnswers")(function* <E>(
+  layer: Pick<PersonaLayer, "http">,
+  poll: {
+    readonly path: string;
+    readonly member: string | null;
+    readonly session: string | null;
+    readonly body: object;
+  },
+  write: (text: string) => Effect.Effect<void, E>,
+) {
+  let after = 0;
+  while (true) {
+    const answer = yield* Effect.promise(() =>
+      layer.http({
+        method: "POST",
+        path: poll.path,
+        member: poll.member,
+        session: poll.session,
+        body: { ...poll.body, after, wait: after === 0 ? 0 : 20_000 },
+      }),
+    );
+    const json = (answer.json ?? {}) as { readonly seq?: unknown; readonly closed?: unknown };
+    const done = answer.status !== 200 || json.closed === true;
+    yield* write(
+      yield* encodeJson(done ? { ...json, closed: true } : json).pipe(
+        Effect.orElseSucceed(() => '{"closed":true}'),
+      ),
+    );
+    if (done) return;
+    after = typeof json.seq === "number" ? json.seq : after;
+  }
+});
 
 /** The loaded layers: empty in every public build, filled once at startup in an internal one. */
 export class PersonaLayers extends Context.Service<

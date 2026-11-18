@@ -3,13 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseCue } from "./bodyCues.ts";
 import {
   CORE_SCENES,
-  REFERENCE_RIG,
   decodeScene,
   dryRun,
   fromViewerAxes,
   isPrivateScene,
   sceneCues,
 } from "./bodyScene.ts";
+import { REFERENCE_RIG } from "./bodyRig.ts";
 
 describe("body scenes", () => {
   it("decodes every core scene, plays it on the body's clock, and needs no correction on a reference body", () => {

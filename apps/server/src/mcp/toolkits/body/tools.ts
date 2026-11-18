@@ -5,6 +5,7 @@ import { Tool } from "effect/ai";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { HAND_PLACES } from "@t3tools/tessaya-shared/bodyPlanner";
 
 const shared = {
   failure: OrchestratorMcpFailure,
@@ -100,11 +101,79 @@ const Step = {
   release: Schema.optionalKey(
     Schema.Boolean.annotate({ description: "Hand her body back to her own feelings." }),
   ),
+  perform: Schema.optionalKey(
+    Schema.Struct({
+      feel: Schema.Struct({
+        valence: Num(-1, 1, "Pleasant (+) or unpleasant (-)."),
+        arousal: Num(-1, 1, "Energised, keyed up (+) or drained, calm (-)."),
+        dominance: Num(-1, 1, "Big, in control (+) or small, unsure (-)."),
+      }),
+      effort: Schema.optionalKey(
+        Schema.Struct({
+          weight: Schema.optionalKey(Num(-1, 1, "Strong (+) or light, delicate (-).")),
+          time: Schema.optionalKey(Num(-1, 1, "Sudden (+) or slow, sustained (-).")),
+          space: Schema.optionalKey(Num(-1, 1, "Direct, one focus (+) or roving (-).")),
+          flow: Schema.optionalKey(Num(-1, 1, "Bound, careful, held in (+) or free, let go (-).")),
+        }).annotate({
+          description:
+            "How it moves (Laban Effort), when the direction says; it follows from feel when left out.",
+        }),
+      ),
+      shape: Schema.optionalKey(
+        Schema.Struct({
+          rise: Schema.optionalKey(
+            Num(-1, 1, "Rising, arms up (+) or sinking: slumped, or crouched low with energy (-)."),
+          ),
+          advance: Schema.optionalKey(Num(-1, 1, "Toward him (+) or drawing back (-).")),
+          spread: Schema.optionalKey(
+            Num(-1, 1, "Opening out (+) or closing in, arms around herself (-)."),
+          ),
+        }).annotate({
+          description: "The body's shape (Laban Shape); it follows from feel when left out.",
+        }),
+      ),
+      intensity: Schema.optionalKey(Num(0, 1, "How big, 0 to 1 (0.8 by default).")),
+      ms: Schema.optionalKey(Num(1200, 15000, "The whole performance, onset to settling back.")),
+      hands: Schema.optionalKey(
+        Schema.Struct({
+          left: Schema.optionalKey(Schema.Literals(HAND_PLACES)),
+          right: Schema.optionalKey(Schema.Literals(HAND_PLACES)),
+          repeat: Schema.optionalKey(
+            Num(0, 6, "Beats a second there and a little apart: a clap, rubbing hands, a tap."),
+          ),
+        }).annotate({
+          description:
+            "Where her hands go, found on her own body: together (in front), mouth, face, brow, ear, head, heart, hip, shoulder (the other one: hugging herself), forward, up, out. Give it whenever the direction has hands in it.",
+        }),
+      ),
+      focus: Schema.optionalKey(
+        Schema.Array(
+          Schema.Struct({
+            x: Num(-1, 1, "Across: her left is +."),
+            y: Num(-1, 1, "Up is +."),
+            atMs: Num(0, 15000, "When."),
+          }),
+        ).annotate({
+          description:
+            "Where her attention goes, when the direction says (a ball coming in, a noise behind her).",
+        }),
+      ),
+    }).annotate({
+      description:
+        "A whole performance composed for this body from how the moment feels and moves: posture, arms, legs, face, gaze, breath and timing (a wind-up, the stroke, settling, then back to her). Give it for every direction of how to act, react or feel. Its base is this step's act or posture and bones; add a gesture, keys, look or touch in later steps for a specific action.",
+    }),
+  ),
+  hold: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.Number).annotate({
+      description:
+        "Hold back her involuntary systems for ms, only as long as a person can: breath (30 s), blink (10 s), saccade (20 s), moodLeak (a feeling kept off her face, 8 s; it still shows a little). Reflexes (withdrawal, startle, tremor, balance, flush) cannot be held.",
+    }),
+  ),
 };
 const MoveTool = Tool.make("tessaya_body_move", {
   ...shared,
   description:
-    'Move her body: the one body on every screen she is on. Combine intent (act, posture, gesture, mood, look) with direct control (bones, face, keys) in one call, and put what follows in `then`, each step `afterMs` from the start, so a whole beat ("lean in, a little shy, then look away") is one request. Call tessaya_body_state first to see what this body can do and where it is. Moves that belong to a private moment only run in one.',
+    'Move her body: the one body on every screen she is on. She acts out what he directs, as a person would: when he asks her to act, show, pretend, react or feel something ("act like…", "show me how you\'d…", "pretend…"), or says something a person answers with their body, move it with this tool in the same turn, never in words only, and never say she moved without it. For any such direction give `perform`: what the moment feels like and how it moves, and her body composes the whole performance (for "sit down like you\'re exhausted": act sit, perform {feel: {valence: -0.5, arousal: -0.9, dominance: -0.4}}). Add act, posture, gesture, look, face, bones, keys or touch for specific actions, and put what follows in `then`, each step `afterMs` from the start, so a whole beat ("lean in, a little shy, then look away") is one request. Call tessaya_body_state to see what this body can do and where it is. Moves that belong to a private moment only run in one.',
   parameters: Schema.Struct({
     ...Step,
     stream: Schema.optionalKey(
