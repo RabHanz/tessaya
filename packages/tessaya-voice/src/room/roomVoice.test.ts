@@ -10,6 +10,7 @@ import { speechLike } from "../echoSim.ts";
 import { speechLevel, toBytes } from "./audio.ts";
 import { createWakeStream, type WakeScorer } from "./wakeStream.ts";
 import {
+  brainNotReached,
   brainOrLocal,
   busOfBrain,
   fromBrainHub,
@@ -1241,7 +1242,7 @@ describe("waking by name with no session open", () => {
     const lines: string[] = [];
     const down = (): AsyncIterable<string> => ({
       [Symbol.asyncIterator]: () => ({
-        next: () => Promise.reject(new Error("connect ECONNREFUSED")),
+        next: () => Promise.reject(brainNotReached("connect ECONNREFUSED")),
       }),
     });
     const local = async function* (): AsyncGenerator<string> {
@@ -1275,6 +1276,50 @@ describe("waking by name with no session open", () => {
       })(),
     ).rejects.toThrow("reset");
     expect(again).toEqual(["Nine "]);
+    // Its stream broke before a word: it took the turn and may be acting, so no second server runs it.
+    let localTried = false;
+    const broke = (): AsyncIterable<string> => ({
+      [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new Error("terminated")) }),
+    });
+    const tryLocal = async function* (): AsyncGenerator<string> {
+      localTried = true;
+      yield "twice";
+    };
+    await expect(
+      (async () => {
+        for await (const _ of brainOrLocal(
+          broke,
+          tryLocal,
+          () => undefined,
+        )(turn, new AbortController().signal));
+      })(),
+    ).rejects.toThrow("terminated");
+    expect(localTried).toBe(false);
+    // A slow brain is waited for, never doubled by the local server: it may already be acting.
+    let release = () => undefined as void;
+    const slow = async function* (): AsyncGenerator<string> {
+      await new Promise<void>((r) => (release = r));
+      yield "Done.";
+    };
+    let localRan = false;
+    const never = async function* (): AsyncGenerator<string> {
+      localRan = true;
+      yield "twice";
+    };
+    const waited = (async () => {
+      const out: string[] = [];
+      for await (const w of brainOrLocal(
+        slow,
+        never,
+        () => undefined,
+      )(turn, new AbortController().signal))
+        out.push(w);
+      return out;
+    })();
+    await Promise.resolve();
+    release();
+    expect(await waited).toEqual(["Done."]);
+    expect(localRan).toBe(false);
   });
 
   it("opens on the persona the Cast puts on this Tessel, and a wake word for another never re-homes it", async () => {

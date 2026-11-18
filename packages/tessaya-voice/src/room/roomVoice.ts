@@ -598,9 +598,13 @@ export const fromBrainHub = (tail: string, here: boolean) => here && BRAIN_ACTS.
 export const toBrainHub = (tail: string) => tail === "voice/stepup/done";
 
 /**
- * The turn on the brain, or on her own hub's server when the brain cannot be reached, so she never goes silent. Once a
- * word is out the turn is the brain's: a second server answering again would say it twice.
+ * The turn on the brain, or on her own hub's server when the brain cannot be reached or refuses, so she never goes
+ * silent. Never because it is slow or its stream broke: it may already be acting, and a second turn would act twice
+ * (lights, messages).
  */
+/** The brain never took the turn (refused the connection or answered an error status), so nothing of it can be running. */
+export const brainNotReached = (why: string) => Object.assign(new Error(why), { notReached: true });
+
 export const brainOrLocal = (
   brain: RoomDeps["brain"],
   local: RoomDeps["brain"],
@@ -615,7 +619,7 @@ export const brainOrLocal = (
       }
       return;
     } catch (e) {
-      if (said || signal.aborted) throw e;
+      if (said || signal.aborted || (e as { notReached?: unknown }).notReached !== true) throw e;
       log(
         `[${input.deviceId}] brain unreachable (${String(e).slice(0, 120)}); this hub's server answers`,
       );
