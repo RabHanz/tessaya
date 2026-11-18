@@ -97,6 +97,7 @@ import {
   type ExpressionMood,
   InputQuality,
   TessayaVoicePrint,
+  type VoiceIdGate,
 } from "@t3tools/tessaya-contracts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
@@ -162,6 +163,29 @@ const publishPronunciations = Effect.fn("R1Device.publishPronunciations")(functi
   }, Effect.ignore);
   yield* publish((yield* settings.value.getSettings).voicePronounce);
   yield* Stream.runForEach(changes, (s) => publish(s.voicePronounce));
+});
+
+/** Voice ID's switches (`voiceIdGate`) for the room loop's gate, retained for a late loop. */
+const gateTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/gate`;
+
+const publishVoiceIdGate = Effect.fn("R1Device.publishVoiceIdGate")(function* () {
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  if (Option.isNone(settings)) return;
+  const changes = yield* settings.value.subscribeChanges;
+  let sent: string | null = null;
+  const publish = Effect.fn("R1Device.publishGate")(
+    function* (gate: VoiceIdGate) {
+      const json = JSON.stringify(gate);
+      if (json === sent) return;
+      for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices))
+        if (device.deviceId !== null)
+          yield* publishToDevice(device, gateTopic(device.deviceId), json, true);
+      sent = json;
+    },
+    (e) => Effect.ignore(e),
+  );
+  yield* publish((yield* settings.value.getSettings).voiceIdGate);
+  yield* Stream.runForEach(changes, (s) => publish(s.voiceIdGate));
 });
 
 /** Her resting mood for the room loop: the face it returns to between replies, retained for a late loop. */
@@ -1625,6 +1649,11 @@ export const routes = HttpRouter.use((router) =>
       );
     }).pipe(Effect.provideContext(context), Effect.ignore);
     yield* publishPronunciations().pipe(
+      Effect.provideContext(context),
+      Effect.ignore,
+      Effect.forkScoped,
+    );
+    yield* publishVoiceIdGate().pipe(
       Effect.provideContext(context),
       Effect.ignore,
       Effect.forkScoped,

@@ -204,4 +204,36 @@ describe("createRemoteSettings", () => {
     expect(await remote.tick()).toBe(true);
     expect(clicked.at(-1)).toEqual(["p.ed:executive:save", "Ask."]);
   });
+
+  it("sends a Voice ID switch he flipped to her brain once, and takes her brain's switches otherwise", async () => {
+    const off = {
+      respondToOthers: false,
+      offSilencesSaved: false,
+      savedBarge: false,
+      strictWhenUnavailable: false,
+    };
+    let mine = off;
+    let brain = off;
+    const sent: unknown[] = [];
+    const taken: unknown[] = [];
+    const remote = createRemoteSettings({
+      sync: async (body) => {
+        sent.push(body.voiceIdGate);
+        if (body.voiceIdGate !== undefined) brain = body.voiceIdGate;
+        return { change: null, voiceIdGate: brain };
+      },
+      current: () => saved,
+      apply: () => {},
+      voiceIdGate: () => mine,
+      onVoiceIdGate: (gate) => taken.push(gate),
+    });
+    mine = { ...off, respondToOthers: true };
+    remote.shareGate();
+    await remote.tick();
+    // Changed on his phone or by voice: the brain's switches come back to this copy.
+    brain = { ...off, savedBarge: true };
+    await remote.tick();
+    expect(sent).toEqual([mine, undefined]);
+    expect(taken).toEqual([{ ...off, savedBarge: true }]);
+  });
 });

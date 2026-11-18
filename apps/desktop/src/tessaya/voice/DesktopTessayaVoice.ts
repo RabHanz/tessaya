@@ -523,7 +523,9 @@ import {
   type SpeakerIdentityService,
 } from "./speakerIdentity.ts";
 import {
+  gateOf,
   parseVoiceIdSettings,
+  VOICE_ID_GATE_KEYS,
   VOICE_ID_DEFAULTS,
   VOICE_ID_SWITCHES,
   voiceIdControls,
@@ -815,8 +817,10 @@ interface VoiceSettings {
   readonly pronounce: Readonly<Record<string, string>>;
   /** Over speakers: hear him through her voice (the echo guard). Measured, not yet reliable enough to be the default. */
   readonly voiceBargeIn: boolean;
-  /** Voice ID and its switches (voiceIdRows.ts). */
+  /** Voice ID and its switches (voiceIdRows.ts). Who else she hears is her brain's `voiceIdGate`; these are its copy. */
   readonly voiceId: VoiceIdSettings;
+  /** This file's switches went up to her brain once, from before they lived there. */
+  readonly voiceIdGateShared: boolean;
   /** Two quick taps of the dictation key keep the microphone open until the next press. */
   readonly doubleTap: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
@@ -1002,6 +1006,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   pronounce: {},
   voiceBargeIn: false,
   voiceId: VOICE_ID_DEFAULTS,
+  voiceIdGateShared: false,
   doubleTap: true,
   keepVoice: false,
   keepDays: 30,
@@ -1166,6 +1171,7 @@ export const readSettings = (path: string): VoiceSettings => {
       pronounce: pronounceFrom(saved["pronounce"]),
       voiceBargeIn: saved["voiceBargeIn"] === true,
       voiceId: parseVoiceIdSettings(saved["voiceId"]),
+      voiceIdGateShared: saved["voiceIdGateShared"] === true,
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
       palette: parsePalette(saved["palette"]),
@@ -1704,6 +1710,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   // A left click is what an icon invites, and without this it did nothing on Windows.
   tray.on("click", () => home.open());
   const modelsDir = NodePath.join(input.stateDir, "voice", "models");
+  // Set once his server's settings sync runs: marks a switch he flipped here for her brain.
+  let shareGate = () => {};
   const voiceId = createVoiceId({
     stateDir: input.stateDir,
     ownerName: () => "You",
@@ -9343,6 +9351,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (VOICE_ID_SWITCHES[id] !== undefined) {
       save({ voiceId: { ...settings.voiceId, [VOICE_ID_SWITCHES[id]]: on } });
       voiceId.sync();
+      if (VOICE_ID_GATE_KEYS.includes(VOICE_ID_SWITCHES[id]!)) shareGate();
     } else if (id === FACE_ON) {
       save({ faceCheck: on });
       if (on) void refreshFaceMembers();
@@ -9823,7 +9832,18 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       controls: homeControls,
       ...(input.onGrants === undefined ? {} : { onGrants: input.onGrants }),
       onPronounce: (pronounce) => void (herPronounce = pronounce),
+      voiceIdGate: () => gateOf(settings.voiceId),
+      onVoiceIdGate: (gate) => {
+        if (JSON.stringify(gate) === JSON.stringify(gateOf(settings.voiceId))) return;
+        save({ voiceId: { ...settings.voiceId, ...gate } });
+        voiceId.sync();
+      },
     });
+    shareGate = remote.shareGate;
+    if (!settings.voiceIdGateShared) {
+      shareGate();
+      save({ voiceIdGateShared: true });
+    }
     const remoteLoop = () =>
       void remote
         .tick()

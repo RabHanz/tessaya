@@ -1393,6 +1393,21 @@ export const TessayaCast = Schema.Record(
   }),
 );
 
+/** Who besides him Voice ID lets in (D1-D3, D8): one record on her brain, read by the Tessel and the desktop. */
+export const VoiceIdGate = Schema.Struct({
+  respondToOthers: Schema.Boolean,
+  offSilencesSaved: Schema.Boolean,
+  savedBarge: Schema.Boolean,
+  strictWhenUnavailable: Schema.Boolean,
+});
+export type VoiceIdGate = typeof VoiceIdGate.Type;
+export const VOICE_ID_GATE_DEFAULTS: VoiceIdGate = {
+  respondToOthers: false,
+  offSilencesSaved: false,
+  savedBarge: false,
+  strictWhenUnavailable: false,
+};
+
 export const VoicePronounce = Schema.Record(
   Schema.String.check(Schema.isMaxLength(60)),
   Schema.String.check(Schema.isMaxLength(80)),
@@ -1527,6 +1542,8 @@ export const ServerSettings = Schema.Struct({
   approvalCardMinutes: ApprovalCardMinutes.pipe(Schema.withDecodingDefault(Effect.succeed(30))),
   // Tessaya: how her voice says a word, word → say as, for every device that reads this server (the R1 over MQTT).
   voicePronounce: VoicePronounce.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Tessaya: Voice ID's switches for who else she hears, for every vessel (the Tessel over MQTT, the desktop's sync).
+  voiceIdGate: VoiceIdGate.pipe(Schema.withDecodingDefault(Effect.succeed(VOICE_ID_GATE_DEFAULTS))),
   // Tessaya: her lines written by her brain, varied and in character (tessaya-shared expression.ts); off plays the fixed ones.
   tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
@@ -2090,6 +2107,7 @@ export const ServerSettingsPatch = Schema.Struct({
   brainDeferNearLimit: Schema.optionalKey(Schema.Boolean),
   approvalCardMinutes: Schema.optionalKey(ApprovalCardMinutes),
   voicePronounce: Schema.optionalKey(VoicePronounce),
+  voiceIdGate: Schema.optionalKey(VoiceIdGate),
   tessayaCast: Schema.optionalKey(TessayaCast),
   speechModelId: Schema.optionalKey(Schema.String),
   speechAcceleration: Schema.optionalKey(SpeechAcceleration),

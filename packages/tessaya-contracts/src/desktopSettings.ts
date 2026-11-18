@@ -2,6 +2,7 @@
  * The desktop's dictation, pill and start-up settings an agent may read and change through this machine's server. Only these fields:
  * nothing here holds a key, a path, an account or anything that opens the microphone or keeps audio.
  */
+import { VoiceIdGate } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 export const BATON_DESKTOP_SETTINGS_WS_METHODS = {
@@ -119,6 +120,8 @@ export const DesktopSettingsSyncInput = Schema.Struct({
   applied: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   /** Its Settings controls, sent when they change; absent from older desktops and when nothing changed. */
   controls: Schema.optionalKey(Schema.Array(DesktopSettingsControl).check(Schema.isMaxLength(400))),
+  /** His Voice ID switches, sent only after he changed them here; her brain keeps the one record. */
+  voiceIdGate: Schema.optionalKey(VoiceIdGate),
 });
 export const DesktopSettingsSyncResult = Schema.Struct({
   change: Schema.NullOr(
@@ -141,4 +144,6 @@ export const DesktopSettingsSyncResult = Schema.Struct({
   grants: Schema.optionalKey(Schema.Array(Schema.String)),
   /** His pronunciations, word → how to say it, from her brain; absent from older servers and while it can't be reached. */
   pronounce: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  /** Voice ID's switches as her brain holds them; absent from older servers and while it can't be reached. */
+  voiceIdGate: Schema.optionalKey(VoiceIdGate),
 });

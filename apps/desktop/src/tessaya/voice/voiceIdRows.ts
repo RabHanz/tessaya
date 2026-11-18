@@ -41,6 +41,20 @@ export const VOICE_ID_DEFAULTS: VoiceIdSettings = {
   strictWhenUnavailable: false,
 };
 
+/** The switches that say who else she hears: her brain's one `voiceIdGate`, which the Tessel reads too. */
+export const VOICE_ID_GATE_KEYS: ReadonlyArray<keyof VoiceIdSettings> = [
+  "respondToOthers",
+  "offSilencesSaved",
+  "savedBarge",
+  "strictWhenUnavailable",
+];
+export const gateOf = (v: VoiceIdSettings) => ({
+  respondToOthers: v.respondToOthers,
+  offSilencesSaved: v.offSilencesSaved,
+  savedBarge: v.savedBarge,
+  strictWhenUnavailable: v.strictWhenUnavailable,
+});
+
 /** Each saved field on its own: a missing or wrong-typed one keeps its default. */
 export const parseVoiceIdSettings = (saved: unknown): VoiceIdSettings => {
   const v = typeof saved === "object" && saved !== null ? (saved as Record<string, unknown>) : {};
