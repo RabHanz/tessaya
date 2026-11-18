@@ -265,7 +265,7 @@ it("answers alone after a start only once no other loop reconnected, so two star
 });
 
 it("claims the room only while its own loop is up and hearing a Tessel on this hub", () => {
-  // 18 Nov 19:34: the loop was off on hetzner, she landed there, and it still recorded a takeover. Never ready, no claim.
+  // 18 Nov 19:34: the loop was off on the cloud server, she landed there, and it still recorded a takeover. Never ready, no claim.
   expect(
     vote([
       [31, 0, 1, false],
