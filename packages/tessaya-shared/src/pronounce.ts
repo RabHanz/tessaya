@@ -222,6 +222,13 @@ export const pronounce = (text: string, his: Readonly<Record<string, string>> = 
   );
 };
 
+/** Off the screen and free of markup a synthesiser would read out; after `speechPieces`, which reads `*sighs*` first. */
+export const speakableText = (text: string): string =>
+  text
+    .replace(/[`*_#>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 /** His list as saved: only word → text pairs, anything else in the file is left out. */
 export const pronounceFrom = (saved: unknown): Readonly<Record<string, string>> =>
   saved === null || typeof saved !== "object" || Array.isArray(saved)

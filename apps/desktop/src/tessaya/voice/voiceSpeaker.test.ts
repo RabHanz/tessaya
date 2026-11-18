@@ -10,7 +10,6 @@ import {
   pcmLevel,
   pcmShape,
   speechFrames,
-  speakableText,
   wavFormat,
   type VoiceChoice,
   type VoicePlayer,
@@ -24,12 +23,6 @@ const drain = async (stream: AsyncIterable<Buffer>) => {
   for await (const chunk of stream) bytes += chunk.length;
   return bytes;
 };
-
-describe("speakableText", () => {
-  it("drops markup a voice would read out", () => {
-    expect(speakableText("**Done**, see `file`\n# next")).toBe("Done , see file next");
-  });
-});
 
 describe("createSpeaker on the OS voice", () => {
   it("plays in order and reports active once for the whole run", async () => {

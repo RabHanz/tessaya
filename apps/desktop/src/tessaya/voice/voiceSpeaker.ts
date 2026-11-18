@@ -17,7 +17,7 @@ import {
   withoutDirections,
 } from "@t3tools/tessaya-shared/interjections";
 import { isNarration } from "@t3tools/tessaya-shared/narration";
-import { pronounce } from "@t3tools/tessaya-shared/pronounce";
+import { pronounce, speakableText } from "@t3tools/tessaya-shared/pronounce";
 import { withProsody } from "@t3tools/tessaya-shared/prosody";
 import type { Viseme } from "@t3tools/tessaya-shared/visemes";
 import { spliceSpeech } from "@t3tools/tessaya-shared/speechSplice";
@@ -45,13 +45,6 @@ export type Synthesise = (text: string) => {
   readonly stream: AsyncIterable<Buffer>;
   readonly cancel: () => void;
 };
-
-/** Off the screen and free of markup a synthesiser would read out. */
-export const speakableText = (text: string): string =>
-  text
-    .replace(/[`*_#>]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 
 /** Rate and where samples begin, from the header at the start of a stream. */
 export const wavFormat = (
