@@ -22,7 +22,7 @@ const frame = (v: number) => {
 const rig = (
   heard: string | ReadonlyArray<string> | (() => string),
   now?: () => number,
-  kwsWake?: ReadonlyArray<{ word: string; threshold: number }>,
+  kwsWake?: ReadonlyArray<{ word: string; threshold: number; also?: boolean }>,
 ) => {
   const confirmed: number[] = [];
   const woken: string[] = [];
@@ -155,6 +155,31 @@ describe("waking her by name with no session open", () => {
     expect(t.lines.join("\n")).toMatch(
       /seg 11 kws 0\.870 under the loop's 0\.9; not a wake \(her name does not lead/,
     );
+  });
+
+  it("a kws pass also wakes a name openWakeWord misses, always confirmed, and never stops its stage 2 (18 Nov 21:09 GMT+5)", async () => {
+    let heard = "Alfred.";
+    const t = rig(() => heard, undefined, [
+      { word: "Tessaya", threshold: 0.9 },
+      { word: "Alfred", threshold: 0.85, also: true },
+    ]);
+    const segment = async (seg: number, marker: number, best: number) => {
+      for (let i = 0; i < 4; i += 1) t.stream.frame("r1", frame(marker));
+      t.stream.end("r1", seg);
+      t.stream.kws("r1", { seg, name: "alfred", score: 0, pass: best >= 0.5, best });
+      await t.stream.drained("r1");
+    };
+    // His "Alfred." in the draft case: stage 2 gave 0.019, the Tessel's kws 0.89.
+    await segment(1, 1, 0.89);
+    expect(t.woken).toEqual(["r1 Alfred"]);
+    // The Tessel's Alfred passes 0.99+ on his other talk ("So I do need that one open.", 0.995): the text decides.
+    heard = "So I do need that one open.";
+    await segment(2, 1, 0.9995);
+    expect(t.woken).toEqual(["r1 Alfred"]);
+    // openWakeWord's own fire still wakes her when the kws does not pass (17 Nov 23:50: Freya at kws 0.631).
+    heard = "Alfred.";
+    await segment(3, 9, 0.2);
+    expect(t.woken).toEqual(["r1 Alfred", "r1 Alfred"]);
   });
 
   it.each([
