@@ -248,6 +248,10 @@ const ROUTE_RESEND_MS = 20_000;
 const STALL_SKIP_MS = 15 * 60_000;
 /** How long a private reply waits for the firmware to confirm its route before it is held instead. */
 const PRIVATE_CONFIRM_MS = 2_000;
+/** How long a voice act waits for the firmware to say it took it before she says it didn't. */
+const ACT_CONFIRM_MS = 1_500;
+/** Ops that only save his choices here (DeviceSync carries them): nothing is sent to the device. */
+const SAVED_ONLY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set(["away", "hubs", "forget"]);
 /** A private reply's route is left alone this long unless another reply comes first. */
 const PRIVATE_ON_MS = 2 * 60_000;
 /** A held private reply is said when a private output connects within this, else dropped. */
@@ -2243,18 +2247,26 @@ const make = Effect.gen(function* () {
       );
     }
     // Played only once the firmware says it is there; a late or lost answer holds it instead.
-    const deadline = now + PRIVATE_CONFIRM_MS;
+    if (yield* reached(id, target, PRIVATE_CONFIRM_MS)) return "play" as const;
+    privateOn.delete(id);
+    return "hold" as const;
+  });
+
+  /** Whether the firmware says it is on `target` within `ms` (state/bt, state/audio/output). */
+  const reached = Effect.fn("HomeDevices.reached")(function* (
+    id: string,
+    target: string,
+    ms: number,
+  ) {
+    const deadline = (yield* Clock.currentTimeMillis) + ms;
     while (!onTarget(id, target)) {
       const left = deadline - (yield* Clock.currentTimeMillis);
-      if (left <= 0) {
-        privateOn.delete(id);
-        return "hold" as const;
-      }
+      if (left <= 0) return false;
       const wait = yield* Deferred.make<void>();
       routeWaits.set(id, wait);
       yield* Deferred.await(wait).pipe(Effect.timeoutOption(left));
     }
-    return "play" as const;
+    return true;
   });
 
   /** A held private reply, said once a private output (one he alone hears) is connected. */
@@ -2938,11 +2950,23 @@ const make = Effect.gen(function* () {
                 `Nothing is paired yet, so replies stay on the ${DEVICE}'s own speaker. Pair one first.`,
               );
             const first = c.output === "onboard" ? OWN_SPEAKER : mac!;
-            if (by.dryRun !== true) yield* setOrder(id, firstIn(yield* orderOf(id), first), first);
             const name =
               sp?.saved == null || first === OWN_SPEAKER
                 ? "the Bluetooth device"
                 : btLabel({ ...sp.saved, lastAt: null });
+            if (by.dryRun !== true) {
+              yield* setOrder(id, firstIn(yield* orderOf(id), first), first);
+              // 18 Nov: "I'm back on my own speaker" while Tumble played on; only its own report says it moved.
+              const linkedNow = first === OWN_SPEAKER || sp?.linked === first;
+              if (
+                by.surface !== "settings" &&
+                linkedNow &&
+                !(yield* reached(id, first, ACT_CONFIRM_MS))
+              )
+                return yield* new DeviceRefusedError({
+                  why: `It didn't go through: the ${DEVICE} hasn't confirmed it moved to ${first === OWN_SPEAKER ? "its own speaker" : name}, so it may still be playing where it was. His order is saved.`,
+                });
+            }
             return done(
               first === OWN_SPEAKER
                 ? `Replies play on the ${DEVICE}'s own speaker first now.`
@@ -3106,6 +3130,18 @@ const make = Effect.gen(function* () {
     c: DeviceCommand,
     by: DeviceActor,
   ): Effect.fn.Return<DeviceOutcome, DeviceRefusedError> {
+    // A device on another server's hub never hears this one's publish (18 Nov: "Done" for a switch Tumble never got).
+    if (
+      by.surface !== "settings" &&
+      !SAVED_ONLY_OPS.has(c.op) &&
+      hub._tag === "Some" &&
+      devices.some((d) => d.deviceId === id && d.mqttUrl === null) &&
+      !hub.value.connected(id)
+    )
+      return yield* new DeviceRefusedError({
+        why: `It didn't go through: ${yield* placeName(id)} isn't linked to this server's hub right now, so nothing reached it.`,
+        notLinked: true,
+      });
     // A Wi-Fi password is never spoken or passed through a model: adding a network is his phone's or the setup page's.
     if (
       by.surface !== "settings" &&

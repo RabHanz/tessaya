@@ -407,6 +407,9 @@ const reportedOf = new WeakMap<House, Array<string>>();
 /** The Tessel each case's turn came through, when it says. */
 const hereOf = new WeakMap<House, NonNullable<RoomCase["here"]>>();
 
+/** What every device_set answers in a case where the change never reached the Tessel. */
+const setFailsOf = new WeakMap<House, string>();
+
 /** Each case's R1 starts at the firmware's 0 dB. */
 const volumes = new WeakMap<House, number>();
 /** Which saved Wi-Fi is first on the fake Tessel; home until she moves it. */
@@ -462,6 +465,8 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       };
     // His Wi-Fi as the server answers it (HomeDevices.wifi): the order and forget run, a password never by voice.
     case "device_set": {
+      const fails = setFailsOf.get(house);
+      if (fails !== undefined) return { ok: false, error: fails };
       const item = String(args["itemId"] ?? "");
       if (item === "net.add")
         return {
@@ -722,6 +727,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   if (c.wifiFirst !== undefined) wifiFirst.set(house, c.wifiFirst);
   if (c.health !== undefined) healthOf.set(house, c.health);
   if (c.here !== undefined) hereOf.set(house, c.here);
+  if (c.deviceSetFails !== undefined) setFailsOf.set(house, c.deviceSetFails);
   const calls: Array<string> = [];
   const replies: Array<string> = [];
   const lamp: Array<"on" | "off"> = [];

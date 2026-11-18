@@ -32,7 +32,9 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { liveThreadShell } from "../../McpToolAccess.testkit.ts";
 import { HomeAssistantService, type HomeActor } from "../../../home/HomeAssistantService.ts";
 import { HomeDevices } from "../../../home/HomeDevices.ts";
-import { DeviceRegistry } from "../../../home/DeviceRegistry.ts";
+import { DeviceRefusedError, DeviceRegistry } from "../../../home/DeviceRegistry.ts";
+import * as PeerLinks from "../../../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../../../peer/PeerMcpClient.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { TessayaVoiceLibrary } from "../../../tessaya/TessayaVoiceLibrary.ts";
 import * as ServerConfig from "../../../config.ts";
@@ -902,3 +904,66 @@ it("keeps the prompt lab the owner's, and what is live his to change", () => {
   expect(refused("promote", null)).toContain("Only he makes a prompt live");
   expect(refused("rollback", null)).toContain("Only he makes a prompt live");
 });
+
+it.effect(
+  "a device act for a Tessel on another server's hub goes to that server, and fails plainly when none has it",
+  () =>
+    Effect.gen(function* () {
+      const NOT_HERE = "It didn't go through: Tumble isn't linked to this server's hub right now.";
+      const devices = HomeDevices.of({
+        command: () => Effect.fail(new DeviceRefusedError({ why: NOT_HERE, notLinked: true })),
+      } as never);
+      const sent: Array<[string, unknown]> = [];
+      const peers = (holder: string | null) =>
+        Layer.mergeAll(
+          Layer.mock(PeerLinks.PeerLinks)({
+            enabled: Effect.succeed(true),
+            list: Effect.succeed([
+              {
+                environmentId: EnvironmentId.make("env-laptop"),
+                label: "laptop",
+                status: "reachable",
+              },
+              {
+                environmentId: EnvironmentId.make("env-onnyx"),
+                label: "onnyx",
+                status: "reachable",
+              },
+            ] as never),
+          }),
+          Layer.mock(PeerMcpClient.PeerMcpClient)({
+            call: (input) =>
+              Effect.sync(() => {
+                sent.push([input.environmentId, input.arguments]);
+                return input.environmentId === holder
+                  ? {
+                      ok: true,
+                      value: { status: "done", line: "Replies play on its own speaker first now." },
+                    }
+                  : { ok: false, error: NOT_HERE, notLinked: true };
+              }) as never,
+          }),
+        );
+      const set = { id: "r1-3d57b3", itemId: "audio.output", value: "speaker" };
+      const there = yield* callTool(
+        "room",
+        Context.make(HomeDevices, devices) as never,
+        "device_set",
+        set,
+      ).pipe(Effect.provide(peers("env-onnyx")));
+      // 18 Nov 04:50 GMT+5: Tumble was on onnyx's hub, hetzner's brain said "Done" for a publish that went nowhere.
+      expect(there.result).toEqual({
+        ok: true,
+        value: { on: "onnyx", status: "done", line: "Replies play on its own speaker first now." },
+      });
+      expect(sent.map(([env]) => env)).toEqual(["env-laptop", "env-onnyx"]);
+      expect(sent[1]![1]).toMatchObject({ ...set, origin: "Tessel" });
+      const nowhere = yield* callTool(
+        "room",
+        Context.make(HomeDevices, devices) as never,
+        "device_set",
+        set,
+      ).pipe(Effect.provide(peers(null)));
+      expect(nowhere.result).toEqual({ ok: false, error: NOT_HERE, notLinked: true });
+    }),
+);

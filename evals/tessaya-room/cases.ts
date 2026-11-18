@@ -72,6 +72,8 @@ export interface RoomCase {
   readonly reportNotSays?: ReadonlyArray<RegExp>;
   /** The Tessel the turn came through, as the registry holds it: its line (TessayaTurn.hereLine) leads the block. */
   readonly here?: RegisteredDevice;
+  /** Every device_set fails with this, as HomeDevices words a change that never reached the Tessel. */
+  readonly deviceSetFails?: string;
 }
 
 /** The turn's clock in every case: 10:15 his time on 12 Nov. */
@@ -1405,6 +1407,23 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     }),
     lastSays: [/link/i],
     lastNotSays: [/power|wi-?fi|unplugged/i],
+  },
+  {
+    // The change never reached Tumble: she says it didn't go through, never "Done".
+    id: "speaker-switch-failed",
+    source:
+      "Director 18 Nov 04:50 (GMT+5): 'change back to your own speaker' got 'Done, I'm back on my own speaker' while it played on Bluetooth",
+    said: ["Change back to your own speaker."],
+    verified: true,
+    here: tessel(true, {
+      "audio.output": ["bt", 300],
+      "audio.device": ["TAOTRONICS SoundSurge 46", 300],
+    }),
+    deviceSetFails:
+      "It didn't go through: Tumble isn't linked to this server's hub right now, so nothing reached it.",
+    calls: ["device_set"],
+    lastSays: [/didn't|did not|couldn't|could not|isn't|not (gone|go) through|still/i],
+    lastNotSays: [/\bdone\b|I.m back|I am back|I.ve (switched|moved)|now (playing|on my)/i],
   },
   {
     // A standing correction (16 Nov 07:31): the battery is irrelevant while it charges, so it is never said then.

@@ -36,7 +36,7 @@ export const offlineWhy = (id: string, name: string) =>
 
 export class DeviceRefusedError extends Schema.TaggedError<DeviceRefusedError>()(
   "DeviceRefusedError",
-  { why: Schema.String },
+  { why: Schema.String, notLinked: Schema.optionalKey(Schema.Boolean) },
 ) {}
 
 export type DeviceVia = RegisteredDevice["via"];

@@ -12,6 +12,7 @@ import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import * as HomeDevices from "./HomeDevices.ts";
+import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
 import { VesselBodies, layer as VesselBodiesLayer } from "./VesselBodies.ts";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
@@ -30,12 +31,13 @@ import * as SqlClient from "effect/sql/SqlClient";
 const ID = "r1-3d57b3";
 const root = `freya/r1/${ID}`;
 
-const setup = () => {
+/** `hub`: the device is on this server's own hub, linked to it while `connected` says so. */
+const setup = (hub?: { connected: () => boolean }) => {
   const sent: Array<{ topic: string; payload: unknown; retain?: boolean }> = [];
   const scenes: Array<unknown> = [];
   let record: R1Device | null = {
     deviceKey: "k".repeat(30),
-    mqttUrl: "mqtt://broker.local:1883",
+    mqttUrl: hub === undefined ? "mqtt://broker.local:1883" : null,
     mqttUser: "tessaya",
     mqttPass: "pw",
     deviceId: ID,
@@ -91,6 +93,14 @@ const setup = () => {
   const layer = HomeDevices.layer.pipe(
     Layer.provideMerge(bodiesLayer),
     Layer.provideMerge(Layer.mergeAll(broker, home, inboxLayer, recordLayer, registryLayer, reach)),
+    Layer.provideMerge(
+      hub === undefined
+        ? Layer.empty
+        : Layer.succeed(R1Hub, {
+            connected: () => hub.connected(),
+            tapVoice: () => {},
+          } as unknown as R1Hub["Service"]),
+    ),
     Layer.provideMerge(TessayaDatabaseMemory),
   );
   const topics = () => sent.map((s) => s.topic);
@@ -1733,18 +1743,63 @@ it.effect(
       assert.deepStrictEqual(sent, [{ topic: "cmd/audio/output", payload: { to: "speaker" } }]);
       assert.deepStrictEqual(yield* outputs(), [`${HP}:stalled`, "speaker:ready"]);
 
-      // "Move to your own speaker": done at once, never a second question (it waited 1 min 43 s).
+      // "Move to your own speaker": done at once, never a second question (it waited 1 min 43 s), and done only once
+      // the firmware says it is there (18 Nov: "I'm back on my own speaker" while it played on).
       sent.length = 0;
-      const moved = yield* devices.command(
-        ID,
-        { op: "item", itemId: "audio.output", value: "speaker" },
-        her,
-      );
+      const moving = yield* devices
+        .command(ID, { op: "item", itemId: "audio.output", value: "speaker" }, her)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      assert.deepStrictEqual(sent, [{ topic: "cmd/audio/output", payload: { to: "speaker" } }]);
+      yield* devices.receive(`${root}/state/audio/output`, '{"out":"onboard","wanted":"speaker"}');
+      const moved = yield* Fiber.join(moving);
       assert.strictEqual(moved.status, "done");
-      assert.deepStrictEqual(yield* outputs(), ["speaker:ready", `${HP}:stalled`]);
+      assert.deepStrictEqual(yield* outputs(), ["speaker:playing", `${HP}:stalled`]);
       // They take her audio again: no longer passed over.
       yield* devices.receive(`${root}/event/bt/stall`, '{"stalls":1,"ms":0,"lost":false}');
       assert.notInclude((yield* outputs()).join(), "stalled");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "says a switch didn't go through when the Tessel is on another server's hub, or never confirms it moved",
+  () => {
+    let linked = false;
+    const { sent, layer } = setup({ connected: () => linked });
+    const HP = "AA:00:00:00:00:46";
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const her = { who: "Tessaya via Tumble", surface: "assistant" } as const;
+      const own = { op: "item", itemId: "audio.output", value: "speaker" } as const;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(`${root}/state/caps`, '{"bt_speaker":true}');
+      yield* devices.receive(
+        `${root}/state/bt`,
+        JSON.stringify({ state: "streaming", mac: HP, out: "bt", wanted: "bt", saved: true }),
+      );
+      // 18 Nov 04:50 GMT+5: Tumble was on onnyx's hub; this server's publish went nowhere and she said "Done".
+      sent.length = 0;
+      const away = yield* serveDevicesCall(
+        { kind: "act", op: "set", args: { id: ID, ...own } },
+        her,
+      );
+      assert.include(away, { ok: false, notLinked: true });
+      assert.match(away.error!, /didn't go through/);
+      assert.deepStrictEqual(sent, []);
+
+      // Linked here, but the firmware never says it moved: a failure after the deadline, never "done".
+      linked = true;
+      const unconfirmed = yield* serveDevicesCall(
+        { kind: "act", op: "set", args: { id: ID, ...own } },
+        her,
+      ).pipe(Effect.forkChild({ startImmediately: true }));
+      assert.deepStrictEqual(sent, [{ topic: "cmd/audio/output", payload: { to: "speaker" } }]);
+      yield* TestClock.adjust("1500 millis");
+      const failed = yield* Fiber.join(unconfirmed);
+      assert.isFalse(failed.ok);
+      assert.notProperty(failed, "notLinked");
+      assert.match(failed.error!, /didn't go through/);
     }).pipe(Effect.provide(layer));
   },
 );

@@ -471,7 +471,11 @@ export const serveDevicesCall = Effect.fn("DeviceCalls.serve")(function* (
     Effect.map((value): TessayaDevicesCallResult => ({ ok: true, value })),
     Effect.catchTags({
       DeviceRefusedError: (e) =>
-        Effect.succeed<TessayaDevicesCallResult>({ ok: false, error: e.why }),
+        Effect.succeed<TessayaDevicesCallResult>({
+          ok: false,
+          error: e.why,
+          ...(e.notLinked === true ? { notLinked: true } : {}),
+        }),
     }),
   );
 });
