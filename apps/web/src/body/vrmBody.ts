@@ -64,6 +64,15 @@ import {
   type V3,
 } from "@t3tools/tessaya-shared/bodyRig";
 import type { BodyState } from "@t3tools/tessaya-shared/bodyControl";
+import {
+  euroStep,
+  handContact,
+  handPresence,
+  pointerHand,
+  predict,
+  type EuroState,
+  type HandFrame,
+} from "@t3tools/tessaya-shared/bodyHand";
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -253,6 +262,9 @@ export function mountBody(
         readonly kind: TouchKind | (string & {});
         readonly intensity: number;
         readonly speed: number;
+        /** How much of his hand met her (cm²: a fingertip is ~1, a palm ~60) and how firmly (0..1). */
+        readonly area?: number;
+        readonly pressure?: number;
       },
     ) => void;
     /** The outfit pieces this model can take off, once it loads (none when clothing is painted on). */
@@ -319,6 +331,102 @@ export function mountBody(
   let shapes: Record<string, number> = {};
   let seqTimers: Array<ReturnType<typeof setTimeout>> = [];
   let settledSent = true;
+  // his hand: the last frame from whatever drives it (pointer now; an agent, a tracker or a controller later),
+  // filtered, and the see-through hand drawn there while it is present
+  let handFrame: HandFrame | null = null;
+  let handEuro: EuroState | null = null;
+  // a pointer resting on her is still there: it fades only once it leaves her (a tracker fades when it loses her)
+  let handHeld = false;
+  let handMesh: {
+    group: THREE.Group;
+    fingers: THREE.Object3D[];
+    material: THREE.MeshStandardMaterial;
+  } | null = null;
+  const handLength = () => 0.11 * (rig?.height ?? 1.6);
+  const makeHand = () => {
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xf0c8b4,
+      roughness: 0.7,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    });
+    const group = new THREE.Group();
+    const L = handLength();
+    const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), material);
+    palm.scale.set(L * 0.24, L * 0.28, L * 0.07);
+    group.add(palm);
+    const fingers: THREE.Object3D[] = [];
+    for (const [i, x] of [-0.17, -0.06, 0.05, 0.15, -0.27].entries()) {
+      const thumb = i === 4;
+      const len = L * (thumb ? 0.3 : i === 1 ? 0.48 : 0.42);
+      const joint = new THREE.Group();
+      joint.position.set(L * x, thumb ? L * 0.02 : L * 0.26, 0);
+      if (thumb) joint.rotation.z = 0.9;
+      const bone = new THREE.Mesh(new THREE.CapsuleGeometry(L * 0.045, len, 4, 8), material);
+      bone.position.y = len / 2;
+      joint.add(bone);
+      group.add(joint);
+      fingers.push(joint);
+    }
+    group.visible = false;
+    scene.add(group);
+    return { group, fingers, material };
+  };
+  /** A pointer over or on her: the hand there, palm toward her surface. */
+  const handAt = (
+    hit: THREE.Intersection,
+    pressed: boolean,
+    pressure: number,
+    fingertip: boolean,
+  ) => {
+    const n =
+      hit.face?.normal.clone().transformDirection(hit.object.matrixWorld) ??
+      new THREE.Vector3(0, 0, 1);
+    const now = performance.now();
+    handFrame = pointerHand({
+      at: now,
+      hit: [hit.point.x, hit.point.y, hit.point.z],
+      normal: [n.x, n.y, n.z],
+      pressure,
+      pressed,
+      fingertip,
+    });
+    handEuro = euroStep(handEuro, handFrame.palm, now);
+    handHeld = true;
+    lastMove = now;
+    invalidate();
+  };
+  /** Draws the hand where it is now; false once it has faded (nothing more to draw). */
+  const drawHand = (now: number): boolean => {
+    const { shown, relax } = handPresence(
+      handFrame === null || !handHeld ? handFrame : { ...handFrame, at: now },
+      now,
+    );
+    if (shown <= 0.01 || handFrame === null || handEuro === null) {
+      if (handMesh !== null) handMesh.group.visible = false;
+      return false;
+    }
+    handMesh ??= makeHand();
+    const f = handFrame;
+    // her surface pushes back: a firm press sits closer, a brush hovers just off her
+    const off = handLength() * (0.08 - 0.06 * f.pressure);
+    const at = predict(handEuro, 16);
+    const n = new THREE.Vector3(...f.normal);
+    const d = new THREE.Vector3(...f.direction);
+    const side = new THREE.Vector3().crossVectors(d, n);
+    handMesh.group.matrix.makeBasis(side, d, n.clone().negate());
+    handMesh.group.matrix.setPosition(at[0] - n.x * off, at[1] - n.y * off, at[2] - n.z * off);
+    handMesh.group.matrixAutoUpdate = false;
+    handMesh.group.matrixWorldNeedsUpdate = true;
+    const curl = f.curl * (1 - relax);
+    for (const [i, finger] of handMesh.fingers.entries())
+      finger.rotation.x = (i === 4 ? 0.6 : 1.3) * curl;
+    for (const finger of handMesh.fingers) finger.updateMatrix();
+    handMesh.material.opacity = 0.55 * shown;
+    handMesh.group.visible = true;
+    return true;
+  };
   let override: {
     face: Weights;
     states?: States;
@@ -839,6 +947,7 @@ export function mountBody(
     if (mirrored) flipVrm0(vrm);
     const f2 = 1 - Math.exp(-4 * delta);
     if (settleBody(f2) || placeCamera(f2)) lastMove = now;
+    if (drawHand(now)) lastMove = now;
     renderer.render(scene, camera);
     frames++;
     const spent = performance.now() - t0;
@@ -1238,6 +1347,7 @@ export function mountBody(
       kind,
       intensity,
       speed,
+      ...(handFrame === null ? {} : handContact(handFrame, handLength())),
     });
   };
   /** The part of her under a point on the canvas, or null (off her, or no model yet). */
@@ -1276,6 +1386,8 @@ export function mountBody(
     const at = partAt(e.clientX, e.clientY);
     if (at === null) return pointers.delete(e.pointerId);
     const { hit, where } = at;
+    // a quick firm press is a fingertip; anything else lays the palm on her
+    handAt(hit, true, e.pressure || 0.5, (e.pressure || 0.5) >= 0.6);
     canvas.setPointerCapture?.(e.pointerId);
     const now = performance.now();
     touch = { at: now, point: hit.point.clone() };
@@ -1337,6 +1449,9 @@ export function mountBody(
     });
   };
   const offHer = () => {
+    if (handFrame !== null) handFrame = { ...handFrame, at: performance.now() };
+    handHeld = false;
+    invalidate();
     trace = null;
     hoverLast = null;
     hoverTravel = 0;
@@ -1353,6 +1468,8 @@ export function mountBody(
     if (now - hoverAt < HOVER_RAY_MS) return;
     hoverAt = now;
     const at = partAt(e.clientX, e.clientY);
+    if (at !== null) handAt(at.hit, false, 0, false);
+    else if (handHeld) offHer();
     traced(at, hoverTravel, now);
     hoverTravel = 0;
     if (lingerTimer !== null) clearTimeout(lingerTimer);
