@@ -1,8 +1,7 @@
 /**
- * Her body as something her brain and any permitted agent can move and feel (M-065): one door for the MCP tools and
- * the bridge. A move is decoded with bounds (bodyControl.ts), rate-limited per caller, and recorded with provenance;
- * then the open private layer takes it onto every body following its session (window, desk, phone, VaM), or, with
- * none open, her desk character does what it can of it. Moves that belong to a private moment never go anywhere else.
+ * Her body, moved and felt by her brain and permitted agents (M-065): moves are bounded, rate-limited, recorded, then
+ * taken by her full body wherever the layer shows one, public or private, else by her desk character as it can.
+ * A private moment's move goes nowhere but a private moment's body.
  */
 import type { MascotAct } from "@t3tools/tessaya-shared/companion";
 import {
@@ -54,8 +53,8 @@ export interface BodyCaller {
 
 export interface BodyMoveAnswer {
   readonly ok: boolean;
-  /** Where it went: "private" (every body on the open private session), "desk" (her desk character), or nowhere. */
-  readonly route: "private" | "desk" | "none";
+  /** Where it went: her full body ("body", or "private" for a private moment's move), her desk character, or nowhere. */
+  readonly route: "body" | "private" | "desk" | "none";
   readonly said: string;
   readonly retryMs?: number;
 }
@@ -188,7 +187,11 @@ const route = Effect.fn("TessayaBody.route")(function* (
       const taken =
         l.body?.({ cues, private: privateMove, acts: extension, by: caller.id }) ?? null;
       if (taken !== null)
-        return { ok: taken.ok, route: "private", said: taken.said } satisfies BodyMoveAnswer;
+        return {
+          ok: taken.ok,
+          route: privateMove ? "private" : "body",
+          said: taken.said,
+        } satisfies BodyMoveAnswer;
     }
   if (privateMove)
     return {
