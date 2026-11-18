@@ -215,9 +215,12 @@ export const make = Effect.gen(function* () {
       yield* oneAtATime.withPermits(1)(
         Effect.sync(() => {
           const here = readStored(file);
-          // A file it cannot read is left for him to mend.
-          if (here !== null && JSON.stringify(here) !== JSON.stringify(stored))
+          // A file it cannot read is left for him to mend; the first time the cache replaces his own file, a copy stays.
+          if (here !== null && JSON.stringify(here) !== JSON.stringify(stored)) {
+            const kept = NodePath.join(NodePath.dirname(file), "dictionary.before-brain.json");
+            if (here.length > 0 && !NodeFS.existsSync(kept)) NodeFS.copyFileSync(file, kept);
             writeStored(file, stored);
+          }
         }),
       );
       return Option.some(parseVocabulary(answer.value.all));

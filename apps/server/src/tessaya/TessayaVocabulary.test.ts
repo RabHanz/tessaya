@@ -223,6 +223,10 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
         // Nothing of his is lost: the brain gained his three, and the worker's cache holds all four.
         expect(phrases(brainFile).toSorted()).toEqual(["btw", "deplok", "google", "kodi"]);
         expect(phrases(workerFile).toSorted()).toEqual(["btw", "deplok", "google", "kodi"]);
+        // And his file as it was stays beside the cache.
+        expect(
+          phrases(NodePath.join(NodePath.dirname(workerFile), "dictionary.before-brain.json")),
+        ).toEqual(["btw", "deplok", "google"]);
       }).pipe(Effect.scoped),
   );
 
