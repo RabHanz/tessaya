@@ -625,9 +625,10 @@ export const parseCue = (raw: unknown): BodyCue | null => {
     }
     case "seq": {
       // one level deep: a step's cues are plain cues, never another sequence
-      const steps = (Array.isArray(c["steps"]) ? c["steps"] : []).slice(0, 8).flatMap((s) => {
+      // a move's steps or a whole scene (bodyScene): up to 64 beats over ten minutes
+      const steps = (Array.isArray(c["steps"]) ? c["steps"] : []).slice(0, 64).flatMap((s) => {
         const r = (s ?? {}) as Record<string, unknown>;
-        const atMs = num(r["atMs"], 0, 20_000);
+        const atMs = num(r["atMs"], 0, 600_000);
         const cues = (Array.isArray(r["cues"]) ? r["cues"] : [])
           .slice(0, 12)
           .map(parseCue)

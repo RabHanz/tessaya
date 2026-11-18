@@ -16,6 +16,14 @@ import {
   type RateState,
 } from "@t3tools/tessaya-shared/bodyControl";
 import type { BodyCue } from "@t3tools/tessaya-shared/bodyCues";
+import {
+  CORE_SCENES,
+  REFERENCE_RIG,
+  decodeScene,
+  dryRun,
+  isPrivateScene,
+  sceneCues,
+} from "@t3tools/tessaya-shared/bodyScene";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
@@ -88,7 +96,15 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
     id: caller.id,
     certainty: 1,
   };
-  const answer = yield* route(move, privateMove, caller);
+  const answer = yield* route(
+    {
+      cues: moveCues(move, `m${(yield* Clock.currentTimeMillis).toString(36)}`),
+      privateMove,
+      acts: extensionActs(move),
+      desk: deskActsOf(move),
+    },
+    caller,
+  );
   yield* emitAction({
     kind: "body.move",
     actor,
@@ -102,8 +118,17 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
 });
 
 const route = Effect.fn("TessayaBody.route")(function* (
-  move: BodyMove,
-  privateMove: boolean,
+  {
+    cues,
+    privateMove,
+    acts: extension,
+    desk: acts,
+  }: {
+    readonly cues: ReadonlyArray<BodyCue>;
+    readonly privateMove: boolean;
+    readonly acts: ReadonlyArray<string>;
+    readonly desk: ReadonlyArray<MascotAct>;
+  },
   caller: BodyCaller,
 ) {
   if (privateMove && !caller.mayBePrivate)
@@ -112,15 +137,11 @@ const route = Effect.fn("TessayaBody.route")(function* (
       route: "none",
       said: "That belongs to a private moment, and only her own turn or his agents may ask it.",
     } satisfies BodyMoveAnswer;
-  const cues: ReadonlyArray<BodyCue> = moveCues(
-    move,
-    `m${(yield* Clock.currentTimeMillis).toString(36)}`,
-  );
   const layers = yield* Effect.serviceOption(PersonaLayers);
   if (layers._tag === "Some")
     for (const l of layers.value.all) {
       const taken =
-        l.body?.({ cues, private: privateMove, acts: extensionActs(move), by: caller.id }) ?? null;
+        l.body?.({ cues, private: privateMove, acts: extension, by: caller.id }) ?? null;
       if (taken !== null)
         return { ok: taken.ok, route: "private", said: taken.said } satisfies BodyMoveAnswer;
     }
@@ -130,7 +151,6 @@ const route = Effect.fn("TessayaBody.route")(function* (
       route: "none",
       said: "No private moment is open, so her body can't do that now.",
     } satisfies BodyMoveAnswer;
-  const acts = deskActsOf(move);
   const registry = yield* Effect.serviceOption(DeviceRegistry);
   if (acts.length === 0 || registry._tag === "None")
     return {
@@ -176,4 +196,56 @@ export const bodyState = Effect.fn("TessayaBody.state")(function* (caller: BodyC
     body: caller.mayBePrivate ? felt : null,
     capabilities: BODY_CAPABILITIES,
   };
+});
+
+/**
+ * A whole scene (bodyScene): decoded with errors that teach, dry-run on a reference body when asked, else played on
+ * the body's own clock through the same doors, gate, limit and record as a single move. `scene` is a core scene's
+ * name or a scene itself.
+ */
+export const playScene = Effect.fn("TessayaBody.scene")(function* (
+  raw: unknown,
+  caller: BodyCaller,
+  dry: boolean,
+) {
+  const named = typeof raw === "string" ? CORE_SCENES[raw] : raw;
+  if (named === undefined)
+    return {
+      ok: false,
+      said: `No scene "${String(raw)}"; core scenes: ${Object.keys(CORE_SCENES).join(", ")}.`,
+    };
+  const decoded = decodeScene(named);
+  if (!decoded.ok) return { ok: false, said: "The scene has errors.", errors: decoded.errors };
+  const scene = decoded.scene;
+  if (dry)
+    return {
+      ok: true,
+      said: `${scene.beats.length} beats over ${scene.beats.at(-1)!.atMs} ms.`,
+      corrected: dryRun(scene, REFERENCE_RIG),
+      notes: decoded.notes,
+    };
+  const now = yield* Clock.currentTimeMillis;
+  const gate = rateGate(rates.get(caller.id), now);
+  rates.set(caller.id, gate.state);
+  if (!gate.ok)
+    return { ok: false, said: `Too many moves at once; try again in ${gate.retryMs} ms.` };
+  const privateMove = isPrivateScene(scene);
+  const answer = yield* route(
+    {
+      cues: sceneCues(scene),
+      privateMove,
+      acts: scene.beats.flatMap((b) => extensionActs(b.move)),
+      desk: scene.beats.flatMap((b) => deskActsOf(b.move)),
+    },
+    caller,
+  );
+  yield* emitAction({
+    kind: "body.scene",
+    actor: { kind: caller.kind === "persona" ? "persona" : "agent", id: caller.id, certainty: 1 },
+    subject: answer.route,
+    outcome: answer.ok ? "ok" : "refused",
+    data: { scene: scene.id, beats: scene.beats.length, private: privateMove },
+    ...(privateMove ? { private: true } : {}),
+  });
+  return { ok: answer.ok, said: answer.said, route: answer.route, notes: decoded.notes };
 });

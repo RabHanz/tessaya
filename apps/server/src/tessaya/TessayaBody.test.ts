@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { PersonaLayers, type PersonaLayer } from "./PersonaLayers.ts";
-import { bodyState, moveBody, type BodyCaller } from "./TessayaBody.ts";
+import { bodyState, moveBody, playScene, type BodyCaller } from "./TessayaBody.ts";
 
 const her: BodyCaller = { id: "desktop:a", kind: "persona", mayBePrivate: true };
 const outside: BodyCaller = { id: "client:x", kind: "outside", mayBePrivate: false };
@@ -94,5 +94,34 @@ describe("TessayaBody", () => {
         said: expect.stringMatching(/unknown bone/),
       });
     }),
+  );
+
+  it.effect(
+    "plays a core scene on the open session as one timed sequence, and dry-runs one with a fix per error",
+    () =>
+      Effect.gen(function* () {
+        const taken: Array<{ cues: Array<{ kind: string }> }> = [];
+        const played = yield* playScene(
+          "greeting",
+          { id: "thread:scene", kind: "agent", mayBePrivate: true },
+          false,
+        ).pipe(Effect.provideService(PersonaLayers, { all: [openLayer(taken as Array<unknown>)] }));
+        expect(played).toMatchObject({ ok: true, route: "private" });
+        expect(taken[0]!.cues.map((c) => c.kind)).toEqual(["mood", "gaze", "seq"]);
+        const bad = yield* playScene(
+          {
+            version: 1,
+            id: "k",
+            beats: [{ atMs: 0, move: { bones: { leftLowerLeg: [-0.8, 0, 0] } } }],
+          },
+          her,
+          true,
+        );
+        expect(bad).toMatchObject({
+          ok: true,
+          corrected: [{ at: "beats[0]", corrected: [{ bone: "leftLowerLeg", kind: "reversal" }] }],
+        });
+        expect(yield* playScene("nope", her, false)).toMatchObject({ ok: false });
+      }),
   );
 });

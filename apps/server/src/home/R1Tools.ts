@@ -127,6 +127,7 @@ const ROOM_TOOLS = [
   // Her body, the one on every screen she is on (M-065): "wave at me", "come sit with me".
   "tessaya_body_move",
   "tessaya_body_state",
+  "tessaya_body_scene",
   // Every vessel's self-described items, from any vessel (R1-P13).
   "device_registry",
   "device_read",
