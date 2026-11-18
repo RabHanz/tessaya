@@ -1,8 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalJsonInEffect:off globalDate:off
 /**
- * His one dictionary for every vessel: `<userdata>/voice/dictionary.json`, the file desktop dictation keeps on its own
- * machine. Reads add persona, household and project names; T3's `speechProjectCustomWords` is derived after each change.
- * Changes go to his other servers (`tessaya_vocabulary`), and each start sends them the whole list to merge.
+ * His one dictionary for every vessel, kept on her brain (`<userdata>/voice/dictionary.json` there). Reads add persona,
+ * household and project names; T3's `speechProjectCustomWords` is derived after each change. Any other server reads
+ * and changes it through the brain (`tessaya_brain` op `vocabulary`) and keeps the same file as its cache, which its
+ * own dictation reads; while the brain is away it changes the cache, and its next start sends that to the brain.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -28,12 +29,12 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { VocabularyChange as VocabularyChangeSchema } from "@t3tools/tessaya-contracts";
+
 import * as ServerConfig from "../config.ts";
-import * as PeerLinks from "../peer/PeerLinks.ts";
 import { emitActionSync } from "../provenance/ActionLog.ts";
-import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { fromPeers } from "../peer/PeerVessels.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { makeBrainLink } from "./BrainHost.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 
 /** The MCP tool his other servers and agents change the dictionary through. */
@@ -53,6 +54,8 @@ export class TessayaVocabulary extends Context.Service<
   {
     /** His words, then the names he never typed that are not among them. */
     readonly read: Effect.Effect<ReadonlyArray<VocabularyEntry>>;
+    /** His words alone, as this server's file holds them. */
+    readonly stored: Effect.Effect<ReadonlyArray<VocabularyEntry>>;
     /** One change, saved; answers the whole list as `read` does. */
     readonly change: (
       change: VocabularyChange,
@@ -185,18 +188,24 @@ export const make = Effect.gen(function* () {
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
   const file = NodePath.join(config.stateDir, "voice", "dictionary.json");
   const oneAtATime = yield* Semaphore.make(1);
-  const links = yield* Effect.serviceOption(PeerLinks.PeerLinks);
-  const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
-
-  /** The same change on his other servers; a change a linked server sent is never sent on (`fromPeers`). */
-  const toPeers = (sent: VocabularyChange) =>
-    Option.isNone(links) || Option.isNone(peerMcp)
-      ? Effect.void
-      : fromPeers(VOCABULARY_TOOL, { change: sent }, "10 seconds").pipe(
-          Effect.provideService(PeerLinks.PeerLinks, links.value),
-          Effect.provideService(PeerMcpClient.PeerMcpClient, peerMcp.value),
-          Effect.ignore,
-        );
+  const brain = yield* makeBrainLink;
+  /** The brain's list after `change` (none: just read), cached here; None on the brain or while it can't be reached. */
+  const atBrain = Effect.fn("TessayaVocabulary.atBrain")(
+    function* (change: VocabularyChange | null) {
+      if (yield* brain.isBrain) return Option.none<ReadonlyArray<VocabularyEntry>>();
+      const answer = Option.flatMap(yield* brain.send("vocabulary", { change }), decodeAtBrain);
+      if (Option.isNone(answer)) return Option.none<ReadonlyArray<VocabularyEntry>>();
+      const stored = parseVocabulary(answer.value.stored);
+      yield* oneAtATime.withPermits(1)(
+        Effect.sync(() => {
+          if (JSON.stringify(readStored(file)) !== JSON.stringify(stored))
+            writeStored(file, stored);
+        }),
+      );
+      return Option.some(parseVocabulary(answer.value.all));
+    },
+    Effect.orElseSucceed(() => Option.none<ReadonlyArray<VocabularyEntry>>()),
+  );
 
   const rows = <E>(query: Effect.Effect<ReadonlyArray<{ readonly name: unknown }>, E>) =>
     query.pipe(
@@ -225,8 +234,12 @@ export const make = Effect.gen(function* () {
     return [...personas, ...members, ...projects.filter(spokenTitle)];
   });
 
-  const read = Effect.gen(function* () {
+  const readHere = Effect.gen(function* () {
     return withNames(readStored(file) ?? [], yield* names);
+  });
+  const read = Effect.gen(function* () {
+    const there = yield* atBrain(null);
+    return Option.isSome(there) ? there.value : yield* readHere;
   }).pipe(Effect.withSpan("TessayaVocabulary.read"));
 
   /** T3's list follows his: written only when it differs, so a settings watcher wakes only for a real change. */
@@ -241,6 +254,11 @@ export const make = Effect.gen(function* () {
   });
 
   const change = Effect.fn("TessayaVocabulary.change")(function* (input: VocabularyChange) {
+    const there = yield* atBrain(input);
+    if (Option.isSome(there)) {
+      yield* deriveCustomWords(there.value).pipe(Effect.ignore);
+      return there.value;
+    }
     const all = yield* oneAtATime.withPermits(1)(
       Effect.gen(function* () {
         // Re-read each time: the desktop writes the same file on his own machine.
@@ -258,7 +276,6 @@ export const make = Effect.gen(function* () {
       }),
     );
     yield* deriveCustomWords(all).pipe(Effect.ignore);
-    yield* toPeers(input).pipe(Effect.forkDetach);
     return all;
   });
 
@@ -289,15 +306,23 @@ export const make = Effect.gen(function* () {
     else yield* deriveCustomWords(known);
   });
   yield* adopt.pipe(Effect.ignore);
-  // shortcut: a word removed while a server was off comes back from its next start; a tombstone list would stop that.
+  // What this server's cache learned while her brain was away goes to the brain once it is up.
+  // shortcut: additive, so a word removed here while the brain was away stays there; a tombstone list would carry it.
   yield* Effect.suspend(() => {
     const stored = readStored(file);
     return stored === null || stored.length === 0
       ? Effect.void
-      : toPeers({ verb: "learn", entries: stored });
-  }).pipe(Effect.delay("1 minute"), Effect.forkScoped);
+      : atBrain({ verb: "learn", entries: stored });
+  }).pipe(Effect.delay("1 minute"), Effect.ignore, Effect.forkScoped);
 
-  return TessayaVocabulary.of({ read, change });
+  const stored = Effect.sync(() => readStored(file) ?? []);
+  return TessayaVocabulary.of({ read, stored, change });
 });
 
 export const layer = Layer.effect(TessayaVocabulary, make);
+
+/** What a worker sends her brain (`tessaya_brain` op `vocabulary`), and what the brain answers. */
+export const VocabularyAtBrain = Schema.Struct({ change: Schema.NullOr(VocabularyChangeSchema) });
+const decodeAtBrain = Schema.decodeUnknownOption(
+  Schema.Struct({ stored: Schema.Array(Schema.Unknown), all: Schema.Array(Schema.Unknown) }),
+);

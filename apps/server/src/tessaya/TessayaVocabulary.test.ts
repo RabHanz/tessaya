@@ -15,6 +15,7 @@ import { expect } from "vite-plus/test";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
+import { receiveAtBrain } from "./BrainReceive.ts";
 import * as Vocabulary from "./TessayaVocabulary.ts";
 import { serveVoiceCall, TessayaVoiceLibrary } from "./TessayaVoiceLibrary.ts";
 
@@ -128,6 +129,29 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
         expect(bad.ok).toBe(false);
       }),
     ),
+  );
+
+  it.effect(
+    "on her brain, a worker's change lands in the one list and the brain answers its words for the cache",
+    () =>
+      withStore((file) =>
+        Effect.gen(function* () {
+          const added = yield* receiveAtBrain("vocabulary", {
+            change: { verb: "add", phrase: "Kubernetes", replacement: null },
+          });
+          expect(added.ok).toBe(true);
+          expect(stored(file)).toEqual([expect.objectContaining({ phrase: "Kubernetes" })]);
+          const read = yield* receiveAtBrain("vocabulary", { change: null });
+          const value = (read as { value: { stored: unknown[]; all: Array<{ phrase: string }> } })
+            .value;
+          // His words for the worker's cache; the read with the names, for its turns.
+          expect(value.stored).toEqual([expect.objectContaining({ phrase: "Kubernetes" })]);
+          expect(value.all.map((e) => e.phrase)).toContain("Kubernetes");
+          expect(
+            (yield* receiveAtBrain("vocabulary", { change: { verb: "add", phrase: "" } })).ok,
+          ).toBe(false);
+        }),
+      ),
   );
 
   it.effect("adds the persona names once, beside his own spelling of one", () =>
