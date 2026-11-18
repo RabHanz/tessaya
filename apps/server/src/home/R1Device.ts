@@ -680,6 +680,17 @@ const playsOf = (voice: unknown): { plays?: "bt" | "onboard" } =>
     ? { plays: voice.plays }
     : {};
 
+/** Her volume now, as the device last told the room loop (`volume`, 0-100). */
+const volumeOf = (voice: unknown): { volume?: number } =>
+  typeof voice === "object" &&
+  voice !== null &&
+  "volume" in voice &&
+  typeof voice.volume === "number" &&
+  voice.volume >= 0 &&
+  voice.volume <= 100
+    ? { volume: Math.round(voice.volume) }
+    : {};
+
 /** The zone the room loop runs in (`tz`), the last guess before this machine's. */
 const zoneOfVoice = (voice: unknown): string | undefined =>
   typeof voice === "object" && voice !== null && "tz" in voice && typeof voice.tz === "string"
@@ -850,6 +861,7 @@ export const r1Envelope = (
     // Begun while her own voice could still be heard: what it teaches waits for his yes, and nothing private is read.
     tainted: taintedOf(input.voice),
     ...playsOf(input.voice),
+    ...volumeOf(input.voice),
     timeZone,
     ...heardWordsOf(input.voice),
     ...inputOf(input.voice),

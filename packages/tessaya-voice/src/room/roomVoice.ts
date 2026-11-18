@@ -318,6 +318,8 @@ export interface Tessaya {
   readonly input?: InputQuality;
   /** Where her voice plays now, as the device last told this loop: live, where the server's record may be old. */
   readonly plays?: "bt" | "onboard";
+  /** Her volume now (0-100), as the device last told this loop: the brain's record of it may be another hub's. */
+  readonly volume?: number;
 }
 
 export interface RoomDeps {
@@ -1106,6 +1108,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       ...(scored == null ? {} : { heardWords: scored.words, recogniser: scored.model }),
       ...playbackNow(),
       ...(playsOn.has(id) ? { plays: playsOn.get(id) === "bt" ? "bt" : "onboard" } : {}),
+      ...(volumeOn.has(id) ? { volume: volumeOn.get(id)! } : {}),
     });
 
     /**
@@ -3275,6 +3278,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     playsOn.set(id, out);
     if (was !== undefined && was !== out) sessions.get(id)?.rerouted(why);
   };
+  /** Each Tessel's volume as it last reported it (`state/volume`), sent with each turn. */
+  const volumeOn = new Map<string, number>();
   /** R1s with her listening and closing sounds off (`cmd/voice/earcons {"on":false}`, retained); on by default. */
   const noCues = new Set<string>();
   /** R1s switched between keyword and open talk-over (`cmd/voice/talkover {"mode"}`, retained); else the config's. */
@@ -3550,6 +3555,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         // A new session starts where it starts; only a move within one is a change mid-reply.
         if (json()["ev"] === "start") playsOn.set(id, out);
         else playsNow(id, out, out === "bt" ? "Bluetooth" : `the ${DEVICE}'s speaker`);
+      } else if (tail === "state/volume") {
+        const pct = json()["pct"];
+        if (typeof pct === "number" && pct >= 0 && pct <= 100) volumeOn.set(id, Math.round(pct));
       } else if (tail === "state/audio/output" && typeof json()["out"] === "string") {
         const out = json()["out"] === "onboard" ? "onboard" : "bt";
         playsNow(id, out, out === "bt" ? "Bluetooth" : `the ${DEVICE}'s speaker`);
