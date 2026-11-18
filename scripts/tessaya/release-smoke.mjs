@@ -342,8 +342,96 @@ if (t3) {
     );
   }
 }
+// His detached thread window sits minimized or behind others while its turn keeps moving; a popup that never throttled
+// kept drawing it out of sight, in its renderer and the GPU process, with nothing on screen to show for it. Here the
+// popup draws every frame, as a live turn does, and goes out of sight: it must stop, and the idle below runs so.
+const popout = await waitFor((p) => p.url().includes("batonWindow=smoke-popout"), 10_000);
+if (popout) {
+  try {
+    const title = `smoke-popout-${process.pid}`;
+    await popout.evaluate((t) => {
+      // T3 sets its own title as its state changes; held here until the window is found by it.
+      window.__smokeTitle = setInterval(() => {
+        if (document.title !== t) document.title = t;
+      }, 50);
+      const dot = document.body.appendChild(document.createElement("div"));
+      window.__smokeFrames = 0;
+      const tick = () => {
+        window.__smokeFrames += 1;
+        dot.style.transform = `translateX(${window.__smokeFrames % 40}px)`;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, title);
+    execFileSync("powershell", [
+      "-NoProfile",
+      "-Command",
+      // Tessaya's visible top-level windows by title; the list is the error when the popup is not among them.
+      "Add-Type -TypeDefinition 'using System; using System.Text; using System.Runtime.InteropServices; using System.Collections.Generic; " +
+        'public class SW { public delegate bool CB(IntPtr h, IntPtr l); [DllImport("user32.dll")] static extern bool EnumWindows(CB c, IntPtr l); ' +
+        '[DllImport("user32.dll")] static extern int GetWindowText(IntPtr h, StringBuilder s, int n); [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h); ' +
+        '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n); ' +
+        "public static Dictionary<string, IntPtr> All() { var r = new Dictionary<string, IntPtr>(); EnumWindows((h, l) => { var s = new StringBuilder(256); GetWindowText(h, s, 256); if (IsWindowVisible(h) && s.Length > 0) r[s.ToString()] = h; return true; }, IntPtr.Zero); return r; } }'; " +
+        `for ($i = 0; $i -lt 50; $i++) { $w = [SW]::All(); if ($w.ContainsKey('${title}')) { [void][SW]::ShowWindow($w['${title}'], 6); exit 0 }; Start-Sleep -Milliseconds 100 }; ` +
+        "throw ('popup not found among: ' + ($w.Keys -join ' | '))",
+    ]);
+    await popout.evaluate(() => clearInterval(window.__smokeTitle));
+    await sleep(2000);
+    const from = await popout.evaluate(() => window.__smokeFrames);
+    await sleep(5000);
+    const seen = await popout.evaluate(() => ({
+      state: document.visibilityState,
+      frames: window.__smokeFrames,
+    }));
+    row(
+      "a minimized detached window stops drawing",
+      seen.state === "hidden" && seen.frames - from < 5,
+      `${seen.state}, ${seen.frames - from} frames in 5 s`,
+    );
+  } catch (error) {
+    row(
+      "a minimized detached window stops drawing",
+      false,
+      error.stderr?.toString() || error.message,
+    );
+  }
+} else
+  rows.push({
+    step: "a minimized detached window stops drawing",
+    ok: null,
+    detail: "skipped: no detached window",
+  });
+// A working thread's pulse in his window repaints it six times a second for as long as the turn runs; untouched for a
+// minute, it must hold still. The idle below then runs with one pulsing, as his did with his lanes working.
+const pulse = t3
+  ? await t3
+      .evaluate(() => {
+        const dot = document.body.appendChild(document.createElement("span"));
+        dot.id = "smoke-pulse";
+        dot.className = "motion-safe:animate-status-pulse";
+        dot.style.cssText =
+          "position:fixed;left:4px;bottom:4px;width:8px;height:8px;background:#888";
+        return dot.getAnimations().length;
+      })
+      .catch(() => 0)
+  : 0;
 try {
   await sleep(60_000);
+  if (t3) {
+    // The window checks every 15 s whether it was touched in the last minute.
+    await sleep(16_000);
+    const held = await t3
+      .evaluate(() => ({
+        still: document.documentElement.hasAttribute("data-still"),
+        state: document.getElementById("smoke-pulse")?.getAnimations()[0]?.playState ?? "none",
+      }))
+      .catch((e) => ({ still: false, state: e.message }));
+    row(
+      "a working thread's pulse holds still in an untouched window",
+      pulse > 0 && held.still && held.state === "paused",
+      `${pulse} animation(s); data-still ${held.still}, ${held.state}`,
+    );
+  }
   const dir = join(exe, "..").replace(/'/g, "''");
   const script =
     `$d='${dir}'; $p=@{}; Get-CimInstance Win32_Process | ? { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, 'OrdinalIgnoreCase') } | % { $p[[int]$_.ProcessId]=$_.Name + ($(if ($_.CommandLine -match '--type=(\\S+)') { ' ' + $matches[1] } else { '' })) }; ` +

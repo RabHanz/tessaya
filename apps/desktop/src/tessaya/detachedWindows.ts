@@ -142,7 +142,9 @@ export function installDetachedWindows(
       outlivesOpener: true,
       overrideBrowserWindowOptions: {
         ...bounds,
-        webPreferences,
+        // The main window's preferences turn throttling off until its first reveal; a popup shows at once, and
+        // without throttling it kept rendering while minimized or behind other windows (MA-017).
+        webPreferences: { ...webPreferences, backgroundThrottling: true },
         minWidth: 480,
         minHeight: 400,
         autoHideMenuBar: true,
