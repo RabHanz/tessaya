@@ -441,6 +441,26 @@ export const voiceFor = (
   return cloud === undefined ? null : { engine: "gemini", voice: cloud.id, name: cloud.name };
 };
 
+/**
+ * The voice for a private layer's own line: his named clone, else the persona's voice kept on this machine. Private
+ * words never go to a cloud voice, so a persona set to one speaks with its local Pocket voice instead.
+ */
+export const privateVoice = (
+  view: VoiceLibraryView,
+  persona: string,
+  clone?: string,
+): { readonly engine: "clone" | "pocket"; readonly voice: string } | null => {
+  const saved = clone === undefined ? undefined : view.clones?.find((c) => c.id === clone);
+  if (saved !== undefined) return { engine: "clone", voice: saved.id };
+  const found = voiceFor(view, persona);
+  if (found === null) return null;
+  if (found.engine !== "gemini") return { engine: found.engine, voice: found.voice };
+  const p = view.personas.find(
+    (x) => x.name.toLowerCase() === persona.toLowerCase() || x.id === persona,
+  );
+  return p === undefined ? null : { engine: "pocket", voice: p.speaks };
+};
+
 export class TessayaVoiceLibrary extends Context.Service<
   TessayaVoiceLibrary,
   {
