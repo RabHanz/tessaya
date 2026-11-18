@@ -342,6 +342,50 @@ if (t3) {
     );
   }
 }
+// His detached thread window sits minimized or behind others while its turn keeps moving; a popup that never throttled
+// kept drawing it out of sight, in its renderer and the GPU process, with nothing on screen to show for it. Here the
+// popup draws every frame, as a live turn does, and goes out of sight: it must stop, and the idle below runs so.
+const popout = await waitFor((p) => p.url().includes("batonWindow=smoke-popout"), 10_000);
+if (popout) {
+  try {
+    const title = `smoke-popout-${process.pid}`;
+    await popout.evaluate((t) => {
+      document.title = t;
+      const dot = document.body.appendChild(document.createElement("div"));
+      window.__smokeFrames = 0;
+      const tick = () => {
+        window.__smokeFrames += 1;
+        dot.style.transform = `translateX(${window.__smokeFrames % 40}px)`;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, title);
+    execFileSync("powershell", [
+      "-NoProfile",
+      "-Command",
+      `Add-Type -Name W -Namespace S -MemberDefinition '[DllImport("user32.dll")] public static extern System.IntPtr FindWindow(string c, string t); [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int n);'; for ($i = 0; $i -lt 30; $i++) { $h=[S.W]::FindWindow($null,'${title}'); if ($h -ne [System.IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }; if ($h -eq [System.IntPtr]::Zero) { throw 'no window titled ${title}' }; [void][S.W]::ShowWindow($h, 6)`,
+    ]);
+    await sleep(2000);
+    const from = await popout.evaluate(() => window.__smokeFrames);
+    await sleep(5000);
+    const seen = await popout.evaluate(() => ({
+      state: document.visibilityState,
+      frames: window.__smokeFrames,
+    }));
+    row(
+      "a minimized detached window stops drawing",
+      seen.state === "hidden" && seen.frames - from < 5,
+      `${seen.state}, ${seen.frames - from} frames in 5 s`,
+    );
+  } catch (error) {
+    row("a minimized detached window stops drawing", false, error.message);
+  }
+} else
+  rows.push({
+    step: "a minimized detached window stops drawing",
+    ok: null,
+    detail: "skipped: no detached window",
+  });
 try {
   await sleep(60_000);
   const dir = join(exe, "..").replace(/'/g, "''");
