@@ -4,6 +4,7 @@
  * is one streaming WAV (mono 16-bit, 24 kHz like Pocket and Gemini), the shape every player here already takes.
  */
 import { speechPieces, type SpeechPiece } from "./interjections.ts";
+import { speakableText } from "./pronounce.ts";
 import { voiceClips } from "./voiceClips.ts";
 
 export const SPLICE_RATE = 24_000;
@@ -233,7 +234,9 @@ export const pocketSpeech = (
   voice: string,
   say: (text: string) => AsyncIterable<Uint8Array>,
 ): AsyncIterable<Uint8Array> => {
-  const pieces = speechPieces(text, voice);
+  const pieces = speechPieces(text, voice).map((p) =>
+    p.kind === "text" ? { ...p, text: speakableText(p.text) } : p,
+  );
   const only = pieces.length === 1 ? pieces[0] : undefined;
   return only?.kind === "text" ? say(only.text) : spliceSpeech(pieces, say);
 };

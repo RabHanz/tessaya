@@ -172,6 +172,9 @@ describe("splicing sounds between words", () => {
     });
     expect(out).toBe(plain);
     expect(said.at(-1)).toBe("Done.");
+    // The room reads through here: markdown is never said, and a direction is still its sound.
+    await collect(pocketSpeech("**Done**, see `file`\n# next *sighs*", "anna", say));
+    expect(said.at(-1)).toBe("Done , see file next");
   });
 
   it("plays a voice's clip at its share of her level, a different take each time, never clipped", async () => {
