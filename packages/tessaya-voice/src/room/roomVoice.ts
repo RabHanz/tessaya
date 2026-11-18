@@ -594,6 +594,12 @@ export const loopBuses = (brainUrl: string, hubUrl: string | undefined) => {
 const BRAIN_ACTS = /^voice\/(intent\/(eye|rest)|stepup|say|ask|persona)$/;
 /** From the brain's hub: what the loop on her hub takes, only for a Tessel online here (one loop drives her). */
 export const fromBrainHub = (tail: string, here: boolean) => here && BRAIN_ACTS.test(tail);
+/**
+ * What a Tessel reports on her hub that the brain's own records read (online, readings, the loop's turn metrics): copied
+ * to the brain's hub, states retained as she retains them. Without it the brain thought her offline and her readings old.
+ */
+export const relayToBrain = (tail: string): "retain" | "once" | null =>
+  tail.startsWith("state/") ? "retain" : tail.startsWith("event/") ? "once" : null;
 /** The loop's answers the brain waits on: a step-up's ack (StepUps settles on it). */
 export const toBrainHub = (tail: string) => tail === "voice/stepup/done";
 

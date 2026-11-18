@@ -14,6 +14,7 @@ import {
   brainOrLocal,
   busOfBrain,
   fromBrainHub,
+  relayToBrain,
   loopBuses,
   createRoomVoice,
   ROOM_CONFIG,
@@ -1238,6 +1239,18 @@ describe("waking by name with no session open", () => {
     ];
     for (const [tail, here, want] of cases)
       expect([tail, here, fromBrainHub(tail, here)]).toEqual([tail, here, want]);
+    // 23:07-23:25: the brain saw her offline ("Tumble's link to the server is down"), her volume 4 h old, and no mic
+    // readings ("I haven't got any recent sound readings"): what she reports on her hub reaches the brain's too.
+    const relayed: Array<[string, ReturnType<typeof relayToBrain>]> = [
+      ["state/online", "retain"],
+      ["state/volume", "retain"],
+      ["event/voice/metrics", "once"],
+      ["event/audio/input", "once"],
+      ["voice/up", null],
+      ["voice/wake", null],
+      ["cmd/voice/start", null],
+    ];
+    for (const [tail, want] of relayed) expect([tail, relayToBrain(tail)]).toEqual([tail, want]);
     // The brain unreachable: the turn goes to her own hub's server, never silence; once a word is out, no second turn.
     const lines: string[] = [];
     const down = (): AsyncIterable<string> => ({
