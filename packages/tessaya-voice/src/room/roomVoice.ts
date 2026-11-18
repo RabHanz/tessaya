@@ -522,6 +522,31 @@ export const ROOM_CONFIG: RoomConfig = {
 };
 
 const REARM_AT_MS = [2_000, 8_000, 18_000];
+
+/** `voice/gate`'s four switches, or null for anything else (the loop's own gate then holds). */
+export const gateFrom = (payload: Uint8Array | string): SpeakerGate | null => {
+  try {
+    const v = JSON.parse(
+      typeof payload === "string" ? payload : Buffer.from(payload).toString("utf8"),
+    ) as Record<string, unknown>;
+    const keys = [
+      "respondToOthers",
+      "offSilencesSaved",
+      "savedBarge",
+      "strictWhenUnavailable",
+    ] as const;
+    if (typeof v !== "object" || v === null || !keys.every((k) => typeof v[k] === "boolean"))
+      return null;
+    return {
+      respondToOthers: v["respondToOthers"] as boolean,
+      offSilencesSaved: v["offSilencesSaved"] as boolean,
+      savedBarge: v["savedBarge"] as boolean,
+      strictWhenUnavailable: v["strictWhenUnavailable"] as boolean,
+    };
+  } catch {
+    return null;
+  }
+};
 /** As long as her server holds a conversation (TessayaTurn's idle boundary). */
 const CURRENT_HELD_MS = 10 * 60_000;
 const onlyEnglish = (languages: ReadonlyArray<string>) =>
@@ -893,6 +918,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const speaking = () => reply !== null || deps.now() < playUntil + config.downDelayMs;
     /** What the voice reads: his own pronunciations for this R1 (and the built-in ones), never the text kept. */
     const spoken = (text: string) => pronounce(text, pronunciations.get(id) ?? {});
+    /** Voice ID's switches as her brain holds them (`voice/gate`), else this loop's own. */
+    const gateNow = () => voiceIdGates.get(id) ?? config.gate;
     const names = personas.map((p) => p.name);
 
     /**
@@ -1798,7 +1825,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const speaker = await speakerP;
         const affect = affectNow;
         const identity = speaker ?? UNVERIFIED(deps.now());
-        if (!admits(identity, config.gate, "turn")) return null;
+        if (!admits(identity, gateNow(), "turn")) return null;
         const who = personas.find((p) => p.name === called) ?? persona;
         const tessaya = envelope(
           words,
@@ -2185,7 +2212,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
       // Several people: the turn is heard when any one of them would be on their own.
       const someoneAdmitted =
-        voices.kind === "many" && voices.spans.some((s) => admits(s.identity, config.gate, "turn"));
+        voices.kind === "many" && voices.spans.some((s) => admits(s.identity, gateNow(), "turn"));
       // Speculate, don't trust (Director, 16 Nov): with no verdict yet her brain starts closed to his path (a guest's
       // reach), and his verdict before its first words asks again as his. A guess begun on his held voice is heard
       // only once this turn's verdict is his. A verdict that keeps the voice out stops her, whenever it lands.
@@ -2193,7 +2220,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       let refused = false;
       const judged = sides.then(([late]) => {
         if (late === undefined || known !== null || someoneAdmitted) return true;
-        const ok = admits(late, config.gate, "turn") && (!unjudged || speakerPath(late) === "his");
+        const ok = admits(late, gateNow(), "turn") && (!unjudged || speakerPath(late) === "his");
         if (ok) return true;
         refused = true;
         // Logged apart from a stop or a lost claim, which all read "cut off" (09:28:06, 15 Nov).
@@ -2209,7 +2236,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             : unjudged
               ? judged
               : Promise.race([judged, deps.sleep(config.sideMs).then(() => !refused)]));
-      if (!admits(identity, config.gate, "turn") && !someoneAdmitted) {
+      if (!admits(identity, gateNow(), "turn") && !someoneAdmitted) {
         kept?.control.abort();
         dropped(turn, `a ${identity.kind} voice`, text);
         return;
@@ -2405,7 +2432,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           const first = it.next();
           first.catch(() => undefined);
           const won = await Promise.race([first.then(() => null), verdict.then((v) => v ?? null)]);
-          if (won !== null && speakerPath(won) === "his" && admits(won, config.gate, "turn")) {
+          if (won !== null && speakerPath(won) === "his" && admits(won, gateNow(), "turn")) {
             closedStart.abort();
             control.signal.removeEventListener("abort", stop);
             reasked = true;
@@ -3117,6 +3144,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const capabilities = new Map<string, ReadonlyArray<string>>();
   /** His own pronunciations per R1, from her server (`voice/pronounce`, retained). */
   const pronunciations = new Map<string, Readonly<Record<string, string>>>();
+  /** Voice ID's switches per R1, from her server (`voice/gate`, retained): the one record the desktop also sets. */
+  const voiceIdGates = new Map<string, SpeakerGate>();
   /** Her last "I'm here" on each R1 and when, across its sessions. */
   const ackState = new Map<string, { line: string | null; at: number }>();
   /** Her "I'm here" lines, rendered per voice once for the loop's life (voice|line to audio). */
@@ -3428,6 +3457,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         deps.log(
           `[${id}] pronunciations: ${pronunciations.get(id) === undefined ? 0 : Object.keys(pronunciations.get(id)!).length}`,
         );
+        return;
+      }
+      if (tail === "voice/gate") {
+        const gate = gateFrom(payload);
+        if (gate === null) voiceIdGates.delete(id);
+        else voiceIdGates.set(id, gate);
+        deps.log(`[${id}] voice id gate: ${gate === null ? "loop default" : JSON.stringify(gate)}`);
         return;
       }
       if (tail === "voice/up" || tail === "voice/up/tainted") {

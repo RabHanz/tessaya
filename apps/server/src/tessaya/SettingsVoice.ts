@@ -113,6 +113,9 @@ export const SERVER_SETTINGS_VOICE: {
   speechModelUnloadTimeout: free("how long the speech model stays loaded when idle"),
   speechProjectCustomWords: free("his custom words and names for dictation"),
   voicePronounce: free("how she says words and names aloud"),
+  voiceIdGate: owner(
+    "who besides him she answers: guests, saved people, talk-over, and anyone when the speaker model is missing",
+  ),
   speechPostProcessingModelSelection: confirm("the model that tidies dictation"),
   dictationCleanup: free("how dictation is cleaned up"),
   projectAgentBrowserAccessOverrides: owner("per-project browser access for agents"),
@@ -274,7 +277,8 @@ export const findSettings = (
   const asked = words(text);
   return entries
     .map((s) => {
-      const hay = words(`${s.key} ${s.say}`);
+      // A choice's options are words he says for it ("make her voice slower").
+      const hay = words(`${s.key} ${s.say} ${(s.control?.options ?? []).join(" ")}`);
       const score = asked.filter((w) => hay.some((h) => h.startsWith(w) || w.startsWith(h))).length;
       return { s, score };
     })

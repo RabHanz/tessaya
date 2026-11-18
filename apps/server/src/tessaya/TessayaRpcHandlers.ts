@@ -15,6 +15,7 @@ import { activityList, activityWhy } from "../provenance/activity.ts";
 import { teamBoard } from "./TessayaTeamBoard.ts";
 import { readGrants, setGrant } from "./consent.ts";
 import { pronunciations } from "./Pronunciations.ts";
+import { voiceIdGate } from "./VoiceIdGate.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
@@ -773,6 +774,13 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_DESKTOP_SETTINGS_WS_METHODS.sync]: (input) =>
       run(
         Effect.flatMap(TessayaDesktopSettings, (settings) => settings.sync(input)).pipe(
+          // His Voice ID switches: what he set on the desktop goes to her brain first, then the brain's come back.
+          Effect.flatMap((answer) =>
+            voiceIdGate(input.voiceIdGate === undefined ? {} : { set: input.voiceIdGate }).pipe(
+              Effect.orElseSucceed(Option.none),
+              Effect.map((g) => (Option.isNone(g) ? answer : { ...answer, voiceIdGate: g.value })),
+            ),
+          ),
           Effect.flatMap((answer) => Effect.map(readGrants, (grants) => ({ ...answer, grants }))),
           // His pronunciations from her brain; left out while it can't be reached, so the desktop keeps its copy.
           Effect.flatMap((answer) =>

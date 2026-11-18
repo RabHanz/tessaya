@@ -8,6 +8,7 @@ import {
   DesktopSettingsSyncResult,
   type DesktopVoiceSettings,
   type DesktopVoiceSettingsPatch,
+  type VoiceIdGate,
 } from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
 
@@ -212,6 +213,7 @@ export const createRemoteSettings = (input: {
     readonly effective: DesktopVoiceSettings;
     readonly applied: number;
     readonly controls?: ReadonlyArray<DesktopSettingsControl>;
+    readonly voiceIdGate?: VoiceIdGate;
   }) => Promise<unknown>;
   readonly current: () => DesktopVoiceSettings;
   readonly apply: (id: string, value: string | boolean | null) => void;
@@ -221,21 +223,34 @@ export const createRemoteSettings = (input: {
   readonly onGrants?: (keys: ReadonlyArray<string>) => void;
   /** His pronunciations as her brain holds them, from every sync that carries them. */
   readonly onPronounce?: (pronounce: Readonly<Record<string, string>>) => void;
+  /** His Voice ID switches here, sent after `shareGate`; `onVoiceIdGate` takes her brain's (the one record). */
+  readonly voiceIdGate?: () => VoiceIdGate;
+  readonly onVoiceIdGate?: (gate: VoiceIdGate) => void;
   readonly now?: () => number;
 }) => {
   let applied = 0;
   let published = { json: "", at: 0 };
+  // His own change here waits to reach her brain; till then her brain's copy never overwrites it.
+  let gateChanged = false;
   const report = async () => {
     const controls = input.controls === undefined ? null : voiceControls(input.controls());
     const json = controls === null ? "" : JSON.stringify(controls);
     // Sent when they changed, and now and then for a server that restarted: a sync is held open often.
     const now = (input.now ?? Date.now)();
     const send = json !== published.json || now - published.at > REPUBLISH_MS;
+    const sendsGate = gateChanged && input.voiceIdGate !== undefined;
     const answer = await input.sync({
       effective: remoteSettingsOf(input.current()),
       applied,
       ...(send && controls !== null ? { controls } : {}),
+      ...(sendsGate ? { voiceIdGate: input.voiceIdGate!() } : {}),
     });
+    if (sendsGate) gateChanged = false;
+    else if (!gateChanged) {
+      const back = decodeSync(answer);
+      if (back._tag === "Some" && back.value.voiceIdGate !== undefined)
+        input.onVoiceIdGate?.(back.value.voiceIdGate);
+    }
     if (send) published = { json, at: now };
     return answer;
   };
@@ -260,5 +275,6 @@ export const createRemoteSettings = (input: {
     await report();
     return true;
   };
-  return { tick };
+  // shortcut: a held sync answers within 25 s, so a switch he flips reaches the Tessel within about that.
+  return { tick, shareGate: () => void (gateChanged = true) };
 };

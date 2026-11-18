@@ -13,6 +13,7 @@ import { TessayaMood } from "./TessayaMood.ts";
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
 import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
+import { VoiceIdGateChange, voiceIdGateHere } from "./VoiceIdGate.ts";
 import * as Clock from "effect/Clock";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
@@ -51,6 +52,7 @@ const decodeInboxAct = Schema.decodeUnknownOption(InboxAct);
 const decodeLibraryRemoved = Schema.decodeUnknownOption(LibraryRemovedAct);
 const decodePrivateTier = Schema.decodeUnknownOption(PrivateTierAct);
 const decodePronounce = Schema.decodeUnknownOption(PronounceChange);
+const decodeVoiceIdGate = Schema.decodeUnknownOption(VoiceIdGateChange);
 
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
@@ -122,6 +124,14 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
       if (Option.isNone(change)) return refused("Not a pronunciation.");
       const list = yield* pronounceHere(change.value).pipe(Effect.orElseSucceed(Option.none));
       return Option.isNone(list) ? refused("Pronunciations aren't kept here.") : done(list.value);
+    }
+    case "voiceIdGate": {
+      const change = decodeVoiceIdGate(payload);
+      if (Option.isNone(change)) return refused("Not Voice ID's switches.");
+      const gate = yield* voiceIdGateHere(change.value).pipe(Effect.orElseSucceed(Option.none));
+      return Option.isNone(gate)
+        ? refused("Voice ID's switches aren't kept here.")
+        : done(gate.value);
     }
     case "libraryRemoved": {
       const act = decodeLibraryRemoved(payload);

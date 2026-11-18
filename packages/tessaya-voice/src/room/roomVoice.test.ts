@@ -306,6 +306,17 @@ describe("the room voice loop", () => {
     await t.feed(true, 20);
     await t.feed(false, 30);
     expect(t.brainCalls).toEqual([]);
+    // His Voice ID switches from her brain (the desktop's "respond to others") open it for the next turn.
+    t.room.message(
+      `freya/r1/${DEV}/voice/gate`,
+      Buffer.from(
+        '{"respondToOthers":true,"offSilencesSaved":false,"savedBarge":false,"strictWhenUnavailable":false}',
+      ),
+    );
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 30);
+    expect(t.brainCalls).toHaveLength(1);
   });
 
   it("sends each person's words with their own voice when several spoke, heard if any one of them would be", async () => {
