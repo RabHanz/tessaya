@@ -905,14 +905,16 @@
   function stopSpeech() { if (speech) { const d = speech.done; speech = null; d && d(); } }
 
   // ── scheduling: blinks and idle acts; at rest the loop sleeps ──
-  function scheduleBlink() { clearTimeout(blinkTimer); if (opts.static || destroyed) return; blinkTimer = setTimeout(() => { if (!document.hidden && !speechBusy() && !eyesShaped()) play(Math.random() < .18 ? "doubleBlink" : "blink", {beat: true}); scheduleBlink(); }, (tu.blink * (.55 + Math.random() * .9)) * 1000); }
+  // held: nobody is watching (the desktop mascot while he is away), so her blinks and idle acts wait
+  let held = false;
+  function scheduleBlink() { clearTimeout(blinkTimer); if (opts.static || destroyed) return; blinkTimer = setTimeout(() => { if (!document.hidden && !held && !speechBusy() && !eyesShaped()) play(Math.random() < .18 ? "doubleBlink" : "blink", {beat: true}); scheduleBlink(); }, (tu.blink * (.55 + Math.random() * .9)) * 1000); }
   function speechBusy() { return !!speech; }
   // closed or shaped eyes (arcs, > <, stars…) and heavy lids never get a blink on top
   const shaped = (v) => Math.max(v.arc, v.sarc, v.chev, v.star, v.heart, v.spiral, v.dots, v.wink) > .3;
   function eyesShaped() { return shaped(cur) || shaped(tgt) || cur.lu > .6; }
   function scheduleIdle() {
    clearTimeout(idleTimer); if (opts.static || opts.quiet || destroyed || reduced) return;
-   idleTimer = setTimeout(() => { if (!document.hidden && !speech && !clips.some((c) => !/link/.test(c.name)) && !(E[expr].loop && LOOPS[E[expr].loop].acts)) idleAct(); scheduleIdle(); }, tu.idle * (opts.idleEvery || 1) * (.6 + Math.random() * .8) * 1000);
+   idleTimer = setTimeout(() => { if (!document.hidden && !held && !speech && !clips.some((c) => !/link/.test(c.name)) && !(E[expr].loop && LOOPS[E[expr].loop].acts)) idleAct(); scheduleIdle(); }, tu.idle * (opts.idleEvery || 1) * (.6 + Math.random() * .8) * 1000);
   }
   function idleAct() {
    const w = [["glance", 1], ["glanceBack", 1], ["lookAround", .5 + T.energy], ["smile", .2 + T.warmth], ["tilt", .2 + T.warmth * .4], ["hop", T.play * T.energy * 1.4], ["squish", T.play * .7], ["eyeRoll", T.sass * .7 * (expr === "neutral" ? 1 : 0)], ["stretch", (1 - T.energy) * .4], ["fidget", .3 + T.play]];
@@ -1507,6 +1509,8 @@
    bounds: () => B ? {hw: B.hw, h: B.h} : null,
    setExpression, setPersonality, setCharacter, play, spawn, prop, use, clearProps, speak, syncSpeech, speechTime, stopSpeech, fidget, signature,
    setIntensity(v) { intensity = v; retarget(); wake(); },
+   /** True while nobody is watching: her blinks and idle acts wait; anything asked of her still plays. */
+   hold(on) { held = !!on; },
    setHandMode(m) { handMode = m === "float" ? "float" : "arms"; hands.L.vis = hands.R.vis = false; wake(); },
    get handMode() { return handMode; },
    get expression() { return expr; }, get character() { return ch.id; }, get personality() { return Object.assign({}, T); },

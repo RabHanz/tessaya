@@ -1,5 +1,6 @@
-Tessaya: repeating indicators (a working thread's pulse, a live tool's shine) hold still while the window is
-untouched for a minute or hidden, so a long turn does not repaint the window several times a second (MA-017).
+Tessaya: repeating indicators (a working thread's pulse, a live tool's shine, a running timer's seconds) hold still
+while the window is untouched for a minute or hidden, so a long turn does not repaint the window several times a
+second (MA-017, B-041).
 
 diff --git a/apps/web/src/index.css b/apps/web/src/index.css
 index 0f9942e3295ee01cb0aef66d9913302b75ec9816..e07295c72945b95c769f9db911b6e843522ce8e5 100644
@@ -14,15 +15,78 @@ index 0f9942e3295ee01cb0aef66d9913302b75ec9816..e07295c72945b95c769f9db911b6e843
 +html[data-still] [class*="animate-status-"] {
 +  animation-play-state: paused;
 +}
+diff --git a/apps/web/src/lib/tickTextContent.ts b/apps/web/src/lib/tickTextContent.ts
+index c587acf9df1f53956e6e0667b5dbedf85a7cf4e4..f1402ddc9a02a892497dfc383d5bb7cc689071c5 100644
+--- a/apps/web/src/lib/tickTextContent.ts
++++ b/apps/web/src/lib/tickTextContent.ts
+@@ -1,18 +1,42 @@
+-import { secondTick } from "@t3tools/client-runtime/clock";
++import { minuteTick, secondTick } from "@t3tools/client-runtime/clock";
++
++import { isStill, onStillChange } from "./visibleAnimation";
+ 
+ /**
+- * Ref callback that writes `format(Date.now())` into a node and, while `live`,
+- * rewrites it on the shared second tick. Running timers update through the DOM
+- * so a ticking label never re-renders the timeline or composer around it.
++ * Writes `format(Date.now())` into a node and, while `live`, rewrites it on the shared second tick, through the DOM so
++ * a ticking label never re-renders the timeline around it. In a still window (startStillIndicators) a label past a
++ * minute drops its seconds and ticks on the minute, so an untouched window stops repainting.
+  */
+ export function tickTextContent(format: (nowMs: number) => string, live: boolean) {
+   return (node: HTMLElement | null) => {
+     if (!node) return;
++    let coarse = false;
+     const write = () => {
+-      const text = format(Date.now());
++      const full = format(Date.now());
++      const text = isStill() ? withoutSeconds(full) : full;
++      coarse = text !== full;
+       if (node.textContent !== text) node.textContent = text;
+     };
+     write();
+-    return live ? secondTick.subscribe(write) : undefined;
++    if (!live) return;
++    let ticking = coarse;
++    let unsubscribe = (coarse ? minuteTick : secondTick).subscribe(tick);
++    function tick() {
++      write();
++      if (coarse === ticking) return;
++      unsubscribe();
++      ticking = coarse;
++      unsubscribe = (coarse ? minuteTick : secondTick).subscribe(tick);
++    }
++    const stopStill = onStillChange(tick);
++    return () => {
++      unsubscribe();
++      stopStill();
++    };
+   };
+ }
++
++/** "7m 02s" -> "7m", "1h 3m 5s" -> "1h 3m"; a label of seconds alone keeps them. */
++function withoutSeconds(text: string): string {
++  return text.replace(/(\d+[hm]) \d+s\b/, "$1");
++}
 diff --git a/apps/web/src/lib/visibleAnimation.ts b/apps/web/src/lib/visibleAnimation.ts
-index 02ad11d2ec7aa7c3a8d9c0281ef33625d7cb2c13..fef32b1ba3afbfa59311a2d81cb178af1ef3a488 100644
+index 02ad11d2ec7aa7c3a8d9c0281ef33625d7cb2c13..5584124d0b2f1b2cb47396e0200ac2c8e85e5eae 100644
 --- a/apps/web/src/lib/visibleAnimation.ts
 +++ b/apps/web/src/lib/visibleAnimation.ts
-@@ -6,10 +6,14 @@ interface ObservedAnimation {
+@@ -6,10 +6,24 @@ interface ObservedAnimation {
  const animations = new Map<Element, ObservedAnimation>();
  let observer: IntersectionObserver | null = null;
  let reducedMotion: MediaQueryList | null = null;
 +let still = false;
++const stillListeners = new Set<() => void>();
++
++export function isStill(): boolean {
++  return still;
++}
++
++export function onStillChange(listener: () => void): () => void {
++  stillListeners.add(listener);
++  return () => stillListeners.delete(listener);
++}
  
  function updateAnimation(animation: ObservedAnimation) {
    const running =
@@ -34,7 +98,7 @@ index 02ad11d2ec7aa7c3a8d9c0281ef33625d7cb2c13..fef32b1ba3afbfa59311a2d81cb178af
    animation.element.style.setProperty("--visible-animation-state", running ? "running" : "paused");
    animation.element.style.setProperty(
      "--visible-animation-will-change",
-@@ -61,3 +65,40 @@ export function observeVisibleAnimation(element: HTMLElement | SVGElement | null
+@@ -61,3 +75,41 @@ export function observeVisibleAnimation(element: HTMLElement | SVGElement | null
      }
    };
  }
@@ -43,9 +107,9 @@ index 02ad11d2ec7aa7c3a8d9c0281ef33625d7cb2c13..fef32b1ba3afbfa59311a2d81cb178af
 +const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel"] as const;
 +
 +/**
-+ * Repeating indicators (a working thread's pulse, a live tool's shine) hold still while nobody has touched this
-+ * window for a minute or it is out of sight: a turn can run for hours, and each repaints the window several times a
-+ * second. `html[data-still]` pauses the CSS ones; the first input starts them again.
++ * Repeating indicators (a working thread's pulse, a live tool's shine, a running timer's seconds) hold still while
++ * nobody has touched this window for a minute or it is out of sight: a turn can run for hours, and each repaints the
++ * window several times a second. `html[data-still]` pauses the CSS ones; the first input starts them again.
 + */
 +export function startStillIndicators(): () => void {
 +  let lastInput = Date.now();
@@ -54,6 +118,7 @@ index 02ad11d2ec7aa7c3a8d9c0281ef33625d7cb2c13..fef32b1ba3afbfa59311a2d81cb178af
 +    still = next;
 +    document.documentElement.toggleAttribute("data-still", next);
 +    updateAnimations();
++    for (const listener of stillListeners) listener();
 +  };
 +  const check = () =>
 +    set(document.visibilityState !== "visible" || Date.now() - lastInput >= STILL_AFTER_MS);

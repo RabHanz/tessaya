@@ -23,7 +23,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
  };
  window.cancelAnimationFrame = () => { queued = []; };
  const svg = document.getElementById("c");
- let rig = null, persona = "", level = 0, sound = { zcr: 0, bright: 0 }, speaking = false, moodProp = null;
+ let rig = null, held = false, persona = "", level = 0, sound = { zcr: 0, bright: 0 }, speaking = false, moodProp = null;
  // her body's sounds and her bed (sounds.js), silent until the main process sends his levels
  const snd = TCS.SOUND ? TCS.SOUND.create({ P: () => (rig && rig.physics ? rig.physics() : null) }) : null;
  const ipc = window.mascotIpc;
@@ -73,7 +73,10 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    if (rig) { rig.setCharacter(P.character); rig.setPersonality(P.traits); return; }
    // at rest she costs next to nothing (release smoke): her blinks and idle acts draw 30 a second, Calm's half as often
    rig = TCS.create(svg, { character: P.character, personality: P.traits, expression: "neutral", intensity: 0.85, quiet: o.quiet, reduced: o.reduced, hands: o.hands, beatFps: 30, idleEvery: o.calm ? 2 : 1 });
+   rig.hold(held);
   },
+  // he is away (desktopMascot HOLD_AWAY_S): her blinks and idle acts wait; anything asked of her still plays
+  hold(on) { held = on; if (rig) rig.hold(on); },
   cue(c) {
    if (!rig) return;
    still = c.expression === "asleep" ? 6 : c.expression === "thinking" ? 15 : Infinity;
