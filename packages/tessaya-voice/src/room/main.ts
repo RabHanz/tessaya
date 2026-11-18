@@ -686,14 +686,21 @@ const main = async () => {
   const wakeLog = bothCaptures(trace, capture);
   // `R1_KWS_WAKE=Tessaya=0.9,...` ("" for none). W2 real cascade (15 Nov): the kws at 0.9 beats openWakeWord on
   // every row, 32 of his 41 held-out names against 16 at 0.63 against 0.84 false wakes/h; OR-ing both doubles them.
-  const kwsWake = (process.env["R1_KWS_WAKE"] ?? "Tessaya=0.9")
-    .split(",")
-    .filter((pair) => pair.includes("="))
-    .map((pair) => {
-      const [word, threshold] = pair.split("=") as [string, string];
-      return { word: word.trim(), threshold: Number(threshold) };
-    })
-    .filter((w) => w.word !== "" && w.threshold > 0 && w.threshold <= 1);
+  const kwsWords = (text: string, also: boolean) =>
+    text
+      .split(",")
+      .filter((pair) => pair.includes("="))
+      .map((pair) => {
+        const [word, threshold] = pair.split("=") as [string, string];
+        return { word: word.trim(), threshold: Number(threshold), also };
+      })
+      .filter((w) => w.word !== "" && w.threshold > 0 && w.threshold <= 1);
+  // `R1_KWS_ALSO` ("" for none): a kws pass also wakes these, beside openWakeWord. 18 Nov in the draft case, stage 2
+  // caught 1 of his 2 Alfreds and 4 of 6 Freyas, a kws pass at 0.85 or stage 2 all 8.
+  const kwsWake = [
+    ...kwsWords(process.env["R1_KWS_WAKE"] ?? "Tessaya=0.9", false),
+    ...kwsWords(process.env["R1_KWS_ALSO"] ?? "Alfred=0.85,Freya=0.85", true),
+  ];
   // `R1_WAKE_GATE=min=64,x=2.5`: the Tessel's segment gate, sent with the kws settings; unset keeps the firmware's.
   const wakeGate = parseWakeGate(process.env["R1_WAKE_GATE"]);
   if (process.env["R1_WAKE_GATE"] && wakeGate === null)

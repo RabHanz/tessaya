@@ -159,8 +159,13 @@ export interface WakeStreamDeps {
   /**
    * Words whose stage 1 is the Tessel's own wake model: its `event/wake/kws` pass with `best` at least `threshold`, then
    * the same confirm, on the whole segment. Only for a Tessel that has sent one; openWakeWord then only logs these words.
+   * `also`: the pass is a second way in beside openWakeWord's own fire, and is always confirmed in text.
    */
-  readonly kwsWake?: ReadonlyArray<{ readonly word: string; readonly threshold: number }>;
+  readonly kwsWake?: ReadonlyArray<{
+    readonly word: string;
+    readonly threshold: number;
+    readonly also?: boolean;
+  }>;
   /**
    * The Tessel says its kws scorer is ready (`state/voice/kws`, retained). Its first kws event cannot teach this: after
    * a restart openWakeWord's fire started every session before any came (16 Nov, 01:18).
@@ -208,8 +213,10 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
   const earlyConfirm = new Map<string, Promise<ReadonlyArray<string>>>();
   const kwsWord = (name: unknown) =>
     deps.kwsWake?.find((w) => w.word.toLowerCase() === String(name ?? "").toLowerCase());
-  const byKws = (id: string, word: string) =>
-    (kwsSeen.has(id) || deps.kwsReady?.(id) === true) && kwsWord(word) !== undefined;
+  const byKws = (id: string, word: string) => {
+    const w = kwsWord(word);
+    return (kwsSeen.has(id) || deps.kwsReady?.(id) === true) && w !== undefined && w.also !== true;
+  };
   const pair = (id: string, seg: number, half: { kws?: KwsEvent; ours?: string }) => {
     const key = `${id}#${seg}`;
     const both = { ...pairs.get(key), ...half };
@@ -335,7 +342,9 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     if (w === undefined || event.pass !== true || best < Math.min(w.threshold, NEAR_KWS))
       return undefined;
     const near = best < w.threshold;
-    return { w, best, near, trusted: !near && wakeTrusted([w], w.word, best / w.threshold) };
+    // The Tessel's Alfred and Freya pass 0.99+ on his other talk (16-18 Nov), so an `also` pass is never taken unheard.
+    const trusted = !near && w.also !== true && wakeTrusted([w], w.word, best / w.threshold);
+    return { w, best, near, trusted };
   };
   const confirmClip = (event: KwsEvent, pcm: Int16Array, trusted: boolean) => {
     const end = kwsClipEnd(event, pcm.length);
