@@ -63,7 +63,6 @@ import * as R1Hub from "../home/R1Hub.ts";
 import * as R1Pairing from "../home/R1Pairing.ts";
 import * as R1Loop from "../home/R1Loop.ts";
 import * as R1Reach from "../home/R1Reach.ts";
-import { readSelf } from "./TessayaHealth.ts";
 import * as DeviceSync from "../home/DeviceSync.ts";
 import * as R1Updates from "../home/R1Updates.ts";
 import * as DeviceRegistry from "../home/DeviceRegistry.ts";
@@ -165,7 +164,7 @@ const hubLayer = R1Hub.layer.pipe(Layer.provide(homeLayer));
 // Each device's key, his choices for it and every server's hub, kept alike on his linked servers. One instance.
 const syncLayer = DeviceSync.layer.pipe(Layer.provide(hubLayer), Layer.provide(homeLayer));
 // Where the R1 should connect (every one of his hubs in its order), kept current on it.
-const reachLayer = R1Reach.layerWith(readSelf).pipe(
+const reachLayer = R1Reach.layer.pipe(
   Layer.provide(syncLayer),
   Layer.provide(hubLayer),
   Layer.provide(homeLayer),

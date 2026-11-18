@@ -1,18 +1,16 @@
 /**
  * Who each person is talking to, as brain state (SPINE-UNIFY §10, P5): the persona of their conversation's last turn on
  * any vessel. Its own service, so the turn writes it and the device broker tells the room loops without importing each
- * other; the loop's session hold stays the policy for when to follow it. Alike on his servers (DeviceSync `@persona`),
- * so a persona he talks to at his desk is the one Tumble's server follows (B-044).
+ * other; the loop's session hold stays the policy for when to follow it. A worker sends each change to her brain
+ * (BrainHost), so a persona he talks to at his desk is the one every vessel follows (B-044).
  */
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { MAX_MEMBERS, type PersonaGroup } from "@t3tools/tessaya-shared/groupTalk";
 
-import { DeviceSync } from "../home/DeviceSync.ts";
 import { makeBrainLink } from "./BrainHost.ts";
 
 /** As long as a conversation itself lasts (TessayaTurn's idle boundary). */
@@ -34,8 +32,6 @@ export class CurrentPersona extends Context.Service<
   }
 >()("t3/tessaya/CurrentPersona") {}
 
-const PERSONA_RECORD = "@persona";
-const GROUP_RECORD = "@group";
 /** A group outlives a quiet spell: it ends when he ends it or after half a day without a word. */
 const GROUP_HELD_MS = 12 * 60 * 60_000;
 export const GroupValue = Schema.NullOr(
@@ -49,10 +45,8 @@ export const GroupValue = Schema.NullOr(
     mode: Schema.Literals(["answer", "watch"]),
   }),
 );
-const decodeGroup = Schema.decodeUnknownOption(GroupValue);
 
 const make = Effect.gen(function* () {
-  const sync = yield* Effect.serviceOption(DeviceSync);
   const brain = yield* makeBrainLink;
   // shortcut: in this server's memory, like the conversations it follows; a restart starts each on its lead.
   const held = new Map<string, { readonly persona: string; readonly at: number }>();
@@ -75,15 +69,7 @@ const make = Effect.gen(function* () {
     const at = yield* Clock.currentTimeMillis;
     yield* hold(conversation, persona, at);
     if (!(yield* brain.isBrain)) yield* brain.send("persona", { conversation, persona });
-    if (Option.isSome(sync))
-      yield* sync.value.put(PERSONA_RECORD, conversation, persona, "changed", at);
   });
-  if (Option.isSome(sync))
-    yield* sync.value.onRecord(PERSONA_RECORD, (conversation, v, at) =>
-      typeof v === "string" && /^[\w-]{1,40}$/.test(v) && at >= (held.get(conversation)?.at ?? 0)
-        ? hold(conversation, v, at)
-        : Effect.void,
-    );
   const listen = (listener: Listener) => Effect.sync(() => void listeners.add(listener));
   const groups = new Map<string, { readonly group: PersonaGroup | null; readonly at: number }>();
   const group = Effect.fn("CurrentPersona.group")(function* (conversation: string) {
@@ -98,16 +84,7 @@ const make = Effect.gen(function* () {
     const at = yield* Clock.currentTimeMillis;
     groups.set(conversation, { group: next, at });
     if (!(yield* brain.isBrain)) yield* brain.send("group", { conversation, group: next });
-    if (Option.isSome(sync)) yield* sync.value.put(GROUP_RECORD, conversation, next, "changed", at);
   });
-  if (Option.isSome(sync))
-    yield* sync.value.onRecord(GROUP_RECORD, (conversation, v, at) =>
-      Effect.sync(() => {
-        const decoded = decodeGroup(v);
-        if (Option.isSome(decoded) && at >= (groups.get(conversation)?.at ?? 0))
-          groups.set(conversation, { group: decoded.value, at });
-      }),
-    );
   return CurrentPersona.of({ set, of, listen, group, setGroup });
 });
 
