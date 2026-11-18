@@ -107,6 +107,12 @@ const MoveTool = Tool.make("tessaya_body_move", {
     'Move her body: the one body on every screen she is on. Combine intent (act, posture, gesture, mood, look) with direct control (bones, face, keys) in one call, and put what follows in `then`, each step `afterMs` from the start, so a whole beat ("lean in, a little shy, then look away") is one request. Call tessaya_body_state first to see what this body can do and where it is. Moves that belong to a private moment only run in one.',
   parameters: Schema.Struct({
     ...Step,
+    stream: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description:
+          "Live direct control: send bones, look and face as frames, up to 30 a second. Without a frame for 1 s she takes her own posture back.",
+      }),
+    ),
     then: Schema.optionalKey(
       Schema.Array(
         Schema.Struct({

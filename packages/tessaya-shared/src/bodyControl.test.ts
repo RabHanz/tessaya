@@ -8,6 +8,8 @@ import {
   isPrivateMove,
   moveCues,
   rateGate,
+  STREAM_LAPSE_MS,
+  STREAM_RATE,
 } from "./bodyControl.ts";
 
 const ok = (raw: unknown) => {
@@ -126,6 +128,22 @@ describe("moveCues", () => {
   });
 });
 
+describe("streams", () => {
+  it("carries direct control only, follows closely, and lets go after a second without a frame", () => {
+    const [gaze, frame] = moveCues(
+      ok({ stream: true, bones: { head: [0.2, 0, 0] }, look: { x: 0.3, y: 0, ms: 9000 } }),
+    );
+    expect(parseCue(frame)).toMatchObject({ kind: "clip", ms: 80, lapseMs: STREAM_LAPSE_MS });
+    expect(gaze).toMatchObject({ kind: "gaze", ms: STREAM_LAPSE_MS });
+    // a move that is not a stream never lapses
+    expect(moveCues(ok({ bones: { head: [0.2, 0, 0] } }))[0]).not.toHaveProperty("lapseMs");
+    expect(decodeBodyMove({ stream: true, act: "wave", bones: {} })).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/send act as a move/),
+    });
+  });
+});
+
 describe("rateGate", () => {
   it("allows a burst, then one move a quarter second, per caller", () => {
     let s;
@@ -139,5 +157,15 @@ describe("rateGate", () => {
     const blocked = rateGate(s, 1000);
     expect(blocked).toMatchObject({ ok: false, retryMs: 250 });
     expect(rateGate(blocked.state, 1250).ok).toBe(true);
+    // a stream has its own bucket: 30 frames a second, held there
+    let t;
+    let frames = 0;
+    for (let ms = 0; ms < 2000; ms += 1000 / 60) {
+      const r = rateGate(t, ms, STREAM_RATE);
+      t = r.state;
+      if (r.ok) frames++;
+    }
+    expect(frames).toBeGreaterThanOrEqual(88);
+    expect(frames).toBeLessThanOrEqual(92);
   });
 });

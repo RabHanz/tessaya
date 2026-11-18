@@ -344,6 +344,8 @@ export type BodyCue =
       readonly frames: ReadonlyArray<Partial<Record<PoseBone, Euler>>>;
       /** How long the body takes to arrive (direct control); her own pace when absent. */
       readonly ms?: number;
+      /** A live stream's frame: let go this long after it unless another comes (dead-man lapse). */
+      readonly lapseMs?: number;
     }
   /** Where she looks, -1..1 across (her left +) and up, for `ms`; then back to him. */
   | { readonly kind: "gaze"; readonly x: number; readonly y: number; readonly ms: number }
@@ -545,6 +547,9 @@ export const parseCue = (raw: unknown): BodyCue | null => {
             grounded: c["grounded"] === true,
             frames,
             ...(num(c["ms"], 80, 5000) === null ? {} : { ms: num(c["ms"], 80, 5000)! }),
+            ...(num(c["lapseMs"], 200, 5000) === null
+              ? {}
+              : { lapseMs: num(c["lapseMs"], 200, 5000)! }),
           }
         : null;
     }
