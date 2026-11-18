@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import { expect } from "vite-plus/test";
 
 import { HomeAssistantService } from "../home/HomeAssistantService.ts";
-import { houseZone } from "./houseZone.ts";
+import { houseZone, onHouseClockText } from "./houseZone.ts";
 import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 
 const memory = (zone: string | null) =>
@@ -33,3 +33,19 @@ it.effect("says the time on his zone with Home Assistant off, never UTC", () =>
     ).toBe("Asia/Karachi");
   }),
 );
+
+it("puts every UTC time in a tool's answer on his clock before she reads it", () => {
+  // 19 Nov: device_registry's lastSeenAt "…21:48:43.687Z" came out of her as "9:48 p.m. UTC".
+  expect(
+    onHouseClockText(
+      '{"online":true,"lastSeenAt":"2026-11-18T21:48:43.687Z","at":"2026-11-18T21:48Z","day":"2026-11-18"}',
+      "Asia/Karachi",
+    ),
+  ).toBe(
+    '{"online":true,"lastSeenAt":"2026-11-19T02:48:43+05:00","at":"2026-11-19T02:48:00+05:00","day":"2026-11-18"}',
+  );
+  // Already on a clock, or not a time: left alone.
+  expect(onHouseClockText("2026-11-19T02:48:43+05:00 and v1.2Z", "Asia/Karachi")).toBe(
+    "2026-11-19T02:48:43+05:00 and v1.2Z",
+  );
+});

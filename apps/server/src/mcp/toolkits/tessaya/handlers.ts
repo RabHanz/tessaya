@@ -28,7 +28,7 @@ import {
   type TessayaScratchpadResult,
 } from "@t3tools/tessaya-contracts";
 import { activityText } from "../../../provenance/activityText.ts";
-import { houseZone } from "../../../tessaya/houseZone.ts";
+import { houseZone, isoIn } from "../../../tessaya/houseZone.ts";
 import * as TessayaHealth from "../../../tessaya/TessayaHealth.ts";
 import { ProblemReports } from "../../../tessaya/ProblemReports.ts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
@@ -153,27 +153,6 @@ const runtimeZone = Effect.gen(function* () {
   const context = yield* TessayaRuntime;
   return yield* context === null ? houseZone() : houseZone().pipe(Effect.provideContext(context));
 });
-
-/** A time as ISO with the zone's own offset ("2026-11-13T08:26:31+05:00"). */
-const isoIn = (ms: number, timeZone: string): string => {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hourCycle: "h23",
-      timeZoneName: "longOffset",
-    })
-      .formatToParts(ms)
-      .map((p) => [p.type, p.value]),
-  );
-  const offset = String(parts["timeZoneName"]).replace("GMT", "") || "+00:00";
-  return `${parts["year"]}-${parts["month"]}-${parts["day"]}T${parts["hour"]}:${parts["minute"]}:${parts["second"]}${offset}`;
-};
 
 const agoOf = (ms: number): string => {
   const minutes = Math.floor(Math.max(0, ms) / 60_000);
