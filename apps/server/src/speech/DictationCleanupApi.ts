@@ -132,6 +132,8 @@ export interface DictationCleanupRequest {
   readonly message: string;
   readonly maxTokens: number;
   readonly refused?: { readonly answer: string; readonly why: string } | undefined;
+  /** What the usage record names it ("dictation" unless said). */
+  readonly feature?: string;
 }
 export interface ConverseRequest {
   readonly system: string;
@@ -347,7 +349,7 @@ export const make = Effect.gen(function* () {
           ...tokens,
           role: "cleanup",
           credential: KEY_CREDENTIAL,
-          attribution: { feature: "dictation", origin: "user" },
+          attribution: { feature: input.feature ?? "dictation", origin: "user" },
         });
       const { content } = body;
       const text = content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : []));

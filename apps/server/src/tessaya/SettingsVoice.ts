@@ -51,6 +51,9 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaExpression: free(
     "lines written fresh each time, varied and in character, instead of fixed ones",
   ),
+  tessayaRoomCleanup: free(
+    "fixing a word she misheard on the Tessel from what you were talking about, before she answers",
+  ),
   tessayaMood: free(
     `mood: on or off, its strength (intensity 0 to 1, default 0.6), the warmth that builds from talking most days (bondCap 0 to 0.15; 0 starts afresh each day), and per device its owner and whether it shows feelings toward that person (devices: {"<device id>": {"owner": "<member id>" or null, "show": true or false}}; owned phones and desktops show it by default, Tessels do not), and per persona every emotional dial, 0 to 1 (personas: {"<persona id>": {"<dial>": 0.5}}; dials: ${Object.keys({ ...TRAITS, ...TEMPERAMENT_DIALS }).join(", ")}; jealousy and pressure start at 0, "a bit more jealous" is about 0.3). Its value is an object: {"enabled": true, "intensity": 0.6, "bondCap": 0.15, "devices": {}, "personas": {}}`,
   ),

@@ -34,7 +34,14 @@ import {
   repairVerdict,
   type HeardWord,
 } from "@t3tools/tessaya-shared/transcriptRepair";
+import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
 import { effectFired, emitAction } from "../tessaya/turnActions.ts";
+import {
+  CONTEXT_CLEANUP_SYSTEM,
+  cleanupFires,
+  contextCleanupMessage,
+  keptCleanup,
+} from "@t3tools/tessaya-shared/contextCleanup";
 import { NONVERBALS } from "@t3tools/tessaya-shared/interjections";
 import {
   DEFAULT_OS_PACK,
@@ -951,6 +958,53 @@ const r1Route = Effect.fn("R1Device.route")(function* (input: R1Heard, text: str
   return PRIVATE_HELD_LINE;
 });
 
+/** The clean-up's wait: past it she answers his words as heard. */
+const CLEANUP_WAIT = "1500 millis";
+
+/**
+ * His words fixed from the talk before them, only when they look misheard (contextCleanup.ts): a clear turn never
+ * waits. Off in Settings (`tessayaRoomCleanup`), with no key, or on any failure: his words as heard. Each try is on
+ * the spine (turn.context.cleanup) with its time, so how often it fires and what it costs are read from there.
+ */
+export const contextCleaned = Effect.fn("R1Device.contextCleaned")(function* (
+  heard: string,
+  before: ReadonlyArray<{ readonly role: string; readonly content: string }>,
+  names: ReadonlyArray<string>,
+) {
+  if (!cleanupFires(heard, names)) return heard;
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  const on =
+    Option.isNone(settings) ||
+    (yield* settings.value.getSettings.pipe(
+      Effect.map((s) => s.tessayaRoomCleanup),
+      Effect.orElseSucceed(() => true),
+    ));
+  const api = yield* Effect.serviceOption(DictationCleanupApi);
+  if (!on || Option.isNone(api)) return heard;
+  const started = yield* Clock.currentTimeMillis;
+  const answer = yield* api.value
+    .cleanup({
+      system: CONTEXT_CLEANUP_SYSTEM,
+      message: contextCleanupMessage(heard, before, names),
+      maxTokens: 160,
+      feature: "room-cleanup",
+    })
+    .pipe(
+      Effect.timeoutOrElse({ duration: CLEANUP_WAIT, orElse: () => Effect.succeed(null) }),
+      Effect.orElseSucceed(() => null),
+    );
+  const fixed = answer === null || !answer.configured ? null : keptCleanup(heard, answer.text);
+  const ms = (yield* Clock.currentTimeMillis) - started;
+  yield* emitAction({
+    kind: "turn.context.cleanup",
+    actor: { kind: "system", id: "room-cleanup", certainty: 1 },
+    subject: DEVICE,
+    outcome: fixed === null ? "kept" : fixed === heard ? "same" : "changed",
+    data: { ms },
+  }).pipe(Effect.ignore);
+  return fixed ?? heard;
+});
+
 export const r1Gather = Effect.fn("R1Device.gather")(function* (
   raw: R1Heard,
   withHouse = true,
@@ -962,9 +1016,15 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   const pack = yield* r1Pack;
   const input = {
     ...raw,
-    heard: biasTranscript(raw.heard, entries, {
-      names: pack.personas.map((p) => p.name),
-    }),
+    heard: yield* contextCleaned(
+      biasTranscript(raw.heard, entries, { names: pack.personas.map((p) => p.name) }),
+      raw.history,
+      hisNames(
+        pack.personas.map((p) => p.name),
+        [DEVICE, "Tumble"],
+        entries,
+      ),
+    ),
   };
   const home = yield* HomeAssistantService;
   // A replay turn has no device: its eyes and camera are his real R1's, so they stay still.

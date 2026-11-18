@@ -53,7 +53,9 @@ import {
   withoutNarration,
   withoutSelfIntros,
   type R1Context,
+  contextCleaned,
 } from "./R1Device.ts";
+import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
 
 describe("R1Device", () => {
   it("believes a guest's voiceprint only from the device whose key the call came with", () => {
@@ -1345,4 +1347,44 @@ describe("the house read before a turn", () => {
     expect(namedIn(lamp, "Turn the lights off")).toBe(true);
     expect(namedIn(ramadan, "Is it Ramadan yet?")).toBe(true);
   });
+});
+
+describe("a room turn that looks misheard is fixed from the talk before it", () => {
+  const NAMES = ["Tessaya", "Alfred", "Freya", "VentureOS"];
+  const run = (heard: string, settings: { tessayaRoomCleanup?: boolean } = {}) => {
+    const asked: string[] = [];
+    const out = contextCleaned(
+      heard,
+      [{ role: "assistant", content: "The VentureOS session is open." }],
+      NAMES,
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.mock(DictationCleanupApi)({
+            cleanup: (input) =>
+              Effect.sync(() => {
+                asked.push(input.message);
+                return { configured: true, text: "What about VentureOS?", ms: 300 } as const;
+              }),
+          }),
+          ServerSettingsService.layerTest(settings),
+        ),
+      ),
+    );
+    return { asked, out };
+  };
+  effectIt.effect("fixes a near-miss, and never asks on a clear turn or with the setting off", () =>
+    Effect.gen(function* () {
+      // 18 Nov 00:50: "What about adventure or us?" for VentureOS.
+      const misheard = run("What about adventure or us?");
+      expect(yield* misheard.out).toBe("What about VentureOS?");
+      expect(misheard.asked[0]).toContain("The VentureOS session is open.");
+      const clear = run("What time is it?");
+      expect(yield* clear.out).toBe("What time is it?");
+      expect(clear.asked).toEqual([]);
+      const off = run("What about adventure or us?", { tessayaRoomCleanup: false });
+      expect(yield* off.out).toBe("What about adventure or us?");
+      expect(off.asked).toEqual([]);
+    }),
+  );
 });
