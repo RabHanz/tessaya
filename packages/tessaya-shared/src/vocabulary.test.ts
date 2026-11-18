@@ -211,7 +211,19 @@ describe("her own names", () => {
       ["This best.", "Dismissed."],
       ["This miss.", "Dismissed."],
       ["Switch me back to Alfie.", "Switch me back to Alfred."],
+      // Her name opening a turn, as the Tessel's recogniser wrote it (15-17 Nov).
+      ["To see ya.", "Tessaya."],
+      ["To say ya.", "Tessaya."],
+      ["Tessiah, what's the date today?", "Tessaya, what's the date today?"],
+      [
+        "To say uh, could you move to your own speaker?",
+        "Tessaya, could you move to your own speaker?",
+      ],
+      ["Dismisses.", "Dismissed."],
       // Controls: ordinary English after a call, a real name, her name already right, a term.
+      ["To see you.", "To see you."],
+      ["To say the least, it works.", "To say the least, it works."],
+      ["Nice to see ya.", "Nice to see ya."],
       ["Get me to say a few words.", "Get me to say a few words."],
       ["Get me to say yes.", "Get me to say yes."],
       ["Talk to the team.", "Talk to the team."],

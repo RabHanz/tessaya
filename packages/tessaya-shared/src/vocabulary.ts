@@ -7,7 +7,7 @@
 
 import type { VocabularyChange } from "@t3tools/tessaya-contracts";
 
-import { CALL_SLOT, NAME_SOUNDALIKES, nameAskedFor } from "./wakeVerify.ts";
+import { CALL_SLOT, NAME_SOUNDALIKES, nameAskedFor, wakeWordLead } from "./wakeVerify.ts";
 
 export type VocabularySource = "added" | "learned" | "wispr";
 
@@ -1085,20 +1085,46 @@ const AFTER_CALL =
 /** A whole turn that is only a mis-heard word to her: "This best." and "This miss." for "Dismissed." (Tessel, 15 Nov). */
 const SPOKEN_ALONE: ReadonlyArray<readonly [RegExp, string]> = [
   [/^(?:this|dis|the) (?:best|miss|missed|mist|must)$/, "Dismissed."],
+  [/^dismisses$/, "Dismissed."],
 ];
+/** Her name with a filler, opening a turn said to her ("To say uh, could you…", Tessel 16 Nov); the comma holds it. */
+const SAY_UH_LEAD = /^(?:to|ta|te|tes) (?:say|sea|saya|seya) (?:um|uh),/i;
+
+/** A persona's name opening a turn said to her, as recognition wrote it ("To see ya.", "Tessiah, what's…"): the name. */
+const leadName = (text: string, names: ReadonlyArray<string>): string => {
+  if (names.includes("Tessaya") && SAY_UH_LEAD.test(text))
+    return text.replace(SAY_UH_LEAD, "Tessaya,");
+  const words = text.trim().split(/\s+/);
+  for (const name of names) {
+    const n = wakeWordLead(words, [name]);
+    const last = words[n - 1];
+    // Only a whole lead the turn pauses after ("Nice to see ya" and "To see ya later" are not her name).
+    if (n === 0 || last === undefined || !(n === words.length || /[,.!?]$/.test(last))) continue;
+    if (
+      words
+        .slice(0, n)
+        .join(" ")
+        .replace(/[,.!?]+$/, "") === name
+    )
+      return text;
+    return [name + (/[,.!?]+$/.exec(last)?.[0] ?? ""), ...words.slice(n)].join(" ");
+  }
+  return text;
+};
 
 /**
  * The persona he calls, heard as several words ("get me to say a", "let's talk to T"): `nameAskedFor`, the one name
  * resolver the room uses too, decides who; here it is written in only where English cannot go on. Words said to her only.
  */
-export const applyCalledNames = (text: string, names: ReadonlyArray<string>): string => {
+export const applyCalledNames = (said: string, names: ReadonlyArray<string>): string => {
   const called = names.filter((n) => /^\p{L}+$/u.test(n) && n.length >= 4);
-  if (called.length === 0) return text;
-  const plain = text
+  if (called.length === 0) return said;
+  const plain = said
     .toLowerCase()
     .replace(/[^a-z ]/g, "")
     .trim();
   for (const [heard, to] of SPOKEN_ALONE) if (heard.test(plain)) return to;
+  const text = leadName(said, called);
   let out = "";
   let from = 0;
   for (const slot of text.matchAll(CALL_SLOT)) {
