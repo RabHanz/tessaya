@@ -25,6 +25,7 @@ import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { DeviceRefusedError } from "./DeviceRegistry.ts";
 import { HomeDevices } from "./HomeDevices.ts";
+import { onAction } from "../provenance/ActionLog.ts";
 
 const decodes = (name: keyof typeof TessayaToolkit.tools, input: unknown) => {
   const spec = ROOM_TOOL_SPECS.find((s) => s.name === name)!;
@@ -259,6 +260,9 @@ effectIt.effect(
       // sets it, and only a refusal from every server is said as one.
       const NOT_HERE = "It didn't go through: Tumble isn't linked to this server's hub right now.";
       const asked: unknown[] = [];
+      // One system (19 Nov): the act is on the spine of the server that ran her turn too, as done there.
+      const acts: Array<{ subject: string; outcome: string }> = [];
+      const stop = onAction((a) => acts.push({ subject: a.subject, outcome: a.outcome }));
       const there = yield* setRoomVolume({ to: 40 }, "r1-3d57b3").pipe(
         Effect.provideService(HomeAssistantService, {
           device: Effect.succeed({ deviceId: "r1-3d57b3" }),
@@ -290,5 +294,7 @@ effectIt.effect(
       );
       expect(there).toMatchObject({ text: "Volume 40%.", isError: false });
       expect(asked).toMatchObject([["set_device_volume", { id: "r1-3d57b3", to: 40 }]]);
+      stop();
+      expect(acts).toContainEqual({ subject: "volume on r1-3d57b3", outcome: "ok" });
     }),
 );

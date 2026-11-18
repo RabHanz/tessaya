@@ -12,6 +12,7 @@ import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
 import * as HomeDevices from "./HomeDevices.ts";
+import { onAction } from "../provenance/ActionLog.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { R1Reach } from "./R1Reach.ts";
 import { VesselBodies, layer as VesselBodiesLayer } from "./VesselBodies.ts";
@@ -1796,10 +1797,15 @@ it.effect(
       );
       // 18 Nov 04:50 GMT+5: Tumble was on another server's hub; this server's publish went nowhere and she said "Done".
       sent.length = 0;
+      // Recorded as done elsewhere, not failed: the peer route records what the server with her hub did.
+      const outcomes: Array<string> = [];
+      const stop = onAction((a) => void (a.kind === "device.cmd" && outcomes.push(a.outcome)));
       const away = yield* serveDevicesCall(
         { kind: "act", op: "set", args: { id: ID, ...own } },
         her,
       );
+      stop();
+      assert.deepStrictEqual(outcomes, ["elsewhere"]);
       assert.include(away, { ok: false, notLinked: true });
       assert.match(away.error!, /didn't go through/);
       assert.deepStrictEqual(sent, []);

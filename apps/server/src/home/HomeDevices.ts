@@ -62,6 +62,7 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { emitAction, traced } from "../provenance/ActionLog.ts";
 import { roomActionOf } from "../provenance/roomActions.ts";
@@ -3655,18 +3656,22 @@ const make = Effect.gen(function* () {
     // Every device command is an action (B-046), with who asked and through which surface.
     command: Effect.fn("HomeDevices.recordedCommand")(
       (id: string, c: DeviceCommand, by: DeviceActor) =>
-        traced({
-          kind: "device.cmd",
-          actor: {
-            kind:
-              by.surface === "agent" ? "agent" : by.surface === "settings" ? "owner" : "persona",
-            id: by.who,
-            certainty: by.approved === true ? 0.95 : 0.8,
+        traced(
+          {
+            kind: "device.cmd",
+            actor: {
+              kind:
+                by.surface === "agent" ? "agent" : by.surface === "settings" ? "owner" : "persona",
+              id: by.who,
+              certainty: by.approved === true ? 0.95 : 0.8,
+            },
+            subject: `${c.op}${"itemId" in c ? `:${String(c.itemId)}` : ""} on ${id}`,
+            evidence: [{ kind: "device", ref: id }],
+            data: { surface: by.surface, dryRun: by.dryRun === true },
           },
-          subject: `${c.op}${"itemId" in c ? `:${String(c.itemId)}` : ""} on ${id}`,
-          evidence: [{ kind: "device", ref: id }],
-          data: { surface: by.surface, dryRun: by.dryRun === true },
-        })(command(id, c, by)),
+          // Not a failure: she is on another server's hub, and the caller's peer route records the act it got done.
+          (exit) => (exit._tag === "Failure" && notLinkedIn(exit.cause) ? "elsewhere" : undefined),
+        )(command(id, c, by)),
     ),
     routeReply,
     phoneLink,
@@ -3751,5 +3756,30 @@ const make = Effect.gen(function* () {
     tick,
   });
 });
+
+/**
+ * A device act another server did for this one's turn (the peer route, as she is on its hub): recorded here as well,
+ * so the server that ran the turn holds the act it got done. `failed` reads the answer.
+ */
+export const routedAct =
+  <A>(id: string, op: string, who: string, failed: (answer: A) => boolean) =>
+  <E, R>(effect: Effect.Effect<A, E, R>) =>
+    traced(
+      {
+        kind: "device.cmd",
+        actor: { kind: "persona", id: who, certainty: 0.8 },
+        subject: `${op} on ${id}`,
+        evidence: [{ kind: "device", ref: id }],
+        data: { surface: "assistant", routed: true },
+      },
+      (exit) => (exit._tag === "Success" && failed(exit.value as A) ? "fail" : undefined),
+    )(effect);
+
+/** Whether an act was refused only because she is on another server's hub. */
+const isRefused = Schema.is(DeviceRefusedError);
+const notLinkedIn = (cause: Cause.Cause<unknown>) => {
+  const error = Option.getOrUndefined(Cause.findErrorOption(cause));
+  return isRefused(error) && error.notLinked === true;
+};
 
 export const layer = Layer.effect(HomeDevices, make);
