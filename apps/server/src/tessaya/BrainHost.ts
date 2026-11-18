@@ -23,6 +23,7 @@ export const BrainOp = Schema.Literals([
   "inbox",
   "libraryRemoved",
   "privateTier",
+  "pronounce",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 

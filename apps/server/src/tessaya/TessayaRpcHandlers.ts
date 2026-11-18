@@ -14,6 +14,7 @@ import { PersonaOps } from "./PersonaOps.ts";
 import { activityList, activityWhy } from "../provenance/activity.ts";
 import { teamBoard } from "./TessayaTeamBoard.ts";
 import { readGrants, setGrant } from "./consent.ts";
+import { pronunciations } from "./Pronunciations.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
@@ -73,6 +74,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
@@ -772,6 +774,13 @@ export const makeHandlers = Effect.gen(function* () {
       run(
         Effect.flatMap(TessayaDesktopSettings, (settings) => settings.sync(input)).pipe(
           Effect.flatMap((answer) => Effect.map(readGrants, (grants) => ({ ...answer, grants }))),
+          // His pronunciations from her brain; left out while it can't be reached, so the desktop keeps its copy.
+          Effect.flatMap((answer) =>
+            pronunciations().pipe(
+              Effect.orElseSucceed(Option.none),
+              Effect.map((p) => (Option.isNone(p) ? answer : { ...answer, pronounce: p.value })),
+            ),
+          ),
         ),
       ),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>

@@ -12,6 +12,7 @@ import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
 import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
+import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
 import * as Clock from "effect/Clock";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
@@ -49,6 +50,7 @@ const decodeGroupAct = Schema.decodeUnknownOption(GroupAct);
 const decodeInboxAct = Schema.decodeUnknownOption(InboxAct);
 const decodeLibraryRemoved = Schema.decodeUnknownOption(LibraryRemovedAct);
 const decodePrivateTier = Schema.decodeUnknownOption(PrivateTierAct);
+const decodePronounce = Schema.decodeUnknownOption(PronounceChange);
 
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
@@ -114,6 +116,12 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
         Effect.catchCause(() => Effect.succeed(null)),
       );
       return value === null ? refused("The private tier is not here.") : done(value.v);
+    }
+    case "pronounce": {
+      const change = decodePronounce(payload);
+      if (Option.isNone(change)) return refused("Not a pronunciation.");
+      const list = yield* pronounceHere(change.value).pipe(Effect.orElseSucceed(Option.none));
+      return Option.isNone(list) ? refused("Pronunciations aren't kept here.") : done(list.value);
     }
     case "libraryRemoved": {
       const act = decodeLibraryRemoved(payload);

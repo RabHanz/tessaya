@@ -139,4 +139,6 @@ export const DesktopSettingsSyncResult = Schema.Struct({
   ),
   /** His standing yeses on this server (`baton.consent.*`), for the desktop's copy; absent from older servers. */
   grants: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** His pronunciations, word → how to say it, from her brain; absent from older servers and while it can't be reached. */
+  pronounce: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
