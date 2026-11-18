@@ -20,6 +20,7 @@ import type { DeviceHub } from "@t3tools/tessaya-contracts";
 import { DirectEndpoints } from "../environment/DirectEndpoints.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { DeviceSync, HUBS_RECORD } from "./DeviceSync.ts";
+import { R1Loop } from "./R1Loop.ts";
 import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
 import { deviceSetting, R1_HUB_PATH, R1Hub } from "./R1Hub.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
@@ -100,6 +101,15 @@ export const composeEndpoints = (input: {
 };
 
 /**
+ * The hubs she may be sent to: those where a room loop can hear her (a loop-less hub left her deaf until the home
+ * check moved her back). All of them when none can, so she still has somewhere to connect.
+ */
+const heardHubs = <H extends { readonly room?: boolean }>(hubs: ReadonlyArray<H>) => {
+  const heard = hubs.filter((h) => h.room !== false);
+  return heard.length > 0 ? heard : hubs;
+};
+
+/**
  * His hub order for one device: the order he saved, then every other known hub by name. With no saved order, the hub
  * that holds its key first (where it was paired), so every server computes the same list without asking.
  */
@@ -160,6 +170,8 @@ export class R1Reach extends Context.Service<
 const HubEntry = Schema.Struct({
   label: Schema.String.check(Schema.isMaxLength(80)),
   urls: Schema.Array(Schema.String.check(Schema.isMaxLength(EP_LEN))).check(Schema.isMaxLength(8)),
+  /** Whether a room loop can hear her on that hub; absent from older servers, which are kept. */
+  room: Schema.optionalKey(Schema.Boolean),
 });
 const decodeHub = Schema.decodeUnknownOption(HubEntry);
 const decodeOrder = Schema.decodeUnknownOption(
@@ -178,6 +190,7 @@ export const layer = Layer.effect(
     const direct = yield* Effect.serviceOption(DirectEndpoints);
     const runtime = yield* Effect.serviceOption(CloudManagedEndpointRuntime);
     const devices = yield* Effect.serviceOption(DeviceSync);
+    const loop = yield* Effect.serviceOption(R1Loop);
     const environment = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
     const selfLabel = Option.isSome(environment)
       ? (yield* environment.value.getDescriptor).label
@@ -249,9 +262,10 @@ export const layer = Layer.effect(
         };
       const s = devices.value;
       // This server's own entry, for his other servers to give the device; a no-op until it changes.
-      yield* s.put(HUBS_RECORD, s.self, { label: selfLabel, urls: mine }, "changed");
+      const room = Option.isSome(loop) ? yield* loop.value.serves : true;
+      yield* s.put(HUBS_RECORD, s.self, { label: selfLabel, urls: mine, room }, "changed");
       const known = Object.entries(yield* s.get(HUBS_RECORD)).flatMap(([env, stamp]) => {
-        if (env === s.self) return [{ id: env, label: selfLabel, urls: mine }];
+        if (env === s.self) return [{ id: env, label: selfLabel, urls: mine, room }];
         const entry = decodeHub(stamp.v);
         return Option.isSome(entry) ? [{ id: env, ...entry.value }] : [];
       });
@@ -272,7 +286,7 @@ export const layer = Layer.effect(
         host,
         hubs,
         order,
-        endpoints: composeEndpoints({ hubs: hubs.map((h) => h.urls), fallback, proxy }),
+        endpoints: composeEndpoints({ hubs: heardHubs(hubs).map((h) => h.urls), fallback, proxy }),
       };
     });
 

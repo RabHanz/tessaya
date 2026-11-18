@@ -10,7 +10,7 @@ import * as Effect from "effect/Effect";
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { serveDevicesCall, type DevicesCallKind } from "../../../home/HomeDeviceCalls.ts";
-import type { DeviceActor } from "../../../home/HomeDevices.ts";
+import { routedAct, type DeviceActor } from "../../../home/HomeDevices.ts";
 import { DeviceSync } from "../../../home/DeviceSync.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -81,7 +81,14 @@ export const make = Effect.gen(function* () {
           const holder = yield* onPeer(tool, input, {
             takes: (v) => (v as TessayaDevicesCallResult).notLinked !== true,
             wait: "4 seconds",
-          });
+          }).pipe(
+            routedAct(
+              typeof input["id"] === "string" ? input["id"] : "a device",
+              tool,
+              "Tessaya",
+              (h) => h === null || (h.value as TessayaDevicesCallResult).ok === false,
+            ),
+          );
           return holder === null ? mine : withOn(holder);
         }
         return withOn(there);

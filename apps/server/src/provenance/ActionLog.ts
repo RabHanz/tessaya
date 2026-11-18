@@ -19,6 +19,7 @@ import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import type * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
@@ -102,7 +103,11 @@ export const withCause =
  * ends, with its outcome ("ok", "fail", "interrupted") and how long it took. One event per action, not two.
  */
 export const traced =
-  (input: ActionInput) =>
+  (
+    input: ActionInput,
+    /** An outcome of its own for some ends, such as "elsewhere" for an act another server does. */
+    outcomeOf?: (exit: Exit.Exit<unknown, unknown>) => string | undefined,
+  ) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     Effect.gen(function* () {
       const cause = yield* CurrentCause;
@@ -123,7 +128,7 @@ export const traced =
                 ...input,
                 id,
                 at: startedAt,
-                outcome: input.outcome ?? outcome,
+                outcome: input.outcome ?? outcomeOf?.(exit) ?? outcome,
                 data: { ...(input.data as object | undefined), ms: endedAt - startedAt },
               },
               { cause },

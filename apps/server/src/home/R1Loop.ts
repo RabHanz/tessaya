@@ -308,6 +308,11 @@ export const voiceLine = (input: {
 export class R1Loop extends Context.Service<
   R1Loop,
   {
+    /**
+     * Whether a Tessel on this hub would be heard: a loop can run here (not turned off, and a bundle or an install
+     * here) or one was heard on this hub. A hub that cannot is left out of her list (R1Reach), so she is never deaf.
+     */
+    readonly serves: Effect.Effect<boolean>;
     /** Running, how often it restarted, and the line for Settings; null when no R1 is on this server's hub. */
     readonly status: Effect.Effect<{
       readonly running: boolean;
@@ -340,6 +345,7 @@ export const layer = Layer.effect(
     let claimed = false;
     let standby = false;
     let onHub = false;
+    let heardLoop = false;
     const bundle =
       R1_VOICE_BUNDLE !== null &&
       R1_VOICE_BUNDLE.platform ===
@@ -403,6 +409,7 @@ export const layer = Layer.effect(
       const ours = child?.pid === undefined ? null : `tessaya-room-${child.pid}`;
       const hearing = hub.busHears(VOICE_TOPIC);
       const others = hearing.filter((id) => id !== ours);
+      if (others.length > 0) heardLoop = true;
       const here = devices
         .filter((d) => d.deviceId !== null && d.mqttUrl === null && hub.connected(d.deviceId))
         .map((d) => d.deviceId!);
@@ -520,6 +527,13 @@ export const layer = Layer.effect(
     yield* Effect.addFinalizer(() => Effect.promise(stop));
 
     return R1Loop.of({
+      serves: Effect.sync(
+        () =>
+          setting !== "off" &&
+          (bundle !== null ||
+            heardLoop ||
+            NodeFS.existsSync(NodePath.join(dir, "app", "main.mjs"))),
+      ),
       status: Effect.sync(() => {
         const line = voiceLine({
           setting,

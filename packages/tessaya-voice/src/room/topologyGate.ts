@@ -149,7 +149,8 @@ const loopOnHub = connectMqtt({
   clientId: "topology-loop",
   user: "tessaya-bus",
   pass: hubBus,
-  subscribe: [],
+  // Heard by her hub's server as a room loop (R1Loop): that hub can hear her.
+  subscribe: ["freya/r1/+/voice/up"],
   onMessage: () => undefined,
   log,
 });
@@ -195,6 +196,12 @@ if (
   process.exit(1);
 }
 report();
+// The list she was given, so her hub's server sends her its own (R1Reach) and the case below can read it.
+tessel.publish(
+  `${base}/state/net/endpoints`,
+  JSON.stringify({ broker: [mqttOf(hubUrl)], current: mqttOf(hubUrl) }),
+  true,
+);
 /** One turn's metrics as the loop publishes them on her hub (shape from metrics.ndjson, 18 Nov). */
 const metrics = () =>
   loopOnHub.publish(
@@ -395,16 +402,34 @@ const actionsOn = (file: string | undefined, since: number) => {
               .join("; ") || "none"
           })`
         : null;
-  // shortcut: reported, not blocking, until the peer route records its act on the brain too.
   rows.push({
     id: "provenance-on-brain",
-    result: why === null ? "pass" : "WARN",
+    result: why === null ? "pass" : "FAIL",
     why,
     brainActs,
     hubActs,
   });
   console.log(
-    `${why === null ? "pass" : "WARN"}  provenance-on-brain${why === null ? "" : `: ${why}`}`,
+    `${why === null ? "pass" : "FAIL"}  provenance-on-brain${why === null ? "" : `: ${why}`}`,
+  );
+}
+
+// A hub with no room loop is never in her list: there she would be deaf (19 Nov, his laptop). The brain runs with
+// its loop off, as his laptop does. Scratch hubs on loopback have no address to list, so there it does not apply and
+// R1Reach.test carries the proof; with addresses, her list must not name the brain's.
+{
+  const lists = commands.filter((c) => c.tail === "cmd/net/endpoints");
+  const brainHost = new URL(brainUrl).host;
+  const broker = lists.flatMap(
+    (c) => ((c.body as { broker?: unknown }).broker as string[] | undefined) ?? [],
+  );
+  const why = broker.some((u) => u.includes(brainHost))
+    ? `her list names the loop-less hub: ${broker.join(", ")}`
+    : null;
+  const result = why !== null ? "FAIL" : lists.length === 0 ? "n/a" : "pass";
+  rows.push({ id: "no-loopless-hub", result, why, broker });
+  console.log(
+    `${result.padEnd(4)}  no-loopless-hub${why === null ? (lists.length === 0 ? ": no addresses on scratch hubs" : "") : `: ${why}`}`,
   );
 }
 

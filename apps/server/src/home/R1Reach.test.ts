@@ -9,6 +9,7 @@ import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { CLOUD_ENDPOINT_RUNTIME_CONFIG } from "../cloud/config.ts";
 import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts";
 import { DirectEndpoints } from "../environment/DirectEndpoints.ts";
+import { R1Loop } from "./R1Loop.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { makeHub, R1Hub } from "./R1Hub.ts";
 import { DeviceSync, HUBS_RECORD } from "./DeviceSync.ts";
@@ -110,7 +111,15 @@ it.effect("on the standby hub, keeps the first hub first and says which one the 
     };
     const HOME = "wss://home.example.net/api/r1/mqtt";
     const stamps: Record<string, Record<string, { v: unknown; at: number; by: string }>> = {
-      [HUBS_RECORD]: { "env-home": { v: { label: "home", urls: [HOME] }, at: 5, by: "env-home" } },
+      [HUBS_RECORD]: {
+        "env-home": { v: { label: "home", urls: [HOME] }, at: 5, by: "env-home" },
+        // His laptop runs a hub but no room loop: on it she would be deaf (19 Nov), so it is never in her list.
+        "env-laptop": {
+          v: { label: "laptop", urls: ["ws://laptop.example.net/api/r1/mqtt"], room: false },
+          at: 5,
+          by: "env-laptop",
+        },
+      },
       "r1-a": { key: { v: {}, at: 5, by: "env-home" } },
     };
     const layer = R1ReachModule.layer.pipe(
@@ -123,6 +132,7 @@ it.effect("on the standby hub, keeps the first hub first and says which one the 
             keyUsedOutside: () => null,
           }),
           Layer.mock(HomeAssistantService)({ devices: Effect.succeed([record]) }),
+          Layer.mock(R1Loop)({ serves: Effect.succeed(true) }),
           Layer.mock(ServerSecretStore)({
             get: (name) =>
               Effect.succeed(
@@ -165,6 +175,7 @@ it.effect("on the standby hub, keeps the first hub first and says which one the 
       ]);
       expect((yield* reach.hubs("r1-a")).map((h) => `${h.label}:${h.current}`)).toEqual([
         "home:false",
+        "laptop:false",
         "this server:true",
       ]);
     }).pipe(Effect.provide(layer));

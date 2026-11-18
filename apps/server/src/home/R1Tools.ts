@@ -57,7 +57,7 @@ import { trustAgentOf } from "../tessaya/OperatingSystemPack.ts";
 import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
-import { HomeDevices } from "./HomeDevices.ts";
+import { HomeDevices, routedAct } from "./HomeDevices.ts";
 import { onPeer } from "../peer/PeerVessels.ts";
 import { StepUps } from "./StepUps.ts";
 import { VoiceForgets } from "../tessaya/VoiceForgets.ts";
@@ -338,6 +338,7 @@ export const setRoomVolume = Effect.fn("R1Tools.volume")(function* (
                   const line = answer.value?.line;
                   return { text: typeof line === "string" ? line : "Done.", isError: false };
                 }),
+                routedAct(target, "volume", "Tessaya in the room", (o: ToolOutcome) => o.isError),
               ),
       }),
     );
