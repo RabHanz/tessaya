@@ -14,6 +14,11 @@ export const EPISODE_IDLE_MS = 30 * 60_000;
 const EPISODE_TURNS = 30;
 /** Fewer turns than this since the last episode are not worth one. */
 const EPISODE_MIN_TURNS = 2;
+/** Episodes sent per tick in all: a backlog (1,250 on his laptop, 19 Nov) drains slowly instead of in one burst. */
+export const EPISODES_PER_TICK = 2;
+/** After a failed send no tick sends for this long, doubling per failure up to the cap, so a broken path rests. */
+export const EPISODE_BACKOFF_MS = 15 * 60_000;
+export const EPISODE_BACKOFF_MAX_MS = 6 * 60 * 60_000;
 
 export interface EpisodeSend {
   readonly persona: string;
@@ -35,10 +40,14 @@ export const createEpisodeWatch = (input: {
   readonly nameOf: (persona: string) => string | undefined;
   /** "done" once the server kept it or turned it down for good; "retry" (or a throw) sends the same turns again. */
   readonly send: (episode: EpisodeSend) => Promise<"done" | "retry">;
+  /** He is away from the machine (no input lately): episodes are written only then, never while he works. */
+  readonly away?: () => boolean;
   readonly now?: () => number;
   readonly idleMs?: number;
 }) => {
   const now = input.now ?? Date.now;
+  let failures = 0;
+  let restUntil = 0;
   const read = (): Record<string, number> | null => {
     try {
       const parsed: unknown = JSON.parse(NodeFS.readFileSync(input.file, "utf8"));
@@ -58,7 +67,7 @@ export const createEpisodeWatch = (input: {
   return {
     /** Sends what is due; one tick at a time. */
     tick: async (): Promise<number> => {
-      if (busy) return 0;
+      if (busy || now() < restUntil || input.away?.() === false) return 0;
       busy = true;
       let sent = 0;
       try {
@@ -72,7 +81,9 @@ export const createEpisodeWatch = (input: {
           return 0;
         }
         const reached = found;
+        let failed = false;
         for (const persona of input.conversations.byRecent()) {
+          if (failed || sent >= EPISODES_PER_TICK) break;
           const turns = input.conversations
             .of(persona)
             .recent(4_000)
@@ -89,6 +100,7 @@ export const createEpisodeWatch = (input: {
             else stretches.push([t]);
           }
           for (const stretch of stretches) {
+            if (sent >= EPISODES_PER_TICK) break;
             const end = stretch.at(-1)!;
             if (stretch.length >= EPISODE_MIN_TURNS) {
               const shown = stretch.slice(-EPISODE_TURNS);
@@ -107,13 +119,21 @@ export const createEpisodeWatch = (input: {
                   at: end.at,
                 })
                 .catch(() => "retry" as const);
-              if (answer === "retry") break;
+              if (answer === "retry") {
+                failed = true;
+                break;
+              }
               sent += 1;
             }
             reached[persona] = end.id;
             write(reached);
           }
         }
+        if (failed) {
+          failures += 1;
+          restUntil =
+            now() + Math.min(EPISODE_BACKOFF_MAX_MS, EPISODE_BACKOFF_MS * 2 ** (failures - 1));
+        } else if (sent > 0) failures = 0;
       } catch {
         // An episode is a bonus: a failed read or write is tried again on the next tick.
       } finally {

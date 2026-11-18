@@ -997,6 +997,8 @@ export const startScreenCompanion = (input: {
     conversations,
     file: NodePath.join(input.stateDir, "conversation", "episodes.json"),
     nameOf,
+    // Away as the release gates read it: no keyboard or mouse for 10 minutes.
+    away: () => Electron.powerMonitor.getSystemIdleTime() >= 10 * 60,
     send: async (e) => {
       if (actions?.memory === undefined) return "retry";
       const out = (await actions.memory("learn", {
