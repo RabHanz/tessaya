@@ -4,6 +4,18 @@
  * G7 word-timed effects, the group's speaker); a body only renders them and never decides anything itself.
  */
 import { fireAtMs, type EffectWhen } from "./speechEffects.ts";
+import {
+  isAct,
+  OUTFIT_PIECES,
+  POSTURES,
+  talkBeats,
+  type Act,
+  POSE_BONES,
+  type Euler,
+  type OutfitPiece,
+  type PoseBone,
+  type PostureName,
+} from "./bodyMotion.ts";
 import { speechUnits, type Viseme, type VisemeSegment } from "./visemes.ts";
 
 export const BODY_CUE_VERSION = 1;
@@ -122,9 +134,11 @@ export const INTIMATE_STATES = [
   "eyesRoll",
   "eyesShut",
   "eyesTeary",
+  "browsUp",
   "mouthPant",
   "mouthO",
   "mouthBite",
+  "tongue",
   "blush",
   "sweat",
   "sheen",
@@ -148,18 +162,55 @@ export const INTIMATE_FACES: Readonly<
     { readonly face: Weights; readonly states: States; readonly motion?: Partial<Motion> }
   >
 > = {
-  gasp: { face: { surprised: 0.4 }, states: { mouthO: 0.8 }, motion: { arch: 0.3 } },
-  moan: { face: { relaxed: 0.4 }, states: { mouthO: 0.5, eyesHalf: 0.7, blush: 0.6 } },
-  bite: { face: { happy: 0.2 }, states: { mouthBite: 1, eyesHalf: 0.5, blush: 0.5 } },
-  pleading: { face: { sad: 0.4 }, states: { eyesTeary: 0.7, eyesHalf: 0.3, blush: 0.6 } },
-  shiver: { face: {}, states: { eyesShut: 0.6 }, motion: { tremble: 0.7 } },
-  melt: { face: { relaxed: 0.7 }, states: { eyesHalf: 0.8, blush: 0.7, mouthPant: 0.3 } },
+  gasp: { face: { surprised: 0.4 }, states: { mouthO: 0.8, browsUp: 0.5 }, motion: { arch: 0.3 } },
+  moan: {
+    face: { relaxed: 0.4 },
+    states: { mouthO: 0.5, eyesHalf: 0.7, browsUp: 0.7, blush: 0.6 },
+  },
+  bite: { face: { happy: 0.2 }, states: { mouthBite: 1, eyesHalf: 0.5, browsUp: 0.3, blush: 0.5 } },
+  pleading: {
+    face: { sad: 0.4 },
+    states: { eyesTeary: 0.7, eyesHalf: 0.3, browsUp: 0.9, blush: 0.6 },
+  },
+  shiver: { face: {}, states: { eyesShut: 0.6, browsUp: 0.4 }, motion: { tremble: 0.7 } },
+  melt: {
+    face: { relaxed: 0.7 },
+    states: { eyesHalf: 0.8, browsUp: 0.5, blush: 0.7, mouthPant: 0.3 },
+  },
   peak: {
     face: { surprised: 0.2 },
-    states: { eyesRoll: 0.8, eyesTeary: 0.6, mouthO: 0.9, blush: 1, sweat: 0.6 },
+    states: {
+      eyesRoll: 0.8,
+      eyesTeary: 0.6,
+      browsUp: 1,
+      mouthO: 0.6,
+      tongue: 0.5,
+      blush: 1,
+      sweat: 0.6,
+    },
     motion: { tremble: 1, arch: 1 },
   },
 };
+
+/** Where he touched her on screen (bodyMotion touchZoneAt); the private layer decides what a touch there means. */
+export const TOUCH_ZONES = [
+  "head",
+  "hair",
+  "face",
+  "neck",
+  "shoulder",
+  "arm",
+  "hand",
+  "chest",
+  "belly",
+  "back",
+  "waist",
+  "hips",
+  "thigh",
+  "leg",
+  "foot",
+] as const;
+export type TouchZone = (typeof TOUCH_ZONES)[number];
 
 export type BodyBone =
   | "head"
@@ -169,6 +220,7 @@ export type BodyBone =
   | "hips"
   | "leftUpperArm"
   | "rightUpperArm"
+  | "leftLowerArm"
   | "rightLowerArm"
   | "leftShoulder"
   | "rightShoulder"
@@ -223,6 +275,21 @@ export const GESTURES: Readonly<
     ],
   },
   giggleOnce: { ms: 600, swings: [{ bone: "chest", axis: "x", rad: 0.06, cycles: 2 }] },
+  // talking beats (bodyMotion talkBeats): a forearm lifts toward him on a word that carries the line
+  beatR: {
+    ms: 650,
+    swings: [
+      { bone: "rightUpperArm", axis: "y", rad: 0.25, cycles: 0.5 },
+      { bone: "rightLowerArm", axis: "y", rad: 0.45, cycles: 0.5 },
+    ],
+  },
+  beatL: {
+    ms: 650,
+    swings: [
+      { bone: "leftUpperArm", axis: "y", rad: -0.25, cycles: 0.5 },
+      { bone: "leftLowerArm", axis: "y", rad: -0.45, cycles: 0.5 },
+    ],
+  },
 };
 
 /** A swing's angle `t` ms into its gesture: eases out and back so every gesture ends where it began. */
@@ -256,6 +323,37 @@ export type BodyCue =
       readonly motion?: Motion;
     }
   | { readonly kind: "gesture"; readonly gesture: string }
+  /** A held posture from a scene beat; "auto" hands her back to the posture her affect picks. */
+  | { readonly kind: "pose"; readonly pose: PostureName | "auto" }
+  /** Something she does with her body now (bodyMotion ACTS): she chose it in her reply, or a beat did. */
+  | { readonly kind: "act"; readonly act: Act }
+  /** The outfit pieces she has off right now; every other piece is on. */
+  | { readonly kind: "outfit"; readonly off: ReadonlyArray<OutfitPiece> }
+  /** A keyframed clip from the owner's extensions (humanoid Euler per bone), played now; held at its end unless it loops. */
+  | {
+      readonly kind: "clip";
+      readonly id: string;
+      readonly fps: number;
+      readonly loop: boolean;
+      readonly grounded: boolean;
+      readonly frames: ReadonlyArray<Partial<Record<PoseBone, Euler>>>;
+    }
+  /** Extra touch regions: within `radius` m of a humanoid bone, a touch is that region. */
+  | {
+      readonly kind: "zones";
+      readonly zones: ReadonlyArray<{
+        readonly id: string;
+        readonly bone: string;
+        readonly radius: number;
+      }>;
+    }
+  /** A state or face drawn with the model's own expressions at these weights. */
+  | {
+      readonly kind: "expressions";
+      readonly map: Readonly<
+        Record<string, ReadonlyArray<{ readonly name: string; readonly weight: number }>>
+      >;
+    }
   /** A prop held on a bone (gated by the layer like models); no url puts it away. */
   | {
       readonly kind: "prop";
@@ -277,6 +375,7 @@ export type BodyCue =
         readonly atMs: number;
         readonly face?: string;
         readonly gesture?: string;
+        readonly act?: Act;
       }>;
     }
   /** Live audio from the vessel playing her voice: its level and the viseme aligned at this moment. */
@@ -291,6 +390,7 @@ const BONES = new Set<string>([
   "chest",
   "leftUpperArm",
   "rightUpperArm",
+  "leftLowerArm",
   "rightLowerArm",
   "leftShoulder",
   "rightShoulder",
@@ -371,6 +471,74 @@ export const parseCue = (raw: unknown): BodyCue | null => {
       const gesture = str(c["gesture"], 32);
       return gesture ? { kind: "gesture", gesture } : null;
     }
+    case "pose": {
+      const pose = c["pose"];
+      return pose === "auto" || (typeof pose === "string" && Object.hasOwn(POSTURES, pose))
+        ? { kind: "pose", pose: pose as PostureName | "auto" }
+        : null;
+    }
+    case "act":
+      return isAct(c["act"]) ? { kind: "act", act: c["act"] } : null;
+    case "clip": {
+      const id = str(c["id"], 40);
+      const bones = new Set<string>(POSE_BONES);
+      const angle = (v: unknown) => num(v, -Math.PI, Math.PI);
+      const frames = (Array.isArray(c["frames"]) ? c["frames"] : []).slice(0, 3600).map((f) =>
+        Object.fromEntries(
+          Object.entries((f ?? {}) as Record<string, unknown>).flatMap(([b, r]) => {
+            const e = Array.isArray(r) && r.length === 3 ? r.map(angle) : null;
+            return bones.has(b) && e !== null && e.every((x) => x !== null)
+              ? [[b, e as unknown as Euler]]
+              : [];
+          }),
+        ),
+      );
+      return id && frames.length > 0
+        ? {
+            kind: "clip",
+            id,
+            fps: num(c["fps"], 1, 60) ?? 30,
+            loop: c["loop"] === true,
+            grounded: c["grounded"] === true,
+            frames,
+          }
+        : null;
+    }
+    case "zones": {
+      const zones = (Array.isArray(c["zones"]) ? c["zones"] : []).slice(0, 32).flatMap((z) => {
+        const r = (z ?? {}) as Record<string, unknown>;
+        const id = str(r["id"], 40);
+        const bone = str(r["bone"], 40);
+        const radius = num(r["radius"], 0.01, 0.3);
+        return id && bone && radius !== null ? [{ id, bone, radius }] : [];
+      });
+      return { kind: "zones", zones };
+    }
+    case "expressions": {
+      const m = c["map"];
+      if (m === null || typeof m !== "object") return null;
+      const map = Object.fromEntries(
+        Object.entries(m as Record<string, unknown>)
+          .slice(0, 64)
+          .flatMap(([target, use]) => {
+            const list = (Array.isArray(use) ? use : []).slice(0, 8).flatMap((u) => {
+              const r = (u ?? {}) as Record<string, unknown>;
+              const name = str(r["name"], 64);
+              const weight = num(r["weight"], 0, 1);
+              return name && weight !== null ? [{ name, weight }] : [];
+            });
+            return str(target, 32) && list.length > 0 ? [[target, list]] : [];
+          }),
+      );
+      return { kind: "expressions", map };
+    }
+    case "outfit": {
+      const pieces = new Set<string>(OUTFIT_PIECES);
+      const off = Array.isArray(c["off"])
+        ? c["off"].filter((p): p is OutfitPiece => typeof p === "string" && pieces.has(p))
+        : null;
+      return off === null ? null : { kind: "outfit", off: [...new Set(off)] };
+    }
     case "prop": {
       const id = str(c["id"], 64);
       const url = c["url"] === undefined ? undefined : str(c["url"], 500);
@@ -416,9 +584,17 @@ export const parseCue = (raw: unknown): BodyCue | null => {
           const atMs = num(r["atMs"], 0, 600_000);
           const face = str(r["face"], 32);
           const gesture = str(r["gesture"], 32);
-          return atMs === null || (!face && !gesture)
+          const act = isAct(r["act"]) ? r["act"] : null;
+          return atMs === null || (!face && !gesture && !act)
             ? []
-            : [{ atMs, ...(face ? { face } : {}), ...(gesture ? { gesture } : {}) }];
+            : [
+                {
+                  atMs,
+                  ...(face ? { face } : {}),
+                  ...(gesture ? { gesture } : {}),
+                  ...(act ? { act } : {}),
+                },
+              ];
         });
       return { kind: "speak", track, effects };
     }
@@ -449,6 +625,8 @@ export const textTrack = (
     readonly durationMs?: number;
     readonly wordMs?: ReadonlyArray<number | undefined>;
   } = {},
+  /** Filled with each word's start (ms), when given. */
+  wordAt?: number[],
 ): VisemeSegment[] => {
   const units = speechUnits(text);
   const nominal = units.map((u) =>
@@ -464,6 +642,7 @@ export const textTrack = (
     const pinned =
       u.word !== undefined && u.word !== lastWord ? timing.wordMs?.[u.word] : undefined;
     if (pinned !== undefined && pinned >= at) at = pinned;
+    if (u.word !== undefined && u.word !== lastWord && wordAt) wordAt[u.word] = Math.round(at);
     if (u.word !== undefined) lastWord = u.word;
     const end = at + nominal[i]! * scale;
     out.push({ at: Math.round(at), end: Math.round(end), viseme: u.viseme });
@@ -489,9 +668,11 @@ export const lineCues = (line: {
     readonly when: EffectWhen;
     readonly face?: string;
     readonly gesture?: string;
+    readonly act?: Act;
   }>;
 }): BodyCue[] => {
-  const track = textTrack(line.text, line);
+  const wordAt: number[] = [];
+  const track = textTrack(line.text, line, wordAt);
   const durationMs = track.at(-1)?.end ?? 0;
   const timeline = {
     nowMs: 0,
@@ -509,9 +690,18 @@ export const lineCues = (line: {
             atMs,
             ...(e.face ? { face: e.face } : {}),
             ...(e.gesture ? { gesture: e.gesture } : {}),
+            ...(e.act ? { act: e.act } : {}),
           },
         ];
   });
+  // her hands and head keep time with the words, clear of any gesture the line's effects already place
+  const words = line.text.match(/[^\s]+/g) ?? [];
+  const beats = talkBeats(words.map((text, i) => ({ text, atMs: wordAt[i] ?? 0 }))).filter(
+    (b) =>
+      !effects.some(
+        (e) => (e.gesture !== undefined || e.act !== undefined) && Math.abs(e.atMs - b.atMs) < 700,
+      ),
+  );
   return [
     ...(line.persona ? [{ kind: "speaker", persona: line.persona } as const] : []),
     {
@@ -523,7 +713,11 @@ export const lineCues = (line: {
     ...(line.gesture && line.gesture !== "none"
       ? [{ kind: "gesture", gesture: line.gesture } as const]
       : []),
-    { kind: "speak", track, effects },
+    {
+      kind: "speak",
+      track,
+      effects: [...effects, ...beats].toSorted((a, b) => a.atMs - b.atMs),
+    },
   ];
 };
 

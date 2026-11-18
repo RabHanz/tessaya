@@ -437,7 +437,7 @@ export default defineConfig(() => {
             groups: [
               {
                 name: "tessaya-body-core",
-                test: /tessaya-shared[\\/]src[\\/](bodyCues|visemes|speechEffects)\.ts$/,
+                test: /tessaya-shared[\\/]src[\\/](bodyCues|bodyMotion|visemes|speechEffects)\.ts$/,
               },
             ],
           },

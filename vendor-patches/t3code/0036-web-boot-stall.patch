@@ -218,7 +218,7 @@ index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a37
        element("div", { id: "boot-error-command" }, [command, copyCommand]),
      ]),
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 63f1f1f737ebeac2adf0119005742bd3c69464ca..521367cf74842ab023d79fbf365ad9b7757e180b 100644
+index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c6aa7a48aedea572eb4befeee6b4e1d3977f4ce2 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
 @@ -22,7 +22,11 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
@@ -260,7 +260,7 @@ index 63f1f1f737ebeac2adf0119005742bd3c69464ca..521367cf74842ab023d79fbf365ad9b7
 +            groups: [
 +              {
 +                name: "tessaya-body-core",
-+                test: /tessaya-shared[\\/]src[\\/](bodyCues|visemes|speechEffects)\.ts$/,
++                test: /tessaya-shared[\\/]src[\\/](bodyCues|bodyMotion|visemes|speechEffects)\.ts$/,
 +              },
 +            ],
 +          },

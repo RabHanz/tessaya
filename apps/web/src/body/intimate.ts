@@ -44,6 +44,41 @@ export const stateWeights = (
   };
 };
 
+/**
+ * With the 52 ARKit units ("perfect sync", common on Booth and VRoid models) each state is sculpted from real face
+ * shapes: troubled brows, squinted lids, an open panting jaw with flared nostrils, a bitten lower lip, the tongue.
+ * Names are matched case-insensitively, since VRM 0.x models spell them `JawOpen`.
+ */
+export const perfectSyncWeights = (s: States, breath: number): Record<string, number> => {
+  const out: Record<string, number> = {};
+  const add = (unit: string, w: number) => {
+    if (w <= 0) return;
+    for (const n of unit.endsWith("_")
+      ? [`${unit.slice(0, -1)}Left`, `${unit.slice(0, -1)}Right`]
+      : [unit])
+      out[n] = Math.min(1, (out[n] ?? 0) + w);
+  };
+  const g = (n: IntimateState) => s[n] ?? 0;
+  add("eyeBlink_", g("eyesHalf") * 0.5 + g("eyesShut") + g("eyesRoll") * 0.1);
+  add("eyeSquint_", g("eyesHalf") * 0.3 + g("eyesShut") * 0.6 + g("eyesTeary") * 0.2);
+  add("cheekSquint_", g("eyesShut") * 0.35 + g("mouthBite") * 0.2);
+  add("browInnerUp", g("browsUp") * 0.9 + g("eyesTeary") * 0.5 + g("eyesHalf") * 0.15);
+  // the inner brow lifts while the outer end drops: the troubled look of pleasure, not surprise
+  add("browDown_", g("browsUp") * 0.25 + g("eyesShut") * 0.2);
+  add("jawOpen", g("mouthPant") * (0.12 + 0.3 * breath) + g("mouthO") * 0.4 + g("tongue") * 0.35);
+  add("mouthLowerDown_", g("mouthPant") * 0.25 + g("mouthO") * 0.2 + g("tongue") * 0.3);
+  add("mouthUpperUp_", g("mouthPant") * 0.1 + g("mouthBite") * 0.15);
+  add("mouthStretch_", g("mouthPant") * 0.1);
+  add("mouthFunnel", g("mouthO") * 0.6);
+  add("mouthRollLower", g("mouthBite") * 0.7);
+  add("mouthSmile_", g("mouthBite") * 0.25);
+  add("mouthFrown_", g("eyesTeary") * 0.2);
+  add("tongueOut", g("tongue"));
+  // nostrils flare on each breath in while she pants
+  add("noseSneer_", g("mouthPant") * 0.2 * (1 - breath));
+  return out;
+};
+
 const paint = (draw: (g: CanvasRenderingContext2D) => void) => {
   const c = document.createElement("canvas");
   c.width = 128;
@@ -110,11 +145,24 @@ const TEXTURES: Record<Style, Record<"blush" | "tear" | "sweat", () => THREE.Can
       }),
     tear: () =>
       paint((g) => {
+        // a wet track with a bright edge and a bead gathering at its end, readable at phone size
         const l = g.createLinearGradient(0, 0, 0, 128);
-        l.addColorStop(0, "rgba(235,245,255,0.8)");
-        l.addColorStop(1, "rgba(235,245,255,0)");
-        g.fillStyle = l;
-        g.fillRect(58, 0, 12, 128);
+        l.addColorStop(0, "rgba(225,238,255,0.95)");
+        l.addColorStop(0.85, "rgba(225,238,255,0.55)");
+        l.addColorStop(1, "rgba(225,238,255,0)");
+        g.strokeStyle = l;
+        g.lineWidth = 9;
+        g.beginPath();
+        g.moveTo(62, 0);
+        g.bezierCurveTo(70, 40, 56, 80, 64, 112);
+        g.stroke();
+        g.strokeStyle = "rgba(255,255,255,0.9)";
+        g.lineWidth = 2.5;
+        g.stroke();
+        g.fillStyle = "rgba(240,248,255,0.95)";
+        g.beginPath();
+        g.ellipse(64, 112, 6, 8, 0, 0, Math.PI * 2);
+        g.fill();
       }),
     sweat: () =>
       paint((g) => {
