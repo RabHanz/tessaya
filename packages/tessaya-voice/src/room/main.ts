@@ -58,8 +58,11 @@ import { createProfileSync, parseShared } from "./profileSync.ts";
 import {
   createRoomVoice,
   ROOM_CONFIG,
-  busOfBrain,
+  brainOrLocal,
+  fromBrainHub,
+  loopBuses,
   routeForDevice,
+  toBrainHub,
   servedRoster,
   type RecogniserTurn,
   type RoomDeps,
@@ -472,9 +475,24 @@ const link = (url: string): NonNullable<RoomDeps["link"]> => {
   };
 };
 
+/**
+ * A brain that has not begun its answer this long after the request is taken as unreachable, and her hub's server answers.
+ * shortcut: a brain that is up but this slow could run the turn too; a turn id the brain dedupes would close that.
+ */
+const BRAIN_ANSWER_MS = 3_000;
+/** Her hub's own server's turn route, from the hub's bus URL. */
+const localBrainOf = (hub: string) =>
+  new URL("/api/devices/r1/v1/chat/completions", hub.replace(/^ws/, "http")).toString();
+
 /** Tessaya's turn on her server, OpenAI chat-completions shape, streamed. */
-const brain = (url: string, key: string): RoomDeps["brain"] =>
+const brain = (url: string, key: string, answerMs?: number): RoomDeps["brain"] =>
   async function* (input, signal) {
+    // Only until the answer begins: the same signal also governs the streamed body.
+    const late = new AbortController();
+    const timer =
+      answerMs === undefined
+        ? undefined
+        : setTimeout(() => late.abort(new Error(`no answer in ${answerMs} ms`)), answerMs);
     const res = await fetch(url, {
       method: "POST",
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
@@ -484,11 +502,13 @@ const brain = (url: string, key: string): RoomDeps["brain"] =>
         tessaya: input.tessaya,
         device: input.deviceId,
       }),
-      signal,
-    }).catch((e: unknown) => {
-      if (!signal.aborted) healthReport.brainFailed();
-      throw e;
-    });
+      signal: AbortSignal.any([signal, late.signal]),
+    })
+      .catch((e: unknown) => {
+        if (!signal.aborted) healthReport.brainFailed();
+        throw e;
+      })
+      .finally(() => clearTimeout(timer));
     if (!res.ok || res.body === null) {
       healthReport.brainFailed();
       throw new Error(`Tessaya answered ${res.status}`);
@@ -712,8 +732,9 @@ const main = async () => {
   /** The R1s whose last word on `state/online` was "1": only then are the recognisers kept warm. */
   const online = new Set<string>();
   let room: ReturnType<typeof createRoomVoice> | null = null;
-  const bus = busOfBrain(env("R1_BRAIN_URL"));
-  log(`bus: ${bus}`);
+  const buses = loopBuses(env("R1_BRAIN_URL"), process.env["R1_HUB_URL"]);
+  const bus = buses.hub;
+  log(`bus: ${bus}${buses.brain === null ? "" : `; brain's hub: ${buses.brain}`}`);
   const mqtt = connectMqtt({
     url: bus,
     clientId: `tessaya-room-${process.pid}`,
@@ -860,6 +881,29 @@ const main = async () => {
     },
     log,
   });
+  // The brain on another host publishes its turn's acts on its own hub: this loop, on her hub, takes them in order.
+  const brainHub =
+    buses.brain === null
+      ? null
+      : connectMqtt({
+          url: buses.brain,
+          clientId: `tessaya-room-bridge-${process.pid}`,
+          user: env("R1_BRAIN_MQTT_USER", "tessaya-bus"),
+          pass: secret("R1_BRAIN_MQTT_PASS_FILE"),
+          subscribe: [
+            "freya/r1/+/voice/intent/eye",
+            "freya/r1/+/voice/intent/rest",
+            "freya/r1/+/voice/stepup",
+            "freya/r1/+/voice/say",
+            "freya/r1/+/voice/ask",
+            "freya/r1/+/voice/persona",
+          ],
+          onMessage: (t, p) => {
+            const to = /^freya\/r1\/([^/]+)\/(.+)$/.exec(t);
+            if (to !== null && fromBrainHub(to[2]!, online.has(to[1]!))) room?.message(t, p);
+          },
+          log,
+        });
   const inhouse = new Set(
     (process.env["R1_INHOUSE"] ?? "")
       .split(",")
@@ -1086,6 +1130,8 @@ const main = async () => {
       ...(wake === undefined ? {} : { wake }),
       publish: (t, p) => {
         mqtt.publish(t, p);
+        const tail = /^freya\/r1\/[^/]+\/(.+)$/.exec(t)?.[1];
+        if (tail !== undefined && toBrainHub(tail)) brainHub?.publish(t, p);
         if (t.endsWith("/event/voice/metrics"))
           NodeFS.appendFileSync(metricsFile, `${String(p)}\n`);
       },
@@ -1117,7 +1163,14 @@ const main = async () => {
       voices: (pcm) =>
         voicesOf({ pcm, embed: embedder.embed, profiles: store.list(), policy, at: Date.now() }),
       ...(sense === null ? {} : { affect: (pcm: Int16Array) => sense.analyse(pcm) }),
-      brain: brain(env("R1_BRAIN_URL"), deviceKey),
+      brain:
+        buses.brain === null
+          ? brain(env("R1_BRAIN_URL"), deviceKey)
+          : brainOrLocal(
+              brain(env("R1_BRAIN_URL"), deviceKey, BRAIN_ANSWER_MS),
+              brain(localBrainOf(bus), deviceKey),
+              log,
+            ),
       link: link(env("R1_BRAIN_URL")),
       played: turnSignal(env("R1_BRAIN_URL"), deviceKey, "played"),
       effect: (deviceId, nonverbal, face) =>
@@ -1302,6 +1355,7 @@ const main = async () => {
   const stop = () => {
     room?.close();
     mqtt.close();
+    brainHub?.close();
     process.exit(0);
   };
   process.on("SIGTERM", stop);

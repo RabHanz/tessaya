@@ -580,6 +580,49 @@ export const busOfBrain = (brainUrl: string): string => {
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 };
+/**
+ * `R1_HUB_URL` unset: one bus, the brain's hub (slice 1). Set: her own hub, and the brain's hub as well (`brain`), so turns run
+ * on the brain while room audio stays on her LAN (18 Nov: first word 1.3 s on the brain host, 3.0 s on a busy hub host).
+ */
+export const loopBuses = (brainUrl: string, hubUrl: string | undefined) => {
+  const brain = busOfBrain(brainUrl);
+  const hub = hubUrl?.trim() || brain;
+  return { hub, brain: hub === brain ? null : brain };
+};
+
+/** A brain's turn acts for a Tessel, which it publishes on its own hub; device commands go by the peer route (HomeDevices). */
+const BRAIN_ACTS = /^voice\/(intent\/(eye|rest)|stepup|say|ask|persona)$/;
+/** From the brain's hub: what the loop on her hub takes, only for a Tessel online here (one loop drives her). */
+export const fromBrainHub = (tail: string, here: boolean) => here && BRAIN_ACTS.test(tail);
+/** The loop's answers the brain waits on: a step-up's ack (StepUps settles on it). */
+export const toBrainHub = (tail: string) => tail === "voice/stepup/done";
+
+/**
+ * The turn on the brain, or on her own hub's server when the brain cannot be reached, so she never goes silent. Once a
+ * word is out the turn is the brain's: a second server answering again would say it twice.
+ */
+export const brainOrLocal = (
+  brain: RoomDeps["brain"],
+  local: RoomDeps["brain"],
+  log: (line: string) => void,
+): RoomDeps["brain"] =>
+  async function* (input, signal) {
+    let said = false;
+    try {
+      for await (const words of brain(input, signal)) {
+        said = true;
+        yield words;
+      }
+      return;
+    } catch (e) {
+      if (said || signal.aborted) throw e;
+      log(
+        `[${input.deviceId}] brain unreachable (${String(e).slice(0, 120)}); this hub's server answers`,
+      );
+    }
+    yield* local(input, signal);
+  };
+
 /** His headset's mic sent nothing this long while she was quiet: the radio is starved, so her own mic hears him. */
 const HEADSET_STARVED_MS = 2_000;
 /** Or it sent only near-silence this quiet (no real room is) this long: the SCO link carries no audio. */
