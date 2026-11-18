@@ -65,10 +65,9 @@ export const ownProxy = (input: {
   (input.tunnelHost !== null ? `https://${input.tunnelHost}` : "");
 
 /**
- * The device's list: each hub's addresses in his hub order, then any fallback broker (a migration's old one). The
- * firmware keeps four, so every hub gets one slot before any gets a second, and a hub cut short keeps its last address
- * (its tunnel, the way in from away) over a further LAN one. The firmware tries them in order and moves back to the
- * first when it answers again.
+ * The device's list: his hubs in his order, then fallback brokers in what is left of the firmware's four. Every hub
+ * gets one slot before any gets a second; cut short, a hub keeps its first address (its LAN), then its last (the
+ * tunnel): kept alone, the tunnel's TLS starved her wake heap at home. The firmware moves back to the first entry.
  */
 export const composeEndpoints = (input: {
   readonly hubs: ReadonlyArray<ReadonlyArray<string>>;
@@ -76,21 +75,28 @@ export const composeEndpoints = (input: {
   readonly proxy: string;
 }): R1Endpoints => {
   const seen = new Set<string>();
-  const groups = [...input.hubs, ...input.fallback.map((u) => [u])]
-    .map((g) => g.filter((u) => u.length <= EP_LEN && !seen.has(u) && (seen.add(u), true)))
-    .filter((g) => g.length > 0);
-  const slots = groups.map(() => 0);
+  const fresh = (g: ReadonlyArray<string>) =>
+    g.filter((u) => u.length <= EP_LEN && !seen.has(u) && (seen.add(u), true));
+  const hubs = input.hubs.map(fresh).filter((g) => g.length > 0);
+  const slots = hubs.map(() => 0);
   let left = EP_MAX;
-  for (let i = 0; i < groups.length && left > 0; i++, left--) slots[i] = 1;
-  for (let i = 0; i < groups.length && left > 0; i++) {
-    const more = Math.min(left, groups[i]!.length - slots[i]!);
+  for (let i = 0; i < hubs.length && left > 0; i++, left--) slots[i] = 1;
+  for (let i = 0; i < hubs.length && left > 0; i++) {
+    const more = Math.min(left, hubs[i]!.length - slots[i]!);
     slots[i]! += more;
     left -= more;
   }
-  const broker = groups.flatMap((g, i) =>
-    slots[i]! >= g.length ? g : slots[i] === 0 ? [] : [...g.slice(0, slots[i]! - 1), g.at(-1)!],
-  );
-  return { broker, proxy: input.proxy };
+  const broker = [
+    ...hubs.flatMap((g, i) =>
+      slots[i]! >= g.length
+        ? g
+        : slots[i]! <= 1
+          ? g.slice(0, slots[i])
+          : [...g.slice(0, slots[i]! - 1), g.at(-1)!],
+    ),
+    ...fresh(input.fallback),
+  ];
+  return { broker: broker.slice(0, EP_MAX), proxy: input.proxy };
 };
 
 /**
