@@ -21,7 +21,6 @@ import { deskEvent } from "@t3tools/tessaya-shared/deskTurnStream";
 import { buildPhoneState } from "@t3tools/tessaya-shared/phone";
 import { AuthTessayaHandsHostScope } from "@t3tools/contracts";
 import { watchFleet } from "@t3tools/tessaya-shared/watch";
-import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Option from "effect/Option";
@@ -53,7 +52,7 @@ import {
 } from "./TessayaRpcAuthorization.ts";
 import { MemoryViewer, SyncCredential } from "./TessayaMemoryService.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
-import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
+import { SessionMember } from "./TessayaTurn.ts";
 import { EMBEDDING_ROUTE, privateVoice, TessayaVoiceLibrary } from "./TessayaVoiceLibrary.ts";
 import { DeskTurnBody, deskTurnStream } from "./DeskTurn.ts";
 import { runAskWorker } from "./AskWorker.ts";
@@ -785,20 +784,6 @@ const DESK_SIGNALS = new Set([
   "bargeIn",
 ]);
 
-/**
- * Who is near a vessel, for a layer's Tessel rule: "alone" only when the owner is the one member likely home and is
- * placed at that vessel past the alone bar; another member likely home is "others"; anything less is "unknown", which
- * fails closed.
- */
-const presenceOn = Effect.fn("TessayaRoutes.presenceOn")(function* (vessel: string) {
-  const home = (yield* (yield* TessayaTurn).whoIsHome).filter((p) => p.likelyHome);
-  if (home.some((p) => p.member !== OWNER_MEMBER_ID)) return "others" as const;
-  const owner = home.find((p) => p.member === OWNER_MEMBER_ID);
-  return owner?.nearest?.vessel === vessel && owner.nearest.confidence >= PRESENCE_BARS.alone
-    ? ("alone" as const)
-    : ("unknown" as const);
-});
-
 const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
   router: HttpRouter.HttpRouter,
   context: Context.Context<TessayaRpcHandlers.TessayaServices>,
@@ -878,7 +863,7 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
           },
         ),
     },
-    presence: (vessel) => run(presenceOn(vessel)),
+    presence: (vessel) => run(PersonaLayers.layerPresence(vessel)),
     // Her own window's turns read and act as every other turn of hers does, on this server's shared tools.
     brain: (turn) =>
       Effect.runSyncWith(context)(

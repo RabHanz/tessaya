@@ -9,10 +9,14 @@ import { expect } from "vite-plus/test";
 import { R1Brain, type SessionToolTurn } from "../home/R1Brain.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
 import { deskTurnStream } from "./DeskTurn.ts";
-import { TessayaTurn, type TurnEnvelope } from "./TessayaTurn.ts";
+import { TessayaTurn, type TurnEnvelope, type WhoIsHome } from "./TessayaTurn.ts";
 import { type PersonaLayer, PersonaLayers } from "./PersonaLayers.ts";
 
-const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
+const run = (
+  ownMachine: boolean,
+  layers: Array<PersonaLayer> = [],
+  home: ReadonlyArray<WhoIsHome> = [],
+) =>
   Effect.gen(function* () {
     const seen: Array<SessionToolTurn> = [];
     const touched: Array<string> = [];
@@ -91,6 +95,7 @@ const run = (ownMachine: boolean, layers: Array<PersonaLayer> = []) =>
                 }),
               ),
             end: () => Effect.sync(() => touched.push("end")).pipe(Effect.as(null)),
+            whoIsHome: Effect.succeed(home),
           }),
           Layer.mock(TessayaRecordService)({
             append: () => Effect.sync(() => touched.push("record")) as never,
@@ -165,8 +170,8 @@ effectIt.effect(
         },
       ]);
       expect(said).toBe("Only the layer speaks.");
-      // Its affect reaches the desktop before the line, so the whole line is said in it.
-      expect(events[0]).toEqual({ affect: "tender" });
+      // Marked private first (presence unknown: not on speakers), then its affect, so the whole line is said in it.
+      expect(events.slice(0, 2)).toEqual([{ private: { speakers: false } }, { affect: "tender" }]);
       expect(turn).toBeUndefined();
       expect(touched).toEqual([]);
       expect(facts).toEqual([
@@ -218,5 +223,27 @@ effectIt.effect(
       expect(begun[0]?.private).toBe(true);
       // Read through the one pipeline, but no end, no Record.
       expect(touched).toEqual(["begin"]);
+    }),
+);
+
+effectIt.effect(
+  "a private reply may play on the desk's speakers only while he is placed there alone",
+  () =>
+    Effect.gen(function* () {
+      const layer: PersonaLayer = {
+        id: "test",
+        onTurn: async () => ({ text: "Hi.", mood: "happy", gesture: "none", intensity: 0.5 }),
+        signal: () => undefined,
+        http: async () => ({ status: 404 }),
+      };
+      const at = (vessel: string, member = "owner") =>
+        ({ member, likelyHome: true, nearest: { vessel, confidence: 1 } }) as unknown as WhoIsHome;
+      const marker = (home: ReadonlyArray<WhoIsHome>) =>
+        Effect.map(run(true, [layer], home), (r) => r.events[0]);
+      expect(yield* marker([at("desktop")])).toEqual({ private: { speakers: true } });
+      expect(yield* marker([at("kitchen")])).toEqual({ private: { speakers: false } });
+      expect(yield* marker([at("desktop"), at("hall", "sara")])).toEqual({
+        private: { speakers: false },
+      });
     }),
 );

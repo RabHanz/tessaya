@@ -6,8 +6,18 @@ export interface DeskAffect {
 export interface DeskSpeaker {
   readonly persona: string;
 }
+/**
+ * A private moment's reply follows (PersonaLayers.ts): it plays aloud only on headphones, or on speakers when `speakers`
+ * (he is alone there); otherwise the vessel says `PRIVATE_HELD_LINE` instead, which gives nothing away.
+ */
+export interface DeskPrivate {
+  readonly private: { readonly speakers: boolean };
+}
 /** What a desk turn streams: her words, at most one affect before them, and in a group who speaks. */
-export type DeskSaid = string | DeskAffect | DeskSpeaker;
+export type DeskSaid = string | DeskAffect | DeskSpeaker | DeskPrivate;
+
+/** Said aloud instead of a private reply no output may play now, on every vessel. */
+export const PRIVATE_HELD_LINE = "I'll tell you when your headphones are on.";
 
 /** One server-sent event of a desk turn. */
 export const deskEvent = (said: DeskSaid): string =>
@@ -22,6 +32,7 @@ export const readDeskTurn = async (
   onWords: (words: string) => void,
   onAffect?: (affect: string) => void,
   onSpeaker?: (persona: string) => void,
+  onPrivate?: (speakers: boolean) => void,
 ): Promise<void> => {
   const decoder = new TextDecoder();
   let held = "";
@@ -35,7 +46,14 @@ export const readDeskTurn = async (
       if (!event.startsWith("data: ")) continue;
       const data = event.slice(6);
       if (data === "[DONE]") return;
-      const said = JSON.parse(data) as { words?: unknown; affect?: unknown; persona?: unknown };
+      const said = JSON.parse(data) as {
+        words?: unknown;
+        affect?: unknown;
+        persona?: unknown;
+        private?: { speakers?: unknown };
+      };
+      if (typeof said.private === "object" && said.private !== null)
+        onPrivate?.(said.private.speakers === true);
       if (typeof said.persona === "string") onSpeaker?.(said.persona);
       if (typeof said.affect === "string") onAffect?.(said.affect);
       if (typeof said.words === "string") onWords(said.words);

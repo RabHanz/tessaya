@@ -26,7 +26,7 @@ import { readPack, readTemplates } from "./OperatingSystemPack.ts";
 import { brainTurn, type ActOutcome, type TurnNotes } from "./TessayaBrain.ts";
 import { TessayaTurn, originOf, type TurnEnvelope } from "./TessayaTurn.ts";
 import { VesselHands, vesselTools } from "./VesselHands.ts";
-import { replyFor } from "./PersonaLayers.ts";
+import { layerPresence, replyFor } from "./PersonaLayers.ts";
 import { groupFor, groupTurn } from "./GroupTalk.ts";
 import type { DeskSaid } from "@t3tools/tessaya-shared/deskTurnStream";
 import type { HandsBroker } from "@t3tools/tessaya-shared/remoteHands";
@@ -192,6 +192,9 @@ export const deskTurnStream = (
           hands === null ? layer : Effect.provideService(layer, VesselHands, hands),
         );
         if (layered !== null) {
+          // Hers alone: the desktop plays it on headphones, or on speakers only while presence has him alone there.
+          const speakers = (yield* layerPresence(turn.vessel.id)) === "alone";
+          Queue.offerUnsafe(queue, { private: { speakers } });
           if (layered.affect !== undefined) Queue.offerUnsafe(queue, { affect: layered.affect });
           Queue.offerUnsafe(queue, layered.text);
           return layered.text;
