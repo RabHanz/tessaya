@@ -354,3 +354,19 @@ export const stroke = (
   const petted = travel >= bodyWidth * 2.5 && turns >= 2;
   return { state: { points: petted ? [] : points }, petted };
 };
+
+/**
+ * His mouse over her desk body with nothing pressed (M-062): in a private moment the private body over her feels it in
+ * full; otherwise only when he turned "Feels your mouse" on (off by default, so working near her never sets her off),
+ * and then only as light awareness.
+ */
+export const deskHover = (setting: boolean, privateMoment: boolean): "full" | "light" | "off" =>
+  privateMoment ? "full" : setting ? "light" : "off";
+
+/** One spoken answer to what he does to her at a time, never over her own words or while she thinks, none within the gap. */
+export const answersNow = (
+  phase: string,
+  asking: boolean,
+  sinceLastMs: number,
+  gapMs: number,
+): boolean => !asking && phase !== "speaking" && phase !== "thinking" && sinceLastMs >= gapMs;

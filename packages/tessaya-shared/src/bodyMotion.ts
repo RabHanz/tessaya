@@ -333,7 +333,10 @@ export const talkBeats = (
   return out;
 };
 
-/** Every kind of touch she can tell apart. Kiss and hug come from the page's "touch as" choice; the rest from the pointer. */
+/**
+ * Every kind of touch she can tell apart. Kiss and hug come from the page's "touch as" choice; trace from his pointer
+ * moving over her with nothing pressed (fingertips trailing across her); the rest from a press.
+ */
 export const TOUCH_KINDS = [
   "tap",
   "poke",
@@ -348,6 +351,7 @@ export const TOUCH_KINDS = [
   "pinch",
   "kiss",
   "hug",
+  "trace",
 ] as const;
 export type TouchKind = (typeof TOUCH_KINDS)[number];
 export const HOLD_MS = 450;
@@ -366,6 +370,10 @@ export interface TouchSample {
   readonly spreadPx?: number;
   /** Pointer pressure 0..1 where the device reports it (mouse and most screens give 0.5). */
   readonly pressure?: number;
+  /** No button pressed: a mouse moving over her (phones have no hover). */
+  readonly hover?: boolean;
+  /** How long a hover has stayed on this part of her. */
+  readonly dwellMs?: number;
 }
 
 /** The kind of touch, and how strong and how fast it was (0..1 each). */
@@ -377,6 +385,15 @@ export const readTouch = (
   const speed = Math.min(1, pxPerS / 1200);
   const firm = Math.max(0, Math.min(1, (pressure - 0.5) * 2));
   let kind: TouchKind;
+  if (t.hover === true) {
+    // fingertips: always light, felt more the longer he stays on one place
+    const dwell = Math.min(1, (t.dwellMs ?? 0) / 4000);
+    return {
+      kind: "trace",
+      intensity: Math.round((0.2 + 0.3 * dwell) * 100) / 100,
+      speed: Math.round(speed * 100) / 100,
+    };
+  }
   if ((t.pointers ?? 1) >= 2) kind = (t.spreadPx ?? 0) <= -20 ? "pinch" : "squeeze";
   else if (t.travelPx >= 24) {
     const turns = t.reversals ?? 0;
@@ -414,6 +431,50 @@ export const TOUCH_FACE: Readonly<Record<TouchKind, string>> = {
   pinch: "hurt",
   kiss: "shy",
   hug: "love",
+  trace: "shy",
+};
+
+/** A hover over one part of her, throttled: moved this far, she feels it at most this often, or once when it rests. */
+export const TRACE_PX = 24;
+export const TRACE_EVERY_MS = 600;
+export const TRACE_LINGER_MS = 1200;
+export interface Trace {
+  readonly zone: string;
+  readonly since: number;
+  readonly movedAt: number;
+  /** When she last felt it; null before the first time on this part of her. */
+  readonly sentAt: number | null;
+  readonly travel: number;
+  readonly lingered: boolean;
+}
+/**
+ * One step of a hover: the pointer moved `travelPx` over `zone` (null: off her), or rested (travelPx 0, from a one-shot
+ * timer). Continuous motion becomes one felt trace per TRACE_EVERY_MS; a new part of her is felt at once; a resting
+ * pointer is felt once as a linger. Returns what she feels now, if anything.
+ */
+export const traceStep = (
+  was: Trace | null,
+  zone: string | null,
+  travelPx: number,
+  now: number,
+): { trace: Trace | null; feel: ReturnType<typeof readTouch> | null } => {
+  if (zone === null) return { trace: null, feel: null };
+  const t: Trace =
+    was === null || was.zone !== zone
+      ? { zone, since: now, movedAt: now, sentAt: null, travel: travelPx, lingered: false }
+      : travelPx > 0
+        ? { ...was, movedAt: now, travel: was.travel + travelPx, lingered: false }
+        : was;
+  const lingers = travelPx === 0 && !t.lingered && now - t.movedAt >= TRACE_LINGER_MS;
+  const moves = t.travel >= TRACE_PX && (t.sentAt === null || now - t.sentAt >= TRACE_EVERY_MS);
+  if (!lingers && !moves) return { trace: t, feel: null };
+  const feel = readTouch({
+    ms: lingers ? 0 : Math.max(100, now - (t.sentAt ?? t.since)),
+    travelPx: lingers ? 0 : t.travel,
+    hover: true,
+    dwellMs: now - t.since,
+  });
+  return { trace: { ...t, sentAt: now, travel: 0, lingered: t.lingered || lingers }, feel };
 };
 /** The short form: tap, stroke or hold. */
 export const touchKind = (ms: number, travelPx: number): TouchKind =>

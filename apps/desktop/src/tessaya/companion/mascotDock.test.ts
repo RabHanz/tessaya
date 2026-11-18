@@ -5,6 +5,8 @@ import {
   dropAt,
   isPoke,
   stroke,
+  deskHover,
+  answersNow,
   type Strokes,
   edgesFor,
   followFocus,
@@ -257,5 +259,19 @@ describe("poke and pet", () => {
       petted ||= r.petted;
     }
     expect(petted).toBe(true);
+  });
+
+  it("feels his hover lightly on the desk only when he turned it on, in full in a private moment", () => {
+    expect(deskHover(false, false)).toBe("off");
+    expect(deskHover(true, false)).toBe("light");
+    expect(deskHover(false, true)).toBe("full");
+  });
+
+  it("starts no spoken answer while she speaks or thinks, or within the gap", () => {
+    expect(answersNow("idle", false, 10_000, 6_000)).toBe(true);
+    expect(answersNow("speaking", false, 10_000, 6_000)).toBe(false);
+    expect(answersNow("thinking", false, 10_000, 6_000)).toBe(false);
+    expect(answersNow("idle", true, 10_000, 6_000)).toBe(false);
+    expect(answersNow("idle", false, 1_000, 6_000)).toBe(false);
   });
 });

@@ -1464,6 +1464,8 @@
     else if (kind === "wall") impact(speed, false);
     else if (kind === "poke") { impact(420, false); briefly(R.poke, 900); }
     else if (kind === "pet") { play("squint"); briefly(R.pet, 1600); }
+    // his mouse trailing over her: a light, brief warmth (M-062), never a sound or a word
+    else if (kind === "trace") briefly(R.pet, 700);
     else if (kind === "bump") { impact(Math.min(speed, 700), false); briefly(R.bump, 1000); }
     else if (kind === "under") { impact(Math.max(speed, 600), true); briefly(R.under, 1300); }
     else if (kind === "hello") play(P.hello);

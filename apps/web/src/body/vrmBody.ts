@@ -34,6 +34,8 @@ import {
   readTouch,
   stepAt,
   touchZoneAt,
+  traceStep,
+  TRACE_LINGER_MS,
   HOLD_MS,
   type Euler,
   type OutfitPiece,
@@ -41,6 +43,7 @@ import {
   type PostureName,
   type Skeleton,
   type TouchKind,
+  type Trace,
 } from "@t3tools/tessaya-shared/bodyMotion";
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
@@ -122,6 +125,8 @@ const WALK_SPEED = 0.45;
 const ZERO: Euler = [0, 0, 0];
 /** How long her head and eyes follow a touch, and a little more than the 150 ms in which a person turns to one. */
 const TOUCH_MS = 1600;
+/** A hover's raycast at most this often while the mouse moves over her. */
+const HOVER_RAY_MS = 80;
 
 export interface BodyStats {
   readonly tier: number;
@@ -1032,24 +1037,16 @@ export function mountBody(
       speed,
     });
   };
-  const onDown = (e: PointerEvent) => {
-    if (vrm === null || options.onTouch === undefined) return;
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, dx: 0, reversals: 0 });
-    if (press !== null && !press.done) {
-      press.pointers = Math.max(press.pointers, pointers.size);
-      press.spread0 = press.spread = spreadOf();
-      return;
-    }
+  /** The part of her under a point on the canvas, or null (off her, or no model yet). */
+  const partAt = (x: number, y: number) => {
+    if (vrm === null) return null;
     const r = canvas.getBoundingClientRect();
     ray.setFromCamera(
-      new THREE.Vector2(
-        ((e.clientX - r.left) / r.width) * 2 - 1,
-        -((e.clientY - r.top) / r.height) * 2 + 1,
-      ),
+      new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1),
       camera,
     );
     const hit = ray.intersectObject(vrm.scene, true).find((h) => h.object.visible);
-    if (hit === undefined) return pointers.delete(e.pointerId);
+    if (hit === undefined) return null;
     const mats = [(hit.object as THREE.Mesh).material].flat();
     const zone = touchZoneAt(
       [hit.point.x, hit.point.y - ground, hit.point.z - closer],
@@ -1063,7 +1060,19 @@ export function mountBody(
       return p !== undefined && p.distanceTo(hit.point) <= z.radius;
     });
     const where = extra?.id ?? zone;
-    if (where === null) return pointers.delete(e.pointerId);
+    return where === null ? null : { hit, where };
+  };
+  const onDown = (e: PointerEvent) => {
+    if (vrm === null || options.onTouch === undefined) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, dx: 0, reversals: 0 });
+    if (press !== null && !press.done) {
+      press.pointers = Math.max(press.pointers, pointers.size);
+      press.spread0 = press.spread = spreadOf();
+      return;
+    }
+    const at = partAt(e.clientX, e.clientY);
+    if (at === null) return pointers.delete(e.pointerId);
+    const { hit, where } = at;
     canvas.setPointerCapture?.(e.pointerId);
     const now = performance.now();
     touch = { at: now, point: hit.point.clone() };
@@ -1096,7 +1105,59 @@ export function mountBody(
         feel(t.kind, t.intensity, t.speed);
     }, HOLD_MS);
   };
+  // A mouse moving over her with nothing pressed: fingertips trailing across her (M-062). Raycast at most every
+  // HOVER_RAY_MS while it moves; she feels it at the trace's own beat (traceStep), so nothing runs while it rests.
+  let trace: Trace | null = null;
+  let hoverAt = 0;
+  let hoverTravel = 0;
+  let hoverLast: { x: number; y: number } | null = null;
+  let lingerTimer: ReturnType<typeof setTimeout> | null = null;
+  const traced = (at: ReturnType<typeof partAt>, travel: number, now: number) => {
+    const step = traceStep(trace, at?.where ?? null, travel, now);
+    trace = step.trace;
+    if (step.feel === null || at === null) return;
+    const { intensity, speed } = step.feel;
+    // she glances toward it and leans in a touch; her breath deepens, and a quick one sends a shiver through her
+    touch = { at: now, point: at.hit.point.clone() };
+    override = {
+      face: faceWeights(TOUCH_FACE.trace, 0.4 + intensity),
+      motion: { breath: 0.35 + 0.4 * intensity, ...(speed > 0.6 ? { tremble: 0.25 * speed } : {}) },
+      until: now + 1200,
+    };
+    setFace(override.face, now);
+    wake(now);
+    invalidate();
+    options.onTouch?.(PROP_BONE[at.where as TouchZone] ?? "spine", at.where, {
+      kind: "trace",
+      intensity,
+      speed,
+    });
+  };
+  const offHer = () => {
+    trace = null;
+    hoverLast = null;
+    hoverTravel = 0;
+    if (lingerTimer !== null) clearTimeout(lingerTimer);
+    lingerTimer = null;
+  };
+  const onHover = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse" || e.buttons !== 0 || press !== null) return;
+    if (options.onTouch === undefined) return;
+    if (hoverLast !== null)
+      hoverTravel += Math.hypot(e.clientX - hoverLast.x, e.clientY - hoverLast.y);
+    hoverLast = { x: e.clientX, y: e.clientY };
+    const now = performance.now();
+    if (now - hoverAt < HOVER_RAY_MS) return;
+    hoverAt = now;
+    const at = partAt(e.clientX, e.clientY);
+    traced(at, hoverTravel, now);
+    hoverTravel = 0;
+    if (lingerTimer !== null) clearTimeout(lingerTimer);
+    lingerTimer =
+      at === null ? null : setTimeout(() => traced(at, 0, performance.now()), TRACE_LINGER_MS);
+  };
   const onMove = (e: PointerEvent) => {
+    onHover(e);
     const p = pointers.get(e.pointerId);
     if (p === undefined || press === null) return;
     const dx = e.clientX - p.x;
@@ -1132,6 +1193,7 @@ export function mountBody(
   canvas.addEventListener("pointermove", onMove);
   canvas.addEventListener("pointerup", onUp);
   canvas.addEventListener("pointercancel", onUp);
+  canvas.addEventListener("pointerleave", offHer);
 
   const onVisibility = () => {
     onScreen = document.visibilityState === "visible";
@@ -1197,6 +1259,8 @@ export function mountBody(
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("pointercancel", onUp);
+      canvas.removeEventListener("pointerleave", offHer);
+      offHer();
       if (holdTimer !== null) clearTimeout(holdTimer);
       seen.disconnect();
       sized.disconnect();
