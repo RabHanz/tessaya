@@ -165,8 +165,11 @@ describe("preparePose", () => {
       const out = preparePose(vroid, bones);
       const before = fk(vroid, raw).pos;
       const after = fk(vroid, out.pose).pos;
-      for (const end of ["leftHand", "rightHand", "leftFoot", "rightFoot"])
-        expect(near(before[end]!, after[end]!, 0.02)).toBe(true);
+      // a hand the rig moved out of her body (a reported penetration) may move by that much more
+      for (const end of ["leftHand", "rightHand", "leftFoot", "rightFoot"]) {
+        const pushed = out.issues.find((i) => i.bone === end && i.kind === "penetration");
+        expect(near(before[end]!, after[end]!, 0.02 + (pushed ? pushed.by + 0.02 : 0))).toBe(true);
+      }
       // prepared once, it is already right
       const again = preparePose(
         vroid,
@@ -183,6 +186,17 @@ describe("preparePose", () => {
     const elbow = swingTwist(out.pose["leftLowerArm"]!, [1, 0, 0]).swing;
     expect(elbow[1]).toBeLessThanOrEqual(0.03);
     expect(Math.abs(elbow[2])).toBeLessThan(0.13);
+  });
+  it("rests a hand on her body instead of inside it, and says so", () => {
+    // a hand on her hip, authored a little inside her: it ends on the surface, the arm re-solved to reach it
+    const out = preparePose(vroid, POSTURES.teasing.bones);
+    expect(out.issues.map((i) => [i.bone, i.kind])).toContainEqual(["leftHand", "penetration"]);
+    const w = fk(vroid, out.pose).pos;
+    const hand = w["leftHand"]!;
+    const axisX = w["hips"]![0];
+    expect(Math.hypot(hand[0] - axisX, hand[2] - w["hips"]![2])).toBeGreaterThan(
+      0.075 * vroid.height,
+    );
   });
   it("drops unknown and non-finite bones and names them", () => {
     const out = preparePose(vroid, {

@@ -81,12 +81,12 @@ export const POSTURES = {
     breathHz: 0.3,
   },
   playful: {
-    // hands behind her back, up on her toes a little, head tilted
+    // hands behind her back, up on her toes a little, head tilted (arms swing back on x, elbows fold on y)
     bones: {
-      leftUpperArm: [0, 0.45, -1.15],
-      rightUpperArm: [0, -0.45, 1.15],
-      leftLowerArm: [0, 0.7, 0],
-      rightLowerArm: [0, -0.7, 0],
+      leftUpperArm: [0.87, -0.53, -1.4],
+      rightUpperArm: [0.87, 0.53, 1.4],
+      leftLowerArm: [0, -1.19, 0],
+      rightLowerArm: [0, 1.19, 0],
       chest: [-0.05, 0, 0],
       head: [0, 0.05, 0.12],
     },
@@ -108,10 +108,10 @@ export const POSTURES = {
   shy: {
     // hands together in front, shoulders in, head down and turned a little away
     bones: {
-      leftUpperArm: [0, -0.35, -1.12],
-      rightUpperArm: [0, 0.35, 1.12],
-      leftLowerArm: [0, -0.85, 0],
-      rightLowerArm: [0, 0.85, 0],
+      leftUpperArm: [0.1, -0.82, -1.2],
+      rightUpperArm: [0.1, 0.82, 1.2],
+      leftLowerArm: [0, -1.18, 0],
+      rightLowerArm: [0, 1.18, 0],
       leftShoulder: [0, -0.08, 0.04],
       rightShoulder: [0, 0.08, -0.04],
       spine: [0.05, 0, 0],
