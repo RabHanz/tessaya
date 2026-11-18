@@ -366,7 +366,14 @@ if (popout) {
     execFileSync("powershell", [
       "-NoProfile",
       "-Command",
-      `Add-Type -Name W -Namespace S -MemberDefinition '[DllImport("user32.dll")] public static extern System.IntPtr FindWindow(string c, string t); [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int n);'; for ($i = 0; $i -lt 50; $i++) { $h=[S.W]::FindWindow($null,'${title}'); if ($h -ne [System.IntPtr]::Zero) { break }; Start-Sleep -Milliseconds 100 }; if ($h -eq [System.IntPtr]::Zero) { throw 'no window titled ${title}' }; [void][S.W]::ShowWindow($h, 6)`,
+      // Tessaya's visible top-level windows by title; the list is the error when the popup is not among them.
+      "Add-Type -TypeDefinition 'using System; using System.Text; using System.Runtime.InteropServices; using System.Collections.Generic; " +
+        'public class SW { public delegate bool CB(IntPtr h, IntPtr l); [DllImport("user32.dll")] static extern bool EnumWindows(CB c, IntPtr l); ' +
+        '[DllImport("user32.dll")] static extern int GetWindowText(IntPtr h, StringBuilder s, int n); [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h); ' +
+        '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n); ' +
+        "public static Dictionary<string, IntPtr> All() { var r = new Dictionary<string, IntPtr>(); EnumWindows((h, l) => { var s = new StringBuilder(256); GetWindowText(h, s, 256); if (IsWindowVisible(h) && s.Length > 0) r[s.ToString()] = h; return true; }, IntPtr.Zero); return r; } }'; " +
+        `for ($i = 0; $i -lt 50; $i++) { $w = [SW]::All(); if ($w.ContainsKey('${title}')) { [void][SW]::ShowWindow($w['${title}'], 6); exit 0 }; Start-Sleep -Milliseconds 100 }; ` +
+        "throw ('popup not found among: ' + ($w.Keys -join ' | '))",
     ]);
     await popout.evaluate(() => clearInterval(window.__smokeTitle));
     await sleep(2000);
@@ -382,7 +389,11 @@ if (popout) {
       `${seen.state}, ${seen.frames - from} frames in 5 s`,
     );
   } catch (error) {
-    row("a minimized detached window stops drawing", false, error.message);
+    row(
+      "a minimized detached window stops drawing",
+      false,
+      error.stderr?.toString() || error.message,
+    );
   }
 } else
   rows.push({
@@ -390,8 +401,37 @@ if (popout) {
     ok: null,
     detail: "skipped: no detached window",
   });
+// A working thread's pulse in his window repaints it six times a second for as long as the turn runs; untouched for a
+// minute, it must hold still. The idle below then runs with one pulsing, as his did with his lanes working.
+const pulse = t3
+  ? await t3
+      .evaluate(() => {
+        const dot = document.body.appendChild(document.createElement("span"));
+        dot.id = "smoke-pulse";
+        dot.className = "motion-safe:animate-status-pulse";
+        dot.style.cssText =
+          "position:fixed;left:4px;bottom:4px;width:8px;height:8px;background:#888";
+        return dot.getAnimations().length;
+      })
+      .catch(() => 0)
+  : 0;
 try {
   await sleep(60_000);
+  if (t3) {
+    // The window checks every 15 s whether it was touched in the last minute.
+    await sleep(16_000);
+    const held = await t3
+      .evaluate(() => ({
+        still: document.documentElement.hasAttribute("data-still"),
+        state: document.getElementById("smoke-pulse")?.getAnimations()[0]?.playState ?? "none",
+      }))
+      .catch((e) => ({ still: false, state: e.message }));
+    row(
+      "a working thread's pulse holds still in an untouched window",
+      pulse > 0 && held.still && held.state === "paused",
+      `${pulse} animation(s); data-still ${held.still}, ${held.state}`,
+    );
+  }
   const dir = join(exe, "..").replace(/'/g, "''");
   const script =
     `$d='${dir}'; $p=@{}; Get-CimInstance Win32_Process | ? { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, 'OrdinalIgnoreCase') } | % { $p[[int]$_.ProcessId]=$_.Name + ($(if ($_.CommandLine -match '--type=(\\S+)') { ' ' + $matches[1] } else { '' })) }; ` +

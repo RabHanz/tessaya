@@ -6,10 +6,14 @@ interface ObservedAnimation {
 const animations = new Map<Element, ObservedAnimation>();
 let observer: IntersectionObserver | null = null;
 let reducedMotion: MediaQueryList | null = null;
+let still = false;
 
 function updateAnimation(animation: ObservedAnimation) {
   const running =
-    animation.intersecting && document.visibilityState === "visible" && !reducedMotion?.matches;
+    animation.intersecting &&
+    document.visibilityState === "visible" &&
+    !still &&
+    !reducedMotion?.matches;
   animation.element.style.setProperty("--visible-animation-state", running ? "running" : "paused");
   animation.element.style.setProperty(
     "--visible-animation-will-change",
@@ -59,5 +63,39 @@ export function observeVisibleAnimation(element: HTMLElement | SVGElement | null
       reducedMotion = null;
       document.removeEventListener("visibilitychange", updateAnimations);
     }
+  };
+}
+
+const STILL_AFTER_MS = 60_000;
+const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "focus"] as const;
+
+/**
+ * Repeating indicators (a working thread's pulse, a live tool's shine) hold still while nobody has touched this
+ * window for a minute or it is out of sight: a turn can run for hours, and each repaints the window several times a
+ * second. `html[data-still]` pauses the CSS ones; the first input starts them again.
+ */
+export function startStillIndicators(): () => void {
+  let lastInput = Date.now();
+  const set = (next: boolean) => {
+    if (next === still) return;
+    still = next;
+    document.documentElement.toggleAttribute("data-still", next);
+    updateAnimations();
+  };
+  const check = () =>
+    set(document.visibilityState !== "visible" || Date.now() - lastInput >= STILL_AFTER_MS);
+  const touched = () => {
+    lastInput = Date.now();
+    if (still) check();
+  };
+  for (const type of INPUT_EVENTS)
+    window.addEventListener(type, touched, { capture: true, passive: true });
+  document.addEventListener("visibilitychange", check);
+  const timer = window.setInterval(check, STILL_AFTER_MS / 4);
+  return () => {
+    for (const type of INPUT_EVENTS) window.removeEventListener(type, touched, { capture: true });
+    document.removeEventListener("visibilitychange", check);
+    window.clearInterval(timer);
+    set(false);
   };
 }

@@ -2640,3 +2640,8 @@ code {
 .messages-timeline-scroll:focus-visible {
   outline: none;
 }
+
+/* Unlayered, so it outranks the animate-status-* utilities: see startStillIndicators. */
+html[data-still] [class*="animate-status-"] {
+  animation-play-state: paused;
+}
