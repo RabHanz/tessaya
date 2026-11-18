@@ -12,8 +12,13 @@ import {
   replayDryRun,
   roomRefusal,
   ROOM_TOOL_SPECS,
+  setRoomVolume,
   stepUpNeeds,
 } from "./R1Tools.ts";
+import { it as effectIt } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import { HomeAssistantService } from "./HomeAssistantService.ts";
+import { HomeDevices } from "./HomeDevices.ts";
 
 const decodes = (name: keyof typeof TessayaToolkit.tools, input: unknown) => {
   const spec = ROOM_TOOL_SPECS.find((s) => s.name === name)!;
@@ -97,8 +102,10 @@ describe("the room's tools for a replay", () => {
       false,
       false,
     ]);
-    // The desktop's own screen and volume stay its own; the room's laptop and speaker are not its tools.
-    expect(["laptop_ask", "set_device_volume", "tessaya_ask"].some((n) => desk.has(n))).toBe(false);
+    // The desktop's own screen stays its own; the room's laptop is not its tool.
+    expect(["laptop_ask", "tessaya_ask"].some((n) => desk.has(n))).toBe(false);
+    // One set_device_volume: the desktop speaks through its own, and sets another device (`id`) through this one.
+    expect(desk.get("set_device_volume")).toBe(false);
     // His work reaches the desktop from the one table: no job tool of its own (SPINE-UNIFY S2).
     expect(
       ["job_start", "job_agree", "job_schedule", "schedules_list", "project_add"].every((n) =>
@@ -220,3 +227,27 @@ describe("the room's tools for a replay", () => {
     expect(stepUpNeeds("job_stop", 2)).toBeNull();
   });
 });
+
+effectIt.effect(
+  "set_device_volume sets the device the turn is heard on, or the one he names by its id",
+  () =>
+    Effect.gen(function* () {
+      const set: Array<readonly [string, unknown]> = [];
+      const run = (input: unknown) =>
+        setRoomVolume(input, "r1-here").pipe(
+          Effect.provideService(HomeAssistantService, {
+            device: Effect.succeed({ deviceId: "r1-here" }),
+          } as never),
+          Effect.provideService(HomeDevices, {
+            command: (id: string, command: { readonly to: unknown }) =>
+              Effect.sync(() => (set.push([id, command.to]), { line: "Better?" })),
+          } as never),
+        );
+      expect((yield* run({ to: "up" })).text).toBe("Better?");
+      yield* run({ to: 40, id: "r1-kitchen" });
+      expect(set).toEqual([
+        ["r1-here", "up"],
+        ["r1-kitchen", 40],
+      ]);
+    }),
+);

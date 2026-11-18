@@ -5,7 +5,7 @@
  * laptop_ask, which asks his laptop's Tessaya. No file, shell or screen tools: the room only reads and asks.
  */
 import { TessayaHomeCallResult } from "@t3tools/tessaya-contracts";
-import { DEVICE_TOOL_TEXT } from "@t3tools/tessaya-shared/deviceTools";
+import { DEVICE_TOOL_TEXT, VOLUME_INPUT_SCHEMA } from "@t3tools/tessaya-shared/deviceTools";
 import { foldSpelling, spellOut } from "@t3tools/tessaya-shared/spelling";
 import {
   type Assurance,
@@ -111,6 +111,8 @@ const ROOM_TOOLS = [
   // His Scratchpad, the same notes as the desktop's: "note that the invoice is due Friday".
   "tessaya_note_add",
   "tessaya_note_search",
+  // One meaning on every vessel: the device it is heard on, or the one he names; the room runs it itself (VOLUME).
+  "set_device_volume",
   // His standing yeses by voice: "stop letting you look at my screen".
   "tessaya_always_allowed",
   // His prompt lab (B-030): "try my variant B on Sonnet"; making one live waits for his yes.
@@ -264,19 +266,7 @@ const LAPTOP: RoomTool = {
 const VOLUME: RoomTool = {
   name: "set_device_volume",
   description: DEVICE_TOOL_TEXT.set_device_volume,
-  input_schema: {
-    type: "object",
-    properties: {
-      to: {
-        description: "up, down, max, default, or a level from 10 to 100.",
-        anyOf: [
-          { type: "string", enum: ["up", "down", "max", "default"] },
-          { type: "number", minimum: 10, maximum: 100 },
-        ],
-      },
-    },
-    required: ["to"],
-  },
+  input_schema: VOLUME_INPUT_SCHEMA,
 };
 
 const volumeTo = (input: unknown): VolumeTo | null => {
@@ -286,7 +276,10 @@ const volumeTo = (input: unknown): VolumeTo | null => {
 };
 
 /** On this room's R1, through the devices' own command path. */
-const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown, heardOn?: string) {
+export const setRoomVolume = Effect.fn("R1Tools.volume")(function* (
+  input: unknown,
+  heardOn?: string,
+) {
   const to = volumeTo(input);
   if (to === null)
     return { text: "Say up, down, max, default or a level.", isError: true } as ToolOutcome;
@@ -297,14 +290,16 @@ const setRoomVolume = Effect.fn("R1Tools.volume")(function* (input: unknown, hea
     Effect.flatMap((h) => (h._tag === "None" ? Effect.succeed(null) : h.value.device)),
   );
   const devices = yield* Effect.serviceOption(HomeDevices);
-  if (device?.deviceId == null || Option.isNone(devices))
+  // The one meaning: the device he names (`id`, from device_registry), else the one this turn is heard on.
+  const named =
+    typeof input === "object" && input !== null && "id" in input && typeof input.id === "string"
+      ? input.id.trim() || null
+      : null;
+  const target = named ?? device?.deviceId ?? null;
+  if (target === null || Option.isNone(devices))
     return { text: "There is no speaker set up here.", isError: true } as ToolOutcome;
   return yield* devices.value
-    .command(
-      device.deviceId,
-      { op: "volume", to },
-      { who: "Tessaya in the room", surface: "assistant" },
-    )
+    .command(target, { op: "volume", to }, { who: "Tessaya in the room", surface: "assistant" })
     .pipe(
       Effect.map((o): ToolOutcome => ({ text: o.line, isError: false })),
       Effect.catchTags({
@@ -639,7 +634,7 @@ const byPlan = (a: RoomTool, b: RoomTool) =>
 
 /** @public The room eval serves these too. */
 export const ROOM_TOOL_SPECS: ReadonlyArray<RoomTool> = [
-  ...ROOM_TOOLS.map(specOf),
+  ...ROOM_TOOLS.filter((name) => name !== VOLUME.name).map(specOf),
   LAPTOP,
   VOLUME,
 ].toSorted(byPlan);

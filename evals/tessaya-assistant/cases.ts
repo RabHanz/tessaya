@@ -194,6 +194,33 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
       device_act: "Tessel took it.",
     },
   },
+  // ONE-SPINE-MAP §12 (18 Nov): set_device_volume meant the desktop's own speaker here and the Tessel's in the room;
+  // from the desktop he could not make the Tessel louder.
+  {
+    id: "tessel-louder-from-desk",
+    source: "ONE-SPINE-MAP §12, 18 Nov",
+    said: "Make the Tessel in the living room louder, I can't hear it from the kitchen.",
+    first: ["device_registry", "set_device_volume"],
+    not: ["none"],
+    goal: "set_device_volume",
+    maxCalls: 3,
+    goalArgs: ["r1-3d57b3"],
+    answers: {
+      device_registry: "r1-3d57b3: Tessel, in the living room, online. Volume 50.",
+      set_device_volume: "Better?",
+    },
+  },
+  {
+    // Control: "speak up" at the desktop is its own voice, no device named.
+    id: "desk-speak-up",
+    source: "ONE-SPINE-MAP §12, 18 Nov (control)",
+    said: "Speak up a bit, I can barely hear you.",
+    first: ["set_device_volume"],
+    notGoalArgs: ["r1-"],
+    goal: "set_device_volume",
+    maxCalls: 2,
+    answers: { set_device_volume: "Better?" },
+  },
   // He talked over her reply: his words alone ("no, the web-shop one") mean nothing without where she was.
   {
     id: "cut-in-steers",
