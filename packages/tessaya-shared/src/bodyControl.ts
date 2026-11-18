@@ -48,6 +48,8 @@ export interface BodyMove {
   readonly look?: { readonly x: number; readonly y: number; readonly ms: number };
   /** Face weights (VRM presets 0..1), held `ms`. */
   readonly face?: { readonly weights: Partial<Record<VrmPreset, number>>; readonly ms: number };
+  /** The model's own shape keys by name (its manifest lists them), 0..1, held until set again. */
+  readonly morphs?: Readonly<Record<string, number>>;
   /** Bones in VRM 1.0 axes from the T-pose (radians), reached over `ms`, held until released. */
   readonly bones?: Partial<Record<PoseBone, Euler>>;
   readonly ms?: number;
@@ -143,6 +145,14 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
     }
     m["face"] = { weights, ms: num(isObj(f) ? f["ms"] : undefined, 200, MAX_MS) ?? 3000 };
   }
+  if (raw["morphs"] !== undefined) {
+    const w = raw["morphs"];
+    if (!isObj(w) || Object.keys(w).length > 64)
+      return { ok: false, error: "morphs is {shapeKey: 0..1}, up to 64" };
+    m["morphs"] = Object.fromEntries(
+      Object.entries(w).map(([k, v]) => [k.slice(0, 64), num(v, 0, 1) ?? 0]),
+    );
+  }
   if (raw["bones"] !== undefined) {
     const b = bonesOf(raw["bones"]);
     if (typeof b === "string") return { ok: false, error: b };
@@ -185,7 +195,7 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
     return {
       ok: false,
       error:
-        "nothing to do: give an act, posture, gesture, mood, look, face, bones, keys or release",
+        "nothing to do: give an act, posture, gesture, mood, look, face, morphs, bones, keys or release",
     };
   return { ok: true, move: m as BodyMove };
 };
@@ -244,6 +254,7 @@ const stepCues = (m: BodyMove, id: string): BodyCue[] => {
   if (m.gesture !== undefined) out.push({ kind: "gesture", gesture: m.gesture });
   if (m.look !== undefined) out.push({ kind: "gaze", x: m.look.x, y: m.look.y, ms: m.look.ms });
   if (m.face !== undefined) out.push({ kind: "face", weights: m.face.weights, ms: m.face.ms });
+  if (m.morphs !== undefined) out.push({ kind: "morphs", weights: m.morphs });
   if (m.keys !== undefined)
     out.push({
       kind: "clip",

@@ -270,6 +270,10 @@ export function mountBody(
   // direct control: where she was asked to look and until when, and the pace a direct pose was asked to arrive at
   let gazeHold: { yaw: number; pitch: number; until: number } | null = null;
   let pace = 1;
+  // shape keys by name on this model, the ones held by direct control, and this frame's from his mappings
+  let shapeKeys = new Map<string, Array<{ mesh: THREE.Mesh; i: number }>>();
+  let morphHold: Record<string, number> = {};
+  let shapes: Record<string, number> = {};
   let seqTimers: Array<ReturnType<typeof setTimeout>> = [];
   let settledSent = true;
   let override: {
@@ -744,6 +748,9 @@ export function mountBody(
           0;
         for (const u of use)
           if (em.getExpression(u.name)) em.setValue(u.name, Math.min(1, v * u.weight));
+          // a raw shape key (VRoid's Fcl_…) rather than an expression: driven directly after the update
+          else if (shapeKeys.has(u.name))
+            shapes[u.name] = Math.max(shapes[u.name] ?? 0, Math.min(1, v * u.weight));
       }
     }
 
@@ -784,6 +791,11 @@ export function mountBody(
     }
     if (mirrored) flipVrm0(vrm);
     vrm.update(delta);
+    // shape keys asked for by name go on after the expressions, which would otherwise reset the ones they bind
+    for (const [name, w] of Object.entries({ ...shapes, ...morphHold }))
+      for (const k of shapeKeys.get(name) ?? [])
+        if (k.mesh.morphTargetInfluences) k.mesh.morphTargetInfluences[k.i] = w;
+    shapes = {};
     if (mirrored) flipVrm0(vrm);
     const f2 = 1 - Math.exp(-4 * delta);
     if (settleBody(f2) || placeCamera(f2)) lastMove = now;
@@ -876,9 +888,17 @@ export function mountBody(
     );
     sync = names.has("jawopen") && names.has("eyeblinkleft") ? names : null;
     mirrored = mirroredOf(next);
+    shapeKeys = new Map();
+    next.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      for (const [name, i] of Object.entries(mesh.morphTargetDictionary ?? {}))
+        shapeKeys.set(name, [...(shapeKeys.get(name) ?? []), { mesh, i }]);
+    });
+    morphHold = {};
     rig = rigOf(next);
     manifest = manifestOf(rig, {
       expressions: (next.expressionManager?.expressions ?? []).map((e) => e.expressionName),
+      morphs: [...shapeKeys.keys()],
       springChains: next.springBoneManager?.joints.size ?? 0,
     });
     springs = new Map();
@@ -1075,6 +1095,14 @@ export function mountBody(
         lastMove = now;
         // her eyes come back to him when it ends, even if nothing else is moving then
         seqTimers.push(setTimeout(() => ((lastMove = performance.now()), invalidate()), c.ms));
+        return invalidate();
+      case "morphs":
+        // a key let go is drawn once at 0, then forgotten
+        morphHold = {
+          ...Object.fromEntries(Object.entries(morphHold).filter(([, w]) => w > 0)),
+          ...c.weights,
+        };
+        lastMove = now;
         return invalidate();
       case "face":
         override = { face: c.weights, until: now + c.ms };

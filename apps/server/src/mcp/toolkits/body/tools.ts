@@ -63,6 +63,12 @@ const Step = {
       ms: Schema.optionalKey(Num(200, 20000, "How long it holds.")),
     }),
   ),
+  morphs: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.Number).annotate({
+      description:
+        "The model's own shape keys by name, 0 to 1, held until set again (tessaya_body_state lists them).",
+    }),
+  ),
   bones: Schema.optionalKey(Bones),
   ms: Schema.optionalKey(Num(80, 5000, "How long the bones take to arrive.")),
   keys: Schema.optionalKey(

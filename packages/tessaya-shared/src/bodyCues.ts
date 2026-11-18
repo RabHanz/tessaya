@@ -342,6 +342,8 @@ export type BodyCue =
     }
   /** Where she looks, -1..1 across (her left +) and up, for `ms`; then back to him. */
   | { readonly kind: "gaze"; readonly x: number; readonly y: number; readonly ms: number }
+  /** The model's own shape keys by name (0..1), held until set again; 0 lets one go. */
+  | { readonly kind: "morphs"; readonly weights: Readonly<Record<string, number>> }
   /** Face weights held for `ms` over her mood's face. */
   | { readonly kind: "face"; readonly weights: Weights; readonly ms: number }
   /** Cues the body plays by its own clock, each `atMs` after this one arrives (a move's later steps). */
@@ -603,6 +605,19 @@ export const parseCue = (raw: unknown): BodyCue | null => {
         }),
       );
       return { kind: "face", weights, ms: num(c["ms"], 100, 20_000) ?? 3000 };
+    }
+    case "morphs": {
+      const w = c["weights"];
+      if (w === null || typeof w !== "object") return null;
+      const weights = Object.fromEntries(
+        Object.entries(w as Record<string, unknown>)
+          .slice(0, 64)
+          .flatMap(([k, v]) => {
+            const n = num(v, 0, 1);
+            return k.length > 0 && k.length <= 64 && n !== null ? [[k, n]] : [];
+          }),
+      );
+      return { kind: "morphs", weights };
     }
     case "seq": {
       // one level deep: a step's cues are plain cues, never another sequence

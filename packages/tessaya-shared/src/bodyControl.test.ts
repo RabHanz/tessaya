@@ -73,6 +73,12 @@ describe("moveCues", () => {
     );
     expect(cues.map((c) => c.kind)).toEqual(["act", "mood", "seq"]);
     for (const c of cues) expect(parseCue(c)).toEqual(c);
+    // a model's own shape keys by name, bounded, for what its expressions don't cover
+    const [shapes] = moveCues(ok({ morphs: { Fcl_MTH_Up: 2, Fcl_BRW_Surprised: 0.4 } }));
+    expect(parseCue(shapes)).toEqual({
+      kind: "morphs",
+      weights: { Fcl_MTH_Up: 1, Fcl_BRW_Surprised: 0.4 },
+    });
   });
   it("plays keyframes as a clip and direct bones as a held pose that arrives in ms", () => {
     const [keys] = moveCues(
