@@ -16,6 +16,7 @@ import { teamBoard } from "./TessayaTeamBoard.ts";
 import { readGrants, setGrant } from "./consent.ts";
 import { pronunciations } from "./Pronunciations.ts";
 import { voiceIdGate } from "./VoiceIdGate.ts";
+import { scratchpad } from "./TessayaScratchpad.ts";
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_ACCOUNTS_WS_METHODS,
@@ -26,6 +27,7 @@ import {
   BATON_LIVE_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
   BATON_CONSENT_WS_METHODS,
+  BATON_SCRATCHPAD_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
   BATON_HOME_WS_METHODS,
@@ -804,6 +806,16 @@ export const makeHandlers = Effect.gen(function* () {
         ),
       ),
     [BATON_CONSENT_WS_METHODS.list]: () => run(Effect.map(readGrants, (keys) => ({ keys }))),
+    // Dies when her brain can't be reached, so the desktop keeps what it wrote and sends it again.
+    [BATON_SCRATCHPAD_WS_METHODS.call]: (input) =>
+      run(
+        scratchpad(input).pipe(
+          Effect.orDie,
+          Effect.flatMap((r) =>
+            Option.isSome(r) ? Effect.succeed(r.value) : Effect.die("No Scratchpad reached."),
+          ),
+        ),
+      ),
     [BATON_CONSENT_WS_METHODS.set]: (input) =>
       run(Effect.map(setGrant(input.key, input.allow), (keys) => ({ keys }))),
     [BATON_MEMORY_WS_METHODS.list]: (input) =>

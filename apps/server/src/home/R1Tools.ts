@@ -108,6 +108,9 @@ const ROOM_TOOLS = [
   "tessaya_ask",
   "tessaya_ask_status",
   "tessaya_pronounce",
+  // His Scratchpad, the same notes as the desktop's: "note that the invoice is due Friday".
+  "tessaya_note_add",
+  "tessaya_note_search",
   // His standing yeses by voice: "stop letting you look at my screen".
   "tessaya_always_allowed",
   // His prompt lab (B-030): "try my variant B on Sonnet"; making one live waits for his yes.

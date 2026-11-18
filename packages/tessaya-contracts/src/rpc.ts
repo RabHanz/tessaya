@@ -273,6 +273,11 @@ import {
   TessayaConsentSetInput,
 } from "./consent.ts";
 import {
+  BATON_SCRATCHPAD_WS_METHODS,
+  TessayaScratchpadAct,
+  TessayaScratchpadResult,
+} from "./scratchpad.ts";
+import {
   BATON_PHONE_WS_METHODS,
   TessayaPhoneCallInput,
   TessayaPhoneCallResult,
@@ -568,6 +573,12 @@ const WsTessayaConsentListRpc = Rpc.make(BATON_CONSENT_WS_METHODS.list, {
 const WsTessayaConsentSetRpc = Rpc.make(BATON_CONSENT_WS_METHODS.set, {
   payload: TessayaConsentSetInput,
   success: TessayaConsentResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaScratchpadRpc = Rpc.make(BATON_SCRATCHPAD_WS_METHODS.call, {
+  payload: TessayaScratchpadAct,
+  success: TessayaScratchpadResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1208,6 +1219,7 @@ const BATON_RPCS = [
   WsTessayaCommitmentUpsertRpc,
   WsTessayaConsentListRpc,
   WsTessayaConsentSetRpc,
+  WsTessayaScratchpadRpc,
   WsTessayaPhoneCallRpc,
   WsTessayaSessionsListRpc,
   WsTessayaSessionsFoldersRpc,

@@ -42,6 +42,7 @@ import type {
 } from "@t3tools/tessaya-contracts";
 import {
   BATON_DESKTOP_SETTINGS_WS_METHODS,
+  BATON_SCRATCHPAD_WS_METHODS,
   BATON_DEVICES_WS_METHODS,
   BATON_VOICE_WS_METHODS,
   BATON_LEARN_WS_METHODS,
@@ -172,7 +173,7 @@ import { computeDeepInsights } from "@t3tools/tessaya-shared/insightsDeep";
 import { computeVoiceProfile } from "@t3tools/tessaya-shared/voiceProfile";
 import { insightControls, voiceProfileControls } from "../writing/insightRows.ts";
 import { previewOf, searchNotes } from "@t3tools/tessaya-shared/scratchpad";
-import { createScratchStore } from "../writing/scratchStore.ts";
+import { createScratchStore, type ScratchCall } from "../writing/scratchStore.ts";
 import { SCRATCH_HOTKEY, scratchAction, scratchControls } from "../writing/scratchRows.ts";
 import {
   exportDictionaryCsv,
@@ -2171,7 +2172,16 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   const snippets = createSnippetStore(input.stateDir);
   const transforms = createTransformStore(input.stateDir);
   const styles = createStyleStore(input.stateDir);
-  const scratch = createScratchStore(input.stateDir);
+  // His Scratchpad is her brain's, through this machine's server; the file is its cache.
+  const scratch = createScratchStore(
+    input.stateDir,
+    undefined,
+    undefined,
+    input.direct === undefined
+      ? undefined
+      : (act) => input.direct!(BATON_SCRATCHPAD_WS_METHODS.call, act) as ReturnType<ScratchCall>,
+  );
+  void scratch.sync();
   let scratchQuery = "";
   /** The next dictation becomes a note (the keyboard shortcut); cleared when it lands. */
   let noteNext = false;
@@ -3637,6 +3647,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         }
       }
       if (op === "note_search") {
+        // Notes he added on the Tessel come in first.
+        await scratch.sync();
         const found = searchNotes(scratch.notes(), String(args["query"] ?? "")).slice(0, 10);
         return found.length === 0
           ? "No note has all of those words."
@@ -6244,7 +6256,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       .catch(() => undefined);
   pullComms();
   // shortcut: a change from the phone or her voice reaches this copy within a minute.
-  setInterval(pullComms, 60_000).unref();
+  setInterval(() => (pullComms(), void scratch.sync()), 60_000).unref();
   const intercomTab =
     input.comms === undefined || input.household === undefined
       ? null

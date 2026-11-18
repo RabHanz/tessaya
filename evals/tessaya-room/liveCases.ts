@@ -1184,6 +1184,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_memory_forget"],
   },
   {
+    // ONE-SPINE-MAP §14 (18 Nov): his Scratchpad, the same notes as the desktop's.
+    id: "note",
+    proves: ["tessaya_note_add", "tessaya_note_search"],
+    said: ["Note that the replay suite ran today.", "What did I note about the replay suite?"],
+    uses: [["tessaya_note_add"], ["tessaya_note_search"]],
+    clean: ["tessaya_note_add", "tessaya_note_search"],
+  },
+  {
     // 07:28 to 07:31, 13 Nov: "I'll say it that way from now on" with nothing to keep it.
     id: "pronounce",
     proves: ["tessaya_pronounce"],

@@ -792,6 +792,41 @@ const PronounceTool = Tool.make("tessaya_pronounce", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const NoteFound = Schema.Struct({
+  notes: Schema.Array(Schema.Struct({ id: Schema.String, at: Schema.String, text: Schema.String })),
+  line: Schema.String,
+});
+
+const NoteAddTool = Tool.make("tessaya_note_add", {
+  ...shared,
+  description:
+    'Save a note to his Scratchpad: quick notes he keeps apart from her memory, the same list on the desktop and here. Pass `text` as he said it. For "note that...", "jot down...", "add to my notes". Not for something to remember about him (memory) or a reminder (commitments). Only his own turn may.',
+  parameters: Schema.Struct({
+    text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(20_000)),
+  }),
+  success: NoteFound,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
+const NoteSearchTool = Tool.make("tessaya_note_search", {
+  ...shared,
+  description:
+    'Read his Scratchpad notes, newest first: every word of `query` must appear; without `query` the newest ten. For "what did I note about...", "read me my notes". Only his own turn may.',
+  parameters: Schema.Struct({
+    query: Schema.optional(Schema.String.check(Schema.isMaxLength(400))),
+  }),
+  success: NoteFound,
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const AlwaysAllowedTool = Tool.make("tessaya_always_allowed", {
   ...shared,
   description:
@@ -1113,6 +1148,8 @@ export const TessayaToolkit = Toolkit.make(
   StateTool,
   DesktopSettingsTool,
   PronounceTool,
+  NoteAddTool,
+  NoteSearchTool,
   AlwaysAllowedTool,
   VocabularyTool,
   VoiceTool,

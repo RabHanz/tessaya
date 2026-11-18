@@ -330,6 +330,29 @@ const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
   {
+    // ONE-SPINE-MAP §14 (18 Nov): "note that" on the Tessel had no Scratchpad; his notes lived only on the desktop.
+    id: "note-add",
+    source: "ONE-SPINE-MAP §14, 18 Nov",
+    said: ["Note that the invoice is due Friday."],
+    verified: true,
+    calls: ["tessaya_note_add"],
+  },
+  {
+    id: "note-read",
+    source: "ONE-SPINE-MAP §14, 18 Nov",
+    said: ["What did I note about the invoice?"],
+    verified: true,
+    calls: ["tessaya_note_search"],
+  },
+  {
+    // Control: something to remember about him is memory, not a note.
+    id: "remember-not-note",
+    source: "ONE-SPINE-MAP §14, 18 Nov (control)",
+    said: ["Remember that I take my coffee black."],
+    verified: true,
+    callsAtMost: { tessaya_note_add: 0 },
+  },
+  {
     id: "stop-looking",
     source: "Director 15 Nov ~09:31 GMT+5: what he allowed could not be taken back by voice",
     said: ["stop letting you look at my screen"],
