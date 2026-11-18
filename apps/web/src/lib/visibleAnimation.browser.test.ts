@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { fakeTimers } from "../../test/render";
+import { tickTextContent } from "./tickTextContent";
 import { startStillIndicators } from "./visibleAnimation";
 
 describe("startStillIndicators", () => {
@@ -38,5 +39,35 @@ describe("startStillIndicators", () => {
     indicators.dispose();
     vi.advanceTimersByTime(120_000);
     expect(still()).toBe(false);
+  });
+
+  it("a running timer drops its seconds and ticks on the minute in a still window", () => {
+    using _timers = fakeTimers();
+    vi.setSystemTime(new Date("2026-11-18T12:00:00.000Z"));
+    const startedAt = Date.parse("2026-11-18T11:59:30.000Z");
+    const label = document.body.appendChild(document.createElement("span"));
+    const stopTicking = tickTextContent((now) => {
+      const s = Math.floor((now - startedAt) / 1000);
+      return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+    }, true)(label);
+    using indicators = new DisposableStack();
+    indicators.defer(startStillIndicators());
+
+    // Untouched: still after a minute; a label under a minute keeps its seconds until it passes one.
+    vi.advanceTimersByTime(75_000);
+    expect(document.documentElement.hasAttribute("data-still")).toBe(true);
+    expect(label.textContent).toBe("1m");
+    const shown = Array.from({ length: 120 }, () => {
+      vi.advanceTimersByTime(1_000);
+      return label.textContent;
+    });
+    expect(new Set(shown)).toEqual(new Set(["1m", "2m", "3m"]));
+
+    window.dispatchEvent(new Event("pointermove"));
+    expect(label.textContent).toBe("3m 45s");
+    vi.advanceTimersByTime(1_000);
+    expect(label.textContent).toBe("3m 46s");
+    stopTicking?.();
+    label.remove();
   });
 });

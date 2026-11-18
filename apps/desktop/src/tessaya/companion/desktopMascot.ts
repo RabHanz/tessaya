@@ -307,6 +307,8 @@ const WANDER_CHANCE = 1 / 6;
 /** He is at the computer, but not typing this second. */
 const WANDER_IDLE_S: readonly [number, number] = [3, 120];
 const BED_AWAY_S = 120;
+/** Away this long (no keys or mouse), her blinks and idle acts wait for him, as a still window's indicators do. */
+const HOLD_AWAY_S = 60;
 /** A wander that also brings a remark of hers to herself: about one every 25 minutes he works quietly. */
 const REMARK_CHANCE = 1 / 4;
 
@@ -391,6 +393,7 @@ export const createDesktopMascot = (input: {
   let fullscreen = false;
   let sleeping = false;
   let away = false;
+  let held = false;
   let phase: TurnPhase = "idle";
   let edge: Edge | null = null;
   // A place saved on a screen no longer there (or off every work area) starts her afresh.
@@ -684,6 +687,7 @@ export const createDesktopMascot = (input: {
     call(
       `window.mascot.init(${JSON.stringify({ persona: options.character === "persona" ? options.persona : { ...options.persona, character: options.character }, quiet: options.motion === "important", calm: options.motion === "calm", reduced: options.reduced, hands: options.hands })})`,
     );
+    call(`window.mascot.hold(${held})`);
     const target = win;
     void ready.then(async () => {
       if (target === null || target.isDestroyed()) return;
@@ -1065,10 +1069,17 @@ export const createDesktopMascot = (input: {
    * Lively only: now and then a short walk, one of her funny moments or her character's own act, as her personality
    * leans (mascotPage idleChoice), while he is around and not typing this second.
    */
-  /** Her bed plays to him, not an empty room: away this long (no keys or mouse), it fades out until he is back. */
+  /** Her bed plays to him, not an empty room: away this long (no keys or mouse), it fades out until he is back.
+   * Her blinks and idle acts hold sooner (HOLD_AWAY_S). */
   const awayCheck = setInterval(() => {
-    if (options.bed === "off" || win === null || !win.isVisible()) return;
-    const now = Electron.powerMonitor.getSystemIdleTime() > BED_AWAY_S;
+    if (win === null || !win.isVisible()) return;
+    const idle = Electron.powerMonitor.getSystemIdleTime();
+    if (idle >= HOLD_AWAY_S !== held) {
+      held = !held;
+      call(`window.mascot.hold(${held})`);
+    }
+    if (options.bed === "off") return;
+    const now = idle > BED_AWAY_S;
     if (now === away) return;
     away = now;
     audio();

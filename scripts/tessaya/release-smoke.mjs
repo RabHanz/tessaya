@@ -291,7 +291,8 @@ if (t3) {
 // the mascot row alone missed a window and server that idled at 1.5 s of CPU per 10 s on his laptop (MA-017).
 const IDLE_CPU_LIMIT_MS = 1_000;
 // A fresh install idles far lighter than his laptop: it has no saved remote computer that cannot be reached and no
-// detached window. Both are what his idle measured with (MA-017), so the measurement runs with both.
+// detached window. Both are what his idle measured with (MA-017), so the measurement runs with both, and T3's window
+// stays visible on a thread of that unreachable computer, as his did (B-041).
 if (t3) {
   try {
     const seeded = await t3.evaluate(async () => {
@@ -330,6 +331,14 @@ if (t3) {
       );
       return { saved, popout: popout !== null };
     });
+    const thread = "#/smoke-unreachable-environment/thread%3Asmoke";
+    await t3
+      .goto(
+        t3.url().startsWith("t3code:")
+          ? `t3code://app/${thread}`
+          : `${new URL(t3.url()).origin}/${thread}`,
+      )
+      .catch(() => undefined);
     await t3.reload().catch(() => undefined);
     row(
       "idle seeded with an unreachable remote computer and a detached window",
@@ -419,6 +428,20 @@ const pulse = t3
       })
       .catch(() => 0)
   : 0;
+// What the visible thread window lays out while nobody touches it: a ticking label or a retry loop shows here.
+const t3Metrics = t3
+  ? await t3
+      .context()
+      .newCDPSession(t3)
+      .then(async (cdp) => {
+        await cdp.send("Performance.enable");
+        return async () =>
+          Object.fromEntries(
+            (await cdp.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]),
+          );
+      })
+      .catch(() => null)
+  : null;
 try {
   await sleep(60_000);
   if (t3) {
@@ -436,6 +459,7 @@ try {
       `${pulse} animation(s); data-still ${held.still}, ${held.state}`,
     );
   }
+  const laidOutFrom = await t3Metrics?.().catch(() => null);
   const dir = join(exe, "..").replace(/'/g, "''");
   const script =
     `$d='${dir}'; $p=@{}; Get-CimInstance Win32_Process | ? { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, 'OrdinalIgnoreCase') } | % { $p[[int]$_.ProcessId]=$_.Name + ($(if ($_.CommandLine -match '--type=(\\S+)') { ' ' + $matches[1] } else { '' })) }; ` +
@@ -451,6 +475,16 @@ try {
     ),
   );
   const total = per.reduce((sum, p) => sum + p.ms, 0);
+  const laidOutTo = await t3Metrics?.().catch(() => null);
+  if (laidOutFrom && laidOutTo) {
+    // Over the 30 s measured: a label ticking each second lays out 30 times; an untouched window, next to none.
+    const layouts = laidOutTo.LayoutCount - laidOutFrom.LayoutCount;
+    row(
+      "an untouched thread window on an unreachable computer lays out under 10 times in 30 s",
+      layouts < 10,
+      `${layouts} layouts, ${laidOutTo.RecalcStyleCount - laidOutFrom.RecalcStyleCount} style recalcs on ${t3?.url()}`,
+    );
+  } else if (t3) row("measure the thread window at rest", false, "no CDP metrics");
   row(
     `the whole app at rest uses under ${IDLE_CPU_LIMIT_MS} ms of CPU per 10 s`,
     total < IDLE_CPU_LIMIT_MS,

@@ -9,6 +9,7 @@ interface Rig {
   impact: (speed: number, landed?: boolean) => void;
   look: (gx: number | null, gy?: number) => void;
   signature: () => string;
+  hold: (on: boolean) => void;
   stats: { frames: number };
   destroy: () => void;
 }
@@ -329,6 +330,15 @@ describe("the companion at rest", () => {
     m.rig.look(0.8, 0);
     vi.advanceTimersByTime(500);
     expect(m.rig.stats.frames - before).toBeGreaterThan(25);
+    // held (he is away): a minute with no beat drawn, and what he does to her still plays
+    m.rig.hold(true);
+    vi.advanceTimersByTime(3000);
+    const held = m.rig.stats.frames;
+    vi.advanceTimersByTime(60_000);
+    expect(m.rig.stats.frames - held).toBe(0);
+    m.rig.look(-0.8, 0);
+    vi.advanceTimersByTime(500);
+    expect(m.rig.stats.frames - held).toBeGreaterThan(25);
   });
 });
 

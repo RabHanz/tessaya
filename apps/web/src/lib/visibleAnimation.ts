@@ -7,6 +7,16 @@ const animations = new Map<Element, ObservedAnimation>();
 let observer: IntersectionObserver | null = null;
 let reducedMotion: MediaQueryList | null = null;
 let still = false;
+const stillListeners = new Set<() => void>();
+
+export function isStill(): boolean {
+  return still;
+}
+
+export function onStillChange(listener: () => void): () => void {
+  stillListeners.add(listener);
+  return () => stillListeners.delete(listener);
+}
 
 function updateAnimation(animation: ObservedAnimation) {
   const running =
@@ -70,9 +80,9 @@ const STILL_AFTER_MS = 60_000;
 const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel"] as const;
 
 /**
- * Repeating indicators (a working thread's pulse, a live tool's shine) hold still while nobody has touched this
- * window for a minute or it is out of sight: a turn can run for hours, and each repaints the window several times a
- * second. `html[data-still]` pauses the CSS ones; the first input starts them again.
+ * Repeating indicators (a working thread's pulse, a live tool's shine, a running timer's seconds) hold still while
+ * nobody has touched this window for a minute or it is out of sight: a turn can run for hours, and each repaints the
+ * window several times a second. `html[data-still]` pauses the CSS ones; the first input starts them again.
  */
 export function startStillIndicators(): () => void {
   let lastInput = Date.now();
@@ -81,6 +91,7 @@ export function startStillIndicators(): () => void {
     still = next;
     document.documentElement.toggleAttribute("data-still", next);
     updateAnimations();
+    for (const listener of stillListeners) listener();
   };
   const check = () =>
     set(document.visibilityState !== "visible" || Date.now() - lastInput >= STILL_AFTER_MS);
