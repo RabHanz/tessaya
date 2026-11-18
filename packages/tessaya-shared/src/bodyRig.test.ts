@@ -356,6 +356,15 @@ describe("springStep", () => {
     const speed = len(s.w);
     const next = springStep(s, qFromEuler([0.8, 0, 0]), 110, 1000 / 60);
     expect(len(next.w)).toBeGreaterThan(speed * 0.5);
+    // a move starts without a kick: its first frame's acceleration is a fraction of its peak (minimum-jerk onset)
+    let r = { q: QI, w: [0, 0, 0] as V3 };
+    const acc: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      const was = len(r.w);
+      r = springStep(r, goal, 210, 1000 / 60);
+      acc.push((len(r.w) - was) * 60);
+    }
+    expect(acc[0]!).toBeLessThan(0.35 * Math.max(...acc));
   });
 });
 
