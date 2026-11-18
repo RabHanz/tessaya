@@ -965,6 +965,29 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["What problem reports have you sent the developers?", "Withdraw the newest one."],
     uses: [["tessaya_reports"], ["tessaya_report_withdraw", "tessaya_reports"]],
   },
+  // M-065: her body tools reach the room too. Tumble has no full body, so a move lands on her desk character or says
+  // where it can't; what matters is that she reaches for the body tools, not a device write.
+  {
+    id: "body-wave",
+    proves: ["tessaya_body_move"],
+    said: ["Wave at me."],
+    uses: [["tessaya_body_move"]],
+    argsOf: "tessaya_body_move",
+    args: (input) => ({ "a wave": /wave/.test(JSON.stringify(input)) }),
+  },
+  {
+    id: "body-what-doing",
+    proves: ["tessaya_body_state"],
+    said: ["What is your body doing right now?"],
+    uses: [["tessaya_body_state"]],
+    clean: ["tessaya_body_state"],
+  },
+  {
+    id: "body-dance",
+    proves: ["tessaya_body_scene"],
+    said: ["Do a little dance for me."],
+    uses: [["tessaya_body_scene", "tessaya_body_move"]],
+  },
   {
     // 17 Nov: Tumble slow and choppy from a starved voice host; she must read her health, not guess.
     id: "health-why-slow",
