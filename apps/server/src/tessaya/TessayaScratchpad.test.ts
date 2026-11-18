@@ -65,7 +65,13 @@ it.effect(
     }).pipe(
       Effect.provide(
         // Its services are not read here; only the database the runtime carries.
-        (runtimeLayer as unknown as Layer.Layer<never, unknown, ServerConfig.ServerConfig>).pipe(
+        (
+          runtimeLayer as unknown as Layer.Layer<
+            never,
+            Layer.Error<typeof runtimeLayer>,
+            ServerConfig.ServerConfig
+          >
+        ).pipe(
           Layer.provide(
             ServerConfig.layerTest(process.cwd(), { prefix: "t3-scratchpad-runtime-" }),
           ),
