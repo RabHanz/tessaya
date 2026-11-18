@@ -5,6 +5,7 @@
  */
 import { speechPieces, type SpeechPiece } from "./interjections.ts";
 import { speakableText } from "./pronounce.ts";
+import { withProsody } from "./prosody.ts";
 import { voiceClips } from "./voiceClips.ts";
 
 export const SPLICE_RATE = 24_000;
@@ -228,14 +229,21 @@ export async function* spliceSpeech(
   }
 }
 
-/** A reply in a Pocket voice as one stream: plain words stream straight through; a stage direction is its sound, never words. */
+/**
+ * A reply in a Pocket voice as one stream: plain words stream straight through; a stage direction is its sound, never
+ * words. A sentence `continuing` a reply gets the desktop's prosody (a breath or a short pause before it).
+ */
 export const pocketSpeech = (
   text: string,
   voice: string,
   say: (text: string) => AsyncIterable<Uint8Array>,
+  continuing = false,
 ): AsyncIterable<Uint8Array> => {
-  const pieces = speechPieces(text, voice).map((p) =>
-    p.kind === "text" ? { ...p, text: speakableText(p.text) } : p,
+  const pieces = withProsody(
+    speechPieces(text, voice).map((p) =>
+      p.kind === "text" ? { ...p, text: speakableText(p.text) } : p,
+    ),
+    { continuing, engine: "pocket" },
   );
   const only = pieces.length === 1 ? pieces[0] : undefined;
   return only?.kind === "text" ? say(only.text) : spliceSpeech(pieces, say);

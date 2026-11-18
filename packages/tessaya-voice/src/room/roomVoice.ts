@@ -365,7 +365,13 @@ export interface RoomDeps {
     signal: AbortSignal,
   ) => AsyncIterable<string>;
   /** Her voice: 16 kHz PCM for one sentence, streamed. */
-  readonly speak: (text: string, signal: AbortSignal, voice?: string) => AsyncIterable<Int16Array>;
+  /** `continuing`: a later sentence of the same reply (its voice breathes or pauses first, as on the desktop). */
+  readonly speak: (
+    text: string,
+    signal: AbortSignal,
+    voice?: string,
+    continuing?: boolean,
+  ) => AsyncIterable<Int16Array>;
   /**
    * Test mode exists on this host (an internal one with `R1_TEST_MODE=1`); `ready` says the test clone is enrolled.
    * Absent everywhere else, so no public build can turn it on.
@@ -1332,11 +1338,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let liveRenders = 0;
     const liveDone: Array<() => void> = [];
     const aheadRenders = new Set<AbortController>();
-    async function* speakLive(text: string, signal: AbortSignal, voice: string | undefined) {
+    async function* speakLive(
+      text: string,
+      signal: AbortSignal,
+      voice: string | undefined,
+      continuing = false,
+    ) {
       liveRenders += 1;
       for (const c of aheadRenders) c.abort();
       try {
-        yield* deps.speak(text, signal, voice);
+        yield* deps.speak(text, signal, voice, continuing);
       } finally {
         liveRenders -= 1;
         if (liveRenders === 0) for (const go of liveDone.splice(0)) go();
@@ -1376,6 +1387,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       signal: AbortSignal,
       /** Its whole length in ms, once it is all made. */
       onMade?: (ms: number) => void,
+      continuing = false,
     ): AsyncIterable<Int16Array> => {
       const voice = voiceNow();
       const chunks: Int16Array[] = [];
@@ -1389,7 +1401,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       synthesis = synthesis.then(async () => {
         try {
           let samples = 0;
-          for await (const pcm of speakLive(spoken(text), signal, voice)) {
+          for await (const pcm of speakLive(spoken(text), signal, voice, continuing)) {
             if (signal.aborted) break;
             chunks.push(pcm);
             samples += pcm.length;
@@ -2382,10 +2394,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           }
           said = `${said} ${sentence}`.trim();
           saying(sentence);
-          const preroll = firstSentenceAt === null ? config.prerollMs : 0;
+          const continuing = firstSentenceAt !== null;
+          const preroll = continuing ? 0 : config.prerollMs;
           firstSentenceAt ??= deps.now();
           const effects = wordEffects(sentence, control.signal);
-          const audio = ahead(sentence, control.signal, effects?.onMade);
+          const audio = ahead(sentence, control.signal, effects?.onMade, continuing);
           speakingChain = speakingChain.then(async () =>
             // The arbiter is asked alongside, never before (13 Nov: a 1.3-1.7 s claim round in front of every wake);
             // only her voice waits for its answer, and a lost claim is never heard.

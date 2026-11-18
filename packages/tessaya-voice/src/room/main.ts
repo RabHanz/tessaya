@@ -302,11 +302,21 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
     yield* res.body as unknown as AsyncIterable<Uint8Array>;
   };
   // Her [laughs] or *sighs* is spliced in as the desktop does it; Pocket would read the word aloud (V-041).
-  const speak = async function* (text: string, signal: AbortSignal, voice?: string) {
+  const speak = async function* (
+    text: string,
+    signal: AbortSignal,
+    voice?: string,
+    continuing?: boolean,
+  ) {
     const read = createWavReader();
     const down = createResampler24to16();
     const limit = gainLimiter(gains.get(voice ?? "") ?? 1);
-    for await (const chunk of pocketSpeech(text, voice ?? "", (t) => say(t, signal, voice))) {
+    for await (const chunk of pocketSpeech(
+      text,
+      voice ?? "",
+      (t) => say(t, signal, voice),
+      continuing,
+    )) {
       const pcm = down(read(chunk));
       if (pcm.length > 0) yield limit(pcm);
     }

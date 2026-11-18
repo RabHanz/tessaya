@@ -172,6 +172,12 @@ describe("splicing sounds between words", () => {
     });
     expect(out).toBe(plain);
     expect(said.at(-1)).toBe("Done.");
+    // A later sentence of a reply breathes or pauses first, as on the desktop: more audio, the same words.
+    const plainOut = await collect(pocketSpeech("Fine, that works.", "anna", () => wav(10, 100)));
+    const later = await collect(
+      pocketSpeech("Fine, that works.", "anna", () => wav(10, 100), true),
+    );
+    expect(later.length).toBeGreaterThan(plainOut.length);
     // The room reads through here: markdown is never said, and a direction is still its sound.
     await collect(pocketSpeech("**Done**, see `file`\n# next *sighs*", "anna", say));
     expect(said.at(-1)).toBe("Done , see file next");

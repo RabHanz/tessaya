@@ -2261,6 +2261,24 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     });
   });
 
+  it("tells her voice which sentences continue a reply, so they breathe as on the desktop", async () => {
+    const continuing: Array<boolean | undefined> = [];
+    const t = setup({
+      recognise: heardInTurn(["Say two things."]),
+      brain: async function* () {
+        yield "First thing. Second thing.";
+      },
+      speak: async function* (_text, _signal, _voice, more) {
+        continuing.push(more);
+        yield new Int16Array(3_200);
+      },
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 40);
+    expect(continuing).toEqual([false, true]);
+  });
+
   it("says words his way once her server sends his pronunciations, and sends who was addressed and why", async () => {
     const spoken: string[] = [];
     const t = setup({
