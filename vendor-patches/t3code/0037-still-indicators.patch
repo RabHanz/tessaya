@@ -15,7 +15,7 @@ index 0f9942e3295ee01cb0aef66d9913302b75ec9816..e07295c72945b95c769f9db911b6e843
 +  animation-play-state: paused;
 +}
 diff --git a/apps/web/src/lib/visibleAnimation.ts b/apps/web/src/lib/visibleAnimation.ts
-index 02ad11d2ec7aa7c3a8d9c0281ef33625d7cb2c13..a1c386eb6df7e0997667bffd156e9cc0093da91d 100644
+index 02ad11d2ec7aa7c3a8d9c0281ef33625d7cb2c13..fef32b1ba3afbfa59311a2d81cb178af1ef3a488 100644
 --- a/apps/web/src/lib/visibleAnimation.ts
 +++ b/apps/web/src/lib/visibleAnimation.ts
 @@ -6,10 +6,14 @@ interface ObservedAnimation {
@@ -34,13 +34,13 @@ index 02ad11d2ec7aa7c3a8d9c0281ef33625d7cb2c13..a1c386eb6df7e0997667bffd156e9cc0
    animation.element.style.setProperty("--visible-animation-state", running ? "running" : "paused");
    animation.element.style.setProperty(
      "--visible-animation-will-change",
-@@ -61,3 +65,37 @@ export function observeVisibleAnimation(element: HTMLElement | SVGElement | null
+@@ -61,3 +65,40 @@ export function observeVisibleAnimation(element: HTMLElement | SVGElement | null
      }
    };
  }
 +
 +const STILL_AFTER_MS = 60_000;
-+const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "focus"] as const;
++const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel"] as const;
 +
 +/**
 + * Repeating indicators (a working thread's pulse, a live tool's shine) hold still while nobody has touched this
@@ -63,10 +63,13 @@ index 02ad11d2ec7aa7c3a8d9c0281ef33625d7cb2c13..a1c386eb6df7e0997667bffd156e9cc0
 +  };
 +  for (const type of INPUT_EVENTS)
 +    window.addEventListener(type, touched, { capture: true, passive: true });
++  // Not captured: an element the app focuses is not him coming back to the window.
++  window.addEventListener("focus", touched);
 +  document.addEventListener("visibilitychange", check);
 +  const timer = window.setInterval(check, STILL_AFTER_MS / 4);
 +  return () => {
 +    for (const type of INPUT_EVENTS) window.removeEventListener(type, touched, { capture: true });
++    window.removeEventListener("focus", touched);
 +    document.removeEventListener("visibilitychange", check);
 +    window.clearInterval(timer);
 +    set(false);

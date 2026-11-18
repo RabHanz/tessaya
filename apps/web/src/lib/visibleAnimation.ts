@@ -67,7 +67,7 @@ export function observeVisibleAnimation(element: HTMLElement | SVGElement | null
 }
 
 const STILL_AFTER_MS = 60_000;
-const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "focus"] as const;
+const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel"] as const;
 
 /**
  * Repeating indicators (a working thread's pulse, a live tool's shine) hold still while nobody has touched this
@@ -90,10 +90,13 @@ export function startStillIndicators(): () => void {
   };
   for (const type of INPUT_EVENTS)
     window.addEventListener(type, touched, { capture: true, passive: true });
+  // Not captured: an element the app focuses is not him coming back to the window.
+  window.addEventListener("focus", touched);
   document.addEventListener("visibilitychange", check);
   const timer = window.setInterval(check, STILL_AFTER_MS / 4);
   return () => {
     for (const type of INPUT_EVENTS) window.removeEventListener(type, touched, { capture: true });
+    window.removeEventListener("focus", touched);
     document.removeEventListener("visibilitychange", check);
     window.clearInterval(timer);
     set(false);
