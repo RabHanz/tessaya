@@ -104,7 +104,23 @@ const environOf = (pid: number): ReadonlyMap<string, string> => {
  * account profile (`cswap run`), any `~/.claude-*` with a sessions folder, and
  * `BATON_CLAUDE_CONFIG_DIRS` (colon-separated).
  */
+let configDirsRead: {
+  readonly at: number;
+  readonly extra: string;
+  readonly dirs: ReadonlyArray<string>;
+} | null = null;
+
 export const claudeConfigDirs = (): ReadonlyArray<string> => {
+  // shortcut: a new profile shows up within 30 s; the 2 s live-session tick would list the home folder each time.
+  const extra = envOf("CLAUDE_CONFIG_DIRS") ?? "";
+  if (configDirsRead?.extra === extra && Date.now() - configDirsRead.at < 30_000) {
+    return configDirsRead.dirs;
+  }
+  configDirsRead = { at: Date.now(), extra, dirs: listClaudeConfigDirs() };
+  return configDirsRead.dirs;
+};
+
+const listClaudeConfigDirs = (): ReadonlyArray<string> => {
   const home = NodeOS.homedir();
   const dirs = [NodePath.join(home, ".claude")];
   const add = (parent: string, filter: (name: string) => boolean) => {

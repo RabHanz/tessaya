@@ -460,8 +460,9 @@ const BONES = new Set<string>([
   "rightHand",
   "hips",
 ]);
+// a blob: URL is minted only by this page's own script (a model it already fetched or he dropped in)
 const sameOrigin = (url: string) =>
-  url.startsWith("/") && !url.startsWith("//") && !url.includes("\\");
+  (url.startsWith("/") && !url.startsWith("//") && !url.includes("\\")) || url.startsWith("blob:");
 const num = (v: unknown, lo: number, hi: number) =>
   typeof v === "number" && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null;
 const str = (v: unknown, max = 200) =>
@@ -952,7 +953,7 @@ export const beastkin = (input: {
   const cross = EARS_BACK.has(input.mood) ? k : 0;
   return {
     earPitch,
-    earQuiver: 0.12 * (input.motion?.tremble ?? 0),
+    earQuiver: 0.03 * (input.motion?.tremble ?? 0),
     tailHz: cross > 0 ? 3 : 1.2 + 1.8 * Math.max(wag, arousal),
     tailAmp: Math.max(0.35 * wag, 0.25 * arousal, 0.15 * cross) * (1 - uneasy) * (1 - 0.7 * arch),
     tailDroop: (EARS_DOWN.has(input.mood) ? 0.5 * k : 0) - 0.6 * arch,

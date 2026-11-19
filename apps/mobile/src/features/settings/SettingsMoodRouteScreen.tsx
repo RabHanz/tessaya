@@ -146,6 +146,12 @@ function MoodSections(props: {
           onValueChange={(on) => patch({ tessayaOwnSensorsNoApproval: on })}
         />
         <SettingsSwitchRow
+          label="Breath between sentences"
+          subtitle="A soft breath before a long sentence of her reply on the Tessel. Off, she pauses instead."
+          value={settings.tessayaVoiceBreath}
+          onValueChange={(on) => patch({ tessayaVoiceBreath: on })}
+        />
+        <SettingsSwitchRow
           label="Her mood"
           subtitle="A working state that shapes her tone and her face on every device, moved only by your own turns. It never changes what she does. Off keeps her face neutral and clears her mood."
           value={settings.tessayaMood.enabled}

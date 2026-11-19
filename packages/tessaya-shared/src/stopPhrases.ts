@@ -42,6 +42,13 @@ const plain = (text: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/** What may stand beside a stop in the same breath ("okay, stop", "stop, stop", "enough, thanks", "no, stop now"). */
+const STOP_FILLER = new Set(
+  "okay ok no please thanks thank you now just hey right alright stop enough quiet already".split(
+    " ",
+  ),
+);
+
 /** A word right before the phrase that makes it talk, not a command: "I'll stop", "fair enough", "it's quiet" (15 Nov). */
 const NOT_A_COMMAND = new Set(
   "i i'll i'd i'm we we'll you'll they he she it it's is was to don't didn't not can't won't will would should could gonna the a bus too so very really fair good big long close keep".split(
@@ -68,7 +75,18 @@ export const stopMatch = (
   if (MISHEARD_DISMISS.test(said)) return { intent: "dismiss", phrase: "dismissed" };
   const dismiss = DISMISS.find(has);
   if (dismiss !== undefined) return { intent: "dismiss", phrase: dismiss };
-  const stop = [...STOP, ...extra].find(has);
+  // A stop is the whole line, give or take a filler: "stop talking about work" and "stop that and tell me the time" are
+  // requests she follows, not a stop (19 Nov, 04:56: she went to rest on "Stop talking about her work").
+  const stop = [...STOP, ...extra]
+    .toSorted((a, b) => b.length - a.length)
+    .find(
+      (phrase) =>
+        has(phrase) &&
+        ` ${said} `
+          .replace(` ${plain(phrase)} `, " ")
+          .split(" ")
+          .every((w) => w === "" || STOP_FILLER.has(w)),
+    );
   return stop === undefined ? null : { intent: "stop", phrase: stop };
 };
 

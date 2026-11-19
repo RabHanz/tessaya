@@ -2252,10 +2252,22 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       likeness = 0.6,
       enrolled = true,
       line = "It's seven forty here, and the sun is up.",
+      verifiedFirst = false,
     ) => {
       const logs: string[] = [];
       const t = setup({
         log: (l) => logs.push(l),
+        ...(verifiedFirst
+          ? {
+              speaker: async () => ({
+                ...UNVERIFIED(0),
+                kind: "owner" as const,
+                personId: "owner",
+                confidence: 0.8,
+                verified: true,
+              }),
+            }
+          : {}),
         member: async () => likeness,
         members: () => enrolled,
         // Her echo alone is recognised as her own words so far (her first clause), which with her sound make it hers.
@@ -2347,6 +2359,12 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       paused: true,
       stopped: 0,
     });
+    // His own session (his voice verified on the turn before): mixed with hers in the new case his words over her
+    // scored -0.09 to 0.20 (19 Nov, 05:01-05:02) and were dropped. Now they are answered, and nothing is sent twice.
+    expect(
+      (await run("open", true, 0.05, true, "It's seven forty here, and the sun is up.", true))
+        .asked,
+    ).toEqual(["What time is it?", "No, I meant in London."]);
     // Keyword mode never pauses her for a voice, but his whole turn over her is still his: answered
     // (14 Nov, 21:39), while another voice's is not.
     expect((await run("keyword", true)).asked).toEqual([

@@ -1552,6 +1552,8 @@ export const ServerSettings = Schema.Struct({
   tessayaOwnSensorsNoApproval: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
+  // Tessaya: a soft breath before a long later sentence of her reply on the Tessel; off until it sounds natural (19 Nov).
+  tessayaVoiceBreath: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
   // moved only by their identified turns; `devices` ties a device to a member and says whether it shows theirs.
   tessayaMood: Schema.Struct({
@@ -2042,6 +2044,7 @@ export const ServerSettingsPatch = Schema.Struct({
   tessayaExpression: Schema.optionalKey(Schema.Boolean),
   tessayaRoomCleanup: Schema.optionalKey(Schema.Boolean),
   tessayaOwnSensorsNoApproval: Schema.optionalKey(Schema.Boolean),
+  tessayaVoiceBreath: Schema.optionalKey(Schema.Boolean),
   tessayaMood: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.optionalKey(Schema.Boolean),
