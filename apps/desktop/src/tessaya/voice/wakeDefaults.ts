@@ -24,6 +24,16 @@ const LEGACY_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
   { word: "Onyx", enabled: false, threshold: 0.9 },
 ];
 
+// Defaults the table shipped before (Alfred 0.95 until 20 Nov): a saved threshold still equal to one was never his
+// choice, so it follows the table; any other value he set stays.
+const RETIRED_DEFAULTS: Readonly<Record<string, ReadonlyArray<number>>> = { Alfred: [0.95] };
+const followTable = (w: WakeWordSetting): WakeWordSetting => {
+  const now = FRESH_WAKE_WORDS.find((d) => d.word === w.word)?.threshold;
+  return now !== undefined && RETIRED_DEFAULTS[w.word]?.includes(w.threshold) === true
+    ? { ...w, threshold: now }
+    : w;
+};
+
 /** Which default set an install has been given. Raised when the defaults grow; each install gets them once. */
 export const WAKE_DEFAULTS = 1;
 
@@ -37,11 +47,12 @@ export const wakeWordsFor = (saved: unknown): ReadonlyArray<WakeWordSetting> => 
   const words = Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
     ? (saved as { wakeWords: ReadonlyArray<WakeWordSetting> }).wakeWords
     : LEGACY_WAKE_WORDS;
-  if ((saved as { wakeDefaults?: unknown }).wakeDefaults === WAKE_DEFAULTS) return words;
+  if ((saved as { wakeDefaults?: unknown }).wakeDefaults === WAKE_DEFAULTS)
+    return words.some((w) => followTable(w) !== w) ? words.map(followTable) : words;
   const on = FRESH_WAKE_WORDS.filter((d) => d.enabled);
   const isDefault = (w: WakeWordSetting) => on.some((d) => d.word === w.word);
   return [
-    ...words.map((w) => (isDefault(w) ? { ...w, enabled: true } : w)),
+    ...words.map((w) => followTable(isDefault(w) ? { ...w, enabled: true } : w)),
     ...on.filter((d) => !words.some((w) => w.word === d.word)),
   ];
 };
