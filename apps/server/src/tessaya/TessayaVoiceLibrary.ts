@@ -30,6 +30,7 @@ import {
 } from "@t3tools/tessaya-contracts";
 import { cloneGrant, stands } from "@t3tools/tessaya-shared/consent";
 import { isLineEvent } from "@t3tools/tessaya-shared/expression";
+import { touchReaction } from "@t3tools/tessaya-shared/touchReaction";
 import { setPersonaField } from "@t3tools/tessaya-shared/personaFile";
 import { pronounce } from "@t3tools/tessaya-shared/pronounce";
 import {
@@ -48,6 +49,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Clock from "effect/Clock";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import { fbank } from "@t3tools/tessaya-voice/fbank";
@@ -964,6 +966,15 @@ const DESK_FELT: Readonly<Record<string, Felt["kind"]>> = {
   "moment.squished": "squeeze",
   "moment.thrown": "throw",
 };
+/** The words a touch may bring, by its kind (a carry is handled, not felt on skin, and stays wordless). */
+const TOUCH_EVENT = {
+  poke: "moment.poked",
+  stroke: "moment.petted",
+  squeeze: "moment.squished",
+  throw: "moment.thrown",
+} as const;
+// shortcut: when each persona last said something about a touch, per process; a restart may let one more line through
+const touchWordsAt = new Map<string, number>();
 export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
   input: TessayaVoiceCallInput,
 ) {
@@ -1011,6 +1022,57 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
         ? null
         : yield* lines.value.express(a.value.event, { persona: a.value.persona });
       return { ok: true, value: said };
+    }
+    case "touch": {
+      const between = (minimum: number, maximum: number) =>
+        Schema.Number.check(Schema.isBetween({ minimum, maximum }));
+      const a = decode(
+        Schema.Struct({
+          part: Text(24),
+          kind: Schema.Literals(["poke", "stroke", "squeeze", "throw", "carry"]),
+          pressure: between(0, 1),
+          cmPerS: between(0, 2000),
+          durationMs: between(0, 600_000),
+          persona: Schema.optionalKey(Text(60)),
+        }),
+      );
+      if (Option.isNone(a)) return bad;
+      const t = a.value;
+      // her nerves first (reflexes and how it felt, into her affect toward him), then her mood as it now stands
+      const felt = yield* feel({
+        vessel: "desktop",
+        part: t.part,
+        kind: t.kind,
+        pressure: t.pressure,
+        cmPerS: t.cmPerS,
+        durationMs: t.durationMs,
+        persona: t.persona,
+      });
+      const mood = yield* Effect.serviceOption(TessayaMood);
+      const view = Option.isNone(mood)
+        ? { label: "neutral", intensity: 0.5 }
+        : yield* mood.value.view(t.persona);
+      const now = yield* Clock.currentTimeMillis;
+      const key = t.persona ?? "";
+      const last = touchWordsAt.get(key);
+      const reaction = touchReaction({
+        tone: felt.tone,
+        reflexes: felt.reflexes,
+        mood: view,
+        pressure: t.pressure,
+        sinceWordsMs: last === undefined ? Infinity : now - last,
+      });
+      const event = t.kind === "carry" ? null : TOUCH_EVENT[t.kind];
+      const lines = yield* Effect.serviceOption(TessayaExpression);
+      const said =
+        reaction.speak && event !== null && Option.isSome(lines)
+          ? yield* lines.value.express(event, { persona: t.persona })
+          : null;
+      if (said !== null && said.text !== "") touchWordsAt.set(key, now);
+      return {
+        ok: true,
+        value: { ...reaction, tone: felt.tone, mood: view.label, text: said?.text ?? "" },
+      };
     }
     case "mood": {
       const a = decode(

@@ -70,6 +70,16 @@ export interface SenseRegion {
     readonly radii?: P3;
   };
   readonly reach?: SenseReach;
+  /**
+   * On a flat form with no skeleton (the desk's cartoon): the boxes it covers in that form's own frame, x across her
+   * body -1 (her right as he sees her, his left) to 1, y from the top of her head (0) to her feet (1).
+   */
+  readonly areas?: ReadonlyArray<{
+    readonly x0: number;
+    readonly y0: number;
+    readonly x1: number;
+    readonly y1: number;
+  }>;
   /** Two-point discrimination threshold (mm): density follows from it (fingertips ~2–3, back ~40). */
   readonly twoPointMm: number;
   readonly hairy: boolean;
@@ -305,6 +315,23 @@ export const decodeSensePack = (
       errors.push(`regions[${i}].anchor.offset: [x, y, z] within ±0.5 m, or leave it out`);
     if (!triple(r?.anchor?.radii, 0.005, 0.5))
       errors.push(`regions[${i}].anchor.radii: [x, y, z] of 0.005 to 0.5 m, or leave it out`);
+    const areas = r?.areas;
+    if (
+      areas !== undefined &&
+      !(
+        Array.isArray(areas) &&
+        areas.every(
+          (a) =>
+            [a?.x0, a?.x1].every((v) => typeof v === "number" && v >= -1 && v <= 1) &&
+            [a?.y0, a?.y1].every((v) => typeof v === "number" && v >= 0 && v <= 1) &&
+            a.x0 < a.x1 &&
+            a.y0 < a.y1,
+        )
+      )
+    )
+      errors.push(
+        `regions[${i}].areas: [{x0, y0, x1, y1}], x -1 to 1 and y 0 to 1, or leave it out`,
+      );
     const reach = r?.reach;
     if (
       reach !== undefined &&
@@ -591,6 +618,46 @@ export const claimedRegion = (
     if (d <= 1 && (best === null || d < best.d)) best = { id: r.id, d };
   }
   return best?.id ?? null;
+};
+
+/** The region at (x, y) on a flat form (SenseRegion.areas): the smallest box holding it, or null off her. */
+export const regionAt = (map: SenseMap, x: number, y: number): string | null => {
+  let best: { id: string; size: number } | null = null;
+  for (const r of map.regions.values())
+    for (const a of r.areas ?? []) {
+      if (x < a.x0 || x > a.x1 || y < a.y0 || y > a.y1) continue;
+      const size = (a.x1 - a.x0) * (a.y1 - a.y0);
+      if (best === null || size < best.size) best = { id: r.id, size };
+    }
+  return best?.id ?? null;
+};
+
+/**
+ * The desk's cartoon (one round body, a face on it, little arms and feet) as a form over the human map: the same
+ * regions and skin, each placed where that form has it, so his mouse on her is felt by the one nervous system.
+ */
+export const MASCOT_SENSE: SensePack = {
+  version: 1,
+  id: "mascot",
+  regions: [
+    ...Object.entries({
+      head: [{ x0: -0.75, y0: 0, x1: 0.75, y1: 0.3 }],
+      face: [{ x0: -0.5, y0: 0.18, x1: 0.5, y1: 0.55 }],
+      arm: [
+        { x0: -1, y0: 0.3, x1: -0.6, y1: 0.85 },
+        { x0: 0.6, y0: 0.3, x1: 1, y1: 0.85 },
+      ],
+      foot: [{ x0: -0.8, y0: 0.85, x1: 0.8, y1: 1 }],
+    }).map(([id, areas]) => ({ ...HUMAN_SENSE.regions.find((r) => r.id === id)!, areas })),
+    // her round middle below the face: everyday skin, as her back is (a human belly is a private region)
+    {
+      id: "middle",
+      anchor: { bone: "spine" },
+      twoPointMm: 40,
+      hairy: false,
+      areas: [{ x0: -0.6, y0: 0.55, x1: 0.6, y1: 0.85 }],
+    },
+  ],
 };
 
 /** The private layer's older `zones` cue (a bone and a radius each) as a pack, so one registry holds them all. */

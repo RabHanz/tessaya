@@ -35,6 +35,7 @@ import {
   zonesPack,
   type SensePack,
 } from "@t3tools/tessaya-shared/bodySense";
+import { moodValence } from "@t3tools/tessaya-shared/touchReaction";
 import {
   ACTS,
   BODY_JOINTS,
@@ -376,37 +377,6 @@ const PULL_HURT_MS = 600;
 const PUSH_STEP_MS = 400;
 /** How long her head and eyes follow a touch, and a little more than the 150 ms in which a person turns to one. */
 const TOUCH_MS = 1600;
-// how glad a mood is of a touch (-1..1): she leans into it when glad, away when not
-const GLAD = new Set([
-  "happy",
-  "delighted",
-  "laughing",
-  "giggle",
-  "excited",
-  "proud",
-  "relieved",
-  "playful",
-  "wink",
-  "love",
-  "amazed",
-  "affectionate",
-  "teasing",
-]);
-const WARY = new Set([
-  "sad",
-  "angry",
-  "scared",
-  "nervous",
-  "guarded",
-  "annoyed",
-  "disgusted",
-  "unimpressed",
-  "skeptical",
-  "bored",
-  "embarrassed",
-]);
-const moodValence = (m: string) =>
-  GLAD.has(m) ? 1 : WARY.has(m) ? -1 : m === "shy" || m === "curious" ? 0.4 : 0.2;
 /** A hover's raycast at most this often while the mouse moves over her. */
 const HOVER_RAY_MS = 80;
 

@@ -183,6 +183,88 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
   );
 
   it.effect(
+    "feels a hand on her desk body through her nerves, keeps it toward him, and answers from her mood",
+    () =>
+      withLibrary(() =>
+        Effect.gen(function* () {
+          const notes: Array<unknown> = [];
+          const said: Array<unknown> = [];
+          let label: "sad" | "happy" = "sad";
+          const mood = Layer.succeed(TessayaMood, {
+            view: () =>
+              Effect.sync(() => ({
+                label,
+                intensity: 0.6,
+                energy: 0.5,
+                awayHours: null,
+                guilt: "off" as const,
+                why: [],
+              })),
+            note: (_persona, n) => Effect.sync(() => void notes.push(n)),
+            hisWords: () => Effect.succeed(false),
+            heard: () => Effect.void,
+            atDevice: () => Effect.die("not asked"),
+            inner: () => Effect.die("not asked"),
+            roomView: () => Effect.die("not asked"),
+            forget: () => Effect.void,
+            reset: () => Effect.void,
+            moves: Stream.empty,
+            changes: () => Stream.empty,
+          });
+          const lines = Layer.succeed(TessayaExpression, {
+            express: (event) =>
+              Effect.sync(() => {
+                said.push(event);
+                return {
+                  event,
+                  persona: "butler",
+                  text: "That helps.",
+                  mood: "happy" as const,
+                  gesture: "leanIn" as const,
+                  intensity: 0.4,
+                  priority: "ambient" as const,
+                  source: "cache" as const,
+                  lineId: "x",
+                };
+              }),
+            ahead: () => Effect.succeed({ on: false, lines: {} }),
+            writeAhead: () => Effect.succeed(0),
+          });
+          const stroke = {
+            part: "head",
+            kind: "stroke",
+            pressure: 0.15,
+            cmPerS: 5,
+            durationMs: 1500,
+            persona: "butler",
+          };
+          const touch = (args: Record<string, unknown>) =>
+            call("act", "touch", args).pipe(Effect.provide(Layer.merge(mood, lines)));
+          // sad, a slow stroke on her head is a comfort: she softens into it and says so
+          const low = yield* touch(stroke);
+          assert.deepInclude(low.value as object, {
+            face: "relieved",
+            gesture: "sigh",
+            tone: "pleasant",
+          });
+          assert.strictEqual((low.value as { text: string }).text, "That helps.");
+          assert.deepStrictEqual(said, ["moment.petted"]);
+          // her nerves' tone reached her affect, and his hand counts as him being with her
+          assert.deepInclude(notes, { kind: "felt", tone: "pleasant" });
+          assert.deepInclude(notes, { kind: "seen" });
+          // the same stroke a moment later, glad now: a different face, and no words (they had their turn)
+          label = "happy";
+          const glad = yield* touch(stroke);
+          assert.deepInclude(glad.value as object, { face: "happy", gesture: "leanIn", text: "" });
+          assert.deepStrictEqual(said, ["moment.petted"]);
+          // not a touch she knows
+          assert.isFalse((yield* touch({ ...stroke, kind: "slap" })).ok);
+          assert.isFalse((yield* touch({ ...stroke, pressure: 3 })).ok);
+        }),
+      ),
+  );
+
+  it.effect(
     "tells a vessel a persona's mood to wear at rest, and nothing without the service",
     () =>
       withLibrary(() =>

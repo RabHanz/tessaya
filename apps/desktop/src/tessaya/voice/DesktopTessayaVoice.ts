@@ -5204,6 +5204,13 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
                 { kind: "act", op: "express", args: { event, ...persona() } },
                 8_000,
               ),
+            // his hand on her, felt by her one nervous system and answered from her mood (TessayaVoiceLibrary `touch`)
+            touch: (t) =>
+              input.direct!(
+                BATON_VOICE_WS_METHODS.call,
+                { kind: "act", op: "touch", args: { ...t, ...persona() } },
+                8_000,
+              ),
           }),
       // Its answer aloud in the voice of the persona it wears (the lead's when none), never in quiet hours or Do not disturb.
       speak: (text) => {

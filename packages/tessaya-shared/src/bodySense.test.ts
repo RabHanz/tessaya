@@ -8,9 +8,11 @@ import {
   feltWords,
   fire,
   HUMAN_SENSE,
+  MASCOT_SENSE,
   mergeSense,
   NO_SENSE,
   reflexesOf,
+  regionAt,
   zonesPack,
   type Contact,
 } from "./bodySense.ts";
@@ -207,6 +209,27 @@ describe("packs", () => {
       id: "earlobe",
       anchor: { bone: "head", radius: 0.03 },
     });
+  });
+
+  it("a flat form (the desk's cartoon) places the human regions where it has them, as one registry pack", () => {
+    expect(decodeSensePack(MASCOT_SENSE).ok).toBe(true);
+    const desk = mergeSense([HUMAN_SENSE, MASCOT_SENSE], false);
+    expect(regionAt(desk, 0, 0.05)).toBe("head");
+    expect(regionAt(desk, 0, 0.35)).toBe("face");
+    expect(regionAt(desk, 0, 0.7)).toBe("middle");
+    expect(regionAt(desk, -0.9, 0.5)).toBe("arm");
+    expect(regionAt(desk, 0.9, 0.5)).toBe("arm");
+    expect(regionAt(desk, 0, 0.95)).toBe("foot");
+    expect(regionAt(mergeSense([HUMAN_SENSE], false), 0, 0.5)).toBeNull();
+    // the same skin as the human map: a stroke on her cartoon's head fires as it would on a head
+    expect(desk.regions.get("head")?.twoPointMm).toBe(
+      HUMAN_SENSE.regions.find((r) => r.id === "head")?.twoPointMm,
+    );
+    const bad = decodeSensePack({
+      ...MASCOT_SENSE,
+      regions: [{ ...MASCOT_SENSE.regions[0], areas: [{ x0: 1, y0: 0, x1: 0, y1: 1 }] }],
+    });
+    expect(bad.ok).toBe(false);
   });
 
   it("a pack adds a region the engine never named, and bad packs say how to fix them", () => {

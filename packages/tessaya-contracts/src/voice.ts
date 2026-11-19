@@ -33,6 +33,8 @@ export const BATON_VOICE_OWNER_OPS = [
 ] as const;
 export const BATON_VOICE_ACT_OPS = [
   "express",
+  // A hand on a vessel's body (the desk's cartoon): felt by her one nervous system, answered from her mood.
+  "touch",
   "setPersona",
   "setGoogleKey",
   "say",

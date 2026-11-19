@@ -22,6 +22,7 @@ import {
 } from "@t3tools/tessaya-shared/companion";
 import type { TurnPhase } from "@t3tools/tessaya-shared/voiceTurn";
 import { traceStep, type Trace } from "@t3tools/tessaya-shared/bodyMotion";
+import { HUMAN_SENSE, MASCOT_SENSE, mergeSense, regionAt } from "@t3tools/tessaya-shared/bodySense";
 import type { Persona } from "@t3tools/tessaya-shared/osPack";
 
 import { protectFromCapture } from "../captureProtection.ts";
@@ -346,6 +347,40 @@ export const sayOf = (raw: unknown): { text: string; mood?: string; gesture?: st
   };
 };
 
+/** A hand on her desk body, for her one nervous system (the voice door's `touch`). */
+export interface MascotTouch {
+  /** Her region under it (bodySense MASCOT_SENSE), or "body" when he handled all of her. */
+  readonly part: string;
+  readonly kind: "poke" | "stroke" | "squeeze" | "throw" | "carry";
+  readonly pressure: number;
+  readonly cmPerS: number;
+  readonly durationMs: number;
+}
+/** His mouse on her desk body, as the human map placed on her cartoon form. */
+const MASCOT_MAP = mergeSense([HUMAN_SENSE, MASCOT_SENSE], false);
+/** Screen pixels (DIP, 96 to the inch) in a centimetre: how far and fast his hand moved over her. */
+const PX_PER_CM = 37.8;
+/**
+ * Her answer to a touch, as her nerves and mood decided it (tessaya-shared touchReaction): her face and gesture by the
+ * rig's own names, and words when the brain gave some. Null when the server could not feel it (an older one).
+ */
+export const touchAnswerOf = (
+  raw: unknown,
+): { readonly face: string; readonly gesture: string; readonly text: string } | null => {
+  const r = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  if (r["ok"] !== true) return null;
+  const v = (typeof r["value"] === "object" && r["value"] !== null ? r["value"] : {}) as Record<
+    string,
+    unknown
+  >;
+  const name = (k: string) =>
+    typeof v[k] === "string" && /^[A-Za-z]{1,20}$/.test(v[k] as string) ? (v[k] as string) : null;
+  const face = name("face");
+  const gesture = name("gesture");
+  if (face === null || gesture === null) return null;
+  return { face, gesture, text: typeof v["text"] === "string" ? v["text"].slice(0, 120) : "" };
+};
+
 export interface MascotOptions {
   readonly on: boolean;
   readonly motion: CompanionMotion;
@@ -483,6 +518,11 @@ export const createDesktopMascot = (input: {
    * on it; a failure leaves her own reaction alone.
    */
   readonly express?: (event: MascotMoment) => Promise<unknown>;
+  /**
+   * His hand on her body, felt by her one nervous system (the voice door's `touch`): her answer comes back from her
+   * nerves and mood. Absent or unanswered, the moment above is the offline fallback.
+   */
+  readonly touch?: (t: MascotTouch) => Promise<unknown>;
   /** Her answer's words aloud, in her voice (the caller keeps quiet hours and Do not disturb). */
   readonly speak?: (text: string) => void;
 }): DesktopMascot => {
@@ -531,6 +571,8 @@ export const createDesktopMascot = (input: {
     readonly timer: ReturnType<typeof setInterval>;
     readonly samples: Array<{ readonly x: number; readonly y: number; readonly t: number }>;
     readonly pressedAt: number;
+    /** Where his hand took her (screen px): the region a poke or squeeze is on. */
+    readonly at: { readonly x: number; readonly y: number };
     squished: boolean;
   } | null = null;
   let moving: ReturnType<typeof setInterval> | null = null;
@@ -803,12 +845,26 @@ export const createDesktopMascot = (input: {
       (dx > -NEAR_PX && dy > -NEAR_PX && dx < body.width + NEAR_PX && dy < body.height + NEAR_PX);
     if (over && dragging === null && !sleeping) {
       const now = Date.now();
+      const was = strokes.points;
       const next = stroke(strokes, cursor.x, now, body.width);
       strokes = next.state;
       if (next.petted && now - pettedAt > 3000) {
         pettedAt = now;
         react("pet");
-        moment("moment.petted");
+        // how far and fast his hand stroked over her, from the strokes that made it a pet
+        let travel = 0;
+        for (let i = 1; i < was.length; i++) travel += Math.abs(was[i]!.x - was[i - 1]!.x);
+        const ms = was.length > 0 ? now - was[0]!.t : 0;
+        touched(
+          {
+            part: partAt(cursor),
+            kind: "stroke",
+            pressure: 0.15,
+            cmPerS: ms > 0 ? Math.round(travel / PX_PER_CM / (ms / 1000)) : 10,
+            durationMs: ms,
+          },
+          "moment.petted",
+        );
       }
     } else if (strokes.points.length > 0) strokes = { points: [] };
     // light awareness of his mouse over her when he turned it on; in a private moment her private body feels it
@@ -1059,6 +1115,58 @@ export const createDesktopMascot = (input: {
       });
   };
 
+  /** Her region under a screen point, on her cartoon form: across her -1..1, head (0) to feet (1). */
+  const partAt = (p: { readonly x: number; readonly y: number }) => {
+    const target = win;
+    if (target === null || target.isDestroyed()) return "middle";
+    const b = bodyBox(target);
+    const body = bodyRect(b.width);
+    const u = (p.x - b.x - body.x - body.width / 2) / (body.width / 2);
+    const v = (p.y - b.y - body.y) / body.height;
+    return (
+      regionAt(MASCOT_MAP, Math.max(-1, Math.min(1, u)), Math.max(0, Math.min(1, v))) ?? "middle"
+    );
+  };
+  /**
+   * A hand on her, into her one nervous system: her nerves and mood answer with her face, gesture and, when it matters
+   * to her, words. Her body's own bounce has already played. With no answer, the moment is the offline fallback.
+   */
+  let feeling = false;
+  const touched = (t: MascotTouch, fallback: MascotMoment | null) => {
+    if (input.touch === undefined) {
+      if (fallback !== null) moment(fallback);
+      return;
+    }
+    if (feeling) return;
+    feeling = true;
+    const at = Date.now();
+    void input
+      .touch(t)
+      .then((raw) => {
+        const answer = touchAnswerOf(raw);
+        if (answer === null) {
+          if (fallback !== null) moment(fallback);
+          return;
+        }
+        call(
+          `window.mascot.say(${JSON.stringify({ mood: answer.face, gesture: answer.gesture, text: answer.text })})`,
+        );
+        if (answer.text !== "") input.speak?.(answer.text);
+        input.onNote?.("mascot_touch", {
+          ms: Date.now() - at,
+          part: t.part,
+          kind: t.kind,
+          face: answer.face,
+          gesture: answer.gesture,
+          words: answer.text !== "",
+        });
+      })
+      .catch(() => (fallback === null ? undefined : moment(fallback)))
+      .finally(() => {
+        feeling = false;
+      });
+  };
+
   /** Thrown or let go: she flies under the physics until she rests on an edge, then nothing runs. */
   const fling = (start: Flight, byHand = false) => {
     stopMoving();
@@ -1125,7 +1233,17 @@ export const createDesktopMascot = (input: {
       meet();
       if (byHand && pickedFrom !== undefined && edge.display !== pickedFrom)
         moment("moment.screen");
-      else if (byHand && thrown) moment("moment.thrown");
+      else if (byHand)
+        touched(
+          {
+            part: "body",
+            kind: thrown ? "throw" : "carry",
+            pressure: 0.3,
+            cmPerS: Math.round(Math.hypot(start.vx, start.vy) / PX_PER_CM),
+            durationMs: 0,
+          },
+          thrown ? "moment.thrown" : null,
+        );
     }, DRAG_MS);
   };
 
@@ -1133,22 +1251,36 @@ export const createDesktopMascot = (input: {
     const target = win;
     if (dragging === null || target === null || target.isDestroyed()) return;
     clearInterval(dragging.timer);
-    const { samples, pressedAt, squished } = dragging;
+    const { samples, pressedAt, squished, at } = dragging;
     dragging = null;
+    const held = Date.now() - pressedAt;
     if (squished) {
       // let go of a squish: she springs back up where she is
       call(`window.mascot.release()`);
       react("poke");
       if (edge !== null) target.setBounds(box(standAt(edge, x, size())));
-      moment("moment.squished");
+      // the longer he held her down, the firmer it was
+      touched(
+        {
+          part: partAt(at),
+          kind: "squeeze",
+          pressure: Math.min(1, 0.55 + held / 6000),
+          cmPerS: 0,
+          durationMs: held,
+        },
+        "moment.squished",
+      );
       return;
     }
     if (isPoke(samples, pressedAt, Date.now())) {
-      // a poke: a little squash and a giggle where she stands
+      // a poke: a little squash where she stands
       call(`window.mascot.motion(0,0)`);
       react("poke");
       if (edge !== null) target.setBounds(box(standAt(edge, x, size())));
-      moment("moment.poked");
+      touched(
+        { part: partAt(at), kind: "poke", pressure: 0.5, cmPerS: 0, durationMs: held },
+        "moment.poked",
+      );
       return;
     }
     if (options.motion !== "important" && !options.reduced) {
@@ -1211,7 +1343,7 @@ export const createDesktopMascot = (input: {
       call(`window.mascot.motion(${Math.round(carried.vx)},${Math.round(carried.vy)})`);
       target.setBounds(box({ x: at.x - (cursor.x - b.x), y: at.y - (cursor.y - b.y) }));
     }, DRAG_MS);
-    dragging = { timer, samples, pressedAt, squished: false };
+    dragging = { timer, samples, pressedAt, at: first, squished: false };
   };
   const onRelease = (event: Electron.IpcMainEvent) => {
     if (mine(event)) drop();
