@@ -153,6 +153,12 @@ const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
 
 const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payload: unknown) {
+  // The one op a worker takes from its brain: her mood moved, so the faces here read it again (it carries nothing).
+  if (op === "moodMoved") {
+    const mood = yield* Effect.serviceOption(TessayaMood);
+    if ((yield* brainOn) !== null && Option.isSome(mood)) yield* mood.value.refresh;
+    return done();
+  }
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
   switch (op) {
     case "roomLoop": {

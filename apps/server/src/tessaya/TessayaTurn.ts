@@ -68,6 +68,7 @@ import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaUnderstanding, type UnderstandingSubject } from "./TessayaUnderstanding.ts";
 import { make as makePresence, TessayaPresence } from "./TessayaPresence.ts";
 import {
+  faceForLine,
   faceLine,
   moodLine,
   roomLine,
@@ -436,6 +437,8 @@ const hereRank = (id: string) => {
 };
 /** A reading older than this is given with its age: the device may have changed since. */
 const HERE_FRESH_MS = 15 * 60_000;
+/** How long a face shown for someone else still needs explaining to the next speaker there. */
+const FACE_FOR_MS = 10 * 60_000;
 const agoWords = (ms: number) => {
   const min = Math.round(ms / 60_000);
   return min < 90
@@ -1445,12 +1448,27 @@ export const make = Effect.gen(function* () {
       .join("\n");
     // The face a device shows at rest (R1Device.publishRestMood) can be another person's or persona's mood: whoever
     // asks about it hears it in general words, so she never disowns what is on her face.
-    const face = (label: string) =>
-      spoken
-        ? mood.value
-            .atDevice(turn.vessel.id, undefined, zone)
-            .pipe(Effect.map((f) => (f.intensity >= 0.2 && f.label !== label ? faceLine(f) : "")))
-        : Effect.succeed("");
+    // Her face here a moment ago may have been for someone else (M-094): this speaker hears it wasn't about them.
+    const face = Effect.fn("TessayaTurn.face")(function* (label: string, speaker: string | null) {
+      const now = yield* Clock.currentTimeMillis;
+      const aimed = (yield* mood.value.facesOn(turn.vessel.id)).find(
+        (f) => f.faceFor !== "room" && f.faceFor !== "general" && now - f.at < FACE_FOR_MS,
+      );
+      if (
+        aimed !== undefined &&
+        aimed.faceFor !== speaker &&
+        aimed.label !== "neutral" &&
+        aimed.intensity >= 0.2
+      )
+        return faceForLine({
+          label: aimed.label,
+          name: aimed.private ? null : yield* memberName(aimed.faceFor),
+          private: aimed.private,
+        });
+      if (!spoken) return "";
+      const f = yield* mood.value.atDevice(turn.vessel.id, undefined, zone);
+      return f.intensity >= 0.2 && f.label !== label ? faceLine(f) : "";
+    });
     const understanding = yield* Effect.serviceOption(TessayaUnderstanding);
     const self = yield* understood({ about: "self", persona: turn.persona });
     if (member === null) {
@@ -1473,7 +1491,7 @@ export const make = Effect.gen(function* () {
         moodLine(privateOut(view), spoken),
         self,
         roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }),
-        yield* face(""),
+        yield* face("", null),
       ]
         .filter((l) => l !== "")
         .join(" ");
@@ -1510,7 +1528,7 @@ export const make = Effect.gen(function* () {
       theirs,
       self,
       others ? roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }) : "",
-      yield* face(view.label),
+      yield* face(view.label, member),
     ]
       .filter((l) => l !== "")
       .join(" ");

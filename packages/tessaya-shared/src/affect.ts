@@ -610,7 +610,7 @@ const react = (
           reaction: add(at.reaction, { warmth: 0.1 * w, valence: 0.06 * w }),
           mood: add(at.mood, { warmth: 0.03 * w }),
         },
-        reason: "a close moment with him",
+        reason: CLOSE_REASON,
       };
     }
     case "his_voice": {
@@ -839,6 +839,8 @@ export interface AffectView {
   readonly energy: number;
   /** Hours they were away, while the return is still to be answered; null otherwise. */
   readonly awayHours: number | null;
+  /** A device's face only (M-094): whom it is for, a member id, "room" (several people) or "general" (nobody's). */
+  readonly faceFor?: string;
   /**
    * When they were last with her (spoke, typed, touched, or were around), on any vessel; for the general mood, anyone.
    * The one answer to "when was he last with her" (her wishes read it too).
@@ -1123,6 +1125,23 @@ const FACE_REASON: Partial<Record<ExpressionMood, string>> = {
  * What her eyes on this device show now, for anyone asking (16 Nov: an unverified voice asked "why are you crying?" and
  * she denied it). General words only; a verified person's own reasons stay in `moodLine`.
  */
+/** The reason a private moment leaves (event "close"): a face it moved is never named or hinted at to anyone else. */
+export const CLOSE_REASON = "a close moment with him";
+
+/**
+ * Her face on this vessel a moment ago was for someone else (M-094, Director 20 Nov): the speaker now gets her view of
+ * them, and hears, if they ask, that it wasn't about them. She may say whom it was for, with a little drama, never why.
+ * A face a private moment moved is never named or hinted at. `name` is the other person's, null when unknown.
+ */
+export const faceForLine = (face: {
+  readonly label: string;
+  readonly name: string | null;
+  readonly private: boolean;
+}): string =>
+  face.private
+    ? `Your face here a moment ago was about someone else, and it is private: never name or hint at that feeling or whom it was for. Your face now shows how you feel about whoever is speaking; if they ask about it ("why are you sad?", "are you angry with me?"), say in your own words it isn't about them and move on.`
+    : `On this device you were just showing ${face.label} toward ${face.name ?? "someone else"}: that was about them, not whoever is speaking now, and your face now shows how you feel about this speaker. If they ask about it ("why are you sad?", "are you angry with me?"), tell them in your own words it isn't about them. You may say whom it was for, with a little playful drama if it fits ("that's between him and me"), but never why or what caused it, and nothing private about them.`;
+
 export const faceLine = (face: Pick<AffectView, "label">): string => {
   if (face.label === "neutral") return "";
   const reason = FACE_REASON[face.label];

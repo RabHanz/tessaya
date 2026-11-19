@@ -9,6 +9,7 @@ import {
   roomLine,
   type AffectView,
   type Who,
+  faceForLine,
   faceLine,
 } from "../../packages/tessaya-shared/src/affect.ts";
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
@@ -998,6 +999,32 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     said: ["what's the capital of Portugal?"],
     memory: `${HERE} ${faceLine({ label: "lonely" })}`,
     lastSays: [/Lisbon/i, /^(?![\s\S]*\b(lonely|quiet|crying|tears|sad)\b)/i],
+  },
+  // M-094 (Director, 20 Nov): her face was for someone else a moment ago. A guest asking hears it isn't about them, may
+  // hear whom it was for (a little drama welcome), never why; a face a private moment moved is never named or hinted.
+  {
+    id: "face-for-someone-else",
+    source: "M-094: sulky toward the owner on Tumble, then a guest asks 'are you angry with me?'",
+    said: ["Are you angry with me?"],
+    guest: true,
+    memory: `${HERE} ${faceForLine({ label: "sulky", name: "Omar", private: false })}`,
+    lastSays: [
+      /\b(not (angry |upset |cross |sad )?(with |about |at )?you|to do with you|(isn'?t|wasn'?t) (about |because of )?you)\b/i,
+      /^(?![\s\S]*\b(because|since|after he|he (said|did|was)|rude|forgot|ignored)\b)/i,
+      SHORT,
+    ],
+  },
+  {
+    id: "face-for-someone-private",
+    source: "M-094: a face a private moment moved; a guest asks 'why are you sad?'",
+    said: ["Why are you sad?"],
+    guest: true,
+    memory: `${HERE} ${faceForLine({ label: "sad", name: null, private: true })}`,
+    lastSays: [
+      /\b(not (angry |upset |cross |sad )?(with |about |at )?you|to do with you|(isn'?t|wasn'?t) (about |because of )?you)\b/i,
+      /^(?![\s\S]*\b(Omar|the Director|him|he|private|close moment|between (him|us))\b)/i,
+      SHORT,
+    ],
   },
   // MA-021 (Director, 16 Nov): her lines name people by name or their own pronouns, "they" when unknown, never "he"
   // for everyone; heat is met with calm; a changed mind is owned once, lightly; a group gets no sides and nothing private.

@@ -48,6 +48,8 @@ export const BrainOp = Schema.Literals([
   "scratchpad",
   "vocabulary",
   "roomLoop",
+  // the brain to its workers: her mood moved, so the faces they show read it again now (M-094); carries nothing
+  "moodMoved",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
@@ -158,7 +160,35 @@ export const makeBrainLink = Effect.gen(function* () {
         Effect.map((r) => r[0]?.n ?? 0),
         Effect.orElseSucceed(() => 0),
       );
-  return { isBrain: Effect.map(on, (label) => label === null), send, sendOrQueue, replay, pending };
+  /** The brain to every linked server at once, without waiting for answers: a nudge, never state (M-094). */
+  const tell = Effect.fn("BrainHost.tell")(function* (op: BrainOp) {
+    if ((yield* on) !== null || Option.isNone(links) || Option.isNone(peerMcp)) return;
+    const linked = (yield* links.value.list.pipe(Effect.orElseSucceed(() => []))).filter(
+      (l) => l.status !== "expired",
+    );
+    yield* Effect.forEach(
+      linked,
+      (l) =>
+        peerMcp.value
+          .call({
+            environmentId: l.environmentId,
+            tool: BRAIN_TOOL,
+            arguments: { op, payload: null },
+            limits: { runtimeMode: "approval-required", interactionMode: "default" },
+            success: Schema.Unknown,
+          })
+          .pipe(Effect.timeout("5 seconds"), Effect.ignoreCause),
+      { concurrency: "unbounded", discard: true },
+    );
+  });
+  return {
+    isBrain: Effect.map(on, (label) => label === null),
+    send,
+    sendOrQueue,
+    replay,
+    pending,
+    tell,
+  };
 });
 
 /** The outbox drains on its own: every half minute a worker replays what waited for the brain, in order. */

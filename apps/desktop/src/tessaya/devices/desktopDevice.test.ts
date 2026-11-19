@@ -114,6 +114,8 @@ describe("the desktop as a vessel", () => {
               { id: "w5", itemId: "action.hold", value: null },
               // one of the crew's own bodies, by persona
               { id: "w6", itemId: "mascot.do.alfred", value: "nod" },
+              // her mood moved on the brain (M-094): read the face again now
+              { id: "w7", itemId: "mascot.mood", value: null },
             ],
           });
         answered?.();
@@ -138,6 +140,7 @@ describe("the desktop as a vessel", () => {
         act !== "otherScreen"
       ),
       onAction: (id) => (ran.push(id), true),
+      onMood: () => void ran.push("mood"),
       onChange: () => () => undefined,
     });
     await acked;
@@ -150,8 +153,9 @@ describe("the desktop as a vessel", () => {
       { id: "w4", ok: true },
       { id: "w5", ok: false, error: "This computer cannot do that now." },
       { id: "w6", ok: true },
+      { id: "w7", ok: true },
     ]);
-    expect(ran).toEqual(["mute"]);
+    expect(ran).toEqual(["mute", "mood"]);
     const manifest = sent[0]?.["manifest"] as { items: Array<{ id: string; values?: unknown }> };
     expect(manifest.items.find((i) => i.id === "mascot.do")?.values).toContain("signature");
     expect(manifest.items.find((i) => i.id === "mascot.do.alfred")?.values).toContain("nod");

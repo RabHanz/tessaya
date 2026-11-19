@@ -11,6 +11,7 @@ import {
   appraiseFor,
   deviceOwnerOf,
   dialsOf,
+  CLOSE_REASON,
   faceMemberAt,
   freshAffect,
   guiltOfDial,
@@ -128,6 +129,10 @@ export class TessayaMood extends Context.Service<
     readonly reset: (persona: string | undefined, member: string) => Effect.Effect<void>;
     /** Something moved a mood (a write, someone arrived or left a vessel), or a few minutes passed: faces read again. */
     readonly moves: Stream.Stream<void>;
+    /** Her brain said her mood moved (a worker): its kept views go and every face here reads again now. */
+    readonly refresh: Effect.Effect<void>;
+    /** The faces a device showed at rest lately, newest first, each with whom it was for (M-094). */
+    readonly facesOn: (device: string) => Effect.Effect<ReadonlyArray<ShownFace>>;
     /**
      * A persona's general mood each time it shows differently (its label, or its strength by a tenth): after each
      * event, and as time moves it, checked every few minutes only while someone listens.
@@ -135,6 +140,19 @@ export class TessayaMood extends Context.Service<
     readonly changes: (persona: string | undefined, timeZone?: string) => Stream.Stream<AffectView>;
   }
 >()("t3/tessaya/TessayaMood") {}
+
+/** One face a device showed at rest: its persona, mood and strength, and whom it was for (`AffectView.faceFor`). */
+export interface ShownFace {
+  readonly persona: string;
+  readonly label: string;
+  readonly intensity: number;
+  readonly faceFor: string;
+  /** A private moment is among why it shows: never named or hinted at to anyone else. */
+  readonly private: boolean;
+  readonly at: number;
+}
+/** How many of a device's last faces are kept, for "who was that face for" on the next turn. */
+const FACES_KEPT = 4;
 
 const LEAD = "executive";
 /** How often a listener's mood is read again for what time alone changes (lonely builds over hours). */
@@ -331,6 +349,88 @@ const make = Effect.gen(function* () {
     fromBrain.set(key, { at: now, view: got });
     return Option.some(got);
   });
+  /** A device's face at rest and whom it is for (M-094): the brain's view on a worker, else read here. */
+  const faceAt = Effect.fn("TessayaMood.faceAt")(function* (
+    device: string,
+    personaId: string | undefined,
+    timeZone: string | undefined,
+  ) {
+    const theirs = yield* brainView({
+      p: personaId ?? null,
+      m: null,
+      z: timeZone ?? null,
+      d: device,
+    });
+    if (Option.isSome(theirs)) return theirs.value;
+
+    const { persona, state, ctx } = yield* readNow(personaId, timeZone);
+    const registry = yield* Effect.serviceOption(DeviceRegistry);
+    const known = Option.isNone(registry)
+      ? null
+      : yield* registry.value.get(device).pipe(Effect.orElseSucceed(() => null));
+    const owned = deviceOwnerOf(known, ctx.settings.devices?.[device], OWNER_MEMBER_ID);
+    const presence = yield* Effect.serviceOption(TessayaPresence);
+    const estimate = Option.isNone(presence)
+      ? { members: [], occupied: new Map<string, number>() }
+      : yield* presence.value.estimate();
+    // shortcut: desktop turns note their vessel as "desktop", not the device; split when a second desktop matters.
+    const vessels = known?.kind === "desktop" ? [device, "desktop"] : [device];
+    const member = faceMemberAt({ ...owned, vessels, estimate });
+    if (member !== null) return { ...personaView(state, persona, ctx, member), faceFor: member };
+    // Several people placed here: the room's mood, weighted by how sure presence is of each.
+    const at = new Set(vessels);
+    const here = estimate.members.flatMap((m) =>
+      m.nearest !== null && at.has(m.nearest.vessel) && m.nearest.confidence >= PRESENCE_BARS.around
+        ? [{ key: m.member, weight: m.nearest.confidence }]
+        : [],
+    );
+    return here.length > 1
+      ? { ...personaRoomView(state, persona, ctx, here), faceFor: "room" }
+      : { ...personaView(state, persona, ctx, null), faceFor: "general" };
+  });
+  // shortcut: in this server's memory; a restart forgets what the faces were for, and the next turn says nothing of it.
+  const faces = new Map<string, ReadonlyArray<ShownFace>>();
+  /** Each face a device shows, with whom it is for: kept for the next turn there, and on the spine when it changes. */
+  const shown = Effect.fn("TessayaMood.shown")(function* (
+    device: string,
+    persona: string,
+    view: AffectView,
+  ) {
+    const faceFor = view.faceFor ?? "general";
+    const last = faces.get(device)?.[0];
+    if (
+      last !== undefined &&
+      last.persona === persona &&
+      last.label === view.label &&
+      last.faceFor === faceFor &&
+      last.private === view.why.includes(CLOSE_REASON) &&
+      Math.round(last.intensity * 10) === Math.round(view.intensity * 10)
+    )
+      return;
+    const at = yield* Clock.currentTimeMillis;
+    faces.set(
+      device,
+      [
+        {
+          persona,
+          label: view.label,
+          intensity: view.intensity,
+          faceFor,
+          private: view.why.includes(CLOSE_REASON),
+          at,
+        },
+        ...(faces.get(device) ?? []),
+      ].slice(0, FACES_KEPT),
+    );
+    yield* emitAction({
+      kind: "face.shown",
+      actor: { kind: "persona", id: persona, certainty: 1 },
+      subject: device,
+      persona,
+      outcome: view.label,
+      data: { intensity: Math.round(view.intensity * 100) / 100, for: faceFor },
+    });
+  });
   const view: TessayaMood["Service"]["view"] = Effect.fn("TessayaMood.view")(
     function* (personaId, timeZone, member) {
       const theirs = yield* brainView({
@@ -372,13 +472,19 @@ const make = Effect.gen(function* () {
   });
 
   // A presence change (someone arrived at or left a vessel) reaches every face at once, not on the next sweep.
-  const moves = Stream.merge(
-    Stream.merge(Stream.fromPubSub(moved), Stream.tick(SWEEP)),
-    Stream.unwrap(
-      Effect.serviceOption(TessayaPresence).pipe(
-        Effect.map((p) => (Option.isNone(p) ? Stream.empty : p.value.changes)),
-      ),
+  const arrivals = Stream.unwrap(
+    Effect.serviceOption(TessayaPresence).pipe(
+      Effect.map((p) => (Option.isNone(p) ? Stream.empty : p.value.changes)),
     ),
+  );
+  const moves = Stream.merge(Stream.merge(Stream.fromPubSub(moved), Stream.tick(SWEEP)), arrivals);
+  // On her brain, each move is told to her other servers at once, so a face there never waits on a kept view (M-094).
+  yield* Stream.merge(Stream.fromPubSub(moved), arrivals).pipe(
+    Stream.debounce("200 millis"),
+    Stream.runForEach(() =>
+      Effect.flatMap(brain.isBrain, (here) => (here ? brain.tell("moodMoved") : Effect.void)),
+    ),
+    Effect.forkScoped,
   );
 
   const forget = Effect.fn("TessayaMood.forget")(function* (member: string, into?: string) {
@@ -489,40 +595,20 @@ const make = Effect.gen(function* () {
       yield* apply(persona, (day) => ({ kind: "his_turn", day }), timeZone, member);
     }),
     atDevice: Effect.fn("TessayaMood.atDevice")(function* (device, personaId, timeZone) {
-      const theirs = yield* brainView({
-        p: personaId ?? null,
-        m: null,
-        z: timeZone ?? null,
-        d: device,
-      });
-      if (Option.isSome(theirs)) return theirs.value;
-      const { persona, state, ctx } = yield* readNow(personaId, timeZone);
-      const registry = yield* Effect.serviceOption(DeviceRegistry);
-      const known = Option.isNone(registry)
-        ? null
-        : yield* registry.value.get(device).pipe(Effect.orElseSucceed(() => null));
-      const owned = deviceOwnerOf(known, ctx.settings.devices?.[device], OWNER_MEMBER_ID);
-      const presence = yield* Effect.serviceOption(TessayaPresence);
-      const estimate = Option.isNone(presence)
-        ? { members: [], occupied: new Map<string, number>() }
-        : yield* presence.value.estimate();
-      // shortcut: desktop turns note their vessel as "desktop", not the device; split when a second desktop matters.
-      const vessels = known?.kind === "desktop" ? [device, "desktop"] : [device];
-      const member = faceMemberAt({ ...owned, vessels, estimate });
-      if (member !== null) return personaView(state, persona, ctx, member);
-      // Several people placed here: the room's mood, weighted by how sure presence is of each.
-      const at = new Set(vessels);
-      const here = estimate.members.flatMap((m) =>
-        m.nearest !== null &&
-        at.has(m.nearest.vessel) &&
-        m.nearest.confidence >= PRESENCE_BARS.around
-          ? [{ key: m.member, weight: m.nearest.confidence }]
-          : [],
-      );
-      return here.length > 1
-        ? personaRoomView(state, persona, ctx, here)
-        : personaView(state, persona, ctx, null);
+      const face = yield* faceAt(device, personaId, timeZone);
+      const persona = personaOf(personaId)?.id ?? LEAD;
+      yield* shown(device, persona, face);
+      // shortcut: a desktop's turns name their vessel "desktop" (see faceAt); one desktop per household for now.
+      if (device.startsWith("desktop-")) yield* shown("desktop", persona, face);
+      return face;
     }),
+    refresh: Effect.gen(function* () {
+      fromBrain.clear();
+      yield* PubSub.publish(moved, undefined);
+    }),
+    facesOn: Effect.fn("TessayaMood.facesOn")((device: string) =>
+      Effect.sync(() => faces.get(device) ?? []),
+    ),
     inner: Effect.fn("TessayaMood.inner")(function* (personaId, viewer, timeZone) {
       // a worker's Settings show the brain's one mood, not its own copy
       if (!(yield* brain.isBrain)) {

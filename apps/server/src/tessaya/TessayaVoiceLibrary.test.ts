@@ -223,6 +223,8 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
             reset: () => Effect.void,
             moves: Stream.empty,
             changes: () => Stream.empty,
+            refresh: Effect.void,
+            facesOn: () => Effect.succeed([]),
           });
           const felt = yield* call("read", "mood", { persona: "butler" }).pipe(
             Effect.provide(mood),
