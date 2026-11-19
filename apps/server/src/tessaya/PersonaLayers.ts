@@ -167,6 +167,8 @@ export interface LayerHost {
       rev: number,
       bytes: Uint8Array,
     ) => Promise<{ readonly kept: boolean; readonly rev: number } | null>;
+    /** Every kept file's revision by name, in one call; null when the brain is not reached or too old to say. */
+    readonly revs?: () => Promise<Readonly<Record<string, number>> | null>;
   };
 }
 

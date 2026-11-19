@@ -89,7 +89,7 @@ import { createOnnxHost, type OnnxReply } from "./voice/onnxHost.ts";
 import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 import { windowsAccountOf, type HouseholdCall } from "./memory/householdTab.ts";
-import { windowsHello } from "./vault/hello.ts";
+import { coolHello, warmHello, windowsHello } from "./vault/hello.ts";
 import type { CommsCall } from "./home/intercomTab.ts";
 import { createPrivateMemory } from "./memory/privateMemoryClient.ts";
 import { freyaPlanWaiting, importedLine, runFreyaImport } from "./memory/freyaImport.ts";
@@ -704,6 +704,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
       const at = await layerSession();
       if (at === null) return;
       const { origin, session } = at;
+      // Its pages ask for Hello as they load: PowerShell and WinRT start now, beside the page.
+      warmHello();
       // The pages offer Hello only where this marker says the app will answer their ask.
       session.setUserAgent(`${session.getUserAgent()} TessayaHello/1`);
       const win = new Electron.BrowserWindow({
@@ -719,11 +721,15 @@ export const startTessayaDesktop = Effect.gen(function* () {
         if (asked.origin !== origin || asked.pathname !== `${page}/hello`)
           return { action: "allow" };
         void layerHello(asked.searchParams.get("for") ?? "chat").then((opened) => {
-          if (opened && !win.isDestroyed()) win.webContents.reload();
+          if (win.isDestroyed()) return;
+          // ready again for when he locks it and opens it again from this window
+          warmHello();
+          if (opened) win.webContents.reload();
         });
         return { action: "deny" };
       });
       void win.loadURL(`${origin}${page}${chat ? "/chat" : ""}`);
+      win.on("closed", coolHello);
       if (chat) {
         privateChatWindow = win;
         win.on("closed", () => {

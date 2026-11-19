@@ -26,6 +26,11 @@ it.layer(SqlitePersistenceMemory)("the private tier on the brain", (it) => {
         ok: true,
         value: { rev: 2, blob: sealed("v2") },
       });
+      // Every revision in one call, without the bytes.
+      assert.deepStrictEqual(yield* receiveAtBrain("privateTier", { revs: true }), {
+        ok: true,
+        value: { "companion.store": 2 },
+      });
       // Only sealed bytes, under a plain file name.
       assert.isFalse((yield* put(3, "not base64 {")).ok);
       assert.isFalse(
