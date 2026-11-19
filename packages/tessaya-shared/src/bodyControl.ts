@@ -523,6 +523,13 @@ export interface BodyState {
   }>;
   /** Where she is touching herself or something now (hand on hip): part, what it meets. */
   readonly contacts: ReadonlyArray<{ readonly part: string; readonly with: string }>;
+  /** Mouth shapes the last face asked for past what its intent supports, eased toward its reach, and why. */
+  readonly faceEased?: ReadonlyArray<{
+    readonly key: string;
+    readonly asked: number;
+    readonly shown: number;
+    readonly why: string;
+  }>;
   /** Her whole body's yaw (rad): 0 toward him, + turned to her left. Where she is on the desk is the host's to report. */
   readonly facing?: number;
   readonly walking?: boolean;

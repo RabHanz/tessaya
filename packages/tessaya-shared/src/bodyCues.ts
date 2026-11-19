@@ -131,9 +131,63 @@ const MOUTH: Readonly<Record<Viseme, Weights>> = {
 /** The mouth for a viseme, opened by the voice's level when the vessel hears one (0..1), else fully. */
 export const mouthWeights = (viseme: Viseme | undefined, open = 1): Weights => {
   const o = Math.max(0, Math.min(1, open));
-  // no aligned shape yet: the level alone opens the jaw
-  if (viseme === undefined) return o > 0.05 ? { aa: 0.7 * o } : {};
-  return Object.fromEntries(Object.entries(MOUTH[viseme]).map(([p, w]) => [p, w * o]));
+  // no aligned shape yet: the level alone opens the jaw; either way, speaking stays within speaking's reach
+  if (viseme === undefined) return o > 0.05 ? limitMouth({ aa: 0.7 * o }, "speech").weights : {};
+  return limitMouth(
+    Object.fromEntries(Object.entries(MOUTH[viseme]).map(([p, w]) => [p, w * o])),
+    "speech",
+  ).weights;
+};
+
+/**
+ * How far her jaw opens at most, by what she is doing: speaking stays small (about a third of her jaw's range),
+ * a feeling moderate, and a strong act (a yawn, a shout, a gasp, a hard laugh, an explicit "open wide") reaches her
+ * full natural range. A model's own shape weights are 0..1 of that range, so 1 is the natural maximum.
+ */
+export const MOUTH_REACH = { speech: 0.35, expression: 0.6, strong: 1 } as const;
+export type MouthIntent = keyof typeof MOUTH_REACH;
+const JAW_SHAPES: ReadonlySet<string> = new Set(["aa", "oh", "ou", "ee", "ih"]);
+/**
+ * A face's mouth shapes within what its intent supports: up to most of the reach a shape is as asked, past it eased
+ * toward the reach (never cut flat, so more still shows more), and every shape eased is named with how much.
+ */
+export const limitMouth = (
+  w: Weights,
+  intent: MouthIntent,
+): {
+  readonly weights: Weights;
+  readonly eased: ReadonlyArray<{
+    readonly key: string;
+    readonly asked: number;
+    readonly shown: number;
+  }>;
+} => {
+  const reach = MOUTH_REACH[intent];
+  const knee = 0.6 * reach;
+  const eased: Array<{ key: string; asked: number; shown: number }> = [];
+  const weights = Object.fromEntries(
+    Object.entries(w).map(([k, v]) => {
+      const asked = Math.max(0, Math.min(1, v ?? 0));
+      if (!JAW_SHAPES.has(k) || asked <= knee) return [k, asked];
+      const shown = knee + (reach - knee) * Math.tanh((asked - knee) / (reach - knee));
+      if (asked - shown > 0.01)
+        eased.push({ key: k, asked, shown: Math.round(shown * 1000) / 1000 });
+      return [k, shown];
+    }),
+  ) as Weights;
+  return { weights, eased };
+};
+/**
+ * What a face asks for, read from the face itself: only her jaw (an explicit "open wide"), a gasp (surprise) or a
+ * hard laugh or shout (joy at full with an open jaw) are strong; anything else is a feeling, moderate.
+ */
+export const mouthIntentOf = (w: Weights): MouthIntent => {
+  const jaw = Math.max(...[...JAW_SHAPES].map((k) => w[k as keyof Weights] ?? 0));
+  const others = Object.entries(w).filter(([k, v]) => !JAW_SHAPES.has(k) && (v ?? 0) > 0.05);
+  if (jaw >= 0.9 && others.length === 0) return "strong";
+  if ((w.surprised ?? 0) >= 0.7) return "strong";
+  if ((w.happy ?? 0) >= 0.9 && jaw >= 0.6) return "strong";
+  return "expression";
 };
 
 /**
@@ -235,7 +289,10 @@ export interface Swing {
 
 /** The public gesture list (tessaya-contracts EXPRESSION_GESTURES) as short procedural moves; none means stillness. */
 export const GESTURES: Readonly<
-  Record<string, { readonly ms: number; readonly swings: ReadonlyArray<Swing> }>
+  Record<
+    string,
+    { readonly ms: number; readonly swings: ReadonlyArray<Swing>; readonly face?: Weights }
+  >
 > = {
   nodSmall: { ms: 600, swings: [{ bone: "head", axis: "x", rad: 0.12, cycles: 1 }] },
   nodSoft: { ms: 900, swings: [{ bone: "head", axis: "x", rad: 0.18, cycles: 2 }] },
@@ -264,7 +321,12 @@ export const GESTURES: Readonly<
   lookAway: { ms: 1400, swings: [{ bone: "head", axis: "y", rad: 0.45, cycles: 0.5 }] },
   chuckle: { ms: 700, swings: [{ bone: "chest", axis: "x", rad: 0.05, cycles: 3 }] },
   sigh: { ms: 1600, swings: [{ bone: "chest", axis: "x", rad: -0.08, cycles: 0.5 }] },
-  yawn: { ms: 1800, swings: [{ bone: "head", axis: "x", rad: -0.2, cycles: 0.5 }] },
+  yawn: {
+    ms: 1800,
+    swings: [{ bone: "head", axis: "x", rad: -0.2, cycles: 0.5 }],
+    // a yawn opens her jaw nearly all the way, rising and falling with the gesture
+    face: { aa: 0.92 },
+  },
   startle: { ms: 500, swings: [{ bone: "spine", axis: "x", rad: -0.12, cycles: 0.5 }] },
   dizzy: { ms: 1500, swings: [{ bone: "head", axis: "z", rad: 0.15, cycles: 2 }] },
   thumbsUp: { ms: 1200, swings: [{ bone: "rightUpperArm", axis: "z", rad: -0.7, cycles: 0.5 }] },

@@ -10,7 +10,9 @@ import {
   faceWeights,
   lineCues,
   mouthWeights,
+  limitMouth,
   MAX_ZONES,
+  mouthIntentOf,
   parseCue,
   swingAt,
   textTrack,
@@ -26,10 +28,33 @@ describe("body faces", () => {
   });
 
   it("opens the mouth by the aligned viseme, or by level alone before the alignment reaches it", () => {
-    expect(mouthWeights("aa", 0.5)).toEqual({ aa: 0.5 });
+    expect(mouthWeights("aa", 0.2)).toEqual({ aa: 0.2 });
     expect(mouthWeights("mbp")).toEqual({});
-    expect(mouthWeights(undefined, 1)).toEqual({ aa: 0.7 });
+    expect(mouthWeights(undefined, 0.2).aa).toBeCloseTo(0.14, 6);
     expect(mouthWeights(undefined, 0)).toEqual({});
+    // speaking never opens her jaw past a third of its range, at any loudness or shape
+    for (const v of [undefined, "aa", "oh", "oo", "ee", "uh", "l", "etc"] as const)
+      for (const level of [0.3, 0.7, 1])
+        for (const w of Object.values(mouthWeights(v, level))) expect(w).toBeLessThanOrEqual(0.35);
+  });
+
+  it("eases a face's jaw past what it asks for, reaching full only for a strong act, and says what it eased", () => {
+    // a smile with a wide jaw is a feeling: eased toward the moderate reach, never cut flat
+    const smile = limitMouth({ happy: 0.5, aa: 0.9 }, mouthIntentOf({ happy: 0.5, aa: 0.9 }));
+    expect(smile.weights.aa).toBeLessThan(0.6);
+    expect(smile.weights.aa).toBeGreaterThan(
+      limitMouth({ happy: 0.5, aa: 0.5 }, "expression").weights.aa!,
+    );
+    expect(smile.eased).toEqual([expect.objectContaining({ key: "aa", asked: 0.9 })]);
+    // "open wide" (only her jaw), a gasp and a hard laugh are strong: her full natural range
+    for (const w of [{ aa: 1 }, { surprised: 0.8, oh: 1 }, { happy: 1, aa: 0.9 }]) {
+      expect(mouthIntentOf(w)).toBe("strong");
+      expect(Math.max(...Object.values(limitMouth(w, "strong").weights))).toBeGreaterThanOrEqual(
+        0.85,
+      );
+    }
+    // a yawn's own jaw reaches near full
+    expect(GESTURES["yawn"]?.face?.aa).toBeGreaterThanOrEqual(0.85);
   });
 
   it("has a move for every public gesture but none, and each ends where it began", () => {
