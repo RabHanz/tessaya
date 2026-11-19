@@ -66,6 +66,7 @@ import {
   teaches,
   withName,
   UNVERIFIED,
+  likelyHis,
   HOLD_MS,
   holdVoice,
   NO_HOLD,
@@ -98,6 +99,8 @@ import {
 } from "@t3tools/tessaya-shared/inputQuality";
 
 const RATE = 16_000;
+/** Words over her this alike in loudness to her playing reply are her echo in his session too (turnRules' 0.6 tail bar). */
+const ECHO_ALIKE = 0.6;
 /** Her downlink kept for open talk-over: 8 s, far more than the R1 ever holds unplayed. */
 const DOWN_RING = RATE * 8;
 /** firmware 0.3.92 `cmd/voice/upformat {"v":1}`: each uplink frame leads with seq, rx, q (u32) and flags (u16), 16 bytes. */
@@ -2090,9 +2093,18 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             deps.member?.(judged) ?? Promise.resolve(Number.NEGATIVE_INFINITY)
           ).catch(() => Number.NEGATIVE_INFINITY);
           const verdict = memberByVoice(best, judged.length / RATE, hisSession() || asking);
-          // Mixed with her own voice in this case his scored -0.09 to 0.20 (19 Nov, 05:01-05:02): in his session, words
-          // over her that are not her own are his, and are answered, never dropped on Voice ID alone.
-          if (verdict !== "member" && hisSession())
+          // In his session words over her that are not her own are his (his mixed scores -0.09 to 0.20), unless they move
+          // like her playing reply: her misheard echo cut her off as his (20 Nov, 03:19 GMT+5, likeness 0.77).
+          // shortcut: his own words over a loud echo can read as alike; they wait for AEC on the barge-in audio.
+          if (verdict !== "member" && hisSession() && echoLike >= ECHO_ALIKE) {
+            kept?.control.abort();
+            dropped(
+              turn,
+              `over her voice and moving like her own reply (likeness ${echoLike.toFixed(2)}, Voice ID ${best.toFixed(2)})`,
+              raw,
+            );
+            return;
+          } else if (verdict !== "member" && hisSession())
             deps.log(
               `[${id}] turn ${turn}: over her voice, Voice ID ${best.toFixed(2)} in the mix; his session, so answered`,
             );
@@ -2290,7 +2302,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       await Promise.race([speakerP, deps.sleep(0)]);
       const known = speakerNow === null ? null : ([speakerNow.identity, affectNow] as const);
       const [speaker, affect] = known ?? [undefined, affectNow];
-      const identity = speaker ?? UNVERIFIED(deps.now());
+      // Ignoring him is the worst failure: a voice just under the bar in his own session is answered as likely him.
+      const identity = likelyHis(speaker ?? UNVERIFIED(deps.now()), hisSession());
       const voicesAt = deps.now();
       const voices = (await voicesP) ?? { kind: "one" };
       if (voices.kind === "one-at-a-time") {
