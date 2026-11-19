@@ -27,7 +27,7 @@ import { groupConversation } from "../tessaya/GroupTalk.ts";
 import { R1Hold } from "./R1Hold.ts";
 import { R1Brain, R1BrainError, toolLoop, type ToolTurn } from "./R1Brain.ts";
 import { sessionTools, speakableSentences } from "../tessaya/TessayaBrain.ts";
-import { PersonaLayers } from "../tessaya/PersonaLayers.ts";
+import { PersonaLayers, type LayerTurn } from "../tessaya/PersonaLayers.ts";
 import type { ConversePart, ConverseRequest } from "../speech/DictationCleanupApi.ts";
 import {
   calledPersona,
@@ -1015,11 +1015,24 @@ effectIt.effect(
             recorded = [...recorded, entry.detail ?? ""];
           }) as never,
       });
+      // each speaker's layer turn carries its place in the group and the group's note
+      const asked: Array<{ first: boolean; note: string } | undefined> = [];
+      const probe = Layer.succeed(PersonaLayers, {
+        all: [
+          {
+            id: "probe",
+            onTurn: async (t: LayerTurn) => (asked.push(t.group), null),
+            signal: () => undefined,
+            http: async () => ({ status: 404 }),
+          },
+        ],
+      });
       const services = Layer.mergeAll(
         home,
         record,
         Layer.mock(TessayaOneShot)({}),
         CurrentPersona.layer,
+        probe,
       );
       const heard = {
         heard: "Alfred and Freya, what do you think?",
@@ -1041,6 +1054,8 @@ effectIt.effect(
       }).pipe(Effect.provide(services));
       expect([...said].join("")).toBe("[as:butler]Agreed (Alfred). [as:companion]Agreed (Freya). ");
       expect(recorded).toEqual(["Agreed (Alfred).", "Agreed (Freya)."]);
+      expect(asked.map((g) => g?.first)).toEqual([true, false]);
+      expect(asked[1]?.note).toContain("Agreed (Alfred).");
     }),
 );
 
