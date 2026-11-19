@@ -90,6 +90,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { BodiesSection } from "./BodiesSection";
 import { DeviceUtilitySection } from "./DeviceUtilitySection";
+import { BeingMoved, Haptics } from "./TesselFeelSettings";
 import { deviceVoiceLine } from "./HardwareSettings.logic";
 import { setLaptopRoute, useLaptopRoute } from "../../tessayaLaptopRoute";
 import { OutputOrderList, PrivateButtons } from "./OutputOrderList";
@@ -429,6 +430,8 @@ function HardwareSections({
       ))}
 
       {home ? <RoomBrainSection environmentId={environmentId} /> : null}
+      {home ? <BeingMoved environmentId={environmentId} /> : null}
+      {home ? <Haptics environmentId={environmentId} /> : null}
 
       {home ? (
         <BodiesSection

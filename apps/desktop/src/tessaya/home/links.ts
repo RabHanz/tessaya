@@ -1,13 +1,17 @@
-import { tessayaPlaceOf, type TessayaPlaceId } from "@t3tools/tessaya-contracts";
+import {
+  tessayaTargetOf,
+  type TessayaPageId,
+  type TessayaPlaceId,
+} from "@t3tools/tessaya-contracts";
 
 export const TESSAYA_SCHEME = "tessaya";
 
 export const isTessayaLink = (value: string): boolean => /^tessaya:\/\//i.test(value);
 
-/** The place a launch asks for, from `tessaya://settings/hardware` among its arguments; null for none or an unknown one. */
-export const placeInArgs = (argv: ReadonlyArray<string>): TessayaPlaceId | null => {
+/** The place or page a launch asks for (`tessaya://settings/hardware`, `tessaya://vault`); null for none or an unknown one. */
+export const placeInArgs = (argv: ReadonlyArray<string>): TessayaPlaceId | TessayaPageId | null => {
   const link = argv.find(isTessayaLink);
-  return link === undefined ? null : tessayaPlaceOf(link);
+  return link === undefined ? null : tessayaTargetOf(link);
 };
 
 const EMBED_PREFIX = "?tessayaGuest=1#/tessaya/";

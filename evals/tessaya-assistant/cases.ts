@@ -317,6 +317,25 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["place_open"],
   },
   {
+    id: "page-open-vault",
+    source:
+      "D-038 audit: her open tool reached only Settings places, so 'open my vault' could not navigate",
+    said: "open my vault",
+    first: ["place_open"],
+    goal: "place_open",
+    maxCalls: 2,
+    goalArgs: ["vault"],
+  },
+  {
+    id: "page-open-prompt-lab",
+    source: "D-038 step 4: the Lab's benches open by voice",
+    said: "open the prompt lab",
+    first: ["place_open"],
+    goal: "place_open",
+    maxCalls: 2,
+    goalArgs: ["lab:prompts"],
+  },
+  {
     id: "settings-open-hardware",
     source: "Voice-first: every settings page can be opened by voice",
     said: "show me the hardware settings",

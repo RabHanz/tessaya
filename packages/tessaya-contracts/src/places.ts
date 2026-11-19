@@ -161,6 +161,61 @@ export function tessayaPlaceOf(link: string): TessayaPlaceId | null {
 
 export const tessayaLink = (id: TessayaPlaceId): string => `tessaya://settings/${id}`;
 
+/**
+ * The pages of Tessaya's window, which her voice (place_open), `tessaya://<page>` links and other windows open by id.
+ * `lab:<bench>` opens the Lab on one bench. The window's own tab table must name every one (tabs.test).
+ */
+export const TESSAYA_PAGES = [
+  { id: "home", label: "Home" },
+  { id: "now", label: "Now" },
+  { id: "upcoming", label: "Coming up" },
+  { id: "approvals", label: "Approvals" },
+  { id: "jobs", label: "Jobs" },
+  { id: "cloud", label: "Cloud" },
+  { id: "dictation", label: "Dictation" },
+  { id: "history", label: "History" },
+  { id: "snippets", label: "Snippets" },
+  { id: "transforms", label: "Transforms" },
+  { id: "style", label: "Style" },
+  { id: "scratchpad", label: "Scratchpad" },
+  { id: "insights", label: "Insights" },
+  { id: "personas", label: "Personas" },
+  { id: "groups", label: "Groups" },
+  { id: "lab", label: "Lab" },
+  { id: "lab:voices", label: "Lab, Voices" },
+  { id: "lab:prompts", label: "Prompt Lab" },
+  { id: "lab:compare", label: "Lab, Compare" },
+  { id: "lab:body", label: "Body playground" },
+  { id: "memory", label: "Memory" },
+  { id: "vault", label: "Vault" },
+  { id: "hardware", label: "Tessels" },
+  { id: "intercom", label: "Intercom" },
+  { id: "homeassistant", label: "Home Assistant" },
+  { id: "phone", label: "Phone" },
+  { id: "health", label: "Health" },
+  { id: "sessions", label: "Sessions" },
+  { id: "tools", label: "Skills" },
+  { id: "trust", label: "Trust" },
+  { id: "usage", label: "Usage" },
+  { id: "learn", label: "Learn Tessaya" },
+  { id: "help", label: "Help" },
+] as const;
+export type TessayaPageId = (typeof TESSAYA_PAGES)[number]["id"];
+const PAGE_IDS = new Set<string>(TESSAYA_PAGES.map((page) => page.id));
+
+/** A link or id to open in her window: a Settings place, else one of her pages (`tessaya://lab:prompts`); else null. */
+export function tessayaTargetOf(link: string): TessayaPlaceId | TessayaPageId | null {
+  const place = tessayaPlaceOf(link);
+  if (place !== null) return place;
+  const id = link
+    .trim()
+    .replace(/^tessaya:\/\//i, "")
+    .replace(/^(settings|page)\//i, "")
+    .replace(/[/?#].*$/, "")
+    .toLowerCase();
+  return PAGE_IDS.has(id) ? (id as TessayaPageId) : null;
+}
+
 /** T3's settings pages, for Tessaya's search. Each path is T3's own route. */
 export const T3_SETTINGS_PLACES = [
   { path: "/settings/providers", label: "Agent accounts & providers", terms: ["codex", "claude"] },

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { openState } from "./pageStates.ts";
-import { TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
+import { TESSAYA_PAGES, TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
 
 import { STRINGS } from "./strings.ts";
 import { AREAS, SETTINGS, TABS, tabOf } from "./tabs.ts";
@@ -145,6 +145,10 @@ describe("areas and places", () => {
     for (const a of AREAS)
       if (a.settings !== null) expect(SETTINGS.map((s) => s.id)).toContain(a.settings);
   });
+  it("names every page of the window in the pages her voice and links open, and nothing it doesn't draw", () => {
+    const pages = TESSAYA_PAGES.map((p) => p.id.replace(/:.*$/, ""));
+    expect(new Set(pages)).toEqual(new Set(TABS.map((t) => t.id)));
+  });
   it("opens every place both windows search, by the name Settings shows", () => {
     for (const place of TESSAYA_PLACES) {
       const tab = TABS.some((t) => t.id === place.id);
@@ -161,9 +165,18 @@ describe("areas and places", () => {
     page.show("snippets");
     expect(page.textOf("side")).toContain("Settings for Talk");
     const nav = (page.openModal("accounts"), page.textOf("mnav"));
-    for (const group of ["You", "Talking to Tessaya", "Home and devices", "Working for you", "App"])
+    for (const group of ["You", "Talking to Tessaya", "Working for you", "App"])
       expect(nav).toContain(group);
-    expect(nav).toContain("Tessels");
+    // switches only (D-038): pages live in the sidebar, never as Settings rows
+    for (const page of [
+      "Tessels",
+      "Home Assistant",
+      "Phone",
+      "Health",
+      "Personas",
+      "Dictation and cleanup",
+    ])
+      expect(nav).not.toContain(page);
     page.closeModal();
     expect(page.errors).toEqual([]);
   });

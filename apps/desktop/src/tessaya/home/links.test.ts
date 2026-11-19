@@ -1,4 +1,4 @@
-import { tessayaPlaceOf } from "@t3tools/tessaya-contracts";
+import { TESSAYA_PAGES, tessayaPlaceOf, tessayaTargetOf } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { guestLinkOut, isEmbedSrc, placeInArgs } from "./links.ts";
@@ -13,6 +13,14 @@ describe("tessaya:// links", () => {
     expect(tessayaPlaceOf("tessaya://settings/cast")).toBe("personas");
     expect(tessayaPlaceOf("tessaya://settings/nowhere")).toBeNull();
     expect(tessayaPlaceOf("https://example.com/settings/hardware")).toBeNull();
+  });
+
+  it("opens her pages as well as Settings places, and the Lab on one bench", () => {
+    expect(tessayaTargetOf("tessaya://vault")).toBe("vault");
+    expect(tessayaTargetOf("tessaya://page/lab:prompts")).toBe("lab:prompts");
+    expect(tessayaTargetOf("tessaya://settings/apis")).toBe("apis");
+    expect(tessayaTargetOf("tessaya://nowhere")).toBeNull();
+    expect(TESSAYA_PAGES.length).toBeGreaterThan(20);
   });
 
   it("finds the link among a second launch's arguments", () => {

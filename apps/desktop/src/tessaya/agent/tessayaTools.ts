@@ -14,7 +14,7 @@ import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
 import { CONVERSATION_END } from "@t3tools/tessaya-shared/stopPhrases";
 import type { VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/tessaya-shared/operator";
-import { TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
+import { TESSAYA_PAGES, TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
 
 import type { TessayaTool, ToolOutput } from "./tessayaMcp.ts";
 
@@ -1484,11 +1484,16 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
     {
       name: "place_open",
       description:
-        "Open Tessaya's own window at one of her pages. 'Add my phone', 'pair my phone' or 'set up my phone' is phone: it shows the QR the phone app scans to connect to this machine and every machine linked to it. Then tell him to scan it in the phone app (Environments, Add environment, Scan). 'Let's label my tone' is personas: its Inner state holds the tone labelling pass.",
-      inputSchema: object({ place: { enum: TESSAYA_PLACES.map((p) => p.id) } }, ["place"]),
+        "Open Tessaya's own window at one of her pages or Settings places: any page (vault, jobs, memory, intercom, scratchpad, personas, lab, sessions…) as well as Settings. 'Open the prompt lab' is lab:prompts, 'the voice lab' or 'clone a voice' lab:voices, 'compare voices' lab:compare, 'the body playground' lab:body. 'Add my phone', 'pair my phone' or 'set up my phone' is phone: it shows the QR the phone app scans to connect to this machine and every machine linked to it. Then tell him to scan it in the phone app (Environments, Add environment, Scan). 'Let's label my tone' is personas: its Your tone section holds the tone labelling pass.",
+      inputSchema: object(
+        {
+          place: { enum: [...TESSAYA_PLACES.map((p) => p.id), ...TESSAYA_PAGES.map((p) => p.id)] },
+        },
+        ["place"],
+      ),
       run: async (a) => {
         const place = str(a, "place", 40);
-        const found = TESSAYA_PLACES.find((p) => p.id === place);
+        const found = [...TESSAYA_PLACES, ...TESSAYA_PAGES].find((p) => p.id === place);
         if (found === undefined) return { text: `${place} is not one of Tessaya's pages.` };
         if (host.openPlace === undefined)
           return { text: "Tessaya's window is not on this computer." };

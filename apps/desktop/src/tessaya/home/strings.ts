@@ -114,6 +114,8 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "tab.personas": "Personas",
     "tab.groups": "Groups",
     "tab.lab": "Lab",
+    "trust.allowed": "Always allowed",
+    "settings.onMachine": "On {name}: these settings stay on this computer.",
     "tab.learn": "Learn Tessaya",
     "intro.learn.title": "Learn Tessaya",
     "intro.learn.text":

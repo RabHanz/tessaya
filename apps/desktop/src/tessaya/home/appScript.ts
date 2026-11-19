@@ -99,6 +99,7 @@ const openAreas = (() => { try { return new Set(JSON.parse(localStorage.getItem(
 const saveAreas = () => { try { localStorage.setItem('tessaya.areas', JSON.stringify([...openAreas])); } catch (e) {} };
 const TABS = ['home','now','upcoming','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','intercom','homeassistant','phone','health','personas','groups','lab','learn','help'].map(id => [id, L('tab.' + id)]);
 const CATS = ['accounts','apis','brain','general','voice','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
+const LOCAL_CATS = ['voice', 'appearance', 'keys', 'advanced'];
 const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant', cast: 'personas', voices: 'lab' };
 const INTRO = {};
 for (const id of ['scratchpad','insights','style','transforms','snippets','now','upcoming','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','intercom','homeassistant','phone','health','personas','groups','lab','learn','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
@@ -981,7 +982,8 @@ function tabPage(p) {
   if (cur === 'learn') return learnPage(p);
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
-  if (cur === 'sessions') return liveSessionsPage(p);
+  // the counters, then the sessions browser itself (search, resume, new session), which the page used to stop before
+  if (cur === 'sessions') liveSessionsPage(p);
   if (cur === 'hardware' || cur === 'homeassistant' || cur === 'phone' || cur === 'health' || cur === 'upcoming' || cur === 'personas' || cur === 'groups') return embed(p, cur);
   // the Lab opens on the bench last asked for (Prompt Lab from search or the palette), else Voices
   if (cur === 'lab') return embed(p, 'lab?bench=' + labBench);
@@ -990,6 +992,8 @@ function tabPage(p) {
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
+  // every standing yes lives under Trust now (D-038), drawn by the web page beside her own rows
+  if (cur === 'trust') { p.appendChild($('h2', null, L('trust.allowed'))); embed(p, 'allowed'); }
 
 }
 
@@ -1072,6 +1076,8 @@ function modalPage(b) {
   if (modal === 'keys') return bindingsPage(b);
   if (modal === 'about') { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = tourStart; b.appendChild(rr); ; return; }
   b.appendChild(pageHead(L('cat.' + modal), L('cat.' + modal + '.text')));
+  // these are this computer's own settings; the rest are the household's, kept on her brain (D-038)
+  const here = (x.about || {}).machine; if (here && LOCAL_CATS.indexOf(modal) >= 0) b.appendChild($('p', 'hint', L('settings.onMachine', { name: here })));
   const items = catSections(b, modal);
   if (modal === 'accounts' || modal === 'apis' || modal === 'brain') embed(b, modal);
   if (modal === 'general') {
@@ -1167,10 +1173,10 @@ function syncModal() {
   setRegion(document.getElementById('mnav'), nav => {
     if (modal === 'setup') { nav.appendChild($('h4', null, 'Setup')); const sp = (S.extra || {}).setup; for (const [i, st] of ((sp && sp.steps) || []).entries()) { const b = $('button', 'nav', (i + 1) + '. ' + st.title); if (i === setupStep) b.setAttribute('aria-current', 'step'); b.onclick = () => setupGo(i); nav.appendChild(b); } return; }
     for (const g of SGROUPS) {
+      // Settings holds switches only (D-038): a place that is a page (Dictation, Tessels, Personas) is in the sidebar
+      const cats = PLACES.filter(x => x.group === g && CATS.some(c => c[0] === x.id)); if (!cats.length) continue;
       nav.appendChild($('h4', null, g));
-      // A place that is a page (Dictation, Hardware) closes Settings and opens the page: one home for each setting.
-      // Personas and Cast are the Personas area's pages now, not Settings rows (D-038)
-      for (const pl of PLACES.filter(x => x.group === g && x.id !== 'personas')) { const isCat = CATS.some(c => c[0] === pl.id); const b = $('button', 'nav', isCat ? L('cat.' + pl.id) : pl.label); if (modal === pl.id) b.setAttribute('aria-current', 'page'); b.onclick = () => { if (isCat) { modal = pl.id; render(); } else { modal = null; go(pl.id); } }; nav.appendChild(b); }
+      for (const pl of cats) { const b = $('button', 'nav', L('cat.' + pl.id)); if (modal === pl.id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = pl.id; render(); }; nav.appendChild(b); }
     }
     nav.appendChild($('div', 'ver', 'Tessaya ' + (((S.extra || {}).about || {}).version || '')));
   });
@@ -1179,7 +1185,7 @@ function syncModal() {
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
 function closeModal() { stopMeter(); modal = null; aboutSeen = false; render(); }
-function go(t) { t = MOVED[t] || t; if (cur === 'learn' && t !== 'learn' && WHATS_NEW.length && learn.whatsNewSeen !== WHATS_NEW[WHATS_NEW.length - 1].since) learnDo({ op: 'whatsNew', since: WHATS_NEW[WHATS_NEW.length - 1].since }); if (t !== cur && t !== modal) learnVisit(t); if (CATS.some(c => c[0] === t)) { modal = t; render(); return; } if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
+function go(t) { if (typeof t === 'string' && t.indexOf('lab:') === 0) { labBench = t.slice(4); t = 'lab'; } t = MOVED[t] || t; if (cur === 'learn' && t !== 'learn' && WHATS_NEW.length && learn.whatsNewSeen !== WHATS_NEW[WHATS_NEW.length - 1].since) learnDo({ op: 'whatsNew', since: WHATS_NEW[WHATS_NEW.length - 1].since }); if (t !== cur && t !== modal) learnVisit(t); if (CATS.some(c => c[0] === t)) { modal = t; render(); return; } if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 /** Ctrl+K: pages, settings, commands and sessions in one list, all by keyboard. */
 function paletteRank(items, q) {
