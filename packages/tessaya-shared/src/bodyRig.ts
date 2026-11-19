@@ -574,6 +574,34 @@ const closestOn = (a: V3, b: V3, p: V3): V3 => {
 };
 const segPoint = (a: V3, b: V3, p: V3): number => len(sub(p, closestOn(a, b, p)));
 
+/** What a hand or forearm may rest on but not pass into: her trunk, pelvis, skull and thighs (proxies by her height). */
+const restingParts = (
+  rig: Rig,
+  pos: Readonly<Record<string, V3>>,
+): Array<{ readonly a: V3; readonly b: V3; readonly r: number }> => {
+  const size = rig.proxies ?? proxiesByHeight(rig.height);
+  const top = pos["upperChest"] ?? pos["chest"] ?? pos["spine"];
+  const neck = pos["neck"];
+  const head = pos["head"];
+  // the skull's centre sits above the head joint, along the neck
+  const skull =
+    neck && head ? add(head, scale(unit(sub(head, neck)), 0.07 * (rig.height / 1.6))) : undefined;
+  return (
+    [
+      [pos["hips"], top, size.trunk],
+      [neck, skull, size.head],
+      [pos["leftUpperLeg"], pos["rightUpperLeg"], 0.65 * size.trunk],
+      [pos["leftUpperLeg"], pos["leftLowerLeg"], size.thigh],
+      [pos["rightUpperLeg"], pos["rightLowerLeg"], size.thigh],
+    ] as const
+  ).flatMap(([a, b, r]) => (a && b ? [{ a, b, r }] : []));
+};
+/** The hand past the wrist, as a ball: what lands on her face or hip is the hand, not the wrist. */
+const handBall = (rig: Rig) => ({
+  reach: 0.06 * (rig.height / 1.6),
+  r: 2.2 * (rig.proxies ?? proxiesByHeight(rig.height)).forearm,
+});
+
 /**
  * Re-solves each arm and leg as a two-bone chain: the hand or foot stays where the pose put it, and the elbow or knee
  * folds only its own way, on the side the pose put it unless that needs an impossible twist (then the nearest side
@@ -592,21 +620,8 @@ export const solveLimbs = (
   const top = w.pos["upperChest"] ?? w.pos["chest"] ?? w.pos["spine"];
   const size = rig.proxies ?? proxiesByHeight(rig.height);
   const trunk = w.pos["hips"] && top ? { a: w.pos["hips"], b: top, r: size.trunk } : null;
-  // what a hand or forearm may rest on but not pass into: her trunk, head and thighs (proxies by her height)
-  const body = [
-    ...(trunk === null ? [] : [trunk]),
-    ...(
-      [
-        ["neck", "head", size.head],
-        ["leftUpperLeg", "leftLowerLeg", size.thigh],
-        ["rightUpperLeg", "rightLowerLeg", size.thigh],
-      ] as const
-    ).flatMap(([from, to, k]) => {
-      const a0 = w.pos[from];
-      const b0 = w.pos[to];
-      return a0 && b0 ? [{ a: a0, b: b0, r: k }] : [];
-    }),
-  ];
+  const body = restingParts(rig, w.pos);
+  const { reach: handReach, r: handR } = handBall(rig);
   for (const l of LIMBS) {
     const [a, b, c] = [rig.bones[l.root], rig.bones[l.mid], rig.bones[l.end]];
     if (!a || !b || !c || a.parent === null) continue;
@@ -631,11 +646,15 @@ export const solveLimbs = (
     if (l.root.endsWith("UpperArm")) {
       for (let pass = 0; pass < 3; pass++) {
         let deepest: { depth: number; dir: V3 } | null = null;
-        for (let k = 0; k <= 4; k++) {
-          const p = add(e0, scale(sub(tOut, e0), k / 4));
+        const fore = len(sub(tOut, e0));
+        for (let k = 0; k <= 5; k++) {
+          const p =
+            k < 5
+              ? add(e0, scale(sub(tOut, e0), k / 4))
+              : add(tOut, scale(sub(tOut, e0), handReach / Math.max(1e-6, fore)));
           for (const c of body) {
             const away = sub(p, closestOn(c.a, c.b, p));
-            const depth = c.r + size.forearm - len(away);
+            const depth = c.r + (k === 5 ? handR : size.forearm) - len(away);
             if (softPush(depth) > 1e-4 && (deepest === null || depth > deepest.depth))
               deepest = {
                 depth,
@@ -708,7 +727,42 @@ export const solveLimbs = (
     out[l.mid] = best.mid;
     out[l.end] = best.end;
   }
+  // a hand that rests on her lies along her: fingers that would go in are bent back at the wrist, onto the surface
+  const after = fk(rig, out);
+  for (const side of ["left", "right"] as const) {
+    const end = `${side}Hand`;
+    const wrist = after.pos[end];
+    const parent = rig.bones[end]?.parent;
+    if (wrist === undefined || parent == null || after.rot[end] === undefined) continue;
+    const dir = qRotate(after.rot[end], handRest(rig, side));
+    const s = rig.height / 1.6;
+    let deepest: { depth: number; n: V3 } | null = null;
+    for (const k of [0.07, 0.12]) {
+      const p = add(wrist, scale(dir, k * s));
+      for (const c of body) {
+        const away = sub(p, closestOn(c.a, c.b, p));
+        const depth = c.r + 0.02 * s - len(away);
+        if (depth > 0 && len(away) > 1e-6 && (deepest === null || depth > deepest.depth))
+          deepest = { depth, n: unit(away) };
+      }
+    }
+    if (deepest === null) continue;
+    const along = sub(dir, scale(deepest.n, dot(dir, deepest.n)));
+    if (len(along) < 1e-3) continue;
+    const bent = unit(add(unit(along), scale(deepest.n, 0.15)));
+    const world = qMul(qBetween(dir, bent), after.rot[end]);
+    out[end] = qMul(qConj(after.rot[parent] ?? QI), world);
+  }
   return { pose: out, issues };
+};
+/** Where a hand's fingers point at rest, on this rig: toward its middle finger, else along the forearm. */
+const handRest = (rig: Rig, side: string): V3 => {
+  const hand = rig.bones[`${side}Hand`];
+  const finger = rig.bones[`${side}MiddleProximal`];
+  const fore = rig.bones[`${side}LowerArm`];
+  if (hand && finger) return unit(sub(finger.rest, hand.rest));
+  if (hand && fore) return unit(sub(hand.rest, fore.rest));
+  return [side === "left" ? 1 : -1, 0, 0];
 };
 
 /** The nearest points of segments a..b and c..d (alternating projections; exact for crossing limbs). */
@@ -782,6 +836,50 @@ const separateLegs = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
   return issues;
 };
 
+/**
+ * Her forearms rest on each other, never through (arms folded, hugging herself): where one is inside the other, both
+ * wrists move apart along the contact, half each, and the arms are re-solved to reach them. Wrists and hands may meet.
+ */
+const separateArms = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
+  const r = 0.02 * rig.height;
+  const issues: RigIssue[] = [];
+  if (!["left", "right"].every((s) => `${s}Hand` in rig.bones && `${s}LowerArm` in rig.bones))
+    return issues;
+  for (let pass = 0; pass < 6; pass++) {
+    const w = fk(rig, pose).pos;
+    // the thick part of each forearm, below the elbow: wrists and palms may meet (a clap, rubbing hands)
+    const thick = (s: string) =>
+      add(w[`${s}LowerArm`]!, scale(sub(w[`${s}Hand`]!, w[`${s}LowerArm`]!), 0.6));
+    // the wrists themselves only so close that palms still meet
+    const pairs = [
+      [nearestPair(w["leftLowerArm"]!, thick("left"), w["rightLowerArm"]!, thick("right")), 2 * r],
+      [
+        nearestPair(thick("left"), w["leftHand"]!, thick("right"), w["rightHand"]!),
+        0.015 * rig.height,
+      ],
+    ] as const;
+    const [[p, q], reach] = pairs.reduce((a, b) =>
+      b[1] - len(sub(b[0][0], b[0][1])) > a[1] - len(sub(a[0][0], a[0][1])) ? b : a,
+    );
+    const gap = sub(p, q);
+    const depth = reach - len(gap);
+    if (softPush(depth) <= 1e-4) break;
+    if (pass === 0 && depth > 0.004)
+      issues.push({ bone: "leftLowerArm", kind: "penetration", by: depth });
+    // crossing exactly: the left forearm goes on top
+    const dir = len(gap) < 1e-4 ? ([0, 1, 0] as V3) : unit(gap);
+    const k = 0.75 * softPush(depth);
+    Object.assign(
+      pose,
+      solveLimbs(rig, pose, {
+        leftHand: add(w["leftHand"]!, scale(dir, k)),
+        rightHand: add(w["rightHand"]!, scale(dir, -k)),
+      }).pose,
+    );
+  }
+  return issues;
+};
+
 export interface SoftContact {
   /** Where the surfaces meet (world, metres). */
   readonly at: V3;
@@ -803,31 +901,23 @@ export const softContacts = (
   pos: Readonly<Record<string, V3>>,
   max = 4,
 ): SoftContact[] => {
-  const size = rig.proxies ?? proxiesByHeight(rig.height);
   const h = rig.height;
   const radius = 0.04 * h;
   // a contact starts 1 cm off the surface and is at its firmest 1 cm in
   const depthOf = (gap: number) => SOFT_DEPTH * Math.max(0, Math.min(1, (0.01 - gap) / 0.02));
   const out: SoftContact[] = [];
-  const part = (from: string, to: string, r: number) =>
-    pos[from] && pos[to] ? [{ a: pos[from]!, b: pos[to]!, r }] : [];
-  const top = pos["upperChest"] ? "upperChest" : pos["chest"] ? "chest" : "spine";
-  const body = [
-    ...part("hips", top, size.trunk),
-    ...part("neck", "head", size.head),
-    ...part("leftUpperLeg", "leftLowerLeg", size.thigh),
-    ...part("rightUpperLeg", "rightLowerLeg", size.thigh),
-  ];
+  const body = restingParts(rig, pos);
+  const hand = handBall(rig);
   for (const side of ["left", "right"] as const) {
     const wrist = pos[`${side}Hand`];
     const elbow = pos[`${side}LowerArm`];
     if (!wrist || !elbow) continue;
-    // the palm's middle, a little past the wrist
-    const palm = add(wrist, scale(unit(sub(wrist, elbow)), 0.035 * h));
+    // the palm's middle, a little past the wrist: the same ball the limbs rest by
+    const palm = add(wrist, scale(unit(sub(wrist, elbow)), hand.reach));
     for (const c of body) {
       const axis = closestOn(c.a, c.b, palm);
       const away = sub(palm, axis);
-      const gap = len(away) - c.r - size.forearm;
+      const gap = len(away) - c.r - hand.r;
       if (gap >= 0.01 || len(away) < 1e-6) continue;
       const normal = unit(away);
       out.push({ at: add(axis, scale(normal, c.r)), normal, radius, depth: depthOf(gap) });
@@ -963,7 +1053,7 @@ export const preparePose = (
     rig.restFix[b] !== undefined || rig.restFix[rig.bones[b]?.parent ?? ""] !== undefined;
   for (const b of Object.keys(rig.bones)) if (fixed(b)) local[b] = toModel(b, local[b] ?? QI);
   const limbs = solveLimbs(rig, local);
-  issues.push(...limbs.issues, ...separateLegs(rig, limbs.pose));
+  issues.push(...limbs.issues, ...separateLegs(rig, limbs.pose), ...separateArms(rig, limbs.pose));
   const out: Record<string, Q> = {};
   for (const [b, q] of Object.entries(limbs.pose)) {
     // limits are written for the T-pose convention: check in it, then back onto the model's rest

@@ -3,6 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { POSTURES, danceAt } from "./bodyMotion.ts";
 import {
   JOINT_LIMITS,
+  REFERENCE_RIG,
+  dot,
+  v3,
   QI,
   clampJoint,
   fitProxies,
@@ -208,7 +211,8 @@ describe("preparePose", () => {
     // a hand on her hip, authored a little inside her: it ends on the surface, the arm re-solved to reach it
     const out = preparePose(vroid, POSTURES.teasing.bones);
     expect(out.issues.map((i) => [i.bone, i.kind])).toContainEqual(["leftHand", "penetration"]);
-    const w = fk(vroid, out.pose).pos;
+    const world = fk(vroid, out.pose);
+    const w = world.pos;
     const hand = w["leftHand"]!;
     // and the skin under it gives a little
     expect(softContacts(vroid, w).some((c) => c.depth > 0 && len(sub3(c.at, hand)) < 0.15)).toBe(
@@ -406,4 +410,202 @@ describe("fitProxies", () => {
       hand({ ...fitted, trunk: 0.09 }) + 0.03,
     );
   });
+});
+
+/**
+ * Frames the offline MuJoCo checker (tessaya-ops/physics-spike/check.py) failed in her motion library, each at its
+ * deepest overlap: a hand inside her head, forearms through each other, a hand on the hip inside the pelvis. Measured
+ * with the checker's own capsules (a tapered forearm, a flat hand along its bone, the head a ball above its joint).
+ */
+const CHECKER_FRAMES: ReadonlyArray<
+  readonly [string, number, Record<string, [number, number, number]>]
+> = [
+  [
+    "scared-noise:neck-right_elbow",
+    7.0,
+    {
+      leftUpperArm: [0.328, -0.647, -1.081],
+      rightUpperArm: [-1.447, 0.413, 1.902],
+      leftLowerArm: [-3.14, -0.845, -3.14],
+      rightLowerArm: [-3.14, 0.822, 3.14],
+      spine: [-0.026, 0, 0.004],
+      chest: [0.014, 0, 0],
+      upperChest: [0, 0, 0],
+      neck: [0, 0, 0],
+      head: [0.021, 0, 0],
+      leftShoulder: [0, -0.055, 0.064],
+      leftHand: [0, 0, 0.067],
+      leftUpperLeg: [0, 0, 0],
+      leftLowerLeg: [0, 0, 0],
+      leftFoot: [0, 0, 0],
+      rightShoulder: [0, 0.055, -0.064],
+      rightHand: [0, 0, -0.069],
+      rightUpperLeg: [0, 0, 0],
+      rightLowerLeg: [0, 0, 0],
+      rightFoot: [0, 0, 0],
+      hips: [0, 0, -0.006],
+    },
+  ],
+  [
+    "hot-drink:left_elbow-neck",
+    6.4,
+    {
+      leftUpperArm: [-1.447, -0.413, -1.902],
+      rightUpperArm: [-0.3, 0.564, 1.394],
+      leftLowerArm: [-3.14, -0.826, -3.14],
+      rightLowerArm: [3.14, 1.568, 3.14],
+      spine: [0.008, 0, 0],
+      chest: [0.009, 0, 0],
+      upperChest: [-0.006, 0, 0],
+      neck: [-0.008, 0, 0],
+      head: [-0.018, 0, 0],
+      leftShoulder: [0, 0.005, 0],
+      leftHand: [0, 0, 0],
+      leftUpperLeg: [0, 0, 0],
+      leftLowerLeg: [0, 0, 0],
+      leftFoot: [0, 0, 0],
+      rightShoulder: [0, -0.005, 0],
+      rightHand: [0, 0, 0],
+      rightUpperLeg: [0, 0, 0],
+      rightLowerLeg: [0, 0, 0],
+      rightFoot: [0, 0, 0],
+    },
+  ],
+  [
+    "cold:left_elbow-right_elbow",
+    6.4,
+    {
+      leftUpperLeg: [-1.5, 0, 0],
+      rightUpperLeg: [-1.5, 0, 0],
+      leftLowerLeg: [2.85, 0, 0],
+      rightLowerLeg: [2.85, 0, 0],
+      leftFoot: [0.6, 0, 0],
+      rightFoot: [0.6, 0, 0],
+      leftUpperArm: [-0.367, -0.761, -1.439],
+      rightUpperArm: [-0.367, 0.761, 1.439],
+      leftLowerArm: [0, -1.134, 0],
+      rightLowerArm: [0, 1.134, 0],
+      spine: [0.019, 0, -0.003],
+      chest: [-0.042, 0, 0],
+      upperChest: [0, 0, 0],
+      neck: [0, 0, 0],
+      head: [0.011, 0, 0],
+      leftShoulder: [0, -0.029, 0.02],
+      leftHand: [0, 0, 0.004],
+      rightShoulder: [0, 0.029, -0.02],
+      rightHand: [0, 0, -0.004],
+      hips: [0, 0, 0.004],
+    },
+  ],
+  [
+    "proud:pelvis-right_elbow",
+    4.8,
+    {
+      leftUpperArm: [1.571, -0.723, 0],
+      rightUpperArm: [1.571, 0.723, 0],
+      leftLowerArm: [0, -1.529, 0],
+      rightLowerArm: [0, 1.529, 0],
+      spine: [-0.015, 0, 0],
+      chest: [-0.045, 0, 0],
+      upperChest: [-0.028, 0, 0],
+      neck: [-0.035, 0, 0],
+      head: [-0.082, 0, 0],
+      leftShoulder: [0, 0.036, 0],
+      leftHand: [0, 0, 0],
+      leftUpperLeg: [-0.032, 0, 0],
+      leftLowerLeg: [0.058, 0, 0],
+      leftFoot: [-0.026, 0, 0],
+      rightShoulder: [0, -0.036, 0],
+      rightHand: [0, 0, 0],
+      rightUpperLeg: [-0.032, 0, 0],
+      rightLowerLeg: [0.058, 0, 0],
+      rightFoot: [-0.026, 0, 0],
+    },
+  ],
+  [
+    "disappointed:left_elbow-pelvis",
+    5.4,
+    {
+      leftUpperArm: [1.269, -0.827, -0.258],
+      rightUpperArm: [0, 0.22, 1.256],
+      leftLowerArm: [0, -1.492, 0],
+      rightLowerArm: [0, 0.496, 0],
+      leftShoulder: [0, -0.018, 0.095],
+      rightShoulder: [0, 0.018, -0.095],
+      spine: [0.139, 0, 0],
+      chest: [0.102, 0, 0],
+      head: [0.376, 0, 0],
+      upperChest: [0.015, 0, 0],
+      neck: [0.025, 0, 0],
+      leftHand: [0, 0, 0.018],
+      leftUpperLeg: [-0.022, 0, 0],
+      leftLowerLeg: [0.041, 0, 0],
+      leftFoot: [0, 0, 0],
+      rightHand: [0, 0, -0.018],
+      rightUpperLeg: [-0.022, 0, 0],
+      rightLowerLeg: [0.041, 0, 0],
+      rightFoot: [0, 0, 0],
+    },
+  ],
+];
+const checkerDepth = (pair: string, pose: Record<string, Q>): number => {
+  const w = fk(REFERENCE_RIG, pose);
+  const p = (b: string) => w.pos[b]!;
+  type Part = { readonly a: V3; readonly b: V3; readonly r: number };
+  const ball = (c: V3, r: number): Part => ({ a: c, b: c, r });
+  const arm = (s: "left" | "right"): Part[] => {
+    const e = p(`${s}LowerArm`);
+    const h = p(`${s}Hand`);
+    const mid = v3.add(e, v3.scale(v3.sub(h, e), 0.55));
+    // the open hand: flat, wrist to fingertips along the hand bone
+    const tip = v3.add(h, qRotate(w.rot[`${s}Hand`]!, [s === "left" ? 0.14 : -0.14, 0, 0]));
+    return [
+      { a: e, b: mid, r: 0.034 },
+      { a: mid, b: h, r: 0.026 },
+      { a: h, b: tip, r: 0.02 },
+    ];
+  };
+  const parts: Record<string, Part[]> = {
+    left_elbow: arm("left"),
+    right_elbow: arm("right"),
+    neck: [
+      { a: p("neck"), b: p("head"), r: 0.045 },
+      ball(v3.add(p("head"), qRotate(w.rot["head"]!, [0, 0.03, 0.02])), 0.1),
+    ],
+    pelvis: [
+      { a: p("leftUpperLeg"), b: p("rightUpperLeg"), r: 0.08 },
+      { a: p("hips"), b: p("spine"), r: 0.09 },
+    ],
+  };
+  const [x, y] = pair.split("-");
+  const seg = (s: Part, q: V3) => {
+    const d = v3.sub(s.b, s.a);
+    const t = Math.max(0, Math.min(1, dot(v3.sub(q, s.a), d) / Math.max(1e-12, dot(d, d))));
+    return v3.add(s.a, v3.scale(d, t));
+  };
+  let deepest = 0;
+  for (const [i, s] of parts[x!]!.entries())
+    for (const [j, t] of parts[y!]!.entries()) {
+      // the checker lets hand balls touch each other (a clap)
+      if (x!.endsWith("elbow") && y!.endsWith("elbow") && i === 2 && j === 2) continue;
+      let a = v3.scale(v3.add(s.a, s.b), 0.5);
+      let b = seg(t, a);
+      for (let k = 0; k < 8; k++) {
+        a = seg(s, b);
+        b = seg(t, a);
+      }
+      deepest = Math.max(deepest, s.r + t.r - Math.hypot(...v3.sub(a, b)));
+    }
+  return deepest;
+};
+
+describe("self-contact on the checker's evidence", () => {
+  it.each(CHECKER_FRAMES)(
+    "%s: no part more than 3 cm inside another (was %s cm)",
+    (label, _was, frame) => {
+      const pair = label.split(":")[1]!;
+      const { pose } = preparePose(REFERENCE_RIG, frame);
+      expect(checkerDepth(pair, pose)).toBeLessThan(0.03);
+    },
+  );
 });
