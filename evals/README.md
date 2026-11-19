@@ -25,6 +25,7 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [tessaya-pulse](tessaya-pulse/)                   | Whether her pulse stays quiet on routine events and raises what matters, and its tokens per review.                             |
 | [tessaya-group](tessaya-group/)                   | Who speaks next in a group of personas: turn-taking, addressing by name, and the stop at the speaker budget.                    |
 | [tessaya-hire](tessaya-hire/)                     | Whether a persona drafted from one sentence keeps his name and words, fits its dials, and obeys nothing inside them.            |
+| [tessaya-wish](tessaya-wish/)                     | Whether her rare wish of her own, with nobody talking to her, fits how she feels and stays calm in ordinary moments.            |
 
 ## Run an eval
 

@@ -20,6 +20,8 @@ import {
   type BodyCaller,
 } from "./TessayaBody.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { TessayaOneShot } from "./TessayaOneShot.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
 import * as TurnLiveContext from "./TurnLiveContext.ts";
 
@@ -318,6 +320,48 @@ describe("TessayaBody", () => {
       yield* noteDeskWorld({ opened: true }).pipe(Effect.provide(calm));
       watch();
       expect(seen).toEqual(["curious"]);
+      yield* restBody();
+    }),
+  );
+
+  it.effect("when the rules give her nothing, a lively her asks the cheap model now and then", () =>
+    Effect.gen(function* () {
+      yield* restBody();
+      // past the earlier cases' last wish (her wish rhythm is per process)
+      yield* TestClock.adjust("4 hours");
+      const asked: Array<{ role: string; feature: string }> = [];
+      const world = Layer.mergeAll(
+        Layer.mock(TessayaTurn)({
+          threads: () => Effect.succeed([]),
+          whoIsHome: Effect.succeed([]),
+        }),
+        Layer.mock(TessayaMood)({
+          view: () => Effect.succeed({ label: "neutral", intensity: 0.1, energy: 0.6 } as never),
+        }),
+        Layer.mock(ServerSettingsService)({
+          getSettings: Effect.succeed({ tessayaLiveliness: "lively" } as never),
+        }),
+        Layer.mock(TessayaOneShot)({
+          run: (input: { role: string; feature: string }) =>
+            Effect.sync(() => {
+              asked.push({ role: input.role, feature: input.feature });
+              return { want: "play", why: "a bright moment" };
+            }) as never,
+        }),
+        Layer.succeed(PersonaLayers, { all: [openLayer([])] }),
+      );
+      // something new: the rules' own wish, no model call
+      yield* noteDeskWorld({ opened: true }).pipe(Effect.provide(world));
+      expect(asked).toEqual([]);
+      // her body is her own again (her wish held it a while), and nothing new since: the rules give nothing
+      yield* restBody();
+      yield* noteDeskWorld({ opened: false });
+      yield* TestClock.adjust("70 seconds");
+      expect(yield* wishTick().pipe(Effect.provide(world))).toEqual({
+        want: "play",
+        why: "she felt like it: a bright moment",
+      });
+      expect(asked).toEqual([{ role: "intent", feature: "wish" }]);
       yield* restBody();
     }),
   );

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { decodeBodyMove } from "./bodyControl.ts";
-import { chooseWant, wantMove, type MotiveInput, type Want } from "./motives.ts";
+import { chooseWant, modelWishDue, wantMove, type MotiveInput, type Want } from "./motives.ts";
 
 const NOW = 10 * 60 * 60_000;
 const base: MotiveInput = {
@@ -25,6 +25,16 @@ describe("motives", () => {
     expect(want({ himAt: NOW - 3 * 60 * 60_000 })).toBe("seekHim");
     expect(want({ mood: { label: "happy", intensity: 0.5, energy: 0.8 } })).toBe("play");
     expect(want({ worldAt: NOW - 6 * 60_000 })).toBe("bored");
+  });
+
+  it("asks the cheap model only when lively, he isn't with her, and not within ten minutes of the last ask", () => {
+    const away = { ...base, himAt: NOW - 20 * 60_000 };
+    expect(modelWishDue(away, null)).toBe(true);
+    expect(modelWishDue(base, null)).toBe(false);
+    expect(modelWishDue({ ...away, liveliness: "calm" }, null)).toBe(false);
+    expect(modelWishDue({ ...away, him: "call" }, null)).toBe(false);
+    expect(modelWishDue(away, NOW - 5 * 60_000)).toBe(false);
+    expect(modelWishDue(away, NOW - 10 * 60_000)).toBe(true);
   });
 
   it("the dial: still never wishes, calm wishes less often and never plays", () => {
