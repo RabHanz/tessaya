@@ -917,9 +917,15 @@ export const r1Envelope = (
 };
 
 /** A persona layer's whole reply, asked before anything is gathered, so nothing else runs, learns or records. */
-const r1Layer = Effect.fn("R1Device.layer")(function* (input: R1Heard) {
+const r1Layer = Effect.fn("R1Device.layer")(function* (
+  input: R1Heard,
+  // one speaker of GroupTalk's turn: who she is in it, and who else is here and what they said
+  group?: { readonly name: string; readonly first: boolean; readonly line: string },
+) {
   const pack = yield* r1Pack;
-  const turn = r1Envelope(input, pack, undefined);
+  const own = r1Envelope(input, pack, undefined);
+  const turn =
+    group === undefined ? own : { ...own, group: { name: group.name, first: group.first } };
   const reply = yield* replyFor(
     turnsOf(turn, input.voice).length > 1 ? { ...turn, sharedRoom: true } : turn,
     {
@@ -927,6 +933,7 @@ const r1Layer = Effect.fn("R1Device.layer")(function* (input: R1Heard) {
       allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
       device: input.device,
     },
+    group?.line ?? "",
   );
   // Her eyes follow her private self: a layer answers only where its own gate allows this Tessel (his room, alone).
   if (
@@ -1588,7 +1595,7 @@ export const r1TurnStream = (
             const as = asSpeaker(input, speaker.id);
             // The loop switches voice and eyes here, queued behind the last speaker's words.
             Queue.offerUnsafe(queue, speakerMark(speaker.id));
-            const own = yield* r1Layer(as);
+            const own = yield* r1Layer(as, { name: speaker.name, first, line });
             if (own !== null) {
               const text = (yield* r1Route(as, own.text))!;
               Queue.offerUnsafe(queue, text);
