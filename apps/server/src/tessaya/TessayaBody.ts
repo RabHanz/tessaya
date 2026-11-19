@@ -53,6 +53,7 @@ import * as Option from "effect/Option";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { isBrain } from "./BrainHost.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
@@ -222,7 +223,7 @@ let lastWish: { readonly want: Want; readonly at: number } | null = null;
  * One beat of her own life (M-087): only while no conversation holds her desk body, her mood toward him, when he was
  * last with her and whether he is at his desk choose a wish, which her body does and the record keeps with its why.
  * shortcut: no world feed yet (new windows, full-screen, calls), so "nothing happened" means he hasn't been with her;
- * the desktop's world cue replaces it. The dial is calm until its setting lands.
+ * the desktop's world cue replaces it. Its dial is `tessayaLiveliness`.
  */
 export const wishTick = Effect.fn("TessayaBody.wish")(function* () {
   const now = yield* Clock.currentTimeMillis;
@@ -238,9 +239,16 @@ export const wishTick = Effect.fn("TessayaBody.wish")(function* () {
   );
   const owner = (yield* turn.value.whoIsHome).find((p) => p.member === OWNER_MEMBER_ID);
   const view = yield* mood.value.view(undefined, undefined, OWNER_MEMBER_ID);
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  const liveliness = Option.isNone(settings)
+    ? "calm"
+    : yield* settings.value.getSettings.pipe(
+        Effect.map((s) => s.tessayaLiveliness),
+        Effect.orElseSucceed(() => "calm" as const),
+      );
   const wish = chooseWant({
     now,
-    liveliness: "calm",
+    liveliness,
     mood: { label: view.label, intensity: view.intensity, energy: view.energy },
     him: owner?.likelyHome === true ? "working" : "away",
     himAt,

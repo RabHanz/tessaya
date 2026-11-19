@@ -51,6 +51,9 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaExpression: free(
     "lines written fresh each time, varied and in character, instead of fixed ones",
   ),
+  tessayaLiveliness: free(
+    "how lively she is on her own when you're not talking to her: still, calm or lively",
+  ),
   tessayaOwnSensorsNoApproval: owner(
     "whether she may use her own camera on the Tessel when you ask her, without a card to your phone",
   ),

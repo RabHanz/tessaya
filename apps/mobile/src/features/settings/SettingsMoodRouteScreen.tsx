@@ -3,6 +3,7 @@
  * chatter, and each persona's mood toward each person with why, a reset, and every emotional dial. By voice: "make
  * Freya a bit more playful", "turn her mood off", "be calmer".
  */
+import { ListChoiceRow } from "../../components/ui/ListChoiceRow";
 import type { EnvironmentId, ServerSettings } from "@t3tools/contracts";
 import type { TessayaPersona, TessayaVoiceCallResult } from "@t3tools/tessaya-contracts";
 import {
@@ -145,6 +146,30 @@ function MoodSections(props: {
           value={settings.tessayaOwnSensorsNoApproval}
           onValueChange={(on) => patch({ tessayaOwnSensorsNoApproval: on })}
         />
+        {(
+          [
+            ["still", "Her own life: still", "She never moves on her own."],
+            [
+              "calm",
+              "Her own life: calm",
+              "Now and then she rests, wanders or comes looking for you.",
+            ],
+            [
+              "lively",
+              "Her own life: lively",
+              "More often, and playful when she's in a bright mood.",
+            ],
+          ] as const
+        ).map(([value, label, description], i) => (
+          <ListChoiceRow
+            key={value}
+            label={label}
+            description={description}
+            selected={settings.tessayaLiveliness === value}
+            separated={i > 0}
+            onPress={() => patch({ tessayaLiveliness: value })}
+          />
+        ))}
         <SettingsSwitchRow
           label="Breath between sentences"
           subtitle="A soft breath before a long sentence of her reply on the Tessel. Off, she pauses instead."
