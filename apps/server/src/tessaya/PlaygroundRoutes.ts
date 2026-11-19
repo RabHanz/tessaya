@@ -4,6 +4,7 @@
  */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import type * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
@@ -25,6 +26,12 @@ const HEADERS = {
 const json = (body: unknown, status = 200) =>
   HttpServerResponse.jsonUnsafe(body, { status, headers: HEADERS });
 const ACTION = /^[a-z][a-z.-]{1,40}$/;
+const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+const sizeOf = (v: unknown) =>
+  encodeJson(v).pipe(
+    Effect.map((t) => t.length),
+    Effect.orElseSucceed(() => Infinity),
+  );
 
 export interface PlaygroundWho {
   readonly owner: string;
@@ -63,7 +70,7 @@ export const playgroundCall = Effect.fn("PlaygroundRoutes.call")(function* (
             ? { subject: body["subject"].slice(0, 120) }
             : {}),
           ...(typeof body["cause"] === "string" ? { cause: [body["cause"].slice(0, 80)] } : {}),
-          ...(data !== null && typeof data === "object" && JSON.stringify(data).length <= 2000
+          ...(data !== null && typeof data === "object" && (yield* sizeOf(data)) <= 2000
             ? { data: data as Record<string, unknown> }
             : {}),
         }),

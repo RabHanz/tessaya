@@ -24,9 +24,13 @@ import { REFERENCE_RIG } from "@t3tools/tessaya-shared/bodyRig";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 
 import { emitAction } from "../provenance/ActionLog.ts";
 import type { BodyCaller, BodyMoveAnswer } from "./TessayaBody.ts";
+
+const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+const json = (v: unknown) => encodeJson(v).pipe(Effect.orElseSucceed(() => '{"closed":true}'));
 
 export const BUS_ID = /^[a-z0-9][a-z0-9-]{3,39}$/;
 const MAX_BUSES = 32;
@@ -127,18 +131,18 @@ export const watchBus = Effect.fn("BodyPlayground.watch")(function* <E>(
   write: (text: string) => Effect.Effect<void, E>,
 ) {
   const first = yield* pollBus({ ...input, after: 0, waitMs: 0 });
-  yield* write(JSON.stringify(first));
+  yield* write(yield* json(first));
   const bus = buses.get(input.bus);
   if (first.closed || bus === undefined) return;
   bus.watchers++;
   let after = first.seq;
-  yield* Effect.gen(function* () {
+  return yield* Effect.gen(function* () {
     while (true) {
       // published while the last write was going out: no wait, or those cues would sit until the next
       if (bus.seq === after) yield* Deferred.await(bus.wake);
       bus.seenAt = yield* Clock.currentTimeMillis;
       yield* write(
-        JSON.stringify({
+        yield* json({
           closed: false,
           seq: bus.seq,
           cues: bus.cues.filter((c) => c.seq > after).map((c) => c.cue),
