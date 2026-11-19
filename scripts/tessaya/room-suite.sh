@@ -15,8 +15,13 @@ here="$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)"
 home="$(mktemp -d "${TMPDIR:-/tmp}/room-suite.XXXXXX")"
 pid=""
 cleanup() {
+  local status=$?
   # Wait for the server to exit, or it recreates userdata/ after the rm below.
   [ -n "$pid" ] && { kill "$pid" && wait "$pid"; } 2> /dev/null || true
+  # A failed run keeps the scratch server's log beside its results: the first gates' stalls left nothing (20 Nov).
+  if [ "$status" != 0 ] && [ -f "$home/server.log" ]; then
+    mkdir -p "${ROOM_SUITE_OUT:-${TMPDIR:-/tmp}}" && cp "$home/server.log" "${ROOM_SUITE_OUT:-${TMPDIR:-/tmp}}/room-suite-server.log" || true
+  fi
   rm -rf -- "$home"
 }
 trap cleanup EXIT
