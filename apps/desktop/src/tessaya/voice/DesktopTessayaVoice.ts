@@ -3274,6 +3274,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
   >();
   let mainContents: Electron.WebContents | null = null;
+  const PHONE_DIRECT_TIMEOUT_MS = 25_000;
   const request = async (
     body:
       | VoiceIntentRequest
@@ -3291,7 +3292,15 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       const here = (await input.sessions?.ready()) ?? null;
       const call = deskCall(body, here, (id) => input.sessions?.labelOf(id) ?? "that computer");
       if (call !== null && "refuse" in call) throw new Error(call.refuse);
-      if (call !== null) return direct(call.method, call.input);
+      if (call !== null && body.kind === "phone") {
+        // The take is held up to 10 s by the server; an older server without the phone door falls back to the window.
+        const answer = await direct(call.method, call.input, PHONE_DIRECT_TIMEOUT_MS).then(
+          (value) => ({ value: (value as { value?: unknown } | null)?.value }),
+          (error: unknown) =>
+            error instanceof Error && error.message === "Not here." ? null : Promise.reject(error),
+        );
+        if (answer !== null) return answer.value;
+      } else if (call !== null) return direct(call.method, call.input);
     }
     // Listing servers for the Memory tab never reopens T3's window; the tab shows the last list.
     if (

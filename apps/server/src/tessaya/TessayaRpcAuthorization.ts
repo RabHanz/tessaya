@@ -347,6 +347,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_CLOUD_WS_METHODS.read,
   BATON_CLOUD_WS_METHODS.act,
   BATON_CLOUD_WS_METHODS.approve,
+  // The phone relay's take, answer and mirror: the desktop session alone may work the inbox (hands-host, below).
+  BATON_PHONE_WS_METHODS.call,
   BATON_HOME_WS_METHODS.call,
   BATON_DEVICES_WS_METHODS.call,
   // A persona's cloud voice, said by this machine's server.

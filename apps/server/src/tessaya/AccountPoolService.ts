@@ -34,6 +34,7 @@ import {
   type TessayaAccountRotationReason,
   type WorkSessionId,
 } from "@t3tools/tessaya-contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -175,10 +176,29 @@ const toTessayaAccount = (
   };
 };
 
+/** While cswap cannot be started, it is tried again only this often. */
+const CSWAP_MISSING_RECHECK_MS = 5 * 60_000;
+let cswapMissingUntil = 0;
+
+/**
+ * A machine without cswap fails its spawn from memory for a while: the fleet poll reads the pool every 15 s, and on
+ * Windows each failed spawn was a steady share of the idle server's CPU (B-041), as Herdr's was (MA-017).
+ */
 const runCswapWith =
   (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => (args: ReadonlyArray<string>) =>
     Effect.gen(function* () {
-      const child = yield* spawner.spawn(ChildProcess.make(CSWAP_BINARY, [...args]));
+      const now = yield* Clock.currentTimeMillis;
+      // Exit 127 is what every caller already reads as "no switcher installed here".
+      if (now < cswapMissingUntil)
+        return { stdout: "", stderr: "cswap is not installed", code: 127 };
+      const child = yield* spawner
+        .spawn(ChildProcess.make(CSWAP_BINARY, [...args]))
+        .pipe(
+          Effect.tapError(() =>
+            Effect.sync(() => (cswapMissingUntil = now + CSWAP_MISSING_RECHECK_MS)),
+          ),
+        );
+      cswapMissingUntil = 0;
       const [stdout, stderr, exitCode] = yield* Effect.all(
         [
           collectStreamAsString(child.stdout),

@@ -355,6 +355,7 @@ describe("the desktop's direct door while T3's window is closed", () => {
       AuthOrchestrationOperateScope,
     );
     expect(DESK_METHODS.has(BATON_LIVE_WS_METHODS.herdrSend)).toBe(true);
+    expect(DESK_METHODS.has(BATON_PHONE_WS_METHODS.call)).toBe(true);
     // This machine's catalog actions too; another machine's stay on T3's own session to it.
     expect(DESK_METHODS.has(BATON_SESSIONS_WS_METHODS.autoResume)).toBe(true);
     expect(DESK_METHODS.has(BATON_SESSIONS_WS_METHODS.retireHandoff)).toBe(false);
