@@ -1276,21 +1276,23 @@ export function mountBody(
         ? 0
         : Math.sin(Math.PI * Math.min(1, (now - touch.at) / TOUCH_MS)) *
           (0.5 + 0.5 * Math.min(1, touch.strength));
-    // a touch quickens her breath as well as deepening it, up to 1.8 times as many breaths, settling over a few seconds
+    // a touch stirs her breath, settling over a few seconds: glad of it, slower and deeper; wary, quicker and shallower
+    const glad = moodValence(mood.mood) * (0.5 + 0.5 * mood.intensity);
     const quick =
       touch === null
         ? 0
         : Math.min(1, (now - touch.at) / 300) *
           Math.exp(-(now - touch.at) / 4000) *
           (0.5 + 0.5 * Math.min(1, touch.strength));
-    breathCycles += (motion.breathHz * (1 + 0.8 * quick) * Math.min(100, now - breathAt)) / 1000;
+    breathCycles +=
+      (motion.breathHz * (1 + (0.6 - 0.45 * glad) * quick) * Math.min(100, now - breathAt)) / 1000;
     breathAt = now;
     const exhale = applyMotion(
       (n) => vrm!.humanoid.getNormalizedBoneNode(n),
       {
         ...motion,
         tremble: motion.tremble * burst,
-        breath: Math.min(1, motion.breath + 0.6 * touched),
+        breath: Math.min(1, motion.breath + (0.6 + 0.3 * glad) * touched),
       },
       now / 1000,
       breathCycles,
@@ -1299,7 +1301,6 @@ export function mountBody(
     // it or away and lifts her shoulders when not, and breathes deeper, all by how firm it was and how she feels
     const felt = touch === null ? 0 : Math.sin(Math.PI * Math.min(1, (now - touch.at) / TOUCH_MS));
     if (touch !== null && felt > 0) {
-      const v = moodValence(mood.mood) * (0.5 + 0.5 * mood.intensity);
       const k = felt * (0.55 + 0.45 * Math.min(1, touch.strength));
       const u = Math.min(1, (now - touch.at) / TOUCH_MS);
       const node = (b: VRMHumanBoneName) => vrm!.humanoid.getNormalizedBoneNode(b);
@@ -1330,12 +1331,12 @@ export function mountBody(
       const side = Math.sign(atTouch.yaw) || 1;
       if (spine) spine.rotation.y += 0.18 * atTouch.yaw * k;
       if (chest) {
-        chest.rotation.x += (v > 0 ? -0.1 * v : 0.12 * -v + 0.04) * k;
-        chest.rotation.z += -side * (v > 0 ? 0.08 * v : -0.08 * -v) * k;
+        chest.rotation.x += (glad > 0 ? -0.1 * glad : 0.12 * -glad + 0.04) * k;
+        chest.rotation.z += -side * (glad > 0 ? 0.08 * glad : -0.08 * -glad) * k;
       }
       // a quick flinch first, and the shoulders lift and stay up while she does not like it
       const lift =
-        (0.12 * (0.4 + 0.6 * Math.exp(-(now - touch.at) / 250)) + 0.14 * Math.max(0, -v)) * k;
+        (0.12 * (0.4 + 0.6 * Math.exp(-(now - touch.at) / 250)) + 0.14 * Math.max(0, -glad)) * k;
       const ls = node("leftShoulder");
       const rs = node("rightShoulder");
       if (ls) ls.rotation.z += lift;
