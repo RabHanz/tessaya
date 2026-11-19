@@ -484,6 +484,14 @@ try {
       layouts < 10,
       `${layouts} layouts, ${laidOutTo.RecalcStyleCount - laidOutFrom.RecalcStyleCount} style recalcs on ${t3?.url()}`,
     );
+    // A poll or a style read on a timer shows as script time even when nothing lays out (B-041: 0.1.169 at 8.7 s/min).
+    const scriptMs = Math.round((laidOutTo.ScriptDuration - laidOutFrom.ScriptDuration) * 1000);
+    const recalcs = laidOutTo.RecalcStyleCount - laidOutFrom.RecalcStyleCount;
+    row(
+      "an untouched thread window runs under 400 ms of script and 30 style recalcs in 30 s",
+      scriptMs < 400 && recalcs < 30,
+      `${scriptMs} ms of script, ${recalcs} style recalcs, ${Math.round((laidOutTo.TaskDuration - laidOutFrom.TaskDuration) * 1000)} ms of tasks`,
+    );
   } else if (t3) row("measure the thread window at rest", false, "no CDP metrics");
   row(
     `the whole app at rest uses under ${IDLE_CPU_LIMIT_MS} ms of CPU per 10 s`,

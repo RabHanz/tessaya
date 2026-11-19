@@ -72,6 +72,11 @@ syncHtmlFullscreen();
 document.addEventListener("fullscreenchange", syncHtmlFullscreen);
 
 let primaryPasteEnabled = true;
+let localEnvironmentEnabled: boolean | undefined;
+let bootstrapsRead: {
+  readonly at: number;
+  readonly value: ReturnType<DesktopBridge["getLocalEnvironmentBootstraps"]>;
+} | null = null;
 try {
   primaryPasteEnabled =
     ipcRenderer.sendSync(IpcChannels.GET_PRIMARY_PASTE_ENABLED_CHANNEL) !== false;
@@ -146,16 +151,22 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     return Array.isArray(result) ? result.filter((tag) => typeof tag === "string") : [];
   },
   getLocalEnvironmentBootstraps: () => {
+    // shortcut: one sync IPC per 500 ms; the 3 s topology poll reads this several times per tick.
+    if (bootstrapsRead !== null && performance.now() - bootstrapsRead.at < 500)
+      return bootstrapsRead.value;
     const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
-    if (!Array.isArray(result)) {
-      return [];
-    }
-    return result as ReturnType<DesktopBridge["getLocalEnvironmentBootstraps"]>;
+    const value = (Array.isArray(result) ? result : []) as ReturnType<
+      DesktopBridge["getLocalEnvironmentBootstraps"]
+    >;
+    bootstrapsRead = { at: performance.now(), value };
+    return value;
   },
   getLocalEnvironmentBearerToken: () =>
     ipcRenderer.invoke(IpcChannels.GET_LOCAL_ENVIRONMENT_BEARER_TOKEN_CHANNEL),
+  // Changing the setting relaunches the app, so one read holds for this page.
   getLocalEnvironmentEnabled: () =>
-    ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_ENABLED_CHANNEL) !== false,
+    (localEnvironmentEnabled ??=
+      ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_ENABLED_CHANNEL) !== false),
   setLocalEnvironmentEnabled: (enabled) =>
     ipcRenderer.invoke(IpcChannels.SET_LOCAL_ENVIRONMENT_ENABLED_CHANNEL, enabled),
   getHostEnvironmentId: () => ipcRenderer.invoke(IpcChannels.GET_HOST_ENVIRONMENT_ID_CHANNEL),
