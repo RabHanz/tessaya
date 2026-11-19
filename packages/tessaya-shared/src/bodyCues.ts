@@ -287,11 +287,34 @@ export interface Swing {
   readonly cycles: number;
 }
 
+/**
+ * A face act is the whole face, not one shape: VRM expressions, then shape keys the model may have by any common
+ * naming (VRoid's Fcl_…, ARKit's), then its jaw bone (radians open) when it has one. Each rises and falls with the
+ * gesture, held near the peak.
+ */
+export interface FaceAct {
+  readonly face: Weights;
+  readonly shapes: ReadonlyArray<{ readonly match: RegExp; readonly weight: number }>;
+  readonly jaw: number;
+}
+const BROWS_UP = { match: /(BRW_Surprised|^browInnerUp|^browOuterUp(Left|Right))$/i, weight: 1 };
+const BROWS_DOWN = { match: /(BRW_Angry|^browDown(Left|Right))$/i, weight: 0.8 };
+const EYES_WIDE = { match: /(EYE_Surprised|^eyeWide(Left|Right))$/i, weight: 1 };
+const MOUTH_TALL = { match: /(MTH_Surprised|^jawOpen)$/i, weight: 0.8 };
+/** How far a face act is in at `t` of `ms`: up, held near the peak, and down. */
+export const actLevel = (ms: number, t: number) =>
+  t <= 0 || t >= ms ? 0 : Math.min(1, 1.6 * Math.sin((Math.PI * t) / ms));
+
 /** The public gesture list (tessaya-contracts EXPRESSION_GESTURES) as short procedural moves; none means stillness. */
 export const GESTURES: Readonly<
   Record<
     string,
-    { readonly ms: number; readonly swings: ReadonlyArray<Swing>; readonly face?: Weights }
+    {
+      readonly ms: number;
+      readonly swings: ReadonlyArray<Swing>;
+      /** A whole-face act (FACE_ACTS): its face, the model's own shape keys and jaw bone, at full reach. */
+      readonly act?: FaceAct;
+    }
   >
 > = {
   nodSmall: { ms: 600, swings: [{ bone: "head", axis: "x", rad: 0.12, cycles: 1 }] },
@@ -321,11 +344,45 @@ export const GESTURES: Readonly<
   lookAway: { ms: 1400, swings: [{ bone: "head", axis: "y", rad: 0.45, cycles: 0.5 }] },
   chuckle: { ms: 700, swings: [{ bone: "chest", axis: "x", rad: 0.05, cycles: 3 }] },
   sigh: { ms: 1600, swings: [{ bone: "chest", axis: "x", rad: -0.08, cycles: 0.5 }] },
+  // the whole face and head: a slow inhale lifts her chest and shoulders, her head goes back, then release
   yawn: {
-    ms: 1800,
-    swings: [{ bone: "head", axis: "x", rad: -0.2, cycles: 0.5 }],
-    // a yawn opens her jaw nearly all the way, rising and falling with the gesture
-    face: { aa: 0.92 },
+    ms: 3200,
+    swings: [
+      { bone: "head", axis: "x", rad: -0.3, cycles: 0.5 },
+      { bone: "neck", axis: "x", rad: -0.12, cycles: 0.5 },
+      { bone: "chest", axis: "x", rad: -0.1, cycles: 0.5 },
+      { bone: "leftShoulder", axis: "z", rad: 0.14, cycles: 0.5 },
+      { bone: "rightShoulder", axis: "z", rad: -0.14, cycles: 0.5 },
+    ],
+    act: { face: { aa: 1, oh: 0.7, blink: 1 }, shapes: [BROWS_UP, MOUTH_TALL], jaw: 0.45 },
+  },
+  laugh: {
+    ms: 1600,
+    swings: [
+      { bone: "head", axis: "x", rad: -0.14, cycles: 0.5 },
+      { bone: "chest", axis: "x", rad: 0.05, cycles: 4 },
+      { bone: "leftShoulder", axis: "z", rad: 0.06, cycles: 4 },
+      { bone: "rightShoulder", axis: "z", rad: -0.06, cycles: 4 },
+    ],
+    act: { face: { happy: 1, aa: 0.8 }, shapes: [], jaw: 0.3 },
+  },
+  gasp: {
+    ms: 1100,
+    swings: [
+      { bone: "head", axis: "x", rad: -0.12, cycles: 0.5 },
+      { bone: "chest", axis: "x", rad: -0.1, cycles: 0.5 },
+      { bone: "leftShoulder", axis: "z", rad: 0.12, cycles: 0.5 },
+      { bone: "rightShoulder", axis: "z", rad: -0.12, cycles: 0.5 },
+    ],
+    act: { face: { surprised: 1, oh: 1 }, shapes: [BROWS_UP, EYES_WIDE, MOUTH_TALL], jaw: 0.3 },
+  },
+  shout: {
+    ms: 1500,
+    swings: [
+      { bone: "head", axis: "x", rad: 0.08, cycles: 0.5 },
+      { bone: "spine", axis: "x", rad: 0.08, cycles: 0.5 },
+    ],
+    act: { face: { angry: 0.6, aa: 1 }, shapes: [BROWS_DOWN, MOUTH_TALL], jaw: 0.5 },
   },
   startle: { ms: 500, swings: [{ bone: "spine", axis: "x", rad: -0.12, cycles: 0.5 }] },
   dizzy: { ms: 1500, swings: [{ bone: "head", axis: "z", rad: 0.15, cycles: 2 }] },
