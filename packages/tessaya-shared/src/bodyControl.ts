@@ -512,6 +512,8 @@ export interface BodyState {
   /** Her whole body's yaw (rad): 0 toward him, + turned to her left. Where she is on the desk is the host's to report. */
   readonly facing?: number;
   readonly walking?: boolean;
+  /** Her height in metres, from the loaded model: a host turns its own distances into hers with it. */
+  readonly height?: number;
   /**
    * A hand holding her now (bodyGrab.ts): what it holds (skin, hair, cloth, accessory) and where, the bone the pull
    * acts through, how hard (0..~2, past ~1 a firm full pull), how far what is held is stretched (0..1), and which way

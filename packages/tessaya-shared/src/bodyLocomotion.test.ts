@@ -64,5 +64,7 @@ describe("bodyLocomotion", () => {
     expect(centre.yaw).toBe(Math.PI / 2);
     expect(centre.metres).toBeCloseTo(2.4);
     expect(locateOnDesk(places, { kind: "him" })).toBeNull();
+    // her own height from her loaded model: a shorter her walks fewer metres to the same window
+    expect(locateOnDesk(places, { kind: "persona", id: "sebastian" }, 1.5)?.metres).toBe(1.5);
   });
 });

@@ -86,7 +86,7 @@ export interface DeskPlaces {
 /**
  * Where a persona stands from her on the desk (vrmBody's `locate`): that crew window's feet, else the desk's centre.
  * Screen right is her left (+yaw), as vrmBody reads a point. Null for him, away and points: the renderer's own.
- * shortcut: her height in metres is a person's, 1.6, unless the page knows hers; walks land a little off for others.
+ * `heightM` is the loaded model's (BodyState.height); a person's 1.6 m only before her model has loaded.
  */
 export const locateOnDesk = (
   places: DeskPlaces,
