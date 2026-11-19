@@ -63,12 +63,6 @@ export interface Posture {
 
 const down = { leftUpperArm: [0, 0, -1.2], rightUpperArm: [0, 0, 1.2] } as const;
 const soft = { leftLowerArm: [0, -0.15, 0], rightLowerArm: [0, 0.15, 0] } as const;
-/** The arms simply hanging, as a posture writes them: a body with a real idle under it plays its idle there instead. */
-const HANG: Readonly<Record<string, readonly number[]>> = { ...down, ...soft };
-export const isHang = (bone: string, e: Euler): boolean => {
-  const h = HANG[bone];
-  return h !== undefined && h.every((v, i) => v === e[i]);
-};
 
 /** Every held posture. Arms come in front of the body by turning forward (y), never through it (z past the hips). */
 export const POSTURES = {

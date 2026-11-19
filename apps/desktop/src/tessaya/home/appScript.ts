@@ -97,11 +97,11 @@ const HUE = { today: 'now', talk: 'dictation', know: 'knowledge', devices: 'sett
 const GROUP_OF = {}; for (const a of AREAS) for (const gid of a.pages) GROUP_OF[gid] = HUE[a.id];
 const openAreas = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.areas') || '[]')); } catch (e) { return new Set(); } })();
 const saveAreas = () => { try { localStorage.setItem('tessaya.areas', JSON.stringify([...openAreas])); } catch (e) {} };
-const TABS = ['home','now','upcoming','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','intercom','homeassistant','phone','health','personas','groups','voices','learn','help'].map(id => [id, L('tab.' + id)]);
+const TABS = ['home','now','upcoming','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','intercom','homeassistant','phone','health','personas','groups','lab','learn','help'].map(id => [id, L('tab.' + id)]);
 const CATS = ['accounts','apis','brain','general','voice','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
-const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant', cast: 'personas' };
+const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant', cast: 'personas', voices: 'lab' };
 const INTRO = {};
-for (const id of ['scratchpad','insights','style','transforms','snippets','now','upcoming','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','intercom','homeassistant','phone','health','personas','groups','voices','learn','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
+for (const id of ['scratchpad','insights','style','transforms','snippets','now','upcoming','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','intercom','homeassistant','phone','health','personas','groups','lab','learn','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
 let cur = 'home', collapsed = (() => { try { return localStorage.getItem('tessaya.rail') === '1'; } catch (e) { return false; } })(), modal = null, S = null, query = '';
 let aboutSeen = false, bellOpen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
@@ -956,7 +956,7 @@ function placeHits(words) {
   const t3 = T3PLACES.filter(pl => has(pl.label, pl.terms)).map(pl => ({ label: pl.label, where: L('search.t3'), open: () => real && ipc.send('baton-home:sessions', pl.path) }));
   return mine.concat(t3);
 }
-let embedUrl = null;
+let embedUrl = null, labBench = 'voices';
 if (real) ipc.invoke('baton-home:embed').then(u => { embedUrl = u || null; if (S) { lastSig = ''; render(S); } }).catch(() => {});
 // Pages built in T3's web app (Hardware, Home Assistant, APIs, accounts, voices), shown inside this window. The
 // desktop app routes by hash: a plain path would land on T3's home route and its first-run wizard. The flag loads
@@ -982,7 +982,9 @@ function tabPage(p) {
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   if (cur === 'sessions') return liveSessionsPage(p);
-  if (cur === 'hardware' || cur === 'homeassistant' || cur === 'phone' || cur === 'health' || cur === 'upcoming' || cur === 'personas' || cur === 'groups' || cur === 'voices') return embed(p, cur);
+  if (cur === 'hardware' || cur === 'homeassistant' || cur === 'phone' || cur === 'health' || cur === 'upcoming' || cur === 'personas' || cur === 'groups') return embed(p, cur);
+  // the Lab opens on the bench last asked for (Prompt Lab from search or the palette), else Voices
+  if (cur === 'lab') return embed(p, 'lab?bench=' + labBench);
   const items = tabControls(cur);
   const EMPTY = { approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
@@ -1202,6 +1204,7 @@ function paletteItems() {
   cmd(on('v.muted') ? 'Unmute the microphone' : 'Mute the microphone', '', () => set('v.muted', !on('v.muted')));
   cmd('Ask Tessaya', 'Type a question or a request', () => set('q.ask', null));
   cmd('Clear the screen', 'Remove the pointer and cards', () => set('q.clear', null));
+  cmd('Prompt Lab', 'Each persona\u2019s prompt, variants side by side', () => { labBench = 'prompts'; modal = null; go('lab'); });
   cmd('Open T3 sessions', '', () => real && ipc.send('baton-home:sessions'));
   for (const pl of T3PLACES) items.push({ kind: 'T3', label: pl.label, hint: L('search.t3') + ' ' + pl.terms.join(' '), run: () => real && ipc.send('baton-home:sessions', pl.path) });
   cmd(on('v.dnd') ? 'Turn Do not disturb off' : 'Turn Do not disturb on', '', () => set('v.dnd', !on('v.dnd')));

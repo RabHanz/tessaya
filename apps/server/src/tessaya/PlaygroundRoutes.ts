@@ -34,11 +34,12 @@ import { householdCallerOf, householdRefusal } from "./TessayaRpcAuthorization.t
 import type * as TessayaRpcHandlers from "./TessayaRpcHandlers.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 
+// framed only by her own pages (Personas › Lab › Body, D-038), never by another site
 const HEADERS = {
   "cache-control": "no-store",
   "x-content-type-options": "nosniff",
   "content-security-policy":
-    "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; media-src blob:; frame-ancestors 'none'",
+    "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:; media-src blob:; frame-ancestors 'self'",
 } as const;
 const json = (body: unknown, status = 200) =>
   HttpServerResponse.jsonUnsafe(body, { status, headers: HEADERS });
@@ -105,9 +106,8 @@ export const playgroundCall = Effect.fn("PlaygroundRoutes.call")(function* (
       const layers = yield* Effect.serviceOption(PersonaLayers);
       const all = layers._tag === "Some" ? layers.value.all : [];
       return {
+        // his own models in his layer's order; the page falls back to the CC0 Everyday only when this is empty
         models: all.flatMap((l) => l.playgroundModels?.(who.member) ?? []).slice(0, 12),
-        // the CC0 default only where no layer could hold his own models: a public build
-        fallback: all.length === 0,
       };
     }
     // "Agent drives her": a model he picked, spending his key or plan, so his own sessions only.
