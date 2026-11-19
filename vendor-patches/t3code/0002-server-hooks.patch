@@ -2138,7 +2138,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..931950af836055152fc5aeba8133a2fc9fc37fd3 100644
+index 49470541d90be695ad24df030ca6522682a82611..000dede44c474d5b6ab0a5af2cdbab4cc1f1d2ba 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2312,7 +2312,7 @@ index 49470541d90be695ad24df030ca6522682a82611..931950af836055152fc5aeba8133a2fc
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1525,65 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1525,69 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2339,6 +2339,10 @@ index 49470541d90be695ad24df030ca6522682a82611..931950af836055152fc5aeba8133a2fc
 +  tessayaExpression: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 +  // Tessaya: a room turn that looks misheard is fixed from what was being talked about before she answers (contextCleanup.ts).
 +  tessayaRoomCleanup: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
++  // Tessaya: her own sensors (her Tessel's camera) need no card when he asks in conversation; an agent or job still asks.
++  tessayaOwnSensorsNoApproval: Schema.Boolean.pipe(
++    Schema.withDecodingDefault(Effect.succeed(true)),
++  ),
 +  // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
 +  // moved only by their identified turns; `devices` ties a device to a member and says whether it shows theirs.
 +  tessayaMood: Schema.Struct({
@@ -2378,7 +2382,7 @@ index 49470541d90be695ad24df030ca6522682a82611..931950af836055152fc5aeba8133a2fc
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1593,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1597,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2392,7 +2396,7 @@ index 49470541d90be695ad24df030ca6522682a82611..931950af836055152fc5aeba8133a2fc
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +2031,65 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +2035,66 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2402,6 +2406,7 @@ index 49470541d90be695ad24df030ca6522682a82611..931950af836055152fc5aeba8133a2fc
    keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
 +  tessayaExpression: Schema.optionalKey(Schema.Boolean),
 +  tessayaRoomCleanup: Schema.optionalKey(Schema.Boolean),
++  tessayaOwnSensorsNoApproval: Schema.optionalKey(Schema.Boolean),
 +  tessayaMood: Schema.optionalKey(
 +    Schema.Struct({
 +      enabled: Schema.optionalKey(Schema.Boolean),
@@ -2458,7 +2463,7 @@ index 49470541d90be695ad24df030ca6522682a82611..931950af836055152fc5aeba8133a2fc
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +2098,26 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +2103,26 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2485,7 +2490,7 @@ index 49470541d90be695ad24df030ca6522682a82611..931950af836055152fc5aeba8133a2fc
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2367,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2372,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

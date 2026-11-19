@@ -51,6 +51,9 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaExpression: free(
     "lines written fresh each time, varied and in character, instead of fixed ones",
   ),
+  tessayaOwnSensorsNoApproval: owner(
+    "whether she may use her own camera on the Tessel when you ask her, without a card to your phone",
+  ),
   tessayaRoomCleanup: free(
     "fixing a word she misheard on the Tessel from what you were talking about, before she answers",
   ),

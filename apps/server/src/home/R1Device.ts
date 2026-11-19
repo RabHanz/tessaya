@@ -1357,8 +1357,8 @@ export const LOOK: RoomTool = {
 const SHOT_WAIT = "10 seconds";
 
 /**
- * One picture through the devices' own camera path (HomeDevices, gate included): his verified voice is his yes, any
- * other voice sends it to his phone. The picture goes to the model for this turn only, never to a file or the Record.
+ * One picture through the devices' own camera path (HomeDevices, gate included): asked in his conversation it needs no
+ * card (`tessayaOwnSensorsNoApproval`). The picture goes to the model for this turn only, never to a file or the Record.
  */
 export const roomLook = Effect.fn("R1Device.look")(function* (
   device: R1Device | null,
@@ -1370,13 +1370,13 @@ export const roomLook = Effect.fn("R1Device.look")(function* (
   const id = device.deviceId;
   const s = speakerOf(voice);
   const his = s?.kind === "owner" && s.verified && !s.inherited;
-  // Firmware before 3.32 shows nothing while it takes a picture, so the eyes glance first.
-  if (his)
-    yield* publishToDevice(
-      device,
-      `freya/r1/${id}/cmd/eye/gesture`,
-      JSON.stringify({ name: "glance" }),
-    ).pipe(Effect.ignore);
+  // Her eyes show she is looking, every time (the cue that stays with no card, 19 Nov); firmware before 3.32 shows
+  // nothing of its own while it takes a picture.
+  yield* publishToDevice(
+    device,
+    `freya/r1/${id}/cmd/eye/gesture`,
+    JSON.stringify({ name: "glance" }),
+  ).pipe(Effect.ignore);
   const took = yield* devices.value
     .command(
       id,
