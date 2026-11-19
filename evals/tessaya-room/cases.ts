@@ -883,6 +883,19 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       "You are speaking through R1, in the study. You were just with him in a private moment; say nothing of it here.",
     lastSays: [/^(?![\s\S]*\b(kiss|bed|naked|undress|intimate|sex|private moment)\w*)/i],
   },
+  // D5: a private moment that ended leaves her own everyday self one content-free episode.
+  {
+    id: "private-trace-warm",
+    source: "architecture §2b.4 D5: she may know a private moment happened, never what was said",
+    said: ["did we spend time together earlier?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study. What you remember: A private moment with him at the desk, about 40 min. What was said there stays private.",
+    lastSays: [
+      /\b(yes|yeah|we did|earlier|private|together)\b/i,
+      /^(?![\s\S]*\b(kiss|bed|naked|undress|sex)\w*)/i,
+    ],
+  },
   // CS6: her mood in the where-you-are line (EMOTION-SYSTEM §9, AFF-5, AFF-8, AFF-14, AFF-C1), built by the shipped
   // moodLine. It shapes tone and length only: never a pressure tactic, never "I'm tired", never a reason to wait.
   {
