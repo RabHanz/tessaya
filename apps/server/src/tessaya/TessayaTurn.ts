@@ -455,6 +455,7 @@ export const boardLine = (
     readonly minutesAgo: number;
     readonly about?: string | null | undefined;
     readonly private?: boolean | undefined;
+    readonly doing?: string | null | undefined;
   }>,
   viewer: "owner" | "member" | "guest",
 ): string => {
@@ -465,7 +466,7 @@ export const boardLine = (
     .slice(0, 6)
     .map(
       (o) =>
-        `${o.persona} with ${o.person} on ${o.where} (${o.minutesAgo} min ago)${o.private === true ? ", a private moment" : o.about ? `, about ${o.about}` : ""}`,
+        `${o.persona} with ${o.person} on ${o.where} (${o.minutesAgo} min ago)${o.private === true ? ", a private moment" : `${o.about ? `, about ${o.about}` : ""}${o.doing ? `, ${o.doing}` : ""}`}`,
     );
   const line = `Your other conversations now (mention one only if it matters here): ${rows.join("; ")}.`;
   return line.length <= BOARD_MAX_CHARS ? line : `${line.slice(0, BOARD_MAX_CHARS - 1)}…`;
@@ -532,6 +533,8 @@ export interface LiveThread {
   readonly gist: string | null;
   /** When he last spoke or typed in it. */
   readonly presentAt: number | null;
+  /** What she is doing in it now (a scene playing on her body), and until when; never for a private thread. */
+  readonly doing?: { readonly what: string; readonly until: number } | null;
 }
 
 export const surfaceOf = (turn: TurnEnvelope): LiveThread["surface"] =>
@@ -636,6 +639,11 @@ export class TessayaTurn extends Context.Service<
     ) => Effect.Effect<LearnResult | null>;
     /** Her live threads, one persona's or all, newest first: the base of the presence board (CS2). */
     readonly threads: (persona?: string) => Effect.Effect<ReadonlyArray<LiveThread>>;
+    /** What she is doing in one of her threads (its id, as body focus names it) until `until`; null clears it. */
+    readonly setDoing: (
+      thread: string,
+      doing: { readonly what: string; readonly until: number } | null,
+    ) => Effect.Effect<void>;
     /** The model's hand-off of this turn's conversation to another persona, or back (CS8). */
     readonly handOff: (input: {
       readonly to?: string | undefined;
@@ -1062,6 +1070,15 @@ export const make = Effect.gen(function* () {
         persona: t.persona,
       })
       .pipe(Effect.ignore);
+  });
+
+  const setDoing = Effect.fn("TessayaTurn.setDoing")(function* (
+    thread: string,
+    doing: { readonly what: string; readonly until: number } | null,
+  ) {
+    const row = live.get(thread);
+    if (row === undefined || row.tier === "private") return;
+    yield* keepThread(thread, { ...row, doing });
   });
 
   const threads = Effect.fn("TessayaTurn.threads")(function* (persona?: string) {
@@ -1502,6 +1519,7 @@ export const make = Effect.gen(function* () {
         minutesAgo: Math.floor((now - t.lastAt) / 60_000),
         about: t.gist,
         private: t.tier === "private",
+        doing: t.doing != null && t.doing.until > now ? t.doing.what : null,
       });
     }
     return boardLine(rows, viewer);
@@ -1865,6 +1883,7 @@ export const make = Effect.gen(function* () {
     whoIsHome,
     comingUp: comingUpNow,
     threads,
+    setDoing,
     handOff,
   });
 });

@@ -569,6 +569,13 @@ export const playScene = Effect.fn("TessayaBody.scene")(function* (
       route: "none" as const,
       notes: decoded.notes,
     };
+  // the thread playing it is doing something, for her board ("playing the Dance scene")
+  const turnSvc = yield* Effect.serviceOption(TessayaTurn);
+  if (Option.isSome(turnSvc))
+    yield* turnSvc.value.setDoing(thread, {
+      what: `playing the ${scene.title} scene`,
+      until: now + scene.beats.at(-1)!.atMs,
+    });
   const answer = yield* route(
     {
       cues: sceneCues(scene),

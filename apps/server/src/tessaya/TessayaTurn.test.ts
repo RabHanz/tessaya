@@ -1397,6 +1397,7 @@ it("tells the owner what his threads are about, and a private moment only as one
           where: "Tumble",
           minutesAgo: 1,
           about: "the heating schedule",
+          doing: "playing the Dance scene",
         },
         {
           persona: "Freya",
@@ -1409,7 +1410,7 @@ it("tells the owner what his threads are about, and a private moment only as one
       ],
       "owner",
     ),
-    "Your other conversations now (mention one only if it matters here): Freya with you on Tumble (1 min ago), about the heating schedule; Freya with you on desktop (4 min ago), a private moment.",
+    "Your other conversations now (mention one only if it matters here): Freya with you on Tumble (1 min ago), about the heating schedule, playing the Dance scene; Freya with you on desktop (4 min ago), a private moment.",
   );
 });
 
