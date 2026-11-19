@@ -315,8 +315,10 @@ export const applyMotion = (
   ) => THREE.Object3D | null | undefined,
   m: Motion,
   seconds: number,
+  /** The breath's phase in cycles, when its rate changes over time (a fixed rate times the clock jumps when it does). */
+  breathCycles = m.breathHz * seconds,
 ): number => {
-  const phase = Math.sin(2 * Math.PI * m.breathHz * seconds);
+  const phase = Math.sin(2 * Math.PI * breathCycles);
   const chest = bone("chest");
   const spine = bone("spine");
   const head = bone("head");

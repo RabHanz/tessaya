@@ -762,6 +762,9 @@ export function mountBody(
   let touch: { at: number; point: THREE.Vector3; strength: number; from?: THREE.Vector3 } | null =
     null;
   const scratch = new THREE.Vector3();
+  // her breath's phase, carried frame to frame so its rate can change without a jump
+  let breathCycles = 0;
+  let breathAt = 0;
   // a small gaze shift that comes with each blink, so her eyes never sit dead still
   let glance = { yaw: 0, pitch: 0 };
   // her posture: the one her affect picks, a scene's held one, and the crossfade between them
@@ -1273,6 +1276,15 @@ export function mountBody(
         ? 0
         : Math.sin(Math.PI * Math.min(1, (now - touch.at) / TOUCH_MS)) *
           (0.5 + 0.5 * Math.min(1, touch.strength));
+    // a touch quickens her breath as well as deepening it, up to 1.8 times as many breaths, settling over a few seconds
+    const quick =
+      touch === null
+        ? 0
+        : Math.min(1, (now - touch.at) / 300) *
+          Math.exp(-(now - touch.at) / 4000) *
+          (0.5 + 0.5 * Math.min(1, touch.strength));
+    breathCycles += (motion.breathHz * (1 + 0.8 * quick) * Math.min(100, now - breathAt)) / 1000;
+    breathAt = now;
     const exhale = applyMotion(
       (n) => vrm!.humanoid.getNormalizedBoneNode(n),
       {
@@ -1281,6 +1293,7 @@ export function mountBody(
         breath: Math.min(1, motion.breath + 0.6 * touched),
       },
       now / 1000,
+      breathCycles,
     );
     // a touch, read at a glance: she turns to it and then to whoever touched her, leans into it when she is glad of
     // it or away and lifts her shoulders when not, and breathes deeper, all by how firm it was and how she feels
