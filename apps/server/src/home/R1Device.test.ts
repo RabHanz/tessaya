@@ -19,6 +19,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
+import { DeviceRefusedError } from "./DeviceRegistry.ts";
 import { HomeDevices, type DeviceActor } from "./HomeDevices.ts";
 import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -1302,6 +1303,55 @@ effectIt.effect(
       const his = yield* look(voiceOf({}));
       expect(his.image).toEqual({ mediaType: "image/jpeg", data: "AAAA" });
       expect(asked.map((by) => by.approved === true)).toEqual([false, true]);
+    }),
+);
+
+effectIt.effect(
+  "takes the picture through the server whose hub she is on when his turn runs on another (19 Nov topology gate)",
+  () =>
+    Effect.gen(function* () {
+      const tools: Array<string> = [];
+      const device = { deviceId: "r1-test", mqttUrl: null } as unknown as R1Device;
+      const hub = {
+        ...({} as PeerLinkSummary),
+        environmentId: EnvironmentId.make("hub"),
+        label: "home",
+        status: "reachable" as const,
+      };
+      const shot = yield* roomLook(device, voiceOf({})).pipe(
+        Effect.provide(
+          Layer.mock(HomeDevices)({
+            command: () =>
+              Effect.fail(new DeviceRefusedError({ why: "Not on this hub.", notLinked: true })),
+          }),
+        ),
+        Effect.provideService(
+          PeerLinks.PeerLinks,
+          PeerLinks.PeerLinks.of({
+            enabled: Effect.succeed(true),
+            list: Effect.succeed([hub]),
+          } as never),
+        ),
+        Effect.provideService(
+          PeerMcpClient.PeerMcpClient,
+          PeerMcpClient.PeerMcpClient.of({
+            call: (input) => {
+              const op = (input.arguments as { op: string }).op;
+              tools.push(`${input.tool} ${op}`);
+              return Effect.succeed({
+                ok: true,
+                value: {
+                  status: "done",
+                  line: "Taking one picture.",
+                  shot: "data:image/jpeg;base64,BBBB",
+                },
+              } as never);
+            },
+          }),
+        ),
+      );
+      expect(shot.image).toEqual({ mediaType: "image/jpeg", data: "BBBB" });
+      expect(tools).toEqual(["device_owner camera"]);
     }),
 );
 

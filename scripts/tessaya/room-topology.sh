@@ -6,8 +6,8 @@
 #   scripts/tessaya/room-topology.sh <t3 binary of the build> <topologyGate.mjs from r1voice bundle> [userdata dir]
 #
 # Starts the build twice on empty scratch homes (a brain and a hub, nothing of his but the brain's model key), links the
-# brain to the hub as his servers are linked, puts a pretend Tessel on the hub, and runs the loop's own bridge between
-# them. Device writes are real, on the pretend Tessel. Exit 0 when every case passes.
+# brain to the hub as his servers are linked, puts a pretend Tessel and a pretend Home Assistant on the hub, and runs the
+# loop's own bridge between them. Device writes are real, on the pretend Tessel. Exit 0 when every case passes.
 set -euo pipefail
 t3="${1:?usage: room-topology.sh <t3 binary> <topologyGate.mjs> [userdata dir]}"
 gate="${2:?usage: room-topology.sh <t3 binary> <topologyGate.mjs> [userdata dir]}"
@@ -34,6 +34,13 @@ done
   && install -m 600 "$from/secrets/dictation-cleanup-anthropic.bin" "$work/brain/userdata/secrets/"
 node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1],'utf8'));f.writeFileSync(process.argv[2],JSON.stringify({linkedEnvironmentsEnabled:true,dictationCleanupCredentials:d.dictationCleanupCredentials,dictationCleanup:d.dictationCleanup}))" \
   "$from/settings.json" "$work/brain/userdata/settings.json"
+# The house is on the hub's server only, a pretend Home Assistant the gate serves: the brain reaches it as a linked
+# server (19 Nov: "the house isn't connected" from a turn on a server with no connection of its own).
+home_port="$(free_port)"
+node -e "require('crypto').randomBytes(24).toString('hex')" -p > "$work/hub/userdata/secrets/home-assistant-token.bin"
+chmod 600 "$work/hub/userdata/secrets/home-assistant-token.bin"
+node -e "const {DatabaseSync}=require('node:sqlite');const d=new DatabaseSync(process.argv[1]);d.exec('CREATE TABLE IF NOT EXISTS fabric_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');d.prepare('INSERT INTO fabric_settings (key, value) VALUES (?, ?)').run('home.url','http://127.0.0.1:'+process.argv[2]);d.close()" \
+  "$work/hub/userdata/baton.sqlite" "$home_port"
 declare -A port
 for side in brain hub; do
   port[$side]="$(free_port)"
@@ -58,4 +65,4 @@ pairing="$("$t3" pair --base-dir "$work/hub" 2>&1 | sed -n 's/^.*Token: *//p' | 
   || { echo "room-topology: the brain could not link to the hub" >&2; tail -5 "$work/link.log" >&2; exit 1; }
 node "$gate" --brain "http://127.0.0.1:${port[brain]}" --hub "http://127.0.0.1:${port[hub]}" \
   --brain-bus-key-file "$work/brain/userdata/secrets/r1-bus.bin" --hub-bus-key-file "$work/hub/userdata/secrets/r1-bus.bin" \
-  --device-file "$work/device.json" --brain-db "$work/brain/userdata/baton.sqlite" --hub-db "$work/hub/userdata/baton.sqlite" --out "${ROOM_TOPOLOGY_OUT:-$work/results}"
+  --device-file "$work/device.json" --brain-db "$work/brain/userdata/baton.sqlite" --hub-db "$work/hub/userdata/baton.sqlite" --home-port "$home_port" --out "${ROOM_TOPOLOGY_OUT:-$work/results}"
