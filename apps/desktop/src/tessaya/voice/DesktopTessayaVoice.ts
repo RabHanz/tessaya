@@ -1427,6 +1427,8 @@ export interface DesktopTessayaVoiceInput {
   readonly privateChat?: () => (() => void) | null;
   /** Her speech and mood as 3D body cues (bodyCues.ts), for the private window's body while it is open (M-047). */
   readonly bodyCue?: (cue: BodyCue) => void;
+  /** He chose her full body for the desk (or not), so it stands there outside a private moment too. */
+  readonly fullBody?: (on: boolean) => void;
   /** Her one mascot on the desk, once made, so an owner-only layer can draw its body over her (layerBody). */
   readonly onMascot?: (mascot: DesktopMascot) => void;
   /** The one conversation (D142), shared with the screen side. */
@@ -5383,6 +5385,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       bed: settings.mascotBed,
       hover: settings.mascotHover,
     });
+    input.fullBody?.(settings.mascot && settings.mascotCharacter === "body");
     // Jobs are read on a timer only once something wants them; she does.
     if (settings.mascot) wantJobs();
     readMood();
@@ -7994,6 +7997,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         value: settings.mascotCharacter,
         options: [
           { value: "persona", label: "Her persona's own" },
+          { value: "body", label: "Her full body" },
           ...Object.entries(MASCOT_CHARACTERS).map(([value, label]) => ({ value, label })),
         ],
         disabled: !settings.mascot,
