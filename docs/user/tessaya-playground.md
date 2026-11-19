@@ -25,3 +25,15 @@ To let an agent drive the body and nothing else, approve its sign-in at **Her bo
 - Each agent is limited to a burst of 12 moves, then 4 a second, and every move it makes is in the activity log under its sign-in.
 - Remove it in **Settings → Sharing & access** like any other agent.
 - A body-only agent never moves or reads her own body unless you turn on **Body-only agents move her body** in **Settings → Brain**. Even then, a conversation you are in keeps her, and private moves are always refused.
+
+## Agent drives her
+
+**Agent drives her** lets you watch a model drive the playground through the same body tools an outside agent uses.
+
+1. Pick the model: Haiku, Sonnet, Opus, or her own brain (the model Settings → Brain gives her talking). With **Compare** on, pick one for each stage to see two side by side.
+2. Type one direction per line, such as "shrug like you don't know".
+3. The estimated cost shows before anything runs. Nothing runs until you press **Run**. It uses your plan or key, the way her talking does, and its usage shows under "body-playground" on the Usage page.
+
+Each run lists its tool calls as they land, how long until the body first moved, and the checks her direction eval uses: which channels moved (body, face, gaze, timing), joints kept inside a person's reach, and moves too fast for a person. Rate a run **Good** or **Bad** with a note; good runs that pass those checks are kept for her motion library, in `tessaya/body-playground-ratings.json` under the server's data folder.
+
+**Also on her desk body** plays the same calls on her own body too. It is off by default, and a conversation you are in still keeps her. Only your own sessions can run agents here.

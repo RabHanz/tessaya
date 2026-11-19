@@ -1599,7 +1599,6 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     }
   };
 
-
   // "Agent drives her": a model drives these stages through the same body tools an outside agent uses.
   const MODELS: ReadonlyArray<readonly [string, string]> = [
     ["haiku", "Haiku"],
@@ -1613,7 +1612,15 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     alsoHer: false,
     running: false,
     estimate: "",
-    results: [] as Array<{ said: string; runs: Array<{ id: string; model: string; run: Record<string, unknown> | null; rated?: string }> }>,
+    results: [] as Array<{
+      said: string;
+      runs: Array<{
+        id: string;
+        model: string;
+        run: Record<string, unknown> | null;
+        rated?: string;
+      }>;
+    }>,
   };
   let estimateTimer = 0;
   const estimate = () => {
@@ -1646,12 +1653,24 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
   };
   const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
   const runAll = async () => {
-    const lines = agent.directions.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 12);
+    const lines = agent.directions
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, 12);
     if (!lines.length || agent.running) return;
     agent.running = true;
     render("agent");
     for (const said of lines) {
-      const entry = { said, runs: [] as Array<{ id: string; model: string; run: Record<string, unknown> | null; rated?: string }> };
+      const entry = {
+        said,
+        runs: [] as Array<{
+          id: string;
+          model: string;
+          run: Record<string, unknown> | null;
+          rated?: string;
+        }>,
+      };
       agent.results.unshift(entry);
       try {
         for (const [i, s] of stages.entries()) {
@@ -1663,11 +1682,16 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
         // polls only while a run is going
         while (entry.runs.some((r) => r.run?.["done"] !== true)) {
           await sleep(500);
-          for (const r of entry.runs) if (r.run?.["done"] !== true) r.run = await post("agent.poll", { id: r.id });
+          for (const r of entry.runs)
+            if (r.run?.["done"] !== true) r.run = await post("agent.poll", { id: r.id });
           if (tab === "agent") render("agent");
         }
       } catch (err) {
-        note((err as Error).status === 404 ? "Only you can run agents here: they spend your plan or key." : (err as Error).message);
+        note(
+          (err as Error).status === 404
+            ? "Only you can run agents here: they spend your plan or key."
+            : (err as Error).message,
+        );
         break;
       }
     }
@@ -1678,7 +1702,11 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     try {
       const a = await post("agent.rate", { id: r.id, good, note: text });
       r.rated = good ? "Good" : "Bad";
-      note(a["harvest"] === true ? "Kept: it is offered to her motion library." : "Kept with your note.");
+      note(
+        a["harvest"] === true
+          ? "Kept: it is offered to her motion library."
+          : "Kept with your note.",
+      );
     } catch (err) {
       note((err as Error).message);
     }
@@ -1691,7 +1719,11 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
       const sel = el("select");
       sel.setAttribute("aria-label", `Model for ${s.bus}`);
       for (const [id, word] of MODELS) {
-        const o = el("option", null, `${stages.length > 1 ? (i === 0 ? "Left: " : "Right: ") : ""}${word}`);
+        const o = el(
+          "option",
+          null,
+          `${stages.length > 1 ? (i === 0 ? "Left: " : "Right: ") : ""}${word}`,
+        );
         o.value = id;
         o.selected = (agent.models[i] ?? agent.models[0]) === id;
         sel.append(o);
@@ -1703,7 +1735,14 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
       pick.append(sel);
     }
     if (stages.length < 2)
-      pick.append(btn("Compare two models", "btn", () => compare(true), "A second stage for a second model (C)"));
+      pick.append(
+        btn(
+          "Compare two models",
+          "btn",
+          () => compare(true),
+          "A second stage for a second model (C)",
+        ),
+      );
     p.append(pick);
     const d = sec("Directions");
     const ta = el("textarea");
@@ -1721,7 +1760,10 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     cb.onchange = () => {
       agent.alsoHer = cb.checked;
     };
-    also.append(cb, el("span", "grow", "Also on her desk body (waits while a conversation you are in has her)"));
+    also.append(
+      cb,
+      el("span", "grow", "Also on her desk body (waits while a conversation you are in has her)"),
+    );
     const go = btn(agent.running ? "Running…" : "Run", "btn primary", () => void runAll());
     go.disabled = agent.running || !agent.directions.trim();
     d.append(ta, also, el("p", "sub", agent.estimate || "Nothing runs until you press Run."), go);
@@ -1729,7 +1771,12 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     for (const e of agent.results.slice(0, 12)) {
       const s = sec(e.said);
       for (const r of e.runs) {
-        const run = r.run as (Record<string, unknown> & { calls?: Array<Record<string, unknown>>; graded?: Record<string, unknown> | null }) | null;
+        const run = r.run as
+          | (Record<string, unknown> & {
+              calls?: Array<Record<string, unknown>>;
+              graded?: Record<string, unknown> | null;
+            })
+          | null;
         const head = el("h3", null, MODELS.find(([id]) => id === r.model)?.[1] ?? r.model);
         s.append(head);
         for (const c of run?.calls ?? [])
@@ -1748,7 +1795,10 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
         const g = run.graded;
         const kv = el("dl", "kv");
         const add = (k: string, v: string) => kv.append(el("dt", null, k), el("dd", null, v));
-        add("First motion", run["firstMotionMs"] == null ? "never moved" : `${run["firstMotionMs"]} ms`);
+        add(
+          "First motion",
+          run["firstMotionMs"] == null ? "never moved" : `${run["firstMotionMs"]} ms`,
+        );
         add("Whole run", `${((run["ms"] as number) / 1000).toFixed(1)} s`);
         if (g) {
           add("Channels", (g["channels"] as string[]).join(", ") || "none");
@@ -1765,7 +1815,10 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
           why.placeholder = "A note: what was right or wrong";
           why.setAttribute("aria-label", "A note on this run");
           const row = el("div", "row");
-          row.append(btn("Good", "btn", () => void rate(r, true, why.value)), btn("Bad", "btn", () => void rate(r, false, why.value)));
+          row.append(
+            btn("Good", "btn", () => void rate(r, true, why.value)),
+            btn("Bad", "btn", () => void rate(r, false, why.value)),
+          );
           s.append(why, row);
         }
       }

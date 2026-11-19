@@ -57,8 +57,7 @@ export interface PlaygroundWho {
   readonly userdata: string;
 }
 const isOwner = (who: PlaygroundWho) => who.member === null || who.member === OWNER_MEMBER_ID;
-const modelOf = (v: unknown): DirectModel | null =>
-  DIRECT_MODELS.find((m) => m === v) ?? null;
+const modelOf = (v: unknown): DirectModel | null => DIRECT_MODELS.find((m) => m === v) ?? null;
 let runCount = 0;
 const ratingsFile = (userdata: string) =>
   NodePath.join(userdata, "tessaya", "body-playground-ratings.json");

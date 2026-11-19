@@ -400,7 +400,8 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   const onKey = (row: Effect.Success<typeof voice>, turn: ToolTurn) =>
     // Opus can't turn thinking off, and its thinking counts against the cap: 400 cut its answer off mid-sentence.
     toolLoop(
-      (request) => api.converse(turn.model === undefined ? row : { ...row, model: turn.model }, request),
+      (request) =>
+        api.converse(turn.model === undefined ? row : { ...row, model: turn.model }, request),
       turn,
       row.role === "deep" || turn.model === "opus" ? 4000 : 400,
     ).pipe(
