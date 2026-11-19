@@ -197,6 +197,24 @@ layer("BatonPhoneInbox", (it) => {
         yes: 0,
         cancel: 1,
       });
+      // "Always allow" acts like yes, so a guest can't pick it either.
+      yield* inbox.mirror({
+        id: "prompt-3",
+        title: "t",
+        detail: "d",
+        buttons: ["Yes, do it", "Always allow", "No"],
+        yes: 0,
+        cancel: 2,
+      });
+      const guest = {
+        member: "g1",
+        role: "guest" as const,
+        name: "G",
+        assurance: 3,
+        via: "a phone",
+      };
+      assert.strictEqual(yield* answerCard("prompt-3", 1, guest), "A guest can't say yes to this.");
+      assert.isTrue(yield* answerCard("prompt-3", 2, guest));
       // 16 Nov: two minutes was too short; he tapped and nothing came through.
       yield* TestClock.adjust(10 * 60_000);
       assert.lengthOf(yield* inbox.pending, 1);

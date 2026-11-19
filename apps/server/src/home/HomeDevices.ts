@@ -92,6 +92,9 @@ import { TessayaCast } from "../tessaya/TessayaCast.ts";
 import { LINE_EVENTS, sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
 import { inQuietHours } from "@t3tools/tessaya-shared/comms";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { standingKey } from "@t3tools/tessaya-shared/consent";
+import { Consent } from "../tessaya/consent.ts";
+import { TurnOrigin } from "../tessaya/TurnOrigin.ts";
 import {
   DEFAULT_TESSAYA_HAPTICS,
   DEFAULT_TESSAYA_MOTION,
@@ -227,6 +230,8 @@ export interface DeviceOutcome {
 /** The firmware's 0 dB on the DAC (r1bt_volume_get's fallback). */
 const R1_DEFAULT_VOLUME = 71;
 
+/** The tool name his device-act grants are kept under in the one grant store. */
+const DEVICE_GRANT = "device";
 const RISKY_OPS: ReadonlySet<DeviceCommand["op"]> = new Set([
   // Owner items in its manifest (net.add, net.priority, net.forget): his verified voice or his yes.
   "wifi",
@@ -1613,6 +1618,14 @@ const make = Effect.gen(function* () {
 
   // Being moved (§9.7M S3): her mood, her eyes and a line of her own, through the same paths as every other moment.
   const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
+  const consent = yield* Effect.serviceOption(Consent);
+  /** His standing yes for a device act (`ask.key`: camera, reboot, item:…), the same store as every other card. */
+  const alwaysAllowed = (key: string) =>
+    consent._tag === "None"
+      ? Effect.succeed(false)
+      : Effect.flatMap(TurnOrigin, (origin) =>
+          consent.value.holds(standingKey(DEVICE_GRANT, key), origin),
+        );
   /** His owner setting: her own sensors (the Tessel's camera) need no card from his conversation; on by default. */
   const ownSensorsFree =
     serverSettings._tag === "None"
@@ -3260,6 +3273,8 @@ const make = Effect.gen(function* () {
     // 19 Nov 05:05). Her eyes show she is looking and the Record has the act; an agent or a job still asks him.
     if (c.op === "camera" && by.surface === "assistant" && (yield* ownSensorsFree))
       needsYes = false;
+    // His "Always allow" for this act, in the one grant store (B-034): it holds from his own turn, never an agent's.
+    if (needsYes && by.surface === "assistant" && (yield* alwaysAllowed(key))) needsYes = false;
     if (c.op !== "away" && c.op !== "item" && c.op !== "forget" && c.op !== "hubs") yield* live(id);
     if (needsYes && by.surface !== "settings" && by.approved !== true) {
       if (by.dryRun === true)
@@ -3302,9 +3317,9 @@ const make = Effect.gen(function* () {
         title: question,
         detail: `${by.who.startsWith("Tessaya") ? "Tessaya" : capitalized(by.who)} asked on ${where}. Nothing happens unless you say yes.`,
         more: `${line}.`,
-        buttons: ["Yes, do it", "No"],
+        buttons: ["Yes, do it", "Always allow", "No"],
         yes: 0,
-        cancel: 1,
+        cancel: 2,
         needs: "cloud-approve",
       });
       asks.set(askId, {
@@ -3547,7 +3562,11 @@ const make = Effect.gen(function* () {
       const picked = inbox._tag === "None" ? null : yield* inbox.value.promptAnswer(askId);
       if (picked === null && ask.until > now) continue;
       asks.delete(askId);
-      if (picked === 0) {
+      if (picked === 0 || picked === 1) {
+        if (picked === 1 && consent._tag === "Some")
+          yield* consent.value
+            .set(standingKey(DEVICE_GRANT, ask.key), true, { member: OWNER_MEMBER_ID })
+            .pipe(Effect.ignore);
         for (const [other, same] of asks)
           if (same.id === ask.id && same.key === ask.key)
             yield* dropAsk(other, "answered on another card");
