@@ -721,13 +721,11 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_CAST_WS_METHODS.get]: () =>
       Effect.flatMap(SessionMember, (member) =>
         run(
-          Effect.flatMap(TessayaCast, (c) => c.view).pipe(
-            // the reverse of body focus: he (only he) sees which conversation has her body
-            Effect.flatMap((view) =>
-              member !== OWNER_MEMBER_ID
-                ? Effect.succeed(view)
-                : Effect.map(bodyHolderLine(), (focus) => ({ ...view, focus })),
-            ),
+          // the reverse of body focus: he (only he) sees which conversation has her body
+          Effect.zipWith(
+            Effect.flatMap(TessayaCast, (c) => c.view),
+            member === OWNER_MEMBER_ID ? bodyHolderLine() : Effect.succeed(null),
+            (view, focus) => (focus === null ? view : { ...view, focus }),
           ),
         ),
       ),
