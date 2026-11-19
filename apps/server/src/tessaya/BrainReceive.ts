@@ -11,6 +11,10 @@ import { emitAction } from "../provenance/ActionLog.ts";
 import { brainOn, type BrainOp } from "./BrainHost.ts";
 import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { TessayaCast } from "./TessayaCast.ts";
+import { CastCallInput } from "@t3tools/tessaya-contracts";
+import { TessayaCast as TessayaCastRules } from "@t3tools/contracts/settings";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
 import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
@@ -69,6 +73,20 @@ const MoodAsk = Schema.Struct({
   i: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(120)))),
 });
 const decodeMoodAsk = Schema.decodeUnknownOption(MoodAsk);
+const CastAct = Schema.Union([
+  Schema.Struct({ a: Schema.Literal("view") }),
+  Schema.Struct({ a: Schema.Literal("touch"), body: Schema.String.check(Schema.isMaxLength(120)) }),
+  Schema.Struct({ a: Schema.Literal("told"), body: Schema.String.check(Schema.isMaxLength(120)) }),
+  // a worker's own rules from before the brain kept them: added for bodies the brain has none for
+  Schema.Struct({ a: Schema.Literal("merge"), rules: TessayaCastRules }),
+  Schema.Struct({
+    a: Schema.Literal("call"),
+    input: CastCallInput,
+    verified: Schema.Boolean,
+    visitOk: Schema.Boolean,
+  }),
+]);
+const decodeCastAct = Schema.decodeUnknownOption(CastAct);
 const decodePresenceAct = Schema.decodeUnknownOption(PresenceAct);
 const decodePersonaAct = Schema.decodeUnknownOption(PersonaAct);
 const decodeGroupAct = Schema.decodeUnknownOption(GroupAct);
@@ -132,6 +150,44 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
           ? yield* mood.value.view(a.p ?? undefined, a.z ?? undefined, a.m)
           : yield* mood.value.atDevice(a.d, a.p ?? undefined, a.z ?? undefined),
       );
+    }
+    case "cast": {
+      const act = decodeCastAct(payload);
+      if (Option.isNone(act)) return refused("Not a cast act.");
+      const cast = yield* Effect.serviceOption(TessayaCast);
+      if (Option.isNone(cast)) return refused("No cast here.");
+      const a = act.value;
+      switch (a.a) {
+        case "view":
+          return done(yield* cast.value.view);
+        case "touch":
+          yield* cast.value.touch(a.body);
+          return done();
+        case "told":
+          return done(yield* cast.value.told(a.body));
+        case "merge": {
+          const settings = yield* Effect.serviceOption(ServerSettingsService);
+          if (Option.isNone(settings)) return refused("No settings here.");
+          const have = (yield* settings.value.getSettings.pipe(Effect.orDie)).tessayaCast;
+          const added = Object.fromEntries(
+            Object.entries(a.rules).filter(([k]) => have[k] === undefined),
+          );
+          if (Object.keys(added).length > 0)
+            yield* settings.value
+              .updateSettings({ tessayaCast: { ...have, ...added } })
+              .pipe(Effect.orDie);
+          return done({
+            added: Object.keys(added).length,
+            kept: Object.keys(a.rules).length - Object.keys(added).length,
+          });
+        }
+        case "call":
+          return yield* cast.value.call(a.input, a.verified, a.visitOk).pipe(
+            Effect.map((v) => done(v)),
+            // a refusal is an answer (his voice wasn't enough), not the brain being away
+            Effect.catch((line: string) => Effect.succeed(done({ refused: line }))),
+          );
+      }
     }
     case "presence": {
       const act = decodePresenceAct(payload);

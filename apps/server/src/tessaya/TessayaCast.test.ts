@@ -10,6 +10,18 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import * as CurrentPersona from "./CurrentPersona.ts";
 import { TessayaCast, layer as castLayer } from "./TessayaCast.ts";
 import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
+import type { CastView } from "@t3tools/tessaya-contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Context from "effect/Context";
+import * as FileSystem from "effect/FileSystem";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as ServerConfig from "../config.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { HOME_KEY } from "./BrainHost.ts";
+import { receiveAtBrain } from "./BrainReceive.ts";
+import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 
 const device = (deviceId: string, kind: string, name: string, member?: string) =>
   ({
@@ -165,4 +177,82 @@ it.effect(
       expect(controls.find((c) => c.id === "v.mascotCrew")?.value).toBe("none");
     }).pipe(Effect.provide(layer));
   },
+);
+
+it.effect(
+  "one Cast on her brain: a worker's rule moves up once with a copy kept, and its calls change the brain's",
+  () =>
+    Effect.gen(function* () {
+      // the brain has its own store (a worker's would make it think it isn't the brain)
+      const brain = yield* Layer.build(Layer.mergeAll(setup().layer, SqlitePersistenceMemory));
+      const base = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
+        prefix: "t3code-cast-",
+      });
+      const worker = yield* Layer.build(
+        castLayer.pipe(
+          Layer.provideMerge(
+            Layer.mergeAll(
+              Layer.succeed(DeviceRegistry)(
+                DeviceRegistry.of({
+                  list: Effect.succeed([device("desk-2", "desktop", "Laptop")]),
+                } as never),
+              ),
+              ServerSettingsService.layerTest({
+                tessayaCast: { "r1-tumble": { home: "engineering" } },
+              }),
+              CurrentPersona.layer,
+              ServerConfig.layerTest(process.cwd(), base),
+              Layer.succeed(PeerLinks.PeerLinks, {
+                enabled: Effect.succeed(true),
+                list: Effect.succeed([
+                  { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
+                ]),
+              } as never),
+              Layer.succeed(
+                PeerMcpClient.PeerMcpClient,
+                PeerMcpClient.PeerMcpClient.of({
+                  call: (input) =>
+                    receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
+                      Effect.provideContext(brain),
+                    ) as never,
+                }),
+              ),
+              SqlitePersistenceMemory,
+            ),
+          ),
+        ),
+      );
+      const sql = Context.get(worker, SqlClient.SqlClient);
+      yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`;
+      const onWorker = (e: Effect.Effect<CastView, string, TessayaCast>) =>
+        e.pipe(Effect.provideContext(worker));
+      // the worker sees Tumble as the brain holds it, its rule moved up: one rule, on the brain
+      const seen = yield* onWorker(Effect.flatMap(TessayaCast, (c) => c.view));
+      expect(body(seen, "r1-tumble").home).toBe("engineering");
+      expect(
+        (yield* Effect.flatMap(ServerSettingsService, (s) => s.getSettings).pipe(
+          Effect.provideContext(worker),
+        )).tessayaCast,
+      ).toEqual({});
+      expect(
+        (yield* Effect.flatMap(ServerSettingsService, (s) => s.getSettings).pipe(
+          Effect.provideContext(brain),
+        )).tessayaCast["r1-tumble"],
+      ).toEqual({ home: "engineering" });
+      // his change from the worker lands on the brain; its own desktop stays answered where it syncs
+      yield* onWorker(
+        Effect.flatMap(TessayaCast, (c) =>
+          c.call({ op: "home", body: "Tumble", persona: "companion" }, true),
+        ),
+      );
+      expect(
+        body(
+          yield* Effect.flatMap(TessayaCast, (c) => c.view).pipe(Effect.provideContext(brain)),
+          "r1-tumble",
+        ).home,
+      ).toBe("companion");
+      expect(
+        (yield* onWorker(Effect.flatMap(TessayaCast, (c) => c.view))).bodies.map((b) => b.id),
+      ).toContain("desk-2");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
