@@ -467,7 +467,8 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
           if (yield* fs.exists(inRoot(manifest))) yield* copy(manifest);
         }
       }
-      for (const extra of ["apps/mobile/deps", "patches", ".pnpmfile.cjs"]) {
+      // the lockfile too: without it pnpm resolves afresh, and a new upstream release fails peers, not patches
+      for (const extra of ["apps/mobile/deps", "patches", ".pnpmfile.cjs", "pnpm-lock.yaml"]) {
         if (yield* fs.exists(inRoot(extra))) yield* copy(extra);
       }
       const result = yield* vp(["install", "--lockfile-only", "--ignore-scripts"], temp);

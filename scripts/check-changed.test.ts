@@ -362,6 +362,7 @@ function launcherFixture() {
   }
   write(".gitignore", "node_modules/\nrecords/\n");
   write("pnpm-workspace.yaml", "packages:\n  - packages/*\n");
+  write("pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
   write(
     "package.json",
     JSON.stringify({
@@ -385,7 +386,7 @@ function launcherFixture() {
     import fs from 'node:fs';
     import path from 'node:path';
     const args = process.argv.slice(2);
-    fs.writeFileSync(path.join(process.env.RECORDS, process.pid + '.json'), JSON.stringify({ args, cwd: process.cwd() }));
+    fs.writeFileSync(path.join(process.env.RECORDS, process.pid + '.json'), JSON.stringify({ args, cwd: process.cwd(), lock: fs.existsSync('pnpm-lock.yaml') }));
     console.log('fixture stdout: ' + args[0]);
     console.error('fixture stderr: ' + args[0]);
     process.exit(args[0] === process.env.FAIL_STEP ? 23 : 0);
@@ -438,7 +439,7 @@ function launcherFixture() {
         env: { ...env, TEMP: NodeOS.tmpdir(), RECORDS: records, FAIL_STEP: failStep },
       });
     },
-    calls: (): Array<{ args: Array<string>; cwd: string }> =>
+    calls: (): Array<{ args: Array<string>; cwd: string; lock: boolean }> =>
       NodeFS.readdirSync(records).map((file) =>
         JSON.parse(NodeFS.readFileSync(NodePath.join(records, file), "utf8")),
       ),
@@ -454,7 +455,7 @@ it("checks changed source paths through the Windows launcher", () => {
   const result = project.run();
   expect(result.status, result.stdout + result.stderr).toBe(0);
   const calls = project.calls();
-  expect(calls.find(({ args }) => args[0] === "lint")).toEqual({
+  expect(calls.find(({ args }) => args[0] === "lint")).toMatchObject({
     args: ["lint", "--no-error-on-unmatched-pattern", project.source],
     cwd: project.root,
   });
@@ -498,6 +499,8 @@ it.each(["install", "lint"])("reports a failing %s step with its output", (step)
     "--ignore-scripts",
   ]);
   expect(install?.cwd).not.toBe(project.root);
+  // resolved from the lockfile, so a fresh upstream release can't fail the patch check on peers
+  expect(install?.lock).toBe(true);
   expect(result.stdout + result.stderr).toContain(`fixture stdout: ${step}`);
   expect(result.stdout + result.stderr).toContain(`fixture stderr: ${step}`);
   expect(result.stdout).toContain(step === "install" ? "FAIL  unused patches" : "FAIL  lint");

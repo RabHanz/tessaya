@@ -1191,7 +1191,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
    const configuredMacPasskeySigning =
      options.platform === "mac" && options.signed
 diff --git a/scripts/check-changed.test.ts b/scripts/check-changed.test.ts
-index 173ff58099dacbdde18dd1914d79f719c1b67685..50c61933e69f95b4f325a897e2fba324a8c9c0c2 100644
+index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec5616087d24 100644
 --- a/scripts/check-changed.test.ts
 +++ b/scripts/check-changed.test.ts
 @@ -19,6 +19,7 @@ import {
@@ -1227,8 +1227,52 @@ index 173ff58099dacbdde18dd1914d79f719c1b67685..50c61933e69f95b4f325a897e2fba324
    it.effect(
      "keeps weighted steps within the budget, in order, and serial steps one at a time",
      () =>
+@@ -343,6 +362,7 @@ function launcherFixture() {
+   }
+   write(".gitignore", "node_modules/\nrecords/\n");
+   write("pnpm-workspace.yaml", "packages:\n  - packages/*\n");
++  write("pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
+   write(
+     "package.json",
+     JSON.stringify({
+@@ -366,7 +386,7 @@ function launcherFixture() {
+     import fs from 'node:fs';
+     import path from 'node:path';
+     const args = process.argv.slice(2);
+-    fs.writeFileSync(path.join(process.env.RECORDS, process.pid + '.json'), JSON.stringify({ args, cwd: process.cwd() }));
++    fs.writeFileSync(path.join(process.env.RECORDS, process.pid + '.json'), JSON.stringify({ args, cwd: process.cwd(), lock: fs.existsSync('pnpm-lock.yaml') }));
+     console.log('fixture stdout: ' + args[0]);
+     console.error('fixture stderr: ' + args[0]);
+     process.exit(args[0] === process.env.FAIL_STEP ? 23 : 0);
+@@ -419,7 +439,7 @@ function launcherFixture() {
+         env: { ...env, TEMP: NodeOS.tmpdir(), RECORDS: records, FAIL_STEP: failStep },
+       });
+     },
+-    calls: (): Array<{ args: Array<string>; cwd: string }> =>
++    calls: (): Array<{ args: Array<string>; cwd: string; lock: boolean }> =>
+       NodeFS.readdirSync(records).map((file) =>
+         JSON.parse(NodeFS.readFileSync(NodePath.join(records, file), "utf8")),
+       ),
+@@ -435,7 +455,7 @@ it("checks changed source paths through the Windows launcher", () => {
+   const result = project.run();
+   expect(result.status, result.stdout + result.stderr).toBe(0);
+   const calls = project.calls();
+-  expect(calls.find(({ args }) => args[0] === "lint")).toEqual({
++  expect(calls.find(({ args }) => args[0] === "lint")).toMatchObject({
+     args: ["lint", "--no-error-on-unmatched-pattern", project.source],
+     cwd: project.root,
+   });
+@@ -479,6 +499,8 @@ it.each(["install", "lint"])("reports a failing %s step with its output", (step)
+     "--ignore-scripts",
+   ]);
+   expect(install?.cwd).not.toBe(project.root);
++  // resolved from the lockfile, so a fresh upstream release can't fail the patch check on peers
++  expect(install?.lock).toBe(true);
+   expect(result.stdout + result.stderr).toContain(`fixture stdout: ${step}`);
+   expect(result.stdout + result.stderr).toContain(`fixture stderr: ${step}`);
+   expect(result.stdout).toContain(step === "install" ? "FAIL  unused patches" : "FAIL  lint");
 diff --git a/scripts/check-changed.ts b/scripts/check-changed.ts
-index c556c9c91bb320139b026b58f927fc17dc92c005..f3e1ac262ee4af8a5cdd1c5357432d128aa1368b 100644
+index c556c9c91bb320139b026b58f927fc17dc92c005..20b78f7aea9e072e0d8c5664cf7aba4d386ea236 100644
 --- a/scripts/check-changed.ts
 +++ b/scripts/check-changed.ts
 @@ -214,6 +214,23 @@ export const docReaderTests = (files: ReadonlyArray<string>) =>
@@ -1263,6 +1307,16 @@ index c556c9c91bb320139b026b58f927fc17dc92c005..f3e1ac262ee4af8a5cdd1c5357432d12
    // It reads files other than the ones beside it, so no changed file selects it.
    if (affected.includes("t3")) tests.add("apps/server/src/provider/AgentContextBudget.test.ts");
    const { vitestTests, nodeTests } = splitTests(tests);
+@@ -449,7 +467,8 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
+           if (yield* fs.exists(inRoot(manifest))) yield* copy(manifest);
+         }
+       }
+-      for (const extra of ["apps/mobile/deps", "patches", ".pnpmfile.cjs"]) {
++      // the lockfile too: without it pnpm resolves afresh, and a new upstream release fails peers, not patches
++      for (const extra of ["apps/mobile/deps", "patches", ".pnpmfile.cjs", "pnpm-lock.yaml"]) {
+         if (yield* fs.exists(inRoot(extra))) yield* copy(extra);
+       }
+       const result = yield* vp(["install", "--lockfile-only", "--ignore-scripts"], temp);
 diff --git a/scripts/lib/cli-external-packages.test.ts b/scripts/lib/cli-external-packages.test.ts
 index 7ea1c3968452e310254ecf4088e873289e79406d..afc16423104662783bb841ffa4358539c7aa90cd 100644
 --- a/scripts/lib/cli-external-packages.test.ts
