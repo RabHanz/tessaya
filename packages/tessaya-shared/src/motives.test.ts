@@ -50,6 +50,10 @@ describe("motives", () => {
 
   it("every wish is a move her body accepts", () => {
     for (const w of ["rest", "sulk", "curious", "seekHim", "play", "bored"] as ReadonlyArray<Want>)
-      expect(decodeBodyMove(wantMove(w)).ok, w).toBe(true);
+      expect(decodeBodyMove(wantMove(w)).ok, w).toBe(true); // a sulk is her real turn away and back, a missed him her real walk over: no act turns her a second time
+    expect(wantMove("sulk")).toMatchObject({ turn: { to: { kind: "away" } } });
+    expect(wantMove("sulk").then?.at(-1)).toMatchObject({ turn: { to: { kind: "him" } } });
+    expect(wantMove("seekHim")).toMatchObject({ walk: { to: { kind: "him" } } });
+    expect([wantMove("sulk").act, wantMove("seekHim").act]).toEqual([undefined, undefined]);
   });
 });
