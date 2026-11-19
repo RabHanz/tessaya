@@ -313,6 +313,7 @@ describe("rename R1: every method also answers as tessaya.*", () => {
         t !== BATON_LEARN_WS_METHODS.call &&
         t !== BATON_PERSONA_OPS_WS_METHODS.call &&
         t !== BATON_PHONE_PAIRING_WS_METHODS.issue &&
+        t !== BATON_PHONE_PAIRING_WS_METHODS.signOut &&
         t !== BATON_CAST_WS_METHODS.get &&
         t !== BATON_CAST_WS_METHODS.call &&
         t !== TESSAYA_ACTIVITY_WS_METHODS.list &&
@@ -343,6 +344,7 @@ describe("rename R1: every method also answers as tessaya.*", () => {
         t !== BATON_LEARN_WS_METHODS.call &&
         t !== BATON_PERSONA_OPS_WS_METHODS.call &&
         t !== BATON_PHONE_PAIRING_WS_METHODS.issue &&
+        t !== BATON_PHONE_PAIRING_WS_METHODS.signOut &&
         t !== BATON_CAST_WS_METHODS.get &&
         t !== BATON_CAST_WS_METHODS.call &&
         t !== TESSAYA_ACTIVITY_WS_METHODS.list &&

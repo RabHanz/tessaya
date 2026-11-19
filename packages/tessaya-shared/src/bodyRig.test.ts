@@ -223,6 +223,32 @@ describe("preparePose", () => {
       0.075 * vroid.height,
     );
   });
+  it("lets an arm hang relaxed beside her clothed hips, its forearm turned as written (no A-pose)", () => {
+    // a clothed model as fitted (a puffy top and a flared skirt count as thickness): her hand presses into the cloth
+    // at her side, which gives, so the arm is not pushed out into an A-pose, and the palm stays toward her thigh
+    const clothed = {
+      ...vroid,
+      proxies: { trunk: 0.107, head: 0.09, thigh: 0.072, forearm: 0.024 },
+    };
+    const hang = {
+      leftUpperArm: [0, 0, -1.42] as V3,
+      leftLowerArm: [0.6, -0.1, 0] as V3,
+      rightUpperArm: [0, 0, 1.42] as V3,
+      rightLowerArm: [0.6, 0.1, 0] as V3,
+    };
+    const out = preparePose(clothed, hang);
+    const w = fk(clothed, out.pose).pos;
+    for (const side of ["left", "right"] as const) {
+      const v = sub3(w[`${side}LowerArm`]!, w[`${side}UpperArm`]!);
+      const fromHanging = (Math.acos(-v[1] / len(v)) * 180) / Math.PI;
+      expect(fromHanging).toBeLessThan(15);
+    }
+    expect(out.issues.filter((i) => i.kind === "penetration")).toEqual([]);
+    // pushed into her on purpose, the re-solved forearm still carries its twist
+    const pushed = preparePose(clothed, { ...hang, leftUpperArm: [0, 0, -1.57] as V3 });
+    expect(swingTwist(pushed.pose["leftLowerArm"]!, [1, 0, 0]).twist).toBeCloseTo(0.6, 1);
+  });
+
   it("crosses her legs beside or in front of each other, never through, and says so", () => {
     const crossed = {
       ...POSTURES.stand.bones,
