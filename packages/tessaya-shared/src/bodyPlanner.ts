@@ -163,9 +163,10 @@ const apexDelta = (q: Qualities, grounded: boolean): Pose => {
     ]);
     out[`${s}Hand`] = side(s, [0, 0, 0.15 * tension]);
     if (!grounded) {
-      out[`${s}UpperLeg`] = side(s, [-0.9 * crouch - 0.08 * collapse, 0, 0]);
+      // thigh and shin are about as long as each other: the knee bending twice the hip keeps each foot under her
+      out[`${s}UpperLeg`] = side(s, [-0.75 * crouch - 0.08 * collapse, 0, 0]);
       out[`${s}LowerLeg`] = side(s, [1.5 * crouch + 0.15 * collapse, 0, 0]);
-      out[`${s}Foot`] = side(s, [-0.6 * crouch, 0, 0]);
+      out[`${s}Foot`] = side(s, [-0.75 * crouch, 0, 0]);
     }
   }
   return Object.fromEntries(
@@ -235,6 +236,13 @@ const envelope = (t: Timing, u: number): number => {
   return 1 - mj((x - t.hold) / t.back);
 };
 
+/**
+ * How far a placed hand is along its way: the phrasing without wind-up or overshoot, which a hand going to a place
+ * would clip at its start and end (starting and stopping dead: the floor could not hold her through a cheer).
+ */
+const handEnvelope = (t: Timing, u: number): number =>
+  Math.max(0, Math.min(1, envelope({ ...t, anticAmp: 0, overshoot: 0 }, u)));
+
 /** A full tremor at the hands (rad), as the body's own tremble draws it: about 0.7 degrees. */
 export const TREMOR_HAND = 0.012;
 /** Two near sines at 9.2 and 11.1 Hz, slowly waxing and waning: a fine quiver, never a regular buzz. Peak about 1. */
@@ -269,9 +277,9 @@ const rhythms = (q: Qualities, t: Timing, ms: number, grounded: boolean): Record
   if (!grounded && bounce > 0.05 && bt > 0 && bt < beats / bhz) {
     const b = bounce * q.k * (0.5 - 0.5 * Math.cos(2 * Math.PI * bhz * bt));
     for (const s of SIDES) {
-      add(`${s}UpperLeg`, 0, -0.22 * b);
+      add(`${s}UpperLeg`, 0, -0.2 * b);
       add(`${s}LowerLeg`, 0, 0.4 * b);
-      add(`${s}Foot`, 0, -0.18 * b);
+      add(`${s}Foot`, 0, -0.2 * b);
     }
   }
   // a nervous shift from foot to foot: energy held in (bound flow) without pleasure
@@ -354,6 +362,59 @@ export const speedRatio = (frames: ReadonlyArray<Pose>, fps: number): number => 
       if (was === undefined) continue;
       worst = Math.max(worst, (qAngle(qFromEuler(was), qFromEuler(e)) * fps) / JOINT_SPEED(b));
     }
+  return worst;
+};
+
+// her mass along her bones, as fractions of the whole (Dempster's segment table, rounded), each between two joints
+const SEGMENTS: ReadonlyArray<readonly [string, string, number]> = [
+  ["hips", "spine", 0.142],
+  ["spine", "chest", 0.139],
+  ["chest", "neck", 0.216],
+  ["neck", "head", 0.081],
+  ...(["left", "right"] as const).flatMap(
+    (s) =>
+      [
+        [`${s}UpperArm`, `${s}LowerArm`, 0.028],
+        [`${s}LowerArm`, `${s}Hand`, 0.016],
+        [`${s}Hand`, `${s}Hand`, 0.006],
+        [`${s}UpperLeg`, `${s}LowerLeg`, 0.1],
+        [`${s}LowerLeg`, `${s}Foot`, 0.0465],
+        [`${s}Foot`, `${s}Foot`, 0.0145],
+      ] as const,
+  ),
+];
+/** How hard the floor may push her sideways (fraction of g): past about 0.42 g every library move needed a phantom push. */
+export const COM_ACCEL = 0.25;
+
+/**
+ * The hardest her centre of mass is pushed sideways between frames, against COM_ACCEL (1 is at the limit). Past it a
+ * body in physics needs a phantom push to stand (the checker's ghost force), as a cheer's 155° arm throw in 300 ms
+ * did. Both arms meeting (a clap) cancel each other, so only what moves her as a whole counts.
+ */
+export const comAccelRatio = (frames: ReadonlyArray<Pose>, fps: number): number => {
+  const bones = REFERENCE_RIG.bones;
+  const com = frames.map((f) => {
+    const w = fk(
+      REFERENCE_RIG,
+      Object.fromEntries(Object.entries(f).map(([b, e]) => [b, qFromEuler(e as V3)])),
+    );
+    let x = 0;
+    let z = 0;
+    for (const [a, b, m] of SEGMENTS) {
+      const pa = w.pos[a];
+      const pb = w.pos[b];
+      if (pa === undefined || pb === undefined || bones[a] === undefined) continue;
+      x += (m * (pa[0] + pb[0])) / 2;
+      z += (m * (pa[2] + pb[2])) / 2;
+    }
+    return [x, z] as const;
+  });
+  let worst = 0;
+  for (let i = 2; i < com.length; i += 1) {
+    const ax = (com[i]![0] - 2 * com[i - 1]![0] + com[i - 2]![0]) * fps * fps;
+    const az = (com[i]![1] - 2 * com[i - 1]![1] + com[i - 2]![1]) * fps * fps;
+    worst = Math.max(worst, Math.hypot(ax, az) / (COM_ACCEL * 9.81));
+  }
   return worst;
 };
 
@@ -530,6 +591,8 @@ export const performCues = (
   let t = timingOf(q, p.ms === undefined && keysEnd > 0 ? Math.max(keysEnd + 800, 2400) : p.ms);
   const hands = handArms(p, { ...base, ...own.bones });
   const hz = Math.max(0, Math.min(6, p.hands?.repeat ?? 0));
+  // the beat slows with the phrase when the floor could not hold her at full speed (set by the stretch below)
+  let beatHz = hz;
   const skill = p.hands?.skill;
   /** Both hands in their skill `ms` in: carried there on the performance's phrasing, its rhythm through the hold. */
   const skillAt = (tm: Timing, ms: number): Pose => {
@@ -539,7 +602,7 @@ export const performCues = (
     const there = twoHandsAt(
       skill,
       {
-        ...(hz > 0 ? { rate: hz } : {}),
+        ...(hz > 0 ? { rate: beatHz } : {}),
         intensity: q.k,
         ...(p.hands?.style === undefined ? {} : { style: p.hands.style }),
       },
@@ -548,7 +611,7 @@ export const performCues = (
     );
     const out: Record<string, Euler> = {};
     // one envelope for both arms: staggered joints would carry one palm through the other on the way in
-    const e = Math.max(0, Math.min(1, envelope(tm, ms - ORDER("leftUpperArm") * tm.stagger)));
+    const e = handEnvelope(tm, ms - ORDER("leftUpperArm") * tm.stagger);
     for (const [b, to] of Object.entries(there)) {
       out[b] = /Fingers$/.test(b)
         ? (to.map((x) => Math.round(x * e * 100) / 100) as unknown as Euler)
@@ -566,11 +629,11 @@ export const performCues = (
     const beatFrom = tm.antic + tm.stroke + tm.settle;
     const beat =
       hz > 0 && ms > beatFrom && ms < beatFrom + tm.hold
-        ? 0.5 - 0.5 * Math.cos(2 * Math.PI * hz * ((ms - beatFrom) / 1000))
+        ? 0.5 - 0.5 * Math.cos(2 * Math.PI * beatHz * ((ms - beatFrom) / 1000))
         : 0;
     // as rotations, not angle by angle: a solved arm can sit where Euler angles wrap
     for (const [b, to] of Object.entries(hands.at)) {
-      const e = Math.max(0, Math.min(1, envelope(tm, ms - ORDER(b) * tm.stagger)));
+      const e = handEnvelope(tm, ms - ORDER(b) * tm.stagger);
       const from = qFromEuler((base[b as PoseBone] ?? [0, 0, 0]) as V3);
       const there = qSlerp(
         qFromEuler(to as V3),
@@ -596,9 +659,15 @@ export const performCues = (
     return frames;
   };
   let frames = sample(t);
-  const ratio = speedRatio(frames, PERFORM_FPS);
-  if (ratio > 1) {
-    t = timingOf(q, p.ms, ratio * 1.05);
+  // as fast as a body can move, and no faster than the floor can start and stop her (acceleration goes as 1/stretch²);
+  // its rhythms do not stretch, so it may take another pass
+  const over = (f: ReadonlyArray<Pose>) =>
+    Math.max(speedRatio(f, PERFORM_FPS), Math.sqrt(comAccelRatio(f, PERFORM_FPS)));
+  let stretch = 1;
+  for (let ratio = over(frames), pass = 0; ratio > 1 && pass < 3; ratio = over(frames), pass += 1) {
+    stretch *= ratio * 1.05;
+    beatHz = hz / stretch;
+    t = timingOf(q, p.ms, stretch);
     frames = sample(t);
   }
   const ms = Math.round(endOf(t));

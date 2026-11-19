@@ -2,7 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { BodyCue } from "./bodyCues.ts";
 import { POSTURES, type Euler, type PoseBone } from "./bodyMotion.ts";
-import { decodeHold, performCues, speedRatio, type Perform } from "./bodyPlanner.ts";
+import { fk, qFromEuler, REFERENCE_RIG, type V3 } from "./bodyRig.ts";
+import { comAccelRatio, decodeHold, performCues, speedRatio, type Perform } from "./bodyPlanner.ts";
 
 type Pose = Partial<Record<PoseBone, Euler>>;
 const clipOf = (cues: ReadonlyArray<BodyCue>) => {
@@ -65,7 +66,7 @@ describe("performCues", () => {
     expect(Math.max(...fore) - Math.min(...fore)).toBeLessThan(0.02);
   });
 
-  it("keeps every joint within human speed for any feeling and effort", () => {
+  it("keeps every joint within human speed, and her centre of mass within what the floor can push, for any feeling", () => {
     const vals = [-1, 0, 1];
     for (const v of vals)
       for (const a of vals)
@@ -82,7 +83,38 @@ describe("performCues", () => {
               ).cues,
             );
             expect(speedRatio(clip.frames, clip.fps)).toBeLessThanOrEqual(1);
+            expect(comAccelRatio(clip.frames, clip.fps)).toBeLessThanOrEqual(1);
           }
+    // a full cheer (both arms thrown up, again and again) once needed a phantom push to stand: 0.46 g at her centre
+    const cheer = clipOf(
+      performCues(
+        {
+          feel: { valence: 0.95, arousal: 0.95, dominance: 0.7 },
+          hands: { left: "up", right: "up", repeat: 4 },
+          intensity: 1,
+        },
+        stand,
+      ).cues,
+    );
+    expect(comAccelRatio(cheer.frames, cheer.fps)).toBeLessThanOrEqual(1);
+  });
+
+  it("keeps each foot under her while she bounces for joy and crouches in fear", () => {
+    for (const feel of [
+      { valence: 0.95, arousal: 0.95, dominance: 0.7 },
+      { valence: -0.9, arousal: 0.9, dominance: -0.9 },
+    ]) {
+      const clip = clipOf(performCues({ feel, intensity: 1 }, stand).cues);
+      // the foot's place under the hips, along the floor: it slid there by up to 20% of frames before
+      const under = clip.frames.map((f) => {
+        const w = fk(
+          REFERENCE_RIG,
+          Object.fromEntries(Object.entries(f).map(([b, e]) => [b, qFromEuler(e as V3)])),
+        );
+        return w.pos["leftFoot"]![2] - w.pos["hips"]![2];
+      });
+      expect(Math.max(...under) - Math.min(...under)).toBeLessThan(0.02);
+    }
   });
 
   it("leaves the parts the agent placed itself as placed, and moves the rest", () => {
