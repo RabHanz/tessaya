@@ -43,13 +43,17 @@ import {
   type FocusEvent,
   type PresenceSignal,
 } from "@t3tools/tessaya-shared/bodyFocus";
+import { chooseWant, wantMove, type Want } from "@t3tools/tessaya-shared/motives";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schedule from "effect/Schedule";
 import * as Option from "effect/Option";
 
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
+import { isBrain } from "./BrainHost.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
 import { TessayaMood } from "./TessayaMood.ts";
@@ -202,6 +206,78 @@ export const bodyHolderLine = Effect.fn("TessayaBody.holderLine")(function* () {
           : `his conversation on ${row.surface === "voice" ? "a Tessel" : `the ${row.surface}`}`;
   return `Her desk body is with ${what}${held}.`;
 });
+
+/** Her own wishes (motives.ts) move her body only through body focus, as its weakest caller. */
+const SELF: BodyCaller = {
+  id: "self",
+  kind: "persona",
+  mayBePrivate: false,
+  thread: "self",
+  signal: "look",
+};
+// shortcut: her last wish per process, so a restart may let one come sooner; fine for a minute-scale rhythm
+let lastWish: { readonly want: Want; readonly at: number } | null = null;
+
+/**
+ * One beat of her own life (M-087): only while no conversation holds her desk body, her mood toward him, when he was
+ * last with her and whether he is at his desk choose a wish, which her body does and the record keeps with its why.
+ * shortcut: no world feed yet (new windows, full-screen, calls), so "nothing happened" means he hasn't been with her;
+ * the desktop's world cue replaces it. The dial is calm until its setting lands.
+ */
+export const wishTick = Effect.fn("TessayaBody.wish")(function* () {
+  const now = yield* Clock.currentTimeMillis;
+  const step = yield* moveFocus(DESK_BODY, { kind: "tick", at: now });
+  if (step.focus.state !== "rest") return null;
+  const turn = yield* Effect.serviceOption(TessayaTurn);
+  const mood = yield* Effect.serviceOption(TessayaMood);
+  if (Option.isNone(turn) || Option.isNone(mood)) return null;
+  const mine = (yield* turn.value.threads()).filter((t) => t.person === OWNER_MEMBER_ID);
+  const himAt = mine.reduce<number | null>(
+    (at, t) => Math.max(at ?? 0, t.presentAt ?? 0) || at,
+    null,
+  );
+  const owner = (yield* turn.value.whoIsHome).find((p) => p.member === OWNER_MEMBER_ID);
+  const view = yield* mood.value.view(undefined, undefined, OWNER_MEMBER_ID);
+  const wish = chooseWant({
+    now,
+    liveliness: "calm",
+    mood: { label: view.label, intensity: view.intensity, energy: view.energy },
+    him: owner?.likelyHome === true ? "working" : "away",
+    himAt,
+    worldAt: himAt ?? now,
+    newThingAt: null,
+    last: lastWish,
+  });
+  if (wish === null) return null;
+  lastWish = { want: wish.want, at: now };
+  const answer = yield* moveBody(wantMove(wish.want), SELF);
+  yield* emitAction({
+    kind: "body.want",
+    actor: { kind: "rule", id: "motives", certainty: 1 },
+    subject: wish.want,
+    outcome: answer.ok ? "ok" : "refused",
+    data: { why: wish.why, route: answer.route },
+  });
+  return wish;
+});
+
+/**
+ * Her own life's beat, once a minute: on the brain (one self, so one wish, not one per server), and where a layer
+ * shows her full body. shortcut: a desktop linked to both may see a wish's desk act twice; move to the brain alone
+ * once its moves reach the layer's body.
+ */
+export const wishLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const layers = yield* Effect.serviceOption(PersonaLayers);
+    const here = (yield* isBrain) || (layers._tag === "Some" && layers.value.all.length > 0);
+    if (here) yield* wishTick();
+  }).pipe(
+    Effect.catchCause((cause) => Effect.logWarning("her wish failed", cause)),
+    Effect.repeat(Schedule.spaced("1 minute")),
+    Effect.delay("1 minute"),
+    Effect.forkScoped,
+  ),
+);
 
 /** "Let her be": no conversation holds her body until he is next present in one. */
 export const restBody = Effect.fn("TessayaBody.rest")(function* () {
