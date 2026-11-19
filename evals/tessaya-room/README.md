@@ -25,7 +25,7 @@ Add an entry to `cases.ts` with an `id`, its `source`, and the sentences `said` 
 
 ## Live suite
 
-`live.ts` drives every room tool on a running server as a pretend Tessel (`replay-suite`): the server's real brain, tools and Home Assistant. Reads are live; the house's writes and asks to his phone are dry runs on the server (checked and judged as for real, then not sent), and a replay never moves his Tessel. The reply's `tessaya.trace` chunk carries the tool calls, so a case checks the tool, its arguments, its result and whether her words match the result.
+`live.ts` drives every room tool on a running server as a pretend Tessel (`replay-suite`): the server's real brain, tools and Home Assistant. Reads are live; the house's writes and asks to his phone are dry runs on the server (checked and judged as for real, then not sent), and a replay never moves his Tessel. The scratch copy keeps none of his own house acts or timed automations, so every case starts from the same empty history. The reply's `tessaya.trace` chunk carries the tool calls, so a case checks the tool, its arguments, its result and whether her words match the result.
 
 ```sh
 scripts/tessaya/room-suite.sh <t3 binary of the build> [userdata dir] [--laptop]
