@@ -24,11 +24,12 @@ const her: BodyCaller = { id: "desktop:a", kind: "persona", mayBePrivate: true }
 const open = (bus: string, owner = "owner") => pollBus({ bus, owner, after: 0, waitMs: 0 });
 
 describe("BodyPlayground", () => {
-  it("aims outside agents at the playground and her own turns at her, unless they say", () => {
+  it("aims outside agents at the playground and her own turns at her", () => {
     expect(onPlayground({}, outside)).toBe(true);
     expect(onPlayground({}, her)).toBe(false);
     expect(onPlayground({ target: "her" }, outside)).toBe(false);
-    expect(onPlayground({ target: "playground" }, her)).toBe(true);
+    // her own turn's body always goes to her, whatever the model put in `target`
+    expect(onPlayground({ target: "playground" }, her)).toBe(false);
   });
 
   it.effect("lets a body-only agent move her own body only with his setting", () =>

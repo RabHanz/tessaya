@@ -187,8 +187,12 @@ export interface Aim {
   readonly target?: "playground" | "her";
   readonly playground?: string;
 }
-/** Outside agents test on the playground unless they ask for her; her own turns and his agents move her. */
+/**
+ * Outside agents test on the playground unless they ask for her; his agents move her unless they ask for it. Her own
+ * turns always move her: the playground is for watching other models, never where her reply's body goes.
+ */
 export const onPlayground = (aim: Aim, caller: BodyCaller): boolean =>
+  caller.kind !== "persona" &&
   (aim.target ?? (caller.kind === "outside" ? "playground" : "her")) === "playground";
 
 /**

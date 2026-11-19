@@ -147,6 +147,8 @@ export interface ConverseRequest {
   readonly maxTokens: number;
   /** "none" makes the model answer in words: the last round of a capped tool loop. */
   readonly toolChoice?: "auto" | "none";
+  /** What the usage record names it; her voice (or deep) work when absent. */
+  readonly feature?: string;
 }
 /** Which role a call is for and the model the routing table gave it (`brainRoute`). */
 export type ConverseRoute = Pick<BrainRoute, "role" | "model" | "effort">;
@@ -405,7 +407,7 @@ export const make = Effect.gen(function* () {
                 role: route.role,
                 credential: KEY_CREDENTIAL,
                 attribution: {
-                  feature: route.role === "deep" ? "voice-deep" : "voice",
+                  feature: input.feature ?? (route.role === "deep" ? "voice-deep" : "voice"),
                   origin: "user",
                 },
               });

@@ -68,6 +68,8 @@ export interface SessionSpec {
   readonly effort: string | null;
   readonly system: string;
   readonly tools: ReadonlyArray<SessionTool>;
+  /** What its usage rows name it (`ToolTurn.feature`). */
+  readonly feature?: string;
   /** Claude Code's own tools for this session, and the folder they work in: his desktop's files on his own machine. */
   readonly builtins?: {
     readonly tools: ReadonlyArray<string>;
