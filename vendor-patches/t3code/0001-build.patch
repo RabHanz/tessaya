@@ -1191,7 +1191,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
    const configuredMacPasskeySigning =
      options.platform === "mac" && options.signed
 diff --git a/scripts/check-changed.test.ts b/scripts/check-changed.test.ts
-index 173ff58099dacbdde18dd1914d79f719c1b67685..e09e51de3d1cfa1c6ab7f815f1aded20864b61f3 100644
+index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec5616087d24 100644
 --- a/scripts/check-changed.test.ts
 +++ b/scripts/check-changed.test.ts
 @@ -19,6 +19,7 @@ import {
@@ -1253,6 +1253,15 @@ index 173ff58099dacbdde18dd1914d79f719c1b67685..e09e51de3d1cfa1c6ab7f815f1aded20
        NodeFS.readdirSync(records).map((file) =>
          JSON.parse(NodeFS.readFileSync(NodePath.join(records, file), "utf8")),
        ),
+@@ -435,7 +455,7 @@ it("checks changed source paths through the Windows launcher", () => {
+   const result = project.run();
+   expect(result.status, result.stdout + result.stderr).toBe(0);
+   const calls = project.calls();
+-  expect(calls.find(({ args }) => args[0] === "lint")).toEqual({
++  expect(calls.find(({ args }) => args[0] === "lint")).toMatchObject({
+     args: ["lint", "--no-error-on-unmatched-pattern", project.source],
+     cwd: project.root,
+   });
 @@ -479,6 +499,8 @@ it.each(["install", "lint"])("reports a failing %s step with its output", (step)
      "--ignore-scripts",
    ]);

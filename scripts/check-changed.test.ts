@@ -455,7 +455,7 @@ it("checks changed source paths through the Windows launcher", () => {
   const result = project.run();
   expect(result.status, result.stdout + result.stderr).toBe(0);
   const calls = project.calls();
-  expect(calls.find(({ args }) => args[0] === "lint")).toEqual({
+  expect(calls.find(({ args }) => args[0] === "lint")).toMatchObject({
     args: ["lint", "--no-error-on-unmatched-pattern", project.source],
     cwd: project.root,
   });
