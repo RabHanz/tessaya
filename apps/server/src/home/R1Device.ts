@@ -1497,34 +1497,35 @@ export const r1TurnStream = (
       }
       yield* r1Route(input, null);
       let offered = false;
-      // Her words while a slow answer comes: a bridge about what he said (R1Hold), started now beside the turn, else a
-      // line written ahead for this moment, else nothing (B-056: never one fixed phrase; her eyes show she is thinking).
+      // Silence while she thinks is the default; her eyes show it (Director, 19 Nov 06:20: "the filler words are really
+      // out of place… most times it breaks the flow"). A bridge about his words (R1Hold) only on a long wait, never on a
+      // quick follow-up and never two turns in a row on one vessel; no written-ahead or fixed line ever.
       const who = lineWho(input);
-      const written = {
-        hold: yield* writtenAhead("filler.hold", who),
-        web: yield* writtenAhead("filler.web", who),
-      };
+      const vesselId = input.device ?? "room";
+      const heldBefore = heldLastTurn.get(vesselId) === true;
+      heldLastTurn.delete(vesselId);
       const holder = yield* Effect.serviceOption(R1Hold);
       let bridge: string | null = null;
-      const bridging = Option.isNone(holder)
-        ? null
-        : yield* holder.value
-            .write({
-              vessel: input.device ?? "room",
-              persona: who.persona,
-              words: input.heard,
-              before: input.history.slice(-4),
-            })
-            .pipe(
-              Effect.tap((line) => Effect.sync(() => void (bridge = line))),
-              Effect.forkScoped,
-            );
+      const bridging =
+        Option.isNone(holder) || heldBefore || quickFollowUp(input.heard)
+          ? null
+          : yield* holder.value
+              .write({
+                vessel: input.device ?? "room",
+                persona: who.persona,
+                words: input.heard,
+                before: input.history.slice(-4),
+              })
+              .pipe(
+                Effect.tap((line) => Effect.sync(() => void (bridge = line))),
+                Effect.forkScoped,
+              );
       const fillers = {
         get hold() {
-          return bridge ?? written.hold;
+          return bridge;
         },
         get web() {
-          return bridge ?? written.web;
+          return bridge;
         },
       };
       const say = (words: string) => {
@@ -1543,7 +1544,10 @@ export const r1TurnStream = (
         Effect.andThen(
           Effect.sync(() => {
             const line = fillers.hold;
-            if (!offered && line !== null) say(`${line} `);
+            if (!offered && line !== null) {
+              say(`${line} `);
+              markHeld(vesselId);
+            }
           }),
         ),
         Effect.forkScoped,
@@ -1757,14 +1761,16 @@ const sseChunk = (id: string, model: string, created: number, content: string | 
 export const sseReply = (id: string, model: string, text: string, created: number): string =>
   `${sseChunk(id, model, created, text)}${sseChunk(id, model, created, null)}data: [DONE]\n\n`;
 
-/** How long a turn runs before the room hears her hold line, if she has one. */
-const HOLD_AFTER = "3 seconds";
+/** How long a turn runs before the room hears her bridge, if she has one: only a genuinely long wait. */
+const HOLD_AFTER = "5 seconds";
+/** A short line after hers ("Okay.", "A bit better."): her answer to it is quick, and a bridge would only interrupt. */
+const quickFollowUp = (heard: string) =>
+  heard.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length <= 4;
+/** The vessels whose last turn spoke a bridge: the next one stays silent, so no two in a row. */
+const heldLastTurn = new Map<string, boolean>();
+const markHeld = (vessel: string) => void heldLastTurn.set(vessel, true);
 /** How much longer the hold point waits for her bridge to be written. */
 const BRIDGE_GRACE = "700 millis";
-
-/** A line written ahead for this moment in her voice, or null: never the template's own default ("One moment."). */
-const writtenAhead = (event: "filler.hold" | "filler.web", who: ReturnType<typeof lineWho>) =>
-  expressOr(event, who).pipe(Effect.map((e) => (e?.source === "cache" ? e.text : null)));
 
 const error = (status: number, message: string) =>
   HttpServerResponse.jsonUnsafe({ error: { message, type: "invalid_request_error" } }, { status });
@@ -1888,9 +1894,6 @@ export const routes = HttpRouter.use((router) =>
       );
       const early = yield* Fiber.join(turn).pipe(Effect.timeoutOption(HOLD_AFTER));
       if (Option.isNone(early) && body.value.stream !== false) {
-        const hold = yield* writtenAhead("filler.hold", lineWho(heardBy)).pipe(
-          Effect.provideContext(context),
-        );
         const rest = Fiber.join(turn).pipe(
           Effect.map(
             (said) =>
@@ -1899,7 +1902,8 @@ export const routes = HttpRouter.use((router) =>
         );
         return HttpServerResponse.stream(
           Stream.concat(
-            Stream.make(sseChunk(id, model, created, hold ?? "")),
+            // Silence while it thinks (19 Nov 06:20): no line goes out ahead of the answer.
+            Stream.make(sseChunk(id, model, created, "")),
             Stream.fromEffect(rest),
           ).pipe(Stream.encodeText),
           { contentType: "text/event-stream", headers: { "cache-control": "no-store" } },
