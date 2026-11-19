@@ -506,6 +506,9 @@ export interface BodyState {
   }>;
   /** Where she is touching herself or something now (hand on hip): part, what it meets. */
   readonly contacts: ReadonlyArray<{ readonly part: string; readonly with: string }>;
+  /** Her whole body's yaw (rad): 0 toward him, + turned to her left. Where she is on the desk is the host's to report. */
+  readonly facing?: number;
+  readonly walking?: boolean;
   /**
    * A hand holding her now (bodyGrab.ts): what it holds (skin, hair, cloth, accessory) and where, the bone the pull
    * acts through, how hard (0..~2, past ~1 a firm full pull), how far what is held is stretched (0..1), and which way
