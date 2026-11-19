@@ -78,7 +78,7 @@ export function personaSave(f: PersonaForm): TessayaPersonaChangeInput {
     traits: f.traits,
     model: f.model.trim() === "" ? null : f.model.trim(),
     private: f.private,
-    ...(f.private ? { privateRooms: f.privateRooms } : f.id === null ? {} : { privateRooms: null }),
+    ...(f.private ? { privateRooms: f.privateRooms } : {}),
     ...(f.id === null && greetings.length === 0 ? {} : { greetings }),
   };
   return f.id === null ? { op: "create", draft } : { op: "edit", id: f.id, draft };
