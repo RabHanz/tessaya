@@ -173,7 +173,7 @@ layer("TessayaTurn", (it) => {
       yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
       const soon = yield* turn.comingUp;
       assert.deepStrictEqual(
-        soon.filter((c) => c.text.includes("birthday")),
+        soon.filter((c) => c.text.includes("birthday")).map(({ at: _at, ...c }) => c),
         [
           {
             text: "Rumi's birthday is the fifth of January",

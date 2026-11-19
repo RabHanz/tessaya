@@ -24,6 +24,7 @@ import { HardwareSettingsPanel } from "./HardwareSettings";
 import { HomeSettingsPanel } from "./HomeSettings";
 import { SettingsScopeProvider, useSettingsScope } from "./SettingsScopeContext";
 import { TeamPanel } from "./TessayaTeam";
+import { UpcomingPanel } from "./UpcomingSettings";
 import type { SettingsScopeSearch } from "./settingsScope";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { VoiceLibrarySections } from "./VoiceLibrarySettings";
@@ -108,6 +109,7 @@ const TESSAYA_PAGES = {
   activity: ActivityPanel,
   brain: BrainSettingsPanel,
   team: TeamPanel,
+  upcoming: UpcomingPanel,
   phone: PhonePage,
   forgotten: ForgottenPage,
   health: HealthPage,
@@ -214,6 +216,21 @@ export function TessayaPlacesPanel({ moved }: { readonly moved?: TessayaPlaceId 
               size="xs"
               variant="outline"
               render={<Link to="/tessaya/$page" params={{ page: "team" }} />}
+            >
+              Show here
+            </Button>
+          }
+        />
+      </SettingsSection>
+      <SettingsSection title="Coming up">
+        <SettingsRow
+          title="Coming up"
+          description="House timers, reminders, scheduled tasks and rules, soonest first; cancel, pause or move one."
+          control={
+            <Button
+              size="xs"
+              variant="outline"
+              render={<Link to="/tessaya/$page" params={{ page: "upcoming" }} />}
             >
               Show here
             </Button>

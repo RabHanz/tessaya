@@ -23,6 +23,7 @@ import {
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
+  BATON_UPCOMING_WS_METHODS,
   BATON_CONSENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
@@ -319,6 +320,15 @@ export function createTessayaWorkSessionAtoms<R, E>(
     commitmentsUpsert: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:commitments-upsert",
       tag: BATON_COMMITMENT_WS_METHODS.upsert,
+    }),
+    /** Coming up: what will happen later, from every source; and cancelling, pausing or moving one item. */
+    upcomingList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:upcoming-list",
+      tag: BATON_UPCOMING_WS_METHODS.list,
+    }),
+    upcomingChange: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:upcoming-change",
+      tag: BATON_UPCOMING_WS_METHODS.change,
     }),
     consentList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:consent-list",

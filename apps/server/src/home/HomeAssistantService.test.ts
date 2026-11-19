@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -412,6 +413,62 @@ it.effect(
       yield* home.tick;
       assert.isFalse(house.configs.has(id));
       assert.strictEqual((yield* home.automations({}))[0]?.status, "finished");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "a timer lists when it runs, and moves under the same id; a rule on a condition does not move",
+  () => {
+    const { house, layer } = setup();
+    return Effect.gen(function* () {
+      const home = yield* connected;
+      const timer = yield* home.saveAutomation(
+        {
+          alias: "Study light off",
+          kind: "temporary",
+          runInMinutes: 20,
+          actions: [{ action: "light.turn_off", target: { entity_id: "light.study" } }],
+          request: "study light off in twenty",
+        },
+        assistant,
+      );
+      const id = timer.id!;
+      const now = yield* Clock.currentTimeMillis;
+      const runsAt = () =>
+        Effect.map(home.automations({}), (rows) =>
+          Date.parse(rows.find((r) => r.id === id)!.runsAt!),
+        );
+      assert.strictEqual(Math.round(((yield* runsAt()) - now) / 60_000), 20);
+
+      const moved = yield* home.moveAutomation({ id, runInMinutes: 15 }, assistant);
+      assert.strictEqual(moved.status, "done");
+      assert.strictEqual(Math.round(((yield* runsAt()) - now) / 60_000), 15);
+      const config = house.configs.get(id)!;
+      assert.lengthOf(config["conditions"] as ReadonlyArray<unknown>, 1);
+      assert.lengthOf(
+        (config["actions"] as Array<{ event?: string }>).filter(
+          (a) => a.event === HomeAssistantService.DONE_EVENT,
+        ),
+        1,
+      );
+
+      const sunset = yield* home.saveAutomation(
+        {
+          alias: "Study light at sunset",
+          kind: "temporary",
+          expiresInMinutes: 600,
+          triggers: [{ trigger: "sun", event: "sunset" }],
+          actions: [{ action: "light.turn_on", target: { entity_id: "light.study" } }],
+          request: "study light at sunset today",
+        },
+        assistant,
+      );
+      const refused = yield* home
+        .moveAutomation({ id: sunset.id!, runInMinutes: 5 }, assistant)
+        .pipe(Effect.flip);
+      assert.include(refused.why, "Only a one-off timer moves");
+      assert.isNull((yield* home.automations({})).find((r) => r.id === sunset.id)!.runsAt);
     }).pipe(Effect.provide(layer));
   },
 );

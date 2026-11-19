@@ -72,6 +72,9 @@ import { handleHands } from "./TessayaHandsApi.ts";
 import { TurnLiveContext } from "./TurnLiveContext.ts";
 import { VesselHands } from "./VesselHands.ts";
 import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./TessayaApi.ts";
+import { TessayaUpcoming } from "./TessayaUpcoming.ts";
+import { houseZone, isoIn } from "./houseZone.ts";
+import { countdownText } from "@t3tools/tessaya-shared/upcoming";
 import { transcribeWav } from "./TessayaPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./TessayaPage.ts";
 import { changePersona } from "./PersonaChanges.ts";
@@ -156,6 +159,37 @@ export const routes = HttpRouter.use((router) =>
       answerPrompt: (id, index) =>
         run(Effect.flatMap(TessayaPhoneInbox, (inbox) => inbox.answerPrompt(id, index))),
       expired: (id) => run(Effect.flatMap(TessayaPhoneInbox, (inbox) => inbox.expired(id))),
+      // The page is plain script: each countdown and clock comes from here, on the house's clock, and the page reads
+      // the list again every 20 s while it is open.
+      upcoming: () =>
+        run(
+          Effect.gen(function* () {
+            const list = yield* (yield* TessayaUpcoming).list({});
+            const zone = yield* houseZone();
+            const now = yield* Clock.currentTimeMillis;
+            return {
+              ...list,
+              items: list.items.map((item) => ({
+                ...item,
+                when: countdownText(item, now),
+                // "11-21" for a date, "11-19 22:40" for a time, on the house's clock.
+                clock:
+                  item.at === null
+                    ? null
+                    : isoIn(item.at, zone)
+                        .slice(5, item.allDay === true ? 10 : 16)
+                        .replace("T", " "),
+              })),
+            };
+          }),
+        ),
+      // From his phone: Tessaya's own items change at once; his own automations still ask.
+      changeUpcoming: (input) =>
+        run(
+          Effect.flatMap(TessayaUpcoming, (upcoming) =>
+            upcoming.change(input, { who: "the Director", surface: "phone" }),
+          ).pipe(Effect.catchTags({ UpcomingError: (e) => Effect.succeed(e.reason) })),
+        ),
       transcribe: async (wav) => {
         if (hearing)
           return { ok: false, why: "Still working on the last recording. Try again in a moment." };

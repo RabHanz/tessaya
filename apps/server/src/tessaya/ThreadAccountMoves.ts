@@ -82,6 +82,16 @@ export interface ThreadAccountMovesShape {
     readonly failure: string | null;
   }>;
   readonly cancelLive: (sessionId: string) => Effect.Effect<boolean>;
+  /** Everything still waiting for a turn to end: threads to move and terminal sessions' queued changes (Coming up). */
+  readonly waiting: Effect.Effect<{
+    readonly threads: ReadonlyArray<{ readonly threadId: string; readonly instanceId: string }>;
+    readonly sessions: ReadonlyArray<{
+      readonly sessionId: string;
+      readonly change: TessayaLiveQueued;
+    }>;
+  }>;
+  /** Drops a thread's waiting move; false when none was waiting. */
+  readonly cancelMove: (threadId: string) => Effect.Effect<boolean>;
   /** The mirror saw this session go from busy to idle: a queued change goes in now. */
   readonly settleLive: (sessionId: string) => Effect.Effect<void>;
 }
@@ -335,6 +345,14 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
       }),
     cancelLive,
     settleLive,
+    waiting: Effect.sync(() => ({
+      threads: [...pending].map(([threadId, instanceId]) => ({ threadId, instanceId })),
+      sessions: [...live].map(([sessionId, change]) => ({ sessionId, change })),
+    })),
+    cancelMove: (threadId: string) =>
+      pending.has(threadId)
+        ? forget(threadId).pipe(Effect.as(true), Effect.orDie)
+        : Effect.succeed(false),
     pendingThreadIds: () => [...pending.keys()],
   };
 });
@@ -387,6 +405,8 @@ export const layer = Layer.effect(
       liveQueued: moves.liveQueued,
       cancelLive: moves.cancelLive,
       settleLive: moves.settleLive,
+      waiting: moves.waiting,
+      cancelMove: moves.cancelMove,
     });
   }),
 );

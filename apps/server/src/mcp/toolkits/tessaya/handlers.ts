@@ -43,6 +43,7 @@ import * as Schema from "effect/Schema";
 
 import { accountByWords } from "@t3tools/tessaya-shared/accountRoom";
 import { recordText } from "@t3tools/tessaya-shared/audit";
+import { countdownText } from "@t3tools/tessaya-shared/upcoming";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { ownerDoc } from "@t3tools/tessaya-shared/ownerProfile";
 
@@ -56,6 +57,7 @@ import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { workNow } from "../../../tessaya/TessayaSessionsAcross.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { TessayaUpcoming } from "../../../tessaya/TessayaUpcoming.ts";
 import { MemoryViewer, TessayaMemoryService } from "../../../tessaya/TessayaMemoryService.ts";
 import { emitAction } from "../../../tessaya/turnActions.ts";
 import { castLine, castOp, TessayaCast } from "../../../tessaya/TessayaCast.ts";
@@ -254,6 +256,16 @@ export const layer = McpToolAccess.toLayer(
       return Option.isNone(turn)
         ? Effect.fail({ reason: "Memory is not available on this server." })
         : f(turn.value);
+    };
+    /** Coming up, read and changed in Tessaya's context, as the clients' RPC does. */
+    const withUpcoming = <A, E>(
+      f: (upcoming: TessayaUpcoming["Service"]) => Effect.Effect<A, E>,
+    ): Effect.Effect<A, E | { readonly reason: string }> => {
+      const upcoming =
+        runtime === null ? Option.none() : Context.getOption(runtime, TessayaUpcoming);
+      return Option.isNone(upcoming) || runtime === null
+        ? Effect.fail({ reason: "Coming up is not available on this server." })
+        : f(upcoming.value).pipe(Effect.provideContext(runtime));
     };
     const withWake = <A, E>(
       f: (wake: TessayaWake["Service"]) => Effect.Effect<A, E>,
@@ -798,7 +810,59 @@ export const layer = McpToolAccess.toLayer(
       ),
       // Read as a client (MemoryViewer's default here): walls hold.
       tessaya_coming_up: McpToolAccess.reads(() =>
-        call(withTurn((turn) => Effect.map(turn.comingUp, (items) => ({ items })))),
+        call(
+          withUpcoming((upcoming) =>
+            Effect.gen(function* () {
+              const list = yield* upcoming.list({});
+              const zone = yield* houseZone();
+              const now = yield* Clock.currentTimeMillis;
+              return {
+                items: list.items.map((i) => ({
+                  id: i.id,
+                  source: i.source,
+                  title: i.title,
+                  line: i.line,
+                  when: countdownText(i, now),
+                  at:
+                    i.at === null ? null : isoIn(i.at, zone).slice(0, i.allDay === true ? 10 : 16),
+                  condition: i.condition,
+                  repeats: i.repeats,
+                  paused: i.paused,
+                  can: i.can,
+                })),
+                unreadable: list.unreadable,
+              };
+            }),
+          ),
+        ),
+      ),
+      // A source that cannot do it answers with its sentence, which she says; it is not a failed tool.
+      tessaya_coming_up_change: McpToolAccess.writes((input) =>
+        call(
+          Effect.gen(function* () {
+            const by = yield* HomeHandlers.mcpHomeActor;
+            const at = input.at === undefined ? undefined : Date.parse(input.at);
+            if (at !== undefined && Number.isNaN(at))
+              return { done: false, line: "That time could not be read; give it with its offset." };
+            return yield* withUpcoming((upcoming) =>
+              upcoming
+                .change(
+                  {
+                    id: input.id,
+                    op: input.op,
+                    ...(input.inMinutes === undefined ? {} : { inMinutes: input.inMinutes }),
+                    ...(at === undefined ? {} : { at }),
+                  },
+                  by,
+                )
+                .pipe(
+                  Effect.catchTags({
+                    UpcomingError: (e) => Effect.succeed({ done: false, line: e.reason }),
+                  }),
+                ),
+            );
+          }),
+        ),
       ),
       // His own documents: his turns and his own agents only, never a guest's or a tainted one.
       tessaya_owner_doc: McpToolAccess.reads((input) =>

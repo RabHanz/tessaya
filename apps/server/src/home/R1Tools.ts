@@ -215,6 +215,8 @@ export const NOT_IN_ROOM: {
 } = {
   tessaya_desktop_settings:
     "settings_find, settings_get and settings_set reach the same desktop fields",
+  tessaya_coming_up_change:
+    "the room changes a timer with home_automation_set and home_automation_save under the same id, the one amend path; the rest waits for a room eval",
   tessaya_session_defaults:
     "settings_get reads newSessionsRun and mainThreadId, and settings_set changes them",
   tessaya_voice_arbiter: "only his other servers call it, never a person",

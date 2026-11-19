@@ -279,6 +279,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
     {
       title: "Working for you",
       rows: [
+        serverPage("SettingsUpcoming", "timer", "Coming up"),
         serverPage("SettingsTeam", "person.2", "Team"),
         serverPage("SettingsCast", "person.crop.circle", "Cast"),
         serverPage("SettingsPulse", "bolt.circle", "Pulse"),

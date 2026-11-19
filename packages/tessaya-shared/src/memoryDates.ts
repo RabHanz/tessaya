@@ -191,3 +191,24 @@ export const needsFromMemory = (
     dueAt: c.on,
     ref: c.item.id,
   }));
+
+/** The instant a date (as `ComingUp.on`, UTC midnight of that date) begins in a zone, for a list sorted by time. */
+export const zoneMidnight = (on: number, zone: string): number => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+      .formatToParts(on)
+      .map((p) => [p.type, Number(p.value)]),
+  ) as Record<string, number>;
+  const offset =
+    Date.UTC(parts["year"]!, parts["month"]! - 1, parts["day"]!, parts["hour"]!, parts["minute"]!) -
+    on;
+  return on - offset;
+};

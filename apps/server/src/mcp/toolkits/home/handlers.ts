@@ -60,6 +60,23 @@ export const vesselOf = (
       : null;
 const linked = { linkedCallers: "allowed" } as const;
 
+/** Who a house act from a tool is: her on a vessel, else an agent; never a yes, which only his own gate gives. */
+export const mcpHomeActor = Effect.gen(function* () {
+  const scope = yield* McpInvocationContext.McpInvocationContext;
+  // Approval cards name the vessel he said it to ("Tessaya via R1").
+  const via = (yield* TurnOrigin)?.label;
+  const tessaya = via === undefined ? "Tessaya" : `Tessaya via ${via}`;
+  const vessel = vesselOf(scope.client);
+  return (
+    vessel !== null
+      ? { who: tessaya, surface: vessel.surface, ...(vessel.dryRun ? { dryRun: true } : {}) }
+      : {
+          who: scope.client === undefined ? "an agent in T3" : "an outside agent",
+          surface: "agent",
+        }
+  ) satisfies HomeActor;
+});
+
 /**
  * The list with its counts made here, so she says them rather than counting rows (.138's suite: "three are running"
  * for two, then "let me correct that" aloud). Running and paused are of the automations still in the house.
@@ -89,20 +106,9 @@ export const make = Effect.gen(function* () {
     args: Record<string, unknown>,
   ) {
     if (context === null) return yield* unavailable;
-    const scope = yield* McpInvocationContext.McpInvocationContext;
-    // Approval cards name the vessel he said it to ("Tessaya via R1").
-    const via = (yield* TurnOrigin)?.label;
-    const tessaya = via === undefined ? "Tessaya" : `Tessaya via ${via}`;
-    // An outside client's name, or the T3 thread asking; never a yes, which only his own gate gives.
-    const vessel = vesselOf(scope.client);
-    const by: HomeActor =
-      vessel !== null
-        ? { who: tessaya, surface: vessel.surface, ...(vessel.dryRun ? { dryRun: true } : {}) }
-        : {
-            who: scope.client === undefined ? "an agent in T3" : "an outside agent",
-            surface: "agent",
-          };
-    return yield* serveHomeCall({ kind, op, args }, by).pipe(Effect.provideContext(context));
+    return yield* serveHomeCall({ kind, op, args }, yield* mcpHomeActor).pipe(
+      Effect.provideContext(context),
+    );
   });
   /** The room of the body the turn's vessel sits in ("kitchen dock" → kitchen), or null. */
   const vesselRoom = Effect.gen(function* () {

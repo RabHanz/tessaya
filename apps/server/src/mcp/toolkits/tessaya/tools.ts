@@ -602,21 +602,54 @@ const CastTool = Tool.make("tessaya_cast", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
+const ComingUpItem = Schema.Struct({
+  id: Schema.String,
+  source: Schema.String,
+  title: Schema.String,
+  line: Schema.String,
+  when: Schema.String,
+  at: Schema.NullOr(Schema.String),
+  condition: Schema.NullOr(Schema.String),
+  repeats: Schema.NullOr(Schema.String),
+  paused: Schema.Boolean,
+  can: Schema.Struct({ cancel: Schema.Boolean, pause: Schema.Boolean, move: Schema.Boolean }),
+});
+
 const ComingUpTool = Tool.make("tessaya_coming_up", {
   ...shared,
   description:
-    'What his memories say is coming up in the next week, soonest first: birthdays and anniversaries, dated plans, a weekday he named lately, and anything kept only until a date. For "what\'s coming up", "anything this week", or to mention a date he would want to know about. Walled projects\' memories are never shown here.',
+    'Everything coming up in the next 7 days, soonest first, in one list: house timers and automations, reminders, scheduled tasks and jobs, then rules and device rules that wait on something, changes waiting for a session to go quiet, and dates from his memories (birthdays, plans; walled projects\' never shown). For "what\'s coming up", "anything this week", "what timers are running", or to find the id before tessaya_coming_up_change. `when` is how long until it ("in 18 min"); `at` is on the house\'s clock; say those, never work out a time yourself.',
   // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
   success: Schema.Struct({
-    items: Schema.Array(
-      Schema.Struct({ text: Schema.String, when: Schema.String, kind: Schema.String }),
-    ),
+    items: Schema.Array(ComingUpItem),
+    /** Sources that could not be read just now. */
+    unreadable: Schema.Array(Schema.String),
   }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const ComingUpChangeTool = Tool.make("tessaya_coming_up_change", {
+  ...shared,
+  description:
+    'Cancel, pause, resume or move one item from tessaya_coming_up, by its `id`. To move, give `inMinutes` from now ("make it fifteen" is 15) or `at`, a time with its offset on the house\'s clock. A one-off timer, a reminder and a one-off scheduled task move; a repeating task, a rule or a date does not, and the answer says why: say that sentence. An automation he made himself still asks him first.',
+  parameters: Schema.Struct({
+    id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
+    op: Schema.Literals(["cancel", "pause", "resume", "move"]),
+    inMinutes: Schema.optional(
+      Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 44_640 })),
+    ),
+    at: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
+  }),
+  success: Schema.Struct({ done: Schema.Boolean, line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
 const OwnerDocTool = Tool.make("tessaya_owner_doc", {
@@ -1126,6 +1159,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryUnlearnTool,
   MemoryAboutTool,
   ComingUpTool,
+  ComingUpChangeTool,
   OwnerDocTool,
   UsageReportTool,
   ActivityTool,

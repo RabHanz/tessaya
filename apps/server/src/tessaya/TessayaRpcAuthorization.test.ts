@@ -37,6 +37,7 @@ import {
   AuthGrantScopes,
   TessayaRpcGroup,
   TessayaRpcScopeAuthorization,
+  BATON_UPCOMING_WS_METHODS,
   tessayaSpelling,
 } from "@t3tools/tessaya-contracts";
 import { clientRpcRequiredScopes, type AuthEnvironmentScope } from "@t3tools/contracts";
@@ -72,6 +73,28 @@ describe("who may use the prompt lab and react to her pulse", () => {
     expect(roleCeiling("owner", false)).toContain(AuthSettingsWriteScope);
     for (const role of ["admin", "adult", "child", "guest"] as const)
       expect(roleCeiling(role, false)).not.toContain(AuthSettingsWriteScope);
+  });
+});
+
+describe("who may read and change what is coming up", () => {
+  it("lets a reader list, needs operate to cancel, pause or move, and asks the same of the client", () => {
+    const { list, change } = BATON_UPCOMING_WS_METHODS;
+    expect(missingTessayaScope(list, [AuthOrchestrationReadScope], {})).toBeNull();
+    expect(
+      missingTessayaScope(change, [AuthOrchestrationReadScope], { id: "house:x", op: "cancel" }),
+    ).toBe(AuthOrchestrationOperateScope);
+    for (const scopes of [
+      [AuthOrchestrationReadScope],
+      [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
+    ] as ReadonlyArray<ReadonlyArray<AuthEnvironmentScope>>)
+      for (const [method, input] of [
+        [list, {}],
+        [change, { id: "house:x", op: "cancel" }],
+      ] as const)
+        expect(
+          clientRpcRequiredScopes(method, input).find((s) => !scopes.includes(s)) ?? null,
+        ).toBe(missingTessayaScope(method, scopes, input));
+    expect(DESK_METHODS.has(list) && DESK_METHODS.has(change)).toBe(true);
   });
 });
 

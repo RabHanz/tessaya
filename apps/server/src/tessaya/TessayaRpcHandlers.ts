@@ -27,6 +27,7 @@ import {
   BATON_INTENT_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
+  BATON_UPCOMING_WS_METHODS,
   BATON_CONSENT_WS_METHODS,
   BATON_SCRATCHPAD_WS_METHODS,
   BATON_PHONE_WS_METHODS,
@@ -109,6 +110,7 @@ import { TessayaCloudService } from "./TessayaCloudService.ts";
 import { TessayaSessionCatalogService } from "./TessayaSessionCatalogService.ts";
 import { TessayaPhoneInbox, phoneCall } from "./TessayaPhoneInbox.ts";
 import { TessayaCommitmentService } from "./TessayaCommitmentService.ts";
+import { TessayaUpcoming } from "./TessayaUpcoming.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
 import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
 import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
@@ -215,6 +217,7 @@ export type TessayaServices =
   | ServerConfig.ServerConfig
   | ScheduledTaskService
   | ThreadAccountMoves
+  | TessayaUpcoming
   | ProviderInstanceRegistry.ProviderInstanceRegistry
   | ProviderRegistry.ProviderRegistry
   | PromptLab
@@ -819,6 +822,15 @@ export const makeHandlers = Effect.gen(function* () {
       run(
         Effect.flatMap(TessayaCommitmentService, (commitments) =>
           Effect.map(commitments.upsert(input.items), (applied) => ({ applied })),
+        ),
+      ),
+    [BATON_UPCOMING_WS_METHODS.list]: (input) =>
+      run(Effect.flatMap(TessayaUpcoming, (upcoming) => upcoming.list(input))),
+    // A click on his own screen: Tessaya's own items change at once, his own still ask (the house gate).
+    [BATON_UPCOMING_WS_METHODS.change]: (input) =>
+      run(
+        Effect.flatMap(TessayaUpcoming, (upcoming) =>
+          upcoming.change(input, { who: "the Director", surface: "settings" }),
         ),
       ),
     [BATON_CONSENT_WS_METHODS.list]: () => run(Effect.map(readGrants, (keys) => ({ keys }))),

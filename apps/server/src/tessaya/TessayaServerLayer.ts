@@ -101,6 +101,7 @@ import * as OrchestrationReactor from "./OrchestrationReactor.ts";
 import * as OrchestrationRuleService from "./OrchestrationRuleService.ts";
 import * as SynopsisReactor from "./SynopsisReactor.ts";
 import * as ThreadAccountMoves from "./ThreadAccountMoves.ts";
+import * as TessayaUpcoming from "./TessayaUpcoming.ts";
 import * as WorkSessionService from "./WorkSessionService.ts";
 import * as TessayaWake from "./TessayaWake.ts";
 import * as TessayaWakeRoutes from "./TessayaWakeRoutes.ts";
@@ -221,6 +222,8 @@ const homeDevicesLayer = HomeDevices.layer.pipe(
 // Her pulse (B-003) beside the intent surface, so every service provided below reaches it.
 const servicesInner = Layer.mergeAll(
   IntentService.layer,
+  // Coming up: reads each owner below through the caller's context; it keeps nothing of its own.
+  TessayaUpcoming.layer,
   TessayaPulse.layer,
   TessayaBody.wishLayer,
   FindingsReactor.layer,
