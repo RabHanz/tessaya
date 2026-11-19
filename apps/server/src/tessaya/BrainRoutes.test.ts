@@ -15,7 +15,7 @@ const REACHES_A_MODEL =
   /api\.anthropic\.com|"--model"|claude-(?:haiku|sonnet|opus)-\d|readRouting\(|\.cheap\b|\bTessayaOneShot\b|\bDictationCleanupApi\b/;
 /** What a routed file must contain: it asks the table, or names its role to a service that does. */
 const ASKS_THE_TABLE =
-  /\b(?:routeFor|brainRoute|onSubscription|keyRefusal)\(|role: "(?:cleanup|voice|deep|background|consolidation|web|vision|intent|synopsis)"|\.cleanup\(/;
+  /\b(?:routeFor|brainRoute|onSubscription|keyRefusal)\(|role: "(?:cleanup|voice|deep|background|consolidation|web|vision|intent|synopsis|gist)"|\.cleanup\(/;
 
 type Site =
   | { readonly table: string }
@@ -39,6 +39,12 @@ const SITES: Readonly<Record<string, Site>> = {
   // Callers.
   "apps/server/src/home/R1Brain.ts": { routed: "spoken turns: the voice row" },
   "apps/server/src/home/R1Hold.ts": { routed: "her line while a slow answer comes: the hold row" },
+  "apps/server/src/tessaya/TessayaTurn.ts": {
+    routed: "what each of her threads is about: the gist row",
+  },
+  "apps/server/src/tessaya/PersonaLayers.ts": {
+    routed: "a private turn's reply, written by the brain's call: the voice row",
+  },
   "apps/server/src/home/VoiceSessions.ts": {
     wiring: "the warm subscription sessions run the model R1Brain reads from the voice row",
   },
