@@ -22,7 +22,6 @@ import {
   repairBoundsFor,
   repairLine,
   repairVerdict,
-  UNCALIBRATED,
   type HeardWord,
   type RepairVerdict,
 } from "@t3tools/tessaya-shared/transcriptRepair";
@@ -1271,22 +1270,14 @@ export const make = Effect.gen(function* () {
     Option.getOrUndefined(yield* Effect.serviceOption(TurnLiveContext)) ?? (yield* makeLive);
   /** How the words were heard, judged on the recogniser's own bounds; null when the vessel sent no scores. */
   const repairFor = Effect.fn("TessayaTurn.repairFor")(function* (turn: TurnEnvelope) {
-    // Unscored words (a typed turn has none to doubt) still check a teen or -ty amount said aloud: its score never came.
-    if (turn.words === undefined && (turn.vessel.kind !== "device" || turn.text.trim() === ""))
-      return null;
-    const words =
-      turn.words ??
-      turn.text
-        .trim()
-        .split(/\s+/)
-        .map((text) => ({ text, p: null }));
+    if (turn.words === undefined) return null;
+    const words = turn.words;
     const { personas } = yield* personasList;
     const verdict = repairVerdict(
       words,
-      turn.words === undefined ? UNCALIBRATED : repairBoundsFor(turn.recogniser),
+      repairBoundsFor(turn.recogniser),
       new Set(personas.map((p) => p.name.toLowerCase())),
     );
-    if (turn.words === undefined && verdict.kind === "accept") return null;
     const scores = words.flatMap((w) => (w.p === null ? [] : [w.p]));
     // The verdict carries the words it doubted: a private moment's stay out of the shared log.
     if (turn.private === true) return verdict.kind === "accept" ? null : verdict;

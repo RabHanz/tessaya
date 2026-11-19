@@ -107,8 +107,8 @@ const AMOUNT_UNIT = /^(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|percent|%|deg
 export const TEEN_TY_ACCEPT = 0.98;
 
 /**
- * A teen or -ty number said as an amount ("for fifty minutes", "to 30 percent") that the recogniser was not sure of, or
- * gave no score for: the one to check, with the number it sounds like.
+ * A teen or -ty number said as an amount ("for fifty minutes", "to 30 percent") that the recogniser scored as unsure:
+ * the one to check, with the number it sounds like.
  */
 export const teenTyDoubt = (
   words: ReadonlyArray<HeardWord>,
@@ -122,7 +122,8 @@ export const teenTyDoubt = (
     const next = bare(words[index + 1]?.text ?? "").toLowerCase();
     const unit = AMOUNT_UNIT.test(next) || /%$/.test(w.text.trim());
     if (pair === undefined || !unit) continue;
-    if (w.p === null || !Number.isFinite(w.p) || w.p < TEEN_TY_ACCEPT) return { word, index, pair };
+    // Unscored is no doubt here: every amount without a score asked (.201 gate: "Thirteen or thirty?" for 30 percent).
+    if (w.p !== null && Number.isFinite(w.p) && w.p < TEEN_TY_ACCEPT) return { word, index, pair };
   }
   return null;
 };

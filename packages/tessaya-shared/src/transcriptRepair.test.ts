@@ -48,7 +48,7 @@ describe("repairVerdict", () => {
     expect(repairVerdict(words, BOUNDS)).toEqual(verdict);
   });
 
-  it("a teen or -ty amount is checked with its twin unless heard for sure, even uncalibrated", () => {
+  it("a teen or -ty amount scored unsure is checked with its twin, even uncalibrated; an unscored one is not", () => {
     // 19 Nov 22:25: "fifteen minutes" came out "fifty minutes" and the pump was set for fifty.
     const pump = (p: number | null) =>
       heard(
@@ -62,10 +62,12 @@ describe("repairVerdict", () => {
       );
     const check = { kind: "clarify", word: "fifty", index: 5, pair: "fifteen" };
     expect(repairVerdict(pump(0.93), BOUNDS)).toEqual(check);
-    expect(repairVerdict(pump(null), UNCALIBRATED)).toEqual(check);
+    expect(repairVerdict(pump(0.93), UNCALIBRATED)).toEqual(check);
+    // .201's gate: a turn with no scores asked "Thirteen or thirty?" for "30 percent brightness".
+    expect(repairVerdict(pump(null), UNCALIBRATED)).toEqual({ kind: "accept" });
     expect(repairVerdict(pump(0.995), BOUNDS)).toEqual({ kind: "accept" });
     expect(
-      repairVerdict(heard(["Set", null], ["it", null], ["to", null], ["30%", null]), UNCALIBRATED),
+      repairVerdict(heard(["Set", 0.9], ["it", 0.9], ["to", 0.9], ["30%", 0.9]), UNCALIBRATED),
     ).toEqual({
       kind: "clarify",
       word: "thirty",
@@ -73,14 +75,14 @@ describe("repairVerdict", () => {
       pair: "thirteen",
     });
     expect(
-      repairVerdict(heard(["No,", null], ["fifteen", null], ["minutes.", null]), UNCALIBRATED),
+      repairVerdict(heard(["No,", 0.9], ["fifteen", 0.9], ["minutes.", 0.9]), UNCALIBRATED),
     ).toEqual({ kind: "accept" });
     // Not an amount, or not a twin: no question.
     expect(
-      repairVerdict(heard(["Fifty", null], ["people", null], ["came.", null]), UNCALIBRATED),
+      repairVerdict(heard(["Fifty", 0.9], ["people", 0.9], ["came.", 0.9]), UNCALIBRATED),
     ).toEqual({ kind: "accept" });
     expect(
-      repairVerdict(heard(["For", null], ["twenty", null], ["minutes.", null]), UNCALIBRATED),
+      repairVerdict(heard(["For", 0.9], ["twenty", 0.9], ["minutes.", 0.9]), UNCALIBRATED),
     ).toEqual({ kind: "accept" });
     expect(repairLine(check as never, "for fifty minutes")).toContain('"Fifteen or fifty?"');
   });
