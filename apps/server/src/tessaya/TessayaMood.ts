@@ -234,7 +234,8 @@ const make = Effect.gen(function* () {
     const resolved = event(day, dials);
     // Only her brain appraises; a worker sends what it saw there (one-brain §2.1).
     if (!(yield* brain.isBrain)) {
-      yield* brain.send("mood", { p: persona, m: member, e: resolved });
+      // never lost: queued for the brain when it can't be reached, applied there once
+      yield* brain.sendOrQueue("mood", { p: persona, m: member, e: resolved });
       return;
     }
     yield* appraiseInto(persona, resolved, now, member, current.bondCap, dials.forgiveness);

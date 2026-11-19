@@ -28,6 +28,7 @@ import * as AccountPoolService from "./AccountPoolService.ts";
 import * as TessayaAccounts from "./TessayaAccounts.ts";
 import * as AccountRotationPolicy from "./AccountRotationPolicy.ts";
 import * as TessayaMemorySync from "./TessayaMemorySync.ts";
+import * as BrainHost from "./BrainHost.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
 import * as AdoptedSessionService from "./AdoptedSessionService.ts";
 import * as TessayaDatabase from "./TessayaDatabase.ts";
@@ -297,6 +298,8 @@ const servicesInner = Layer.mergeAll(
       ),
       // Memory sync with his other servers on this server's own clock, not T3's window (GEN-6).
       TessayaMemorySync.layer.pipe(Layer.provide(memoryLayer)),
+      // a worker's changes that waited for the brain land once it is back (one truth, nothing lost)
+      BrainHost.outboxLayer,
       // Her standing understanding of each person and of herself (G4), versioned in the one memory.
       TessayaUnderstanding.layer.pipe(
         Layer.provide(memoryLayer),

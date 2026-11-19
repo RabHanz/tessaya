@@ -8,7 +8,8 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { emitAction } from "../provenance/ActionLog.ts";
-import { brainOn, type BrainOp } from "./BrainHost.ts";
+import { BrainOp as BrainOpSchema, brainOn, type BrainOp } from "./BrainHost.ts";
+import * as SqlClient from "effect/sql/SqlClient";
 import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaCast } from "./TessayaCast.ts";
@@ -88,6 +89,12 @@ const CastAct = Schema.Union([
   }),
 ]);
 const decodeCastAct = Schema.decodeUnknownOption(CastAct);
+const OutboxIn = Schema.Struct({
+  id: Schema.String.check(Schema.isMaxLength(64)),
+  op: BrainOpSchema,
+  payload: Schema.Unknown,
+});
+const decodeOutbox = Schema.decodeUnknownOption(OutboxIn);
 const Doing = Schema.NullOr(
   Schema.Struct({ what: Schema.String.check(Schema.isMaxLength(200)), until: Schema.Number }),
 );
@@ -123,10 +130,7 @@ const decodeVocabulary = Schema.decodeUnknownOption(VocabularyAtBrain);
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
 
-export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
-  op: BrainOp,
-  payload: unknown,
-) {
+const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payload: unknown) {
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
   switch (op) {
     case "roomLoop": {
@@ -217,6 +221,9 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
       if (Option.isNone(turn)) return refused("No conversations here.");
       return done(yield* turn.value.threadAct(act.value));
     }
+    case "outbox":
+      // unwrapped by receiveAtBrain: never nested
+      return refused("Not a queued change.");
     case "presence": {
       const act = decodePresenceAct(payload);
       if (Option.isNone(act)) return refused("Not a presence signal.");
@@ -306,4 +313,28 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
       return written ? done() : refused("No private library here.");
     }
   }
+});
+
+/** One act from a worker; a queued one (outbox) is applied exactly once by its id, however often it is replayed. */
+export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
+  op: BrainOp,
+  payload: unknown,
+) {
+  if (op !== "outbox") return yield* applyAtBrain(op, payload);
+  if ((yield* brainOn) !== null) return refused("This server is not her brain.");
+  const box = decodeOutbox(payload);
+  if (Option.isNone(box) || box.value.op === "outbox") return refused("Not a queued change.");
+  const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
+  if (Option.isSome(sql)) {
+    const seen = yield* sql.value<{ n: number }>`
+      SELECT COUNT(*) AS n FROM tessaya_brain_applied WHERE id = ${box.value.id}
+    `.pipe(Effect.orElseSucceed(() => [{ n: 0 }]));
+    if ((seen[0]?.n ?? 0) > 0) return done({ already: true });
+  }
+  const answer = yield* applyAtBrain(box.value.op, box.value.payload);
+  if (answer.ok && Option.isSome(sql))
+    yield* sql.value`
+      INSERT OR IGNORE INTO tessaya_brain_applied (id, at) VALUES (${box.value.id}, ${yield* Clock.currentTimeMillis})
+    `.pipe(Effect.ignore);
+  return answer;
 });

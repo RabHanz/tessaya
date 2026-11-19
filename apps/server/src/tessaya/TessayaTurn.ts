@@ -924,7 +924,7 @@ export const make = Effect.gen(function* () {
   }
   /**
    * Her conversation list lives once, on her brain. A worker keeps only an in-memory cache of what it wrote (for its own
-   * next turn) and sends each change there; with the brain away the change is lost rather than kept as a second truth.
+   * next turn) and sends each change there; with the brain away the change waits in the outbox, in order, and lands once.
    */
   const brain = yield* makeBrainLink;
   const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
@@ -952,7 +952,8 @@ export const make = Effect.gen(function* () {
     for (const r of rows) {
       const row = yield* parsedOr<LiveThread | null>(r.row, null);
       if (row === null) continue;
-      if (Option.isNone(yield* brain.send("threads", { a: "keep", id: r.id, row }))) return;
+      // sent now, or queued in order for when the brain is back: either way it is no longer this server's
+      yield* brain.sendOrQueue("threads", { a: "keep", id: r.id, row });
       sent++;
     }
     yield* sql`DELETE FROM tessaya_live_threads`.pipe(Effect.ignore);
@@ -968,7 +969,7 @@ export const make = Effect.gen(function* () {
     live.set(id, row);
     if (!(yield* brain.isBrain)) {
       yield* moveUp();
-      yield* brain.send("threads", { a: "keep", id, row });
+      yield* brain.sendOrQueue("threads", { a: "keep", id, row });
       return;
     }
     yield* encodeJson(row).pipe(
@@ -985,7 +986,7 @@ export const make = Effect.gen(function* () {
     Effect.sync(() => live.delete(id)).pipe(
       Effect.andThen(
         Effect.flatMap(brain.isBrain, (here) =>
-          here ? Effect.void : Effect.asVoid(brain.send("threads", { a: "drop", id })),
+          here ? Effect.void : Effect.asVoid(brain.sendOrQueue("threads", { a: "drop", id })),
         ),
       ),
       Effect.andThen(sql`DELETE FROM tessaya_live_threads WHERE id = ${id}`.pipe(Effect.ignore)),
@@ -1165,7 +1166,7 @@ export const make = Effect.gen(function* () {
     doing: { readonly what: string; readonly until: number } | null,
   ) {
     if (!(yield* brain.isBrain)) {
-      yield* brain.send("threads", { a: "doing", thread, doing });
+      yield* brain.sendOrQueue("threads", { a: "doing", thread, doing });
       return;
     }
     const row = live.get(thread);
@@ -1176,6 +1177,8 @@ export const make = Effect.gen(function* () {
   const threads = Effect.fn("TessayaTurn.threads")(function* (persona?: string) {
     if (!(yield* brain.isBrain)) {
       yield* moveUp();
+      // what waited for the brain lands first, so the list read back holds it
+      yield* brain.replay();
       const theirs = yield* brain.send("threads", { a: "list", persona: persona ?? null });
       if (Option.isSome(theirs) && Array.isArray(theirs.value))
         return theirs.value as ReadonlyArray<LiveThread>;

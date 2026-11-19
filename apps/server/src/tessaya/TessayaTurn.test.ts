@@ -1453,6 +1453,7 @@ it.effect(
       const base = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
         prefix: "t3code-threads-",
       });
+      let reachable = true;
       const workerCtx = yield* Layer.build(
         turnLayer.pipe(
           Layer.provideMerge(MemberPreferencesLayer),
@@ -1473,9 +1474,12 @@ it.effect(
               PeerMcpClient.PeerMcpClient,
               PeerMcpClient.PeerMcpClient.of({
                 call: (input) =>
-                  receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
-                    Effect.provideContext(brainCtx),
-                  ) as never,
+                  (reachable
+                    ? receiveAtBrain(
+                        input.arguments["op"] as never,
+                        input.arguments["payload"],
+                      ).pipe(Effect.provideContext(brainCtx))
+                    : Effect.fail("away")) as never,
               }),
             ),
           ),
@@ -1511,6 +1515,40 @@ it.effect(
       assert.strictEqual(
         (yield* wsql<{ n: number }>`SELECT COUNT(*) AS n FROM tessaya_live_threads`)[0]?.n,
         0,
+      );
+      // the brain away: his turn's row waits in the outbox, not lost; back, it lands once, however often replayed
+      const count = (table: string) =>
+        Effect.map(wsql<{ n: number }>`SELECT COUNT(*) AS n FROM ${wsql(table)}`, (r) => r[0]?.n);
+      reachable = false;
+      yield* worker.begin({
+        vessel: { kind: "phone", id: "his-phone" },
+        text: "on the train",
+        persona: "companion",
+      });
+      assert.strictEqual(yield* count("tessaya_brain_outbox"), 1);
+      assert.isFalse((yield* onBrain.threads()).some((t) => t.vessel.id === "his-phone"));
+      reachable = true;
+      const queued = (yield* wsql<{ id: string; op: string; payload: string }>`
+        SELECT id, op, payload FROM tessaya_brain_outbox
+      `)[0]!;
+      yield* worker.threads();
+      // the same change replayed again (its answer came but the delete was lost) applies nothing twice
+      yield* receiveAtBrain("outbox", {
+        id: queued.id,
+        op: queued.op,
+        payload: JSON.parse(queued.payload),
+      }).pipe(Effect.provideContext(brainCtx));
+      assert.strictEqual(
+        (yield* onBrain.threads()).filter((t) => t.vessel.id === "his-phone").length,
+        1,
+      );
+      assert.strictEqual(yield* count("tessaya_brain_outbox"), 0);
+      const bsql = Context.get(brainCtx, SqlClient.SqlClient);
+      assert.strictEqual(
+        (yield* bsql<{
+          n: number;
+        }>`SELECT COUNT(*) AS n FROM tessaya_brain_applied WHERE id = ${queued.id}`)[0]?.n,
+        1,
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
