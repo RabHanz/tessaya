@@ -25,7 +25,7 @@ import {
   type HeardWord,
   type RepairVerdict,
 } from "@t3tools/tessaya-shared/transcriptRepair";
-import { comingUp, whenSaid } from "@t3tools/tessaya-shared/memoryDates";
+import { comingUp, whenSaid, zoneMidnight } from "@t3tools/tessaya-shared/memoryDates";
 import { foldSpelling, spellBack } from "@t3tools/tessaya-shared/spelling";
 import {
   privatePersonOf,
@@ -592,7 +592,13 @@ export class TessayaTurn extends Context.Service<
     readonly whoIsHome: Effect.Effect<ReadonlyArray<WhoIsHome>>;
     /** What his memories say is coming up this week, as the caller may see them (Memory v2 step 8). */
     readonly comingUp: Effect.Effect<
-      ReadonlyArray<{ readonly text: string; readonly when: string; readonly kind: string }>
+      ReadonlyArray<{
+        readonly text: string;
+        readonly when: string;
+        readonly kind: string;
+        /** When that day begins in his zone. */
+        readonly at: number;
+      }>
     >;
     readonly beginMany: (
       turns: ReadonlyArray<TurnEnvelope>,
@@ -1670,6 +1676,7 @@ export const make = Effect.gen(function* () {
       text: c.item.text,
       when: whenSaid(c.inDays),
       kind: c.kind,
+      at: zoneMidnight(c.on, zone),
     }));
   }).pipe(Effect.withSpan("TessayaTurn.comingUp"));
 

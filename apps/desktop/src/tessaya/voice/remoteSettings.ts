@@ -78,6 +78,7 @@ const TAB_VOICE: Record<TabId, DesktopSettingsControl["voice"] | null> = {
   setup: null,
   home: null,
   now: null,
+  upcoming: null,
   insights: null,
   scratchpad: null,
   sessions: null,

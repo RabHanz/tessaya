@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { MemoryItem } from "./memory.ts";
-import { comingUp, needsFromMemory } from "./memoryDates.ts";
+import { comingUp, needsFromMemory, zoneMidnight } from "./memoryDates.ts";
 
 const item = (text: string, over: Partial<MemoryItem> = {}): MemoryItem => ({
   id: text,
@@ -53,6 +53,13 @@ describe("what his memories say is coming up", () => {
     const late = Date.parse("2026-12-30T05:00:00.000Z");
     expect(comingUp([item("Ali's birthday is January 2")], late, zone)[0]?.inDays).toBe(3);
     expect(comingUp([item("The dentist is on Saturday")], late, zone)).toEqual([]);
+  });
+
+  it("starts a date at his own midnight, east or west of UTC", () => {
+    const on = Date.UTC(2026, 10, 21);
+    expect(zoneMidnight(on, "Asia/Karachi")).toBe(on - 5 * 3_600_000);
+    expect(zoneMidnight(on, "America/New_York")).toBe(on + 5 * 3_600_000);
+    expect(zoneMidnight(on, "UTC")).toBe(on);
   });
 
   it("becomes 'what needs me' items with a date to rank by", () => {

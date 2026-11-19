@@ -596,7 +596,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165
  
  const MCP_APPROVAL_CODE_PATTERN = new RegExp(
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..1f1e41e67465e99a9412f9cd53fc4078ca4febde 100644
+index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..e54ab42cf9e5c8f28ee96337f789fbde61a75c0e 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
 @@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
@@ -607,7 +607,7 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..1f1e41e67465e99a9412f9cd53fc4078
    AuthEnvironmentMaintainScope,
    AuthOrchestrationOperateScope,
    AuthOrchestrationReadScope,
-@@ -84,6 +85,19 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
+@@ -84,6 +85,22 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
  const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
  const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
  
@@ -621,13 +621,16 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..1f1e41e67465e99a9412f9cd53fc4078
 +const PERSONA_CHANGE = "baton.personas.change";
 +/** Who wears which body (`BATON_CAST_WS_METHODS.call`): moving a persona is operate; its view is `.get`. */
 +const CAST_CALL = "baton.cast.call";
++/** Coming up (`BATON_UPCOMING_WS_METHODS`): reading is a read; cancelling, pausing or moving an item is operate. */
++const UPCOMING_LIST = "baton.upcoming.list";
++const UPCOMING_CHANGE = "baton.upcoming.change";
 +/** His reaction to one pulse decision (`BATON_PULSE_WS_METHODS.react`): it changes what she raises. */
 +const PULSE_REACT = "baton.pulse.react";
 +
  export function clientRpcRequiredScopes(
    method: string,
    input: unknown,
-@@ -101,6 +115,27 @@ export function clientRpcRequiredScopes(
+@@ -101,6 +118,29 @@ export function clientRpcRequiredScopes(
      )
        return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
    }
@@ -651,7 +654,9 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..1f1e41e67465e99a9412f9cd53fc4078
 +  }
 +  if (method === PROMPT_LAB_CALL || method === PULSE_REACT || method === PERSONA_CHANGE)
 +    return [AuthSettingsWriteScope];
-+  if (method === CAST_CALL) return [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
++  if (method === CAST_CALL || method === UPCOMING_CHANGE)
++    return [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
++  if (method === UPCOMING_LIST) return [AuthOrchestrationReadScope];
    return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
      ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]
      : [];

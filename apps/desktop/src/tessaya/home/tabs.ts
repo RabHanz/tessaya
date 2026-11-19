@@ -5,6 +5,7 @@
 export const TABS = [
   { id: "home", label: "Home" },
   { id: "now", label: "Now" },
+  { id: "upcoming", label: "Coming up" },
   { id: "snippets", label: "Snippets" },
   { id: "insights", label: "Insights" },
   { id: "scratchpad", label: "Scratchpad" },
@@ -38,7 +39,7 @@ export const AREAS = [
   {
     id: "today",
     label: "Today",
-    pages: ["home", "now", "approvals", "jobs", "cloud"],
+    pages: ["home", "now", "upcoming", "approvals", "jobs", "cloud"],
     settings: "general",
   },
   {

@@ -154,6 +154,14 @@ import {
   DesktopSettingsView,
 } from "./desktopSettings.ts";
 import {
+  BATON_UPCOMING_WS_METHODS,
+  UpcomingChangeInput,
+  UpcomingChangeResult,
+  UpcomingError,
+  UpcomingListInput,
+  UpcomingListResult,
+} from "./upcoming.ts";
+import {
   BATON_JOB_WS_METHODS,
   TessayaJobGrantInput,
   TessayaJobListResult,
@@ -563,6 +571,18 @@ const WsTessayaCommitmentUpsertRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.upsert
   payload: TessayaCommitmentUpsertInput,
   success: TessayaCommitmentUpsertResult,
   error: CommitmentErrors,
+});
+
+const UpcomingErrors = Schema.Union([UpcomingError, EnvironmentAuthorizationError]);
+const WsTessayaUpcomingListRpc = Rpc.make(BATON_UPCOMING_WS_METHODS.list, {
+  payload: UpcomingListInput,
+  success: UpcomingListResult,
+  error: UpcomingErrors,
+});
+const WsTessayaUpcomingChangeRpc = Rpc.make(BATON_UPCOMING_WS_METHODS.change, {
+  payload: UpcomingChangeInput,
+  success: UpcomingChangeResult,
+  error: UpcomingErrors,
 });
 
 const WsTessayaConsentListRpc = Rpc.make(BATON_CONSENT_WS_METHODS.list, {
@@ -1217,6 +1237,8 @@ const BATON_RPCS = [
   WsTessayaWeaveTickRpc,
   WsTessayaCommitmentListRpc,
   WsTessayaCommitmentUpsertRpc,
+  WsTessayaUpcomingListRpc,
+  WsTessayaUpcomingChangeRpc,
   WsTessayaConsentListRpc,
   WsTessayaConsentSetRpc,
   WsTessayaScratchpadRpc,

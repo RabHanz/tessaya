@@ -36,6 +36,16 @@ description ends with whose request it was and when it ends.
 
 "Turn the fan off in 30 minutes" becomes a temporary automation, so it still happens if the server restarts.
 
+## Coming up
+
+One list of everything set to happen later, soonest first, with a countdown: house timers and automations, reminders,
+scheduled tasks and jobs, then rules and changes that wait on something, and dates from your memories. Open it in the
+Tessaya window (Today → Coming up), in Settings → Coming up on your phone app, or on the phone page's Coming up tab.
+Cancel, pause or move an item there, or ask: "what's coming up?", "cancel the pump timer", "make it fifteen".
+
+Only a one-off timer, a reminder and a one-off scheduled task can move. A repeating scheduled task changes in Settings →
+Scheduled tasks; a rule can be switched off but not deleted; a date changes in your memories.
+
 ## Undo
 
 Every change she makes in the house can be undone for 24 hours: Settings → Home → Recent home actions, or ask her

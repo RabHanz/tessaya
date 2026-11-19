@@ -26,6 +26,9 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "intro.now.title": "Now",
     "intro.now.text":
       "What needs you, what Tessaya is keeping track of and doing, what it learned today, and what it held back and why.",
+    "intro.upcoming.title": "Coming up",
+    "intro.upcoming.text":
+      "Everything Tessaya will do later, soonest first. Cancel, pause or move one here, or by voice.",
     "intro.sessions.title": "Sessions",
     "intro.sessions.text":
       "Live sessions are threads in T3, marked Live. Show them there, on every linked computer.",
@@ -90,6 +93,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cat.about": "About",
     "tab.home": "Home",
     "tab.now": "Now",
+    "tab.upcoming": "Coming up",
     "tab.snippets": "Snippets",
     "tab.insights": "Insights",
     "tab.scratchpad": "Scratchpad",

@@ -17,6 +17,7 @@ import type {
 import { PROMPT_TTL_MS } from "@t3tools/tessaya-shared/phoneRelay";
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { isDeviceRule } from "@t3tools/tessaya-shared/deviceRules";
+import { nextDailyAt } from "@t3tools/tessaya-shared/upcoming";
 import {
   actionCalls,
   higherTier,
@@ -230,6 +231,14 @@ export class HomeAssistantService extends Context.Service<
     readonly automations: (input: {
       readonly all?: boolean;
     }) => Effect.Effect<ReadonlyArray<HomeAutomationRow>, HomeRefusedError>;
+    /**
+     * A timer of Tessaya's own, moved to run in `runInMinutes`: saved again under the same id through saveAutomation, so
+     * the gate, its "runs at" line and its end behave as when it was made (the one amend path, B-flow "no, fifteen").
+     */
+    readonly moveAutomation: (
+      input: { readonly id: string; readonly runInMinutes: number },
+      by: HomeActor,
+    ) => Effect.Effect<HomeOutcome, HomeRefusedError>;
     readonly actions: (limit: number) => Effect.Effect<ReadonlyArray<HomeActionRow>>;
     /** What waits for his yes. */
     readonly pending: Effect.Effect<ReadonlyArray<HomeActionRow>>;
@@ -1308,6 +1317,16 @@ const make = Effect.gen(function* () {
       second: "2-digit",
       hourCycle: "h23",
     }).format(new Date(ms));
+  /** When a saved config's time-of-day trigger next fires, or null for any other trigger or one past its end. */
+  const runsAtOf = (config: string, expiresAt: number | null, now: number): string | null => {
+    const triggers = asRecord(JSON.parse(config))["triggers"];
+    if (!Array.isArray(triggers) || triggers.length !== 1) return null;
+    const t = asRecord(triggers[0]);
+    if (t["trigger"] !== "time" || typeof t["at"] !== "string") return null;
+    const [h, m, sec] = clockTime(now).split(":").map(Number);
+    const next = nextDailyAt(t["at"], h! * 3600 + m! * 60 + sec!, now);
+    return next === null || (expiresAt !== null && next > expiresAt) ? null : iso(next);
+  };
   const localTime = (ms: number) =>
     new Intl.DateTimeFormat("en-GB", {
       timeZone: zoneOf(timeZone),
@@ -1747,6 +1766,7 @@ const make = Effect.gen(function* () {
       entityId: null,
     }));
     if (link === null) return rules;
+    const now = yield* Clock.currentTimeMillis;
     const rows =
       yield* sql<AutomationRowDb>`SELECT * FROM fabric_home_automations WHERE kind != 'his' ORDER BY created_at DESC LIMIT 200`.pipe(
         Effect.orDie,
@@ -1767,6 +1787,7 @@ const make = Effect.gen(function* () {
           status: r.status === "active" && entityId === null ? "missing" : r.status,
           request: r.request,
           entityId,
+          runsAt: runsAtOf(r.config, r.expires_at, now),
         };
       });
     out.push(...rules);
@@ -1789,6 +1810,46 @@ const make = Effect.gen(function* () {
         });
       }
     return out;
+  });
+
+  const moveAutomation = Effect.fn("HomeAssistant.moveAutomation")(function* (
+    input: { readonly id: string; readonly runInMinutes: number },
+    by: HomeActor,
+  ) {
+    // shortcut: a house on a linked server is not moved from here; it needs a peer tool, added when one is wanted.
+    const [row] = yield* sql<AutomationRowDb>`
+      SELECT * FROM fabric_home_automations WHERE id = ${input.id} AND status IN ('active', 'paused')
+    `.pipe(Effect.orDie);
+    if (row === undefined) return yield* new HomeRefusedError({ why: "That timer is gone." });
+    const config = asRecord(JSON.parse(row.config));
+    const triggers = config["triggers"];
+    const timed =
+      Array.isArray(triggers) &&
+      triggers.length === 1 &&
+      asRecord(triggers[0])["trigger"] === "time";
+    if (row.kind === "his" || isDeviceRule(row.id) || !timed || row.once !== 1)
+      return yield* new HomeRefusedError({
+        why: "Only a one-off timer moves; this one waits on something, so pause or delete it instead.",
+      });
+    // What saveAutomation adds (its end check and its done event) is added again there, not carried twice.
+    const conditions = (Array.isArray(config["conditions"]) ? config["conditions"] : []).filter(
+      (c) => !String(asRecord(c)["value_template"] ?? "").includes("as_datetime("),
+    );
+    const actions = (Array.isArray(config["actions"]) ? config["actions"] : []).filter(
+      (a) => asRecord(a)["event"] !== DONE_EVENT,
+    );
+    return yield* saveAutomation(
+      {
+        id: row.id,
+        alias: String(config["alias"] ?? row.id),
+        kind: row.kind === "scratch" ? "scratch" : "temporary",
+        runInMinutes: input.runInMinutes,
+        conditions,
+        actions,
+        request: row.request,
+      },
+      by,
+    );
   });
 
   const runDeferred = (
@@ -2158,6 +2219,7 @@ const make = Effect.gen(function* () {
     saveAutomation,
     setAutomation,
     automations,
+    moveAutomation,
     actions: Effect.fn("HomeAssistant.actions")(function* (limit: number) {
       const rows =
         yield* sql<ActionRow>`SELECT * FROM fabric_home_actions ORDER BY at DESC LIMIT ${Math.max(1, Math.min(100, limit))}`.pipe(

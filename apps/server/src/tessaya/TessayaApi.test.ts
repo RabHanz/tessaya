@@ -98,6 +98,13 @@ const make = (connected = true) => {
     answerPrompt: async (id, index) => (calls.push(`prompt ${id} ${index}`), id === "pr1"),
     expired: async (id) => id === "pr-old",
     transcribe: async () => ({ ok: true, text: "what needs me" }),
+    upcoming: async () => ({ items: [], unreadable: [] }),
+    changeUpcoming: async (input) => {
+      calls.push(`upcoming ${input.op} ${input.id}`);
+      return input.id === "rule:r1"
+        ? "A rule can be switched off, not deleted."
+        : { done: true, line: "Done." };
+    },
   };
   return { deps, calls, asks };
 };
@@ -116,6 +123,20 @@ const wav = () => {
 };
 
 describe("the phone API", () => {
+  it("changes one coming-up item with the operate scope, and says the owner's refusal", async () => {
+    const { deps, calls } = make();
+    const post = (json: unknown) =>
+      handlePhone(deps, { method: "POST", path: "upcoming", scopes: operate, json });
+    expect((await post({ id: "house:t1", op: "move", inMinutes: 15 })).status).toBe(200);
+    const refused = await post({ id: "rule:r1", op: "cancel" });
+    expect([refused.status, refused.json["message"]]).toEqual([
+      409,
+      "A rule can be switched off, not deleted.",
+    ]);
+    expect((await post({ id: "house:t1", op: "explode" })).status).toBe(400);
+    expect(calls).toEqual(["upcoming move house:t1", "upcoming cancel rule:r1"]);
+  });
+
   it("reads with the read scope and refuses every change without the operate scope", async () => {
     const { deps, calls } = make();
     expect((await handlePhone(deps, { method: "GET", path: "state", scopes: read })).status).toBe(
@@ -124,7 +145,10 @@ describe("the phone API", () => {
     expect(
       (await handlePhone(deps, { method: "GET", path: "state", scopes: new Set() })).status,
     ).toBe(403);
-    for (const path of ["approvals/p:j1", "jobs/run/stop", "ask", "voice"]) {
+    expect(
+      (await handlePhone(deps, { method: "GET", path: "upcoming", scopes: read })).status,
+    ).toBe(200);
+    for (const path of ["approvals/p:j1", "jobs/run/stop", "ask", "voice", "upcoming"]) {
       expect(
         (
           await handlePhone(deps, {

@@ -107,6 +107,8 @@ export const HomeAutomationRow = Schema.Struct({
   status: Schema.String,
   request: Schema.NullOr(Schema.String),
   entityId: Schema.NullOr(Schema.String),
+  /** ISO time of its next run, when its trigger is a time of day; absent from older servers. */
+  runsAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type HomeAutomationRow = typeof HomeAutomationRow.Type;
 

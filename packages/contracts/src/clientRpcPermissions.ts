@@ -95,6 +95,9 @@ const PROMPT_LAB_CALL = "baton.promptLab.call";
 const PERSONA_CHANGE = "baton.personas.change";
 /** Who wears which body (`BATON_CAST_WS_METHODS.call`): moving a persona is operate; its view is `.get`. */
 const CAST_CALL = "baton.cast.call";
+/** Coming up (`BATON_UPCOMING_WS_METHODS`): reading is a read; cancelling, pausing or moving an item is operate. */
+const UPCOMING_LIST = "baton.upcoming.list";
+const UPCOMING_CHANGE = "baton.upcoming.change";
 /** His reaction to one pulse decision (`BATON_PULSE_WS_METHODS.react`): it changes what she raises. */
 const PULSE_REACT = "baton.pulse.react";
 
@@ -135,7 +138,9 @@ export function clientRpcRequiredScopes(
   }
   if (method === PROMPT_LAB_CALL || method === PULSE_REACT || method === PERSONA_CHANGE)
     return [AuthSettingsWriteScope];
-  if (method === CAST_CALL) return [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
+  if (method === CAST_CALL || method === UPCOMING_CHANGE)
+    return [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
+  if (method === UPCOMING_LIST) return [AuthOrchestrationReadScope];
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]
     : [];

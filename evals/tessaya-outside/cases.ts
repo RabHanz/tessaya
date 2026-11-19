@@ -21,6 +21,41 @@ export interface OutsideCase {
   readonly inputs?: Readonly<Record<string, (input: Readonly<Record<string, unknown>>) => boolean>>;
 }
 
+const upcoming = (id: string, source: string, title: string, when: string, extra: object = {}) => ({
+  id,
+  source,
+  title,
+  line: "",
+  when,
+  at: null,
+  condition: null,
+  repeats: null,
+  paused: false,
+  can: { cancel: true, pause: true, move: true },
+  ...extra,
+});
+const maya = upcoming(
+  "date:0:1",
+  "date",
+  "Maya's birthday is the sixteenth of November",
+  "in 3 days",
+  {
+    at: "2026-11-16",
+    repeats: "every year",
+    can: { cancel: false, pause: false, move: false },
+  },
+);
+const pumpTimer = upcoming("house:tessaya_temporary_7", "house", "Pump off", "in 32 min", {
+  at: "2026-11-19T23:12",
+  line: 'You asked: "pump off in forty"',
+});
+const ciCheck = upcoming("task:ci-check", "task", "Check CI on tessaya main", "in 2 h 50 min", {
+  at: "2026-11-20T01:32",
+  repeats: "every 4 h",
+  can: { cancel: true, pause: true, move: false },
+});
+const comingUp = (items: ReadonlyArray<unknown>) => ({ items, unreadable: [] });
+
 const studyFan = {
   ok: true,
   value: [{ entityId: "fan.study", name: "Study fan", area: "Study", state: "on", attributes: {} }],
@@ -999,18 +1034,59 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
       "Memory v2 step 8: what his memories say is coming up is read from the memory, without asking him",
     prompt: "Is there anything coming up this week I should remember?",
     answers: {
-      tessaya_coming_up: {
-        items: [
-          {
-            text: "Maya's birthday is the sixteenth of November",
-            when: "in 3 days",
-            kind: "every year",
-          },
-        ],
+      tessaya_coming_up: comingUp([maya]),
+    },
+    calls: ["tessaya_coming_up"],
+    callsMustNot: ["tessaya_ask"],
+  },
+  {
+    id: "outside-cancel-timer",
+    source:
+      'Coming up (M-092): "cancel the pump timer" finds it in the one list and cancels it there',
+    prompt: "Cancel the pump timer.",
+    answers: {
+      tessaya_coming_up: comingUp([pumpTimer, maya]),
+      tessaya_coming_up_change: { done: true, line: 'Deleted "Pump off".' },
+    },
+    calls: ["tessaya_coming_up", "tessaya_coming_up_change"],
+    callsMustNot: ["tessaya_ask"],
+    inputs: {
+      tessaya_coming_up_change: (input) => input["id"] === pumpTimer.id && input["op"] === "cancel",
+    },
+  },
+  {
+    id: "outside-timer-make-it-fifteen",
+    source: 'Coming up (M-092): "make it fifteen" moves the timer to fifteen minutes from now',
+    prompt: "The pump timer, make it fifteen minutes instead.",
+    answers: {
+      tessaya_coming_up: comingUp([pumpTimer]),
+      tessaya_coming_up_change: {
+        done: true,
+        line: 'Saved "Pump off" (temporary, runs at 22:55).',
+      },
+    },
+    calls: ["tessaya_coming_up", "tessaya_coming_up_change"],
+    callsMustNot: ["tessaya_ask"],
+    inputs: {
+      tessaya_coming_up_change: (input) =>
+        input["id"] === pumpTimer.id && input["op"] === "move" && input["inMinutes"] === 15,
+    },
+  },
+  {
+    id: "outside-coming-up-refusal-said",
+    source:
+      "Coming up (M-092): a repeating task does not move; she says why rather than claiming it moved",
+    prompt: "Push the CI check back by an hour.",
+    answers: {
+      tessaya_coming_up: comingUp([ciCheck]),
+      tessaya_coming_up_change: {
+        done: false,
+        line: "It repeats (every 4 h); change its schedule in Scheduled tasks.",
       },
     },
     calls: ["tessaya_coming_up"],
     callsMustNot: ["tessaya_ask"],
+    replyMustNot: /\b(moved|pushed (it )?back|done)\b/i,
   },
   {
     id: "outside-wake-rollback",

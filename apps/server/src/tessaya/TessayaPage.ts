@@ -88,8 +88,8 @@ button.act.danger{border-color:var(--bad);color:var(--bad)}
 
 export const SCRIPT = `"use strict";
 (function () {
-  var TABS = [["needs", "Needs me"], ["approvals", "Approvals"], ["now", "Now"], ["jobs", "Jobs"], ["weave", "Weave"], ["asked", "Asked"], ["msg", "Messages"], ["mem", "Memories"]];
-  var tab = "needs", state = null, said = "", denied = false;
+  var TABS = [["needs", "Needs me"], ["approvals", "Approvals"], ["now", "Now"], ["upcoming", "Coming up"], ["jobs", "Jobs"], ["weave", "Weave"], ["asked", "Asked"], ["msg", "Messages"], ["mem", "Memories"]];
+  var tab = "needs", state = null, said = "", denied = false, up = null;
   var view = document.getElementById("view"), tabs = document.getElementById("tabs");
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
   function api(method, path, body, raw) {
@@ -114,6 +114,7 @@ export const SCRIPT = `"use strict";
         tab = t[0]; draw();
         if (tab === "mem") { mem.said = ""; refresh(); }
         if (tab === "msg") loadMsg();
+        if (tab === "upcoming") load();
       };
       tabs.appendChild(b);
     });
@@ -175,6 +176,22 @@ export const SCRIPT = `"use strict";
       });
     } else if (tab === "now") {
       state.now.forEach(function (l) { view.appendChild(el("p", "card", l)); });
+    } else if (tab === "upcoming") {
+      if (!up) { view.appendChild(el("p", "soft", "Loading")); return; }
+      if (up.unreadable.length) view.appendChild(el("p", "soft", "Couldn't read " + up.unreadable.join(", ") + " just now."));
+      if (!up.items.length) view.appendChild(el("p", "soft", "Nothing is set to happen in the next 7 days."));
+      up.items.forEach(function (u) {
+        var c = el("div", "card"); c.appendChild(el("h2", "", u.title));
+        c.appendChild(el("p", "", [u.when, u.clock, u.repeats].filter(Boolean).join(" · ")));
+        c.appendChild(el("p", "soft", u.condition ? u.condition + ". " + u.line : u.line));
+        var change = function (op, at) { return function () { return api("POST", "upcoming", at ? { id: u.id, op: op, at: at } : { id: u.id, op: op }); }; };
+        var r = el("div", "row");
+        if (u.can.move && u.at !== null) { r.appendChild(act("+5 min", "", change("move", u.at + 300000))); r.appendChild(act("+15 min", "", change("move", u.at + 900000))); }
+        if (u.can.pause) r.appendChild(act(u.paused ? "Resume" : "Pause", "", change(u.paused ? "resume" : "pause")));
+        if (u.can.cancel) r.appendChild(act("Cancel", "", change("cancel")));
+        if (r.children.length) c.appendChild(r);
+        view.appendChild(c);
+      });
     } else if (tab === "jobs") {
       if (!state.jobs.length) view.appendChild(el("p", "soft", "No jobs."));
       state.jobs.forEach(function (j) {
@@ -563,6 +580,7 @@ export const SCRIPT = `"use strict";
   });
 
   function load() {
+    if (tab === "upcoming") api("GET", "upcoming").then(function (j) { if (j.status === 200) { up = j; if (tab === "upcoming") draw(); } });
     return api("GET", "state").then(function (j) {
       denied = j.status === 401 || j.status === 403;
       if (j.status === 200) { state = j; badge(j.badge); document.getElementById("stamp").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }

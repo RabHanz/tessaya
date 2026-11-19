@@ -9,7 +9,13 @@ import {
   WAV_MAX_BYTES,
   type PhoneState,
 } from "@t3tools/tessaya-shared/phone";
+import {
+  UpcomingChangeInput,
+  type UpcomingChangeResult,
+  type UpcomingListResult,
+} from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import { PROMPT_EXPIRED, askLine, type PhoneAsk } from "@t3tools/tessaya-shared/phoneRelay";
@@ -41,6 +47,9 @@ export interface PhoneDeps {
   /** Whether a card waited too long and was dropped unanswered. */
   readonly expired: (id: string) => Promise<boolean>;
   readonly transcribe: (wav: Uint8Array) => Promise<Transcription>;
+  /** Coming up: the one list, and one item changed by its owner; a refusal is the owner's sentence. */
+  readonly upcoming: () => Promise<UpcomingListResult>;
+  readonly changeUpcoming: (input: UpcomingChangeInput) => Promise<UpcomingChangeResult | string>;
 }
 
 export interface PhoneRequest {
@@ -101,6 +110,7 @@ export const readCapped = Effect.fn("BatonTessayaApi.readCapped")(function* <E>(
   return out;
 });
 const TEXT_MAX = 2_000;
+const decodeUpcomingChange = Schema.decodeUnknownOption(UpcomingChangeInput);
 
 export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<PhoneResponse> => {
   const parts = req.path.split("/").filter((p) => p !== "");
@@ -117,6 +127,8 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
 
   if (req.method === "GET" && parts[0] === "state" && parts.length === 1)
     return { status: 200, json: { ...(await deps.state()) } };
+  if (req.method === "GET" && parts[0] === "upcoming" && parts.length === 1)
+    return { status: 200, json: { ...(await deps.upcoming()) } };
   if (req.method === "GET" && parts[0] === "ask" && parts.length === 2) {
     const { ask, connected } = await deps.askGet(parts[1]!);
     if (ask === null) return say(404, "No such request.");
@@ -205,6 +217,15 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
       if (!row.canRetry) return say(409, row.retryWhy ?? "It cannot be retried.");
       return say(200, await deps.retry(row.id));
     }
+  }
+
+  if (parts[0] === "upcoming" && parts.length === 1) {
+    const input = decodeUpcomingChange(body);
+    if (input._tag === "None")
+      return say(400, "Say which item, and cancel, pause, resume or move.");
+    const changed = await deps.changeUpcoming(input.value);
+    if (typeof changed === "string") return say(409, changed);
+    return say(changed.done ? 200 : 202, changed.line);
   }
 
   const post = async (id: unknown, words: string): Promise<PhoneResponse> => {
