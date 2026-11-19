@@ -55,6 +55,7 @@ import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { resolveIntents } from "./bodyIntents.ts";
 import { isBrain } from "./BrainHost.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
@@ -392,7 +393,8 @@ const deskActsOf = (m: BodyMove): MascotAct[] =>
   });
 
 export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, caller: BodyCaller) {
-  const decoded = decodeBodyMove(raw);
+  // a weaker model's intent finds its library motion by meaning, not only by shared words
+  const decoded = decodeBodyMove(yield* resolveIntents(raw));
   if (!decoded.ok)
     return { ok: false, route: "none", said: decoded.error } satisfies BodyMoveAnswer;
   const now = yield* Clock.currentTimeMillis;

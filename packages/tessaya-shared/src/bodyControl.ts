@@ -158,7 +158,10 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
   // an intent in words: her library's nearest validated performance, under whatever else this step says
   if (typeof raw["intent"] === "string") {
     const { intent, ...rest } = raw;
-    const hit = recall(String(intent).slice(0, 200), MOTION_LIBRARY);
+    // the server may have found the entry by meaning already, and names it by id
+    const byId = MOTION_LIBRARY.find((e) => e.id === intent);
+    const hit =
+      byId === undefined ? recall(String(intent).slice(0, 200), MOTION_LIBRARY) : { entry: byId };
     if (hit === null && Object.keys(rest).length === 0)
       return {
         ok: false,

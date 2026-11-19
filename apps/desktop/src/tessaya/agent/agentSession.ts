@@ -5,6 +5,7 @@
  * is recycled, and puts every turn back into that file. A new session loses nothing.
  */
 import { cutInLine, type CutIn } from "@t3tools/tessaya-shared/endOfTurn";
+import { BODY_INTENT_TIER, usesBodyIntents } from "@t3tools/tessaya-shared/bodyLibrary";
 import {
   RECENT_TURNS,
   conversationBlock,
@@ -246,7 +247,11 @@ export const createAssistantAgent = (input: {
             agentSystemPrompt({
               recent: window.slice(-RECENT_TURNS),
               earlier: window.slice(0, -RECENT_TURNS),
-              notes,
+              // a weaker model names a motion from her library instead of composing one
+              notes:
+                brain !== undefined && usesBodyIntents(brain.model)
+                  ? [notes, BODY_INTENT_TIER].filter((x) => x !== "").join("\n\n")
+                  : notes,
               ...labels(persona),
             }),
             brain,

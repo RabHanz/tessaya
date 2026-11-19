@@ -9,9 +9,14 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
+import * as ManagedRuntime from "effect/ManagedRuntime";
+
 import { replayTurn } from "../../apps/desktop/src/tessaya/agent/replay.ts";
 import { startVisionSession } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
 import { DESK_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
+import { resolveIntents } from "../../apps/server/src/tessaya/bodyIntents.ts";
+import { BODY_INTENT_TIER } from "../../packages/tessaya-shared/src/bodyLibrary.ts";
+import * as MemoryEmbedder from "../../apps/server/src/tessaya/TessayaMemoryEmbedder.ts";
 import {
   BODY_CAPABILITIES,
   decodeBodyMove,
@@ -52,8 +57,14 @@ const { values } = NodeUtil.parseArgs({
     library: { type: "string" },
     // "intent": the turn is told to give only an intent, as a weaker model would (M-081's lower tier).
     tier: { type: "string" },
+    // Recall library intents by meaning (the memory embedder's sentence vectors), as a server with the model does.
+    meaning: { type: "boolean", default: false },
   },
 });
+// the server's own resolver over the memory embedder, built once for the run
+const meaning = values.meaning ? ManagedRuntime.make(MemoryEmbedder.layer) : null;
+const resolved = async (input: unknown): Promise<unknown> =>
+  meaning === null ? input : meaning.runPromise(resolveIntents(input));
 if (values.out === undefined) throw new Error("Use --out <directory>.");
 const out = values.out;
 const library = JSON.parse(
@@ -67,7 +78,7 @@ const directions = library.directions.filter(
 
 // The body is open on his desk, as when he talks to her there. Body calls answer as the server would: a move that does
 // not decode gets the decoder's own error back, so the model can fix it as it would live; the rest are not run.
-const bodyAnswer = (name: string, input: unknown): string => {
+const bodyAnswer = async (name: string, input: unknown): Promise<string> => {
   if (name === "tessaya_body_state")
     return JSON.stringify({
       open: true,
@@ -75,7 +86,7 @@ const bodyAnswer = (name: string, input: unknown): string => {
       capabilities: BODY_CAPABILITIES,
     });
   if (name === "tessaya_body_move") {
-    const d = decodeBodyMove(input);
+    const d = decodeBodyMove(await resolved(input));
     return JSON.stringify(
       d.ok
         ? { ok: true, route: "desk", said: "Her body took it." }
@@ -86,9 +97,6 @@ const bodyAnswer = (name: string, input: unknown): string => {
     return JSON.stringify({ ok: true, route: "desk", said: "Her body took it." });
   return `(eval) ${name} was not run.`;
 };
-
-const INTENT_TIER =
-  "Your body: when he directs it, call tessaya_body_state to see her `motions`, then tessaya_body_move with only `intent`: the listed motion nearest to what he asked, or a few plain words. Her body knows how to perform it.";
 
 const ask = async (system: string, text: string): Promise<string> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-direction-judge-"));
@@ -141,7 +149,7 @@ const sample = async (d: Direction, index: number): Promise<Row> => {
       said: d.said,
       where: { window: "Notepad", session: null },
       notes: assistantFrame(DEFAULT_OS_PACK) + templateFrame(mergeTemplates()),
-      ...(values.tier === "intent" ? { extra: INTENT_TIER } : {}),
+      ...(values.tier === "intent" ? { extra: BODY_INTENT_TIER } : {}),
       env: process.env,
       // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
       platform: process.platform,
@@ -155,7 +163,8 @@ const judged = async (
   ran: { calls: ReadonlyArray<string>; inputs: ReadonlyArray<unknown>; reply: string },
   ms: number,
 ): Promise<Row> => {
-  const graded = grade(ran);
+  // what the server would have played: intents named by meaning when the run recalls that way
+  const graded = grade({ ...ran, inputs: await Promise.all(ran.inputs.map(resolved)) });
   const verdict = graded.moved ? await ask(JUDGE_SYSTEM, judgePrompt(d, graded)) : "";
   const score = graded.moved ? scoreOf(verdict) : 1;
   const bodyAt = ran.calls.findIndex((c) => /tessaya_body_(move|scene)$/.test(c));
