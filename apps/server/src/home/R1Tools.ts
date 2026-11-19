@@ -664,7 +664,30 @@ const specOf = (name: SharedName): RoomTool => {
     description: Tool.getDescription(tool) ?? "",
     input_schema: advertisedJsonSchema(tool),
   };
-  return name === "tessaya_body_move" ? slimBodyMove(spec) : spec;
+  return name === "tessaya_body_move"
+    ? slimBodyMove(spec)
+    : name.startsWith("tessaya_body_")
+      ? withoutTarget(spec)
+      : spec;
+};
+
+/** Her own turns always move her: the playground's `target` and stage are an agent's, never the room's or the desk's. */
+const withoutTarget = (spec: RoomTool): RoomTool => {
+  const schema = spec.input_schema as {
+    readonly properties?: Record<string, unknown>;
+    readonly required?: ReadonlyArray<string>;
+  };
+  const { target: _target, playground: _playground, ...properties } = schema.properties ?? {};
+  return {
+    ...spec,
+    input_schema: {
+      ...schema,
+      properties,
+      ...(schema.required === undefined
+        ? {}
+        : { required: schema.required.filter((r) => r !== "target" && r !== "playground") }),
+    },
+  };
 };
 
 /**
@@ -675,11 +698,11 @@ const specOf = (name: SharedName): RoomTool => {
 const slimBodyMove = (spec: RoomTool): RoomTool => {
   const schema = spec.input_schema as { readonly properties?: Record<string, unknown> };
   const { then: _then, stream: _stream, ...properties } = schema.properties ?? {};
-  return {
+  return withoutTarget({
     ...spec,
     description: spec.description.replace(/,? and put what follows in `then`[^.]*\./, "."),
     input_schema: { ...schema, properties },
-  };
+  });
 };
 /** Core first, then by name: one order for every list, so a prompt's tool block stays cached. */
 const byPlan = (a: RoomTool, b: RoomTool) =>
