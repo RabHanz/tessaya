@@ -76,6 +76,14 @@ describe("affect", () => {
     expect(run([{ kind: "his_voice", emotion: "other" }]).reaction).toEqual(run([]).reaction);
   });
 
+  it("a private moment warms her one mood by how close it felt, and says only that it happened", () => {
+    const close = run([{ kind: "close", warmth: 1 }]);
+    expect(close.reaction.warmth).toBeCloseTo(0.1);
+    expect(close.mood.warmth).toBeCloseTo(0.03);
+    expect(close.log?.at(-1)?.reason).toBe("a close moment with him");
+    expect(run([{ kind: "close", warmth: 5 }]).reaction.warmth).toBeCloseTo(0.1);
+  });
+
   it("feels being handled as a quick reaction, never as her mood", () => {
     const dropped = run([{ kind: "handled", how: "dropped" }]);
     expect(dropped.reaction.valence).toBeLessThan(0);

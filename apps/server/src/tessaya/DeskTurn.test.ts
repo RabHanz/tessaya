@@ -11,6 +11,7 @@ import { TessayaRecordService } from "./TessayaRecordService.ts";
 import { deskTurnStream } from "./DeskTurn.ts";
 import { TessayaTurn, type TurnEnvelope, type WhoIsHome } from "./TessayaTurn.ts";
 import { type PersonaLayer, PersonaLayers } from "./PersonaLayers.ts";
+import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
 
@@ -26,6 +27,7 @@ const run = (
     const ran: Array<{ name: string; input: unknown }> = [];
     const asked: Array<{ role: string; feature: string; model?: string; persona?: string }> = [];
     const sealed: Array<{ text: string; typed: boolean }> = [];
+    const moods: Array<unknown> = [];
     const hands = createHandsBroker({ now: () => 0, newId: () => "c1" });
     // The desktop is listening and offers its screen.
     void hands.take(1, [
@@ -112,6 +114,10 @@ const run = (
                 return { stored: true, whose: "owner", reason: null };
               }),
           }),
+          Layer.mock(TessayaMood)({
+            note: (persona, event, member) =>
+              Effect.sync(() => void moods.push([persona, event, member])),
+          }),
           Layer.succeed(
             TessayaOneShot,
             TessayaOneShot.of({
@@ -140,6 +146,7 @@ const run = (
       begun,
       asked,
       sealed,
+      moods,
       ran,
     };
   });
@@ -225,7 +232,7 @@ effectIt.effect(
         refused: boolean;
         wrote: string;
       }> = [];
-      const { said, touched, begun, ran, asked, sealed } = yield* run(true, [
+      const { said, touched, begun, ran, asked, sealed, moods } = yield* run(true, [
         {
           id: "test",
           onTurn: async (_t, brain) => {
@@ -235,6 +242,8 @@ effectIt.effect(
             // her reply is written by the one brain's call, on the model the layer's router chose
             // a note of hers goes into his one sealed tier (step 6), not the public memory
             if ((await brain!.remember!("he likes rain")) !== true) throw new Error("not kept");
+            // how close it felt reaches her one mood, never its words
+            await brain!.felt!(0.8);
             const wrote = await brain!.complete!({
               model: "claude-sonnet-5-5",
               system: "her",
@@ -266,6 +275,7 @@ effectIt.effect(
       ]);
       // one call on the spine, as a spoken turn on his subscription, never with its words
       expect(sealed).toEqual([{ text: "he likes rain", typed: true }]);
+      expect(moods).toEqual([[undefined, { kind: "close", warmth: 0.8 }, "owner"]]);
       expect(asked).toEqual([
         { role: "voice", feature: "private-turn", model: "claude-sonnet-5-5" },
       ]);

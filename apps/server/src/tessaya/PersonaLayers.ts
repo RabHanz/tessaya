@@ -18,6 +18,7 @@ import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
 
 import type { RoomToolSet } from "../home/R1Brain.ts";
 import { capToolText, personaTools, type VesselTool } from "./TessayaBrain.ts";
+import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaOneShot, TessayaOneShotError } from "./TessayaOneShot.ts";
 import {
   conversationKey,
@@ -102,6 +103,8 @@ export interface LayerBrain {
   }) => Promise<string>;
   /** Keeps one note in his one sealed tier (his private store on the brain path, D2); true once it is stored. */
   readonly remember?: (text: string) => Promise<boolean>;
+  /** How close this private moment felt (0..1), into her one mood toward him (P2); never its words. */
+  readonly felt?: (warmth: number) => Promise<void>;
 }
 
 export interface LayerContext {
@@ -413,6 +416,16 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
                     Effect.map((r) => r.stored),
                     Effect.orElseSucceed(() => false),
                   ),
+          ),
+        ),
+      ),
+    felt: (warmth) =>
+      run(
+        Effect.serviceOption(TessayaMood).pipe(
+          Effect.flatMap((mood) =>
+            Option.isNone(mood)
+              ? Effect.void
+              : mood.value.note(turn.persona, { kind: "close", warmth }, OWNER_MEMBER_ID),
           ),
         ),
       ),
