@@ -113,6 +113,79 @@ layer("BatonMemoryService", (it) => {
     }),
   );
 
+  it.effect(
+    "a voice not verified is held as not sure who, out of recall, placed only by proof for the voice it was nearest",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* TessayaMemoryService;
+        const unsure = {
+          turn: "vessel:device:desk-1:t1",
+          conversation: "household",
+          vessel: "desk-1",
+          nearest: "owner",
+          confidence: 0.41,
+        };
+        const held = yield* memory.add({
+          kind: "preference",
+          text: "Likes his tea with oat milk",
+          source: "thread",
+          sourceRef: unsure.turn,
+          unsure,
+        });
+        assert.isTrue(held.proposed);
+        assert.deepStrictEqual(held.unsure, unsure);
+        assert.lengthOf(yield* memory.search({ text: "oat milk" }), 0);
+        assert.notInclude((yield* memory.recall({ text: "oat milk tea" })).block, "oat milk");
+        // Another person's proof, another vessel's verified turn or another turn's yes places nothing.
+        const none = [
+          yield* memory.resolveUnsure({ person: "p1", how: "device", turn: unsure.turn }),
+          yield* memory.resolveUnsure({
+            person: "owner",
+            how: "device",
+            turn: "vessel:device:desk-1:t2",
+          }),
+          yield* memory.resolveUnsure({
+            person: "owner",
+            how: "verified-turn",
+            vessel: "kitchen",
+            since: "2000-01-01T00:00:00.000Z",
+          }),
+        ];
+        assert.deepStrictEqual(none, [[], [], []]);
+        const byId = <A extends { readonly id: string }>(all: ReadonlyArray<A>) =>
+          all.find((i) => i.id === held.id);
+        assert.isDefined(byId(yield* memory.list({ includeProposed: true })));
+        assert.isUndefined(byId(yield* memory.list({})));
+        // His yes on his own phone for that turn places it with him.
+        assert.deepStrictEqual(
+          yield* memory.resolveUnsure({ person: "owner", how: "device", turn: unsure.turn }),
+          [held.id],
+        );
+        const placed = (yield* memory.list({})).find((i) => i.id === held.id);
+        assert.strictEqual(placed?.speaker, "owner");
+        assert.isUndefined(placed?.unsure);
+        // "That wasn't me": back to not sure who, offered to whoever it was, and out of his recall.
+        assert.deepStrictEqual(
+          yield* memory.unassign({
+            from: "owner",
+            to: "sara",
+            vessel: "kitchen",
+            since: "2000-01-01T00:00:00.000Z",
+          }),
+          [],
+        );
+        assert.deepStrictEqual(
+          yield* memory.unassign({ from: "owner", to: "sara", ref: unsure.turn }),
+          [held.id],
+        );
+        assert.isUndefined(byId(yield* memory.list({})));
+        assert.strictEqual(
+          byId(yield* memory.list({ includeProposed: true }))?.unsure?.nearest,
+          "sara",
+        );
+      }),
+  );
+
   it.effect("tainted content waits for his yes and stays out of retrieval", () =>
     Effect.gen(function* () {
       const memory = yield* TessayaMemoryService;

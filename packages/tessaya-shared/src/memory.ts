@@ -59,6 +59,22 @@ export interface MemoryItem {
   /** The vessel kind that heard it ("device", "desktop", ...), and the voice that told it ("owner", a person id). */
   readonly surface?: string | null;
   readonly speaker?: string | null;
+  /** Learned from a voice not verified: held ("not sure who") until it is placed with a person, never lost. */
+  readonly unsure?: MemoryUnsure | null;
+}
+
+/**
+ * Where a "not sure who" memory came from (the Director, 20 Nov: nothing she learns may be forgotten): the turn, its
+ * conversation and vessel, and how close the voice was to the person it seemed to be. Never in anyone's recall until
+ * it is placed with a person (a later verified turn of theirs, his say-so in Settings or by voice).
+ */
+export interface MemoryUnsure {
+  readonly turn: string;
+  readonly conversation: string;
+  readonly vessel: string;
+  /** The person the voice was nearest, and how near (Voice ID's score); null when nobody was near. */
+  readonly nearest: string | null;
+  readonly confidence: number | null;
 }
 
 export type MemoryVisibility = "household" | "persona";
@@ -82,6 +98,7 @@ export interface MemoryDraft {
   readonly visibility?: MemoryVisibility;
   readonly surface?: string | null;
   readonly speaker?: string | null;
+  readonly unsure?: MemoryUnsure;
 }
 
 export interface MemoryQuery {

@@ -198,6 +198,40 @@ layer("BatonMemoryLearning", (it) => {
     }),
   );
 
+  it.effect(
+    "a voice not verified: a household fact is kept at once, what is about him waits as not sure who",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* TessayaMemoryService;
+        const learning = yield* TessayaMemoryLearning;
+        reply = {
+          items: [
+            { kind: "fact", text: "The recycling bins go out on Tuesday nights" },
+            { kind: "preference", text: "Prefers his coffee without sugar now" },
+          ],
+        };
+        const unsure = {
+          turn: "turn-u",
+          conversation: "household",
+          vessel: "desk-1",
+          nearest: "owner",
+          confidence: 0.4,
+        };
+        assert.deepEqual(
+          yield* learning.learn(
+            turn({ sourceRef: "turn-u", said: "bins Tuesday, no sugar for me", unsure }),
+          ),
+          { stored: 1, held: 1 },
+        );
+        const all = yield* memory.list({ includeProposed: true });
+        const bins = all.find((i) => i.text.includes("recycling bins"));
+        const coffee = all.find((i) => i.text.includes("without sugar"));
+        assert.isFalse(bins?.proposed);
+        assert.isTrue(coffee?.proposed);
+        assert.deepStrictEqual(coffee?.unsure, unsure);
+      }),
+  );
+
   it.effect("holds proposals from a tainted turn", () =>
     Effect.gen(function* () {
       const memory = yield* TessayaMemoryService;

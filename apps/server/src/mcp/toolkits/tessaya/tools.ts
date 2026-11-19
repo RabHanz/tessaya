@@ -408,6 +408,24 @@ const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const AttributionMoveTool = Tool.make("tessaya_attribution_move", {
+  ...shared,
+  description:
+    "When the person speaking says something you put down to them was someone else (\"that wasn't me, it was the kids\", \"that was Sara, not me\"): your feelings from it are taken back from them and given to whoever it was, and what you learned from it waits as not sure who. `to` is who it was in their words, left out when they don't say. With nothing else it moves what was only assumed to be them lately (a touch at their desk, Tumble being handled); pass `vessel` for one device's turns, `minutes` for how far back. Whether this voice may move it is the tool's to decide: always call it, and say its line.",
+  parameters: Schema.Struct({
+    to: Schema.optional(Schema.String.check(Schema.isMaxLength(80))),
+    vessel: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+    minutes: Schema.optional(Schema.Number),
+    ref: Schema.optional(Schema.String.check(Schema.isMaxLength(300))),
+  }),
+  success: Schema.Struct({ line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const PreferenceSetTool = Tool.make("tessaya_preference_set", {
   ...shared,
   description:
@@ -1160,6 +1178,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryHistoryTool,
   MemoryRememberTool,
   MemoryForgetTool,
+  AttributionMoveTool,
   MemoryUnlearnTool,
   MemoryAboutTool,
   ComingUpTool,

@@ -91,6 +91,7 @@ const ROOM_TOOLS = [
   "tessaya_memory_search",
   "tessaya_memory_remember",
   "tessaya_memory_forget",
+  "tessaya_attribution_move",
   "tessaya_memory_about",
   "tessaya_coming_up",
   "tessaya_owner_doc",

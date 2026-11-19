@@ -716,6 +716,14 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     goalArgs: ["football", "restore"],
   },
   {
+    id: "attribution-not-me",
+    source:
+      "Director 20 Nov: a desk touch or turn put down to him moves when he says it was someone else",
+    said: "that wasn't me poking you just now, it was the kids",
+    first: ["tessaya_attribution_move"],
+    not: ["memory_forget", "memory_remember"],
+  },
+  {
     id: "schedules-list",
     source: "the desktop reaches the shared schedule tools (SPINE-UNIFY S2)",
     said: "which scheduled tasks do I have?",

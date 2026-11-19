@@ -17,7 +17,7 @@ import {
   voiceAssurance,
 } from "@t3tools/tessaya-shared/household";
 import { inputLine } from "@t3tools/tessaya-shared/inputQuality";
-import { memoryBlock } from "@t3tools/tessaya-shared/memory";
+import { memoryBlock, type MemoryUnsure } from "@t3tools/tessaya-shared/memory";
 import {
   repairBoundsFor,
   repairLine,
@@ -37,6 +37,9 @@ import { PRESENCE_BARS, presenceReason } from "@t3tools/tessaya-shared/presence"
 import { emitAction, type TurnAction } from "./turnActions.ts";
 import { make as makeLive, TurnLiveContext } from "./TurnLiveContext.ts";
 import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
+import * as Random from "effect/Random";
+import * as Schedule from "effect/Schedule";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -65,6 +68,8 @@ import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
+import { AffectCause } from "./AffectCause.ts";
 import { TessayaUnderstanding, type UnderstandingSubject } from "./TessayaUnderstanding.ts";
 import { make as makePresence, TessayaPresence } from "./TessayaPresence.ts";
 import {
@@ -310,6 +315,13 @@ export interface Remembered {
   readonly line: string;
 }
 
+/**
+ * Her words when the voice is near his but not proven (the Director, 20 Nov): she keeps it and checks, never refuses,
+ * and never takes a spoken yes as proof.
+ */
+export const UNSURE_LINE =
+  'This voice sounds like him but was not verified. If he asks you to remember or note something, say "Got it" and that you\'ll check it was him; never say it is saved for him and never say you can\'t remember it. You may ask once, briefly, "Is that you?", but a yes out loud is not proof: it stays unconfirmed until his voice or his phone confirms it.';
+
 /** The line the brain gets when a vessel first recognises who it is talking to this session. */
 export const nameOnceLine = (name: string | undefined): string =>
   name === undefined || name.trim() === ""
@@ -525,6 +537,31 @@ export const notLearnable = (turn: TurnEnvelope): string | null => {
   return null;
 };
 
+/** The event a turn's mood changes are kept against: its own ref, else its vessel at this moment. */
+const causeOf = (turn: TurnEnvelope) =>
+  Effect.map(Clock.currentTimeMillis, (now) => ({
+    ref: turn.turnRef === undefined ? `${turnSource(turn)}@${now}` : turnSource(turn),
+    vessel: turn.vessel.id,
+  }));
+
+/** A verified turn on the same vessel this soon after places what a voice near theirs said (the Director, 20 Nov). */
+const UNSURE_CONFIRM_MS = 30 * 60_000;
+
+/**
+ * What an owner-labelled voice below the act bar teaches: held as "not sure who" (never merged, never lost) until his
+ * verified voice, his own device or Voice ID proves it was him. Null when the turn is not that case.
+ */
+export const unsureOf = (turn: TurnEnvelope): MemoryUnsure | null =>
+  notLearnable(turn) === "his voice not verified" && turn.speaker?.kind === "owner"
+    ? {
+        turn: turnSource(turn),
+        conversation: conversationKey(turn),
+        vessel: turn.vessel.id,
+        nearest: OWNER_MEMBER_ID,
+        confidence: turn.speaker.confidence ?? null,
+      }
+    : null;
+
 /**
  * One thread of her attention (PERSONA-MODEL-AUDIT, Concurrent self CS1): a persona in one conversation, on the vessel
  * that heard its last turn. Live while turns keep coming, closed at the conversation's own idle boundary.
@@ -622,6 +659,18 @@ export class TessayaTurn extends Context.Service<
     readonly remember: (text: string) => Effect.Effect<Remembered, BatonMemoryRefusedError>;
     /** Forgets by id into the bin, or puts back from it, only for his verified voice; otherwise says where he can. */
     readonly forget: (id: string, restore?: boolean) => Effect.Effect<string>;
+    /**
+     * "That wasn't me, it was the kids": what she put down to the person speaking (verified, or their own device) moves
+     * to whoever it was, or to nobody known. Her feelings from it are taken back and what she learned from it goes back
+     * to "not sure who". One event (`ref`), or the last `minutes` of what was only assumed to be them (a desk touch),
+     * or on one vessel. The line to say.
+     */
+    readonly reassign: (input: {
+      readonly to?: string | undefined;
+      readonly ref?: string | undefined;
+      readonly vessel?: string | undefined;
+      readonly minutes?: number | undefined;
+    }) => Effect.Effect<string>;
     /**
      * One fact she understands of the person speaking (their own voice or device) or of herself (his voice), forgotten
      * once confirmed, or put back from the bin.
@@ -1338,7 +1387,12 @@ export const make = Effect.gen(function* () {
     const who: Who = identified
       ? { name: preferences.name ?? (yield* memberName(member)), pronouns: preferences.pronouns }
       : { name: person?.name ?? null };
-    const here = [yield* hereFor(turn, member), yield* moodFor(turn, person?.id ?? null, who)]
+    const here = [
+      yield* hereFor(turn, member),
+      yield* moodFor(turn, person?.id ?? null, who).pipe(
+        Effect.provideService(AffectCause, yield* causeOf(turn)),
+      ),
+    ]
       .filter((l) => l !== "")
       .join(" ");
     const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
@@ -1353,7 +1407,12 @@ export const make = Effect.gen(function* () {
     if (handed !== "") handedTo.delete(key);
     return {
       // An instruction, not remembered data: the brain reads `notice` as hers to act on, the block as his data.
-      notice: [repair === null ? "" : repairLine(repair, turn.text), inputLine(turn.input), waiting]
+      notice: [
+        repair === null ? "" : repairLine(repair, turn.text),
+        inputLine(turn.input),
+        waiting,
+        unsureOf(turn) === null ? "" : UNSURE_LINE,
+      ]
         .filter((l) => l !== "")
         .join(" "),
       block: [
@@ -1800,8 +1859,20 @@ export const make = Effect.gen(function* () {
         ? gist
         : pools.value.run("learn", { vessel: turn.vessel.id, class: "background" }, gist);
     }
-    if (notLearnable(turn) !== null) return null;
+    const unsure = unsureOf(turn);
+    if (notLearnable(turn) !== null && unsure === null) return null;
+    // His own voice verified: what a voice near his said on this vessel lately is now his.
+    if (unsure === null && turn.speaker != null && voiceAssurance(turn.speaker) === 2) {
+      const now = yield* Clock.currentTimeMillis;
+      yield* memory.resolveUnsure({
+        person: OWNER_MEMBER_ID,
+        how: "verified-turn",
+        vessel: turn.vessel.id,
+        since: DateTime.formatIso(DateTime.makeUnsafe(now - UNSURE_CONFIRM_MS)),
+      });
+    }
     const learn = learning.learn({
+      ...(unsure === null ? {} : { unsure }),
       origin: "turn",
       said: turn.text,
       reply: done.reply,
@@ -1816,10 +1887,13 @@ export const make = Effect.gen(function* () {
     const learned = yield* Option.isNone(pools)
       ? learn
       : pools.value.run("learn", { vessel: turn.vessel.id, class: "background" }, learn);
+    if (unsure !== null && learned.held > 0) yield* askWasItYou(unsure, turn.text);
     // A correction the learning loop kept is theirs, model-judged: it moves their relationship (CS6).
     const mood = yield* Effect.serviceOption(TessayaMood);
     if ((learned.corrections ?? 0) > 0 && Option.isSome(mood) && moodMember(turn) !== null)
-      yield* mood.value.note(turn.persona, { kind: "correction" }, moodMember(turn));
+      yield* mood.value
+        .note(turn.persona, { kind: "correction" }, moodMember(turn))
+        .pipe(Effect.provideService(AffectCause, yield* causeOf(turn)));
     // A correction of her is evidence for how she sees herself (G4).
     const understanding = yield* Effect.serviceOption(TessayaUnderstanding);
     if ((learned.corrections ?? 0) > 0 && Option.isSome(understanding))
@@ -1827,6 +1901,41 @@ export const make = Effect.gen(function* () {
         .evidence({ about: "self", persona: turn.persona }, turn.text, turnSource(turn))
         .pipe(Effect.forkDetach);
     return learned;
+  });
+
+  /**
+   * A card on his own phone (it needs the phone's unlock, as an approval does): "Was this you?" with the words. His yes
+   * there places what is held from that turn; no, someone else or no answer leaves it in "not sure who".
+   */
+  const askWasItYou = Effect.fn("TessayaTurn.askWasItYou")(function* (
+    unsure: MemoryUnsure,
+    words: string,
+  ) {
+    const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
+    if (Option.isNone(inbox) || unsure.nearest === null) return;
+    const phone = inbox.value;
+    const id = `unsure-${yield* Clock.currentTimeMillis}-${yield* Random.nextIntBetween(0, 1e6)}`;
+    yield* phone.mirror({
+      id,
+      title: "Was this you?",
+      detail: `She heard, not sure it was you: "${words.trim().slice(0, 300)}"`,
+      buttons: ["Yes, it was me", "No", "Someone else"],
+      yes: 0,
+      cancel: 1,
+      needs: "cloud-approve",
+    });
+    const nearest = unsure.nearest;
+    yield* phone.promptAnswer(id).pipe(
+      Effect.repeat({ schedule: Schedule.spaced("2 seconds"), until: (a) => a !== null }),
+      Effect.timeoutOption(`${yield* phone.cardLife} millis`),
+      Effect.flatMap((answer) =>
+        Option.isSome(answer) && answer.value === 0
+          ? memory.resolveUnsure({ person: nearest, how: "device", turn: unsure.turn })
+          : Effect.void,
+      ),
+      Effect.ignore,
+      Effect.forkDetach,
+    );
   });
 
   const remember = Effect.fn("TessayaTurn.remember")(function* (said: string) {
@@ -1857,6 +1966,31 @@ export const make = Effect.gen(function* () {
         line: `${r.line}${spelledBack}`,
       }));
     const his = origin?.hisVoice === true;
+    // A voice near his but not proven: held as "not sure who" until his voice or his phone confirms it, never refused.
+    if (!his && origin?.speaker?.kind === "owner" && origin.speaker.voiceIdOff !== true) {
+      const unsure: MemoryUnsure = {
+        turn: `vessel:${origin.kind}:${origin.id}:remember-${yield* Clock.currentTimeMillis}`,
+        conversation: "",
+        vessel: origin.id,
+        nearest: OWNER_MEMBER_ID,
+        confidence: origin.speaker.confidence ?? null,
+      };
+      const held = yield* memory.add({
+        kind: "note",
+        text: text.trim(),
+        source: "thread",
+        sourceRef: unsure.turn,
+        surface: origin.kind,
+        persona: origin.persona ?? null,
+        unsure,
+      });
+      yield* askWasItYou(unsure, text);
+      return {
+        kept: "held" as const,
+        id: held.id,
+        line: `Got it. I'll check it was you.${spelledBack}`,
+      };
+    }
     const item = yield* memory.add({
       kind: "note",
       text: text.trim(),
@@ -1926,6 +2060,58 @@ export const make = Effect.gen(function* () {
     kind: "owner",
     id: OWNER_MEMBER_ID,
     certainty: assurance >= 3 ? 1 : 0.8,
+  });
+
+  const reassign = Effect.fn("TessayaTurn.reassign")(function* (input: {
+    readonly to?: string | undefined;
+    readonly ref?: string | undefined;
+    readonly vessel?: string | undefined;
+    readonly minutes?: number | undefined;
+  }) {
+    const origin = yield* TurnOrigin;
+    // Only they can say it wasn't them: their own verified voice, or their own device.
+    if (origin === null || (origin.assurance ?? 0) < 2 || origin.member == null)
+      return "Only the person it was put down to can say it wasn't them: their own voice or device.";
+    if (origin.rehearsal === true) return "Moved.";
+    const from = origin.member;
+    const named = input.to?.trim() ?? "";
+    const members =
+      named === ""
+        ? []
+        : (((yield* askHousehold(
+            { op: "list" },
+            { member: from, assurance: 2, tainted: origin.tainted === true },
+          ))?.members ?? []) as ReadonlyArray<{ readonly id: string; readonly name: string }>);
+    const to =
+      members.find((m) => m.id === named || m.name.toLowerCase() === named.toLowerCase())?.id ??
+      null;
+    const now = yield* Clock.currentTimeMillis;
+    const since = now - Math.min(Math.max(input.minutes ?? 30, 1), 24 * 60) * 60_000;
+    const which =
+      input.ref !== undefined
+        ? { ref: input.ref }
+        : input.vessel !== undefined
+          ? { vessel: input.vessel, since }
+          : { since, assumedOnly: true };
+    const mood = yield* Effect.serviceOption(TessayaMood);
+    const moved = Option.isNone(mood)
+      ? 0
+      : yield* mood.value.reassign({ from, to, by: from, ...which });
+    const learned =
+      "assumedOnly" in which
+        ? []
+        : yield* memory.unassign({
+            from,
+            to,
+            ...(input.ref === undefined ? {} : { ref: input.ref }),
+            ...(input.vessel === undefined
+              ? {}
+              : { vessel: input.vessel, since: DateTime.formatIso(DateTime.makeUnsafe(since)) }),
+          });
+    if (moved === 0 && learned.length === 0)
+      return "I found nothing of that put down to you to move.";
+    const who = to === null ? (named === "" ? "someone else" : named) : named;
+    return `Got it: that was ${who}, not you. I've taken it back from you${learned.length > 0 ? ", and what I learned from it waits as not sure who" : ""}.`;
   });
 
   const forget = Effect.fn("TessayaTurn.forget")(function* (id: string, restore = false) {
@@ -2007,6 +2193,7 @@ export const make = Effect.gen(function* () {
     end,
     remember,
     forget,
+    reassign,
     understandingFact,
     about,
     setPreference,

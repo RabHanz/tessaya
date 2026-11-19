@@ -44,7 +44,16 @@ export interface LearnInput {
   readonly at?: string | undefined;
   /** His IANA zone, so days are his. */
   readonly timeZone?: string | undefined;
+  /** A voice not verified said it: what is about someone waits as "not sure who"; household facts are kept at once. */
+  readonly unsure?: import("./memory.ts").MemoryUnsure | undefined;
 }
+
+/**
+ * Whether a learning from a voice not verified waits for its person (the Director, 20 Nov): anything about someone, or
+ * what they like, decided or corrected, waits; a plain household fact (the bins go out on Tuesday) is kept at once.
+ */
+export const waitsForItsPerson = (kind: string, scope: string | undefined): boolean =>
+  scope === "person" || kind !== "fact";
 
 export interface Proposal {
   readonly kind: string;

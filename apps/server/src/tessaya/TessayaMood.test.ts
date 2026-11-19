@@ -17,6 +17,8 @@ import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaTurn, layer as turnLayer, type TurnEnvelope } from "./TessayaTurn.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood, layer as moodLayer } from "./TessayaMood.ts";
+import { AffectCause } from "./AffectCause.ts";
+import { TurnOrigin } from "./TurnOrigin.ts";
 import { TessayaPeople } from "./TessayaPeople.ts";
 import { TessayaPresence, layer as presenceLayer } from "./TessayaPresence.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
@@ -130,6 +132,87 @@ it.effect("a correction the learning loop kept moves the corrected persona", () 
     `;
     assert.deepStrictEqual(rows, [{ persona: "butler", reason: "they corrected her" }]);
   }).pipe(Effect.provide(setup())),
+);
+
+it.effect(
+  "that wasn't me: what was assumed to be him is taken back and given to whoever it was, once, with its reason",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const mood = yield* TessayaMood;
+      const turns = yield* TessayaTurn;
+      const sql = yield* SqlClient.SqlClient;
+      const rowOf = Effect.map(
+        sql<{
+          state_json: string;
+        }>`SELECT state_json FROM tessaya_affect_state WHERE persona = 'companion'`,
+        (r) =>
+          JSON.parse(r[0]!.state_json).people as Record<
+            string,
+            { mood: object; bond: number; seenAt: number | null }
+          >,
+      );
+      // A desk touch, assumed to be the desk's owner; then a turn he was identified in.
+      yield* mood
+        .note("companion", { kind: "correction" }, OWNER_MEMBER_ID)
+        .pipe(
+          Effect.provideService(AffectCause, { ref: "touch-1", vessel: "desk-1", assumed: true }),
+        );
+      yield* mood
+        .note("companion", { kind: "seen" }, OWNER_MEMBER_ID)
+        .pipe(Effect.provideService(AffectCause, { ref: "turn-1", vessel: "laptop" }));
+      const before = (yield* rowOf)[OWNER_MEMBER_ID]!;
+      assert.notDeepEqual(before.mood, {});
+      // An unverified voice can't say it wasn't him.
+      const refused = yield* turns.reassign({ to: "the kids" }).pipe(
+        Effect.provideService(TurnOrigin, {
+          kind: "device",
+          id: "desk-1",
+          label: "desk",
+          member: OWNER_MEMBER_ID,
+          assurance: 1,
+        }),
+      );
+      assert.include(refused, "Only the person");
+      assert.deepStrictEqual((yield* rowOf)[OWNER_MEMBER_ID]!.mood, before.mood);
+      const desk = {
+        kind: "desktop" as const,
+        id: "laptop",
+        label: "his desktop",
+        member: OWNER_MEMBER_ID,
+        assurance: 2 as const,
+      };
+      const line = yield* turns
+        .reassign({ to: "the kids" })
+        .pipe(Effect.provideService(TurnOrigin, desk));
+      assert.include(line, "that was the kids, not you");
+      // The correction's push is gone from him; the turn he was identified in stays.
+      const after = (yield* rowOf)[OWNER_MEMBER_ID]!;
+      assert.deepStrictEqual(after.mood, {});
+      assert.isNotNull(after.seenAt);
+      const moved = yield* sql<{
+        moved_to: string;
+      }>`SELECT moved_to FROM tessaya_affect_ledger WHERE ref = 'touch-1'`;
+      assert.deepStrictEqual(moved, [{ moved_to: "" }]);
+      assert.strictEqual(
+        yield* turns.reassign({ to: "the kids" }).pipe(Effect.provideService(TurnOrigin, desk)),
+        "I found nothing of that put down to you to move.",
+      );
+      // Named someone who lives here: theirs now, under the same cause, and it can move again.
+      yield* mood
+        .note("companion", { kind: "correction" }, OWNER_MEMBER_ID)
+        .pipe(
+          Effect.provideService(AffectCause, { ref: "touch-2", vessel: "desk-1", assumed: true }),
+        );
+      assert.strictEqual(
+        yield* mood.reassign({ from: OWNER_MEMBER_ID, to: "sara", ref: "touch-2" }),
+        1,
+      );
+      const people = yield* rowOf;
+      assert.deepStrictEqual(people[OWNER_MEMBER_ID]!.mood, {});
+      assert.notDeepEqual(people["sara"]!.mood, {});
+      assert.strictEqual(yield* mood.reassign({ from: "sara", to: null, ref: "touch-2" }), 1);
+    }).pipe(Effect.provide(setup())),
 );
 
 it.effect("off: no line, a neutral face, and the state is cleared", () =>
