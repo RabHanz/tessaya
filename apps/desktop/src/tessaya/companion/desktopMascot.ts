@@ -394,6 +394,8 @@ export interface DesktopMascot {
   ) => void;
   /** A cue for the layer's body (her speech and mood as they happen); nothing while none is shown. */
   readonly layerCue: (cue: unknown) => void;
+  /** Her body in the crowd: where she stands and her look-toward-a-side, for a room's staging (GroupTalk). */
+  readonly member: CrowdMember;
   readonly dispose: () => void;
 }
 
@@ -1491,6 +1493,7 @@ export const createDesktopMascot = (input: {
       sleeping = on;
       cue(on ? "asleep" : "rest");
     },
+    member: self,
     dispose: () => {
       input.crowd?.delete(self);
       clearInterval(wander);

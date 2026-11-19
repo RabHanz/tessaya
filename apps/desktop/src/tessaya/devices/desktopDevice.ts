@@ -70,6 +70,8 @@ export interface DesktopFacts {
   readonly locked: boolean;
   readonly idleSeconds: number;
   readonly scan: PeripheralScan | null;
+  /** The others standing with her on his desktop, each its own body the server can move (M-080 step 8). */
+  readonly crew?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
 }
 
 const PLUMBING =
@@ -190,6 +192,16 @@ export const desktopManifest = (input: {
         "companion",
         "has her character on this computer's desktop do a gesture or a funny moment, or go to his window, the taskbar or the other screen",
         { access: "write", values: [...MASCOT_ACTS] },
+      ),
+      ...(facts.crew ?? []).map((p) =>
+        item(
+          `${MASCOT_ITEM}.${p.id}`,
+          `Desktop companion: ${p.name}`,
+          "enum",
+          "companion",
+          `has ${p.name}'s own body on this computer's desktop do a gesture or a funny moment`,
+          { access: "write", values: [...MASCOT_ACTS] },
+        ),
       ),
       // The bindings page's actions, so a rule (a remote's button), the brain or an agent runs them as a key would.
       ...DESK_ACTIONS.map((a) =>
@@ -388,7 +400,7 @@ export const startDesktopDevice = (input: {
   /** A message from someone at home, as the server rendered it for this computer. */
   readonly onNote: (note: unknown) => void;
   /** The desktop companion asked to act; false when she is not on the desktop or cannot now. */
-  readonly onMascot: (act: (typeof MASCOT_ACTS)[number]) => boolean;
+  readonly onMascot: (act: (typeof MASCOT_ACTS)[number], persona?: string) => boolean;
   /** Runs one of the bindings page's actions; false when it has no handler here. */
   readonly onAction: (id: string) => boolean;
   /** Calls `poke` when something it reads changed (a screen, power, lock); returns how to stop. */
@@ -443,9 +455,11 @@ export const startDesktopDevice = (input: {
           acks.push({ id: w.id, ok: true });
           continue;
         }
-        if (w.itemId === MASCOT_ITEM) {
+        if (w.itemId === MASCOT_ITEM || w.itemId.startsWith(`${MASCOT_ITEM}.`)) {
+          const persona =
+            w.itemId === MASCOT_ITEM ? undefined : w.itemId.slice(MASCOT_ITEM.length + 1);
           acks.push(
-            isMascotAct(w.value) && input.onMascot(w.value)
+            isMascotAct(w.value) && input.onMascot(w.value, persona)
               ? { id: w.id, ok: true }
               : { id: w.id, ok: false, error: "She is not on the desktop right now." },
           );

@@ -112,6 +112,8 @@ describe("the desktop as a vessel", () => {
               { id: "w3", itemId: "mascot.do", value: "explode" },
               { id: "w4", itemId: "action.mute", value: null },
               { id: "w5", itemId: "action.hold", value: null },
+              // one of the crew's own bodies, by persona
+              { id: "w6", itemId: "mascot.do.alfred", value: "nod" },
             ],
           });
         answered?.();
@@ -121,25 +123,37 @@ describe("the desktop as a vessel", () => {
       name: "Test",
       appVersion: "0",
       platform: "linux",
-      facts: () => ({ controls: [], screens: [], onBattery: false, locked: false, idleSeconds: 0 }),
+      facts: () => ({
+        controls: [],
+        screens: [],
+        onBattery: false,
+        locked: false,
+        idleSeconds: 0,
+        crew: [{ id: "alfred", name: "Alfred" }],
+      }),
       applySetting: () => undefined,
       onNote: () => undefined,
-      onMascot: (act) => (asked.push(act), act === "wave"),
+      onMascot: (act, persona) => (
+        asked.push(persona === undefined ? act : `${persona}:${act}`),
+        act !== "otherScreen"
+      ),
       onAction: (id) => (ran.push(id), true),
       onChange: () => () => undefined,
     });
     await acked;
     device.stop();
-    expect(asked).toEqual(["wave", "otherScreen"]);
+    expect(asked).toEqual(["wave", "otherScreen", "alfred:nod"]);
     expect(sent[1]?.["acks"]).toEqual([
       { id: "w1", ok: true },
       { id: "w2", ok: false, error: "She is not on the desktop right now." },
       { id: "w3", ok: false, error: "She is not on the desktop right now." },
       { id: "w4", ok: true },
       { id: "w5", ok: false, error: "This computer cannot do that now." },
+      { id: "w6", ok: true },
     ]);
     expect(ran).toEqual(["mute"]);
     const manifest = sent[0]?.["manifest"] as { items: Array<{ id: string; values?: unknown }> };
     expect(manifest.items.find((i) => i.id === "mascot.do")?.values).toContain("signature");
+    expect(manifest.items.find((i) => i.id === "mascot.do.alfred")?.values).toContain("nod");
   });
 });
