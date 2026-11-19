@@ -69,7 +69,7 @@ export const TESSAYA_PLACES = [
   },
   {
     id: "hardware",
-    label: "Hardware",
+    label: "Tessels",
     group: "Home and devices",
     terms: ["r1", "rabbit", "device", "nfc", "tags", "room brain", "bluetooth", "earcons"],
   },

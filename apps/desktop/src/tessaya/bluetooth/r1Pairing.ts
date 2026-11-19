@@ -1,6 +1,6 @@
 // @effect-diagnostics globalTimers:off
 /**
- * Bluetooth setup of an R1 from the desktop (Settings → Hardware → Add an R1). Chromium leaves two answers to the app:
+ * Bluetooth setup of an R1 from the desktop (Tessels → Add an R1). Chromium leaves two answers to the app:
  * which device a page's `requestDevice` gets, and, on Windows and Linux, the pairing itself (unanswered, Electron
  * cancels it). The R1's eyes show its stack's random 6 digits; the page that asked for the R1 asks him for them.
  */

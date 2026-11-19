@@ -236,9 +236,7 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   ),
   updateHold: op(Schema.Struct({ id: Id, version: Schema.NullOr(Text(30)) }), (a, _devices, by) =>
     by.surface !== "settings"
-      ? Effect.fail(
-          new DeviceRefusedError({ why: "Updates are kept or resumed in Settings → Hardware." }),
-        )
+      ? Effect.fail(new DeviceRefusedError({ why: "Updates are kept or resumed in Tessels." }))
       : Effect.flatMap(Effect.serviceOption(R1Updates), (updates) =>
           Option.isNone(updates)
             ? Effect.fail(
@@ -257,9 +255,7 @@ const OPS: Readonly<Record<string, (args: unknown) => Run | null>> = {
   ),
   tail: op(Schema.Struct({ id: Id, since: Schema.Number }), (a, devices, by) =>
     by.surface !== "settings"
-      ? Effect.fail(
-          new DeviceRefusedError({ why: "The device log is shown only in Settings → Hardware." }),
-        )
+      ? Effect.fail(new DeviceRefusedError({ why: "The device log is shown only in Tessels." }))
       : devices.tail(a.id, a.since),
   ),
   kwsMode: op(

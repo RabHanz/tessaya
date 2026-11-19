@@ -22,7 +22,7 @@ export const TABS = [
   { id: "tools", label: "Skills" },
   { id: "usage", label: "Usage" },
   { id: "trust", label: "Trust" },
-  { id: "hardware", label: "Hardware" },
+  { id: "hardware", label: "Tessels" },
   { id: "intercom", label: "Intercom" },
   { id: "homeassistant", label: "Home Assistant" },
   { id: "phone", label: "Phone" },

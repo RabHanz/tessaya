@@ -237,6 +237,25 @@ describe("searchSettings", () => {
       to: "/settings/tessaya",
     });
     expect(searchSettings("r1").map((item) => item.to)).toContain("/settings/tessaya");
+    // one row each, opening her place, never a "moved" stub
+    for (const [query, title] of [
+      ["home assistant", "Home Assistant"],
+      ["hardware", "Tessels"],
+    ] as const) {
+      const hits = searchSettings(query);
+      expect(
+        hits.filter((item) => item.title === title).map((item) => item.to),
+        query,
+      ).toEqual(["/settings/tessaya"]);
+      expect(
+        hits.map((item) => item.to),
+        query,
+      ).not.toContain("/settings/hardware");
+      expect(
+        hits.map((item) => item.to),
+        query,
+      ).not.toContain("/settings/home");
+    }
     const nav = SETTINGS_NAV_GROUPS.flatMap((group) => group.paths);
     for (const moved of ["/settings/home", "/settings/hardware", "/settings/apis"] as const)
       expect(nav).not.toContain(moved);

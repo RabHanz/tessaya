@@ -1,6 +1,6 @@
 /**
  * The phone route: this phone plays her replies on whatever it is playing through (AirPods, headphones) and lends its
- * mic, so a Tessel's own radio stays on Wi-Fi. One Tessel at a time, chosen in Settings → Hardware; the server's output
+ * mic, so a Tessel's own radio stays on Wi-Fi. One Tessel at a time, chosen in Tessels; the server's output
  * and input orders decide when the phone is used (apps/server/src/home/PhoneLink.ts). Its headset's button starts a
  * talk on that Tessel, and her buzz on the word plays on this phone's own motor.
  */
@@ -77,7 +77,7 @@ const accessAtom = Atom.family((environmentId: EnvironmentId) =>
 const kindOf = (r: PhoneAudioRoute) =>
   r.output.startsWith("bluetooth") || r.output === "wired" ? "headphones" : "speaker";
 
-/** The same install id the phone registers with in Settings → Hardware. */
+/** The same install id the phone registers with in Tessels. */
 const installId =
   `${Device.modelName ?? ""}${Device.deviceName ?? ""}`.replace(/[^\w.-]/g, "").slice(0, 60) ||
   "phone";

@@ -1,5 +1,5 @@
 /**
- * Settings → Hardware → Bodies: the Docks, plushes and stands his vessels sit in (VesselBodies). Tags are written from
+ * Tessels → Bodies: the Docks, plushes and stands his vessels sit in (VesselBodies). Tags are written from
  * the phone app, which can hold one; here he names them, gives each a room, retires one, and sets the link host.
  */
 import type { VesselBodiesView, VesselBody } from "@t3tools/tessaya-contracts";
@@ -146,7 +146,7 @@ export function BodiesSection(props: { readonly call: Call }) {
       {view.bodies.length === 0 ? (
         <SettingsRow
           title="No bodies yet"
-          description="Write a tag for a Dock, plush or stand from the phone app: Settings → Hardware → Bodies."
+          description="Write a tag for a Dock, plush or stand from the phone app: Tessels → Bodies."
         />
       ) : (
         view.bodies.map((b) => (

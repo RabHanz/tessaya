@@ -2101,7 +2101,7 @@ it.effect(
       const spoken = yield* Effect.flip(
         devices.command(ID, { op: "item", itemId: "net.add", value: { ssid: "Office" } }, verified),
       );
-      assert.include(spoken.why, "Settings → Hardware → Wi-Fi order");
+      assert.include(spoken.why, "Tessels → Wi-Fi order");
       assert.deepStrictEqual(sent, []);
 
       // Settings adds one as a backup; the device refusing a change is said, never claimed done.

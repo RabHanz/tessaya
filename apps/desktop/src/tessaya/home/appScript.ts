@@ -612,7 +612,11 @@ function home(p) {
   if (vo) vc.appendChild(kv('Speaks as', valueOf(vo)));
   if (ou) vc.appendChild(kv('Answers', valueOf(ou)));
   right.appendChild(vc);
-  const go2 = $('button', 'btn quiet', 'Change voice settings'); go2.style.marginTop = '12px'; go2.onclick = () => go('voice'); right.appendChild(go2);
+  // her speaking voice is set on her persona; the wake words and mic are Voice and wake words
+  const acts = $('div', 'quick'); acts.style.marginTop = '12px';
+  const her = $('button', 'btn quiet', L('home.herVoice')); her.onclick = () => go('personas');
+  const go2 = $('button', 'btn quiet', L('home.wakeAndMic')); go2.onclick = () => go('voice');
+  acts.append(her, go2); right.appendChild(acts);
   sp.append(left, right); p.appendChild(sp);
 }
 let vfilter = 'all', forgetAsk = false, editing = null;
@@ -1380,7 +1384,7 @@ function render(state) {
     if (up && up.lead) { const b = $('button', 'btn', L('alerts.update', { name: up.button })); b.onclick = () => { bellOpen = false; set('u.act', null); }; pop.appendChild(b); }
     if (!need && !(up && up.lead)) pop.appendChild($('p', null, L('alerts.none')));
     top.appendChild(pop); }
-  const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => go('assistant'); top.appendChild(sb); top.appendChild(ac);
+  const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => go('accounts'); top.appendChild(sb); top.appendChild(ac);
   });
   const page = document.getElementById('page'); const pageClass = (cur === 'home' ? 'wide' : '') + (entering ? ' enter' : ''); if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
   syncModal(); syncEnrol(); try { syncChrome(); } catch (e) {}

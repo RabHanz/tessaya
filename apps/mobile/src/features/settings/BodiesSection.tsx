@@ -1,5 +1,5 @@
 /**
- * Settings → Hardware → Bodies: the Docks, plushes and stands his vessels sit in (VesselBodies), and writing their NFC
+ * Tessels → Bodies: the Docks, plushes and stands his vessels sit in (VesselBodies), and writing their NFC
  * tags. The phone reads the tag's UID, the server signs a link for it, and the phone writes the link and locks the
  * tag with its password (react-native-nfc-manager, raw NTAG commands from `@t3tools/tessaya-shared/bodyTag`).
  */

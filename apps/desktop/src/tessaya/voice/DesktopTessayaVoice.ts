@@ -5185,7 +5185,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     createDesktopMascot({
       companionDir: COMPANION_DIR,
       stateDir: input.stateDir,
-      openSettings: () => home.open(),
+      // the mascot's own settings (persona, size, where it sits) live in Appearance
+      openSettings: () => home.open("appearance"),
       ...(input.privateChat === undefined ? {} : { privateChat: input.privateChat }),
       onNote: (kind, detail) => input.onNote?.(kind, detail),
       crowd,

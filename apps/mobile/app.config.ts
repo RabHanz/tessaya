@@ -133,7 +133,7 @@ const easIdentity =
       };
 // Copied thread links open the app. app.t3.codes/.well-known lists every variant's identifiers.
 const HOSTED_APP_HOST = "app.t3.codes";
-// Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
+// Tessaya: writing body tags (Tessels → Bodies). Personal teams can't sign the NFC entitlement.
 // TAG only: App Store Connect rejects the NDEF format (ITMS-90778); body tags are written as raw NTAG commands.
 const nfcPlugin: [string, { nfcPermission: string; includeNdefEntitlement: false }] = [
   "react-native-nfc-manager",
@@ -383,7 +383,7 @@ const config: ExpoConfig = {
     ],
     "expo-secure-store",
     "expo-sqlite",
-    // Tessaya: setting up an R1 over Bluetooth (Settings → Hardware → Add an R1); foreground only.
+    // Tessaya: setting up an R1 over Bluetooth (Tessels → Add an R1); foreground only.
     [
       "react-native-ble-plx",
       {
@@ -392,7 +392,7 @@ const config: ExpoConfig = {
         bluetoothAlwaysPermission: "Tessaya uses Bluetooth to set up your R1 on your Wi-Fi.",
       },
     ],
-    // Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
+    // Tessaya: writing body tags (Tessels → Bodies). Personal teams can't sign the NFC entitlement.
     ...(isIosPersonalTeamBuild ? [] : [nfcPlugin]),
     ...(isIosPersonalTeamBuild
       ? [sharingPlugin]

@@ -1,5 +1,5 @@
 /**
- * Settings → Hardware → Add an R1 on the phone: scan the right eye's pairing QR, give the Wi-Fi details, then set it
+ * Tessels → Add an R1 on the phone: scan the right eye's pairing QR, give the Wi-Fi details, then set it
  * up over Bluetooth (react-native-ble-plx). The phone's own pairing prompt asks for the 6 digits on the R1's eyes.
  * The steps are the web page's (`@t3tools/tessaya-shared/r1Setup`); then, once per server, the away-from-home question.
  */

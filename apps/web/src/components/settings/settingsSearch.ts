@@ -1372,48 +1372,57 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "apis-anthropic",
     title: "Anthropic",
-    to: "/settings/apis",
+    to: "/settings/tessaya",
+    targetId: "tessaya-apis",
     searchTerms: ["api key claude dictation cleanup voice room brain r1 tessel tumble"],
   },
   {
     id: "home-assistant",
     title: "Home Assistant",
-    to: "/settings/home",
+    to: "/settings/tessaya",
+    targetId: "tessaya-homeassistant",
     searchTerms: ["house lights automations devices smart home r1 tessel tumble"],
   },
   {
     id: "hardware-devices",
-    title: "Hardware devices",
-    to: "/settings/hardware",
+    title: "Tessels",
+    to: "/settings/tessaya",
+    targetId: "tessaya-hardware",
     searchTerms: [
-      "devices r1 agora desk device eyes mood mute camera reboot voice transport latency",
+      "devices r1 agora desk device eyes mood mute camera reboot voice transport latency hardware tessel tumble rabbit bluetooth earcons",
     ],
   },
   {
     id: "hardware-nfc",
     title: "NFC tags",
-    to: "/settings/hardware",
+    to: "/settings/tessaya",
+    targetId: "tessaya-hardware",
     searchTerms: ["nfc tag tap dock mode r1 tessel tumble"],
   },
   {
     id: "hardware-bodies",
     title: "Bodies",
-    to: "/settings/hardware",
+    to: "/settings/tessaya",
+    targetId: "tessaya-hardware",
     searchTerms: ["body bodies dock plush tuft perch stand cradle car mount nfc tag room vessel"],
   },
   {
     id: "room-brain",
     title: "Room brain",
-    to: "/settings/hardware",
+    to: "/settings/tessaya",
+    targetId: "tessaya-hardware",
     searchTerms: ["r1 tessel tumble desk device api key subscription claude anthropic voice room"],
   },
   // Tessaya's own settings live in her window; T3's search finds them and says where.
-  ...TESSAYA_PLACES.map((place) => ({
-    id: `tessaya-${place.id}`,
-    title: place.label,
-    to: "/settings/tessaya" as const,
-    searchTerms: [`tessaya ${place.group} ${place.terms.join(" ")}`],
-  })),
+  // Hardware and Home Assistant have their own rows above; listing the place too showed each twice.
+  ...TESSAYA_PLACES.filter((place) => place.id !== "hardware" && place.id !== "homeassistant").map(
+    (place) => ({
+      id: `tessaya-${place.id}`,
+      title: place.label,
+      to: "/settings/tessaya" as const,
+      searchTerms: [`tessaya ${place.group} ${place.terms.join(" ")}`],
+    }),
+  ),
   {
     id: "archive",
     title: "Archived threads",
