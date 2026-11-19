@@ -130,7 +130,7 @@ const readClaudeAccountInstances = Layer.effectDiscard(
 );
 
 // His private pack's text is refused by memory's door (D148); read fresh, so an edit counts at once.
-const memoryLayer = TessayaMemoryService.layer.pipe(
+const localMemoryLayer = TessayaMemoryService.layer.pipe(
   // Recall by meaning, when this server has the model (MEM-13); keyword recall otherwise.
   Layer.provide(TessayaMemoryEmbedder.layer),
   Layer.provide(
@@ -143,6 +143,9 @@ const memoryLayer = TessayaMemoryService.layer.pipe(
     ),
   ),
 );
+
+// Her one memory: on a server that isn't her brain, what she knows is read and written there (one-self move 3).
+const memoryLayer = TessayaMemoryService.oneBrain.pipe(Layer.provide(localMemoryLayer));
 
 // One instance: the sessions list keeps its messages in this table, and two drainers would type a row twice.
 const weaveLayer = TessayaWeaveService.layer.pipe(
@@ -297,7 +300,8 @@ const servicesInner = Layer.mergeAll(
         Layer.provide(TessayaOneShot.layer),
       ),
       // Memory sync with his other servers on this server's own clock, not T3's window (GEN-6).
-      TessayaMemorySync.layer.pipe(Layer.provide(memoryLayer)),
+      // sync keeps this server's read copy (for when the brain can't be reached) in step: its own store
+      TessayaMemorySync.layer.pipe(Layer.provide(localMemoryLayer)),
       // a worker's changes that waited for the brain land once it is back (one truth, nothing lost)
       BrainHost.outboxLayer,
       // Her standing understanding of each person and of herself (G4), versioned in the one memory.
