@@ -147,6 +147,7 @@ interface Row {
 }
 
 const OUTSIDE = "mcp__t3-code__";
+const NO_PLAYGROUND = "No playground is open. Open /tessaya/playground in a browser first.";
 /** One direction as an outside agent gets it: her body tools as /mcp advertises them, answered as the server does. */
 const outsideTurn = async (said: string, model: string) => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-direction-outside-"));
@@ -155,7 +156,13 @@ const outsideTurn = async (said: string, model: string) => {
       name: tool.name,
       description: Tool.getDescription(tool) ?? "",
       inputSchema: advertisedJsonSchema(tool) as Record<string, unknown>,
-      run: async (args) => ({ text: await bodyAnswer(tool.name, args) }),
+      // as the server answers an outside agent: its default body is the playground sandbox, and none is open here
+      run: async (args) => ({
+        text:
+          args["target"] === "her"
+            ? await bodyAnswer(tool.name, args)
+            : JSON.stringify({ ok: false, route: "none", said: NO_PLAYGROUND }),
+      }),
     })),
     gate: async () => ({ allow: true }),
   });
@@ -223,9 +230,11 @@ const outsideTurn = async (said: string, model: string) => {
         }
       })
       .find((event) => event.type === "result");
+    // only what reached her body is graded; calls that went to the absent playground did nothing
+    const reached = calls.filter((c) => (c.input as Record<string, unknown>)["target"] === "her");
     return {
-      calls: calls.map((c) => c.tool.replace(OUTSIDE, "")),
-      inputs: calls.map((c) => c.input),
+      calls: reached.map((c) => c.tool.replace(OUTSIDE, "")),
+      inputs: reached.map((c) => c.input),
       reply: result?.result ?? "",
       replies: result?.result === undefined ? [] : [result.result],
     };
