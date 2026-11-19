@@ -6,6 +6,8 @@ import {
   openRoom,
   readableFor,
   roomStep,
+  stageOnto,
+  stagePlan,
   traceSeenBy,
   type RoomPersona,
 } from "./rooms.ts";
@@ -94,5 +96,33 @@ describe("rooms", () => {
     expect(traceSeenBy(priv, "freya", false)).toBe(true);
     expect(traceSeenBy(priv, "sebastian", false)).toBe(false);
     expect(traceSeenBy(priv, "sebastian", true)).toBe(true);
+  });
+
+  it("stages a room per vessel: the speaker faces him, the others face her", () => {
+    const room = ["freya", "sebastian", "mira"];
+    const desk = stagePlan("desktop", room, "sebastian");
+    expect(desk.map((s) => [s.persona, s.x, s.scale, s.front])).toEqual([
+      ["freya", 0.2, 1, false],
+      ["sebastian", 0.5, 1.1, true],
+      ["mira", 0.8, 1, false],
+    ]);
+    expect(desk.find((s) => s.persona === "mira")?.faces).toEqual({
+      kind: "persona",
+      id: "sebastian",
+    });
+    expect(desk.find((s) => s.persona === "sebastian")?.faces).toEqual({ kind: "him" });
+    // the mirror puts the speaker in the middle; the phone has her full and the others small
+    expect(stagePlan("mirror", room, "freya").find((s) => s.persona === "freya")?.x).toBe(0.5);
+    expect(stagePlan("phone", room, "mira").map((s) => [s.persona, s.scale])).toEqual([
+      ["mira", 1],
+      ["freya", 0.3],
+      ["sebastian", 0.3],
+    ]);
+    expect(stagePlan("tessel", room, "mira").map((s) => s.persona)).toEqual(["mira"]);
+    // onto a mount: the bodies it holds are placed; one it lacks is skipped
+    const placed: Array<string> = [];
+    const bodies = new Map(["freya", "mira"].map((p) => [p, { place: () => void placed.push(p) }]));
+    expect(stageOnto(bodies, desk)).toBe(2);
+    expect(placed).toEqual(["freya", "mira"]);
   });
 });
