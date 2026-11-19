@@ -218,7 +218,7 @@ index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a37
        element("div", { id: "boot-error-command" }, [command, copyCommand]),
      ]),
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c6aa7a48aedea572eb4befeee6b4e1d3977f4ce2 100644
+index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c3c4be7a5de02bcd2d9614269bf9453141d78d6f 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
 @@ -22,7 +22,11 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
@@ -243,7 +243,7 @@ index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c6aa7a48aedea572eb4befeee6b4e1d3
        return html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
      },
    };
-@@ -420,7 +424,23 @@ export default defineConfig(() => {
+@@ -420,7 +424,26 @@ export default defineConfig(() => {
        sourcemap: buildSourcemap,
        ...(builtDev ? { watch: { exclude: rolldownWatchExclude } } : {}),
        rolldownOptions: {
@@ -251,10 +251,13 @@ index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c6aa7a48aedea572eb4befeee6b4e1d3
 +        input: {
 +          index: new URL("./index.html", import.meta.url).pathname,
 +          "tessaya-body": new URL("./src/body/entry.ts", import.meta.url).pathname,
++          "tessaya-playground": new URL("./src/body/playground.ts", import.meta.url).pathname,
 +        },
          output: {
 +          entryFileNames: (chunk) =>
-+            chunk.name === "tessaya-body" ? "assets/tessaya-body.js" : "assets/[name]-[hash].js",
++            chunk.name === "tessaya-body" || chunk.name === "tessaya-playground"
++              ? `assets/${chunk.name}.js`
++              : "assets/[name]-[hash].js",
 +          // The body's few pure modules get their own chunk, so its page never pulls a large app chunk with them.
 +          advancedChunks: {
 +            groups: [
