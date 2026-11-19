@@ -18,6 +18,7 @@ import {
   type Q,
   type V3,
 } from "./bodyRig.ts";
+import { isTwoHandSkill, TWO_HAND_SKILLS, twoHandsAt, type TwoHandSkill } from "./bodySkills.ts";
 
 /**
  * Human speed ceilings per joint (rad/s), the most any frame may ask (M-069): peak values measured in fast human
@@ -59,6 +60,10 @@ export interface Perform {
     readonly right?: HandPlace;
     /** Beats a second between there and a little apart, through the hold: a clap, rubbing hands, a tap. */
     readonly repeat?: number;
+    /** Both hands in one coordinated skill (palms meeting, wrists turned, fingers shaped); left and right are then ignored. */
+    readonly skill?: TwoHandSkill;
+    /** The skill's manner, one of `TWO_HAND_SKILLS[skill]`. */
+    readonly style?: string;
   };
   /** Where her attention goes, when the direction says (a ball coming, a noise behind her): looks at `atMs`. */
   readonly focus?: ReadonlyArray<{ readonly x: number; readonly y: number; readonly atMs: number }>;
@@ -516,8 +521,37 @@ export const performCues = (
   let t = timingOf(q, p.ms === undefined && keysEnd > 0 ? Math.max(keysEnd + 800, 2400) : p.ms);
   const hands = handArms(p, { ...base, ...own.bones });
   const hz = Math.max(0, Math.min(6, p.hands?.repeat ?? 0));
+  const skill = p.hands?.skill;
+  /** Both hands in their skill `ms` in: carried there on the performance's phrasing, its rhythm through the hold. */
+  const skillAt = (tm: Timing, ms: number): Pose => {
+    if (skill === undefined) return {};
+    const beatFrom = tm.antic + tm.stroke + tm.settle;
+    const from = { ...base, ...own.bones };
+    const there = twoHandsAt(
+      skill,
+      {
+        ...(hz > 0 ? { rate: hz } : {}),
+        intensity: q.k,
+        ...(p.hands?.style === undefined ? {} : { style: p.hands.style }),
+      },
+      from,
+      Math.min(tm.hold, ms - beatFrom) / 1000,
+    );
+    const out: Record<string, Euler> = {};
+    // one envelope for both arms: staggered joints would carry one palm through the other on the way in
+    const e = Math.max(0, Math.min(1, envelope(tm, ms - ORDER("leftUpperArm") * tm.stagger)));
+    for (const [b, to] of Object.entries(there)) {
+      out[b] = /Fingers$/.test(b)
+        ? (to.map((x) => Math.round(x * e * 100) / 100) as unknown as Euler)
+        : (qToEuler(
+            qSlerp(qFromEuler((from[b as PoseBone] ?? [0, 0, 0]) as V3), qFromEuler(to as V3), e),
+          ).map((x) => Math.round(x * 1000) / 1000) as unknown as Euler);
+    }
+    return out;
+  };
   /** A placed hand's arm `ms` in: carried there on the performance's own phrasing, beating through the hold. */
   const handsAt = (tm: Timing, ms: number): Pose => {
+    if (skill !== undefined) return skillAt(tm, ms);
     if (hands === null) return {};
     const out: Record<string, Euler> = {};
     const beatFrom = tm.antic + tm.stroke + tm.settle;
@@ -734,12 +768,22 @@ export const decodePerform = (
     (HAND_PLACES as ReadonlyArray<unknown>).includes(v);
   if (isObj(h) && [h["left"], h["right"]].some((v) => v !== undefined && !placeOk(v)))
     return { ok: false, error: `perform.hands places are ${HAND_PLACES.join(", ")}` };
+  if (isObj(h) && h["skill"] !== undefined && !isTwoHandSkill(h["skill"]))
+    return {
+      ok: false,
+      error: `perform.hands.skill is one of ${Object.keys(TWO_HAND_SKILLS).join(", ")}`,
+    };
   const hands = isObj(h)
     ? {
         ...(placeOk(h["left"]) ? { left: h["left"] } : {}),
         ...(placeOk(h["right"]) ? { right: h["right"] } : {}),
         ...(typeof h["repeat"] === "number" && Number.isFinite(h["repeat"])
           ? { repeat: Math.max(0, Math.min(6, h["repeat"])) }
+          : {}),
+        ...(isTwoHandSkill(h["skill"]) ? { skill: h["skill"] } : {}),
+        ...(isTwoHandSkill(h["skill"]) &&
+        (TWO_HAND_SKILLS[h["skill"]] as ReadonlyArray<unknown>).includes(h["style"])
+          ? { style: h["style"] as string }
           : {}),
       }
     : undefined;
@@ -752,7 +796,8 @@ export const decodePerform = (
       ...(intensity === undefined ? {} : { intensity: pos(intensity) }),
       ...(ms === undefined ? {} : { ms: Math.max(1200, Math.min(15_000, ms)) }),
       ...(focus === undefined || focus.length === 0 ? {} : { focus }),
-      ...(hands === undefined || (hands.left === undefined && hands.right === undefined)
+      ...(hands === undefined ||
+      (hands.left === undefined && hands.right === undefined && hands.skill === undefined)
         ? {}
         : { hands }),
     },

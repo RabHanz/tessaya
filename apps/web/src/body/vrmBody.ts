@@ -77,6 +77,7 @@ import {
 } from "@t3tools/tessaya-shared/bodyRig";
 import type { BodyState } from "@t3tools/tessaya-shared/bodyControl";
 import { INVOLUNTARY, performCues } from "@t3tools/tessaya-shared/bodyPlanner";
+import { FINGER_KEYS, fingerBones } from "@t3tools/tessaya-shared/bodySkills";
 import { softenOnContact } from "./softContact.ts";
 import {
   grabKindOf,
@@ -782,6 +783,7 @@ export function mountBody(
    * (limits, hinge elbows and knees, her own rest pose), then followed by a spring per bone: any change of target, at
    * any moment, bends the motion smoothly instead of cutting it. Once every bone has arrived, nothing moves.
    */
+  const fingersBent = [false, false];
   const applyPose = (now: number) => {
     if (vrm === null || rig === null) return;
     const bones: Partial<Record<PoseBone, Euler>> = { ...posture().bones };
@@ -791,6 +793,22 @@ export function mountBody(
       dancing === null ? {} : danceAt(now - dancing),
       stepping === null ? {} : stepAt(now - stepping),
     );
+    // a clip's finger shapes bend whatever finger bones this model has; they are not rig bones
+    const shapes = bones as Record<string, Euler | undefined>;
+    for (const [i, k] of FINGER_KEYS.entries()) {
+      const shape = shapes[k];
+      delete shapes[k];
+      if (shape === undefined && !fingersBent[i]) continue;
+      const side = i === 0 ? "left" : "right";
+      const bent = fingerBones(
+        side,
+        shape ?? [0, 0, 0],
+        (b) => vrm!.humanoid.getNormalizedBoneNode(b as VRMHumanBoneName) !== null,
+      );
+      for (const [b, e] of Object.entries(bent))
+        vrm.humanoid.getNormalizedBoneNode(b as VRMHumanBoneName)?.rotation.set(e[0], e[1], e[2]);
+      fingersBent[i] = shape !== undefined;
+    }
     // the rig's work is redone only when the target changes (a held posture costs nothing per frame)
     const key = JSON.stringify(bones);
     if (key !== goalKey) {
