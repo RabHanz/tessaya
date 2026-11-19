@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { decodeBodyMove } from "./bodyControl.ts";
-import { recall, type MotionEntry } from "./bodyLibrary.ts";
+import { MEANING_FLOOR, recall, recallByMeaning, type MotionEntry } from "./bodyLibrary.ts";
 import { MOTION_LIBRARY } from "./bodyMotionLibrary.ts";
 
 const lib: MotionEntry[] = [
@@ -25,7 +25,34 @@ describe("recall", () => {
   });
 });
 
+describe("recallByMeaning", () => {
+  const unit = (...v: number[]) => {
+    const n = Math.hypot(...v);
+    return Float32Array.from(v.map((x) => x / n));
+  };
+  const vectors = new Map([
+    ["a", unit(1, 0, 0)],
+    ["b", unit(0, 1, 0)],
+    ["c", unit(0, 0, 1)],
+  ]);
+  it("finds an entry that shares no word when its meaning is near, and words still count", () => {
+    // "I'm so cold" shares no word with "Shiver like you're freezing", but its vector is near
+    expect(recallByMeaning("I'm so cold", lib, unit(0.1, 0, 1), vectors)?.id).toBe("c");
+    // a far vector alone finds nothing; the words then decide
+    expect(recallByMeaning("a crisp salute", lib, unit(0.4, 0.5, 0.5), vectors)?.id).toBe("a");
+    expect(recallByMeaning("read me the news", lib, unit(0.5, 0.5, 0.5), vectors)).toBeNull();
+    // no model: words only
+    expect(recallByMeaning("jumping for joy", lib, null, vectors)?.id).toBe("b");
+    expect(MEANING_FLOOR).toBeGreaterThan(0.5);
+  });
+});
+
 describe("an intent on a move", () => {
+  it("plays the entry the server named by id", () => {
+    const entry = MOTION_LIBRARY.at(-1)!;
+    expect(decodeBodyMove({ intent: entry.id })).toEqual(decodeBodyMove(entry.move));
+  });
+
   it("plays her library's performance, under what else the step says, and says when she has none", () => {
     const d = decodeBodyMove({ intent: "zqx florp" });
     expect(d).toMatchObject({
