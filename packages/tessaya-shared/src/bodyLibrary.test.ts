@@ -50,7 +50,11 @@ describe("recallByMeaning", () => {
 describe("an intent on a move", () => {
   it("plays the entry the server named by id", () => {
     const entry = MOTION_LIBRARY.at(-1)!;
-    expect(decodeBodyMove({ intent: entry.id })).toEqual(decodeBodyMove(entry.move));
+    const own = decodeBodyMove(entry.move);
+    // the entry's own move, named by its id so its physics-trained version can play (bodyBakedClips)
+    expect(decodeBodyMove({ intent: entry.id })).toEqual(
+      own.ok ? { ...own, move: { ...own.move, entry: entry.id } } : own,
+    );
   });
 
   it("plays her library's performance, under what else the step says, and says when she has none", () => {
@@ -61,11 +65,11 @@ describe("an intent on a move", () => {
     });
     const entry = MOTION_LIBRARY[0]!;
     const played = decodeBodyMove({ intent: entry.text });
-    expect(played).toEqual(decodeBodyMove(entry.move));
-    // the step's own fields go over the library's
-    expect(decodeBodyMove({ intent: "zqx florp", look: { x: 0, y: 0.5 } })).toMatchObject({
-      ok: true,
-      move: { look: { x: 0, y: 0.5 } },
-    });
+    const own = decodeBodyMove(entry.move);
+    expect(played).toEqual(own.ok ? { ...own, move: { ...own.move, entry: entry.id } } : own);
+    // the step's own fields go over the library's, and then it is no longer the entry as it was
+    const mixed = decodeBodyMove({ intent: "zqx florp", look: { x: 0, y: 0.5 } });
+    expect(mixed).toMatchObject({ ok: true, move: { look: { x: 0, y: 0.5 } } });
+    expect(mixed.ok && mixed.move.entry).toBeFalsy();
   });
 });
