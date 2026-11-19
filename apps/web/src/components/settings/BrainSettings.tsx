@@ -264,6 +264,8 @@ const MOTION_LABELS: Readonly<Record<string, string>> = {
   important: "Important only",
 };
 
+const LIVELINESS = { still: "Still", calm: "Calm", lively: "Lively" } as const;
+
 /** Her lines on every device: written by her brain or the plain ones, and how much she says unprompted. */
 function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const written = useEnvironmentSettings(environmentId, (s) => s.tessayaExpression);
@@ -271,6 +273,7 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const mood = useEnvironmentSettings(environmentId, (s) => s.tessayaMood.enabled);
   const cleanup = useEnvironmentSettings(environmentId, (s) => s.tessayaRoomCleanup);
   const ownCamera = useEnvironmentSettings(environmentId, (s) => s.tessayaOwnSensorsNoApproval);
+  const lively = useEnvironmentSettings(environmentId, (s) => s.tessayaLiveliness);
   const breath = useEnvironmentSettings(environmentId, (s) => s.tessayaVoiceBreath);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
@@ -306,6 +309,29 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             checked={ownCamera}
             onCheckedChange={(on) => update({ tessayaOwnSensorsNoApproval: on })}
           />
+        }
+      />
+      <SettingsRow
+        title="Her own life"
+        description="What she does when you're not talking to her: rest, wander, sulk, play, come looking for you. Still never moves on her own; lively does more. She never makes a sound or gets in front of your work."
+        control={
+          <Select
+            value={lively}
+            onValueChange={(value) => {
+              if (value !== null) update({ tessayaLiveliness: value as typeof lively });
+            }}
+          >
+            <SelectTrigger aria-label="Her own life" size="sm">
+              <SelectValue>{LIVELINESS[lively]}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup>
+              {(Object.keys(LIVELINESS) as Array<typeof lively>).map((k) => (
+                <SelectItem key={k} value={k}>
+                  {LIVELINESS[k]}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
         }
       />
       <SettingsRow
