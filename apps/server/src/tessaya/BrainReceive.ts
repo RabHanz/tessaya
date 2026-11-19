@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { emitAction } from "../provenance/ActionLog.ts";
 import { brainOn, type BrainOp } from "./BrainHost.ts";
 import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
 import { TessayaMood } from "./TessayaMood.ts";
@@ -47,6 +48,16 @@ const PersonaAct = Schema.Struct({
 const GroupAct = Schema.Struct({ conversation: Id, group: GroupValue });
 const InboxAct = Schema.Struct({ op: Id, args: Schema.Record(Schema.String, Schema.Unknown) });
 
+/** A worker's room-loop claim (R1Loop), recorded here under the worker's own event id. */
+export const RoomLoopAct = Schema.Struct({
+  id: Schema.String.check(Schema.isMaxLength(40)),
+  at: Schema.Number,
+  kind: Schema.Literals(["room.loop.takeover", "room.loop.handback"]),
+  from: Id,
+  outcome: Schema.String.check(Schema.isMaxLength(40)),
+  data: Schema.Unknown,
+});
+const decodeRoomLoop = Schema.decodeUnknownOption(RoomLoopAct);
 const decodeMoodAct = Schema.decodeUnknownOption(MoodAct);
 const decodePresenceAct = Schema.decodeUnknownOption(PresenceAct);
 const decodePersonaAct = Schema.decodeUnknownOption(PersonaAct);
@@ -68,6 +79,22 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
 ) {
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
   switch (op) {
+    case "roomLoop": {
+      const act = decodeRoomLoop(payload);
+      if (Option.isNone(act)) return refused("Not a room-loop claim.");
+      const a = act.value;
+      yield* emitAction({
+        id: a.id,
+        at: a.at,
+        kind: a.kind,
+        actor: { kind: "system", id: "room-loop", certainty: 1 },
+        subject: "room-loop",
+        outcome: a.outcome,
+        evidence: [{ kind: "environment", ref: a.from }],
+        data: a.data,
+      });
+      return done();
+    }
     case "mood": {
       const act = decodeMoodAct(payload);
       if (Option.isNone(act) || typeof act.value.e["kind"] !== "string")

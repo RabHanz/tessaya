@@ -14,6 +14,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 
 import * as ServerConfig from "../config.ts";
@@ -31,6 +32,8 @@ import {
 } from "./R1VoiceInstall.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 import { emitAction } from "../provenance/ActionLog.ts";
+import { makeBrainLink } from "../tessaya/BrainHost.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 
 /** What a room loop listens to: a bus client hearing it is a loop on another machine. */
 const VOICE_TOPIC = "freya/r1/any/voice/up";
@@ -84,6 +87,33 @@ export const elect = (input: {
     claims: answers && input.ready && input.here > 0,
   };
 };
+
+/**
+ * The loops serving the Tessels on this hub: ours while it claims, else any other loop heard here while a Tessel is
+ * here (a voice service run outside this server, such as a host's own systemd loop). Pure.
+ */
+export const servingLoops = (input: {
+  readonly claims: boolean;
+  readonly ours: string | null;
+  readonly others: ReadonlyArray<string>;
+  readonly here: number;
+}): ReadonlyArray<string> =>
+  input.claims && input.ours !== null
+    ? [input.ours]
+    : input.here > 0
+      ? [...input.others].sort()
+      : [];
+
+/** The room.loop record a change of serving loops makes: a new loop takes the room, none hands it back. Pure. */
+export const claimChange = (
+  before: ReadonlyArray<string>,
+  after: ReadonlyArray<string>,
+): "room.loop.takeover" | "room.loop.handback" | null =>
+  after.join(",") === before.join(",")
+    ? null
+    : after.length > 0
+      ? "room.loop.takeover"
+      : "room.loop.handback";
 
 export interface LoopPlan {
   readonly node: string;
@@ -326,6 +356,11 @@ export const layer = Layer.effect(
   R1Loop,
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
+    const brain = yield* makeBrainLink;
+    const environment = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
+    const self = Option.isSome(environment)
+      ? String(yield* environment.value.getEnvironmentId)
+      : "local";
     const home = yield* HomeAssistantService;
     const hub = yield* R1Hub;
     const setting = yield* deviceSetting("LOOP").pipe(Effect.orDie);
@@ -342,7 +377,7 @@ export const layer = Layer.effect(
     let lastOtherAt = bornAt;
     let lastHereAt = 0;
     let answering = false;
-    let claimed = false;
+    let claimed: ReadonlyArray<string> = [];
     let standby = false;
     let onHub = false;
     let heardLoop = false;
@@ -428,16 +463,25 @@ export const layer = Layer.effect(
       answering = vote.answers;
       // Another loop on this hub, or the Tessels on another server's hub: either way her voice runs elsewhere.
       elsewhere = others.length > 0 || (!answering && here.length === 0);
-      // The room is claimed only by a loop that is up and hearing a Tessel here; the record says which.
-      if (vote.claims !== claimed) {
-        claimed = vote.claims;
-        yield* emitAction({
-          kind: claimed ? "room.loop.takeover" : "room.loop.handback",
+      // The room is claimed only by a loop that is up and hearing a Tessel here, ours or another; the record says which.
+      const serving = servingLoops({ claims: vote.claims, ours, others, here: here.length });
+      const change = claimChange(claimed, serving);
+      if (change !== null) {
+        claimed = serving;
+        const outcome = change === "room.loop.takeover" ? "answering here" : "standing by";
+        const data = { others, quietMs, devices: here, loop: serving[0] ?? ours };
+        const id = yield* emitAction({
+          kind: change,
           actor: { kind: "system", id: "room-loop", certainty: 1 },
           subject: "room-loop",
-          outcome: claimed ? "answering here" : "standing by",
-          data: { others, quietMs, devices: here, loop: ours },
+          outcome,
+          data,
         });
+        // The brain keeps one record of who serves each Tessel, whichever hub she is on.
+        if (!(yield* brain.isBrain))
+          yield* brain
+            .send("roomLoop", { id, at: now, kind: change, from: self, outcome, data })
+            .pipe(Effect.forkDetach);
       }
       const bundleMark = NodeFS.existsSync(NodePath.join(dir, BUNDLE_MARK))
         ? NodeFS.readFileSync(NodePath.join(dir, BUNDLE_MARK), "utf8")
