@@ -133,6 +133,17 @@ export type BodyAsk =
   | { readonly done: true }
   /** Her body stands on the page (true) or is gone from it (false): the character under it hides or comes back. */
   | { readonly shown: boolean };
+/**
+ * Her page's shape (CSS px) as the window takes it: setShape counts the screen's own pixels, so at 175% scaling an
+ * unscaled shape showed only the top 57% of her and cut off her legs and feet. Outside the shape nothing draws.
+ */
+export const shapeOnScreen = (rects: ReadonlyArray<Rect>, scale: number): Array<Rect> =>
+  rects.map((r) => ({
+    x: Math.floor(r.x * scale),
+    y: Math.floor(r.y * scale),
+    width: Math.ceil(r.width * scale),
+    height: Math.ceil(r.height * scale),
+  }));
 export const readBodyAsk = (title: string): BodyAsk | null => {
   if (!title.startsWith("tessaya-body:")) return null;
   let v: Record<string, unknown>;
@@ -599,7 +610,13 @@ export const createDesktopMascot = (input: {
     if ("shown" in ask) call(`document.body.style.opacity = ${ask.shown ? '"0"' : '""'}`);
     else if ("shape" in ask) {
       // Windows and Linux shape a window; macOS has no setShape, and there her whole box takes clicks
-      if (typeof target.setShape === "function") target.setShape([...ask.shape]);
+      if (typeof target.setShape === "function")
+        target.setShape(
+          shapeOnScreen(
+            ask.shape,
+            Electron.screen.getDisplayMatching(target.getBounds()).scaleFactor,
+          ),
+        );
     } else if ("move" in ask)
       target.setBounds({ ...b, x: b.x + ask.move[0], y: b.y + ask.move[1] });
     else if ("grow" in ask) {

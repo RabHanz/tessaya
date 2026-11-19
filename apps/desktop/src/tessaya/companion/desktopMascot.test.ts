@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { bodyPlaceOf, privateBodyBounds, readBodyAsk } from "./desktopMascot.ts";
+import { bodyPlaceOf, privateBodyBounds, readBodyAsk, shapeOnScreen } from "./desktopMascot.ts";
 
 // a 1920×1080 screen with a 48 px taskbar along the bottom
 const work = { x: 0, y: 0, width: 1920, height: 1032 };
@@ -26,6 +26,13 @@ describe("her private body on the desk", () => {
       width: 1032,
       height: 1032,
     });
+  });
+
+  it("shapes her window in the screen's pixels, so at 175% her legs and feet are inside it", () => {
+    // her page on his laptop: 267 × 534 CSS px in a 468 × 934 px window
+    const page = [{ x: 40, y: 20, width: 190, height: 510 }];
+    expect(shapeOnScreen(page, 1.75)).toEqual([{ x: 70, y: 35, width: 333, height: 893 }]);
+    expect(shapeOnScreen(page, 1)).toEqual(page);
   });
 
   it("hears only her page's own asks in its title", () => {
