@@ -242,6 +242,8 @@ export interface PersonaLayer {
     readonly private: boolean;
     readonly acts: ReadonlyArray<string>;
     readonly by: string;
+    /** These cues are for this persona's own body (another's touch landing on her), not the one asking. */
+    readonly persona?: string;
   }) => { readonly ok: boolean; readonly said: string } | null;
   /** What the body on its open session last reported of itself (bodyControl BodyState); null when none is open. */
   readonly bodyState?: () => unknown;

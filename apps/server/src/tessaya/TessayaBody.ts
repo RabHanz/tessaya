@@ -489,6 +489,18 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
     },
     caller,
   );
+  // the hand lands on her: the touched persona's own body shows it (a stage of several bodies)
+  if (answer.ok && other !== undefined && move.touch !== undefined)
+    yield* route(
+      {
+        cues: moveCues({ touch: move.touch }, `t${(yield* Clock.currentTimeMillis).toString(36)}`),
+        privateMove,
+        acts: [],
+        desk: [],
+      },
+      caller,
+      other,
+    );
   if (answer.ok && move.touch !== undefined)
     yield* feel({
       vessel: "window",
@@ -532,6 +544,8 @@ const route = Effect.fn("TessayaBody.route")(function* (
     readonly desk: ReadonlyArray<MascotAct>;
   },
   caller: BodyCaller,
+  /** Another persona's own body on a shared stage (a touch landing on her), not the one the caller drives. */
+  forPersona?: string,
 ) {
   if (privateMove && !caller.mayBePrivate)
     return {
@@ -543,7 +557,13 @@ const route = Effect.fn("TessayaBody.route")(function* (
   if (layers._tag === "Some")
     for (const l of layers.value.all) {
       const taken =
-        l.body?.({ cues, private: privateMove, acts: extension, by: caller.id }) ?? null;
+        l.body?.({
+          cues,
+          private: privateMove,
+          acts: extension,
+          by: caller.id,
+          ...(forPersona === undefined ? {} : { persona: forPersona }),
+        }) ?? null;
       if (taken !== null)
         return {
           ok: taken.ok,

@@ -499,14 +499,19 @@ describe("TessayaBody", () => {
         yield* moveBody({ touch: { part: "arm", motion: "stroke" } }, her).pipe(
           Effect.provideService(PersonaLayers, { all: [openLayer([])] }),
         );
-        // body to body: Sebastian's hand reaching for Freya is felt by her, as his
+        // body to body: Sebastian's hand reaching for Freya is felt by her, as his, and her own body shows it
+        const shown: Array<{ persona?: string; cues: ReadonlyArray<{ kind: string }> }> = [];
         yield* moveBody(
           {
             touch: { part: "shoulder", motion: "pat" },
             toward: { kind: "persona", id: "freya" },
           },
           { ...her, persona: "sebastian" },
-        ).pipe(Effect.provideService(PersonaLayers, { all: [openLayer([])] }));
+        ).pipe(Effect.provideService(PersonaLayers, { all: [openLayer(shown as Array<unknown>)] }));
+        expect(shown.find((m) => m.persona === "freya")?.cues.map((c) => c.kind)).toContain("hand");
+        expect(
+          shown.find((m) => m.persona === undefined)?.cues.some((c) => c.kind === "hand"),
+        ).toBe(false);
         // a private moment's touch is sealed: recorded, but never in shared context
         yield* feel({ vessel: "window", part: "hand", kind: "hold", private: true });
         off();
