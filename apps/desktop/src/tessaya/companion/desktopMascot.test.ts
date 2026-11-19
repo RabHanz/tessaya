@@ -40,6 +40,7 @@ describe("her private body on the desk", () => {
       shape: [{ x: 10, y: 20, width: 100, height: 300 }],
     });
     expect(readBodyAsk('tessaya-body:{"move":[5,-3]}')).toEqual({ move: [5, -3] });
+    expect(readBodyAsk('tessaya-body:{"shown":false,"n":3}')).toEqual({ shown: false });
     expect(readBodyAsk('tessaya-body:{"grow":40}')).toEqual({ grow: 40 });
     expect(readBodyAsk('tessaya-body:{"done":true}')).toEqual({ done: true });
     expect(readBodyAsk("Tessaya")).toBeNull();

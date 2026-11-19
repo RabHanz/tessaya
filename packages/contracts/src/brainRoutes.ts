@@ -17,6 +17,7 @@ const BRAIN_ROLES = [
   "intent",
   "synopsis",
   "hold",
+  "gist",
 ] as const;
 export const BrainRole = Schema.Literals(BRAIN_ROLES);
 export type BrainRole = typeof BrainRole.Type;
@@ -92,6 +93,7 @@ export const BrainCredentials = Schema.Struct({
   intent: credentialRow,
   synopsis: credentialRow,
   hold: credentialRow,
+  gist: credentialRow,
 });
 export type BrainCredentials = typeof BrainCredentials.Type;
 const modelRow = Schema.optionalKey(BrainModelRoute);
@@ -106,6 +108,7 @@ export const BrainModels = Schema.Struct({
   intent: modelRow,
   synopsis: modelRow,
   hold: modelRow,
+  gist: modelRow,
 });
 export type BrainModels = typeof BrainModels.Type;
 
@@ -160,5 +163,6 @@ export const BrainSpendAlert = Schema.Struct({
   intent: spendRow,
   synopsis: spendRow,
   hold: spendRow,
+  gist: spendRow,
 });
 export type BrainSpendAlert = typeof BrainSpendAlert.Type;

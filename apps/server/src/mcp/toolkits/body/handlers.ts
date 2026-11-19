@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { bodyState, moveBody, playScene, type BodyCaller } from "../../../tessaya/TessayaBody.ts";
-import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { conversationKey, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 
@@ -16,12 +16,17 @@ const callerNow = Effect.gen(function* () {
       id: `${turn.kind}:${turn.id}`,
       kind: "persona",
       mayBePrivate: true,
+      // her live thread (TessayaTurn's id), so body focus knows which of her conversations asks
+      thread: `${turn.persona ?? ""}|${conversationKey({ vessel: turn, text: "", speaker: turn.speaker, member: turn.member })}`,
+      signal: turn.kind === "device" ? "speak" : "type",
     } satisfies BodyCaller;
   if (scope.client === undefined)
     return {
       id: `thread:${scope.thread?.threadId ?? "t3"}`,
       kind: "agent",
       mayBePrivate: true,
+      // his own agent moving her is his hand in that thread
+      signal: "touch",
     } satisfies BodyCaller;
   return {
     id: `client:${scope.client.sessionId ?? "outside"}`,

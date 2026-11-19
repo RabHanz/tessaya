@@ -390,6 +390,15 @@ it.effect(
       yield* devices.tick;
       assert.isNull(yield* devices.cameraView(ID));
 
+      // Her own camera asked in his conversation, his voice not matched: her own sensor, no card (19 Nov 05:05).
+      const cardsBefore = (yield* inbox.pending).length;
+      const unmatched = yield* devices.command(
+        ID,
+        { op: "camera" },
+        { who: "Tessaya in the room", surface: "assistant" },
+      );
+      assert.strictEqual(unmatched.status, "done");
+      assert.lengthOf(yield* inbox.pending, cardsBefore);
       // His own spoken request at the R1, his voice verified: his yes, through the same gate.
       const shots = () => topics().filter((t) => t.endsWith("cmd/camera/capture")).length;
       const before = shots();

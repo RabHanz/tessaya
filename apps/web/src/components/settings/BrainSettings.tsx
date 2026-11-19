@@ -53,6 +53,7 @@ const ROLE_HINTS: Readonly<Record<BrainRole, string>> = {
   intent: "Reading a sentence the grammar did not catch.",
   synopsis: "Two lines on what a work session did.",
   hold: "A short line while a slow answer comes.",
+  gist: "A few words on what each of her conversations is about.",
 };
 const MODE_LABELS = {
   ask: "Ask me each time",
@@ -269,6 +270,7 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const motion = useEnvironmentSettings(environmentId, (s) => s.companionMotion);
   const mood = useEnvironmentSettings(environmentId, (s) => s.tessayaMood.enabled);
   const cleanup = useEnvironmentSettings(environmentId, (s) => s.tessayaRoomCleanup);
+  const ownCamera = useEnvironmentSettings(environmentId, (s) => s.tessayaOwnSensorsNoApproval);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
     <SettingsSection title="Her lines">
@@ -291,6 +293,17 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             aria-label="Fix misheard words"
             checked={cleanup}
             onCheckedChange={(on) => update({ tessayaRoomCleanup: on })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Her own camera without a card"
+        description="When you ask her to look, the Tessel's camera takes its picture without a card to your phone. Her eyes show she is looking. An agent or a job still asks you."
+        control={
+          <Switch
+            aria-label="Her own camera without a card"
+            checked={ownCamera}
+            onCheckedChange={(on) => update({ tessayaOwnSensorsNoApproval: on })}
           />
         }
       />

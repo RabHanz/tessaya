@@ -669,14 +669,20 @@ export const startTessayaDesktop = Effect.gen(function* () {
       );
       return { origin, session };
     };
-    // While a layer's session is open on this desktop, her body on the desk is the layer's own (its `mascot` page).
+    // Her body on the desk is the layer's own (its `mascot` page) while a session is open here, and always when he chose
+    // her full body: then it stands in her everyday look, and her character shows only while it isn't standing.
     let deskMascot: DesktopMascot | null = null;
+    let deskFullBody = false;
     const showLayerBody = async (open: boolean) => {
       const page = layerLink.page();
-      if (!open || page === null) return deskMascot?.layerBody(null);
+      if (!(open || deskFullBody) || page === null) return deskMascot?.layerBody(null);
       const at = await layerSession();
-      if (at !== null && layerLink.isOpen())
-        deskMascot?.layerBody({ url: `${at.origin}${page}/mascot`, session: at.session });
+      if (at !== null && (layerLink.isOpen() || deskFullBody))
+        deskMascot?.layerBody({
+          url: `${at.origin}${page}/mascot`,
+          session: at.session,
+          waitShown: !layerLink.isOpen(),
+        });
     };
     // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer, and its
     // private chat (his written threads) at tessaya://layer/chat.
@@ -759,6 +765,9 @@ export const startTessayaDesktop = Effect.gen(function* () {
       void layerLink.signal("screenLocked");
     });
     Electron.powerMonitor.on("suspend", () => void layerLink.signal("sleep"));
+    Electron.powerMonitor.on("unlock-screen", () => void showLayerBody(layerLink.isOpen()));
+    // Her full body needs the layer's page, which the first report names.
+    void layerLink.ready.then(() => showLayerBody(layerLink.isOpen()));
     // Five minutes untouched: they stepped away (presence, B-043). Electron has no idle event, so a cheap minute check.
     let idle = false;
     setInterval(() => {
@@ -1104,6 +1113,11 @@ export const startTessayaDesktop = Effect.gen(function* () {
       bodyCue,
       onMascot: (m) => {
         deskMascot = m;
+        void showLayerBody(layerLink.isOpen());
+      },
+      fullBody: (on) => {
+        if (on === deskFullBody) return;
+        deskFullBody = on;
         void showLayerBody(layerLink.isOpen());
       },
       stateDir: environment.stateDir,

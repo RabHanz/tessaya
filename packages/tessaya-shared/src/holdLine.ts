@@ -53,6 +53,13 @@ const UNDER_WAY =
 /** Restating or quoting him, or musing on a feeling ("Ah, \"can you,\" so you're asking whether…" in the replay). */
 const ECHO =
   /["“”]|\bso you(?:'re| are) (?:asking|saying|wanting)|\byou(?:'re| are) asking\b|\b(?:so )?you want\b|\bhow it feels\b/i;
+/**
+ * A remark on his question or on the talk so far instead of his topic, which then sits in front of her answer (19 Nov
+ * replay: "Ah, the headphones again, still tangled with the speaker question.", "so that's who we're talking about").
+ * "still" and "again" also claim a state she has not read yet.
+ */
+const PREAMBLE =
+  /\bso (?:that'?s|this is) (?:who|what)\b|\byou(?:'re| are) (?:after|checking|looking|wondering|saying|wanting)\b|\bthat'?s a good (?:thing|one|question)\b|\bagain\b|\bstill\b/i;
 /** A stock filler inside a line ("…your second screen on the laptop, one moment."). */
 const STOCK_INSIDE =
   /\b(?:one moment|just a (?:moment|sec(?:ond)?)|hold on|one sec(?:ond)?|bear with me|good question)\b/i;
@@ -77,7 +84,7 @@ export const keptBridge = (
     .replace(/^["']|["']$/g, "")
     .split("\n")[0]!
     .trim();
-  if (/^none\.?$/i.test(line) || ECHO.test(line)) return null;
+  if (/^none\.?$/i.test(line) || ECHO.test(line) || PREAMBLE.test(line)) return null;
   const words = line.split(/\s+/).filter(Boolean).length;
   if (
     words < 3 ||

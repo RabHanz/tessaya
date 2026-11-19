@@ -86,6 +86,7 @@ import { DeviceRefusedError, DeviceRegistry, offlineWhy } from "./DeviceRegistry
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { expressOr } from "../tessaya/TessayaExpression.ts";
+import { interruptBody } from "../tessaya/TessayaBody.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { TessayaCast } from "../tessaya/TessayaCast.ts";
 import { LINE_EVENTS, sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
@@ -1612,6 +1613,14 @@ const make = Effect.gen(function* () {
 
   // Being moved (§9.7M S3): her mood, her eyes and a line of her own, through the same paths as every other moment.
   const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
+  /** His owner setting: her own sensors (the Tessel's camera) need no card from his conversation; on by default. */
+  const ownSensorsFree =
+    serverSettings._tag === "None"
+      ? Effect.succeed(true)
+      : serverSettings.value.getSettings.pipe(
+          Effect.map((s) => s.tessayaOwnSensorsNoApproval),
+          Effect.orElseSucceed(() => true),
+        );
   const mood = yield* Effect.serviceOption(TessayaMood);
   const liveContext = yield* Effect.serviceOption(TurnLiveContext);
   const motionSeen = new Map<string, MotionSeen>();
@@ -1797,8 +1806,12 @@ const make = Effect.gen(function* () {
       if (action !== null) yield* emitAction(action);
     }
     // He talked over her on this Tessel: a layer's acts timed to her words stop there and then (VOXTA I4).
-    if (tail === "event/voice/barge" && Option.isSome(layers))
-      for (const l of layers.value.all) l.signal({ kind: "bargeIn", vessel: result.id });
+    if (tail === "event/voice/barge") {
+      if (Option.isSome(layers))
+        for (const l of layers.value.all) l.signal({ kind: "bargeIn", vessel: result.id });
+      // and every body of hers: a scene playing on one pauses (body focus)
+      yield* interruptBody();
+    }
     // Picked up, moved, touched or pressed: someone is at this Tessel, not yet who (B-043).
     if (Option.isSome(presence) && HANDLED.has(tail))
       yield* presence.value.note({ member: null, source: "handled", vessel: result.id });
@@ -3241,6 +3254,10 @@ const make = Effect.gen(function* () {
         why: "Raw device commands are sent only from Settings → Hardware.",
       });
     }
+    // Her own camera, asked in his conversation in his home: her own sensor, no card and no voice step-up (Director,
+    // 19 Nov 05:05). Her eyes show she is looking and the Record has the act; an agent or a job still asks him.
+    if (c.op === "camera" && by.surface === "assistant" && (yield* ownSensorsFree))
+      needsYes = false;
     if (c.op !== "away" && c.op !== "item" && c.op !== "forget" && c.op !== "hubs") yield* live(id);
     if (needsYes && by.surface !== "settings" && by.approved !== true) {
       if (by.dryRun === true)

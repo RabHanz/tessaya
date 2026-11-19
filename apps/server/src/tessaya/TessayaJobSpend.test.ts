@@ -1,9 +1,14 @@
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import { ProviderTurnId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-import { mergeUnits, spendOfTurns, turnUnits } from "./TessayaJobSpend.ts";
+import { mergeUnits, readPriceList, spendOfTurns, turnUnits } from "./TessayaJobSpend.ts";
 import { parseRateTable } from "../usage/usagePricing.ts";
 
 const rates = parseRateTable({
@@ -112,5 +117,36 @@ describe("each job's and schedule's cost on the Usage page", () => {
       ["schedule", "standing", undefined, 2, 100, 0.01],
     ]);
     expect(merged[0]?.listDollars).toBeCloseTo(0.01 + 0.003 + 0.0003 + 0.015, 9);
+  });
+});
+
+describe("the price list on disk", () => {
+  it("is parsed once while the file is unchanged, and again when it changes", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "price-list-"));
+    const file = NodePath.join(dir, "usage-model-rates.json");
+    const write = (input: number, mtime: Date) => {
+      NodeFS.writeFileSync(
+        file,
+        JSON.stringify({
+          fetchedAtMs: Date.UTC(2026, 10, 14),
+          document: {
+            "claude-sonnet-4-5": { input_cost_per_token: input, output_cost_per_token: 15e-6 },
+          },
+        }),
+      );
+      NodeFS.utimesSync(file, mtime, mtime);
+    };
+    try {
+      write(3e-6, new Date(Date.UTC(2026, 10, 14)));
+      const first = readPriceList(dir);
+      expect(first?.version).toBe("2026-11-14");
+      expect(readPriceList(dir)).toBe(first);
+      write(4e-6, new Date(Date.UTC(2026, 10, 15)));
+      const next = readPriceList(dir);
+      expect(next).not.toBe(first);
+      expect(next?.table.get("claude-sonnet-4-5")?.inputCostPerToken).toBe(4e-6);
+    } finally {
+      NodeFS.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

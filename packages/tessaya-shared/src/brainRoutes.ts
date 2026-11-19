@@ -88,6 +88,9 @@ const before = (
     // Her line while a slow answer comes (B-056): one short sentence at the turn's start, so the fastest tier.
     case "hold":
       return subscription("haiku", null);
+    // A few words on what one of her threads is about (architecture D1): the cheapest tier names a topic.
+    case "gist":
+      return subscription("haiku", null);
     // Writing two sentences about a turn: the cheapest tier does not reliably say what changed.
     case "synopsis":
     case "web":
@@ -159,6 +162,7 @@ export const BRAIN_ROLE_LABELS: Readonly<Record<BrainRole, string>> = {
   intent: "Reading a sentence",
   synopsis: "Session summaries",
   hold: "Words while she thinks",
+  gist: "What each conversation is about",
 };
 
 /** Provider logins that bill per token: Claude's key, Bedrock or a custom endpoint, Codex's key, Gemini's key. */

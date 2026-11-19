@@ -130,7 +130,9 @@ export type BodyAsk =
   | { readonly shape: ReadonlyArray<Rect> }
   | { readonly move: readonly [number, number] }
   | { readonly grow: number }
-  | { readonly done: true };
+  | { readonly done: true }
+  /** Her body stands on the page (true) or is gone from it (false): the character under it hides or comes back. */
+  | { readonly shown: boolean };
 /**
  * Her page's shape (CSS px) as the window takes it: setShape counts the screen's own pixels, so at 175% scaling an
  * unscaled shape showed only the top 57% of her and cut off her legs and feet. Outside the shape nothing draws.
@@ -171,6 +173,7 @@ export const readBodyAsk = (title: string): BodyAsk | null => {
   if (Array.isArray(m) && m.length === 2 && m.every(n))
     return { move: [Math.round(m[0]), Math.round(m[1])] };
   if (n(v["grow"])) return { grow: Math.round(v["grow"] as number) };
+  if (typeof v["shown"] === "boolean") return { shown: v["shown"] };
   return v["done"] === true ? { done: true } : null;
 };
 
@@ -190,9 +193,10 @@ export const MASCOT_CHARACTERS = {
   thimble: "Thimble",
   mark: "Mark",
 } as const;
-export type MascotCharacter = keyof typeof MASCOT_CHARACTERS | "persona";
+/** "body": her full body (the layer's page) stands on the desk in public too; her persona's character until it stands. */
+export type MascotCharacter = keyof typeof MASCOT_CHARACTERS | "persona" | "body";
 export const parseMascotCharacter = (value: unknown): MascotCharacter =>
-  typeof value === "string" && Object.hasOwn(MASCOT_CHARACTERS, value)
+  value === "body" || (typeof value === "string" && Object.hasOwn(MASCOT_CHARACTERS, value))
     ? (value as MascotCharacter)
     : "persona";
 /** Arms with drawn hands (his pick, 13 Nov), or the hands floating beside her. */
@@ -378,11 +382,15 @@ export interface DesktopMascot {
   /** Something the brain or an agent has her do (the device registry's `mascot.do`); false when she cannot now. */
   readonly act: (what: MascotAct) => boolean;
   /**
-   * An owner-only persona layer's body for her while its session is open on this desktop (PersonaLayers.ts): its page,
-   * out of capture, drawn over her in place, and her own rig hidden underneath; null puts her back. Content-free here.
+   * An owner-only persona layer's body for her (PersonaLayers.ts): its page, out of capture, drawn over her in place,
+   * her own rig hidden underneath; null puts her back. `waitShown`: her rig stays until the page says she stands.
    */
   readonly layerBody: (
-    page: { readonly url: string; readonly session: Electron.Session } | null,
+    page: {
+      readonly url: string;
+      readonly session: Electron.Session;
+      readonly waitShown?: boolean;
+    } | null,
   ) => void;
   /** A cue for the layer's body (her speech and mood as they happen); nothing while none is shown. */
   readonly layerCue: (cue: unknown) => void;
@@ -599,7 +607,8 @@ export const createDesktopMascot = (input: {
   };
   const askVeil = (target: Electron.BrowserWindow, ask: BodyAsk) => {
     const b = target.getBounds();
-    if ("shape" in ask) {
+    if ("shown" in ask) call(`document.body.style.opacity = ${ask.shown ? '"0"' : '""'}`);
+    else if ("shape" in ask) {
       // Windows and Linux shape a window; macOS has no setShape, and there her whole box takes clicks
       if (typeof target.setShape === "function")
         target.setShape(
@@ -834,7 +843,7 @@ export const createDesktopMascot = (input: {
   let profile: PhysicsProfile = DEFAULT_PROFILE;
   const init = () => {
     call(
-      `window.mascot.init(${JSON.stringify({ persona: options.character === "persona" ? options.persona : { ...options.persona, character: options.character }, quiet: options.motion === "important", calm: options.motion === "calm", reduced: options.reduced, hands: options.hands })})`,
+      `window.mascot.init(${JSON.stringify({ persona: options.character === "persona" || options.character === "body" ? options.persona : { ...options.persona, character: options.character }, quiet: options.motion === "important", calm: options.motion === "calm", reduced: options.reduced, hands: options.hands })})`,
     );
     call(`window.mascot.hold(${held})`);
     const target = win;
@@ -1466,7 +1475,7 @@ export const createDesktopMascot = (input: {
           if (veil !== shown) return;
           placeVeil();
           shown.showInactive();
-          call(`document.body.style.opacity = "0"`);
+          if (page.waitShown !== true) call(`document.body.style.opacity = "0"`);
         })
         .catch(() => dropVeil());
     },

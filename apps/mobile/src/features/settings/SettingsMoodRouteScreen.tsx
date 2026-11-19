@@ -140,6 +140,12 @@ function MoodSections(props: {
           onValueChange={(on) => patch({ tessayaRoomCleanup: on })}
         />
         <SettingsSwitchRow
+          label="Her own camera without a card"
+          subtitle="When you ask her to look, the Tessel's camera takes its picture without a card to your phone. Her eyes show she is looking. An agent or a job still asks you."
+          value={settings.tessayaOwnSensorsNoApproval}
+          onValueChange={(on) => patch({ tessayaOwnSensorsNoApproval: on })}
+        />
+        <SettingsSwitchRow
           label="Her mood"
           subtitle="A working state that shapes her tone and her face on every device, moved only by your own turns. It never changes what she does. Off keeps her face neutral and clears her mood."
           value={settings.tessayaMood.enabled}

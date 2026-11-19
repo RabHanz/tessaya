@@ -5,6 +5,10 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
+import { EnvironmentId } from "@t3tools/contracts";
+
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
@@ -725,5 +729,39 @@ it.effect(
       yield* TestClock.adjust("2 minutes");
       assert.strictEqual((yield* as("kid")("turn_on")).status, "done");
     }).pipe(Effect.provide(Layer.merge(layer, household)));
+  },
+);
+
+it.effect(
+  "with no connection here, the house through a linked server reads as connected, and off with none",
+  () => {
+    // 19 Nov 05:20: on a server with no token she said the house wasn't connected; a linked one had it.
+    const peers = (answers: boolean) =>
+      Layer.mergeAll(
+        Layer.mock(PeerLinks.PeerLinks)({
+          enabled: Effect.succeed(true),
+          list: Effect.succeed([
+            { environmentId: EnvironmentId.make("env-brain"), label: "brain", status: "reachable" },
+          ] as never),
+        }),
+        Layer.mock(PeerMcpClient.PeerMcpClient)({
+          call: () =>
+            Effect.succeed(
+              answers
+                ? { ok: true, value: [] }
+                : { ok: false, error: "Home Assistant is not connected." },
+            ) as never,
+        }),
+      );
+    const statusWith = (answers: boolean) => {
+      const { layer } = setup();
+      return Effect.flatMap(HomeAssistantService.HomeAssistantService, (h) => h.status).pipe(
+        Effect.provide(layer.pipe(Layer.provide(peers(answers)))),
+      );
+    };
+    return Effect.gen(function* () {
+      assert.strictEqual((yield* statusWith(true)).state, "connected");
+      assert.strictEqual((yield* statusWith(false)).state, "off");
+    });
   },
 );

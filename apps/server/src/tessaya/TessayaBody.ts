@@ -33,14 +33,23 @@ import {
   NO_SENSE,
   type SenseState,
 } from "@t3tools/tessaya-shared/bodySense";
+import {
+  mayDrive,
+  nextFocus,
+  REST,
+  type Focus,
+  type FocusEvent,
+  type PresenceSignal,
+} from "@t3tools/tessaya-shared/bodyFocus";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
-import { SessionMember } from "./TessayaTurn.ts";
+import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
 import { TurnLiveContext } from "./TurnLiveContext.ts";
 
 /** Who is asking: her own turn on a vessel, an agent in T3, or one signed in from outside. */
@@ -49,6 +58,10 @@ export interface BodyCaller {
   readonly kind: "persona" | "agent" | "outside";
   /** May ask for what belongs to a private moment (her own turn, or his agents in T3); the layer's gate still decides. */
   readonly mayBePrivate: boolean;
+  /** The conversation asking (a LiveThread's id, or a T3 thread's), which body focus weighs; its id when absent. */
+  readonly thread?: string | undefined;
+  /** How he is present in that thread: his voice on a Tessel, his typing elsewhere, his own hand on an agent. */
+  readonly signal?: PresenceSignal | undefined;
 }
 
 export interface BodyMoveAnswer {
@@ -75,6 +88,89 @@ const DESK: Readonly<Record<string, MascotAct>> = {
   dizzy: "dizzy",
 };
 const MASCOT_ITEM = "mascot.do";
+
+// Which conversation drives her body (bodyFocus.ts). shortcut: one body for his desk, per process; a crew's bodies get
+// their own keys with rooms (architecture step 8), and a restart starts her at rest.
+const DESK_BODY = "desk";
+const focus = new Map<string, Focus>();
+const liveId = (t: { persona: string | null; conversation: string; tier: string }) =>
+  `${t.persona ?? ""}|${t.conversation}${t.tier === "private" ? "|private" : ""}`;
+const isPrivateThread = (id: string | null) => id?.endsWith("|private") === true;
+
+/**
+ * One event on a body's focus: recorded as `body.focus` when its holder changes, and the thread that takes it hears
+ * once where she just was (its gist, or only that it was a private moment).
+ */
+const moveFocus = Effect.fn("TessayaBody.focus")(function* (key: string, e: FocusEvent) {
+  const step = nextFocus(focus.get(key) ?? REST, e);
+  focus.set(key, step.focus);
+  const h = step.handover;
+  if (h === null) return step;
+  yield* emitAction({
+    kind: "body.focus",
+    actor: { kind: "rule", id: "bodyFocus", certainty: 1 },
+    subject: key,
+    outcome: h.reason,
+    data: { from: h.from, to: h.to, event: e.kind },
+    ...(isPrivateThread(h.from) || isPrivateThread(h.to) ? { private: true } : {}),
+  });
+  const turn = yield* Effect.serviceOption(TessayaTurn);
+  const live = yield* Effect.serviceOption(TurnLiveContext);
+  if (h.from === null || h.to === null || Option.isNone(turn) || Option.isNone(live)) return step;
+  const threads = yield* turn.value.threads();
+  const was = threads.find((t) => liveId(t) === h.from);
+  const now = threads.find((t) => liveId(t) === h.to);
+  // Only his own threads hear where she was: a member's never learns of his private moment or his topics.
+  if (was === undefined || now === undefined || now.person !== OWNER_MEMBER_ID) return step;
+  yield* live.value.inject({
+    key: `focus:${h.to}`,
+    source: "body",
+    vessel: now.vessel.id,
+    expiresAfterTurns: 1,
+    line:
+      was.tier === "private"
+        ? `You were just with him in a private moment; say nothing of it here.`
+        : `You were just with him${was.gist === null ? "" : ` in "${was.gist}"`} on ${was.surface === "voice" ? "a Tessel" : `the ${was.surface}`}: carry on here without starting over.`,
+  });
+  return step;
+});
+
+/** The thread a caller moves her from, weighed when he was last present in it (not when its reply came). */
+const presenceOf = Effect.fn("TessayaBody.presence")(function* (caller: BodyCaller, now: number) {
+  const thread = caller.thread ?? caller.id;
+  const turn = yield* Effect.serviceOption(TessayaTurn);
+  const row =
+    caller.kind === "persona" && Option.isSome(turn)
+      ? (yield* turn.value.threads()).find((t) => liveId(t) === thread)
+      : undefined;
+  return {
+    kind: "presence" as const,
+    thread,
+    signal: caller.signal ?? "type",
+    at: row?.presentAt ?? now,
+  };
+});
+
+/** He spoke over her or said a stop word on a vessel: a scene on her body pauses, and his next thread takes it. */
+export const interruptBody = Effect.fn("TessayaBody.interrupt")(function* () {
+  yield* moveFocus(DESK_BODY, { kind: "interrupt", at: yield* Clock.currentTimeMillis });
+});
+
+/** His screen locked or a private lease ended: a private thread loses her body at once. */
+export const privateBodyEnded = Effect.fn("TessayaBody.privateEnded")(function* () {
+  const f = focus.get(DESK_BODY) ?? REST;
+  const held = f.state === "rest" ? [] : f.state === "paused" ? [f.thread, f.engaged] : [f.thread];
+  yield* moveFocus(DESK_BODY, {
+    kind: "privateEnd",
+    threads: held.filter((t): t is string => isPrivateThread(t)),
+    at: yield* Clock.currentTimeMillis,
+  });
+});
+
+/** "Let her be": no conversation holds her body until he is next present in one. */
+export const restBody = Effect.fn("TessayaBody.rest")(function* () {
+  focus.set(DESK_BODY, REST);
+});
 
 // shortcut: per-process rate state, so a restart forgets it; fine for a burst limit, move it to a store if it must hold across restarts
 const rates = new Map<string, RateState>();
@@ -117,6 +213,14 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
         ? `Stream frames come at most ${STREAM_RATE.perSecond} a second; try again in ${gate.retryMs} ms.`
         : `Too many moves at once; try again in ${gate.retryMs} ms, or send one move with steps or keys.`,
       retryMs: gate.retryMs,
+    } satisfies BodyMoveAnswer;
+  // A conversation he is not in now never mixes into the one he is: refused with who has her, not queued.
+  const present = yield* moveFocus(DESK_BODY, yield* presenceOf(caller, now));
+  if (!mayDrive(present.focus, caller.thread ?? caller.id))
+    return {
+      ok: false,
+      route: "none",
+      said: "Her body is with another conversation he is in now; try again when it is free.",
     } satisfies BodyMoveAnswer;
   const startsStream = stream && now - (streaming.get(caller.id) ?? -Infinity) > STREAM_LAPSE_MS;
   if (stream) streaming.set(caller.id, now);
@@ -206,8 +310,12 @@ const route = Effect.fn("TessayaBody.route")(function* (
       route: "none",
       said: "Her full body isn't open anywhere now; on the desk she can wave, nod, hop, stretch or look dizzy.",
     } satisfies BodyMoveAnswer;
+  // Her desk character on his own desktops only, never a member's.
   const desks = (yield* registry.value.list).filter(
-    (d) => d.online && d.items.some((i) => i.id === MASCOT_ITEM),
+    (d) =>
+      d.online &&
+      (d.member ?? OWNER_MEMBER_ID) === OWNER_MEMBER_ID &&
+      d.items.some((i) => i.id === MASCOT_ITEM),
   );
   let done = 0;
   for (const d of desks)
@@ -278,6 +386,24 @@ export const playScene = Effect.fn("TessayaBody.scene")(function* (
   if (!gate.ok)
     return { ok: false, said: `Too many moves at once; try again in ${gate.retryMs} ms.` };
   const privateMove = isPrivateScene(scene);
+  const thread = caller.thread ?? caller.id;
+  const present = yield* moveFocus(DESK_BODY, yield* presenceOf(caller, now));
+  const lease = mayDrive(present.focus, thread)
+    ? yield* moveFocus(DESK_BODY, {
+        kind: "sceneStart",
+        thread,
+        scene: scene.id,
+        at: now,
+        ms: scene.beats.at(-1)!.atMs,
+      })
+    : { refused: "another conversation he is in has her body" };
+  if (lease.refused !== undefined)
+    return {
+      ok: false,
+      said: `Not now: ${lease.refused}.`,
+      route: "none" as const,
+      notes: decoded.notes,
+    };
   const answer = yield* route(
     {
       cues: sceneCues(scene),

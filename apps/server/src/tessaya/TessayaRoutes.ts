@@ -74,6 +74,7 @@ import { VesselHands } from "./VesselHands.ts";
 import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./TessayaApi.ts";
 import { transcribeWav } from "./TessayaPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./TessayaPage.ts";
+import { interruptBody, privateBodyEnded } from "./TessayaBody.ts";
 
 /** Each direct-door method's payload decoder and result encoder, compiled once. */
 const DESK_CODECS = new Map(
@@ -944,6 +945,10 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       for (const kind of desk.signals)
         for (const l of registry.value.all)
           l.signal(kind === "bargeIn" ? { kind, vessel: "desktop" } : { kind });
+      if (desk.signals.includes("bargeIn")) yield* interruptBody();
+      // A locked or sleeping desk ends a private moment there: a private conversation loses her body at once.
+      if (desk.signals.some((k) => k === "screenLocked" || k === "sleep"))
+        yield* privateBodyEnded();
       if (desk.signals.includes("bargeIn"))
         yield* emitAction({
           kind: "desk.voice.barge",

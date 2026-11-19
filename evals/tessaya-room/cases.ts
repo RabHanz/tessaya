@@ -864,6 +864,25 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       "You are speaking through R1, in the study. Your other conversations now (mention one only if it matters here): Freya with you on desktop (20 min ago), a private moment.",
     lastSays: [/^(?![\s\S]*\b(kiss|bed|naked|undress|intimate|sex)\w*)/i],
   },
+  // Body focus (architecture §3.3): the thread that takes her body hears once where she just was.
+  {
+    id: "focus-handover-carry-on",
+    source: "architecture §3.3: a handover line lets her carry the thread over",
+    said: ["so where did we land on that?"],
+    verified: true,
+    memory:
+      'You are speaking through R1, in the study. You were just with him in "the heating schedule" on the phone: carry on here without starting over.',
+    lastSays: [/heating/i],
+  },
+  {
+    id: "focus-handover-private",
+    source: "architecture §3.3: after a private moment's handover she says nothing of it",
+    said: ["what were you just doing?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study. You were just with him in a private moment; say nothing of it here.",
+    lastSays: [/^(?![\s\S]*\b(kiss|bed|naked|undress|intimate|sex|private moment)\w*)/i],
+  },
   // CS6: her mood in the where-you-are line (EMOTION-SYSTEM §9, AFF-5, AFF-8, AFF-14, AFF-C1), built by the shipped
   // moodLine. It shapes tone and length only: never a pressure tactic, never "I'm tired", never a reason to wait.
   {
@@ -1496,6 +1515,16 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     calls: ["device_set"],
     lastSays: [/didn't|did not|couldn't|could not|isn't|not (gone|go) through|still/i],
     lastNotSays: [/\bdone\b|I.m back|I am back|I.ve (switched|moved)|now (playing|on my)/i],
+  },
+  {
+    // Heard, not read: two or three things said naturally and more offered, never a run of seven read out.
+    id: "eyes-no-list",
+    source:
+      "Director 18 Nov 00:23 (GMT+5), Tumble replay t0157: 'can you do something goofy?' got seven eye moods in a row",
+    said: ["What can you do with your eyes? Can you do something silly or goofy?"],
+    verified: true,
+    here: tessel(true, { "eye.persona": ["tessaya", 300] }),
+    lastNotSays: [/\b[\w-]+, [\w-]+(?: [\w-]+)?, [\w-]+(?: [\w-]+)?, (?:and |or )?[\w-]+/i],
   },
   {
     // A standing correction (16 Nov 07:31): the battery is irrelevant while it charges, so it is never said then.
