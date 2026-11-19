@@ -1,15 +1,15 @@
 {
-  "at": "2026-11-18T22:39:42.648Z",
+  "at": "2026-11-19T22:54:47.977Z",
   "result": "gates",
   "ok": false,
   "pin": "41156481b1c2a9ea8f8b97680b76f17685387d38",
-  "target": "6927cfe2adb0867eb098009a5eb35e42da2b13a1",
-  "behindCommits": 1238,
-  "oldestUnsyncedDays": 5,
+  "target": "cb391b5b5741553ef136d93486a3f6cf89d0c026",
+  "behindCommits": 1503,
+  "oldestUnsyncedDays": 6,
   "conflictingPatches": [],
   "conflictingFiles": [],
   "touching": {},
   "pr": null,
-  "log": "/home/dev/.t3/baton-autosync/20261118T223929Z.log",
+  "log": "/home/dev/.t3/baton-autosync/20261119T223521Z.log",
   "hint": "The series applied but a gate failed. The branch is pushed; read the gates log."
 }
