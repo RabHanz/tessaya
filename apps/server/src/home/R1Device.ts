@@ -5,6 +5,7 @@
  * model turn that can act in the house through the same home door as every other surface, as surface "r1" (so a
  * risky act goes to his phone: anyone in the room can talk to it). The eyes follow her over the device's MQTT.
  */
+import { resumeBody } from "../tessaya/TessayaBody.ts";
 import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
 
@@ -1337,6 +1338,8 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
 
 /** One turn, whatever carried his words: the Agora bridge, or the room voice loop. */
 const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
+  // "carry on": a scene he paused on her body plays again, and she still answers
+  yield* resumeBody(input.heard);
   const layered = yield* r1Layer(input);
   if (layered !== null) return (yield* r1Route(input, layered.text))!;
   yield* r1Route(input, null);
@@ -1492,6 +1495,7 @@ export const r1TurnStream = (
 ) =>
   Stream.callback((queue: Queue.Queue<string, Cause.Done>) =>
     Effect.gen(function* () {
+      yield* resumeBody(input.heard);
       // His conversation's group answers before any one persona's layer (M-021); the acts form has no group.
       const group = tools === null ? null : yield* r1Group(input);
       const layered = group === null ? yield* r1Layer(input) : null;

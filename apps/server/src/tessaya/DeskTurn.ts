@@ -4,6 +4,7 @@
  * shared tools, the tools the desktop offers through its hands, and, on his own machine, Claude Code's file tools.
  * The desktop sends only what it sees (his window, the persona he woke); memory, the conversation and his work are read here.
  */
+import { resumeBody } from "./TessayaBody.ts";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
@@ -282,6 +283,8 @@ export const deskTurnStream = (
             hands === null ? turnEffect : Effect.provideService(turnEffect, VesselHands, hands),
           Effect.orElseSucceed(() => null),
         );
+      // "carry on": a scene he paused on her body plays again, and she still answers
+      yield* resumeBody(turn.text);
       const group = yield* groupFor(turn, pack.personas);
       if (group !== null) {
         const spoken = yield* groupTurn({
