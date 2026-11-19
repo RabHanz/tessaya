@@ -137,7 +137,7 @@ export const layer = Layer.effect(
           if (settled) return;
           settled = true;
           warm.proc.kill();
-          const kept = line === null ? null : keptBridge(line, said, input.persona);
+          const kept = line === null ? null : keptBridge(line, said, input.persona, input.words);
           if (kept !== null) recent.set(input.vessel, [...said, kept].slice(-RECENT));
           resume(Effect.succeed(kept));
         };

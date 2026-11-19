@@ -31,6 +31,19 @@ describe("her bridge while a slow answer comes (B-056)", () => {
     expect(keptBridge('Ah, "can you," so you\'re asking whether I can.', [])).toBeNull();
     expect(keptBridge("Ah, getting out of present, so you want to leave.", [])).toBeNull();
     expect(keptBridge("NONE", [])).toBeNull();
+    // 19 Nov room gate: his two asks said back as a sentence in front of the answer.
+    const asked = "Remember that the bins go out on Tuesday night, and what's on the team board?";
+    expect(
+      keptBridge("Right, the bins on Tuesday night and the team board.", [], undefined, asked),
+    ).toBeNull();
+    expect(
+      keptBridge(
+        "Ooh, the thermostat, let me see what it's up to.",
+        [],
+        undefined,
+        "Is the thermostat on?",
+      ),
+    ).toBe("Ooh, the thermostat, let me see what it's up to.");
     // 19 Nov replay: a remark on his question or the talk so far, in front of her answer.
     expect(
       keptBridge("Ah, the headphones again, still tangled with the speaker question.", []),

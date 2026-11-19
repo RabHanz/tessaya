@@ -65,7 +65,7 @@ for (const c of cases.filter((x) => values.case === undefined || values.case.inc
   for (let i = 0; i < samples; i++) {
     // Each sample sees the ones before as said lately, as a session does.
     const { text, ms } = write(bridgePrompt({ ...c, recent: said }));
-    const kept = keptBridge(text, said, c.persona);
+    const kept = keptBridge(text, said, c.persona, c.words);
     if (kept !== null) said.push(kept);
     lines.push({ text, kept, why: gradeBridge(c, kept), ms });
   }
