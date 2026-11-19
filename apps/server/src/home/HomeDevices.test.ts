@@ -22,6 +22,8 @@ import { VoiceForgets, layer as VoiceForgetsLayer } from "../tessaya/VoiceForget
 import { layer as presenceLayer, peopleHere } from "../tessaya/TessayaPresence.ts";
 import { PersonaLayers, type LayerSignal } from "../tessaya/PersonaLayers.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { Consent } from "../tessaya/consent.ts";
+import { TurnOrigin } from "../tessaya/TurnOrigin.ts";
 import {
   MemberPreferences,
   layer as MemberPreferencesLayer,
@@ -410,6 +412,53 @@ it.effect(
       assert.strictEqual(his.status, "done");
       assert.strictEqual(shots(), before + 1);
     }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  'his "Always allow" on a device card holds in the one grant store: his next ask needs no card',
+  () => {
+    // B-034: the device gate kept its own yes, so "always allow" never stopped these cards.
+    const { topics, layer } = setup();
+    const grants: Array<string> = [];
+    const consent = Layer.mock(Consent)({
+      set: (key, allow) =>
+        Effect.sync(() => {
+          if (allow) grants.push(key);
+          return grants;
+        }),
+      holds: (key, origin) => Effect.succeed(origin?.hisVoice === true && grants.includes(key)),
+    });
+    const his = {
+      kind: "device" as const,
+      id: ID,
+      label: "Tessel",
+      hisVoice: true,
+      member: OWNER_MEMBER_ID,
+    };
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      const inbox = yield* TessayaPhoneInbox;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      const restarts = () => topics().filter((t) => t.endsWith("cmd/reboot")).length;
+      const asked = yield* devices
+        .command(ID, { op: "reboot" }, { who: "Tessaya in the room", surface: "assistant" })
+        .pipe(Effect.provideService(TurnOrigin, his));
+      assert.strictEqual(asked.status, "asked");
+      const card = (yield* inbox.pending).find((p) => p.buttons.includes("Always allow"));
+      assert.isTrue(yield* inbox.answerPrompt(card!.id, 1));
+      yield* devices.tick;
+      assert.strictEqual(restarts(), 1);
+      const again = yield* devices
+        .command(ID, { op: "reboot" }, { who: "Tessaya in the room", surface: "assistant" })
+        .pipe(Effect.provideService(TurnOrigin, his));
+      assert.strictEqual(again.status, "done");
+      assert.strictEqual(restarts(), 2);
+      // An agent still asks.
+      const agentAsk = yield* devices.command(ID, { op: "reboot" }, agent);
+      assert.strictEqual(agentAsk.status, "asked");
+    }).pipe(Effect.provide(layer.pipe(Layer.provideMerge(consent))));
   },
 );
 

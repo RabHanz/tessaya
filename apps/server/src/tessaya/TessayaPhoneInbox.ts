@@ -234,9 +234,9 @@ export const answerCard = Effect.fn("BatonPhoneInbox.answerCard")(function* (
   const inbox = yield* TessayaPhoneInbox;
   const card = (yield* inbox.pending).find((p) => p.id === id);
   if (card === undefined && (yield* inbox.expired(id))) return PROMPT_EXPIRED;
-  // Saying no narrows: anyone who may see the card may decline it.
+  // Saying no narrows: anyone who may see the card may decline it. Any other answer acts ("Always allow" too).
   const refusal =
-    card === undefined || index !== card.yes
+    card === undefined || index === card.cancel
       ? null
       : approvalRefusal({
           risky: card.needs === "cloud-approve",
