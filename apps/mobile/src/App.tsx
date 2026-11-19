@@ -1,5 +1,4 @@
 import { installPermissionUpdateNotice } from "./features/connection/permissionUpdateNotice";
-import { installHousehold } from "./state/tessayaHousehold";
 import { installComposerAttachmentUploads } from "./state/composer-attachment-uploads";
 import { installThreadOutboxDelivery } from "./state/threadOutboxDelivery";
 import * as Linking from "expo-linking";
@@ -213,7 +212,6 @@ const appServiceDisposers = [
   installAppearanceRuntime(),
   installSubscriptionUsageRefresh(),
   installPermissionUpdateNotice(),
-  installHousehold(),
   installThreadOutboxDelivery(),
   installComposerAttachmentUploads(),
   startIncomingShareInbox(),

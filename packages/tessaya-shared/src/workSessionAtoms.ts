@@ -276,11 +276,6 @@ export function createTessayaWorkSessionAtoms<R, E>(
       label: "environment-data:baton:phone-pairing",
       tag: BATON_PHONE_PAIRING_WS_METHODS.issue,
     }),
-    // This phone out of every machine of the household, the one way out (M-097).
-    phoneSignOut: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:baton:phone-sign-out",
-      tag: BATON_PHONE_PAIRING_WS_METHODS.signOut,
-    }),
     // Who wears which body (Settings → Cast): the live map, refreshed while it is open, and his moves.
     // Settings → Health: read when opened and on "Check again"; each read is a diagnosis she records, so no timer.
     healthQuery: createEnvironmentRpcQueryAtomFamily(runtime, {

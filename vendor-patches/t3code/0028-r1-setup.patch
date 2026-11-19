@@ -156,21 +156,19 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..3c8eec547f947bc92808446105d60cbd
 -export default config;
 +export default APP_VARIANT === "tessaya" ? tessayaRebrand(config) : config;
 diff --git a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
-index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..e43a8a8bfe0ed48fd5d2a7d71093ccaab4673815 100644
+index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..5fb6255ca964c784478b31cf5bc8b950746c89b6 100644
 --- a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
 +++ b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
-@@ -22,8 +22,9 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
+@@ -22,7 +22,7 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
  import { SettingsScreen } from "../settings/components/SettingsScreen";
  import { AppText as Text, AppTextInput, type AppTextInputProps } from "../../components/ui/AppText";
  import { FrostedCutout } from "../../components/ui/FrostedCutout";
 -import { buildPairingUrl, extractPairingUrlFromQrPayload, parsePairingUrl } from "./pairing";
 +import { buildPairingUrl, extractPairingUrlsFromQrPayload, parsePairingUrl } from "./pairing";
  import { useRemoteConnections } from "../../state/use-remote-environment-registry";
-+import { joinHousehold } from "../../state/tessayaHousehold";
  import { SymbolView } from "../../components/ui/AppSymbol";
  import { hasCloudPublicConfig } from "../cloud/publicConfig";
- import { CloudEnvironmentRows } from "./CloudEnvironmentRows";
-@@ -69,6 +70,8 @@ function PairingForm({
+@@ -69,6 +69,8 @@ function PairingForm({
    const [initialPairing] = useState(() => parsePairingUrl(routePairingUrl || connectionPairingUrl));
    const [hostInput, setHostInput] = useState(initialPairing.host);
    const [codeInput, setCodeInput] = useState(initialPairing.code);
@@ -179,7 +177,7 @@ index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..e43a8a8bfe0ed48fd5d2a7d71093ccaa
    const [isSubmitting, setIsSubmitting] = useState(false);
    const [submitError, setSubmitError] = useState<string | null>(null);
    // The user's own edit or submit dismisses the dev auto-connect report.
-@@ -97,6 +100,7 @@ function PairingForm({
+@@ -97,6 +99,7 @@ function PairingForm({
  
    const handleHostChange = (value: string) => {
      setHostInput(value);
@@ -187,7 +185,7 @@ index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..e43a8a8bfe0ed48fd5d2a7d71093ccaa
      clearError();
    };
  
-@@ -130,10 +134,11 @@ function PairingForm({
+@@ -130,10 +133,11 @@ function PairingForm({
      setScannerLocked(true);
  
      try {
@@ -200,28 +198,24 @@ index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..e43a8a8bfe0ed48fd5d2a7d71093ccaa
        onChangeConnectionPairingUrl(pairingUrl);
        setScanComplete(true);
        setScannerLocked(false);
-@@ -156,8 +161,20 @@ function PairingForm({
+@@ -156,8 +160,16 @@ function PairingForm({
      setIsSubmitting(true);
      onChangeConnectionPairingUrl(pairingUrl);
      const outcome = await onConnectPress(pairingUrl, routeFor);
 +    const notAdded: Array<string> = [];
-+    if (outcome.ok) {
++    if (outcome.ok)
 +      for (const more of morePairingUrls) {
 +        const added = await onConnectPress(more);
 +        if (!added.ok)
 +          notAdded.push(`${parsePairingUrl(more).host}: ${added.error ?? "not added"}`);
 +      }
-+      // One household: pairing with any of his machines adds the rest (M-097).
-+      if (outcome.environmentId !== undefined)
-+        notAdded.push(...(await joinHousehold(outcome.environmentId, onConnectPress)));
-+    }
      setIsSubmitting(false);
      setSubmitError(outcome.error);
 +    if (notAdded.length > 0) Dialog.alert("Some machines were not added", notAdded.join("\n"));
      void Haptics.notificationAsync(
        outcome.ok
          ? Haptics.NotificationFeedbackType.Success
-@@ -247,7 +264,9 @@ function PairingForm({
+@@ -247,7 +259,9 @@ function PairingForm({
                )}
              >
                {pairingConnectionError ??
@@ -232,7 +226,7 @@ index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..e43a8a8bfe0ed48fd5d2a7d71093ccaa
              </Text>
            </View>
  
-@@ -263,8 +282,10 @@ const SCAN_RETICLE_SIZE = 150;
+@@ -263,8 +277,10 @@ const SCAN_RETICLE_SIZE = 150;
  const SCAN_RETICLE_TOP = 36;
  const SCAN_RETICLE_RADIUS = 28;
  
@@ -244,7 +238,7 @@ index 80f2ecc77c02d4d9f88e1567ad518141b7022e50..e43a8a8bfe0ed48fd5d2a7d71093ccaa
    readonly onScan: (result: { readonly data: string }) => void;
    readonly onScanPress: () => void;
  }) {
-@@ -343,7 +364,7 @@ function PairingScanCard(props: {
+@@ -343,7 +359,7 @@ function PairingScanCard(props: {
            )}
          </View>
          <Text className={cn("text-center text-sm", light ? "text-black/70" : "text-white/80")}>

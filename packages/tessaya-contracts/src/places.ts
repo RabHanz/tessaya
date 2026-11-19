@@ -19,10 +19,15 @@ export const TESSAYA_PLACES = [
   },
   {
     id: "personas",
-    label: "Personas and voices",
+    label: "Personas",
     group: "You",
     terms: [
       "persona",
+      "cast",
+      "who's where",
+      "bodies",
+      "home persona",
+      "follows",
       "voice",
       "voice library",
       "speaks",
@@ -32,21 +37,6 @@ export const TESSAYA_PLACES = [
       "mood",
       "tone",
       "label my tone",
-    ],
-  },
-  {
-    id: "cast",
-    label: "Cast",
-    group: "You",
-    terms: [
-      "cast",
-      "who's where",
-      "body",
-      "bodies",
-      "tumble",
-      "desktop companion",
-      "home persona",
-      "follows",
     ],
   },
   {
@@ -155,6 +145,8 @@ export const TESSAYA_PLACES = [
 export type TessayaPlaceId = (typeof TESSAYA_PLACES)[number]["id"];
 
 const PLACE_IDS = new Set<string>(TESSAYA_PLACES.map((place) => place.id));
+/** Places folded into another: an old link keeps working (Cast is part of Personas since D-038). */
+const PLACE_ALIASES: Readonly<Record<string, TessayaPlaceId>> = { cast: "personas" };
 
 /** `tessaya://settings/hardware`, `tessaya://hardware` or `hardware` names a place; anything else is null. */
 export function tessayaPlaceOf(link: string): TessayaPlaceId | null {
@@ -164,7 +156,7 @@ export function tessayaPlaceOf(link: string): TessayaPlaceId | null {
     .replace(/^settings\//i, "")
     .replace(/[/?#].*$/, "")
     .toLowerCase();
-  return PLACE_IDS.has(id) ? (id as TessayaPlaceId) : null;
+  return PLACE_IDS.has(id) ? (id as TessayaPlaceId) : (PLACE_ALIASES[id] ?? null);
 }
 
 export const tessayaLink = (id: TessayaPlaceId): string => `tessaya://settings/${id}`;

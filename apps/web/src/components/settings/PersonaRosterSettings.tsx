@@ -12,7 +12,8 @@ import type {
   TessayaPersonaGroup,
 } from "@t3tools/tessaya-contracts";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useEffect, useState } from "react";
+import { colourOf } from "@t3tools/tessaya-shared/personaColour";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -75,6 +76,29 @@ const formOfDraft = (d: TessayaPersonaDraft): Form => ({
   greetings: (d.greetings ?? []).join("\n"),
 });
 
+const nameLine = (p: TessayaPersona) =>
+  `${p.name}${p.lead ? " (lead)" : ""}${p.private === true ? " · private" : ""}${p.sealed === undefined ? "" : " · sealed in your private layer"}`;
+
+/** A persona's face on its card: its initials on its own colour (the one its exported card wears). No image yet. */
+function PersonaAvatar({ name }: { readonly name: string }) {
+  const [r, g, b] = colourOf(name);
+  const initials = name
+    .split(/\s+/)
+    .map((w) => w[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <span
+      aria-hidden
+      className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-black/70"
+      style={{ backgroundColor: `rgb(${r} ${g} ${b})` }}
+    >
+      {initials}
+    </span>
+  );
+}
+
 const download = (name: string, blob: Blob) => {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -87,6 +111,8 @@ export function PersonaRoster(props: {
   readonly environmentId: EnvironmentId;
   readonly clones: ReadonlyArray<SavedCloneView>;
   readonly onChanged: () => Promise<void>;
+  /** The Personas page: each persona is its own card, with these rows (voice, body, mood) under its own. */
+  readonly renderCard?: (persona: TessayaPersona) => ReactNode;
 }) {
   const list = useAtomCommand(tessayaWorkSessions.personasList, { reportFailure: false });
   const change = useAtomCommand(tessayaWorkSessions.personaChange, { reportFailure: false });
@@ -173,8 +199,64 @@ export function PersonaRoster(props: {
     );
   };
 
+  const personaRow = (p: TessayaPersona, inCard = false) => (
+    <SettingsRow
+      key={p.id}
+      title={inCard ? "Role and brain" : nameLine(p)}
+      description={[
+        p.role,
+        p.brain === undefined ? null : `Thinks on ${p.brain.model}, ${p.brain.effort} effort.`,
+        p.cloneVoice === undefined
+          ? null
+          : `Speaks in your clone ${props.clones.find((c) => c.id === p.cloneVoice)?.name ?? "(no longer saved)"}.`,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      control={
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              setForm({
+                id: p.id,
+                name: p.name,
+                role: p.role,
+                about: "",
+                traits: p.traits ?? {},
+                model: p.brain?.model ?? "",
+                private: p.private === true,
+                privateRooms: p.privateRooms ?? "open",
+                greetings: (p.greetings ?? []).join("\n"),
+              })
+            }
+          >
+            Edit
+          </Button>
+          {p.lead ? null : (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void send({ op: "duplicate", id: p.id, name: `${p.name} copy` })}
+              >
+                Duplicate
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void send({ op: "retire", id: p.id })}
+              >
+                Retire
+              </Button>
+            </>
+          )}
+        </div>
+      }
+    />
+  );
   const status = note ? <span role="status">{note}</span> : undefined;
-  return (
+  const roster = (
     <SettingsSection id="voice-roster" title="Personas">
       <SettingsRow
         title="Your team"
@@ -236,62 +318,7 @@ export function PersonaRoster(props: {
           onExport={form.id === null ? undefined : (kind) => void exportCard(form.id!, kind)}
         />
       )}
-      {personas.map((p) => (
-        <SettingsRow
-          key={p.id}
-          title={`${p.name}${p.lead ? " (lead)" : ""}${p.private === true ? " · private" : ""}${p.sealed === undefined ? "" : " · sealed in your private layer"}`}
-          description={[
-            p.role,
-            p.brain === undefined ? null : `Thinks on ${p.brain.model}, ${p.brain.effort} effort.`,
-            p.cloneVoice === undefined
-              ? null
-              : `Speaks in your clone ${props.clones.find((c) => c.id === p.cloneVoice)?.name ?? "(no longer saved)"}.`,
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          control={
-            <div className="flex items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() =>
-                  setForm({
-                    id: p.id,
-                    name: p.name,
-                    role: p.role,
-                    about: "",
-                    traits: p.traits ?? {},
-                    model: p.brain?.model ?? "",
-                    private: p.private === true,
-                    privateRooms: p.privateRooms ?? "open",
-                    greetings: (p.greetings ?? []).join("\n"),
-                  })
-                }
-              >
-                Edit
-              </Button>
-              {p.lead ? null : (
-                <>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => void send({ op: "duplicate", id: p.id, name: `${p.name} copy` })}
-                  >
-                    Duplicate
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => void send({ op: "retire", id: p.id })}
-                  >
-                    Retire
-                  </Button>
-                </>
-              )}
-            </div>
-          }
-        />
-      ))}
+      {props.renderCard === undefined ? personas.map((p) => personaRow(p)) : null}
       {bin.length === 0 ? null : (
         <FoldedSettingsSection id="voice-roster-bin" title="Bin" summary={`${bin.length} retired`}>
           {bin.map((p) => (
@@ -312,7 +339,50 @@ export function PersonaRoster(props: {
           ))}
         </FoldedSettingsSection>
       )}
-      <PersonaGroupRows personas={personas} ask={ask} />
+      {props.renderCard === undefined ? <PersonaGroupRows personas={personas} ask={ask} /> : null}
+    </SettingsSection>
+  );
+  if (props.renderCard === undefined) return roster;
+  const card = props.renderCard;
+  return (
+    <>
+      {roster}
+      {personas.map((p) => (
+        <SettingsSection
+          key={p.id}
+          id={`persona-${p.id}`}
+          title={nameLine(p)}
+          icon={<PersonaAvatar name={p.name} />}
+        >
+          {personaRow(p, true)}
+          {card(p)}
+        </SettingsSection>
+      ))}
+    </>
+  );
+}
+
+/** Personas › Groups: talk to several at once, on its own page. */
+export function PersonaGroupsSection({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const list = useAtomCommand(tessayaWorkSessions.personasList, { reportFailure: false });
+  const change = useAtomCommand(tessayaWorkSessions.personaChange, { reportFailure: false });
+  const [personas, setPersonas] = useState<ReadonlyArray<TessayaPersona>>([]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the environment's roster once per environment
+  useEffect(() => {
+    void list({ environmentId, input: {} }).then((r) => {
+      if (r._tag === "Success") setPersonas(r.value.personas);
+    });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- one read per environment; the command is stable
+  }, [environmentId]);
+  const ask = async (input: TessayaPersonaChangeInput): Promise<TessayaPersonaChangeResult> => {
+    const result = await change({ environmentId, input });
+    return result._tag === "Success"
+      ? result.value
+      : { ok: false, error: "Couldn’t reach this environment. Try again.", bin: [] };
+  };
+  return (
+    <SettingsSection id="persona-groups" title="Groups">
+      <PersonaGroupRows personas={personas} ask={ask} open />
     </SettingsSection>
   );
 }
@@ -321,6 +391,8 @@ export function PersonaRoster(props: {
 function PersonaGroupRows(props: {
   readonly personas: ReadonlyArray<TessayaPersona>;
   readonly ask: (input: TessayaPersonaChangeInput) => Promise<TessayaPersonaChangeResult>;
+  /** On its own page the rows show at once; inside the roster they fold. */
+  readonly open?: boolean;
 }) {
   const [group, setGroup] = useState<TessayaPersonaGroup | null>(null);
   // Picked before a group exists: it starts once two are in.
@@ -348,12 +420,8 @@ function PersonaGroupRows(props: {
       void change({ op: "start", personas: next });
     }
   };
-  return (
-    <FoldedSettingsSection
-      id="voice-roster-group"
-      title="Group"
-      summary={group === null ? "Off" : `${group.members.length} talking`}
-    >
+  const rows = (
+    <>
       <SettingsRow
         title="Talk to several at once"
         description="Pick two or more; each answers in its own voice. Say a name to ask one. By voice: “let me talk to Freya and Alfred together”, “let them talk”, “end the group”."
@@ -406,6 +474,17 @@ function PersonaGroupRows(props: {
           />
         );
       })}
+    </>
+  );
+  return props.open === true ? (
+    rows
+  ) : (
+    <FoldedSettingsSection
+      id="voice-roster-group"
+      title="Group"
+      summary={group === null ? "Off" : `${group.members.length} talking`}
+    >
+      {rows}
     </FoldedSettingsSection>
   );
 }

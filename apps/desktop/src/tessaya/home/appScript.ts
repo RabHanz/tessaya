@@ -97,11 +97,11 @@ const HUE = { today: 'now', talk: 'dictation', know: 'knowledge', devices: 'sett
 const GROUP_OF = {}; for (const a of AREAS) for (const gid of a.pages) GROUP_OF[gid] = HUE[a.id];
 const openAreas = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.areas') || '[]')); } catch (e) { return new Set(); } })();
 const saveAreas = () => { try { localStorage.setItem('tessaya.areas', JSON.stringify([...openAreas])); } catch (e) {} };
-const TABS = ['home','now','upcoming','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','intercom','homeassistant','phone','health','learn','help'].map(id => [id, L('tab.' + id)]);
-const CATS = ['accounts','apis','brain','general','voice','personas','cast','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
-const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant' };
+const TABS = ['home','now','upcoming','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','usage','trust','hardware','intercom','homeassistant','phone','health','personas','groups','voices','learn','help'].map(id => [id, L('tab.' + id)]);
+const CATS = ['accounts','apis','brain','general','voice','assistant','privacy','appearance','keys','advanced','about'].map(id => [id, L('cat.' + id)]);
+const MOVED = { screen: 'assistant', checks: 'advanced', settings: 'general', system: 'advanced', updates: 'general', account: 'assistant', cast: 'personas' };
 const INTRO = {};
-for (const id of ['scratchpad','insights','style','transforms','snippets','now','upcoming','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','intercom','homeassistant','phone','health','learn','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
+for (const id of ['scratchpad','insights','style','transforms','snippets','now','upcoming','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','usage','trust','hardware','intercom','homeassistant','phone','health','personas','groups','voices','learn','help']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
 let cur = 'home', collapsed = (() => { try { return localStorage.getItem('tessaya.rail') === '1'; } catch (e) { return false; } })(), modal = null, S = null, query = '';
 let aboutSeen = false, bellOpen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
@@ -982,7 +982,7 @@ function tabPage(p) {
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   if (cur === 'sessions') return liveSessionsPage(p);
-  if (cur === 'hardware' || cur === 'homeassistant' || cur === 'phone' || cur === 'health' || cur === 'upcoming') return embed(p, cur);
+  if (cur === 'hardware' || cur === 'homeassistant' || cur === 'phone' || cur === 'health' || cur === 'upcoming' || cur === 'personas' || cur === 'groups' || cur === 'voices') return embed(p, cur);
   const items = tabControls(cur);
   const EMPTY = { approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
@@ -1071,8 +1071,7 @@ function modalPage(b) {
   if (modal === 'about') { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = tourStart; b.appendChild(rr); ; return; }
   b.appendChild(pageHead(L('cat.' + modal), L('cat.' + modal + '.text')));
   const items = catSections(b, modal);
-  if (modal === 'accounts' || modal === 'apis' || modal === 'brain' || modal === 'cast') embed(b, modal);
-  if (modal === 'personas') { b.appendChild($('h2', null, L('embed.voices'))); embed(b, 'voices'); }
+  if (modal === 'accounts' || modal === 'apis' || modal === 'brain') embed(b, modal);
   if (modal === 'general') {
     const ab = x.about || {}; const facts = [['Installed version', ab.version], ['Updates come from', ab.source]].filter(f => f[1]);
     if (facts.length) { b.appendChild($('h2', null, 'Version')); b.appendChild(plainGroup(facts.map(([l, v]) => [l, v]))); }
@@ -1168,7 +1167,8 @@ function syncModal() {
     for (const g of SGROUPS) {
       nav.appendChild($('h4', null, g));
       // A place that is a page (Dictation, Hardware) closes Settings and opens the page: one home for each setting.
-      for (const pl of PLACES.filter(x => x.group === g)) { const isCat = CATS.some(c => c[0] === pl.id); const b = $('button', 'nav', isCat ? L('cat.' + pl.id) : pl.label); if (modal === pl.id) b.setAttribute('aria-current', 'page'); b.onclick = () => { if (isCat) { modal = pl.id; render(); } else { modal = null; go(pl.id); } }; nav.appendChild(b); }
+      // Personas and Cast are the Personas area's pages now, not Settings rows (D-038)
+      for (const pl of PLACES.filter(x => x.group === g && x.id !== 'personas')) { const isCat = CATS.some(c => c[0] === pl.id); const b = $('button', 'nav', isCat ? L('cat.' + pl.id) : pl.label); if (modal === pl.id) b.setAttribute('aria-current', 'page'); b.onclick = () => { if (isCat) { modal = pl.id; render(); } else { modal = null; go(pl.id); } }; nav.appendChild(b); }
     }
     nav.appendChild($('div', 'ver', 'Tessaya ' + (((S.extra || {}).about || {}).version || '')));
   });

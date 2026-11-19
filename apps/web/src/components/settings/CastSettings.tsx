@@ -14,9 +14,8 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { VoiceLibrarySections } from "./VoiceLibrarySettings";
 
-type Tab = "where" | "bodies" | "personas";
+type Tab = "where" | "bodies";
 const LEAD = "(default)";
 
 const WHY: Record<CastBody["why"], string> = {
@@ -81,7 +80,7 @@ export function CastSection({ environmentId }: { readonly environmentId: Environ
 
   return (
     <>
-      <SettingsSection title="Cast">
+      <SettingsSection title="Bodies and places">
         <SettingsRow
           title="One persona, many bodies"
           description={
@@ -94,12 +93,11 @@ export function CastSection({ environmentId }: { readonly environmentId: Environ
               value={[tab]}
               onValueChange={(next) => {
                 const v = next[0];
-                if (v === "where" || v === "bodies" || v === "personas") setTab(v);
+                if (v === "where" || v === "bodies") setTab(v);
               }}
             >
               <Toggle value="where">Who's where</Toggle>
               <Toggle value="bodies">Bodies</Toggle>
-              <Toggle value="personas">Personas</Toggle>
             </ToggleGroup>
           }
         />
@@ -107,9 +105,7 @@ export function CastSection({ environmentId }: { readonly environmentId: Environ
           <SettingsRow title="Couldn't change that" description={error ?? query.error ?? ""} />
         )}
       </SettingsSection>
-      {tab === "personas" ? (
-        <VoiceLibrarySections />
-      ) : view === null ? (
+      {view === null ? (
         <SettingsSection title={tab === "where" ? "Who's where" : "Bodies"}>
           <SettingsRow title={query.isPending ? "Loading…" : "No bodies yet"} />
         </SettingsSection>

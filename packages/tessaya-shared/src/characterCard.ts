@@ -245,12 +245,7 @@ export const pngWithCard = (cardJson: string, rgb: readonly [number, number, num
   ]);
 };
 
-/** A soft colour of its own per name, so exported cards are told apart at a glance. */
-export const colourOf = (name: string): readonly [number, number, number] => {
-  let h = 0;
-  for (const c of name) h = (h * 31 + c.codePointAt(0)!) >>> 0;
-  return [128 + (h % 96), 128 + ((h >>> 8) % 96), 128 + ((h >>> 16) % 96)];
-};
+export { colourOf } from "./personaColour.ts";
 
 const Dial = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }));
 

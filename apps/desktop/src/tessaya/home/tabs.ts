@@ -27,6 +27,9 @@ export const TABS = [
   { id: "homeassistant", label: "Home Assistant" },
   { id: "phone", label: "Phone" },
   { id: "health", label: "Health" },
+  { id: "personas", label: "Personas" },
+  { id: "groups", label: "Groups" },
+  { id: "voices", label: "Voices" },
   { id: "learn", label: "Learn Tessaya" },
   { id: "help", label: "Help" },
 ] as const;
@@ -48,6 +51,8 @@ export const AREAS = [
     pages: ["dictation", "history", "snippets", "transforms", "style", "scratchpad", "insights"],
     settings: "voice",
   },
+  // personas live here, not in Settings: each card holds its voice, body and place, and mood (D-038)
+  { id: "personas", label: "Personas", pages: ["personas", "groups", "voices"], settings: null },
   { id: "know", label: "Know", pages: ["memory", "vault"], settings: "privacy" },
   {
     id: "devices",
@@ -75,8 +80,6 @@ export const SETTINGS = [
   { id: "brain", label: "Brain" },
   { id: "general", label: "General" },
   { id: "voice", label: "Voice and wake words" },
-  { id: "personas", label: "Personas and voices" },
-  { id: "cast", label: "Cast" },
   { id: "assistant", label: "Working for you" },
   { id: "privacy", label: "Memory and privacy" },
   { id: "appearance", label: "Appearance" },
@@ -111,7 +114,7 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.pillHide": "voice",
   "v.pillFull": "voice",
   "v.volume": "voice",
-  "s.voice": "personas",
+  "s.voice": "voice",
   "v.audition": "setup",
   "v.dictation": "dictation",
   "v.download": "dictation",

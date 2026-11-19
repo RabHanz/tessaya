@@ -9,6 +9,8 @@ describe("tessaya:// links", () => {
     expect(tessayaPlaceOf("tessaya://settings/hardware")).toBe("hardware");
     expect(tessayaPlaceOf("TESSAYA://homeassistant/")).toBe("homeassistant");
     expect(tessayaPlaceOf("settings/voice?x=1")).toBe("voice");
+    // Cast folded into Personas (D-038): its old link opens Personas
+    expect(tessayaPlaceOf("tessaya://settings/cast")).toBe("personas");
     expect(tessayaPlaceOf("tessaya://settings/nowhere")).toBeNull();
     expect(tessayaPlaceOf("https://example.com/settings/hardware")).toBeNull();
   });

@@ -183,16 +183,10 @@ index d20d199119b051799bf36797e0898787d2faf02f..95cb0e9f71064a98bca794e241c5cd56
        const imageSetDir = path.join(catalogDir, IMAGE_SET);
        fs.mkdirSync(imageSetDir, { recursive: true });
 diff --git a/apps/mobile/src/App.tsx b/apps/mobile/src/App.tsx
-index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18926b00f8 100644
+index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..8e8ff6e69c61462dce0558320ba394267eb42d14 100644
 --- a/apps/mobile/src/App.tsx
 +++ b/apps/mobile/src/App.tsx
-@@ -1,4 +1,5 @@
- import { installPermissionUpdateNotice } from "./features/connection/permissionUpdateNotice";
-+import { installHousehold } from "./state/tessayaHousehold";
- import { installComposerAttachmentUploads } from "./state/composer-attachment-uploads";
- import { installThreadOutboxDelivery } from "./state/threadOutboxDelivery";
- import * as Linking from "expo-linking";
-@@ -24,6 +25,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
+@@ -24,6 +24,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
  import { RegistryContext, useAtomValue } from "@effect/atom-react";
  import { ProjectChipIconRasterizer } from "./native/ProjectChipIconImages";
  import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
@@ -200,7 +194,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
  import * as Dialog from "./components/ui/Dialog";
  import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
  import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
-@@ -48,6 +50,7 @@ import {
+@@ -48,6 +49,7 @@ import {
  } from "./features/settings/appearance/AppearancePreferencesProvider";
  import { RootStack, rootPathnameFromState, workspaceLocationFromState } from "./Stack";
  import { appAtomRegistry } from "./state/atom-registry";
@@ -208,7 +202,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
  import { subscribeComposerDraftModelReconciliation } from "./state/use-composer-drafts";
  import { environmentThreadShells, threadEnvironment } from "./state/threads";
  import { environmentShell, shellCachesReadAtom } from "./state/shell";
-@@ -104,6 +107,11 @@ import {
+@@ -104,6 +106,11 @@ import {
  import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
  import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
  import { installAppUpdateChecks } from "./features/updates/app-updates";
@@ -220,15 +214,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
  
  import "../global.css";
  
-@@ -205,6 +213,7 @@ const appServiceDisposers = [
-   installAppearanceRuntime(),
-   installSubscriptionUsageRefresh(),
-   installPermissionUpdateNotice(),
-+  installHousehold(),
-   installThreadOutboxDelivery(),
-   installComposerAttachmentUploads(),
-   startIncomingShareInbox(),
-@@ -248,6 +257,7 @@ function SplashScreenCoordinator() {
+@@ -248,6 +255,7 @@ function SplashScreenCoordinator() {
      hidden.current = true;
      settleLaunchSplashHomeRows();
      void SplashScreen.hide();
@@ -236,7 +222,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
    }, [isReady, shellCachesRead, homeRowsPending, waitEnded]);
  
    return null;
-@@ -268,6 +278,7 @@ export default function App() {
+@@ -268,6 +276,7 @@ export default function App() {
  function AppContent() {
    const { themeAppearance } = useAppearancePreferences();
    const navigationTheme = useMobileNavigationTheme();
@@ -244,7 +230,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
  
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- matches the Android navigation bar to the app theme, as StatusBar does for the status bar
    useEffect(() => {
-@@ -297,13 +308,16 @@ function AppContent() {
+@@ -297,13 +306,16 @@ function AppContent() {
                  />
                  <Dialog.Host />
                  <ThreadArrangementHost />
@@ -378,18 +364,6 @@ index dbf7ab552aa8c72bf7d9c095d7de5849c7b23f0a..50d532a19e2f78e53d593a31d467590f
 +      : appVariant === "preview"
 +        ? require("../../../../assets/nightly/nightly-ios-1024.png")
 +        : require("../../../../assets/prod/black-ios-1024.png");
-diff --git a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx
-index 22a266c8db9aca48077f27b9bcba65c4b2901ebb..9dfdedde739be3601562f05f0c05c60e923a89c9 100644
---- a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx
-+++ b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx
-@@ -72,6 +72,7 @@ vi.mock("./devAutoConnect", () => ({
-   autoConnectReport: () => ({ connecting: false, error: null }),
-   devAutoConnectAttemptAtom: {},
- }));
-+vi.mock("../../state/tessayaHousehold", () => ({ joinHousehold: async () => [] }));
- vi.mock("../../state/use-remote-environment-registry", () => ({
-   setPendingConnectionError: (message: string | null) => {
-     harness.pendingConnectionError = message;
 diff --git a/apps/mobile/src/features/connection/pairing.test.ts b/apps/mobile/src/features/connection/pairing.test.ts
 index 466fbfa7a282ddf3d15f805425b23e1c42af3c28..8a6cfa9a7f4e3e7dd93640a986f351c1044f40fc 100644
 --- a/apps/mobile/src/features/connection/pairing.test.ts
@@ -548,59 +522,3 @@ index 914bb3797685a501e06307b7459fe5f0960f22d1..46c16b4fcfe9806268c7c40e48b03001
  export function registerHiddenUpdateTap(count: number): {
    readonly nextCount: number;
    readonly shouldCheck: boolean;
-diff --git a/apps/mobile/src/state/use-remote-environment-registry.ts b/apps/mobile/src/state/use-remote-environment-registry.ts
-index a1488220d69528f47429f4f594e661c075e88521..575b1ef77b4859ff8adf40b3e2e5b1ae37c06494 100644
---- a/apps/mobile/src/state/use-remote-environment-registry.ts
-+++ b/apps/mobile/src/state/use-remote-environment-registry.ts
-@@ -20,6 +20,7 @@ import { createRemoteEnvironmentProjectionAtoms } from "./remote-environment-pro
- import { serverEnvironment } from "./server";
- import { relayEnvironmentDiscovery } from "./relay";
- import { connectPairingUrl as connectPairingUrlCommand } from "../connection/onboarding";
-+import { inHousehold, signOutOfHousehold } from "./tessayaHousehold";
- 
- const RELAY_REMOVAL_ACCOUNT_NOTE: Record<Discovery.RelayEnvironmentRegistration, string> = {
-   registered:
-@@ -47,6 +48,8 @@ export interface PairingOutcome {
-   readonly ok: boolean;
-   /** Shown beside the pairing form; null when the failure got its own dialog. */
-   readonly error: string | null;
-+  /** The machine paired, when it worked. */
-+  readonly environmentId?: EnvironmentId;
- }
- 
- /** Pairs with the environment behind a pairing link and saves it. */
-@@ -62,7 +65,7 @@ export async function pairEnvironment(
-   );
-   if (AsyncResult.isSuccess(result)) {
-     appAtomRegistry.set(connectionPairingUrlAtom, "");
--    return { ok: true, error: null };
-+    return { ok: true, error: null, environmentId: result.value };
-   }
-   const error = Cause.squash(result.cause);
-   const message = error instanceof Error ? error.message : "Failed to pair with the environment.";
-@@ -207,6 +210,25 @@ export function useRemoteConnections() {
-       );
-       return;
-     }
-+    // One way out to match the one way in (M-097): a household machine offers signing the phone out of all of them.
-+    if (inHousehold(environmentId)) {
-+      Dialog.alert(
-+        "Sign this phone out?",
-+        `Sign this phone out of every machine in your household, or forget only ${environment.environmentLabel} on this phone.`,
-+        [
-+          { text: "Cancel", style: "cancel" },
-+          { text: "Forget this machine only", onPress: remove.onPress },
-+          {
-+            text: "Sign out of the household",
-+            style: "destructive",
-+            onPress: () => {
-+              void signOutOfHousehold(environmentId, (id) => controller.removeEnvironment(id));
-+            },
-+          },
-+        ],
-+      );
-+      return;
-+    }
-     Dialog.alert(
-       "Remove from this device?",
-       `Forget ${environment.environmentLabel} and its cached threads on this device. Switch it off instead to keep it saved.`,

@@ -73,12 +73,6 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cat.general.text": "Starting with your computer, when Tessaya may interrupt you, and updates.",
     "cat.voice": "Voice and wake words",
     "cat.voice.text": "How Tessaya hears you, how she answers, and the pill on your screen.",
-    "cat.personas": "Personas and voices",
-    "cat.personas.text":
-      "Who answers to which wake word, and the voice each one speaks in. Press Play to hear it.",
-    "cat.cast": "Cast",
-    "cat.cast.text":
-      "Which persona is on which body right now, where each one lives, and who follows you around.",
     "cat.assistant": "Working for you",
     "cat.assistant.text":
       "What Tessaya works through, what she may do on your computer without asking, and what she watches for you.",
@@ -117,6 +111,9 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "tab.homeassistant": "Home Assistant",
     "tab.phone": "Phone",
     "tab.health": "Health",
+    "tab.personas": "Personas",
+    "tab.groups": "Groups",
+    "tab.voices": "Voices",
     "tab.learn": "Learn Tessaya",
     "intro.learn.title": "Learn Tessaya",
     "intro.learn.text":
@@ -141,6 +138,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "area.know": "Know",
     "area.devices": "Devices",
     "area.agents": "Agents",
+    "area.personas": "Personas",
     "area.settings": "Settings for {area}",
     "intro.hardware.title": "Tessels",
     "intro.hardware.text": `Your ${DEVICE} and the things around it: NFC tags, the room brain, its speaker and sounds.`,
@@ -150,6 +148,12 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "intro.homeassistant.title": "Home Assistant",
     "intro.homeassistant.text":
       "Connect Home Assistant so Tessaya can turn on lights and switches in a room when you ask.",
+    "intro.personas.title": "Personas",
+    "intro.personas.text": "Who answers, how each one sounds, and where they live.",
+    "intro.groups.title": "Groups",
+    "intro.groups.text": "Talk to several personas at once; each answers in its own voice.",
+    "intro.voices.title": "Voices",
+    "intro.voices.text": "Try, clone and compare voices, then give one to a persona.",
     "intro.health.title": "Health",
     "intro.health.text":
       "How Tessaya is running: each machine's memory and load, her voice services, your Tessels' Wi-Fi and reply times, and what is slowing her down. Ask her \u201cwhy are you slow?\u201d for the same answer.",
@@ -160,7 +164,6 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "embed.open": "Open in T3 sessions",
     "search.t3": "In T3 sessions",
     "search.places": "Pages and settings",
-    "embed.voices": "Voice library",
     "wizard.back": "Back",
     "wizard.skip": "Skip the rest",
     "wizard.close": "Close",
