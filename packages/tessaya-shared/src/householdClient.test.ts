@@ -1,6 +1,6 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import type { PhonePairingResult } from "@t3tools/tessaya-contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { householdToJoin, pickTessayaEnvironment } from "./householdClient.ts";
 

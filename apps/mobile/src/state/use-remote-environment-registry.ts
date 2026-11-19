@@ -20,6 +20,7 @@ import { createRemoteEnvironmentProjectionAtoms } from "./remote-environment-pro
 import { serverEnvironment } from "./server";
 import { relayEnvironmentDiscovery } from "./relay";
 import { connectPairingUrl as connectPairingUrlCommand } from "../connection/onboarding";
+import { inHousehold, signOutOfHousehold } from "./tessayaHousehold";
 
 const RELAY_REMOVAL_ACCOUNT_NOTE: Record<Discovery.RelayEnvironmentRegistration, string> = {
   registered:
@@ -206,6 +207,25 @@ export function useRemoteConnections() {
         registration === "unregistered" || !hasCloudPublicConfig()
           ? [{ text: "Cancel", style: "cancel" }, remove]
           : [{ text: "Cancel", style: "cancel" }, openAccount, remove],
+      );
+      return;
+    }
+    // One way out to match the one way in (M-097): a household machine offers signing the phone out of all of them.
+    if (inHousehold(environmentId)) {
+      Dialog.alert(
+        "Sign this phone out?",
+        `Sign this phone out of every machine in your household, or forget only ${environment.environmentLabel} on this phone.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Forget this machine only", onPress: remove.onPress },
+          {
+            text: "Sign out of the household",
+            style: "destructive",
+            onPress: () => {
+              void signOutOfHousehold(environmentId, (id) => controller.removeEnvironment(id));
+            },
+          },
+        ],
       );
       return;
     }

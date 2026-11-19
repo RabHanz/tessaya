@@ -122,6 +122,7 @@ import { readPack } from "./OperatingSystemPack.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import * as PhonePairing from "./PhonePairing.ts";
+import * as HouseholdDevices from "./HouseholdDevices.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { bodyHolderLine } from "./TessayaBody.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
@@ -721,6 +722,7 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_PERSONA_OPS_WS_METHODS.call]: (input) =>
       run(Effect.flatMap(PersonaOps, (v) => v.call(input))),
     [BATON_PHONE_PAIRING_WS_METHODS.issue]: () => run(PhonePairing.issue()),
+    [BATON_PHONE_PAIRING_WS_METHODS.signOut]: () => run(HouseholdDevices.signOutCaller()),
     [BATON_CAST_WS_METHODS.get]: () =>
       Effect.flatMap(SessionMember, (member) =>
         run(

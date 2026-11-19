@@ -5,7 +5,17 @@
 import { AuthPairingCredentialResult, EnvironmentId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
-export const BATON_PHONE_PAIRING_WS_METHODS = { issue: "baton.phonePairing.issue" } as const;
+export const BATON_PHONE_PAIRING_WS_METHODS = {
+  issue: "baton.phonePairing.issue",
+  // the way out matching the way in: this phone signed out of every machine of the household (M-097)
+  signOut: "baton.phonePairing.signOut",
+} as const;
+
+export const PhoneSignOutResult = Schema.Struct({
+  /** False when this phone was paired before households: only this machine signs it out. */
+  everywhere: Schema.Boolean,
+});
+export type PhoneSignOutResult = typeof PhoneSignOutResult.Type;
 
 /** The tool a linked environment calls here for this machine's own code. */
 export const PHONE_PAIRING_TOOL = "phone_pairing_code";
