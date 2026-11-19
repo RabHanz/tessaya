@@ -2536,6 +2536,7 @@ export function mountBody(
     contacts: contactsNow(),
     facing: Math.round(facing * 1000) / 1000,
     walking: loco?.walk != null,
+    ...(rig === null ? {} : { height: Math.round(rig.height * 1000) / 1000 }),
     involuntary: Object.fromEntries(
       INVOLUNTARY.map((s) => {
         const left = Math.round((holds[s.id] ?? 0) - performance.now());
