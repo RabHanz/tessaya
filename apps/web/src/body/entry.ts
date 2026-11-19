@@ -5,7 +5,8 @@
  * moves and scenes for its own body without the server.
  */
 import { BODY_CAPABILITIES, decodeBodyMove, moveCues } from "@t3tools/tessaya-shared/bodyControl";
-import { BODY_FACES, GESTURES, TOUCH_ZONES, lineCues } from "@t3tools/tessaya-shared/bodyCues";
+import { BODY_FACES, GESTURES, lineCues } from "@t3tools/tessaya-shared/bodyCues";
+import { HUMAN_SENSE } from "@t3tools/tessaya-shared/bodySense";
 import { ACT_NAMES } from "@t3tools/tessaya-shared/bodyMotion";
 import { HAND_PLACES, INVOLUNTARY } from "@t3tools/tessaya-shared/bodyPlanner";
 import { JOINT_LIMITS, REFERENCE_RIG } from "@t3tools/tessaya-shared/bodyRig";
@@ -39,7 +40,9 @@ const control = {
   ACT_NAMES,
   GESTURES,
   BODY_FACES,
-  TOUCH_ZONES,
+  // the general human sense pack's regions, under the name pages already read
+  TOUCH_ZONES: HUMAN_SENSE.regions.map((r) => r.id),
+  HUMAN_SENSE,
   HAND_PLACES,
 };
 
