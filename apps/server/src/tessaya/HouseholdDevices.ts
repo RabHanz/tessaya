@@ -8,6 +8,8 @@ import {
   HOUSEHOLD_DEVICE,
   HOUSEHOLD_DEVICE_REVOKE_TOOL,
 } from "@t3tools/tessaya-contracts";
+import type { AuthSessionId } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -94,6 +96,34 @@ const signOutEverywhere = Effect.fn("HouseholdDevices.signOutEverywhere")(functi
   }
   const brain = yield* makeBrainLink;
   yield* brain.sendOrQueue("deviceRevoke", { device });
+});
+
+/** The session making this request (set by the Tessaya RPC gate), for "sign this phone out". */
+export const CallerSessionId = Context.Reference<string | null>(
+  "t3/tessaya/HouseholdDevices/CallerSessionId",
+  { defaultValue: () => null },
+);
+
+/**
+ * "Sign this phone out of the household": every machine signs it out (the brain's round), then this one, last, since
+ * revoking here ends the caller's own connection. A phone paired before households is signed out here only.
+ */
+export const signOutCaller = Effect.fn("HouseholdDevices.signOutCaller")(function* () {
+  const sessionId = yield* CallerSessionId;
+  const auth = yield* Effect.serviceOption(EnvironmentAuth.EnvironmentAuth);
+  if (sessionId === null || Option.isNone(auth)) return { everywhere: false };
+  const sessions = yield* auth.value.listSessions().pipe(Effect.orElseSucceed(() => []));
+  const device = householdDeviceOf(sessions.find((s) => s.sessionId === sessionId)?.client.label);
+  if (device === null) {
+    yield* auth.value
+      .revokeSession(sessionId as AuthSessionId)
+      .pipe(Effect.ignoreCause({ log: true }), Effect.delay("1 second"), Effect.forkDetach);
+    return { everywhere: false };
+  }
+  signingOut.add(device);
+  yield* signOutEverywhere(device);
+  yield* revokeHere(device).pipe(Effect.delay("1 second"), Effect.forkDetach);
+  return { everywhere: true };
 });
 
 /** Watches this machine's sessions: a household device revoked here is revoked on all his machines. */

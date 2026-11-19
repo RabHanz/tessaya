@@ -7,6 +7,7 @@
  * Baton reuses upstream's orchestration scopes rather than adding a permission axis: work
  * sessions sit above threads and are read and operated by the people who read and operate them.
  */
+import { CallerSessionId } from "./HouseholdDevices.ts";
 import {
   AuthTessayaCloudApproveScope,
   AuthTessayaHandsHostScope,
@@ -216,6 +217,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_PERSONA_OPS_WS_METHODS.call]: AuthOrchestrationOperateScope,
   // It mints a standard client's pairing code, so the caller must hold every scope that code delegates, as upstream's.
   [BATON_PHONE_PAIRING_WS_METHODS.issue]: AuthStandardClientScopes,
+  // Signing itself out only narrows access: any paired client may.
+  [BATON_PHONE_PAIRING_WS_METHODS.signOut]: AuthOrchestrationReadScope,
   [BATON_CAST_WS_METHODS.get]: AuthOrchestrationReadScope,
   [BATON_CAST_WS_METHODS.call]: AuthOrchestrationOperateScope,
   // Activity / Why (B-046): reading the action log, like the Record.
@@ -575,6 +578,7 @@ export const layer = (
           Effect.provideService(MemoryViewer, memoryViewerOf(session)),
           // A member's own device: its typed turns are that member's (identity I-2), not the owner's.
           Effect.provideService(SessionMember, memberOfSubject(session.subject)),
+          Effect.provideService(CallerSessionId, session.sessionId),
           Effect.provideService(SyncCredential, syncCredentialOf(session)),
           // Their own preferences from a vessel (devices.call): as the household route sees this session.
           Effect.provideService(HouseholdCaller, householdCallerOf(session)),
