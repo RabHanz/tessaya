@@ -53,7 +53,8 @@ interface HandGoal {
 
 // her hand on the 1.6 m reference body: wrist to palm centre, and half the hand's thickness
 const PALM_REACH = 0.075;
-const PALM_HALF = 0.013;
+// half a hand's thickness at the palm, fingers included: a VRoid hand at 1.6 m is about 3.5 cm through
+const PALM_HALF = 0.018;
 /** Palm surfaces this far apart count as touching (cloth, soft tissue); never closer. */
 export const PALM_CONTACT = 0.004;
 
@@ -109,12 +110,12 @@ const goals = (
       const g =
         p < 0.3 ? open * (1 - (p / 0.3) ** 2) : p < 0.45 ? 0 : open * smooth((p - 0.45) / 0.55);
       const at = mix([frame.m, 1], [u, style === "excited" ? 0.08 : -0.02], [f, 0.02]);
-      return facing(at, unit(mix([f, 1], [u, 0.75])), x, g, 0.1, 0.15);
+      return facing(at, unit(mix([f, 1], [u, 0.75])), x, g, 0.02, 0);
     }
     case "rub": {
       const d = (style === "eager" ? 0.035 : 0.025) + 0.02 * k;
       const fingers = unit(mix([f, 1], [u, style === "cold" ? 0.8 : 0.3]));
-      const pair = facing(frame.m, fingers, x, 0, style === "scheming" ? 0.35 : 0.15);
+      const pair = facing(frame.m, fingers, x, 0, style === "scheming" ? 0.2 : 0.04);
       // the palms slide against each other along the fingers, in opposition, with a small circle across them
       const slide = v3.scale(fingers, d * wave);
       const lift = v3.scale(u, 0.008 * Math.cos(2 * Math.PI * ph));
