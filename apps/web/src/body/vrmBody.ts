@@ -491,6 +491,8 @@ export function mountBody(
     hit: THREE.Vector3;
     normal: THREE.Vector3;
     along: THREE.Vector3;
+    /** How far the hand sits off the point it landed on, so its fingers lie on a curved part instead of in it. */
+    lift: number;
   } | null = null;
   // a reflex arc (her sense packs) pulls her back, then she settles, over REFLEX_MS; a caress's arc leans her in
   let reflexAt = -Infinity;
@@ -544,6 +546,13 @@ export function mountBody(
     material: THREE.MeshStandardMaterial;
   } | null = null;
   const handLength = () => 0.11 * (rig?.height ?? 1.6);
+  /** Her hair is not her: a hand rests on her skin or clothes, under long hair. */
+  const isHair = (o: THREE.Object3D) => {
+    const m = (o as THREE.Mesh).material;
+    return [o.name, ...(Array.isArray(m) ? m : m ? [m] : []).map((x) => x.name)].some((n) =>
+      /hair/i.test(n),
+    );
+  };
   const makeHand = () => {
     const material = new THREE.MeshStandardMaterial({
       color: 0xf0c8b4,
@@ -1698,6 +1707,33 @@ export function mountBody(
     const hit = ray.intersectObject(vrm.scene, true).find((h) => h.object.visible);
     const normal = hit !== undefined ? surfaceNormal(hit) : from.clone().sub(p).normalize();
     const up = Math.abs(normal.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+    const along = up
+      .clone()
+      .sub(normal.clone().multiplyScalar(up.dot(normal)))
+      .normalize();
+    // fingers laid flat on a curved part (a cheek, the jaw, a shoulder) would sink in: lift the hand off by the most any
+    // point along them is inside her (a point is inside when the nearest surface out from it is one it would leave)
+    const landed = hit?.point ?? p;
+    const sides = new Map<THREE.Material, THREE.Side>();
+    vrm.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      for (const x of Array.isArray(m) ? m : m ? [m] : []) if (!sides.has(x)) sides.set(x, x.side);
+    });
+    for (const x of sides.keys()) x.side = THREE.DoubleSide;
+    let lift = 0;
+    for (const k of [0.35, 0.7, 1]) {
+      const q = landed.clone().addScaledVector(along, k * handLength());
+      ray.set(q, normal);
+      const inside = ray
+        .intersectObject(vrm.scene, true)
+        .find((h) => h.object.visible && !isHair(h.object) && h.face != null);
+      if (inside === undefined || inside.distance > 0.1) continue;
+      const n = inside.face!.normal.clone().transformDirection(inside.object.matrixWorld);
+      if (n.dot(normal) > 0) lift = Math.max(lift, inside.distance);
+    }
+    for (const [x, side] of sides) x.side = side;
+    // a new touch starts where it lands: the drawn hand does not glide there through her body from the last one
+    handEuro = null;
     agentTouch = {
       start: now,
       part: c.part,
@@ -1706,7 +1742,8 @@ export function mountBody(
       ms: c.ms,
       hit: hit?.point.clone() ?? p,
       normal,
-      along: up.sub(normal.clone().multiplyScalar(up.dot(normal))).normalize(),
+      along,
+      lift,
     };
     // the nerves under the hand fire, wherever it actually landed on her
     nerveRegion = (hit && regionOf(hit)) ?? c.part;
@@ -1743,7 +1780,10 @@ export function mountBody(
       );
       return true;
     }
-    const at = a.hit.clone().addScaledVector(a.along, h.along * 0.05 * (rig?.height ?? 1.6));
+    const at = a.hit
+      .clone()
+      .addScaledVector(a.along, h.along * 0.05 * (rig?.height ?? 1.6))
+      .addScaledVector(a.normal, a.lift);
     handFrame = pointerHand({
       at: now,
       hit: [at.x, at.y, at.z],
@@ -2630,12 +2670,6 @@ export function mountBody(
      * how far each sits inside her (mm, 0 when outside), found by casting at her from outside along the palm.
      */
     probe: () => {
-      // her hair is not her: a hand on her back lies under long hair
-      const isHair = (o: THREE.Object3D) => {
-        const m = (o as THREE.Mesh).material;
-        const names = [o.name, ...(Array.isArray(m) ? m : m ? [m] : []).map((x) => x.name)];
-        return names.some((n) => /hair/i.test(n));
-      };
       const world = Object.fromEntries(
         Object.entries(skeleton()).map(([k, v]) => [k, v.map((x) => Math.round(x * 1e4) / 1e4)]),
       );
