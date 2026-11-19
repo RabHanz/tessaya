@@ -117,6 +117,8 @@ const run = (
           Layer.mock(TessayaMood)({
             note: (persona, event, member) =>
               Effect.sync(() => void moods.push([persona, event, member])),
+            heard: (persona, _timeZone, member) =>
+              Effect.sync(() => void moods.push([persona, "heard", member])),
           }),
           Layer.succeed(
             TessayaOneShot,
@@ -244,6 +246,8 @@ effectIt.effect(
             if ((await brain!.remember!("he likes rain")) !== true) throw new Error("not kept");
             // how close it felt reaches her one mood, never its words
             await brain!.felt!(0.8);
+            // a private touch reaches it as a tone only
+            await brain!.touched!("pleasant");
             const wrote = await brain!.complete!({
               model: "claude-sonnet-5-5",
               system: "her",
@@ -275,7 +279,12 @@ effectIt.effect(
       ]);
       // one call on the spine, as a spoken turn on his subscription, never with its words
       expect(sealed).toEqual([{ text: "he likes rain", typed: true }]);
-      expect(moods).toEqual([[undefined, { kind: "close", warmth: 0.8 }, "owner"]]);
+      // a private moment is his turn to her too: the time away resolves, as on any vessel
+      expect(moods).toEqual([
+        [undefined, "heard", "owner"],
+        [undefined, { kind: "close", warmth: 0.8 }, "owner"],
+        [undefined, { kind: "felt", tone: "pleasant" }, "owner"],
+      ]);
       expect(asked).toEqual([
         { role: "voice", feature: "private-turn", model: "claude-sonnet-5-5" },
       ]);
