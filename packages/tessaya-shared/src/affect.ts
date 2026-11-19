@@ -233,6 +233,11 @@ export type AffectEvent =
   | { readonly kind: "job"; readonly ok: boolean }
   /** Her body was moved (the Tessel's motion sensor): a quick reaction only, never her mood. */
   | { readonly kind: "handled"; readonly how: HandledHow }
+  /**
+   * A private moment with him (architecture P2): her one mood warms by how close it felt, 0 to 1. Its words stay
+   * sealed in the layer; the reason here says only that it happened.
+   */
+  | { readonly kind: "close"; readonly warmth: number }
   /** How a touch felt on her skin, as her nerves read it (bodySense.ts feltTone): a quick reaction only. */
   | { readonly kind: "felt"; readonly tone: FeltTone }
   /** The conversation's flow as the cheap model read it (`readPrompt`): a person's, or the room's with nobody keyed. */
@@ -597,6 +602,17 @@ const react = (
         state: { ...at, reaction: add(at.reaction, HANDLED[event.how].change) },
         reason: HANDLED[event.how].why,
       };
+    case "close": {
+      const w = Math.max(0, Math.min(1, event.warmth));
+      return {
+        state: {
+          ...at,
+          reaction: add(at.reaction, { warmth: 0.1 * w, valence: 0.06 * w }),
+          mood: add(at.mood, { warmth: 0.03 * w }),
+        },
+        reason: "a close moment with him",
+      };
+    }
     case "his_voice": {
       const change = VOICE_REACTION[event.emotion];
       return {
