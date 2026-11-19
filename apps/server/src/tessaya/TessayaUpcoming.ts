@@ -16,7 +16,7 @@ import type {
   UpcomingListResult,
 } from "@t3tools/tessaya-contracts";
 import { UpcomingError } from "@t3tools/tessaya-contracts";
-import type { ScheduledTask } from "@t3tools/contracts";
+import { ThreadId, type ScheduledTask } from "@t3tools/contracts";
 import { isDeviceRule } from "@t3tools/tessaya-shared/deviceRules";
 import { orderUpcoming, UPCOMING_DAYS } from "@t3tools/tessaya-shared/upcoming";
 import * as Clock from "effect/Clock";
@@ -250,6 +250,9 @@ export const refusal = (item: UpcomingItem, op: UpcomingChangeInput["op"]): stri
   return null;
 };
 
+/** How long a cancel can be put back. */
+export const UNDO_MS = 30 * 60_000;
+
 export class TessayaUpcoming extends Context.Service<
   TessayaUpcoming,
   {
@@ -344,10 +347,41 @@ export const make = Effect.sync(() => {
             : "That could not be done. Nothing changed.",
     });
 
+  // What each cancel of the last half hour would need to come back, newest last. In memory: a restart forgets them.
+  const cancelled = new Map<
+    string,
+    {
+      readonly at: number;
+      readonly title: string;
+      readonly restore: (by: HomeActor) => Effect.Effect<UpcomingChangeResult, UpcomingError>;
+    }
+  >();
+  const remember = (
+    item: UpcomingItem,
+    now: number,
+    restore: (by: HomeActor) => Effect.Effect<UpcomingChangeResult, UpcomingError>,
+  ) => {
+    for (const [id, c] of cancelled) if (now - c.at > UNDO_MS) cancelled.delete(id);
+    cancelled.delete(item.id);
+    cancelled.set(item.id, { at: now, title: item.title, restore });
+  };
+  const undo = Effect.fn("TessayaUpcoming.undo")(function* (id: string | undefined, by: HomeActor) {
+    const now = yield* Clock.currentTimeMillis;
+    const key = id ?? [...cancelled.keys()].at(-1);
+    const found = key === undefined ? undefined : cancelled.get(key);
+    if (key === undefined || found === undefined || now - found.at > UNDO_MS)
+      return yield* fail("There is nothing cancelled in the last half hour to put back.");
+    const back = yield* found.restore(by);
+    if (back.done) cancelled.delete(key);
+    return back;
+  });
+
   const change = Effect.fn("TessayaUpcoming.change")(function* (
     input: UpcomingChangeInput,
     by: HomeActor,
   ) {
+    if (input.op === "undo") return yield* undo(input.id, by);
+    if (input.id === undefined) return yield* fail("Say which item to change.");
     // Read now, so the change is judged on the item as it is, not as a stale screen showed it.
     const items = (yield* list({ days: 31 })).items;
     const item = items.find((i) => i.id === input.id);
@@ -380,7 +414,22 @@ export const make = Effect.sync(() => {
                 by,
               )
         ).pipe(Effect.mapError(asReason));
-        return { done: outcome.status === "done", line: outcome.line };
+        const house = home.value;
+        if (input.op === "cancel" && outcome.status === "done")
+          remember(item, now, (who) =>
+            house.undo(key, who).pipe(
+              Effect.mapError(asReason),
+              Effect.map((o) => ({
+                done: o.status === "done" || o.status === "undone",
+                line: o.line,
+              })),
+            ),
+          );
+        return {
+          done: outcome.status === "done",
+          line: outcome.line,
+          ...(input.op === "cancel" && outcome.status === "done" ? { undoable: true } : {}),
+        };
       }
       case "reminder": {
         if (Option.isNone(commitments)) return yield* fail("Reminders are not kept here.");
@@ -393,7 +442,27 @@ export const make = Effect.sync(() => {
               : { ...current, due: at, updatedAt: now },
           ])
           .pipe(Effect.mapError(asReason));
-        return done(input.op === "cancel" ? `Dropped "${item.title}".` : `Moved "${item.title}".`);
+        if (input.op !== "cancel") return done(`Moved "${item.title}".`);
+        const store = commitments.value;
+        // A dropped row is never reopened (another device's stale copy could fight it): it comes back as a new one.
+        remember(item, now, () =>
+          Effect.gen(function* () {
+            const stamp = yield* Clock.currentTimeMillis;
+            const { closedAt: _closed, ...open } = current;
+            yield* store
+              .upsert([
+                {
+                  ...open,
+                  id: `${current.id.slice(0, 48)}-b${stamp.toString(36)}`,
+                  status: "open",
+                  updatedAt: stamp,
+                },
+              ])
+              .pipe(Effect.mapError(asReason));
+            return done(`Put back "${item.title}".`);
+          }),
+        );
+        return { ...done(`Dropped "${item.title}".`), undoable: true };
       }
       case "task": {
         if (Option.isNone(tasks)) return yield* fail("Scheduled tasks are not available here.");
@@ -402,7 +471,29 @@ export const make = Effect.sync(() => {
         if (task === undefined) return yield* fail("That scheduled task is gone.");
         if (input.op === "cancel") {
           yield* tasks.value.delete({ id: task.id }).pipe(Effect.mapError(asReason));
-          return done(`Deleted the scheduled task "${task.title}".`);
+          const scheduler = tasks.value;
+          // Made again from what it was; a one-off whose time has passed by then is refused by the scheduler.
+          remember(item, now, () =>
+            scheduler
+              .upsert({
+                title: task.title,
+                prompt: task.prompt,
+                enabled: task.enabled,
+                schedule: task.schedule as never,
+                projectId: task.projectId,
+                threadId: task.threadId,
+                ...(task.threadMode === undefined ? {} : { threadMode: task.threadMode }),
+                workspaceStrategy: task.workspaceStrategy,
+                modelSelection: task.modelSelection,
+                runtimeMode: task.runtimeMode,
+                interactionMode: task.interactionMode,
+              })
+              .pipe(
+                Effect.mapError(asReason),
+                Effect.as(done(`Put back the scheduled task "${task.title}".`)),
+              ),
+          );
+          return { ...done(`Deleted the scheduled task "${task.title}".`), undoable: true };
         }
         if (input.op === "pause" || input.op === "resume") {
           yield* tasks.value
@@ -443,11 +534,28 @@ export const make = Effect.sync(() => {
       case "move": {
         if (Option.isNone(moves)) return yield* fail("Moves are not available here.");
         const [kind, id] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
-        const cancelled =
-          kind === "thread" ? yield* moves.value.cancelMove(id) : yield* moves.value.cancelLive(id);
-        return cancelled
-          ? done("Cancelled the waiting change.")
-          : yield* fail("It already went in.");
+        const mover = moves.value;
+        const waiting = yield* mover.waiting;
+        const thread = waiting.threads.find((t) => t.threadId === id);
+        const session = waiting.sessions.find((t) => t.sessionId === id);
+        const dropped =
+          kind === "thread" ? yield* mover.cancelMove(id) : yield* mover.cancelLive(id);
+        if (!dropped) return yield* fail("It already went in.");
+        remember(item, now, () =>
+          thread !== undefined
+            ? mover
+                .request({
+                  threadId: ThreadId.make(thread.threadId),
+                  instanceId: thread.instanceId,
+                })
+                .pipe(Effect.mapError(asReason), Effect.as(done("Put the waiting move back.")))
+            : session !== undefined
+              ? mover
+                  .queueLive(session.sessionId, session.change)
+                  .pipe(Effect.as(done("Put the waiting change back.")))
+              : fail("That change cannot be put back."),
+        );
+        return { ...done("Cancelled the waiting change."), undoable: true };
       }
       case "standing": {
         if (Option.isNone(desktop)) return yield* fail("Standing jobs are not available here.");

@@ -41,7 +41,7 @@ description ends with whose request it was and when it ends.
 One list of everything set to happen later, soonest first, with a countdown: house timers and automations, reminders,
 scheduled tasks and jobs, your standing jobs, then rules and changes that wait on something, and dates from your memories. Open it in the
 Tessaya window (Today → Coming up), in Settings → Coming up on your phone app, or on the phone page's Coming up tab.
-Cancel, pause or move an item there, or ask: "what's coming up?", "cancel the pump timer", "make it fifteen".
+Cancel, pause or move an item there, or ask: "what's coming up?", "cancel the pump timer", "make it fifteen". A cancel can be put back for half an hour with Undo, or by saying "undo that".
 
 A one-off timer, a reminder, a one-off scheduled task and a standing job's next run can move; a standing job's run moves within its own day, and the days after keep its time. Standing jobs live on your computer, so a change reaches them when it is on. A repeating scheduled task changes in Settings →
 Scheduled tasks; a rule can be switched off but not deleted; a date changes in your memories.

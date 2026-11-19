@@ -54,6 +54,7 @@ function UpcomingSections({ environmentId }: { readonly environmentId: Environme
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
+  const [undo, setUndo] = useState<string | null>(null);
 
   const refresh = async () => {
     const result = await listCall({ environmentId, input: {} });
@@ -77,17 +78,20 @@ function UpcomingSections({ environmentId }: { readonly environmentId: Environme
   }, [items, now]);
 
   const change = async (
-    item: UpcomingItem,
+    id: string,
     op: UpcomingOp,
     when?: { readonly at?: number; readonly inMinutes?: number },
   ) => {
     if (busy) return;
     setBusy(true);
     setNote("");
+    setUndo(null);
     const result = await changeCall({
       environmentId,
-      input: { id: item.id, op, ...when },
+      input: { id, op, ...when },
     });
+    // A cancel that can come back keeps an Undo beside its sentence.
+    if (result._tag === "Success" && result.value.undoable === true) setUndo(id);
     // The server's sentence when its owner refused; otherwise the connection failed.
     const reason =
       result._tag === "Success"
@@ -110,7 +114,21 @@ function UpcomingSections({ environmentId }: { readonly environmentId: Environme
 
   return (
     <>
-      {note === "" ? null : <p className="px-4 py-2 text-sm text-muted-foreground">{note}</p>}
+      {note === "" ? null : (
+        <div className="flex items-center gap-2 px-4 py-2">
+          <p className="text-sm text-muted-foreground">{note}</p>
+          {undo === null ? null : (
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void change(undo, "undo")}
+            >
+              Undo
+            </Button>
+          )}
+        </div>
+      )}
       {view.unreadable.length === 0 ? null : (
         <p className="px-4 py-2 text-sm text-muted-foreground">
           {`Couldn’t read ${view.unreadable.join(", ")} just now, so this list may be missing some.`}
@@ -136,7 +154,7 @@ function UpcomingSections({ environmentId }: { readonly environmentId: Environme
                   busy={busy}
                   moving={moving === item.id}
                   onMove={() => setMoving(moving === item.id ? null : item.id)}
-                  onChange={(op, when) => void change(item, op, when)}
+                  onChange={(op, when) => void change(item.id, op, when)}
                 />
               ))}
             </SettingsSection>

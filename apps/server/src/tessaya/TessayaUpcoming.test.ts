@@ -60,6 +60,11 @@ const setup = (homeOverride?: Layer.Layer<HomeAssistantService>) => {
           calls.push(`house move ${input.id} ${input.runInMinutes}`);
           return { status: "done", line: "moved" };
         }),
+      undo: (id: string) =>
+        Effect.sync(() => {
+          calls.push(`house undo ${id}`);
+          return { status: "undone", line: "Put back as it was before." };
+        }),
     } as never);
   const reminders = [
     {
@@ -114,9 +119,16 @@ const setup = (homeOverride?: Layer.Layer<HomeAssistantService>) => {
       Effect.sync(() => (calls.push(`task delete ${id}`), { id })),
     setEnabled: (i: { id: string; enabled: boolean }) =>
       Effect.sync(() => (calls.push(`task enabled ${i.id} ${i.enabled}`), {})),
-    upsert: (i: { id: string; schedule: { runAt: string } }) =>
+    upsert: (i: { id?: string; title: string; schedule: { runAt?: string } }) =>
       Effect.sync(
-        () => (calls.push(`task once ${i.id} ${Date.parse(i.schedule.runAt) - NOW}`), {}),
+        () => (
+          calls.push(
+            i.id === undefined
+              ? `task new ${i.title}`
+              : `task once ${i.id} ${Date.parse(i.schedule.runAt!) - NOW}`,
+          ),
+          {}
+        ),
       ),
   } as never);
   const rules = Layer.succeed(OrchestrationRuleService, {
@@ -143,6 +155,8 @@ const setup = (homeOverride?: Layer.Layer<HomeAssistantService>) => {
     }),
     cancelMove: (id: string) => Effect.sync(() => (calls.push(`move cancel ${id}`), true)),
     cancelLive: () => Effect.succeed(false),
+    request: (i: { threadId: string; instanceId: string }) =>
+      Effect.sync(() => (calls.push(`move request ${i.threadId} ${i.instanceId}`), {})),
   } as never);
   const desktop = Layer.succeed(TessayaDesktopSettings, {
     standingJobs: Effect.succeed({
@@ -280,3 +294,43 @@ it.effect("names a source it could not read and still lists the rest", () => {
     assert.isTrue(list.items.some((i) => i.id === "reminder:r1"));
   }).pipe(Effect.provide(layer));
 });
+
+it.effect(
+  "puts back a cancel from the last half hour, the latest when none is named, and nothing older",
+  () => {
+    const { calls, layer } = setup();
+    return Effect.gen(function* () {
+      const u = yield* upcoming;
+      const cancel = (id: string) => u.change({ id, op: "cancel" }, by);
+      assert.isTrue((yield* cancel("house:tessaya_temporary_1")).undoable);
+      yield* cancel("reminder:r1");
+      yield* cancel("task:ci");
+      yield* cancel("move:thread:t1");
+      calls.length = 0;
+      // No id: the latest cancel comes back first.
+      yield* u.change({ op: "undo" }, by);
+      yield* u.change({ id: "task:ci", op: "undo" }, by);
+      yield* u.change({ id: "house:tessaya_temporary_1", op: "undo" }, by);
+      assert.deepStrictEqual(calls.slice(0, 3), [
+        "move request t1 claudeAgent-2",
+        "task new ci",
+        "house undo tessaya_temporary_1",
+      ]);
+      // A dropped reminder comes back as a new open one; the dropped row stays closed.
+      yield* u.change({ id: "reminder:r1", op: "undo" }, by);
+      assert.match(calls[3]!, /^reminder r1-b\w+ open /);
+      const refused = yield* Effect.flip(u.change({ id: "reminder:r1", op: "undo" }, by));
+      assert.strictEqual(
+        refused.reason,
+        "There is nothing cancelled in the last half hour to put back.",
+      );
+      yield* cancel("task:ci");
+      yield* TestClock.adjust("31 minutes");
+      const late = yield* Effect.flip(u.change({ id: "task:ci", op: "undo" }, by));
+      assert.strictEqual(
+        late.reason,
+        "There is nothing cancelled in the last half hour to put back.",
+      );
+    }).pipe(Effect.provide(layer));
+  },
+);

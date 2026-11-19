@@ -21,7 +21,8 @@ export const UPCOMING_SOURCES = [
 ] as const;
 export type UpcomingSource = (typeof UPCOMING_SOURCES)[number];
 
-export const UPCOMING_OPS = ["cancel", "pause", "resume", "move"] as const;
+/** `undo` puts back one cancelled in the last half hour: the item named, or the latest when none is. */
+export const UPCOMING_OPS = ["cancel", "pause", "resume", "move", "undo"] as const;
 export type UpcomingOp = (typeof UPCOMING_OPS)[number];
 
 export const UpcomingItem = Schema.Struct({
@@ -57,7 +58,8 @@ export const UpcomingListResult = Schema.Struct({
 export type UpcomingListResult = typeof UpcomingListResult.Type;
 
 export const UpcomingChangeInput = Schema.Struct({
-  id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
+  /** Required for every op but `undo`. */
+  id: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
   op: Schema.Literals(UPCOMING_OPS),
   /** For move: the new time (epoch ms). */
   at: Schema.optionalKey(Schema.Number),
@@ -72,6 +74,8 @@ export const UpcomingChangeResult = Schema.Struct({
   /** False when it waits for his yes, or the source cannot do it; `line` says which. */
   done: Schema.Boolean,
   line: Schema.String,
+  /** A cancel that `undo` can put back; absent from older servers. */
+  undoable: Schema.optionalKey(Schema.Boolean),
 });
 export type UpcomingChangeResult = typeof UpcomingChangeResult.Type;
 

@@ -635,16 +635,20 @@ const ComingUpTool = Tool.make("tessaya_coming_up", {
 const ComingUpChangeTool = Tool.make("tessaya_coming_up_change", {
   ...shared,
   description:
-    "Cancel, pause, resume or move one item from tessaya_coming_up, by its `id`. To move, give `inMinutes` from now (\"make it fifteen\" is 15) or `at`, a time with its offset on the house's clock. A one-off timer, a reminder, a one-off scheduled task and a standing job's next run (within its own day) move; a repeating task, a rule or a date does not, and the answer says why: say that sentence. An automation he made himself still asks him first.",
+    'Cancel, pause, resume or move one item from tessaya_coming_up, by its `id`; `undo` puts back something cancelled in the last half hour ("undo that", "put it back"): the id you cancelled, or none for the latest. To move, give `inMinutes` from now ("make it fifteen" is 15) or `at`, a time with its offset on the house\'s clock. A one-off timer, a reminder, a one-off scheduled task and a standing job\'s next run (within its own day) move; a repeating task, a rule or a date does not, and the answer says why: say that sentence. An automation he made himself still asks him first.',
   parameters: Schema.Struct({
-    id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
-    op: Schema.Literals(["cancel", "pause", "resume", "move"]),
+    id: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
+    op: Schema.Literals(["cancel", "pause", "resume", "move", "undo"]),
     inMinutes: Schema.optional(
       Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 44_640 })),
     ),
     at: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
   }),
-  success: Schema.Struct({ done: Schema.Boolean, line: Schema.String }),
+  success: Schema.Struct({
+    done: Schema.Boolean,
+    line: Schema.String,
+    undoable: Schema.optional(Schema.Boolean),
+  }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
   .annotate(Tool.Readonly, false)
