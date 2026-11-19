@@ -782,15 +782,25 @@ it.effect(
         (yield* worker.list()).map((i) => i.text).toSorted(),
         onBrain.toSorted(),
       );
-      // the brain away: a read comes from its copy, a write is refused, never kept here as a second truth
+      // the brain away: a read comes from its copy; a write waits in the outbox, shown as not yet synced
       reachable = false;
-      const refused = yield* Effect.flip(
-        worker.add({ kind: "fact", text: "The bins go out on Tuesday", source: "user" }),
-      );
-      assert.include(refused.reason, "brain");
+      const held = yield* worker.add({
+        kind: "fact",
+        text: "The bins go out on Tuesday",
+        source: "user",
+      });
+      assert.strictEqual(held.sourceRef, "not yet synced");
       assert.notInclude(
         (yield* worker.list()).map((i) => i.text),
         "The bins go out on Tuesday",
+      );
+      // back: it lands on the brain once
+      reachable = true;
+      yield* worker.list();
+      yield* worker.list();
+      assert.strictEqual(
+        (yield* brainMemory.list()).filter((i) => i.text === "The bins go out on Tuesday").length,
+        1,
       );
     }).pipe(Effect.scoped),
 );

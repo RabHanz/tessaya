@@ -1664,6 +1664,26 @@ export const oneBrain = Layer.effect(
         data: { changes: all.changes.length },
       });
     });
+    const nowIsoHere = Effect.map(Clock.currentTimeMillis, (ms) => new Date(ms).toISOString());
+    /** What she just learned while her brain is away, as it will be kept there: marked not yet synced. */
+    const unsynced = (draft: MemoryDraft, at: string): MemoryItem =>
+      ({
+        id: `unsynced-${at}`,
+        kind: draft.kind,
+        text: draft.text.trim(),
+        source: draft.source,
+        sourceRef: "not yet synced",
+        scope: draft.scope ?? "global",
+        scopeRef: draft.scopeRef ?? null,
+        confidence: draft.confidence ?? 1,
+        pinned: false,
+        createdAt: at,
+        updatedAt: at,
+        lastUsedAt: null,
+        expiresAt: null,
+        supersededBy: null,
+        proposed: false,
+      }) as MemoryItem;
     const via = (method: OnBrain) =>
       ((...args: ReadonlyArray<unknown>) =>
         Effect.gen(function* () {
@@ -1675,13 +1695,21 @@ export const oneBrain = Layer.effect(
           if (yield* brain.isBrain) return yield* mine;
           yield* moveUp();
           const viewer = yield* MemoryViewer;
-          const answer = yield* brain.send("memory", { m: method, args, viewer });
+          const ask = { m: method, args, viewer };
+          // a read asks now; a write is sent now or queued in order for when the brain is back (never lost)
+          // what waited for the brain lands first, so a read sees it
+          if (READS.has(method)) yield* brain.replay();
+          const answer = READS.has(method)
+            ? yield* brain.send("memory", ask)
+            : yield* brain.sendOrQueue("memory", ask);
           if (Option.isNone(answer)) {
             if (READS.has(method)) return yield* mine;
             if (method in QUIET) return QUIET[method];
+            // queued: what she learned is held for her brain and lands there; it shows as not yet synced
+            if (method === "add") return unsynced(args[0] as MemoryDraft, yield* nowIsoHere);
             return yield* new BatonMemoryRefusedError({
               reason:
-                "Her memory lives on her brain, which can't be reached just now; nothing was kept.",
+                "Saved for her brain, which can't be reached just now: not yet synced, it lands when she's back.",
             });
           }
           const got = answer.value as { readonly value?: unknown; readonly refused?: string };
