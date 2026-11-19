@@ -44,6 +44,7 @@ const json = (body: unknown, status = 200) =>
   HttpServerResponse.jsonUnsafe(body, { status, headers: HEADERS });
 const ACTION = /^[a-z][a-z.-]{1,40}$/;
 const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+const decodeRows = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Schema.Unknown)));
 const sizeOf = (v: unknown) =>
   encodeJson(v).pipe(
     Effect.map((t) => t.length),
@@ -157,14 +158,17 @@ export const playgroundCall = Effect.fn("PlaygroundRoutes.call")(function* (
       const note = typeof body["note"] === "string" ? body["note"].slice(0, 500) : "";
       const row = ratedRow(id, run, good, note, yield* Clock.currentTimeMillis);
       const file = ratingsFile(who.userdata);
+      const text = yield* Effect.promise(() =>
+        NodeFS.promises.readFile(file, "utf8").catch(() => "[]"),
+      );
+      const kept = yield* decodeRows(text).pipe(Effect.orElseSucceed(() => []));
+      const next = yield* encodeJson([
+        ...kept.filter((r) => (r as { id?: unknown } | null)?.id !== row.id),
+        row,
+      ]);
       yield* Effect.promise(async () => {
-        const kept = await NodeFS.promises
-          .readFile(file, "utf8")
-          .then((t) => JSON.parse(t) as unknown[])
-          .catch(() => [] as unknown[]);
-        const next = [...kept.filter((r) => (r as { id?: string }).id !== row.id), row];
         await NodeFS.promises.mkdir(NodePath.dirname(file), { recursive: true });
-        await NodeFS.promises.writeFile(file, JSON.stringify(next, null, 1));
+        await NodeFS.promises.writeFile(file, next);
       });
       yield* emitAction({
         kind: "body.playground.rated",

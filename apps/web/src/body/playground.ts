@@ -443,7 +443,7 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
   const title = el("h1", null, "Body playground");
   const subtitle = el("small", null, "Loading");
   who.append(title, subtitle);
-  const fileLabel = el("label", "btn file wide", "Open a file");
+  const fileLabel = el("label", "btn file", "Open a file");
   const file = el("input");
   file.type = "file";
   file.accept = ".vrm,.glb";
@@ -1688,7 +1688,7 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
         }
       } catch (err) {
         note(
-          (err as Error).status === 404
+          (err as Error & { status?: number }).status === 404
             ? "Only you can run agents here: they spend your plan or key."
             : (err as Error).message,
         );
@@ -1842,7 +1842,7 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     ["scenes", "Scenes"],
     ["check", "Check"],
     ["body", "Body"],
-    ["agent", "Agent drives her"],
+    ["agent", "Agent"],
     ...(hooks.tabs ?? []).map((t) => [t.id, t.label] as const),
   ];
   for (const [id, label] of TABS) {
