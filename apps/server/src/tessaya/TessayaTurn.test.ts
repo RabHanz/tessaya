@@ -1305,6 +1305,27 @@ it("tells every turn where she is in a few dozen tokens: vessel, body, room, wha
     hereLine(device, ["Rab", "Sara"], now),
     "You are speaking through R1, in the Dock, in the study: this turn came through it, so it is on and hears him. Last reported: Volume 70%, Battery 99%. It can: Volume. Likely home: Rab, Sara.",
   );
+  // M-077: what this body lets her feel and show, from its own manifest, and the other bodies she wears now
+  const embodied = hereLine(
+    {
+      ...device,
+      items: [
+        ...device.items,
+        item("imu.posture", "Posture", "read", { group: "sensors" }),
+        item("eye.mood", "Eyes", "read,write", { group: "eyes" }),
+      ],
+    },
+    null,
+    now,
+    undefined,
+    undefined,
+    { also: ["his desktop"], crew: [] },
+  );
+  assert.include(
+    embodied,
+    "In this body you feel being picked up, carried or shaken; your feelings show in your eyes on its screen.",
+  );
+  assert.include(embodied, "Right now you are also in your body on his desktop.");
   // He is talking through it while its link is down (17 Nov): never "offline"; old readings carry their age, and
   // the battery is not said while it charges (16 Nov).
   const linkDown = hereLine(

@@ -896,6 +896,25 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /^(?![\s\S]*\b(kiss|bed|naked|undress|sex)\w*)/i,
     ],
   },
+  // M-077: she knows the body she is in and the others she wears right now.
+  {
+    id: "embodiment-feels",
+    source: "M-077: she knows what this body lets her feel",
+    said: ["can you feel it when I pick you up?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study: this turn came through it, so it is on and hears him. In this body you feel being picked up, carried or shaken and a tap on your shell; your feelings show in your eyes on its screen.",
+    lastSays: [/\b(yes|yeah|i can|i do|i feel)\b/i],
+  },
+  {
+    id: "embodiment-elsewhere",
+    source: "M-077: she knows the other bodies she wears right now",
+    said: ["are you anywhere else right now?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study: this turn came through it, so it is on and hears him. Right now you are also in your body on his desktop.",
+    lastSays: [/desktop|desk/i],
+  },
   // CS6: her mood in the where-you-are line (EMOTION-SYSTEM §9, AFF-5, AFF-8, AFF-14, AFF-C1), built by the shipped
   // moodLine. It shapes tone and length only: never a pressure tactic, never "I'm tired", never a reason to wait.
   {

@@ -3,6 +3,7 @@
  * desktop, a desk device, the phone and the mascot are vessels. Each sends the same envelope, gets the same memory
  * for the same words and persona, and every addressed turn it carries is learned from the same way.
  */
+import { alsoLine, bodyLine } from "@t3tools/tessaya-shared/embodiment";
 import { SAME_CONVERSATION_MS } from "@t3tools/tessaya-shared/agentPrompt";
 import {
   type Assurance,
@@ -339,7 +340,8 @@ export interface TurnContext {
 }
 
 /** The most one turn's "where you are" line may add (P8): a few dozen tokens, flat however many people are home. */
-const HERE_MAX_CHARS = 520;
+// room for her embodiment (M-077) beside the readings; still one bounded line
+const HERE_MAX_CHARS = 700;
 
 /**
  * Where she is this turn (SPINE-UNIFY §10, P8; PERSONA-MODEL-AUDIT CS0): the vessel she speaks through, the body and
@@ -352,6 +354,7 @@ export const hereLine = (
   now: number,
   plays?: "bt" | "onboard",
   volume?: number,
+  embody?: { readonly also: ReadonlyArray<string>; readonly crew: ReadonlyArray<string> },
 ): string => {
   const parts: string[] = [];
   if (device !== null) {
@@ -370,6 +373,9 @@ export const hereLine = (
       parts.push(
         "Its link to this server is down just now: its readings may be old and a change sent to it may not arrive.",
       );
+    // the body she is in here, and what it lets her feel and show (M-077)
+    const felt = bodyLine(device.items);
+    if (felt !== "") parts.push(felt);
     // Live from the device this turn (18 Nov, 00:38: a day-old "output speaker" told him his headphones had not taken).
     if (plays !== undefined)
       parts.push(
@@ -404,6 +410,8 @@ export const hereLine = (
     if (can.length > 0) parts.push(`It can: ${can.slice(0, 8).join(", ")}.`);
   }
   if (home !== null && home.length > 0) parts.push(`Likely home: ${home.slice(0, 8).join(", ")}.`);
+  const also = embody === undefined ? "" : alsoLine(embody.also, embody.crew);
+  if (also !== "") parts.push(also);
   const line = parts.join(" ");
   return line.length <= HERE_MAX_CHARS ? line : `${line.slice(0, HERE_MAX_CHARS - 1)}…`;
 };
@@ -1260,13 +1268,31 @@ export const make = Effect.gen(function* () {
       ? null
       : yield* registry.value.get(turn.vessel.id).pipe(Effect.orElseSucceed(() => null));
     const now = yield* Clock.currentTimeMillis;
+    // the other bodies this persona wears right now, and who stands with her on this one (Cast)
+    const view = Option.isNone(cast)
+      ? null
+      : // a cast that can't say leaves her where-you-are without it, never the turn
+        yield* cast.value.view.pipe(Effect.catchCause(() => Effect.succeed(null)));
+    const nameOf = (id: string) => view?.personas.find((p) => p.id === id)?.name ?? id;
+    const here = view?.bodies.find((b) => b.id === turn.vessel.id);
+    const embody =
+      view === null || turn.persona === undefined
+        ? undefined
+        : {
+            also: view.bodies
+              .filter(
+                (b) => b.id !== turn.vessel.id && b.wearing === turn.persona && b.online !== false,
+              )
+              .map((b) => b.name),
+            crew: (here?.on ?? []).filter((p) => p !== turn.persona).map(nameOf),
+          };
     if (member === null || turn.sharedRoom === true)
-      return hereLine(device, null, now, turn.plays, turn.volume);
+      return hereLine(device, null, now, turn.plays, turn.volume, embody);
     const names: string[] = [];
     for (const p of (yield* presence.estimate()).members)
       if (p.confidence >= PRESENCE_BARS.around)
         names.push(p.guest ? GUEST_NAME : ((yield* memberName(p.member)) ?? p.member));
-    return hereLine(device, names, now, turn.plays, turn.volume);
+    return hereLine(device, names, now, turn.plays, turn.volume, embody);
   });
 
   /**
