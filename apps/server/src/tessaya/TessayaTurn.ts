@@ -788,7 +788,13 @@ export const make = Effect.gen(function* () {
     if ("refused" in privatePersonOf(asked) || Option.isNone(stores)) return "";
     // shortcut: only a store opened for this vessel's own session is read; nothing opens one for a device yet (M2).
     const recalled = yield* stores.value
-      .recall({ turn: asked, text: turn.text, persona: turn.persona ?? null })
+      .recall({
+        turn: asked,
+        text: turn.text,
+        persona: turn.persona ?? null,
+        // only an open private moment (the layer's gate held) reads that moment's own notes
+        moment: turn.private === true,
+      })
       .pipe(
         Effect.provideService(PrivateCaller, {
           session: vesselSubject(turn.vessel.id),

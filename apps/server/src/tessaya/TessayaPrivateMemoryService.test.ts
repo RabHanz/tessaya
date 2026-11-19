@@ -249,6 +249,34 @@ describe("BatonPrivateMemoryService", () => {
       );
       const by = (persona: string) =>
         as(desk)(p.recall({ turn: turn(), text: "anniversary", persona }));
+      // a note from a private moment is the private tier: only a private moment reads it, his voice or not
+      yield* as(desk)(
+        p.remember({ turn: turn(), text: "Anniversary night, just us", moment: true }),
+      );
+      assert.strictEqual(
+        (yield* recall(turn())).count,
+        1,
+        "a verified everyday turn never sees it",
+      );
+      assert.strictEqual(
+        (yield* as(desk)(p.recall({ turn: turn(), text: "anniversary", moment: true }))).count,
+        2,
+      );
+      // a note the layer moved in before notes were marked: the at-unlock migration makes it Freya's private-moment note
+      yield* as(desk)(
+        p.remember({ turn: turn(), text: "Anniversary toast she made", kind: "note" }),
+      );
+      assert.strictEqual((yield* recall(turn())).count, 2);
+      const mark = (dry: boolean) =>
+        as(desk)(p.markMoment({ texts: ["Anniversary toast she made"], persona: "freya", dry }));
+      assert.deepStrictEqual(yield* mark(true), { matched: 1, left: 1 });
+      assert.strictEqual((yield* recall(turn())).count, 2, "a dry run changes nothing");
+      assert.deepStrictEqual(yield* mark(false), { matched: 1, left: 0 });
+      assert.strictEqual((yield* recall(turn())).count, 1);
+      const inMoment = (persona: string) =>
+        as(desk)(p.recall({ turn: turn(), text: "anniversary", moment: true, persona }));
+      assert.strictEqual((yield* inMoment("freya")).count, 3);
+      assert.strictEqual((yield* inMoment("mira")).count, 2, "hers, not another persona's");
       assert.strictEqual((yield* by("sebastian")).count, 2);
       assert.strictEqual((yield* by("freya")).count, 1);
       assert.strictEqual((yield* recall(turn())).count, 1);
