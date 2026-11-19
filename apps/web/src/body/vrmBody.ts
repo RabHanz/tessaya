@@ -11,6 +11,8 @@ import {
   STILL,
   beastkin,
   faceWeights,
+  limitMouth,
+  mouthIntentOf,
   mouthWeights,
   parseCue,
   swingAt,
@@ -811,6 +813,8 @@ export function mountBody(
   let touchAs: string | null = null;
   // owner extensions: a playing clip, extra touch regions, and model expressions standing in for states and faces
   let clip: (Extract<BodyCue, { kind: "clip" }> & { start: number }) | null = null;
+  // the mouth shapes the last face cue asked for that were eased, and why (BodyState faceEased)
+  let faceEased: ReadonlyArray<{ key: string; asked: number; shown: number; why: string }> = [];
   // the library move playing its physics-trained version, by its cues' id, until it ends
   let baked: { id: string; until: number } | null = null;
   let expMap: Extract<BodyCue, { kind: "expressions" }>["map"] = {};
@@ -1226,6 +1230,15 @@ export function mountBody(
     } else if (level !== null) {
       if (now - level.at > LEVEL_HOLD_MS) level = null;
       else mouth = mouthWeights(level.viseme, level.value);
+    }
+    // a gesture's own face (a yawn's jaw) rises and falls with it, at its full natural reach
+    for (const g of gestures) {
+      const shape = GESTURES[g.name]?.face;
+      const ms = GESTURES[g.name]?.ms ?? 0;
+      if (shape === undefined || ms <= 0) continue;
+      const env = Math.sin(Math.PI * Math.min(1, Math.max(0, (now - g.start) / ms)));
+      for (const [k, v] of Object.entries(shape) as Array<[keyof Weights, number]>)
+        mouth[k] = Math.max(mouth[k] ?? 0, v * env);
     }
 
     // blink: a short close and open, every few seconds
@@ -2327,11 +2340,16 @@ export function mountBody(
         };
         lastMove = now;
         return invalidate();
-      case "face":
-        override = { face: c.weights, until: now + c.ms };
-        setFace(c.weights, now);
+      case "face": {
+        // a face asking more of her jaw than its intent supports is eased, not cut, and she says so (her state)
+        const intent = mouthIntentOf(c.weights);
+        const limited = limitMouth(c.weights, intent);
+        faceEased = limited.eased.map((e) => ({ ...e, why: `more than a ${intent} face opens her jaw` }));
+        override = { face: limited.weights, until: now + c.ms };
+        setFace(limited.weights, now);
         seqTimers.push(setTimeout(invalidate, c.ms));
         return;
+      }
       case "perform": {
         // composed over the posture she is in now (a step's act or posture came first), its bones part of the base
         const p = posture();
@@ -2772,6 +2790,7 @@ export function mountBody(
       by: Math.round(i.by * 1000) / 1000,
     })),
     contacts: contactsNow(),
+    ...(faceEased.length === 0 ? {} : { faceEased }),
     facing: Math.round(facing * 1000) / 1000,
     walking: loco?.walk != null,
     ...(rig === null ? {} : { height: Math.round(rig.height * 1000) / 1000 }),
