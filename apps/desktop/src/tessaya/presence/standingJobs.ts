@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 /**
  * Built-in standing jobs: a trigger, an owning persona, one tool judged by One Trust, and a count. They
  * read jobs and the watch from this machine's server, so T3's window need not be up. Never capped: each
@@ -127,6 +127,10 @@ export interface StandingState {
   readonly quiet?: Readonly<Partial<Record<BuiltInId, boolean>>>;
   /** Per timed job; "once" when not set. */
   readonly missed?: Readonly<Partial<Record<BuiltInId, MissedRun>>>;
+  /** One run of a timed job moved (Coming up): on `day` (`Date.toDateString`) it runs at `at` instead of its hour. */
+  readonly moved?: Readonly<
+    Partial<Record<BuiltInId, { readonly day: string; readonly at: number }>>
+  >;
   /** The hour of the first pass of the day: whether Tessaya was running before a timed job's hour came. */
   readonly firstPass?: { readonly day: string; readonly hour: number };
   readonly runs: ReadonlyArray<StandingRun>;
@@ -188,10 +192,34 @@ export const missedRunOf = (state: StandingState, id: BuiltInId): MissedRun =>
 const timeHasCome = (
   state: StandingState,
   id: BuiltInId,
-  hour: number,
+  input: Pick<StandingInput, "now" | "day" | "hour">,
   at: number,
   firstHourToday: number,
-): boolean => hour >= at && (firstHourToday <= at || missedRunOf(state, id) === "once");
+): boolean => {
+  const moved = state.moved?.[id];
+  if (moved?.day === input.day) return input.now >= moved.at;
+  return input.hour >= at && (firstHourToday <= at || missedRunOf(state, id) === "once");
+};
+
+/** A timed built-in's next run on this machine's clock, its moved run included; null when it is off or not timed. */
+export const nextBuiltInRun = (state: StandingState, id: BuiltInId, now: number): number | null => {
+  const job = BUILT_INS.find((j) => j.id === id);
+  if (job === undefined || job.trigger.kind !== "time" || state.on[id] !== true) return null;
+  for (let ahead = 0; ahead <= 1; ahead += 1) {
+    const day = new Date(now);
+    day.setDate(day.getDate() + ahead);
+    day.setHours(job.trigger.hour, 0, 0, 0);
+    const key = day.toDateString();
+    if (state.runs.some((r) => r.id === id && r.key === key)) continue;
+    const moved = state.moved?.[id];
+    const at = moved?.day === key ? moved.at : day.getTime();
+    // A time long gone today, not yet run, was missed or is held: the next one is tomorrow's.
+    if (at < now - LATE_MS) continue;
+    return at;
+  }
+  return null;
+};
+const LATE_MS = 5 * 60_000;
 
 const TIMED_OUT: unique symbol = Symbol("timed out");
 
@@ -330,7 +358,7 @@ export const runStandingJobs = async (
     );
   }
   if (
-    timeHasCome(state, "morning_brief", input.hour, BRIEF_HOUR, firstHour) &&
+    timeHasCome(state, "morning_brief", input, BRIEF_HOUR, firstHour) &&
     input.quiet !== true &&
     state.brief?.day !== input.day
   ) {
@@ -340,7 +368,7 @@ export const runStandingJobs = async (
       return "Built the morning brief.";
     });
   }
-  if (timeHasCome(state, "nightly_learning", input.hour, LEARN_HOUR, firstHour))
+  if (timeHasCome(state, "nightly_learning", input, LEARN_HOUR, firstHour))
     await attempt("nightly_learning", input.day, (signal) => ops.learn(signal));
   for (const f of input.findings) {
     if (f.kind !== "unanswered" || f.minutes < WAIT_MINUTES || input.quiet === true) continue;
@@ -454,7 +482,17 @@ export const createStandingStore = (
         on: now.on,
         ...(now.missed === undefined ? {} : { missed: now.missed }),
         ...(now.quiet === undefined ? {} : { quiet: now.quiet }),
+        ...(now.moved === undefined ? {} : { moved: now.moved }),
       });
+    },
+    /** Moves one run of a timed job, or puts it back with null. */
+    setMoved: (
+      id: BuiltInId,
+      moved: { readonly day: string; readonly at: number } | null,
+    ): void => {
+      const state = load();
+      const { [id]: _was, ...rest } = state.moved ?? {};
+      save({ ...state, moved: moved === null ? rest : { ...rest, [id]: moved } });
     },
     setOn: (id: BuiltInId, on: boolean): void => {
       const state = load();

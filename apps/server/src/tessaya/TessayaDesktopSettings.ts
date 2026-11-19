@@ -9,6 +9,8 @@ import type {
   DesktopSettingsView,
   DesktopVoiceSettings,
   DesktopSettingsControl,
+  DesktopStandingChange,
+  DesktopStandingJob,
   DesktopVoiceSettingsPatch,
 } from "@t3tools/tessaya-contracts";
 import * as Clock from "effect/Clock";
@@ -63,7 +65,9 @@ export class TessayaDesktopSettings extends Context.Service<
       readonly effective: DesktopVoiceSettings;
       readonly applied: number;
       readonly controls?: ReadonlyArray<DesktopSettingsControl>;
+      readonly standing?: ReadonlyArray<DesktopStandingJob>;
     }) => Effect.Effect<{
+      readonly standing?: ReadonlyArray<DesktopStandingChange>;
       readonly change: {
         readonly version: number;
         readonly patch: DesktopVoiceSettingsPatch;
@@ -73,6 +77,13 @@ export class TessayaDesktopSettings extends Context.Service<
         }>;
       } | null;
     }>;
+    /** Its standing jobs as it last reported them, and whether it is connected now. */
+    readonly standingJobs: Effect.Effect<{
+      readonly connected: boolean;
+      readonly jobs: ReadonlyArray<DesktopStandingJob>;
+    }>;
+    /** A change for one standing job, taken by the desktop on its next sync (at once when one is held). */
+    readonly changeStanding: (change: DesktopStandingChange) => Effect.Effect<void>;
     /** Ends a held sync now with no change, so the desktop's copy of something on this server (his standing yeses) follows at once. */
     readonly nudge: Effect.Effect<void>;
   }
@@ -92,6 +103,9 @@ const make = Effect.gen(function* () {
   } | null = null;
   /** Its Settings controls as it last published them. */
   let controls: ReadonlyArray<DesktopSettingsControl> | null = null;
+  /** Its standing jobs as it last reported them, and the changes waiting for it. */
+  let standing: ReadonlyArray<DesktopStandingJob> = [];
+  let standingWaiting: Array<DesktopStandingChange> = [];
   // From the clock, so a desktop still holding a version from before this server restarted is always behind.
   let version = yield* Clock.currentTimeMillis;
   const waiters: Array<{
@@ -205,8 +219,10 @@ const make = Effect.gen(function* () {
     readonly effective: DesktopVoiceSettings;
     readonly applied: number;
     readonly controls?: ReadonlyArray<DesktopSettingsControl>;
+    readonly standing?: ReadonlyArray<DesktopStandingJob>;
   }) {
     if (input.controls !== undefined) controls = input.controls;
+    if (input.standing !== undefined) standing = input.standing;
     const previous = reported?.effective.dictationCleanup ?? null;
     reported = { at: yield* fresh, effective: input.effective };
     if (pending !== null && input.applied >= pending.version) pending = null;
@@ -214,11 +230,22 @@ const make = Effect.gen(function* () {
       yield* Deferred.succeed(waiter.done, undefined);
     }
     if (pending === null) yield* follow(input.effective.dictationCleanup, previous);
-    if (pending === null) {
+    if (pending === null && standingWaiting.length === 0) {
       yield* Deferred.await(wake).pipe(Effect.timeoutOption(SYNC_HOLD));
       yield* fresh;
     }
-    return { change: pending };
+    const taken = standingWaiting;
+    standingWaiting = [];
+    return { change: pending, ...(taken.length === 0 ? {} : { standing: taken }) };
+  });
+
+  const standingJobs = Effect.map(view, ({ connected }) => ({ connected, jobs: standing }));
+  const changeStanding = Effect.fn("BatonDesktopSettings.changeStanding")(function* (
+    change: DesktopStandingChange,
+  ) {
+    standingWaiting.push(change);
+    yield* Deferred.succeed(wake, undefined);
+    wake = yield* Deferred.make<void>();
   });
 
   const nudge = Effect.gen(function* () {
@@ -226,7 +253,15 @@ const make = Effect.gen(function* () {
     wake = yield* Deferred.make<void>();
   });
 
-  return TessayaDesktopSettings.of({ get: view, set, setControls, sync, nudge });
+  return TessayaDesktopSettings.of({
+    get: view,
+    set,
+    setControls,
+    sync,
+    standingJobs,
+    changeStanding,
+    nudge,
+  });
 });
 
 // Plain settings values only, which always serialise.

@@ -125,6 +125,38 @@ layer("BatonDesktopSettings", (it) => {
       assert.deepStrictEqual(yield* readGrants, ["tessaya:job_schedule"]);
     }),
   );
+
+  it.effect(
+    "keeps the standing jobs the desktop reports, and hands it a change from Coming up at once, once",
+    () =>
+      Effect.gen(function* () {
+        const settings = yield* TessayaDesktopSettings;
+        const brief = {
+          id: "morning_brief",
+          title: "Morning brief",
+          line: "",
+          on: true,
+          at: 1,
+          condition: null,
+          repeats: null,
+          movable: true,
+        };
+        const held = yield* settings
+          .sync({ effective: before, applied: 0, standing: [brief] })
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        assert.deepStrictEqual((yield* settings.standingJobs).jobs, [brief]);
+        // No clock moves: only the change can end the hold.
+        yield* settings.changeStanding({ id: "morning_brief", op: "pause" });
+        assert.deepStrictEqual((yield* Fiber.join(held)).standing, [
+          { id: "morning_brief", op: "pause" },
+        ]);
+        const next = yield* settings
+          .sync({ effective: before, applied: 0 })
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        yield* TestClock.adjust(SYNC_HOLD);
+        assert.isUndefined((yield* Fiber.join(next)).standing);
+      }),
+  );
 });
 
 it.layer(services())("BatonDesktopSettings and the one cleanup setting", (it) => {

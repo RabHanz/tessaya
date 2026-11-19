@@ -19,7 +19,7 @@ interface Saved {
   /** The latest runs, every job's together. */
   readonly runs?: ReadonlyArray<UserJobRun>;
 }
-type Patch = Partial<Pick<UserJob, "on" | "instruction" | "title" | "missed">>;
+type Patch = Partial<Pick<UserJob, "on" | "instruction" | "title" | "missed" | "moved">>;
 const KEEP_RUNS = 200;
 
 export const createUserJobStore = (

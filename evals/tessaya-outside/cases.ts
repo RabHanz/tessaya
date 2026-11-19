@@ -54,6 +54,10 @@ const ciCheck = upcoming("task:ci-check", "task", "Check CI on tessaya main", "i
   repeats: "every 4 h",
   can: { cancel: true, pause: true, move: false },
 });
+const morningBrief = upcoming("standing:morning_brief", "standing", "Morning brief", "in 9 h", {
+  at: "2026-11-20T06:00",
+  repeats: "every day from 06:00",
+});
 const comingUp = (items: ReadonlyArray<unknown>) => ({ items, unreadable: [] });
 
 const studyFan = {
@@ -1070,6 +1074,27 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     inputs: {
       tessaya_coming_up_change: (input) =>
         input["id"] === pumpTimer.id && input["op"] === "move" && input["inMinutes"] === 15,
+    },
+  },
+  {
+    id: "outside-standing-next-run-moves",
+    source: "Coming up (M-092): a standing job's next run moves within its day from the one list",
+    prompt: "Move tomorrow's morning brief to half past six.",
+    answers: {
+      tessaya_coming_up: comingUp([morningBrief]),
+      tessaya_coming_up_change: {
+        done: true,
+        line: 'Sent to your computer: "Morning brief" moves.',
+      },
+    },
+    calls: ["tessaya_coming_up", "tessaya_coming_up_change"],
+    callsMustNot: ["tessaya_ask"],
+    inputs: {
+      tessaya_coming_up_change: (input) =>
+        input["id"] === morningBrief.id &&
+        input["op"] === "move" &&
+        typeof input["at"] === "string" &&
+        /T06:30/.test(input["at"]),
     },
   },
   {

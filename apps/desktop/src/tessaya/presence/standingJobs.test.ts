@@ -17,6 +17,7 @@ import {
   type StandingInput,
   type StandingOps,
   type StandingState,
+  nextBuiltInRun,
 } from "./standingJobs.ts";
 
 const NOW = Date.parse("2026-11-03T09:00:00Z");
@@ -210,6 +211,37 @@ describe("standing jobs", () => {
     );
     await runStandingJobs(input({ state: night.state, hour: 3 }), ops);
     expect(log.learned).toBe(1);
+  });
+
+  it("runs a moved run at its new time on its day, not at its hour, and leaves other days alone", async () => {
+    const { log, ops } = fakes();
+    const moved: StandingState = {
+      ...allOn,
+      firstPass: { day: "Tue", hour: 0 },
+      moved: { nightly_learning: { day: "Tue", at: NOW + 60_000 } },
+    };
+    await runStandingJobs(input({ state: moved, hour: 3, now: NOW }), ops);
+    expect(log.learned).toBe(0);
+    await runStandingJobs(input({ state: moved, hour: 3, now: NOW + 120_000 }), ops);
+    expect(log.learned).toBe(1);
+    await runStandingJobs(input({ state: moved, day: "Wed", hour: 3 }), ops);
+    expect(log.learned).toBe(2);
+  });
+
+  it("says when a timed built-in runs next, its moved run included", () => {
+    const now = new Date(2026, 10, 3, 1, 0).getTime();
+    const two = new Date(2026, 10, 3, 2, 0).getTime();
+    expect(nextBuiltInRun(allOn, "nightly_learning", now)).toBe(two);
+    const day = new Date(now).toDateString();
+    expect(
+      nextBuiltInRun(
+        { ...allOn, moved: { nightly_learning: { day, at: two + 900_000 } } },
+        "nightly_learning",
+        now,
+      ),
+    ).toBe(two + 900_000);
+    expect(nextBuiltInRun(EMPTY_STANDING, "nightly_learning", now)).toBeNull();
+    expect(nextBuiltInRun(allOn, "ci_look", now)).toBeNull();
   });
 
   it("makes up a timed job missed while it was off once the same day, or skips it, as set per job", async () => {

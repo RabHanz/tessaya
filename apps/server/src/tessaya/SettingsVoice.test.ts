@@ -111,6 +111,8 @@ const setup = () => {
         return {} as never;
       }),
     sync: () => Effect.die("unused"),
+    standingJobs: Effect.die("unused"),
+    changeStanding: () => Effect.die("unused"),
     nudge: Effect.void,
   });
   const layer = Layer.mergeAll(
