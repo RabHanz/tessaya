@@ -17,6 +17,7 @@ import {
   performCues,
 } from "../../packages/tessaya-shared/src/bodyPlanner.ts";
 import {
+  dot,
   preparePose,
   qAngle,
   fk,
@@ -25,6 +26,7 @@ import {
   v3,
   type V3,
 } from "../../packages/tessaya-shared/src/bodyRig.ts";
+import { palmsIn } from "../../packages/tessaya-shared/src/bodySkills.ts";
 import {
   CORE_SCENES,
   decodeScene,
@@ -192,12 +194,37 @@ export const poseWords = (f: Partial<Record<PoseBone, Euler>>): string => {
       up: "up high",
       out: "out to the side",
     })[place] ?? `at her ${place}${both && (place === "ear" || place === "hip") ? "s" : ""}`;
-  if (hands.left !== undefined && hands.left === hands.right)
+  const two = twoHandWords(f);
+  if (two !== null) w.push(two);
+  else if (hands.left !== undefined && hands.left === hands.right)
     w.push(`both hands ${where(hands.left, true)}`);
   else
     for (const side of ["left", "right"] as const)
       if (hands[side] !== undefined) w.push(`${side} hand ${where(hands[side], false)}`);
   return w.length === 0 ? "standing neutral" : w.join(", ");
+};
+
+const fingersOf = (f: Partial<Record<PoseBone, Euler>>, side: "left" | "right") =>
+  (f as Record<string, Euler | undefined>)[`${side}Fingers`]?.[0] ?? 0;
+/** Both hands acting together, as a viewer sees them: palms pressed, fingers laced, a wrist held. */
+const twoHandWords = (f: Partial<Record<PoseBone, Euler>>): string | null => {
+  const p = palmsIn(f);
+  const gap = dot(v3.sub(p.right.palm, p.left.palm), p.left.normal);
+  const facing = -dot(p.left.normal, p.right.normal);
+  const curled = fingersOf(f, "left") > 0.6 && fingersOf(f, "right") > 0.6;
+  if (Math.abs(gap) < 0.03 && facing > 0.4 && curled) return "fingers interlaced in front of her";
+  if (Math.abs(gap) < 0.015 && facing > 0.9)
+    return p.left.fingers[1] > 0.6
+      ? "palms pressed together, fingers up"
+      : "palms pressed together in front of her";
+  const wrist = worldOf(f)["rightHand"];
+  if (
+    wrist !== undefined &&
+    fingersOf(f, "left") > 0.6 &&
+    Math.hypot(...v3.sub(p.left.palm, wrist)) < 0.16
+  )
+    return "her left hand holding her right wrist";
+  return null;
 };
 
 /** Movement that repeats through a clip, as a viewer would name it: how often a part turns back on itself. */
@@ -224,13 +251,37 @@ const rhythmWords = (
   const knees = turns(series("leftLowerLeg", 0), 0.1);
   if (knees >= 3) out.push(`bounces ${Math.ceil(knees / 2)} times`);
   if (turns(series("hips", 2), 0.03) >= 3) out.push("shifts her weight from foot to foot");
-  if (turns(series("leftHand", 2), 0.03) >= 8) out.push("trembles in her hands");
   const gap = frames.map((f) => {
     const p = worldOf(f);
     return Math.hypot(...v3.sub(p["leftHand"]!, p["rightHand"]!));
   });
   const arms = turns(gap, 0.05);
-  if (arms >= 4) out.push(`beats her hands ${Math.ceil(arms / 2)} times`);
+  const palms = frames.map((f) => palmsIn(f));
+  const meet = palms.map((p) => dot(v3.sub(p.right.palm, p.left.palm), p.left.normal));
+  const facing = palms.every(
+    (p, i) => meet[i]! > 0.05 || -dot(p.left.normal, p.right.normal) > 0.9,
+  );
+  const claps = meet.filter((g, i) => g < 0.01 && (meet[i - 1] ?? 1) >= 0.01).length;
+  const clapping = arms >= 4 && facing && claps >= 2;
+  // palms held together while they slide along each other, or turn over each other
+  const together = meet.map((g) => Math.abs(g) < 0.02);
+  const slide = palms.map((p) => dot(v3.sub(p.left.palm, p.right.palm), p.left.fingers));
+  const rubs = turns(
+    slide.filter((_, i) => together[i]),
+    0.02,
+  );
+  const roll = palms.map((p) => p.left.normal[1]);
+  const wrings = turns(
+    roll.filter((_, i) => together[i]),
+    0.15,
+  );
+  // a hand rubbing or clapping turns its wrist on every beat: that is not a tremble
+  if (rubs < 4 && !clapping && turns(series("leftHand", 2), 0.03) >= 8)
+    out.push("trembles in her hands");
+  if (clapping) out.push(`claps ${claps} times, palm to palm`);
+  else if (rubs >= 4) out.push(`rubs her hands together ${Math.ceil(rubs / 2)} times`);
+  else if (arms >= 4) out.push(`beats her hands ${Math.ceil(arms / 2)} times`);
+  if (rubs < 4 && wrings >= 2) out.push(`wrings her hands ${Math.ceil(wrings / 2)} times`);
   if (turns(series("chest", 0), 0.02) >= 2) out.push("breathes visibly");
   return out.length === 0 ? [] : [`through ${s} s she ${out.join(", ")}`];
 };

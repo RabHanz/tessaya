@@ -6,6 +6,7 @@ import { Tool } from "effect/ai";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { HAND_PLACES } from "@t3tools/tessaya-shared/bodyPlanner";
+import { TWO_HAND_SKILLS } from "@t3tools/tessaya-shared/bodySkills";
 
 const shared = {
   failure: OrchestratorMcpFailure,
@@ -145,11 +146,26 @@ const Step = {
           left: Schema.optionalKey(Schema.Literals(HAND_PLACES)),
           right: Schema.optionalKey(Schema.Literals(HAND_PLACES)),
           repeat: Schema.optionalKey(
-            Num(0, 6, "Beats a second there and a little apart: a clap, rubbing hands, a tap."),
+            Num(0, 6, "Beats a second there and a little apart (a tap), or the skill's rate."),
+          ),
+          skill: Schema.optionalKey(
+            Schema.Literals(
+              Object.keys(TWO_HAND_SKILLS) as Array<keyof typeof TWO_HAND_SKILLS>,
+            ).annotate({
+              description:
+                "Both hands working together, palms meeting on her own body: clap, rub (rubbing them together), pray (palms together), wring, interlace (fingers laced), holdWrist (one hand holding the other wrist). Use it instead of left and right whenever both hands act together.",
+            }),
+          ),
+          style: Schema.optionalKey(
+            Schema.String.annotate({
+              description: `The skill's manner: ${Object.entries(TWO_HAND_SKILLS)
+                .map(([k, v]) => `${k}: ${v.join(", ")}`)
+                .join("; ")}.`,
+            }),
           ),
         }).annotate({
           description:
-            "Where her hands go, found on her own body: together (in front), mouth, face, brow, ear, head, heart, hip, shoulder (the other one: hugging herself), forward, up, out. Give it whenever the direction has hands in it.",
+            "Where her hands go, found on her own body: together (in front), mouth, face, brow, ear, head, heart, hip, shoulder (the other one: hugging herself), forward, up, out; or a two-hand skill. Give it whenever the direction has hands in it.",
         }),
       ),
       focus: Schema.optionalKey(

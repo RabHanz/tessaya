@@ -5,6 +5,7 @@
  */
 import { HAND_MOTIONS, type HandMotion } from "./bodyHand.ts";
 import { decodeHold, decodePerform, type Perform } from "./bodyPlanner.ts";
+import { FINGER_KEYS } from "./bodySkills.ts";
 import { fireAtMs, type EffectWhen } from "./speechEffects.ts";
 import {
   isAct,
@@ -585,7 +586,7 @@ export const parseCue = (raw: unknown): BodyCue | null => {
     }
     case "clip": {
       const id = str(c["id"], 40);
-      const bones = new Set<string>(POSE_BONES);
+      const bones = new Set<string>([...POSE_BONES, ...FINGER_KEYS]);
       const angle = (v: unknown) => num(v, -Math.PI, Math.PI);
       const frames = (Array.isArray(c["frames"]) ? c["frames"] : []).slice(0, 3600).map((f) =>
         Object.fromEntries(

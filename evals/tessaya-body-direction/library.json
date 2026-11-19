@@ -200,7 +200,6 @@
       "source": "M-070 library",
       "rubric": "a yawn, drooping head and eyes, slow, low energy"
     },
-
     {
       "id": "won-lottery",
       "said": "Pretend you just won the lottery.",
@@ -506,6 +505,114 @@
       "split": "unseen",
       "source": "M-070 held out",
       "rubric": "a slow deep breath, eyes closing, shoulders dropping, still and relaxed"
+    },
+    {
+      "id": "clap-polite",
+      "said": "Give a polite little clap, like at the end of a recital.",
+      "category": "social",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "small soft claps in front of her chest, palms meeting, a pleasant face"
+    },
+    {
+      "id": "pray-hands",
+      "said": "Put your hands together like you're praying.",
+      "category": "everyday",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "palms pressed together in front of her chest, fingers up, head a little bowed, a calm face"
+    },
+    {
+      "id": "wring-nervous",
+      "said": "Wring your hands like you're nervous about the results.",
+      "category": "emotional",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "both hands clasped low in front, turning over each other, shoulders up, a tense face, glancing away"
+    },
+    {
+      "id": "interlace-wait",
+      "said": "Lace your fingers together and wait patiently.",
+      "category": "everyday",
+      "difficulty": 1,
+      "split": "seen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "fingers interlaced in front of her, a still, patient posture, a calm face"
+    },
+    {
+      "id": "hold-wrist-shy",
+      "said": "Stand there holding your own wrist, a little shy.",
+      "category": "social",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "one hand holding the other wrist low in front, gaze down or away, a shy smile"
+    },
+    {
+      "id": "rub-cold",
+      "said": "Brr, it's freezing, rub your hands together.",
+      "category": "fine-motor",
+      "difficulty": 2,
+      "split": "seen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "palms together in front rubbing fast back and forth, shoulders up, a cold face, maybe a shiver"
+    },
+    {
+      "id": "clap-slow",
+      "said": "Give me a slow, sarcastic clap.",
+      "category": "social",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "slow, deliberate claps, palms meeting, an unimpressed or wry face, looking at him"
+    },
+    {
+      "id": "rub-scheme",
+      "said": "Rub your hands together like you've got an evil plan.",
+      "category": "comedic",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "palms together rubbing slowly, a sly grin, head lowered, eyes on him"
+    },
+    {
+      "id": "pray-beg",
+      "said": "Pretty please? Beg me with your hands together.",
+      "category": "social",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "palms pressed together raised toward him, a pleading face, small bobbing, looking at him"
+    },
+    {
+      "id": "wring-worry",
+      "said": "Show me you're worried sick about something.",
+      "category": "emotional",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "hands wringing or clasped tight in front, a worried face, shoulders up, looking away and back"
+    },
+    {
+      "id": "interlace-listen",
+      "said": "Clasp your hands in front of you while you listen to me.",
+      "category": "everyday",
+      "difficulty": 1,
+      "split": "unseen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "fingers laced or hands clasped in front, a still attentive posture, looking at him"
+    },
+    {
+      "id": "hold-wrist-wait",
+      "said": "Wait politely with one hand holding the other.",
+      "category": "social",
+      "difficulty": 1,
+      "split": "unseen",
+      "source": "M-081 two-hand skills, Director 19 Nov 2026",
+      "rubric": "one hand holding the other wrist or hand low in front, upright, a polite face"
     }
   ]
 }
