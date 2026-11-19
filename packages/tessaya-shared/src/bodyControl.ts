@@ -4,6 +4,15 @@
  * needs a private moment, the per-caller rate gate, and what the body reports back (proprioception).
  */
 import {
+  decodeTarget,
+  decodeTurn,
+  decodeWalk,
+  TARGET_HELP,
+  type BodyTarget,
+  type Turn,
+  type Walk,
+} from "./bodyLocomotion.ts";
+import {
   BODY_FACES,
   GESTURES,
   INTIMATE_FACES,
@@ -94,6 +103,12 @@ export interface BodyMove {
   readonly release?: boolean;
   /** She pulls free of any hand holding her (her own will: a grab never overrides it). */
   readonly free?: boolean;
+  /** Whom or where this step's gaze, gesture and touch aim at (another body, him); eyes only on a one-body vessel. */
+  readonly toward?: BodyTarget;
+  /** Her whole body turning to a target. */
+  readonly turn?: Turn;
+  /** Walking to a target, in real steps (the renderer's). */
+  readonly walk?: Walk;
   /**
    * A whole performance composed for this body from how the moment feels and moves (bodyPlanner.ts): over this step's
    * posture; the step's own `bones` and `keys` stay as placed, and the performance moves everything else.
@@ -184,6 +199,21 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
     )
       return { ok: false, error: `mood is one of ${Object.keys(BODY_FACES).join(", ")}` };
     m["mood"] = { name, intensity: num(isObj(mood) ? mood["intensity"] : undefined, 0, 1) ?? 0.6 };
+  }
+  if (raw["toward"] !== undefined) {
+    const t = decodeTarget(raw["toward"]);
+    if (t === null) return { ok: false, error: `toward: ${TARGET_HELP}` };
+    m["toward"] = t;
+  }
+  if (raw["turn"] !== undefined) {
+    const t = decodeTurn(raw["turn"]);
+    if (typeof t === "string") return { ok: false, error: t };
+    m["turn"] = t;
+  }
+  if (raw["walk"] !== undefined) {
+    const w = decodeWalk(raw["walk"]);
+    if (typeof w === "string") return { ok: false, error: w };
+    m["walk"] = w;
   }
   if (raw["look"] !== undefined) {
     const l = raw["look"];
@@ -365,6 +395,9 @@ const stepCues = (m: BodyMove, id: string): BodyCue[] => {
   if (m.act !== undefined && isAct(m.act)) out.push({ kind: "act", act: m.act as Act });
   if (m.mood !== undefined)
     out.push({ kind: "mood", mood: m.mood.name, intensity: m.mood.intensity });
+  if (m.turn !== undefined) out.push({ kind: "turn", ...m.turn });
+  if (m.walk !== undefined) out.push({ kind: "walk", ...m.walk });
+  if (m.toward !== undefined) out.push({ kind: "toward", to: m.toward });
   if (m.gesture !== undefined) out.push({ kind: "gesture", gesture: m.gesture });
   // a stream's gaze and face last only until the lapse; each frame renews them
   const hold = (ms: number) => (m.stream === true ? STREAM_LAPSE_MS : ms);
