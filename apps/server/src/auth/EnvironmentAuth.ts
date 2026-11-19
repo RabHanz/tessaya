@@ -4,6 +4,8 @@ import {
   AuthAccessWriteScope,
   AuthMcpClientAccess,
   AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
+  AuthTessayaBodyScope,
   AuthStandardClientScopes,
   type AuthAccessTokenResult,
   type AuthBrowserSessionResult,
@@ -22,6 +24,7 @@ import {
   type AuthWebSocketTicketUse,
   DpopFailureReason,
   type DpopFailureReason as DpopFailureReasonType,
+  isMcpRuntimeAccess,
   mcpClientScopes,
 } from "@t3tools/contracts";
 import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
@@ -954,7 +957,23 @@ export const make = Effect.gen(function* () {
   > & {
     readonly method: PairingGrantStore.BootstrapGrant["method"] | "reusable-dev-token";
   };
+  // The body scope is for an agent's MCP sign-in only: no browser or app session ever holds it, so a code that
+  // carries nothing else can't become one.
   const resolveBootstrapGrant = (
+    credential: string,
+    input?: Parameters<typeof resolveAnyBootstrapGrant>[1],
+  ) =>
+    resolveAnyBootstrapGrant(credential, input).pipe(
+      Effect.flatMap((grant) => {
+        if (input?.mcpApproval !== undefined || !grant.scopes.includes(AuthTessayaBodyScope))
+          return Effect.succeed(grant);
+        const scopes = grant.scopes.filter((scope) => scope !== AuthTessayaBodyScope);
+        return scopes.length === 0
+          ? Effect.fail(new ServerAuthScopeNotGrantedError({}))
+          : Effect.succeed({ ...grant, scopes });
+      }),
+    );
+  const resolveAnyBootstrapGrant = (
     credential: string,
     input?: {
       readonly proofKeyThumbprint?: string;
@@ -1366,13 +1385,18 @@ export const make = Effect.gen(function* () {
     return sessions.verify(token).pipe(
       mapSessionVerificationErrors,
       Effect.flatMap((session) =>
-        session.subject === MCP_CLIENT_SUBJECT && session.method === "bearer-access-token"
+        session.subject === MCP_CLIENT_SUBJECT &&
+        session.method === "bearer-access-token" &&
+        (session.scopes.includes(AuthOrchestrationReadScope) ||
+          session.scopes.includes(AuthTessayaBodyScope))
           ? Effect.succeed({
               sessionId: session.sessionId,
               label: session.client.label ?? "MCP client",
               access: session.scopes.includes(AuthOrchestrationOperateScope)
                 ? (session.runtimeModeCeiling ?? "approval-required")
-                : "read-only",
+                : session.scopes.includes(AuthOrchestrationReadScope)
+                  ? "read-only"
+                  : "body-only",
               peerLink: session.peerLink === true,
             } satisfies McpClientSession)
           : Effect.fail(
@@ -1392,7 +1416,7 @@ export const make = Effect.gen(function* () {
         method: "bearer-access-token",
         scopes: mcpClientScopes(input.access),
         ttl: MCP_CLIENT_SESSION_TTL,
-        ...(input.access === "read-only" ? {} : { runtimeModeCeiling: input.access }),
+        ...(isMcpRuntimeAccess(input.access) ? { runtimeModeCeiling: input.access } : {}),
         peerLink: input.peerLink,
         client: { ...input.client, label: input.label, deviceType: "bot" },
       })
@@ -1414,6 +1438,16 @@ export const make = Effect.gen(function* () {
       requiredScopes: mcpClientScopes(access),
       mcpApproval: access,
     }).pipe(
+      // Body-only is less than any level that starts work: a code that may approve those approves it too.
+      Effect.catchTags({
+        ServerAuthScopeNotGrantedError: (cause) =>
+          access === "body-only"
+            ? resolveBootstrapGrant(code.trim(), {
+                requiredScopes: [AuthOrchestrationOperateScope],
+                mcpApproval: access,
+              })
+            : Effect.fail(cause),
+      }),
       Effect.catchTags({
         ServerAuthInvalidCredentialError: () =>
           Effect.fail(new ServerAuthMcpApprovalCodeError({ reason: "unknown_or_used" })),

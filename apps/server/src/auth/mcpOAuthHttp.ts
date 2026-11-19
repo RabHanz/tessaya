@@ -3,7 +3,7 @@ import {
   AuthMcpAuthorizationRequest,
   AuthMcpClientAccess,
   EnvironmentHttpApi,
-  mcpClientScopes,
+  mayGrantMcpAccess,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -164,8 +164,10 @@ export const layer = HttpApiBuilder.group(
               ? {}
               : {
                   csrfToken: session.csrfToken,
-                  oneClickAccess: AuthMcpClientAccess.literals.filter((access) =>
-                    mcpClientScopes(access).every((scope) => session.scopes.includes(scope)),
+                  // Never body-only: an older hosted app can't decode it. Whoever may approve a level that
+                  // starts work may approve it (mayGrantMcpAccess), and the page knows that.
+                  oneClickAccess: AuthMcpClientAccess.literals.filter(
+                    (access) => access !== "body-only" && mayGrantMcpAccess(session.scopes, access),
                   ),
                 }),
           };

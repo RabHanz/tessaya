@@ -10,6 +10,7 @@ import {
   type BodyMoveAnswer,
 } from "../../../tessaya/TessayaBody.ts";
 import {
+  bodyOnlyHerRefusal,
   onPlayground,
   type Aim,
   movePlayground,
@@ -49,6 +50,14 @@ const callerNow = Effect.gen(function* () {
   } satisfies BodyCaller;
 });
 
+const bodyOnlyNow = Effect.map(
+  McpInvocationContext.McpInvocationContext,
+  (scope) => scope.client?.access === "body-only",
+);
+/** Her own body for a body-only agent only with his setting; anyone else as before. */
+const herRefusal = Effect.flatMap(bodyOnlyNow, bodyOnlyHerRefusal);
+type Asked = McpInvocationContext.McpInvocationContext;
+
 type SceneAnswer = {
   readonly ok: boolean;
   readonly said: string;
@@ -62,24 +71,35 @@ export const make = Effect.gen(function* () {
   const context = yield* TessayaRuntime;
   const inRuntime = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     context === null ? effect : effect.pipe(Effect.provideContext(context));
-  const move = (input: Aim & object, caller: BodyCaller): Effect.Effect<BodyMoveAnswer> => {
+  const move = (
+    input: Aim & object,
+    caller: BodyCaller,
+  ): Effect.Effect<BodyMoveAnswer, never, Asked> => {
     const { target: _target, playground, ...rest } = input;
     return onPlayground(input, caller)
       ? movePlayground(rest, caller, playground)
-      : moveBody(rest, caller);
+      : Effect.flatMap(herRefusal, (said) =>
+          said === null
+            ? moveBody(rest, caller)
+            : Effect.succeed({ ok: false, route: "none" as const, said }),
+        );
   };
   const scene = (
     input: Aim & { readonly scene: unknown; readonly dryRun?: boolean },
     caller: BodyCaller,
-  ): Effect.Effect<SceneAnswer> =>
+  ): Effect.Effect<SceneAnswer, never, Asked> =>
     onPlayground(input, caller)
       ? scenePlayground(input.scene, caller, input.dryRun === true, input.playground)
-      : playScene(input.scene, caller, input.dryRun === true);
+      : Effect.flatMap(herRefusal, (said) =>
+          said === null || input.dryRun === true
+            ? playScene(input.scene, caller, input.dryRun === true)
+            : Effect.succeed({ ok: false, said, route: "none" }),
+        );
   return {
-    tessaya_body_move: McpToolAccess.writes((input: Aim & object) =>
+    tessaya_body_move: McpToolAccess.bodyWrites((input: Aim & object) =>
       Effect.flatMap(callerNow, (caller) => inRuntime(move(input, caller))),
     ),
-    tessaya_body_scene: McpToolAccess.writes(
+    tessaya_body_scene: McpToolAccess.bodyWrites(
       (input: Aim & { readonly scene: unknown; readonly dryRun?: boolean }) =>
         Effect.flatMap(callerNow, (caller) => inRuntime(scene(input, caller))),
     ),
@@ -87,7 +107,13 @@ export const make = Effect.gen(function* () {
       Effect.flatMap(callerNow, (caller) =>
         onPlayground(input, caller)
           ? Effect.succeed(statePlayground(input.playground))
-          : inRuntime(bodyState(caller)),
+          : inRuntime(
+              Effect.flatMap(herRefusal, (said) =>
+                said === null
+                  ? bodyState(caller)
+                  : Effect.succeed({ open: false, body: null, capabilities: null }),
+              ),
+            ),
       ),
     ),
   };

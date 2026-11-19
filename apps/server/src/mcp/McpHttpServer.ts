@@ -1321,6 +1321,27 @@ export const layerInProcessMcpServer = McpServer.middleware<{
   { global: true },
 ).pipe(Layer.provideMerge(McpServer.McpServer.layer));
 
+/** What a client approved for her body only (`body-only`, the `tessaya:body` scope) may list and call. */
+export const BODY_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  "tessaya_body_move",
+  "tessaya_body_scene",
+  "tessaya_body_state",
+]);
+/**
+ * A body-only client lists and calls the body tools and nothing else; any other tool, resource or prompt answers
+ * as if it were not registered. Every other client is unchanged.
+ */
+export const layerBodyOnlyClients = McpServer.visibility(
+  // Untraced: it runs once per registration on every list request.
+  Effect.fnUntraced(function* ({ target }: McpServer.MiddlewareOptions) {
+    const scope = yield* Effect.serviceOption(McpInvocationContext.McpInvocationContext);
+    return (
+      Option.getOrUndefined(scope)?.client?.access !== "body-only" || BODY_ONLY_TOOLS.has(target)
+    );
+  }),
+  { global: true },
+);
+
 export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE, RR>) =>
   McpServer.layerHttp({
     name: "T3 Code",
@@ -1329,7 +1350,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
     // The first protocol is the fallback for clients that offer an unknown version.
     protocols: [McpProtocol.v2025_06_18, McpProtocol.v2026_07_28],
     allowSessionTermination: true,
-    registrations,
+    registrations: Layer.merge(registrations, layerBodyOnlyClients),
   }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
 /** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */

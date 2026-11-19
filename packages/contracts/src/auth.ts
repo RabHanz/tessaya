@@ -79,6 +79,11 @@ export const AuthTessayaGuestScope = "tessaya:guest" as const;
  * and uploads models, which her server signs. It reaches nothing else.
  */
 export const AuthTessayaWakeTrainerScope = "tessaya:wake-trainer" as const;
+/**
+ * An outside agent approved for her body only (M-089): the three body tools on /mcp and nothing else, no thread,
+ * project, file or setting. Never part of the standard client scopes; the "body-only" MCP access level carries it alone.
+ */
+export const AuthTessayaBodyScope = "tessaya:body" as const;
 const AuthEnvironmentScopeName = Schema.Literals([
   AuthOrchestrationReadScope,
   AuthOrchestrationOperateScope,
@@ -104,6 +109,7 @@ const AuthEnvironmentScopeName = Schema.Literals([
   AuthTessayaMemberScope,
   AuthTessayaGuestScope,
   AuthTessayaWakeTrainerScope,
+  AuthTessayaBodyScope,
 ]);
 /**
  * Baton was renamed Tessaya. Each `baton:` scope also decodes from its `tessaya:` spelling, and this build still
@@ -215,6 +221,7 @@ const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope
   [AuthTessayaMemberScope]: AuthOrchestrationReadScope,
   [AuthTessayaGuestScope]: AuthOrchestrationReadScope,
   [AuthTessayaWakeTrainerScope]: AuthOrchestrationOperateScope,
+  [AuthTessayaBodyScope]: AuthOrchestrationReadScope,
 };
 
 /** Keep permission denials decodable by clients with the original scope enum. */
@@ -369,21 +376,39 @@ export const AuthMcpClientAccess = Schema.Literals([
   "auto-accept-edits",
   "auto",
   "full-access",
+  "body-only",
 ]);
 export type AuthMcpClientAccess = typeof AuthMcpClientAccess.Type;
+/** The levels that are a runtime mode an agent's work runs at; read-only and body-only start no work. */
+export type AuthMcpRuntimeAccess = Exclude<AuthMcpClientAccess, "read-only" | "body-only">;
+export const isMcpRuntimeAccess = (access: AuthMcpClientAccess): access is AuthMcpRuntimeAccess =>
+  access !== "read-only" && access !== "body-only";
 
 /** The scopes an agent session gets for an access level, and a pairing code must carry. */
 export const mcpClientScopes = (access: AuthMcpClientAccess): ReadonlyArray<AuthGrantScope> =>
   access === "read-only"
     ? [AuthOrchestrationReadScope]
-    : access === "full-access"
-      ? [
-          AuthOrchestrationReadScope,
-          AuthOrchestrationOperateScope,
-          AuthSettingsWriteScope,
-          AuthSourceControlWriteScope,
-        ]
-      : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
+    : access === "body-only"
+      ? [AuthTessayaBodyScope]
+      : access === "full-access"
+        ? [
+            AuthOrchestrationReadScope,
+            AuthOrchestrationOperateScope,
+            AuthSettingsWriteScope,
+            AuthSourceControlWriteScope,
+          ]
+        : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
+
+/**
+ * Whether a session holding `scopes` may approve an agent at `access`. Body-only is less than any level that can start
+ * work, all of which already reach the body tools, so whoever may approve those may approve it.
+ */
+export const mayGrantMcpAccess = (
+  scopes: ReadonlyArray<string>,
+  access: AuthMcpClientAccess,
+): boolean =>
+  mcpClientScopes(access).every((scope) => scopes.includes(scope)) ||
+  (access === "body-only" && scopes.includes(AuthOrchestrationOperateScope));
 
 /** The random part of a one-time pairing code: this many characters from this alphabet. */
 export const PAIRING_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -395,6 +420,7 @@ const MCP_APPROVAL_CODE_PREFIXES = {
   "auto-accept-edits": "EDITS",
   auto: "AUTO",
   "full-access": "FULL",
+  "body-only": "BODY",
 } as const satisfies Record<AuthMcpClientAccess, string>;
 
 const MCP_APPROVAL_CODE_PATTERN = new RegExp(

@@ -171,6 +171,12 @@ function MoodSections(props: {
           />
         ))}
         <SettingsSwitchRow
+          label="Body-only agents move her body"
+          subtitle="Agents you approved for her body only may move her own body, not only the body playground. It still waits while a conversation you are in has her."
+          value={settings.tessayaBodyOutsideAgents}
+          onValueChange={(on) => patch({ tessayaBodyOutsideAgents: on })}
+        />
+        <SettingsSwitchRow
           label="Breath between sentences"
           subtitle="A soft breath before a long sentence of her reply on the Tessel. Off, she pauses instead."
           value={settings.tessayaVoiceBreath}

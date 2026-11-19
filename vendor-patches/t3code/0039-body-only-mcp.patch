@@ -1,0 +1,342 @@
+Tessaya M-089: a body-only MCP access level (tessaya:body) for outside agents that drive her body, and nothing else.
+
+diff --git a/apps/server/src/auth/McpOAuth.ts b/apps/server/src/auth/McpOAuth.ts
+index 426cb2213f3ef101a8f22c8a9808a96157da86be..31bbbd50df8dbf885b229d39fd54eaba99a1ea53 100644
+--- a/apps/server/src/auth/McpOAuth.ts
++++ b/apps/server/src/auth/McpOAuth.ts
+@@ -14,6 +14,7 @@ import {
+   AuthOrchestrationOperateScope,
+   AuthOrchestrationReadScope,
+   MCP_PEER_LINK_SOFTWARE_ID,
++  mayGrantMcpAccess,
+   mcpClientScopes,
+   parseMcpApprovalCode,
+   type RuntimeMode,
+@@ -450,6 +451,12 @@ const make = Effect.gen(function* () {
+ 
+   const approve: McpOAuth["Service"]["approve"] = Effect.fn("McpOAuth.approve")(function* (input) {
+     const { decision } = input;
++    // A linked environment works with threads; a body-only link would only carry the peer link's other powers.
++    if (input.authorization.client.peerLink && decision.access === "body-only") {
++      return yield* new McpOAuthPageError({
++        description: "Linking another environment needs a level that works with threads.",
++      });
++    }
+     let access = decision.access;
+     if (decision._tag === "pairing-code") {
+       // An approval code is for one app's sign-in, never for linking another environment.
+@@ -476,7 +483,7 @@ const make = Effect.gen(function* () {
+       if (
+         session === undefined ||
+         !timingSafeEqualBase64Url(decision.csrfToken, session.csrfToken) ||
+-        !mcpClientScopes(decision.access).every((scope) => session.scopes.includes(scope))
++        !mayGrantMcpAccess(session.scopes, decision.access)
+       ) {
+         return yield* new McpOAuthPageError({
+           description: "Your session cannot approve this request. Enter a pairing code instead.",
+diff --git a/apps/server/src/auth/mcpOAuthHttp.ts b/apps/server/src/auth/mcpOAuthHttp.ts
+index a411c635e30e433dbf2e6cbdf2d880b9d02b912c..d753f170f616f072f3c4ddb14820ac5351429522 100644
+--- a/apps/server/src/auth/mcpOAuthHttp.ts
++++ b/apps/server/src/auth/mcpOAuthHttp.ts
+@@ -3,7 +3,7 @@ import {
+   AuthMcpAuthorizationRequest,
+   AuthMcpClientAccess,
+   EnvironmentHttpApi,
+-  mcpClientScopes,
++  mayGrantMcpAccess,
+ } from "@t3tools/contracts";
+ import * as Effect from "effect/Effect";
+ import * as Option from "effect/Option";
+@@ -164,8 +164,10 @@ export const layer = HttpApiBuilder.group(
+               ? {}
+               : {
+                   csrfToken: session.csrfToken,
+-                  oneClickAccess: AuthMcpClientAccess.literals.filter((access) =>
+-                    mcpClientScopes(access).every((scope) => session.scopes.includes(scope)),
++                  // Never body-only: an older hosted app can't decode it. Whoever may approve a level that
++                  // starts work may approve it (mayGrantMcpAccess), and the page knows that.
++                  oneClickAccess: AuthMcpClientAccess.literals.filter(
++                    (access) => access !== "body-only" && mayGrantMcpAccess(session.scopes, access),
+                   ),
+                 }),
+           };
+diff --git a/apps/server/src/mcp/McpHttpServer.test.ts b/apps/server/src/mcp/McpHttpServer.test.ts
+index 395d9dfe04fe58f5d450aaf92643b92057fb93e4..f4f17cac080c656b909979714a0561cca7729682 100644
+--- a/apps/server/src/mcp/McpHttpServer.test.ts
++++ b/apps/server/src/mcp/McpHttpServer.test.ts
+@@ -578,6 +578,39 @@ it.effect("refuses preview tools to a client outside a thread before they run",
+   }).pipe(Effect.provide(layerTest)),
+ );
+ 
++it.effect("shows a body-only client nothing but the body tools", () =>
++  Effect.gen(function* () {
++    const server = yield* McpServer.McpServer;
++    const bodyOnly = {
++      ...invocation,
++      thread: undefined,
++      requestNamespace: "client:session-2",
++      client: { sessionId: "session-2", label: "Body agent", access: "body-only" as const },
++    };
++    const click = yield* server
++      .callTool({ name: "preview_act", arguments: { action: "click", locator: "text=Send" } })
++      .pipe(
++        Effect.provideService(McpInvocationContext.McpInvocationContext, bodyOnly),
++        Effect.provideService(McpSchema.McpServerClient, client),
++        Effect.result,
++      );
++    // refused as if the tool did not exist, before its own checks run (the read-only case above runs them)
++    expect(click).toMatchObject({
++      _tag: "Failure",
++      failure: { message: "Tool 'preview_act' not found" },
++    });
++  }).pipe(
++    Effect.provide(
++      Layer.merge(
++        layerTest,
++        McpHttpServer.layerBodyOnlyClients.pipe(
++          Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
++        ),
++      ),
++    ),
++  ),
++);
++
+ it.effect("advertises the compact input schema for every registered tool", () =>
+   Effect.gen(function* () {
+     const server = yield* McpServer.McpServer;
+diff --git a/apps/server/src/mcp/McpInvocationContext.ts b/apps/server/src/mcp/McpInvocationContext.ts
+index eb102be177782ac3a3e47dcf362071315559bb8c..f5889c7a0cd3f36d1605eb23d850f4a690756202 100644
+--- a/apps/server/src/mcp/McpInvocationContext.ts
++++ b/apps/server/src/mcp/McpInvocationContext.ts
+@@ -1,5 +1,6 @@
+ import {
+   type AuthMcpClientAccess,
++  isMcpRuntimeAccess,
+   type EnvironmentId,
+   McpCapabilityUnavailableError,
+   OrchestratorMcpFailure,
+@@ -81,15 +82,15 @@ const runtimeModeRank: Record<RuntimeMode, number> = {
+ const interactionModeRank: Record<ProviderInteractionMode, number> = { plan: 0, default: 1 };
+ 
+ /**
+- * The modes a client caller's writes are capped at: what it was approved
+- * with, narrowed by what it asked for on this request. A read-only client
+- * never reaches a write (`McpToolAccess` refuses it first), so it maps to the
+- * lowest runtime mode rather than to nothing.
++ * A client's write cap: its approved mode, narrowed by this request's ask. Read-only and body-only
++ * clients start no work (`McpToolAccess` refuses them), so they map to the lowest mode, not nothing.
+  */
+ export const clientModeCeiling = (client: McpClientCaller | undefined): ClientModes => {
+   const approved: ClientModes = {
+     runtimeMode:
+-      client === undefined || client.access === "read-only" ? "approval-required" : client.access,
++      client === undefined || !isMcpRuntimeAccess(client.access)
++        ? "approval-required"
++        : client.access,
+     interactionMode: "default",
+   };
+   const asked = client?.narrowedTo;
+diff --git a/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts b/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts
+index a7a0a05602d4cd70b8c9fada0b7d440eb7c4fee2..eb3a1258b246a10a6618889d0a68329299a8e7b2 100644
+--- a/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts
++++ b/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts
+@@ -44,6 +44,17 @@ it("checks a typed code even in a signed-in browser, and approves without one at
+     csrfToken: "csrf",
+   });
+   expect(resolveApprovalDecision({ code: "", access, details: signedOut })).toBeNull();
++  // the server never lists body-only; a session that may approve work may approve it
++  const body = { code: "", access: "body-only" as const };
++  expect(
++    resolveApprovalDecision({ ...body, details: { ...details, oneClickAccess: ["read-only"] } }),
++  ).toBeNull();
++  expect(
++    resolveApprovalDecision({
++      ...body,
++      details: { ...details, oneClickAccess: ["read-only", "auto"] },
++    }),
++  ).toEqual({ _tag: "browser-session", access: "body-only", csrfToken: "csrf" });
+ });
+ 
+ it("follows only https or loopback http redirects to an agent", () => {
+diff --git a/apps/web/src/components/auth/ConnectAgentSurface.logic.ts b/apps/web/src/components/auth/ConnectAgentSurface.logic.ts
+index b796c6a55c85eedadb15e833641efe267aa030cc..fea7468f32169ebd068a0ae1cd1dade64c7bac9b 100644
+--- a/apps/web/src/components/auth/ConnectAgentSurface.logic.ts
++++ b/apps/web/src/components/auth/ConnectAgentSurface.logic.ts
+@@ -2,6 +2,7 @@ import {
+   type AuthMcpApprovalDecision,
+   type AuthMcpApprovalDetails,
+   type AuthMcpClientAccess,
++  isMcpRuntimeAccess,
+   isRuntimeModeAbove,
+   parseMcpApprovalCode,
+ } from "@t3tools/contracts";
+@@ -17,7 +18,7 @@ export function resolveMcpAccess(
+   hasCode: boolean,
+ ): AuthMcpClientAccess {
+   const access = requested ?? (hasCode ? "auto" : "read-only");
+-  return access !== "read-only" &&
++  return isMcpRuntimeAccess(access) &&
+     ceiling !== undefined &&
+     isRuntimeModeAbove(access, ceiling.maxRuntimeMode)
+     ? ceiling.maxRuntimeMode
+@@ -41,8 +42,13 @@ export function resolveApprovalDecision(input: {
+       code,
+     };
+   }
+-  const { csrfToken, oneClickAccess } = input.details;
+-  return csrfToken !== undefined && (oneClickAccess ?? []).includes(input.access)
++  const { csrfToken, oneClickAccess = [] } = input.details;
++  // the server never lists body-only, which any level that starts work may approve
++  const oneClick =
++    input.access === "body-only"
++      ? oneClickAccess.some(isMcpRuntimeAccess)
++      : oneClickAccess.includes(input.access);
++  return csrfToken !== undefined && oneClick
+     ? { _tag: "browser-session", access: input.access, csrfToken }
+     : null;
+ }
+diff --git a/apps/web/src/components/auth/ConnectAgentSurface.tsx b/apps/web/src/components/auth/ConnectAgentSurface.tsx
+index 9d0309143361040d18eb13de9f987371e074c361..2cc9147ad56f2bc8b843d66ed13e62c7d663a533 100644
+--- a/apps/web/src/components/auth/ConnectAgentSurface.tsx
++++ b/apps/web/src/components/auth/ConnectAgentSurface.tsx
+@@ -4,13 +4,14 @@ import {
+   AuthMcpApprovalError,
+   AuthMcpClientAccess,
+   AuthMcpAuthorizationRequest,
++  isMcpRuntimeAccess,
+   isRuntimeModeAbove,
+   managedRuntimeModeCeilingMessage,
+   parseMcpApprovalCode,
+ } from "@t3tools/contracts";
+ import { Radio as RadioPrimitive } from "@base-ui/react/radio";
+ import { isLoopbackHost } from "@t3tools/shared/preview";
+-import { EyeIcon, type LucideIcon } from "lucide-react";
++import { EyeIcon, PersonStandingIcon, type LucideIcon } from "lucide-react";
+ import type * as Context from "effect/Context";
+ import * as Effect from "effect/Effect";
+ import * as Schema from "effect/Schema";
+@@ -42,6 +43,12 @@ export const accessConfig: Record<
+     icon: EyeIcon,
+   },
+   ...runtimeModeConfig,
++  "body-only": {
++    label: "Her body only",
++    description:
++      "Moves and reads a 3D body in the body playground. Sees no projects, threads, files or settings.",
++    icon: PersonStandingIcon,
++  },
+ };
+ 
+ const ARM_DELAY_MS = 700;
+@@ -347,7 +354,7 @@ export function McpConsent({
+               ))}
+             </RadioGroup>
+             <p className="text-xs text-muted-foreground">
+-              Beyond read only, it can start, message and stop threads, and none of them can run
++              Supervised and above can start, message and stop threads, and none of them can run
+               with more than the mode you pick.
+             </p>
+           </div>
+@@ -396,7 +403,7 @@ function ConnectAgentHeading({
+ function ceilingReason(details: AuthMcpApprovalDetails, access: AuthMcpClientAccess) {
+   const ceiling = details.runtimeModeCeiling;
+   return ceiling === undefined ||
+-    access === "read-only" ||
++    !isMcpRuntimeAccess(access) ||
+     !isRuntimeModeAbove(access, ceiling.maxRuntimeMode)
+     ? undefined
+     : managedRuntimeModeCeilingMessage(ceiling.organization, ceiling.maxRuntimeMode);
+diff --git a/apps/web/src/components/mcp/UseInAnotherAppDialog.tsx b/apps/web/src/components/mcp/UseInAnotherAppDialog.tsx
+index 93666b3d243e0cf0855fba9fbe741b88d5baa5bd..d299be7c46ae347560d9ee3bb711084360df0433 100644
+--- a/apps/web/src/components/mcp/UseInAnotherAppDialog.tsx
++++ b/apps/web/src/components/mcp/UseInAnotherAppDialog.tsx
+@@ -9,6 +9,8 @@ import {
+   type EnvironmentId,
+   managedCapabilityDenial,
+   managedRuntimeModeDenial,
++  AuthOrchestrationOperateScope,
++  isMcpRuntimeAccess,
+   mcpClientScopes,
+   sessionGrantsScope,
+ } from "@t3tools/contracts";
+@@ -219,9 +221,13 @@ function useGrantableLevels(environment: EnvironmentPresentation) {
+         (!canMint
+           ? `This device needs the Manage access permission on ${environment.label}.`
+           : session === null ||
+-              !mcpClientScopes(level).every((scope) => sessionGrantsScope(session, scope))
++              !(
++                mcpClientScopes(level).every((scope) => sessionGrantsScope(session, scope)) ||
++                (level === "body-only" &&
++                  sessionGrantsScope(session, AuthOrchestrationOperateScope))
++              )
+             ? `This device cannot grant this on ${environment.label}.`
+-            : level === "read-only"
++            : !isMcpRuntimeAccess(level)
+               ? undefined
+               : managedRuntimeModeDenial(policy, level));
+       return reason === undefined ? [] : [[level, reason] as const];
+@@ -808,7 +814,8 @@ function LinkedLine({
+       : null,
+   ).data?.links;
+   const identities = useEnvironmentIdentities();
+-  if (!offered || links === undefined || links.length === 0) return null;
++  // a body-only agent reaches no thread, so no linked machine either
++  if (!offered || links === undefined || links.length === 0 || access === "body-only") return null;
+   const named = links.map((link) => {
+     const name =
+       identities.find((identity) => identity.environmentId === link.environmentId)?.label ??
+diff --git a/apps/web/src/components/settings/LinkAccessPicker.tsx b/apps/web/src/components/settings/LinkAccessPicker.tsx
+index 407f05f934a1cd35bb72a423514b2498fd43a7a1..52d3c4953ee410f0f16f3e38d2c78064622e9681 100644
+--- a/apps/web/src/components/settings/LinkAccessPicker.tsx
++++ b/apps/web/src/components/settings/LinkAccessPicker.tsx
+@@ -37,20 +37,23 @@ export function LinkAccessPicker({
+           </SelectValue>
+         </SelectTrigger>
+         <SelectPopup alignItemWithTrigger={false}>
+-          {AuthMcpClientAccess.literals.map((option) => {
+-            const { label, description, icon: Icon } = accessConfig[option];
+-            return (
+-              <SelectItem key={option} value={option} hideIndicator>
+-                <span className="grid min-w-0 gap-0.5 py-0.5">
+-                  <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+-                    <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+-                    {label}
++          {/* a linked environment works with threads, which body-only never reaches */}
++          {AuthMcpClientAccess.literals
++            .filter((option) => option !== "body-only")
++            .map((option) => {
++              const { label, description, icon: Icon } = accessConfig[option];
++              return (
++                <SelectItem key={option} value={option} hideIndicator>
++                  <span className="grid min-w-0 gap-0.5 py-0.5">
++                    <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
++                      <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
++                      {label}
++                    </span>
++                    <span className="text-xs leading-4 text-muted-foreground">{description}</span>
+                   </span>
+-                  <span className="text-xs leading-4 text-muted-foreground">{description}</span>
+-                </span>
+-              </SelectItem>
+-            );
+-          })}
++                </SelectItem>
++              );
++            })}
+         </SelectPopup>
+       </Select>
+       <p className="text-xs text-muted-foreground">
+diff --git a/docs/user/outside-agents.md b/docs/user/outside-agents.md
+index 84d00cc98b16c00d3c499f83c679246b600f4ed2..317816e62e9ae9f5608eff240a63cb887f62750c 100644
+--- a/docs/user/outside-agents.md
++++ b/docs/user/outside-agents.md
+@@ -79,6 +79,9 @@ policy. Approving without a code starts at **Read only**:
+ - **Supervised** through **Full access** also let it start, message and stop
+   threads in every project. A thread it starts or steers cannot run with more
+   permissions than the mode you chose.
++- **Her body only** lets the agent drive the [body playground](./tessaya-playground.md)
++  with the three body tools and nothing else: no projects, threads, files or
++  settings.
+ 
+ ## What outside agents can call
+ 

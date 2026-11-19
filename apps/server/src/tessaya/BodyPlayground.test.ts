@@ -7,6 +7,7 @@ import { onAction } from "../provenance/ActionLog.ts";
 import {
   movePlayground,
   onPlayground,
+  bodyOnlyHerRefusal,
   pollBus,
   reportBus,
   resetPlaygroundForTest,
@@ -14,6 +15,7 @@ import {
   statePlayground,
   watchBus,
 } from "./BodyPlayground.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import { PersonaLayers, type PersonaLayer } from "./PersonaLayers.ts";
 import { bodyHolderLine, type BodyCaller } from "./TessayaBody.ts";
 
@@ -28,6 +30,18 @@ describe("BodyPlayground", () => {
     expect(onPlayground({ target: "her" }, outside)).toBe(false);
     expect(onPlayground({ target: "playground" }, her)).toBe(true);
   });
+
+  it.effect("lets a body-only agent move her own body only with his setting", () =>
+    Effect.gen(function* () {
+      const off = yield* bodyOnlyHerRefusal(true).pipe(Effect.provide(ServerSettings.layerTest()));
+      expect(off).toContain("playground");
+      expect(yield* bodyOnlyHerRefusal(false)).toBeNull();
+      const on = yield* bodyOnlyHerRefusal(true).pipe(
+        Effect.provide(ServerSettings.layerTest({ tessayaBodyOutsideAgents: true })),
+      );
+      expect(on).toBeNull();
+    }),
+  );
 
   it.effect("puts a move on the playground's bus only: never her body, never body focus", () =>
     Effect.gen(function* () {

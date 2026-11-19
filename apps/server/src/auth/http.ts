@@ -18,6 +18,7 @@ import {
   EnvironmentScopeRequiredError,
   EnvironmentAuthenticatedAuth,
   EnvironmentAuthenticatedPrincipal,
+  mayGrantMcpAccess,
   mcpClientScopes,
 } from "@t3tools/contracts";
 import type { AuthEnvironmentScope, DpopFailureReason } from "@t3tools/contracts";
@@ -463,8 +464,12 @@ export const layer = HttpApiBuilder.group(
             ) {
               return yield* failEnvironmentInvalidRequest("invalid_scope");
             }
+            const access = args.payload.access;
             for (const delegatedScope of delegatedScopes) {
-              if (!session.scopes.has(delegatedScope)) {
+              if (
+                !session.scopes.has(delegatedScope) &&
+                !(access !== undefined && mayGrantMcpAccess([...session.scopes], access))
+              ) {
                 return yield* failEnvironmentScopeRequired(delegatedScope);
               }
             }

@@ -1556,6 +1556,8 @@ export const ServerSettings = Schema.Struct({
   tessayaLiveliness: Schema.Literals(["still", "calm", "lively"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("calm" as const)),
   ),
+  // Tessaya: whether agents approved for her body only (body-only MCP) may move her own body; off, only the playground.
+  tessayaBodyOutsideAgents: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: a soft breath before a long later sentence of her reply on the Tessel; off until it sounds natural (19 Nov).
   tessayaVoiceBreath: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
@@ -2050,6 +2052,7 @@ export const ServerSettingsPatch = Schema.Struct({
   tessayaOwnSensorsNoApproval: Schema.optionalKey(Schema.Boolean),
   tessayaLiveliness: Schema.optionalKey(Schema.Literals(["still", "calm", "lively"])),
   tessayaVoiceBreath: Schema.optionalKey(Schema.Boolean),
+  tessayaBodyOutsideAgents: Schema.optionalKey(Schema.Boolean),
   tessayaMood: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.optionalKey(Schema.Boolean),

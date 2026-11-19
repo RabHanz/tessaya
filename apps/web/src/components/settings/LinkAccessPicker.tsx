@@ -37,20 +37,23 @@ export function LinkAccessPicker({
           </SelectValue>
         </SelectTrigger>
         <SelectPopup alignItemWithTrigger={false}>
-          {AuthMcpClientAccess.literals.map((option) => {
-            const { label, description, icon: Icon } = accessConfig[option];
-            return (
-              <SelectItem key={option} value={option} hideIndicator>
-                <span className="grid min-w-0 gap-0.5 py-0.5">
-                  <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                    <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-                    {label}
+          {/* a linked environment works with threads, which body-only never reaches */}
+          {AuthMcpClientAccess.literals
+            .filter((option) => option !== "body-only")
+            .map((option) => {
+              const { label, description, icon: Icon } = accessConfig[option];
+              return (
+                <SelectItem key={option} value={option} hideIndicator>
+                  <span className="grid min-w-0 gap-0.5 py-0.5">
+                    <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                      <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                      {label}
+                    </span>
+                    <span className="text-xs leading-4 text-muted-foreground">{description}</span>
                   </span>
-                  <span className="text-xs leading-4 text-muted-foreground">{description}</span>
-                </span>
-              </SelectItem>
-            );
-          })}
+                </SelectItem>
+              );
+            })}
         </SelectPopup>
       </Select>
       <p className="text-xs text-muted-foreground">

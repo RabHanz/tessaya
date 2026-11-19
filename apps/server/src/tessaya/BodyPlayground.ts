@@ -24,9 +24,11 @@ import { REFERENCE_RIG } from "@t3tools/tessaya-shared/bodyRig";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { emitAction } from "../provenance/ActionLog.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import type { BodyCaller, BodyMoveAnswer } from "./TessayaBody.ts";
 
 const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
@@ -188,6 +190,26 @@ export interface Aim {
 /** Outside agents test on the playground unless they ask for her; her own turns and his agents move her. */
 export const onPlayground = (aim: Aim, caller: BodyCaller): boolean =>
   (aim.target ?? (caller.kind === "outside" ? "playground" : "her")) === "playground";
+
+/**
+ * Why an agent approved for her body only may not move or feel her own body now, or null: only with his setting
+ * (`tessayaBodyOutsideAgents`, off by default). Every other caller keeps what it had; body focus still decides.
+ */
+export const bodyOnlyHerRefusal = Effect.fn("BodyPlayground.bodyOnlyHer")(function* (
+  bodyOnly: boolean,
+) {
+  if (!bodyOnly) return null;
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  const allowed = Option.isNone(settings)
+    ? false
+    : yield* settings.value.getSettings.pipe(
+        Effect.map((s) => s.tessayaBodyOutsideAgents),
+        Effect.orElseSucceed(() => false),
+      );
+  return allowed
+    ? null
+    : 'He hasn\'t let outside agents move her own body. Use target "playground" (an open /tessaya/playground page) instead.';
+});
 
 const NO_PLAYGROUND = "No playground is open. Open /tessaya/playground in a browser first.";
 const EVERYDAY_ONLY = "The playground shows everyday moves only.";

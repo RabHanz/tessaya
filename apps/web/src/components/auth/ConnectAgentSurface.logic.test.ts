@@ -44,6 +44,17 @@ it("checks a typed code even in a signed-in browser, and approves without one at
     csrfToken: "csrf",
   });
   expect(resolveApprovalDecision({ code: "", access, details: signedOut })).toBeNull();
+  // the server never lists body-only; a session that may approve work may approve it
+  const body = { code: "", access: "body-only" as const };
+  expect(
+    resolveApprovalDecision({ ...body, details: { ...details, oneClickAccess: ["read-only"] } }),
+  ).toBeNull();
+  expect(
+    resolveApprovalDecision({
+      ...body,
+      details: { ...details, oneClickAccess: ["read-only", "auto"] },
+    }),
+  ).toEqual({ _tag: "browser-session", access: "body-only", csrfToken: "csrf" });
 });
 
 it("follows only https or loopback http redirects to an agent", () => {

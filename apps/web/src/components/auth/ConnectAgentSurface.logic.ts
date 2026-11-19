@@ -2,6 +2,7 @@ import {
   type AuthMcpApprovalDecision,
   type AuthMcpApprovalDetails,
   type AuthMcpClientAccess,
+  isMcpRuntimeAccess,
   isRuntimeModeAbove,
   parseMcpApprovalCode,
 } from "@t3tools/contracts";
@@ -17,7 +18,7 @@ export function resolveMcpAccess(
   hasCode: boolean,
 ): AuthMcpClientAccess {
   const access = requested ?? (hasCode ? "auto" : "read-only");
-  return access !== "read-only" &&
+  return isMcpRuntimeAccess(access) &&
     ceiling !== undefined &&
     isRuntimeModeAbove(access, ceiling.maxRuntimeMode)
     ? ceiling.maxRuntimeMode
@@ -41,8 +42,13 @@ export function resolveApprovalDecision(input: {
       code,
     };
   }
-  const { csrfToken, oneClickAccess } = input.details;
-  return csrfToken !== undefined && (oneClickAccess ?? []).includes(input.access)
+  const { csrfToken, oneClickAccess = [] } = input.details;
+  // the server never lists body-only, which any level that starts work may approve
+  const oneClick =
+    input.access === "body-only"
+      ? oneClickAccess.some(isMcpRuntimeAccess)
+      : oneClickAccess.includes(input.access);
+  return csrfToken !== undefined && oneClick
     ? { _tag: "browser-session", access: input.access, csrfToken }
     : null;
 }

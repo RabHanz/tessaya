@@ -20,7 +20,7 @@ const Aim = {
   target: Schema.optionalKey(
     Schema.Literals(["playground", "her"]).annotate({
       description:
-        'Which body: "playground", a sandbox body in an open /tessaya/playground page that reaches no one, or "her", her own body wherever it is shown. Agents signed in from outside default to the playground; her own turns and his agents to her.',
+        'Which body: "playground", a sandbox body in an open /tessaya/playground page that reaches no one, or "her", her own body wherever it is shown. Agents signed in from outside default to the playground; her own turns and his agents default to her.',
     }),
   ),
   playground: Schema.optionalKey(
