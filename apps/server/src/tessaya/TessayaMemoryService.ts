@@ -1664,7 +1664,7 @@ export const oneBrain = Layer.effect(
         data: { changes: all.changes.length },
       });
     });
-    const nowIsoHere = Effect.map(Clock.currentTimeMillis, (ms) => new Date(ms).toISOString());
+    const nowIsoHere = Effect.map(DateTime.now, DateTime.formatIso);
     /** What she just learned while her brain is away, as it will be kept there: marked not yet synced. */
     const unsynced = (draft: MemoryDraft, at: string): MemoryItem =>
       ({
