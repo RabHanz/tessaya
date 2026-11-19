@@ -1612,6 +1612,14 @@ const make = Effect.gen(function* () {
 
   // Being moved (§9.7M S3): her mood, her eyes and a line of her own, through the same paths as every other moment.
   const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
+  /** His owner setting: her own sensors (the Tessel's camera) need no card from his conversation; on by default. */
+  const ownSensorsFree =
+    serverSettings._tag === "None"
+      ? Effect.succeed(true)
+      : serverSettings.value.getSettings.pipe(
+          Effect.map((s) => s.tessayaOwnSensorsNoApproval),
+          Effect.orElseSucceed(() => true),
+        );
   const mood = yield* Effect.serviceOption(TessayaMood);
   const liveContext = yield* Effect.serviceOption(TurnLiveContext);
   const motionSeen = new Map<string, MotionSeen>();
@@ -3241,6 +3249,10 @@ const make = Effect.gen(function* () {
         why: "Raw device commands are sent only from Settings → Hardware.",
       });
     }
+    // Her own camera, asked in his conversation in his home: her own sensor, no card and no voice step-up (Director,
+    // 19 Nov 05:05). Her eyes show she is looking and the Record has the act; an agent or a job still asks him.
+    if (c.op === "camera" && by.surface === "assistant" && (yield* ownSensorsFree))
+      needsYes = false;
     if (c.op !== "away" && c.op !== "item" && c.op !== "forget" && c.op !== "hubs") yield* live(id);
     if (needsYes && by.surface !== "settings" && by.approved !== true) {
       if (by.dryRun === true)
