@@ -134,11 +134,7 @@ export function PersonaRoster(props: {
       traits: f.traits,
       model: f.model.trim() === "" ? null : f.model.trim(),
       private: f.private,
-      ...(f.private
-        ? { privateRooms: f.privateRooms }
-        : f.id === null
-          ? {}
-          : { privateRooms: null }),
+      ...(f.private ? { privateRooms: f.privateRooms } : {}),
       ...(f.id === null && greetings.length === 0 ? {} : { greetings }),
     };
     const ok = await send(
