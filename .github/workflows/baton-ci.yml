@@ -88,6 +88,10 @@ jobs:
             [ "$all" -eq 1 ] && pattern="^$ws/.*\.test\.tsx?$"
             files=$(echo "$changed" | grep -E "$pattern" | grep -vE '\.browser\.test\.' | sed "s|^$ws/||" || true)
             if [[ "$ws" == packages/tessaya-* ]]; then files=$(echo "$changed" | grep -E "^$ws/.*\.test\.ts$" | sed "s|^$ws/||" || true); fi
+            # Source scans read the whole tree, so no changed file sits beside them (scripts/check-changed.ts SOURCE_SCANS).
+            if [ "$ws" = apps/server ] && echo "$changed" | grep -qE '^(apps/server/src|apps/desktop/src/tessaya|packages/tessaya-shared/src)/'; then
+              files="$files src/tessaya/BrainRoutes.test.ts src/provenance/coverage.test.ts"
+            fi
             [[ -z "$files" ]] && continue
             echo "== $ws: $(echo $files | wc -w) test files"
             (cd "$ws" && vp test run $files)
