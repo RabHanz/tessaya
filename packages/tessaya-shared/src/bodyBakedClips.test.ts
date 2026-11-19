@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { BAKED_CLIPS } from "./bodyBakedClips.data.ts";
 import { bakedClip, decodeBaked } from "./bodyBakedClips.ts";
