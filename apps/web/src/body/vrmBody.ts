@@ -1127,6 +1127,36 @@ export function mountBody(
     worldOf(name as VRMHumanBoneName) ??
     vrm?.scene.getObjectByName(name)?.getWorldPosition(at).clone();
   /**
+   * A bone's frame now, as regions are written in it: the model's axes at rest (facing +z, VRM 0.x turned to match),
+   * turning with the bone from its bind pose. `q` takes that frame into the world.
+   */
+  const bindTurn = new WeakMap<THREE.Object3D, THREE.Quaternion>();
+  const boneFrame = (name: string) => {
+    const node =
+      vrm?.humanoid.getRawBoneNode(name as VRMHumanBoneName) ?? vrm?.scene.getObjectByName(name);
+    if (vrm === null || node == null) return null;
+    let bind = bindTurn.get(node);
+    if (bind === undefined) {
+      bind = new THREE.Quaternion();
+      // the skin's bind matrix holds its rest turn; a node no skin binds is taken as it stands (shortcut: rarely a region)
+      vrm.scene.traverse((o) => {
+        const sk = (o as THREE.SkinnedMesh).skeleton;
+        const i = sk?.bones.indexOf(node as THREE.Bone) ?? -1;
+        if (i >= 0)
+          new THREE.Matrix4()
+            .copy(sk!.boneInverses[i]!)
+            .invert()
+            .decompose(new THREE.Vector3(), bind!, new THREE.Vector3());
+      });
+      if (vrm.meta.metaVersion === "0") bind.premultiply(new THREE.Quaternion(0, 1, 0, 0));
+      bindTurn.set(node, bind);
+    }
+    return {
+      at: node.getWorldPosition(new THREE.Vector3()),
+      q: node.getWorldQuaternion(new THREE.Quaternion()).multiply(bind.clone().invert()),
+    };
+  };
+  /**
    * After the pose lands: set her on the floor when she stands, sits or lies (the rig keeps her hands and arms out of
    * her body, by this model's own measures). Corrects over a few frames and reports whether it is still moving.
    */
@@ -1831,10 +1861,18 @@ export function mountBody(
     const a = boneAt(r.from) ?? worldOf("upperChest") ?? worldOf("chest");
     const b = boneAt(r.to) ?? a;
     if (vrm === null || a === undefined || b === undefined) return;
-    const p = a.lerp(b, r.at).add(new THREE.Vector3(0, r.up * (rig?.height ?? 1.6), 0));
     vrm.scene.updateMatrixWorld(true);
+    // a region set off its bone is met at its own centre, from the side it sits on
+    const off = region.reach === undefined ? region.anchor.offset : undefined;
+    const frame = off === undefined ? null : boneFrame(region.anchor.bone);
+    const out = frame === null ? null : new THREE.Vector3(...off!).applyQuaternion(frame.q);
+    const p =
+      frame === null
+        ? a.lerp(b, r.at).add(new THREE.Vector3(0, r.up * (rig?.height ?? 1.6), 0))
+        : frame.at.clone().add(out!);
+    const side = out !== null && out.length() > 0.01 ? out.clone().normalize() : new THREE.Vector3(...r.dir).normalize();
     // reached from that part's own side, from a little way off her
-    const from = p.clone().addScaledVector(new THREE.Vector3(...r.dir).normalize(), 0.6);
+    const from = p.clone().addScaledVector(side, 0.6);
     ray.set(from, p.clone().sub(from).normalize());
     const hit = ray.intersectObject(vrm.scene, true).find((h) => h.object.visible);
     const normal = hit !== undefined ? surfaceNormal(hit) : from.clone().sub(p).normalize();
@@ -2536,7 +2574,13 @@ export function mountBody(
       const p = boneAt(n);
       return p && ([p.x, p.y, p.z] as const);
     };
-    return claimedRegion(sense, [hit.point.x, hit.point.y, hit.point.z], bone) ?? zone;
+    const local = (n: string, p: readonly [number, number, number]) => {
+      const f = boneFrame(n);
+      if (f === null) return undefined;
+      const v = new THREE.Vector3(...p).sub(f.at).applyQuaternion(f.q.invert());
+      return [v.x, v.y, v.z] as const;
+    };
+    return claimedRegion(sense, [hit.point.x, hit.point.y, hit.point.z], bone, local) ?? zone;
   };
   const onDown = (e: PointerEvent) => {
     if (vrm === null || options.onTouch === undefined) return;
