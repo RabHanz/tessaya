@@ -226,7 +226,10 @@ describe("preparePose", () => {
   it("lets an arm hang relaxed beside her clothed hips, its forearm turned as written (no A-pose)", () => {
     // a clothed model as fitted (a puffy top and a flared skirt count as thickness): her hand presses into the cloth
     // at her side, which gives, so the arm is not pushed out into an A-pose, and the palm stays toward her thigh
-    const clothed = { ...vroid, proxies: { trunk: 0.107, head: 0.09, thigh: 0.072, forearm: 0.024 } };
+    const clothed = {
+      ...vroid,
+      proxies: { trunk: 0.107, head: 0.09, thigh: 0.072, forearm: 0.024 },
+    };
     const hang = {
       leftUpperArm: [0, 0, -1.42] as V3,
       leftLowerArm: [0.6, -0.1, 0] as V3,

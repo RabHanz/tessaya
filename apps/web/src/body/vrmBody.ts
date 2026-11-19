@@ -483,13 +483,20 @@ export function mountBody(
   loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
   // her standing idle: real motion capture (assets/CREDITS.md) baked onto this model's own bones when it loads, so her
   // arms hang at her sides and her weight shifts as a person's does, under whatever her posture adds
-  let idle: { readonly fps: number; readonly loop: true; readonly frames: ReadonlyArray<Partial<Record<PoseBone, Euler>>> } | null = null;
+  let idle: {
+    readonly fps: number;
+    readonly loop: true;
+    readonly frames: ReadonlyArray<Partial<Record<PoseBone, Euler>>>;
+  } | null = null;
   const bakeIdle = async (target: VRM, flip: boolean) => {
     const got = await loader.loadAsync(options.idleUrl ?? IDLE_URL).catch(() => null);
     const anim = (got?.userData["vrmAnimations"] as ReadonlyArray<unknown> | undefined)?.[0];
     if (anim === undefined || disposed || vrm !== target) return;
     const mixer = new THREE.AnimationMixer(target.scene);
-    const clip = createVRMAnimationClip(anim as Parameters<typeof createVRMAnimationClip>[0], target);
+    const clip = createVRMAnimationClip(
+      anim as Parameters<typeof createVRMAnimationClip>[0],
+      target,
+    );
     mixer.clipAction(clip).play();
     const fps = 30;
     const frames: Array<Partial<Record<PoseBone, Euler>>> = [];
