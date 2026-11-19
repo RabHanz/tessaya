@@ -16,6 +16,9 @@ import { TessayaCast } from "./TessayaCast.ts";
 import { CastCallInput } from "@t3tools/tessaya-contracts";
 import { TessayaCast as TessayaCastRules } from "@t3tools/contracts/settings";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { privateRowsAtBrain } from "./PrivateRows.ts";
+import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
+import { PRIVATE_PEPPER } from "./TessayaPrivateMemoryService.ts";
 import { TessayaTurn } from "./TessayaTurn.ts";
 import { memoryAtBrain, ON_BRAIN, TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
@@ -90,6 +93,12 @@ const CastAct = Schema.Union([
   }),
 ]);
 const decodeCastAct = Schema.decodeUnknownOption(CastAct);
+const PrivateRowsAsk = Schema.Struct({
+  sql: Schema.String.check(Schema.isMaxLength(4000)),
+  params: Schema.Array(Schema.Unknown),
+  values: Schema.Boolean,
+});
+const decodePrivateRows = Schema.decodeUnknownOption(PrivateRowsAsk);
 const OutboxIn = Schema.Struct({
   id: Schema.String.check(Schema.isMaxLength(64)),
   op: BrainOpSchema,
@@ -257,6 +266,22 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       const s = sync.value;
       return done(yield* here.value.applyChanges(s.origin, s.changes as never, s.upTo));
     }
+    case "privatePepper": {
+      // never logged or recorded: the caller (tessaya_brain) has already checked the link's scope
+      const secrets = yield* Effect.serviceOption(ServerSecretStore);
+      if (Option.isNone(secrets)) return refused("No store here.");
+      const pepper = yield* secrets.value.getOrCreateRandom(PRIVATE_PEPPER, 32).pipe(Effect.option);
+      return Option.isNone(pepper)
+        ? refused("No store here.")
+        : done({ pepper: Buffer.from(pepper.value).toString("base64") });
+    }
+    case "privateRows": {
+      // his private store's own statements only (its four tables), on ciphertext rows; never anything else
+      const ask = decodePrivateRows(payload);
+      if (Option.isNone(ask)) return refused("Not a private store statement.");
+      const rows = yield* privateRowsAtBrain(ask.value).pipe(Effect.orElseSucceed(() => null));
+      return rows === null ? refused("Not one of the private store's statements.") : done(rows);
+    }
     case "presence": {
       const act = decodePresenceAct(payload);
       if (Option.isNone(act)) return refused("Not a presence signal.");
@@ -352,11 +377,20 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
 export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
   op: BrainOp,
   payload: unknown,
+  /** The linked caller's access: his PIN's pepper goes only to a link of his with full access. */
+  access?: string,
 ) {
+  if (
+    op === "privatePepper" &&
+    (access === undefined || access === "read-only" || access === "body-only")
+  )
+    return refused("That link may not open his private store.");
   if (op !== "outbox") return yield* applyAtBrain(op, payload);
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
   const box = decodeOutbox(payload);
-  if (Option.isNone(box) || box.value.op === "outbox") return refused("Not a queued change.");
+  // a queued change is a write; nothing secret is ever asked through the outbox
+  if (Option.isNone(box) || box.value.op === "outbox" || box.value.op === "privatePepper")
+    return refused("Not a queued change.");
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
   if (Option.isSome(sql)) {
     const seen = yield* sql.value<{ n: number }>`
