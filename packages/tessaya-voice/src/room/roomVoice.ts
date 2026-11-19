@@ -235,6 +235,8 @@ const MAX_GUESSES = 3;
  */
 const PERSONAL_FLOOR_DB = -28;
 
+/** After she goes on over a voice that was not his, this long before another voice may pause her. */
+const RESUME_QUIET_MS = 1_500;
 /** His words must hold still this long at a pause before her brain starts early on them. */
 const STABLE_MS = 300;
 
@@ -1262,7 +1264,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (sentAway && at - dismissedAt < 3_000) return;
       dismissedAt = at;
       stops += 1;
-      if (speaking() || hold !== null) interrupt();
+      if (speaking() || hold !== null) interrupt("he sent her away");
       carry = null;
       if (!silent(id)) speakNow(own(farewellEvent(words) ?? "end.ack", "Okay."));
       restGently(at);
@@ -1275,15 +1277,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       stops += 1;
       // Her whole reply may already be on the R1 (sent up to 0.7 s ahead): still audible is still flushed. Paused,
       // the hold goes too, or its voice check stops her again every 0.3 s (09:28:22-24, 15 Nov).
-      if (speaking() || hold !== null) interrupt();
+      if (speaking() || hold !== null) interrupt(why.replace(/^\[[^\]]*\] /, ""));
       openUntil = deps.now() + config.followMs;
       invited = false;
       face("neutral");
       deps.log(`${why}; she stopped`);
     };
-    const interrupt = () => {
+    /** `why` reaches the turn's "cut off" line: a cut-off always says why (R-070). */
+    const interrupt = (why: string) => {
       releaseHold();
-      reply?.abort();
+      reply?.abort(why);
       reply = null;
       playUntil = deps.now();
       // The R1 drops what it holds on a flush; only a Bluetooth speaker's own buffer still sounds after it.
@@ -1309,6 +1312,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     } | null = null;
     /** A voice over hers that was not the household's: a turn begun then is theirs, not answered. */
     let otherVoice = { from: Number.POSITIVE_INFINITY, until: Number.NEGATIVE_INFINITY };
+    /** When she last went on after a voice over hers was judged not his: her own echo then paused her every 0.2 s. */
+    let resumedAt = Number.NEGATIVE_INFINITY;
     /** The last 3.6 s of aligned mic frames, for the voice check while she is paused. */
     let heardLately: Array<{ readonly seq: number; readonly pcm: Int16Array }> = [];
     const releaseHold = () => {
@@ -2046,7 +2051,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         kept?.control.abort();
         return;
       }
-      if (given === undefined && startedAt >= otherVoice.from && startedAt <= otherVoice.until) {
+      if (
+        given === undefined &&
+        !hisSession() &&
+        startedAt >= otherVoice.from &&
+        startedAt <= otherVoice.until
+      ) {
         kept?.control.abort();
         dropped(turn, "not a household voice over hers", raw);
         return;
@@ -2073,14 +2083,20 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             deps.member?.(judged) ?? Promise.resolve(Number.NEGATIVE_INFINITY)
           ).catch(() => Number.NEGATIVE_INFINITY);
           const verdict = memberByVoice(best, judged.length / RATE, hisSession() || asking);
-          if (verdict !== "member") {
+          // Mixed with her own voice in this case his scored -0.09 to 0.20 (19 Nov, 05:01-05:02): in his session, words
+          // over her that are not her own are his, and are answered, never dropped on Voice ID alone.
+          if (verdict !== "member" && hisSession())
+            deps.log(
+              `[${id}] turn ${turn}: over her voice, Voice ID ${best.toFixed(2)} in the mix; his session, so answered`,
+            );
+          else if (verdict !== "member") {
             kept?.control.abort();
             dropped(turn, `over her voice and not a household voice (${best.toFixed(2)})`, raw);
             return;
           }
         }
         // The person who woke her is answered over her voice, never a glance (14 Nov, 18:57).
-        if (speaking()) interrupt();
+        if (speaking()) interrupt("the person who woke her spoke over her");
         bargedIn = true;
         deps.log(`[${id}] turn ${turn}: over her voice; she stopped to answer`);
       }
@@ -2356,7 +2372,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // in the order he said them, never answered apart and then talked over (18 Nov, 00:16:01).
       if (given === undefined && starts > seq && deps.now() - since < GONE_ON_MS) {
         kept?.control.abort();
-        if (prev !== null && prev.merged && current_ === prev) interrupt();
+        if (prev !== null && prev.merged && current_ === prev)
+          interrupt("he went on: joined to the rest of his sentence");
         const mineHeld = { text, at: deps.now(), since, pieces };
         const other = carry !== null && deps.now() - carry.at <= 15_000 ? carry : null;
         const [first, then] =
@@ -2416,7 +2433,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       // One reply at a time: two playing at once interleave their frames on the downlink, which sounds chopped.
       // Still audible counts too: her last reply may already be on the R1.
       if (speaking()) bargeIn();
-      if (reply !== null || speaking()) interrupt();
+      if (reply !== null || speaking()) interrupt(`turn ${turn} took over`);
       const control = kept?.control ?? new AbortController();
       reply = control;
       let brainFirst: number | null = null;
@@ -2459,7 +2476,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             // The arbiter is asked alongside, never before (13 Nov: a 1.3-1.7 s claim round in front of every wake);
             // only her voice waits for its answer, and a lost claim is never heard.
             !(await won()) || !(await admitted()) || refused || control.signal.aborted
-              ? control.abort()
+              ? control.abort(
+                  control.signal.aborted
+                    ? control.signal.reason
+                    : refused
+                      ? "Voice ID kept the voice out"
+                      : "another vessel or Voice ID took the turn",
+                )
               : play(
                   audio,
                   control.signal,
@@ -2569,7 +2592,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           restGently(dismissedAt);
         }
       } catch (error) {
-        if (control.signal.aborted) deps.log(`[${id}] turn ${turn}: cut off`);
+        if (control.signal.aborted)
+          deps.log(
+            `[${id}] turn ${turn}: cut off (${typeof control.signal.reason === "string" ? control.signal.reason : "no reason recorded"})`,
+          );
         else {
           deps.log(
             `[${id}] turn ${turn} failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -2667,7 +2693,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (herEcho(pcm, words, turnStartedAt, deps.now(), called)) return;
       bargedIn = true;
       deps.log(`[${id}] he cut in; her reply stopped`);
-      interrupt();
+      interrupt("he cut in");
       bargeIn();
     };
 
@@ -2819,6 +2845,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       )
         return;
       if (deps.now() - cutByVoiceAt < 1_000 || deps.now() - soundingFrom < ONSET_GRACE_MS) return;
+      // Just went on after a voice judged not his: no new pause for a moment (19 Nov 05:01:13-15: 24 pauses in 3 s on her
+      // own echo). His words still reach the turn path and are answered there.
+      if (deps.now() - resumedAt < RESUME_QUIET_MS) return;
       // Someone across the room is far quieter than he is; whose voice it is decides the rest.
       if (!voiceLevel.reaches(Number.isFinite(hisLevel) ? hisLevel - FAR_DB : TALK_MIN_DBFS))
         return;
@@ -2889,7 +2918,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       deps.log(
         `[${id}] not a household voice; she goes on${long ? " from her sentence's start" : ""}`,
       );
-      otherVoice = { from: h.since - 1_000, until: deps.now() };
+      resumedAt = deps.now();
+      if (!hisSession()) otherVoice = { from: h.since - 1_000, until: deps.now() };
       goOn(h, long, 0);
     };
 
@@ -3055,7 +3085,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       restarted: () => speakNow(own("err.restart", "Sorry, I just restarted. Go on.")),
       /** `mood` is the eyes' look for her own words (the brain's expression); none keeps the eyes as they are. */
       say: (text: string, mood?: string | null) => {
-        if (reply !== null) interrupt();
+        if (reply !== null) interrupt("a line of hers from the server");
         if (mood) face(mood);
         speakNow(text);
       },
@@ -3080,7 +3110,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         persona = next;
         look();
         openUntil = deps.now() + config.followMs;
-        if (reply !== null) interrupt();
+        if (reply !== null) interrupt("the persona changed");
         speakNow(own("persona.switch", `${next.name} here.`, { persona: next.name }));
       },
       /** An R1 button's prompt: answered as if he had said it to her. */
@@ -3203,7 +3233,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         closed = true;
         early?.control.abort();
         rec?.cancel();
-        reply?.abort();
+        reply?.abort("the session closed");
       },
     };
   };
