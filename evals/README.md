@@ -16,7 +16,6 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [tessaya-outside](tessaya-outside/)               | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.                              |
 | [tessaya-room](tessaya-room/)                     | What the Tessel desk device says and does on a fake house: status, the lamp, his work, the camera.                              |
 | [tessaya-lines](tessaya-lines/)                   | Whether the lines Tessaya writes ahead keep their facts and required words, and how varied they are.                            |
-| [tessaya-hold](tessaya-hold/)                     | Whether her line while a slow answer comes is about his words, never stock, a promise or a repeat.                              |
 | [tessaya-plan](tessaya-plan/)                     | Whether a job's plan names the sites, apps and acts his yes leases, and leases nothing for code.                                |
 | [tessaya-read](tessaya-read/)                     | Whether the per-turn read of his words gets the tone, topic, how he seems, shared moments and a fair opinion.                   |
 | [tessaya-understanding](tessaya-understanding/)   | Whether her standing understanding of a person, or of herself, changes only on clear, fair evidence and keeps the rest.         |
