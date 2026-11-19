@@ -136,6 +136,17 @@ index eb102be177782ac3a3e47dcf362071315559bb8c..f5889c7a0cd3f36d1605eb23d850f4a6
      interactionMode: "default",
    };
    const asked = client?.narrowedTo;
+diff --git a/apps/server/src/provider/agentContextBudget.json b/apps/server/src/provider/agentContextBudget.json
+index e7901a8656ebe6cc13212f62e76ef2d4698f207e..afd797496098bb27eec7da53caadeb19df982cd1 100644
+--- a/apps/server/src/provider/agentContextBudget.json
++++ b/apps/server/src/provider/agentContextBudget.json
+@@ -1,5 +1,5 @@
+ {
+   "claudeSystemAppendBytes": 5594,
+   "codexAdditionalContextBytes": 7324,
+-  "mcpToolListJsonBytes": 48094
++  "mcpToolListJsonBytes": 48106
+ }
 diff --git a/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts b/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts
 index a7a0a05602d4cd70b8c9fada0b7d440eb7c4fee2..eb3a1258b246a10a6618889d0a68329299a8e7b2 100644
 --- a/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts
