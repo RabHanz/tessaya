@@ -273,6 +273,7 @@ const WALK_SPEED = 0.45;
 const REFLEX_MS = 350;
 /** The drawn hand turns to a new surface direction with this time constant (ms). */
 const HAND_TURN_MS = 90;
+const HAND_GLIDE_MS = 45;
 /** A part gives to a hand over this time constant (ms), so a press eases in rather than snaps. */
 const GIVE_TAU_MS = 80;
 /** Each giving part and the bone its lever runs to (bodyHand GIVE), so a kept choice still finds its pair. */
@@ -445,6 +446,7 @@ export function mountBody(
   let handHeld = false;
   let drawnAt = 0;
   const drawnN = new THREE.Vector3(0, 0, -1);
+  const drawnP = new THREE.Vector3();
   const drawnD = new THREE.Vector3(0, 1, 0);
   let handMesh: {
     group: THREE.Group;
@@ -558,7 +560,11 @@ export function mountBody(
     const f = handFrame;
     // her surface pushes back: a firm press sits closer, a brush hovers just off her
     const off = handLength() * (0.08 - 0.06 * f.pressure);
-    const at = predict(handEuro, 16);
+    // the input arrives in steps (a hover's raycast every HOVER_RAY_MS): the drawn hand glides between them
+    const goal = predict(handEuro, 16);
+    const kp = drawnAt === 0 ? 1 : 1 - Math.exp(-Math.max(0, now - drawnAt) / HAND_GLIDE_MS);
+    drawnP.lerp(new THREE.Vector3(...goal), kp);
+    const at = [drawnP.x, drawnP.y, drawnP.z] as const;
     // the hand turns smoothly to the surface (a raycast's facet normal jumps triangle to triangle)
     const k = drawnAt === 0 ? 1 : 1 - Math.exp(-Math.max(0, now - drawnAt) / HAND_TURN_MS);
     drawnAt = now;
