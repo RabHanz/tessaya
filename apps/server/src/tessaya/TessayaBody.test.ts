@@ -6,7 +6,15 @@ import * as TestClock from "effect/testing/TestClock";
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { PersonaLayers, type PersonaLayer } from "./PersonaLayers.ts";
 import { onAction } from "../provenance/ActionLog.ts";
-import { bodyState, feel, moveBody, playScene, restBody, type BodyCaller } from "./TessayaBody.ts";
+import {
+  bodyHolderLine,
+  bodyState,
+  feel,
+  moveBody,
+  playScene,
+  restBody,
+  type BodyCaller,
+} from "./TessayaBody.ts";
 import { SessionMember } from "./TessayaTurn.ts";
 import * as TurnLiveContext from "./TurnLiveContext.ts";
 
@@ -191,6 +199,37 @@ describe("TessayaBody", () => {
         ]);
         yield* restBody();
       }),
+  );
+
+  it.effect("says which of his conversations has her desk body, and when she is free", () =>
+    Effect.gen(function* () {
+      yield* restBody();
+      expect(yield* bodyHolderLine()).toBe("Her desk body is free: no conversation holds it.");
+      const agent: BodyCaller = {
+        id: "thread:t3-a",
+        kind: "agent",
+        mayBePrivate: true,
+        signal: "touch",
+      };
+      yield* moveBody({ act: "wave" }, agent).pipe(
+        Effect.provideService(PersonaLayers, { all: [openLayer([])] }),
+      );
+      expect(yield* bodyHolderLine()).toBe("Her desk body is with one of his agents.");
+      yield* TestClock.adjust("3 seconds");
+      const freya: BodyCaller = {
+        ...her,
+        id: "desktop:who",
+        thread: "freya|person:owner",
+        signal: "speak",
+      };
+      yield* playScene("greeting", freya, false).pipe(
+        Effect.provideService(PersonaLayers, { all: [openLayer([])] }),
+      );
+      expect(yield* bodyHolderLine()).toBe(
+        "Her desk body is with a conversation that has gone quiet (a scene is playing).",
+      );
+      yield* restBody();
+    }),
   );
 
   it.effect("limits each caller to a burst, then tells it when to try again", () =>
