@@ -49,6 +49,7 @@ import {
 import {
   DESKTOP_STATE_SECTIONS,
   PHONE_PAIRING_TOOL,
+  HOUSEHOLD_DEVICE_REVOKE_TOOL,
   TessayaPersonaDraft,
   VocabularyChange,
 } from "@t3tools/tessaya-contracts";
@@ -1079,13 +1080,29 @@ const PhonePairingCodeTool = Tool.make(PHONE_PAIRING_TOOL, {
   ...shared,
   description:
     "For another of his servers only, over a full-access link: a one-time pairing code here for his phone, so one QR pairs it with every machine.",
-  // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
+  parameters: Schema.Struct({
+    // the household device every code of one pairing carries, so a sign-out reaches all of them
+    device: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
+  }),
   success: PhonePairingCode,
 })
   .annotate(McpSchema.EnabledWhen, linkedServersOnly)
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
+const HouseholdDeviceRevokeTool = Tool.make(HOUSEHOLD_DEVICE_REVOKE_TOOL, {
+  ...shared,
+  description:
+    "For another of his servers only: sign one household device (his phone) out here, because it was signed out on another of his machines.",
+  parameters: Schema.Struct({ device: Schema.String.check(Schema.isMaxLength(40)) }),
+  success: Schema.Struct({ revoked: Schema.Number }),
+})
+  .annotate(McpSchema.EnabledWhen, linkedServersOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
 // A worker's acts (mood, presence, persona, cards) sent to the one server that is her brain (BrainHost).
@@ -1220,5 +1237,6 @@ export const TessayaToolkit = Toolkit.make(
   SessionDefaultsTool,
   VoiceArbiterTool,
   PhonePairingCodeTool,
+  HouseholdDeviceRevokeTool,
   BrainTool,
 );

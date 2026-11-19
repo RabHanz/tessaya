@@ -12,6 +12,8 @@ import { BrainOp as BrainOpSchema, brainOn, type BrainOp } from "./BrainHost.ts"
 import * as SqlClient from "effect/sql/SqlClient";
 import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
 import { AffectCause } from "./AffectCause.ts";
+import * as HouseholdDevices from "./HouseholdDevices.ts";
+import * as PhonePairing from "./PhonePairing.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { CastCallInput } from "@t3tools/tessaya-contracts";
@@ -60,6 +62,15 @@ const MoodMove = Schema.Struct({
   }),
 });
 const decodeMoodMove = Schema.decodeUnknownOption(MoodMove);
+const decodePhoneCodes = Schema.decodeUnknownOption(
+  Schema.Struct({
+    device: Schema.String.check(Schema.isMaxLength(40)),
+    skip: Schema.Array(Schema.String.check(Schema.isMaxLength(120))).check(Schema.isMaxLength(20)),
+  }),
+);
+const decodeDeviceRevoke = Schema.decodeUnknownOption(
+  Schema.Struct({ device: Schema.String.check(Schema.isMaxLength(40)) }),
+);
 const PresenceAct = Schema.Union([
   Schema.Struct({
     note: Schema.Struct({
@@ -300,6 +311,19 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       const s = sync.value;
       return done(yield* here.value.applyChanges(s.origin, s.changes as never, s.upTo));
     }
+    case "phoneCodes": {
+      const ask = decodePhoneCodes(payload);
+      if (Option.isNone(ask)) return refused("Not a pairing ask.");
+      const codes = yield* PhonePairing.codesAtBrain(ask.value.device, ask.value.skip).pipe(
+        Effect.orElseSucceed(() => null),
+      );
+      return codes === null ? refused("Pairing is not available here.") : done(codes);
+    }
+    case "deviceRevoke": {
+      const ask = decodeDeviceRevoke(payload);
+      if (Option.isNone(ask)) return refused("Not a device.");
+      return done({ revoked: yield* HouseholdDevices.revokeEverywhereFromBrain(ask.value.device) });
+    }
     case "privatePepper": {
       // never logged or recorded: the caller (tessaya_brain) has already checked the link's scope
       const secrets = yield* Effect.serviceOption(ServerSecretStore);
@@ -419,11 +443,19 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
     (access === undefined || access === "read-only" || access === "body-only")
   )
     return refused("That link may not open his private store.");
+  // pairing codes reach a shell on every machine: only a link that already has one may ask
+  if (op === "phoneCodes" && access !== "full-access")
+    return refused("Only another of his machines, linked with full access, may ask for this.");
   if (op !== "outbox") return yield* applyAtBrain(op, payload);
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
   const box = decodeOutbox(payload);
   // a queued change is a write; nothing secret is ever asked through the outbox
-  if (Option.isNone(box) || box.value.op === "outbox" || box.value.op === "privatePepper")
+  if (
+    Option.isNone(box) ||
+    box.value.op === "outbox" ||
+    box.value.op === "privatePepper" ||
+    box.value.op === "phoneCodes"
+  )
     return refused("Not a queued change.");
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
   if (Option.isSome(sql)) {

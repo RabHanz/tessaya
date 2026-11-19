@@ -50,6 +50,10 @@ export const BrainOp = Schema.Literals([
   "roomLoop",
   // the brain to its workers: her mood moved, so the faces they show read it again now (M-094); carries nothing
   "moodMoved",
+  // a phone's pairing codes for every machine of his (M-097): over a full-access link only, never queued
+  "phoneCodes",
+  // a household device signed out on one machine: signed out on all (M-097)
+  "deviceRevoke",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
