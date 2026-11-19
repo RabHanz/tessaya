@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   groupRefusal,
+  groupStage,
   lockAll,
   openRoom,
   readableFor,
@@ -124,5 +125,26 @@ describe("rooms", () => {
     const bodies = new Map(["freya", "mira"].map((p) => [p, { place: () => void placed.push(p) }]));
     expect(stageOnto(bodies, desk)).toBe(2);
     expect(placed).toEqual(["freya", "mira"]);
+  });
+
+  it("a group speaker's step: she takes her spot and turns to whoever she addresses, the others to her", () => {
+    const room = ["freya", "sebastian", "mira"];
+    const names = { freya: "Freya", sebastian: "Sebastian", mira: "Mira" };
+    const faces = (plan: ReadonlyArray<{ persona: string; faces: unknown }>) =>
+      Object.fromEntries(plan.map((s) => [s.persona, s.faces]));
+    expect(
+      faces(groupStage("mirror", room, "sebastian", "Freya, what do you think?", names)),
+    ).toEqual({
+      sebastian: { kind: "persona", id: "freya" },
+      freya: { kind: "persona", id: "sebastian" },
+      mira: { kind: "persona", id: "sebastian" },
+    });
+    // a name only mentioned is not addressing: she speaks to him
+    expect(
+      faces(groupStage("mirror", room, "mira", "I told Freya yesterday.", names)).mira,
+    ).toEqual({ kind: "him" });
+    expect(
+      groupStage("mirror", room, "mira", "Sebastian?", names).find((s) => s.front)?.persona,
+    ).toBe("mira");
   });
 });

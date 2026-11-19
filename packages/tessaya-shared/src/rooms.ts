@@ -4,6 +4,8 @@
  * GroupTalk, the private layer and the tests judge the same way. Content-neutral: what happens in a room is his.
  */
 
+import { addressedIn } from "./groupTalk.ts";
+
 export type RoomKind = "public" | "one-on-one" | "open" | "event";
 
 /** How far a persona's own record lets her into private rooms (her `privateRooms`, D6). */
@@ -215,6 +217,8 @@ export const stagePlan = (
   vessel: StageVessel,
   present: ReadonlyArray<string>,
   speaker: string | null,
+  /** Whom the speaker turns to: another persona present, else him. */
+  addressee: string | null = null,
 ): ReadonlyArray<StageSpot> => {
   const lead = speaker !== null && present.includes(speaker) ? speaker : (present[0] ?? null);
   if (lead === null) return [];
@@ -223,7 +227,12 @@ export const stagePlan = (
     x,
     scale,
     front: persona === lead,
-    faces: persona === lead ? { kind: "him" } : { kind: "persona", id: lead },
+    faces:
+      persona !== lead
+        ? { kind: "persona", id: lead }
+        : addressee !== null && addressee !== lead && present.includes(addressee)
+          ? { kind: "persona", id: addressee }
+          : { kind: "him" },
   });
   if (vessel === "tessel") return [her(lead, 0.5, 1)];
   const others = present.filter((p) => p !== lead);
@@ -271,4 +280,24 @@ export const stageOnto = (
     placed++;
   }
   return placed;
+};
+
+/**
+ * GroupTalk's speaker step on a stage: the speaker takes her spot and turns to whoever her line addresses (a persona
+ * present named the way he would name one, groupTalk `addressedIn`), else to him; the others turn to her.
+ */
+export const groupStage = (
+  vessel: StageVessel,
+  present: ReadonlyArray<string>,
+  speaker: string,
+  said: string,
+  names: Readonly<Record<string, string>>,
+): ReadonlyArray<StageSpot> => {
+  const others = present.filter((p) => p !== speaker);
+  const addressed = addressedIn(
+    said,
+    { mode: "answer", members: others.map((id) => ({ id })) },
+    others.map((id) => ({ id, name: names[id] ?? id, role: "" })),
+  );
+  return stagePlan(vessel, present, speaker, addressed[0] ?? null);
 };
