@@ -1668,7 +1668,7 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     if (k === "/" && hooks.direct) {
       e.preventDefault();
       dir.focus();
-    } else if (k === "?") help(helpEl.hidden);
+    } else if (k === "?") help(helpEl.hidden !== false);
     else if (/^[1-9]$/.test(k)) {
       const b = tabsEl.children[Number(k) - 1] as HTMLElement | undefined;
       if (b) showTab(b.dataset["tab"]!);
