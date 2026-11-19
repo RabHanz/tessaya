@@ -414,7 +414,7 @@ describe("fitProxies", () => {
 /**
  * Frames the offline MuJoCo checker (tessaya-ops/physics-spike/check.py) failed in her motion library, each at its
  * deepest overlap: a hand inside her head, forearms through each other, a hand on the hip inside the pelvis. Measured
- * with the checker's own capsules (hand a ball past the wrist, head a ball above the head joint, pelvis across the hips).
+ * with the checker's own capsules (a tapered forearm, the hand a ball past the wrist, the head a ball above its joint).
  */
 const CHECKER_FRAMES: ReadonlyArray<
   readonly [string, number, Record<string, [number, number, number]>]
@@ -555,8 +555,10 @@ const checkerDepth = (pair: string, pose: Record<string, Q>): number => {
   const arm = (s: "left" | "right"): Part[] => {
     const e = p(`${s}LowerArm`);
     const h = p(`${s}Hand`);
+    const mid = v3.add(e, v3.scale(v3.sub(h, e), 0.55));
     return [
-      { a: e, b: h, r: 0.032 },
+      { a: e, b: mid, r: 0.034 },
+      { a: mid, b: h, r: 0.026 },
       ball(v3.add(h, v3.scale(v3.unit(v3.sub(h, e)), 0.06)), 0.035),
     ];
   };
@@ -582,7 +584,7 @@ const checkerDepth = (pair: string, pose: Record<string, Q>): number => {
   for (const [i, s] of parts[x!]!.entries())
     for (const [j, t] of parts[y!]!.entries()) {
       // the checker lets hand balls touch each other (a clap)
-      if (x!.endsWith("elbow") && y!.endsWith("elbow") && i === 1 && j === 1) continue;
+      if (x!.endsWith("elbow") && y!.endsWith("elbow") && i === 2 && j === 2) continue;
       let a = v3.scale(v3.add(s.a, s.b), 0.5);
       let b = seg(t, a);
       for (let k = 0; k < 8; k++) {

@@ -803,7 +803,7 @@ const separateLegs = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
 
 /**
  * Her forearms rest on each other, never through (arms folded, hugging herself): where one is inside the other, both
- * wrists move apart along the contact, half each, and the arms are re-solved to reach them. Hands may meet (a clap).
+ * wrists move apart along the contact, half each, and the arms are re-solved to reach them. Wrists and hands may meet.
  */
 const separateArms = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
   const r = 0.02 * rig.height;
@@ -812,14 +812,19 @@ const separateArms = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
     return issues;
   for (let pass = 0; pass < 6; pass++) {
     const w = fk(rig, pose).pos;
-    const [p, q] = nearestPair(
-      w["leftLowerArm"]!,
-      w["leftHand"]!,
-      w["rightLowerArm"]!,
-      w["rightHand"]!,
+    // the thick part of each forearm, below the elbow: wrists and palms may meet (a clap, rubbing hands)
+    const thick = (s: string) =>
+      add(w[`${s}LowerArm`]!, scale(sub(w[`${s}Hand`]!, w[`${s}LowerArm`]!), 0.6));
+    // the wrists themselves only so close that palms still meet
+    const pairs = [
+      [nearestPair(w["leftLowerArm"]!, thick("left"), w["rightLowerArm"]!, thick("right")), 2 * r],
+      [nearestPair(thick("left"), w["leftHand"]!, thick("right"), w["rightHand"]!), 0.015 * rig.height],
+    ] as const;
+    const [[p, q], reach] = pairs.reduce((a, b) =>
+      b[1] - len(sub(b[0][0], b[0][1])) > a[1] - len(sub(a[0][0], a[0][1])) ? b : a,
     );
     const gap = sub(p, q);
-    const depth = 2 * r - len(gap);
+    const depth = reach - len(gap);
     if (softPush(depth) <= 1e-4) break;
     if (pass === 0 && depth > 0.004)
       issues.push({ bone: "leftLowerArm", kind: "penetration", by: depth });
