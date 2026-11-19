@@ -5,6 +5,8 @@
 
 export type PrivateStoreKind = "owner" | "person";
 export const OWNER_PERSON_ID = "owner";
+/** A note kept in a private moment (the private layer's tier): only an open private moment reads it back. */
+export const PRIVATE_MOMENT_REF = "private-moment";
 
 /** Why a PIN is refused, in words he can read, or null. The owner's is longer: his store opens everyone's. */
 export const pinProblem = (pin: string, kind: PrivateStoreKind): string | null => {

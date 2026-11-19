@@ -107,6 +107,15 @@ export interface LayerBrain {
   }) => Promise<string>;
   /** Keeps one note in his one sealed tier (his private store on the brain path, D2); true once it is stored. */
   readonly remember?: (text: string, persona?: string) => Promise<boolean>;
+  /**
+   * The at-unlock migration for notes the layer moved before they were marked: these exact notes become that
+   * persona's private-moment notes. `dry` only counts; `left` is what a read-back still finds unmarked. Null: not open.
+   */
+  readonly markMoment?: (input: {
+    readonly texts: ReadonlyArray<string>;
+    readonly persona: string;
+    readonly dry: boolean;
+  }) => Promise<{ readonly matched: number; readonly left: number } | null>;
   /** How close this private moment felt (0..1), into her one mood toward him (P2); never its words. */
   readonly felt?: (warmth: number) => Promise<void>;
   /** How a touch in a private moment felt, a tone only, into her one mood; never where or how. */
@@ -432,6 +441,7 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
                     turn: { route: "assistant", typed: true, tainted: false, speaker: null },
                     text,
                     kind: "note",
+                    moment: true,
                     ...(persona === undefined ? {} : { persona }),
                   })
                   .pipe(
@@ -443,6 +453,22 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
                     Effect.map((r) => r.stored),
                     Effect.orElseSucceed(() => false),
                   ),
+          ),
+        ),
+      ),
+    markMoment: (input) =>
+      run(
+        Effect.serviceOption(TessayaPrivateMemoryService).pipe(
+          Effect.flatMap((stores) =>
+            Option.isNone(stores)
+              ? Effect.succeed(null)
+              : stores.value.markMoment(input).pipe(
+                  Effect.provideService(PrivateCaller, {
+                    session: vesselSubject(turn.vessel.id),
+                    desktop: true,
+                    member: OWNER_MEMBER_ID,
+                  }),
+                ),
           ),
         ),
       ),

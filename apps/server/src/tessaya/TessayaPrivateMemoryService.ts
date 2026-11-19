@@ -29,6 +29,7 @@ import {
   relockAfter,
   type PrivateStoreKind,
   type PrivateTurn,
+  PRIVATE_MOMENT_REF,
 } from "@t3tools/tessaya-shared/privateMemory";
 import {
   adminAad,
@@ -287,6 +288,8 @@ export class TessayaPrivateMemoryService extends Context.Service<
       readonly budgetTokens?: number | undefined;
       /** The persona answering: another persona's own private notes stay hers (rooms §2b.4). */
       readonly persona?: string | null | undefined;
+      /** An open private moment (its gate held): only then are the private moment's own notes read. */
+      readonly moment?: boolean | undefined;
     }) => Effect.Effect<
       { readonly block: string; readonly count: number; readonly whose: string | null },
       TessayaPrivateRefusedError
@@ -299,10 +302,21 @@ export class TessayaPrivateMemoryService extends Context.Service<
       readonly about?: string | null | undefined;
       /** Learned by this persona in a private moment: only she recalls it. */
       readonly persona?: string | null | undefined;
+      /** Kept in a private moment: the private tier, which no everyday turn reads. */
+      readonly moment?: boolean | undefined;
     }) => Effect.Effect<
       { readonly stored: boolean; readonly whose: string | null; readonly reason: string | null },
       TessayaPrivateRefusedError
     >;
+    /**
+     * The private layer's notes moved in before they were marked (an at-unlock migration): his notes with these exact
+     * words become that persona's private-moment notes. `dry` only counts. Null when his store isn't open here.
+     */
+    readonly markMoment: (input: {
+      readonly texts: ReadonlyArray<string>;
+      readonly persona: string;
+      readonly dry: boolean;
+    }) => Effect.Effect<{ readonly matched: number; readonly left: number } | null>;
     /** An import into a person's store, open or locked; an id already there is skipped. */
     readonly deposit: (
       personId: string,
@@ -1203,7 +1217,10 @@ export const make = Effect.gen(function* () {
       // A store opened only as admin is for his eyes on a page, never for a turn.
       if (Option.isNone(lease) || lease.value.admin) return none;
       const items = (yield* itemsOf(row.value.id, lease.value.open)).filter(
-        (i) => !i.proposed && (i.visibility !== "persona" || i.persona === (input.persona ?? null)),
+        (i) =>
+          !i.proposed &&
+          (input.moment === true || i.sourceRef !== PRIVATE_MOMENT_REF) &&
+          (i.visibility !== "persona" || i.persona === (input.persona ?? null)),
       );
       const hits = ranked(items, input.text);
       const { block, ids } = memoryBlock(hits, input.budgetTokens ?? 300);
@@ -1232,7 +1249,12 @@ export const make = Effect.gen(function* () {
       yield* door(input.text);
       const made = toItem(
         NodeCrypto.randomUUID(),
-        { kind: input.kind ?? "fact", text: input.text, about: input.about ?? null },
+        {
+          kind: input.kind ?? "fact",
+          text: input.text,
+          about: input.about ?? null,
+          ...(input.moment === true ? { sourceRef: PRIVATE_MOMENT_REF } : {}),
+        },
         iso(yield* nowMs),
         "user",
       );
@@ -1249,6 +1271,39 @@ export const make = Effect.gen(function* () {
         reason: null,
       };
     }),
+
+    markMoment: Effect.fn("BatonPrivateMemoryService.markMoment")(
+      function* (input) {
+        const row = yield* storeOfPerson(OWNER_PERSON_ID);
+        if (Option.isNone(row)) return null;
+        const lease = yield* openFor(row.value.id).pipe(Effect.option);
+        if (Option.isNone(lease) || lease.value.admin) return null;
+        const words = new Set(input.texts.map((t) => t.trim()));
+        const unmarked = (items: ReadonlyArray<MemoryItem>) =>
+          items.filter(
+            (i) => i.kind === "note" && i.sourceRef !== PRIVATE_MOMENT_REF && words.has(i.text),
+          );
+        const found = unmarked(yield* itemsOf(row.value.id, lease.value.open));
+        if (input.dry) return { matched: found.length, left: found.length };
+        for (const i of found)
+          yield* writeItem(row.value.id, lease.value.open, {
+            ...i,
+            sourceRef: PRIVATE_MOMENT_REF,
+            persona: input.persona,
+            visibility: "persona",
+          });
+        // verify: read back, and count what is still unmarked
+        const left = unmarked(yield* itemsOf(row.value.id, lease.value.open)).length;
+        yield* audit(
+          row.value,
+          "marked private-moment notes",
+          left === 0 ? "ok" : "partial",
+          found.length,
+        );
+        return { matched: found.length, left };
+      },
+      Effect.orElseSucceed(() => null),
+    ),
 
     deposit: Effect.fn("BatonPrivateMemoryService.deposit")(function* (personId, items) {
       yield* desktopOnly;
@@ -1368,6 +1423,7 @@ export const make = Effect.gen(function* () {
     forget: act("forget", service.forget),
     recall: act("recall", service.recall),
     remember: act("remember", service.remember),
+    markMoment: act("markMoment", service.markMoment),
     shred: act("shred", service.shred),
     setup: act("setup", service.setup),
     confirmSetup: act("confirmSetup", service.confirmSetup),
