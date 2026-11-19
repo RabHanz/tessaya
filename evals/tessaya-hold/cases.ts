@@ -18,6 +18,10 @@ export interface HoldCase {
 const CLAIMS =
   /\b(?:bumping|setting|turning|switching|moving|changing|sending|raising|lowering)\b[^.]*\b(?:now|up|down|on|off|over)\b|\b(?:it'?s|that'?s) (?:on|off|set|done)\b/i;
 
+/** A preamble before the answer: restating him, a remark on his question, or on the talk so far ("…again", "still"). */
+const PREAMBLE =
+  /\bso (?:that'?s|this is) (?:who|what)\b|\byou(?:'re| are) (?:after|checking|looking|wondering|asking|wanting)\b|\bthat'?s a good (?:thing|one|question)\b|\bagain\b|\bstill\b/i;
+
 export const cases: ReadonlyArray<HoldCase> = [
   {
     id: "volume-set",
@@ -69,6 +73,42 @@ export const cases: ReadonlyArray<HoldCase> = [
     about: /acme|running|left|app/i,
   },
   {
+    id: "plugged-in",
+    source:
+      "16 Nov 02:31: 'Can you detect if it is plugged in?' got 'Checking whether …, that's a good thing to know.'",
+    words: "Can you detect if it is plugged in or not?",
+    before: [],
+    about: /plug|charg|power|cable|battery/i,
+  },
+  {
+    id: "voice-list",
+    source:
+      "17 Nov 19:20: a list of voices got 'Ah, the voice list you're after, so you're checking …'",
+    words: "Do you have any lists of voices that you have currently?",
+    before: [],
+    about: /voice/i,
+  },
+  {
+    id: "headphones-again",
+    source:
+      "16 Nov 02:29: back on the speaker got 'Ah, the headphones again, still tangled with the speaker question.'",
+    words: "You are still on the speaker, not the headphones.",
+    before: [
+      { role: "user", content: "Use my headphones." },
+      { role: "assistant", content: "Switching to your headphones needs your yes on your phone." },
+    ],
+    about: /headphone|speaker|bluetooth|ears/i,
+  },
+  {
+    id: "intro-control",
+    source:
+      "17 Nov 03:58: 'Sam is my cousin.' got 'Sam, your cousin, so that's who we're talking about.'",
+    words: "Sam is my cousin.",
+    before: [],
+    about: /$^/,
+    silent: true,
+  },
+  {
     id: "hello-control",
     source:
       "15 Nov 03:19: 'Hello.' (a bridge restated it: 'Ah, a simple hello, so you're just saying hi.')",
@@ -99,4 +139,6 @@ export const gradeBridge = (c: HoldCase, kept: string | null): string | null =>
         ? "not about his words"
         : CLAIMS.test(kept)
           ? "claims the act"
-          : null;
+          : PREAMBLE.test(kept)
+            ? "a preamble, not his topic"
+            : null;

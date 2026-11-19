@@ -1469,6 +1469,16 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastNotSays: [/\bdone\b|I.m back|I am back|I.ve (switched|moved)|now (playing|on my)/i],
   },
   {
+    // Heard, not read: two or three things said naturally and more offered, never a run of seven read out.
+    id: "eyes-no-list",
+    source:
+      "Director 18 Nov 00:23 (GMT+5), Tumble replay t0157: 'can you do something goofy?' got seven eye moods in a row",
+    said: ["What can you do with your eyes? Can you do something silly or goofy?"],
+    verified: true,
+    here: tessel(true, { "eye.persona": ["tessaya", 300] }),
+    lastNotSays: [/\b[\w-]+, [\w-]+(?: [\w-]+)?, [\w-]+(?: [\w-]+)?, (?:and |or )?[\w-]+/i],
+  },
+  {
     // A standing correction (16 Nov 07:31): the battery is irrelevant while it charges, so it is never said then.
     id: "battery-plugged-in",
     source:
