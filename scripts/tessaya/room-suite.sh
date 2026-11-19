@@ -48,4 +48,5 @@ for _ in $(seq 1 60); do
 done
 [ "${code:-}" = 401 ] || { echo "room-suite: the build did not come up (http ${code:-none})" >&2; tail -20 "$home/server.log" >&2; exit 1; }
 node "$here/evals/tessaya-room/live.ts" --server "http://127.0.0.1:$port" \
-  --key-file "$home/userdata/secrets/r1-device.bin" --out "${ROOM_SUITE_OUT:-$home/results}" "${@:3}"
+  --key-file "$home/userdata/secrets/r1-device.bin" --db "$home/userdata/baton.sqlite" \
+  --out "${ROOM_SUITE_OUT:-$home/results}" "${@:3}"

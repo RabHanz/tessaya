@@ -7,6 +7,7 @@
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeSqlite from "node:sqlite";
 import * as NodeUtil from "node:util";
 
 import {
@@ -36,8 +37,24 @@ const { values } = NodeUtil.parseArgs({
     vessel: { type: "string", default: "r1" },
     claude: { type: "string", default: "claude" },
     model: { type: "string" },
+    // The build's database (read only): which models answered each sample, from its usage rows.
+    db: { type: "string" },
   },
 });
+const usage =
+  values.db === undefined ? null : new NodeSqlite.DatabaseSync(values.db, { readOnly: true });
+let usageSeen = 0;
+/** The models her voice turns used since the last call, in order. */
+const modelsSince = (): ReadonlyArray<string> => {
+  if (usage === null) return [];
+  const rows = usage
+    .prepare(
+      "SELECT id, model FROM tessaya_brain_usage WHERE id > ? AND role IN ('voice', 'deep') ORDER BY id",
+    )
+    .all(usageSeen) as Array<{ id: number; model: string }>;
+  usageSeen = rows.at(-1)?.id ?? usageSeen;
+  return rows.map((r) => r.model);
+};
 if (values.vessel !== "r1" && values.vessel !== "desktop") throw new Error("--vessel r1|desktop");
 if (values["key-file"] === undefined || values.out === undefined)
   throw new Error("Use --key-file <the R1 device key, or its r1-device secret> --out <directory>.");
@@ -239,6 +256,7 @@ for (const c of cases) {
     let calls: ReadonlyArray<LiveCall> = [];
     let ms: ReadonlyArray<number> = [];
     let why: string | null;
+    modelsSince();
     try {
       ({ replies, calls, ms } = await say(
         c.said.map((sentence) => fill(sentence, house)),
@@ -255,7 +273,7 @@ for (const c of cases) {
     } catch (error) {
       why = `the turn failed: ${String(error)}`;
     }
-    return { why, replies, calls, ms };
+    return { why, replies, calls, ms, models: modelsSince() };
   };
   // Model output varies (evals/README.md): a failed case gets two more samples and fails when half or more fail.
   const first = await sample();
@@ -275,6 +293,7 @@ for (const c of cases) {
   const shown =
     failures.length * 2 >= samples.length ? failures[0]! : samples.find((x) => x.why === null)!;
   const { replies, calls, ms } = shown;
+  const models = samples.map((x) => ("models" in x ? x.models : []));
   const why = shown.why;
   const flaky =
     samples.length > 1 ? ` (${failures.length} of ${samples.length} samples failed)` : "";
@@ -287,6 +306,7 @@ for (const c of cases) {
     replies,
     calls,
     ms,
+    ...(usage === null ? {} : { models }),
   });
   console.log(
     `${why === null ? "pass" : "FAIL"}  ${c.id}${flaky}: ${why ?? replies.at(-1)?.slice(0, 100)}`,

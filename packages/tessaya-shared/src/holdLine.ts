@@ -74,10 +74,32 @@ const norm = (s: string) =>
  * The line as she may say it, or null: one sentence of 3-14 words, not stock, no promise or act under way, not her own
  * name, not one said lately.
  */
+/** Words a line can share with his without echoing him. */
+const LIGHT = new Set(
+  "a an the and or but of to in on at for with my your you i it is are was this that these those so then now right oh ooh ah okay ok well".split(
+    " ",
+  ),
+);
+const contentWords = (s: string) =>
+  norm(s)
+    .split(" ")
+    .filter((w) => w !== "" && !LIGHT.has(w));
+/**
+ * His request said back to him ("Right, the bins on Tuesday night and the team board.", 19 Nov room gate): nearly every
+ * word of it is his. It sits in front of her answer as a sentence that says nothing.
+ */
+const echoesHim = (line: string, words: string) => {
+  const his = new Set(contentWords(words));
+  const own = contentWords(line);
+  return own.length > 0 && own.filter((w) => his.has(w)).length / own.length >= 0.75;
+};
+
 export const keptBridge = (
   text: string,
   recent: ReadonlyArray<string>,
   persona?: string,
+  /** What he said this turn: a line that only says it back is refused. */
+  heard?: string,
 ): string | null => {
   const line = text
     .trim()
@@ -85,6 +107,7 @@ export const keptBridge = (
     .split("\n")[0]!
     .trim();
   if (/^none\.?$/i.test(line) || ECHO.test(line) || PREAMBLE.test(line)) return null;
+  if (heard !== undefined && echoesHim(line, heard)) return null;
   const words = line.split(/\s+/).filter(Boolean).length;
   if (
     words < 3 ||
