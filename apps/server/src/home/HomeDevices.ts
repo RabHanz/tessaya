@@ -86,7 +86,7 @@ import { DeviceRefusedError, DeviceRegistry, offlineWhy } from "./DeviceRegistry
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { expressOr } from "../tessaya/TessayaExpression.ts";
-import { interruptBody } from "../tessaya/TessayaBody.ts";
+import { interruptBody, noteTesselHandled } from "../tessaya/TessayaBody.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { TessayaCast } from "../tessaya/TessayaCast.ts";
 import { LINE_EVENTS, sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
@@ -1813,6 +1813,8 @@ const make = Effect.gen(function* () {
       yield* interruptBody();
     }
     // Picked up, moved, touched or pressed: someone is at this Tessel, not yet who (B-043).
+    // and her world on it changed: being handled makes her curious (M-087, Tumble's world)
+    if (HANDLED.has(tail) && tail !== "event/key") yield* noteTesselHandled(result.id);
     if (Option.isSome(presence) && HANDLED.has(tail))
       yield* presence.value.note({ member: null, source: "handled", vessel: result.id });
     // Headphones on a Tessel's Bluetooth: its member is within range of it; off, they took them off (B-043).

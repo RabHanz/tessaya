@@ -1,4 +1,5 @@
-import { TurnOrigin, moodMember, notLearnable } from "../tessaya/TessayaTurn.ts";
+import { TessayaTurn, TurnOrigin, moodMember, notLearnable } from "../tessaya/TessayaTurn.ts";
+import * as Clock from "effect/Clock";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { it as effectIt } from "@effect/vitest";
 import { BAR_NOT_CONNECTED } from "@t3tools/tessaya-shared/phoneRelay";
@@ -54,7 +55,12 @@ import {
   withoutSelfIntros,
   type R1Context,
   contextCleaned,
+  tesselWishTick,
 } from "./R1Device.ts";
+import { R1Hub } from "./R1Hub.ts";
+import { TessayaMood } from "../tessaya/TessayaMood.ts";
+import { noteTesselHandled } from "../tessaya/TessayaBody.ts";
+import { onAction } from "../provenance/ActionLog.ts";
 import { DictationCleanupApi } from "../speech/DictationCleanupApi.ts";
 
 describe("R1Device", () => {
@@ -1413,3 +1419,55 @@ describe("a room turn that looks misheard is fixed from the talk before it", () 
     }),
   );
 });
+
+effectIt.effect(
+  "her own life on a Tessel shows in its eyes only: tired is sleepy, picked up is curious, and a talk there keeps it out",
+  () =>
+    Effect.gen(function* () {
+      const eyes: Array<{ topic: string; mood: string }> = [];
+      const wants: Array<unknown> = [];
+      const off = onAction((e) => void (e.kind === "body.want" && wants.push(e.data)));
+      let threads: Array<unknown> = [];
+      let energy = 0.1;
+      const world = Layer.mergeAll(
+        Layer.mock(HomeAssistantService)({
+          devices: Effect.succeed([{ deviceId: "t1", mqttUrl: null }] as never),
+          timeZone: Effect.succeed("Asia/Karachi"),
+        }),
+        Layer.mock(R1Hub)({
+          publish: (topic: string, payload: string) =>
+            void (topic.includes("/eye") && eyes.push({ topic, mood: JSON.parse(payload).mood })),
+        } as never),
+        Layer.mock(TessayaMood)({
+          atDevice: () => Effect.succeed({ label: "sleepy", intensity: 0.5, energy } as never),
+        }),
+        Layer.mock(TessayaTurn)({
+          threads: () => Effect.sync(() => threads as never),
+          whoIsHome: Effect.succeed([]),
+        }),
+      );
+      const tick = () => tesselWishTick().pipe(Effect.provide(world));
+      expect((yield* tick()).map((w) => w.want)).toEqual(["rest"]);
+      expect(eyes).toHaveLength(1);
+      // picked up a moment later, past her wish rhythm: curious
+      yield* TestClock.adjust("4 minutes");
+      energy = 0.8;
+      yield* noteTesselHandled("t1");
+      expect((yield* tick()).map((w) => w.want)).toEqual(["curious"]);
+      expect(wants.at(-1)).toMatchObject({
+        vessel: "t1",
+        why: "she was just picked up or touched",
+      });
+      // he is talking with her there: her own life waits
+      yield* TestClock.adjust("4 minutes");
+      threads = [
+        {
+          person: "owner",
+          vessel: { kind: "device", id: "t1" },
+          presentAt: yield* Clock.currentTimeMillis,
+        },
+      ];
+      expect(yield* tick()).toEqual([]);
+      off();
+    }),
+);

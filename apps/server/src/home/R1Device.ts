@@ -5,7 +5,8 @@
  * model turn that can act in the house through the same home door as every other surface, as surface "r1" (so a
  * risky act goes to his phone: anyone in the room can talk to it). The eyes follow her over the device's MQTT.
  */
-import { resumeBody } from "../tessaya/TessayaBody.ts";
+import { resumeBody, tesselHandledAt } from "../tessaya/TessayaBody.ts";
+import { chooseWant, type Want } from "@t3tools/tessaya-shared/motives";
 import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
 
@@ -27,7 +28,7 @@ import {
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { clockLine, clockStyleOf } from "@t3tools/tessaya-shared/brain";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
-import { memberOfSpeaker } from "@t3tools/tessaya-shared/household";
+import { memberOfSpeaker, OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { speakerMark } from "@t3tools/tessaya-shared/groupTalk";
 import { CONVERSATION_END } from "@t3tools/tessaya-shared/stopPhrases";
 import {
@@ -276,6 +277,80 @@ const publishRestMood = Effect.fn("R1Device.publishRestMood")(function* () {
       }
     }).pipe(Effect.ignore),
   );
+});
+
+/** A wish as Tumble shows it: its eyes only, for a few seconds; never a sound or a word. */
+const WISH_FACE: Readonly<Record<Want, ExpressionMood>> = {
+  rest: "sleepy",
+  sulk: "sulky",
+  curious: "curious",
+  seekHim: "lonely",
+  play: "happy",
+  bored: "steady",
+};
+/** A Tessel he talked with this recently is his conversation's, not her own life's. */
+const TALKED_MS = 10 * 60_000;
+// shortcut: her last wish per Tessel, per process; a restart may let one come sooner
+const tesselWishes = new Map<string, { readonly want: Want; readonly at: number }>();
+
+/**
+ * Her own life on each Tessel (M-087, Tumble's world): her mood there, whether he is by it, when he last talked with
+ * her on it and when it was last handled choose a wish, which its eyes show. On the brain only (one self).
+ */
+export const tesselWishTick = Effect.fn("R1Device.tesselWish")(function* () {
+  if (!(yield* isBrain)) return [];
+  const mood = yield* Effect.serviceOption(TessayaMood);
+  const turn = yield* Effect.serviceOption(TessayaTurn);
+  if (Option.isNone(mood) || Option.isNone(turn)) return [];
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  const liveliness = Option.isNone(settings)
+    ? "calm"
+    : yield* settings.value.getSettings.pipe(
+        Effect.map((s) => s.tessayaLiveliness),
+        Effect.orElseSucceed(() => "calm" as const),
+      );
+  const now = yield* Clock.currentTimeMillis;
+  const zone = yield* houseZone();
+  const cast = yield* Effect.serviceOption(TessayaCast);
+  const pack = yield* r1Pack;
+  const lead = (pack.personas.find((p) => p.lead) ?? pack.personas[0])?.id;
+  const mine = (yield* turn.value.threads()).filter((t) => t.person === OWNER_MEMBER_ID);
+  const owner = (yield* turn.value.whoIsHome).find((p) => p.member === OWNER_MEMBER_ID);
+  const shown: Array<{ device: string; want: Want }> = [];
+  for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices)) {
+    const id = device.deviceId;
+    if (id === null) continue;
+    const himAt = mine
+      .filter((t) => t.vessel.id === id)
+      .reduce<number | null>((at, t) => Math.max(at ?? 0, t.presentAt ?? 0) || at, null);
+    if (himAt !== null && now - himAt < TALKED_MS) continue;
+    const persona = (Option.isSome(cast) ? yield* cast.value.wearing(id) : null) ?? lead;
+    const felt = yield* mood.value.atDevice(id, persona, zone);
+    const handled = tesselHandledAt(id);
+    const wish = chooseWant({
+      now,
+      liveliness,
+      mood: { label: felt.label, intensity: felt.intensity, energy: felt.energy },
+      him: owner?.likelyHome === true && owner.nearest?.vessel === id ? "working" : "away",
+      himAt,
+      worldAt: Math.max(himAt ?? 0, handled ?? 0) || now,
+      newThingAt: handled,
+      last: tesselWishes.get(id) ?? null,
+    });
+    if (wish === null) continue;
+    tesselWishes.set(id, { want: wish.want, at: now });
+    const why = wish.want === "curious" ? "she was just picked up or touched" : wish.why;
+    yield* eyes(device, WISH_FACE[wish.want], 4_000, `her own wish: ${why}`);
+    yield* emitAction({
+      kind: "body.want",
+      actor: { kind: "rule", id: "motives", certainty: 1 },
+      subject: wish.want,
+      outcome: "ok",
+      data: { why, vessel: id },
+    });
+    shown.push({ device: id, want: wish.want });
+  }
+  return shown;
 });
 
 const Act = Schema.Struct({
@@ -1833,6 +1908,14 @@ export const routes = HttpRouter.use((router) =>
       Effect.forkScoped,
     );
     yield* publishRestMood().pipe(Effect.provideContext(context), Effect.ignore, Effect.forkScoped);
+    // her own life on each Tessel, once a minute (her wishes on the desk run in TessayaBody.wishLayer)
+    yield* tesselWishTick().pipe(
+      Effect.provideContext(context),
+      Effect.catchCause((cause) => Effect.logWarning("her Tessel wish failed", cause)),
+      Effect.repeat(Schedule.spaced("1 minute")),
+      Effect.delay("1 minute"),
+      Effect.forkScoped,
+    );
     // The room's tools (R1Tools.layer); without them the key route speaks in the acts form as before.
     const tools = yield* RoomTools;
     const chat = Effect.gen(function* () {

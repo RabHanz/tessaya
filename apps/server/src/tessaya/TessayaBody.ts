@@ -277,6 +277,13 @@ const himAtDesk = (now: number, home: boolean): "working" | "away" | "fullscreen
         ? "working"
         : "away";
 
+// When each Tessel was last picked up, moved or touched (Tumble's world, M-087). shortcut: per process.
+const tesselHandled = new Map<string, number>();
+export const noteTesselHandled = Effect.fn("TessayaBody.tesselHandled")(function* (device: string) {
+  tesselHandled.set(device, yield* Clock.currentTimeMillis);
+});
+export const tesselHandledAt = (device: string): number | null => tesselHandled.get(device) ?? null;
+
 /** Her own wishes (motives.ts) move her body only through body focus, as its weakest caller. */
 const SELF: BodyCaller = {
   id: "self",
