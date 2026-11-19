@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off
 /**
  * Who wears which body (B-002, MA-015). A Tessel's or phone's rule is the `tessayaCast` setting; the desktop's is its
  * own companion settings, set through TessayaDesktopSettings. Calls are visits that lapse with the conversation unless
@@ -25,6 +26,11 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
 import { personasList } from "./OperatingSystemPack.ts";
 import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
+import { makeBrainLink } from "./BrainHost.ts";
+import { emitAction } from "../provenance/ActionLog.ts";
+import * as ServerConfig from "../config.ts";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
 /** The desktop sandbox: the worn one and up to three more (the desktop's CREW_MAX). */
 const DESKTOP_HOLDS = 4;
@@ -355,14 +361,104 @@ const make = Effect.gen(function* () {
       }).pipe(Effect.ignore),
     );
 
+  /**
+   * One Cast, on her brain: a server that isn't her brain asks it, and keeps only its own desktop (whose rule is the
+   * desktop app's own file, synced here). When the brain can't be reached it answers from what it can see and changes
+   * nothing, so there is never a second truth of who wears what.
+   */
+  const brain = yield* makeBrainLink;
+  const desks = (v: CastView) => v.bodies.filter((b) => b.kind === "desktop");
+  /**
+   * The rules this server kept before the brain held them go up once, additively (the brain's own win), with a copy
+   * kept beside its state; only then are they cleared here, so no body has two rules. Each step is a Record action.
+   */
+  const uploadOwn = Effect.fn("TessayaCast.uploadOwn")(function* () {
+    const own = (yield* Effect.orElseSucceed(settings.getSettings, () => null))?.tessayaCast ?? {};
+    const count = Object.keys(own).length;
+    if (count === 0) return;
+    yield* emitAction({
+      kind: "cast.move",
+      actor: { kind: "rule", id: "oneBrain", certainty: 1 },
+      outcome: "dryRun",
+      data: { bodies: count },
+    });
+    const answer = yield* brain.send("cast", { a: "merge", rules: own });
+    if (Option.isNone(answer)) return;
+    const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+    if (Option.isSome(config)) {
+      const kept = NodePath.join(config.value.stateDir, "cast.before-brain.json");
+      yield* Effect.sync(() => {
+        if (!NodeFS.existsSync(kept))
+          NodeFS.writeFileSync(kept, `${JSON.stringify(own, null, 2)}\n`);
+      });
+    }
+    yield* Effect.ignore(settings.updateSettings({ tessayaCast: {} }));
+    yield* emitAction({
+      kind: "cast.move",
+      actor: { kind: "rule", id: "oneBrain", certainty: 1 },
+      outcome: "moved",
+      data: answer.value as Record<string, unknown>,
+    });
+  });
+  const fromBrain = Effect.fn("TessayaCast.fromBrain")(function* (act: unknown) {
+    if (yield* brain.isBrain) return Option.none<unknown>();
+    yield* uploadOwn();
+    return yield* brain.send("cast", act);
+  });
+  const view = Effect.gen(function* () {
+    const theirs = yield* fromBrain({ a: "view" });
+    const here = yield* bodies;
+    if (Option.isNone(theirs) || typeof theirs.value !== "object" || theirs.value === null)
+      return here;
+    const v = theirs.value as CastView;
+    // the desktop's own body is answered here, where its settings sync; every other body as the brain holds it
+    const mine = desks(here);
+    return {
+      personas: v.personas,
+      bodies: [...v.bodies.filter((b) => !mine.some((d) => d.id === b.id)), ...mine],
+    };
+  });
+  const isDesk = (body: string) =>
+    Effect.map(bodies, (v) =>
+      desks(v).some((d) => d.id === body || d.name.toLowerCase() === body.toLowerCase()),
+    );
+
   return TessayaCast.of({
-    view: bodies,
+    view,
     wearing: Effect.fn("TessayaCast.wearing")(function* (body: string) {
-      return (yield* bodies).bodies.find((b) => b.id === body)?.wearing ?? null;
+      return (yield* view).bodies.find((b) => b.id === body)?.wearing ?? null;
     }),
-    call,
-    told,
+    call: Effect.fn("TessayaCast.oneCall")(function* (
+      input: CastCallInput,
+      verified: boolean,
+      visitOk: boolean = verified,
+    ) {
+      if (yield* brain.isBrain) return yield* call(input, verified, visitOk);
+      if (input.op === "view") return yield* view;
+      yield* uploadOwn();
+      if ("body" in input && input.body !== undefined && (yield* isDesk(input.body)))
+        return yield* call(input, verified, visitOk);
+      const answer = yield* brain.send("cast", { a: "call", input, verified, visitOk });
+      if (Option.isNone(answer))
+        return yield* Effect.fail("Her brain can't be reached just now, so nobody moved.");
+      const got = answer.value as CastView | { readonly refused: string };
+      if ("refused" in got) return yield* Effect.fail(got.refused);
+      return got;
+    }),
+    told: Effect.fn("TessayaCast.told")(function* (body: string) {
+      const theirs = yield* fromBrain({ a: "told", body });
+      return Option.isSome(theirs)
+        ? (theirs.value as {
+            readonly persona: string | null;
+            readonly follows: boolean | null;
+          } | null)
+        : yield* told(body);
+    }),
     touch: Effect.fn("TessayaCast.touch")(function* (body: string) {
+      if (!(yield* brain.isBrain) && !(yield* isDesk(body))) {
+        yield* brain.send("cast", { a: "touch", body });
+        return;
+      }
       const v = visits.get(body);
       if (v === undefined) return;
       visits.set(body, { ...v, at: yield* Clock.currentTimeMillis });

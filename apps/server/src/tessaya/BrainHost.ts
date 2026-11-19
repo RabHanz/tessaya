@@ -19,6 +19,8 @@ export const BrainOp = Schema.Literals([
   "mood",
   // her mood as the brain holds it, for a server that shows her (one mood across every body)
   "moodView",
+  // who wears which body (Tessels, phones) and the visits: kept on her brain alone
+  "cast",
   "presence",
   "persona",
   "group",
