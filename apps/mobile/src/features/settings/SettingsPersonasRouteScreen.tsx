@@ -21,6 +21,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { ListRowLayout } from "../../components/ui/ListRowLayout";
+import { ListChoiceRow } from "../../components/ui/ListChoiceRow";
 import { ListToggleRow } from "../../components/ui/ListToggleRow";
 import { Menu } from "../../components/ui/Menu";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
@@ -41,6 +42,13 @@ import {
   personaSave,
 } from "./personaForm";
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
+
+/** How far a private persona comes into his private rooms (rooms.ts). */
+const PRIVATE_ROOMS = [
+  ["open", "Private rooms: one-on-one and open rooms"],
+  ["one-on-one", "Private rooms: only one-on-one with you"],
+  ["never", "Private rooms: never"],
+] as const;
 
 const QUIET = { reportFailure: false } as const;
 const INPUT = "rounded-lg bg-background px-3 py-2 text-foreground";
@@ -454,6 +462,17 @@ function PersonaFormSection(props: {
         value={form.private}
         onValueChange={(on) => onChange({ ...form, private: on })}
       />
+      {form.private
+        ? PRIVATE_ROOMS.map(([value, label], i) => (
+            <ListChoiceRow
+              key={value}
+              label={label}
+              selected={form.privateRooms === value}
+              separated={i > 0}
+              onPress={() => onChange({ ...form, privateRooms: value })}
+            />
+          ))
+        : null}
       <View className="flex-row justify-end gap-2 px-4 py-3">
         <Button size="compact" tone="text" label="Cancel" onPress={props.onCancel} />
         <Button

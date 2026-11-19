@@ -7,7 +7,10 @@
 export type RoomKind = "public" | "one-on-one" | "open" | "event";
 
 /** How far a persona's own record lets her into private rooms (her `privateRooms`, D6). */
-export type PrivateRooms = "never" | "one-on-one" | "open";
+export const PRIVATE_ROOMS = ["never", "one-on-one", "open"] as const;
+export type PrivateRooms = (typeof PRIVATE_ROOMS)[number];
+export const isPrivateRooms = (v: unknown): v is PrivateRooms =>
+  (PRIVATE_ROOMS as ReadonlyArray<unknown>).includes(v);
 
 export interface RoomPersona {
   readonly id: string;

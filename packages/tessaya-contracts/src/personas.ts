@@ -9,6 +9,8 @@ export const BATON_PERSONAS_WS_METHODS = {
   change: "baton.personas.change",
 } as const;
 
+const PrivateRooms = Schema.Literals(["never", "one-on-one", "open"]);
+
 export const TessayaPersona = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -22,6 +24,8 @@ export const TessayaPersona = Schema.Struct({
   role: Schema.String,
   lead: Schema.Boolean,
   private: Schema.optionalKey(Schema.Boolean),
+  /** How far a private persona comes into his private rooms (M-080). */
+  privateRooms: Schema.optionalKey(PrivateRooms),
   character: Schema.optionalKey(Schema.String),
   traits: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)),
   eyes: Schema.optionalKey(Schema.String),
@@ -70,6 +74,8 @@ export const TessayaPersonaDraft = Schema.Struct({
     Schema.NullOr(Schema.Literals(["low", "medium", "high", "xhigh", "max"])),
   ),
   private: Schema.optionalKey(Schema.Boolean),
+  /** How far it comes into his private rooms: never, only one-on-one with him, or open rooms too; null takes it out. */
+  privateRooms: Schema.optionalKey(Schema.NullOr(PrivateRooms)),
   /** Its greetings, one line each; an empty list or null takes them out. */
   greetings: Schema.optionalKey(
     Schema.NullOr(Schema.Array(Line(400)).check(Schema.isMaxLength(8))),

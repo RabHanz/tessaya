@@ -23,6 +23,8 @@ export interface PersonaForm {
   readonly traits: Readonly<Partial<Record<Dial, number>>>;
   readonly model: string;
   readonly private: boolean;
+  /** How far a private persona comes into his private rooms. */
+  readonly privateRooms: "never" | "one-on-one" | "open";
   /** One greeting per line. */
   readonly greetings: string;
 }
@@ -35,6 +37,7 @@ export const BLANK_PERSONA: PersonaForm = {
   traits: {},
   model: "",
   private: false,
+  privateRooms: "open",
   greetings: "",
 };
 
@@ -47,6 +50,7 @@ export const personaFormFor = (p: TessayaPersona): PersonaForm => ({
   traits: p.traits ?? {},
   model: p.brain?.model ?? "",
   private: p.private === true,
+  privateRooms: p.privateRooms ?? "open",
   greetings: (p.greetings ?? []).join("\n"),
 });
 
@@ -74,6 +78,7 @@ export function personaSave(f: PersonaForm): TessayaPersonaChangeInput {
     traits: f.traits,
     model: f.model.trim() === "" ? null : f.model.trim(),
     private: f.private,
+    ...(f.private ? { privateRooms: f.privateRooms } : f.id === null ? {} : { privateRooms: null }),
     ...(f.id === null && greetings.length === 0 ? {} : { greetings }),
   };
   return f.id === null ? { op: "create", draft } : { op: "edit", id: f.id, draft };

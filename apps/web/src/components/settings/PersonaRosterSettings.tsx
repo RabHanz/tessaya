@@ -2,6 +2,7 @@
  * Settings → Voice → Personas: hire a persona (by hand, from one sentence, or from a Character Card), change its dials,
  * brief, greetings and brain, export it as a card, copy it, retire it to the bin and restore it. Every change goes to the environment's one registry (`baton.personas.change`); she does the same by voice.
  */
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import type {
   SavedCloneView,
   TessayaPersona,
@@ -40,6 +41,8 @@ interface Form {
   readonly traits: Readonly<Partial<Record<Dial, number>>>;
   readonly model: string;
   readonly private: boolean;
+  /** How far a private persona comes into his private rooms. */
+  readonly privateRooms: PrivateRoomsChoice;
   /** One greeting per line. */
   readonly greetings: string;
 }
@@ -52,7 +55,15 @@ const blank: Form = {
   traits: {},
   model: "",
   private: false,
+  privateRooms: "open",
   greetings: "",
+};
+
+type PrivateRoomsChoice = "never" | "one-on-one" | "open";
+const PRIVATE_ROOMS_LABELS: Readonly<Record<PrivateRoomsChoice, string>> = {
+  open: "Private rooms: one-on-one and open rooms",
+  "one-on-one": "Private rooms: only one-on-one with you",
+  never: "Private rooms: never",
 };
 
 const formOfDraft = (d: TessayaPersonaDraft): Form => ({
@@ -123,6 +134,11 @@ export function PersonaRoster(props: {
       traits: f.traits,
       model: f.model.trim() === "" ? null : f.model.trim(),
       private: f.private,
+      ...(f.private
+        ? { privateRooms: f.privateRooms }
+        : f.id === null
+          ? {}
+          : { privateRooms: null }),
       ...(f.id === null && greetings.length === 0 ? {} : { greetings }),
     };
     const ok = await send(
@@ -251,6 +267,7 @@ export function PersonaRoster(props: {
                     traits: p.traits ?? {},
                     model: p.brain?.model ?? "",
                     private: p.private === true,
+                    privateRooms: p.privateRooms ?? "open",
                     greetings: (p.greetings ?? []).join("\n"),
                   })
                 }
@@ -473,6 +490,25 @@ function PersonaForm(props: {
         />
         Private: only you, verified, can reach this persona and its memories
       </label>
+      {form.private ? (
+        <Select
+          value={form.privateRooms}
+          onValueChange={(value) => {
+            if (value !== null) onChange({ ...form, privateRooms: value as PrivateRoomsChoice });
+          }}
+        >
+          <SelectTrigger aria-label="How far into private rooms" size="sm">
+            <SelectValue>{PRIVATE_ROOMS_LABELS[form.privateRooms]}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {(Object.keys(PRIVATE_ROOMS_LABELS) as Array<PrivateRoomsChoice>).map((k) => (
+              <SelectItem key={k} value={k}>
+                {PRIVATE_ROOMS_LABELS[k]}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      ) : null}
       <div className="flex justify-end gap-1.5">
         {props.onExport === undefined ? null : (
           <>
