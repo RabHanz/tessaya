@@ -26,8 +26,10 @@ chmod 700 "$home/userdata/secrets"
 node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync(process.argv[1],{readOnly:true}).exec(\"VACUUM INTO '\"+process.argv[2]+\"'\")" \
   "$from/baton.sqlite" "$home/userdata/baton.sqlite.copy"
 mv "$home/userdata/baton.sqlite.copy" "$home/userdata/baton.sqlite"
-# The copy's own device list and relay offset would reach his devices; only the house settings stay.
-node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync(process.argv[1]).exec(\"DELETE FROM fabric_settings WHERE key NOT LIKE 'home.%'\")" \
+# The copy's own device list and relay offset would reach his devices; only the house settings stay. His own house
+# acts and timed automations go too: the suite's are dry runs, so every case starts from the same empty history
+# (R-085: 'undo' undid his real 07:40 automation, which had already fired).
+node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync(process.argv[1]).exec(\"DELETE FROM fabric_settings WHERE key NOT LIKE 'home.%'; DELETE FROM fabric_home_actions; DELETE FROM fabric_home_automations\")" \
   "$home/userdata/baton.sqlite"
 for s in home-assistant-token dictation-cleanup-anthropic; do
   [ -f "$from/secrets/$s.bin" ] && install -m 600 "$from/secrets/$s.bin" "$home/userdata/secrets/"
