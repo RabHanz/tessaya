@@ -46,6 +46,8 @@ export interface LayerTurn {
 export interface LayerSignal {
   readonly kind: string;
   readonly vessel?: string;
+  /** The signed-in session it is about (his private window closed on it), for the layer to map to its own vessel. */
+  readonly session?: string;
 }
 
 export interface LayerReply {

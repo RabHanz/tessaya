@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { capturingApps, createLayerHello, startPersonaLayerLink } from "./personaLayerLink.ts";
+import {
+  capturingApps,
+  createLayerHello,
+  createWindowCloseEnd,
+  startPersonaLayerLink,
+  WINDOW_CLOSE_GRACE_MS,
+} from "./personaLayerLink.ts";
 
 const REG = `
 HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone\\NonPackaged\\C:#Program Files#Zoom#bin#Zoom.exe
@@ -62,6 +68,37 @@ describe("startPersonaLayerLink", () => {
     expect(posts.at(-1)?.signals).toEqual(expect.arrayContaining(["screenLocked", "call"]));
     expect(shield).toEqual([true, false]);
     link.stop();
+  });
+});
+
+describe("createWindowCloseEnd", () => {
+  it("ends the private moment once his last private window stays closed past the grace", () => {
+    const timers: Array<{ fn: () => void; ms: number; live: boolean }> = [];
+    const schedule = (fn: () => void, ms: number) => {
+      const t = { fn, ms, live: true };
+      timers.push(t);
+      return () => void (t.live = false);
+    };
+    const fire = () => timers.filter((t) => t.live).forEach((t) => ((t.live = false), t.fn()));
+    let ended = 0;
+    const w = createWindowCloseEnd({ end: () => void ended++, schedule });
+    w.opened();
+    w.opened();
+    // one of two closed: the other still holds it
+    w.closed();
+    fire();
+    expect(ended).toBe(0);
+    // the last one closed, then reopened within the grace (a reload): nothing ends
+    w.closed();
+    expect(timers.at(-1)?.ms).toBe(WINDOW_CLOSE_GRACE_MS);
+    w.opened();
+    fire();
+    expect(ended).toBe(0);
+    // closed for good: it ends, once
+    w.closed();
+    fire();
+    fire();
+    expect(ended).toBe(1);
   });
 });
 
