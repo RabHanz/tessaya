@@ -632,7 +632,35 @@ export const createDesktopMascot = (input: {
       target.setBounds({ x: b.x + b.width - width, y: b.y + b.height - height, width, height });
     } else keepVeil();
   };
+  /**
+   * Where the others stand, for her full body's turns and walks toward them (vrmBody `locate`, bodyLocomotion
+   * locateOnDesk): her feet, her height, each crew member's feet by persona, the desk's centre. Positions only.
+   */
+  let placesTimer: ReturnType<typeof setInterval> | null = null;
+  const sendPlaces = () => {
+    const target = veil;
+    if (target === null || target.isDestroyed()) return;
+    const b = target.getBounds();
+    const work = Electron.screen.getDisplayMatching(b).workArea;
+    const crew = Object.fromEntries(
+      others().flatMap((m) => {
+        const f = m.feet();
+        return f === null ? [] : [[m.id, { x: f.x, y: f.y }]];
+      }),
+    );
+    const places = {
+      her: { x: b.x + b.width / 2, y: b.y + b.height },
+      heightPx: b.height,
+      crew,
+      centre: { x: work.x + work.width / 2, y: work.y + work.height },
+    };
+    void target.webContents
+      .executeJavaScript(`window.tessayaDeskPlaces?.(${JSON.stringify(places)})`)
+      .catch(() => undefined);
+  };
   const dropVeil = () => {
+    if (placesTimer !== null) clearInterval(placesTimer);
+    placesTimer = null;
     if (veil !== null && !veil.isDestroyed()) veil.destroy();
     veil = null;
     call(`document.body.style.opacity = ""`);
@@ -1477,6 +1505,9 @@ export const createDesktopMascot = (input: {
           if (veil !== shown) return;
           placeVeil();
           shown.showInactive();
+          sendPlaces();
+          // shortcut: every 2 s, not on each crew move; a walk aims at where she was then
+          if (placesTimer === null) placesTimer = setInterval(sendPlaces, 2_000);
           if (page.waitShown !== true) call(`document.body.style.opacity = "0"`);
         })
         .catch(() => dropVeil());

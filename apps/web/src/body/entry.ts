@@ -6,6 +6,7 @@
  */
 import { BODY_CAPABILITIES, decodeBodyMove, moveCues } from "@t3tools/tessaya-shared/bodyControl";
 import { BODY_FACES, GESTURES, lineCues } from "@t3tools/tessaya-shared/bodyCues";
+import { locateOnDesk } from "@t3tools/tessaya-shared/bodyLocomotion";
 import { HUMAN_SENSE } from "@t3tools/tessaya-shared/bodySense";
 import { ACT_NAMES } from "@t3tools/tessaya-shared/bodyMotion";
 import { HAND_PLACES, INVOLUNTARY } from "@t3tools/tessaya-shared/bodyPlanner";
@@ -35,6 +36,8 @@ declare global {
 }
 
 const control = {
+  // where another persona stands on his desk, from the places the desktop sends (vrmBody's `locate`)
+  locateOnDesk,
   decodeBodyMove,
   moveCues,
   decodeScene,

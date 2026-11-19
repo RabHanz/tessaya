@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { decodeBodyMove, moveCues } from "./bodyControl.ts";
 import { parseCue } from "./bodyCues.ts";
+import { locateOnDesk } from "./bodyLocomotion.ts";
 
 describe("bodyLocomotion", () => {
   it("a move turns her, walks her and aims her at someone, bounded, and the cues reach the renderer intact", () => {
@@ -45,5 +46,23 @@ describe("bodyLocomotion", () => {
       ok: false,
       error: expect.stringMatching(/stroll/),
     });
+  });
+
+  it("toward a persona on the desk: her crew window's feet, else the desk's centre", () => {
+    const places = {
+      her: { x: 1000, y: 900 },
+      heightPx: 400,
+      crew: { sebastian: { x: 600, y: 900 } },
+      centre: { x: 1600, y: 1000 },
+    };
+    // the screen's left is her right, so she turns that way; 400 px is her own height away
+    expect(locateOnDesk(places, { kind: "persona", id: "sebastian" })).toEqual({
+      yaw: -Math.PI / 2,
+      metres: 1.6,
+    });
+    const centre = locateOnDesk(places, { kind: "persona", id: "alfred" })!;
+    expect(centre.yaw).toBe(Math.PI / 2);
+    expect(centre.metres).toBeCloseTo(2.4);
+    expect(locateOnDesk(places, { kind: "him" })).toBeNull();
   });
 });
