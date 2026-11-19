@@ -29,6 +29,7 @@ import * as TessayaAccounts from "./TessayaAccounts.ts";
 import * as AccountRotationPolicy from "./AccountRotationPolicy.ts";
 import * as TessayaMemorySync from "./TessayaMemorySync.ts";
 import * as BrainHost from "./BrainHost.ts";
+import * as HouseholdDevices from "./HouseholdDevices.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
 import * as AdoptedSessionService from "./AdoptedSessionService.ts";
 import * as TessayaDatabase from "./TessayaDatabase.ts";
@@ -304,6 +305,8 @@ const servicesInner = Layer.mergeAll(
       TessayaMemorySync.layer.pipe(Layer.provide(localMemoryLayer)),
       // a worker's changes that waited for the brain land once it is back (one truth, nothing lost)
       BrainHost.outboxLayer,
+      // one phone, every machine: a sign-out of a household device here is a sign-out everywhere (M-097)
+      HouseholdDevices.layer,
       // Her standing understanding of each person and of herself (G4), versioned in the one memory.
       TessayaUnderstanding.layer.pipe(
         Layer.provide(memoryLayer),

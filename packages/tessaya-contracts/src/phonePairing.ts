@@ -10,6 +10,20 @@ export const BATON_PHONE_PAIRING_WS_METHODS = { issue: "baton.phonePairing.issue
 /** The tool a linked environment calls here for this machine's own code. */
 export const PHONE_PAIRING_TOOL = "phone_pairing_code";
 
+/** The tool her brain calls on each of his machines to sign a household device out there too. */
+export const HOUSEHOLD_DEVICE_REVOKE_TOOL = "household_device_revoke";
+
+/**
+ * One device across his machines (M-097): every code in one pairing carries the same id in its label, which becomes the
+ * device's session label on each machine, so signing it out on one signs it out on all.
+ */
+export const HOUSEHOLD_DEVICE = /^hd-[a-z0-9]{8,32}$/;
+export const householdDeviceLabel = (device: string): string => `Phone · ${device}`;
+export const householdDeviceOf = (label: string | null | undefined): string | null => {
+  const tail = label?.split(" · ").at(-1) ?? "";
+  return HOUSEHOLD_DEVICE.test(tail) ? tail : null;
+};
+
 /** How long a phone's pairing code lasts: long enough to find the app and scan. */
 export const PHONE_PAIRING_TTL_MINUTES = 10;
 
@@ -30,6 +44,10 @@ export const PhonePairingResult = Schema.Struct({
   linked: Schema.Array(PhonePairingLinked),
   /** Linked environments left out, each with why in plain words. */
   missed: Schema.Array(Schema.Struct({ label: Schema.String, reason: Schema.String })),
+  /** The household device id every code here carries (one sign-out signs it out everywhere). */
+  device: Schema.optionalKey(Schema.String),
+  /** Her brain's environment: where the phone's Tessaya reads from when it is connected. */
+  brain: Schema.optionalKey(EnvironmentId),
 });
 export type PhonePairingResult = typeof PhonePairingResult.Type;
 

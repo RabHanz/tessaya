@@ -19,6 +19,7 @@ import {
   BATON_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   PHONE_PAIRING_TOOL,
+  HOUSEHOLD_DEVICE_REVOKE_TOOL,
   TessayaDesktopState,
   type TessayaPersonaChangeInput,
   type TessayaPersonaChangeResult,
@@ -87,6 +88,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as EnvironmentAuth from "../../../auth/EnvironmentAuth.ts";
 import * as PhonePairing from "../../../tessaya/PhonePairing.ts";
+import * as HouseholdDevices from "../../../tessaya/HouseholdDevices.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as BodyHandlers from "../body/handlers.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
@@ -329,7 +331,7 @@ export const layer = McpToolAccess.toLayer(
         { linkedCallers: "allowed" },
       ),
       [PHONE_PAIRING_TOOL]: McpToolAccess.writes(
-        () =>
+        (input) =>
           Effect.gen(function* () {
             const scope = yield* McpInvocationContext.McpInvocationContext;
             if (!PhonePairing.mayAskHere(scope.client))
@@ -342,7 +344,7 @@ export const layer = McpToolAccess.toLayer(
                 code: "orchestration_error",
                 message: "Pairing is not available on this server.",
               });
-            return yield* PhonePairing.codeHere(auth.value).pipe(
+            return yield* PhonePairing.codeHere(auth.value, input.device).pipe(
               Effect.mapError(
                 (error) =>
                   new OrchestratorMcpFailure({
@@ -351,6 +353,30 @@ export const layer = McpToolAccess.toLayer(
                   }),
               ),
             );
+          }),
+        { linkedCallers: "allowed" },
+      ),
+      [HOUSEHOLD_DEVICE_REVOKE_TOOL]: McpToolAccess.writes(
+        (input) =>
+          Effect.gen(function* () {
+            const scope = yield* McpInvocationContext.McpInvocationContext;
+            // Signing a phone out only narrows access: any link of his but a read-only or body-only one may ask.
+            const access = scope.client?.access;
+            if (
+              scope.client?.linked !== true ||
+              runtime === null ||
+              access === "read-only" ||
+              access === "body-only"
+            )
+              return yield* new OrchestratorMcpFailure({
+                code: "capability_denied",
+                message: "Only another of his machines may ask for this.",
+              });
+            return {
+              revoked: yield* HouseholdDevices.revokeHere(input.device).pipe(
+                Effect.provideContext(runtime),
+              ),
+            };
           }),
         { linkedCallers: "allowed" },
       ),
