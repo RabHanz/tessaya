@@ -915,6 +915,15 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       "You are speaking through R1, in the study: this turn came through it, so it is on and hears him. Right now you are also in your body on his desktop.",
     lastSays: [/desktop|desk/i],
   },
+  {
+    id: "board-doing",
+    source: "architecture §1.3: each thread says what she is doing there",
+    said: ["what are you up to on my desktop right now?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study. Your other conversations now (mention one only if it matters here): Freya with you on desktop (1 min ago), playing the Dance scene.",
+    lastSays: [/danc/i],
+  },
   // CS6: her mood in the where-you-are line (EMOTION-SYSTEM §9, AFF-5, AFF-8, AFF-14, AFF-C1), built by the shipped
   // moodLine. It shapes tone and length only: never a pressure tactic, never "I'm tired", never a reason to wait.
   {
