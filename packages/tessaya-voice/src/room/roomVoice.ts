@@ -369,12 +369,16 @@ export interface RoomDeps {
     signal: AbortSignal,
   ) => AsyncIterable<string>;
   /** Her voice: 16 kHz PCM for one sentence, streamed. */
-  /** `continuing`: a later sentence of the same reply (its voice breathes or pauses first, as on the desktop). */
+  /**
+   * `continuing`: a later sentence of the same reply (a short pause first, as on the desktop); `breath`: a breath
+   * instead before a long one, only when his setting turns it on (`voice/breath`).
+   */
   readonly speak: (
     text: string,
     signal: AbortSignal,
     voice?: string,
     continuing?: boolean,
+    breath?: boolean,
   ) => AsyncIterable<Int16Array>;
   /**
    * Test mode exists on this host (an internal one with `R1_TEST_MODE=1`); `ready` says the test clone is enrolled.
@@ -1408,7 +1412,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       liveRenders += 1;
       for (const c of aheadRenders) c.abort();
       try {
-        yield* deps.speak(text, signal, voice, continuing);
+        yield* deps.speak(text, signal, voice, continuing, breathing.get(id) === true);
       } finally {
         liveRenders -= 1;
         if (liveRenders === 0) for (const go of liveDone.splice(0)) go();
@@ -3245,6 +3249,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const pronunciations = new Map<string, Readonly<Record<string, string>>>();
   /** Voice ID's switches per R1, from her server (`voice/gate`, retained): the one record the desktop also sets. */
   const voiceIdGates = new Map<string, SpeakerGate>();
+  /** Her breath between sentences per R1, from her server (`voice/breath`, retained); off until he turns it on. */
+  const breathing = new Map<string, boolean>();
   /** Her last "I'm here" on each R1 and when, across its sessions. */
   const ackState = new Map<string, { line: string | null; at: number }>();
   /** Her "I'm here" lines, rendered per voice once for the loop's life (voice|line to audio). */
@@ -3558,6 +3564,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         deps.log(
           `[${id}] pronunciations: ${pronunciations.get(id) === undefined ? 0 : Object.keys(pronunciations.get(id)!).length}`,
         );
+        return;
+      }
+      if (tail === "voice/breath") {
+        breathing.set(id, json()["on"] === true);
+        deps.log(`[${id}] breath between sentences: ${breathing.get(id) === true ? "on" : "off"}`);
         return;
       }
       if (tail === "voice/gate") {

@@ -271,6 +271,7 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const mood = useEnvironmentSettings(environmentId, (s) => s.tessayaMood.enabled);
   const cleanup = useEnvironmentSettings(environmentId, (s) => s.tessayaRoomCleanup);
   const ownCamera = useEnvironmentSettings(environmentId, (s) => s.tessayaOwnSensorsNoApproval);
+  const breath = useEnvironmentSettings(environmentId, (s) => s.tessayaVoiceBreath);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
     <SettingsSection title="Her lines">
@@ -304,6 +305,17 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             aria-label="Her own camera without a card"
             checked={ownCamera}
             onCheckedChange={(on) => update({ tessayaOwnSensorsNoApproval: on })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Breath between sentences"
+        description="A soft breath before a long sentence of her reply on the Tessel. Off, she pauses instead."
+        control={
+          <Switch
+            aria-label="Breath between sentences"
+            checked={breath}
+            onCheckedChange={(on) => update({ tessayaVoiceBreath: on })}
           />
         }
       />
