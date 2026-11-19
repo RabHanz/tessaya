@@ -58,6 +58,12 @@ const bodyOnlyNow = Effect.map(
 const herRefusal = Effect.flatMap(bodyOnlyNow, bodyOnlyHerRefusal);
 type Asked = McpInvocationContext.McpInvocationContext;
 
+type StateAnswer = {
+  readonly open: boolean;
+  readonly playground?: string;
+  readonly body: unknown;
+  readonly capabilities: unknown;
+};
 type SceneAnswer = {
   readonly ok: boolean;
   readonly said: string;
@@ -78,10 +84,10 @@ export const make = Effect.gen(function* () {
     const { target: _target, playground, ...rest } = input;
     return onPlayground(input, caller)
       ? movePlayground(rest, caller, playground)
-      : Effect.flatMap(herRefusal, (said) =>
+      : Effect.flatMap(herRefusal, (said): Effect.Effect<BodyMoveAnswer> =>
           said === null
             ? moveBody(rest, caller)
-            : Effect.succeed({ ok: false, route: "none" as const, said }),
+            : Effect.succeed({ ok: false, route: "none", said }),
         );
   };
   const scene = (
@@ -90,10 +96,18 @@ export const make = Effect.gen(function* () {
   ): Effect.Effect<SceneAnswer, never, Asked> =>
     onPlayground(input, caller)
       ? scenePlayground(input.scene, caller, input.dryRun === true, input.playground)
-      : Effect.flatMap(herRefusal, (said) =>
+      : Effect.flatMap(herRefusal, (said): Effect.Effect<SceneAnswer> =>
           said === null || input.dryRun === true
             ? playScene(input.scene, caller, input.dryRun === true)
             : Effect.succeed({ ok: false, said, route: "none" }),
+        );
+  const state = (input: Aim, caller: BodyCaller): Effect.Effect<StateAnswer, never, Asked> =>
+    onPlayground(input, caller)
+      ? Effect.succeed(statePlayground(input.playground))
+      : Effect.flatMap(herRefusal, (said): Effect.Effect<StateAnswer> =>
+          said === null
+            ? bodyState(caller)
+            : Effect.succeed({ open: false, body: null, capabilities: null }),
         );
   return {
     tessaya_body_move: McpToolAccess.bodyWrites((input: Aim & object) =>
@@ -104,17 +118,7 @@ export const make = Effect.gen(function* () {
         Effect.flatMap(callerNow, (caller) => inRuntime(scene(input, caller))),
     ),
     tessaya_body_state: McpToolAccess.reads((input: Aim) =>
-      Effect.flatMap(callerNow, (caller) =>
-        onPlayground(input, caller)
-          ? Effect.succeed(statePlayground(input.playground))
-          : inRuntime(
-              Effect.flatMap(herRefusal, (said) =>
-                said === null
-                  ? bodyState(caller)
-                  : Effect.succeed({ open: false, body: null, capabilities: null }),
-              ),
-            ),
-      ),
+      Effect.flatMap(callerNow, (caller) => inRuntime(state(input, caller))),
     ),
   };
 });
