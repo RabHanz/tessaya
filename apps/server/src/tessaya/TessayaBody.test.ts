@@ -12,6 +12,7 @@ import {
   feel,
   moveBody,
   playScene,
+  noteDeskWorld,
   restBody,
   wishTick,
   type BodyCaller,
@@ -262,6 +263,21 @@ describe("TessayaBody", () => {
       expect(yield* wishTick().pipe(Effect.provide(world))).toBeNull();
       off();
       expect(wants).toEqual([["rest", { why: "she is tired", route: "body" }]]);
+      // a full-screen app in front: she rests out of his way, however she feels
+      yield* restBody();
+      yield* TestClock.adjust("20 minutes");
+      yield* noteDeskWorld({ fullscreen: true });
+      const bright = Layer.mergeAll(
+        world,
+        Layer.mock(TessayaMood)({
+          view: () => Effect.succeed({ label: "happy", intensity: 0.5, energy: 0.9 } as never),
+        }),
+      );
+      expect(yield* wishTick().pipe(Effect.provide(bright))).toEqual({
+        want: "rest",
+        why: "he is in a full-screen app",
+      });
+      yield* noteDeskWorld({ fullscreen: false });
       yield* restBody();
     }),
   );
