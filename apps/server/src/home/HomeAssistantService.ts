@@ -1947,8 +1947,33 @@ const make = Effect.gen(function* () {
     Effect.forkIn(scope),
   );
 
+  /** A linked server answered for the house lately: this server has no connection of its own, but the house is his. */
+  let servedAt = Number.NEGATIVE_INFINITY;
+  const PEER_FRESH_MS = 60_000;
+  const viaLinked = Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    if (now - servedAt >= PEER_FRESH_MS) {
+      const answer = yield* viaPeer("home_find", { limit: 1 }).pipe(
+        Effect.timeout("3 seconds"),
+        Effect.orElseSucceed(() => null),
+      );
+      if (answer !== null) servedAt = now;
+    }
+    return now - servedAt < PEER_FRESH_MS;
+  });
+
   return HomeAssistantService.of({
-    status: Effect.sync(() => ({ ...status, entities: states.size })),
+    // With no connection here, the house through a linked server is connected (19 Nov 05:20: on a server with no token
+    // she told him "the house isn't connected" while every home tool answered through the linked one).
+    status: Effect.gen(function* () {
+      if (status.state === "off" && (yield* viaLinked))
+        return {
+          ...status,
+          state: "connected" as const,
+          line: "Connected through a linked server of his.",
+        };
+      return { ...status, entities: states.size };
+    }),
     // `start` replaces the Deferred: read it at call time, not at construction.
     settled: Effect.suspend(() => Deferred.await(settled)),
     timeZone: Effect.sync(() => timeZone),
