@@ -10,11 +10,13 @@ import { expect, it } from "vite-plus/test";
 import type { R1Device } from "./HomeAssistantService.ts";
 import {
   clearStalePorts,
+  claimChange,
   elect,
   listenInodes,
   loopPlan,
   loopPorts,
   parseEnvFile,
+  servingLoops,
   terminate,
   voiceLine,
 } from "./R1Loop.ts";
@@ -294,4 +296,18 @@ it("claims the room only while its own loop is up and hearing a Tessel on this h
   ]);
   // Another loop on this hub always wins, even with ours up.
   expect(vote([[40, 1, 1, true]]).map((v) => v.claims)).toEqual([false]);
+});
+
+it("records whichever loop serves the Tessel on this hub, its own or another (a voice service outside the server)", () => {
+  const serving = (claims: boolean, others: ReadonlyArray<string>, here: number) =>
+    servingLoops({ claims, ours: "tessaya-room-7", others, here });
+  expect(serving(true, [], 1)).toEqual(["tessaya-room-7"]);
+  expect(serving(false, ["tessaya-room-9"], 1)).toEqual(["tessaya-room-9"]);
+  // Heard, but no Tessel here: that loop serves her on another hub.
+  expect(serving(false, ["tessaya-room-9"], 0)).toEqual([]);
+  expect(claimChange([], ["tessaya-room-9"])).toBe("room.loop.takeover");
+  expect(claimChange(["tessaya-room-9"], ["tessaya-room-9"])).toBeNull();
+  // The service restarted under a new id: the new one takes the room.
+  expect(claimChange(["tessaya-room-9"], ["tessaya-room-12"])).toBe("room.loop.takeover");
+  expect(claimChange(["tessaya-room-9"], [])).toBe("room.loop.handback");
 });
