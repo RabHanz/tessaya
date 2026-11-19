@@ -26,6 +26,7 @@ import {
 } from "@t3tools/tessaya-shared/bodyScene";
 import { REFERENCE_RIG } from "@t3tools/tessaya-shared/bodyRig";
 import {
+  feltTone,
   feltWords,
   fire,
   HUMAN_SENSE,
@@ -51,6 +52,7 @@ import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
+import { TessayaMood } from "./TessayaMood.ts";
 import { TurnLiveContext } from "./TurnLiveContext.ts";
 
 /** Who is asking: her own turn on a vessel, an agent in T3, or one signed in from outside. */
@@ -280,6 +282,10 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
       kind: move.touch.motion,
       agent: caller.id,
       pressure: move.touch.pressure,
+      // how far a grab pulls past what gives (bodyGrab.ts: ~5 cm of slack, a full pull at 12 cm)
+      ...(move.touch.pull === undefined
+        ? {}
+        : { stretch: Math.min(1, Math.max(0, Math.hypot(...move.touch.pull) - 0.05) / 0.12) }),
       private: privateMove,
     });
   if (stream && !startsStream) return answer;
@@ -465,11 +471,24 @@ export interface Felt {
   readonly persona?: string | null | undefined;
   /** The part of her (a touch zone), or "body" when it was all of her (picked up, thrown, squashed). */
   readonly part: string;
-  readonly kind: "poke" | "stroke" | "pat" | "rest" | "hold" | "squeeze" | "throw" | "carry";
+  readonly kind:
+    | "poke"
+    | "stroke"
+    | "pat"
+    | "rest"
+    | "hold"
+    | "grab"
+    | "squeeze"
+    | "throw"
+    | "carry";
   /** An agent's hand names the agent; a person's is the session's member (SessionMember) unless given. */
   readonly agent?: string | undefined;
   readonly member?: string | null | undefined;
   readonly pressure?: number | undefined;
+  /** From the hand frame when the body knows them: how fast it moved over her, over how much skin, how far it pulled. */
+  readonly cmPerS?: number | undefined;
+  readonly areaCm2?: number | undefined;
+  readonly stretch?: number | undefined;
   readonly private?: boolean | undefined;
 }
 const FELT_VERB: Readonly<Record<Felt["kind"], string>> = {
@@ -478,6 +497,7 @@ const FELT_VERB: Readonly<Record<Felt["kind"], string>> = {
   pat: "patted",
   rest: "laid a hand on",
   hold: "held",
+  grab: "grabbed",
   squeeze: "squashed",
   throw: "threw",
   carry: "carried",
@@ -491,26 +511,51 @@ const WHERE: Readonly<Record<string, string>> = {
  * and a line every vessel's next turns read, so on Tumble or the phone she knows what was done to her body on the
  * desk. A private moment's touch is sealed whole in his private store and reaches no shared context.
  */
-/** How fast a hand moves over her for each kind of touch (cm/s), until the hand frame carries its own speed. */
-const MOVING: Readonly<Partial<Record<Felt["kind"], number>>> = { stroke: 4, carry: 10, throw: 40 };
+/** How fast a hand moves over her for each kind of touch (cm/s) when the body did not say (an agent's stroke is ~5). */
+const MOVING: Readonly<Partial<Record<Felt["kind"], number>>> = { stroke: 5, carry: 10, throw: 40 };
 // shortcut: her nerves' state is per process (habituation forgets a restart); move it to a store if that matters
 const senses = new Map<string, SenseState>();
 const SENSE = mergeSense([HUMAN_SENSE], false);
-/** Her nerves' answer to a touch (bodySense.ts): what it feels like, in words her brain reads. */
-const nervesFor = (f: Felt, now: number): string | null => {
+/**
+ * Her nerves' answer to a touch (bodySense.ts): what it feels like, in words her brain reads, and its tone for her
+ * mood. A region only a pack names (the body found it) is felt as everyday skin; all of her ("body") is not a touch.
+ */
+const nervesFor = (f: Felt, now: number) => {
+  if (f.part === "body") return null;
   const key = f.persona ?? "her";
-  const cmPerS = MOVING[f.kind] ?? 0;
+  const cmPerS = f.cmPerS ?? MOVING[f.kind] ?? 0;
+  const map = SENSE.regions.has(f.part)
+    ? SENSE
+    : mergeSense(
+        [
+          HUMAN_SENSE,
+          {
+            version: 1,
+            id: "felt",
+            regions: [{ id: f.part, anchor: { bone: "spine" }, twoPointMm: 30, hairy: true }],
+          },
+        ],
+        false,
+      );
   const step = fire(
-    SENSE,
+    map,
     senses.get(key) ?? NO_SENSE,
-    [{ region: f.part, pressure: f.pressure ?? 0.4, cmPerS, areaCm2: 6 }],
+    [
+      {
+        region: f.part,
+        pressure: f.pressure ?? 0.4,
+        cmPerS,
+        areaCm2: f.areaCm2 ?? 6,
+        ...(f.stretch === undefined ? {} : { stretch: f.stretch }),
+      },
+    ],
     now,
   );
   senses.set(key, step.state);
   const r = step.rates[f.part];
   return r === undefined || Object.keys(r).length === 0
     ? null
-    : feltWords(f.part, r, step.state, cmPerS);
+    : { words: feltWords(f.part, r, step.state, cmPerS), tone: feltTone(r) };
 };
 
 export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
@@ -531,14 +576,18 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
     ...(f.private === true ? { private: true } : {}),
   });
   if (f.private === true) return;
+  const nerves = nervesFor(f, yield* Clock.currentTimeMillis);
+  // how it felt moves her quick reaction (never her mood), keyed to whoever's hand it was
+  const mood = yield* Effect.serviceOption(TessayaMood);
+  if (nerves?.tone != null && mood._tag === "Some")
+    yield* mood.value.note(f.persona ?? undefined, { kind: "felt", tone: nerves.tone }, member);
   const live = yield* Effect.serviceOption(TurnLiveContext);
   if (live._tag === "None") return;
-  const nerves = nervesFor(f, yield* Clock.currentTimeMillis);
   const who = f.agent !== undefined ? "an agent's hand" : owner ? "he" : "someone in the household";
   yield* live.value.inject({
     key: `felt:${f.vessel}`,
     source: "touch",
     expiresAfterTurns: 3,
-    line: `A moment ago ${WHERE[f.vessel] ?? `on ${f.vessel}`}, ${who} ${FELT_VERB[f.kind]} ${f.part === "body" ? "your body" : `your ${f.part}`}${nerves === null ? "" : ` (you felt ${nerves})`}: mention it only if it fits.`,
+    line: `A moment ago ${WHERE[f.vessel] ?? `on ${f.vessel}`}, ${who} ${FELT_VERB[f.kind]} ${f.part === "body" ? "your body" : `your ${f.part}`}${nerves === null ? "" : ` (you felt ${nerves.words})`}: mention it only if it fits.`,
   });
 });

@@ -18,9 +18,19 @@ import {
   type BodyCue,
   type Motion,
   type States,
-  type TouchZone,
   type Weights,
 } from "@t3tools/tessaya-shared/bodyCues";
+import {
+  HUMAN_SENSE,
+  NO_SENSE,
+  claimedRegion,
+  feltOf,
+  fire,
+  mergeSense,
+  reflexesOf,
+  zonesPack,
+  type SensePack,
+} from "@t3tools/tessaya-shared/bodySense";
 import {
   ACTS,
   BODY_JOINTS,
@@ -68,6 +78,14 @@ import {
 import type { BodyState } from "@t3tools/tessaya-shared/bodyControl";
 import { INVOLUNTARY, performCues } from "@t3tools/tessaya-shared/bodyPlanner";
 import { softenOnContact } from "./softContact.ts";
+import {
+  grabKindOf,
+  nearestRoot,
+  pullOn,
+  pullRoot,
+  wrapAround,
+  type GrabKind,
+} from "@t3tools/tessaya-shared/bodyGrab";
 import {
   agentHandAt,
   euroStep,
@@ -249,7 +267,7 @@ const SCULPTED = new Set<string>([
   "mouthBite",
 ]);
 /** The bone a held prop goes on for each place he can touch. */
-const PROP_BONE: Readonly<Record<TouchZone, BodyBone>> = {
+const PROP_BONE: Readonly<Record<string, BodyBone>> = {
   head: "head",
   hair: "head",
   face: "head",
@@ -292,32 +310,15 @@ const HOVER_IDLE_MS = 1500;
 /** A tremble runs full this long (ms), then settles to a faint quiver; it re-arms after this long calm. */
 const TREMOR_BURST_MS = 2500;
 const TREMOR_REARM_MS = 1000;
-/**
- * Where an agent's hand lands for each part: between which joints (`at` along them, then `up` of her height above),
- * and the side it comes from (she faces +z, her right is -x), so a pat on the head lands on top, not on her face.
- */
-const REACH: Readonly<
-  Record<
-    TouchZone,
-    { from: VRMHumanBoneName; to: VRMHumanBoneName; at: number; up: number; dir: V3 }
-  >
-> = {
-  head: { from: "head", to: "head", at: 0, up: 0.07, dir: [0, 1, 0.3] },
-  hair: { from: "head", to: "head", at: 0, up: 0.06, dir: [0, 0.6, -1] },
-  face: { from: "head", to: "head", at: 0, up: 0.04, dir: [0, 0, 1] },
-  neck: { from: "neck", to: "head", at: 0.5, up: 0, dir: [0, 0, 1] },
-  shoulder: { from: "rightUpperArm", to: "rightUpperArm", at: 0, up: 0, dir: [-0.3, 1, 0] },
-  arm: { from: "rightUpperArm", to: "rightLowerArm", at: 0.5, up: 0, dir: [-1, 0, 0.2] },
-  hand: { from: "rightHand", to: "rightHand", at: 0, up: 0, dir: [-1, 0.4, 0] },
-  chest: { from: "chest", to: "upperChest", at: 0.5, up: 0, dir: [0, 0, 1] },
-  belly: { from: "spine", to: "spine", at: 0, up: 0, dir: [0, 0, 1] },
-  back: { from: "chest", to: "upperChest", at: 0.5, up: 0, dir: [0, 0, -1] },
-  waist: { from: "spine", to: "spine", at: 0, up: 0, dir: [-1, 0, 0] },
-  hips: { from: "hips", to: "hips", at: 0, up: 0, dir: [-1, 0, 0] },
-  thigh: { from: "rightUpperLeg", to: "rightLowerLeg", at: 0.4, up: 0, dir: [0, 0, 1] },
-  leg: { from: "rightLowerLeg", to: "rightFoot", at: 0.4, up: 0, dir: [0, 0, 1] },
-  foot: { from: "rightFoot", to: "rightFoot", at: 0, up: 0, dir: [0, 1, 0.5] },
-};
+/** A finger's three segments as shares of its length, and its thickness as a share of the hand's. */
+const FINGER_SHARES = [0.45, 0.3, 0.25] as const;
+const FINGER_THICK = 0.045;
+/** Her give to a pull eases in over this (ms): quick as a person's, and never a jitter. */
+const PULL_TAU_MS = 90;
+/** A pull that hurts this long, she pulls free of (withdrawal is involuntary: no grab overrides it). */
+const PULL_HURT_MS = 600;
+/** A firm push on her trunk held this long (ms) moves her feet: a balance step. */
+const PUSH_STEP_MS = 400;
 /** How long her head and eyes follow a touch, and a little more than the 150 ms in which a person turns to one. */
 const TOUCH_MS = 1600;
 /** A hover's raycast at most this often while the mouse moves over her. */
@@ -346,7 +347,7 @@ export function mountBody(
     /** `bone` is where a held prop goes; `zone` is the part of her he touched, and `touch` what kind and how strong. */
     readonly onTouch?: (
       bone: BodyBone,
-      zone: TouchZone | (string & {}),
+      zone: string,
       touch: {
         readonly kind: TouchKind | (string & {});
         readonly intensity: number;
@@ -354,6 +355,12 @@ export function mountBody(
         /** How much of his hand met her (cm²: a fingertip is ~1, a palm ~60) and how firmly (0..1). */
         readonly area?: number;
         readonly pressure?: number;
+        /** What her nerves made of it (bodySense.ts): how strongly it fired, 0..1, the fibres that led, and its speed. */
+        readonly felt?: {
+          readonly intensity: number;
+          readonly kind: string;
+          readonly cmPerS: number;
+        };
       },
     ) => void;
     /** The outfit pieces this model can take off, once it loads (none when clothing is painted on). */
@@ -435,12 +442,45 @@ export function mountBody(
     normal: THREE.Vector3;
     along: THREE.Vector3;
   } | null = null;
-  // a quick poke makes her pull back, then settle (a reflex, over REFLEX_MS)
+  // a reflex arc (her sense packs) pulls her back, then she settles, over REFLEX_MS; a caress's arc leans her in
   let reflexAt = -Infinity;
   // the part giving to the hand, kept for the contact, and how far it has turned (eased)
   let giving: { bone: string; angle: number; at: number } | null = null;
   let tremorSince: number | null = null;
   let tremorCalm: number | null = null;
+  let reflexGain = 0.6;
+  let leanAt = -Infinity;
+  // her skin: the sense packs (the general human map, plus any a layer sends), and her nerves' state while touched
+  let packs: ReadonlyArray<SensePack> = [HUMAN_SENSE];
+  let sense = mergeSense(packs, true);
+  let nerves = NO_SENSE;
+  let nerveRegion: string | null = null;
+  let nerveFelt: { intensity: number; kind: string; cmPerS: number } | null = null;
+  const fired = new Set<string>();
+  // a hand holding her (bodyGrab.ts): what it holds, where (in its root bone's frame, so it rides her pose), the
+  // spring-bone lock it closed on (hair, a ribbon, a skirt), the hand now, and her give, smoothed so it never jitters
+  let grip: {
+    kind: GrabKind;
+    root: string;
+    region: string;
+    local: THREE.Vector3;
+    lock: THREE.Object3D | null;
+    lockChild: THREE.Object3D | null;
+    hand: THREE.Vector3;
+    from: THREE.Vector3;
+    pull: THREE.Vector3;
+    speed: number;
+    at: number;
+    turns: Map<string, { axis: THREE.Vector3; angle: number }>;
+    force: number;
+    stretch: number;
+    hurtSince: number | null;
+    free: boolean;
+  } | null = null;
+  let wrapTurns: ReadonlyArray<number> | null = null;
+  let pushSince: number | null = null;
+  /** How much she braces against a hand (0..1): on guard she holds her ground. */
+  const braced = () => ((scenePose ?? affectPose) === "guarded" ? 0.7 : 0);
   let lapse: ReturnType<typeof setTimeout> | null = null;
   // a pointer resting on her is still there: it fades only once it leaves her (a tracker fades when it loses her)
   let handHeld = false;
@@ -583,9 +623,12 @@ export function mountBody(
     // relaxed fingers rest a little bent; the curl closes them joint by joint
     const curl = f.curl * (1 - relax);
     for (const [i, finger] of handMesh.fingers.entries())
-      for (const [j, joint] of finger.entries()) {
-        joint.rotation.x = (i === 4 ? 0.12 : 0.18) + ((i === 4 ? 0.6 : 1.3) * curl) / 3;
-        void j;
+      for (const [k, joint] of finger.entries()) {
+        // holding, the fingers close round the part (wrapAround); otherwise they rest a little bent and close by the curl
+        joint.rotation.x =
+          wrapTurns !== null
+            ? (wrapTurns[k] ?? 0) * (i === 4 ? 0.5 : 1)
+            : (i === 4 ? 0.12 : 0.18) + ((i === 4 ? 0.6 : 1.3) * curl) / 3;
         joint.updateMatrix();
       }
     handMesh.material.opacity = 0.55 * shown;
@@ -652,7 +695,6 @@ export function mountBody(
   let touchAs: string | null = null;
   // owner extensions: a playing clip, extra touch regions, and model expressions standing in for states and faces
   let clip: (Extract<BodyCue, { kind: "clip" }> & { start: number }) | null = null;
-  let zones: Extract<BodyCue, { kind: "zones" }>["zones"] = [];
   let expMap: Extract<BodyCue, { kind: "expressions" }>["map"] = {};
   let moodKey = "";
   let outfit = new Map<OutfitPiece, THREE.Object3D[]>();
@@ -790,6 +832,10 @@ export function mountBody(
   const at = new THREE.Vector3();
   const worldOf = (b: VRMHumanBoneName) =>
     vrm?.humanoid.getRawBoneNode(b)?.getWorldPosition(at).clone();
+  /** Any bone by name: a humanoid one, else a node of the model's own (a tail, an ear, his custom bones). */
+  const boneAt = (name: string) =>
+    worldOf(name as VRMHumanBoneName) ??
+    vrm?.scene.getObjectByName(name)?.getWorldPosition(at).clone();
   /**
    * After the pose lands: lift an arm whose hand or elbow is inside her trunk (her proportions, not the pose's), and
    * set her on the floor when she sits or lies. Each corrects over a few frames and reports whether it is still moving.
@@ -954,7 +1000,9 @@ export function mountBody(
     };
     applyPose(now);
     if (moveAgentHand(now)) lastMove = now;
-    giveToHand(now);
+    pullNow(now, delta * 1000);
+    feelNerves(now);
+    if (grip === null) giveToHand(now);
     // walking to or from him: steps while the distance closes, then she stands
     if (closer !== closerTo) {
       const stride = WALK_SPEED * delta;
@@ -1127,6 +1175,7 @@ export function mountBody(
     }
     if (mirrored) flipVrm0(vrm);
     vrm.update(delta);
+    aimLock();
     // shape keys asked for by name go on after the expressions, which would otherwise reset the ones they bind
     for (const [name, w] of Object.entries({ ...shapes, ...morphHold }))
       for (const k of shapeKeys.get(name) ?? [])
@@ -1411,12 +1460,27 @@ export function mountBody(
 
   /** Lays an agent's hand on a part of her: found on her surface from his side, the way he would reach it. */
   const startAgentTouch = (
-    c: { part: TouchZone; motion: HandMotion; pressure: number; ms: number },
+    c: {
+      part: string;
+      motion: HandMotion;
+      pressure: number;
+      ms: number;
+      pull?: readonly [number, number, number];
+    },
     now: number,
   ) => {
-    const r = REACH[c.part];
-    const a = worldOf(r.from) ?? worldOf("upperChest") ?? worldOf("chest");
-    const b = worldOf(r.to) ?? a;
+    const region = sense.regions.get(c.part);
+    if (region === undefined) return;
+    // a pack region without a reach is met on its own bone, from in front of her
+    const r = region.reach ?? {
+      from: region.anchor.bone,
+      to: region.anchor.to ?? region.anchor.bone,
+      at: 0.5,
+      up: 0,
+      dir: [0, 0, 1] as const,
+    };
+    const a = boneAt(r.from) ?? worldOf("upperChest") ?? worldOf("chest");
+    const b = boneAt(r.to) ?? a;
     if (vrm === null || a === undefined || b === undefined) return;
     const p = a.lerp(b, r.at).add(new THREE.Vector3(0, r.up * (rig?.height ?? 1.6), 0));
     vrm.scene.updateMatrixWorld(true);
@@ -1436,7 +1500,17 @@ export function mountBody(
       normal,
       along: up.sub(normal.clone().multiplyScalar(up.dot(normal))).normalize(),
     };
-    if (c.motion === "poke") reflexAt = now;
+    // the nerves under the hand fire, wherever it actually landed on her
+    nerveRegion = (hit && regionOf(hit)) ?? c.part;
+    fired.clear();
+    if (c.motion === "grab" && hit !== undefined) {
+      startGrab(hit, now);
+      // her frame to the world's: she faces +z with her left +x, turned however her body stands
+      if (grip !== null && c.pull !== undefined)
+        grip.pull
+          .set(...c.pull)
+          .applyQuaternion(vrm.scene.getWorldQuaternion(new THREE.Quaternion()));
+    }
     wake(now);
   };
   /** The agent's hand this frame, as the same hand frame the pointer makes; false once its touch is over. */
@@ -1448,7 +1522,18 @@ export function mountBody(
     if (h === null) {
       agentTouch = null;
       handHeld = false;
+      if (grip !== null) endGrab();
       return false;
+    }
+    if (a.motion === "grab") {
+      if (grip === null) return true;
+      // the pull goes out over the first 40% of the touch (minimum jerk), holds, and lets go at the end
+      const x = Math.min(1, (now - a.start) / (0.4 * a.ms));
+      moveGrab(
+        grip.from.clone().addScaledVector(grip.pull, x * x * x * (10 - 15 * x + 6 * x * x)),
+        now,
+      );
+      return true;
     }
     const at = a.hit.clone().addScaledVector(a.along, h.along * 0.05 * (rig?.height ?? 1.6));
     handFrame = pointerHand({
@@ -1464,6 +1549,62 @@ export function mountBody(
     handHeld = true;
     return true;
   };
+  /**
+   * Her nerves, each frame a hand is on her (nothing at rest): the region under it fires (bodySense.ts), and the reflex
+   * arcs that firing sets off act on her body after their own latency, before any word reaches her brain.
+   */
+  const feelNerves = (now: number) => {
+    const on = handFrame !== null && handHeld && nerveRegion !== null;
+    if (!on && nerves.at === 0) return;
+    if (!on) {
+      nerves = fire(sense, nerves, [], now).state;
+      // her skin forgets the touch once it is no longer worn or raw, and the next touch is new
+      if (Object.keys(nerves.sites).length === 0) nerves = NO_SENSE;
+      fired.clear();
+      nerveFelt = null;
+      return;
+    }
+    const h = handFrame!;
+    const cmPerS = handEuro === null ? 0 : Math.hypot(...handEuro.dx) * 100;
+    const step = fire(
+      sense,
+      nerves,
+      [
+        {
+          region: nerveRegion!,
+          pressure: h.pressure,
+          cmPerS,
+          areaCm2: handContact(h, handLength()).area,
+          ...(grip === null
+            ? {}
+            : {
+                stretch: grip.stretch,
+                // a hand on her clothes or hair meets her skin only through them
+                pressure: grip.kind === "skin" ? h.pressure : 0.2,
+              }),
+        },
+      ],
+      now,
+    );
+    nerves = step.state;
+    const f = feltOf(step.rates)[0];
+    nerveFelt =
+      f === undefined
+        ? nerveFelt
+        : { intensity: f.intensity, kind: f.kind, cmPerS: Math.round(cmPerS * 10) / 10 };
+    for (const r of reflexesOf(sense, step.levels)) {
+      const key = `${r.id}@${r.region}`;
+      if (fired.has(key)) continue;
+      fired.add(key);
+      const t = now + r.latencyMs;
+      if (r.action === "withdraw" || r.action === "flinch") {
+        reflexAt = t;
+        reflexGain = 0.6 * r.strength;
+      } else if (r.action === "leanIn") leanAt = t;
+      else if (handFrame !== null)
+        touch = { at: t - TOUCH_MS * 0.1, point: new THREE.Vector3(...handFrame.palm) };
+    }
+  };
   /** Her body gives to the hand on her: the part under it turns away by how firmly, more for a reflex. */
   const pickGive = (pos: Record<string, V3>, bone: string): Record<string, V3> =>
     Object.fromEntries(
@@ -1474,7 +1615,10 @@ export function mountBody(
       giving = null;
       return;
     }
-    const reflex = Math.max(0, Math.sin(Math.PI * Math.min(1, (now - reflexAt) / REFLEX_MS))) * 0.6;
+    const reflex =
+      Math.max(0, Math.sin(Math.PI * Math.min(1, (now - reflexAt) / REFLEX_MS))) * reflexGain;
+    // leaning into a caress: she gives toward the hand instead of away, easing in over a second
+    const lean = Math.max(0, Math.sin(Math.PI * Math.min(1, (now - leanAt) / 1200)));
     const pos: Record<string, V3> = {};
     for (const b of CONTACT_BONES) {
       const w = worldOf(b);
@@ -1492,13 +1636,210 @@ export function mountBody(
     const give = { ...raw, angle: giving.angle };
     const node = vrm.humanoid.getNormalizedBoneNode(give.bone as VRMHumanBoneName);
     if (!node?.parent) return;
+    // a firm push on her trunk held past a moment takes her off balance: she steps with it, back or forward
+    const trunk = give.bone === "spine" && handFrame.pressure > 0.75;
+    pushSince = trunk ? (pushSince ?? now) : null;
+    if (pushSince !== null && now - pushSince > PUSH_STEP_MS && stepping === null) {
+      const into = new THREE.Vector3(...handFrame.normal).applyQuaternion(
+        vrm.scene.getWorldQuaternion(new THREE.Quaternion()).invert(),
+      );
+      if (Math.abs(into.z) > 0.5) {
+        closerTo = Math.max(-0.4, Math.min(0.6, closer + Math.sign(into.z) * 0.08));
+        stepping = now;
+        pushSince = null;
+      }
+    }
     // the turn is in her world: carried into the bone's parent frame, then added to its pose
     const parent = node.parent.getWorldQuaternion(new THREE.Quaternion());
     const turn = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(...give.axis),
-      give.angle,
+      // braced (guarded), she gives less
+      give.angle * (1 - 1.6 * lean) * (1 - 0.6 * braced()),
     );
     node.quaternion.premultiply(parent.clone().invert().multiply(turn).multiply(parent));
+  };
+  /**
+   * A hand closes on her at `hit`: on a lock of hair, a fold of her clothes, an accessory, or her skin. What it holds
+   * is found from what it met (a spring-bone joint near it, the mesh and material names), and the bone a pull acts
+   * through from where that hangs on her.
+   */
+  const startGrab = (hit: THREE.Intersection, now: number) => {
+    if (vrm === null) return;
+    let lock: { bone: THREE.Object3D; child: THREE.Object3D | null; d: number } | null = null;
+    const w = new THREE.Vector3();
+    for (const j of vrm.springBoneManager?.joints ?? []) {
+      const d = j.bone.getWorldPosition(w).distanceTo(hit.point);
+      if (d < 0.08 && (lock === null || d < lock.d)) lock = { bone: j.bone, child: j.child, d };
+    }
+    const humanOf = new Map<THREE.Object3D, string>();
+    for (const [name, b] of Object.entries(vrm.humanoid.humanBones))
+      if (b?.node) humanOf.set(b.node, name);
+    // a lock hangs from the bone it is parented to (hair from her head, a skirt from her hips)
+    let hangs: string | null = null;
+    for (let o = lock?.bone.parent ?? null; o !== null && hangs === null; o = o.parent)
+      hangs = humanOf.get(o) ?? null;
+    const mats = [(hit.object as THREE.Mesh).material].flat();
+    const names = `${hit.object.name} ${mats.map((m) => m?.name ?? "").join(" ")} ${lock?.bone.name ?? ""}`;
+    const kind = grabKindOf(names, lock !== null);
+    const pos = Object.fromEntries(
+      BODY_JOINTS.flatMap((b) => {
+        const q = worldOf(b);
+        return q ? [[b, [q.x, q.y, q.z] as V3]] : [];
+      }),
+    );
+    const root =
+      (hangs !== null ? pullRoot(hangs) : null) ??
+      nearestRoot([hit.point.x, hit.point.y, hit.point.z], pos);
+    const rootNode =
+      root === null ? null : vrm.humanoid.getNormalizedBoneNode(root as VRMHumanBoneName);
+    if (root === null || !rootNode) return;
+    rootNode.updateWorldMatrix(true, false);
+    const under = regionOf(hit);
+    grip = {
+      kind,
+      root,
+      region: kind === "hair" && sense.regions.has("hair") ? "hair" : (under ?? root),
+      local: rootNode.worldToLocal(hit.point.clone()),
+      lock: kind === "skin" ? null : (lock?.bone ?? null),
+      lockChild: kind === "skin" ? null : (lock?.child ?? null),
+      hand: hit.point.clone(),
+      from: hit.point.clone(),
+      pull: new THREE.Vector3(),
+      speed: 0,
+      at: now,
+      turns: new Map(),
+      force: 0,
+      stretch: 0,
+      hurtSince: null,
+      free: false,
+    };
+    nerveRegion = grip.region;
+    fired.clear();
+    wake(now);
+  };
+  /** Moves the holding hand to `to` (world): how fast it went is how hard it yanks. */
+  const moveGrab = (to: THREE.Vector3, now: number) => {
+    if (grip === null) return;
+    const dt = Math.max(1, now - grip.at) / 1000;
+    const v = to.distanceTo(grip.hand) / dt;
+    grip.speed += (v - grip.speed) * Math.min(1, dt / 0.08);
+    grip.hand.copy(to);
+    grip.at = now;
+    wake(now);
+  };
+  const endGrab = () => {
+    grip = null;
+    wrapTurns = null;
+    handHeld = false;
+    if (handFrame !== null) handFrame = { ...handFrame, at: performance.now() };
+  };
+  /**
+   * The pull, each frame a hand holds her: through what it holds into her bones (pullOn), eased in so it never
+   * jitters; what they cannot give stretches what is grip, and her nerves feel that. Past its break force, after a
+   * pull that hurts too long, or when she wants to, she pulls free.
+   */
+  const pullNow = (now: number, dt: number) => {
+    if (vrm === null || grip === null) return;
+    const g = grip;
+    const rootNode = vrm.humanoid.getNormalizedBoneNode(g.root as VRMHumanBoneName);
+    if (!rootNode) return endGrab();
+    rootNode.updateWorldMatrix(true, false);
+    const anchor = rootNode.localToWorld(g.local.clone());
+    const pos: Record<string, V3> = {};
+    for (const b of ["hips", "spine", "chest", "upperChest", "neck", "head", g.root]) {
+      const n = vrm.humanoid.getNormalizedBoneNode(b as VRMHumanBoneName);
+      const q = n?.getWorldPosition(new THREE.Vector3());
+      if (q) pos[b] = [q.x, q.y, q.z];
+    }
+    for (const side of ["left", "right"])
+      for (const part of ["Shoulder", "UpperArm", "LowerArm", "Hand", "UpperLeg"]) {
+        const q = vrm.humanoid
+          .getNormalizedBoneNode(`${side}${part}` as VRMHumanBoneName)
+          ?.getWorldPosition(new THREE.Vector3());
+        if (q) pos[`${side}${part}`] = [q.x, q.y, q.z];
+      }
+    const hurting = (nerves.sites[g.region]?.sens ?? 0) > 0 && g.stretch > 0.6;
+    g.hurtSince = hurting ? (g.hurtSince ?? now) : null;
+    const answer = pullOn(
+      { kind: g.kind, root: g.root, anchor: [anchor.x, anchor.y, anchor.z] },
+      pos,
+      [g.hand.x, g.hand.y, g.hand.z],
+      g.speed,
+      {
+        free: g.free || (g.hurtSince !== null && now - g.hurtSince > PULL_HURT_MS),
+        stiff: braced(),
+      },
+    );
+    g.force = answer.force;
+    if (answer.broke) {
+      // she is free: a pull back from it, a startled face, and her nerves let go
+      reflexAt = now;
+      reflexGain = 0.6;
+      override = { face: faceWeights(g.free ? "annoyed" : "surprised", 0.7), until: now + 900 };
+      setFace(override.face, now);
+      return endGrab();
+    }
+    g.stretch = answer.stretch;
+    const k = 1 - Math.exp(-dt / PULL_TAU_MS);
+    const seen = new Set<string>();
+    for (const t of answer.turns) {
+      seen.add(t.bone);
+      const s = g.turns.get(t.bone) ?? { axis: new THREE.Vector3(...t.axis), angle: 0 };
+      s.axis.lerp(new THREE.Vector3(...t.axis), k).normalize();
+      s.angle += (t.angle - s.angle) * k;
+      g.turns.set(t.bone, s);
+    }
+    for (const [bone, s] of g.turns) if (!seen.has(bone)) s.angle *= 1 - k;
+    for (const [bone, s] of g.turns) {
+      const node = vrm.humanoid.getNormalizedBoneNode(bone as VRMHumanBoneName);
+      if (!node?.parent) continue;
+      const parent = node.parent.getWorldQuaternion(new THREE.Quaternion());
+      const turn = new THREE.Quaternion().setFromAxisAngle(s.axis, s.angle);
+      node.quaternion.premultiply(parent.clone().invert().multiply(turn).multiply(parent));
+      node.updateWorldMatrix(false, true);
+    }
+    // the hand stays on what it holds, wherever her give has carried it, fingers closed round it
+    rootNode.updateWorldMatrix(true, false);
+    const at = rootNode.localToWorld(g.local.clone());
+    const bonePos = rootNode.getWorldPosition(new THREE.Vector3());
+    const out = at.clone().sub(bonePos);
+    const r = out.length();
+    const L = handLength();
+    wrapTurns = wrapAround(
+      g.kind === "hair" || g.kind === "accessory" || g.lock !== null
+        ? 0.012
+        : Math.min(0.12, Math.max(0.02, r)),
+      FINGER_SHARES.map((x) => x * L * 0.42),
+      L * FINGER_THICK,
+    );
+    const n = r > 1e-4 ? out.divideScalar(r) : new THREE.Vector3(0, 0, 1);
+    handFrame = {
+      ...pointerHand({
+        at: now,
+        hit: [at.x, at.y, at.z],
+        normal: [n.x, n.y, n.z],
+        pressure: 0.6,
+        pressed: true,
+        fingertip: false,
+        source: handFrame?.source ?? "pointer",
+      }),
+      curl: 1,
+    };
+    handEuro = euroStep(handEuro, handFrame.palm, now);
+    handHeld = true;
+    lastMove = now;
+  };
+  /** A lock of hair or a ribbon held: its joint turns so it runs to the hand, after the spring bones have moved. */
+  const aimLock = () => {
+    if (grip?.lock == null || grip.lockChild === null || grip.lock.parent === null) return;
+    const a = grip.lock.getWorldPosition(new THREE.Vector3());
+    const b = grip.lockChild.getWorldPosition(new THREE.Vector3());
+    const want = grip.hand.clone().sub(a);
+    if (want.lengthSq() < 1e-8 || b.distanceToSquared(a) < 1e-8) return;
+    const q = new THREE.Quaternion().setFromUnitVectors(b.sub(a).normalize(), want.normalize());
+    const parent = grip.lock.parent.getWorldQuaternion(new THREE.Quaternion());
+    grip.lock.quaternion.premultiply(parent.clone().invert().multiply(q).multiply(parent));
+    grip.lock.updateMatrixWorld(true);
   };
   const cue = (raw: unknown) => {
     const c: BodyCue | null = parseCue(raw);
@@ -1571,10 +1912,17 @@ export function mountBody(
         return invalidate();
       }
       case "zones":
-        zones = c.zones;
+      case "sense": {
+        const pack = c.kind === "sense" ? c.pack : zonesPack(c.zones);
+        packs = [...packs.filter((p) => p.id !== pack.id), pack];
+        sense = mergeSense(packs, true);
         return;
+      }
       case "hand":
         return startAgentTouch(c, now);
+      case "free":
+        if (grip !== null) grip.free = true;
+        return wake(now);
       case "gaze":
         gazeHold = { yaw: c.x * 30, pitch: -c.y * 20, until: now + c.ms };
         lastMove = now;
@@ -1676,6 +2024,7 @@ export function mountBody(
     pressure: number;
     pointers: number;
     done: boolean;
+    hit: THREE.Intersection;
   } | null = null;
   let taps: number[] = [];
   let holdTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1696,11 +2045,12 @@ export function mountBody(
     setFace(override.face, now);
     if (kind === "tickle") gestures.push({ name: "giggleOnce", start: now });
     wake(now);
-    options.onTouch?.(PROP_BONE[press.zone as TouchZone] ?? "spine", press.zone, {
+    options.onTouch?.(PROP_BONE[press.zone] ?? "spine", press.zone, {
       kind,
       intensity,
       speed,
       ...(handFrame === null ? {} : handContact(handFrame, handLength())),
+      ...(nerveFelt === null ? {} : { felt: nerveFelt }),
     });
   };
   /** The part of her under a point on the canvas, or null (off her, or no model yet). */
@@ -1713,6 +2063,11 @@ export function mountBody(
     );
     const hit = ray.intersectObject(vrm.scene, true).find((h) => h.object.visible);
     if (hit === undefined) return null;
+    const where = regionOf(hit);
+    return where === null ? null : { hit, where };
+  };
+  /** The region of her skin at a point on her: a pack region that claims it, else the general map's own split. */
+  const regionOf = (hit: THREE.Intersection): string | null => {
     const mats = [(hit.object as THREE.Mesh).material].flat();
     const zone = touchZoneAt(
       [hit.point.x, hit.point.y - ground, hit.point.z - closer],
@@ -1721,12 +2076,11 @@ export function mountBody(
       ),
       `${hit.object.name} ${mats.map((m) => m?.name ?? "").join(" ")}`,
     );
-    const extra = zones.find((z) => {
-      const p = worldOf(z.bone as VRMHumanBoneName);
-      return p !== undefined && p.distanceTo(hit.point) <= z.radius;
-    });
-    const where = extra?.id ?? zone;
-    return where === null ? null : { hit, where };
+    const bone = (n: string) => {
+      const p = boneAt(n);
+      return p && ([p.x, p.y, p.z] as const);
+    };
+    return claimedRegion(sense, [hit.point.x, hit.point.y, hit.point.z], bone) ?? zone;
   };
   const onDown = (e: PointerEvent) => {
     if (vrm === null || options.onTouch === undefined) return;
@@ -1743,7 +2097,7 @@ export function mountBody(
     handAt(hit, true, e.pressure || 0.5, (e.pressure || 0.5) >= 0.6);
     canvas.setPointerCapture?.(e.pointerId);
     const now = performance.now();
-    if ((e.pressure || 0.5) >= 0.6) reflexAt = now;
+    nerveRegion = where;
     touch = { at: now, point: hit.point.clone() };
     blinkAt = now;
     taps = taps.filter((t) => now - t < 900);
@@ -1756,6 +2110,7 @@ export function mountBody(
       pressure: e.pressure || 0.5,
       pointers: 1,
       done: false,
+      hit,
     };
     invalidate();
     if (holdTimer !== null) clearTimeout(holdTimer);
@@ -1772,6 +2127,8 @@ export function mountBody(
       });
       if (t.kind === "hold" || t.kind === "grab" || t.kind === "squeeze")
         feel(t.kind, t.intensity, t.speed);
+      // held still on her, the hand has closed on what is there: dragging now pulls it
+      if (t.kind === "hold" || t.kind === "grab") startGrab(press.hit, performance.now());
     }, HOLD_MS);
   };
   // A mouse moving over her with nothing pressed: fingertips trailing across her (M-062). Raycast at most every
@@ -1797,10 +2154,11 @@ export function mountBody(
     setFace(override.face, now);
     wake(now);
     invalidate();
-    options.onTouch?.(PROP_BONE[at.where as TouchZone] ?? "spine", at.where, {
+    options.onTouch?.(PROP_BONE[at.where] ?? "spine", at.where, {
       kind: "trace",
       intensity,
       speed,
+      ...(nerveFelt === null ? {} : { felt: nerveFelt }),
     });
   };
   const offHer = () => {
@@ -1824,6 +2182,7 @@ export function mountBody(
     hoverAt = now;
     const at = partAt(e.clientX, e.clientY);
     if (at !== null) handAt(at.hit, false, 0, false);
+    if (at !== null && press === null) nerveRegion = at.where;
     else if (handHeld) offHer();
     traced(at, hoverTravel, now);
     hoverTravel = 0;
@@ -1848,6 +2207,23 @@ export function mountBody(
     onHover(e);
     const p = pointers.get(e.pointerId);
     if (p === undefined || press === null) return;
+    if (grip !== null) {
+      // the holding hand moves in the plane through what it holds, facing the camera
+      const r = canvas.getBoundingClientRect();
+      ray.setFromCamera(
+        new THREE.Vector2(
+          ((e.clientX - r.left) / r.width) * 2 - 1,
+          -((e.clientY - r.top) / r.height) * 2 + 1,
+        ),
+        camera,
+      );
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+        camera.getWorldDirection(new THREE.Vector3()),
+        grip.from,
+      );
+      const to = ray.ray.intersectPlane(plane, new THREE.Vector3());
+      if (to !== null) moveGrab(to, performance.now());
+    }
     const dx = e.clientX - p.x;
     const dy = e.clientY - p.y;
     if (Math.abs(dx) > 2 && Math.sign(dx) !== Math.sign(p.dx) && p.dx !== 0) p.reversals++;
@@ -1861,6 +2237,7 @@ export function mountBody(
   const onUp = (e: PointerEvent) => {
     const p = pointers.get(e.pointerId);
     pointers.delete(e.pointerId);
+    if (grip !== null && pointers.size === 0) endGrab();
     if (p === undefined || press === null || pointers.size > 0) return;
     const now = performance.now();
     const tap = press.travel < 24 && now - press.at < HOLD_MS;
@@ -1922,9 +2299,43 @@ export function mountBody(
       }
     }
     if (agentTouch !== null) out.push({ part: "agent hand", with: agentTouch.part });
+    if (grip !== null)
+      out.push({
+        part: "a hand",
+        with: `holding her ${grip.kind === "skin" ? grip.region : grip.kind}`,
+      });
     return out;
   };
+  const feltNow = (): Pick<BodyState, "felt"> =>
+    nerveFelt === null || nerveRegion === null
+      ? {}
+      : {
+          felt: {
+            region: nerveRegion,
+            ...nerveFelt,
+            reflexes: [...fired].map((k) => k.split("@")[0]!),
+          },
+        };
+  const heldNow = (): Pick<BodyState, "heldBy"> => {
+    if (grip === null || vrm === null) return {};
+    const d = grip.hand.clone().sub(grip.from);
+    const toward = d.lengthSq() < 1e-8 ? d : d.normalize();
+    toward.applyQuaternion(vrm.scene.getWorldQuaternion(new THREE.Quaternion()).invert());
+    const r = (v: number) => Math.round(v * 100) / 100;
+    return {
+      heldBy: {
+        kind: grip.kind,
+        region: grip.region,
+        root: grip.root,
+        force: r(grip.force),
+        stretch: r(grip.stretch),
+        toward: [r(toward.x), r(toward.y), r(toward.z)],
+      },
+    };
+  };
   const bodyState = (): BodyState => ({
+    ...feltNow(),
+    ...heldNow(),
     at: Date.now(),
     vessel: "",
     model,
@@ -1982,17 +2393,49 @@ export function mountBody(
     outfit: () => [...outfit.keys()],
     /** What this model's body can do (its rig's manifest) and what the rig last had to correct in a pose. */
     rig: () => ({ manifest, issues }),
-    /** For checks: the drawn hand's palm and the way it faces, in the world, while it shows. */
+    /**
+     * For checks and the playground: her joints in the world (m), and the hand on her: its palm and fingertips, and
+     * how far each sits inside her (mm, 0 when outside), found by casting at her from outside along the palm.
+     */
     probe: () => {
-      if (handMesh === null || !handMesh.group.visible) return { hand: null };
+      const world = Object.fromEntries(
+        Object.entries(skeleton()).map(([k, v]) => [k, v.map((x) => Math.round(x * 1e4) / 1e4)]),
+      );
+      if (vrm === null || handMesh === null || !handMesh.group.visible || handFrame === null)
+        return {
+          world,
+          hand: null,
+          held: grip === null ? null : { kind: grip.kind, root: grip.root },
+        };
       handMesh.group.updateMatrixWorld(true);
       const e = handMesh.group.matrixWorld.elements;
+      const out = new THREE.Vector3(...handFrame.normal).negate();
+      const points = [
+        handMesh.group.getWorldPosition(new THREE.Vector3()),
+        ...handMesh.fingers.map((f) => {
+          const tip = f.at(-1)!;
+          return tip.localToWorld(
+            new THREE.Vector3(0, (tip.children[0] as THREE.Mesh).position.y * 2, 0),
+          );
+        }),
+      ];
+      const inside = points.map((p) => {
+        const from = p.clone().addScaledVector(out, 0.3);
+        ray.set(from, out.clone().negate());
+        const hit = ray.intersectObject(vrm!.scene, true).find((h) => h.object.visible);
+        return hit === undefined || hit.distance >= 0.3
+          ? 0
+          : Math.round((0.3 - hit.distance) * 1e4) / 10;
+      });
       return {
+        world,
         hand: {
-          points: [[e[12], e[13], e[14]]],
+          points: points.map((p) => [p.x, p.y, p.z]),
+          insideMm: inside,
           facing: [e[8], e[9], e[10]],
           opacity: handMesh.material.opacity,
         },
+        held: grip === null ? null : { kind: grip.kind, root: grip.root },
       };
     },
     /** Where each of her joints is on the canvas (CSS px), for a page that labels or aims at her parts. */

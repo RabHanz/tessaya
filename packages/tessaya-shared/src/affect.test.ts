@@ -81,6 +81,11 @@ describe("affect", () => {
     expect(dropped.reaction.valence).toBeLessThan(0);
     expect(dropped.mood).toEqual(run([]).mood);
     expect(run([{ kind: "handled", how: "lifted" }]).reaction.curiosity).toBeGreaterThan(0);
+    // and a touch as her nerves felt it, the same way
+    const hurt = run([{ kind: "felt", tone: "hurt" }]);
+    expect(hurt.reaction.valence).toBeLessThan(0);
+    expect(hurt.mood).toEqual(run([]).mood);
+    expect(run([{ kind: "felt", tone: "pleasant" }]).reaction.valence).toBeGreaterThan(0);
   });
 
   it("misses him inside the guilt dial, and the return resolves once", () => {

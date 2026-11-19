@@ -233,6 +233,8 @@ export type AffectEvent =
   | { readonly kind: "job"; readonly ok: boolean }
   /** Her body was moved (the Tessel's motion sensor): a quick reaction only, never her mood. */
   | { readonly kind: "handled"; readonly how: HandledHow }
+  /** How a touch felt on her skin, as her nerves read it (bodySense.ts feltTone): a quick reaction only. */
+  | { readonly kind: "felt"; readonly tone: FeltTone }
   /** The conversation's flow as the cheap model read it (`readPrompt`): a person's, or the room's with nobody keyed. */
   | {
       readonly kind: "flow";
@@ -250,6 +252,15 @@ export type AffectEvent =
     }
   /** A running joke or a milestone they shared. */
   | { readonly kind: "shared"; readonly what: "joke" | "milestone"; readonly text: string };
+
+const FELT: Readonly<
+  Record<FeltTone, { readonly change: Partial<Record<AffectDim, number>>; readonly why: string }>
+> = {
+  pleasant: { change: { valence: 0.04, arousal: -0.02 }, why: "a gentle touch felt good" },
+  firm: { change: { arousal: 0.03 }, why: "a firm touch" },
+  hurt: { change: { valence: -0.1, arousal: 0.12 }, why: "a touch hurt" },
+};
+export type FeltTone = "pleasant" | "firm" | "hurt";
 
 export const HANDLED_HOWS = ["lifted", "carried", "setdown", "shaken", "dropped"] as const;
 export type HandledHow = (typeof HANDLED_HOWS)[number];
@@ -575,6 +586,11 @@ const react = (
           mood: add(at.mood, { confidence: -0.08 }),
         },
         reason: "they corrected her",
+      };
+    case "felt":
+      return {
+        state: { ...at, reaction: add(at.reaction, FELT[event.tone].change) },
+        reason: FELT[event.tone].why,
       };
     case "handled":
       return {

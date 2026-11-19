@@ -7,11 +7,11 @@ import {
   BODY_FACES,
   GESTURES,
   INTIMATE_FACES,
-  TOUCH_ZONES,
+  REGION_ID,
   type BodyCue,
-  type TouchZone,
   type VrmPreset,
 } from "./bodyCues.ts";
+import { HUMAN_SENSE } from "./bodySense.ts";
 import { HAND_MOTIONS, type HandMotion } from "./bodyHand.ts";
 import {
   ACT_NAMES,
@@ -32,8 +32,13 @@ import { JOINT_LIMITS } from "./bodyRig.ts";
 export const BODY_MOVE_VERSION = 1;
 /** Postures, faces and acts that belong to a private moment only. */
 const PRIVATE_POSTURES: ReadonlySet<string> = new Set(["aroused"]);
-/** Parts a hand other than his may touch only in a private moment. */
-const PRIVATE_ZONES: ReadonlySet<string> = new Set(["chest", "belly", "waist", "hips", "thigh"]);
+/**
+ * Parts a hand other than his may touch outside a private moment: the general map's everyday regions. A region only
+ * a pack names (his, on a custom bone) may be private, and nothing here can tell, so it waits for a private moment.
+ */
+const EVERYDAY_REGIONS: ReadonlyArray<string> = HUMAN_SENSE.regions
+  .filter((r) => r.private !== true)
+  .map((r) => r.id);
 const FACE_PRESETS = [
   "happy",
   "angry",
@@ -78,13 +83,17 @@ export interface BodyMove {
   readonly loop?: boolean;
   /** A hand on her (an agent's, or a second body's): where, how it moves, how firmly (0..1), for how long. */
   readonly touch?: {
-    readonly part: TouchZone;
+    readonly part: string;
     readonly motion: HandMotion;
     readonly pressure: number;
     readonly ms: number;
+    /** With grab: where the hand pulls what it holds, metres in her frame (her left +x, up +y, toward him +z). */
+    readonly pull?: readonly [number, number, number];
   };
   /** Hand her body back to her own feelings: drop held bones, posture and keyframes. */
   readonly release?: boolean;
+  /** She pulls free of any hand holding her (her own will: a grab never overrides it). */
+  readonly free?: boolean;
   /**
    * A whole performance composed for this body from how the moment feels and moves (bodyPlanner.ts): over this step's
    * posture; the step's own `bones` and `keys` stay as placed, and the performance moves everything else.
@@ -230,22 +239,37 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
   }
   if (raw["touch"] !== undefined) {
     const t = raw["touch"];
-    if (!isObj(t) || !(TOUCH_ZONES as ReadonlyArray<unknown>).includes(t["part"]))
+    if (!isObj(t) || typeof t["part"] !== "string" || !REGION_ID.test(t["part"]))
       return {
         ok: false,
-        error: `touch is {part, motion, pressure, ms}; part is one of ${TOUCH_ZONES.join(", ")}`,
+        error: `touch is {part, motion, pressure, ms}; part is a region of her, such as ${EVERYDAY_REGIONS.join(", ")}`,
       };
     const motion = t["motion"] ?? "rest";
     if (!(HAND_MOTIONS as ReadonlyArray<unknown>).includes(motion))
       return { ok: false, error: `touch motion is one of ${HAND_MOTIONS.join(", ")}` };
+    const pull = t["pull"];
+    if (
+      pull !== undefined &&
+      (motion !== "grab" ||
+        !Array.isArray(pull) ||
+        pull.length !== 3 ||
+        !pull.every((v) => typeof v === "number" && Math.abs(v) <= 0.3))
+    )
+      return {
+        ok: false,
+        error:
+          "touch pull is [x, y, z] in metres (each at most 0.3; her left +x, up +y, toward him +z), with motion grab",
+      };
     m["touch"] = {
       part: t["part"],
       motion,
       pressure: num(t["pressure"], 0, 1) ?? 0.4,
       ms: num(t["ms"], 150, 10_000) ?? 1500,
+      ...(pull === undefined ? {} : { pull }),
     };
   }
   if (raw["release"] === true) m["release"] = true;
+  if (raw["free"] === true) m["free"] = true;
   if (raw["perform"] !== undefined) {
     const p = decodePerform(raw["perform"]);
     if (!p.ok) return p;
@@ -283,7 +307,7 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
     return {
       ok: false,
       error:
-        "nothing to do: give a perform, act, posture, gesture, mood, look, face, morphs, bones, keys, touch, hold or release",
+        "nothing to do: give a perform, act, posture, gesture, mood, look, face, morphs, bones, keys, touch, hold, release or free",
     };
   return { ok: true, move: m as BodyMove };
 };
@@ -298,7 +322,7 @@ export const isPrivateMove = (m: BodyMove): boolean =>
       (s.posture !== undefined && PRIVATE_POSTURES.has(s.posture)) ||
       (s.mood !== undefined && Object.hasOwn(INTIMATE_FACES, s.mood.name)) ||
       (s.act !== undefined && !isAct(s.act)) ||
-      (s.touch !== undefined && PRIVATE_ZONES.has(s.touch.part)),
+      (s.touch !== undefined && !EVERYDAY_REGIONS.includes(s.touch.part)),
   );
 /** Acts a private moment resolves itself (owner extensions), in order. */
 export const extensionActs = (m: BodyMove): ReadonlyArray<string> =>
@@ -336,6 +360,7 @@ const keysToFrames = (
 const stepCues = (m: BodyMove, id: string): BodyCue[] => {
   const out: BodyCue[] = [];
   if (m.release === true) out.push({ kind: "pose", pose: "auto" });
+  if (m.free === true) out.push({ kind: "free" });
   if (m.posture !== undefined) out.push({ kind: "pose", pose: m.posture });
   if (m.act !== undefined && isAct(m.act)) out.push({ kind: "act", act: m.act as Act });
   if (m.mood !== undefined)
@@ -448,6 +473,27 @@ export interface BodyState {
   }>;
   /** Where she is touching herself or something now (hand on hip): part, what it meets. */
   readonly contacts: ReadonlyArray<{ readonly part: string; readonly with: string }>;
+  /**
+   * A hand holding her now (bodyGrab.ts): what it holds (skin, hair, cloth, accessory) and where, the bone the pull
+   * acts through, how hard (0..~2, past ~1 a firm full pull), how far what is held is stretched (0..1), and which way
+   * it pulls in her frame (her left +x, up +y, toward him +z).
+   */
+  readonly heldBy?: {
+    readonly kind: string;
+    readonly region: string;
+    readonly root: string;
+    readonly force: number;
+    readonly stretch: number;
+    readonly toward: readonly [number, number, number];
+  };
+  /** What her nerves feel under a hand on her now (bodySense.ts): the region, how strongly, and the reflexes it set off. */
+  readonly felt?: {
+    readonly region: string;
+    readonly intensity: number;
+    readonly kind: string;
+    readonly cmPerS: number;
+    readonly reflexes: ReadonlyArray<string>;
+  };
   /** What her body is doing on its own (the involuntary layer), and what is held back and for how much longer. */
   readonly involuntary?: Readonly<
     Record<string, { readonly on: boolean; readonly heldMs?: number }>
@@ -464,8 +510,9 @@ export const BODY_CAPABILITIES = {
   moods: Object.keys(BODY_FACES),
   faceWeights: FACE_PRESETS,
   touch: {
-    parts: TOUCH_ZONES.filter((z) => !PRIVATE_ZONES.has(z)),
+    parts: EVERYDAY_REGIONS,
     motions: HAND_MOTIONS,
+    pull: "with grab: [x, y, z] metres, each at most 0.3 (her left +x, up +y, toward him +z); a hair pull tilts her head toward it",
   },
   bones: POSE_BONES,
   axes: "VRM 1.0 normalized from a T-pose: she faces +z, her left is +x; Euler XYZ in radians. Arms down: leftUpperArm z -1.2, rightUpperArm z 1.2. Elbows fold on y (left -, right +); knees on x (+); trunk bends forward on x (+).",

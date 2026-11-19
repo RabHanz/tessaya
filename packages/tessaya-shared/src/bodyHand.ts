@@ -126,8 +126,12 @@ export const handContact = (
   };
 };
 
-/** How an agent's hand moves on her: laid still, stroking along her, patting, a quick poke, or holding firmly. */
-export const HAND_MOTIONS = ["rest", "stroke", "pat", "poke", "hold"] as const;
+/**
+ * How an agent's hand moves on her: laid still, stroking along her, patting, a quick poke, holding firmly, or
+ * grabbing what is there (skin, hair, clothes, an accessory) and pulling it by `pull` (bodyGrab.ts).
+ */
+export const HAND_MOTIONS = ["rest", "stroke", "pat", "poke", "hold", "grab"] as const;
+export const STROKE_CYCLE_MS = 6000;
 export type HandMotion = (typeof HAND_MOTIONS)[number];
 /**
  * An agent's hand `t` ms into a touch of `ms`: how far along her surface from where it landed (-1..1 of a stroke's
@@ -146,14 +150,14 @@ export const agentHandAt = (
     return { along: 0, pressure: pressure * k, fingertip: true };
   }
   const ease = Math.min(1, t / 200, (ms - t) / 200);
-  const firm = motion === "hold" ? Math.max(0.6, pressure) : pressure;
+  const firm = motion === "hold" || motion === "grab" ? Math.max(0.6, pressure) : pressure;
   if (motion === "pat") {
     // light pats at about 2.5 a second
     const beat = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / 400);
     return { along: 0, pressure: firm * ease * (0.15 + 0.85 * beat), fingertip: false };
   }
-  // a stroke goes along her and back once a second and a half
-  const along = motion === "stroke" ? Math.sin((2 * Math.PI * t) / 1500) : 0;
+  // a stroke goes along her and back in STROKE_CYCLE_MS: about 5 cm/s, where caress fibres answer (Löken et al. 2009)
+  const along = motion === "stroke" ? Math.sin((2 * Math.PI * t) / STROKE_CYCLE_MS) : 0;
   return { along, pressure: firm * ease, fingertip: false };
 };
 

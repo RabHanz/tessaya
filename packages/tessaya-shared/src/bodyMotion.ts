@@ -3,7 +3,6 @@
  * held postures for every affect and scene beat, word-timed talking beats, where a touch on her lands, and what kind
  * of touch it was. Poses are authored here (no mocap files), in VRM 1.0 normalized axes: she faces +z, her left is +x.
  */
-import type { TouchZone } from "./bodyCues.ts";
 
 export type Vec3 = readonly [number, number, number];
 export type Euler = Vec3;
@@ -654,7 +653,7 @@ const toSegment = (p: Vec3, a: Vec3, b: Vec3): { d: number; t: number } => {
  * however near the hip joint it sits); the trunk is split by height between her own joints and by side (front, back,
  * flanks). `mesh` is the hit mesh's name, which settles hair and face on models that name them (VRoid does).
  */
-export const touchZoneAt = (p: Vec3, j: Skeleton, mesh = ""): TouchZone | null => {
+export const touchZoneAt = (p: Vec3, j: Skeleton, mesh = ""): string | null => {
   const { head, neck, hips } = j;
   if (head === undefined || hips === undefined) return null;
   const chest = j.chest ?? j.upperChest ?? j.spine ?? hips;
@@ -676,8 +675,7 @@ export const touchZoneAt = (p: Vec3, j: Skeleton, mesh = ""): TouchZone | null =
     return p[2] < head[2] - 0.15 * unit || p[1] > head[1] + 1.3 * unit ? "hair" : "head";
   }
 
-  const limbs: Array<{ zone: TouchZone; a?: Vec3 | undefined; b?: Vec3 | undefined; r: number }> =
-    [];
+  const limbs: Array<{ zone: string; a?: Vec3 | undefined; b?: Vec3 | undefined; r: number }> = [];
   for (const side of ["left", "right"] as const) {
     const sh = j[`${side}Shoulder`];
     const ua = j[`${side}UpperArm`];
@@ -708,7 +706,7 @@ export const touchZoneAt = (p: Vec3, j: Skeleton, mesh = ""): TouchZone | null =
       { zone: "foot", a: foot, b: toes, r: 0.45 * unit },
     );
   }
-  let best: { zone: TouchZone; d: number } | null = null;
+  let best: { zone: string; d: number } | null = null;
   for (const l of limbs) {
     if (l.a === undefined || l.b === undefined) continue;
     const seg = toSegment(p, l.a, l.b);
