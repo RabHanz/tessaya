@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off
 /**
  * One turn pipeline for every vessel (tessaya-ops research/MEMORY-V2-DESIGN.md §2.0). Tessaya is one agent; the
  * desktop, a desk device, the phone and the mascot are vessels. Each sends the same envelope, gets the same memory
@@ -45,7 +46,10 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { TessayaMemoryLearning, type LearnResult } from "./TessayaMemoryLearning.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
-import { HOME_KEY } from "./BrainHost.ts";
+import { HOME_KEY, makeBrainLink } from "./BrainHost.ts";
+import * as ServerConfig from "../config.ts";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
 import {
   BatonMemoryRefusedError,
@@ -650,6 +654,8 @@ export class TessayaTurn extends Context.Service<
     ) => Effect.Effect<LearnResult | null>;
     /** Her live threads, one persona's or all, newest first: the base of the presence board (CS2). */
     readonly threads: (persona?: string) => Effect.Effect<ReadonlyArray<LiveThread>>;
+    /** A worker's change to her one conversation list, applied on her brain. */
+    readonly threadAct: (act: ThreadAct) => Effect.Effect<ReadonlyArray<LiveThread> | null>;
     /** What she is doing in one of her threads (its id, as body focus names it) until `until`; null clears it. */
     readonly setDoing: (
       thread: string,
@@ -662,6 +668,17 @@ export class TessayaTurn extends Context.Service<
     }) => Effect.Effect<{ readonly line: string; readonly persona?: string }>;
   }
 >()("t3/tessaya/TessayaTurn") {}
+
+/** One change to her conversation list, sent by a worker to her brain. */
+export type ThreadAct =
+  | { readonly a: "keep"; readonly id: string; readonly row: unknown }
+  | { readonly a: "drop"; readonly id: string }
+  | {
+      readonly a: "doing";
+      readonly thread: string;
+      readonly doing: { readonly what: string; readonly until: number } | null;
+    }
+  | { readonly a: "list"; readonly persona: string | null };
 
 export const make = Effect.gen(function* () {
   const memory = yield* TessayaMemoryService;
@@ -905,8 +922,56 @@ export const make = Effect.gen(function* () {
     const row = yield* parsedOr<LiveThread | null>(r.row, null);
     if (row !== null) live.set(r.id, row);
   }
+  /**
+   * Her conversation list lives once, on her brain. A worker keeps only an in-memory cache of what it wrote (for its own
+   * next turn) and sends each change there; with the brain away the change waits in the outbox, in order, and lands once.
+   */
+  const brain = yield* makeBrainLink;
+  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  let movedUp = false;
+  /** A worker's own rows from before the brain held them go up once (dry-run count, a copy kept), then are deleted. */
+  const moveUp = Effect.fn("TessayaTurn.threadsMoveUp")(function* () {
+    if (movedUp) return;
+    const rows = yield* sql<{
+      id: string;
+      row: string;
+    }>`SELECT id, row FROM tessaya_live_threads`.pipe(Effect.orElseSucceed(() => []));
+    if (rows.length === 0) return void (movedUp = true);
+    yield* emitAction({
+      kind: "threads.move",
+      actor: { kind: "rule", id: "oneBrain", certainty: 1 },
+      outcome: "dryRun",
+      data: { rows: rows.length },
+    });
+    if (Option.isNone(config)) return;
+    const kept = NodePath.join(config.value.stateDir, "live-threads.before-brain.json");
+    yield* Effect.sync(() => {
+      if (!NodeFS.existsSync(kept)) NodeFS.writeFileSync(kept, `${JSON.stringify(rows)}\n`);
+    });
+    let sent = 0;
+    for (const r of rows) {
+      const row = yield* parsedOr<LiveThread | null>(r.row, null);
+      if (row === null) continue;
+      // sent now, or queued in order for when the brain is back: either way it is no longer this server's
+      yield* brain.sendOrQueue("threads", { a: "keep", id: r.id, row });
+      sent++;
+    }
+    yield* sql`DELETE FROM tessaya_live_threads`.pipe(Effect.ignore);
+    movedUp = true;
+    yield* emitAction({
+      kind: "threads.move",
+      actor: { kind: "rule", id: "oneBrain", certainty: 1 },
+      outcome: "moved",
+      data: { rows: sent },
+    });
+  });
   const keepThread = Effect.fn("TessayaTurn.keepThread")(function* (id: string, row: LiveThread) {
     live.set(id, row);
+    if (!(yield* brain.isBrain)) {
+      yield* moveUp();
+      yield* brain.sendOrQueue("threads", { a: "keep", id, row });
+      return;
+    }
     yield* encodeJson(row).pipe(
       Effect.flatMap(
         (json) => sql`
@@ -919,6 +984,11 @@ export const make = Effect.gen(function* () {
   });
   const dropThread = (id: string) =>
     Effect.sync(() => live.delete(id)).pipe(
+      Effect.andThen(
+        Effect.flatMap(brain.isBrain, (here) =>
+          here ? Effect.void : Effect.asVoid(brain.sendOrQueue("threads", { a: "drop", id })),
+        ),
+      ),
       Effect.andThen(sql`DELETE FROM tessaya_live_threads WHERE id = ${id}`.pipe(Effect.ignore)),
     );
   const threadId = (turn: TurnEnvelope) =>
@@ -1095,12 +1165,24 @@ export const make = Effect.gen(function* () {
     thread: string,
     doing: { readonly what: string; readonly until: number } | null,
   ) {
+    if (!(yield* brain.isBrain)) {
+      yield* brain.sendOrQueue("threads", { a: "doing", thread, doing });
+      return;
+    }
     const row = live.get(thread);
     if (row === undefined || row.tier === "private") return;
     yield* keepThread(thread, { ...row, doing });
   });
 
   const threads = Effect.fn("TessayaTurn.threads")(function* (persona?: string) {
+    if (!(yield* brain.isBrain)) {
+      yield* moveUp();
+      // what waited for the brain lands first, so the list read back holds it
+      yield* brain.replay();
+      const theirs = yield* brain.send("threads", { a: "list", persona: persona ?? null });
+      if (Option.isSome(theirs) && Array.isArray(theirs.value))
+        return theirs.value as ReadonlyArray<LiveThread>;
+    }
     const now = yield* Clock.currentTimeMillis;
     for (const [id, t] of live)
       if (now - t.lastAt > CONVERSATION_IDLE_MS) {
@@ -1914,6 +1996,22 @@ export const make = Effect.gen(function* () {
     comingUp: comingUpNow,
     threads,
     setDoing,
+    /** The brain's side of a worker's change to her one conversation list (BrainOp threads). */
+    threadAct: Effect.fn("TessayaTurn.threadAct")(function* (act: ThreadAct) {
+      switch (act.a) {
+        case "keep":
+          yield* keepThread(act.id, act.row as LiveThread);
+          return null;
+        case "drop":
+          yield* dropThread(act.id);
+          return null;
+        case "doing":
+          yield* setDoing(act.thread, act.doing);
+          return null;
+        case "list":
+          return yield* threads(act.persona ?? undefined);
+      }
+    }),
     handOff,
   });
 });

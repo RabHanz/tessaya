@@ -8,13 +8,15 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { emitAction } from "../provenance/ActionLog.ts";
-import { brainOn, type BrainOp } from "./BrainHost.ts";
+import { BrainOp as BrainOpSchema, brainOn, type BrainOp } from "./BrainHost.ts";
+import * as SqlClient from "effect/sql/SqlClient";
 import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { CastCallInput } from "@t3tools/tessaya-contracts";
 import { TessayaCast as TessayaCastRules } from "@t3tools/contracts/settings";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { TessayaTurn } from "./TessayaTurn.ts";
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
 import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
@@ -87,6 +89,33 @@ const CastAct = Schema.Union([
   }),
 ]);
 const decodeCastAct = Schema.decodeUnknownOption(CastAct);
+const OutboxIn = Schema.Struct({
+  id: Schema.String.check(Schema.isMaxLength(64)),
+  op: BrainOpSchema,
+  payload: Schema.Unknown,
+});
+const decodeOutbox = Schema.decodeUnknownOption(OutboxIn);
+const Doing = Schema.NullOr(
+  Schema.Struct({ what: Schema.String.check(Schema.isMaxLength(200)), until: Schema.Number }),
+);
+const ThreadActIn = Schema.Union([
+  Schema.Struct({
+    a: Schema.Literal("keep"),
+    id: Schema.String.check(Schema.isMaxLength(400)),
+    row: Schema.Record(Schema.String, Schema.Unknown),
+  }),
+  Schema.Struct({ a: Schema.Literal("drop"), id: Schema.String.check(Schema.isMaxLength(400)) }),
+  Schema.Struct({
+    a: Schema.Literal("doing"),
+    thread: Schema.String.check(Schema.isMaxLength(400)),
+    doing: Doing,
+  }),
+  Schema.Struct({
+    a: Schema.Literal("list"),
+    persona: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))),
+  }),
+]);
+const decodeThreadAct = Schema.decodeUnknownOption(ThreadActIn);
 const decodePresenceAct = Schema.decodeUnknownOption(PresenceAct);
 const decodePersonaAct = Schema.decodeUnknownOption(PersonaAct);
 const decodeGroupAct = Schema.decodeUnknownOption(GroupAct);
@@ -101,10 +130,7 @@ const decodeVocabulary = Schema.decodeUnknownOption(VocabularyAtBrain);
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
 
-export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
-  op: BrainOp,
-  payload: unknown,
-) {
+const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payload: unknown) {
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
   switch (op) {
     case "roomLoop": {
@@ -189,6 +215,16 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
           );
       }
     }
+    case "threads": {
+      const act = decodeThreadAct(payload);
+      if (Option.isNone(act)) return refused("Not a thread change.");
+      const turn = yield* Effect.serviceOption(TessayaTurn);
+      if (Option.isNone(turn)) return refused("No conversations here.");
+      return done(yield* turn.value.threadAct(act.value));
+    }
+    case "outbox":
+      // unwrapped by receiveAtBrain: never nested
+      return refused("Not a queued change.");
     case "presence": {
       const act = decodePresenceAct(payload);
       if (Option.isNone(act)) return refused("Not a presence signal.");
@@ -278,4 +314,28 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
       return written ? done() : refused("No private library here.");
     }
   }
+});
+
+/** One act from a worker; a queued one (outbox) is applied exactly once by its id, however often it is replayed. */
+export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
+  op: BrainOp,
+  payload: unknown,
+) {
+  if (op !== "outbox") return yield* applyAtBrain(op, payload);
+  if ((yield* brainOn) !== null) return refused("This server is not her brain.");
+  const box = decodeOutbox(payload);
+  if (Option.isNone(box) || box.value.op === "outbox") return refused("Not a queued change.");
+  const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
+  if (Option.isSome(sql)) {
+    const seen = yield* sql.value<{ n: number }>`
+      SELECT COUNT(*) AS n FROM tessaya_brain_applied WHERE id = ${box.value.id}
+    `.pipe(Effect.orElseSucceed(() => [{ n: 0 }]));
+    if ((seen[0]?.n ?? 0) > 0) return done({ already: true });
+  }
+  const answer = yield* applyAtBrain(box.value.op, box.value.payload);
+  if (answer.ok && Option.isSome(sql))
+    yield* sql.value`
+      INSERT OR IGNORE INTO tessaya_brain_applied (id, at) VALUES (${box.value.id}, ${yield* Clock.currentTimeMillis})
+    `.pipe(Effect.ignore);
+  return answer;
 });

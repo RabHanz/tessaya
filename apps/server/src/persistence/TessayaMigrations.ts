@@ -83,6 +83,7 @@ import Migration0051 from "./Migrations/Baton/051_ProblemReports.ts";
 import Migration0052 from "./Migrations/Baton/052_PrivateTier.ts";
 import Migration0053 from "./Migrations/Baton/053_Scratchpad.ts";
 import Migration0054 from "./Migrations/Baton/054_AttentionThreads.ts";
+import Migration0055 from "./Migrations/Baton/055_BrainOutbox.ts";
 
 /**
  * Baton's own tracking table. Upstream's `effect_sql_migrations` is left to
@@ -146,6 +147,7 @@ const tessayaMigrationEntries = [
   [52, "PrivateTier", Migration0052],
   [53, "Scratchpad", Migration0053],
   [54, "AttentionThreads", Migration0054],
+  [55, "BrainOutbox", Migration0055],
 ] as const;
 
 export const tessayaMigrationManifest = tessayaMigrationEntries.map(
