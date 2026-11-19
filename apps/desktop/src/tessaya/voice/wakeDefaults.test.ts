@@ -28,6 +28,20 @@ describe("wake words at start", () => {
     const words = wakeWordsFor({ wakeWords: saved });
     expect(enabled(words)).toEqual(["Tessaya", "Sebastian", "Alfred", "Freya"]);
     expect(words.find((w) => w.word === "Tessaya")?.threshold).toBe(0.98);
+    // Alfred's old shipped 0.95 follows the table to 0.90; a threshold he chose himself stays.
+    expect(words.find((w) => w.word === "Alfred")?.threshold).toBe(0.9);
+    expect(
+      wakeWordsFor({
+        wakeDefaults: 1,
+        wakeWords: [{ word: "Alfred", enabled: true, threshold: 0.93 }],
+      }),
+    ).toEqual([{ word: "Alfred", enabled: true, threshold: 0.93 }]);
+    expect(
+      wakeWordsFor({
+        wakeDefaults: 1,
+        wakeWords: [{ word: "Alfred", enabled: true, threshold: 0.95 }],
+      }),
+    ).toEqual([{ word: "Alfred", enabled: true, threshold: 0.9 }]);
     // A settings file from before the list was saved gets them too.
     expect(enabled(wakeWordsFor({ enabled: true }))).toEqual([
       "Sebastian",
