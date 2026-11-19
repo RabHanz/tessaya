@@ -659,10 +659,26 @@ const HELD_LINE =
 /** A shared tool as every vessel advertises it: its toolkit description and schema. */
 const specOf = (name: SharedName): RoomTool => {
   const tool: Tool.Any = TessayaToolkit.tools[name];
-  return {
+  const spec = {
     name,
     description: Tool.getDescription(tool) ?? "",
     input_schema: advertisedJsonSchema(tool),
+  };
+  return name === "tessaya_body_move" ? slimBodyMove(spec) : spec;
+};
+
+/**
+ * Her body move as a spoken turn needs it: one step, no timeline (`then`) or live frames (`stream`). Whole, its schema
+ * was 16.5 KB of the room's 50 KB, and the .193 room gate missed home_automation_set and tessaya_memory_remember 3/3;
+ * agents through MCP keep the whole tool, and a scene is tessaya_body_scene.
+ */
+const slimBodyMove = (spec: RoomTool): RoomTool => {
+  const schema = spec.input_schema as { readonly properties?: Record<string, unknown> };
+  const { then: _then, stream: _stream, ...properties } = schema.properties ?? {};
+  return {
+    ...spec,
+    description: spec.description.replace(/,? and put what follows in `then`[^.]*\./, "."),
+    input_schema: { ...schema, properties },
   };
 };
 /** Core first, then by name: one order for every list, so a prompt's tool block stays cached. */
