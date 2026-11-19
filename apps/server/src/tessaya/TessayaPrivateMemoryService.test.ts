@@ -5,6 +5,12 @@ import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
+import * as Context from "effect/Context";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { HOME_KEY } from "./BrainHost.ts";
+import { receiveAtBrain } from "./BrainReceive.ts";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
@@ -462,3 +468,100 @@ describe("a member's own store, made when they accept (identity I-1)", () => {
       assert.isTrue((yield* as(phone)(p.unlock({ storeId: mayas.store.id }))).open);
     }).pipe(Effect.provide(members(["maya"]))));
 });
+
+it.effect(
+  "his one private store on the brain: his laptop unlocks a brain-made row with his PIN, keeps no rows and never the pepper",
+  () =>
+    Effect.gen(function* () {
+      // her brain keeps its secrets beside its store, as the server does
+      const brainCtx = yield* Layer.build(
+        Layer.mergeAll(privateLayer, memoryLayer).pipe(
+          Layer.provideMerge(secretsOf(9)),
+          Layer.provideMerge(fast),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      );
+      const onBrain = <A, E>(e: Effect.Effect<A, E, Layer.Success<typeof stack>>) =>
+        e.pipe(Effect.provideContext(brainCtx));
+      // made on the brain, with a note in it, then locked
+      yield* onBrain(
+        Effect.gen(function* () {
+          const p = yield* TessayaPrivateMemoryService;
+          const owner = yield* as(desk)(made({ name: "Rab", pin: OWNER_PIN }));
+          yield* as(desk)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN }));
+          yield* as(desk)(
+            p.remember({ turn: turn(), text: `The ${MARKER} anniversary is in May` }),
+          );
+          yield* as(desk)(p.lock());
+        }),
+      );
+      // his laptop's server: its own secrets (a different pepper it must never use for his store)
+      const asked: Array<string> = [];
+      const laptopSecrets = Layer.mock(ServerSecretStore)({
+        getOrCreateRandom: (name, bytes) =>
+          Effect.sync(() => {
+            asked.push(name);
+            return new Uint8Array(bytes).fill(7);
+          }),
+      });
+      const db = yield* Layer.build(SqlitePersistenceMemory);
+      const lsql = Context.get(db, SqlClient.SqlClient);
+      yield* lsql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`;
+      const laptop = yield* Layer.build(
+        Layer.mergeAll(privateLayer, memoryLayer).pipe(
+          Layer.provide(laptopSecrets),
+          Layer.provideMerge(fast),
+          Layer.provideMerge(
+            Layer.succeed(PeerLinks.PeerLinks, {
+              enabled: Effect.succeed(true),
+              list: Effect.succeed([
+                { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
+              ]),
+            } as never),
+          ),
+          Layer.provideMerge(
+            Layer.succeed(
+              PeerMcpClient.PeerMcpClient,
+              PeerMcpClient.PeerMcpClient.of({
+                call: (input) =>
+                  receiveAtBrain(
+                    input.arguments["op"] as never,
+                    input.arguments["payload"],
+                    "auto",
+                  ).pipe(Effect.provideContext(brainCtx)) as never,
+              }),
+            ),
+          ),
+          Layer.provideMerge(Layer.succeedContext(db)),
+        ),
+      );
+      const recalled = yield* Effect.gen(function* () {
+        const p = yield* TessayaPrivateMemoryService;
+        const [store] = yield* as(desk)(p.people);
+        yield* as(desk)(p.unlock({ storeId: store!.id, pin: OWNER_PIN }));
+        return yield* as(desk)(p.recall({ turn: turn(), text: "anniversary" }));
+      }).pipe(Effect.provideContext(laptop));
+      assert.include(recalled.block, `The ${MARKER} anniversary is in May`);
+      // the pepper came from the brain, held in memory: never asked of the laptop's own secrets, never in its database
+      assert.notInclude(asked, "private-memory-pepper");
+      const kept = yield* everything.pipe(Effect.provideContext(laptop));
+      assert.notInclude(kept, Buffer.from(new Uint8Array(32).fill(9)).toString("base64"));
+      assert.notInclude(kept, MARKER);
+      for (const t of ["tessaya_private_stores", "tessaya_private_items"])
+        assert.strictEqual(
+          (yield* lsql.unsafe<{ n: number }>(`SELECT COUNT(*) AS n FROM ${t}`))[0]?.n,
+          0,
+        );
+      // a link without full access, or none, never gets it, not even through the outbox
+      for (const access of ["read-only", "body-only", undefined])
+        assert.isFalse(
+          (yield* onBrain(receiveAtBrain("privatePepper", {}, access))).ok,
+          String(access),
+        );
+      assert.isFalse(
+        (yield* onBrain(
+          receiveAtBrain("outbox", { id: "x", op: "privatePepper", payload: {} }, "auto"),
+        )).ok,
+      );
+    }).pipe(Effect.scoped),
+);

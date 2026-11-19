@@ -26,6 +26,10 @@ export const BrainOp = Schema.Literals([
   "moodView",
   // who wears which body (Tessels, phones) and the visits: kept on her brain alone
   "cast",
+  // his PIN-protected private store's rows (ciphertext only; the PIN and every key stay on his device's server)
+  "privateRows",
+  // the PIN's pepper, to a linked server of his with full scope, held in its memory only (Director, 19 Nov: option A)
+  "privatePepper",
   // a worker's queued change, replayed once the brain is back: applied exactly once by its id
   "outbox",
   // her one conversation list (LiveThreads): kept on her brain alone

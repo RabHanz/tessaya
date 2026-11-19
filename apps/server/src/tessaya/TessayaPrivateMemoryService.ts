@@ -65,10 +65,13 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
-import * as SqlClient from "effect/sql/SqlClient";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
-import { traced } from "../provenance/ActionLog.ts";
+import { emitAction, traced } from "../provenance/ActionLog.ts";
+import * as ServerConfig from "../config.ts";
+import * as NodePath from "node:path";
+import { moveUpPrivate, privateRowsClient } from "./PrivateRows.ts";
+import { makeBrainLink } from "./BrainHost.ts";
 
 /**
  * Who is calling, set by the transport from the authenticated session: its id (so an unlock belongs to one device),
@@ -100,7 +103,9 @@ export const PrivateKdf = Context.Reference<KdfParams>(
   },
 );
 
-const PEPPER = "private-memory-pepper";
+/** The secret that hardens his PIN; her brain's alone, lent to his own linked servers in memory only. */
+export const PRIVATE_PEPPER = "private-memory-pepper";
+const PEPPER = PRIVATE_PEPPER;
 
 interface StoredKeys {
   readonly kdf: KdfParams;
@@ -350,10 +355,63 @@ export class TessayaPrivateMemoryService extends Context.Service<
 >()("t3/tessaya/TessayaPrivateMemoryService") {}
 
 export const make = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
+  // His store's rows live once, on her brain (one-self move 4): every statement here runs there, as ciphertext; the
+  // PIN, the unlock and every key stay on this server.
+  const sql = yield* privateRowsClient;
+  // Once: rows this server held before the brain kept them go up (a copy kept, read back, then deleted here).
+  const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+  yield* moveUpPrivate(
+    Option.isNone(config)
+      ? null
+      : NodePath.join(config.value.stateDir, "private-store.before-brain.json"),
+  ).pipe(
+    Effect.tap((report) =>
+      Option.isNone(report)
+        ? Effect.void
+        : emitAction({
+            kind: "private.move",
+            actor: { kind: "rule", id: "oneBrain", certainty: 1 },
+            outcome:
+              "clash" in report.value
+                ? "clash"
+                : report.value["verified"] === false
+                  ? "unverified"
+                  : "done",
+            data: report.value,
+            private: true,
+          }),
+    ),
+    Effect.repeat({ until: Option.isSome, schedule: Schedule.spaced("5 minutes") }),
+    Effect.catchCause(() => Effect.void),
+    Effect.forkScoped,
+  );
   const secrets = yield* ServerSecretStore;
-  const pepper = Buffer.from(yield* secrets.getOrCreateRandom(PEPPER, 32).pipe(Effect.orDie));
-  const chainKey = auditKey(pepper);
+  /**
+   * The PIN's pepper is her brain's (the Director's choice, 19 Nov): a server that isn't her brain asks for it over its
+   * brain link and keeps it in memory only, never on its disk, logs or the dev feed, asking again after a restart. Until
+   * it has it (the brain away, or a link without the right scope) his store stays locked: there is no other pepper.
+   */
+  const brainLink = yield* makeBrainLink;
+  let pepperHeld: Buffer | null = null;
+  const pepperNow = Effect.gen(function* () {
+    if (pepperHeld !== null) return pepperHeld;
+    if (yield* brainLink.isBrain) {
+      pepperHeld = Buffer.from(yield* secrets.getOrCreateRandom(PEPPER, 32).pipe(Effect.orDie));
+      return pepperHeld;
+    }
+    const got = yield* brainLink.send("privatePepper", {});
+    const pepper =
+      Option.isSome(got) && typeof got.value === "object" && got.value !== null
+        ? (got.value as { readonly pepper?: unknown }).pepper
+        : undefined;
+    if (typeof pepper !== "string" || pepper.length === 0)
+      return yield* refuse(
+        "His private store is locked: her brain can't open it from here just now.",
+      );
+    pepperHeld = Buffer.from(pepper, "base64");
+    return pepperHeld;
+  });
+  const chainKeyNow = Effect.map(pepperNow, auditKey);
   const opened = new Map<string, Opened>();
   const pendings = new Map<string, PendingStore>();
   const dropPending = (token: string) => {
@@ -457,7 +515,7 @@ export const make = Effect.gen(function* () {
       hash: string;
     }>`SELECT hash FROM tessaya_private_audit ORDER BY seq DESC LIMIT 1`;
     const hash = auditHash(
-      chainKey,
+      yield* chainKeyNow.pipe(Effect.orDie),
       last[0]?.hash ?? "",
       [row.id, row.name, action, outcome, by, count, at].join("|"),
     );
@@ -636,6 +694,7 @@ export const make = Effect.gen(function* () {
         );
       if (gate.kind === "recovery-only")
         return yield* refuse("Too many wrong PINs: only the recovery code opens this store now.");
+      const pepper = yield* pepperNow;
       const kek = yield* Effect.promise(() =>
         pinKeyAsync(pin, Buffer.from(keys.salt, "base64"), pepper, row.id, keys.kdf),
       );
@@ -766,6 +825,7 @@ export const make = Effect.gen(function* () {
         continue;
       }
       if (p.personId !== personId || p.member !== member) continue;
+      const pepper = yield* pepperNow;
       const again = yield* Effect.promise(() =>
         pinKeyAsync(pin, Buffer.from(p.keys.salt, "base64"), pepper, p.id, p.keys.kdf),
       );
@@ -779,6 +839,7 @@ export const make = Effect.gen(function* () {
     const kdf = yield* PrivateKdf;
     const salt = NodeCrypto.randomBytes(16);
     const dek = randomKey();
+    const pepper = yield* pepperNow;
     const kek = yield* Effect.promise(() => pinKeyAsync(pin, salt, pepper, id, kdf));
     const recovery = newRecoveryKey();
     const rkey = recoveryKey(recovery.bytes, id);
@@ -1098,6 +1159,7 @@ export const make = Effect.gen(function* () {
       if (dek === null) return yield* refuse("That PIN is not right.");
       const keys = keysOf(row);
       const salt = NodeCrypto.randomBytes(16);
+      const pepper = yield* pepperNow;
       const kek = yield* Effect.promise(() =>
         pinKeyAsync(input.newPin, salt, pepper, row.id, keys.kdf),
       );
@@ -1180,6 +1242,7 @@ export const make = Effect.gen(function* () {
         at: string;
         hash: string;
       }>`SELECT * FROM tessaya_private_audit ORDER BY seq`.pipe(Effect.orDie);
+      const chainKey = yield* chainKeyNow.pipe(Effect.orDie);
       let previous = "";
       let intact = true;
       for (const r of all) {

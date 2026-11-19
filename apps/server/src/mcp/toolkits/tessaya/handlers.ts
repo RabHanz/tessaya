@@ -360,7 +360,7 @@ export const layer = McpToolAccess.toLayer(
             const scope = yield* McpInvocationContext.McpInvocationContext;
             if (scope.client?.linked !== true || runtime === null)
               return { ok: false, line: "Only another of his servers sends here." };
-            return yield* receiveAtBrain(input.op, input.payload).pipe(
+            return yield* receiveAtBrain(input.op, input.payload, scope.client.access).pipe(
               Effect.provideContext(runtime),
             );
           }),
