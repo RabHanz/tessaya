@@ -249,12 +249,29 @@ export function formatShortcutLabel(
   return parts.join("+");
 }
 
+// Default-context labels per keybindings config: list renders ask for the same labels on every streamed update.
+const defaultShortcutLabels = new WeakMap<ResolvedKeybindingsConfig, Map<string, string | null>>();
+
 export function shortcutLabelForCommand(
   keybindings: ResolvedKeybindingsConfig,
   command: KeybindingCommand | null,
   options?: string | ResolvedShortcutLabelOptions,
 ): string | null {
   if (command === null) return null;
+  if (options === undefined) {
+    let labels = defaultShortcutLabels.get(keybindings);
+    if (labels === undefined) defaultShortcutLabels.set(keybindings, (labels = new Map()));
+    if (!labels.has(command)) labels.set(command, resolveShortcutLabel(keybindings, command));
+    return labels.get(command) ?? null;
+  }
+  return resolveShortcutLabel(keybindings, command, options);
+}
+
+function resolveShortcutLabel(
+  keybindings: ResolvedKeybindingsConfig,
+  command: KeybindingCommand,
+  options?: string | ResolvedShortcutLabelOptions,
+): string | null {
   const resolvedOptions =
     typeof options === "string"
       ? ({ platform: options } satisfies ResolvedShortcutLabelOptions)

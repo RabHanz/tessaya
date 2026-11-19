@@ -1,0 +1,91 @@
+Tessaya: lists that re-render on every streamed update reuse what has not changed: default shortcut labels per
+keybindings config, and saved pull-request summaries per thread link (B-041).
+
+diff --git a/apps/web/src/keybindings.test.ts b/apps/web/src/keybindings.test.ts
+index 3b596f838fa0db79eed8ae0f3e7c4f6a5413ce1b..282dfd89d0a4469e044f6f3bb195d99218830d75 100644
+--- a/apps/web/src/keybindings.test.ts
++++ b/apps/web/src/keybindings.test.ts
+@@ -312,6 +312,19 @@ describe("shortcutLabelForCommand", () => {
+     assert.strictEqual(shortcutLabelForCommand(bindings, "thread.jump.7", "MacIntel"), "⇧⌘1");
+   });
+ 
++  it("keeps each config's own default label when configs change", () => {
++    const first = compile([{ shortcut: modShortcut("1"), command: "thread.jump.1" }]);
++    const label = shortcutLabelForCommand(first, "thread.jump.1");
++    assert.isNotNull(label);
++    assert.strictEqual(shortcutLabelForCommand(first, "thread.jump.1"), label);
++    const shadowed = compile([
++      { shortcut: modShortcut("1"), command: "thread.jump.1" },
++      { shortcut: modShortcut("1"), command: "thread.jump.7" },
++    ]);
++    assert.isNull(shortcutLabelForCommand(shadowed, "thread.jump.1"));
++    assert.strictEqual(shortcutLabelForCommand(shadowed, "thread.jump.7"), label);
++  });
++
+   it("respects when-context while resolving labels", () => {
+     const bindings = compile([
+       { shortcut: modShortcut("d"), command: "diff.toggle" },
+diff --git a/apps/web/src/keybindings.ts b/apps/web/src/keybindings.ts
+index 849183b7a1a69f4a3e7bb6910d3dfd914046582a..c1d802a12c1a051aa95717a469835c4fcf72366a 100644
+--- a/apps/web/src/keybindings.ts
++++ b/apps/web/src/keybindings.ts
+@@ -249,12 +249,29 @@ export function formatShortcutLabel(
+   return parts.join("+");
+ }
+ 
++// Default-context labels per keybindings config: list renders ask for the same labels on every streamed update.
++const defaultShortcutLabels = new WeakMap<ResolvedKeybindingsConfig, Map<string, string | null>>();
++
+ export function shortcutLabelForCommand(
+   keybindings: ResolvedKeybindingsConfig,
+   command: KeybindingCommand | null,
+   options?: string | ResolvedShortcutLabelOptions,
+ ): string | null {
+   if (command === null) return null;
++  if (options === undefined) {
++    let labels = defaultShortcutLabels.get(keybindings);
++    if (labels === undefined) defaultShortcutLabels.set(keybindings, (labels = new Map()));
++    if (!labels.has(command)) labels.set(command, resolveShortcutLabel(keybindings, command));
++    return labels.get(command) ?? null;
++  }
++  return resolveShortcutLabel(keybindings, command, options);
++}
++
++function resolveShortcutLabel(
++  keybindings: ResolvedKeybindingsConfig,
++  command: KeybindingCommand,
++  options?: string | ResolvedShortcutLabelOptions,
++): string | null {
+   const resolvedOptions =
+     typeof options === "string"
+       ? ({ platform: options } satisfies ResolvedShortcutLabelOptions)
+diff --git a/apps/web/src/state/pullRequests.ts b/apps/web/src/state/pullRequests.ts
+index 13d71301e203504cd33aa2f3be247847fa5d854d..aaedb54df7c5c666218458ade44eae0447e0fa7a 100644
+--- a/apps/web/src/state/pullRequests.ts
++++ b/apps/web/src/state/pullRequests.ts
+@@ -465,11 +465,24 @@ function savedPullRequestKey(
+     : `${environmentId}:${threadPullRequestKeyOf({ ...reference, host: reference.host })}`;
+ }
+ 
++// Thread shells keep unchanged links by identity, so a streamed shell update re-parses only the links it changed.
++const savedLinkSummaries = new WeakMap<
++  ThreadPullRequestLink,
++  { readonly projectId: ProjectId; readonly summary: PullRequestSummary | null }
++>();
++function savedLinkSummary(link: ThreadPullRequestLink, projectId: ProjectId) {
++  const kept = savedLinkSummaries.get(link);
++  if (kept?.projectId === projectId) return kept.summary;
++  const summary = threadPullRequestLinkToSummary(link, projectId);
++  savedLinkSummaries.set(link, { projectId, summary });
++  return summary;
++}
++
+ const savedPullRequestSummariesAtom = Atom.make((get) => {
+   const summaries = new Map<string, PullRequestSummary>();
+   for (const thread of get(environmentThreadShells.threadShellsAtom)) {
+     for (const link of visibleThreadPullRequests(thread.pullRequests)) {
+-      const summary = threadPullRequestLinkToSummary(link, thread.projectId);
++      const summary = savedLinkSummary(link, thread.projectId);
+       if (summary === null) continue;
+       const key = savedPullRequestKey(thread.environmentId, link);
+       summaries.set(key, newestPullRequestSummary(summaries.get(key) ?? null, summary) ?? summary);
