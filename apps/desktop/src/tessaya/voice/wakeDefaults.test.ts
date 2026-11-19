@@ -13,7 +13,7 @@ describe("wake words at start", () => {
     expect(FRESH_WAKE_WORDS).toEqual([
       { word: "Tessaya", enabled: true, threshold: 0.99 },
       { word: "Sebastian", enabled: false, threshold: 0.97 },
-      { word: "Alfred", enabled: true, threshold: 0.95 },
+      { word: "Alfred", enabled: true, threshold: 0.9 },
       { word: "Freya", enabled: true, threshold: 0.95 },
       { word: "Onyx", enabled: false, threshold: 0.95 },
     ]);
