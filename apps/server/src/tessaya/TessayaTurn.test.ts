@@ -5,6 +5,14 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as FileSystem from "effect/FileSystem";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as ServerConfig from "../config.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { receiveAtBrain } from "./BrainReceive.ts";
+import { HOME_KEY } from "./BrainHost.ts";
 import * as TestClock from "effect/testing/TestClock";
 
 import { onAction } from "../provenance/ActionLog.ts";
@@ -1428,3 +1436,81 @@ it("keeps the presence board under its ceiling however many talk to her at once"
     "You are also in 40 other conversations now; say nothing of them.",
   );
 });
+
+it.effect(
+  "one conversation list, on her brain: a worker's turn shows on the brain's board, its old rows move up once",
+  () =>
+    Effect.gen(function* () {
+      const brainCtx = yield* Layer.build(
+        turnLayer.pipe(
+          Layer.provideMerge(MemberPreferencesLayer),
+          Layer.provideMerge(memoryLayer),
+          Layer.provideMerge(learning),
+          Layer.provideMerge(stores),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      );
+      const base = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped({
+        prefix: "t3code-threads-",
+      });
+      const workerCtx = yield* Layer.build(
+        turnLayer.pipe(
+          Layer.provideMerge(MemberPreferencesLayer),
+          Layer.provideMerge(memoryLayer),
+          Layer.provideMerge(learning),
+          Layer.provideMerge(stores),
+          Layer.provideMerge(ServerConfig.layerTest(process.cwd(), base)),
+          Layer.provideMerge(
+            Layer.succeed(PeerLinks.PeerLinks, {
+              enabled: Effect.succeed(true),
+              list: Effect.succeed([
+                { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
+              ]),
+            } as never),
+          ),
+          Layer.provideMerge(
+            Layer.succeed(
+              PeerMcpClient.PeerMcpClient,
+              PeerMcpClient.PeerMcpClient.of({
+                call: (input) =>
+                  receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
+                    Effect.provideContext(brainCtx),
+                  ) as never,
+              }),
+            ),
+          ),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      );
+      const wsql = Context.get(workerCtx, SqlClient.SqlClient);
+      // a row the worker kept before the brain held the list
+      const old = {
+        persona: "companion",
+        conversation: "person:owner",
+        vessel: desktop,
+        person: "owner",
+        openedAt: 1,
+        lastAt: 1,
+        surface: "desk",
+        tier: "public",
+        gist: null,
+        presentAt: 1,
+      };
+      yield* wsql`INSERT INTO tessaya_live_threads (id, at, row) VALUES ('companion|old', 1, ${JSON.stringify(old)})`;
+      yield* wsql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`;
+      const worker = Context.get(workerCtx, TessayaTurn);
+      const onBrain = Context.get(brainCtx, TessayaTurn);
+      yield* worker.begin({ vessel: desktop, text: "hello from the laptop", persona: "companion" });
+      const board = yield* onBrain.threads();
+      assert.isTrue(board.some((t) => t.vessel.id === desktop.id && t.persona === "companion"));
+      // the worker reads the same list, and keeps none of its own
+      assert.deepStrictEqual(
+        (yield* worker.threads()).map((t) => t.conversation),
+        board.map((t) => t.conversation),
+      );
+      assert.strictEqual(
+        (yield* wsql<{ n: number }>`SELECT COUNT(*) AS n FROM tessaya_live_threads`)[0]?.n,
+        0,
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

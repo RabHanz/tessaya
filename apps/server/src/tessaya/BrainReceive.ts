@@ -15,6 +15,7 @@ import { TessayaCast } from "./TessayaCast.ts";
 import { CastCallInput } from "@t3tools/tessaya-contracts";
 import { TessayaCast as TessayaCastRules } from "@t3tools/contracts/settings";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { TessayaTurn } from "./TessayaTurn.ts";
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
 import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
@@ -87,6 +88,27 @@ const CastAct = Schema.Union([
   }),
 ]);
 const decodeCastAct = Schema.decodeUnknownOption(CastAct);
+const Doing = Schema.NullOr(
+  Schema.Struct({ what: Schema.String.check(Schema.isMaxLength(200)), until: Schema.Number }),
+);
+const ThreadActIn = Schema.Union([
+  Schema.Struct({
+    a: Schema.Literal("keep"),
+    id: Schema.String.check(Schema.isMaxLength(400)),
+    row: Schema.Record(Schema.String, Schema.Unknown),
+  }),
+  Schema.Struct({ a: Schema.Literal("drop"), id: Schema.String.check(Schema.isMaxLength(400)) }),
+  Schema.Struct({
+    a: Schema.Literal("doing"),
+    thread: Schema.String.check(Schema.isMaxLength(400)),
+    doing: Doing,
+  }),
+  Schema.Struct({
+    a: Schema.Literal("list"),
+    persona: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))),
+  }),
+]);
+const decodeThreadAct = Schema.decodeUnknownOption(ThreadActIn);
 const decodePresenceAct = Schema.decodeUnknownOption(PresenceAct);
 const decodePersonaAct = Schema.decodeUnknownOption(PersonaAct);
 const decodeGroupAct = Schema.decodeUnknownOption(GroupAct);
@@ -188,6 +210,12 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
             Effect.catch((line: string) => Effect.succeed(done({ refused: line }))),
           );
       }
+    case "threads": {
+      const act = decodeThreadAct(payload);
+      if (Option.isNone(act)) return refused("Not a thread change.");
+      const turn = yield* Effect.serviceOption(TessayaTurn);
+      if (Option.isNone(turn)) return refused("No conversations here.");
+      return done(yield* turn.value.threadAct(act.value));
     }
     case "presence": {
       const act = decodePresenceAct(payload);
