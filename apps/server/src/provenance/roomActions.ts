@@ -15,15 +15,26 @@ const SPEAKER_ACTOR = {
   unverified: "guest",
 } as const;
 
-const facts = (body: unknown): Record<string, number | boolean | string> => {
-  const out: Record<string, number | boolean | string> = {};
-  if (body === null || typeof body !== "object") return out;
+type Fact = number | boolean | string;
+
+const flat = (body: object): Record<string, Fact> => {
+  const out: Record<string, Fact> = {};
   for (const [k, v] of Object.entries(body)) {
     if (k === "text" || k === "words") continue;
     if (typeof v === "number" || typeof v === "boolean") out[k] = v;
     // A short enum (a reason, a mood, a button), never a sentence.
     else if (typeof v === "string" && v.length <= 24 && !v.includes(" ")) out[k] = v;
   }
+  return out;
+};
+
+/** Numbers, flags and short enums, and one level of objects of them (a boot's `prev` power, the stats' heap `low`). */
+const facts = (body: unknown): Record<string, Fact | Record<string, Fact>> => {
+  if (body === null || typeof body !== "object") return {};
+  const out: Record<string, Fact | Record<string, Fact>> = flat(body);
+  for (const [k, v] of Object.entries(body))
+    if (k !== "text" && k !== "words" && v !== null && typeof v === "object" && !Array.isArray(v))
+      out[k] = flat(v);
   return out;
 };
 
