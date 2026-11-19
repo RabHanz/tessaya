@@ -218,14 +218,15 @@ index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a37
        element("div", { id: "boot-error-command" }, [command, copyCommand]),
      ]),
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c3c4be7a5de02bcd2d9614269bf9453141d78d6f 100644
+index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c0a93e9dd96d3d660e3857e2e91b20e18c31a55c 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -22,7 +22,11 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
+@@ -22,7 +22,12 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
  import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
  import { tailwindPlugins } from "./vite/tailwind";
  import { warmBundledDevPlugin } from "./vite/warmBundledDev";
 -import { formatAppDisplayName, resolveWebAppStageLabel } from "./src/branding.logic";
++import { tessayaBodyDevPlugin } from "./vite/tessayaBodyDev";
 +import {
 +  WEB_APP_BASE_NAME,
 +  formatAppDisplayName,
@@ -234,7 +235,7 @@ index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c3c4be7a5de02bcd2d9614269bf94531
  
  const repoEnv = loadRepoEnv();
  Object.assign(process.env, repoEnv);
-@@ -282,7 +286,7 @@ function bootstrapTitlePlugin(): Plugin {
+@@ -282,7 +287,7 @@ function bootstrapTitlePlugin(): Plugin {
          hostedAppChannel: configuredHostedAppChannel,
          development,
        });
@@ -243,7 +244,15 @@ index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c3c4be7a5de02bcd2d9614269bf94531
        return html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
      },
    };
-@@ -420,7 +424,26 @@ export default defineConfig(() => {
+@@ -310,6 +315,7 @@ export default defineConfig(() => {
+     plugins: [
+       bootstrapTitlePlugin(),
+       devCompressionPlugin(),
++      tessayaBodyDevPlugin(),
+       chunkCycleGuardPlugin(),
+       builtDev
+         ? undefined
+@@ -420,7 +426,26 @@ export default defineConfig(() => {
        sourcemap: buildSourcemap,
        ...(builtDev ? { watch: { exclude: rolldownWatchExclude } } : {}),
        rolldownOptions: {

@@ -9,8 +9,14 @@ import {
 import { Link, useLocation } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 
-import { usePrimaryEnvironment, usePrimaryEnvironmentId } from "../../state/environments";
+import {
+  useEnvironmentHttpBaseUrl,
+  usePrimaryEnvironment,
+  usePrimaryEnvironmentId,
+} from "../../state/environments";
 import { Button } from "../ui/button";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
+import { PromptLab } from "./PromptLabSettings";
 import { AddPhoneSection } from "./AddPhoneSettings";
 import { ApisSettingsPanel } from "./ApisSettings";
 import { TessayaAccountsSettings } from "./TessayaAccountsSettings";
@@ -105,11 +111,61 @@ function GroupsPage() {
   );
 }
 
-function VoicesPage() {
+const BENCHES = [
+  ["voices", "Voices"],
+  ["prompts", "Prompts"],
+  ["compare", "Compare"],
+  ["body", "Body"],
+] as const;
+type Bench = (typeof BENCHES)[number][0];
+const isBench = (b: unknown): b is Bench => BENCHES.some(([id]) => id === b);
+
+/**
+ * Personas › Lab: try, compare, keep and use. Voices (the Playground, every voice and "Use it for"), Prompts (Prompt
+ * Lab), Compare (blind A/B of two voices) and Body (the body playground), each moved here whole. `?bench=` opens one.
+ */
+function LabPage() {
   const primary = useHouseholdEnvironmentId();
+  const search = useLocation({ select: (location) => location.search as Record<string, unknown> });
+  const [bench, setBench] = useState<Bench>(isBench(search["bench"]) ? search["bench"] : "voices");
+  const server = useEnvironmentHttpBaseUrl(primary);
   return (
     <SettingsPageContainer>
-      {primary === null ? null : <VoiceLibrarySections environmentId={primary} />}
+      <SettingsSection title="Lab">
+        <SettingsRow
+          title="Try, compare, keep, use"
+          description="Clone and try voices, tune each persona's prompt, compare two blind, and pose the body. Or say “open the prompt lab”."
+          control={
+            <ToggleGroup
+              aria-label="Lab bench"
+              variant="segmented"
+              value={[bench]}
+              onValueChange={(next) => {
+                if (isBench(next[0])) setBench(next[0]);
+              }}
+            >
+              {BENCHES.map(([id, label]) => (
+                <Toggle key={id} value={id}>
+                  {label}
+                </Toggle>
+              ))}
+            </ToggleGroup>
+          }
+        />
+      </SettingsSection>
+      {primary === null ? null : bench === "voices" ? (
+        <VoiceLibrarySections environmentId={primary} />
+      ) : bench === "compare" ? (
+        <VoiceLibrarySections page="compare" environmentId={primary} />
+      ) : bench === "prompts" ? (
+        <PromptLab environmentId={primary} />
+      ) : server === null ? null : (
+        <iframe
+          title="Body playground"
+          src={new URL("/tessaya/playground", server).href}
+          className="h-[75vh] w-full rounded-xl border"
+        />
+      )}
     </SettingsPageContainer>
   );
 }
@@ -120,7 +176,9 @@ const TESSAYA_PAGES = {
   homeassistant: HomeSettingsPanel,
   apis: ApisSettingsPanel,
   accounts: AccountsPage,
-  voices: VoicesPage,
+  lab: LabPage,
+  // the Voices page became the Lab's Voices bench; its old address opens it
+  voices: LabPage,
   personas: PersonasPage,
   groups: GroupsPage,
   // Cast lives in the Personas page now; its old address opens that page
@@ -140,6 +198,7 @@ const UNSCOPED: ReadonlySet<TessayaPage> = new Set([
   "hardware",
   "personas",
   "groups",
+  "lab",
   "voices",
   "cast",
 ]);

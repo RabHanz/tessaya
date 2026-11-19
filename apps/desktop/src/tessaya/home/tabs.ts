@@ -29,7 +29,7 @@ export const TABS = [
   { id: "health", label: "Health" },
   { id: "personas", label: "Personas" },
   { id: "groups", label: "Groups" },
-  { id: "voices", label: "Voices" },
+  { id: "lab", label: "Lab" },
   { id: "learn", label: "Learn Tessaya" },
   { id: "help", label: "Help" },
 ] as const;
@@ -52,7 +52,7 @@ export const AREAS = [
     settings: "voice",
   },
   // personas live here, not in Settings: each card holds its voice, body and place, and mood (D-038)
-  { id: "personas", label: "Personas", pages: ["personas", "groups", "voices"], settings: null },
+  { id: "personas", label: "Personas", pages: ["personas", "groups", "lab"], settings: null },
   { id: "know", label: "Know", pages: ["memory", "vault"], settings: "privacy" },
   {
     id: "devices",

@@ -22,11 +22,11 @@ import { useEffect, useState } from "react";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { Link } from "@tanstack/react-router";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import { PromptLab } from "./PromptLabSettings";
 import { StandingYeses } from "./StandingYeses";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
@@ -252,7 +252,23 @@ function BrainSections({ environmentId }: { readonly environmentId: EnvironmentI
       <BeingMoved environmentId={environmentId} />
       <Haptics environmentId={environmentId} />
       <Pulse environmentId={environmentId} />
-      <PromptLab environmentId={environmentId} />
+      <SettingsSection title="Prompt lab">
+        <SettingsRow
+          title="Prompt Lab is in the Lab"
+          description="Personas › Lab › Prompts: each persona's live prompt, variants side by side, and making one live with a rollback."
+          control={
+            <Button
+              size="xs"
+              variant="outline"
+              render={
+                <Link to="/tessaya/$page" params={{ page: "lab" }} search={{ bench: "prompts" }} />
+              }
+            >
+              Open Prompts
+            </Button>
+          }
+        />
+      </SettingsSection>
       <StandingYeses environmentId={environmentId} />
     </>
   );

@@ -51,6 +51,7 @@ import { PersonaRoster } from "./PersonaRosterSettings";
 import { PersonaOpsAccess } from "./PersonaOpsSettings";
 import { CastSection } from "./CastSettings";
 import { placeLine } from "./PersonasPage.logic";
+import { BlindCompare, UseItFor } from "./LabBenches";
 import { VoicePlayground } from "./VoicePlayground";
 
 const NO_CLOUD = "none";
@@ -79,7 +80,7 @@ export function VoiceLibrarySections({
   page = "voices",
   environmentId,
 }: {
-  readonly page?: "voices" | "personas";
+  readonly page?: "voices" | "personas" | "compare";
   /** Her pages pass her environment; inside a settings scope it comes from the scope. */
   readonly environmentId?: EnvironmentId;
 }) {
@@ -96,7 +97,7 @@ function VoiceLibrary({
   page,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly page: "voices" | "personas";
+  readonly page: "voices" | "personas" | "compare";
 }) {
   const cast = useEnvironmentQuery(tessayaWorkSessions.castQuery({ environmentId, input: {} }));
   const castCall = useAtomCommand(tessayaWorkSessions.castCall, { reportFailure: false });
@@ -338,14 +339,16 @@ function VoiceLibrary({
       )}
     </>
   );
+  const bodies = cast.data?.bodies ?? [];
+  if (page === "compare") return <BlindCompare library={library} call={call} />;
   if (page === "voices")
     return (
       <>
         <VoicePlayground library={library} call={call} onChanged={refresh} />
+        <UseItFor library={library} bodies={bodies} call={call} onChanged={refresh} />
         {voiceLists}
       </>
     );
-  const bodies = cast.data?.bodies ?? [];
   return (
     <>
       <PersonaRoster

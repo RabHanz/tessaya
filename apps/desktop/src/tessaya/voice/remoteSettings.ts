@@ -77,7 +77,7 @@ const TAB_VOICE: Record<TabId, DesktopSettingsControl["voice"] | null> = {
   health: null,
   // The Personas area's pages are the web's; moves go through tessaya_cast, which needs his own ask. v.persona rows stay free.
   groups: null,
-  voices: null,
+  lab: null,
   setup: null,
   home: null,
   now: null,

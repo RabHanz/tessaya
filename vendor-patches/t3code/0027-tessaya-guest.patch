@@ -79,3 +79,22 @@ index 747af2d52dd35966d69ec22cf3a61c35d1f6755f..162bb90846c51b89f66caf3fd4cd0003
  
  // Register extra font sizes and background images so tailwind-merge does not
  // treat text-2xs or bg-composer-seam-below as colors.
+diff --git a/packages/shared/src/devProxy.ts b/packages/shared/src/devProxy.ts
+index cdacfce098f47ccca6a47d44949e93775d526d54..c92e9a2041f948327939ca37c76e8079c1d71b15 100644
+--- a/packages/shared/src/devProxy.ts
++++ b/packages/shared/src/devProxy.ts
+@@ -1,5 +1,13 @@
+ /** Vite's proxy and the server's dev 404 handler must share prefixes to avoid index.html responses or redirect loops. */
+-export const DEV_PROXIED_PATH_PREFIXES = ["/api", "/oauth", "/.well-known", "/ws", "/mcp"] as const;
++// Tessaya: the body playground is the server's own page (Personas › Lab › Body embeds it).
++export const DEV_PROXIED_PATH_PREFIXES = [
++  "/api",
++  "/oauth",
++  "/.well-known",
++  "/ws",
++  "/mcp",
++  "/tessaya/playground",
++] as const;
+ 
+ /** Preserve origins for OAuth metadata validation and /ws cookie-session Origin/Host checks. */
+ export const DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES: ReadonlySet<string> = new Set([

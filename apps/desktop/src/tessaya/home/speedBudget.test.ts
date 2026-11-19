@@ -18,7 +18,7 @@ describe("the window's speed budget", () => {
     // Each raise and what it paid for is in docs/baton/SPEED.md; 173,000 until the Personas area, 172,000 until plain approval cards.
     expect(APP_SCRIPT.length).toBeLessThan(174_000);
     expect(cssWithoutFonts.length).toBeLessThan(48_000); // 46,000 until the voice card, 45,000 until the tip card; 43,000 until History's redesign
-    expect(HOME_DOCUMENT.length).toBeLessThan(447_000); // 446,000 until the Personas area, 441,000 until the people graph, 438,000 until the Household area, 432,000 until the voice card, 420,000 until the tips
+    expect(HOME_DOCUMENT.length).toBeLessThan(448_000); // 447,000 until the Lab, 446,000 until the Personas area, 441,000 until the people graph, 438,000 until the Household area, 432,000 until the voice card, 420,000 until the tips
   });
 
   it("draws the first page and any tab with little work", async () => {

@@ -22,6 +22,7 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
 import { warmBundledDevPlugin } from "./vite/warmBundledDev";
+import { tessayaBodyDevPlugin } from "./vite/tessayaBodyDev";
 import {
   WEB_APP_BASE_NAME,
   formatAppDisplayName,
@@ -314,6 +315,7 @@ export default defineConfig(() => {
     plugins: [
       bootstrapTitlePlugin(),
       devCompressionPlugin(),
+      tessayaBodyDevPlugin(),
       chunkCycleGuardPlugin(),
       builtDev
         ? undefined

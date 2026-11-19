@@ -7,6 +7,7 @@
 import type { RigManifest } from "@t3tools/tessaya-shared/bodyRig";
 
 import type { BodyControl } from "./entry";
+import { modelOrder } from "./playgroundOrder";
 import type { mountBody } from "./vrmBody";
 
 type Body = ReturnType<typeof mountBody>;
@@ -1948,29 +1949,11 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
   showTab("move");
   void (async () => {
     const hello = hooks.models
-      ? { models: await hooks.models().catch(() => []), fallback: false }
+      ? { models: await hooks.models().catch(() => []) }
       : await post("hello", {})
-          .then((r) => ({
-            models: (r["models"] as PlaygroundModel[]) ?? [],
-            fallback: r["fallback"] === true,
-          }))
-          .catch(() => ({ models: [] as PlaygroundModel[], fallback: false }));
-    const last = store.get(LAST);
-    const order = [
-      ...hello.models.filter((m) => (m.id ?? m.url) === last),
-      ...hello.models.filter((m) => (m.id ?? m.url) !== last),
-    ];
-    for (const m of order) if (await open(m)) return;
-    if (hello.fallback && order.length === 0)
-      if (
-        await open({
-          name: "Everyday",
-          url: "/tessaya/playground/everyday.vrm",
-          from: "default",
-          why: "The default body (free licence, CC0)",
-        })
-      )
-        return;
+          .then((r) => ({ models: (r["models"] as PlaygroundModel[]) ?? [] }))
+          .catch(() => ({ models: [] as PlaygroundModel[] }));
+    for (const m of modelOrder(hello.models, store.get(LAST))) if (await open(m)) return;
     title.textContent = "Body playground";
     subtitle.textContent = "No model yet";
     empty.replaceChildren(

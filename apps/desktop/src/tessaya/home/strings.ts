@@ -113,7 +113,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "tab.health": "Health",
     "tab.personas": "Personas",
     "tab.groups": "Groups",
-    "tab.voices": "Voices",
+    "tab.lab": "Lab",
     "tab.learn": "Learn Tessaya",
     "intro.learn.title": "Learn Tessaya",
     "intro.learn.text":
@@ -152,8 +152,9 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "intro.personas.text": "Who answers, how each one sounds, and where they live.",
     "intro.groups.title": "Groups",
     "intro.groups.text": "Talk to several personas at once; each answers in its own voice.",
-    "intro.voices.title": "Voices",
-    "intro.voices.text": "Try, clone and compare voices, then give one to a persona.",
+    "intro.lab.title": "Lab",
+    "intro.lab.text":
+      "Try, compare, keep and use: voices, prompts and the body, then give what works to any persona.",
     "intro.health.title": "Health",
     "intro.health.text":
       "How Tessaya is running: each machine's memory and load, her voice services, your Tessels' Wi-Fi and reply times, and what is slowing her down. Ask her \u201cwhy are you slow?\u201d for the same answer.",
