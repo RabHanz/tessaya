@@ -74,6 +74,7 @@ import { VesselHands } from "./VesselHands.ts";
 import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./TessayaApi.ts";
 import { transcribeWav } from "./TessayaPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./TessayaPage.ts";
+import { changePersona } from "./PersonaChanges.ts";
 import { interruptBody, noteDeskWorld, privateBodyEnded } from "./TessayaBody.ts";
 
 /** Each direct-door method's payload decoder and result encoder, compiled once. */
@@ -898,6 +899,24 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
           { tools: deskTools },
         ),
       ),
+    sealedPersona: async ({ layer, name }) => {
+      const made = await run(
+        changePersona(
+          {
+            op: "create",
+            draft: {
+              name,
+              role: "a private character, sealed in his private layer",
+              private: true,
+              privateRooms: "open",
+              sealed: layer,
+            },
+          },
+          { owner: true },
+        ).pipe(Effect.orElseSucceed(() => null)),
+      );
+      return made?.ok === true ? (made.id ?? null) : null;
+    },
     capabilities: async () => ({
       personas: readPack(userdata)
         .personas.filter((p) => p.private !== true)

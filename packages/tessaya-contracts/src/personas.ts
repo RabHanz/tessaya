@@ -26,6 +26,8 @@ export const TessayaPersona = Schema.Struct({
   private: Schema.optionalKey(Schema.Boolean),
   /** How far a private persona comes into his private rooms (M-080). */
   privateRooms: Schema.optionalKey(PrivateRooms),
+  /** A private character of his layer (D6): her brief stays sealed there; Settings shows only her name. */
+  sealed: Schema.optionalKey(Schema.String),
   character: Schema.optionalKey(Schema.String),
   traits: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)),
   eyes: Schema.optionalKey(Schema.String),
@@ -76,6 +78,10 @@ export const TessayaPersonaDraft = Schema.Struct({
   private: Schema.optionalKey(Schema.Boolean),
   /** How far it comes into his private rooms: never, only one-on-one with him, or open rooms too; null takes it out. */
   privateRooms: Schema.optionalKey(Schema.NullOr(PrivateRooms)),
+  /** Set by his private layer when one of its characters becomes his persona (D6): the layer's id, nothing else. */
+  sealed: Schema.optionalKey(
+    Schema.NullOr(Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{0,39}$/))),
+  ),
   /** Its greetings, one line each; an empty list or null takes them out. */
   greetings: Schema.optionalKey(
     Schema.NullOr(Schema.Array(Line(400)).check(Schema.isMaxLength(8))),

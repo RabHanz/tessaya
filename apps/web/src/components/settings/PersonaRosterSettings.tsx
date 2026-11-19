@@ -239,7 +239,7 @@ export function PersonaRoster(props: {
       {personas.map((p) => (
         <SettingsRow
           key={p.id}
-          title={`${p.name}${p.lead ? " (lead)" : ""}${p.private === true ? " · private" : ""}`}
+          title={`${p.name}${p.lead ? " (lead)" : ""}${p.private === true ? " · private" : ""}${p.sealed === undefined ? "" : " · sealed in your private layer"}`}
           description={[
             p.role,
             p.brain === undefined ? null : `Thinks on ${p.brain.model}, ${p.brain.effort} effort.`,

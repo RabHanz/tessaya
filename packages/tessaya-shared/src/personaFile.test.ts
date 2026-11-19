@@ -54,7 +54,9 @@ describe("persona registry changes", () => {
     // how far she comes into his private rooms, and out again
     editPersona(tmp.dir, "luna", { private: true, privateRooms: "one-on-one" });
     expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.privateRooms).toBe("one-on-one");
-    editPersona(tmp.dir, "luna", { private: false, privateRooms: null });
+    editPersona(tmp.dir, "luna", { sealed: "companion" });
+    expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.sealed).toBe("companion");
+    editPersona(tmp.dir, "luna", { private: false, privateRooms: null, sealed: null });
     expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.privateRooms).toBeUndefined();
     editPersona(tmp.dir, "luna", { greetings: [] });
     expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.greetings).toBeUndefined();

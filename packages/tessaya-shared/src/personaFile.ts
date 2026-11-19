@@ -80,6 +80,8 @@ export interface PersonaDraft {
   readonly model?: string | null;
   readonly effort?: string | null;
   readonly private?: boolean;
+  /** Sealed (D6): her brief lives in this layer's sealed store, never here; the file holds only this pointer. */
+  readonly sealed?: string | null;
   /** How far it comes into his private rooms; null takes the line out (rooms.ts). */
   readonly privateRooms?: "never" | "one-on-one" | "open" | null;
   /** Lines it may open with when first woken each day; empty or null takes them out. */
@@ -153,6 +155,7 @@ export const withDraft = (text: string, draft: PersonaDraft): string => {
     ["effort", draft.effort === undefined ? undefined : draft.effort?.trim().toLowerCase() || null],
     ["private", draft.private === undefined ? undefined : draft.private ? "yes" : null],
     ["private rooms", draft.privateRooms],
+    ["sealed", draft.sealed],
     [
       "greetings",
       draft.greetings === undefined

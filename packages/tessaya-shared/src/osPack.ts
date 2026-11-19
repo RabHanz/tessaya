@@ -83,6 +83,8 @@ export interface Persona {
   readonly private?: boolean;
   /** How far a private persona comes into his private rooms (`private rooms:` never, one-on-one or open; rooms.ts). */
   readonly privateRooms?: PrivateRooms;
+  /** Sealed (D6): a private character of his layer, whose brief stays in its sealed store; the layer's id. */
+  readonly sealed?: string;
   /** Its body in Character Studio, the mascot and the pill (`character:`); a body's id. */
   readonly character?: string;
   /** Its temperament (`traits: energy 0.5, warmth 0.6, ...`), each 0 to 1: how its body and voice move. */
@@ -215,6 +217,9 @@ const face = (
     role: fields["role"] ?? "",
     lead,
     ...(!lead && /^(?:yes|true)$/i.test((fields["private"] ?? "").trim()) ? { private: true } : {}),
+    ...(!lead && /^[a-z][a-z0-9-]{0,39}$/.test(fields["sealed"]?.trim() ?? "")
+      ? { sealed: fields["sealed"]!.trim() }
+      : {}),
     ...(isPrivateRooms(fields["private rooms"]?.trim().toLowerCase())
       ? { privateRooms: fields["private rooms"]!.trim().toLowerCase() as PrivateRooms }
       : {}),
