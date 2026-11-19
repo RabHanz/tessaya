@@ -460,8 +460,9 @@ const BONES = new Set<string>([
   "rightHand",
   "hips",
 ]);
+// a blob: URL is minted only by this page's own script (a model it already fetched or he dropped in)
 const sameOrigin = (url: string) =>
-  url.startsWith("/") && !url.startsWith("//") && !url.includes("\\");
+  (url.startsWith("/") && !url.startsWith("//") && !url.includes("\\")) || url.startsWith("blob:");
 const num = (v: unknown, lo: number, hi: number) =>
   typeof v === "number" && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null;
 const str = (v: unknown, max = 200) =>
