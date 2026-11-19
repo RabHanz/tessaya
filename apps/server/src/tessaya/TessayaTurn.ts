@@ -38,6 +38,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { TessayaMemoryLearning, type LearnResult } from "./TessayaMemoryLearning.ts";
@@ -54,6 +55,7 @@ import { TessayaComms } from "./TessayaComms.ts";
 import { commsWaitingLine } from "@t3tools/tessaya-shared/comms";
 import { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
 import { TurnPools } from "./TurnPools.ts";
+import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
@@ -139,8 +141,8 @@ export interface TurnEnvelope {
    */
   readonly group?: { readonly name: string; readonly first: boolean } | undefined;
   /**
-   * A private moment's turn (PersonaLayers.ts): it reads all she reads, and leaves no trace on shared views (the live
-   * thread board, the action log, used-memory marks). Its words are kept only by the layer, sealed.
+   * A private moment's turn (PersonaLayers.ts): it reads all she reads, and leaves no words on shared views (the
+   * action log, used-memory marks); her own board shows only that it happened. Its words stay sealed in the layer.
    */
   readonly private?: boolean | undefined;
 }
@@ -434,8 +436,8 @@ const agoWords = (ms: number) => {
 const BOARD_MAX_CHARS = 400;
 
 /**
- * Her other live conversations, as this turn may see them (CS2): the owner hears who each is with, where and how long
- * ago; anyone else only how many there are; a guest and a shared room nothing. Never what was said in them.
+ * Her other live conversations, as this turn may see them (CS2): the owner hears who each is with, where, how long
+ * ago and what his own are about (D1), a private moment only as one; anyone else only how many; a guest nothing.
  */
 export const boardLine = (
   others: ReadonlyArray<{
@@ -443,6 +445,8 @@ export const boardLine = (
     readonly person: string;
     readonly where: string;
     readonly minutesAgo: number;
+    readonly about?: string | null | undefined;
+    readonly private?: boolean | undefined;
   }>,
   viewer: "owner" | "member" | "guest",
 ): string => {
@@ -451,7 +455,10 @@ export const boardLine = (
     return `You are also in ${others.length} other conversation${others.length === 1 ? "" : "s"} now; say nothing of them.`;
   const rows = others
     .slice(0, 6)
-    .map((o) => `${o.persona} with ${o.person} on ${o.where} (${o.minutesAgo} min ago)`);
+    .map(
+      (o) =>
+        `${o.persona} with ${o.person} on ${o.where} (${o.minutesAgo} min ago)${o.private === true ? ", a private moment" : o.about ? `, about ${o.about}` : ""}`,
+    );
   const line = `Your other conversations now (mention one only if it matters here): ${rows.join("; ")}.`;
   return line.length <= BOARD_MAX_CHARS ? line : `${line.slice(0, BOARD_MAX_CHARS - 1)}…`;
 };
@@ -459,6 +466,16 @@ export const boardLine = (
 export const handOffLine = (from: string): string =>
   `${from} handed this conversation to you: carry on from where it is, without a greeting or starting over.`;
 
+/** A closed thread or conversation stays in the store this long past its idle boundary, then is swept. */
+const KEPT_CLOSED_MS = 24 * 60 * 60_000;
+const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+// Rows only this file writes: a bad one is skipped, not trusted.
+const parsedOr = <A>(json: string, fallback: A) =>
+  decodeJson(json).pipe(
+    Effect.map((v) => v as A),
+    Effect.orElseSucceed(() => fallback),
+  );
 /** How much of a conversation every vessel shares, and how long it waits for him to go on. */
 const CONVERSATION_TURNS = 24;
 const CONVERSATION_IDLE_MS = SAME_CONVERSATION_MS;
@@ -499,7 +516,48 @@ export interface LiveThread {
   readonly person: string | null;
   readonly openedAt: number;
   readonly lastAt: number;
+  /** Where he is with her in it. */
+  readonly surface: "voice" | "desk" | "window" | "phone" | "group";
+  /** A private moment's thread is its own row, seen by her public self only as "a private moment", never its words. */
+  readonly tier: "public" | "private";
+  /** What it is about now, a few words; only ever for his own public threads. */
+  readonly gist: string | null;
+  /** When he last spoke or typed in it. */
+  readonly presentAt: number | null;
 }
+
+export const surfaceOf = (turn: TurnEnvelope): LiveThread["surface"] =>
+  turn.group !== undefined
+    ? "group"
+    : turn.vessel.kind === "device"
+      ? "voice"
+      : turn.vessel.kind === "desktop"
+        ? "desk"
+        : turn.vessel.kind === "phone"
+          ? "phone"
+          : "window";
+
+const GIST_WORD = /[a-z][a-z']{3,}/g;
+const NOT_TOPIC = new Set(
+  "what that this with have just your about there they them would could should please thanks okay yeah really going want like know think make tell then when where which will from been were into some more also back right sure".split(
+    " ",
+  ),
+);
+const topicWords = (text: string) =>
+  new Set((text.toLowerCase().match(GIST_WORD) ?? []).filter((w) => !NOT_TOPIC.has(w)));
+/**
+ * Whether his sentence moved the thread's topic, so its gist is written again (only on new evidence, as MA-024).
+ * shortcut: shared words with the gist, not meaning; replace with the embedder's similarity if gists churn or stick.
+ */
+export const topicMoved = (gist: string | null, said: string): boolean => {
+  const words = topicWords(said);
+  if (words.size < 3) return false;
+  if (gist === null) return true;
+  const known = topicWords(gist);
+  return ![...words].some((w) => known.has(w));
+};
+const GIST_MAX = 80;
+const Gist = Schema.Struct({ gist: Schema.String });
 
 export class TessayaTurn extends Context.Service<
   TessayaTurn,
@@ -724,8 +782,18 @@ export const make = Effect.gen(function* () {
     return Option.isSome(recalled) ? recalled.value.block : "";
   });
 
-  // shortcut: held in this server's memory, so a restart starts every conversation afresh; persist when one must last.
+  // Kept on this server's store too, so a restart or a standby carries on where he was (architecture §1.3).
   const conversations = new Map<string, { at: number; turns: Array<ConversationTurn> }>();
+  const keptSince = (yield* Clock.currentTimeMillis) - CONVERSATION_IDLE_MS;
+  yield* sql`DELETE FROM tessaya_conversations WHERE at <= ${keptSince - KEPT_CLOSED_MS}`.pipe(
+    Effect.ignore,
+  );
+  for (const r of yield* sql<{ key: string; at: number; turns: string }>`
+    SELECT key, at, turns FROM tessaya_conversations WHERE at > ${keptSince}
+  `.pipe(Effect.orElseSucceed(() => []))) {
+    const turns = yield* parsedOr<Array<ConversationTurn>>(r.turns, []);
+    if (turns.length > 0) conversations.set(r.key, { at: Number(r.at), turns });
+  }
   /** The conversation each vessel last spoke in. */
   const lastOn = new Map<string, { key: string; at: number }>();
   /**
@@ -779,18 +847,54 @@ export const make = Effect.gen(function* () {
             },
           ]),
     ];
-    conversations.set(key, { at: now, turns: [...turns, ...said].slice(-CONVERSATION_TURNS) });
+    const kept = [...turns, ...said].slice(-CONVERSATION_TURNS);
+    conversations.set(key, { at: now, turns: kept });
+    yield* encodeJson(kept).pipe(
+      Effect.flatMap(
+        (json) => sql`
+          INSERT INTO tessaya_conversations (key, at, turns) VALUES (${key}, ${now}, ${json})
+          ON CONFLICT (key) DO UPDATE SET at = excluded.at, turns = excluded.turns
+        `,
+      ),
+      Effect.ignore,
+    );
   });
 
-  // shortcut: in this server's memory like `conversations`; mirror to the Record when the board needs history (CS7).
   const live = new Map<string, LiveThread>();
+  yield* sql`DELETE FROM tessaya_live_threads WHERE at <= ${keptSince - KEPT_CLOSED_MS}`.pipe(
+    Effect.ignore,
+  );
+  for (const r of yield* sql<{ id: string; row: string }>`
+    SELECT id, row FROM tessaya_live_threads WHERE at > ${keptSince}
+  `.pipe(Effect.orElseSucceed(() => []))) {
+    const row = yield* parsedOr<LiveThread | null>(r.row, null);
+    if (row !== null) live.set(r.id, row);
+  }
+  const keepThread = Effect.fn("TessayaTurn.keepThread")(function* (id: string, row: LiveThread) {
+    live.set(id, row);
+    yield* encodeJson(row).pipe(
+      Effect.flatMap(
+        (json) => sql`
+          INSERT INTO tessaya_live_threads (id, at, row) VALUES (${id}, ${row.lastAt}, ${json})
+          ON CONFLICT (id) DO UPDATE SET at = excluded.at, row = excluded.row
+        `,
+      ),
+      Effect.ignore,
+    );
+  });
+  const dropThread = (id: string) =>
+    Effect.sync(() => live.delete(id)).pipe(
+      Effect.andThen(sql`DELETE FROM tessaya_live_threads WHERE id = ${id}`.pipe(Effect.ignore)),
+    );
+  const threadId = (turn: TurnEnvelope) =>
+    `${turn.persona ?? ""}|${conversationKey(turn)}${turn.private === true ? "|private" : ""}`;
   const current = yield* Effect.serviceOption(CurrentPersona);
   const cast = yield* Effect.serviceOption(TessayaCast);
   const touchThread = Effect.fn("TessayaTurn.touchThread")(function* (turn: TurnEnvelope) {
     if (turn.rehearsal === true || turn.addressed === false) return;
     const conversation = conversationKey(turn);
     const persona = turn.persona ?? null;
-    const id = `${persona ?? ""}|${conversation}`;
+    const id = threadId(turn);
     const now = yield* Clock.currentTimeMillis;
     const held = live.get(id);
     const person =
@@ -801,15 +905,47 @@ export const make = Effect.gen(function* () {
           : null;
     if (persona !== null && Option.isSome(current)) yield* current.value.set(conversation, persona);
     if (Option.isSome(cast)) yield* cast.value.touch(turn.vessel.id);
-    live.set(id, {
+    const fresh = held === undefined || now - held.lastAt > CONVERSATION_IDLE_MS;
+    yield* keepThread(id, {
       persona,
       conversation,
       vessel: turn.vessel,
       person,
-      openedAt:
-        held === undefined || now - held.lastAt > CONVERSATION_IDLE_MS ? now : held.openedAt,
+      openedAt: fresh ? now : held.openedAt,
       lastAt: now,
+      surface: surfaceOf(turn),
+      tier: turn.private === true ? "private" : "public",
+      gist: fresh || turn.private === true ? null : held.gist,
+      presentAt: person === OWNER_MEMBER_ID ? now : (held?.presentAt ?? null),
     });
+  });
+
+  /**
+   * His own public thread's gist, written by the cheap model only when his sentence moved its topic: background work
+   * after the reply, never on the way to her first word.
+   */
+  const gistFor = Effect.fn("TessayaTurn.gist")(function* (turn: TurnEnvelope) {
+    const id = threadId(turn);
+    const held = live.get(id);
+    if (held === undefined || held.tier !== "public" || held.person !== OWNER_MEMBER_ID) return;
+    if (!topicMoved(held.gist, turn.text)) return;
+    const oneShot = yield* Effect.serviceOption(TessayaOneShot);
+    if (Option.isNone(oneShot)) return;
+    const lines = (conversations.get(conversationKey(turn))?.turns ?? [])
+      .slice(-6)
+      .map((t) => `${t.role === "user" ? "He" : "She"}: ${t.content.slice(0, 300)}`)
+      .join("\n");
+    const out = yield* oneShot.value
+      .run({
+        prompt: `In at most eight plain words, say what this conversation is about now, as a topic ("the heating schedule", "his trip to Lahore"). No quotes, no full sentence.\n\n${lines}`,
+        outputSchema: Gist,
+        role: "background",
+        feature: "attention-gist",
+      })
+      .pipe(Effect.orElseSucceed(() => null));
+    const gist = out?.gist.replace(/\s+/g, " ").trim().slice(0, GIST_MAX) ?? "";
+    const now = live.get(id);
+    if (gist !== "" && now !== undefined) yield* keepThread(id, { ...now, gist });
   });
 
   // Who had each conversation before its last hand-off (the way back), and the hand-off its new persona is told of once.
@@ -846,20 +982,30 @@ export const make = Effect.gen(function* () {
       };
     const now = yield* Clock.currentTimeMillis;
     const rows = [...live.entries()]
-      .filter(([, t]) => t.conversation === conversation && now - t.lastAt <= CONVERSATION_IDLE_MS)
+      .filter(
+        ([, t]) =>
+          t.conversation === conversation &&
+          t.tier === "public" &&
+          now - t.lastAt <= CONVERSATION_IDLE_MS,
+      )
       .toSorted(([, a], [, b]) => b.lastAt - a.lastAt);
     const from =
       rows.find(([, t]) => t.persona !== null && t.persona !== target.id)?.[1].persona ??
       (origin.persona !== target.id ? (origin.persona ?? null) : null);
     const mine = rows.find(([, t]) => t.persona === target.id)?.[1] ?? rows[0]?.[1];
-    for (const [key, t] of rows) if (t.persona !== target.id) live.delete(key);
-    live.set(`${target.id}|${conversation}`, {
+    for (const [key, t] of rows) if (t.persona !== target.id) yield* dropThread(key);
+    const vessel = mine?.vessel ?? { kind: origin.kind, id: origin.id };
+    yield* keepThread(`${target.id}|${conversation}`, {
       persona: target.id,
       conversation,
-      vessel: mine?.vessel ?? { kind: origin.kind, id: origin.id },
+      vessel,
       person: mine?.person ?? null,
       openedAt: Math.min(now, ...rows.map(([, t]) => t.openedAt)),
       lastAt: now,
+      surface: mine?.surface ?? surfaceOf({ vessel, text: "" }),
+      tier: "public",
+      gist: mine?.gist ?? null,
+      presentAt: mine?.presentAt ?? null,
     });
     if (Option.isSome(current)) yield* current.value.set(conversation, target.id);
     const fromName = personas.find((p) => p.id === from)?.name ?? "the persona before";
@@ -893,7 +1039,7 @@ export const make = Effect.gen(function* () {
   });
   const threads = Effect.fn("TessayaTurn.threads")(function* (persona?: string) {
     const now = yield* Clock.currentTimeMillis;
-    for (const [id, t] of live) if (now - t.lastAt > CONVERSATION_IDLE_MS) live.delete(id);
+    for (const [id, t] of live) if (now - t.lastAt > CONVERSATION_IDLE_MS) yield* dropThread(id);
     return [...live.values()]
       .filter((t) => persona === undefined || t.persona === persona)
       .toSorted((a, b) => b.lastAt - a.lastAt);
@@ -965,7 +1111,7 @@ export const make = Effect.gen(function* () {
         who: { member: turnIdentity(turn).member, name: null },
         repair,
       } satisfies TurnContext;
-    if (turn.private !== true) yield* touchThread(turn);
+    yield* touchThread(turn);
     const view = {
       ...(turn.persona === undefined ? {} : { agent: turn.persona }),
       // Persona x person (P7): a known person's turn reads none of the persona's notes from someone else.
@@ -1268,7 +1414,13 @@ export const make = Effect.gen(function* () {
     member: string | null,
   ) {
     const self = conversationKey(turn);
-    const others = (yield* threads()).filter((t) => t.conversation !== self);
+    const tier = turn.private === true ? "private" : "public";
+    // A private moment shows only to her own self (D5), and never to a member or guest, not even as a count.
+    const others = (yield* threads()).filter(
+      (t) =>
+        (t.conversation !== self || t.tier !== tier) &&
+        (t.tier === "public" || t.persona === (turn.persona ?? null)),
+    );
     const viewer =
       member === null || turn.sharedRoom === true
         ? "guest"
@@ -1278,7 +1430,9 @@ export const make = Effect.gen(function* () {
     // Anyone but the owner hears only how many: no names are read for them.
     if (others.length === 0 || viewer !== "owner")
       return boardLine(
-        others.map(() => ({ persona: "", person: "", where: "", minutesAgo: 0 })),
+        others
+          .filter((t) => t.tier === "public")
+          .map(() => ({ persona: "", person: "", where: "", minutesAgo: 0 })),
         viewer,
       );
     const { personas } = yield* personasList;
@@ -1297,6 +1451,8 @@ export const make = Effect.gen(function* () {
             : ((yield* memberName(t.person)) ?? t.person),
         where: device?.name ?? t.vessel.kind,
         minutesAgo: Math.floor((now - t.lastAt) / 60_000),
+        about: t.gist,
+        private: t.tier === "private",
       });
     }
     return boardLine(rows, viewer);
@@ -1439,7 +1595,14 @@ export const make = Effect.gen(function* () {
     done: { readonly reply: string; readonly previous?: string | null | undefined },
   ) {
     const turn = yield* withMember(raw);
-    if (turn.addressed !== false && turn.rehearsal !== true) yield* addExchange(turn, done.reply);
+    if (turn.addressed !== false && turn.rehearsal !== true) {
+      yield* addExchange(turn, done.reply);
+      const gist = gistFor(turn);
+      // Background like learning below: a spoken vessel forks `end`, so this never holds her voice.
+      yield* Option.isNone(pools)
+        ? gist
+        : pools.value.run("learn", { vessel: turn.vessel.id, class: "background" }, gist);
+    }
     if (notLearnable(turn) !== null) return null;
     const learn = learning.learn({
       origin: "turn",
