@@ -140,6 +140,9 @@ export function CastSection({ environmentId }: { readonly environmentId: Environ
               }
             />
           ))}
+          {view.focus === undefined ? null : (
+            <SettingsRow title="Her desk body" description={view.focus} />
+          )}
           <SettingsRow
             title="Send everyone home"
             description="Every persona called to another body goes back to its home."

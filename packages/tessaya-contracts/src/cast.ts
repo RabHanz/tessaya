@@ -48,6 +48,8 @@ export type CastBody = typeof CastBody.Type;
 export const CastView = Schema.Struct({
   personas: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
   bodies: Schema.Array(CastBody),
+  /** Which of his conversations has her desk body now, or that she is free (body focus); his own view only. */
+  focus: Schema.optionalKey(Schema.String),
 });
 export type CastView = typeof CastView.Type;
 
