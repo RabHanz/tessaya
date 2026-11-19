@@ -83,7 +83,7 @@ const isT3 = (p) =>
   !p.url().includes("/tessaya/");
 const isTessaya = (p) => /baton-window[^/]*\.html/.test(p.url());
 
-// Tessaya's window, opened at Devices › Hardware by a second launch with a link (as from a notification or Ctrl+K).
+// Tessaya's window, opened at Devices › Tessels by a second launch with a link (as from a notification or Ctrl+K).
 spawn(exe, ["tessaya://settings/hardware"], { detached: true, stdio: "ignore" }).unref();
 const tessaya = await waitFor(isTessaya);
 row(
@@ -105,24 +105,24 @@ if (tessaya) {
   // A fresh install also starts T3's own first run ("Connect your computers"), which an inline T3 page shows too.
   await sleep(1500);
   spawn(exe, ["tessaya://settings/hardware"], { detached: true, stdio: "ignore" }).unref();
-  await shot("tessaya-devices-hardware", tessaya, /Hardware/);
+  await shot("tessaya-devices-hardware", tessaya, /Tessels/);
   // The inline page is T3's /tessaya/hardware in a webview: the page alone, never T3's first-run wizard or shell.
   const inline = await waitFor((p) => /tessaya\/hardware/.test(p.url()), 15_000);
   const inlineText = inline ? await text(inline) : "";
   row(
-    "inline Hardware page is the page alone (no T3 wizard or sidebar)",
+    "inline Tessels page is the page alone (no T3 wizard or sidebar)",
     inline !== null &&
-      /Hardware/.test(inlineText) &&
+      /Tessels|Tessel/.test(inlineText) &&
       !/Connect your computers|Add project/.test(inlineText),
     inline ? `${inline.url()} :: ${inlineText.slice(0, 100)}` : "no inline page found",
   );
-  if ((await click(tessaya, "Devices")) && (await click(tessaya, "Hardware"))) {
-    await shot("tessaya-devices-hardware-clicked", tessaya, /Hardware/);
+  if ((await click(tessaya, "Devices")) && (await click(tessaya, "Tessels"))) {
+    await shot("tessaya-devices-hardware-clicked", tessaya, /Tessels/);
   }
   if ((await click(tessaya, "Settings")) && (await click(tessaya, "Home and devices"))) {
-    await shot("tessaya-settings-home-and-devices", tessaya, /Hardware/);
-    if (await click(tessaya, "Hardware"))
-      await shot("tessaya-settings-hardware", tessaya, /Hardware/);
+    await shot("tessaya-settings-home-and-devices", tessaya, /Tessels/);
+    if (await click(tessaya, "Tessels"))
+      await shot("tessaya-settings-hardware", tessaya, /Tessels/);
   }
 }
 
