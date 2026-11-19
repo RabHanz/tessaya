@@ -326,6 +326,37 @@ const PULL_HURT_MS = 600;
 const PUSH_STEP_MS = 400;
 /** How long her head and eyes follow a touch, and a little more than the 150 ms in which a person turns to one. */
 const TOUCH_MS = 1600;
+// how glad a mood is of a touch (-1..1): she leans into it when glad, away when not
+const GLAD = new Set([
+  "happy",
+  "delighted",
+  "laughing",
+  "giggle",
+  "excited",
+  "proud",
+  "relieved",
+  "playful",
+  "wink",
+  "love",
+  "amazed",
+  "affectionate",
+  "teasing",
+]);
+const WARY = new Set([
+  "sad",
+  "angry",
+  "scared",
+  "nervous",
+  "guarded",
+  "annoyed",
+  "disgusted",
+  "unimpressed",
+  "skeptical",
+  "bored",
+  "embarrassed",
+]);
+const moodValence = (m: string) =>
+  GLAD.has(m) ? 1 : WARY.has(m) ? -1 : m === "shy" || m === "curious" ? 0.4 : 0.2;
 /** A hover's raycast at most this often while the mouse moves over her. */
 const HOVER_RAY_MS = 80;
 
@@ -723,7 +754,10 @@ export function mountBody(
   let holds: Record<string, number> = {};
   const held = (id: string, now = performance.now()) => (holds[id] ?? 0) > now;
   // the last touch: where, and when; her head and eyes follow it for TOUCH_MS
-  let touch: { at: number; point: THREE.Vector3 } | null = null;
+  // a touch on her: where it landed, how firm (0..1), and where the toucher is (him, unless a hand came from elsewhere)
+  let touch: { at: number; point: THREE.Vector3; strength: number; from?: THREE.Vector3 } | null =
+    null;
+  const scratch = new THREE.Vector3();
   // a small gaze shift that comes with each blink, so her eyes never sit dead still
   let glance = { yaw: 0, pitch: 0 };
   // her posture: the one her affect picks, a scene's held one, and the crossfade between them
@@ -1230,29 +1264,65 @@ export function mountBody(
     }
     const over = tremorSince === null ? 0 : Math.max(0, now - tremorSince - TREMOR_BURST_MS);
     const burst = 0.35 + 0.65 * Math.exp(-over / 800);
+    const touched =
+      touch === null
+        ? 0
+        : Math.sin(Math.PI * Math.min(1, (now - touch.at) / TOUCH_MS)) *
+          (0.5 + 0.5 * Math.min(1, touch.strength));
     const exhale = applyMotion(
       (n) => vrm!.humanoid.getNormalizedBoneNode(n),
-      { ...motion, tremble: motion.tremble * burst },
+      {
+        ...motion,
+        tremble: motion.tremble * burst,
+        breath: Math.min(1, motion.breath + 0.6 * touched),
+      },
       now / 1000,
     );
-    // a touch: she turns her head toward it and flinches a little, then eases back
+    // a touch, read at a glance: she turns to it and then to whoever touched her, leans into it when she is glad of
+    // it or away and lifts her shoulders when not, and breathes deeper, all by how firm it was and how she feels
     const felt = touch === null ? 0 : Math.sin(Math.PI * Math.min(1, (now - touch.at) / TOUCH_MS));
     if (touch !== null && felt > 0) {
-      const headNode = vrm.humanoid.getNormalizedBoneNode("head");
-      const neckNode = vrm.humanoid.getNormalizedBoneNode("neck");
-      const chestNode = vrm.humanoid.getNormalizedBoneNode("chest");
-      const from = (headNode ?? vrm.scene).getWorldPosition(new THREE.Vector3());
-      const to = touch.point.clone().sub(from);
-      const yaw = Math.max(-0.5, Math.min(0.5, Math.atan2(to.x, Math.max(0.05, to.z + 0.3))));
-      const pitch = Math.max(-0.45, Math.min(0.3, Math.atan2(-to.y, 0.4)));
-      if (neckNode) neckNode.rotation.y += 0.45 * yaw * felt;
-      if (headNode) {
-        headNode.rotation.y += 0.35 * yaw * felt;
-        headNode.rotation.x += 0.6 * pitch * felt;
+      const v = moodValence(mood.mood) * (0.5 + 0.5 * mood.intensity);
+      const k = felt * (0.55 + 0.45 * Math.min(1, touch.strength));
+      const u = Math.min(1, (now - touch.at) / TOUCH_MS);
+      const node = (b: VRMHumanBoneName) => vrm!.humanoid.getNormalizedBoneNode(b);
+      const from = (node("head") ?? vrm.scene).getWorldPosition(scratch);
+      // first the touch, then (from a third of the way) whoever it came from: him at the camera unless a hand says
+      const toward = (p: THREE.Vector3) => {
+        const d = p.clone().sub(from);
+        return {
+          yaw: Math.max(-1.1, Math.min(1.1, Math.atan2(d.x, Math.max(0.05, d.z + 0.3)))),
+          pitch: Math.max(-0.5, Math.min(0.35, Math.atan2(-d.y, 0.4))),
+        };
+      };
+      const atTouch = toward(touch.point);
+      const atThem = toward(touch.from ?? camera.position);
+      const w = Math.max(0, Math.min(1, (u - 0.3) / 0.3));
+      const yaw = atTouch.yaw + (atThem.yaw - atTouch.yaw) * w;
+      const pitch = atTouch.pitch + (atThem.pitch - atTouch.pitch) * w;
+      const neck = node("neck");
+      const head = node("head");
+      const chest = node("chest");
+      const spine = node("spine");
+      if (neck) neck.rotation.y += 0.45 * yaw * k;
+      if (head) {
+        head.rotation.y += 0.4 * yaw * k;
+        head.rotation.x += 0.6 * pitch * k;
       }
-      // a flinch at first that eases off smoothly (a step here jerked her chest)
-      if (chestNode)
-        chestNode.rotation.x += -0.05 * felt * (0.4 + 0.6 * Math.exp(-(now - touch.at) / 200));
+      // the trunk follows the head round a little, and leans toward the touch or away from it by her mood
+      const side = Math.sign(atTouch.yaw) || 1;
+      if (spine) spine.rotation.y += 0.18 * atTouch.yaw * k;
+      if (chest) {
+        chest.rotation.x += (v > 0 ? -0.1 * v : 0.12 * -v + 0.04) * k;
+        chest.rotation.z += -side * (v > 0 ? 0.08 * v : -0.08 * -v) * k;
+      }
+      // a quick flinch first, and the shoulders lift and stay up while she does not like it
+      const lift =
+        (0.12 * (0.4 + 0.6 * Math.exp(-(now - touch.at) / 250)) + 0.14 * Math.max(0, -v)) * k;
+      const ls = node("leftShoulder");
+      const rs = node("rightShoulder");
+      if (ls) ls.rotation.z += lift;
+      if (rs) rs.rotation.z -= lift;
     }
     const added = stateWeights(
       states,
@@ -1732,6 +1802,8 @@ export function mountBody(
       if (n.dot(normal) > 0) lift = Math.max(lift, inside.distance);
     }
     for (const [x, side] of sides) x.side = side;
+    // she reacts to a hand arriving from that side (another persona's on a shared stage, his otherwise)
+    if (c.motion !== "grab") touch = { at: now, point: landed.clone(), strength: c.pressure, from };
     // a new touch starts where it lands: the drawn hand does not glide there through her body from the last one
     handEuro = null;
     agentTouch = {
@@ -1850,7 +1922,11 @@ export function mountBody(
         reflexGain = 0.6 * r.strength;
       } else if (r.action === "leanIn") leanAt = t;
       else if (handFrame !== null)
-        touch = { at: t - TOUCH_MS * 0.1, point: new THREE.Vector3(...handFrame.palm) };
+        touch = {
+          at: t - TOUCH_MS * 0.1,
+          point: new THREE.Vector3(...handFrame.palm),
+          strength: handFrame.pressure,
+        };
     }
   };
   /** Her body gives to the hand on her: the part under it turns away by how firmly, more for a reflex. */
@@ -2367,7 +2443,7 @@ export function mountBody(
     canvas.setPointerCapture?.(e.pointerId);
     const now = performance.now();
     nerveRegion = where;
-    touch = { at: now, point: hit.point.clone() };
+    touch = { at: now, point: hit.point.clone(), strength: e.pressure || 0.5 };
     blinkAt = now;
     taps = taps.filter((t) => now - t < 900);
     press = {
@@ -2414,7 +2490,7 @@ export function mountBody(
     if (step.feel === null || at === null) return;
     const { intensity, speed } = step.feel;
     // she glances toward it and leans in a touch; her breath deepens, and a quick one sends a shiver through her
-    touch = { at: now, point: at.hit.point.clone() };
+    touch = { at: now, point: at.hit.point.clone(), strength: 0.3 + 0.5 * intensity };
     override = {
       face: faceWeights(TOUCH_FACE.trace, 0.4 + intensity),
       motion: { breath: 0.35 + 0.4 * intensity, ...(speed > 0.6 ? { tremble: 0.25 * speed } : {}) },
