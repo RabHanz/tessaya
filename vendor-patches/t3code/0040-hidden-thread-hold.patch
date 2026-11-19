@@ -1,0 +1,27 @@
+Tessaya: a hidden window gets a streaming thread's newest state at most every 5 s instead of re-rendering on every event; shown
+again, it catches up at once (B-041).
+
+diff --git a/packages/client-runtime/src/state/threads.ts b/packages/client-runtime/src/state/threads.ts
+index a3984290e7b6b06c4caf17228a1abc0690f2b5f4..9f52d3d003dca26f9f6bf7a0d0d64d0d362639ad 100644
+--- a/packages/client-runtime/src/state/threads.ts
++++ b/packages/client-runtime/src/state/threads.ts
+@@ -59,6 +59,10 @@ import {
+   type EnvironmentThreadState,
+   type EnvironmentThreadStatus,
+ } from "./threadState.ts";
++import { holdWhileHidden } from "./holdWhileHidden.ts";
++
++/** A hidden window shows a streaming thread's newest state at most this often. */
++const HIDDEN_THREAD_UPDATE_MS = 5_000;
+ 
+ const THREAD_SUBSCRIPTION_RETRY_DELAY = "250 millis";
+ 
+@@ -1165,7 +1169,7 @@ function threadStateChanges(
+     environmentId,
+     Stream.unwrap(
+       makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
+-    ),
++    ).pipe(holdWhileHidden(HIDDEN_THREAD_UPDATE_MS)),
+   );
+ }
+ 
