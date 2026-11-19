@@ -17,6 +17,7 @@ import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
 
 import type { RoomToolSet } from "../home/R1Brain.ts";
 import { capToolText, personaTools, type VesselTool } from "./TessayaBrain.ts";
+import { TessayaOneShot, TessayaOneShotError } from "./TessayaOneShot.ts";
 import {
   conversationKey,
   originOf,
@@ -87,6 +88,15 @@ export interface LayerBrain {
     name: string,
     input: unknown,
   ) => Promise<{ readonly text: string; readonly isError: boolean }>;
+  /**
+   * Her reply written by the one brain's model call (its routing, his subscription, the usage spine), not the layer's
+   * own: the layer's prompt and the model its router chose, a JSON object back. Rejects when the brain can't.
+   */
+  readonly complete?: (input: {
+    readonly model: string;
+    readonly system: string;
+    readonly prompt: string;
+  }) => Promise<string>;
 }
 
 export interface LayerContext {
@@ -195,6 +205,8 @@ export interface PersonaLayer {
 }
 
 const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+/** The layer's reply is its own JSON object; the brain only asks the model for one. */
+const LayerReplyObject = Schema.Record(Schema.String, Schema.Unknown);
 /**
  * A layer's long poll answered as a push: polls in-process, each answer written the moment the layer has it, the next
  * poll after its `seq` (the first one at once, for the whole picture), until the layer says closed or refuses.
@@ -341,6 +353,31 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
         ),
       ),
     tools: specs.map((t) => ({ name: t.name, description: t.description })),
+    complete: ({ model, system, prompt }) =>
+      run(
+        Effect.serviceOption(TessayaOneShot).pipe(
+          Effect.flatMap((oneShot) =>
+            Option.isNone(oneShot)
+              ? Effect.fail(new TessayaOneShotError({ detail: "no brain call here" }))
+              : oneShot.value.run({
+                  prompt,
+                  system,
+                  model,
+                  outputSchema: LayerReplyObject,
+                  role: "voice",
+                  // what it cost, on the spine like every call; the words stay in the layer
+                  feature: "private-turn",
+                  attribution: {
+                    origin: "user",
+                    surface: turn.vessel.kind,
+                    ...(turn.persona === undefined ? {} : { persona: turn.persona }),
+                    ...(reach.device === undefined ? {} : { device: reach.device }),
+                  },
+                }),
+          ),
+          Effect.flatMap(encodeJson),
+        ),
+      ),
     run: (name, input) =>
       run(
         (!specs.some((t) => t.name === name)
