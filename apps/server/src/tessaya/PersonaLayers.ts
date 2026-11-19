@@ -215,6 +215,13 @@ export interface PersonaLayer {
   }) => { readonly ok: boolean; readonly said: string } | null;
   /** What the body on its open session last reported of itself (bodyControl BodyState); null when none is open. */
   readonly bodyState?: () => unknown;
+  /** The models the body playground opens for this member, first to try first (her everyday look); none to offer. */
+  readonly playgroundModels?: (member: string | null) => ReadonlyArray<{
+    readonly id?: string;
+    readonly name: string;
+    readonly url: string;
+    readonly why?: string;
+  }>;
 }
 
 const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));

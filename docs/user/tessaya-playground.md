@@ -1,0 +1,19 @@
+# Body playground
+
+A stage for trying out her 3D body: pose it, set its face, build and scrub scenes, and let any agent drive it. Nothing you do here reaches her body on your desk or interrupts a conversation.
+
+## Open it
+
+Go to `/tessaya/playground` on your server, for example `https://<environment-address>/tessaya/playground`, in a browser signed in to it. It opens on your own model when you have one: the last one you used here, then the body she wears now. You can also drop a `.vrm` or `.glb` file on the page; it is shown, never kept. A server without any model of yours opens on a free (CC0) everyday body, downloaded once the first time.
+
+- **Move**, **Pose**, **Face** and **Scenes** drive the body by hand. **Check** reads the model's own licence and what the body had to correct; **Body** lists what this model can do.
+- **Compare** (or press C) adds a second stage beside the first, for watching two runs side by side.
+- Press ? for the keyboard shortcuts.
+
+## Let an agent drive it
+
+Each stage shows its playground id in its corner, such as `pg-k3x9a2b`. An agent connected to your server's MCP ([Outside agents](./outside-agents.md)) drives it with the body tools:
+
+- `tessaya_body_move` and `tessaya_body_scene` with `target: "playground"` move the stage's body; `tessaya_body_state` with the same target reads it back.
+- Add `playground: "<id>"` to pick a stage, such as the second one in Compare. Without it, the most recently open stage is used.
+- Outside agents use the playground unless they ask for `target: "her"`. Only everyday moves play here.

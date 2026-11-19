@@ -428,10 +428,13 @@ export default defineConfig(() => {
         input: {
           index: new URL("./index.html", import.meta.url).pathname,
           "tessaya-body": new URL("./src/body/entry.ts", import.meta.url).pathname,
+          "tessaya-playground": new URL("./src/body/playground.ts", import.meta.url).pathname,
         },
         output: {
           entryFileNames: (chunk) =>
-            chunk.name === "tessaya-body" ? "assets/tessaya-body.js" : "assets/[name]-[hash].js",
+            chunk.name === "tessaya-body" || chunk.name === "tessaya-playground"
+              ? `assets/${chunk.name}.js`
+              : "assets/[name]-[hash].js",
           // The body's few pure modules get their own chunk, so its page never pulls a large app chunk with them.
           advancedChunks: {
             groups: [
