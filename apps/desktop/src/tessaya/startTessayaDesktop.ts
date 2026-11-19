@@ -15,7 +15,12 @@ import { captureDraftImageDrops } from "./health/draftImageDropLog.ts";
 import { installR1Bluetooth } from "./bluetooth/r1Pairing.ts";
 import { installR1flash } from "./devices/r1flash.ts";
 import { rescueMainWindow } from "./mainWindowRescue.ts";
-import { capturingApps, createLayerHello, startPersonaLayerLink } from "./personaLayerLink.ts";
+import {
+  capturingApps,
+  createLayerHello,
+  createWindowCloseEnd,
+  startPersonaLayerLink,
+} from "./personaLayerLink.ts";
 import { setPrivateShield } from "./captureProtection.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -704,6 +709,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
       },
       account: windowsAccountOf(NodeOS.hostname(), NodeOS.userInfo().username),
     });
+    // Closing his private window ends that private moment; her desk body goes back to her everyday look or her character.
+    const layerWindows = createWindowCloseEnd({ end: () => void layerLink.signal("windowClosed") });
     const openLayerPage = async (chat = false) => {
       const page = layerLink.page();
       if (page === null) return;
@@ -736,6 +743,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
       });
       void win.loadURL(`${origin}${page}${chat ? "/chat" : ""}`);
       win.on("closed", coolHello);
+      layerWindows.opened();
+      win.on("closed", layerWindows.closed);
       if (chat) {
         privateChatWindow = win;
         win.on("closed", () => {

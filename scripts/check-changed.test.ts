@@ -19,6 +19,7 @@ import {
   comparisonBase,
   defaultConcurrency,
   docReaderTests,
+  sourceScanTests,
   gitLines,
   runSteps,
   splitTests,
@@ -46,6 +47,24 @@ describe("check:changed", () => {
       "apps/server/src/cloud/ConnectReachability.test.ts",
     ]);
     assert.deepStrictEqual(decide(["docs/user/install.md"], packages, false).affected, []);
+  });
+
+  it("runs the source scans whenever a file they read changes, however far from them", () => {
+    assert.deepStrictEqual(sourceScanTests(["apps/server/src/tessaya/TessayaTurn.ts"]), [
+      "apps/server/src/tessaya/BrainRoutes.test.ts",
+      "apps/server/src/provenance/coverage.test.ts",
+    ]);
+    assert.deepStrictEqual(sourceScanTests(["packages/tessaya-shared/src/bodyFocus.ts"]), [
+      "apps/server/src/tessaya/BrainRoutes.test.ts",
+    ]);
+    assert.deepStrictEqual(sourceScanTests(["apps/web/src/index.tsx"]), []);
+    // CI's fast lane runs the same scans
+    const ci = NodeFS.readFileSync(
+      new URL("../.github/workflows/baton-ci.yml", import.meta.url),
+      "utf8",
+    );
+    for (const test of sourceScanTests(["apps/server/src/x.ts"]))
+      assert.include(ci, test.replace("apps/server/", ""));
   });
 
   it.effect(

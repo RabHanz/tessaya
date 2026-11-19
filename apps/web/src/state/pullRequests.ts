@@ -465,11 +465,24 @@ function savedPullRequestKey(
     : `${environmentId}:${threadPullRequestKeyOf({ ...reference, host: reference.host })}`;
 }
 
+// Thread shells keep unchanged links by identity, so a streamed shell update re-parses only the links it changed.
+const savedLinkSummaries = new WeakMap<
+  ThreadPullRequestLink,
+  { readonly projectId: ProjectId; readonly summary: PullRequestSummary | null }
+>();
+function savedLinkSummary(link: ThreadPullRequestLink, projectId: ProjectId) {
+  const kept = savedLinkSummaries.get(link);
+  if (kept?.projectId === projectId) return kept.summary;
+  const summary = threadPullRequestLinkToSummary(link, projectId);
+  savedLinkSummaries.set(link, { projectId, summary });
+  return summary;
+}
+
 const savedPullRequestSummariesAtom = Atom.make((get) => {
   const summaries = new Map<string, PullRequestSummary>();
   for (const thread of get(environmentThreadShells.threadShellsAtom)) {
     for (const link of visibleThreadPullRequests(thread.pullRequests)) {
-      const summary = threadPullRequestLinkToSummary(link, thread.projectId);
+      const summary = savedLinkSummary(link, thread.projectId);
       if (summary === null) continue;
       const key = savedPullRequestKey(thread.environmentId, link);
       summaries.set(key, newestPullRequestSummary(summaries.get(key) ?? null, summary) ?? summary);

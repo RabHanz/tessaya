@@ -312,6 +312,19 @@ describe("shortcutLabelForCommand", () => {
     assert.strictEqual(shortcutLabelForCommand(bindings, "thread.jump.7", "MacIntel"), "⇧⌘1");
   });
 
+  it("keeps each config's own default label when configs change", () => {
+    const first = compile([{ shortcut: modShortcut("1"), command: "thread.jump.1" }]);
+    const label = shortcutLabelForCommand(first, "thread.jump.1");
+    assert.isNotNull(label);
+    assert.strictEqual(shortcutLabelForCommand(first, "thread.jump.1"), label);
+    const shadowed = compile([
+      { shortcut: modShortcut("1"), command: "thread.jump.1" },
+      { shortcut: modShortcut("1"), command: "thread.jump.7" },
+    ]);
+    assert.isNull(shortcutLabelForCommand(shadowed, "thread.jump.1"));
+    assert.strictEqual(shortcutLabelForCommand(shadowed, "thread.jump.7"), label);
+  });
+
   it("respects when-context while resolving labels", () => {
     const bindings = compile([
       { shortcut: modShortcut("d"), command: "diff.toggle" },

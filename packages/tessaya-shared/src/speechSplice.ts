@@ -238,12 +238,13 @@ export const pocketSpeech = (
   voice: string,
   say: (text: string) => AsyncIterable<Uint8Array>,
   continuing = false,
+  breath = false,
 ): AsyncIterable<Uint8Array> => {
   const pieces = withProsody(
     speechPieces(text, voice).map((p) =>
       p.kind === "text" ? { ...p, text: speakableText(p.text) } : p,
     ),
-    { continuing, engine: "pocket" },
+    { continuing, engine: "pocket", breath },
   );
   const only = pieces.length === 1 ? pieces[0] : undefined;
   return only?.kind === "text" ? say(only.text) : spliceSpeech(pieces, say);

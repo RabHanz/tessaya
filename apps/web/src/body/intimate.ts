@@ -288,17 +288,30 @@ export const makeOverlays = (vrm: VRM, style: Style) => {
   };
 };
 
-/** Small layered sines: a tremble that never repeats visibly within a breath. */
+/**
+ * A physiological tremor (about 8–12 Hz, Elble 2003): two near sines, slowly waxing and waning, so it is a fine quiver,
+ * never a regular buzz. Peak about 1.
+ */
 const shake = (t: number, seed: number) =>
-  (Math.sin(t * 58.4 + seed) +
-    Math.sin(t * 86.1 + seed * 2.3) * 0.6 +
-    Math.sin(t * 107.5 + seed * 3.1) * 0.4) /
-  2;
+  ((Math.sin(t * 2 * Math.PI * 9.2 + seed) + 0.7 * Math.sin(t * 2 * Math.PI * 11.1 + seed * 2.3)) /
+    1.7) *
+  (0.6 + 0.4 * Math.sin(t * 2 * Math.PI * 0.7 + seed));
+/** How far a full tremble turns each part (rad): a degree or less at the hands, a fraction at the head. */
+const TREMOR_RAD = { hand: 0.012, chest: 0.003, head: 0.0025 } as const;
 
 /** Adds breathing, trembling and the arch onto the rest pose (radians on normalized bones); returns the exhale 0..1. */
 export const applyMotion = (
   bone: (
-    name: "hips" | "spine" | "chest" | "neck" | "head" | "leftShoulder" | "rightShoulder",
+    name:
+      | "hips"
+      | "spine"
+      | "chest"
+      | "neck"
+      | "head"
+      | "leftShoulder"
+      | "rightShoulder"
+      | "leftHand"
+      | "rightHand",
   ) => THREE.Object3D | null | undefined,
   m: Motion,
   seconds: number,
@@ -315,12 +328,15 @@ export const applyMotion = (
   const rs = bone("rightShoulder");
   if (ls) ls.rotation.z += lift;
   if (rs) rs.rotation.z -= lift;
+  // a tremble is fine and local: the hands most, the chest and head a little, never her hips (that shakes all of her)
   if (m.tremble > 0) {
-    const a = 0.012 * m.tremble;
-    const hips = bone("hips");
-    if (hips) hips.rotation.z += a * shake(seconds, 1);
-    if (spine) spine.rotation.z += a * shake(seconds, 2);
-    if (head) head.rotation.x += a * 0.8 * shake(seconds, 3);
+    const k = Math.min(1, m.tremble);
+    const lh = bone("leftHand");
+    const rh = bone("rightHand");
+    if (lh) lh.rotation.x += TREMOR_RAD.hand * k * shake(seconds, 1);
+    if (rh) rh.rotation.x += TREMOR_RAD.hand * k * shake(seconds, 4);
+    if (chest) chest.rotation.z += TREMOR_RAD.chest * k * shake(seconds, 2);
+    if (head) head.rotation.x += TREMOR_RAD.head * k * shake(seconds, 3);
   }
   return (1 - phase) / 2;
 };

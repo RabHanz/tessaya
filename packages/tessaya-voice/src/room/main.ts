@@ -310,6 +310,7 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
     signal: AbortSignal,
     voice?: string,
     continuing?: boolean,
+    breath?: boolean,
   ) {
     const read = createWavReader();
     const down = createResampler24to16();
@@ -319,6 +320,7 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
       voice ?? "",
       (t) => say(t, signal, voice),
       continuing,
+      breath,
     )) {
       const pcm = down(read(chunk));
       if (pcm.length > 0) yield limit(pcm);
@@ -762,6 +764,7 @@ const main = async () => {
       "freya/r1/+/state/eye/#",
       "freya/r1/+/voice/pronounce",
       "freya/r1/+/voice/gate",
+      "freya/r1/+/voice/breath",
       "freya/r1/+/voice/forget",
       "freya/r1/+/voice/stepup",
       "freya/r1/+/voice/prefs/+",

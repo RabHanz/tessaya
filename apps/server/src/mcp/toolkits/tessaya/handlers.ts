@@ -59,6 +59,7 @@ import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { MemoryViewer, TessayaMemoryService } from "../../../tessaya/TessayaMemoryService.ts";
 import { emitAction } from "../../../tessaya/turnActions.ts";
 import { castLine, castOp, TessayaCast } from "../../../tessaya/TessayaCast.ts";
+import { bodyHolderLine } from "../../../tessaya/TessayaBody.ts";
 import { TessayaVocabulary } from "../../../tessaya/TessayaVocabulary.ts";
 import {
   TessayaVoiceLibrary,
@@ -777,8 +778,13 @@ export const layer = McpToolAccess.toLayer(
             ),
           );
           const name = (id: string | null) => view.v.personas.find((p) => p.id === id)?.name ?? id;
+          // Which of his conversations has her desk body: his own ask only, a private one never named.
+          const holder =
+            input.action === "who" && (origin === null || origin.member === OWNER_MEMBER_ID)
+              ? ` ${yield* bodyHolderLine()}`
+              : "";
           return {
-            line: view.line,
+            line: `${view.line}${holder}`,
             bodies: view.v.bodies.map((b) => ({
               name: b.name,
               wearing: name(b.wearing),

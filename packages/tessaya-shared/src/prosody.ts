@@ -12,7 +12,12 @@ export const SHORT_PAUSE_MS = 90;
 
 export const withProsody = (
   pieces: ReadonlyArray<SpeechPiece>,
-  context: { readonly continuing: boolean; readonly engine?: "pocket" | "gemini" },
+  context: {
+    readonly continuing: boolean;
+    readonly engine?: "pocket" | "gemini";
+    /** A breath before a long sentence; off, a pause of the same length (19 Nov: "didn't really sound natural"). */
+    readonly breath?: boolean;
+  },
 ): ReadonlyArray<SpeechPiece> => {
   if (!context.continuing || context.engine === "gemini" || pieces[0]?.kind !== "text")
     return pieces;
@@ -20,8 +25,10 @@ export const withProsody = (
     .flatMap((p) => (p.kind === "text" ? p.text.split(/\s+/) : []))
     .filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
   const lead: SpeechPiece =
-    words >= BREATH_MIN_WORDS
+    words >= BREATH_MIN_WORDS && context.breath === true
       ? { kind: "sound", nonverbal: "breath", sound: { kind: "breath", ms: BREATH_MS } }
-      : { kind: "sound", nonverbal: "gesture", sound: { kind: "pause", ms: SHORT_PAUSE_MS } };
+      : words >= BREATH_MIN_WORDS
+        ? { kind: "sound", nonverbal: "gesture", sound: { kind: "pause", ms: BREATH_MS } }
+        : { kind: "sound", nonverbal: "gesture", sound: { kind: "pause", ms: SHORT_PAUSE_MS } };
   return [lead, ...pieces];
 };

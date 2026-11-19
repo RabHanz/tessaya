@@ -214,6 +214,23 @@ export const docReaderTests = (files: ReadonlyArray<string>) =>
     ? ["apps/server/src/cloud/ConnectReachability.test.ts"]
     : [];
 
+// Tests that scan source across a tree (every model call asks the routing table; every action reaches the log): a
+// change anywhere they read can break them, and none sits beside the file that did. CI's fast lane runs the same list.
+export const SOURCE_SCANS: ReadonlyArray<{
+  readonly test: string;
+  readonly reads: ReadonlyArray<string>;
+}> = [
+  {
+    test: "apps/server/src/tessaya/BrainRoutes.test.ts",
+    reads: ["apps/server/src/", "apps/desktop/src/tessaya/", "packages/tessaya-shared/src/"],
+  },
+  { test: "apps/server/src/provenance/coverage.test.ts", reads: ["apps/server/src/"] },
+];
+export const sourceScanTests = (files: ReadonlyArray<string>) =>
+  SOURCE_SCANS.filter((s) => files.some((f) => s.reads.some((r) => f.startsWith(r)))).map(
+    (s) => s.test,
+  );
+
 const checkChanged = Effect.fn("checkChanged")(function* (input: {
   readonly ref: Option.Option<string>;
   readonly concurrency: Option.Option<number>;
@@ -334,6 +351,7 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
     }
   }
   for (const test of docReaderTests(files)) tests.add(test);
+  for (const test of sourceScanTests(files)) tests.add(test);
   // It reads files other than the ones beside it, so no changed file selects it.
   if (affected.includes("t3")) tests.add("apps/server/src/provider/AgentContextBudget.test.ts");
   const { vitestTests, nodeTests } = splitTests(tests);

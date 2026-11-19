@@ -928,6 +928,16 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /^(?![\s\S]*\b(mood|I'?m (so |really )?(happy|glad|in a good)|feeling)\b)/i,
     ],
   },
+  // Small talk gets small talk: his work only when he asks or something needs him (Director, 19 Nov 04:55 GMT+5).
+  {
+    id: "whats-up-casual",
+    source: "Tumble 19 Nov 04:55 (GMT+5): 'What's up?' got his work and session status",
+    said: ["What's up?"],
+    verified: true,
+    lastNotSays: [
+      /\b(sessions?|agents?|branch|jobs?|working on|acme|build|tests?|deploy|machines?)\b/i,
+    ],
+  },
   // Her face at rest is on show to anyone: an unverified voice asking about it hears its general reason, never a denial.
   {
     id: "face-unverified-why",
