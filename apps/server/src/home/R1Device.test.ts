@@ -741,24 +741,26 @@ effectIt.effect(
 );
 
 effectIt.effect(
-  "a tool call that starts after the 3 s hold is not cued again: one filler a turn",
+  "her bridge comes only on a long wait, once a turn, never on a quick follow-up or two turns in a row",
   () =>
     Effect.gen(function* () {
-      const brain = R1Brain.of({
-        route: Effect.succeed("subscription"),
-        subscription: () => Stream.empty,
-        warm: () => Effect.void,
-        converse: () => Stream.empty,
-        session: (turn) =>
-          Stream.unwrap(
-            Effect.sleep("4 seconds").pipe(
-              Effect.map(() => {
-                turn.cue(false);
-                return Stream.make("Done.");
-              }),
+      // Director, 19 Nov 06:20: "the filler words are really out of place… most times it breaks the flow".
+      const brain = (answerAfterMs: number) =>
+        R1Brain.of({
+          route: Effect.succeed("subscription"),
+          subscription: () => Stream.empty,
+          warm: () => Effect.void,
+          converse: () => Stream.empty,
+          session: (turn) =>
+            Stream.unwrap(
+              Effect.sleep(answerAfterMs).pipe(
+                Effect.map(() => {
+                  turn.cue(false);
+                  return Stream.make("Done.");
+                }),
+              ),
             ),
-          ),
-      });
+        });
       const home = Layer.mock(HomeAssistantService)({
         devices: Effect.succeed([]),
         status: Effect.succeed({ state: "connected", line: "" } as never),
@@ -766,35 +768,43 @@ effectIt.effect(
         find: () => Effect.succeed([]),
         timeZone: Effect.succeed("Asia/Karachi"),
       });
-      const said: Array<string> = [];
-      const turn = yield* r1TurnStream(
-        { heard: "did I answer that request?", history: [] },
-        brain,
-        {
-          specs: [],
-          run: () => Effect.succeed({ text: "", isError: false }),
-        },
-      ).pipe(
-        Stream.runForEach((words) => Effect.sync(() => said.push(words))),
-        Effect.provide(
-          Layer.mergeAll(
-            home,
-            Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
-            Layer.mock(TessayaOneShot)({}),
-            // Her bridge about his words, written beside the turn (B-056), in place of "One moment.".
-            Layer.mock(R1Hold)({
-              write: (w) =>
-                Effect.succeed(
-                  w.words.includes("request") ? "That request of yours, let me look." : null,
-                ),
-            }),
-          ),
-        ),
-        Effect.forkChild,
+      const turn = (heard: string, answerAfterMs: number, device: string) =>
+        Effect.gen(function* () {
+          const said: Array<string> = [];
+          const running = yield* r1TurnStream(
+            { heard, history: [], device },
+            brain(answerAfterMs),
+            {
+              specs: [],
+              run: () => Effect.succeed({ text: "", isError: false }),
+            },
+          ).pipe(
+            Stream.runForEach((words) => Effect.sync(() => said.push(words))),
+            Effect.provide(
+              Layer.mergeAll(
+                home,
+                Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
+                Layer.mock(TessayaOneShot)({}),
+                Layer.mock(R1Hold)({
+                  write: () => Effect.succeed("That request of yours, let me look."),
+                }),
+              ),
+            ),
+            Effect.forkChild,
+          );
+          yield* TestClock.adjust("10 seconds");
+          yield* Fiber.join(running);
+          return said.join("");
+        });
+      // A 4 s answer is not long: silence, then the answer.
+      expect(yield* turn("did I answer that request of mine?", 4_000, "replay-a")).toBe("Done. ");
+      // A 7 s one gets her bridge, once, though the tool also starts late.
+      expect(yield* turn("did I answer that request of mine?", 7_000, "replay-b")).toBe(
+        "That request of yours, let me look. Done. ",
       );
-      yield* TestClock.adjust("5 seconds");
-      yield* Fiber.join(turn);
-      expect(said.join("")).toBe("That request of yours, let me look. Done. ");
+      // Never two in a row on one vessel, and never on a quick follow-up.
+      expect(yield* turn("and what about the one before?", 7_000, "replay-b")).toBe("Done. ");
+      expect(yield* turn("A bit better.", 7_000, "replay-c")).toBe("Done. ");
     }),
 );
 
