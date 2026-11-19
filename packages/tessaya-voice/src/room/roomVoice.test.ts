@@ -248,6 +248,35 @@ describe("the room voice loop", () => {
     expect(learnt).toEqual(["headset:owner"]);
   });
 
+  it("keeps his own verified turns for his voice models, never a guest's, and not once he turns it off", async () => {
+    const run = async (kind: "owner" | "guest", capture?: boolean) => {
+      const kept: Array<{ speaker: string; samples: number }> = [];
+      const t = setup({
+        speaker: async () => ({
+          ...UNVERIFIED(0),
+          kind,
+          personId: kind === "owner" ? "owner" : null,
+          confidence: 0.6,
+          verified: kind === "owner",
+        }),
+        keepTurn: (_id, pcm, meta) => kept.push({ speaker: meta.speaker, samples: pcm.length }),
+      });
+      if (capture !== undefined)
+        t.room.message(
+          `freya/r1/${DEV}/voice/capture`,
+          Buffer.from(JSON.stringify({ on: capture })),
+        );
+      t.s2();
+      await t.feed(true, 20);
+      await t.feed(false, 30);
+      return kept;
+    };
+    expect(await run("owner")).toEqual([{ speaker: "owner", samples: expect.any(Number) }]);
+    expect((await run("owner"))[0]!.samples).toBeGreaterThan(0);
+    expect(await run("guest")).toEqual([]);
+    expect(await run("owner", false)).toEqual([]);
+  });
+
   it("tells her and her health when his uplink lost audio mid-turn: he was breaking up (18 Nov)", async () => {
     const t = setup();
     let seq = 0;

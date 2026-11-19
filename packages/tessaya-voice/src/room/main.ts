@@ -73,6 +73,7 @@ import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
 import { createPlaybackWindows, PLAYBACK_TOPIC } from "./playbackWindow.ts";
 import { createHealthReport, readHost } from "./healthReport.ts";
+import { createTurnCapture } from "./turnCapture.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { bothCaptures, createWakeTrace } from "./wakeTrace.ts";
 import { createWakeStream, kwsSettingsCommand, parseWakeGate } from "./wakeStream.ts";
@@ -687,6 +688,20 @@ const main = async () => {
           playback: playback.run,
           log,
         });
+  // His own turns, beside the wake capture (R1_TURN_CAPTURE_DIR, else "turncap" next to the wake folder), capped at
+  // R1_TURN_CAPTURE_MB (default 1024) and R1_TURN_CAPTURE_DAYS (default 30). Off where no wake folder is named either.
+  const turnDir =
+    process.env["R1_TURN_CAPTURE_DIR"] ??
+    (captureDir === "" ? "" : NodePath.join(NodePath.dirname(captureDir), "turncap"));
+  const turnCapture =
+    turnDir === ""
+      ? undefined
+      : createTurnCapture({
+          dir: turnDir,
+          capBytes: Number(process.env["R1_TURN_CAPTURE_MB"] ?? "1024") * 1_048_576,
+          maxAgeMs: Number(process.env["R1_TURN_CAPTURE_DAYS"] ?? "30") * 86_400_000,
+          log,
+        });
   // Always on, no audio: every segment and kws verdict, capped at R1_WAKE_TRACE_MB (default 50) in two files.
   const trace = createWakeTrace({
     file: NodePath.join(state, "wake-trace.ndjson"),
@@ -765,6 +780,7 @@ const main = async () => {
       "freya/r1/+/voice/pronounce",
       "freya/r1/+/voice/gate",
       "freya/r1/+/voice/breath",
+      "freya/r1/+/voice/capture",
       "freya/r1/+/voice/forget",
       "freya/r1/+/voice/stepup",
       "freya/r1/+/voice/prefs/+",
@@ -1114,6 +1130,7 @@ const main = async () => {
   room = createRoomVoice(
     {
       ...(wake === undefined ? {} : { wake }),
+      ...(turnCapture === undefined ? {} : { keepTurn: turnCapture.turn }),
       publish: (t, p) => {
         mqtt.publish(t, p);
         bridge?.answer(t, p);

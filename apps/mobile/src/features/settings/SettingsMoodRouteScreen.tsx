@@ -183,6 +183,12 @@ function MoodSections(props: {
           onValueChange={(on) => patch({ tessayaVoiceBreath: on })}
         />
         <SettingsSwitchRow
+          label="Keep my voice for training"
+          subtitle="Your own turns on the Tessel, only ones Voice ID knows are you, are kept privately to train your voice ID and recogniser. Nobody else's voice is kept."
+          value={settings.tessayaTurnCapture}
+          onValueChange={(on) => patch({ tessayaTurnCapture: on })}
+        />
+        <SettingsSwitchRow
           label="Her mood"
           subtitle="A working state that shapes her tone and her face on every device, moved only by your own turns. It never changes what she does. Off keeps her face neutral and clears her mood."
           value={settings.tessayaMood.enabled}

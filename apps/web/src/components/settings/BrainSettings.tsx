@@ -275,6 +275,7 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const ownCamera = useEnvironmentSettings(environmentId, (s) => s.tessayaOwnSensorsNoApproval);
   const lively = useEnvironmentSettings(environmentId, (s) => s.tessayaLiveliness);
   const breath = useEnvironmentSettings(environmentId, (s) => s.tessayaVoiceBreath);
+  const keepTurns = useEnvironmentSettings(environmentId, (s) => s.tessayaTurnCapture);
   const outsideBody = useEnvironmentSettings(environmentId, (s) => s.tessayaBodyOutsideAgents);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
@@ -354,6 +355,17 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             aria-label="Breath between sentences"
             checked={breath}
             onCheckedChange={(on) => update({ tessayaVoiceBreath: on })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Keep my voice for training"
+        description="Your own turns on the Tessel, only ones Voice ID knows are you, are kept privately to train your voice ID and recogniser. Nobody else's voice is kept."
+        control={
+          <Switch
+            aria-label="Keep my voice for training"
+            checked={keepTurns}
+            onCheckedChange={(on) => update({ tessayaTurnCapture: on })}
           />
         }
       />
