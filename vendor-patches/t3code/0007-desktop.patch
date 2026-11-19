@@ -497,7 +497,7 @@ index 69d4f70c15a0ec16cf0596313a8044b799aa1aaf..0ce9fdf0d39e7214870ffce5d9329944
        );
      }),
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index 6414743ac3b2f32c3902593646b017a1bd8822e0..cb5fa21590371467ee7e64d73f75e70d21b0958b 100644
+index 6414743ac3b2f32c3902593646b017a1bd8822e0..896d17d4e55e9990346fff0e5ec75e72fcf6129e 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
 @@ -13,6 +13,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
@@ -525,7 +525,7 @@ index 6414743ac3b2f32c3902593646b017a1bd8822e0..cb5fa21590371467ee7e64d73f75e70d
    },
    getLocalEnvironmentBootstraps: () => {
 +    // shortcut: one sync IPC per 500 ms; the 3 s topology poll reads this several times per tick.
-+    if (bootstrapsRead !== null && Date.now() - bootstrapsRead.at < 500)
++    if (bootstrapsRead !== null && performance.now() - bootstrapsRead.at < 500)
 +      return bootstrapsRead.value;
      const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
 -    if (!Array.isArray(result)) {
@@ -535,7 +535,7 @@ index 6414743ac3b2f32c3902593646b017a1bd8822e0..cb5fa21590371467ee7e64d73f75e70d
 +    const value = (Array.isArray(result) ? result : []) as ReturnType<
 +      DesktopBridge["getLocalEnvironmentBootstraps"]
 +    >;
-+    bootstrapsRead = { at: Date.now(), value };
++    bootstrapsRead = { at: performance.now(), value };
 +    return value;
    },
    getLocalEnvironmentBearerToken: () =>

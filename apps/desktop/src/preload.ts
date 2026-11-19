@@ -152,13 +152,13 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   },
   getLocalEnvironmentBootstraps: () => {
     // shortcut: one sync IPC per 500 ms; the 3 s topology poll reads this several times per tick.
-    if (bootstrapsRead !== null && Date.now() - bootstrapsRead.at < 500)
+    if (bootstrapsRead !== null && performance.now() - bootstrapsRead.at < 500)
       return bootstrapsRead.value;
     const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
     const value = (Array.isArray(result) ? result : []) as ReturnType<
       DesktopBridge["getLocalEnvironmentBootstraps"]
     >;
-    bootstrapsRead = { at: Date.now(), value };
+    bootstrapsRead = { at: performance.now(), value };
     return value;
   },
   getLocalEnvironmentBearerToken: () =>
