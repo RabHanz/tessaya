@@ -74,3 +74,28 @@ export const decodeWalk = (raw: unknown): Walk | string => {
     stop: unit(raw["stop"]) ?? 0.2,
   };
 };
+
+/** His desk as its host sees it, in screen px: her feet, her height, the crew's feet by persona, the desk's centre. */
+export interface DeskPlaces {
+  readonly her: { readonly x: number; readonly y: number };
+  readonly heightPx: number;
+  readonly crew: Readonly<Record<string, { readonly x: number; readonly y: number }>>;
+  readonly centre: { readonly x: number; readonly y: number };
+}
+
+/**
+ * Where a persona stands from her on the desk (vrmBody's `locate`): that crew window's feet, else the desk's centre.
+ * Screen right is her left (+yaw), as vrmBody reads a point. Null for him, away and points: the renderer's own.
+ * shortcut: her height in metres is a person's, 1.6, unless the page knows hers; walks land a little off for others.
+ */
+export const locateOnDesk = (
+  places: DeskPlaces,
+  to: BodyTarget,
+  heightM = 1.6,
+): { readonly yaw: number; readonly metres: number } | null => {
+  if (to.kind !== "persona") return null;
+  const there = places.crew[to.id] ?? places.centre;
+  const dx = there.x - places.her.x;
+  if (Math.abs(dx) < places.heightPx * 0.05 || places.heightPx <= 0) return { yaw: 0, metres: 0 };
+  return { yaw: Math.sign(dx) * (Math.PI / 2), metres: (Math.abs(dx) / places.heightPx) * heightM };
+};
