@@ -53,14 +53,18 @@ index 9be2204d5132c981804fa616a26a9c14b0b63fd6..5753b76b5218587694528fe57ed51aa8
 +  expect(modResults["com.apple.developer.nfc.readersession.formats"]).toEqual(["TAG"]);
 +});
 diff --git a/apps/mobile/babel.config.js b/apps/mobile/babel.config.js
-index 5c85f81242a7ee95d31497c5d19e9bd8b999d968..fea4be4e2ee0ac691cc0ff95e4db7f0e141ae1f6 100644
+index 5c85f81242a7ee95d31497c5d19e9bd8b999d968..d66cffe46aaac0f4d8ee2a7262dd6326bedde237 100644
 --- a/apps/mobile/babel.config.js
 +++ b/apps/mobile/babel.config.js
-@@ -2,5 +2,6 @@ module.exports = function (api) {
+@@ -2,5 +2,10 @@ module.exports = function (api) {
    api.cache(true);
    return {
      presets: [["babel-preset-expo", { unstable_transformImportMeta: true }]],
-+    plugins: process.env.APP_VARIANT === "tessaya" ? ["./plugins/tessayaBrandBabel.cjs"] : [],
++    // TESSAYA_BRAND=1 brands a development bundle too, so a dev client on Metro reads as the Tessaya app.
++    plugins:
++      process.env.APP_VARIANT === "tessaya" || process.env.TESSAYA_BRAND === "1"
++        ? ["./plugins/tessayaBrandBabel.cjs"]
++        : [],
    };
  };
 diff --git a/apps/mobile/eas.json b/apps/mobile/eas.json
@@ -100,7 +104,7 @@ index 3667f582e1edb140dd6ff6b1da529a14555d86e4..b4e663edc3126e689a77d080fb223718
    }
  }
 diff --git a/apps/mobile/metro.config.js b/apps/mobile/metro.config.js
-index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..1f1bd797d1c12a825913797f311472ebbe6de93b 100644
+index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..9111e6d28c06462ad7189cd45dc47fe795f38cbd 100644
 --- a/apps/mobile/metro.config.js
 +++ b/apps/mobile/metro.config.js
 @@ -19,6 +19,8 @@ const escapedWorkspaceRoot = workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"
@@ -108,7 +112,7 @@ index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..1f1bd797d1c12a825913797f311472eb
  const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
  
 +// The Tessaya babel rewrite depends on APP_VARIANT, so a cached transform from another variant must not be reused.
-+config.cacheVersion = `${config.cacheVersion ?? ""}:${process.env.APP_VARIANT ?? ""}`;
++config.cacheVersion = `${config.cacheVersion ?? ""}:${process.env.APP_VARIANT ?? ""}:${process.env.TESSAYA_BRAND ?? ""}`;
  config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
  config.resolver = {
    ...config.resolver,

@@ -40,7 +40,7 @@ index aca6e5eb56fc503ebcd9e065f0a4fd590ed2a97b..18fb638e12900c8082fe825c3c76370d
          {...searchableSetting("providers")}
          variant="plain"
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index bac40332a27702521a6c08c40aa13b6dc86ced91..4e1a0758c4a56ba537e8554471eeeff4c270bab2 100644
+index bac40332a27702521a6c08c40aa13b6dc86ced91..84bc6d8861083c43c0e6af3b858fa5145c05a123 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
 @@ -1,3 +1,4 @@
@@ -56,7 +56,7 @@ index bac40332a27702521a6c08c40aa13b6dc86ced91..4e1a0758c4a56ba537e8554471eeeff4
    SETTINGS_SEARCH_ITEMS,
    sourceControlHostSearchItems,
    sourceControlHostSettingsSearchId,
-@@ -229,6 +231,23 @@ describe("searchSettings", () => {
+@@ -229,6 +231,42 @@ describe("searchSettings", () => {
      }
    });
  
@@ -66,6 +66,25 @@ index bac40332a27702521a6c08c40aa13b6dc86ced91..4e1a0758c4a56ba537e8554471eeeff4
 +      to: "/settings/tessaya",
 +    });
 +    expect(searchSettings("r1").map((item) => item.to)).toContain("/settings/tessaya");
++    // one row each, opening her place, never a "moved" stub
++    for (const [query, title] of [
++      ["home assistant", "Home Assistant"],
++      ["hardware", "Tessels"],
++    ] as const) {
++      const hits = searchSettings(query);
++      expect(
++        hits.filter((item) => item.title === title).map((item) => item.to),
++        query,
++      ).toEqual(["/settings/tessaya"]);
++      expect(
++        hits.map((item) => item.to),
++        query,
++      ).not.toContain("/settings/hardware");
++      expect(
++        hits.map((item) => item.to),
++        query,
++      ).not.toContain("/settings/home");
++    }
 +    const nav = SETTINGS_NAV_GROUPS.flatMap((group) => group.paths);
 +    for (const moved of ["/settings/home", "/settings/hardware", "/settings/apis"] as const)
 +      expect(nav).not.toContain(moved);
@@ -81,7 +100,7 @@ index bac40332a27702521a6c08c40aa13b6dc86ced91..4e1a0758c4a56ba537e8554471eeeff4
      const ids = SETTINGS_SEARCH_ITEMS.map((item) => item.id);
      expect(new Set(ids).size).toBe(ids.length);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index 85e4878be73dda2cf42949d067daf91a669d573c..8181453f75833cbf3bb2f42d1e94c6d7653fdbe1 100644
+index 85e4878be73dda2cf42949d067daf91a669d573c..b0a790f8f7e6e9716620dd8f7e8338a09cb0b2c4 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -1,3 +1,4 @@
@@ -135,59 +154,68 @@ index 85e4878be73dda2cf42949d067daf91a669d573c..8181453f75833cbf3bb2f42d1e94c6d7
    },
  ];
  
-@@ -1354,6 +1369,51 @@ export const SETTINGS_SEARCH_ITEMS = [
+@@ -1354,6 +1369,60 @@ export const SETTINGS_SEARCH_ITEMS = [
      searchTerms: ["new 1password vault op cli account"],
      secretsFeatureOnly: true,
    },
 +  {
 +    id: "apis-anthropic",
 +    title: "Anthropic",
-+    to: "/settings/apis",
++    to: "/settings/tessaya",
++    targetId: "tessaya-apis",
 +    searchTerms: ["api key claude dictation cleanup voice room brain r1 tessel tumble"],
 +  },
 +  {
 +    id: "home-assistant",
 +    title: "Home Assistant",
-+    to: "/settings/home",
++    to: "/settings/tessaya",
++    targetId: "tessaya-homeassistant",
 +    searchTerms: ["house lights automations devices smart home r1 tessel tumble"],
 +  },
 +  {
 +    id: "hardware-devices",
-+    title: "Hardware devices",
-+    to: "/settings/hardware",
++    title: "Tessels",
++    to: "/settings/tessaya",
++    targetId: "tessaya-hardware",
 +    searchTerms: [
-+      "devices r1 agora desk device eyes mood mute camera reboot voice transport latency",
++      "devices r1 agora desk device eyes mood mute camera reboot voice transport latency hardware tessel tumble rabbit bluetooth earcons",
 +    ],
 +  },
 +  {
 +    id: "hardware-nfc",
 +    title: "NFC tags",
-+    to: "/settings/hardware",
++    to: "/settings/tessaya",
++    targetId: "tessaya-hardware",
 +    searchTerms: ["nfc tag tap dock mode r1 tessel tumble"],
 +  },
 +  {
 +    id: "hardware-bodies",
 +    title: "Bodies",
-+    to: "/settings/hardware",
++    to: "/settings/tessaya",
++    targetId: "tessaya-hardware",
 +    searchTerms: ["body bodies dock plush tuft perch stand cradle car mount nfc tag room vessel"],
 +  },
 +  {
 +    id: "room-brain",
 +    title: "Room brain",
-+    to: "/settings/hardware",
++    to: "/settings/tessaya",
++    targetId: "tessaya-hardware",
 +    searchTerms: ["r1 tessel tumble desk device api key subscription claude anthropic voice room"],
 +  },
 +  // Tessaya's own settings live in her window; T3's search finds them and says where.
-+  ...TESSAYA_PLACES.map((place) => ({
-+    id: `tessaya-${place.id}`,
-+    title: place.label,
-+    to: "/settings/tessaya" as const,
-+    searchTerms: [`tessaya ${place.group} ${place.terms.join(" ")}`],
-+  })),
++  // Hardware and Home Assistant have their own rows above; listing the place too showed each twice.
++  ...TESSAYA_PLACES.filter((place) => place.id !== "hardware" && place.id !== "homeassistant").map(
++    (place) => ({
++      id: `tessaya-${place.id}`,
++      title: place.label,
++      to: "/settings/tessaya" as const,
++      searchTerms: [`tessaya ${place.group} ${place.terms.join(" ")}`],
++    }),
++  ),
    {
      id: "archive",
      title: "Archived threads",
-@@ -1385,6 +1445,10 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
+@@ -1385,6 +1454,10 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
    "/settings/connections": "connections",
    "/settings/access": "connections",
    "/settings/secrets": null,

@@ -1,5 +1,5 @@
 diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
-index b2ad65cf053741a30cda0333ad86ace107ab7ad6..462ddc1cf7c78ed7fe743ad068b0f2703c23fe02 100644
+index b2ad65cf053741a30cda0333ad86ace107ab7ad6..ae033795849b0698fccff16017bf044646558be9 100644
 --- a/apps/mobile/src/Stack.tsx
 +++ b/apps/mobile/src/Stack.tsx
 @@ -92,6 +92,19 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
@@ -34,7 +34,7 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..462ddc1cf7c78ed7fe743ad068b0f270
 +  SettingsHardware: createNativeStackScreen({
 +    screen: SettingsHardwareRouteScreen,
 +    linking: "settings/hardware",
-+    options: settingsPage("Hardware"),
++    options: settingsPage("Tessels"),
 +  }),
 +  SettingsTeam: createNativeStackScreen({
 +    screen: SettingsTeamRouteScreen,
@@ -115,7 +115,7 @@ index 7aaeac554417aacedd4b16af4ca610469096d188..0aae5f8476e22b891bf25ca08bcf5a87
    "checkmark.circle": IconCircleCheck,
    "checkmark.circle.fill": IconCircleCheck,
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 50ad81383addc75250b37025d1bfb43ce05a9da5..090391dadb6f64ab764d44cd3d41036f24e0512b 100644
+index 50ad81383addc75250b37025d1bfb43ce05a9da5..8d1fe48b839636ab9a5e41c5d3d251e140a14fa4 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 @@ -266,8 +266,37 @@ function useSettingsIndexSections(): SettingsListSection[] {
@@ -149,7 +149,7 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..090391dadb6f64ab764d44cd3d41036f
 +      title: "Home and devices",
 +      rows: [
 +        serverPage("SettingsHome", "house", "Home Assistant"),
-+        serverPage("SettingsHardware", "face.smiling", "Hardware"),
++        serverPage("SettingsHardware", "face.smiling", "Tessels"),
 +        serverPage("SettingsPresence", "person.fill.checkmark", "Presence"),
 +        serverPage("SettingsHealth", "waveform.path.ecg", "Health"),
 +      ],
