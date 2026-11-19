@@ -113,6 +113,7 @@ import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { serveHomeCall } from "./HomeCalls.ts";
+import { DeviceRegistry } from "./DeviceRegistry.ts";
 import { HomeDevices, routedAct } from "./HomeDevices.ts";
 import {
   R1Brain,
@@ -237,12 +238,37 @@ const restTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/intent/rest`
  * whoever was just identified there, else its owner's when it may show it, else the general mood. Sent per Tessel
  * only when it shows differently, so the eyes follow the one state between turns too. It names whose mood it is.
  */
+/** The desktop's own item: a write tells it her mood moved, so it reads its face again now (desktopDevice.ts). */
+const DESKTOP_MOOD_ITEM = "mascot.mood";
+/**
+ * Every desktop on this server reads its face again at once when her mood moves (M-094): a write on its long poll,
+ * on whichever server it reports to (a worker hears the brain's moves through `refresh`). One in flight per desktop.
+ */
+const nudgeDesktops = Effect.fn("R1Device.nudgeDesktops")(function* (nudging: Set<string>) {
+  const registry = yield* Effect.serviceOption(DeviceRegistry);
+  if (Option.isNone(registry)) return;
+  for (const d of yield* registry.value.list) {
+    if (d.kind !== "desktop" || nudging.has(d.deviceId)) continue;
+    if (!d.items.some((i) => i.id === DESKTOP_MOOD_ITEM)) continue;
+    nudging.add(d.deviceId);
+    yield* registry.value
+      .write(d.deviceId, DESKTOP_MOOD_ITEM, null)
+      .pipe(
+        Effect.timeout("15 seconds"),
+        Effect.ignoreCause,
+        Effect.ensuring(Effect.sync(() => nudging.delete(d.deviceId))),
+        Effect.forkDetach,
+      );
+  }
+});
+
 const publishRestMood = Effect.fn("R1Device.publishRestMood")(function* () {
   const mood = yield* Effect.serviceOption(TessayaMood);
   if (Option.isNone(mood)) return;
   const zone = yield* houseZone();
   const cast = yield* Effect.serviceOption(TessayaCast);
   const sent = new Map<string, string>();
+  const nudging = new Set<string>();
   // A persona change (here or on another of his servers) can change whose mood a body shows.
   const switched = yield* Queue.sliding<void>(1);
   const current = yield* Effect.serviceOption(CurrentPersona);
@@ -252,6 +278,7 @@ const publishRestMood = Effect.fn("R1Device.publishRestMood")(function* () {
     yield* cast.value.listen(() => Queue.offer(switched, undefined).pipe(Effect.asVoid));
   yield* Stream.runForEach(Stream.merge(mood.value.moves, Stream.fromQueue(switched)), () =>
     Effect.gen(function* () {
+      yield* nudgeDesktops(nudging);
       // A face at rest is the brain's to show: another server's mood is not hers.
       if (!(yield* isBrain)) return;
       const pack = yield* r1Pack;

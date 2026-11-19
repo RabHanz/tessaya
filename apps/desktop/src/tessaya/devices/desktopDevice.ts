@@ -184,6 +184,17 @@ export const desktopManifest = (input: {
       item("comms.note", "Messages", "action", "comms", "shows a message from someone at home", {
         access: "write",
       }),
+      // Her mood moved on the brain: this computer reads its face again at once rather than on its next look (M-094).
+      item(
+        MOOD_ITEM,
+        "Her mood here",
+        "action",
+        "companion",
+        "shows her mood on this computer again now",
+        {
+          access: "write",
+        },
+      ),
       // The desktop companion: the brain or an agent has her do something or go somewhere (desktopMascot.ts act).
       item(
         MASCOT_ITEM,
@@ -340,6 +351,7 @@ export const desktopValues = (
 };
 
 export const MASCOT_ITEM = "mascot.do";
+export const MOOD_ITEM = "mascot.mood";
 export const ACTION_PREFIX = "action.";
 /** Hold to dictate needs a key that stays down, which a registry write is not. */
 const DESK_ACTIONS = ACTIONS.filter((a) => a.id !== "hold");
@@ -401,6 +413,8 @@ export const startDesktopDevice = (input: {
   readonly onNote: (note: unknown) => void;
   /** The desktop companion asked to act; false when she is not on the desktop or cannot now. */
   readonly onMascot: (act: (typeof MASCOT_ACTS)[number], persona?: string) => boolean;
+  /** Her mood moved: read this computer's face again now. */
+  readonly onMood: () => void;
   /** Runs one of the bindings page's actions; false when it has no handler here. */
   readonly onAction: (id: string) => boolean;
   /** Calls `poke` when something it reads changed (a screen, power, lock); returns how to stop. */
@@ -452,6 +466,11 @@ export const startDesktopDevice = (input: {
       for (const w of writes) {
         if (w.itemId === "comms.note") {
           input.onNote(w.value);
+          acks.push({ id: w.id, ok: true });
+          continue;
+        }
+        if (w.itemId === MOOD_ITEM) {
+          input.onMood();
           acks.push({ id: w.id, ok: true });
           continue;
         }

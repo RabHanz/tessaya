@@ -33,14 +33,20 @@ const stores = Layer.mock(TessayaPrivateMemoryService)({
 });
 
 /** `judge`: the mood's own cheap read, under the mood layer so it reaches `hisWords`. */
-const setup = (enabled = true, judge = Layer.empty as Layer.Layer<never>) =>
+const setup = (
+  enabled = true,
+  judge = Layer.empty as Layer.Layer<never>,
+  devices?: Record<string, { owner: string; show: boolean }>,
+) =>
   turnLayer.pipe(
     Layer.provideMerge(expressionLayer),
     Layer.provideMerge(Layer.mock(TessayaOneShot)({})),
     Layer.provideMerge(moodLayer.pipe(Layer.provideMerge(judge))),
     Layer.provideMerge(MemberPreferencesLayer),
     Layer.provideMerge(
-      ServerSettingsService.layerTest({ tessayaMood: { enabled, intensity: 0.6, bondCap: 0.15 } }),
+      ServerSettingsService.layerTest({
+        tessayaMood: { enabled, intensity: 0.6, bondCap: 0.15, ...(devices ? { devices } : {}) },
+      }),
     ),
     Layer.provideMerge(memoryLayer),
     Layer.provideMerge(learning),
@@ -189,6 +195,12 @@ it.effect(
       const presence = yield* TessayaPresence;
       const why = Effect.map(mood.atDevice("tessel-1", "companion"), (v) => v.why);
       assert.strictEqual((yield* mood.atDevice("tessel-1", "companion")).label, "hurt");
+      // Each face is kept with whom it was for (M-094).
+      assert.deepInclude((yield* mood.facesOn("tessel-1"))[0], {
+        label: "hurt",
+        faceFor: "sara",
+        private: false,
+      });
       yield* presence.note({ member: null, source: "handled", vessel: "tessel-1" });
       assert.deepStrictEqual(yield* why, []);
       yield* TestClock.adjust("30 minutes");
@@ -219,6 +231,52 @@ it.effect(
           ),
           Layer.provideMerge(presenceLayer),
           Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      ),
+    ),
+);
+
+it.effect(
+  "a face shown for someone else is explained to the next speaker there: named, never why; a private one never",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2027-01-02T09:00:00.000Z"));
+      const mood = yield* TessayaMood;
+      // He was rude: her face on his Tessel shows hurt toward him (his device, nobody else there).
+      yield* mood.hisWords("companion", "you are useless", OWNER_MEMBER_ID);
+      assert.include(yield* mood.atDevice("tessel-1", "companion"), {
+        label: "hurt",
+        faceFor: OWNER_MEMBER_ID,
+      });
+      const guest: TurnEnvelope = {
+        vessel: { kind: "device", id: "tessel-1" },
+        text: "are you angry with me?",
+        persona: "companion",
+        timeZone: "UTC",
+        member: null,
+      };
+      const block = yield* blockOf(guest);
+      assert.include(block, "you were just showing hurt toward");
+      assert.include(block, "never why");
+      // His own next turn there is about him: no "someone else" line.
+      const him = {
+        ...guest,
+        member: OWNER_MEMBER_ID,
+        speaker: { kind: "owner", personId: "owner", verified: true, inherited: false },
+      } as TurnEnvelope;
+      assert.notInclude(yield* blockOf(him), "you were just showing");
+      // A face a private moment moved is never named or hinted at.
+      yield* mood.note("companion", { kind: "close", warmth: 1 }, OWNER_MEMBER_ID);
+      yield* mood.atDevice("tessel-1", "companion");
+      const later = yield* blockOf(guest);
+      assert.notInclude(later, "you were just showing");
+      assert.include(later, "never name or hint at that feeling");
+    }).pipe(
+      Effect.provide(
+        setup(
+          true,
+          Layer.mock(TessayaOneShot)({ run: () => Effect.succeed(toneOnly("rude")) as never }),
+          { "tessel-1": { owner: OWNER_MEMBER_ID, show: true } },
         ),
       ),
     ),
@@ -414,6 +472,24 @@ it.effect(
         Effect.provideContext(worker),
       );
       assert.strictEqual(face.label, onBrain.label);
+      // Her mood moves on the brain: the worker's kept view is stale until the brain tells it, then fresh at once (M-094).
+      const faceOn = (ctx: typeof brain) =>
+        Effect.flatMap(TessayaMood, (m) => m.atDevice("laptop", undefined)).pipe(
+          Effect.map((f) => `${f.label} ${f.intensity.toFixed(2)}`),
+          Effect.provideContext(ctx),
+        );
+      const before = yield* faceOn(brain);
+      for (let i = 0; i < 3; i++)
+        yield* Effect.flatMap(TessayaMood, (m) =>
+          m.note(undefined, { kind: "job", ok: false }),
+        ).pipe(Effect.provideContext(brain));
+      const after = yield* faceOn(brain);
+      assert.notStrictEqual(after, before);
+      assert.strictEqual(yield* faceOn(worker), before);
+      assert.isTrue(
+        (yield* receiveAtBrain("moodMoved", null).pipe(Effect.provideContext(worker))).ok,
+      );
+      assert.strictEqual(yield* faceOn(worker), after);
       // and his Settings → Mood on that server shows the brain's rows
       const inner = yield* Effect.flatMap(TessayaMood, (m) =>
         m.inner(undefined, OWNER_MEMBER_ID),

@@ -9994,6 +9994,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       onMascot: (act, persona) =>
         persona === undefined ? mascot.act(act) : (crew.get(persona)?.act(act) ?? false),
       onAction: runAction,
+      onMood: () => readMood(),
       // A message from someone at home: a toast, its glance on the pill, and its sound (a placeholder cue for now).
       onNote: (value) => {
         const card = noteCardOf(value);
