@@ -156,7 +156,11 @@ export const limitMouth = (
   intent: MouthIntent,
 ): {
   readonly weights: Weights;
-  readonly eased: ReadonlyArray<{ readonly key: string; readonly asked: number; readonly shown: number }>;
+  readonly eased: ReadonlyArray<{
+    readonly key: string;
+    readonly asked: number;
+    readonly shown: number;
+  }>;
 } => {
   const reach = MOUTH_REACH[intent];
   const knee = 0.6 * reach;

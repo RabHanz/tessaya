@@ -42,12 +42,16 @@ describe("body faces", () => {
     // a smile with a wide jaw is a feeling: eased toward the moderate reach, never cut flat
     const smile = limitMouth({ happy: 0.5, aa: 0.9 }, mouthIntentOf({ happy: 0.5, aa: 0.9 }));
     expect(smile.weights.aa).toBeLessThan(0.6);
-    expect(smile.weights.aa).toBeGreaterThan(limitMouth({ happy: 0.5, aa: 0.5 }, "expression").weights.aa!);
+    expect(smile.weights.aa).toBeGreaterThan(
+      limitMouth({ happy: 0.5, aa: 0.5 }, "expression").weights.aa!,
+    );
     expect(smile.eased).toEqual([expect.objectContaining({ key: "aa", asked: 0.9 })]);
     // "open wide" (only her jaw), a gasp and a hard laugh are strong: her full natural range
     for (const w of [{ aa: 1 }, { surprised: 0.8, oh: 1 }, { happy: 1, aa: 0.9 }]) {
       expect(mouthIntentOf(w)).toBe("strong");
-      expect(Math.max(...Object.values(limitMouth(w, "strong").weights))).toBeGreaterThanOrEqual(0.85);
+      expect(Math.max(...Object.values(limitMouth(w, "strong").weights))).toBeGreaterThanOrEqual(
+        0.85,
+      );
     }
     // a yawn's own jaw reaches near full
     expect(GESTURES["yawn"]?.face?.aa).toBeGreaterThanOrEqual(0.85);

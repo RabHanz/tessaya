@@ -2344,7 +2344,10 @@ export function mountBody(
         // a face asking more of her jaw than its intent supports is eased, not cut, and she says so (her state)
         const intent = mouthIntentOf(c.weights);
         const limited = limitMouth(c.weights, intent);
-        faceEased = limited.eased.map((e) => ({ ...e, why: `more than a ${intent} face opens her jaw` }));
+        faceEased = limited.eased.map((e) => ({
+          ...e,
+          why: `more than a ${intent} face opens her jaw`,
+        }));
         override = { face: limited.weights, until: now + c.ms };
         setFace(limited.weights, now);
         seqTimers.push(setTimeout(invalidate, c.ms));
