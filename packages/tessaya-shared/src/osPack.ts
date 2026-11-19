@@ -4,6 +4,7 @@
  * user's own pack lives in their user data folder (`operating-system/`), outside the repository and
  * the installer, and wins file by file.
  */
+import { isPrivateRooms, type PrivateRooms } from "./rooms.ts";
 import { ownerReachOf, type OwnerReach } from "./ownerProfile.ts";
 
 export interface OsPack {
@@ -80,6 +81,8 @@ export interface Persona {
   readonly leads: ReadonlyArray<string>;
   /** `private: yes` in its file: its memory is its own, and the roster leaves it out (never the lead). */
   readonly private?: boolean;
+  /** How far a private persona comes into his private rooms (`private rooms:` never, one-on-one or open; rooms.ts). */
+  readonly privateRooms?: PrivateRooms;
   /** Its body in Character Studio, the mascot and the pill (`character:`); a body's id. */
   readonly character?: string;
   /** Its temperament (`traits: energy 0.5, warmth 0.6, ...`), each 0 to 1: how its body and voice move. */
@@ -212,6 +215,9 @@ const face = (
     role: fields["role"] ?? "",
     lead,
     ...(!lead && /^(?:yes|true)$/i.test((fields["private"] ?? "").trim()) ? { private: true } : {}),
+    ...(isPrivateRooms(fields["private rooms"]?.trim().toLowerCase())
+      ? { privateRooms: fields["private rooms"]!.trim().toLowerCase() as PrivateRooms }
+      : {}),
     tools: tools === undefined || tools.trim() === "" ? null : listOf(tools),
     ...(BODY_ID.test(fields["character"] ?? "")
       ? { character: fields["character"]!.toLowerCase() }

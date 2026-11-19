@@ -28,11 +28,14 @@ describe("the operating-system pack", () => {
   it("reads a persona's `private: yes`, never for the lead", () => {
     const pack = mergePack({
       roles: {
-        "alter-ego": "---\nname: Sebastian\nprivate: yes\n---\nAs him.",
-        executive: "---\nprivate: yes\n---\nLead.",
+        "alter-ego": "---\nname: Sebastian\nprivate: yes\nprivate rooms: One-on-one\n---\nAs him.",
+        executive: "---\nprivate: yes\nprivate rooms: wherever\n---\nLead.",
       },
     });
     expect(pack.personas.find((p) => p.id === "alter-ego")?.private).toBe(true);
+    // how far into his private rooms (rooms.ts); a word it cannot read is left out
+    expect(pack.personas.find((p) => p.id === "alter-ego")?.privateRooms).toBe("one-on-one");
+    expect(pack.personas.find((p) => p.lead)?.privateRooms).toBeUndefined();
     expect(pack.personas.find((p) => p.lead)?.private).toBeUndefined();
   });
   it("carries each persona's body, temperament, eyes and model, and drops what it cannot read", () => {

@@ -51,6 +51,11 @@ describe("persona registry changes", () => {
     editPersona(tmp.dir, "luna", { traits: { warmth: 0.7 } });
     luna = packOf(tmp.dir).personas.find((p) => p.id === "luna");
     expect(luna?.traits).toEqual({ warmth: 0.7, sass: 0.9 });
+    // how far she comes into his private rooms, and out again
+    editPersona(tmp.dir, "luna", { private: true, privateRooms: "one-on-one" });
+    expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.privateRooms).toBe("one-on-one");
+    editPersona(tmp.dir, "luna", { private: false, privateRooms: null });
+    expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.privateRooms).toBeUndefined();
     editPersona(tmp.dir, "luna", { greetings: [] });
     expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.greetings).toBeUndefined();
 

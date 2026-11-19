@@ -80,6 +80,8 @@ export interface PersonaDraft {
   readonly model?: string | null;
   readonly effort?: string | null;
   readonly private?: boolean;
+  /** How far it comes into his private rooms; null takes the line out (rooms.ts). */
+  readonly privateRooms?: "never" | "one-on-one" | "open" | null;
   /** Lines it may open with when first woken each day; empty or null takes them out. */
   readonly greetings?: ReadonlyArray<string> | null;
 }
@@ -150,6 +152,7 @@ export const withDraft = (text: string, draft: PersonaDraft): string => {
     ["model", draft.model === undefined ? undefined : draft.model?.trim() || null],
     ["effort", draft.effort === undefined ? undefined : draft.effort?.trim().toLowerCase() || null],
     ["private", draft.private === undefined ? undefined : draft.private ? "yes" : null],
+    ["private rooms", draft.privateRooms],
     [
       "greetings",
       draft.greetings === undefined
