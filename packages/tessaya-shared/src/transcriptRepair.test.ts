@@ -48,6 +48,43 @@ describe("repairVerdict", () => {
     expect(repairVerdict(words, BOUNDS)).toEqual(verdict);
   });
 
+  it("a teen or -ty amount is checked with its twin unless heard for sure, even uncalibrated", () => {
+    // 19 Nov 22:25: "fifteen minutes" came out "fifty minutes" and the pump was set for fifty.
+    const pump = (p: number | null) =>
+      heard(
+        ["Turn", 0.99],
+        ["on", 0.99],
+        ["the", 0.99],
+        ["pump", 0.99],
+        ["for", 0.99],
+        ["fifty", p],
+        ["minutes.", 0.99],
+      );
+    const check = { kind: "clarify", word: "fifty", index: 5, pair: "fifteen" };
+    expect(repairVerdict(pump(0.93), BOUNDS)).toEqual(check);
+    expect(repairVerdict(pump(null), UNCALIBRATED)).toEqual(check);
+    expect(repairVerdict(pump(0.995), BOUNDS)).toEqual({ kind: "accept" });
+    expect(
+      repairVerdict(heard(["Set", null], ["it", null], ["to", null], ["30%", null]), UNCALIBRATED),
+    ).toEqual({
+      kind: "clarify",
+      word: "thirty",
+      index: 3,
+      pair: "thirteen",
+    });
+    expect(
+      repairVerdict(heard(["No,", null], ["fifteen", null], ["minutes.", null]), UNCALIBRATED),
+    ).toEqual({ kind: "accept" });
+    // Not an amount, or not a twin: no question.
+    expect(
+      repairVerdict(heard(["Fifty", null], ["people", null], ["came.", null]), UNCALIBRATED),
+    ).toEqual({ kind: "accept" });
+    expect(
+      repairVerdict(heard(["For", null], ["twenty", null], ["minutes.", null]), UNCALIBRATED),
+    ).toEqual({ kind: "accept" });
+    expect(repairLine(check as never, "for fifty minutes")).toContain('"Fifteen or fifty?"');
+  });
+
   it("a sentence's first word is no name, unless his names say so", () => {
     const words = heard(["Sara", 0.4], ["called.", 0.9]);
     expect(repairVerdict(words, BOUNDS)).toEqual({ kind: "accept" });

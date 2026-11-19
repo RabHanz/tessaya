@@ -93,6 +93,9 @@ export const hedge = (
       general.cancel();
     },
     onPartial: (listener) => general.onPartial?.(listener),
+    // The taken model's own scores: without them a hedged turn reached her unscored and nothing was checked.
+    words: () =>
+      taken === null ? null : ((taken === "personal" ? personal : general).words?.() ?? null),
     by: () =>
       taken === null
         ? null
