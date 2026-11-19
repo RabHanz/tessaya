@@ -47,7 +47,7 @@ import {
   type Edge,
   type Rect,
   bodyWithin,
-  roomOf,
+  stageBodyCss,
   windowAround,
 } from "./mascotDock.ts";
 import { MASCOT_SCRIPT } from "./mascotPage.ts";
@@ -832,7 +832,7 @@ export const createDesktopMascot = (input: {
       // her drawing keeps its size, centred in the window's room, and draws out into it (the svg overflows)
       .then(() =>
         created.webContents.executeJavaScript(
-          `document.getElementById("c").style.inset = "${roomOf(size())}px"`,
+          `document.getElementById("c").style.cssText += ${JSON.stringify(`;${stageBodyCss(size())}`)}`,
         ),
       )
       .then(() => created.webContents.executeJavaScript(MASCOT_SCRIPT))

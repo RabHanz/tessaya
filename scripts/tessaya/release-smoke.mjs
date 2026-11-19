@@ -201,19 +201,24 @@ if (tessaya) {
   );
   if (stage) await shot("desktop-mascot", stage);
   // Picked up, carried up the screen and let go: she keeps her size and lands with her feet inside the work area
-  // (0.1.120 grew on Windows while dragged and sank through the taskbar by the growth).
+  // (0.1.120 grew on Windows while dragged and sank through the taskbar by the growth). Her body's box, not her window:
+  // the window has clicking-through room around her for her reach and effects (desktopMascot box / bodyBox), and that
+  // room may pass the screen's edge.
   if (stage) {
     const where = () =>
-      stage.evaluate(() => ({
-        x: window.screenX,
-        y: window.screenY,
-        w: window.outerWidth,
-        h: window.outerHeight,
-        top: screen.availTop,
-        bottom: screen.availTop + screen.availHeight,
-        left: screen.availLeft,
-        right: screen.availLeft + screen.availWidth,
-      }));
+      stage.evaluate(() => {
+        const body = document.getElementById("c").getBoundingClientRect();
+        return {
+          x: window.screenX + body.left,
+          y: window.screenY + body.top,
+          w: body.width,
+          h: body.height,
+          top: screen.availTop,
+          bottom: screen.availTop + screen.availHeight,
+          left: screen.availLeft,
+          right: screen.availLeft + screen.availWidth,
+        };
+      });
     const cursor = (x, y) =>
       execFileSync("powershell", [
         "-NoProfile",
@@ -237,6 +242,8 @@ if (tessaya) {
         "the mascot keeps her size and lands inside the work area after a drag",
         after.w === before.w &&
           after.h === before.h &&
+          // drawn at exactly her size setting (desktopMascot MASCOT_SIZES), never scaled up by her window's room
+          [120, 150, 190].includes(Math.round(after.w)) &&
           // On the floor, or on the top of a window inside the work area: never below it.
           feet >= after.top &&
           feet <= after.bottom + 3 &&
