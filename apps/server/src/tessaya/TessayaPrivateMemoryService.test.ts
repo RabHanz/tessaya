@@ -243,6 +243,15 @@ describe("BatonPrivateMemoryService", () => {
         as(who)(p.recall({ turn: t, text: "anniversary" }));
       assert.strictEqual((yield* recall(turn())).count, 1);
       assert.strictEqual((yield* recall(turn({ speaker: null, typed: true }))).whose, "yours");
+      // A note one persona learned in a private moment is hers; his own notes reach every persona.
+      yield* as(desk)(
+        p.remember({ turn: turn(), text: "Anniversary dinner by the sea", persona: "sebastian" }),
+      );
+      const by = (persona: string) =>
+        as(desk)(p.recall({ turn: turn(), text: "anniversary", persona }));
+      assert.strictEqual((yield* by("sebastian")).count, 2);
+      assert.strictEqual((yield* by("freya")).count, 1);
+      assert.strictEqual((yield* recall(turn())).count, 1);
       for (const t of [
         turn({ speaker: { ...him!, verified: false } }),
         turn({ speaker: { ...him!, inherited: true } }),

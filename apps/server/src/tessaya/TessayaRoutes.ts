@@ -927,9 +927,20 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
     },
     touched: ({ part, kind }) => run(feel({ vessel: "desktop", part, kind })),
     capabilities: async () => ({
-      personas: readPack(userdata)
-        .personas.filter((p) => p.private !== true)
-        .map((p) => ({ id: p.id, name: p.name, role: p.role, lead: p.lead })),
+      personas: readPack(userdata).personas.map((p) => ({
+        id: p.id,
+        name: p.name,
+        role: p.role,
+        lead: p.lead,
+        ...(p.private === true
+          ? {
+              private: true,
+              privateRooms: p.privateRooms ?? "open",
+              ...(p.sealed === undefined ? {} : { sealed: true }),
+              brief: p.character ?? p.role,
+            }
+          : {}),
+      })),
       tools: (deskTools?.specs ?? []).map((t) => ({ name: t.name, description: t.description })),
       // A layer offers a line's tone only where his voice was recorded in it (VOXTA G1).
       voices: ((await run(Effect.flatMap(TessayaVoiceLibrary, (v) => v.library))).clones ?? []).map(

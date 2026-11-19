@@ -15,6 +15,7 @@ import { OWNER_MEMBER_ID, vesselSubject } from "@t3tools/tessaya-shared/househol
 import { PrivateCaller, TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
 import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
+import type { PrivateRooms } from "@t3tools/tessaya-shared/rooms";
 
 import type { RoomToolSet } from "../home/R1Brain.ts";
 import { capToolText, personaTools, type VesselTool } from "./TessayaBrain.ts";
@@ -42,6 +43,8 @@ export interface LayerTurn {
   readonly tainted: boolean;
   readonly sharedRoom: boolean;
   readonly rehearsal: boolean;
+  /** One speaker of GroupTalk's turn: whether she speaks first, and who else is here and what they said. */
+  readonly group?: { readonly first: boolean; readonly note: string };
 }
 
 /** Something outside the turn that should end a layer's session; no `vessel` means every vessel. */
@@ -102,7 +105,7 @@ export interface LayerBrain {
     readonly prompt: string;
   }) => Promise<string>;
   /** Keeps one note in his one sealed tier (his private store on the brain path, D2); true once it is stored. */
-  readonly remember?: (text: string) => Promise<boolean>;
+  readonly remember?: (text: string, persona?: string) => Promise<boolean>;
   /** How close this private moment felt (0..1), into her one mood toward him (P2); never its words. */
   readonly felt?: (warmth: number) => Promise<void>;
 }
@@ -145,6 +148,13 @@ export interface LayerHost {
       readonly name: string;
       readonly role: string;
       readonly lead: boolean;
+      /** His private personas too, so a private moment and its rooms can hold any of them (P4, P5). */
+      readonly private?: boolean;
+      readonly privateRooms?: PrivateRooms;
+      /** One of the layer's own characters (D6): her brief is the layer's, not this. */
+      readonly sealed?: boolean;
+      /** A private persona's own character, to speak from in a private room. */
+      readonly brief?: string;
     }>;
     readonly tools: ReadonlyArray<{ readonly name: string; readonly description: string }>;
     /** What each of his saved clones can say beyond its words (VOXTA G1): the tones recorded for it in Playground. */
@@ -296,7 +306,7 @@ export const loadPersonaLayers = async (
   return mod === null ? [] : [...mod.default(host)];
 };
 
-const layerTurnOf = (turn: TurnEnvelope): LayerTurn => {
+const layerTurnOf = (turn: TurnEnvelope, groupNote: string): LayerTurn => {
   const identity = turnIdentity(turn);
   return {
     persona: turn.persona ?? null,
@@ -312,6 +322,7 @@ const layerTurnOf = (turn: TurnEnvelope): LayerTurn => {
     tainted: turn.tainted === true,
     sharedRoom: turn.sharedRoom === true,
     rehearsal: turn.rehearsal === true,
+    ...(turn.group === undefined ? {} : { group: { first: turn.group.first, note: groupNote } }),
   };
 };
 
@@ -406,7 +417,7 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
           Effect.flatMap(encodeJson),
         ),
       ),
-    remember: (text) =>
+    remember: (text, persona) =>
       run(
         Effect.serviceOption(TessayaPrivateMemoryService).pipe(
           Effect.flatMap((stores) =>
@@ -418,6 +429,7 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
                     turn: { route: "assistant", typed: true, tainted: false, speaker: null },
                     text,
                     kind: "note",
+                    ...(persona === undefined ? {} : { persona }),
                   })
                   .pipe(
                     Effect.provideService(PrivateCaller, {
@@ -467,10 +479,11 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
 export const replyFor = Effect.fn("PersonaLayers.replyFor")(function* (
   turn: TurnEnvelope,
   reach?: LayerReach,
+  groupNote = "",
 ) {
   const layers = yield* Effect.serviceOption(PersonaLayers);
   if (layers._tag === "None" || layers.value.all.length === 0) return null;
-  const facts = layerTurnOf(turn);
+  const facts = layerTurnOf(turn, groupNote);
   const brain = reach === undefined ? undefined : yield* layerBrain(turn, reach);
   for (const l of layers.value.all) {
     const reply = yield* Effect.promise(() => l.onTurn(facts, brain).catch(() => null));

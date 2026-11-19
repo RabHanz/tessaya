@@ -285,6 +285,8 @@ export class TessayaPrivateMemoryService extends Context.Service<
       readonly turn: PrivateTurn;
       readonly text?: string | undefined;
       readonly budgetTokens?: number | undefined;
+      /** The persona answering: another persona's own private notes stay hers (rooms §2b.4). */
+      readonly persona?: string | null | undefined;
     }) => Effect.Effect<
       { readonly block: string; readonly count: number; readonly whose: string | null },
       TessayaPrivateRefusedError
@@ -295,6 +297,8 @@ export class TessayaPrivateMemoryService extends Context.Service<
       readonly text: string;
       readonly kind?: MemoryKind | undefined;
       readonly about?: string | null | undefined;
+      /** Learned by this persona in a private moment: only she recalls it. */
+      readonly persona?: string | null | undefined;
     }) => Effect.Effect<
       { readonly stored: boolean; readonly whose: string | null; readonly reason: string | null },
       TessayaPrivateRefusedError
@@ -1198,7 +1202,9 @@ export const make = Effect.gen(function* () {
       const lease = yield* openFor(row.value.id).pipe(Effect.option);
       // A store opened only as admin is for his eyes on a page, never for a turn.
       if (Option.isNone(lease) || lease.value.admin) return none;
-      const items = (yield* itemsOf(row.value.id, lease.value.open)).filter((i) => !i.proposed);
+      const items = (yield* itemsOf(row.value.id, lease.value.open)).filter(
+        (i) => !i.proposed && (i.visibility !== "persona" || i.persona === (input.persona ?? null)),
+      );
       const hits = ranked(items, input.text);
       const { block, ids } = memoryBlock(hits, input.budgetTokens ?? 300);
       if (ids.length === 0) return none;
@@ -1224,12 +1230,14 @@ export const make = Effect.gen(function* () {
           reason: "There is no private store for this person yet.",
         };
       yield* door(input.text);
-      const item = toItem(
+      const made = toItem(
         NodeCrypto.randomUUID(),
         { kind: input.kind ?? "fact", text: input.text, about: input.about ?? null },
         iso(yield* nowMs),
         "user",
       );
+      const item: MemoryItem =
+        input.persona == null ? made : { ...made, persona: input.persona, visibility: "persona" };
       const lease = yield* openFor(row.value.id).pipe(Effect.option);
       if (Option.isSome(lease) && !lease.value.admin)
         yield* writeItem(row.value.id, lease.value.open, item);
