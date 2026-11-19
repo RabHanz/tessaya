@@ -214,6 +214,7 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
             Effect.catch((line: string) => Effect.succeed(done({ refused: line }))),
           );
       }
+    }
     case "threads": {
       const act = decodeThreadAct(payload);
       if (Option.isNone(act)) return refused("Not a thread change.");
