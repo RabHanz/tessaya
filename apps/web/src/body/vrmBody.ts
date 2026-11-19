@@ -2573,6 +2573,12 @@ export function mountBody(
      * how far each sits inside her (mm, 0 when outside), found by casting at her from outside along the palm.
      */
     probe: () => {
+      // her hair is not her: a hand on her back lies under long hair
+      const isHair = (o: THREE.Object3D) => {
+        const m = (o as THREE.Mesh).material;
+        const names = [o.name, ...(Array.isArray(m) ? m : m ? [m] : []).map((x) => x.name)];
+        return names.some((n) => /hair/i.test(n));
+      };
       const world = Object.fromEntries(
         Object.entries(skeleton()).map(([k, v]) => [k, v.map((x) => Math.round(x * 1e4) / 1e4)]),
       );
@@ -2594,14 +2600,25 @@ export function mountBody(
           );
         }),
       ];
-      const inside = points.map((p) => {
-        const from = p.clone().addScaledVector(out, 0.3);
-        ray.set(from, out.clone().negate());
-        const hit = ray.intersectObject(vrm!.scene, true).find((h) => h.object.visible);
-        return hit === undefined || hit.distance >= 0.3
-          ? 0
-          : Math.round((0.3 - hit.distance) * 1e4) / 10;
+      // a point is inside her when the nearest surface out along the touch is one it would leave (a back face); a
+      // surface it would enter first means it is outside, even when another part of her is in the way
+      const sides = new Map<THREE.Material, THREE.Side>();
+      vrm.scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material;
+        for (const x of Array.isArray(m) ? m : m ? [m] : [])
+          if (!sides.has(x)) sides.set(x, x.side);
       });
+      for (const x of sides.keys()) x.side = THREE.DoubleSide;
+      const inside = points.map((p) => {
+        ray.set(p, out);
+        const hit = ray
+          .intersectObject(vrm!.scene, true)
+          .find((h) => h.object.visible && !isHair(h.object) && h.face != null);
+        if (hit === undefined || hit.distance > 0.15) return 0;
+        const n = hit.face!.normal.clone().transformDirection(hit.object.matrixWorld);
+        return n.dot(out) > 0 ? Math.round(hit.distance * 1e4) / 10 : 0;
+      });
+      for (const [x, side] of sides) x.side = side;
       return {
         world,
         hand: {
