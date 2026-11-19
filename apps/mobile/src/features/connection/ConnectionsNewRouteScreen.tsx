@@ -24,6 +24,7 @@ import { AppText as Text, AppTextInput, type AppTextInputProps } from "../../com
 import { FrostedCutout } from "../../components/ui/FrostedCutout";
 import { buildPairingUrl, extractPairingUrlsFromQrPayload, parsePairingUrl } from "./pairing";
 import { useRemoteConnections } from "../../state/use-remote-environment-registry";
+import { joinHousehold } from "../../state/tessayaHousehold";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { CloudEnvironmentRows } from "./CloudEnvironmentRows";
@@ -161,12 +162,16 @@ function PairingForm({
     onChangeConnectionPairingUrl(pairingUrl);
     const outcome = await onConnectPress(pairingUrl, routeFor);
     const notAdded: Array<string> = [];
-    if (outcome.ok)
+    if (outcome.ok) {
       for (const more of morePairingUrls) {
         const added = await onConnectPress(more);
         if (!added.ok)
           notAdded.push(`${parsePairingUrl(more).host}: ${added.error ?? "not added"}`);
       }
+      // One household: pairing with any of his machines adds the rest (M-097).
+      if (outcome.environmentId !== undefined)
+        notAdded.push(...(await joinHousehold(outcome.environmentId, onConnectPress)));
+    }
     setIsSubmitting(false);
     setSubmitError(outcome.error);
     if (notAdded.length > 0) Dialog.alert("Some machines were not added", notAdded.join("\n"));

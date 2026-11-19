@@ -47,6 +47,8 @@ export interface PairingOutcome {
   readonly ok: boolean;
   /** Shown beside the pairing form; null when the failure got its own dialog. */
   readonly error: string | null;
+  /** The machine paired, when it worked. */
+  readonly environmentId?: EnvironmentId;
 }
 
 /** Pairs with the environment behind a pairing link and saves it. */
@@ -62,7 +64,7 @@ export async function pairEnvironment(
   );
   if (AsyncResult.isSuccess(result)) {
     appAtomRegistry.set(connectionPairingUrlAtom, "");
-    return { ok: true, error: null };
+    return { ok: true, error: null, environmentId: result.value };
   }
   const error = Cause.squash(result.cause);
   const message = error instanceof Error ? error.message : "Failed to pair with the environment.";

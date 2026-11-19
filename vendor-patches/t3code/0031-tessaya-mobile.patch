@@ -522,3 +522,25 @@ index 914bb3797685a501e06307b7459fe5f0960f22d1..46c16b4fcfe9806268c7c40e48b03001
  export function registerHiddenUpdateTap(count: number): {
    readonly nextCount: number;
    readonly shouldCheck: boolean;
+diff --git a/apps/mobile/src/state/use-remote-environment-registry.ts b/apps/mobile/src/state/use-remote-environment-registry.ts
+index a1488220d69528f47429f4f594e661c075e88521..1b44e5ab6a1fa746c843ba2ded6fbb1bd9fbbe8b 100644
+--- a/apps/mobile/src/state/use-remote-environment-registry.ts
++++ b/apps/mobile/src/state/use-remote-environment-registry.ts
+@@ -47,6 +47,8 @@ export interface PairingOutcome {
+   readonly ok: boolean;
+   /** Shown beside the pairing form; null when the failure got its own dialog. */
+   readonly error: string | null;
++  /** The machine paired, when it worked. */
++  readonly environmentId?: EnvironmentId;
+ }
+ 
+ /** Pairs with the environment behind a pairing link and saves it. */
+@@ -62,7 +64,7 @@ export async function pairEnvironment(
+   );
+   if (AsyncResult.isSuccess(result)) {
+     appAtomRegistry.set(connectionPairingUrlAtom, "");
+-    return { ok: true, error: null };
++    return { ok: true, error: null, environmentId: result.value };
+   }
+   const error = Cause.squash(result.cause);
+   const message = error instanceof Error ? error.message : "Failed to pair with the environment.";
