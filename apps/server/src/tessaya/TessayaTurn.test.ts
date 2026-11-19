@@ -100,7 +100,7 @@ const cast = Layer.mock(TessayaCast)({
     personas: [{ id: "companion", name: "Freya" }],
     bodies: [
       {
-        id: "desktop-xiaomi",
+        id: "desktop-laptop",
         name: "his desk",
         kind: "desktop",
         online: true,

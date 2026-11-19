@@ -282,8 +282,8 @@ it.effect(
       });
       const laptopDesk = {
         ...(yield* cast.view).bodies.find((b) => b.id === "desk-1")!,
-        id: "desktop-xiaomi",
-        name: "XIAOMI (desktop)",
+        id: "desktop-laptop",
+        name: "Laptop (desktop)",
         screen: "Built-in",
       };
       const answer = yield* receiveAtBrain("cast", {
@@ -292,14 +292,14 @@ it.effect(
         desks: [laptopDesk],
       });
       expect(answer.ok).toBe(true);
-      expect((yield* cast.view).bodies.find((b) => b.id === "desktop-xiaomi")).toMatchObject({
+      expect((yield* cast.view).bodies.find((b) => b.id === "desktop-laptop")).toMatchObject({
         kind: "desktop",
         online: true,
         shown: true,
         screen: "Built-in",
       });
       yield* TestClock.adjust("3 minutes");
-      expect((yield* cast.view).bodies.find((b) => b.id === "desktop-xiaomi")?.online).toBe(false);
+      expect((yield* cast.view).bodies.find((b) => b.id === "desktop-laptop")?.online).toBe(false);
     }).pipe(Effect.provide(layer));
   },
 );

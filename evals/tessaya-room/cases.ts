@@ -815,7 +815,7 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     said: ["What about your other bodies?"],
     verified: true,
     memory:
-      "You are speaking through Tumble, in the study. Your other bodies right now, live: XIAOMI (desktop) (on his desktop (Built-in), Freya wears it); his phone (offline). Answer about them from this, not from memory.",
+      "You are speaking through Tumble, in the study. Your other bodies right now, live: Laptop (desktop) (on his desktop (Built-in), Freya wears it); his phone (offline). Answer about them from this, not from memory.",
     lastSays: [/\bdesk/i, /^(?![\s\S]*\b(not on (his|your) desk|isn't on|is not on|aren't on)\b)/i],
   },
   // CS3: her other live conversations come up only when they bear on what he asks, and never what was said.
