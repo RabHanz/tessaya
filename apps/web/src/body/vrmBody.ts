@@ -2260,10 +2260,12 @@ export function mountBody(
         return;
       }
       case "hand":
-        return startAgentTouch(c, now);
+        startAgentTouch(c, now);
+        return invalidate();
       case "free":
         if (grip !== null) grip.free = true;
-        return wake(now);
+        wake(now);
+        return invalidate();
       case "gaze":
         gazeHold = { yaw: c.x * 30, pitch: -c.y * 20, until: now + c.ms };
         lastMove = now;
