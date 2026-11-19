@@ -193,3 +193,82 @@ export const groupRefusal = (
 /** He locks, or someone arrives: every private room closes at once, and its personas go back to everyday life. */
 export const lockAll = (rooms: ReadonlyArray<Room>): ReadonlyArray<Room> =>
   rooms.filter((r) => r.tier === "public");
+
+/** The vessels a room is staged on (§2b.5): the desktop's crew, the mirror's one scene, the phone, a Tessel. */
+export type StageVessel = "desktop" | "mirror" | "phone" | "tessel";
+
+/** One body's place on a vessel: across (0..1), how big, whether it stands forward, and whom it faces. */
+export interface StageSpot {
+  readonly persona: string;
+  readonly x: number;
+  readonly scale: number;
+  readonly front: boolean;
+  readonly faces: { readonly kind: "him" } | { readonly kind: "persona"; readonly id: string };
+}
+
+/**
+ * StagePlan (§2b.5): where each present persona stands on a vessel while one speaks. The speaker faces him, the
+ * others face her. Desktop: a row, the speaker a little forward. Mirror: one scene, the speaker in the middle.
+ * Phone: the speaker full-screen, the others small along the bottom. A Tessel has one body: the speaker's.
+ */
+export const stagePlan = (
+  vessel: StageVessel,
+  present: ReadonlyArray<string>,
+  speaker: string | null,
+): ReadonlyArray<StageSpot> => {
+  const lead = speaker !== null && present.includes(speaker) ? speaker : (present[0] ?? null);
+  if (lead === null) return [];
+  const her = (persona: string, x: number, scale: number): StageSpot => ({
+    persona,
+    x,
+    scale,
+    front: persona === lead,
+    faces: persona === lead ? { kind: "him" } : { kind: "persona", id: lead },
+  });
+  if (vessel === "tessel") return [her(lead, 0.5, 1)];
+  const others = present.filter((p) => p !== lead);
+  const across = (i: number, n: number, from: number, to: number) =>
+    n <= 1 ? (from + to) / 2 : from + ((to - from) * i) / (n - 1);
+  if (vessel === "phone")
+    return [
+      her(lead, 0.5, 1),
+      ...others.map((p, i) => her(p, across(i, others.length, 0.15, 0.85), 0.3)),
+    ];
+  // the mirror centres the speaker with the others either side; the desktop keeps the room's order
+  const order =
+    vessel === "mirror"
+      ? [
+          ...others.filter((_, i) => i % 2 === 1).reverse(),
+          lead,
+          ...others.filter((_, i) => i % 2 === 0),
+        ]
+      : present;
+  return order.map((p, i) =>
+    her(p, across(i, order.length, 0.2, 0.8), p === lead && vessel === "desktop" ? 1.1 : 1),
+  );
+};
+
+/**
+ * What a renderer gives StagePlan once it holds several bodies (body lane 5's multi-body mount): one handle per
+ * persona, each placed where its spot says. Nothing implements it yet; StagePlan is wired when the mount lands.
+ */
+export interface StageMount {
+  readonly mount: (
+    personas: ReadonlyArray<string>,
+  ) => ReadonlyMap<string, { readonly place: (spot: StageSpot) => void }>;
+}
+
+/** A plan onto a mount: every present body placed, in one pass. */
+export const stageOnto = (
+  bodies: ReturnType<StageMount["mount"]>,
+  plan: ReadonlyArray<StageSpot>,
+): number => {
+  let placed = 0;
+  for (const spot of plan) {
+    const body = bodies.get(spot.persona);
+    if (body === undefined) continue;
+    body.place(spot);
+    placed++;
+  }
+  return placed;
+};
