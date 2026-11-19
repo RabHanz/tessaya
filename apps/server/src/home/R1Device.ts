@@ -119,7 +119,6 @@ import {
   type RoomToolSet,
   type ToolOutcome,
 } from "./R1Brain.ts";
-import { R1Hold } from "./R1Hold.ts";
 import { askLaptop } from "./R1Laptop.ts";
 import { DEVICE_API_ROOTS, noteDeviceKeyUse, publishToDevice } from "./R1Hub.ts";
 import {
@@ -1529,14 +1528,12 @@ export const roomLook = Effect.fn("R1Device.look")(function* (
 const r1Vessel = (
   input: R1Heard,
   tools: RoomToolSet,
-  fillers?: { readonly hold: string | null; readonly web: string | null },
   hooks?: Pick<VesselTurn<never, never>, "failed" | "ended">,
   /** In a group: who speaks, whether first, and what it is told of the others (`groupLine`). */
   group?: { readonly name: string; readonly first: boolean; readonly line: string },
 ) => ({
   system: ROOM_SYSTEM,
   ...hooks,
-  ...(fillers === undefined ? {} : { fillers }),
   tools,
   device: input.device,
   // On a guess, anything that changes something waits for the loop to confirm his final words.
@@ -1586,70 +1583,16 @@ export const r1TurnStream = (
         return yield* Queue.end(queue);
       }
       yield* r1Route(input, null);
-      let offered = false;
-      // Silence while she thinks is the default; her eyes show it (Director, 19 Nov 06:20: "the filler words are really
-      // out of place… most times it breaks the flow"). A bridge about his words (R1Hold) only on a long wait, never on a
-      // quick follow-up and never two turns in a row on one vessel; no written-ahead or fixed line ever.
-      const who = lineWho(input);
-      const vesselId = input.device ?? "room";
-      const heldBefore = heldLastTurn.get(vesselId) === true;
-      heldLastTurn.delete(vesselId);
-      const holder = yield* Effect.serviceOption(R1Hold);
-      let bridge: string | null = null;
-      const bridging =
-        Option.isNone(holder) || heldBefore || quickFollowUp(input.heard)
-          ? null
-          : yield* holder.value
-              .write({
-                vessel: input.device ?? "room",
-                persona: who.persona,
-                words: input.heard,
-                before: input.history.slice(-4),
-              })
-              .pipe(
-                Effect.tap((line) => Effect.sync(() => void (bridge = line))),
-                Effect.forkScoped,
-              );
-      const fillers = {
-        get hold() {
-          return bridge;
-        },
-        get web() {
-          return bridge;
-        },
-      };
-      const say = (words: string) => {
-        // One filler a turn: the 3 s hold and the tool-start cue both fired on a slow first call ("One moment. One moment.").
-        if (offered && (words.trim() === fillers.hold || words.trim() === fillers.web)) return;
-        offered = true;
-        Queue.offerUnsafe(queue, words);
-      };
-      // A slow answer gets her bridge if it is ready by the hold point (a little grace for it), else silence.
-      yield* Effect.sleep(HOLD_AFTER).pipe(
-        Effect.andThen(
-          bridging === null
-            ? Effect.void
-            : Fiber.await(bridging).pipe(Effect.timeout(BRIDGE_GRACE), Effect.ignore),
-        ),
-        Effect.andThen(
-          Effect.sync(() => {
-            const line = fillers.hold;
-            if (!offered && line !== null) {
-              say(`${line} `);
-              markHeld(vesselId);
-            }
-          }),
-        ),
-        Effect.forkScoped,
-      );
+      // Silence while she thinks, her eyes showing it (Director, 19 Nov 06:20: "the filler words are really out of place…
+      // most times it breaks the flow"; 13:40: a hold line restated or previewed the answer on every slow turn).
+      const say = (words: string) => Queue.offerUnsafe(queue, words);
       const way = yield* brain.route;
       /** When the login's limit resets, once a route has failed on it: nothing else on that login can answer. */
       let limited: string | null = null;
       const failed = (detail: string) => {
         limited ??= limitResets(detail);
       };
-      // An ended talk is never filled: a silent end's next pass was a 3 s "One moment." before her goodbye (18 Nov).
-      const hooks = { failed, ended: () => void (offered = true) };
+      const hooks = { failed };
       // Out of capacity: one honest line from her pool, not the other routes on the same spent login.
       const outOfCapacity = Effect.gen(function* () {
         const line = yield* expressOr("err.limit", {
@@ -1676,7 +1619,7 @@ export const r1TurnStream = (
               Queue.offerUnsafe(queue, text);
               return text;
             }
-            const vessel = r1Vessel(as, tools, fillers, hooks, {
+            const vessel = r1Vessel(as, tools, hooks, {
               name: speaker.name,
               first,
               line,
@@ -1700,7 +1643,7 @@ export const r1TurnStream = (
       }
       if (way === "subscription" && tools !== null) {
         const done = yield* brainTurn(
-          r1Vessel(input, tools, fillers, hooks),
+          r1Vessel(input, tools, hooks),
           brain,
           say,
           "session",
@@ -1710,18 +1653,14 @@ export const r1TurnStream = (
         if (limited !== null) return yield* outOfCapacity;
       }
       if (way !== "subscription" && tools !== null) {
-        const done = yield* brainTurn(
-          r1Vessel(input, tools, fillers, hooks),
-          brain,
-          say,
-          "api",
-          calls,
-        ).pipe(Effect.orElseSucceed(() => null));
+        const done = yield* brainTurn(r1Vessel(input, tools, hooks), brain, say, "api", calls).pipe(
+          Effect.orElseSucceed(() => null),
+        );
         if (done !== null) return yield* Queue.end(queue);
         if (way === "auto") {
           // The key failed before a word; the subscription is the fallback his table names.
           const fallback = yield* brainTurn(
-            r1Vessel(input, tools, fillers, hooks),
+            r1Vessel(input, tools, hooks),
             brain,
             say,
             "session",
@@ -1851,16 +1790,8 @@ const sseChunk = (id: string, model: string, created: number, content: string | 
 export const sseReply = (id: string, model: string, text: string, created: number): string =>
   `${sseChunk(id, model, created, text)}${sseChunk(id, model, created, null)}data: [DONE]\n\n`;
 
-/** How long a turn runs before the room hears her bridge, if she has one: only a genuinely long wait. */
+/** How long the acts path waits for her answer before it opens the stream (silent until the words come). */
 const HOLD_AFTER = "5 seconds";
-/** A short line after hers ("Okay.", "A bit better."): her answer to it is quick, and a bridge would only interrupt. */
-const quickFollowUp = (heard: string) =>
-  heard.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length <= 4;
-/** The vessels whose last turn spoke a bridge: the next one stays silent, so no two in a row. */
-const heldLastTurn = new Map<string, boolean>();
-const markHeld = (vessel: string) => void heldLastTurn.set(vessel, true);
-/** How much longer the hold point waits for her bridge to be written. */
-const BRIDGE_GRACE = "700 millis";
 
 const error = (status: number, message: string) =>
   HttpServerResponse.jsonUnsafe({ error: { message, type: "invalid_request_error" } }, { status });

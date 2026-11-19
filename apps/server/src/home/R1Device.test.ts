@@ -25,7 +25,6 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaOneShot } from "../tessaya/TessayaOneShot.ts";
 import * as CurrentPersona from "../tessaya/CurrentPersona.ts";
 import { groupConversation } from "../tessaya/GroupTalk.ts";
-import { R1Hold } from "./R1Hold.ts";
 import { R1Brain, R1BrainError, toolLoop, type ToolTurn } from "./R1Brain.ts";
 import { sessionTools, speakableSentences } from "../tessaya/TessayaBrain.ts";
 import { PersonaLayers, type LayerTurn } from "../tessaya/PersonaLayers.ts";
@@ -747,7 +746,7 @@ effectIt.effect(
 );
 
 effectIt.effect(
-  "her bridge comes only on a long wait, once a turn, never on a quick follow-up or two turns in a row",
+  "she says nothing while she thinks, on a quick turn or a slow one: only her answer",
   () =>
     Effect.gen(function* () {
       // Director, 19 Nov 06:20: "the filler words are really out of place… most times it breaks the flow".
@@ -791,9 +790,6 @@ effectIt.effect(
                 home,
                 Layer.mock(TessayaRecordService)({ append: () => Effect.void as never }),
                 Layer.mock(TessayaOneShot)({}),
-                Layer.mock(R1Hold)({
-                  write: () => Effect.succeed("That request of yours, let me look."),
-                }),
               ),
             ),
             Effect.forkChild,
@@ -802,15 +798,11 @@ effectIt.effect(
           yield* Fiber.join(running);
           return said.join("");
         });
-      // A 4 s answer is not long: silence, then the answer.
+      // Silence while she thinks, however long, and a late tool start says nothing either: only her answer.
       expect(yield* turn("did I answer that request of mine?", 4_000, "replay-a")).toBe("Done. ");
-      // A 7 s one gets her bridge, once, though the tool also starts late.
-      expect(yield* turn("did I answer that request of mine?", 7_000, "replay-b")).toBe(
-        "That request of yours, let me look. Done. ",
+      expect(yield* turn("why are my agents taking so long today?", 9_000, "replay-b")).toBe(
+        "Done. ",
       );
-      // Never two in a row on one vessel, and never on a quick follow-up.
-      expect(yield* turn("and what about the one before?", 7_000, "replay-b")).toBe("Done. ");
-      expect(yield* turn("A bit better.", 7_000, "replay-c")).toBe("Done. ");
     }),
 );
 

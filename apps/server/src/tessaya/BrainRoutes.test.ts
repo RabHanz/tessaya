@@ -41,7 +41,6 @@ const SITES: Readonly<Record<string, Site>> = {
   "apps/server/src/tessaya/BodyDirect.ts": {
     routed: "Agent drives her: her voice loop, on the model he picked or the voice row",
   },
-  "apps/server/src/home/R1Hold.ts": { routed: "her line while a slow answer comes: the hold row" },
   "apps/server/src/tessaya/TessayaTurn.ts": {
     routed: "what each of her threads is about: the gist row",
   },
