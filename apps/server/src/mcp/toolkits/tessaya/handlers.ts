@@ -610,6 +610,32 @@ export const layer = McpToolAccess.toLayer(
           );
         }),
       ),
+      tessaya_attribution_move: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          const vessel = vesselOf((yield* McpInvocationContext.McpInvocationContext).client);
+          // His desktop app's own call has no turn: it is his own device.
+          const desk =
+            (yield* TurnOrigin) === null && vessel?.surface === "assistant"
+              ? {
+                  kind: "desktop" as const,
+                  id: "desktop",
+                  label: "his desktop",
+                  member: OWNER_MEMBER_ID,
+                  assurance: 2 as const,
+                  rehearsal: vessel.dryRun,
+                }
+              : null;
+          return yield* call(
+            withTurn((turn) => {
+              const move = turn.reassign(input);
+              return Effect.map(
+                desk === null ? move : Effect.provideService(move, TurnOrigin, desk),
+                (line) => ({ line }),
+              );
+            }),
+          );
+        }),
+      ),
       tessaya_memory_unlearn: McpToolAccess.writes((input) =>
         Effect.gen(function* () {
           const client = (yield* McpInvocationContext.McpInvocationContext).client;

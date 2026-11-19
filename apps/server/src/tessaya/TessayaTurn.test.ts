@@ -35,6 +35,8 @@ import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import { TurnLiveContext, layer as liveLayer } from "./TurnLiveContext.ts";
 import { TessayaUnderstanding } from "./TessayaUnderstanding.ts";
 import { TessayaCast } from "./TessayaCast.ts";
+import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
+import type { PhonePrompt } from "@t3tools/tessaya-shared/phoneRelay";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
@@ -104,9 +106,18 @@ const cast = Layer.mock(TessayaCast)({
         }),
 });
 
+/** Cards sent to his phone; none is answered here (the device's yes is the memory service's own test). */
+const cards: Array<PhonePrompt> = [];
+const inbox = Layer.mock(TessayaPhoneInbox)({
+  mirror: (prompt) => Effect.sync(() => void cards.push(prompt)),
+  promptAnswer: () => Effect.succeed(null),
+  cardLife: Effect.succeed(600_000),
+});
+
 const layer = it.layer(
   turnLayer.pipe(
     Layer.provideMerge(cast),
+    Layer.provideMerge(inbox),
     Layer.provideMerge(MemberPreferencesLayer),
     Layer.provideMerge(liveLayer),
     Layer.provideMerge(ServerSettingsService.layerTest()),
@@ -1026,6 +1037,63 @@ layer("TessayaTurn", (it) => {
         // About: the closest memories, his own words marked.
         const about = yield* turn.about("gate code");
         assert.include(about[0]!.line, "The gate code changes every month");
+      }),
+  );
+
+  it.effect(
+    "a voice near his is held as not sure who: a spoken yes is only a claim, his verified voice places it",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* TessayaMemoryService;
+        const turn = yield* TessayaTurn;
+        const near = owner({ verified: false, confidence: 0.4 });
+        const kitchen: TurnEnvelope["vessel"] = { kind: "device", id: "kitchen-1" };
+        const said = yield* Effect.provideService(
+          turn.remember("The dentist moved my appointment to Friday"),
+          TurnOrigin,
+          originOf({ vessel: kitchen, text: "", speaker: near }),
+        );
+        assert.deepStrictEqual([said.kept, said.line], ["held", "Got it. I'll check it was you."]);
+        const card = cards.at(-1);
+        assert.strictEqual(card?.title, "Was this you?");
+        assert.include(card?.detail, "The dentist moved my appointment");
+        assert.deepStrictEqual(
+          [card?.buttons, card?.needs],
+          [["Yes, it was me", "No", "Someone else"], "cloud-approve"],
+        );
+        const pending = () =>
+          Effect.map(memory.list({ includeProposed: true }), (all) =>
+            all.find((i) => i.id === said.id),
+          );
+        assert.isTrue((yield* pending())?.proposed);
+        assert.notInclude(
+          (yield* turn.begin({ vessel: kitchen, text: "dentist appointment", speaker: owner() }))
+            .block,
+          "The dentist moved",
+        );
+        // "Yes, it's me" from an impostor whose voice stays low is a claim: nothing moves.
+        yield* turn.end(
+          {
+            vessel: kitchen,
+            text: "yes, it's me",
+            speaker: owner({ verified: false, confidence: 0.3 }),
+          },
+          { reply: "Thanks." },
+        );
+        assert.isTrue((yield* pending())?.proposed);
+        // A verified turn on another vessel proves nothing about this one.
+        yield* turn.end(
+          { vessel: device, text: "what's the time", speaker: owner() },
+          { reply: "Noon." },
+        );
+        assert.isTrue((yield* pending())?.proposed);
+        // His own voice, verified, on the same vessel soon after: it is his.
+        yield* turn.end(
+          { vessel: kitchen, text: "thanks", speaker: owner() },
+          { reply: "Any time." },
+        );
+        const placed = yield* pending();
+        assert.deepStrictEqual([placed?.proposed, placed?.speaker], [false, "owner"]);
       }),
   );
 

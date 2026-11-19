@@ -146,11 +146,13 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
     ...(item.visibility === "persona" && item.persona != null ? { personaOnly: item.persona } : {}),
   });
   const sectionOf = (item: MemoryItem): string =>
-    item.proposed
-      ? "Waiting for your yes"
-      : item.supersededBy !== null
-        ? "Replaced"
-        : (KINDS.find(([k]) => k === item.kind)?.[1] ?? "Notes");
+    item.unsure != null
+      ? "Not sure who"
+      : item.proposed
+        ? "Waiting for your yes"
+        : item.supersededBy !== null
+          ? "Replaced"
+          : (KINDS.find(([k]) => k === item.kind)?.[1] ?? "Notes");
   const ordered = [...shown].toSorted(
     (a, b) =>
       KINDS.findIndex(([k]) => k === a.kind) - KINDS.findIndex(([k]) => k === b.kind) ||

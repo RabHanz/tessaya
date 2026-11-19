@@ -37,6 +37,7 @@ import {
   LESSONS_CAP,
   isLesson,
   type MemoryQuery,
+  type MemoryUnsure,
 } from "@t3tools/tessaya-shared/memory";
 import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/tessaya-shared/osPack";
 import { findFact } from "@t3tools/tessaya-shared/understanding";
@@ -125,7 +126,28 @@ interface ItemRow {
   readonly visibility?: string | null;
   readonly surface?: string | null;
   readonly speaker?: string | null;
+  readonly unsure_json?: string | null;
 }
+
+/**
+ * How a "not sure who" memory is placed with the person its voice was nearest, only on proof: a verified turn
+ * of theirs on the same vessel since it was said (their voice cleared its bar), or their yes on their own unlocked device for that
+ * turn. A spoken "yes, that was me" alone is a claim and places nothing.
+ */
+export type UnsureResolution = {
+  readonly person: string;
+  readonly how: "verified-turn" | "device";
+} & ({ readonly vessel: string; readonly since: string } | { readonly turn: string });
+
+const unsureOf = (json: string | null | undefined): MemoryUnsure | null => {
+  if (json == null) return null;
+  try {
+    const u = JSON.parse(json) as MemoryUnsure;
+    return typeof u.turn === "string" && typeof u.conversation === "string" ? u : null;
+  } catch {
+    return null;
+  }
+};
 
 const fromRow = (row: ItemRow): MemoryItem => ({
   id: row.id,
@@ -147,6 +169,7 @@ const fromRow = (row: ItemRow): MemoryItem => ({
   visibility: row.visibility === "persona" ? "persona" : "household",
   surface: row.surface ?? null,
   speaker: row.speaker ?? null,
+  ...(row.unsure_json == null ? {} : { unsure: unsureOf(row.unsure_json) }),
 });
 
 const refuse = (reason: string) => new BatonMemoryRefusedError({ reason });
@@ -280,6 +303,22 @@ export class TessayaMemoryService extends Context.Service<
     readonly supersede: (oldId: string, byId: string) => Effect.Effect<boolean>;
     /** He said yes to a held proposal. */
     readonly accept: (id: string) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
+    /**
+     * "Not sure who" placed with the person it was nearest, on proof only (`UnsureResolution`); each placement is
+     * recorded with how it was proved.
+     */
+    readonly resolveUnsure: (input: UnsureResolution) => Effect.Effect<ReadonlyArray<string>>;
+    /**
+     * "That wasn't me": what was learned from those turns as `from`'s goes back to "not sure who", offered to `to` (null:
+     * nobody known). By its source (`ref`), or a vessel's turns since an ISO time. The ids moved.
+     */
+    readonly unassign: (input: {
+      readonly from: string;
+      readonly to: string | null;
+      readonly ref?: string;
+      readonly vessel?: string;
+      readonly since?: string;
+    }) => Effect.Effect<ReadonlyArray<string>>;
     /** What recall ranks for a sentence (keywords and meaning fused), best first, before the block's budget cuts it. */
     readonly related: (context: {
       readonly text?: string | undefined;
@@ -535,20 +574,23 @@ export const make = Effect.gen(function* () {
       (draft.kind === "episode"
         ? DateTime.formatIso(DateTime.makeUnsafe(ms + EPISODE_TTL_DAYS * DAY_MS))
         : null);
-    const proposed = draft.tainted === true && draft.source !== "user";
+    // held for his yes: a tainted turn's, or one from a voice not verified ("not sure who"), whoever it seemed to be
+    const proposed =
+      (draft.tainted === true && draft.source !== "user") || draft.unsure !== undefined;
     // An import keeps the date it was first written where it came from; anything else is written now.
     const born = draft.source === "import" && draft.createdAt !== undefined ? draft.createdAt : at;
     yield* sql`
       INSERT INTO fabric_memory_items (
         id, kind, text, source, source_ref, scope, scope_ref, confidence, pinned, proposed,
         created_at, updated_at, last_used_at, expires_at, superseded_by, origin, received_at,
-        persona, visibility, surface, speaker
+        persona, visibility, surface, speaker, unsure_json
       ) VALUES (
         ${id}, ${draft.kind}, ${text}, ${draft.source}, ${draft.sourceRef ?? null}, ${scope},
         ${scopeRef}, ${startingConfidence(draft)}, ${draft.pinned === true ? 1 : 0},
         ${proposed ? 1 : 0}, ${born}, ${born}, NULL, ${expiresAt}, NULL, ${origin}, ${at},
         ${draft.persona ?? null}, ${draft.visibility === "persona" && draft.persona != null ? "persona" : "household"},
-        ${draft.surface ?? null}, ${draft.speaker ?? null}
+        ${draft.surface ?? null}, ${draft.speaker ?? null},
+        ${draft.unsure === undefined ? null : JSON.stringify(draft.unsure)}
       )
     `.pipe(Effect.orDie);
     const created = yield* requireItem(id);
@@ -882,9 +924,102 @@ export const make = Effect.gen(function* () {
 
   const accept = Effect.fn("BatonMemoryService.accept")(function* (id: string) {
     yield* requireSeen(id);
-    yield* sql`UPDATE fabric_memory_items SET proposed = 0 WHERE id = ${id}`.pipe(Effect.orDie);
+    const was = yield* requireItem(id);
+    // his yes to a "not sure who" one places it with him, and says so in the record
+    if (was.unsure != null) {
+      yield* sql`UPDATE fabric_memory_items SET proposed = 0, speaker = 'owner', unsure_json = NULL WHERE id = ${id}`.pipe(
+        Effect.orDie,
+      );
+      yield* emitAction({
+        kind: "memory.unsure.resolved",
+        actor: { kind: "owner", certainty: 1 },
+        subject: id,
+        outcome: "settings",
+        data: { person: "owner", turn: was.unsure.turn, vessel: was.unsure.vessel },
+      });
+    } else
+      yield* sql`UPDATE fabric_memory_items SET proposed = 0 WHERE id = ${id}`.pipe(Effect.orDie);
     yield* touch(id, yield* nowIso);
     return yield* requireItem(id);
+  });
+
+  const resolveUnsure = Effect.fn("BatonMemoryService.resolveUnsure")(function* (
+    input: UnsureResolution,
+  ) {
+    const rows = yield* sql<ItemRow>`
+      SELECT * FROM fabric_memory_items
+      WHERE proposed = 1 AND unsure_json IS NOT NULL AND created_at >= ${"since" in input ? input.since : ""}
+    `.pipe(Effect.orDie);
+    const placed: Array<string> = [];
+    for (const r of rows) {
+      const u = unsureOf(r.unsure_json);
+      if (u === null || u.nearest !== input.person) continue;
+      if ("turn" in input ? u.turn !== input.turn : u.vessel !== input.vessel) continue;
+      yield* sql`
+        UPDATE fabric_memory_items SET proposed = 0, speaker = ${input.person}, unsure_json = NULL WHERE id = ${r.id}
+      `.pipe(Effect.orDie);
+      yield* touch(r.id, yield* nowIso);
+      yield* emitAction({
+        kind: "memory.unsure.resolved",
+        actor: { kind: "rule", id: "unsureHolding", certainty: 1 },
+        subject: r.id,
+        outcome: input.how,
+        data: {
+          person: input.person,
+          turn: u.turn,
+          vessel: u.vessel,
+          nearest: u.nearest,
+          confidence: u.confidence,
+        },
+      });
+      placed.push(r.id);
+    }
+    return placed;
+  });
+
+  const unassign = Effect.fn("BatonMemoryService.unassign")(function* (input: {
+    readonly from: string;
+    readonly to: string | null;
+    readonly ref?: string;
+    readonly vessel?: string;
+    readonly since?: string;
+  }) {
+    if (input.ref === undefined && input.vessel === undefined) return [];
+    const rows = yield* sql<ItemRow>`
+      SELECT * FROM fabric_memory_items
+      WHERE proposed = 0 AND COALESCE(speaker, 'owner') = ${input.from}
+        AND created_at >= ${input.since ?? ""}
+    `.pipe(Effect.orDie);
+    const moved: Array<string> = [];
+    const at = yield* nowIso;
+    for (const r of rows) {
+      const ref = r.source_ref ?? "";
+      const fits =
+        input.ref !== undefined
+          ? ref === input.ref
+          : ref.startsWith("vessel:") && ref.split(":")[2] === input.vessel;
+      if (!fits) continue;
+      const unsure: MemoryUnsure = {
+        turn: ref,
+        conversation: "",
+        vessel: ref.split(":")[2] ?? "",
+        nearest: input.to,
+        confidence: null,
+      };
+      yield* sql`
+        UPDATE fabric_memory_items SET proposed = 1, speaker = NULL, unsure_json = ${JSON.stringify(unsure)} WHERE id = ${r.id}
+      `.pipe(Effect.orDie);
+      yield* touch(r.id, at);
+      yield* emitAction({
+        kind: "memory.unsure.moved",
+        actor: { kind: input.from === "owner" ? "owner" : "member", id: input.from, certainty: 1 },
+        subject: r.id,
+        outcome: input.to ?? "not sure who",
+        data: { from: input.from, ref },
+      });
+      moved.push(r.id);
+    }
+    return moved;
   });
 
   const markUsed = Effect.fn("BatonMemoryService.markUsed")(function* (
@@ -1540,6 +1675,12 @@ export const make = Effect.gen(function* () {
     }),
     meaningPairs,
     supersede,
+    resolveUnsure: Effect.fn("BatonMemoryService.resolveUnsureThenEmbed")(function* (input) {
+      const placed = yield* resolveUnsure(input);
+      if (placed.length > 0) yield* poke;
+      return placed;
+    }),
+    unassign,
     // An accepted proposal joins recall, so it is embedded now.
     accept: Effect.fn("BatonMemoryService.acceptThenEmbed")(function* (id: string) {
       const item = yield* accept(id);
@@ -1590,6 +1731,8 @@ export const ON_BRAIN = [
   "overwrite",
   "supersede",
   "accept",
+  "resolveUnsure",
+  "unassign",
   "related",
   "recall",
   "markUsed",

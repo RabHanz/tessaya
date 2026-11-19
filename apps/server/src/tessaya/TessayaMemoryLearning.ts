@@ -22,6 +22,7 @@ import {
   worthLearningFrom,
   type EpisodeOrigin,
   type LearnInput,
+  waitsForItsPerson,
 } from "@t3tools/tessaya-shared/memoryLearning";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -285,6 +286,12 @@ export const make = Effect.gen(function* () {
       )
       .map((d) =>
         privatePersona ? { ...d, draft: { ...d.draft, visibility: "persona" as const } } : d,
+      )
+      // a voice not verified: what is about a person waits as "not sure who", never lost; household facts are kept
+      .map((d) =>
+        input.unsure !== undefined && waitsForItsPerson(d.draft.kind, d.draft.scope)
+          ? { ...d, draft: { ...d.draft, unsure: input.unsure } }
+          : d,
       );
     let stored = 0;
     let held = 0;

@@ -8,7 +8,10 @@
  */
 import {
   DEFAULT_AFFECT_SETTINGS,
+  affectDelta,
   appraiseFor,
+  undoDelta,
+  type AffectDelta,
   deviceOwnerOf,
   dialsOf,
   CLOSE_REASON,
@@ -51,6 +54,8 @@ import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { TessayaPeople } from "./TessayaPeople.ts";
 import { emitAction } from "./turnActions.ts";
+import { AffectCause } from "./AffectCause.ts";
+import * as Random from "effect/Random";
 
 /** One person's row in Settings' inner state: how she feels toward them, why, her opinion and their story. */
 interface InnerPerson {
@@ -125,6 +130,12 @@ export class TessayaMood extends Context.Service<
     }>;
     /** Someone forgotten (no `into`) or found to be someone else: their relationship goes or moves, every persona. */
     readonly forget: (member: string, into?: string) => Effect.Effect<void>;
+    /**
+     * "That wasn't me" (the Director, 20 Nov): what events credited to `from` did to their relationship is taken back,
+     * every persona, and given to `to` (null: someone else, nobody known). The events are one cause (`ref`), or those
+     * on a vessel since a time. How many changes moved. One mechanism for turns, desk touches and a Tessel handled.
+     */
+    readonly reassign: (input: AffectMove) => Effect.Effect<number>;
     /** One person's relationship with a persona (her opinion, story and feeling) back to nothing. */
     readonly reset: (persona: string | undefined, member: string) => Effect.Effect<void>;
     /** Something moved a mood (a write, someone arrived or left a vessel), or a few minutes passed: faces read again. */
@@ -153,6 +164,28 @@ export interface ShownFace {
 }
 /** How many of a device's last faces are kept, for "who was that face for" on the next turn. */
 const FACES_KEPT = 4;
+/** Which recorded changes `reassign` moves: by cause, or by vessel since a time (ms); always only `from`'s. */
+export interface AffectMove {
+  readonly from: string;
+  readonly to: string | null;
+  readonly ref?: string;
+  readonly vessel?: string;
+  readonly since?: number;
+  /** Only what was assumed to be them (a desk touch), not what they were identified in. */
+  readonly assumedOnly?: boolean;
+  /** Who said it was not them (a member id), for the record. */
+  readonly by?: string;
+}
+
+/** A ledger row's JSON, outside Effect code; a broken row reads as null and is skipped. */
+const toJson = (v: unknown) => JSON.stringify(v);
+const fromJson = <A>(raw: string): A | null => {
+  try {
+    return JSON.parse(raw) as A;
+  } catch {
+    return null;
+  }
+};
 
 const LEAD = "executive";
 /** How often a listener's mood is read again for what time alone changes (lonely builds over hours). */
@@ -250,13 +283,19 @@ const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const { day } = clockIn(now, timeZone ?? "UTC");
     const resolved = event(day, dials);
+    const cause = yield* AffectCause;
     // Only her brain appraises; a worker sends what it saw there (one-brain §2.1).
     if (!(yield* brain.isBrain)) {
       // never lost: queued for the brain when it can't be reached, applied there once
-      yield* brain.sendOrQueue("mood", { p: persona, m: member, e: resolved });
+      yield* brain.sendOrQueue("mood", {
+        p: persona,
+        m: member,
+        e: resolved,
+        ...(cause === null ? {} : { r: cause }),
+      });
       return;
     }
-    yield* appraiseInto(persona, resolved, now, member, current.bondCap, dials.forgiveness);
+    yield* appraiseInto(persona, resolved, now, member, current.bondCap, dials.forgiveness, cause);
   });
 
   /** One event into a persona's row at its time (never before the row's own), as her brain heard it. */
@@ -267,6 +306,7 @@ const make = Effect.gen(function* () {
     member: string | null,
     bondCap: number,
     forgiveness: number,
+    cause: typeof AffectCause.Service = null,
   ) =>
     lock.withPermits(1)(
       Effect.gen(function* () {
@@ -276,6 +316,20 @@ const make = Effect.gen(function* () {
         // A person's event with nobody identified moves nothing.
         if (next.reason === null) return null;
         yield* write(persona, next.state, next.reason, when);
+        const theirs = member === null ? undefined : next.state.people[member];
+        // What it did to them, against its cause, so "that wasn't me" can take it back.
+        if (
+          cause !== null &&
+          member !== null &&
+          theirs !== undefined &&
+          theirs !== state.people[member]
+        )
+          yield* sql`
+            INSERT INTO tessaya_affect_ledger (id, ref, vessel, persona, member, assumed, event_json, delta_json, at)
+            VALUES (${`${cause.ref}#${when}-${yield* Random.nextIntBetween(0, 1e9)}`}, ${cause.ref},
+              ${cause.vessel ?? null}, ${persona}, ${member}, ${cause.assumed === true ? 1 : 0},
+              ${toJson(event)}, ${toJson(affectDelta(state.people[member], theirs, when))}, ${when})
+          `.pipe(Effect.ignoreCause({ log: true }));
         yield* PubSub.publish(moved, undefined);
         return next.reason;
       }),
@@ -487,6 +541,76 @@ const make = Effect.gen(function* () {
     Effect.forkScoped,
   );
 
+  const reassign = Effect.fn("TessayaMood.reassign")(function* (move: AffectMove) {
+    if (!(yield* brain.isBrain)) {
+      // never lost: queued for the brain like any mood write; the count is the brain's to know
+      yield* brain.sendOrQueue("mood", { move });
+      return 0;
+    }
+    if (move.ref === undefined && move.vessel === undefined && move.since === undefined) return 0;
+    const now = yield* Clock.currentTimeMillis;
+    const current = yield* moodSettings;
+    const rows = yield* sql<{
+      id: string;
+      ref: string;
+      persona: string;
+      event_json: string;
+      delta_json: string;
+      at: number;
+    }>`
+      SELECT id, ref, persona, event_json, delta_json, at FROM tessaya_affect_ledger
+      WHERE member = ${move.from} AND moved_at IS NULL
+        AND (${move.ref ?? null} IS NULL OR ref = ${move.ref ?? null})
+        AND (${move.vessel ?? null} IS NULL OR vessel = ${move.vessel ?? null})
+        AND at >= ${move.since ?? 0}
+        AND (${move.assumedOnly === true ? 1 : 0} = 0 OR assumed = 1)
+      ORDER BY at DESC
+    `.pipe(Effect.orElseSucceed(() => []));
+    for (const r of rows) {
+      const delta = fromJson<AffectDelta>(r.delta_json);
+      const event = fromJson<AffectEvent>(r.event_json);
+      if (delta === null || event === null) continue;
+      yield* lock.withPermits(1)(
+        Effect.gen(function* () {
+          const state = yield* read(r.persona, now);
+          const theirs = state.people[move.from];
+          if (theirs !== undefined)
+            yield* write(
+              r.persona,
+              { ...state, people: { ...state.people, [move.from]: undoDelta(theirs, delta, now) } },
+              "that was someone else",
+              now,
+            );
+        }),
+      );
+      yield* sql`UPDATE tessaya_affect_ledger SET moved_to = ${move.to ?? ""}, moved_at = ${now} WHERE id = ${r.id}`.pipe(
+        Effect.ignoreCause({ log: true }),
+      );
+      // Given to whoever it was, under the same cause, so it can move again.
+      if (move.to !== null && move.to !== move.from)
+        yield* appraiseInto(r.persona, event, now, move.to, current.bondCap, 1, { ref: r.ref });
+    }
+    if (rows.length > 0) {
+      yield* PubSub.publish(moved, undefined);
+      yield* emitAction({
+        kind: "affect.reassigned",
+        actor: {
+          kind: move.by === undefined || move.by === OWNER_MEMBER_ID ? "owner" : "member",
+          ...(move.by === undefined ? {} : { id: move.by }),
+          certainty: 1,
+        },
+        subject: move.ref ?? move.vessel ?? "recent",
+        outcome: move.to ?? "someone else",
+        data: {
+          from: move.from,
+          moved: rows.length,
+          ...(move.since === undefined ? {} : { since: move.since }),
+        },
+      });
+    }
+    return rows.length;
+  });
+
   const forget = Effect.fn("TessayaMood.forget")(function* (member: string, into?: string) {
     yield* rewriteAll((p) => movePerson(p, member, into ?? null), "someone was forgotten");
   });
@@ -500,6 +624,7 @@ const make = Effect.gen(function* () {
   return TessayaMood.of({
     view,
     roomView,
+    reassign,
     note: Effect.fn("TessayaMood.note")(function* (persona, event, member) {
       yield* apply(persona, () => event, undefined, member ?? null);
     }),

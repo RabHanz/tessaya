@@ -1205,6 +1205,80 @@ export const appraiseFor = (
 };
 
 /**
+ * What one event did to one person's row, kept so "that wasn't me" can take it back (`undoDelta`). Numbers are the
+ * event's own push (the row decayed to its time first); the rest is before and after, restored only while unchanged.
+ */
+export interface AffectDelta {
+  readonly at: number;
+  readonly mood: Partial<Record<AffectDim, number>>;
+  readonly reaction: Partial<Record<AffectDim, number>>;
+  readonly bond: number;
+  readonly was: Partial<
+    Pick<AffectState, "bondDay" | "seenAt" | "returnedAt" | "impression" | "hold">
+  >;
+  readonly now: Partial<
+    Pick<AffectState, "bondDay" | "seenAt" | "returnedAt" | "impression" | "hold">
+  >;
+  readonly shared: ReadonlyArray<SharedMoment>;
+}
+
+const RESTORED = ["bondDay", "seenAt", "returnedAt", "impression", "hold"] as const;
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const minus = (a: AffectState["mood"], b: AffectState["mood"]) =>
+  Object.fromEntries(
+    AFFECT_DIMS.map((k) => [k, (a[k] ?? 0) - (b[k] ?? 0)] as const).filter(
+      ([, v]) => Math.abs(v) >= 0.001,
+    ),
+  );
+
+export const affectDelta = (
+  before: AffectState | undefined,
+  after: AffectState,
+  at: number,
+): AffectDelta => {
+  const base = decay(before ?? freshAffect(at), at);
+  const was: Record<string, unknown> = {};
+  const now: Record<string, unknown> = {};
+  for (const k of RESTORED)
+    if (!same(base[k], after[k])) {
+      was[k] = base[k] ?? null;
+      now[k] = after[k] ?? null;
+    }
+  return {
+    at,
+    mood: minus(after.mood, base.mood),
+    reaction: minus(after.reaction, base.reaction),
+    bond: after.bond - base.bond,
+    was,
+    now,
+    shared: (after.shared ?? []).filter(
+      (m) => !(base.shared ?? []).some((o) => o.at === m.at && o.text === m.text),
+    ),
+  };
+};
+
+/** The row with one event's push taken back, as faded by now; a field changed since is left as it is. */
+export const undoDelta = (s: AffectState, d: AffectDelta, now: number): AffectState => {
+  const row = decay(s, now);
+  const push = decay(
+    { ...freshAffect(d.at), mood: d.mood, reaction: d.reaction, bond: d.bond },
+    now,
+  );
+  const back: Record<string, unknown> = {};
+  for (const k of RESTORED) if (k in d.now && same(row[k], d.now[k])) back[k] = d.was[k] ?? null;
+  return {
+    ...row,
+    ...back,
+    mood: minus(row.mood, push.mood),
+    reaction: minus(row.reaction, push.reaction),
+    bond: Math.max(0, row.bond - push.bond),
+    shared: (row.shared ?? []).filter(
+      (m) => !d.shared.some((o) => o.at === m.at && o.text === m.text),
+    ),
+  };
+};
+
+/**
  * A person forgotten (null) or found to be someone else (`into`, the people graph's merge): their relationship goes,
  * or moves onto the one they are; where both have one, the surviving id's feeling stays and its story gains theirs.
  */

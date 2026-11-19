@@ -99,6 +99,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "tessaya_memory_history",
       "tessaya_memory_remember",
       "tessaya_memory_forget",
+      // "That wasn't me": what was put down to them is theirs to move.
+      "tessaya_attribution_move",
       "tessaya_memory_about",
       "tessaya_owner_doc",
       "memory_remember",

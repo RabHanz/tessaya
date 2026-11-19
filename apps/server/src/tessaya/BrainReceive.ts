@@ -11,6 +11,7 @@ import { emitAction } from "../provenance/ActionLog.ts";
 import { BrainOp as BrainOpSchema, brainOn, type BrainOp } from "./BrainHost.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
+import { AffectCause } from "./AffectCause.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { CastCallInput } from "@t3tools/tessaya-contracts";
@@ -38,7 +39,27 @@ const MoodAct = Schema.Struct({
   m: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
   // The event whole (its kind plus fields such as `ok`, `day`, `emotion`): a Struct would strip those.
   e: Schema.Record(Schema.String, Schema.Unknown),
+  // the event it came from, so "that wasn't me" can move it (AffectCause)
+  r: Schema.optionalKey(
+    Schema.Struct({
+      ref: Schema.String.check(Schema.isMaxLength(300)),
+      vessel: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(120))),
+      assumed: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
 });
+const MoodMove = Schema.Struct({
+  move: Schema.Struct({
+    from: Schema.String.check(Schema.isMaxLength(120)),
+    to: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
+    ref: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(300))),
+    vessel: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(120))),
+    since: Schema.optionalKey(Schema.Number),
+    assumedOnly: Schema.optionalKey(Schema.Boolean),
+    by: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(120))),
+  }),
+});
+const decodeMoodMove = Schema.decodeUnknownOption(MoodMove);
 const PresenceAct = Schema.Union([
   Schema.Struct({
     note: Schema.Struct({
@@ -178,17 +199,24 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       return done();
     }
     case "mood": {
+      const move = decodeMoodMove(payload);
+      if (Option.isSome(move)) {
+        const mood = yield* Effect.serviceOption(TessayaMood);
+        return done(Option.isSome(mood) ? yield* mood.value.reassign(move.value.move) : 0);
+      }
       const act = decodeMoodAct(payload);
       if (Option.isNone(act) || typeof act.value.e["kind"] !== "string")
         return refused("Not a mood act.");
       const mood = yield* Effect.serviceOption(TessayaMood);
       // Resolved on the worker (its day, the persona's dials): applied here as it is.
       if (Option.isSome(mood))
-        yield* mood.value.note(
-          act.value.p,
-          act.value.e as unknown as Exclude<AffectEvent, { kind: "his_turn" }>,
-          act.value.m,
-        );
+        yield* mood.value
+          .note(
+            act.value.p,
+            act.value.e as unknown as Exclude<AffectEvent, { kind: "his_turn" }>,
+            act.value.m,
+          )
+          .pipe(Effect.provideService(AffectCause, act.value.r ?? null));
       return done();
     }
     case "moodView": {
