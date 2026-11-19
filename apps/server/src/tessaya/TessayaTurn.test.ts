@@ -10,7 +10,11 @@ import * as TestClock from "effect/testing/TestClock";
 import { onAction } from "../provenance/ActionLog.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaMemoryLearning } from "./TessayaMemoryLearning.ts";
-import { TessayaMemoryService, layer as memoryLayer } from "./TessayaMemoryService.ts";
+import {
+  MemoryViewer,
+  TessayaMemoryService,
+  layer as memoryLayer,
+} from "./TessayaMemoryService.ts";
 import { TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { HouseholdCaller, TessayaHousehold } from "./TessayaHousehold.ts";
@@ -774,6 +778,39 @@ layer("TessayaTurn", (it) => {
           carried.conversation.turns.map((t) => t.content).join(" "),
           "dinner with Sara",
         );
+      }),
+  );
+
+  it.effect(
+    "a private moment that ends leaves her own everyday self one content-free episode, and nobody else",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const memory = yield* TessayaMemoryService;
+        const said = "the words of a private moment";
+        yield* turn.begin({
+          vessel: desktop,
+          persona: "companion",
+          speaker: owner(),
+          text: said,
+          private: true,
+          conversation: "trace-thread",
+        });
+        yield* TestClock.adjust("11 minutes");
+        yield* turn.threads();
+        const kept = (yield* memory
+          .list({ limit: 500 })
+          .pipe(Effect.provideService(MemoryViewer, "server"))).filter((i) =>
+          i.sourceRef?.startsWith("private:"),
+        );
+        // the earlier test's private moment with another persona left its own; this one is hers alone
+        assert.deepStrictEqual(kept.map((i) => i.persona).toSorted(), ["companion", "operations"]);
+        kept.splice(0, kept.length, ...kept.filter((i) => i.persona === "companion"));
+        assert.lengthOf(kept, 1);
+        assert.strictEqual(kept[0]?.kind, "episode");
+        assert.strictEqual(kept[0]?.visibility, "persona");
+        assert.strictEqual(kept[0]?.persona, "companion");
+        assert.notInclude(kept[0]?.text ?? "", said);
       }),
   );
 
