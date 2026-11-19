@@ -953,7 +953,7 @@ export const beastkin = (input: {
   const cross = EARS_BACK.has(input.mood) ? k : 0;
   return {
     earPitch,
-    earQuiver: 0.12 * (input.motion?.tremble ?? 0),
+    earQuiver: 0.03 * (input.motion?.tremble ?? 0),
     tailHz: cross > 0 ? 3 : 1.2 + 1.8 * Math.max(wag, arousal),
     tailAmp: Math.max(0.35 * wag, 0.25 * arousal, 0.15 * cross) * (1 - uneasy) * (1 - 0.7 * arch),
     tailDroop: (EARS_DOWN.has(input.mood) ? 0.5 * k : 0) - 0.6 * arch,

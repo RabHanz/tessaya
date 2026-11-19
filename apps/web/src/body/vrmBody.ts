@@ -121,6 +121,20 @@ const flipVrm0 = (vrm: VRM) => {
   }
 };
 /** Lower the left arm by a radian on the normalized rig: a hand that rises means this model turns Z the other way. */
+/** Bone lines her surface is measured out from (surfaceNormal): trunk, head, limbs. */
+const NORMAL_SEGMENTS: ReadonlyArray<readonly [VRMHumanBoneName, VRMHumanBoneName]> = [
+  ["hips", "upperChest"],
+  ["neck", "head"],
+  ...(["left", "right"] as const).flatMap(
+    (s) =>
+      [
+        [`${s}UpperArm`, `${s}LowerArm`],
+        [`${s}LowerArm`, `${s}Hand`],
+        [`${s}UpperLeg`, `${s}LowerLeg`],
+        [`${s}LowerLeg`, `${s}Foot`],
+      ] as const,
+  ),
+];
 const CONTACT_BONES = [
   "hips",
   "spine",
@@ -257,6 +271,26 @@ const IDLE_MS = 20_000;
 /** Walking toward or away from him, metres a second. */
 const WALK_SPEED = 0.45;
 const REFLEX_MS = 350;
+/** The drawn hand turns to a new surface direction with this time constant (ms). */
+const HAND_TURN_MS = 90;
+/** A part gives to a hand over this time constant (ms), so a press eases in rather than snaps. */
+const GIVE_TAU_MS = 80;
+/** Each giving part and the bone its lever runs to (bodyHand GIVE), so a kept choice still finds its pair. */
+const GIVE_CHILD: Readonly<Record<string, ReadonlyArray<string>>> = {
+  neck: ["head"],
+  spine: ["upperChest", "chest"],
+  leftUpperArm: ["leftLowerArm"],
+  rightUpperArm: ["rightLowerArm"],
+  leftLowerArm: ["leftHand"],
+  rightLowerArm: ["rightHand"],
+  leftUpperLeg: ["leftLowerLeg"],
+  rightUpperLeg: ["rightLowerLeg"],
+};
+/** A mouse resting over her this long (ms) lets the hand fade. */
+const HOVER_IDLE_MS = 1500;
+/** A tremble runs full this long (ms), then settles to a faint quiver; it re-arms after this long calm. */
+const TREMOR_BURST_MS = 2500;
+const TREMOR_REARM_MS = 1000;
 /**
  * Where an agent's hand lands for each part: between which joints (`at` along them, then `up` of her height above),
  * and the side it comes from (she faces +z, her right is -x), so a pat on the head lands on top, not on her face.
@@ -402,12 +436,19 @@ export function mountBody(
   } | null = null;
   // a quick poke makes her pull back, then settle (a reflex, over REFLEX_MS)
   let reflexAt = -Infinity;
+  // the part giving to the hand, kept for the contact, and how far it has turned (eased)
+  let giving: { bone: string; angle: number; at: number } | null = null;
+  let tremorSince: number | null = null;
+  let tremorCalm: number | null = null;
   let lapse: ReturnType<typeof setTimeout> | null = null;
   // a pointer resting on her is still there: it fades only once it leaves her (a tracker fades when it loses her)
   let handHeld = false;
+  let drawnAt = 0;
+  const drawnN = new THREE.Vector3(0, 0, -1);
+  const drawnD = new THREE.Vector3(0, 1, 0);
   let handMesh: {
     group: THREE.Group;
-    fingers: THREE.Object3D[];
+    fingers: THREE.Object3D[][];
     material: THREE.MeshStandardMaterial;
   } | null = null;
   const handLength = () => 0.11 * (rig?.height ?? 1.6);
@@ -422,24 +463,64 @@ export function mountBody(
     const group = new THREE.Group();
     const L = handLength();
     const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), material);
-    palm.scale.set(L * 0.24, L * 0.28, L * 0.07);
+    palm.scale.set(L * 0.22, L * 0.25, L * 0.06);
     group.add(palm);
-    const fingers: THREE.Object3D[] = [];
-    for (const [i, x] of [-0.17, -0.06, 0.05, 0.15, -0.27].entries()) {
+    // a hand's own proportions: palm ~0.45 L wide, fingers in three segments (0.45/0.3/0.25), tapering, a little spread,
+    // the thumb set low on the palm's side and turned toward it
+    const fingers: THREE.Object3D[][] = [];
+    for (const [i, x] of [-0.16, -0.055, 0.05, 0.145, -0.24].entries()) {
       const thumb = i === 4;
-      const len = L * (thumb ? 0.3 : i === 1 ? 0.48 : 0.42);
-      const joint = new THREE.Group();
-      joint.position.set(L * x, thumb ? L * 0.02 : L * 0.26, 0);
-      if (thumb) joint.rotation.z = 0.9;
-      const bone = new THREE.Mesh(new THREE.CapsuleGeometry(L * 0.045, len, 4, 8), material);
-      bone.position.y = len / 2;
-      joint.add(bone);
-      group.add(joint);
-      fingers.push(joint);
+      const len = L * (thumb ? 0.36 : [0.43, 0.47, 0.45, 0.37][i]!);
+      let parent: THREE.Object3D = group;
+      const joints: THREE.Object3D[] = [];
+      for (const [k, share] of [0.45, 0.3, 0.25].entries()) {
+        const joint = new THREE.Group();
+        if (k === 0) {
+          joint.position.set(L * x, thumb ? -L * 0.08 : L * 0.27, 0);
+          joint.rotation.z = thumb ? 0.75 : -x * 0.5;
+          if (thumb) joint.rotation.y = -0.6;
+        } else joint.position.y = len * [0.45, 0.3][k - 1]!;
+        const r = L * (thumb ? 0.05 : 0.042) * (1 - 0.12 * k);
+        const bone = new THREE.Mesh(
+          new THREE.CapsuleGeometry(r, Math.max(0.001, len * share - 2 * r), 4, 8),
+          material,
+        );
+        bone.position.y = (len * share) / 2;
+        joint.add(bone);
+        parent.add(joint);
+        joints.push(joint);
+        parent = joint;
+      }
+      fingers.push(joints);
     }
     group.visible = false;
     scene.add(group);
     return { group, fingers, material };
+  };
+  /**
+   * Which way her surface faces at a hit: out from the nearest bone line through it. A skinned mesh's facet normal is
+   * its rest pose's, so on a bent arm it points anywhere; the radial direction is right for a limb or trunk.
+   */
+  const surfaceNormal = (hit: THREE.Intersection): THREE.Vector3 => {
+    let best: { d: number; n: THREE.Vector3 } | null = null;
+    for (const [a0, b0] of NORMAL_SEGMENTS) {
+      const a = worldOf(a0);
+      const b = worldOf(b0) ?? a;
+      if (!a || !b) continue;
+      const ab = b.clone().sub(a);
+      const t =
+        ab.lengthSq() < 1e-9
+          ? 0
+          : Math.max(0, Math.min(1, hit.point.clone().sub(a).dot(ab) / ab.lengthSq()));
+      const out = hit.point.clone().sub(a.addScaledVector(ab, t));
+      const d = out.length();
+      if (d > 1e-4 && (best === null || d < best.d)) best = { d, n: out.divideScalar(d) };
+    }
+    return (
+      best?.n ??
+      hit.face?.normal.clone().transformDirection(hit.object.matrixWorld) ??
+      new THREE.Vector3(0, 0, 1)
+    );
   };
   /** A pointer over or on her: the hand there, palm toward her surface. */
   const handAt = (
@@ -448,9 +529,7 @@ export function mountBody(
     pressure: number,
     fingertip: boolean,
   ) => {
-    const n =
-      hit.face?.normal.clone().transformDirection(hit.object.matrixWorld) ??
-      new THREE.Vector3(0, 0, 1);
+    const n = surfaceNormal(hit);
     const now = performance.now();
     handFrame = pointerHand({
       at: now,
@@ -480,17 +559,29 @@ export function mountBody(
     // her surface pushes back: a firm press sits closer, a brush hovers just off her
     const off = handLength() * (0.08 - 0.06 * f.pressure);
     const at = predict(handEuro, 16);
-    const n = new THREE.Vector3(...f.normal);
-    const d = new THREE.Vector3(...f.direction);
+    // the hand turns smoothly to the surface (a raycast's facet normal jumps triangle to triangle)
+    const k = drawnAt === 0 ? 1 : 1 - Math.exp(-Math.max(0, now - drawnAt) / HAND_TURN_MS);
+    drawnAt = now;
+    drawnN.lerp(new THREE.Vector3(...f.normal), k).normalize();
+    drawnD.lerp(new THREE.Vector3(...f.direction), k);
+    const n = drawnN.clone();
+    const d = drawnD
+      .clone()
+      .sub(n.clone().multiplyScalar(drawnD.dot(n)))
+      .normalize();
     const side = new THREE.Vector3().crossVectors(d, n);
     handMesh.group.matrix.makeBasis(side, d, n.clone().negate());
     handMesh.group.matrix.setPosition(at[0] - n.x * off, at[1] - n.y * off, at[2] - n.z * off);
     handMesh.group.matrixAutoUpdate = false;
     handMesh.group.matrixWorldNeedsUpdate = true;
+    // relaxed fingers rest a little bent; the curl closes them joint by joint
     const curl = f.curl * (1 - relax);
     for (const [i, finger] of handMesh.fingers.entries())
-      finger.rotation.x = (i === 4 ? 0.6 : 1.3) * curl;
-    for (const finger of handMesh.fingers) finger.updateMatrix();
+      for (const [j, joint] of finger.entries()) {
+        joint.rotation.x = (i === 4 ? 0.12 : 0.18) + ((i === 4 ? 0.6 : 1.3) * curl) / 3;
+        void j;
+        joint.updateMatrix();
+      }
     handMesh.material.opacity = 0.55 * shown;
     handMesh.group.visible = true;
     return true;
@@ -869,7 +960,21 @@ export function mountBody(
       if (closer === closerTo) stepping = null;
       lastMove = now;
     }
-    const exhale = applyMotion((n) => vrm!.humanoid.getNormalizedBoneNode(n), motion, now / 1000);
+    // a tremble is a brief burst, not a state: held high, it settles to a faint quiver, and comes back only after calm
+    if (motion.tremble > 0.2) {
+      tremorSince ??= now;
+      tremorCalm = null;
+    } else if (tremorSince !== null) {
+      tremorCalm ??= now;
+      if (now - tremorCalm > TREMOR_REARM_MS) tremorSince = null;
+    }
+    const over = tremorSince === null ? 0 : Math.max(0, now - tremorSince - TREMOR_BURST_MS);
+    const burst = 0.35 + 0.65 * Math.exp(-over / 800);
+    const exhale = applyMotion(
+      (n) => vrm!.humanoid.getNormalizedBoneNode(n),
+      { ...motion, tremble: motion.tremble * burst },
+      now / 1000,
+    );
     // a touch: she turns her head toward it and flinches a little, then eases back
     const felt = touch === null ? 0 : Math.sin(Math.PI * Math.min(1, (now - touch.at) / TOUCH_MS));
     if (touch !== null && felt > 0) {
@@ -885,7 +990,9 @@ export function mountBody(
         headNode.rotation.y += 0.35 * yaw * felt;
         headNode.rotation.x += 0.6 * pitch * felt;
       }
-      if (chestNode) chestNode.rotation.x += -0.05 * felt * (now - touch.at < 300 ? 1 : 0.4);
+      // a flinch at first that eases off smoothly (a step here jerked her chest)
+      if (chestNode)
+        chestNode.rotation.x += -0.05 * felt * (0.4 + 0.6 * Math.exp(-(now - touch.at) / 200));
     }
     const added = stateWeights(
       states,
@@ -1311,9 +1418,7 @@ export function mountBody(
     const from = p.clone().addScaledVector(new THREE.Vector3(...r.dir).normalize(), 0.6);
     ray.set(from, p.clone().sub(from).normalize());
     const hit = ray.intersectObject(vrm.scene, true).find((h) => h.object.visible);
-    const normal =
-      hit?.face?.normal.clone().transformDirection(hit.object.matrixWorld) ??
-      from.clone().sub(p).normalize();
+    const normal = hit !== undefined ? surfaceNormal(hit) : from.clone().sub(p).normalize();
     const up = Math.abs(normal.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
     agentTouch = {
       start: now,
@@ -1354,17 +1459,33 @@ export function mountBody(
     return true;
   };
   /** Her body gives to the hand on her: the part under it turns away by how firmly, more for a reflex. */
+  const pickGive = (pos: Record<string, V3>, bone: string): Record<string, V3> =>
+    Object.fromEntries(
+      Object.entries(pos).filter(([b]) => b === bone || GIVE_CHILD[bone]?.includes(b) === true),
+    );
   const giveToHand = (now: number) => {
-    if (vrm === null || handFrame === null || !handHeld) return;
+    if (vrm === null || handFrame === null || !handHeld) {
+      giving = null;
+      return;
+    }
     const reflex = Math.max(0, Math.sin(Math.PI * Math.min(1, (now - reflexAt) / REFLEX_MS))) * 0.6;
     const pos: Record<string, V3> = {};
     for (const b of CONTACT_BONES) {
       const w = worldOf(b);
       if (w) pos[b] = [w.x, w.y, w.z];
     }
-    const give = yieldTo(pos, handFrame.palm, handFrame.normal, handFrame.pressure, reflex);
-    const node = give && vrm.humanoid.getNormalizedBoneNode(give.bone as VRMHumanBoneName);
-    if (!give || !node?.parent) return;
+    // one part gives for the whole of a contact: re-choosing the nearest each frame let two parts trade it, and shake
+    const only = giving === null ? pos : pickGive(pos, giving.bone);
+    const raw = yieldTo(only, handFrame.palm, handFrame.normal, handFrame.pressure, reflex);
+    if (raw === null) return;
+    const k = 1 - Math.exp(-Math.max(0, now - (giving?.at ?? now)) / GIVE_TAU_MS);
+    giving =
+      giving === null
+        ? { bone: raw.bone, angle: raw.angle * 0.2, at: now }
+        : { bone: giving.bone, angle: giving.angle + (raw.angle - giving.angle) * k, at: now };
+    const give = { ...raw, angle: giving.angle };
+    const node = vrm.humanoid.getNormalizedBoneNode(give.bone as VRMHumanBoneName);
+    if (!node?.parent) return;
     // the turn is in her world: carried into the bone's parent frame, then added to its pose
     const parent = node.parent.getWorldQuaternion(new THREE.Quaternion());
     const turn = new THREE.Quaternion().setFromAxisAngle(
@@ -1654,6 +1775,7 @@ export function mountBody(
   let hoverTravel = 0;
   let hoverLast: { x: number; y: number } | null = null;
   let lingerTimer: ReturnType<typeof setTimeout> | null = null;
+  let hoverIdle: ReturnType<typeof setTimeout> | null = null;
   const traced = (at: ReturnType<typeof partAt>, travel: number, now: number) => {
     const step = traceStep(trace, at?.where ?? null, travel, now);
     trace = step.trace;
@@ -1702,6 +1824,19 @@ export function mountBody(
     if (lingerTimer !== null) clearTimeout(lingerTimer);
     lingerTimer =
       at === null ? null : setTimeout(() => traced(at, 0, performance.now()), TRACE_LINGER_MS);
+    // a mouse left resting over her is not a hand on her: it fades once it has been still a moment
+    if (hoverIdle !== null) clearTimeout(hoverIdle);
+    hoverIdle =
+      at === null
+        ? null
+        : setTimeout(() => {
+            hoverIdle = null;
+            if (press === null && handHeld && handFrame !== null) {
+              handFrame = { ...handFrame, at: performance.now() };
+              handHeld = false;
+              invalidate();
+            }
+          }, HOVER_IDLE_MS);
   };
   const onMove = (e: PointerEvent) => {
     onHover(e);
@@ -1841,6 +1976,19 @@ export function mountBody(
     outfit: () => [...outfit.keys()],
     /** What this model's body can do (its rig's manifest) and what the rig last had to correct in a pose. */
     rig: () => ({ manifest, issues }),
+    /** For checks: the drawn hand's palm and the way it faces, in the world, while it shows. */
+    probe: () => {
+      if (handMesh === null || !handMesh.group.visible) return { hand: null };
+      handMesh.group.updateMatrixWorld(true);
+      const e = handMesh.group.matrixWorld.elements;
+      return {
+        hand: {
+          points: [[e[12], e[13], e[14]]],
+          facing: [e[8], e[9], e[10]],
+          opacity: handMesh.material.opacity,
+        },
+      };
+    },
     /** Where each of her joints is on the canvas (CSS px), for a page that labels or aims at her parts. */
     joints: () => {
       const r = canvas.getBoundingClientRect();
