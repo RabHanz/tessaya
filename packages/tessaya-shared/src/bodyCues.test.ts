@@ -107,6 +107,7 @@ describe("cue wire", () => {
     // a cue can never point a body at another host
     [{ kind: "model", persona: "freya", url: "https://cdn.example/x.vrm" }, null],
     [{ kind: "model", persona: "freya", url: "//cdn.example/x.vrm" }, null],
+    [{ kind: "model", persona: "freya", url: "blob:https://host/8c1f" }, "same"],
     [
       { kind: "level", value: 0.4, viseme: "zz" },
       { kind: "level", value: 0.4 },
