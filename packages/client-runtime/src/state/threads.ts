@@ -59,6 +59,10 @@ import {
   type EnvironmentThreadState,
   type EnvironmentThreadStatus,
 } from "./threadState.ts";
+import { holdWhileHidden } from "./holdWhileHidden.ts";
+
+/** A hidden window shows a streaming thread's newest state at most this often. */
+const HIDDEN_THREAD_UPDATE_MS = 5_000;
 
 const THREAD_SUBSCRIPTION_RETRY_DELAY = "250 millis";
 
@@ -1165,7 +1169,7 @@ function threadStateChanges(
     environmentId,
     Stream.unwrap(
       makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
-    ),
+    ).pipe(holdWhileHidden(HIDDEN_THREAD_UPDATE_MS)),
   );
 }
 
