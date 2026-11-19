@@ -4,10 +4,12 @@
  * Silent by design: a wish moves her body, never her voice, and never in front of his work.
  */
 import type { ExpressionMood } from "@t3tools/tessaya-contracts";
+import * as Schema from "effect/Schema";
 
 import type { BodyMove } from "./bodyControl.ts";
 
-export type Want = "rest" | "sulk" | "curious" | "seekHim" | "play" | "bored";
+export const WANTS = ["rest", "sulk", "curious", "seekHim", "play", "bored"] as const;
+export type Want = (typeof WANTS)[number];
 export type Liveliness = "still" | "calm" | "lively";
 
 export interface MotiveInput {
@@ -119,3 +121,40 @@ export const wantMove = (want: Want): BodyMove => {
       return { act: "stretch", then: [{ afterMs: 2_500, act: "sigh" }] };
   }
 };
+
+/**
+ * The rare wish of her own (M-087 step e): when the rules leave her with nothing to do, a lively her may ask the cheap
+ * model what she feels like doing, at most this often, and only while he isn't with her. Everyday only.
+ */
+export const MODEL_WISH_EVERY_MS = 10 * 60_000;
+const WITH_HIM_MS = 10 * 60_000;
+export const modelWishDue = (i: MotiveInput, lastAsked: number | null): boolean =>
+  i.liveliness === "lively" &&
+  (i.him === "working" || i.him === "away") &&
+  (i.himAt === null || i.now - i.himAt > WITH_HIM_MS) &&
+  (lastAsked === null || i.now - lastAsked >= MODEL_WISH_EVERY_MS);
+
+export const WishAnswer = Schema.Struct({
+  want: Schema.Literals([...WANTS, "none"]),
+  /** Her own reason, a few words: kept with the wish's record. */
+  why: Schema.String,
+});
+
+const WANT_MEANS: Readonly<Record<Want, string>> = {
+  rest: "settle down and rest",
+  sulk: "turn away and sulk for a bit",
+  curious: "lean in and look around at something",
+  seekHim: "go over to where he is and look at him",
+  play: "dance or play on her own",
+  bored: "stretch and sigh",
+};
+
+/** The prompt for that one cheap call: who she is now and what she could do; words he said never reach it. */
+export const wishPrompt = (i: MotiveInput, hour: number): string =>
+  [
+    "You are the inner life of a small animated companion who lives on his desktop. Nobody is talking to her right now.",
+    `How she feels: ${i.mood.label} (strength ${i.mood.intensity.toFixed(1)} of 1), energy ${i.mood.energy.toFixed(1)} of 1.`,
+    `Him: ${i.him === "working" ? "at his desk, working" : "not at his desk"}; ${i.himAt === null ? "he hasn't been with her today" : `he was last with her ${Math.round((i.now - i.himAt) / 60_000)} minutes ago`}. It is ${hour}:00 where he is.`,
+    `What she could do, silently and without getting in his way: ${WANTS.map((w) => `"${w}" (${WANT_MEANS[w]})`).join(", ")}, or "none" to carry on as she is.`,
+    "Pick what fits how she feels, as a real person would. Doing nothing is often right. Give her reason in a few plain words.",
+  ].join("\n");

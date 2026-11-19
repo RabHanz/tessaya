@@ -44,7 +44,15 @@ import {
   type FocusEvent,
   type PresenceSignal,
 } from "@t3tools/tessaya-shared/bodyFocus";
-import { chooseWant, wantMove, type Want } from "@t3tools/tessaya-shared/motives";
+import {
+  chooseWant,
+  modelWishDue,
+  wantMove,
+  WishAnswer,
+  wishPrompt,
+  type MotiveInput,
+  type Want,
+} from "@t3tools/tessaya-shared/motives";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -60,6 +68,8 @@ import { isBrain } from "./BrainHost.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { TessayaOneShot } from "./TessayaOneShot.ts";
+import { houseZone } from "./houseZone.ts";
 import { TurnLiveContext } from "./TurnLiveContext.ts";
 
 /** Who is asking: her own turn on a vessel, an agent in T3, or one signed in from outside. */
@@ -285,6 +295,33 @@ export const noteTesselHandled = Effect.fn("TessayaBody.tesselHandled")(function
 });
 export const tesselHandledAt = (device: string): number | null => tesselHandled.get(device) ?? null;
 
+// shortcut: when the cheap model was last asked, per process
+let wishAsked: number | null = null;
+/** The rare wish the rules don't give (motives.ts modelWishDue): one cheap call, her own reason kept with it. */
+const modelWish = Effect.fn("TessayaBody.modelWish")(function* (motive: MotiveInput) {
+  if (!modelWishDue(motive, wishAsked)) return null;
+  const oneShot = yield* Effect.serviceOption(TessayaOneShot);
+  if (Option.isNone(oneShot)) return null;
+  wishAsked = motive.now;
+  const hour = Number(
+    new Intl.DateTimeFormat("en-GB", {
+      hour: "numeric",
+      hourCycle: "h23",
+      timeZone: yield* houseZone(),
+    }).format(motive.now),
+  );
+  const answer = yield* oneShot.value
+    .run({
+      prompt: wishPrompt(motive, hour),
+      outputSchema: WishAnswer,
+      role: "intent",
+      feature: "wish",
+    })
+    .pipe(Effect.orElseSucceed(() => null));
+  if (answer === null || answer.want === "none") return null;
+  return { want: answer.want, why: `she felt like it: ${answer.why.trim().slice(0, 120)}` };
+});
+
 /** Her own wishes (motives.ts) move her body only through body focus, as its weakest caller. */
 const SELF: BodyCaller = {
   id: "self",
@@ -323,7 +360,7 @@ export const wishTick = Effect.fn("TessayaBody.wish")(function* () {
         Effect.map((s) => s.tessayaLiveliness),
         Effect.orElseSucceed(() => "calm" as const),
       );
-  const wish = chooseWant({
+  const motive = {
     now,
     liveliness,
     mood: { label: view.label, intensity: view.intensity, energy: view.energy },
@@ -332,10 +369,13 @@ export const wishTick = Effect.fn("TessayaBody.wish")(function* () {
     worldAt: Math.max(himAt ?? 0, deskWorld.openedAt) || now,
     newThingAt: deskWorld.openedAt === 0 ? null : deskWorld.openedAt,
     last: lastWish,
-  });
+  };
+  const wish = chooseWant(motive) ?? (yield* modelWish(motive));
   if (wish === null) return null;
   lastWish = { want: wish.want, at: now };
   const answer = yield* moveBody(wantMove(wish.want), SELF);
+  // her own wish holds her body only while it is sent; the dial, not the 10-minute idle, sets her rhythm
+  yield* moveFocus(DESK_BODY, { kind: "idle", thread: SELF.thread!, at: now });
   yield* emitAction({
     kind: "body.want",
     actor: { kind: "rule", id: "motives", certainty: 1 },
