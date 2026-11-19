@@ -81,6 +81,7 @@ import { INVOLUNTARY, performCues } from "@t3tools/tessaya-shared/bodyPlanner";
 import { FINGER_KEYS, fingerBones } from "@t3tools/tessaya-shared/bodySkills";
 import { gaitAt, gaitOf, type Gait } from "@t3tools/tessaya-shared/bodyGait";
 import type { BodyTarget } from "@t3tools/tessaya-shared/bodyLocomotion";
+import type { StageMount, StageSpot } from "@t3tools/tessaya-shared/rooms";
 import { softenOnContact } from "./softContact.ts";
 import {
   grabKindOf,
@@ -344,6 +345,47 @@ const startTier = () => {
   return cores <= 4 ? 1 : 2;
 };
 
+/**
+ * One renderer, scene, camera and light rig that several bodies share (a mirror, the phone's crew): each body ticks its
+ * own state on the stage's single frame, and the stage draws once.
+ */
+export interface Stage {
+  readonly renderer: THREE.WebGLRenderer;
+  readonly scene: THREE.Scene;
+  readonly camera: THREE.PerspectiveCamera;
+  readonly lights: ReturnType<typeof makeStage>["lights"];
+  /** A body wants a frame within `afterMs`. */
+  readonly wake: (afterMs: number, id: string) => void;
+  /** Every body's joints (world), so the one camera frames all of them. */
+  readonly points: () => ReadonlyArray<THREE.Vector3>;
+  /** The body that moves the shared camera (the first one mounted). */
+  readonly leads: (id: string) => boolean;
+}
+
+const makeStage = (canvas: HTMLCanvasElement, tier: number) => {
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: TIERS[tier]!.aa,
+    alpha: true,
+    powerPreference: "low-power",
+  });
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(24, 1, 0.1, 20);
+  camera.position.set(0, 1.35, 2.1);
+  camera.lookAt(0, 1.3, 0);
+  // stage lighting: a soft fill, a warm key and a cool rim that lifts her off the background
+  const fill = new THREE.HemisphereLight(0xfff4ee, 0x2a2630, 1.1);
+  scene.add(fill);
+  const sun = new THREE.DirectionalLight(0xfff0e6, 1.5);
+  sun.position.set(0.8, 1.9, 2);
+  scene.add(sun);
+  const rim = new THREE.DirectionalLight(0xcfe0ff, 1.3);
+  rim.position.set(-1.2, 2.2, -1.6);
+  scene.add(rim);
+  return { renderer, scene, camera, lights: { fill, sun, rim } };
+};
+
 export function mountBody(
   canvas: HTMLCanvasElement,
   options: {
@@ -386,29 +428,20 @@ export function mountBody(
       /** Her height (m), so the host turns metres into its own units. */
       readonly height: number;
     }) => void;
+    /** Where this body stands on a shared stage (metres across and toward him); the stage puts the camera on all. */
+    readonly at?: { readonly x: number; readonly z: number };
   } = {},
+  /** A stage this body shares with others (`mountBodies`); without one it has its own renderer and loop. */
+  shared?: { readonly stage: Stage; readonly id: string },
 ) {
   let tier = options.tier ?? startTier();
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: TIERS[tier]!.aa,
-    alpha: true,
-    powerPreference: "low-power",
-  });
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(24, 1, 0.1, 20);
-  camera.position.set(0, 1.35, 2.1);
-  camera.lookAt(0, 1.3, 0);
-  // stage lighting: a soft fill, a warm key and a cool rim that lifts her off the background
-  const fill = new THREE.HemisphereLight(0xfff4ee, 0x2a2630, 1.1);
-  scene.add(fill);
-  const sun = new THREE.DirectionalLight(0xfff0e6, 1.5);
-  sun.position.set(0.8, 1.9, 2);
-  scene.add(sun);
-  const rim = new THREE.DirectionalLight(0xcfe0ff, 1.3);
-  rim.position.set(-1.2, 2.2, -1.6);
-  scene.add(rim);
+  const { renderer, scene, camera, lights } = shared?.stage ?? makeStage(canvas, tier);
+  const { fill, sun, rim } = lights;
+  // her own place in the scene: every part of her hangs under it, so bodies on one stage stand apart
+  const jointPool = BODY_JOINTS.map(() => new THREE.Vector3());
+  const root = new THREE.Group();
+  root.position.set(options.at?.x ?? 0, 0, options.at?.z ?? 0);
+  scene.add(root);
   const loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
 
@@ -748,6 +781,7 @@ export function mountBody(
   let raf = 0;
 
   const resize = () => {
+    if (shared !== undefined) return invalidate();
     const w = canvas.clientWidth || 1;
     const h = canvas.clientHeight || 1;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIERS[tier]!.ratio));
@@ -1034,13 +1068,17 @@ export function mountBody(
   // where the camera aims and how far back it stands; eased so a posture change glides rather than cuts
   let camAim = { x: 0, y: 0, dist: 0 };
   const placeCamera = (f: number) => {
+    if (shared !== undefined && !shared.stage.leads(shared.id)) return false;
     let want: { x: number; y: number; dist: number };
-    if (framing === "body") {
-      // all of her, whatever her posture: fit her joints (plus head room) into the view
-      const pts = BODY_JOINTS.flatMap((b) => {
-        const p = worldOf(b);
-        return p ? [p] : [];
-      });
+    if (framing === "body" || shared !== undefined) {
+      // all of her (all of them on a shared stage), whatever the posture: fit the joints (plus head room) into view
+      const pts =
+        shared !== undefined
+          ? shared.stage.points()
+          : BODY_JOINTS.flatMap((b) => {
+              const p = worldOf(b);
+              return p ? [p] : [];
+            });
       if (pts.length === 0) return false;
       const xs = pts.map((p) => p.x);
       const ys = pts.map((p) => p.y);
@@ -1349,7 +1387,7 @@ export function mountBody(
           : [];
       soft.set([...his, ...own]);
     }
-    renderer.render(scene, camera);
+    if (shared === undefined) renderer.render(scene, camera);
     frames++;
     const spent = performance.now() - t0;
     workMs += spent;
@@ -1383,7 +1421,9 @@ export function mountBody(
   };
 
   const schedule = (afterMs = 0) => {
-    if (disposed || !shown || !onScreen || raf !== 0 || timer !== null) return;
+    if (disposed || !shown || !onScreen) return;
+    if (shared !== undefined) return shared.stage.wake(afterMs, shared.id);
+    if (raf !== 0 || timer !== null) return;
     // half a frame early: the animation frame then lands on the intended vsync, not one after (uneven 16/33 ms steps)
     const wait = Math.max(0, afterMs - (performance.now() - lastFrame) - 8);
     timer = setTimeout(() => {
@@ -1429,7 +1469,7 @@ export function mountBody(
     VRMUtils.rotateVRM0(next);
     baseYaw = next.scene.rotation.y;
     if (vrm !== null) {
-      scene.remove(vrm.scene);
+      root.remove(vrm.scene);
       VRMUtils.deepDispose(vrm.scene);
     }
     vrm = next;
@@ -1480,7 +1520,7 @@ export function mountBody(
         tails.push({ node: o, x: o.rotation.x, y: o.rotation.y });
     });
     vrm.scene.name = persona;
-    scene.add(vrm.scene);
+    root.add(vrm.scene);
     // frame the head and shoulders, whatever the model's height
     vrm.scene.updateMatrixWorld(true);
     // frame her whatever her height: "body" is top of the head to the knees, so every part can be touched
@@ -2670,9 +2710,159 @@ export function mountBody(
       for (const id of props.keys()) dropProp(id);
       overlays?.dispose();
       if (vrm !== null) VRMUtils.deepDispose(vrm.scene);
-      renderer.dispose();
+      scene.remove(root);
+      if (shared === undefined) renderer.dispose();
+    },
+    /** Where she stands on a shared stage (metres across and toward him) and how big. */
+    setPlace: (x: number, z: number, scale: number) => {
+      root.position.set(x, 0, z);
+      root.scale.setScalar(scale);
+      invalidate();
+    },
+    /** One frame of this body's own work on a shared stage (the stage draws). */
+    tick: (now: number) => frame(now),
+    /** Her joints in the world, for a shared stage's camera (into vectors she keeps, so a frame allocates none). */
+    worldJoints: (into: THREE.Vector3[]) => {
+      if (vrm === null) return;
+      for (const [i, b] of BODY_JOINTS.entries()) {
+        const node = vrm.humanoid.getRawBoneNode(b);
+        if (node) into.push(node.getWorldPosition(jointPool[i]!));
+      }
     },
   };
 }
 
 export type Body = ReturnType<typeof mountBody>;
+
+// a spot's 0..1 across the view, in metres on the stage; a forward body stands this much nearer him
+const STAGE_WIDTH_M = 3;
+const FRONT_M = 0.35;
+
+/**
+ * Several bodies in one view (a mirror, the phone's crew), as rooms.ts `StageMount` asks: `mount(personas)` gives a
+ * body per persona, each with its own cues, `BodyState`, `locate` and `onWalk`, and `place(spot)`. One renderer,
+ * scene, camera and light rig; one frame loop that ticks only the bodies that asked and draws once; a hidden or
+ * off-screen canvas draws nothing, as one body's does.
+ */
+export function mountBodies(
+  canvas: HTMLCanvasElement,
+  /** Options every body shares, and any one body's own by persona (its `locate` wins over the stage's). */
+  options: Parameters<typeof mountBody>[1] & {
+    readonly each?: Readonly<Record<string, Parameters<typeof mountBody>[1]>>;
+  } = {},
+  tier = options.tier ?? startTier(),
+) {
+  const base = makeStage(canvas, tier);
+  const list: Array<{ readonly id: string; readonly body: Body }> = [];
+  const wanting = new Set<string>();
+  const points: THREE.Vector3[] = [];
+  let due = Infinity;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let raf = 0;
+  let disposed = false;
+  // made once: a frame's scheduling allocates nothing
+  const fire = () => {
+    timer = null;
+    raf = requestAnimationFrame(draw);
+  };
+  const draw = (now: number) => {
+    raf = 0;
+    due = Infinity;
+    if (disposed) return;
+    // each body that asked ticks (and may ask again); the rest hold their pose; then one draw for all
+    for (const { id, body } of list)
+      if (wanting.has(id)) {
+        wanting.delete(id);
+        body.tick(now);
+      }
+    base.renderer.render(base.scene, base.camera);
+  };
+  const stage: Stage = {
+    ...base,
+    wake: (afterMs, id) => {
+      wanting.add(id);
+      const at = performance.now() + afterMs;
+      if (disposed || raf !== 0 || at >= due) return;
+      if (timer !== null) clearTimeout(timer);
+      due = at;
+      // half a frame early, so the animation frame lands on the intended vsync
+      timer = setTimeout(fire, Math.max(0, afterMs - 8));
+    },
+    points: () => {
+      points.length = 0;
+      for (const { body } of list) body.worldJoints(points);
+      return points;
+    },
+    leads: (id) => list[0]?.id === id,
+  };
+  const resize = () => {
+    const w = canvas.clientWidth || 1;
+    const h = canvas.clientHeight || 1;
+    base.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIERS[tier]!.ratio));
+    base.renderer.setSize(w, h, false);
+    base.camera.aspect = w / h;
+    base.camera.updateProjectionMatrix();
+    for (const { id } of list) stage.wake(0, id);
+  };
+  const spots = new Map<string, { x: number; z: number }>();
+  /** Another body on this stage: which way it is from this one and how far. */
+  const locateOn =
+    (from: string) =>
+    (to: BodyTarget): { yaw: number; metres: number } | null => {
+      if (to.kind !== "persona") return null;
+      const a = spots.get(from);
+      const b = spots.get(to.id);
+      if (a === undefined || b === undefined) return null;
+      // she faces +z with her left +x: a body to her left is a positive turn
+      return { yaw: Math.atan2(b.x - a.x, b.z - a.z), metres: Math.hypot(b.x - a.x, b.z - a.z) };
+    };
+  const { each, ...common } = options;
+  const add = (id: string) => {
+    const own = each?.[id] ?? {};
+    const theirs = own.locate ?? common.locate;
+    const mine = locateOn(id);
+    const body = mountBody(
+      canvas,
+      { ...common, ...own, tier, locate: (to) => theirs?.(to) ?? mine(to) },
+      { stage, id },
+    );
+    list.push({ id, body });
+    return body;
+  };
+  // a body facing one not placed yet turns once that one has a spot (a plan places them one at a time)
+  const waiting = new Map<string, string>();
+  const place = (id: string, body: Body, spot: StageSpot) => {
+    const at = { x: (spot.x - 0.5) * STAGE_WIDTH_M, z: spot.front ? FRONT_M : 0 };
+    spots.set(id, at);
+    body.setPlace(at.x, at.z, spot.scale);
+    if (spot.faces.kind === "persona" && !spots.has(spot.faces.id)) waiting.set(id, spot.faces.id);
+    else body.cue({ kind: "turn", to: spot.faces });
+    for (const [other, target] of waiting)
+      if (target === id) {
+        waiting.delete(other);
+        list.find((b) => b.id === other)?.body.cue({ kind: "turn", to: { kind: "persona", id } });
+      }
+  };
+  // oxlint-disable-next-line t3code/no-raw-resize-observer -- not React: the helper would pull react-dom into the body script
+  const sized = new ResizeObserver(resize);
+  sized.observe(canvas);
+  const mount = (personas: ReadonlyArray<string>) =>
+    new Map(
+      personas.map((id) => {
+        const body = list.find((b) => b.id === id)?.body ?? add(id);
+        return [id, { ...body, place: (spot: StageSpot) => place(id, body, spot) }] as const;
+      }),
+    );
+  return {
+    /** A body per persona, made once and kept (a later mount adds the new ones), each placeable on a spot. */
+    mount: mount satisfies StageMount["mount"],
+    dispose: () => {
+      disposed = true;
+      if (timer !== null) clearTimeout(timer);
+      if (raf !== 0) cancelAnimationFrame(raf);
+      sized.disconnect();
+      for (const { body } of list) body.dispose();
+      base.renderer.dispose();
+    },
+  };
+}

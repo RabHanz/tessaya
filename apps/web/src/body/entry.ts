@@ -22,12 +22,13 @@ import {
 } from "@t3tools/tessaya-shared/bodyScene";
 
 import { mountViewer } from "./modelViewer";
-import { mountBody } from "./vrmBody";
+import { mountBodies, mountBody } from "./vrmBody";
 
 declare global {
   interface Window {
     tessayaBody?: {
       readonly mount: typeof mountBody;
+      readonly mountMany: typeof mountBodies;
       readonly lineCues: typeof lineCues;
       readonly viewer: typeof mountViewer;
       readonly control: typeof control;
@@ -63,4 +64,10 @@ const control = {
 /** The control language a page drives its own body with (the playground reads it off `window.tessayaBody`). */
 export type BodyControl = typeof control;
 
-window.tessayaBody = { mount: mountBody, lineCues, viewer: mountViewer, control };
+window.tessayaBody = {
+  mount: mountBody,
+  mountMany: mountBodies,
+  lineCues,
+  viewer: mountViewer,
+  control,
+};
