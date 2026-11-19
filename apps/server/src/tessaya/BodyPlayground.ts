@@ -29,7 +29,7 @@ import * as Schema from "effect/Schema";
 
 import { emitAction } from "../provenance/ActionLog.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
-import type { BodyCaller, BodyMoveAnswer } from "./TessayaBody.ts";
+import { physicsClipsOn, type BodyCaller, type BodyMoveAnswer } from "./TessayaBody.ts";
 
 const encodeJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 const json = (v: unknown) => encodeJson(v).pipe(Effect.orElseSucceed(() => '{"closed":true}'));
@@ -260,7 +260,12 @@ export const movePlayground = Effect.fn("BodyPlayground.move")(function* (
       retryMs: g.retryMs,
     } satisfies BodyMoveAnswer;
   const [id, bus] = found;
-  publish(bus, moveCues(move, `p${(yield* Clock.currentTimeMillis).toString(36)}`));
+  publish(
+    bus,
+    moveCues(move, `p${(yield* Clock.currentTimeMillis).toString(36)}`, {
+      baked: yield* physicsClipsOn(),
+    }),
+  );
   if (!stream)
     yield* record("body.move", caller, id, true, { steps: 1 + (move.then?.length ?? 0) });
   return {

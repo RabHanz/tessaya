@@ -70,6 +70,8 @@ const MAX_KEYS = 32;
 const MAX_MS = 20_000;
 
 export interface BodyMove {
+  /** The library entry this move is, untouched (an intent with nothing of its own): its physics-trained version may play. */
+  readonly entry?: string;
   /** Something she does with her whole body (ACTS), or an extension act's name in a private moment. */
   readonly act?: string;
   readonly posture?: PostureName | "auto";
@@ -169,10 +171,13 @@ const decodeOne = (raw: unknown, depth: number): Decoded => {
       };
     const own = (hit?.entry.move ?? {}) as Record<string, unknown>;
     // its later steps stay unless this step brings its own
-    return decodeOne(
+    const d = decodeOne(
       { ...own, ...rest, ...(rest["then"] === undefined ? {} : { then: rest["then"] }) },
       depth,
     );
+    return d.ok && hit !== null && Object.keys(rest).length === 0
+      ? { ...d, move: { ...d.move, entry: hit.entry.id } }
+      : d;
   }
   const m: Record<string, unknown> = {};
   if (raw["act"] !== undefined) {
@@ -454,8 +459,17 @@ const stepCues = (m: BodyMove, id: string): BodyCue[] => {
   return out;
 };
 /** The cues a move becomes: its first step now, later steps as one timed sequence the body plays by its own clock. */
-export const moveCues = (m: BodyMove, id = "move"): BodyCue[] => {
-  const now = stepCues(m, id);
+export const moveCues = (
+  m: BodyMove,
+  id = "move",
+  opts: { readonly baked?: boolean } = {},
+): BodyCue[] => {
+  const now = [
+    ...stepCues(m, id),
+    ...(opts.baked === true && m.entry !== undefined
+      ? [{ kind: "baked", entry: m.entry, id } as const]
+      : []),
+  ];
   const later = (m.then ?? []).map((s, i) => ({
     atMs: s.afterMs,
     cues: stepCues(s, `${id}-${i + 1}`),

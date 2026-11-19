@@ -811,6 +811,8 @@ export function mountBody(
   let touchAs: string | null = null;
   // owner extensions: a playing clip, extra touch regions, and model expressions standing in for states and faces
   let clip: (Extract<BodyCue, { kind: "clip" }> & { start: number }) | null = null;
+  // the library move playing its physics-trained version, by its cues' id, until it ends
+  let baked: { id: string; until: number } | null = null;
   let expMap: Extract<BodyCue, { kind: "expressions" }>["map"] = {};
   let moodKey = "";
   let outfit = new Map<OutfitPiece, THREE.Object3D[]>();
@@ -2196,6 +2198,26 @@ export function mountBody(
     grip.lock.quaternion.premultiply(parent.clone().invert().multiply(q).multiply(parent));
     grip.lock.updateMatrixWorld(true);
   };
+  const playClip = (c: Extract<BodyCue, { kind: "clip" }>, now: number) => {
+    setPose(now);
+    const held = { ...c, start: now };
+    clip = held;
+    // a direct pose asked to arrive in `ms`: her springs take that long instead of her own pace
+    pace = c.ms === undefined ? 1 : c.ms / 450;
+    // a stream's frame: if no newer frame comes within its lapse, she takes her own posture back
+    if (lapse !== null) clearTimeout(lapse);
+    lapse =
+      c.lapseMs === undefined
+        ? null
+        : setTimeout(() => {
+            lapse = null;
+            if (clip !== held) return;
+            setPose(performance.now());
+            invalidate();
+          }, c.lapseMs);
+    wake(now);
+    invalidate();
+  };
   const cue = (raw: unknown) => {
     const c: BodyCue | null = parseCue(raw);
     if (c === null || disposed) return;
@@ -2246,25 +2268,32 @@ export function mountBody(
       case "act":
         doAct(c.act, now);
         return invalidate();
-      case "clip": {
-        setPose(now);
-        const held = { ...c, start: now };
-        clip = held;
-        // a direct pose asked to arrive in `ms`: her springs take that long instead of her own pace
-        pace = c.ms === undefined ? 1 : c.ms / 450;
-        // a stream's frame: if no newer frame comes within its lapse, she takes her own posture back
-        if (lapse !== null) clearTimeout(lapse);
-        lapse =
-          c.lapseMs === undefined
-            ? null
-            : setTimeout(() => {
-                lapse = null;
-                if (clip !== held) return;
-                setPose(performance.now());
-                invalidate();
-              }, c.lapseMs);
-        wake(now);
-        return invalidate();
+      case "clip":
+        // a library move playing its physics-trained version keeps it to the end: that move's own clips wait
+        if (baked !== null && c.id.startsWith(`${baked.id}-`) && now < baked.until) return;
+        return playClip(c, now);
+      case "baked": {
+        // loaded the first time one is asked for; until then (or with none for this entry) the renderer's clip plays
+        const at = now;
+        void import("@t3tools/tessaya-shared/bodyBakedClips").then(({ bakedClip }) => {
+          const b = bakedClip(c.entry);
+          if (b === undefined || disposed) return;
+          baked = { id: c.id, until: at + b.ms };
+          const grounded = clip?.id.startsWith(`${c.id}-`) === true && clip.grounded;
+          playClip(
+            {
+              kind: "clip",
+              id: c.id,
+              fps: b.fps,
+              loop: false,
+              grounded,
+              frames: b.frames,
+              lapseMs: b.ms + 100,
+            },
+            at,
+          );
+        });
+        return;
       }
       case "zones":
       case "sense": {

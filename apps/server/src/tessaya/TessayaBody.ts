@@ -72,6 +72,17 @@ import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { houseZone } from "./houseZone.ts";
 import { TurnLiveContext } from "./TurnLiveContext.ts";
 
+/** Whether library moves name their physics-trained version for the body to play (`tessayaBodyPhysicsClips`, off). */
+export const physicsClipsOn = Effect.fn("TessayaBody.physicsClipsOn")(function* () {
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  return Option.isNone(settings)
+    ? false
+    : yield* settings.value.getSettings.pipe(
+        Effect.map((s) => s.tessayaBodyPhysicsClips),
+        Effect.orElseSucceed(() => false),
+      );
+});
+
 /** Who is asking: her own turn on a vessel, an agent in T3, or one signed in from outside. */
 export interface BodyCaller {
   readonly id: string;
@@ -482,6 +493,7 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
       cues: moveCues(
         other === undefined ? move : reaching,
         `m${(yield* Clock.currentTimeMillis).toString(36)}`,
+        { baked: yield* physicsClipsOn() },
       ),
       privateMove,
       acts: extensionActs(move),

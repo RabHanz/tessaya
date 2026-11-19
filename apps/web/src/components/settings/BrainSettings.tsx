@@ -277,6 +277,7 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const breath = useEnvironmentSettings(environmentId, (s) => s.tessayaVoiceBreath);
   const keepTurns = useEnvironmentSettings(environmentId, (s) => s.tessayaTurnCapture);
   const outsideBody = useEnvironmentSettings(environmentId, (s) => s.tessayaBodyOutsideAgents);
+  const physicsClips = useEnvironmentSettings(environmentId, (s) => s.tessayaBodyPhysicsClips);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
     <SettingsSection title="Her lines">
@@ -321,6 +322,17 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             aria-label="Body-only agents move her body"
             checked={outsideBody}
             onCheckedChange={(on) => update({ tessayaBodyOutsideAgents: on })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Physics-trained moves"
+        description="Moves from her library play the version trained in a physics simulation, so her arms never pass through her. Moves without one play as before."
+        control={
+          <Switch
+            aria-label="Physics-trained moves"
+            checked={physicsClips}
+            onCheckedChange={(on) => update({ tessayaBodyPhysicsClips: on })}
           />
         }
       />
