@@ -147,6 +147,8 @@ interface Row {
 }
 
 const OUTSIDE = "mcp__t3-code__";
+const OUTSIDE_SETUP =
+  'You drive Tessaya\'s own body through her body tools: pass target "her" on every call. What the user says is a direction to her body.';
 const NO_PLAYGROUND = "No playground is open. Open /tessaya/playground in a browser first.";
 /** One direction as an outside agent gets it: her body tools as /mcp advertises them, answered as the server does. */
 const outsideTurn = async (said: string, model: string) => {
@@ -200,6 +202,9 @@ const outsideTurn = async (said: string, model: string) => {
           "--allowedTools",
           `${OUTSIDE}*`,
           "--no-session-persistence",
+          // how an agent set up to drive her (not the playground) is told so: the one line of setup it gets
+          "--append-system-prompt",
+          OUTSIDE_SETUP,
         ],
         { cwd: dir, stdio: ["ignore", "pipe", "pipe"] },
       );
