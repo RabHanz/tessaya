@@ -383,6 +383,8 @@ export function mountBody(
       readonly metres: number;
       readonly heading: number;
       readonly done: boolean;
+      /** Her height (m), so the host turns metres into its own units. */
+      readonly height: number;
     }) => void;
   } = {},
 ) {
@@ -882,10 +884,20 @@ export function mountBody(
       Object.assign(out, frame.bones);
       const step = frame.speed * dt;
       w.travelled += step;
-      options.onWalk?.({ metres: step, heading: facing, done: false });
+      options.onWalk?.({
+        metres: step,
+        heading: facing,
+        done: false,
+        height: rig?.height ?? REFERENCE_RIG.height,
+      });
       if (w.travelled >= w.metres) {
         loco.walk = null;
-        options.onWalk?.({ metres: 0, heading: facing, done: true });
+        options.onWalk?.({
+          metres: 0,
+          heading: facing,
+          done: true,
+          height: rig?.height ?? REFERENCE_RIG.height,
+        });
       }
     }
     if (u >= 1 && loco.walk === null) {
@@ -1541,7 +1553,13 @@ export function mountBody(
     for (const p of props.values()) p.on = false;
     // she stops where she is: no dancing or walking on, and a held scene posture lets go
     dancing = stepping = null;
-    if (loco?.walk != null) options.onWalk?.({ metres: 0, heading: facing, done: true });
+    if (loco?.walk != null)
+      options.onWalk?.({
+        metres: 0,
+        heading: facing,
+        done: true,
+        height: rig?.height ?? REFERENCE_RIG.height,
+      });
     loco = null;
     clip = null;
     closerTo = closer;
