@@ -3,7 +3,7 @@
  * a countdown, and each item cancelled, paused or moved where its owner allows (`baton.upcoming.*`).
  */
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { UpcomingItem, UpcomingListResult, UpcomingOp } from "@t3tools/tessaya-contracts";
+import type { UpcomingListResult, UpcomingOp } from "@t3tools/tessaya-contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   countdownText,
@@ -75,6 +75,7 @@ function UpcomingSections(props: {
   const [now, setNow] = useState(() => Date.now());
   const [line, setLine] = useState("");
   const [busy, setBusy] = useState(false);
+  const [undo, setUndo] = useState<string | null>(null);
 
   const read = async () => {
     const result = await listCall({ environmentId, input: {} });
@@ -98,13 +99,16 @@ function UpcomingSections(props: {
     return () => clearTimeout(timer);
   }, [items, now]);
 
-  const change = async (item: UpcomingItem, op: UpcomingOp, at?: number) => {
+  const change = async (id: string, op: UpcomingOp, at?: number) => {
     if (busy) return;
     setBusy(true);
+    setUndo(null);
     const result = await changeCall({
       environmentId,
-      input: { id: item.id, op, ...(at === undefined ? {} : { at }) },
+      input: { id, op, ...(at === undefined ? {} : { at }) },
     });
+    // A cancel that can come back keeps an Undo beside its sentence.
+    if (result._tag === "Success" && result.value.undoable === true) setUndo(id);
     const reason =
       result._tag === "Success"
         ? null
@@ -130,6 +134,16 @@ function UpcomingSections(props: {
   return (
     <View className="gap-6">
       {line === "" ? null : <Muted>{line}</Muted>}
+      {undo === null ? null : (
+        <View className="flex-row px-4">
+          <ControlPill
+            variant="pill"
+            label="Undo"
+            accessibilityLabel="Undo that cancel"
+            onPress={() => void change(undo, "undo")}
+          />
+        </View>
+      )}
       {view.unreadable.length === 0 ? null : (
         <Muted>{`Couldn't read ${view.unreadable.join(", ")} just now.`}</Muted>
       )}
@@ -162,13 +176,13 @@ function UpcomingSections(props: {
                             variant="pill"
                             label="+5 min"
                             accessibilityLabel={`Move ${item.title} 5 minutes later`}
-                            onPress={() => void change(item, "move", item.at! + 5 * 60_000)}
+                            onPress={() => void change(item.id, "move", item.at! + 5 * 60_000)}
                           />
                           <ControlPill
                             variant="pill"
                             label="+15 min"
                             accessibilityLabel={`Move ${item.title} 15 minutes later`}
-                            onPress={() => void change(item, "move", item.at! + 15 * 60_000)}
+                            onPress={() => void change(item.id, "move", item.at! + 15 * 60_000)}
                           />
                         </>
                       ) : null}
@@ -177,7 +191,7 @@ function UpcomingSections(props: {
                           variant="pill"
                           label={item.paused ? "Resume" : "Pause"}
                           accessibilityLabel={`${item.paused ? "Resume" : "Pause"} ${item.title}`}
-                          onPress={() => void change(item, item.paused ? "resume" : "pause")}
+                          onPress={() => void change(item.id, item.paused ? "resume" : "pause")}
                         />
                       ) : null}
                       {item.can.cancel ? (
@@ -185,7 +199,7 @@ function UpcomingSections(props: {
                           variant="pill"
                           label="Cancel"
                           accessibilityLabel={`Cancel ${item.title}`}
-                          onPress={() => void change(item, "cancel")}
+                          onPress={() => void change(item.id, "cancel")}
                         />
                       ) : null}
                     </View>

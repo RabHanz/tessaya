@@ -848,7 +848,7 @@ export const layer = McpToolAccess.toLayer(
               upcoming
                 .change(
                   {
-                    id: input.id,
+                    ...(input.id === undefined ? {} : { id: input.id }),
                     op: input.op,
                     ...(input.inMinutes === undefined ? {} : { inMinutes: input.inMinutes }),
                     ...(at === undefined ? {} : { at }),

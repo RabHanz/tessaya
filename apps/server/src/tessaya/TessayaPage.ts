@@ -89,7 +89,7 @@ button.act.danger{border-color:var(--bad);color:var(--bad)}
 export const SCRIPT = `"use strict";
 (function () {
   var TABS = [["needs", "Needs me"], ["approvals", "Approvals"], ["now", "Now"], ["upcoming", "Coming up"], ["jobs", "Jobs"], ["weave", "Weave"], ["asked", "Asked"], ["msg", "Messages"], ["mem", "Memories"]];
-  var tab = "needs", state = null, said = "", denied = false, up = null;
+  var tab = "needs", state = null, said = "", denied = false, up = null, undoId = null;
   var view = document.getElementById("view"), tabs = document.getElementById("tabs");
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
   function api(method, path, body, raw) {
@@ -178,6 +178,7 @@ export const SCRIPT = `"use strict";
       state.now.forEach(function (l) { view.appendChild(el("p", "card", l)); });
     } else if (tab === "upcoming") {
       if (!up) { view.appendChild(el("p", "soft", "Loading")); return; }
+      if (undoId) { var ur = el("div", "row"); ur.appendChild(act("Undo", "primary", function () { var id = undoId; undoId = null; return api("POST", "upcoming", { id: id, op: "undo" }); })); view.appendChild(ur); }
       if (up.unreadable.length) view.appendChild(el("p", "soft", "Couldn't read " + up.unreadable.join(", ") + " just now."));
       if (!up.items.length) view.appendChild(el("p", "soft", "Nothing is set to happen in the next 7 days."));
       up.items.forEach(function (u) {
@@ -188,7 +189,7 @@ export const SCRIPT = `"use strict";
         var r = el("div", "row");
         if (u.can.move && u.at !== null) { r.appendChild(act("+5 min", "", change("move", u.at + 300000))); r.appendChild(act("+15 min", "", change("move", u.at + 900000))); }
         if (u.can.pause) r.appendChild(act(u.paused ? "Resume" : "Pause", "", change(u.paused ? "resume" : "pause")));
-        if (u.can.cancel) r.appendChild(act("Cancel", "", change("cancel")));
+        if (u.can.cancel) r.appendChild(act("Cancel", "", function () { undoId = u.id; return change("cancel")(); }));
         if (r.children.length) c.appendChild(r);
         view.appendChild(c);
       });

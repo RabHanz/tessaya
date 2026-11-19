@@ -1098,6 +1098,18 @@ export const outsideCases: ReadonlyArray<OutsideCase> = [
     },
   },
   {
+    id: "outside-undo-cancel",
+    source: 'Coming up (M-092): "undo that" puts back what was just cancelled',
+    prompt: "I just cancelled the pump timer by mistake. Undo that.",
+    answers: {
+      tessaya_coming_up: comingUp([maya]),
+      tessaya_coming_up_change: { done: true, line: "Put back as it was before." },
+    },
+    calls: ["tessaya_coming_up_change"],
+    callsMustNot: ["tessaya_ask", "home_automation_save"],
+    inputs: { tessaya_coming_up_change: (input) => input["op"] === "undo" },
+  },
+  {
     id: "outside-coming-up-refusal-said",
     source:
       "Coming up (M-092): a repeating task does not move; she says why rather than claiming it moved",
