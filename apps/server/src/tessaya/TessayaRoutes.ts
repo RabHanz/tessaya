@@ -74,7 +74,7 @@ import { VesselHands } from "./VesselHands.ts";
 import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./TessayaApi.ts";
 import { transcribeWav } from "./TessayaPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./TessayaPage.ts";
-import { interruptBody, privateBodyEnded } from "./TessayaBody.ts";
+import { interruptBody, noteDeskWorld, privateBodyEnded } from "./TessayaBody.ts";
 
 /** Each direct-door method's payload decoder and result encoder, compiled once. */
 const DESK_CODECS = new Map(
@@ -767,10 +767,12 @@ export const routes = HttpRouter.use((router) =>
  */
 /** What the desktop app reports to the layers: its device key (32 bytes, base64) and what just happened on it. */
 export const deskReport = (body: unknown) => {
-  const b = (body ?? {}) as { key?: unknown; signals?: unknown };
+  const b = (body ?? {}) as { key?: unknown; signals?: unknown; world?: unknown };
   const key = typeof b.key === "string" ? Buffer.from(b.key, "base64") : null;
+  const world = b.world as { fullscreen?: unknown } | null | undefined;
   return {
     key: key !== null && key.length === 32 ? new Uint8Array(key) : null,
+    fullscreen: typeof world?.fullscreen === "boolean" ? world.fullscreen : null,
     signals: Array.isArray(b.signals)
       ? b.signals.filter((k): k is string => typeof k === "string" && DESK_SIGNALS.has(k))
       : [],
@@ -954,6 +956,11 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
                 : { kind },
           );
       if (desk.signals.includes("bargeIn")) yield* interruptBody();
+      // what her desk world is now, so her own wishes keep out of his way (a film, a game, a call)
+      yield* noteDeskWorld({
+        ...(desk.fullscreen === null ? {} : { fullscreen: desk.fullscreen }),
+        ...(desk.signals.includes("call") ? { call: true } : {}),
+      });
       // A locked or sleeping desk ends a private moment there: a private conversation loses her body at once.
       if (desk.signals.some((k) => k === "screenLocked" || k === "sleep"))
         yield* privateBodyEnded();

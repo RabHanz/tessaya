@@ -47,6 +47,24 @@ describe("startPersonaLayerLink", () => {
     expect(keys).toBe(0);
   });
 
+  it("carries her desk world with each report, and reports at once when asked", async () => {
+    const posts: Array<{ world?: { fullscreen: boolean } }> = [];
+    let fullscreen = false;
+    const link = startPersonaLayerLink({
+      post: async (body) => (posts.push(body), { open: false, page: null }),
+      deviceKey: () => null,
+      othersCapturing: async () => false,
+      shield: () => undefined,
+      world: () => ({ fullscreen }),
+      everyMs: 60_000,
+    });
+    await link.ready;
+    fullscreen = true;
+    await link.report();
+    expect(posts.at(-1)?.world).toEqual({ fullscreen: true });
+    link.stop();
+  });
+
   it("sends the key once a layer answers, shields while a session is open, and reports a call then", async () => {
     const posts: Array<{ key?: string; signals: ReadonlyArray<string> }> = [];
     const shield: Array<boolean> = [];

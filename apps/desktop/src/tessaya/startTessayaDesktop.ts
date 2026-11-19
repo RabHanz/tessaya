@@ -614,7 +614,9 @@ export const startTessayaDesktop = Effect.gen(function* () {
       const page = layerLink.page();
       if (page !== null) await layerFetch(`${page}/${path}`, body);
     };
+    let deskWorld = { fullscreen: false };
     const layerLink = startPersonaLayerLink({
+      world: () => deskWorld,
       post: async (body) => {
         const response = await layerFetch("/tessaya/layer/_desk", body);
         if (response.status === 404) return null;
@@ -1123,6 +1125,12 @@ export const startTessayaDesktop = Effect.gen(function* () {
       onMascot: (m) => {
         deskMascot = m;
         void showLayerBody(layerLink.isOpen());
+      },
+      onWorld: (world) => {
+        // a change is told at once, not at the next 10 s report
+        const changed = world.fullscreen !== deskWorld.fullscreen;
+        deskWorld = world;
+        if (changed) void layerLink.report();
       },
       fullBody: (on) => {
         if (on === deskFullBody) return;

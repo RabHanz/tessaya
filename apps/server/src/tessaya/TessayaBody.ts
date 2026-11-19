@@ -208,6 +208,36 @@ export const bodyHolderLine = Effect.fn("TessayaBody.holderLine")(function* () {
   return `Her desk body is with ${what}${held}.`;
 });
 
+// What the desk last said of her world: a full-screen app in front, and when a call was last seen. shortcut: per
+// process and one desk; a second desktop's report overwrites the first's.
+let deskWorld: { fullscreen: boolean; fullscreenAt: number; callAt: number } = {
+  fullscreen: false,
+  fullscreenAt: 0,
+  callAt: 0,
+};
+/** A full-screen report goes stale after this; a call keeps her resting this long after it was last seen. */
+const WORLD_FRESH_MS = 30_000;
+const CALL_REST_MS = 2 * 60_000;
+export const noteDeskWorld = Effect.fn("TessayaBody.deskWorld")(function* (w: {
+  readonly fullscreen?: boolean;
+  readonly call?: boolean;
+}) {
+  const now = yield* Clock.currentTimeMillis;
+  deskWorld = {
+    fullscreen: w.fullscreen ?? deskWorld.fullscreen,
+    fullscreenAt: w.fullscreen === undefined ? deskWorld.fullscreenAt : now,
+    callAt: w.call === true ? now : deskWorld.callAt,
+  };
+});
+const himAtDesk = (now: number, home: boolean): "working" | "away" | "fullscreen" | "call" =>
+  now - deskWorld.callAt < CALL_REST_MS
+    ? "call"
+    : deskWorld.fullscreen && now - deskWorld.fullscreenAt < WORLD_FRESH_MS
+      ? "fullscreen"
+      : home
+        ? "working"
+        : "away";
+
 /** Her own wishes (motives.ts) move her body only through body focus, as its weakest caller. */
 const SELF: BodyCaller = {
   id: "self",
@@ -250,7 +280,7 @@ export const wishTick = Effect.fn("TessayaBody.wish")(function* () {
     now,
     liveliness,
     mood: { label: view.label, intensity: view.intensity, energy: view.energy },
-    him: owner?.likelyHome === true ? "working" : "away",
+    him: himAtDesk(now, owner?.likelyHome === true),
     himAt,
     worldAt: himAt ?? now,
     newThingAt: null,

@@ -10,7 +10,10 @@ export interface LayerLinkDeps {
   readonly post: (body: {
     readonly key?: string;
     readonly signals: ReadonlyArray<string>;
+    readonly world?: { readonly fullscreen: boolean };
   }) => Promise<{ readonly open: boolean; readonly page: string | null } | null>;
+  /** Her desk world now, sent with each report: a full-screen app in front keeps her own wishes out of his way. */
+  readonly world?: () => { readonly fullscreen: boolean };
   /** The device key, created and kept by the OS keystore on first use; null where none is available. */
   readonly deviceKey: () => string | null;
   /** Whether another app has the camera or microphone right now (a call or a recording). */
@@ -33,7 +36,11 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
     const key = knownHere ? deps.deviceKey() : null;
     const sent = [...pending];
     const answer = await deps
-      .post({ ...(key === null ? {} : { key }), signals: sent })
+      .post({
+        ...(key === null ? {} : { key }),
+        signals: sent,
+        ...(deps.world === undefined ? {} : { world: deps.world() }),
+      })
       .catch(() => undefined);
     if (answer === undefined) return;
     if (answer === null) return stop();
@@ -59,6 +66,8 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
     /** Settles once the first report (and, on a server with a layer, the first keyed one) is answered. */
     ready: tick(),
     signal: (kind: string) => tick(kind),
+    /** Reports now, with no signal: what changed in her world reaches the server at once. */
+    report: () => tick(),
     stop,
     isOpen: () => open,
     /** The layer's own page on this server (its path), or null where there is none. */
