@@ -51,6 +51,20 @@ describe("performCues", () => {
     expect(Math.max(...creep.frames.map((f) => at(f, "leftLowerLeg", 0)))).toBeGreaterThan(0.6);
   });
 
+  it("trembles in fear as a person does: a fine quiver at the hands only, under a degree", () => {
+    const clip = clipOf(
+      performCues({ feel: { valence: -0.9, arousal: 0.9, dominance: -0.9 }, ms: 6000 }, stand).cues,
+    );
+    // the hold, where the tremor runs: no frame-to-frame jump at the hands beyond a 0.7 degree quiver at 11 Hz
+    const hold = clip.frames.slice(60, 150);
+    for (let i = 1; i < hold.length; i++)
+      for (const b of ["leftHand", "rightHand"] as const)
+        expect(Math.abs(at(hold[i]!, b, 2) - at(hold[i - 1]!, b, 2))).toBeLessThan(0.025);
+    // the forearms do not buzz
+    const fore = hold.map((f) => at(f, "leftLowerArm", 1));
+    expect(Math.max(...fore) - Math.min(...fore)).toBeLessThan(0.02);
+  });
+
   it("keeps every joint within human speed for any feeling and effort", () => {
     const vals = [-1, 0, 1];
     for (const v of vals)
