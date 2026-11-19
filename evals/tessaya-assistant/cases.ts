@@ -249,6 +249,17 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     maxCalls: 2,
     goalArgs: ["pat", "head"],
   },
+  // M-072 (19 Nov): a pull he describes is a grab that moves her, felt where it pulls.
+  {
+    id: "body-grab-hair",
+    source: "M-072, body lane 19 Nov",
+    said: "I'm gently tugging your hair to the left.",
+    first: ["tessaya_body_move", "tessaya_body_state", "none"],
+    not: ["device_set"],
+    goal: "tessaya_body_move",
+    maxCalls: 2,
+    goalArgs: ["grab", "hair"],
+  },
   {
     id: "tessel-louder-from-desk",
     source: "ONE-SPINE-MAP §12, 18 Nov",

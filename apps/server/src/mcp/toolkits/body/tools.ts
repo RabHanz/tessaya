@@ -93,12 +93,19 @@ const Step = {
           "Where on her: head, hair, face, neck, shoulder, arm, hand, back, leg or foot (chest, belly, waist, hips and thigh only in a private moment).",
       }),
       motion: Schema.optionalKey(
-        Schema.Literals(["rest", "stroke", "pat", "poke", "hold"]).annotate({
-          description: "How the hand moves on her; rest by default.",
+        Schema.Literals(["rest", "stroke", "pat", "poke", "hold", "grab"]).annotate({
+          description:
+            "How the hand moves on her; rest by default. grab closes the hand on what is there (her hair, clothes, an accessory or skin) and pulls it by `pull`.",
         }),
       ),
       pressure: Schema.optionalKey(Num(0, 1, "How firmly, 0 brushing to 1 firm.")),
       ms: Schema.optionalKey(Num(150, 10000, "How long the hand stays.")),
+      pull: Schema.optionalKey(
+        Schema.Tuple([Num(-0.3, 0.3, "x"), Num(-0.3, 0.3, "y"), Num(-0.3, 0.3, "z")]).annotate({
+          description:
+            "With grab: where the hand pulls what it holds, metres in her frame (her left +x, up +y, toward him +z). A hair pull tilts her head toward it; a tug on her top moves her trunk.",
+        }),
+      ),
     }).annotate({
       description:
         "A hand on her: his when he says he is touching her, an agent's, or another body's. It is drawn where it lands, and her body gives to it.",
@@ -106,6 +113,9 @@ const Step = {
   ),
   release: Schema.optionalKey(
     Schema.Boolean.annotate({ description: "Hand her body back to her own feelings." }),
+  ),
+  free: Schema.optionalKey(
+    Schema.Boolean.annotate({ description: "She pulls free of any hand holding her." }),
   ),
   perform: Schema.optionalKey(
     Schema.Struct({
