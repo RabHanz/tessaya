@@ -22,6 +22,17 @@ const Bones = Schema.Record(Schema.String, Schema.Array(Schema.Number)).annotate
   description:
     "Bone: [x, y, z] radians, VRM 1.0 axes from a T-pose (she faces +z, her left is +x). Arms down: leftUpperArm [0, 0, -1.2], rightUpperArm [0, 0, 1.2]. Elbows fold on y (left -, right +), knees on x (+), the trunk and head bend forward on x (+). Out-of-range joints are corrected, never broken.",
 });
+const Target = Schema.Union([
+  Schema.Literals(["him", "away"]),
+  Schema.String,
+  Schema.Struct({
+    x: Num(0, 1, "Across her world, left to right."),
+    y: Num(0, 1, "Top to bottom."),
+  }),
+]).annotate({
+  description:
+    '"him", "away", another persona\'s id (a body beside her), or {x, y} from 0 to 1 across her world.',
+});
 const Step = {
   intent: Schema.optionalKey(
     Schema.String.annotate({
@@ -117,6 +128,27 @@ const Step = {
   ),
   free: Schema.optionalKey(
     Schema.Boolean.annotate({ description: "She pulls free of any hand holding her." }),
+  ),
+  toward: Schema.optionalKey(
+    Target.annotate({ description: "Whom or where this step's look, gesture and touch aim at." }),
+  ),
+  turn: Schema.optionalKey(
+    Schema.Struct({
+      to: Target,
+      ms: Schema.optionalKey(
+        Num(200, 4000, "How long the turn takes; natural speed when left out."),
+      ),
+    }).annotate({ description: 'Her whole body turns to face a target ("away" turns her back).' }),
+  ),
+  walk: Schema.optionalKey(
+    Schema.Struct({
+      to: Target,
+      speed: Schema.optionalKey(Num(0, 1, "0 a stroll, 1 a hurry.")),
+      style: Schema.optionalKey(Schema.Literals(["stroll", "sneak", "bounce", "stomp", "tiptoe"])),
+      stop: Schema.optionalKey(
+        Num(0, 1, "How far short of it she stops, as a share of her height."),
+      ),
+    }).annotate({ description: "She walks there in real steps." }),
   ),
   perform: Schema.optionalKey(
     Schema.Struct({

@@ -4,6 +4,14 @@
  * G7 word-timed effects, the group's speaker); a body only renders them and never decides anything itself.
  */
 import { decodeSensePack, type SensePack } from "./bodySense.ts";
+import {
+  decodeTarget,
+  decodeTurn,
+  decodeWalk,
+  type BodyTarget,
+  type Turn,
+  type Walk,
+} from "./bodyLocomotion.ts";
 import { HAND_MOTIONS, type HandMotion } from "./bodyHand.ts";
 import { decodeHold, decodePerform, type Perform } from "./bodyPlanner.ts";
 import { FINGER_KEYS } from "./bodySkills.ts";
@@ -317,6 +325,12 @@ export type BodyCue =
       readonly motion?: Motion;
     }
   | { readonly kind: "gesture"; readonly gesture: string }
+  /** Her whole body turns to a target (bodyLocomotion.ts); the renderer leads with the head, hips follow. */
+  | ({ readonly kind: "turn" } & Turn)
+  /** She walks to a target in real steps; on the desk the page moves its window along her path. */
+  | ({ readonly kind: "walk" } & Walk)
+  /** This step's gaze, gesture and touch aim at a target. */
+  | { readonly kind: "toward"; readonly to: BodyTarget }
   /** A held posture from a scene beat; "auto" hands her back to the posture her affect picks. */
   | { readonly kind: "pose"; readonly pose: PostureName | "auto" }
   /** Something she does with her body now (bodyMotion ACTS): she chose it in her reply, or a beat did. */
@@ -526,6 +540,18 @@ export const parseCue = (raw: unknown): BodyCue | null => {
     case "gesture": {
       const gesture = str(c["gesture"], 32);
       return gesture ? { kind: "gesture", gesture } : null;
+    }
+    case "turn": {
+      const t = decodeTurn(c);
+      return typeof t === "string" ? null : { kind: "turn", ...t };
+    }
+    case "walk": {
+      const w = decodeWalk(c);
+      return typeof w === "string" ? null : { kind: "walk", ...w };
+    }
+    case "toward": {
+      const to = decodeTarget(c["to"]);
+      return to === null ? null : { kind: "toward", to };
     }
     case "pose": {
       const pose = c["pose"];
