@@ -124,7 +124,8 @@ describe("rooms", () => {
     const placed: Array<string> = [];
     const bodies = new Map(["freya", "mira"].map((p) => [p, { place: () => void placed.push(p) }]));
     expect(stageOnto(bodies, desk)).toBe(2);
-    expect(placed).toEqual(["freya", "mira"]);
+    // placed twice, so each one's turn aims at where the others stand after this step
+    expect(placed).toEqual(["freya", "mira", "freya", "mira"]);
   });
 
   it("a group speaker's step: she takes her spot and turns to whoever she addresses, the others to her", () => {

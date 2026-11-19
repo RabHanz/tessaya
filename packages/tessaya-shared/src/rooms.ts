@@ -273,12 +273,15 @@ export const stageOnto = (
   plan: ReadonlyArray<StageSpot>,
 ): number => {
   let placed = 0;
-  for (const spot of plan) {
-    const body = bodies.get(spot.persona);
-    if (body === undefined) continue;
-    body.place(spot);
-    placed++;
-  }
+  // twice: a body turns toward the others' spots as they are when it is placed, so the first pass moves everyone
+  // and the second turns each to where the others now stand (otherwise a turn aims at an old spot)
+  for (const pass of [0, 1])
+    for (const spot of plan) {
+      const body = bodies.get(spot.persona);
+      if (body === undefined) continue;
+      body.place(spot);
+      if (pass === 1) placed++;
+    }
   return placed;
 };
 
