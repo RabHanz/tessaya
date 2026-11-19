@@ -34,6 +34,7 @@ import {
   type SenseState,
 } from "@t3tools/tessaya-shared/bodySense";
 import {
+  holderOf,
   mayDrive,
   nextFocus,
   REST,
@@ -165,6 +166,39 @@ export const privateBodyEnded = Effect.fn("TessayaBody.privateEnded")(function* 
     threads: held.filter((t): t is string => isPrivateThread(t)),
     at: yield* Clock.currentTimeMillis,
   });
+});
+
+/**
+ * "Who has her body?": which of his conversations her desk body is with now, for his own ask (tessaya_cast who). A
+ * private one is only "a private moment", never what it is about.
+ */
+export const bodyHolderLine = Effect.fn("TessayaBody.holderLine")(function* () {
+  const f = focus.get(DESK_BODY) ?? REST;
+  const holder = holderOf(f);
+  const held =
+    f.state === "scene"
+      ? " (a scene is playing)"
+      : f.state === "paused"
+        ? " (a scene is paused)"
+        : "";
+  if (holder === null)
+    return f.state === "paused"
+      ? "Her desk body is free; a scene waits paused."
+      : "Her desk body is free: no conversation holds it.";
+  if (!holder.includes("|")) return `Her desk body is with one of his agents${held}.`;
+  const turn = yield* Effect.serviceOption(TessayaTurn);
+  const row = Option.isNone(turn)
+    ? undefined
+    : (yield* turn.value.threads()).find((t) => liveId(t) === holder);
+  const what =
+    row === undefined
+      ? "a conversation that has gone quiet"
+      : row.tier === "private"
+        ? "a private moment"
+        : row.gist !== null
+          ? `the conversation about "${row.gist}" on ${row.surface === "voice" ? "a Tessel" : `the ${row.surface}`}`
+          : `his conversation on ${row.surface === "voice" ? "a Tessel" : `the ${row.surface}`}`;
+  return `Her desk body is with ${what}${held}.`;
 });
 
 /** "Let her be": no conversation holds her body until he is next present in one. */
