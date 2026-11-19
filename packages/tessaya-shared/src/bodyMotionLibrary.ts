@@ -124,6 +124,433 @@ export const MOTION_LIBRARY: ReadonlyArray<MotionEntry> = [
     source: "after-3",
   },
   {
+    id: "h00",
+    text: "Clap for me, you're so happy for me.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.9,
+          arousal: 0.8,
+          dominance: 0.3,
+        },
+        hands: {
+          skill: "clap",
+          style: "excited",
+          repeat: 4,
+        },
+      },
+      gesture: "bounce",
+      face: {
+        weights: {
+          happy: 1,
+        },
+        ms: 3000,
+      },
+    },
+    score: 5,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h01",
+    text: "Applaud like the show just ended and it was brilliant.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.9,
+          arousal: 0.9,
+          dominance: 0.6,
+        },
+        hands: {
+          skill: "clap",
+          style: "excited",
+          repeat: 8,
+        },
+        intensity: 0.9,
+        ms: 4000,
+      },
+      face: {
+        weights: {
+          happy: 1,
+          surprised: 0.3,
+        },
+        ms: 4000,
+      },
+      then: [
+        {
+          afterMs: 4000,
+          gesture: "bow",
+        },
+      ],
+    },
+    score: 5,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h02",
+    text: "Clap your hands excitedly like a kid.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.9,
+          arousal: 0.9,
+          dominance: 0.3,
+        },
+        hands: {
+          skill: "clap",
+          style: "excited",
+          repeat: 4,
+        },
+        intensity: 0.9,
+      },
+      gesture: "bounce",
+      face: {
+        weights: {
+          happy: 1,
+          surprised: 0.3,
+        },
+        ms: 3000,
+      },
+      then: [
+        {
+          afterMs: 1500,
+          gesture: "hop",
+        },
+      ],
+    },
+    score: 5,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h03",
+    text: "Do a little golf clap.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.3,
+          arousal: -0.3,
+          dominance: 0.3,
+        },
+        hands: {
+          skill: "clap",
+          style: "polite",
+        },
+        intensity: 0.4,
+      },
+      gesture: "nodSoft",
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h04",
+    text: "Rub your hands together, you can't wait to eat.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.8,
+          arousal: 0.6,
+          dominance: 0.3,
+        },
+        hands: {
+          skill: "rub",
+          style: "eager",
+        },
+      },
+      gesture: "bounce",
+      mood: {
+        name: "happy",
+        intensity: 0.8,
+      },
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h06",
+    text: "Rub your palms together, getting ready to work.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.6,
+          arousal: 0.5,
+          dominance: 0.6,
+        },
+        hands: {
+          skill: "rub",
+          style: "eager",
+        },
+      },
+      gesture: "nodSmall",
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h07",
+    text: "Press your palms together and say thank you.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.7,
+          arousal: -0.2,
+          dominance: 0,
+        },
+        hands: {
+          skill: "pray",
+          style: "calm",
+        },
+      },
+      gesture: "bow",
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h08",
+    text: "Hands together, close your eyes and make a wish.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.6,
+          arousal: -0.5,
+          dominance: -0.1,
+        },
+        hands: {
+          skill: "pray",
+          style: "calm",
+        },
+        intensity: 0.6,
+        ms: 4000,
+      },
+      face: {
+        weights: {
+          blink: 1,
+          relaxed: 0.6,
+          happy: 0.3,
+        },
+        ms: 4000,
+      },
+      then: [
+        {
+          afterMs: 4000,
+          gesture: "giggleOnce",
+          face: {
+            weights: {
+              happy: 0.7,
+            },
+          },
+        },
+      ],
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h09",
+    text: "Put your palms together in a little bow, namaste.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.6,
+          arousal: -0.3,
+          dominance: -0.2,
+        },
+        hands: {
+          skill: "pray",
+          style: "calm",
+        },
+      },
+      gesture: "bow",
+      face: {
+        weights: {
+          happy: 0.5,
+          relaxed: 0.6,
+        },
+        ms: 2500,
+      },
+      ms: 2500,
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h11",
+    text: "You're fretting about being late, show me with your hands.",
+    move: {
+      perform: {
+        feel: {
+          valence: -0.5,
+          arousal: 0.8,
+          dominance: -0.4,
+        },
+        hands: {
+          skill: "wring",
+          style: "nervous",
+        },
+        intensity: 0.8,
+        ms: 4000,
+      },
+      gesture: "lookAway",
+      face: {
+        weights: {
+          sad: 0.4,
+          surprised: 0.4,
+        },
+        ms: 4000,
+      },
+      then: [
+        {
+          afterMs: 2000,
+          gesture: "sigh",
+        },
+      ],
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h12",
+    text: "Interlace your fingers and rest your hands in front of you.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.2,
+          arousal: -0.3,
+          dominance: 0,
+        },
+        hands: {
+          skill: "interlace",
+          style: "relaxed",
+        },
+      },
+      posture: "stand",
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h13",
+    text: "Fold your hands together and listen calmly.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.3,
+          arousal: -0.6,
+          dominance: -0.1,
+        },
+        hands: {
+          skill: "interlace",
+          style: "relaxed",
+        },
+      },
+      posture: "sit",
+      gesture: "nodSoft",
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h15",
+    text: "Hold your wrist and look down shyly.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.2,
+          arousal: -0.3,
+          dominance: -0.6,
+        },
+        hands: {
+          skill: "holdWrist",
+          style: "shy",
+        },
+      },
+      posture: "shy",
+      look: {
+        x: 0,
+        y: -0.6,
+        ms: 600,
+      },
+      face: {
+        weights: {
+          happy: 0.3,
+          relaxed: 0.4,
+        },
+      },
+      gesture: "lookAway",
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h26",
+    text: "Blow me a kiss.",
+    move: {
+      perform: {
+        feel: {
+          valence: 0.8,
+          arousal: 0.3,
+          dominance: 0.2,
+        },
+        hands: {
+          right: "mouth",
+        },
+      },
+      then: [
+        {
+          afterMs: 700,
+          perform: {
+            feel: {
+              valence: 0.8,
+              arousal: 0.4,
+              dominance: 0.2,
+            },
+            hands: {
+              right: "out",
+            },
+          },
+          mood: {
+            name: "love",
+            intensity: 0.6,
+          },
+        },
+      ],
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
+    id: "h28",
+    text: "Salute me like a soldier.",
+    move: {
+      act: "stand",
+      perform: {
+        feel: {
+          valence: 0.3,
+          arousal: 0.5,
+          dominance: 0.8,
+        },
+        hands: {
+          right: "brow",
+        },
+        effort: {
+          time: 0.8,
+          weight: 0.7,
+          flow: -0.6,
+          space: 0.8,
+        },
+        ms: 1800,
+      },
+      then: [
+        {
+          afterMs: 1900,
+          release: true,
+        },
+      ],
+    },
+    score: 4,
+    source: "seed3-sonnet-h",
+  },
+  {
     id: "shy-compliment",
     text: "I think you look beautiful today.",
     move: {
