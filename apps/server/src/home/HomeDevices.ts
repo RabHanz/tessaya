@@ -200,7 +200,7 @@ export type DeviceCommand =
   | { readonly op: "reboot" }
   /** A signed firmware release over the air (R1Updates.install); null: the one this build recommends. */
   | { readonly op: "update"; readonly version: string | null }
-  /** Settings → Hardware → Device utility, Developer: any `cmd/<path>` with a JSON body; never from an agent. */
+  /** Tessels → Device utility, Developer: any `cmd/<path>` with a JSON body; never from an agent. */
   | { readonly op: "raw"; readonly path: string; readonly payload: unknown }
   | { readonly op: "camera" }
   /** "Away from home": the R1 may also connect through T3 Connect (R1Reach); a setting of this server, not the R1. */
@@ -3179,7 +3179,7 @@ const make = Effect.gen(function* () {
       ((c.op === "item" && c.itemId === "net.add") || (c.op === "wifi" && c.action === "add"))
     )
       return yield* new DeviceRefusedError({
-        why: `Wi-Fi passwords are never said aloud. Add the network on his phone in Settings → Hardware → Wi-Fi order, or on the ${DEVICE}'s setup page: hold S1 and S3 for 5 seconds and join the network its eye shows.`,
+        why: `Wi-Fi passwords are never said aloud. Add the network on his phone in Tessels → Wi-Fi order, or on the ${DEVICE}'s setup page: hold S1 and S3 for 5 seconds and join the network its eye shows.`,
       });
     // Where she speaks is his output order, and asking is his yes: no second question (16 Nov, she asked and waited).
     if (
@@ -3247,7 +3247,7 @@ const make = Effect.gen(function* () {
       }
       if (item.safety === "never" && by.surface !== "settings")
         return yield* new DeviceRefusedError({
-          why: `${item.label} on ${reg.name} is changed only in Settings → Hardware.`,
+          why: `${item.label} on ${reg.name} is changed only in Tessels.`,
         });
       // His yes in the conversation counts from her own turn, never from an agent's say-so.
       if (item.safety === "confirm" && by.surface === "assistant" && c.confirmed !== true)
@@ -3266,7 +3266,7 @@ const make = Effect.gen(function* () {
         });
     } else if (c.op === "raw" && by.surface !== "settings") {
       return yield* new DeviceRefusedError({
-        why: "Raw device commands are sent only from Settings → Hardware.",
+        why: "Raw device commands are sent only from Tessels.",
       });
     }
     // Her own camera, asked in his conversation in his home: her own sensor, no card and no voice step-up (Director,

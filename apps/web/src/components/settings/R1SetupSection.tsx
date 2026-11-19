@@ -1,5 +1,5 @@
 /**
- * Settings → Hardware → Add an R1: the pairing QR's text and Wi-Fi, then over Bluetooth
+ * Tessels → Add an R1: the pairing QR's text and Wi-Fi, then over Bluetooth
  * where the browser has it (Chrome, the desktop app), or as a setup code for the R1's own Wi-Fi page anywhere else. Then, once per server,
  * the away-from-home question. The steps are shared with the phone (`@t3tools/tessaya-shared/r1Setup`).
  */

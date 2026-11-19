@@ -20,7 +20,7 @@ const generatedDeviceStreamRoot = path.join(__dirname, ".generated", "device-str
 const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
 
 // The Tessaya babel rewrite depends on APP_VARIANT, so a cached transform from another variant must not be reused.
-config.cacheVersion = `${config.cacheVersion ?? ""}:${process.env.APP_VARIANT ?? ""}`;
+config.cacheVersion = `${config.cacheVersion ?? ""}:${process.env.APP_VARIANT ?? ""}:${process.env.TESSAYA_BRAND ?? ""}`;
 config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
 config.resolver = {
   ...config.resolver,

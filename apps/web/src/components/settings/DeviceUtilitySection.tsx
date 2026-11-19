@@ -1,5 +1,5 @@
 /**
- * Settings → Hardware → Device utility (DEVICE-UTILITY.md): update, repair and tune an R1 at three levels. Easy is one
+ * Tessels → Device utility (DEVICE-UTILITY.md): update, repair and tune an R1 at three levels. Easy is one
  * button; Normal picks a version, keeps it or resumes; Developer sends raw commands and reads the device's log. Over the
  * air only here; repair by cable is the desktop app's or the standalone r1flash tool's.
  */

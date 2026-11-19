@@ -1,11 +1,14 @@
 /**
- * Settings → Hardware: Tessaya's physical devices (the Agora R1 first). Status and every control go through the
+ * Tessels: Tessaya's physical devices (the Agora R1 first). Status and every control go through the
  * server's `baton.devices.call`; no client speaks MQTT. Camera and restart are the owner kind (approval scope).
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
+  batonDesktopBridge,
   R1_MOODS,
+  tessayaLink,
+  type TessayaPersona,
   type R1KeyBinding,
   type R1KeySlot,
   type TessayaDevicesCallResult,
@@ -66,6 +69,7 @@ import { useEffect, useState } from "react";
 
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
+import { useEnvironmentQuery } from "../../state/query";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useVisibleThreadShells } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -86,6 +90,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { BodiesSection } from "./BodiesSection";
 import { DeviceUtilitySection } from "./DeviceUtilitySection";
+import { deviceVoiceLine } from "./HardwareSettings.logic";
 import { setLaptopRoute, useLaptopRoute } from "../../tessayaLaptopRoute";
 import { OutputOrderList, PrivateButtons } from "./OutputOrderList";
 import { R1SetupSection } from "./R1SetupSection";
@@ -798,18 +803,7 @@ function DeviceControls({
             </span>
           }
         />
-        <SettingsRow
-          title="Persona and voice"
-          description={
-            <>
-              Tessaya, speaking with the voice anna. Her voice is set in{" "}
-              <Link to="/settings/voice" className="underline underline-offset-2">
-                Voice
-              </Link>
-              ; the room follows it once that setting lives on the server.
-            </>
-          }
-        />
+        <PersonaVoiceRow deviceId={id} environmentId={environmentId} />
         <SettingsRow
           title="Voice ID"
           description={
@@ -1068,6 +1062,50 @@ const KIND_ICON = {
 } as const;
 
 /** Shown only once the R1's firmware reports it can drive Bluetooth audio. */
+/** Who this Tessel answers as (Cast: who it wears, else the lead) and that persona's voice, linked to where it's set. */
+function PersonaVoiceRow({
+  deviceId,
+  environmentId,
+}: {
+  readonly deviceId: string;
+  readonly environmentId: EnvironmentId;
+}) {
+  const cast = useEnvironmentQuery(tessayaWorkSessions.castQuery({ environmentId, input: {} }));
+  const listPersonas = useAtomCommand(tessayaWorkSessions.personasList, { reportFailure: false });
+  const [personas, setPersonas] = useState<ReadonlyArray<TessayaPersona> | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads her server's personas once per environment
+  useEffect(() => {
+    void listPersonas({ environmentId, input: {} }).then((r) => {
+      if (r._tag === "Success") setPersonas(r.value.personas);
+    });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- one read per environment; the command is stable
+  }, [environmentId]);
+  const line =
+    personas === null ? null : deviceVoiceLine(personas, cast.data?.bodies ?? [], deviceId);
+  const open = batonDesktopBridge()?.openTessaya;
+  return (
+    <SettingsRow
+      title="Persona and voice"
+      description={line ?? "Reading who it answers as…"}
+      control={
+        open !== undefined ? (
+          <Button size="xs" variant="outline" onClick={() => open(tessayaLink("personas"))}>
+            Change voice
+          </Button>
+        ) : (
+          <Button
+            size="xs"
+            variant="outline"
+            render={<Link to="/tessaya/$page" params={{ page: "voices" }} />}
+          >
+            Change voice
+          </Button>
+        )
+      }
+    />
+  );
+}
+
 function SpeakerSection({
   device: d,
   busy,

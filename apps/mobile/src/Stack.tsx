@@ -229,7 +229,7 @@ const SETTINGS_SCREENS = {
   SettingsHardware: createNativeStackScreen({
     screen: SettingsHardwareRouteScreen,
     linking: "settings/hardware",
-    options: settingsPage("Hardware"),
+    options: settingsPage("Tessels"),
   }),
   SettingsTeam: createNativeStackScreen({
     screen: SettingsTeamRouteScreen,

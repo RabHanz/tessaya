@@ -292,7 +292,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
       title: "Home and devices",
       rows: [
         serverPage("SettingsHome", "house", "Home Assistant"),
-        serverPage("SettingsHardware", "face.smiling", "Hardware"),
+        serverPage("SettingsHardware", "face.smiling", "Tessels"),
         serverPage("SettingsPresence", "person.fill.checkmark", "Presence"),
         serverPage("SettingsHealth", "waveform.path.ecg", "Health"),
       ],

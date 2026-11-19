@@ -208,7 +208,7 @@ export const r1PinOf = (entry: R1ReleaseEntry): R1FirmwarePin => ({
   ...entry.rbl,
 });
 
-/** What Settings → Hardware → Device utility shows about firmware (the `updates` read). */
+/** What Tessels → Device utility shows about firmware (the `updates` read). */
 export interface R1UpdatesView {
   readonly pinned: string | null;
   /** Every signed release this server knows, newest first; `recommended` is the one it installs by itself. */

@@ -316,7 +316,7 @@ const make = Effect.gen(function* () {
         return yield* new DeviceRefusedError({ why: "That tag's ID doesn't look right." });
       if (store.linksHost === null)
         return yield* new DeviceRefusedError({
-          why: "Set the tag link host first, in Settings → Hardware → Bodies.",
+          why: "Set the tag link host first, in Tessels → Bodies.",
         });
       const existing = input.bodyId === undefined ? undefined : store.bodies[input.bodyId];
       if (input.bodyId !== undefined && existing === undefined)

@@ -162,14 +162,14 @@ describe("areas and places", () => {
     const nav = (page.openModal("accounts"), page.textOf("mnav"));
     for (const group of ["You", "Talking to Tessaya", "Home and devices", "Working for you", "App"])
       expect(nav).toContain(group);
-    expect(nav).toContain("Hardware");
+    expect(nav).toContain("Tessels");
     page.closeModal();
     expect(page.errors).toEqual([]);
   });
-  it("finds Hardware and T3's pages from the search box", async () => {
+  it("finds Tessels and T3's pages from the search box", async () => {
     const page = await openState("empty");
     page.exec("query = 'nfc'; render();");
-    expect(page.textOf("page")).toContain("Hardware");
+    expect(page.textOf("page")).toContain("Tessels");
     page.exec("query = 'worktree'; render();");
     expect(page.textOf("page")).toContain("In T3 sessions");
     expect(page.errors).toEqual([]);

@@ -297,7 +297,7 @@ export type InstallState =
   | { readonly kind: "fetching"; readonly progress: InstallProgress }
   | { readonly kind: "failed"; readonly why: string; readonly at: number };
 
-/** The one line Settings → Hardware shows about the R1's voice on this server. Pure. */
+/** The one line Tessels shows about the R1's voice on this server. Pure. */
 export const voiceLine = (input: {
   readonly setting: string;
   readonly onHub: boolean;

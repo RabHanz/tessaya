@@ -1,5 +1,5 @@
 /**
- * Settings → Hardware on the phone: a Tessel's saved Wi-Fi networks in his order, a new one (hotspot or backup), the
+ * Tessels on the phone: a Tessel's saved Wi-Fi networks in his order, a new one (hotspot or backup), the
  * name its setup network shows (Tumble-3d57), and his servers' hubs in order. Mirrors the web WifiSection; every
  * change is the same `wifi`/`hubs` device op that voice and MCP use.
  */

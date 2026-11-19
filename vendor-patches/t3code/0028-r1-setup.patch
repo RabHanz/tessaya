@@ -1,5 +1,5 @@
 diff --git a/apps/mobile/app.config.ts b/apps/mobile/app.config.ts
-index 97fe5cf977accddf63c60eca5f4dd4165d744f57..00fc550759be339bf0c64d8eda6f36a70ccc3739 100644
+index 97fe5cf977accddf63c60eca5f4dd4165d744f57..3c8eec547f947bc92808446105d60cbd76d42d33 100644
 --- a/apps/mobile/app.config.ts
 +++ b/apps/mobile/app.config.ts
 @@ -2,8 +2,9 @@ import type { ExpoConfig } from "expo/config";
@@ -48,7 +48,7 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..00fc550759be339bf0c64d8eda6f36a7
 +      };
  // Copied thread links open the app. app.t3.codes/.well-known lists every variant's identifiers.
  const HOSTED_APP_HOST = "app.t3.codes";
-+// Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
++// Tessaya: writing body tags (Tessels → Bodies). Personal teams can't sign the NFC entitlement.
 +// TAG only: App Store Connect rejects the NDEF format (ITMS-90778); body tags are written as raw NTAG commands.
 +const nfcPlugin: [string, { nfcPermission: string; includeNdefEntitlement: false }] = [
 +  "react-native-nfc-manager",
@@ -108,7 +108,7 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..00fc550759be339bf0c64d8eda6f36a7
      ],
      "expo-secure-store",
      "expo-sqlite",
-+    // Tessaya: setting up an R1 over Bluetooth (Settings → Hardware → Add an R1); foreground only.
++    // Tessaya: setting up an R1 over Bluetooth (Tessels → Add an R1); foreground only.
 +    [
 +      "react-native-ble-plx",
 +      {
@@ -117,7 +117,7 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..00fc550759be339bf0c64d8eda6f36a7
 +        bluetoothAlwaysPermission: "Tessaya uses Bluetooth to set up your R1 on your Wi-Fi.",
 +      },
 +    ],
-+    // Tessaya: writing body tags (Settings → Hardware → Bodies). Personal teams can't sign the NFC entitlement.
++    // Tessaya: writing body tags (Tessels → Bodies). Personal teams can't sign the NFC entitlement.
 +    ...(isIosPersonalTeamBuild ? [] : [nfcPlugin]),
      ...(isIosPersonalTeamBuild
        ? [sharingPlugin]

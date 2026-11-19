@@ -1,5 +1,5 @@
 /**
- * Settings → Hardware, mirroring web's HardwareSettings: Tessaya's physical devices (the Agora R1 first), their status
+ * Tessels, mirroring web's HardwareSettings: Tessaya's physical devices (the Agora R1 first), their status
  * and live controls, all through the server's `baton.devices.call`. Camera and restart are the owner kind.
  */
 import { useAtomValue } from "@effect/atom-react";
@@ -139,7 +139,7 @@ export function SettingsHardwareRouteScreen() {
   const labelOf = (id: EnvironmentId) =>
     selectedTargets.find((e) => e.environmentId === id)?.label ?? id;
   return (
-    <SettingsScreen title="Hardware" menus={[environmentMenu]}>
+    <SettingsScreen title="Tessels" menus={[environmentMenu]}>
       <ScreenScrollView
         className="flex-1"
         contentInsetAdjustmentBehavior="automatic"
