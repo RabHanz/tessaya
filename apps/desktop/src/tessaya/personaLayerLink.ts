@@ -10,10 +10,10 @@ export interface LayerLinkDeps {
   readonly post: (body: {
     readonly key?: string;
     readonly signals: ReadonlyArray<string>;
-    readonly world?: { readonly fullscreen: boolean };
+    readonly world?: { readonly fullscreen: boolean; readonly opened?: boolean };
   }) => Promise<{ readonly open: boolean; readonly page: string | null } | null>;
   /** Her desk world now, sent with each report: a full-screen app in front keeps her own wishes out of his way. */
-  readonly world?: () => { readonly fullscreen: boolean };
+  readonly world?: () => { readonly fullscreen: boolean; readonly opened?: boolean };
   /** The device key, created and kept by the OS keystore on first use; null where none is available. */
   readonly deviceKey: () => string | null;
   /** Whether another app has the camera or microphone right now (a call or a recording). */

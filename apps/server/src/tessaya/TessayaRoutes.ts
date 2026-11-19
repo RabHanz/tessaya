@@ -777,10 +777,11 @@ export const routes = HttpRouter.use((router) =>
 export const deskReport = (body: unknown) => {
   const b = (body ?? {}) as { key?: unknown; signals?: unknown; world?: unknown };
   const key = typeof b.key === "string" ? Buffer.from(b.key, "base64") : null;
-  const world = b.world as { fullscreen?: unknown } | null | undefined;
+  const world = b.world as { fullscreen?: unknown; opened?: unknown } | null | undefined;
   return {
     key: key !== null && key.length === 32 ? new Uint8Array(key) : null,
     fullscreen: typeof world?.fullscreen === "boolean" ? world.fullscreen : null,
+    opened: world?.opened === true,
     signals: Array.isArray(b.signals)
       ? b.signals.filter((k): k is string => typeof k === "string" && DESK_SIGNALS.has(k))
       : [],
@@ -987,6 +988,7 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       yield* noteDeskWorld({
         ...(desk.fullscreen === null ? {} : { fullscreen: desk.fullscreen }),
         ...(desk.signals.includes("call") ? { call: true } : {}),
+        ...(desk.opened ? { opened: true } : {}),
       });
       // A locked or sleeping desk ends a private moment there: a private conversation loses her body at once.
       if (desk.signals.some((k) => k === "screenLocked" || k === "sleep"))

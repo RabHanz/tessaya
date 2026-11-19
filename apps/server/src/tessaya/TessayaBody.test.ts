@@ -278,6 +278,20 @@ describe("TessayaBody", () => {
         why: "he is in a full-screen app",
       });
       yield* noteDeskWorld({ fullscreen: false });
+      // another app comes to the front: she goes to look, at once, not at the next minute
+      yield* restBody();
+      yield* TestClock.adjust("20 minutes");
+      const calm = Layer.mergeAll(
+        world,
+        Layer.mock(TessayaMood)({
+          view: () => Effect.succeed({ label: "neutral", intensity: 0.1, energy: 0.6 } as never),
+        }),
+      );
+      const seen: Array<unknown> = [];
+      const watch = onAction((e) => void (e.kind === "body.want" && seen.push(e.subject)));
+      yield* noteDeskWorld({ opened: true }).pipe(Effect.provide(calm));
+      watch();
+      expect(seen).toEqual(["curious"]);
       yield* restBody();
     }),
   );
