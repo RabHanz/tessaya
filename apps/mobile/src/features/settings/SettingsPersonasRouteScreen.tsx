@@ -182,7 +182,7 @@ function PersonasSection(props: {
           team.map((p, i) => (
             <View key={p.id} className={i > 0 ? "border-t border-border-subtle" : undefined}>
               <ListRowLayout
-                label={`${p.name}${p.lead ? " (lead)" : ""}${p.private === true ? " · private" : ""}`}
+                label={`${p.name}${p.lead ? " (lead)" : ""}${p.private === true ? " · private" : ""}${p.sealed === undefined ? "" : " · sealed in your private layer"}`}
                 description={[
                   p.role,
                   p.brain === undefined

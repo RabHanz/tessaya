@@ -28,7 +28,8 @@ describe("the operating-system pack", () => {
   it("reads a persona's `private: yes`, never for the lead", () => {
     const pack = mergePack({
       roles: {
-        "alter-ego": "---\nname: Sebastian\nprivate: yes\nprivate rooms: One-on-one\n---\nAs him.",
+        "alter-ego":
+          "---\nname: Sebastian\nprivate: yes\nprivate rooms: One-on-one\nsealed: companion\n---\nAs him.",
         executive: "---\nprivate: yes\nprivate rooms: wherever\n---\nLead.",
       },
     });
@@ -36,6 +37,8 @@ describe("the operating-system pack", () => {
     // how far into his private rooms (rooms.ts); a word it cannot read is left out
     expect(pack.personas.find((p) => p.id === "alter-ego")?.privateRooms).toBe("one-on-one");
     expect(pack.personas.find((p) => p.lead)?.privateRooms).toBeUndefined();
+    // a sealed persona (D6) names only the layer that keeps her brief
+    expect(pack.personas.find((p) => p.id === "alter-ego")?.sealed).toBe("companion");
     expect(pack.personas.find((p) => p.lead)?.private).toBeUndefined();
   });
   it("carries each persona's body, temperament, eyes and model, and drops what it cannot read", () => {

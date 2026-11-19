@@ -122,6 +122,14 @@ export interface LayerHost {
   ) => Promise<{ readonly member: string; readonly method: "pin" | "hello" | "passkey" } | null>;
   readonly presence?: (vessel: string) => Promise<"alone" | "others" | "unknown">;
   readonly deviceKey?: () => Promise<Uint8Array | null>;
+  /**
+   * A private character becomes his persona (D6), sealed: her name, private, and a pointer to this layer; her brief
+   * never leaves the layer. Her new persona id, or null when it could not be made (a name he already uses).
+   */
+  readonly sealedPersona?: (input: {
+    readonly layer: string;
+    readonly name: string;
+  }) => Promise<string | null>;
   /** What this system can do today: its personas and the tools a turn can reach, read live from the server. */
   readonly capabilities?: () => Promise<{
     readonly personas: ReadonlyArray<{
