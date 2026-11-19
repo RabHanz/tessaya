@@ -1,11 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { PersonaLayers, type PersonaLayer } from "./PersonaLayers.ts";
 import { onAction } from "../provenance/ActionLog.ts";
-import { bodyState, feel, moveBody, playScene, type BodyCaller } from "./TessayaBody.ts";
+import { bodyState, feel, moveBody, playScene, restBody, type BodyCaller } from "./TessayaBody.ts";
 import { SessionMember } from "./TessayaTurn.ts";
 import * as TurnLiveContext from "./TurnLiveContext.ts";
 
@@ -117,8 +118,85 @@ describe("TessayaBody", () => {
       }),
   );
 
+  it.effect(
+    "only the conversation he is in moves her body, a scene holds it until he speaks elsewhere, and her desk is his alone",
+    () =>
+      Effect.gen(function* () {
+        yield* restBody();
+        const writes: Array<unknown> = [];
+        const focused: Array<unknown> = [];
+        const off = onAction((e) => void (e.kind === "body.focus" && focused.push(e.data)));
+        const desks = Layer.succeed(DeviceRegistry)(
+          DeviceRegistry.of({
+            list: Effect.succeed([
+              { deviceId: "his", online: true, items: [{ id: "mascot.do" }] },
+              { deviceId: "saras", online: true, member: "sara", items: [{ id: "mascot.do" }] },
+            ]),
+            write: (deviceId: string, itemId: string, value: unknown) =>
+              Effect.sync(() => void writes.push([deviceId, itemId, value])),
+          } as never),
+        );
+        const a: BodyCaller = {
+          ...her,
+          id: "desktop:focus",
+          thread: "freya|person:owner",
+          signal: "type",
+        };
+        const b: BodyCaller = {
+          id: "phone:p",
+          kind: "persona",
+          mayBePrivate: true,
+          thread: "freya|w2",
+          signal: "type",
+        };
+        expect(yield* moveBody({ act: "wave" }, a).pipe(Effect.provide(desks))).toMatchObject({
+          ok: true,
+          route: "desk",
+        });
+        expect(writes).toEqual([["his", "mascot.do", "wave"]]);
+        // B's reply a moment later does not mix in; once he has been in B a while, B has her
+        expect(yield* moveBody({ act: "nod" }, b).pipe(Effect.provide(desks))).toMatchObject({
+          ok: false,
+          route: "none",
+        });
+        yield* TestClock.adjust("3 seconds");
+        expect(yield* moveBody({ act: "nod" }, b).pipe(Effect.provide(desks))).toMatchObject({
+          ok: true,
+        });
+        // B's scene holds her: A typing a moment later still does not, but his voice in A pauses it and A has her
+        const layers = { all: [openLayer([])] };
+        expect(
+          yield* playScene("greeting", b, false).pipe(Effect.provideService(PersonaLayers, layers)),
+        ).toMatchObject({ ok: true });
+        const spoke: BodyCaller = { ...a, signal: "speak" };
+        expect(yield* moveBody({ act: "wave" }, spoke).pipe(Effect.provide(desks))).toMatchObject({
+          ok: true,
+        });
+        // and a third conversation a moment later does not take it from the one he spoke in
+        const c: BodyCaller = {
+          id: "phone:q",
+          kind: "persona",
+          mayBePrivate: true,
+          thread: "freya|w3",
+          signal: "type",
+        };
+        expect(yield* moveBody({ act: "nod" }, c).pipe(Effect.provide(desks))).toMatchObject({
+          ok: false,
+        });
+        off();
+        expect(focused).toEqual([
+          { from: null, to: "freya|person:owner", event: "presence" },
+          { from: "freya|person:owner", to: "freya|w2", event: "presence" },
+          { from: "freya|w2", to: "freya|person:owner", event: "presence" },
+        ]);
+        yield* restBody();
+      }),
+  );
+
   it.effect("limits each caller to a burst, then tells it when to try again", () =>
     Effect.gen(function* () {
+      // past the last test's hold on her body (body focus), so this agent's thread has it
+      yield* TestClock.adjust("3 seconds");
       const caller: BodyCaller = { id: "thread:burst", kind: "agent", mayBePrivate: true };
       const layers = Layer.succeed(PersonaLayers, { all: [openLayer([])] });
       const answers = [];
@@ -147,6 +225,7 @@ describe("TessayaBody", () => {
     "plays a core scene on the open session as one timed sequence, and dry-runs one with a fix per error",
     () =>
       Effect.gen(function* () {
+        yield* TestClock.adjust("10 seconds");
         const taken: Array<{ cues: Array<{ kind: string }> }> = [];
         const played = yield* playScene(
           "greeting",
@@ -178,6 +257,7 @@ describe("TessayaBody", () => {
       Effect.gen(function* () {
         const rows: Array<{ kind: string; actor: { kind: string; id?: string }; data: unknown }> =
           [];
+        yield* restBody();
         const off = onAction((e) => void (e.kind === "body.felt" && rows.push(e)));
         const live = yield* TurnLiveContext.TurnLiveContext;
         yield* feel({ vessel: "desktop", part: "head", kind: "pat" }).pipe(
