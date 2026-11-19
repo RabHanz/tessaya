@@ -38,6 +38,25 @@ index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..a3616afc6879725d000a7231bfdbcd31
        await NodeFSP.copyFile(new URL(`../${file}`, import.meta.url), NodePath.join(root, file));
      }
      await NodeFSP.writeFile(
+diff --git a/apps/web/src/components/settings/SettingsScopeSentence.tsx b/apps/web/src/components/settings/SettingsScopeSentence.tsx
+index f22844c8abc293b8513d4b50950b4ff5844aafe1..51b2e65171bd8f352d6ff6b5c8b40038dba41c82 100644
+--- a/apps/web/src/components/settings/SettingsScopeSentence.tsx
++++ b/apps/web/src/components/settings/SettingsScopeSentence.tsx
+@@ -71,7 +71,13 @@ export function SettingsScopeSentence() {
+   const scope = useOptionalSettingsScope();
+   const pathname = useLocation({ select: (location) => location.pathname });
+   const { environments } = useEnvironments();
+-  if (scope === null || SETTINGS_DEVICE_ONLY_PATHS.has(pathname)) return null;
++  // Tessaya's pages are one household's, so no machine or project picker (D-038).
++  if (
++    scope === null ||
++    SETTINGS_DEVICE_ONLY_PATHS.has(pathname) ||
++    pathname.startsWith("/tessaya/")
++  )
++    return null;
+   const props: SettingsScopeMenuProps = {
+     value: scope.search,
+     singleEnvironment: scope.singleEnvironment,
 diff --git a/apps/web/src/connection/platform.ts b/apps/web/src/connection/platform.ts
 index dcd50342f1c91c78d4dca18286a96073e284da98..1e6d56d4450185ad622d3011c0efe5a4a7209f0f 100644
 --- a/apps/web/src/connection/platform.ts

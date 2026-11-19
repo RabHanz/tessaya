@@ -14,6 +14,7 @@ import {
   usePrimaryEnvironment,
   usePrimaryEnvironmentId,
 } from "../../state/environments";
+import { isTessayaGuest } from "../../tessayaGuestFlag";
 import { Button } from "../ui/button";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { PromptLab } from "./PromptLabSettings";
@@ -28,6 +29,7 @@ import { ActivityPanel } from "./ActivitySettings";
 import { HardwareSettingsPanel } from "./HardwareSettings";
 import { HomeSettingsPanel } from "./HomeSettings";
 import { SettingsScopeProvider, useSettingsScope } from "./SettingsScopeContext";
+import { StandingYeses } from "./StandingYeses";
 import { TeamPanel } from "./TessayaTeam";
 import { UpcomingPanel } from "./UpcomingSettings";
 import type { SettingsScopeSearch } from "./settingsScope";
@@ -55,6 +57,18 @@ function PhonePage() {
   return (
     <SettingsPageContainer>
       {primary === null ? null : <AddPhoneSection environmentId={primary} />}
+    </SettingsPageContainer>
+  );
+}
+
+/** Agents › Trust › Always allowed: every standing yes (moved from Brain, D-038). */
+function AllowedPage() {
+  const { environment } = useSettingsScope();
+  return (
+    <SettingsPageContainer>
+      {environment === null ? null : (
+        <StandingYeses key={environment.environmentId} environmentId={environment.environmentId} />
+      )}
     </SettingsPageContainer>
   );
 }
@@ -191,6 +205,7 @@ const TESSAYA_PAGES = {
   phone: PhonePage,
   forgotten: ForgottenPage,
   health: HealthPage,
+  allowed: AllowedPage,
 } as const;
 
 export type TessayaPage = keyof typeof TESSAYA_PAGES;
@@ -208,21 +223,34 @@ export const isTessayaPage = (page: string): page is TessayaPage =>
 
 /** One Tessaya page alone, without T3's sidebar or settings list, on this app's own environment. */
 export function TessayaPageView({ page }: { readonly page: TessayaPage }) {
-  // This machine's own server first: Tessaya's window belongs to it, not to whichever machine sorts first.
+  // One household on one brain (D-038): her pages read this machine's server, which forwards to the brain, and never
+  // offer a machine or project to pick. SettingsScopeSentence stays hidden on /tessaya/ pages.
   const primary = usePrimaryEnvironmentId();
-  const [chosen, setChosen] = useState<SettingsScopeSearch | null>(null);
-  const search = chosen ?? (primary === null ? {} : { machine: primary });
+  const search: SettingsScopeSearch = primary === null ? {} : { machine: primary };
   const Page = TESSAYA_PAGES[page];
+  // In a browser (not inside her window) each page has a way back to the list of her places.
+  const back = isTessayaGuest() ? null : (
+    <div className="px-4 pt-3 text-sm">
+      <Link
+        to="/settings/tessaya"
+        className="text-muted-foreground underline-offset-2 hover:underline"
+      >
+        ‹ All of Tessaya
+      </Link>
+    </div>
+  );
   // The household's pages: no settings scope, so no server picker (13 Nov, D-038).
   if (UNSCOPED.has(page))
     return (
       <div className="flex h-dvh min-h-0 flex-col overflow-auto bg-background">
+        {back}
         <Page />
       </div>
     );
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-auto bg-background">
-      <SettingsScopeProvider search={search} singleEnvironment onChange={setChosen}>
+      <SettingsScopeProvider search={search} singleEnvironment onChange={() => undefined}>
+        {back}
         <Page />
       </SettingsScopeProvider>
     </div>
@@ -230,6 +258,7 @@ export function TessayaPageView({ page }: { readonly page: TessayaPage }) {
 }
 
 const PLACE_PAGE: Partial<Record<TessayaPlaceId, TessayaPage>> = {
+  brain: "brain",
   hardware: "hardware",
   homeassistant: "homeassistant",
   apis: "apis",

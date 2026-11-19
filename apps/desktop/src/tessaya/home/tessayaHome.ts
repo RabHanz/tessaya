@@ -394,6 +394,8 @@ export interface HomeExtra {
     readonly path: string;
   }>;
   readonly about: {
+    /** This computer's own name: settings kept on this machine say so ("On LAPTOP-7"), never an environment. */
+    readonly machine?: string;
     readonly version: string;
     readonly source: string;
     readonly licence: string;

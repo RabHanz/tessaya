@@ -47,7 +47,7 @@ import {
   BATON_VOICE_WS_METHODS,
   BATON_LEARN_WS_METHODS,
   TONE_LABELS,
-  tessayaPlaceOf,
+  tessayaTargetOf,
   type ToneLabel,
 } from "@t3tools/tessaya-contracts";
 import {
@@ -4100,7 +4100,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   // T3's window asks for Tessaya's, at a place: "Open Tessaya", or a moved setting's Open button.
   Electron.ipcMain.on(BATON_OPEN_TESSAYA_CHANNEL, (event, link: unknown) => {
     if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
-    home.open((typeof link === "string" ? tessayaPlaceOf(link) : null) ?? undefined);
+    home.open((typeof link === "string" ? tessayaTargetOf(link) : null) ?? undefined);
   });
   Electron.ipcMain.on(BATON_VOICE_FOCUS_CHANNEL, (event, id: unknown) => {
     // Our own windows only; preview panes load other people's pages.
@@ -7024,6 +7024,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         { id: "settings", label: "Voice settings file", path: settingsPath },
       ],
       about: {
+        machine: NodeOS.hostname(),
         version: input.appVersion,
         source: releasesUrl(input.env).replace("https://", ""),
         licence: "MIT, with third-party notices",
