@@ -374,6 +374,8 @@ export const wishTick = Effect.fn("TessayaBody.wish")(function* () {
   if (wish === null) return null;
   lastWish = { want: wish.want, at: now };
   const answer = yield* moveBody(wantMove(wish.want), SELF);
+  // her own wish holds her body only while it is sent; the dial, not the 10-minute idle, sets her rhythm
+  yield* moveFocus(DESK_BODY, { kind: "idle", thread: SELF.thread!, at: now });
   yield* emitAction({
     kind: "body.want",
     actor: { kind: "rule", id: "motives", certainty: 1 },

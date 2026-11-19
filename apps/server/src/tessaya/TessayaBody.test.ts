@@ -353,8 +353,8 @@ describe("TessayaBody", () => {
       // something new: the rules' own wish, no model call
       yield* noteDeskWorld({ opened: true }).pipe(Effect.provide(world));
       expect(asked).toEqual([]);
-      // her body is her own again (her wish held it a while), and nothing new since: the rules give nothing
-      yield* restBody();
+      // her own wish lets go of her body at once: on the dial's interval (lively, a minute) the next can fire
+      expect(yield* bodyHolderLine()).toBe("Her desk body is free: no conversation holds it.");
       yield* noteDeskWorld({ opened: false });
       yield* TestClock.adjust("70 seconds");
       expect(yield* wishTick().pipe(Effect.provide(world))).toEqual({
