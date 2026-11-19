@@ -10,7 +10,15 @@ import { HUMAN_SENSE } from "@t3tools/tessaya-shared/bodySense";
 import { ACT_NAMES } from "@t3tools/tessaya-shared/bodyMotion";
 import { HAND_PLACES, INVOLUNTARY } from "@t3tools/tessaya-shared/bodyPlanner";
 import { JOINT_LIMITS, REFERENCE_RIG } from "@t3tools/tessaya-shared/bodyRig";
-import { CORE_SCENES, decodeScene, dryRun, sceneCues } from "@t3tools/tessaya-shared/bodyScene";
+import {
+  branchFor,
+  CORE_SCENES,
+  decodeScene,
+  decodeScenePack,
+  dryRun,
+  poseAt,
+  sceneCues,
+} from "@t3tools/tessaya-shared/bodyScene";
 
 import { mountViewer } from "./modelViewer";
 import { mountBody } from "./vrmBody";
@@ -32,6 +40,9 @@ const control = {
   decodeScene,
   sceneCues,
   dryRun,
+  branchFor,
+  poseAt,
+  decodeScenePack,
   CORE_SCENES,
   INVOLUNTARY,
   JOINT_LIMITS,
