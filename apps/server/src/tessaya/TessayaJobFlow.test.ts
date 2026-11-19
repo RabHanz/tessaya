@@ -28,6 +28,7 @@ import {
   enforceCaps,
   postReports,
   noticePlan,
+  leadOnThread,
   recordJobChanges,
   moveJobLead,
   refineJob,
@@ -44,6 +45,7 @@ import { layerStatic, type TessayaThreadLaunch } from "./TessayaEngine.ts";
 import { TessayaJobService, layer as jobLayer } from "./TessayaJobService.ts";
 import { TessayaMemoryService, MemoryViewer } from "./TessayaMemoryService.ts";
 import { TessayaRecordService, layer as recordLayer } from "./TessayaRecordService.ts";
+import { TessayaTurn } from "./TessayaTurn.ts";
 import { layer as workSessionLayer } from "./WorkSessionService.ts";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -669,8 +671,25 @@ layer("BatonJobFlow", (it) => {
               },
             ] as never;
           const seen = new Map<string, string>();
-          yield* recordJobChanges(entry("working"), seen);
-          yield* recordJobChanges(entry("done_unseen"), seen);
+          // the conversation she started it from is doing it, until it ends
+          const doings: Array<[string, string | null]> = [];
+          const turns = TessayaTurn.of({
+            setDoing: (thread: string, doing: { readonly what: string } | null) =>
+              Effect.sync(() => void doings.push([thread, doing?.what ?? null])),
+          } as never);
+          yield* leadOnThread(part, "Sources", "freya|person:owner").pipe(
+            Effect.provideService(TessayaTurn, turns),
+          );
+          yield* recordJobChanges(entry("working"), seen).pipe(
+            Effect.provideService(TessayaTurn, turns),
+          );
+          yield* recordJobChanges(entry("done_unseen"), seen).pipe(
+            Effect.provideService(TessayaTurn, turns),
+          );
+          assert.deepEqual(doings, [
+            ["freya|person:owner", 'leading the job "Sources"'],
+            ["freya|person:owner", null],
+          ]);
           const rows = yield* (yield* TessayaRecordService).query({ kind: "job" });
           assert.deepEqual(
             rows.filter((r) => r.ref === part).map((r) => r.actor),
