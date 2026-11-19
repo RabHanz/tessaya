@@ -20,15 +20,30 @@ export interface PriceList {
   readonly version: string;
 }
 
+let priceListCache: {
+  readonly file: string;
+  readonly stamp: string;
+  readonly list: PriceList | null;
+} | null = null;
+
 /** The rate list T3's usage page keeps (usage-model-rates.json), or null before it has ever been fetched. */
 export const readPriceList = (stateDir: string): PriceList | null => {
+  const file = NodePath.join(stateDir, "usage-model-rates.json");
   try {
-    const raw = JSON.parse(
-      NodeFS.readFileSync(NodePath.join(stateDir, "usage-model-rates.json"), "utf8"),
-    ) as { document?: unknown; fetchedAtMs?: unknown };
+    // Usage rows price on every record; the file changes about once a day, so parse only when it does.
+    const stat = NodeFS.statSync(file);
+    const stamp = `${stat.mtimeMs}:${stat.size}`;
+    if (priceListCache?.file === file && priceListCache.stamp === stamp) return priceListCache.list;
+    const raw = JSON.parse(NodeFS.readFileSync(file, "utf8")) as {
+      document?: unknown;
+      fetchedAtMs?: unknown;
+    };
     const table = parseRateTable(raw.document);
     const at = typeof raw.fetchedAtMs === "number" ? raw.fetchedAtMs : 0;
-    return table.size > 0 ? { table, version: new Date(at).toISOString().slice(0, 10) } : null;
+    const list =
+      table.size > 0 ? { table, version: new Date(at).toISOString().slice(0, 10) } : null;
+    priceListCache = { file, stamp, list };
+    return list;
   } catch {
     return null;
   }
