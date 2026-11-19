@@ -17,6 +17,7 @@ import { CastCallInput } from "@t3tools/tessaya-contracts";
 import { TessayaCast as TessayaCastRules } from "@t3tools/contracts/settings";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaTurn } from "./TessayaTurn.ts";
+import { memoryAtBrain, ON_BRAIN, TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
 import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
@@ -116,6 +117,18 @@ const ThreadActIn = Schema.Union([
   }),
 ]);
 const decodeThreadAct = Schema.decodeUnknownOption(ThreadActIn);
+const MemoryAsk = Schema.Struct({
+  m: Schema.Literals(ON_BRAIN),
+  args: Schema.Array(Schema.Unknown),
+  viewer: Schema.Literals(["server", "desktop", "client"]),
+});
+const decodeMemoryAsk = Schema.decodeUnknownOption(MemoryAsk);
+const MemorySyncIn = Schema.Struct({
+  origin: Schema.String.check(Schema.isMaxLength(200)),
+  changes: Schema.Array(Schema.Unknown),
+  upTo: Schema.String.check(Schema.isMaxLength(60)),
+});
+const decodeMemorySync = Schema.decodeUnknownOption(MemorySyncIn);
 const decodePresenceAct = Schema.decodeUnknownOption(PresenceAct);
 const decodePersonaAct = Schema.decodeUnknownOption(PersonaAct);
 const decodeGroupAct = Schema.decodeUnknownOption(GroupAct);
@@ -225,6 +238,25 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
     case "outbox":
       // unwrapped by receiveAtBrain: never nested
       return refused("Not a queued change.");
+    case "memory": {
+      const ask = decodeMemoryAsk(payload);
+      if (Option.isNone(ask)) return refused("Not a memory ask.");
+      const here = yield* Effect.serviceOption(TessayaMemoryService);
+      if (Option.isNone(here)) return refused("No memory here.");
+      return done(
+        yield* memoryAtBrain(ask.value.m, ask.value.args, ask.value.viewer).pipe(
+          Effect.provideService(TessayaMemoryService, here.value),
+        ),
+      );
+    }
+    case "memorySync": {
+      const sync = decodeMemorySync(payload);
+      if (Option.isNone(sync)) return refused("Not a memory sync.");
+      const here = yield* Effect.serviceOption(TessayaMemoryService);
+      if (Option.isNone(here)) return refused("No memory here.");
+      const s = sync.value;
+      return done(yield* here.value.applyChanges(s.origin, s.changes as never, s.upTo));
+    }
     case "presence": {
       const act = decodePresenceAct(payload);
       if (Option.isNone(act)) return refused("Not a presence signal.");

@@ -64,6 +64,7 @@ import {
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { emitAction, type TurnAction } from "./turnActions.ts";
+import { makeBrainLink } from "./BrainHost.ts";
 
 export const BIN_DAYS_KEY = "people.binDays";
 /** Anything forgotten can be restored this long (the Director, 16 Nov: forgetting must be hard to do by mistake). */
@@ -1574,3 +1575,151 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(TessayaMemoryService, make);
+
+/** What a server that isn't her brain asks the brain for, instead of its own copy (her memory lives once). */
+export const ON_BRAIN = [
+  "list",
+  "search",
+  "add",
+  "edit",
+  "rewrite",
+  "history",
+  "restore",
+  "pin",
+  "forget",
+  "overwrite",
+  "supersede",
+  "accept",
+  "related",
+  "recall",
+  "markUsed",
+  "used",
+] as const;
+export type OnBrain = (typeof ON_BRAIN)[number];
+const READS: ReadonlySet<OnBrain> = new Set([
+  "list",
+  "search",
+  "history",
+  "related",
+  "recall",
+  "used",
+]);
+/** Writes that can't fail by their type: with the brain away they did nothing (false, or nothing). */
+const QUIET: Readonly<Partial<Record<OnBrain, unknown>>> = {
+  forget: false,
+  supersede: false,
+  overwrite: undefined,
+  markUsed: undefined,
+};
+
+/** The brain's side: one memory method as a worker asked it, under the worker's viewer. */
+export const memoryAtBrain = Effect.fn("TessayaMemoryService.atBrain")(function* (
+  method: OnBrain,
+  args: ReadonlyArray<unknown>,
+  viewer: "server" | "desktop" | "client",
+) {
+  const memory = yield* TessayaMemoryService;
+  const run = (
+    memory[method] as (
+      ...a: ReadonlyArray<unknown>
+    ) => Effect.Effect<unknown, BatonMemoryRefusedError>
+  )(...args);
+  return yield* run.pipe(
+    Effect.provideService(MemoryViewer, viewer),
+    Effect.map((value) => ({ value })),
+    Effect.catch((e: BatonMemoryRefusedError) => Effect.succeed({ refused: e.reason })),
+  );
+});
+
+/**
+ * Her one memory (one-self move 3): on a server that isn't her brain, every read and write of what she knows goes to
+ * the brain. Its own synced store stays only as a read copy for when the brain can't be reached; a write then is
+ * refused rather than kept here as a second truth. Sync and the rest stay as they are.
+ */
+export const oneBrain = Layer.effect(
+  TessayaMemoryService,
+  Effect.gen(function* () {
+    const local = yield* TessayaMemoryService;
+    const brain = yield* makeBrainLink;
+    let movedUp = false;
+    /** Once: what this server wrote before the brain held it goes up as one sync round (counted, the local store kept). */
+    const moveUp = Effect.fn("TessayaMemoryService.moveUp")(function* () {
+      if (movedUp) return;
+      const all = yield* local.changesSince(null);
+      yield* emitAction({
+        kind: "memory.move",
+        actor: { kind: "rule", id: "oneBrain", certainty: 1 },
+        outcome: "dryRun",
+        data: { changes: all.changes.length },
+      });
+      if (all.changes.length > 0) {
+        const sent = yield* brain.send("memorySync", all);
+        if (Option.isNone(sent)) return;
+      }
+      movedUp = true;
+      yield* emitAction({
+        kind: "memory.move",
+        actor: { kind: "rule", id: "oneBrain", certainty: 1 },
+        outcome: "moved",
+        data: { changes: all.changes.length },
+      });
+    });
+    const nowIsoHere = Effect.map(DateTime.now, DateTime.formatIso);
+    /** What she just learned while her brain is away, as it will be kept there: marked not yet synced. */
+    const unsynced = (draft: MemoryDraft, at: string): MemoryItem =>
+      ({
+        id: `unsynced-${at}`,
+        kind: draft.kind,
+        text: draft.text.trim(),
+        source: draft.source,
+        sourceRef: "not yet synced",
+        scope: draft.scope ?? "global",
+        scopeRef: draft.scopeRef ?? null,
+        confidence: draft.confidence ?? 1,
+        pinned: false,
+        createdAt: at,
+        updatedAt: at,
+        lastUsedAt: null,
+        expiresAt: null,
+        supersededBy: null,
+        proposed: false,
+      }) as MemoryItem;
+    const via = (method: OnBrain) =>
+      ((...args: ReadonlyArray<unknown>) =>
+        Effect.gen(function* () {
+          const mine = (
+            local[method] as (
+              ...a: ReadonlyArray<unknown>
+            ) => Effect.Effect<unknown, BatonMemoryRefusedError>
+          )(...args);
+          if (yield* brain.isBrain) return yield* mine;
+          yield* moveUp();
+          const viewer = yield* MemoryViewer;
+          const ask = { m: method, args, viewer };
+          // a read asks now; a write is sent now or queued in order for when the brain is back (never lost)
+          // what waited for the brain lands first, so a read sees it
+          if (READS.has(method)) yield* brain.replay();
+          const answer = READS.has(method)
+            ? yield* brain.send("memory", ask)
+            : yield* brain.sendOrQueue("memory", ask);
+          if (Option.isNone(answer)) {
+            if (READS.has(method)) return yield* mine;
+            if (method in QUIET) return QUIET[method];
+            // queued: what she learned is held for her brain and lands there; it shows as not yet synced
+            if (method === "add") return unsynced(args[0] as MemoryDraft, yield* nowIsoHere);
+            return yield* new BatonMemoryRefusedError({
+              reason:
+                "Saved for her brain, which can't be reached just now: not yet synced, it lands when she's back.",
+            });
+          }
+          const got = answer.value as { readonly value?: unknown; readonly refused?: string };
+          if (got.refused !== undefined)
+            return yield* new BatonMemoryRefusedError({ reason: got.refused });
+          return got.value;
+        })) as never;
+    return TessayaMemoryService.of({
+      ...local,
+      ...Object.fromEntries(ON_BRAIN.map((m) => [m, via(m)])),
+    } as never);
+  }),
+);

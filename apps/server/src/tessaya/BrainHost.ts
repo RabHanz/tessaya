@@ -30,6 +30,9 @@ export const BrainOp = Schema.Literals([
   "outbox",
   // her one conversation list (LiveThreads): kept on her brain alone
   "threads",
+  // her one memory: a worker's reads and writes, and its earlier writes as one sync round
+  "memory",
+  "memorySync",
   "presence",
   "persona",
   "group",
