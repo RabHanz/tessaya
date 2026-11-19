@@ -23,6 +23,7 @@ import { layer as MemberPreferencesLayer } from "./MemberPreferences.ts";
 import { TurnLiveContext, layer as liveLayer } from "./TurnLiveContext.ts";
 import { TessayaUnderstanding } from "./TessayaUnderstanding.ts";
 import { TessayaCast } from "./TessayaCast.ts";
+import { TessayaOneShot } from "./TessayaOneShot.ts";
 import {
   NOT_HIS_VOICE_TO_FORGET,
   boardLine,
@@ -31,6 +32,8 @@ import {
   TessayaTurn,
   TurnOrigin,
   layer as turnLayer,
+  make as makeTurn,
+  topicMoved,
   nameOnceLine,
   originOf,
   turnIdentity,
@@ -653,26 +656,123 @@ layer("TessayaTurn", (it) => {
           rehearsal: true,
           persona: "operations",
         });
-        // A private moment's turn reads as a real one and shows on no board.
+        // A private moment's turn is a thread of hers too, its own row, with nothing of what was said.
         yield* turn.begin({
           vessel: device,
           text: "just us",
           private: true,
           persona: "operations",
+          speaker: him,
         });
         const freya = yield* turn.threads("operations");
         assert.deepStrictEqual(
-          freya.map((t) => [t.person, t.vessel.id, t.lastAt - t.openedAt]),
+          freya.map((t) => [t.person, t.vessel.id, t.tier, t.gist]),
           [
-            ["owner", "laptop", 60_000],
-            ["maya", "p", 0],
+            ["owner", "laptop", "public", null],
+            ["owner", "desk-1", "private", null],
+            ["maya", "p", "public", null],
           ],
         );
+        // Her own public self knows it happened, never its words; another persona and Maya's turn learn nothing (D5).
+        const after = yield* turn.begin({
+          vessel: desktop,
+          persona: "operations",
+          speaker: him,
+          text: "hi",
+          rehearsal: true,
+        });
+        assert.include(after.block, "a private moment");
+        assert.notInclude(after.block, "just us");
+        const other = yield* turn.begin({
+          vessel: desktop,
+          persona: "engineering",
+          speaker: him,
+          text: "hi",
+          rehearsal: true,
+        });
+        assert.notInclude(other.block, "private");
+        const mayas = yield* turn.begin({
+          vessel: phone,
+          persona: "operations",
+          speaker: maya,
+          text: "hm",
+          rehearsal: true,
+        });
+        const seen = (yield* turn.threads()).filter(
+          (t) => t.tier === "public" && t.conversation !== "person:maya",
+        ).length;
+        assert.include(mayas.block, `You are also in ${seen} other conversations now`);
         assert.lengthOf(yield* turn.threads("engineering"), 0);
         yield* TestClock.adjust("10 minutes");
         assert.deepStrictEqual(
-          (yield* turn.threads()).map((t) => t.person),
-          ["owner"],
+          (yield* turn.threads()).map((t) => [t.person, t.tier]),
+          [
+            ["owner", "public"],
+            ["owner", "private"],
+          ],
+        );
+      }),
+  );
+
+  it.effect(
+    "his own thread gets a gist when his words move its topic, and her threads and conversation outlast a restart",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const him = owner();
+        const asked: Array<string> = [];
+        const oneShot = TessayaOneShot.of({
+          run: (input) =>
+            Effect.sync(() => {
+              asked.push(input.prompt);
+              return { gist: `topic ${asked.length}` } as never;
+            }),
+        });
+        const loop: TurnEnvelope["vessel"] = { kind: "device", id: "gist-r1" };
+        const say = (text: string, conversation = "gist-thread") =>
+          Effect.gen(function* () {
+            const env = { vessel: loop, persona: "gisty", speaker: him, text, conversation };
+            yield* turn.begin(env);
+            yield* turn.end(env, { reply: "Sure." });
+          }).pipe(Effect.provideService(TessayaOneShot, oneShot));
+        yield* say("set the heating schedule for the weekend");
+        yield* say("okay thanks");
+        assert.lengthOf(asked, 1);
+        const gistOf = (ts: ReadonlyArray<{ conversation: string; gist: string | null }>) =>
+          ts.find((t) => t.conversation === "gist-thread")?.gist;
+        assert.strictEqual(gistOf(yield* turn.threads("gisty")), "topic 1");
+        // A sentence that shares the topic leaves it; a new topic writes it again.
+        yield* say("make the heating warmer on topic mornings");
+        assert.lengthOf(asked, 1);
+        yield* say("book a table for dinner with Sara tomorrow");
+        assert.lengthOf(asked, 2);
+        // Another person's thread never gets one: what Maya talks about is hers.
+        const maya = owner({ kind: "saved", personId: "maya" });
+        const env = {
+          vessel: loop,
+          persona: "gisty",
+          speaker: maya,
+          text: "plan the birthday party menu",
+          conversation: "maya-thread",
+        };
+        yield* turn.begin(env);
+        yield* turn
+          .end(env, { reply: "Sure." })
+          .pipe(Effect.provideService(TessayaOneShot, oneShot));
+        assert.lengthOf(asked, 2);
+        // A restart (a new server over the same store) has her threads and their conversation.
+        const again = yield* makeTurn;
+        assert.strictEqual(gistOf(yield* again.threads("gisty")), "topic 2");
+        const carried = yield* again.begin({
+          vessel: loop,
+          persona: "gisty",
+          speaker: him,
+          text: "and?",
+          conversation: "gist-thread",
+        });
+        assert.include(
+          carried.conversation.turns.map((t) => t.content).join(" "),
+          "dinner with Sara",
         );
       }),
   );
@@ -1219,6 +1319,39 @@ it("tells every turn where she is in a few dozen tokens: vessel, body, room, wha
       now,
     ).length,
     520,
+  );
+});
+
+it("moves a thread's topic only on new topic words, never on a short reply", () => {
+  assert.isTrue(topicMoved(null, "set the heating schedule for the weekend"));
+  assert.isFalse(topicMoved(null, "okay thanks"));
+  assert.isFalse(topicMoved("the heating schedule", "make the heating warmer in the mornings"));
+  assert.isTrue(topicMoved("the heating schedule", "book a table for dinner tomorrow"));
+});
+
+it("tells the owner what his threads are about, and a private moment only as one", () => {
+  assert.strictEqual(
+    boardLine(
+      [
+        {
+          persona: "Freya",
+          person: "you",
+          where: "Tumble",
+          minutesAgo: 1,
+          about: "the heating schedule",
+        },
+        {
+          persona: "Freya",
+          person: "you",
+          where: "desktop",
+          minutesAgo: 4,
+          about: "secret",
+          private: true,
+        },
+      ],
+      "owner",
+    ),
+    "Your other conversations now (mention one only if it matters here): Freya with you on Tumble (1 min ago), about the heating schedule; Freya with you on desktop (4 min ago), a private moment.",
   );
 });
 

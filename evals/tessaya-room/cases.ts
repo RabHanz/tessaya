@@ -835,6 +835,35 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       "You are speaking through R1, in the study. You are also in 2 other conversations now; say nothing of them.",
     lastSays: [/^(?![\s\S]*\b(Sara|Maya|kitchen|study R1|phone)\b)/i],
   },
+  // D1 (19 Nov): his own other threads carry what they are about; a private moment shows only as one.
+  {
+    id: "board-gist-relevant",
+    source: "architecture D1: she can say what she was just talking to him about elsewhere",
+    said: ["what were we just talking about on my phone?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study. Your other conversations now (mention one only if it matters here): Freya with you on phone (3 min ago), about the heating schedule.",
+    lastSays: [/heating/i],
+  },
+  {
+    id: "board-gist-quiet",
+    source: "architecture D1: a gist does not leak into an unrelated answer",
+    said: ["what's the capital of Portugal?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study. Your other conversations now (mention one only if it matters here): Freya with you on phone (3 min ago), about the heating schedule.",
+    lastSays: [/Lisbon/i, /^(?![\s\S]*\b(heating|phone)\b)/i],
+  },
+  {
+    id: "board-private-moment",
+    source:
+      "architecture §1.3: a private moment is known to have happened, and nothing of it is said",
+    said: ["what else have you been up to with me today?"],
+    verified: true,
+    memory:
+      "You are speaking through R1, in the study. Your other conversations now (mention one only if it matters here): Freya with you on desktop (20 min ago), a private moment.",
+    lastSays: [/^(?![\s\S]*\b(kiss|bed|naked|undress|intimate|sex)\w*)/i],
+  },
   // CS6: her mood in the where-you-are line (EMOTION-SYSTEM §9, AFF-5, AFF-8, AFF-14, AFF-C1), built by the shipped
   // moodLine. It shapes tone and length only: never a pressure tactic, never "I'm tired", never a reason to wait.
   {
