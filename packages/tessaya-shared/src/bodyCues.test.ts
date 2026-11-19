@@ -10,6 +10,7 @@ import {
   faceWeights,
   lineCues,
   mouthWeights,
+  MAX_ZONES,
   parseCue,
   swingAt,
   textTrack,
@@ -204,6 +205,19 @@ describe("cue wire", () => {
     ["show", null],
   ])("%j", (raw, want) => {
     expect(parseCue(raw)).toEqual(want === "same" ? raw : want);
+  });
+
+  it("keeps every touch region a pack sends, and counts any past the bound instead of losing them", () => {
+    const zone = (i: number) => ({ id: `spot${i}`, bone: "spine", radius: 0.05 });
+    const many = parseCue({ kind: "zones", zones: Array.from({ length: 83 }, (_, i) => zone(i)) });
+    expect(many).toMatchObject({ kind: "zones" });
+    expect(many?.kind === "zones" && many.zones.length).toBe(83);
+    expect(many?.kind === "zones" && many.dropped).toBeFalsy();
+    const over = parseCue({
+      kind: "zones",
+      zones: Array.from({ length: MAX_ZONES + 6 }, (_, i) => zone(i)),
+    });
+    expect(over?.kind === "zones" && [over.zones.length, over.dropped]).toEqual([MAX_ZONES, 6]);
   });
 
   it("keeps only well-formed speech segments and effects", () => {

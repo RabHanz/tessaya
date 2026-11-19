@@ -2298,6 +2298,10 @@ export function mountBody(
       case "zones":
       case "sense": {
         const pack = c.kind === "sense" ? c.pack : zonesPack(c.zones);
+        if (c.kind === "zones" && c.dropped !== undefined)
+          console.warn(
+            `[tessaya-body] ${c.dropped} touch regions past ${c.zones.length} were not kept`,
+          );
         packs = [...packs.filter((p) => p.id !== pack.id), pack];
         sense = mergeSense(packs, true);
         return;

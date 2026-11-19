@@ -403,6 +403,8 @@ export type BodyCue =
         readonly bone: string;
         readonly radius: number;
       }>;
+      /** Regions past MAX_ZONES that were not kept (the body warns), so a large pack never loses some silently. */
+      readonly dropped?: number;
     }
   /** A state or face drawn with the model's own expressions at these weights. */
   | {
@@ -490,6 +492,9 @@ const parseStates = (v: unknown): States | null => {
 };
 
 /** Reads one cue off the wire (page, plugin socket); null when it is not one. Every body decodes through this. */
+/** How many touch regions one zones cue keeps: a safety bound far above any real pack (one held 83). */
+export const MAX_ZONES = 1024;
+
 export const parseCue = (raw: unknown): BodyCue | null => {
   if (raw === null || typeof raw !== "object") return null;
   const c = raw as Record<string, unknown>;
@@ -645,14 +650,20 @@ export const parseCue = (raw: unknown): BodyCue | null => {
       return d.ok ? { kind: "sense", pack: d.pack } : null;
     }
     case "zones": {
-      const zones = (Array.isArray(c["zones"]) ? c["zones"] : []).slice(0, 32).flatMap((z) => {
+      // every region a pack sends is kept; past the safety bound the rest are counted, never silently lost
+      const all = Array.isArray(c["zones"]) ? c["zones"] : [];
+      const zones = all.slice(0, MAX_ZONES).flatMap((z) => {
         const r = (z ?? {}) as Record<string, unknown>;
         const id = str(r["id"], 40);
         const bone = str(r["bone"], 40);
         const radius = num(r["radius"], 0.01, 0.3);
         return id && bone && radius !== null ? [{ id, bone, radius }] : [];
       });
-      return { kind: "zones", zones };
+      return {
+        kind: "zones",
+        zones,
+        ...(all.length > MAX_ZONES ? { dropped: all.length - MAX_ZONES } : {}),
+      };
     }
     case "expressions": {
       const m = c["map"];
