@@ -315,17 +315,15 @@ export const tesselWishTick = Effect.fn("R1Device.tesselWish")(function* () {
   const cast = yield* Effect.serviceOption(TessayaCast);
   const pack = yield* r1Pack;
   const lead = (pack.personas.find((p) => p.lead) ?? pack.personas[0])?.id;
-  const mine = (yield* turn.value.threads()).filter((t) => t.person === OWNER_MEMBER_ID);
   const owner = (yield* turn.value.whoIsHome).find((p) => p.member === OWNER_MEMBER_ID);
   const shown: Array<{ device: string; want: Want }> = [];
   for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices)) {
     const id = device.deviceId;
     if (id === null) continue;
-    const himAt = mine
-      .filter((t) => t.vessel.id === id)
-      .reduce<number | null>((at, t) => Math.max(at ?? 0, t.presentAt ?? 0) || at, null);
-    if (himAt !== null && now - himAt < TALKED_MS) continue;
     const persona = (Option.isSome(cast) ? yield* cast.value.wearing(id) : null) ?? lead;
+    // when he was last with her, on any vessel: her one affect's (the same answer the desk's wishes read)
+    const himAt = (yield* mood.value.view(persona, zone, OWNER_MEMBER_ID)).seenAt ?? null;
+    if (himAt !== null && now - himAt < TALKED_MS) continue;
     const felt = yield* mood.value.atDevice(id, persona, zone);
     const handled = tesselHandledAt(id);
     const wish = chooseWant({

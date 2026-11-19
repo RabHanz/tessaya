@@ -17,6 +17,8 @@ export const HOME_KEY = "household.home";
 export const BRAIN_TOOL = "tessaya_brain";
 export const BrainOp = Schema.Literals([
   "mood",
+  // her mood as the brain holds it, for a server that shows her (one mood across every body)
+  "moodView",
   "presence",
   "persona",
   "group",

@@ -1469,7 +1469,7 @@ effectIt.effect(
       const eyes: Array<{ topic: string; mood: string }> = [];
       const wants: Array<unknown> = [];
       const off = onAction((e) => void (e.kind === "body.want" && wants.push(e.data)));
-      let threads: Array<unknown> = [];
+      let seenAt: number | null = null;
       let energy = 0.1;
       const world = Layer.mergeAll(
         Layer.mock(HomeAssistantService)({
@@ -1482,9 +1482,10 @@ effectIt.effect(
         } as never),
         Layer.mock(TessayaMood)({
           atDevice: () => Effect.succeed({ label: "sleepy", intensity: 0.5, energy } as never),
+          view: () => Effect.sync(() => ({ seenAt }) as never),
         }),
         Layer.mock(TessayaTurn)({
-          threads: () => Effect.sync(() => threads as never),
+          threads: () => Effect.succeed([]),
           whoIsHome: Effect.succeed([]),
         }),
       );
@@ -1500,15 +1501,9 @@ effectIt.effect(
         vessel: "t1",
         why: "she was just picked up or touched",
       });
-      // he is talking with her there: her own life waits
+      // he talked with her a moment ago (her one affect heard it, from any vessel): her own life waits
       yield* TestClock.adjust("4 minutes");
-      threads = [
-        {
-          person: "owner",
-          vessel: { kind: "device", id: "t1" },
-          presentAt: yield* Clock.currentTimeMillis,
-        },
-      ];
+      seenAt = yield* Clock.currentTimeMillis;
       expect(yield* tick()).toEqual([]);
       off();
     }),

@@ -839,6 +839,11 @@ export interface AffectView {
   readonly energy: number;
   /** Hours they were away, while the return is still to be answered; null otherwise. */
   readonly awayHours: number | null;
+  /**
+   * When they were last with her (spoke, typed, touched, or were around), on any vessel; for the general mood, anyone.
+   * The one answer to "when was he last with her" (her wishes read it too).
+   */
+  readonly seenAt?: number | null;
   readonly guilt: Guilt;
   /** Why, newest first, in plain words from the reasons she logged (§8.2): what the panel shows and she answers from. */
   readonly why: ReadonlyArray<string>;
@@ -881,6 +886,7 @@ export const affectView = (s: AffectState, persona: string, ctx: AffectContext):
       intensity: 0,
       energy: 0.8,
       awayHours: null,
+      seenAt: s.seenAt,
       guilt: ctx.guilt,
       why: [],
     };
@@ -934,6 +940,7 @@ export const affectView = (s: AffectState, persona: string, ctx: AffectContext):
       Math.round((held === null ? strength : Math.max(strength, HELD_INTENSITY)) * 100) / 100,
     energy: Math.round(d.energy * 100) / 100,
     awayHours,
+    seenAt: s.seenAt,
     guilt: ctx.guilt,
     why: [
       ...(missing && awayHours !== null ? [`they have been away ${awayHours} h`] : []),

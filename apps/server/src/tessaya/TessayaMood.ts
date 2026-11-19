@@ -301,8 +301,43 @@ const make = Effect.gen(function* () {
     return { persona, state: yield* read(persona, now), ctx };
   });
 
+  // shortcut: a worker's views of the brain's mood, kept 20 s, so a turn or a wish doesn't cost a hop each time
+  const fromBrain = new Map<string, { readonly at: number; readonly view: AffectView }>();
+  /**
+   * One mood: only her brain holds it, so a worker (his laptop's server) shows the brain's view, not its own copy,
+   * which nothing writes (a worker sends its events to the brain). None on the brain, or when the brain is not reached.
+   */
+  const brainView = Effect.fn("TessayaMood.brainView")(function* (ask: {
+    readonly p: string | null;
+    readonly m: string | null;
+    readonly z: string | null;
+    readonly d?: string;
+  }) {
+    if (yield* brain.isBrain) return Option.none<AffectView>();
+    const now = yield* Clock.currentTimeMillis;
+    const key = `${ask.p ?? ""}|${ask.m ?? ""}|${ask.z ?? ""}|${ask.d ?? ""}`;
+    const kept = fromBrain.get(key);
+    if (kept !== undefined && now - kept.at < 20_000) return Option.some(kept.view);
+    const asked = yield* brain.send("moodView", ask);
+    if (
+      Option.isNone(asked) ||
+      typeof asked.value !== "object" ||
+      asked.value === null ||
+      !("label" in asked.value)
+    )
+      return Option.none<AffectView>();
+    const got = asked.value as AffectView;
+    fromBrain.set(key, { at: now, view: got });
+    return Option.some(got);
+  });
   const view: TessayaMood["Service"]["view"] = Effect.fn("TessayaMood.view")(
     function* (personaId, timeZone, member) {
+      const theirs = yield* brainView({
+        p: personaId ?? null,
+        m: member ?? null,
+        z: timeZone ?? null,
+      });
+      if (Option.isSome(theirs)) return theirs.value;
       const { persona, state, ctx } = yield* readNow(personaId, timeZone);
       return personaView(state, persona, ctx, member ?? null);
     },
@@ -453,6 +488,13 @@ const make = Effect.gen(function* () {
       yield* apply(persona, (day) => ({ kind: "his_turn", day }), timeZone, member);
     }),
     atDevice: Effect.fn("TessayaMood.atDevice")(function* (device, personaId, timeZone) {
+      const theirs = yield* brainView({
+        p: personaId ?? null,
+        m: null,
+        z: timeZone ?? null,
+        d: device,
+      });
+      if (Option.isSome(theirs)) return theirs.value;
       const { persona, state, ctx } = yield* readNow(personaId, timeZone);
       const registry = yield* Effect.serviceOption(DeviceRegistry);
       const known = Option.isNone(registry)
@@ -481,6 +523,26 @@ const make = Effect.gen(function* () {
         : personaView(state, persona, ctx, null);
     }),
     inner: Effect.fn("TessayaMood.inner")(function* (personaId, viewer, timeZone) {
+      // a worker's Settings show the brain's one mood, not its own copy
+      if (!(yield* brain.isBrain)) {
+        const asked = yield* brain.send("moodView", {
+          p: personaId ?? null,
+          m: null,
+          z: timeZone ?? null,
+          i: viewer,
+        });
+        if (
+          Option.isSome(asked) &&
+          typeof asked.value === "object" &&
+          asked.value !== null &&
+          "general" in asked.value
+        )
+          return asked.value as {
+            readonly general: AffectView;
+            readonly people: ReadonlyArray<InnerPerson>;
+            readonly dials: Dials;
+          };
+      }
       const { persona, state, ctx } = yield* readNow(personaId, timeZone);
       const names = new Map(
         (yield* sql<{ id: string; name: string }>`
