@@ -66,6 +66,43 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
   };
 };
 
+/** How long after his last private window closes its moment ends: a Hello reload or a reopen in that time keeps it. */
+export const WINDOW_CLOSE_GRACE_MS = 3_000;
+
+/**
+ * Closing his private window ends the private moment there (Director's call, 19 Nov): once the last one is closed and
+ * stays closed for the grace, `end` runs once; one opening again in time cancels it.
+ */
+export const createWindowCloseEnd = (deps: {
+  readonly end: () => void;
+  readonly schedule?: (fn: () => void, ms: number) => () => void;
+}) => {
+  const schedule =
+    deps.schedule ??
+    ((fn: () => void, ms: number) => {
+      const t = setTimeout(fn, ms);
+      return () => clearTimeout(t);
+    });
+  let open = 0;
+  let pending: (() => void) | null = null;
+  return {
+    opened: () => {
+      open += 1;
+      pending?.();
+      pending = null;
+    },
+    closed: () => {
+      open = Math.max(0, open - 1);
+      if (open > 0) return;
+      pending?.();
+      pending = schedule(() => {
+        pending = null;
+        if (open === 0) deps.end();
+      }, WINDOW_CLOSE_GRACE_MS);
+    },
+  };
+};
+
 /**
  * Windows' record of which apps use the camera or microphone (`reg query ...\ConsentStore\<webcam|microphone> /s`):
  * an app is using it now when it started and has not stopped. This app's own folder (its voice sidecar) never counts.

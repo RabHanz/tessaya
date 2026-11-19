@@ -785,6 +785,8 @@ const DESK_SIGNALS = new Set([
   "recording",
   // He talked over her on the desktop: only that vessel's acts stop; his session goes on.
   "bargeIn",
+  // He closed his private window: that window's private moment ends, nothing else.
+  "windowClosed",
 ]);
 
 const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
@@ -944,7 +946,13 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       if (desk.key !== null) deviceKey = desk.key;
       for (const kind of desk.signals)
         for (const l of registry.value.all)
-          l.signal(kind === "bargeIn" ? { kind, vessel: "desktop" } : { kind });
+          l.signal(
+            kind === "bargeIn"
+              ? { kind, vessel: "desktop" }
+              : kind === "windowClosed"
+                ? { kind, session: caller.session }
+                : { kind },
+          );
       if (desk.signals.includes("bargeIn")) yield* interruptBody();
       // A locked or sleeping desk ends a private moment there: a private conversation loses her body at once.
       if (desk.signals.some((k) => k === "screenLocked" || k === "sleep"))
