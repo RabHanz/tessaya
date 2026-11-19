@@ -133,6 +133,11 @@ export interface LayerHost {
     readonly layer: string;
     readonly name: string;
   }) => Promise<string | null>;
+  /** He touched her public body (no private moment): an everyday touch, felt by her one self (TessayaBody.feel). */
+  readonly touched?: (touch: {
+    readonly part: string;
+    readonly kind: "poke" | "pat" | "stroke" | "hold" | "squeeze";
+  }) => Promise<void>;
   /** What this system can do today: its personas and the tools a turn can reach, read live from the server. */
   readonly capabilities?: () => Promise<{
     readonly personas: ReadonlyArray<{
