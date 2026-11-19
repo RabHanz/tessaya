@@ -10,6 +10,8 @@ const STRENGTH: Readonly<Record<PresenceSignal, number>> = { speak: 4, touch: 3,
 export const HANDOVER_MS = 2_000;
 /** A paused scene resumes if he comes back to its thread within this, else it closes. */
 export const SCENE_RESUME_MS = 10 * 60_000;
+/** A conversation he has left this long holds her body no more: she is at rest, and her own wishes may move her. */
+export const FOCUS_IDLE_MS = 10 * 60_000;
 
 export type Focus =
   | { readonly state: "rest" }
@@ -58,7 +60,9 @@ export type FocusEvent =
   /** A thread reached its conversation's idle boundary. */
   | { readonly kind: "idle"; readonly thread: string; readonly at: number }
   /** A private lease ended: its threads lose the body at once. */
-  | { readonly kind: "privateEnd"; readonly threads: ReadonlyArray<string>; readonly at: number };
+  | { readonly kind: "privateEnd"; readonly threads: ReadonlyArray<string>; readonly at: number }
+  /** Only time passing (her own wishes ask whether she is at rest). */
+  | { readonly kind: "tick"; readonly at: number };
 
 export interface FocusStep {
   readonly focus: Focus;
@@ -86,13 +90,15 @@ export const mayDrive = (f: Focus, thread: string): boolean => {
 
 /** Time alone moves a body: a scene that played out is over, and a pause left too long closes. */
 const settle = (f: Focus, now: number): Focus =>
-  f.state === "scene" && now >= f.until
-    ? { state: "engaged", thread: f.thread, signal: "look", at: f.until }
-    : f.state === "paused" && now - f.at > SCENE_RESUME_MS
-      ? f.engaged === null
-        ? REST
-        : { state: "engaged", thread: f.engaged, signal: "look", at: f.at }
-      : f;
+  f.state === "engaged" && now - f.at > FOCUS_IDLE_MS
+    ? REST
+    : f.state === "scene" && now >= f.until
+      ? { state: "engaged", thread: f.thread, signal: "look", at: f.until }
+      : f.state === "paused" && now - f.at > SCENE_RESUME_MS
+        ? f.engaged === null
+          ? REST
+          : { state: "engaged", thread: f.engaged, signal: "look", at: f.at }
+        : f;
 
 export const nextFocus = (before: Focus, e: FocusEvent): FocusStep => {
   const f = settle(before, e.at);
@@ -175,6 +181,8 @@ export const nextFocus = (before: Focus, e: FocusEvent): FocusStep => {
       return f.state === "paused"
         ? to({ state: "scene", thread: f.thread, scene: f.scene, until: e.at + f.left }, "resumed")
         : to(f, "resumed");
+    case "tick":
+      return to(f, "idle");
     case "idle":
       return f.state === "engaged" && f.thread === e.thread ? to(REST, "idle") : to(f, "idle");
     case "privateEnd": {

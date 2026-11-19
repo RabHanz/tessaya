@@ -53,6 +53,7 @@ import * as PresenceFeeds from "./PresenceFeeds.ts";
 import * as TessayaPresence from "./TessayaPresence.ts";
 import * as TurnLiveContext from "./TurnLiveContext.ts";
 import * as TessayaPulse from "./TessayaPulse.ts";
+import * as TessayaBody from "./TessayaBody.ts";
 import * as ProblemReports from "./ProblemReports.ts";
 import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
@@ -222,6 +223,7 @@ const homeDevicesLayer = HomeDevices.layer.pipe(
 const servicesInner = Layer.mergeAll(
   IntentService.layer,
   TessayaPulse.layer,
+  TessayaBody.wishLayer,
   FindingsReactor.layer,
 ).pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a

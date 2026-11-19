@@ -13,10 +13,11 @@ import {
   moveBody,
   playScene,
   restBody,
+  wishTick,
   type BodyCaller,
 } from "./TessayaBody.ts";
 import { TessayaMood } from "./TessayaMood.ts";
-import { SessionMember } from "./TessayaTurn.ts";
+import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
 import * as TurnLiveContext from "./TurnLiveContext.ts";
 
 const her: BodyCaller = { id: "desktop:a", kind: "persona", mayBePrivate: true };
@@ -229,6 +230,38 @@ describe("TessayaBody", () => {
       expect(yield* bodyHolderLine()).toBe(
         "Her desk body is with a conversation that has gone quiet (a scene is playing).",
       );
+      yield* restBody();
+    }),
+  );
+
+  it.effect("her own wish moves her only at rest, and the record keeps why", () =>
+    Effect.gen(function* () {
+      yield* restBody();
+      yield* TestClock.adjust("2 hours");
+      const taken: Array<{ cues: Array<{ kind: string; act?: string }> }> = [];
+      const wants: Array<unknown> = [];
+      const off = onAction((e) => void (e.kind === "body.want" && wants.push([e.subject, e.data])));
+      const world = Layer.mergeAll(
+        Layer.mock(TessayaTurn)({
+          threads: () => Effect.succeed([]),
+          whoIsHome: Effect.succeed([]),
+        }),
+        Layer.mock(TessayaMood)({
+          view: () => Effect.succeed({ label: "sleepy", intensity: 0.5, energy: 0.1 } as never),
+        }),
+        Layer.succeed(PersonaLayers, { all: [openLayer(taken as Array<unknown>)] }),
+      );
+      expect(yield* wishTick().pipe(Effect.provide(world))).toMatchObject({ want: "rest" });
+      expect(taken[0]?.cues.find((c) => c.kind === "act")?.act).toBe("sit");
+      // a conversation of his has her body: no wish of her own mixes in
+      yield* TestClock.adjust("5 minutes");
+      yield* moveBody(
+        { act: "wave" },
+        { ...her, id: "desktop:wish", thread: "freya|person:owner" },
+      ).pipe(Effect.provide(world));
+      expect(yield* wishTick().pipe(Effect.provide(world))).toBeNull();
+      off();
+      expect(wants).toEqual([["rest", { why: "she is tired", route: "body" }]]);
       yield* restBody();
     }),
   );

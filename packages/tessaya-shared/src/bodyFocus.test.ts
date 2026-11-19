@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  FOCUS_IDLE_MS,
   HANDOVER_MS,
   mayDrive,
   nextFocus,
@@ -99,6 +100,10 @@ describe("bodyFocus", () => {
     const engaged: Focus = { state: "engaged", thread: "A", signal: "type", at: 0 };
     expect(nextFocus(engaged, { kind: "idle", thread: "A", at: 1 }).focus).toEqual(REST);
     expect(nextFocus(engaged, { kind: "idle", thread: "B", at: 1 }).focus).toEqual(engaged);
+    // a conversation he left holds her no more: time alone brings her to rest, and the handover says so
+    const quiet = nextFocus(engaged, { kind: "tick", at: FOCUS_IDLE_MS + 1 });
+    expect(quiet.focus).toEqual(REST);
+    expect(quiet.handover).toEqual({ from: "A", to: null, reason: "idle" });
     const privateScene: Focus = { state: "scene", thread: "P", scene: "s", until: 99_000 };
     const step = nextFocus(privateScene, { kind: "privateEnd", threads: ["P"], at: 5 });
     expect(step.focus).toEqual(REST);
