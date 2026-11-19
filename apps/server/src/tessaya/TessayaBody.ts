@@ -387,9 +387,21 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
     id: caller.id,
     certainty: 1,
   };
+  // her hand aimed at another persona's body (body to body, §2b.5): that one feels it, from her; her own body reaches
+  const other =
+    move.touch !== undefined &&
+    move.toward?.kind === "persona" &&
+    caller.persona !== undefined &&
+    move.toward.id !== caller.persona
+      ? move.toward.id
+      : undefined;
+  const { touch: _touch, ...reaching } = move;
   const answer = yield* route(
     {
-      cues: moveCues(move, `m${(yield* Clock.currentTimeMillis).toString(36)}`),
+      cues: moveCues(
+        other === undefined ? move : reaching,
+        `m${(yield* Clock.currentTimeMillis).toString(36)}`,
+      ),
       privateMove,
       acts: extensionActs(move),
       desk: deskActsOf(move),
@@ -401,7 +413,7 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
       vessel: "window",
       part: move.touch.part,
       kind: move.touch.motion,
-      agent: caller.id,
+      ...(other === undefined ? { agent: caller.id } : { persona: other, by: caller.persona }),
       pressure: move.touch.pressure,
       // how far a grab pulls past what gives (bodyGrab.ts: ~5 cm of slack, a full pull at 12 cm)
       ...(move.touch.pull === undefined
@@ -615,6 +627,8 @@ export interface Felt {
     | "carry";
   /** An agent's hand names the agent; a person's is the session's member (SessionMember) unless given. */
   readonly agent?: string | undefined;
+  /** Another persona's hand, body to body (architecture §2b.5): her id. */
+  readonly by?: string | undefined;
   readonly member?: string | null | undefined;
   readonly pressure?: number | undefined;
   /** From the hand frame when the body knows them: how fast it moved over her, over how much skin, how far it pulled. */
@@ -691,16 +705,19 @@ const nervesFor = (f: Felt, now: number) => {
 };
 
 export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
-  const member = f.agent === undefined ? (f.member ?? (yield* SessionMember)) : null;
-  const owner = f.agent === undefined && (member === null || member === OWNER_MEMBER_ID);
+  const hand = f.by ?? f.agent;
+  const member = hand === undefined ? (f.member ?? (yield* SessionMember)) : null;
+  const owner = hand === undefined && (member === null || member === OWNER_MEMBER_ID);
   yield* emitAction({
     kind: "body.felt",
     actor:
-      f.agent !== undefined
-        ? { kind: "agent", id: f.agent, certainty: 1 }
-        : owner
-          ? { kind: "owner", certainty: 1 }
-          : { kind: "member", id: member!, certainty: 1 },
+      f.by !== undefined
+        ? { kind: "persona", id: f.by, certainty: 1 }
+        : f.agent !== undefined
+          ? { kind: "agent", id: f.agent, certainty: 1 }
+          : owner
+            ? { kind: "owner", certainty: 1 }
+            : { kind: "member", id: member!, certainty: 1 },
     persona: f.persona ?? null,
     subject: f.part,
     outcome: f.kind,
@@ -715,9 +732,17 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
     yield* mood.value.note(f.persona ?? undefined, { kind: "felt", tone: nerves.tone }, member);
   const live = yield* Effect.serviceOption(TurnLiveContext);
   if (live._tag === "None") return;
-  const who = f.agent !== undefined ? "an agent's hand" : owner ? "he" : "someone in the household";
+  const who =
+    f.by !== undefined
+      ? `${f.by}'s hand`
+      : f.agent !== undefined
+        ? "an agent's hand"
+        : owner
+          ? "he"
+          : "someone in the household";
   yield* live.value.inject({
     key: `felt:${f.vessel}`,
+    ...(f.by === undefined ? {} : { persona: f.persona ?? undefined }),
     source: "touch",
     expiresAfterTurns: 3,
     line: `A moment ago ${WHERE[f.vessel] ?? `on ${f.vessel}`}, ${who} ${FELT_VERB[f.kind]} ${f.part === "body" ? "your body" : `your ${f.part}`}${nerves === null ? "" : ` (you felt ${nerves.words})`}: mention it only if it fits.`,

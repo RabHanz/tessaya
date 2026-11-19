@@ -429,6 +429,14 @@ describe("TessayaBody", () => {
         yield* moveBody({ touch: { part: "arm", motion: "stroke" } }, her).pipe(
           Effect.provideService(PersonaLayers, { all: [openLayer([])] }),
         );
+        // body to body: Sebastian's hand reaching for Freya is felt by her, as his
+        yield* moveBody(
+          {
+            touch: { part: "shoulder", motion: "pat" },
+            toward: { kind: "persona", id: "freya" },
+          },
+          { ...her, persona: "sebastian" },
+        ).pipe(Effect.provideService(PersonaLayers, { all: [openLayer([])] }));
         // a private moment's touch is sealed: recorded, but never in shared context
         yield* feel({ vessel: "window", part: "hand", kind: "hold", private: true });
         off();
@@ -436,7 +444,9 @@ describe("TessayaBody", () => {
           ["member", "member-sam", { vessel: "desktop" }],
           ["member", "member-sam", { vessel: "phone" }],
           ["agent", "desktop:a", { vessel: "window", pressure: 0.4 }],
+          ["persona", "sebastian", { vessel: "window", pressure: 0.4 }],
         ]);
+        expect(rows.at(-1)).toMatchObject({ persona: "freya" });
         const onTumble = yield* live.take({ vessel: "tessel-1", persona: null, spend: true });
         expect(onTumble).toMatch(/on his desktop, someone in the household patted your head/);
         // her nerves say what it was like: a slow stroke on hairy skin reaches her caress fibres
@@ -444,6 +454,11 @@ describe("TessayaBody", () => {
           /an agent's hand stroked your arm \(you felt a slow stroke, 5 cm\/s\)/,
         );
         expect(onTumble).not.toMatch(/hand:|held your hand/);
+        expect(onTumble).toMatch(/sebastian's hand patted your shoulder/);
+        // and it is hers: his own turn doesn't read it as his shoulder
+        expect(
+          yield* live.take({ vessel: "tessel-1", persona: "sebastian", spend: false }),
+        ).not.toMatch(/patted your shoulder/);
         expect(onTumble).toMatch(/held your hair \(you felt a pull that hurts\)/);
       }).pipe(Effect.provide(TurnLiveContext.layer)),
   );

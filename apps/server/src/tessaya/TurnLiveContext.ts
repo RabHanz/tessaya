@@ -16,6 +16,8 @@ export interface LiveContext {
   readonly expiresAfterTurns: number;
   /** The vessel whose turns read it; absent, every vessel's. */
   readonly vessel?: string | undefined;
+  /** The persona it is about (her body felt it): only her turns read it, and a turn with none named (the lead's). */
+  readonly persona?: string | undefined;
   /** What fed it, for provenance ("motion", "screen", "device", "presence"). */
   readonly source: string;
 }
@@ -41,7 +43,10 @@ export const make = Effect.sync(() => {
   const kept = new Map<string, LiveContext & { left: number }>();
   const inject = Effect.fn("TurnLiveContext.inject")(function* (live: LiveContext) {
     if (live.expiresAfterTurns < 1 || live.line.trim() === "") return;
-    kept.set(`${live.vessel ?? "*"}|${live.key}`, { ...live, left: live.expiresAfterTurns });
+    kept.set(`${live.vessel ?? "*"}|${live.persona ?? "*"}|${live.key}`, {
+      ...live,
+      left: live.expiresAfterTurns,
+    });
     yield* emitAction({
       kind: "turn.context.injected",
       actor: { kind: "device", id: live.source, certainty: 1 },
@@ -57,6 +62,8 @@ export const make = Effect.sync(() => {
     const lines: string[] = [];
     for (const [id, live] of kept) {
       if (live.vessel !== undefined && live.vessel !== input.vessel) continue;
+      if (live.persona !== undefined && input.persona !== null && live.persona !== input.persona)
+        continue;
       lines.push(live.line);
       if (!input.spend) continue;
       live.left -= 1;
