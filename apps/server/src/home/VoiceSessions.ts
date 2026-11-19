@@ -101,6 +101,10 @@ const IDLE_MS = 30 * 60_000;
 /** A vessel with no turn for this long lets its sessions go. */
 const DROP_MS = 12 * 60 * 60_000;
 const SPARES = 2;
+/** A warm-up this long has hung (a cold one takes 3-4 s): the session goes and a turn takes another or fails. */
+const WARM_UP_MS = 20_000;
+/** His turn's first word or tool call this late means the model is not answering: the turn fails rather than hangs. */
+const ANSWER_MS = 30_000;
 const SPAWN_TRIES = 4;
 const WARM_UP = 'This message only gets you ready; nothing is said aloud. Reply with just "ok".';
 
@@ -161,11 +165,17 @@ export const createVoiceSessions = (
     readonly lean?: boolean;
     /** Every turn's `result` event, warm-ups included: each one is paid for (BrainUsage). */
     readonly onResult?: (spec: SessionSpec, result: Readonly<Record<string, unknown>>) => void;
+    /** A session whose warm-up has not answered by now is given up (a cold scratch server hung a turn 120 s, 20 Nov). */
+    readonly warmUpMs?: number;
+    /** A turn with nothing from the model by now fails, so she says sorry instead of falling silent. */
+    readonly answerMs?: number;
   } = {},
 ) => {
   const spawn = options.spawn ?? NodeChildProcess.spawn;
   const now = options.now ?? Date.now;
   const retryMs = options.retryMs ?? 750;
+  const warmUpMs = options.warmUpMs ?? WARM_UP_MS;
+  const answerMs = options.answerMs ?? ANSWER_MS;
   const spares = options.lean === true ? 1 : SPARES;
 
   const start = async (spec: SessionSpec): Promise<Session> => {
@@ -270,7 +280,11 @@ export const createVoiceSessions = (
       if (event !== null) waiting?.(event);
     });
     // The first turn on a session is the slow one: it is spent here, never on his words.
+    let warmed = false;
+    // A flag, not clearTimeout: the timer must be a no-op once warm whatever clock runs it.
+    setTimeout(() => warmed || end("the session took too long to start"), warmUpMs).unref?.();
     await session.send(WARM_UP, { run: async () => ({ text: "" }), onEvent: () => undefined });
+    warmed = true;
     session.warmAt = now();
     return session;
   };
@@ -351,9 +365,19 @@ export const createVoiceSessions = (
       const session = await take(vessel, spec);
       turn.onEvent({ type: "session", cold: session.warmAt > askedAt });
       session.used += 1;
+      // Nothing back from the model in time: the turn fails now (and she says so) instead of hanging.
+      let heard = false;
+      setTimeout(() => heard || session.close(), answerMs).unref?.();
       try {
-        await session.send(text, turn);
+        await session.send(text, {
+          ...turn,
+          onEvent: (event) => {
+            heard = true;
+            turn.onEvent(event);
+          },
+        });
       } finally {
+        heard = true;
         session.close();
       }
     },

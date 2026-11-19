@@ -21,6 +21,7 @@ const fakeClaude = (
   missing: { count: number },
   onHear: (said: string, proc: number) => void = () => undefined,
   killed: Array<number> = [],
+  hangWarmUp = false,
 ) => {
   let spawned = 0;
   return (() => {
@@ -39,7 +40,7 @@ const fakeClaude = (
       const said = String(JSON.parse(String(chunk)).message.content);
       heard.push(said);
       onHear(said, id);
-      if (said.includes("hang")) return;
+      if (said.includes("hang") || (hangWarmUp && said.includes(WARM))) return;
       if (said.includes("search"))
         stdout.write(
           line({
@@ -146,6 +147,22 @@ describe("warm subscription sessions for spoken turns", () => {
     // Every answered message is paid for, the warm-ups before each turn included.
     expect(results.length).toBeGreaterThanOrEqual(4);
     expect(new Set(results)).toEqual(new Set(["voice:result"]));
+  });
+
+  it("never hangs a turn: a warm-up that never answers, or a model that says nothing, fails it fast", async () => {
+    // 20 Nov: the room gate's first turn on a cold scratch server waited 120 s and crashed the suite.
+    const killed: Array<number> = [];
+    const turn = { run: async () => ({ text: "" }), onEvent: () => undefined };
+    const cold = createVoiceSessions({
+      spawn: fakeClaude([], { count: 0 }, () => undefined, killed, true),
+      warmUpMs: 20,
+    });
+    await expect(cold.turn("r1", spec, "lights?", turn)).rejects.toThrow("took too long to start");
+    await cold.close();
+    expect(killed.length).toBeGreaterThanOrEqual(1);
+    const quiet = createVoiceSessions({ spawn: fakeClaude([], { count: 0 }), answerMs: 20 });
+    await expect(quiet.turn("r1", spec, "hang on", turn)).rejects.toThrow();
+    await quiet.close();
   });
 
   it("closes a session he cut off, and the next turn runs in a session warmed before the cut", async () => {
