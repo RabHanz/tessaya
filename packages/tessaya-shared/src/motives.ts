@@ -84,8 +84,8 @@ const pick = (i: MotiveInput, want: Want, why: string, force: boolean) =>
   !force && i.last?.want === want && i.now - i.last.at < SAME_WISH_MS ? null : { want, why };
 
 /**
- * A wish as her body does it: a short act or posture, felt through the planner. Turning her back is `turnAway`; she
- * looks over her shoulder at him now and then.
+ * A wish as her body does it: a short act or posture, felt through the planner. Turning her back and going to him are
+ * the renderer's real turn and walk (bodyLocomotion.ts); she looks over her shoulder at him now and then.
  */
 export const wantMove = (want: Want): BodyMove => {
   switch (want) {
@@ -93,9 +93,13 @@ export const wantMove = (want: Want): BodyMove => {
       return { act: "sit", mood: { name: "sleepy", intensity: 0.4 } };
     case "sulk":
       return {
-        act: "turnAway",
+        turn: { to: { kind: "away" } },
         mood: { name: "sulky", intensity: 0.5 },
-        then: [{ afterMs: 6_000, look: { x: 0.4, y: 0, ms: 1_500 } }],
+        then: [
+          { afterMs: 6_000, look: { x: 0.4, y: 0, ms: 1_500 } },
+          // a sulk passes: she turns back to him
+          { afterMs: 20_000, turn: { to: { kind: "him" } } },
+        ],
       };
     case "curious":
       return {
@@ -105,7 +109,7 @@ export const wantMove = (want: Want): BodyMove => {
       };
     case "seekHim":
       return {
-        act: "walkOver",
+        walk: { to: { kind: "him" }, speed: 0.3, style: "stroll", stop: 0.2 },
         mood: { name: "lonely", intensity: 0.4 },
         then: [{ afterMs: 2_000, look: { x: 0, y: 0, ms: 4_000 } }],
       };
