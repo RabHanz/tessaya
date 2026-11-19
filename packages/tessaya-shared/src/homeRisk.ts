@@ -131,6 +131,27 @@ const RISKY_WORDS = [
   "factory",
   "firmware",
 ];
+/**
+ * The names that still ask on his own identified voice (Director, 19 Nov 22:25: "turn on the water pump" must not ask
+ * him): what can hurt someone or open the house (locks, alarms, garage and doors, ovens and heaters, gas), and what
+ * films others. Any other name word asks only someone else.
+ */
+const FIRM_WORDS = new Set([
+  "garage",
+  "gate",
+  "door",
+  "lock",
+  "alarm",
+  "security",
+  "siren",
+  "oven",
+  "heater",
+  "fryer",
+  "gas",
+  "camera",
+  "privacy",
+  "recording",
+]);
 /** Camera services that only look. */
 const CAMERA_READS = new Set(["snapshot", "record"]);
 
@@ -160,6 +181,7 @@ const climateReason = (service: string, data: Readonly<Record<string, unknown>>)
 const entityVerdict = (
   call: HomeCallFacts,
   entity: HomeEntityFacts,
+  his: boolean,
 ): { tier: HomeTier; reason?: string } => {
   const entityDomain = entity.entityId.split(".")[0] ?? "";
   const label = `${entity.entityId} ${entity.name ?? ""}`.toLowerCase();
@@ -171,7 +193,7 @@ const entityVerdict = (
     return call.domain === "camera" && CAMERA_READS.has(call.service)
       ? { tier: "auto" }
       : { tier: "ask", reason: `${entity.entityId} is a camera` };
-  const word = RISKY_WORDS.find((w) => label.includes(w));
+  const word = RISKY_WORDS.find((w) => label.includes(w) && (!his || FIRM_WORDS.has(w)));
   if (word !== undefined) return { tier: "ask", reason: `${entity.entityId} is named "${word}"` };
   if (!FREE_DOMAINS.has(entityDomain))
     return {
@@ -181,7 +203,12 @@ const entityVerdict = (
   return { tier: "auto" };
 };
 
-export const homeRisk = (call: HomeCallFacts, overrides: HomeOverrides = {}): HomeVerdict => {
+/** `his`: the call is his own, from his identified voice or his own surface, not a guest's, an agent's or a job's. */
+export const homeRisk = (
+  call: HomeCallFacts,
+  overrides: HomeOverrides = {},
+  his = false,
+): HomeVerdict => {
   const domain = call.domain.toLowerCase();
   const service = call.service.toLowerCase();
   const full = `${domain}.${service}`;
@@ -215,7 +242,7 @@ export const homeRisk = (call: HomeCallFacts, overrides: HomeOverrides = {}): Ho
       if (own !== "auto") raise(own, `${entity.entityId} is set to "${own}" in Settings`);
       continue;
     }
-    const verdict = entityVerdict(call, entity);
+    const verdict = entityVerdict(call, entity, his);
     if (verdict.tier !== "auto") raise(verdict.tier, verdict.reason ?? entity.entityId);
   }
   return { tier, reasons };
