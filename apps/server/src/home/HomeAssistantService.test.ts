@@ -23,6 +23,7 @@ import {
 import * as HomeAssistantService from "./HomeAssistantService.ts";
 import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { TurnOrigin } from "../tessaya/TessayaTurn.ts";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 
 interface Entity {
   s: string;
@@ -120,11 +121,12 @@ const makeHouse = () => {
           if (name === "scene.delete") for (const e of ids(m["target"])) remove(e);
           if (name === "scene.turn_on")
             for (const [e, v] of scenes.get(ids(m["target"])[0]!) ?? []) put(e, structuredClone(v));
-          if (name === "fan.turn_on")
+          if (name === "fan.turn_on" || name === "switch.turn_on")
             for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "on" });
           if (
             name === "light.turn_off" ||
             name === "fan.turn_off" ||
+            name === "switch.turn_off" ||
             name === "automation.turn_off"
           )
             for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "off" });
@@ -681,6 +683,89 @@ it.effect(
       );
       yield* home.removeDevice(null);
       assert.lengthOf(yield* home.devices, 0);
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "his own voice runs the pump and its timer with no card; anyone else's request is one card, answered once",
+  () => {
+    const { house, layer } = setup();
+    const tessel: HomeAssistantService.HomeActor = { who: "Tessaya via Tessel", surface: "r1" };
+    const request = (member: string | null) =>
+      Effect.gen(function* () {
+        const home = yield* HomeAssistantService.HomeAssistantService;
+        const on = yield* home.call(
+          {
+            domain: "switch",
+            service: "turn_on",
+            target: { entity_id: "switch.sonoff_1" },
+            why: "turn on the water pump for fifty minutes",
+          },
+          tessel,
+        );
+        const timer = yield* home.saveAutomation(
+          {
+            alias: "Water pump off after fifty minutes",
+            kind: "temporary",
+            runInMinutes: 50,
+            actions: [{ action: "switch.turn_off", target: { entity_id: "switch.sonoff_1" } }],
+            request: "turn on the water pump for fifty minutes",
+          },
+          tessel,
+        );
+        return [on, timer] as const;
+      }).pipe(
+        Effect.provideService(
+          TurnOrigin,
+          member === null
+            ? { kind: "device", id: "r1", label: "Tessel", member: null, assurance: 0 }
+            : { kind: "device", id: "r1", label: "Tessel", member, assurance: 2 },
+        ),
+      );
+    return Effect.gen(function* () {
+      const home = yield* connected;
+      const inbox = yield* TessayaPhoneInbox;
+      // 19 Nov 22:25: both asked him, once for the switch and once for its timer.
+      const [on, timer] = yield* request(OWNER_MEMBER_ID);
+      assert.deepStrictEqual([on.status, timer.status], ["done", "done"]);
+      assert.strictEqual(house.states.get("switch.sonoff_1")?.s, "on");
+      assert.lengthOf(yield* inbox.pending, 0);
+      // His own voice still asks for a lock.
+      const unlock = yield* home
+        .call(
+          { domain: "lock", service: "unlock", target: { entity_id: "lock.front" }, why: "x" },
+          tessel,
+        )
+        .pipe(
+          Effect.provideService(TurnOrigin, {
+            kind: "device",
+            id: "r1",
+            label: "Tessel",
+            member: OWNER_MEMBER_ID,
+            assurance: 2,
+          }),
+        );
+      assert.strictEqual(unlock.status, "asked");
+      yield* home.answer(unlock.id!, false);
+
+      yield* home.call(
+        {
+          domain: "switch",
+          service: "turn_off",
+          target: { entity_id: "switch.sonoff_1" },
+          why: "x",
+        },
+        { who: "the Director", surface: "settings", approved: true },
+      );
+      yield* TestClock.adjust("2 minutes");
+      const [guestOn, guestTimer] = yield* request(null);
+      assert.deepStrictEqual([guestOn.status, guestTimer.status], ["asked", "asked"]);
+      assert.lengthOf(yield* inbox.pending, 1);
+      assert.isTrue(yield* inbox.answerPrompt(`home-${guestOn.id}`, 0));
+      yield* home.tick;
+      assert.strictEqual(house.states.get("switch.sonoff_1")?.s, "on");
+      assert.lengthOf(yield* home.pending, 0);
     }).pipe(Effect.provide(layer));
   },
 );

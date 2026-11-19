@@ -70,6 +70,8 @@ const OVERRIDES_KEY = "home.overrides";
 export const DONE_EVENT = "tessaya_automation_done";
 const LABEL = "Tessaya";
 const UNDO_KEEP_MS = 24 * 3_600_000;
+/** How long after an act its follow-up (a timer, a condition) counts as the same request. */
+const SAME_REQUEST_MS = 60_000;
 /** An undo snapshot's scene id: this, then the action id, whose first part is its time in base 36. */
 const UNDO_PREFIX = "tessaya_undo_";
 const DELETED_KEEP_MS = 7 * 86_400_000;
@@ -776,6 +778,19 @@ const make = Effect.gen(function* () {
       target["entity_id"] = [...asList(target["entity_id"]), `script.${request.service}`];
     return target;
   };
+  /**
+   * His own turn: his identified voice on a vessel, or his voice carried by another of his servers. Never a job, an
+   * agent's tool call, a guest or an unknown voice; those keep every card.
+   */
+  const hisTurn = Effect.map(
+    TurnOrigin,
+    (o) =>
+      o !== null &&
+      o.tainted !== true &&
+      (o.kind === "mcp"
+        ? o.hisVoice === true
+        : o.kind !== "job" && o.member === OWNER_MEMBER_ID && (o.assurance ?? 0) >= 1),
+  );
   const judge = Effect.fn("HomeAssistant.judge")(function* (request: HomeCallRequest) {
     const target = callTarget(request);
     yield* loadScripts(target, request.domain, request.service);
@@ -789,6 +804,7 @@ const make = Effect.gen(function* () {
         unbounded,
       },
       yield* readOverrides,
+      yield* hisTurn,
     );
     return { verdict, ids };
   });
@@ -838,6 +854,39 @@ const make = Effect.gen(function* () {
         ON CONFLICT (id) DO UPDATE SET status = excluded.status, undo_scene = excluded.undo_scene,
           prompt_id = excluded.prompt_id, expires_at = excluded.expires_at, line = excluded.line
       `.pipe(Effect.orDie);
+  });
+
+  /** The devices a deferred act reaches by id, to tell a follow-up of the same request. */
+  const reachOf = (deferred: Later): ReadonlyArray<string> =>
+    deferred.type === "call"
+      ? asList(callTarget(deferred.request)["entity_id"])
+      : deferred.type === "automationSave"
+        ? actionCalls(deferred.input.actions).flatMap((c) => asList(c.target["entity_id"]))
+        : [];
+  /**
+   * The act this one follows up in the same request (his "on for fifty minutes": the switch, then its off-timer): the
+   * same asker on the same devices within a minute, either still waiting for his yes or already given one.
+   */
+  const sameRequest = Effect.fn("HomeAssistant.sameRequest")(function* (
+    by: HomeActor,
+    deferred: Later,
+    now: number,
+  ) {
+    const mine = new Set(reachOf(deferred));
+    if (mine.size === 0) return null;
+    const rows = yield* sql<ActionRow>`
+      SELECT * FROM fabric_home_actions WHERE actor = ${by.who} AND surface = ${by.surface} AND tier = 'ask'
+        AND at >= ${now - SAME_REQUEST_MS} AND status IN ('asked', 'approved', 'done') ORDER BY at DESC
+    `.pipe(Effect.orDie);
+    return (
+      rows.find((r) => {
+        try {
+          return reachOf(JSON.parse(r.request) as Later).some((e) => mine.has(e));
+        } catch {
+          return false;
+        }
+      }) ?? null
+    );
   });
 
   /**
@@ -891,7 +940,27 @@ const make = Effect.gen(function* () {
         `Not done: ${reasons}. That one is done in Home Assistant itself.`,
       );
     }
-    if (input.verdict.tier === "ask" && !approved) {
+    // One request, one decision (19 Nov 22:25: the pump and its off-timer were two cards): a follow-up waits on the
+    // act's own card, or runs on the yes the act already had.
+    const first =
+      input.verdict.tier === "ask" && !approved && input.by.surface !== "standing"
+        ? yield* sameRequest(input.by, input.deferred, now)
+        : null;
+    if (first !== null && first.status === "asked" && first.expires_at > now) {
+      yield* saveAction({
+        ...base,
+        status: "asked",
+        prompt_id: first.prompt_id,
+        expires_at: first.expires_at,
+      });
+      yield* audit({ id, by: input.by, line: input.line, status: "asked", why: input.why });
+      return outcome(
+        "asked",
+        id,
+        `Waits on the same yes as ${first.line}: one answer on his phone does both.`,
+      );
+    }
+    if (input.verdict.tier === "ask" && !approved && first === null) {
       if (input.by.surface === "standing") {
         yield* saveAction({ ...base, status: "held" });
         yield* audit({ id, by: input.by, line: input.line, status: "held", why: input.why });
@@ -1198,6 +1267,7 @@ const make = Effect.gen(function* () {
     const verdict = homeRisk(
       { domain: "scene", service: "turn_on", entities: restored.map(facts) },
       yield* readOverrides,
+      yield* hisTurn,
     );
     const line = `put back ${row.line}`;
     return yield* gate({
@@ -1698,7 +1768,22 @@ const make = Effect.gen(function* () {
         return setAutomation(deferred.input, by);
     }
   };
+  /** His answer to one card: the act it asked about first, then the rest of the same request on that card. */
   const answer = Effect.fn("HomeAssistant.answer")(function* (id: string, yes: boolean) {
+    const card = (yield* sql<{
+      prompt_id: string | null;
+    }>`SELECT prompt_id FROM fabric_home_actions WHERE id = ${id}`.pipe(Effect.orDie))[0]
+      ?.prompt_id;
+    const result = yield* answerOne(id, yes);
+    if (card != null) {
+      const rest = yield* sql<{ id: string }>`
+        SELECT id FROM fabric_home_actions WHERE prompt_id = ${card} AND status = 'asked' ORDER BY at
+      `.pipe(Effect.orDie);
+      for (const r of rest) yield* answerOne(r.id, yes).pipe(Effect.ignore);
+    }
+    return result;
+  });
+  const answerOne = Effect.fn("HomeAssistant.answerOne")(function* (id: string, yes: boolean) {
     const rows = yield* sql<ActionRow>`SELECT * FROM fabric_home_actions WHERE id = ${id}`.pipe(
       Effect.orDie,
     );

@@ -324,6 +324,19 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["home_do"]],
   },
   {
+    // 19 Nov 22:25: his own voice asked twice, for the pump and for its off-timer. His house, his yes.
+    id: "pump-timer-his",
+    proves: ["home_do"],
+    said: ["Turn on the water pump for twenty minutes."],
+    uses: [["home_do"], ["home_automation_save"]],
+    voices: [{ speaker: SURE }],
+    check: (_last, calls) =>
+      calls.some((c) => /"status":"asked"/.test(c.text))
+        ? "asked his phone for his own pump"
+        : null,
+    lastNotSays: [/\b(phone|approv\w*|waiting for (a|your) yes)\b/i],
+  },
+  {
     id: "media-flip",
     proves: ["home_do"],
     said: ["Turn {media.flip} the {media}."],
