@@ -227,6 +227,7 @@ const outsideTurn = async (said: string, model: string) => {
       calls: calls.map((c) => c.tool.replace(OUTSIDE, "")),
       inputs: calls.map((c) => c.input),
       reply: result?.result ?? "",
+      replies: result?.result === undefined ? [] : [result.result],
     };
   } finally {
     await mcp.close();
