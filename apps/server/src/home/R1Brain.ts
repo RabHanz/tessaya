@@ -74,6 +74,10 @@ export interface ToolTurn {
   readonly user: string;
   readonly tools: ReadonlyArray<RoomTool>;
   readonly run: (name: string, input: unknown) => Effect.Effect<ToolOutcome>;
+  /** A model this turn asks for by name (the body playground's picker); the routing table's row when absent. */
+  readonly model?: string;
+  /** What its usage rows name it; her voice (or deep) work when absent. */
+  readonly feature?: string;
 }
 
 /** A turn for a warm subscription session (VoiceSessions). */
@@ -141,6 +145,7 @@ export const toolLoop = <E>(
           tools: turn.tools,
           maxTokens,
           toolChoice: rounds === MAX_ROUNDS ? "none" : "auto",
+          ...(turn.feature === undefined ? {} : { feature: turn.feature }),
         }).pipe(
           Stream.runForEach((part) =>
             Effect.map(Clock.currentTimeMillis, (now) => {
@@ -261,7 +266,7 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   const context = yield* Effect.context<never>();
   const claude = yield* claudeProgram;
   /** A subscription turn's `result` event, as usage rows: the plan pays, so tokens and no dollars. */
-  const used = (role: BrainRole, model: string, result: unknown) => {
+  const used = (role: BrainRole, model: string, result: unknown, feature?: string) => {
     for (const tokens of cliTokens(result, model))
       Effect.runForkWith(context)(
         usage.record({
@@ -269,7 +274,10 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
           role,
           credential: "subscription",
           // Warm-ups included: a spoken turn's session is paid for before he speaks.
-          attribution: { feature: role === "deep" ? "voice-deep" : "voice", origin: "user" },
+          attribution: {
+            feature: feature ?? (role === "deep" ? "voice-deep" : "voice"),
+            origin: "user",
+          },
         }),
       );
   };
@@ -391,7 +399,11 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
 
   const onKey = (row: Effect.Success<typeof voice>, turn: ToolTurn) =>
     // Opus can't turn thinking off, and its thinking counts against the cap: 400 cut its answer off mid-sentence.
-    toolLoop((request) => api.converse(row, request), turn, row.role === "deep" ? 4000 : 400).pipe(
+    toolLoop(
+      (request) => api.converse(turn.model === undefined ? row : { ...row, model: turn.model }, request),
+      turn,
+      row.role === "deep" || turn.model === "opus" ? 4000 : 400,
+    ).pipe(
       Stream.mapError(
         (error) =>
           new R1BrainError({
@@ -416,12 +428,12 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
   const pool = yield* Config.String("TESSAYA_VOICE_POOL").pipe(Config.withDefault(""));
   const sessions = createVoiceSessions({
     lean: pool === "lean",
-    onResult: (spec, result) => used(spec.role, spec.model, result),
+    onResult: (spec, result) => used(spec.role, spec.model, result, spec.feature),
   });
   yield* Effect.addFinalizer(() => Effect.promise(() => sessions.close()));
   /** The subscription session a vessel's turns run in, from the voice row. */
   const sessionSpec = Effect.fn("R1Brain.sessionSpec")(function* (
-    turn: Pick<SessionToolTurn, "system" | "tools" | "role" | "builtins">,
+    turn: Pick<SessionToolTurn, "system" | "tools" | "role" | "builtins" | "model" | "feature">,
   ) {
     const row = yield* (turn.role === "deep" ? deep : voice).pipe(
       Effect.mapError(() => new R1BrainError({ detail: "settings" })),
@@ -430,7 +442,8 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
     if ("refused" in path) return yield* new R1BrainError({ detail: path.refused });
     return {
       role: turn.role ?? "voice",
-      model: path.model,
+      model: turn.model ?? path.model,
+      ...(turn.feature === undefined ? {} : { feature: turn.feature }),
       effort: row.effort,
       system: turn.system,
       tools: turn.tools.map((t) => ({

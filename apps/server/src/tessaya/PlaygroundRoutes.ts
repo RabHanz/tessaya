@@ -2,6 +2,11 @@
  * The body playground's page and calls under /tessaya/playground (M-089), behind the server's own session like the
  * other Tessaya pages. A household client only: an agent's token drives the playground through MCP, not here.
  */
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -12,6 +17,18 @@ import { emitAction } from "../provenance/ActionLog.ts";
 import { BUS_ID, pollBus, reportBus, watchBus } from "./BodyPlayground.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
 import { everydayBody } from "./PlaygroundAsset.ts";
+import {
+  DIRECT_MODELS,
+  directBody,
+  directModelId,
+  estimateDirect,
+  ratedRow,
+  runOf,
+  startedRun,
+  type DirectModel,
+  type DirectProgress,
+} from "./BodyDirect.ts";
+import { readPriceList } from "./TessayaJobSpend.ts";
 import { PLAYGROUND_HTML, PLAYGROUND_START } from "./PlaygroundPage.ts";
 import { householdCallerOf, householdRefusal } from "./TessayaRpcAuthorization.ts";
 import type * as TessayaRpcHandlers from "./TessayaRpcHandlers.ts";
@@ -36,7 +53,15 @@ const sizeOf = (v: unknown) =>
 export interface PlaygroundWho {
   readonly owner: string;
   readonly member: string | null;
+  /** userdata, for the price list and his ratings */
+  readonly userdata: string;
 }
+const isOwner = (who: PlaygroundWho) => who.member === null || who.member === OWNER_MEMBER_ID;
+const modelOf = (v: unknown): DirectModel | null =>
+  DIRECT_MODELS.find((m) => m === v) ?? null;
+let runCount = 0;
+const ratingsFile = (userdata: string) =>
+  NodePath.join(userdata, "tessaya", "body-playground-ratings.json");
 
 /** One call from the playground page: its bus, its state, its record, and which models to open. */
 export const playgroundCall = Effect.fn("PlaygroundRoutes.call")(function* (
@@ -85,6 +110,72 @@ export const playgroundCall = Effect.fn("PlaygroundRoutes.call")(function* (
         fallback: all.length === 0,
       };
     }
+    // "Agent drives her": a model he picked, spending his key or plan, so his own sessions only.
+    case "agent.estimate": {
+      const model = modelOf(body["model"]);
+      if (model === null || !isOwner(who)) return null;
+      const id = yield* directModelId(model);
+      const said = typeof body["said"] === "string" ? body["said"].slice(0, 300) : "";
+      return { model: id, ...estimateDirect(readPriceList(who.userdata)?.table ?? null, id, said) };
+    }
+    case "agent.start": {
+      const model = modelOf(body["model"]);
+      const said = typeof body["said"] === "string" ? body["said"].trim().slice(0, 300) : "";
+      if (model === null || said === "" || !isOwner(who) || !BUS_ID.test(bus)) return null;
+      const id = `r${(yield* Clock.currentTimeMillis).toString(36)}${(runCount++).toString(36)}`;
+      const progress: DirectProgress = {
+        model,
+        said,
+        calls: [],
+        done: false,
+        reasoning: "",
+        firstMotionMs: null,
+        ms: null,
+        graded: null,
+        error: null,
+      };
+      startedRun(id, progress);
+      yield* emitAction({
+        kind: "body.playground.direct",
+        actor: { kind: "owner", certainty: 1 },
+        subject: model,
+        data: { run: id, playground: bus, alsoHer: body["alsoHer"] === true },
+      });
+      yield* Effect.forkDetach(
+        directBody({ said, model, playground: bus, alsoHer: body["alsoHer"] === true, progress }),
+      );
+      return { id };
+    }
+    case "agent.poll": {
+      const run = typeof body["id"] === "string" ? runOf(body["id"]) : null;
+      return run === null || !isOwner(who) ? null : run;
+    }
+    case "agent.rate": {
+      const id = typeof body["id"] === "string" ? body["id"] : "";
+      const run = runOf(id);
+      if (run === null || !run.done || !isOwner(who)) return null;
+      const good = body["good"] === true;
+      const note = typeof body["note"] === "string" ? body["note"].slice(0, 500) : "";
+      const row = ratedRow(id, run, good, note, yield* Clock.currentTimeMillis);
+      const file = ratingsFile(who.userdata);
+      yield* Effect.promise(async () => {
+        const kept = await NodeFS.promises
+          .readFile(file, "utf8")
+          .then((t) => JSON.parse(t) as unknown[])
+          .catch(() => [] as unknown[]);
+        const next = [...kept.filter((r) => (r as { id?: string }).id !== row.id), row];
+        await NodeFS.promises.mkdir(NodePath.dirname(file), { recursive: true });
+        await NodeFS.promises.writeFile(file, JSON.stringify(next, null, 1));
+      });
+      yield* emitAction({
+        kind: "body.playground.rated",
+        actor: { kind: "owner", certainty: 1 },
+        subject: run.model,
+        outcome: good ? "good" : "bad",
+        data: { run: id, pass: row.pass },
+      });
+      return { ok: true, harvest: row.pass };
+    }
     default:
       return null;
   }
@@ -102,7 +193,11 @@ export const playgroundRoutes = Effect.fn("PlaygroundRoutes.mount")(function* (
     if (session._tag === "None" || householdRefusal(session.value) !== null) return null;
     const caller = householdCallerOf(session.value);
     if (caller.service) return null;
-    return { owner: session.value.subject, member: caller.member } satisfies PlaygroundWho;
+    return {
+      owner: session.value.subject,
+      member: caller.member,
+      userdata,
+    } satisfies PlaygroundWho;
   });
   const page = (body: string, contentType: string) =>
     Effect.succeed(HttpServerResponse.text(body, { contentType, headers: HEADERS }));

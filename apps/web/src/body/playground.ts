@@ -1599,6 +1599,180 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     }
   };
 
+
+  // "Agent drives her": a model drives these stages through the same body tools an outside agent uses.
+  const MODELS: ReadonlyArray<readonly [string, string]> = [
+    ["haiku", "Haiku"],
+    ["sonnet", "Sonnet"],
+    ["opus", "Opus"],
+    ["brain", "Her own brain"],
+  ];
+  const agent = {
+    models: ["sonnet", "opus"] as string[],
+    directions: "",
+    alsoHer: false,
+    running: false,
+    estimate: "",
+    results: [] as Array<{ said: string; runs: Array<{ id: string; model: string; run: Record<string, unknown> | null; rated?: string }> }>,
+  };
+  let estimateTimer = 0;
+  const estimate = () => {
+    clearTimeout(estimateTimer);
+    estimateTimer = window.setTimeout(async () => {
+      const lines = agent.directions.split("\n").filter((l) => l.trim());
+      const models = agent.models.slice(0, stages.length);
+      if (!lines.length) {
+        agent.estimate = "";
+        if (tab === "agent") render("agent");
+        return;
+      }
+      try {
+        let usd = 0;
+        let priced = true;
+        for (const m of models)
+          for (const said of lines) {
+            const r = await post("agent.estimate", { model: m, said });
+            if (typeof r["usd"] === "number") usd += r["usd"];
+            else priced = false;
+          }
+        agent.estimate = priced
+          ? `About $${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(3)} at list price for ${lines.length * models.length} run${lines.length * models.length === 1 ? "" : "s"}; on your plan it is the plan's equivalent.`
+          : "The price list doesn't know one of these models.";
+      } catch (err) {
+        agent.estimate = (err as Error).message;
+      }
+      if (tab === "agent") render("agent");
+    }, 400);
+  };
+  const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+  const runAll = async () => {
+    const lines = agent.directions.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 12);
+    if (!lines.length || agent.running) return;
+    agent.running = true;
+    render("agent");
+    for (const said of lines) {
+      const entry = { said, runs: [] as Array<{ id: string; model: string; run: Record<string, unknown> | null; rated?: string }> };
+      agent.results.unshift(entry);
+      try {
+        for (const [i, s] of stages.entries()) {
+          const model = agent.models[i] ?? agent.models[0]!;
+          const r = await post("agent.start", { said, model, bus: s.bus, alsoHer: agent.alsoHer });
+          entry.runs.push({ id: String(r["id"]), model, run: null });
+        }
+        record("agent.run", said, { models: entry.runs.map((r) => r.model) });
+        // polls only while a run is going
+        while (entry.runs.some((r) => r.run?.["done"] !== true)) {
+          await sleep(500);
+          for (const r of entry.runs) if (r.run?.["done"] !== true) r.run = await post("agent.poll", { id: r.id });
+          if (tab === "agent") render("agent");
+        }
+      } catch (err) {
+        note((err as Error).status === 404 ? "Only you can run agents here: they spend your plan or key." : (err as Error).message);
+        break;
+      }
+    }
+    agent.running = false;
+    render("agent");
+  };
+  const rate = async (r: { id: string; rated?: string }, good: boolean, text: string) => {
+    try {
+      const a = await post("agent.rate", { id: r.id, good, note: text });
+      r.rated = good ? "Good" : "Bad";
+      note(a["harvest"] === true ? "Kept: it is offered to her motion library." : "Kept with your note.");
+    } catch (err) {
+      note((err as Error).message);
+    }
+    render("agent");
+  };
+  const renderAgent = () => {
+    const p = pane("agent");
+    const pick = sec("Who drives");
+    for (const [i, s] of stages.entries()) {
+      const sel = el("select");
+      sel.setAttribute("aria-label", `Model for ${s.bus}`);
+      for (const [id, word] of MODELS) {
+        const o = el("option", null, `${stages.length > 1 ? (i === 0 ? "Left: " : "Right: ") : ""}${word}`);
+        o.value = id;
+        o.selected = (agent.models[i] ?? agent.models[0]) === id;
+        sel.append(o);
+      }
+      sel.onchange = () => {
+        agent.models[i] = sel.value;
+        estimate();
+      };
+      pick.append(sel);
+    }
+    if (stages.length < 2)
+      pick.append(btn("Compare two models", "btn", () => compare(true), "A second stage for a second model (C)"));
+    p.append(pick);
+    const d = sec("Directions");
+    const ta = el("textarea");
+    ta.placeholder = "One per line: shrug like you don't know\nact like you just heard great news";
+    ta.value = agent.directions;
+    ta.setAttribute("aria-label", "Directions, one per line");
+    ta.oninput = () => {
+      agent.directions = ta.value;
+      estimate();
+    };
+    const also = el("label", "row");
+    const cb = el("input");
+    cb.type = "checkbox";
+    cb.checked = agent.alsoHer;
+    cb.onchange = () => {
+      agent.alsoHer = cb.checked;
+    };
+    also.append(cb, el("span", "grow", "Also on her desk body (waits while a conversation you are in has her)"));
+    const go = btn(agent.running ? "Running…" : "Run", "btn primary", () => void runAll());
+    go.disabled = agent.running || !agent.directions.trim();
+    d.append(ta, also, el("p", "sub", agent.estimate || "Nothing runs until you press Run."), go);
+    p.append(d);
+    for (const e of agent.results.slice(0, 12)) {
+      const s = sec(e.said);
+      for (const r of e.runs) {
+        const run = r.run as (Record<string, unknown> & { calls?: Array<Record<string, unknown>>; graded?: Record<string, unknown> | null }) | null;
+        const head = el("h3", null, MODELS.find(([id]) => id === r.model)?.[1] ?? r.model);
+        s.append(head);
+        for (const c of run?.calls ?? [])
+          s.append(
+            el(
+              "p",
+              c["ok"] ? "sub" : "warn",
+              `${((c["atMs"] as number) / 1000).toFixed(1)} s · ${String(c["name"]).replace("tessaya_body_", "")}${c["ok"] ? "" : ": " + String(c["said"])}`,
+            ),
+          );
+        if (run?.["done"] !== true) {
+          s.append(el("p", "sub", "Running…"));
+          continue;
+        }
+        if (run["error"]) s.append(el("p", "warn", String(run["error"])));
+        const g = run.graded;
+        const kv = el("dl", "kv");
+        const add = (k: string, v: string) => kv.append(el("dt", null, k), el("dd", null, v));
+        add("First motion", run["firstMotionMs"] == null ? "never moved" : `${run["firstMotionMs"]} ms`);
+        add("Whole run", `${((run["ms"] as number) / 1000).toFixed(1)} s`);
+        if (g) {
+          add("Channels", (g["channels"] as string[]).join(", ") || "none");
+          add("Kept inside reach", String(g["corrections"]));
+          add("Too fast", (g["overSpeed"] as string[]).join(", ") || "none");
+          if ((g["errors"] as string[]).length) add("Errors", (g["errors"] as string[]).join("; "));
+        }
+        s.append(kv);
+        if (run["reasoning"]) s.append(el("p", "sub", String(run["reasoning"])));
+        if (r.rated) s.append(el("p", "sub", `Rated ${r.rated}.`));
+        else {
+          const why = el("input");
+          why.type = "text";
+          why.placeholder = "A note: what was right or wrong";
+          why.setAttribute("aria-label", "A note on this run");
+          const row = el("div", "row");
+          row.append(btn("Good", "btn", () => void rate(r, true, why.value)), btn("Bad", "btn", () => void rate(r, false, why.value)));
+          s.append(why, row);
+        }
+      }
+      p.append(s);
+    }
+  };
+
   const own: Record<string, () => void> = {
     move: renderMove,
     pose: renderPose,
@@ -1606,6 +1780,7 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     scenes: renderScenes,
     check: renderCheck,
     body: renderBody,
+    agent: renderAgent,
   };
   const TABS: ReadonlyArray<readonly [string, string]> = [
     ["move", "Move"],
@@ -1614,6 +1789,7 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     ["scenes", "Scenes"],
     ["check", "Check"],
     ["body", "Body"],
+    ["agent", "Agent drives her"],
     ...(hooks.tabs ?? []).map((t) => [t.id, t.label] as const),
   ];
   for (const [id, label] of TABS) {
