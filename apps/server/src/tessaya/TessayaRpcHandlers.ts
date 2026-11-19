@@ -102,7 +102,7 @@ import { TessayaJobService } from "./TessayaJobService.ts";
 import { importFolder } from "./TessayaMemoryImport.ts";
 import { pullAction, searchHistory } from "./TessayaMemoryPull.ts";
 import { TessayaMemoryLearning } from "./TessayaMemoryLearning.ts";
-import { TessayaTurn, type TurnEnvelope } from "./TessayaTurn.ts";
+import { SessionMember, TessayaTurn, type TurnEnvelope } from "./TessayaTurn.ts";
 import { TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaWeaveService } from "./TessayaWeaveService.ts";
 import { TessayaCloudService } from "./TessayaCloudService.ts";
@@ -121,6 +121,8 @@ import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts"
 import * as FleetQuery from "./FleetQuery.ts";
 import * as PhonePairing from "./PhonePairing.ts";
 import { TessayaCast } from "./TessayaCast.ts";
+import { bodyHolderLine } from "./TessayaBody.ts";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { herdrSend } from "./HerdrSend.ts";
 import { TessayaSessionsAcross } from "./TessayaSessionsAcross.ts";
 import { TessayaIntentService } from "./IntentService.ts";
@@ -716,7 +718,17 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_PERSONA_OPS_WS_METHODS.call]: (input) =>
       run(Effect.flatMap(PersonaOps, (v) => v.call(input))),
     [BATON_PHONE_PAIRING_WS_METHODS.issue]: () => run(PhonePairing.issue()),
-    [BATON_CAST_WS_METHODS.get]: () => run(Effect.flatMap(TessayaCast, (c) => c.view)),
+    [BATON_CAST_WS_METHODS.get]: () =>
+      Effect.flatMap(SessionMember, (member) =>
+        run(
+          // the reverse of body focus: he (only he) sees which conversation has her body
+          Effect.zipWith(
+            Effect.flatMap(TessayaCast, (c) => c.view),
+            member === OWNER_MEMBER_ID ? bodyHolderLine() : Effect.succeed(null),
+            (view, focus) => (focus === null ? view : { ...view, focus }),
+          ),
+        ),
+      ),
     // A signed-in client with operate scope is his own app: verified for the cast's guard.
     [BATON_CAST_WS_METHODS.call]: (input) =>
       run(

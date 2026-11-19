@@ -85,66 +85,77 @@ function CastSection(props: {
           {read._tag === "Failure" ? "This server could not read the cast." : "Reading…"}
         </Muted>
       ) : (
-        view.bodies.map((b, i) => (
-          <View
-            key={b.id}
-            className={`gap-2 px-4 py-3${i > 0 ? " border-t border-border-subtle" : ""}`}
-          >
-            <Text textRole="body" className="text-foreground">
-              {`${b.name}: ${b.on.map((p) => name(p)).join(", ") || "nobody"}`}
-            </Text>
-            <Text textRole="footnote" className="text-foreground-muted">
-              {[
-                WHY[b.why],
-                b.home === null ? null : `home ${name(b.home)}`,
-                b.online === false ? "offline" : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </Text>
-            {canMove ? (
-              <View className="flex-row flex-wrap items-center gap-2">
-                <Menu
-                  accessible
-                  accessibilityRole="button"
-                  accessibilityLabel={`${b.name} home persona`}
-                  title="Home persona"
-                  actions={[
-                    { id: "", title: "Default" },
-                    ...view.personas.map((p) => ({ id: p.id, title: p.name })),
-                  ]}
-                  onPressAction={({ nativeEvent }) =>
-                    void act({ op: "home", body: b.id, persona: nativeEvent.event || null })
-                  }
-                >
-                  <ControlPill variant="pill" label={`Home: ${name(b.home)}`} />
-                </Menu>
-                {b.why === "visit" || b.why === "stay" ? (
+        [
+          ...(view.focus === undefined
+            ? []
+            : [
+                <View key="focus" className="px-4 py-3">
+                  <Text textRole="footnote" className="text-foreground-muted">
+                    {view.focus}
+                  </Text>
+                </View>,
+              ]),
+          ...view.bodies.map((b, i) => (
+            <View
+              key={b.id}
+              className={`gap-2 px-4 py-3${i > 0 ? " border-t border-border-subtle" : ""}`}
+            >
+              <Text textRole="body" className="text-foreground">
+                {`${b.name}: ${b.on.map((p) => name(p)).join(", ") || "nobody"}`}
+              </Text>
+              <Text textRole="footnote" className="text-foreground-muted">
+                {[
+                  WHY[b.why],
+                  b.home === null ? null : `home ${name(b.home)}`,
+                  b.online === false ? "offline" : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
+              {canMove ? (
+                <View className="flex-row flex-wrap items-center gap-2">
                   <Menu
                     accessible
                     accessibilityRole="button"
-                    accessibilityLabel={`Send ${b.name}'s visitor home`}
-                    title="Send home"
-                    actions={[{ id: "go", title: "Send home" }]}
-                    onPressAction={() => void act({ op: "sendHome", body: b.id })}
+                    accessibilityLabel={`${b.name} home persona`}
+                    title="Home persona"
+                    actions={[
+                      { id: "", title: "Default" },
+                      ...view.personas.map((p) => ({ id: p.id, title: p.name })),
+                    ]}
+                    onPressAction={({ nativeEvent }) =>
+                      void act({ op: "home", body: b.id, persona: nativeEvent.event || null })
+                    }
                   >
-                    <ControlPill variant="pill" label="Send home" />
+                    <ControlPill variant="pill" label={`Home: ${name(b.home)}`} />
                   </Menu>
-                ) : null}
-                <View className="flex-row items-center gap-2">
-                  <Text textRole="footnote" className="text-foreground-muted">
-                    Follows you
-                  </Text>
-                  <ThemedSwitch
-                    accessibilityLabel={`${b.name} follows you`}
-                    value={b.follows}
-                    onValueChange={(on) => void act({ op: "follows", body: b.id, on })}
-                  />
+                  {b.why === "visit" || b.why === "stay" ? (
+                    <Menu
+                      accessible
+                      accessibilityRole="button"
+                      accessibilityLabel={`Send ${b.name}'s visitor home`}
+                      title="Send home"
+                      actions={[{ id: "go", title: "Send home" }]}
+                      onPressAction={() => void act({ op: "sendHome", body: b.id })}
+                    >
+                      <ControlPill variant="pill" label="Send home" />
+                    </Menu>
+                  ) : null}
+                  <View className="flex-row items-center gap-2">
+                    <Text textRole="footnote" className="text-foreground-muted">
+                      Follows you
+                    </Text>
+                    <ThemedSwitch
+                      accessibilityLabel={`${b.name} follows you`}
+                      value={b.follows}
+                      onValueChange={(on) => void act({ op: "follows", body: b.id, on })}
+                    />
+                  </View>
                 </View>
-              </View>
-            ) : null}
-          </View>
-        ))
+              ) : null}
+            </View>
+          )),
+        ]
       )}
       {canMove && view !== null ? (
         <View className="px-4 py-3">
