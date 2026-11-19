@@ -177,6 +177,12 @@ function MoodSections(props: {
           onValueChange={(on) => patch({ tessayaBodyOutsideAgents: on })}
         />
         <SettingsSwitchRow
+          label="Physics-trained moves"
+          subtitle="Moves from her library play the version trained in a physics simulation, so her arms never pass through her. Moves without one play as before."
+          value={settings.tessayaBodyPhysicsClips}
+          onValueChange={(on) => patch({ tessayaBodyPhysicsClips: on })}
+        />
+        <SettingsSwitchRow
           label="Breath between sentences"
           subtitle="A soft breath before a long sentence of her reply on the Tessel. Off, she pauses instead."
           value={settings.tessayaVoiceBreath}

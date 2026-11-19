@@ -2306,7 +2306,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..502f09f95e51cb9998384d94dfb78573c18d7461 100644
+index 49470541d90be695ad24df030ca6522682a82611..c8f25c6ab1e4398ab5dd16c58403066f773c2b8d 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2480,7 +2480,7 @@ index 49470541d90be695ad24df030ca6522682a82611..502f09f95e51cb9998384d94dfb78573
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1525,79 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1525,81 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2517,6 +2517,8 @@ index 49470541d90be695ad24df030ca6522682a82611..502f09f95e51cb9998384d94dfb78573
 +  ),
 +  // Tessaya: whether agents approved for her body only (body-only MCP) may move her own body; off, only the playground.
 +  tessayaBodyOutsideAgents: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
++  // Tessaya: library moves play the physics-trained version (baked, checked rollouts) where one exists; off until he likes it.
++  tessayaBodyPhysicsClips: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 +  // Tessaya: a soft breath before a long later sentence of her reply on the Tessel; off until it sounds natural (19 Nov).
 +  tessayaVoiceBreath: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 +  // Tessaya: his own turns on the Tessel kept privately for his Voice ID and recogniser (turnCapture.ts); on, his consent.
@@ -2560,7 +2562,7 @@ index 49470541d90be695ad24df030ca6522682a82611..502f09f95e51cb9998384d94dfb78573
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1607,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1609,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2574,7 +2576,7 @@ index 49470541d90be695ad24df030ca6522682a82611..502f09f95e51cb9998384d94dfb78573
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +2045,70 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +2047,71 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2589,6 +2591,7 @@ index 49470541d90be695ad24df030ca6522682a82611..502f09f95e51cb9998384d94dfb78573
 +  tessayaVoiceBreath: Schema.optionalKey(Schema.Boolean),
 +  tessayaTurnCapture: Schema.optionalKey(Schema.Boolean),
 +  tessayaBodyOutsideAgents: Schema.optionalKey(Schema.Boolean),
++  tessayaBodyPhysicsClips: Schema.optionalKey(Schema.Boolean),
 +  tessayaMood: Schema.optionalKey(
 +    Schema.Struct({
 +      enabled: Schema.optionalKey(Schema.Boolean),
@@ -2645,7 +2648,7 @@ index 49470541d90be695ad24df030ca6522682a82611..502f09f95e51cb9998384d94dfb78573
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +2117,26 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +2120,26 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2672,7 +2675,7 @@ index 49470541d90be695ad24df030ca6522682a82611..502f09f95e51cb9998384d94dfb78573
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2386,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2389,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

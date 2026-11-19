@@ -351,6 +351,8 @@ export type BodyCue =
       readonly lapseMs?: number;
     }
   /** Where she looks, -1..1 across (her left +) and up, for `ms`; then back to him. */
+  /** A library move's physics-trained version, by entry id: the body plays it when it has one, else ignores this. */
+  | { readonly kind: "baked"; readonly entry: string; readonly id: string }
   | { readonly kind: "gaze"; readonly x: number; readonly y: number; readonly ms: number }
   /** A hand (an agent's, or a second body's) on a part of her, moving as `motion` for `ms` (bodyHand.ts). */
   | {
@@ -601,6 +603,11 @@ export const parseCue = (raw: unknown): BodyCue | null => {
     case "hold": {
       const h = decodeHold(c["systems"]);
       return h.ok ? { kind: "hold", systems: h.hold } : null;
+    }
+    case "baked": {
+      const entry = str(c["entry"], 64);
+      const id = str(c["id"], 64);
+      return entry && id ? { kind: "baked", entry, id } : null;
     }
     case "clip": {
       const id = str(c["id"], 40);

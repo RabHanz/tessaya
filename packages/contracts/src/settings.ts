@@ -1558,6 +1558,8 @@ export const ServerSettings = Schema.Struct({
   ),
   // Tessaya: whether agents approved for her body only (body-only MCP) may move her own body; off, only the playground.
   tessayaBodyOutsideAgents: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Tessaya: library moves play the physics-trained version (baked, checked rollouts) where one exists; off until he likes it.
+  tessayaBodyPhysicsClips: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: a soft breath before a long later sentence of her reply on the Tessel; off until it sounds natural (19 Nov).
   tessayaVoiceBreath: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: his own turns on the Tessel kept privately for his Voice ID and recogniser (turnCapture.ts); on, his consent.
@@ -2056,6 +2058,7 @@ export const ServerSettingsPatch = Schema.Struct({
   tessayaVoiceBreath: Schema.optionalKey(Schema.Boolean),
   tessayaTurnCapture: Schema.optionalKey(Schema.Boolean),
   tessayaBodyOutsideAgents: Schema.optionalKey(Schema.Boolean),
+  tessayaBodyPhysicsClips: Schema.optionalKey(Schema.Boolean),
   tessayaMood: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.optionalKey(Schema.Boolean),

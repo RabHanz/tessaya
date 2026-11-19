@@ -64,6 +64,9 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaBodyOutsideAgents: owner(
     "whether agents approved for her body only may move her own body, not just the body playground",
   ),
+  tessayaBodyPhysicsClips: free(
+    "whether her library moves play their physics-trained versions, where her arms never pass through her",
+  ),
   tessayaRoomCleanup: free(
     "fixing a word she misheard on the Tessel from what you were talking about, before she answers",
   ),
