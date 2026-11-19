@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { GESTURES, TOUCH_ZONES } from "./bodyCues.ts";
+import { GESTURES } from "./bodyCues.ts";
+import { HUMAN_SENSE } from "./bodySense.ts";
 import {
   ACTS,
   clipAt,
@@ -75,12 +76,16 @@ describe("touch map", () => {
     expect(touchZoneAt(p, rig, mesh)).toBe(zone);
   });
 
-  it("names only zones the protocol knows, and misses what is off her body", () => {
+  it("names only regions the general sense pack has, and misses what is off her body", () => {
     expect(touchZoneAt([1.5, 1, 0], rig)).toBeNull();
     expect(touchZoneAt([0, 1, 0], {})).toBeNull();
-    expect(TOUCH_ZONES).toEqual(
-      expect.arrayContaining(["hair", "back", "waist", "leg", "foot", "thigh", "hips"]),
-    );
+    const ids = new Set(HUMAN_SENSE.regions.map((r) => r.id));
+    for (let y = 0; y <= 1.7; y += 0.05)
+      for (const x of [-0.25, 0, 0.25])
+        for (const z of [-0.12, 0.12]) {
+          const zone = touchZoneAt([x, y, z], rig);
+          if (zone !== null) expect(ids).toContain(zone);
+        }
   });
 
   it.each<[string, Parameters<typeof readTouch>[0]]>([

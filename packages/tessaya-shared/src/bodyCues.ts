@@ -3,6 +3,7 @@
  * JSON lines, so a scene drives both. Cues carry what the spine already decided (mood, gesture, the aligner's visemes,
  * G7 word-timed effects, the group's speaker); a body only renders them and never decides anything itself.
  */
+import { decodeSensePack, type SensePack } from "./bodySense.ts";
 import { HAND_MOTIONS, type HandMotion } from "./bodyHand.ts";
 import { decodeHold, decodePerform, type Perform } from "./bodyPlanner.ts";
 import { fireAtMs, type EffectWhen } from "./speechEffects.ts";
@@ -194,25 +195,11 @@ export const INTIMATE_FACES: Readonly<
   },
 };
 
-/** Where he touched her on screen (bodyMotion touchZoneAt); the private layer decides what a touch there means. */
-export const TOUCH_ZONES = [
-  "head",
-  "hair",
-  "face",
-  "neck",
-  "shoulder",
-  "arm",
-  "hand",
-  "chest",
-  "belly",
-  "back",
-  "waist",
-  "hips",
-  "thigh",
-  "leg",
-  "foot",
-] as const;
-export type TouchZone = (typeof TOUCH_ZONES)[number];
+/**
+ * Where he touched her: a region id from the sense packs (bodySense.ts), never a fixed list; the private layer
+ * decides what a touch there means.
+ */
+export const REGION_ID = /^[a-zA-Z][\w-]{0,39}$/;
 
 export type BodyBone =
   | "head"
@@ -353,7 +340,8 @@ export type BodyCue =
   /** A hand (an agent's, or a second body's) on a part of her, moving as `motion` for `ms` (bodyHand.ts). */
   | {
       readonly kind: "hand";
-      readonly part: TouchZone;
+      readonly part: string;
+      readonly pull?: readonly [number, number, number];
       readonly motion: HandMotion;
       readonly pressure: number;
       readonly ms: number;
@@ -386,7 +374,11 @@ export type BodyCue =
         readonly cues: ReadonlyArray<BodyCue>;
       }>;
     }
-  /** Extra touch regions: within `radius` m of a humanoid bone, a touch is that region. */
+  /** She pulls free of any hand holding her. */
+  | { readonly kind: "free" }
+  /** A sense pack (bodySense.ts): regions, receptors and reflex arcs her skin adds or overrides, by pack id. */
+  | { readonly kind: "sense"; readonly pack: SensePack }
+  /** Extra touch regions: within `radius` m of a humanoid bone, a touch is that region (a sense pack, older form). */
   | {
       readonly kind: "zones";
       readonly zones: ReadonlyArray<{
@@ -612,6 +604,12 @@ export const parseCue = (raw: unknown): BodyCue | null => {
           }
         : null;
     }
+    case "free":
+      return { kind: "free" };
+    case "sense": {
+      const d = decodeSensePack(c["pack"]);
+      return d.ok ? { kind: "sense", pack: d.pack } : null;
+    }
     case "zones": {
       const zones = (Array.isArray(c["zones"]) ? c["zones"] : []).slice(0, 32).flatMap((z) => {
         const r = (z ?? {}) as Record<string, unknown>;
@@ -668,14 +666,22 @@ export const parseCue = (raw: unknown): BodyCue | null => {
     case "hand": {
       const part = c["part"];
       const motion = c["motion"];
-      if (!(TOUCH_ZONES as ReadonlyArray<unknown>).includes(part)) return null;
+      if (typeof part !== "string" || !REGION_ID.test(part)) return null;
+      const p = c["pull"];
+      const pull =
+        Array.isArray(p) &&
+        p.length === 3 &&
+        p.every((v) => typeof v === "number" && Math.abs(v) <= 0.3)
+          ? ([p[0], p[1], p[2]] as const)
+          : null;
       if (!(HAND_MOTIONS as ReadonlyArray<unknown>).includes(motion)) return null;
       return {
         kind: "hand",
-        part: part as TouchZone,
+        part,
         motion: motion as HandMotion,
         pressure: num(c["pressure"], 0, 1) ?? 0.4,
         ms: num(c["ms"], 150, 10_000) ?? 1500,
+        ...(pull === null ? {} : { pull }),
       };
     }
     case "gaze": {

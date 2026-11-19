@@ -15,6 +15,7 @@ import {
   restBody,
   type BodyCaller,
 } from "./TessayaBody.ts";
+import { TessayaMood } from "./TessayaMood.ts";
 import { SessionMember } from "./TessayaTurn.ts";
 import * as TurnLiveContext from "./TurnLiveContext.ts";
 
@@ -299,9 +300,24 @@ describe("TessayaBody", () => {
         yield* restBody();
         const off = onAction((e) => void (e.kind === "body.felt" && rows.push(e)));
         const live = yield* TurnLiveContext.TurnLiveContext;
+        const noted: Array<[unknown, string | null | undefined]> = [];
+        const mood = {
+          note: (_: unknown, event: unknown, member?: string | null) =>
+            Effect.sync(() => void noted.push([event, member])),
+        } as unknown as TessayaMood["Service"];
         yield* feel({ vessel: "desktop", part: "head", kind: "pat" }).pipe(
           Effect.provideService(SessionMember, "member-sam"),
+          Effect.provideService(TessayaMood, mood),
         );
+        // a hard pull on her hair, through the hand frame's own stretch: it hurts, and her reaction says so
+        yield* feel({ vessel: "phone", part: "hair", kind: "hold", stretch: 0.95 }).pipe(
+          Effect.provideService(SessionMember, "member-sam"),
+          Effect.provideService(TessayaMood, mood),
+        );
+        expect(noted).toEqual([
+          [{ kind: "felt", tone: "firm" }, "member-sam"],
+          [{ kind: "felt", tone: "hurt" }, "member-sam"],
+        ]);
         // an agent's hand through a move is felt the same way, named as the agent
         yield* moveBody({ touch: { part: "arm", motion: "stroke" } }, her).pipe(
           Effect.provideService(PersonaLayers, { all: [openLayer([])] }),
@@ -311,15 +327,17 @@ describe("TessayaBody", () => {
         off();
         expect(rows.map((r) => [r.actor.kind, r.actor.id, r.data])).toEqual([
           ["member", "member-sam", { vessel: "desktop" }],
+          ["member", "member-sam", { vessel: "phone" }],
           ["agent", "desktop:a", { vessel: "window", pressure: 0.4 }],
         ]);
         const onTumble = yield* live.take({ vessel: "tessel-1", persona: null, spend: true });
         expect(onTumble).toMatch(/on his desktop, someone in the household patted your head/);
         // her nerves say what it was like: a slow stroke on hairy skin reaches her caress fibres
         expect(onTumble).toMatch(
-          /an agent's hand stroked your arm \(you felt a slow stroke, 4 cm\/s\)/,
+          /an agent's hand stroked your arm \(you felt a slow stroke, 5 cm\/s\)/,
         );
         expect(onTumble).not.toMatch(/hand:|held your hand/);
+        expect(onTumble).toMatch(/held your hair \(you felt a pull that hurts\)/);
       }).pipe(Effect.provide(TurnLiveContext.layer)),
   );
 });

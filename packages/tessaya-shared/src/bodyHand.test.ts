@@ -82,7 +82,7 @@ describe("the hand", () => {
     const poke = [0, 125, 250, 400].map((t) => agentHandAt("poke", 1, 1000, t)!);
     expect(poke.map((p) => +p.pressure.toFixed(2))).toEqual([0, 1, 0, 0]);
     expect(poke.every((p) => p.fingertip)).toBe(true);
-    const stroke = [375, 1125].map((t) => agentHandAt("stroke", 0.4, 3000, t)!.along);
+    const stroke = [1500, 4500].map((t) => agentHandAt("stroke", 0.4, 8000, t)!.along);
     expect(stroke[0]).toBeCloseTo(1);
     expect(stroke[1]).toBeCloseTo(-1);
     // a hold is never a light touch

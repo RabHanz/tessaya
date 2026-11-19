@@ -49,10 +49,12 @@ describe("decodeBodyMove", () => {
       pressure: 1,
       ms: 1500,
     });
-    expect(decodeBodyMove({ touch: { part: "elbow" } })).toMatchObject({
+    expect(decodeBodyMove({ touch: { part: "my elbow!" } })).toMatchObject({
       ok: false,
-      error: expect.stringMatching(/part is one of head/),
+      error: expect.stringMatching(/part is a region of her, such as head/),
     });
+    // a region only a pack names may be one of his private ones: it waits for a private moment
+    expect(isPrivateMove(ok({ touch: { part: "earlobe" } }))).toBe(true);
   });
 });
 
