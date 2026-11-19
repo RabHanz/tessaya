@@ -86,6 +86,7 @@ import { DeviceRefusedError, DeviceRegistry, offlineWhy } from "./DeviceRegistry
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { expressOr } from "../tessaya/TessayaExpression.ts";
+import { interruptBody } from "../tessaya/TessayaBody.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { TessayaCast } from "../tessaya/TessayaCast.ts";
 import { LINE_EVENTS, sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
@@ -1805,8 +1806,12 @@ const make = Effect.gen(function* () {
       if (action !== null) yield* emitAction(action);
     }
     // He talked over her on this Tessel: a layer's acts timed to her words stop there and then (VOXTA I4).
-    if (tail === "event/voice/barge" && Option.isSome(layers))
-      for (const l of layers.value.all) l.signal({ kind: "bargeIn", vessel: result.id });
+    if (tail === "event/voice/barge") {
+      if (Option.isSome(layers))
+        for (const l of layers.value.all) l.signal({ kind: "bargeIn", vessel: result.id });
+      // and every body of hers: a scene playing on one pauses (body focus)
+      yield* interruptBody();
+    }
     // Picked up, moved, touched or pressed: someone is at this Tessel, not yet who (B-043).
     if (Option.isSome(presence) && HANDLED.has(tail))
       yield* presence.value.note({ member: null, source: "handled", vessel: result.id });
