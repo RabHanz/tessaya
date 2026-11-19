@@ -19,6 +19,7 @@ const callerNow = Effect.gen(function* () {
       // her live thread (TessayaTurn's id), so body focus knows which of her conversations asks
       thread: `${turn.persona ?? ""}|${conversationKey({ vessel: turn, text: "", speaker: turn.speaker, member: turn.member })}`,
       signal: turn.kind === "device" ? "speak" : "type",
+      ...(turn.persona == null ? {} : { persona: turn.persona }),
     } satisfies BodyCaller;
   if (scope.client === undefined)
     return {

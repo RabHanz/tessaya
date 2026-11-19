@@ -282,6 +282,50 @@ describe("TessayaBody", () => {
     }),
   );
 
+  it.effect(
+    "a persona with her own body in his desktop's crew moves that body, not the lead's",
+    () =>
+      Effect.gen(function* () {
+        yield* restBody();
+        const writes: Array<unknown> = [];
+        const crew = Layer.succeed(DeviceRegistry)(
+          DeviceRegistry.of({
+            list: Effect.succeed([
+              {
+                deviceId: "his",
+                online: true,
+                items: [{ id: "mascot.do" }, { id: "mascot.do.alfred" }],
+              },
+            ]),
+            write: (deviceId: string, itemId: string, value: unknown) =>
+              Effect.sync(() => void writes.push([itemId, value])),
+          } as never),
+        );
+        const alfred: BodyCaller = {
+          id: "desktop:alfred",
+          kind: "persona",
+          mayBePrivate: true,
+          persona: "alfred",
+          thread: "alfred|person:owner",
+        };
+        yield* moveBody({ act: "wave" }, alfred).pipe(Effect.provide(crew));
+        yield* TestClock.adjust("3 seconds");
+        const freya: BodyCaller = {
+          ...alfred,
+          id: "desktop:freya",
+          persona: "freya",
+          thread: "freya|person:owner",
+          signal: "speak",
+        };
+        yield* moveBody({ act: "nod" }, freya).pipe(Effect.provide(crew));
+        expect(writes).toEqual([
+          ["mascot.do.alfred", "wave"],
+          ["mascot.do", "nod"],
+        ]);
+        yield* restBody();
+      }),
+  );
+
   it.effect("limits each caller to a burst, then tells it when to try again", () =>
     Effect.gen(function* () {
       // past the last test's hold on her body (body focus), so this agent's thread has it

@@ -70,6 +70,8 @@ export interface BodyCaller {
   readonly thread?: string | undefined;
   /** How he is present in that thread: his voice on a Tessel, his typing elsewhere, his own hand on an agent. */
   readonly signal?: PresenceSignal | undefined;
+  /** The persona whose body this moves: on a desktop with a crew, her own body there when she has one. */
+  readonly persona?: string | undefined;
 }
 
 export interface BodyMoveAnswer {
@@ -472,14 +474,18 @@ const route = Effect.fn("TessayaBody.route")(function* (
       d.items.some((i) => i.id === MASCOT_ITEM),
   );
   let done = 0;
-  for (const d of desks)
+  for (const d of desks) {
+    // her own body in his desktop's crew, when the move is hers and she stands there
+    const own = caller.persona === undefined ? undefined : `${MASCOT_ITEM}.${caller.persona}`;
+    const item = own !== undefined && d.items.some((i) => i.id === own) ? own : MASCOT_ITEM;
     for (const a of acts) {
-      const wrote = yield* registry.value.write(d.deviceId, MASCOT_ITEM, a).pipe(
+      const wrote = yield* registry.value.write(d.deviceId, item, a).pipe(
         Effect.as(true),
         Effect.orElseSucceed(() => false),
       );
       if (wrote) done++;
     }
+  }
   return done > 0
     ? ({
         ok: true,

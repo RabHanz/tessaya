@@ -5236,6 +5236,26 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     return (p === undefined ? undefined : crew.get(p.id)) ?? mascot;
   };
   const everyMascot = () => [mascot, ...crew.values()];
+  /**
+   * A group speaker starts (GroupTalk's turn, M-080 step 8): the others on his desktop turn to her and nod, so the
+   * room looks at whoever is speaking. Only when her own body is here among the crew.
+   */
+  const stageGroup = (name: string) => {
+    const key = name.toLowerCase();
+    const p = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find(
+      (x) => x.id === key || x.name.toLowerCase() === key,
+    );
+    const speaker =
+      p === undefined
+        ? undefined
+        : (crew.get(p.id) ?? (mascotPersonaArg().persona === p.id ? mascot : undefined));
+    const at = speaker?.member.feet() ?? null;
+    if (speaker === undefined || at === null) return;
+    for (const m of everyMascot()) {
+      const mine = m === speaker ? null : m.member.feet();
+      if (mine !== null) m.member.gesture("nod", at.x < mine.x ? -1 : 1);
+    }
+  };
   /** The persona she wears, by id, for the spine; none when his pick is not in the pack (the lead answers). */
   const mascotPersonaArg = (): { persona?: string } => {
     const key = ((settings.mascotFollows ? talking : null) ?? settings.mascotPersona).toLowerCase();
@@ -9938,9 +9958,11 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         onBattery: Electron.powerMonitor.isOnBatteryPower(),
         locked: screenLocked,
         idleSeconds: Electron.powerMonitor.getSystemIdleTime(),
+        crew: crewPersonas().map((p) => ({ id: p.id, name: p.name })),
       }),
       applySetting: (id, value) => applyHome(id, value),
-      onMascot: (act) => mascot.act(act),
+      onMascot: (act, persona) =>
+        persona === undefined ? mascot.act(act) : (crew.get(persona)?.act(act) ?? false),
       onAction: runAction,
       // A message from someone at home: a toast, its glance on the pill, and its sound (a placeholder cue for now).
       onNote: (value) => {
@@ -10079,6 +10101,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     },
     onTurnEnd: () => pill.on({ type: "finished" }),
     face: (name) => {
+      stageGroup(name);
       if (!settings.mascotFollows || name.toLowerCase() === talking) return;
       talking = name.toLowerCase();
       syncMascot?.();
