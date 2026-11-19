@@ -235,10 +235,10 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..111fbd856926410ea194c60271444b92
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..d5ab3a3f960c7ce9fa87a07df2abfde32a921b2f 100644
+index 0659f65475da775fd54525d9147c84a8b0ad4a3a..4d57f1d710e9569ff5b218dcc59fc36d6e29bbdb 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,8 +10,26 @@
+@@ -10,8 +10,27 @@
      "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
@@ -262,7 +262,8 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..d5ab3a3f960c7ce9fa87a07df2abfde3
 +    "tessaya-pulse": "node tessaya-pulse/run.ts",
 +    "tessaya-group": "node tessaya-group/run.ts",
 +    "tessaya-hire": "node tessaya-hire/run.ts",
-+    "tessaya-body-direction": "node tessaya-body-direction/run.ts"
++    "tessaya-body-direction": "node tessaya-body-direction/run.ts",
++    "tessaya-body-direction:harvest": "node tessaya-body-direction/harvest.ts"
    },
    "dependencies": {
      "@effect/platform-node": "catalog:",

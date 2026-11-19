@@ -22,6 +22,12 @@ const Bones = Schema.Record(Schema.String, Schema.Array(Schema.Number)).annotate
     "Bone: [x, y, z] radians, VRM 1.0 axes from a T-pose (she faces +z, her left is +x). Arms down: leftUpperArm [0, 0, -1.2], rightUpperArm [0, 0, 1.2]. Elbows fold on y (left -, right +), knees on x (+), the trunk and head bend forward on x (+). Out-of-range joints are corrected, never broken.",
 });
 const Step = {
+  intent: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        'What she should do, in a few plain words ("celebrate great news", "shiver with cold"): her body plays the nearest validated performance from her motion library (tessaya_body_state lists them as `motions`; use one of those words when one fits). Enough on its own; anything else in the step goes over it.',
+    }),
+  ),
   act: Schema.optionalKey(
     Schema.String.annotate({
       description:

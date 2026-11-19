@@ -29,7 +29,8 @@
     "tessaya-pulse": "node tessaya-pulse/run.ts",
     "tessaya-group": "node tessaya-group/run.ts",
     "tessaya-hire": "node tessaya-hire/run.ts",
-    "tessaya-body-direction": "node tessaya-body-direction/run.ts"
+    "tessaya-body-direction": "node tessaya-body-direction/run.ts",
+    "tessaya-body-direction:harvest": "node tessaya-body-direction/harvest.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
