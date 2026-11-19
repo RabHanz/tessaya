@@ -172,6 +172,33 @@ const publishPronunciations = Effect.fn("R1Device.publishPronunciations")(functi
   yield* Stream.runForEach(changes, (s) => publish(s.voicePronounce));
 });
 
+/** Her breath between sentences on the Tessel (`tessayaVoiceBreath`), retained for a late loop. */
+const breathTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/breath`;
+
+const publishBreath = Effect.fn("R1Device.publishBreath")(function* () {
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  if (Option.isNone(settings)) return;
+  const changes = yield* settings.value.subscribeChanges;
+  let sent: boolean | null = null;
+  const publish = Effect.fn("R1Device.publishBreathOnce")(
+    function* (on: boolean) {
+      if (on === sent) return;
+      for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices))
+        if (device.deviceId !== null)
+          yield* publishToDevice(
+            device,
+            breathTopic(device.deviceId),
+            JSON.stringify({ on }),
+            true,
+          );
+      sent = on;
+    },
+    (e) => Effect.ignore(e),
+  );
+  yield* publish((yield* settings.value.getSettings).tessayaVoiceBreath);
+  yield* Stream.runForEach(changes, (s) => publish(s.tessayaVoiceBreath));
+});
+
 /** Voice ID's switches (`voiceIdGate`) for the room loop's gate, retained for a late loop. */
 const gateTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/gate`;
 
@@ -1774,6 +1801,7 @@ export const routes = HttpRouter.use((router) =>
       Effect.ignore,
       Effect.forkScoped,
     );
+    yield* publishBreath().pipe(Effect.provideContext(context), Effect.ignore, Effect.forkScoped);
     yield* publishRestMood().pipe(Effect.provideContext(context), Effect.ignore, Effect.forkScoped);
     // The room's tools (R1Tools.layer); without them the key route speaks in the acts form as before.
     const tools = yield* RoomTools;

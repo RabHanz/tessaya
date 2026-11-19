@@ -37,6 +37,11 @@ describe("stopIntent", () => {
       "It's too quiet.",
       "I won't cancel it.",
       "What's this best for?",
+      // 19 Nov, 04:56: a request that starts with "stop" is followed, not a stop.
+      "Stop talking about her work.",
+      "Stop talking about work.",
+      "Stop doing that and tell me the time.",
+      "Don't stop.",
       "",
     ])
       expect(stopIntent(t), t).toBeNull();
