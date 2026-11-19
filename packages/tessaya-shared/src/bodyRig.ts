@@ -277,7 +277,7 @@ export const fitProxies = (
     // the median: clothes are skinned to the trunk and thighs too (a puffy sweater, a skirt's flare), and their outer
     // surface is cloth a resting arm lies against, not body
     thigh: pick("thigh", 0.5),
-    forearm: pick("forearm", 0.8),
+    forearm: pick("forearm", 0.5),
   };
 };
 
@@ -580,9 +580,12 @@ const segPoint = (a: V3, b: V3, p: V3): number => len(sub(p, closestOn(a, b, p))
 const restingParts = (
   rig: Rig,
   pos: Readonly<Record<string, V3>>,
-): Array<{ readonly a: V3; readonly b: V3; readonly r: number }> => {
+): Array<{ readonly a: V3; readonly b: V3; readonly r: number; readonly give: number }> => {
   const size = rig.proxies ?? proxiesByHeight(rig.height);
   const top = pos["upperChest"] ?? pos["chest"] ?? pos["spine"];
+  // how far a resting hand or arm may press in before it is pushed out: clothes over her hips and thighs (a skirt's
+  // flare, trousers) and her top give under a hand; her skull does not
+  const s = rig.height / 1.6;
   const neck = pos["neck"];
   const head = pos["head"];
   // the skull's centre sits above the head joint, along the neck
@@ -592,13 +595,13 @@ const restingParts = (
     [
       // the trunk from her waist up: below it the pelvis is its own narrower part, so a hand hanging at her hip
       // rests against the pelvis's side instead of being held off by the trunk's rounded end
-      [pos["spine"] ?? pos["hips"], top, size.trunk],
-      [neck, skull, size.head],
-      [pos["leftUpperLeg"], pos["rightUpperLeg"], 0.65 * size.trunk],
-      [pos["leftUpperLeg"], pos["leftLowerLeg"], size.thigh],
-      [pos["rightUpperLeg"], pos["rightLowerLeg"], size.thigh],
+      [pos["spine"] ?? pos["hips"], top, size.trunk, 0.02 * s],
+      [neck, skull, size.head, 0],
+      [pos["leftUpperLeg"], pos["rightUpperLeg"], 0.65 * size.trunk, 0.03 * s],
+      [pos["leftUpperLeg"], pos["leftLowerLeg"], size.thigh, 0.03 * s],
+      [pos["rightUpperLeg"], pos["rightLowerLeg"], size.thigh, 0.03 * s],
     ] as const
-  ).flatMap(([a, b, r]) => (a && b ? [{ a, b, r }] : []));
+  ).flatMap(([a, b, r, give]) => (a && b ? [{ a, b, r, give }] : []));
 };
 /** The hand past the wrist, as a ball: what lands on her face or hip is the hand, not the wrist. */
 const handBall = (rig: Rig) => ({
@@ -641,7 +644,7 @@ export const solveLimbs = (
     const fixA = rig.restFix[l.root] ?? QI;
     const fixB = rig.restFix[l.mid] ?? QI;
     const midT = qMul(qMul(qConj(fixA), pose[l.mid] ?? QI), fixB);
-    const { swing } = swingTwist(midT, T_DIR[l.mid]!);
+    const { swing, twist: authoredTwist } = swingTwist(midT, T_DIR[l.mid]!);
     const flex = dot(swing, l.hingeAxis);
     const side = len(sub(swing, scale(l.hingeAxis, flex)));
     if (flex < -0.02) issues.push({ bone: l.mid, kind: "reversal", by: -flex });
@@ -659,7 +662,7 @@ export const solveLimbs = (
               : add(tOut, scale(sub(tOut, e0), handReach / Math.max(1e-6, fore)));
           for (const c of body) {
             const away = sub(p, closestOn(c.a, c.b, p));
-            const depth = c.r + (k === 5 ? handR : size.forearm) - len(away);
+            const depth = c.r + (k === 5 ? handR : size.forearm) - len(away) - c.give;
             if (softPush(depth) > 1e-4 && (deepest === null || depth > deepest.depth))
               deepest = {
                 depth,
@@ -729,7 +732,13 @@ export const solveLimbs = (
       if (tryIt.cost < best.cost) best = tryIt;
     }
     out[l.root] = best.root;
-    out[l.mid] = best.mid;
+    // the forearm keeps the turn it was given about its own length (a hanging hand's palm toward her thigh): the
+    // re-solve above places the elbow and its bend, not how the forearm is turned
+    const solved = swingTwist(qMul(qMul(qConj(fixA), best.mid), fixB), T_DIR[l.mid]!);
+    out[l.mid] = qMul(
+      qMul(fixA, qMul(qFromVec(solved.swing), qFromVec(scale(T_DIR[l.mid]!, authoredTwist)))),
+      qConj(fixB),
+    );
     out[l.end] = best.end;
   }
   // a hand that rests on her lies along her: fingers that would go in are bent back at the wrist, onto the surface

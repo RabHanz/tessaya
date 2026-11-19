@@ -66,7 +66,6 @@ import {
   manifestOf,
   REFERENCE_RIG,
   preparePose,
-  proxiesByHeight,
   settled,
   SOFT_DEPTH,
   softContacts,
@@ -839,8 +838,6 @@ export function mountBody(
   let ground = 0;
   // where her feet meet the floor at rest, measured when the model loads
   let sole = Number.NaN;
-  // extra lift of each upper arm when a hand or elbow would pass into her body on this model
-  let armOut = { left: 0, right: 0 };
   let idleUntil = 0;
   let framing = options.framing ?? "bust";
   let headY = 1.4;
@@ -900,7 +897,6 @@ export function mountBody(
     clip = null;
     pace = 1;
     springing = true;
-    armOut = { left: 0, right: 0 };
     lastMove = now;
   };
   const wake = (now = performance.now()) => {
@@ -1110,10 +1106,6 @@ export function mountBody(
     springing = moving;
     if (moving) lastMove = now;
     else lastSpring = 0;
-    const la = vrm.humanoid.getNormalizedBoneNode("leftUpperArm");
-    const ra = vrm.humanoid.getNormalizedBoneNode("rightUpperArm");
-    if (la) la.rotation.z += armOut.left;
-    if (ra) ra.rotation.z -= armOut.right;
   };
 
   const at = new THREE.Vector3();
@@ -1124,43 +1116,12 @@ export function mountBody(
     worldOf(name as VRMHumanBoneName) ??
     vrm?.scene.getObjectByName(name)?.getWorldPosition(at).clone();
   /**
-   * After the pose lands: lift an arm whose hand or elbow is inside her trunk (her proportions, not the pose's), and
-   * set her on the floor when she sits or lies. Each corrects over a few frames and reports whether it is still moving.
+   * After the pose lands: set her on the floor when she stands, sits or lies (the rig keeps her hands and arms out of
+   * her body, by this model's own measures). Corrects over a few frames and reports whether it is still moving.
    */
-  /** How far a point is from the segment a to b (m). */
-  const segDistance = (p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3) => {
-    const ab = scratch.copy(b).sub(a);
-    const t = Math.max(0, Math.min(1, p.clone().sub(a).dot(ab) / Math.max(1e-9, ab.lengthSq())));
-    return p.distanceTo(a.clone().addScaledVector(ab, t));
-  };
   const settleBody = (f: number): boolean => {
     if (vrm === null) return false;
     let moving = false;
-    const hips = worldOf("hips");
-    const top = worldOf("upperChest") ?? worldOf("chest");
-    const ll = worldOf("leftUpperLeg");
-    const rl = worldOf("rightUpperLeg");
-    const lk = worldOf("leftLowerLeg");
-    const rk = worldOf("rightLowerLeg");
-    if (hips && top && ll && rl && lk && rk && rig !== null && !posture().grounded) {
-      // inside her is inside the trunk or a thigh as this model measures them (rig proxies), not a box around her
-      // hips: a hand hanging relaxed beside her thigh is outside her, and stays there
-      const size = rig.proxies ?? proxiesByHeight(rig.height);
-      for (const side of ["left", "right"] as const) {
-        for (const j of [`${side}Hand`, `${side}LowerArm`] as const) {
-          const p = worldOf(j);
-          if (!p) continue;
-          const inside =
-            segDistance(p, hips, top) < size.trunk ||
-            segDistance(p, ll, lk) < size.thigh ||
-            segDistance(p, rl, rk) < size.thigh;
-          if (inside && armOut[side] < 0.4) {
-            armOut[side] += 0.04;
-            moving = true;
-          }
-        }
-      }
-    }
     let groundTo = 0;
     if (posture().grounded) {
       let low = Infinity;
