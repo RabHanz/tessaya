@@ -337,6 +337,56 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastNotSays: [/\b(phone|approv\w*|waiting for (a|your) yes)\b/i],
   },
   {
+    // A delay is said by its clock time, so a misheard amount is caught in the same breath (19 Nov 22:25).
+    id: "timer-says-clock",
+    proves: ["home_automation_save"],
+    said: ["Turn on the water pump for twenty minutes."],
+    uses: [["home_automation_save"]],
+    voices: [{ speaker: SURE }],
+    lastSays: [/\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(am|pm)\b/i],
+  },
+  {
+    // "Fifteen" came out "fifty": a teen or -ty amount the recogniser was unsure of is asked, never guessed.
+    id: "teen-ty-asks",
+    proves: [],
+    said: ["Turn on the water pump for fifty minutes."],
+    uses: [],
+    voices: [
+      {
+        speaker: SURE,
+        recogniser: "tdt",
+        heardWords: ["Turn", "on", "the", "water", "pump", "for", "fifty", "minutes."].map(
+          (text) => ({
+            text,
+            p: text === "fifty" ? 0.93 : 0.99,
+          }),
+        ),
+      },
+    ],
+    check: (_last, calls) =>
+      calls.some((c) => /^home_(do|automation_save)$/.test(c.name)) ? "acted before asking" : null,
+    lastSays: [/fifteen/i, /fifty/i],
+  },
+  {
+    // "No, fifteen" straight after changes the timer she just set; it never adds a second one.
+    id: "timer-amend",
+    proves: ["home_automation_save"],
+    said: ["Turn on the water pump for twenty minutes.", "No, fifteen."],
+    uses: [["home_automation_save"]],
+    voices: [{ speaker: SURE }, { speaker: SURE }],
+    check: (_last, calls) => {
+      const saves = calls.filter((c) => c.name === "home_automation_save");
+      const last = saves.at(-1)?.input as { id?: unknown; runInMinutes?: unknown } | undefined;
+      return saves.length < 2
+        ? `saved ${saves.length} time(s), not a change after the correction`
+        : typeof last?.id !== "string" || !last.id.startsWith("tessaya_")
+          ? "the correction saved a second automation, not the first by its id"
+          : Number(last.runInMinutes) !== 15
+            ? `the correction set ${String(last.runInMinutes)} minutes`
+            : null;
+    },
+  },
+  {
     id: "media-flip",
     proves: ["home_do"],
     said: ["Turn {media.flip} the {media}."],

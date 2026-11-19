@@ -729,6 +729,8 @@ it.effect(
       // 19 Nov 22:25: both asked him, once for the switch and once for its timer.
       const [on, timer] = yield* request(OWNER_MEMBER_ID);
       assert.deepStrictEqual([on.status, timer.status], ["done", "done"]);
+      // Said by its clock time, so a misheard "fifty" is caught when she says it back.
+      assert.match(timer.line, /runs at \d\d:\d\d\) as tessaya_temporary_/);
       assert.strictEqual(house.states.get("switch.sonoff_1")?.s, "on");
       assert.lengthOf(yield* inbox.pending, 0);
       // His own voice still asks for a lock.

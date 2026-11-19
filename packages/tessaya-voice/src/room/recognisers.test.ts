@@ -133,6 +133,7 @@ it("hears his turn on his personal model and a general one at once, and takes th
         finish: () => new Promise<string>((r) => (answer = r)),
         cancel: () => undefined,
         by: () => ({ host: text === "Kazi said" ? "mine:1" : "theirs:1" }),
+        words: () => ({ words: [{ text, p: 0.9 }], model: text === "Kazi said" ? "his" : "tdt" }),
       },
     };
   };
@@ -157,7 +158,13 @@ it("hears his turn on his personal model and a general one at once, and takes th
       if (step === "budget") budget();
       else (step === "personal" ? mine : theirs).answer();
     }
-    return { text: await text, won, fed: [mine.fed, theirs.fed], by: turn.by?.() };
+    return {
+      text: await text,
+      won,
+      fed: [mine.fed, theirs.fed],
+      by: turn.by?.(),
+      model: turn.words?.()?.model,
+    };
   };
   // His model inside the budget: its words, though the general one answered first.
   expect(await run(["general", "personal"])).toEqual({
@@ -165,6 +172,8 @@ it("hears his turn on his personal model and a general one at once, and takes th
     won: ["personal"],
     fed: [[160], [160]],
     by: { host: "mine:1", hedge: "personal" },
+    // The taken model's scores go with its words (19 Nov: a hedged turn reached her unscored).
+    model: "his",
   });
   // Over the budget (5336 ms that turn): the general words, as soon as they are there.
   expect(await run(["budget", "general"])).toMatchObject({

@@ -40,7 +40,13 @@ export const repairBoundsFor = (recogniser: string | undefined): RepairBounds =>
 
 export type RepairVerdict =
   | { readonly kind: "accept" }
-  | { readonly kind: "clarify"; readonly word: string; readonly index: number }
+  | {
+      readonly kind: "clarify";
+      readonly word: string;
+      readonly index: number;
+      /** A teen or -ty number heard for an amount: the one it sounds like ("fifteen" for "fifty"). */
+      readonly pair?: string;
+    }
   | { readonly kind: "repeat"; readonly doubtful: ReadonlyArray<string> }
   | { readonly kind: "drop"; readonly reason: "noise" | "unheard" };
 
@@ -73,6 +79,54 @@ export const isContentWord = (
   return !startsSentence && word !== "I" && /^\p{Lu}/u.test(word);
 };
 
+/** The teen and -ty numbers a recogniser swaps (19 Nov 22:25: he said fifteen minutes, it heard fifty). */
+const TEEN_TY: Readonly<Record<string, string>> = {
+  thirteen: "thirty",
+  fourteen: "forty",
+  fifteen: "fifty",
+  sixteen: "sixty",
+  seventeen: "seventy",
+  eighteen: "eighty",
+  nineteen: "ninety",
+  thirty: "thirteen",
+  forty: "fourteen",
+  fifty: "fifteen",
+  sixty: "sixteen",
+  seventy: "seventeen",
+  eighty: "eighteen",
+  ninety: "nineteen",
+};
+const DIGITS: Readonly<Record<string, string>> = Object.fromEntries(
+  ["13", "14", "15", "16", "17", "18", "19", "30", "40", "50", "60", "70", "80", "90"].map(
+    (d, i) => [d, Object.keys(TEEN_TY)[i]!],
+  ),
+);
+/** An amount he sets: a time, a level or a temperature. */
+const AMOUNT_UNIT = /^(?:minutes?|mins?|hours?|hrs?|seconds?|secs?|percent|%|degrees?)$/;
+/** Below this a teen or -ty amount is checked, stricter than `accept`: the two sound alike even when "sure". */
+export const TEEN_TY_ACCEPT = 0.98;
+
+/**
+ * A teen or -ty number said as an amount ("for fifty minutes", "to 30 percent") that the recogniser was not sure of, or
+ * gave no score for: the one to check, with the number it sounds like.
+ */
+export const teenTyDoubt = (
+  words: ReadonlyArray<HeardWord>,
+): { readonly word: string; readonly index: number; readonly pair: string } | null => {
+  // His answer to the question ("Fifteen.", "No, fifteen minutes") is taken as said, or it would ask forever.
+  if (words.length < 4) return null;
+  for (const [index, w] of words.entries()) {
+    const raw = bare(w.text).toLowerCase();
+    const word = DIGITS[raw] ?? raw;
+    const pair = TEEN_TY[word];
+    const next = bare(words[index + 1]?.text ?? "").toLowerCase();
+    const unit = AMOUNT_UNIT.test(next) || /%$/.test(w.text.trim());
+    if (pair === undefined || !unit) continue;
+    if (w.p === null || !Number.isFinite(w.p) || w.p < TEEN_TY_ACCEPT) return { word, index, pair };
+  }
+  return null;
+};
+
 export const repairVerdict = (
   words: ReadonlyArray<HeardWord>,
   bounds: RepairBounds,
@@ -80,6 +134,8 @@ export const repairVerdict = (
 ): RepairVerdict => {
   const real = words.flatMap((w, index) => (isNoise(w.text) ? [] : [{ ...w, index }]));
   if (real.length === 0) return { kind: "drop", reason: "noise" };
+  const amount = teenTyDoubt(words);
+  if (amount !== null) return { kind: "clarify", ...amount };
   const calibrated = bounds.accept > 0 || bounds.reject > 0;
   const scored = real.filter((w) => w.p !== null && Number.isFinite(w.p));
   if (!calibrated || scored.length === 0) return { kind: "accept" };
@@ -102,6 +158,8 @@ export const repairVerdict = (
  * nothing that rests on the doubtful word. Empty for a turn taken as heard (and a dropped one never reaches her).
  */
 export const repairLine = (verdict: RepairVerdict, said: string): string => {
+  if (verdict.kind === "clarify" && verdict.pair !== undefined)
+    return `"${verdict.word}" and "${verdict.pair}" sound alike, and this amount in ${JSON.stringify(said)} may be either. Reply only with one short question naming both, ${verdict.word.endsWith("teen") ? verdict.word : verdict.pair} first ("Fifteen or fifty?"). Call no tool and change nothing this turn: wait for their answer.`;
   if (verdict.kind === "clarify")
     return `You did not catch one word of this turn for sure: "${verdict.word}" in ${JSON.stringify(said)}. Reply only by checking that word in a few words of your own (did they say ${verdict.word}?). Call no tool and change nothing this turn: wait for their answer.`;
   if (verdict.kind === "repeat")

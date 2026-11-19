@@ -1444,7 +1444,13 @@ const make = Effect.gen(function* () {
           reasons: [...verdict.reasons, "it changes an automation Tessaya did not make"],
         }
       : verdict;
-    const ends = expiresAt === null ? "" : `, ends ${localTime(expiresAt)}`;
+    // A delay is said by its clock time, so he hears what will happen and can correct it (19 Nov: fifty, not fifteen).
+    const ends =
+      runAt !== null
+        ? `, runs at ${clockTime(runAt).slice(0, 5)}`
+        : expiresAt === null
+          ? ""
+          : `, ends ${localTime(expiresAt)}`;
     const mark = mine
       ? `Made by Tessaya for ${recordText(by.who, 40)}: "${recordText(input.request, 160)}". ${kind}${once ? ", runs once" : ""}${ends}.`
       : `Edited by Tessaya for ${recordText(by.who, 40)}: "${recordText(input.request, 160)}".`;
@@ -1457,7 +1463,7 @@ const make = Effect.gen(function* () {
       actions,
       mode: input.mode ?? "single",
     };
-    const line = `${input.id === undefined ? "create" : "change"} the ${mine ? kind : "existing"} automation "${config.alias}"`;
+    const line = `${input.id === undefined ? "create" : "change"} the ${mine ? kind : "existing"} automation "${config.alias}" (${id}${runAt === null ? "" : `, runs at ${clockTime(runAt).slice(0, 5)}`})`;
     return yield* gate({
       by,
       verdict: editsHis,
