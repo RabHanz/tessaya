@@ -62,6 +62,7 @@ import {
   qToEuler,
   makeRig,
   manifestOf,
+  REFERENCE_RIG,
   preparePose,
   settled,
   SOFT_DEPTH,
@@ -78,6 +79,8 @@ import {
 import type { BodyState } from "@t3tools/tessaya-shared/bodyControl";
 import { INVOLUNTARY, performCues } from "@t3tools/tessaya-shared/bodyPlanner";
 import { FINGER_KEYS, fingerBones } from "@t3tools/tessaya-shared/bodySkills";
+import { gaitAt, gaitOf, type Gait } from "@t3tools/tessaya-shared/bodyGait";
+import type { BodyTarget } from "@t3tools/tessaya-shared/bodyLocomotion";
 import { softenOnContact } from "./softContact.ts";
 import {
   grabKindOf,
@@ -370,6 +373,17 @@ export function mountBody(
     readonly framing?: "bust" | "body";
     /** Each time she comes to rest after moving: what her body is doing now (proprioception), for the layer to keep. */
     readonly onSettle?: (state: BodyState) => void;
+    /**
+     * Where a turn or walk target is from her: which way (yaw, 0 toward him, + to her left) and how far (metres). The
+     * host knows her world (the desk, other bodies); without it, a point is read across this view.
+     */
+    readonly locate?: (to: BodyTarget) => { readonly yaw: number; readonly metres: number } | null;
+    /** Each frame of a walk, how far she went and which way, so the host carries her (the desk moves her window). */
+    readonly onWalk?: (step: {
+      readonly metres: number;
+      readonly heading: number;
+      readonly done: boolean;
+    }) => void;
   } = {},
 ) {
   let tier = options.tier ?? startTier();
@@ -682,6 +696,22 @@ export function mountBody(
   let issues: ReadonlyArray<RigIssue> = [];
   let stepping: number | null = null;
   let dancing: number | null = null;
+  // turning and walking (B-059 step 8): her whole-body yaw on top of the model's own, and a walk in progress
+  let facing = 0;
+  let baseYaw = 0;
+  let loco: {
+    from: number;
+    to: number;
+    start: number;
+    ms: number;
+    walk: {
+      gait: Gait;
+      metres: number;
+      start: number;
+      travelled: number;
+      last: number;
+    } | null;
+  } | null = null;
   let closer = 0;
   let closerTo = 0;
   let ground = 0;
@@ -773,6 +803,7 @@ export function mountBody(
     springing ||
     stepping !== null ||
     dancing !== null ||
+    loco !== null ||
     (clip !== null &&
       (clip.loop || now - clip.start < (clip.frames.length / clip.fps) * 1000 + 500)) ||
     (tails.length > 0 && kin.tailAmp > 0 && now - kinAt < WAG_MS) ||
@@ -783,15 +814,97 @@ export function mountBody(
    * (limits, hinge elbows and knees, her own rest pose), then followed by a spring per bone: any change of target, at
    * any moment, bends the motion smoothly instead of cutting it. Once every bone has arrived, nothing moves.
    */
+  /** The reference body at her height: a walk's steps are planned on it, so her feet keep pace with the ground. */
+  const stepRig = () => {
+    const k = (rig?.height ?? REFERENCE_RIG.height) / REFERENCE_RIG.height;
+    return makeRig(
+      Object.values(REFERENCE_RIG.bones).map((b) => ({
+        ...b,
+        rest: [b.rest[0] * k, b.rest[1] * k, b.rest[2] * k] as const,
+      })),
+    );
+  };
+  /** Which way and how far a target is: the host's answer, else him ahead, away behind, a point across this view. */
+  const aimOf = (to: BodyTarget): { yaw: number; metres: number } | null => {
+    const found = options.locate?.(to);
+    if (found != null) return found;
+    const height = rig?.height ?? REFERENCE_RIG.height;
+    if (to.kind === "him") return { yaw: 0, metres: 0 };
+    if (to.kind === "away") return { yaw: facing >= 0 ? Math.PI : -Math.PI, metres: 0 };
+    if (to.kind === "persona") return null;
+    // across the view: right of centre is her left (+x), so she turns that way; depth is not walked here
+    const dx = to.x - 0.5;
+    return Math.abs(dx) < 0.05
+      ? { yaw: 0, metres: 0 }
+      : { yaw: Math.sign(dx) * (Math.PI / 2), metres: Math.abs(dx) * 4 * (height / 1.6) };
+  };
+  /** A turn at a person's pace: about 180 degrees in 1.4 s, hips first, head leading. */
+  const startTurn = (yaw: number, ms: number | undefined, now: number) => {
+    const turn = Math.abs(yaw - facing);
+    loco = {
+      from: facing,
+      to: yaw,
+      start: now,
+      ms: ms ?? Math.max(400, Math.min(2000, 300 + (turn / Math.PI) * 1100)),
+      walk: null,
+    };
+  };
+  const minJerk = (p: number) => {
+    const x = Math.max(0, Math.min(1, p));
+    return x * x * x * (10 - 15 * x + 6 * x * x);
+  };
+  /** This frame of a turn or walk: her yaw, the head leading it, and a walk's steps over her posture. */
+  const locoAt = (
+    now: number,
+    base: Partial<Record<PoseBone, Euler>>,
+  ): Partial<Record<PoseBone, Euler>> => {
+    if (loco === null) return {};
+    const out: Partial<Record<PoseBone, Euler>> = {};
+    const u = (now - loco.start) / loco.ms;
+    facing = loco.from + (loco.to - loco.from) * minJerk(u);
+    // the head gets there first: a lead that grows as the turn starts and is gone as the body arrives
+    const lead = (loco.to - loco.from) * (minJerk(u * 1.6) - minJerk(u)) * 0.5;
+    if (Math.abs(lead) > 1e-3) {
+      const n = base.neck ?? [0, 0, 0];
+      const h = base.head ?? [0, 0, 0];
+      out.neck = [n[0], n[1] + lead * 0.5, n[2]];
+      out.head = [h[0], h[1] + lead * 0.5, h[2]];
+    }
+    const w = loco.walk;
+    if (w !== null && now >= w.start) {
+      const t = (now - w.start) / 1000;
+      const dt = Math.min(0.1, (now - w.last) / 1000);
+      w.last = now;
+      const left = (w.metres - w.travelled) / Math.max(0.05, w.gait.speed);
+      // the first and last steps are short: speed eases in over 0.6 s and out over the last 0.6 s
+      const ramp = Math.max(0.05, Math.min(1, t / 0.6, left / 0.6));
+      const frame = gaitAt(stepRig(), w.gait, t, base, ramp);
+      Object.assign(out, frame.bones);
+      const step = frame.speed * dt;
+      w.travelled += step;
+      options.onWalk?.({ metres: step, heading: facing, done: false });
+      if (w.travelled >= w.metres) {
+        loco.walk = null;
+        options.onWalk?.({ metres: 0, heading: facing, done: true });
+      }
+    }
+    if (u >= 1 && loco.walk === null) {
+      facing = loco.to;
+      loco = null;
+    }
+    return out;
+  };
   const fingersBent = [false, false];
   const applyPose = (now: number) => {
     if (vrm === null || rig === null) return;
     const bones: Partial<Record<PoseBone, Euler>> = { ...posture().bones };
+    vrm.scene.rotation.y = baseYaw + facing;
     if (clip !== null) Object.assign(bones, clipAt(clip, now - clip.start));
     Object.assign(
       bones,
       dancing === null ? {} : danceAt(now - dancing),
       stepping === null ? {} : stepAt(now - stepping),
+      locoAt(now, bones),
     );
     // a clip's finger shapes bend whatever finger bones this model has; they are not rig bones
     const shapes = bones as Record<string, Euler | undefined>;
@@ -1302,6 +1415,7 @@ export function mountBody(
     VRMUtils.removeUnnecessaryVertices(gltf.scene);
     VRMUtils.combineSkeletons(gltf.scene);
     VRMUtils.rotateVRM0(next);
+    baseYaw = next.scene.rotation.y;
     if (vrm !== null) {
       scene.remove(vrm.scene);
       VRMUtils.deepDispose(vrm.scene);
@@ -1427,6 +1541,8 @@ export function mountBody(
     for (const p of props.values()) p.on = false;
     // she stops where she is: no dancing or walking on, and a held scene posture lets go
     dancing = stepping = null;
+    if (loco?.walk != null) options.onWalk?.({ metres: 0, heading: facing, done: true });
+    loco = null;
     clip = null;
     closerTo = closer;
     if (scenePose !== null) setPose(performance.now());
@@ -2008,6 +2124,27 @@ export function mountBody(
         return void putProp(c).catch(() => undefined);
       case "stop":
         return stopAll();
+      case "turn": {
+        const aim = aimOf(c.to);
+        if (aim === null) return;
+        startTurn(aim.yaw, c.ms, now);
+        return invalidate();
+      }
+      case "walk": {
+        const aim = aimOf(c.to);
+        if (aim === null) return;
+        startTurn(aim.yaw, undefined, now);
+        const metres = Math.max(0, aim.metres - c.stop * (rig?.height ?? REFERENCE_RIG.height));
+        if (metres > 0.05 && loco !== null)
+          loco.walk = {
+            gait: gaitOf(stepRig(), c.speed, c.style),
+            metres,
+            start: now + loco.ms * 0.6,
+            travelled: 0,
+            last: now + loco.ms * 0.6,
+          };
+        return invalidate();
+      }
       case "speak":
         speech = { track: c.track, start: now, end: c.track.at(-1)?.end ?? 0 };
         effects = c.effects.map((e) => ({ ...e, at: now + e.atMs }));
@@ -2379,6 +2516,8 @@ export function mountBody(
       by: Math.round(i.by * 1000) / 1000,
     })),
     contacts: contactsNow(),
+    facing: Math.round(facing * 1000) / 1000,
+    walking: loco?.walk != null,
     involuntary: Object.fromEntries(
       INVOLUNTARY.map((s) => {
         const left = Math.round((holds[s.id] ?? 0) - performance.now());
