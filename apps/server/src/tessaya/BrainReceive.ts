@@ -54,6 +54,8 @@ const MoodAsk = Schema.Struct({
   z: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))),
   /** A vessel asking for its own face (atDevice): its owner's relationship when it may show it. */
   d: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(120))),
+  /** Settings' inner state, as this viewer may see it (the general mood and their own rows; the owner all). */
+  i: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(120)))),
 });
 const decodeMoodAsk = Schema.decodeUnknownOption(MoodAsk);
 const decodePresenceAct = Schema.decodeUnknownOption(PresenceAct);
@@ -96,6 +98,8 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
       const mood = yield* Effect.serviceOption(TessayaMood);
       if (Option.isNone(mood)) return refused("No mood here.");
       const a = ask.value;
+      if (a.i !== undefined)
+        return done(yield* mood.value.inner(a.p ?? undefined, a.i, a.z ?? undefined));
       return done(
         a.d === undefined
           ? yield* mood.value.view(a.p ?? undefined, a.z ?? undefined, a.m)

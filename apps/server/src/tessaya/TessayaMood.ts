@@ -523,6 +523,26 @@ const make = Effect.gen(function* () {
         : personaView(state, persona, ctx, null);
     }),
     inner: Effect.fn("TessayaMood.inner")(function* (personaId, viewer, timeZone) {
+      // a worker's Settings show the brain's one mood, not its own copy
+      if (!(yield* brain.isBrain)) {
+        const asked = yield* brain.send("moodView", {
+          p: personaId ?? null,
+          m: null,
+          z: timeZone ?? null,
+          i: viewer,
+        });
+        if (
+          Option.isSome(asked) &&
+          typeof asked.value === "object" &&
+          asked.value !== null &&
+          "general" in asked.value
+        )
+          return asked.value as {
+            readonly general: AffectView;
+            readonly people: ReadonlyArray<InnerPerson>;
+            readonly dials: Dials;
+          };
+      }
       const { persona, state, ctx } = yield* readNow(personaId, timeZone);
       const names = new Map(
         (yield* sql<{ id: string; name: string }>`

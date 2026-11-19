@@ -414,5 +414,10 @@ it.effect(
         Effect.provideContext(worker),
       );
       assert.strictEqual(face.label, onBrain.label);
+      // and his Settings → Mood on that server shows the brain's rows
+      const inner = yield* Effect.flatMap(TessayaMood, (m) =>
+        m.inner(undefined, OWNER_MEMBER_ID),
+      ).pipe(Effect.provideContext(worker));
+      assert.isTrue(inner.people.some((p) => p.member === OWNER_MEMBER_ID));
     }).pipe(Effect.scoped),
 );
