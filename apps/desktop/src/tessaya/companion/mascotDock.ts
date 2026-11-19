@@ -311,7 +311,7 @@ export const pathBetween = (
  * lean past her outline. Her window is that much bigger and the room clicks through (bodyRect), so it costs nothing.
  */
 export const ROOM_SHARE = 0.4;
-export const roomOf = (size: number) => Math.round(size * ROOM_SHARE);
+const roomOf = (size: number) => Math.round(size * ROOM_SHARE);
 /** Her window around her body's box (size × size at `at`). */
 export const windowAround = (
   at: { readonly x: number; readonly y: number },
@@ -322,6 +322,12 @@ export const windowAround = (
   width: size + 2 * roomOf(size),
   height: size + 2 * roomOf(size),
 });
+/**
+ * Her drawing's place in the bigger window, as the stage's svg style: exactly her size, at the room's offset. The svg's
+ * own sheet stretches it to the whole window (inset 0, 100%), so moving its inset alone scaled her up by the room.
+ */
+export const stageBodyCss = (size: number): string =>
+  `left:${roomOf(size)}px;top:${roomOf(size)}px;right:auto;bottom:auto;width:${size}px;height:${size}px`;
 /** Her body's box inside her window: what every placement, throw and hit test works in. */
 export const bodyWithin = (window: Rect, size: number): Rect => ({
   x: window.x + roomOf(size),

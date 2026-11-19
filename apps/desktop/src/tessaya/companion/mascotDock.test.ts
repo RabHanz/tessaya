@@ -17,6 +17,7 @@ import {
   wanderTo,
   type DisplayArea,
   bodyWithin,
+  stageBodyCss,
   windowAround,
 } from "./mascotDock.ts";
 
@@ -225,6 +226,10 @@ describe("her window's room", () => {
     expect(window).toEqual({ x: 440, y: 840, width: 270, height: 270 });
     // every placement still works in her body's box
     expect(bodyWithin(window, SIZE)).toEqual({ x: 500, y: 900, width: SIZE, height: SIZE });
+    // her drawing is exactly her size inside it: the room is padding, never a scale-up
+    expect(stageBodyCss(SIZE)).toBe(
+      "left:60px;top:60px;right:auto;bottom:auto;width:150px;height:150px",
+    );
   });
 });
 
