@@ -76,8 +76,8 @@ export interface BodyCaller {
 
 export interface BodyMoveAnswer {
   readonly ok: boolean;
-  /** Where it went: her full body ("body", or "private" for a private moment's move), her desk character, or nowhere. */
-  readonly route: "body" | "private" | "desk" | "none";
+  /** Where it went: her full body ("body", or "private" for a private moment's move), her desk character, a playground's sandbox body, or nowhere. */
+  readonly route: "body" | "private" | "desk" | "playground" | "none";
   readonly said: string;
   readonly retryMs?: number;
 }

@@ -75,6 +75,7 @@ import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./Tessay
 import { transcribeWav } from "./TessayaPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./TessayaPage.ts";
 import { changePersona } from "./PersonaChanges.ts";
+import { playgroundRoutes } from "./PlaygroundRoutes.ts";
 import { interruptBody, noteDeskWorld, privateBodyEnded } from "./TessayaBody.ts";
 
 /** Each direct-door method's payload decoder and result encoder, compiled once. */
@@ -759,6 +760,7 @@ export const routes = HttpRouter.use((router) =>
       }).pipe(Effect.provideContext(context)),
     );
     yield* personaLayerRoutes(router, context, auth, deskTools, NodePath.dirname(config.dbPath));
+    yield* playgroundRoutes(router, context, auth, NodePath.dirname(config.dbPath));
   }),
 );
 

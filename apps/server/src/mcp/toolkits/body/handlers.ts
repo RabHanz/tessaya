@@ -2,7 +2,20 @@
 import * as Effect from "effect/Effect";
 
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
-import { bodyState, moveBody, playScene, type BodyCaller } from "../../../tessaya/TessayaBody.ts";
+import {
+  bodyState,
+  moveBody,
+  playScene,
+  type BodyCaller,
+  type BodyMoveAnswer,
+} from "../../../tessaya/TessayaBody.ts";
+import {
+  onPlayground,
+  type Aim,
+  movePlayground,
+  scenePlayground,
+  statePlayground,
+} from "../../../tessaya/BodyPlayground.ts";
 import { conversationKey, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -36,31 +49,45 @@ const callerNow = Effect.gen(function* () {
   } satisfies BodyCaller;
 });
 
+type SceneAnswer = {
+  readonly ok: boolean;
+  readonly said: string;
+  readonly route?: string;
+  readonly errors?: unknown;
+  readonly corrected?: unknown;
+  readonly notes?: unknown;
+};
+
 export const make = Effect.gen(function* () {
   const context = yield* TessayaRuntime;
+  const inRuntime = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    context === null ? effect : effect.pipe(Effect.provideContext(context));
+  const move = (input: Aim & object, caller: BodyCaller): Effect.Effect<BodyMoveAnswer> => {
+    const { target: _target, playground, ...rest } = input;
+    return onPlayground(input, caller)
+      ? movePlayground(rest, caller, playground)
+      : moveBody(rest, caller);
+  };
+  const scene = (
+    input: Aim & { readonly scene: unknown; readonly dryRun?: boolean },
+    caller: BodyCaller,
+  ): Effect.Effect<SceneAnswer> =>
+    onPlayground(input, caller)
+      ? scenePlayground(input.scene, caller, input.dryRun === true, input.playground)
+      : playScene(input.scene, caller, input.dryRun === true);
   return {
-    tessaya_body_move: McpToolAccess.writes((input: unknown) =>
-      Effect.flatMap(callerNow, (caller) =>
-        context === null
-          ? moveBody(input, caller)
-          : moveBody(input, caller).pipe(Effect.provideContext(context)),
-      ),
+    tessaya_body_move: McpToolAccess.writes((input: Aim & object) =>
+      Effect.flatMap(callerNow, (caller) => inRuntime(move(input, caller))),
     ),
     tessaya_body_scene: McpToolAccess.writes(
-      (input: { readonly scene: unknown; readonly dryRun?: boolean }) =>
-        Effect.flatMap(callerNow, (caller) =>
-          context === null
-            ? playScene(input.scene, caller, input.dryRun === true)
-            : playScene(input.scene, caller, input.dryRun === true).pipe(
-                Effect.provideContext(context),
-              ),
-        ),
+      (input: Aim & { readonly scene: unknown; readonly dryRun?: boolean }) =>
+        Effect.flatMap(callerNow, (caller) => inRuntime(scene(input, caller))),
     ),
-    tessaya_body_state: McpToolAccess.reads(() =>
+    tessaya_body_state: McpToolAccess.reads((input: Aim) =>
       Effect.flatMap(callerNow, (caller) =>
-        context === null
-          ? bodyState(caller)
-          : bodyState(caller).pipe(Effect.provideContext(context)),
+        onPlayground(input, caller)
+          ? Effect.succeed(statePlayground(input.playground))
+          : inRuntime(bodyState(caller)),
       ),
     ),
   };

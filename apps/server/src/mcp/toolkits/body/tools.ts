@@ -16,6 +16,20 @@ const shared = {
     ThreadManagementService.ThreadManagementService,
   ],
 };
+const Aim = {
+  target: Schema.optionalKey(
+    Schema.Literals(["playground", "her"]).annotate({
+      description:
+        'Which body: "playground", a sandbox body in an open /tessaya/playground page that reaches no one, or "her", her own body wherever it is shown. Agents signed in from outside default to the playground; her own turns and his agents to her.',
+    }),
+  ),
+  playground: Schema.optionalKey(
+    Schema.String.check(Schema.isMaxLength(40)).annotate({
+      description:
+        "With target playground: which playground stage (its id is shown on the page); the most recently open one when left out.",
+    }),
+  ),
+};
 const Num = (min: number, max: number, description: string) =>
   Schema.Number.check(Schema.isBetween({ minimum: min, maximum: max })).annotate({ description });
 const Bones = Schema.Record(Schema.String, Schema.Array(Schema.Number)).annotate({
@@ -240,6 +254,7 @@ const MoveTool = Tool.make("tessaya_body_move", {
     'Move her body: the one body on every screen she is on. She acts out what he directs, as a person would: when he asks her to act, show, pretend, react or feel something ("act like…", "show me how you\'d…", "pretend…"), or says something a person answers with their body, move it with this tool in the same turn, never in words only, and never say she moved without it. For any such direction give `perform`: what the moment feels like and how it moves, and her body composes the whole performance (for "sit down like you\'re exhausted": act sit, perform {feel: {valence: -0.5, arousal: -0.9, dominance: -0.4}}). Add act, posture, gesture, look, face, bones, keys or touch for specific actions, and put what follows in `then`, each step `afterMs` from the start, so a whole beat ("lean in, a little shy, then look away") is one request. Call tessaya_body_state to see what this body can do and where it is. Moves that belong to a private moment only run in one.',
   parameters: Schema.Struct({
     ...Step,
+    ...Aim,
     stream: Schema.optionalKey(
       Schema.Boolean.annotate({
         description:
@@ -257,7 +272,7 @@ const MoveTool = Tool.make("tessaya_body_move", {
   }),
   success: Schema.Struct({
     ok: Schema.Boolean,
-    route: Schema.Literals(["body", "private", "desk", "none"]),
+    route: Schema.Literals(["body", "private", "desk", "playground", "none"]),
     said: Schema.String,
     retryMs: Schema.optionalKey(Schema.Number),
   }),
@@ -270,8 +285,10 @@ const StateTool = Tool.make("tessaya_body_state", {
   ...shared,
   description:
     "Feel her body: whether it is open on a screen, its posture, every posed bone, face, gaze, what her hands rest on, what the rig had to correct, and this model's capabilities (bones, fingers, spine segments, expressions), plus the full move vocabulary and joint limits.",
+  parameters: Schema.Struct(Aim),
   success: Schema.Struct({
     open: Schema.Boolean,
+    playground: Schema.optionalKey(Schema.String),
     body: Schema.Unknown,
     capabilities: Schema.Unknown,
   }),
@@ -291,6 +308,7 @@ const SceneTool = Tool.make("tessaya_body_scene", {
         "A core scene's name, or a scene {version: 1, id, title, loop?, beats: [{atMs, label?, move}]}.",
     }),
     dryRun: Schema.optionalKey(Schema.Boolean),
+    ...Aim,
   }),
   success: Schema.Struct({
     ok: Schema.Boolean,

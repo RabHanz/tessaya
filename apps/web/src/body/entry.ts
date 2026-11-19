@@ -57,4 +57,7 @@ const control = {
   HAND_PLACES,
 };
 
+/** The control language a page drives its own body with (the playground reads it off `window.tessayaBody`). */
+export type BodyControl = typeof control;
+
 window.tessayaBody = { mount: mountBody, lineCues, viewer: mountViewer, control };
