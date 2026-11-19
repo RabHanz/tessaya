@@ -75,6 +75,7 @@ import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.t
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { TessayaEngine, type TessayaTurnRun } from "./TessayaEngine.ts";
+import { TessayaTurn } from "./TessayaTurn.ts";
 import {
   type JobTurns,
   readPriceList,
@@ -1218,6 +1219,28 @@ const sayOnOrigin = Effect.fn("BatonJobFlow.sayOnOrigin")(function* (
     .pipe(Effect.ignoreCause({ log: true }));
 });
 
+// shortcut: per process; a restart forgets which thread leads a job, and that `doing` lapses at its until
+const jobThreads = new Map<string, string>();
+const JOB_DOING_MS = 2 * 60 * 60_000;
+
+/**
+ * A job she leads from one of her conversations: that thread is doing it, on her board ("leading the job X"), until
+ * it ends. `thread` is the LiveThread id the conversation has (persona|conversation, as body focus names it).
+ */
+export const leadOnThread = Effect.fn("BatonJobFlow.leadOnThread")(function* (
+  job: string,
+  title: string,
+  thread: string,
+) {
+  const turn = yield* Effect.serviceOption(TessayaTurn);
+  if (Option.isNone(turn)) return;
+  jobThreads.set(job, thread);
+  yield* turn.value.setDoing(thread, {
+    what: `leading the job "${title}"`,
+    until: (yield* Clock.currentTimeMillis) + JOB_DOING_MS,
+  });
+});
+
 /** Each job whose phase or standing changed, as one Record row, and said where he asked for it. */
 export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(function* (
   entries: ReadonlyArray<TessayaFleetEntry>,
@@ -1247,6 +1270,12 @@ export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(funct
     });
     // The world moves her mood too (EMOTION §4): the persona the job is for, else the lead.
     const ended = jobMoment(outcome)?.event;
+    const led = jobThreads.get(job.workSessionId);
+    if ((ended === "job.done" || ended === "job.failed") && led !== undefined) {
+      jobThreads.delete(job.workSessionId);
+      const turn = yield* Effect.serviceOption(TessayaTurn);
+      if (Option.isSome(turn)) yield* turn.value.setDoing(led, null);
+    }
     if ((ended === "job.done" || ended === "job.failed") && Option.isSome(mood))
       yield* mood.value.note(persona, { kind: "job", ok: ended === "job.done" });
     const origin = origins.get(job.workSessionId);

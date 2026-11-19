@@ -30,7 +30,7 @@ import { TessayaMemorySync } from "../../../tessaya/TessayaMemorySync.ts";
 import * as JobFlow from "../../../tessaya/TessayaJobFlow.ts";
 import { ScheduledTaskService } from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { TessayaRuntime, type TessayaServices } from "../../../tessaya/TessayaRpcHandlers.ts";
-import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
+import { conversationKey, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { commsCaller } from "../comms/handlers.ts";
@@ -451,6 +451,15 @@ export const make = Effect.gen(function* () {
               : {}),
           }),
         );
+        // the conversation she started it from is doing it now, on her board
+        if (origin !== null && origin.rehearsal !== true)
+          yield* run(
+            JobFlow.leadOnThread(
+              started.terms.workSessionId,
+              input.title,
+              `${origin.persona ?? ""}|${conversationKey({ vessel: origin, text: "", speaker: origin.speaker, member: origin.member })}`,
+            ),
+          );
         const opened = `Opened ${input.title} in ${input.project} on ${started.model}, led by ${started.lead}${started.template === null ? "" : ` (template ${started.template})`}.`;
         if (started.pausedUntil !== undefined) {
           const until = yield* houseTime(started.pausedUntil);
