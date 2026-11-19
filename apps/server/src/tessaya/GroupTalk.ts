@@ -19,6 +19,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import { groupRefusal } from "@t3tools/tessaya-shared/rooms";
 import { emitAction, traced } from "../provenance/ActionLog.ts";
 import { hisOwnTurn } from "./consent.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
@@ -112,6 +113,15 @@ export const changeGroup = Effect.fn("GroupTalk.change")(function* (
       if (members.length < 2) return done("A group needs at least two personas.", was);
       if (members.length > MAX_MEMBERS)
         return done(`A group holds at most ${MAX_MEMBERS} personas.`, was);
+      // A group with a private persona is a private room (rooms.ts): each one comes in only as far as her record says.
+      const refused = groupRefusal(
+        members.map((m) => ({ id: m.id, ...personas.find((p) => p.id === m.id) })),
+      );
+      if (refused !== null)
+        return done(
+          `${nameOf(refused)} would rather not join a group: say so in her own words.`,
+          was,
+        );
       const mode = change.op === "start" ? (change.mode ?? "answer") : (was?.mode ?? "answer");
       return yield* save(
         change.op === "start"

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  groupRefusal,
   lockAll,
   openRoom,
   readableFor,
@@ -72,6 +73,18 @@ describe("rooms", () => {
     expect(readableFor(aside, "sebastian")).toEqual({ from: 3, exceptAside: { from: 3 } });
     expect(readableFor(aside, "freya")).toEqual({ from: 0, exceptAside: null });
     expect(roomStep(aside, { op: "comeBack" }, personas).room.aside).toBeUndefined();
+  });
+
+  it("his group with a private persona in it keeps out whoever only comes one-on-one", () => {
+    expect(
+      groupRefusal([
+        { id: "freya", private: true },
+        { id: "luna", private: true, privateRooms: "one-on-one" },
+      ]),
+    ).toBe("luna");
+    expect(groupRefusal([{ id: "freya", private: true }, { id: "alfred" }])).toBeNull();
+    // an everyday group holds anyone
+    expect(groupRefusal([{ id: "alfred" }, { id: "luna", privateRooms: "never" }])).toBeNull();
   });
 
   it("a lock closes every private room at once; the trace back is content-free and seen as he allowed (D5)", () => {

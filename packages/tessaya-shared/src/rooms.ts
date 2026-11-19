@@ -179,6 +179,17 @@ export const readableFor = (
 export const traceSeenBy = (room: Room, viewer: string, othersMayKnow: boolean): boolean =>
   room.tier === "public" || room.present.some((x) => x.persona === viewer) || othersMayKnow;
 
+/**
+ * GroupTalk's group as a room: with a private persona in it, it is a private one, and a persona whose record keeps
+ * her to one-on-one (or out of private rooms) stays out. The first such persona, or null.
+ */
+export const groupRefusal = (
+  members: ReadonlyArray<Pick<RoomPersona, "id"> & Partial<RoomPersona>>,
+): string | null =>
+  members.some((m) => m.private === true)
+    ? (members.find((m) => (m.privateRooms ?? "open") !== "open")?.id ?? null)
+    : null;
+
 /** He locks, or someone arrives: every private room closes at once, and its personas go back to everyday life. */
 export const lockAll = (rooms: ReadonlyArray<Room>): ReadonlyArray<Room> =>
   rooms.filter((r) => r.tier === "public");
