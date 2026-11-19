@@ -88,6 +88,16 @@ describe("R1Device", () => {
     const owner = { kind: "owner", personId: "owner", verified: true, inherited: false };
     const live = r1Envelope({ ...heard, voice: { speaker: owner } }, DEFAULT_OS_PACK, undefined);
     expect(notLearnable(live)).toBeNull();
+    // voice ID is the guard: a voice only near his, carried over or lifted by his session, never teaches his memory
+    for (const near of [
+      { ...owner, verified: false },
+      { ...owner, verified: false, inherited: true },
+      { ...owner, verified: false, lifted: true },
+    ]) {
+      const turn = r1Envelope({ ...heard, voice: { speaker: near } }, DEFAULT_OS_PACK, undefined);
+      expect(notLearnable(turn), JSON.stringify(near)).toBe("his voice not verified");
+      expect(moodMember(turn)).toBeNull();
+    }
     for (const voice of [
       { speaker: owner, playback: "run1" },
       { speaker: { ...owner, test: true } },

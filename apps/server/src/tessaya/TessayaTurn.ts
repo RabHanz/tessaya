@@ -508,6 +508,10 @@ export const notLearnable = (turn: TurnEnvelope): string | null => {
   // Until the household model (HOUSEHOLD-DESIGN.md), only his voice (or any, where Voice ID cannot run) teaches his store.
   if (turn.speaker != null && memberOfSpeaker(turn.speaker) !== OWNER_MEMBER_ID)
     return "not the owner's voice";
+  // Voice ID is the guard: only his voice verified (or a vessel with no Voice ID, typed or his own device) teaches
+  // his memory; a voice only near his, carried over or lifted by his session goes to nobody's store.
+  if (turn.speaker != null && turn.speaker.voiceIdOff !== true && voiceAssurance(turn.speaker) < 2)
+    return "his voice not verified";
   // A member's own device typed it: their words never teach his store (HOUSEHOLD-DESIGN §6).
   if (turn.member !== undefined && turn.member !== OWNER_MEMBER_ID) return "not the owner's device";
   return null;
@@ -1353,10 +1357,11 @@ export const make = Effect.gen(function* () {
     const self = yield* understood({ about: "self", persona: turn.persona });
     if (member === null) {
       if (turn.addressed === false) return "";
-      // Likely them (their voice carried over, not yet verified): their time away ends, nothing of theirs is shown.
+      // Likely them (their voice carried over, not yet verified): only that they were around, as presence would say.
+      // Nothing else is written under them below the bar: no bond, no return, no opinion (voice ID is the guard).
       const likely = turnIdentity(turn);
       if (likely.assurance === 1 && likely.member !== null && turn.sharedRoom !== true)
-        yield* mood.value.heard(turn.persona, zone, likely.member);
+        yield* mood.value.note(turn.persona, { kind: "seen" }, likely.member);
       // A room's talk moves the general mood (its flow only: nobody's tone, opinion or story).
       if (turn.sharedRoom === true)
         yield* mood.value
