@@ -235,6 +235,14 @@ const envelope = (t: Timing, u: number): number => {
   return 1 - mj((x - t.hold) / t.back);
 };
 
+/** A full tremor at the hands (rad), as the body's own tremble draws it: about 0.7 degrees. */
+export const TREMOR_HAND = 0.012;
+/** Two near sines at 9.2 and 11.1 Hz, slowly waxing and waning: a fine quiver, never a regular buzz. Peak about 1. */
+const fineShake = (t: number, seed: number) =>
+  ((Math.sin(t * 2 * Math.PI * 9.2 + seed) + 0.7 * Math.sin(t * 2 * Math.PI * 11.1 + seed * 2.3)) /
+    1.7) *
+  (0.6 + 0.4 * Math.sin(t * 2 * Math.PI * 0.7 + seed));
+
 /**
  * What runs on its own while she performs (the involuntary layer): breath, a bounce of joy, a nervous weight shift,
  * a tremor of fear or effort. Amplitudes in rad, times in ms; each fades in over the stroke and out with the return.
@@ -272,13 +280,14 @@ const rhythms = (q: Qualities, t: Timing, ms: number, grounded: boolean): Record
     add("hips", 2, 0.04 * fidget * Math.sin(2 * Math.PI * 0.6 * sec));
     add("spine", 2, -0.03 * fidget * Math.sin(2 * Math.PI * 0.6 * sec));
   }
-  // a tremor: fear (displeasure, arousal, smallness) or extreme strong effort, too fast to stop
+  // a tremor: fear (displeasure, arousal, smallness) or extreme strong effort, too fast to stop. Physiological: about
+  // 0.7 degrees at the hands, 9 to 11 Hz (Elble 2003), a brief burst that settles to a faint quiver, never the hips
   const tremor = Math.max(pos(-q.v) * pos(q.a - 0.4) * pos(-q.d), pos(q.weight - 0.8)) * live;
-  if (tremor > 0.05)
-    for (const s of SIDES) {
-      add(`${s}LowerArm`, 1, 0.03 * tremor * Math.sin(2 * Math.PI * 7 * sec));
-      add(`${s}Hand`, 2, 0.04 * tremor * Math.sin(2 * Math.PI * 9 * sec + 1));
-    }
+  if (tremor > 0.05) {
+    const burst = Math.max(0.25, 1 - Math.max(0, bt - 2.5) / 1.5);
+    for (const [i, s] of SIDES.entries())
+      add(`${s}Hand`, 2, TREMOR_HAND * tremor * burst * fineShake(sec, 1 + 3 * i));
+  }
   // a sigh as a drained, unhappy moment lets go
   const sigh = pos(-q.v) * pos(-q.a);
   const r = ms - (endOf(t) - 5 * t.stagger - t.back);

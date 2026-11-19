@@ -242,8 +242,8 @@ const rhythmWords = (
     roll.filter((_, i) => together[i]),
     0.15,
   );
-  // a hand rubbing or clapping turns its wrist on every beat: that is not a tremble
-  if (rubs < 4 && !clapping && turns(series("leftHand", 2), 0.03) >= 8)
+  // a rubbing or clapping hand turns its wrist every beat, which is not a tremble; a real one is under a degree
+  if (rubs < 4 && !clapping && turns(series("leftHand", 2), 0.003) >= 8)
     out.push("trembles in her hands");
   if (clapping) out.push(`claps ${claps} times, palm to palm`);
   else if (rubs >= 4) out.push(`rubs her hands together ${Math.ceil(rubs / 2)} times`);
