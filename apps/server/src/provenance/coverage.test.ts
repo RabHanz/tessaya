@@ -96,6 +96,25 @@ describe("every action reaches the log", () => {
         JSON.stringify({ reason: 1, why: "a voice start or stop" }),
       )?.data,
     ).toMatchObject({ why: "a voice start or stop" });
+    // A reset's power at its end, and who set the heap's low-water: one level of numbers and short enums is kept.
+    const boot = roomActionOf(
+      "t1",
+      "event/wake/boot",
+      JSON.stringify({
+        reason: 0,
+        ram: true,
+        prev: { up_s: 540, bat_mv: 3612, spk: 1, note: "a b c" },
+      }),
+    )?.data;
+    expect(boot).toMatchObject({ ram: true, prev: { up_s: 540, bat_mv: 3612, spk: 1 } });
+    expect(JSON.stringify(boot)).not.toContain("a b c");
+    expect(
+      roomActionOf(
+        "t1",
+        "event/wake/stats",
+        JSON.stringify({ heap: 51504, low: { task: "wdrv_thread", size: 32 } }),
+      )?.data,
+    ).toMatchObject({ low: { task: "wdrv_thread", size: 32 } });
     expect(roomActionOf("t1", "event/enrol", "{}")).toBeNull();
     expect(roomActionOf("t1", "state/battery", "80")).toBeNull();
     expect(roomActionOf("t1", "state/online", "0")?.outcome).toBe("offline");
