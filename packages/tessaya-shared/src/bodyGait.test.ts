@@ -24,6 +24,21 @@ describe("her gait", () => {
     );
   });
 
+  it("steps on the spot for a turn: each foot lifts and sets down where it was", () => {
+    const g = gaitOf(REFERENCE_RIG, 0.4);
+    const zs: number[] = [];
+    const ys: number[] = [];
+    for (let t = 0; t < 2; t += 1 / 30) {
+      const f = gaitAt(REFERENCE_RIG, g, t, stand, 1, 0);
+      expect(f.speed).toBe(0);
+      const p = worldFoot(f.bones, "left");
+      zs.push(p[2]);
+      ys.push(p[1]);
+    }
+    expect(Math.max(...zs) - Math.min(...zs)).toBeLessThan(0.02);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(0.02);
+  });
+
   it.each(Object.keys(GAIT_STYLES) as GaitStyle[])(
     "%s: a planted heel stays put on the ground while she travels over it",
     (style) => {

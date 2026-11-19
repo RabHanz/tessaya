@@ -851,15 +851,25 @@ export function mountBody(
    * any moment, bends the motion smoothly instead of cutting it. Once every bone has arrived, nothing moves.
    */
   /** The reference body at her height: a walk's steps are planned on it, so her feet keep pace with the ground. */
+  let stepped: { height: number; rig: Rig } | null = null;
   const stepRig = () => {
-    const k = (rig?.height ?? REFERENCE_RIG.height) / REFERENCE_RIG.height;
-    return makeRig(
-      Object.values(REFERENCE_RIG.bones).map((b) => ({
-        ...b,
-        rest: [b.rest[0] * k, b.rest[1] * k, b.rest[2] * k] as const,
-      })),
-    );
+    const height = rig?.height ?? REFERENCE_RIG.height;
+    if (stepped?.height !== height) {
+      const k = height / REFERENCE_RIG.height;
+      stepped = {
+        height,
+        rig: makeRig(
+          Object.values(REFERENCE_RIG.bones).map((b) => ({
+            ...b,
+            rest: [b.rest[0] * k, b.rest[1] * k, b.rest[2] * k] as const,
+          })),
+        ),
+      };
+    }
+    return stepped.rig;
   };
+  /** Short quick steps for turning on the spot. */
+  const turnGait = () => gaitOf(stepRig(), 0.4, "stroll");
   /** Which way and how far a target is: the host's answer, else him ahead, away behind, a point across this view. */
   const aimOf = (to: BodyTarget): { yaw: number; metres: number } | null => {
     const found = options.locate?.(to);
@@ -905,6 +915,12 @@ export function mountBody(
       const h = base.head ?? [0, 0, 0];
       out.neck = [n[0], n[1] + lead * 0.5, n[2]];
       out.head = [h[0], h[1] + lead * 0.5, h[2]];
+    }
+    // a turn of more than about 25 degrees is stepped round, the feet lifting and setting down as she pivots
+    if (loco.walk === null && u < 1 && Math.abs(loco.to - loco.from) > 0.45) {
+      const t = (now - loco.start) / 1000;
+      const ramp = Math.sin(Math.PI * Math.max(0, Math.min(1, u)));
+      Object.assign(out, gaitAt(stepRig(), turnGait(), t, base, ramp, 0).bones);
     }
     const w = loco.walk;
     if (w !== null && now >= w.start) {
