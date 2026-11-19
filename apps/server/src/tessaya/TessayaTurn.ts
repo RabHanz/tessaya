@@ -1037,9 +1037,32 @@ export const make = Effect.gen(function* () {
       persona: target.id,
     };
   });
+  /**
+   * What crosses back when a private moment ends (architecture §2b.4, D5): one content-free episode her own everyday
+   * self may recall ("we had a private moment this evening"), never its words, and no other persona's.
+   */
+  const privateTrace = Effect.fn("TessayaTurn.privateTrace")(function* (t: LiveThread) {
+    if (t.persona === null) return;
+    const minutes = Math.max(1, Math.round((t.lastAt - t.openedAt) / 60_000));
+    yield* memory
+      .add({
+        kind: "episode",
+        text: `A private moment with him${t.surface === "voice" ? "" : ` at the ${t.surface}`}, about ${minutes} min. What was said there stays private.`,
+        source: "thread",
+        sourceRef: `private:${t.openedAt}`,
+        visibility: "persona",
+        persona: t.persona,
+      })
+      .pipe(Effect.ignore);
+  });
+
   const threads = Effect.fn("TessayaTurn.threads")(function* (persona?: string) {
     const now = yield* Clock.currentTimeMillis;
-    for (const [id, t] of live) if (now - t.lastAt > CONVERSATION_IDLE_MS) yield* dropThread(id);
+    for (const [id, t] of live)
+      if (now - t.lastAt > CONVERSATION_IDLE_MS) {
+        yield* dropThread(id);
+        if (t.tier === "private" && t.person === OWNER_MEMBER_ID) yield* privateTrace(t);
+      }
     return [...live.values()]
       .filter((t) => persona === undefined || t.persona === persona)
       .toSorted((a, b) => b.lastAt - a.lastAt);
