@@ -42,7 +42,9 @@ const SERVER_ONLY = new Set([
   "syncRun",
 ]);
 export const serverOnly = (body: { readonly kind: string; readonly op?: unknown }): boolean =>
-  body.kind === "memory" && typeof body.op === "string" && SERVER_ONLY.has(body.op);
+  // The phone inbox is this machine's server's: the relay's 10 s take need not wake T3's window (B-041).
+  body.kind === "phone" ||
+  (body.kind === "memory" && typeof body.op === "string" && SERVER_ONLY.has(body.op));
 
 export const deskCall = (
   body: {
@@ -56,6 +58,11 @@ export const deskCall = (
   labelOf: (environmentId: string) => string = () => "that computer",
 ): { readonly method: string; readonly input: unknown } | { readonly refuse: string } | null => {
   const args = (body.args ?? {}) as Readonly<Record<string, unknown>>;
+  if (body.kind === "phone") {
+    return typeof body.op === "string"
+      ? { method: "baton.phone.call", input: { op: body.op, args } }
+      : null;
+  }
   // Cloud tasks on this machine's own hub; acting on another machine stays on T3's own session to it.
   if (body.kind === "cloud") {
     if (typeof body.op !== "string" || !CLOUD_OPS.has(body.op)) return null;

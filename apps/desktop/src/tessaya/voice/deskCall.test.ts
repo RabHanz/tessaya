@@ -60,6 +60,12 @@ describe("a request answered by this machine's server while T3 is closed", () =>
     // The house is the shared tools' now (baton.tools.call); only this server's own sync stays on its door.
     expect(serverOnly({ kind: "home", op: "read" })).toBe(false);
     expect(serverOnly({ kind: "memory", op: "syncRun" })).toBe(true);
+    // The phone relay works this server's inbox on its door, never through the window (B-041).
+    expect(serverOnly({ kind: "phone", op: "take" })).toBe(true);
+    expect(deskCall({ kind: "phone", op: "take", args: { waitMs: 10_000 } })).toEqual({
+      method: "baton.phone.call",
+      input: { op: "take", args: { waitMs: 10_000 } },
+    });
     expect(deskCall({ kind: "job", op: "handoff", args: { id: "w1", instance: "Codex" } })).toEqual(
       {
         method: "baton.job.handoff",
