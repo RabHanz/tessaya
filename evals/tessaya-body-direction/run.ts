@@ -9,9 +9,16 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 
+import * as NodeChildProcess from "node:child_process";
+
+import { Tool } from "effect/ai";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { replayTurn } from "../../apps/desktop/src/tessaya/agent/replay.ts";
+import { startTessayaMcp } from "../../apps/desktop/src/tessaya/agent/tessayaMcp.ts";
+import { toolUsesOf } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
+import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
+import { BodyTools } from "../../apps/server/src/mcp/toolkits/body/tools.ts";
 import { startVisionSession } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
 import { DESK_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { resolveIntents } from "../../apps/server/src/tessaya/bodyIntents.ts";
@@ -28,7 +35,7 @@ import {
   modelOf,
 } from "../../packages/tessaya-shared/src/osPack.ts";
 import { chooseTurnBrain } from "../../packages/tessaya-shared/src/turnTier.ts";
-import { retried } from "../shared/retry.ts";
+import { answerOf, retried } from "../shared/retry.ts";
 import {
   CHANNELS,
   grade,
@@ -59,6 +66,8 @@ const { values } = NodeUtil.parseArgs({
     tier: { type: "string" },
     // Recall library intents by meaning (the memory embedder's sentence vectors), as a server with the model does.
     meaning: { type: "boolean", default: false },
+    // An outside agent: a plain claude -p session given only her body tools over /mcp, no Tessaya prompt.
+    outside: { type: "boolean", default: false },
   },
 });
 // the server's own resolver over the memory embedder, built once for the run
@@ -137,23 +146,113 @@ interface Row {
   readonly ms: number;
 }
 
+const OUTSIDE = "mcp__t3-code__";
+/** One direction as an outside agent gets it: her body tools as /mcp advertises them, answered as the server does. */
+const outsideTurn = async (said: string, model: string) => {
+  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-direction-outside-"));
+  const mcp = await startTessayaMcp({
+    tools: BodyTools.map((tool: Tool.Any) => ({
+      name: tool.name,
+      description: Tool.getDescription(tool) ?? "",
+      inputSchema: advertisedJsonSchema(tool) as Record<string, unknown>,
+      run: async (args) => ({ text: await bodyAnswer(tool.name, args) }),
+    })),
+    gate: async () => ({ allow: true }),
+  });
+  const config = NodePath.join(dir, "mcp.json");
+  NodeFS.writeFileSync(
+    config,
+    JSON.stringify({
+      mcpServers: {
+        "t3-code": {
+          type: "http",
+          url: mcp.url,
+          headers: { Authorization: `Bearer ${mcp.token}` },
+        },
+      },
+    }),
+  );
+  try {
+    const stdout = await new Promise<string>((resolve, reject) => {
+      const child = NodeChildProcess.spawn(
+        values.claude!,
+        // only her body tools: no shell or files, so what it does is what it asks her body to do
+        [
+          "-p",
+          said,
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--model",
+          model,
+          "--mcp-config",
+          config,
+          "--strict-mcp-config",
+          "--tools",
+          "",
+          "--allowedTools",
+          `${OUTSIDE}*`,
+          "--no-session-persistence",
+        ],
+        { cwd: dir, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let text = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk: Buffer) => (text += chunk.toString()));
+      child.stderr.on(
+        "data",
+        (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-2000)),
+      );
+      child.on("error", reject);
+      child.on("close", (code) => {
+        try {
+          resolve(answerOf(text, code, stderr));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    const lines = stdout.split("\n");
+    const calls = lines.flatMap(toolUsesOf);
+    const result = lines
+      .map((line) => {
+        try {
+          return JSON.parse(line) as { type?: string; result?: string };
+        } catch {
+          return {};
+        }
+      })
+      .find((event) => event.type === "result");
+    return {
+      calls: calls.map((c) => c.tool.replace(OUTSIDE, "")),
+      inputs: calls.map((c) => c.input),
+      reply: result?.result ?? "",
+    };
+  } finally {
+    await mcp.close();
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
 const sample = async (d: Direction, index: number): Promise<Row> => {
   const brain = chooseTurnBrain(d.said, modelOf(DEFAULT_OS_PACK, "executive")).brain;
   const started = Date.now();
   const ran = await retried(`${d.id} #${index}`, () =>
-    replayTurn({
-      claudeBinary: values.claude!,
-      shared: { specs: DESK_TOOL_SPECS, call: async (name, input) => bodyAnswer(name, input) },
-      seed: index,
-      brain: { model: values.model ?? brain.model, effort: values.effort ?? brain.effort },
-      said: d.said,
-      where: { window: "Notepad", session: null },
-      notes: assistantFrame(DEFAULT_OS_PACK) + templateFrame(mergeTemplates()),
-      ...(values.tier === "intent" ? { extra: BODY_INTENT_TIER } : {}),
-      env: process.env,
-      // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
-      platform: process.platform,
-    }),
+    values.outside
+      ? outsideTurn(d.said, values.model ?? "opus")
+      : replayTurn({
+          claudeBinary: values.claude!,
+          shared: { specs: DESK_TOOL_SPECS, call: async (name, input) => bodyAnswer(name, input) },
+          seed: index,
+          brain: { model: values.model ?? brain.model, effort: values.effort ?? brain.effort },
+          said: d.said,
+          where: { window: "Notepad", session: null },
+          notes: assistantFrame(DEFAULT_OS_PACK) + templateFrame(mergeTemplates()),
+          ...(values.tier === "intent" ? { extra: BODY_INTENT_TIER } : {}),
+          env: process.env,
+          // oxlint-disable-next-line t3code/no-global-process-runtime -- a plain script, not Effect code
+          platform: process.platform,
+        }),
   ).catch(() => ({ calls: ["error"], inputs: [], reply: "", replies: [] }));
   return judged(d, ran, Date.now() - started);
 };
